@@ -537,8 +537,8 @@ function initializeAResponse(
     response[_response].body = body;
 
     if (contentType !== null) {
-      let hasContentType = false;
       const list = responseHeaderList(response);
+      let hasContentType = false;
       for (let i = 0; i < list.length; i++) {
         if (byteLowerCase(list[i][0]) === "content-type") {
           hasContentType = true;

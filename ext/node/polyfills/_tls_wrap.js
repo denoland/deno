@@ -8,6 +8,7 @@
 
 (function () {
 const { core } = __bootstrap;
+const { op_get_env_no_permission_check } = core.ops;
 const {
   ArrayIsArray,
   ObjectAssign,
@@ -1620,7 +1621,7 @@ function connect(...args) {
 }
 
 function getAllowUnauthorized() {
-  return false;
+  return op_get_env_no_permission_check("NODE_TLS_REJECT_UNAUTHORIZED") === "0";
 }
 
 function createServer(options, listener) {

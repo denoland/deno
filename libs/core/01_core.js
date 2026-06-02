@@ -958,6 +958,7 @@
 
   const getAsyncContext = getContinuationPreservedEmbedderData;
   const setAsyncContext = setContinuationPreservedEmbedderData;
+  const kNoAsyncContextRestore = Symbol("Deno.core.noAsyncContextRestore");
 
   function scopeAsyncContext(ctx) {
     const old = getAsyncContext();
@@ -977,6 +978,24 @@
 
     enter(value) {
       const previousContextMapping = getAsyncContext();
+      this.#enterWithPreviousContext(value, previousContextMapping);
+      return previousContextMapping;
+    }
+
+    enterIfActive(value) {
+      const previousContextMapping = getAsyncContext();
+      if (
+        previousContextMapping === null ||
+        previousContextMapping === undefined ||
+        ObjectKeys(previousContextMapping).length === 0
+      ) {
+        return kNoAsyncContextRestore;
+      }
+      this.#enterWithPreviousContext(value, previousContextMapping);
+      return previousContextMapping;
+    }
+
+    #enterWithPreviousContext(value, previousContextMapping) {
       const entry = { id: this.#id };
       const asyncContextMapping = {
         __proto__: null,
@@ -985,7 +1004,6 @@
       };
       this.#data.set(entry, value);
       setAsyncContext(asyncContextMapping);
-      return previousContextMapping;
     }
 
     get() {
@@ -1238,6 +1256,7 @@
     setAsyncContext,
     scopeAsyncContext,
     AsyncVariable,
+    kNoAsyncContextRestore,
   });
 
   const internals = {};

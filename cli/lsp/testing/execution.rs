@@ -809,26 +809,22 @@ impl LspTestReporter {
   }
 
   async fn report_step_register(&mut self, desc: &test::TestStepDescription) {
-    let parent_static_id = self
-      .tests
-      .get(&desc.parent_id)
-      .unwrap()
-      .static_id()
-      .to_string();
-    let name_index =
-      self.next_dynamic_name_index(Some(&parent_static_id), &desc.name);
-    let mut files = self.files.lock().await;
-    let file_name = self
-      .current_test
-      .and_then(|i| {
-        let mut root_desc = self.tests.get(&i)?;
+    let Some((parent_static_id, file_name)) =
+      self.tests.get(&desc.parent_id).and_then(|parent_desc| {
+        let parent_static_id = parent_desc.static_id().to_string();
+        let mut root_desc = parent_desc;
         while let Some(parent_id) = root_desc.parent_id() {
           root_desc = self.tests.get(&parent_id)?;
         }
-        Some(&root_desc.location().file_name)
+        Some((parent_static_id, root_desc.location().file_name.clone()))
       })
-      .unwrap_or(&desc.location.file_name);
-    let specifier = ModuleSpecifier::parse(file_name).unwrap();
+    else {
+      return;
+    };
+    let name_index =
+      self.next_dynamic_name_index(Some(&parent_static_id), &desc.name);
+    let mut files = self.files.lock().await;
+    let specifier = ModuleSpecifier::parse(&file_name).unwrap();
     let (test_module, _) = files
       .entry(specifier.clone())
       .or_insert_with(|| (TestModule::new(specifier), "1".to_string()));

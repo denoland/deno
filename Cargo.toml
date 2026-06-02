@@ -360,7 +360,8 @@ fancy-regex = "=0.14.0"
 imara-diff = "=0.2.0"
 libsui = "0.12.6"
 malva = "=0.15.2"
-markup_fmt = "=0.27.0"
+markup_fmt = "=0.27.3"
+object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }
 open = "5.0.1"
 pathdiff = "0.2.1"
 pretty_yaml = "=0.5.0"
@@ -451,7 +452,6 @@ tokio-vsock = "0.7"
 # windows deps
 junction = "=1.2.0"
 win32job = "=2.0.3"
-winapi = "=0.3.9"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel", "Win32_System_Threading", "Win32_UI", "Win32_UI_Shell"] }
 winres = "=0.1.12"
 

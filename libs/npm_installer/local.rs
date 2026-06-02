@@ -19,6 +19,7 @@ use std::sync::Arc;
 use anyhow::Error as AnyError;
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
+use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -270,6 +271,17 @@ impl<
     let extra_info_provider = Arc::new(CachedNpmPackageExtraInfoProvider::new(
       self.npm_package_extra_info_provider.clone(),
     ));
+
+    // Map a package to the workspace member directory that declares it as a
+    // direct dependency, so its lifecycle scripts run with `INIT_CWD` pointing
+    // at that member rather than the workspace root.
+    let lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>> =
+      Rc::new(crate::lifecycle_scripts::member_dep_init_cwds(
+        &self.npm_install_deps_provider,
+        snapshot,
+        self.root_node_modules_path.parent(),
+      ));
+
     for package in &package_partitions.packages {
       if let Some(current_pkg) =
         newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -342,6 +354,7 @@ impl<
           let lifecycle_scripts = lifecycle_scripts.clone();
           let bin_entries_to_setup = bin_entries.clone();
           let install_reporter = self.install_reporter.clone();
+          let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
 
           cache_futures.push(
             async move {
@@ -431,10 +444,15 @@ impl<
               }
 
               if package.has_scripts {
+                let init_cwds = lifecycle_script_init_cwds
+                  .get(&package.id)
+                  .cloned()
+                  .unwrap_or_default();
                 lifecycle_scripts.borrow_mut().add(
                   package,
                   &extra,
                   package_path.into(),
+                  init_cwds,
                 );
               }
 
@@ -462,6 +480,7 @@ impl<
           let bin_entries_to_setup = bin_entries.clone();
           let lifecycle_scripts = lifecycle_scripts.clone();
           let extra_info_provider = extra_info_provider.clone();
+          let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
           let sub_node_modules = folder_path.join("node_modules");
           let package_path = join_package_name(
             Cow::Owned(sub_node_modules),
@@ -487,10 +506,15 @@ impl<
               }
 
               if package.has_scripts {
+                let init_cwds = lifecycle_script_init_cwds
+                  .get(&package.id)
+                  .cloned()
+                  .unwrap_or_default();
                 lifecycle_scripts.borrow_mut().add(
                   package,
                   &extra,
                   package_path.into(),
+                  init_cwds,
                 );
               }
 

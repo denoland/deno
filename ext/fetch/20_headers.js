@@ -34,6 +34,7 @@ const {
 } = core.loadExtScript("ext:deno_web/00_infra.js");
 
 const _headerList = Symbol("header list");
+const _lowerNames = Symbol("lowercase header names");
 const _iterableHeaders = Symbol("iterable headers");
 const _iterableHeadersCache = Symbol("iterable headers cache");
 const _guard = Symbol("guard");
@@ -44,6 +45,31 @@ const _brand = webidl.brand;
 const webidlConverterByteString = webidl.converters.ByteString;
 const webidlConverterSequenceByteString =
   webidl.converters["sequence<ByteString>"];
+
+/**
+ * Returns a parallel array to `headers[_headerList]` whose i-th entry is the
+ * byte-lowercased form of `headers[_headerList][i][0]`.
+ *
+ * Rebuilt from scratch when the lengths diverge, which catches the
+ * `Request` constructor's splice/refill block, which empties `_headerList`
+ * without going through `appendHeader` / `set` / `delete`.
+ *
+ * `initializeAResponse` (`23_response.js`) reads via `ensureLowerNames`
+ * directly and pushes to both arrays in lockstep, so its mutation no longer
+ * relies on the length-divergence rebuild.
+ */
+function ensureLowerNames(headers) {
+  let lower = headers[_lowerNames];
+  const list = headerListFromHeaders(headers);
+  if (lower === null || lower.length !== list.length) {
+    lower = [];
+    for (let i = 0; i < list.length; i++) {
+      lower[i] = byteLowerCase(list[i][0]);
+    }
+    headers[_lowerNames] = lower;
+  }
+  return lower;
+}
 
 /**
  * @typedef Header
@@ -155,16 +181,16 @@ function appendHeader(headers, name, value) {
 
   // 7.
   const list = headerListFromHeaders(headers);
-  if (list.length !== 0) {
-    const lowercaseName = byteLowerCase(name);
-    for (let i = 0; i < list.length; i++) {
-      if (byteLowerCase(list[i][0]) === lowercaseName) {
-        name = list[i][0];
-        break;
-      }
+  const lowerNames = ensureLowerNames(headers);
+  const lowercaseName = byteLowerCase(name);
+  for (let i = 0; i < lowerNames.length; i++) {
+    if (lowerNames[i] === lowercaseName) {
+      name = list[i][0];
+      break;
     }
   }
   ArrayPrototypePush(list, [name, value]);
+  ArrayPrototypePush(lowerNames, lowercaseName);
 }
 
 function appendHeaderToList(list, name, value) {
@@ -303,6 +329,8 @@ function getDecodeSplitHeader(list, name) {
 class Headers {
   /** @type {HeaderList} */
   [_headerList] = [];
+  /** @type {string[] | null} parallel to _headerList, lazily populated */
+  [_lowerNames] = null;
   [_headerListGetter] = null;
   [_headerGet] = null;
   [_headerTarget] = null;
@@ -417,15 +445,19 @@ class Headers {
     }
 
     const list = headerListFromHeaders(this);
+    const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);
     let writeIdx = 0;
-    for (let i = 0; i < list.length; i++) {
-      if (byteLowerCase(list[i][0]) !== lowercaseName) {
-        list[writeIdx++] = list[i];
+    for (let i = 0; i < lowerNames.length; i++) {
+      if (lowerNames[i] !== lowercaseName) {
+        list[writeIdx] = list[i];
+        lowerNames[writeIdx] = lowerNames[i];
+        writeIdx++;
       }
     }
     if (writeIdx !== list.length) {
       ArrayPrototypeSplice(list, writeIdx);
+      ArrayPrototypeSplice(lowerNames, writeIdx);
     }
   }
 
@@ -467,16 +499,28 @@ class Headers {
     }
 
     const list = headerListFromHeaders(this);
-    return getHeader(list, name);
+    // Inline `getHeader` so we can use the cached lower names and build the
+    // joined value directly. For the dominant single-value case this also
+    // skips the intermediate entries array and the trailing join.
+    const lowerNames = ensureLowerNames(this);
+    const lowercaseName = byteLowerCase(name);
+    let value = null;
+    for (let i = 0; i < lowerNames.length; i++) {
+      if (lowerNames[i] === lowercaseName) {
+        value = value === null ? list[i][1] : value + "\x2C\x20" + list[i][1];
+      }
+    }
+    return value;
   }
 
   getSetCookie() {
     webidl.assertBranded(this, HeadersPrototype);
     const list = headerListFromHeaders(this);
+    const lowerNames = ensureLowerNames(this);
 
     const entries = [];
-    for (let i = 0; i < list.length; i++) {
-      if (byteLowerCase(list[i][0]) === "set-cookie") {
+    for (let i = 0; i < lowerNames.length; i++) {
+      if (lowerNames[i] === "set-cookie") {
         ArrayPrototypePush(entries, list[i][1]);
       }
     }
@@ -497,10 +541,10 @@ class Headers {
       throw new TypeError(`Invalid header name: "${name}"`);
     }
 
-    const list = headerListFromHeaders(this);
+    const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);
-    for (let i = 0; i < list.length; i++) {
-      if (byteLowerCase(list[i][0]) === lowercaseName) {
+    for (let i = 0; i < lowerNames.length; i++) {
+      if (lowerNames[i] === lowercaseName) {
         return true;
       }
     }
@@ -533,25 +577,32 @@ class Headers {
     }
 
     const list = headerListFromHeaders(this);
+    const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);
     let writeIdx = 0;
     let added = false;
-    for (let i = 0; i < list.length; i++) {
-      const entry = list[i];
-      if (byteLowerCase(entry[0]) === lowercaseName) {
+    for (let i = 0; i < lowerNames.length; i++) {
+      if (lowerNames[i] === lowercaseName) {
         if (!added) {
+          const entry = list[i];
           entry[1] = value;
-          list[writeIdx++] = entry;
+          list[writeIdx] = entry;
+          lowerNames[writeIdx] = lowerNames[i];
+          writeIdx++;
           added = true;
         }
       } else {
-        list[writeIdx++] = entry;
+        list[writeIdx] = list[i];
+        lowerNames[writeIdx] = lowerNames[i];
+        writeIdx++;
       }
     }
     if (!added) {
       ArrayPrototypePush(list, [name, value]);
+      ArrayPrototypePush(lowerNames, lowercaseName);
     } else if (writeIdx !== list.length) {
       ArrayPrototypeSplice(list, writeIdx);
+      ArrayPrototypeSplice(lowerNames, writeIdx);
     }
   }
 
@@ -611,6 +662,7 @@ webidl.converters["Headers"] = webidl.createInterfaceConverter(
 function headersFromHeaderList(list, guard) {
   const headers = new Headers(_brand);
   headers[_headerList] = list;
+  headers[_lowerNames] = null;
   headers[_guard] = guard;
   return headers;
 }
@@ -618,6 +670,7 @@ function headersFromHeaderList(list, guard) {
 function headersFromHeaderListLazy(headerList, guard, getHeader) {
   const headers = new Headers(_brand);
   headers[_headerList] = null;
+  headers[_lowerNames] = null;
   headers[_headerListGetter] = headerList;
   headers[_headerGet] = getHeader;
   headers[_headerTarget] = null;
@@ -628,6 +681,7 @@ function headersFromHeaderListLazy(headerList, guard, getHeader) {
 function headersFromHeaderListLazyTarget(target, guard) {
   const headers = new Headers(_brand);
   headers[_headerList] = null;
+  headers[_lowerNames] = null;
   headers[_headerListGetter] = null;
   headers[_headerGet] = null;
   headers[_headerTarget] = target;
@@ -636,6 +690,18 @@ function headersFromHeaderListLazyTarget(target, guard) {
 }
 
 /**
+ * Returns the underlying header list for direct mutation (used by
+ * `initializeAResponse` and the `Request` constructor's splice/refill block).
+ *
+ * IMPORTANT: callers must change the list length when mutating (push, splice,
+ * or empty-and-refill). Equal-length in-place mutations
+ * (`list[i] = [...]` or `list[i][0] = ...`, pop-and-push pairs) silently leave
+ * the parallel `[_lowerNames]` cache (see `ensureLowerNames`) stale, because
+ * the rebuild trigger is a length divergence between `_headerList` and
+ * `[_lowerNames]`. There is currently no caller doing this; the next one to
+ * reach for an equal-length in-place mutation needs to add a cache-invalidator
+ * (and a test) alongside it.
+ *
  * @param {Headers} headers
  * @returns {HeaderList}
  */
@@ -645,6 +711,7 @@ function headerListFromHeaders(headers) {
     const target = headers[_headerTarget];
     list = target === null ? headers[_headerListGetter]() : target.headerList;
     headers[_headerList] = list;
+    headers[_lowerNames] = null;
     headers[_headerListGetter] = null;
     headers[_headerGet] = null;
     headers[_headerTarget] = null;
@@ -670,6 +737,7 @@ function headersEntries(headers) {
 
 return {
   fillHeaderList,
+  ensureLowerNames,
   fillHeaders,
   getDecodeSplitHeader,
   getHeader,

@@ -36,6 +36,5 @@ thiserror.workspace = true
 nix = { workspace = true, features = ["fs", "user"] }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["winbase"] }
 junction.workspace = true
 windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }

@@ -85,8 +85,8 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
-  enterAsyncResource,
-  exitAsyncResource,
+  enterAsyncResourceIfActive,
+  exitAsyncResourceIfActive,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
   .loadExtScript(
@@ -923,7 +923,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   // across timers, await transitions, etc. Without this, every request would
   // share the top-level resource and concurrent requests would race on any
   // state stashed there.
-  const prevAsyncResource = enterAsyncResource(req);
+  const prevAsyncResource = enterAsyncResourceIfActive(req);
   try {
     let handled = false;
 
@@ -979,7 +979,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
       server.emit("request", req, res);
     }
   } finally {
-    exitAsyncResource(prevAsyncResource);
+    exitAsyncResourceIfActive(prevAsyncResource);
   }
 
   return 0;

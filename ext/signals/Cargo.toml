@@ -18,4 +18,4 @@ libc.workspace = true
 signal-hook.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-winapi = { workspace = true, features = ["consoleapi", "fileapi", "handleapi", "synchapi", "wincon", "winnt"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading"] }

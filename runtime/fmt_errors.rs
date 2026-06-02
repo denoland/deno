@@ -456,6 +456,27 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
       return vec![FixSuggestion::hint(
         "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
       )];
+    // `isolated-vm` is a native addon built directly on V8's C++ internals,
+    // which Deno does not expose. It fails either with a `Cannot find module
+    // './out/isolated_vm'` error (when the addon was never built, the most
+    // commonly reported case) or, if built, with the legacy native addon ABI
+    // error from `ext/napi`. Either way it cannot run in Deno, so point users
+    // at the supported isolation primitives. See denoland/deno#25130.
+    } else if (msg.contains("isolated_vm") || msg.contains("isolated-vm"))
+      && (msg.contains("Cannot find module")
+        || msg.contains("legacy Node.js native addon API"))
+    {
+      return vec![
+        FixSuggestion::info_multiline(&[
+          "`isolated-vm` is a native addon built directly on V8's C++ internals,",
+          "which Deno does not expose, so it cannot be loaded in Deno.",
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "To run code in a separate isolate, use a `Worker`: it executes in its",
+          "own isolate and thread and can be sandboxed via the `deno.permissions`",
+          "option. For in-process sandboxing, the `node:vm` module is also available.",
+        ]),
+      ];
     // Try to capture errors like:
     // ```
     // Uncaught Error: Cannot find module '../build/Release/canvas.node'
@@ -484,6 +505,38 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
         FixSuggestion::hint_multiline(&[
           "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
           "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory.",
+        ]),
+      ];
+    // Captures the error thrown by `ext/napi` when a native addon was built
+    // against the legacy Node.js native addon ABI (the `NODE_MODULE` macro /
+    // `nan`) instead of Node-API. Such addons link against V8's C++ internals,
+    // which Deno does not expose, so they cannot be loaded. See
+    // denoland/deno#26034 (better-sqlite3) and denoland/deno#26656.
+    } else if msg.contains("legacy Node.js native addon API") {
+      // `better-sqlite3` is by far the most commonly reported offender, so
+      // point users straight at drop-in Node-API alternatives.
+      if msg.contains("better-sqlite3") || msg.contains("better_sqlite3") {
+        return vec![
+          FixSuggestion::info_multiline(&[
+            "`better-sqlite3` is built on the legacy V8/nan native addon ABI,",
+            "which depends on V8 internals that Deno does not expose.",
+          ]),
+          FixSuggestion::hint_multiline(&[
+            "Use a Node-API based alternative instead, such as the built-in",
+            "`node:sqlite` module, or the `npm:libsql` / `npm:@libsql/client`",
+            "packages (the latter expose a `better-sqlite3`-compatible API).",
+          ]),
+        ];
+      }
+      return vec![
+        FixSuggestion::info_multiline(&[
+          "This native addon uses the legacy V8/nan addon ABI, which depends",
+          "on V8 internals that Deno does not expose. Only Node-API (N-API)",
+          "addons can be loaded by Deno.",
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "Switch to a package that uses Node-API (N-API), or ask the addon's",
+          "authors to migrate it from the legacy `NODE_MODULE`/`nan` ABI.",
         ]),
       ];
     } else if msg.contains("document is not defined") {
