@@ -338,7 +338,7 @@ Deno.test("[node/vfs] createWriteStream writes the file", async () => {
   assertEquals(fs.readFileSync("/written.txt", "utf8"), "first second");
 });
 
-Deno.test("[node/vfs] RealFSProvider exposes a real directory", async () => {
+Deno.test("[node/vfs] RealFSProvider exposes a real directory", () => {
   const tmp = mkdtempSync(path.join(os.tmpdir(), "deno-vfs-real-"));
   try {
     writeFileSync(path.join(tmp, "seed.txt"), "hello-real");

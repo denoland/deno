@@ -72,7 +72,6 @@ const {
   StringPrototypeReplaceAll,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
-  Symbol,
   SymbolAsyncDispose,
   SymbolAsyncIterator,
   SymbolDispose,
@@ -3048,7 +3047,7 @@ class VirtualFileSystem {
   #createPromisesAPI() {
     const provider = this.#provider;
     const toProviderPath = (p) => this.#toProviderPath(p);
-    const self = this;
+    const mkdtempImpl = (prefix) => this.mkdtempSync(prefix);
 
     return ObjectFreeze({
       async readFile(p, options) {
@@ -3143,7 +3142,7 @@ class VirtualFileSystem {
         );
       },
       async mkdtemp(prefix) {
-        return self.mkdtempSync(prefix);
+        return mkdtempImpl(prefix);
       },
       async chmod(p, mode) {
         provider.chmodSync(toProviderPath(p), mode);
