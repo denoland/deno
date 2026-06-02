@@ -141,6 +141,9 @@ pub fn write_chunked_response_head(
 }
 
 pub fn append_chunk(out: &mut Vec<u8>, chunk: &[u8]) {
+  if chunk.is_empty() {
+    return;
+  }
   push_hex_usize(out, chunk.len());
   out.extend_from_slice(b"\r\n");
   out.extend_from_slice(chunk);
@@ -178,6 +181,9 @@ pub fn append_chunk_to(
   out: &mut [u8],
   chunk: &[u8],
 ) -> Result<usize, OutputFull> {
+  if chunk.is_empty() {
+    return Ok(0);
+  }
   let mut cursor = SliceWriter::new(out);
   cursor.push_hex_usize(chunk.len())?;
   cursor.push(b"\r\n")?;
@@ -219,8 +225,6 @@ fn write_response_head_inner(
   out.extend_from_slice(response.reason);
   out.extend_from_slice(b"\r\n");
 
-  let mut has_content_length = false;
-  let mut has_transfer_encoding = false;
   let mut date = None;
   let body_allowed = status_allows_body(response.status);
   for header in response.headers {
@@ -237,16 +241,10 @@ fn write_response_head_inner(
       continue;
     }
     if header.name.eq_ignore_ascii_case(b"content-length") {
-      if chunked || !body_allowed {
-        continue;
-      }
-      has_content_length = true;
+      continue;
     }
     if header.name.eq_ignore_ascii_case(b"transfer-encoding") {
-      if chunked || !body_allowed {
-        continue;
-      }
-      has_transfer_encoding = true;
+      continue;
     }
     out.extend_from_slice(header.name);
     out.extend_from_slice(b": ");
@@ -257,15 +255,13 @@ fn write_response_head_inner(
   if let Some(content_length) = response.content_length
     && body_allowed
     && !chunked
-    && !has_content_length
-    && !has_transfer_encoding
   {
     out.extend_from_slice(b"content-length: ");
     push_u64(out, content_length);
     out.extend_from_slice(b"\r\n");
   }
 
-  if chunked && body_allowed && !has_transfer_encoding {
+  if chunked && body_allowed {
     out.extend_from_slice(b"transfer-encoding: chunked\r\n");
   }
 
@@ -298,8 +294,6 @@ fn write_response_head_to_inner(
   cursor.push(response.reason)?;
   cursor.push(b"\r\n")?;
 
-  let mut has_content_length = false;
-  let mut has_transfer_encoding = false;
   let mut date = None;
   let body_allowed = status_allows_body(response.status);
   for header in response.headers {
@@ -316,16 +310,10 @@ fn write_response_head_to_inner(
       continue;
     }
     if header.name.eq_ignore_ascii_case(b"content-length") {
-      if chunked || !body_allowed {
-        continue;
-      }
-      has_content_length = true;
+      continue;
     }
     if header.name.eq_ignore_ascii_case(b"transfer-encoding") {
-      if chunked || !body_allowed {
-        continue;
-      }
-      has_transfer_encoding = true;
+      continue;
     }
     cursor.push(header.name)?;
     cursor.push(b": ")?;
@@ -336,15 +324,13 @@ fn write_response_head_to_inner(
   if let Some(content_length) = response.content_length
     && body_allowed
     && !chunked
-    && !has_content_length
-    && !has_transfer_encoding
   {
     cursor.push(b"content-length: ")?;
     cursor.push_u64(content_length)?;
     cursor.push(b"\r\n")?;
   }
 
-  if chunked && body_allowed && !has_transfer_encoding {
+  if chunked && body_allowed {
     cursor.push(b"transfer-encoding: chunked\r\n")?;
   }
 
@@ -413,6 +399,7 @@ fn valid_reason(reason: &[u8]) -> bool {
 }
 
 fn push_status(out: &mut Vec<u8>, status: u16) {
+  debug_assert!((100..1000).contains(&status));
   if status < 1000 {
     out.push(b'0' + ((status / 100) % 10) as u8);
     out.push(b'0' + ((status / 10) % 10) as u8);
@@ -658,6 +645,16 @@ mod tests {
   }
 
   #[test]
+  fn empty_chunk_does_not_write_terminal_chunk() {
+    let mut out = Vec::new();
+    append_chunk(&mut out, b"");
+    assert!(out.is_empty());
+
+    let mut slice = [0; 8];
+    assert_eq!(append_chunk_to(&mut slice, b""), Ok(0));
+  }
+
+  #[test]
   #[should_panic(expected = "invalid response header value")]
   fn response_head_rejects_invalid_header_value() {
     let headers = [Header {
@@ -727,6 +724,79 @@ mod tests {
     assert_eq!(
       out,
       b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+    );
+  }
+
+  #[test]
+  fn computed_content_length_overrides_user_framing() {
+    let headers = [
+      Header {
+        name: b"content-length",
+        value: b"999",
+      },
+      Header {
+        name: b"content-length",
+        value: b"1000",
+      },
+      Header {
+        name: b"transfer-encoding",
+        value: b"chunked",
+      },
+      Header {
+        name: b"x-test",
+        value: b"ok",
+      },
+    ];
+    let mut out = Vec::new();
+    write_response_head(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http11,
+        status: 200,
+        reason: b"OK",
+        headers: &headers,
+        content_length: Some(5),
+        keep_alive: true,
+      },
+    );
+    assert_eq!(
+      out,
+      b"HTTP/1.1 200 OK\r\nx-test: ok\r\ncontent-length: 5\r\n\r\n"
+    );
+  }
+
+  #[test]
+  fn computed_content_length_overrides_user_framing_to_slice() {
+    let headers = [
+      Header {
+        name: b"content-length",
+        value: b"999",
+      },
+      Header {
+        name: b"transfer-encoding",
+        value: b"chunked",
+      },
+      Header {
+        name: b"x-test",
+        value: b"ok",
+      },
+    ];
+    let mut out = [0; 128];
+    let len = write_response_head_to(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http11,
+        status: 200,
+        reason: b"OK",
+        headers: &headers,
+        content_length: Some(5),
+        keep_alive: true,
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      &out[..len],
+      b"HTTP/1.1 200 OK\r\nx-test: ok\r\ncontent-length: 5\r\n\r\n"
     );
   }
 

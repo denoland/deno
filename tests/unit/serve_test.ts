@@ -2508,6 +2508,17 @@ function hasHeader(msg: string, name: string): boolean {
   return msg.slice(0, n).toLowerCase().includes(name.toLowerCase());
 }
 
+function getRawHeader(msg: string, name: string): string | null {
+  const n = msg.indexOf("\r\n\r\n") || msg.length;
+  const prefix = `${name.toLowerCase()}:`;
+  for (const line of msg.slice(0, n).split("\r\n")) {
+    if (line.toLowerCase().startsWith(prefix)) {
+      return line.slice(prefix.length).trim();
+    }
+  }
+  return null;
+}
+
 function createServerLengthTest(name: string, testCase: TestCase) {
   Deno.test(name, async function () {
     const deferred = Promise.withResolvers<void>();
@@ -2565,6 +2576,10 @@ function createServerLengthTest(name: string, testCase: TestCase) {
         }
 
         if (testCase.expectsConnLen && typeof testCase.body === "string") {
+          assertEquals(
+            getRawHeader(msg, "Content-Length"),
+            String(new TextEncoder().encode(testCase.body).byteLength),
+          );
           assertEquals(msg.slice(n), testCase.body);
         }
         assertionsPassed = true;
@@ -2597,6 +2612,13 @@ function stream(s: string): ReadableStream<Uint8Array> {
 createServerLengthTest("fixedResponseKnown", {
   headers: { "content-length": "11" },
   body: "foo bar baz",
+  expectsChunked: false,
+  expectsConnLen: true,
+});
+
+createServerLengthTest("fixedResponseKnownMismatchedLength", {
+  headers: { "content-length": "999" },
+  body: "hello",
   expectsChunked: false,
   expectsConnLen: true,
 });
