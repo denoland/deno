@@ -16,6 +16,7 @@ const {
   op_url_stringify_search_params,
 } = core.ops;
 const {
+  Array,
   ArrayFrom,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
@@ -28,12 +29,15 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ReflectOwnKeys,
   SafeArrayIterator,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
   SymbolIterator,
   TypeError,
+  Uint8Array,
   Uint32Array,
 } = primordials;
 
@@ -49,6 +53,108 @@ const _urlObject = Symbol("url object");
 // `ERR_MISSING_ARGS` messages from `webidl.requiredArguments`.
 const NAME_ARG_NAMES = ["name"];
 const APPEND_ARG_NAMES = ["name", "value"];
+
+// application/x-www-form-urlencoded byte serializer
+// https://url.spec.whatwg.org/#urlencoded-serializing
+//
+// For each byte:
+//   0x20 (SP)                                 -> "+"
+//   0x2A, 0x2D, 0x2E, 0x30-0x39, 0x41-0x5A,
+//   0x5F, 0x61-0x7A                           -> that byte verbatim
+//   anything else                             -> "%XX" (uppercase hex)
+//
+// formEscape[i] holds the precomputed serialization of byte i; formEscapeSafe[i]
+// is 1 if byte i is in the verbatim set (no escape needed).
+const HEX_CHARS = "0123456789ABCDEF";
+const formEscape = new Array(256);
+const formEscapeSafe = new Uint8Array(256);
+for (let i = 0; i < 256; i++) {
+  if (
+    i === 0x2A ||
+    i === 0x2D ||
+    i === 0x2E ||
+    (i >= 0x30 && i <= 0x39) ||
+    (i >= 0x41 && i <= 0x5A) ||
+    i === 0x5F ||
+    (i >= 0x61 && i <= 0x7A)
+  ) {
+    formEscape[i] = StringFromCharCode(i);
+    formEscapeSafe[i] = 1;
+  } else if (i === 0x20) {
+    formEscape[i] = "+";
+  } else {
+    formEscape[i] = "%" + HEX_CHARS[i >> 4] + HEX_CHARS[i & 0xF];
+  }
+}
+
+/**
+ * Serializes a single ASCII string per the application/x-www-form-urlencoded
+ * byte serializer in https://url.spec.whatwg.org/#urlencoded-serializing.
+ *
+ * Precondition: `input` contains only ASCII (code points < 0x80). The caller
+ * (`urlencodedSerialize`) pre-scans the whole list and dispatches non-ASCII
+ * inputs to the Rust op, so this function never has to UTF-8 encode.
+ *
+ * @param {string} input
+ * @returns {string}
+ */
+function urlencodedSerializeString(input) {
+  const len = input.length;
+  let needEscape = false;
+  for (let i = 0; i < len; i++) {
+    if (!formEscapeSafe[StringPrototypeCharCodeAt(input, i)]) {
+      needEscape = true;
+      break;
+    }
+  }
+  if (!needEscape) return input;
+
+  let output = "";
+  for (let i = 0; i < len; i++) {
+    output += formEscape[StringPrototypeCharCodeAt(input, i)];
+  }
+  return output;
+}
+
+/**
+ * Serializes a list of name/value tuples per the application/x-www-form-urlencoded
+ * serializer in https://url.spec.whatwg.org/#urlencoded-serializing.
+ *
+ * @param {[string, string][]} list
+ * @returns {string}
+ */
+function urlencodedSerialize(list) {
+  // Pre-scan: if every name+value in the list is pure ASCII, take the
+  // JS fast path. Otherwise dispatch to the Rust serializer, which
+  // marshals the whole list across the v8/Rust boundary once and lets
+  // form_urlencoded handle UTF-8 encoding inline -- cheaper per byte
+  // than `core.encode` + JS per-byte string concat.
+  for (let i = 0; i < list.length; i++) {
+    const pair = list[i];
+    const name = pair[0];
+    for (let k = 0; k < name.length; k++) {
+      if (StringPrototypeCharCodeAt(name, k) >= 0x80) {
+        return op_url_stringify_search_params(list);
+      }
+    }
+    const value = pair[1];
+    for (let k = 0; k < value.length; k++) {
+      if (StringPrototypeCharCodeAt(value, k) >= 0x80) {
+        return op_url_stringify_search_params(list);
+      }
+    }
+  }
+
+  let output = "";
+  for (let i = 0; i < list.length; i++) {
+    if (i > 0) output += "&";
+    const pair = list[i];
+    output += urlencodedSerializeString(pair[0]);
+    output += "=";
+    output += urlencodedSerializeString(pair[1]);
+  }
+  return output;
+}
 
 // WARNING: must match rust code's UrlSetter::*
 const SET_HASH = 0;
@@ -404,7 +510,7 @@ class URLSearchParams {
    */
   toString() {
     webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
-    return op_url_stringify_search_params(this[_list]);
+    return urlencodedSerialize(this[_list]);
   }
 
   get size() {
