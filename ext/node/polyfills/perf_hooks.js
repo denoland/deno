@@ -364,7 +364,10 @@ class Histogram {
     return BigInt(this[_handle].exceedsBigInt ?? 0);
   }
   get percentiles() {
-    const out = new SafeMap();
+    // Real Map (not SafeMap): returned to userland and must pass
+    // `instanceof Map` (SafeMap's prototype chain excludes Map).
+    // deno-lint-ignore prefer-primordials
+    const out = new Map();
     if (typeof this[_handle].percentiles === "function") {
       const flat = this[_handle].percentiles();
       for (let i = 0; i < flat.length; i += 2) {
@@ -387,7 +390,10 @@ class Histogram {
     return out;
   }
   get percentilesBigInt() {
-    const out = new SafeMap();
+    // Real Map (not SafeMap): returned to userland and must pass
+    // `instanceof Map` (SafeMap's prototype chain excludes Map).
+    // deno-lint-ignore prefer-primordials
+    const out = new Map();
     if (typeof this[_handle].percentilesBigInt === "function") {
       const flat = this[_handle].percentilesBigInt();
       for (let i = 0; i < flat.length; i += 2) {

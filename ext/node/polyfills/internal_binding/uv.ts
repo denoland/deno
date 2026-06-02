@@ -36,7 +36,6 @@ const {
   ArrayPrototypeMap,
   Error,
   MapPrototypeGet,
-  SafeMap,
 } = primordials;
 
 // In Node these values are coming from libuv:
@@ -502,7 +501,11 @@ const unreachable = () => {
   throw new Error("Unreachable code");
 };
 
-const errorMap = new SafeMap<number, [string, string]>(
+// Must be a real Map (not SafeMap): it is returned to userland via
+// getErrorMap() / process.binding("uv").getErrorMap() and must pass
+// `instanceof Map` (SafeMap's prototype chain does not include Map).
+// deno-lint-ignore prefer-primordials
+const errorMap = new Map<number, [string, string]>(
   osType === "windows"
     ? codeToErrorWindows
     : osType === "darwin"
@@ -518,7 +521,10 @@ const errorMap = new SafeMap<number, [string, string]>(
     : unreachable(),
 );
 
-const codeMap = new SafeMap<string, number>(
+// Real Map (not SafeMap): returned to userland via getCodeMap() /
+// process.binding("uv").getCodeMap(); must pass `instanceof Map`.
+// deno-lint-ignore prefer-primordials
+const codeMap = new Map<string, number>(
   osType === "windows"
     ? errorToCodeWindows
     : osType === "darwin"
