@@ -1655,6 +1655,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_PATCH_REACT_CVE",
+    description: "Enable load-time source patches mitigating known React Server\nComponents CVEs (CVE-2025-55182, CVE-2025-55184).",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_SERVE_ADDRESS",
     description: "Override address for Deno.serve",
     example: Some(
