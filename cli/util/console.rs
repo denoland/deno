@@ -222,7 +222,7 @@ mod windows_vt_input {
   }
 }
 
-/// Saves the current terminal mode on creation and restores it on drop.
+/// A snapshot of the terminal mode that can be restored later.
 ///
 /// This is used by `deno task` so that a child process (for example a dev
 /// server like `vite`) that switches the terminal into raw mode and is then
@@ -232,15 +232,17 @@ mod windows_vt_input {
 /// On non-Windows platforms this is a no-op: there the child process belongs to
 /// the same process group and the controlling terminal's line discipline is
 /// restored by the shell, so there's nothing for `deno` to do.
-pub struct TerminalModeGuard {
+#[derive(Clone, Copy, Default)]
+pub struct SavedTerminalMode {
   #[cfg(windows)]
   stdin_mode: Option<u32>,
   #[cfg(windows)]
   stdout_mode: Option<u32>,
 }
 
-impl TerminalModeGuard {
-  pub fn acquire() -> Self {
+impl SavedTerminalMode {
+  /// Captures the current terminal mode so it can be restored later.
+  pub fn capture() -> Self {
     #[cfg(windows)]
     {
       Self {
@@ -257,19 +259,44 @@ impl TerminalModeGuard {
       Self {}
     }
   }
+
+  /// Restores the captured terminal mode. Safe to call multiple times.
+  pub fn restore(&self) {
+    #[cfg(windows)]
+    {
+      windows_console_mode::set(
+        winapi::um::winbase::STD_INPUT_HANDLE,
+        self.stdin_mode,
+      );
+      windows_console_mode::set(
+        winapi::um::winbase::STD_OUTPUT_HANDLE,
+        self.stdout_mode,
+      );
+    }
+  }
+}
+
+/// Captures the terminal mode on creation and restores it on drop, acting as a
+/// backstop so the terminal is always returned to its original state once a
+/// task and all of its children have finished. See [`SavedTerminalMode`].
+pub struct TerminalModeGuard(SavedTerminalMode);
+
+impl TerminalModeGuard {
+  pub fn acquire() -> Self {
+    Self(SavedTerminalMode::capture())
+  }
+
+  /// Returns a copy of the captured mode so it can also be restored eagerly
+  /// (for example as soon as Ctrl+C is received).
+  pub fn saved(&self) -> SavedTerminalMode {
+    self.0
+  }
 }
 
 #[cfg(windows)]
 impl Drop for TerminalModeGuard {
   fn drop(&mut self) {
-    windows_console_mode::set(
-      winapi::um::winbase::STD_INPUT_HANDLE,
-      self.stdin_mode,
-    );
-    windows_console_mode::set(
-      winapi::um::winbase::STD_OUTPUT_HANDLE,
-      self.stdout_mode,
-    );
+    self.0.restore();
   }
 }
 
@@ -432,12 +459,17 @@ mod tests {
   #[test]
   fn terminal_mode_guard_acquire_and_drop() {
     // Should not panic whether or not a console is attached (in CI stdin is
-    // typically redirected, so the captured mode is `None` and dropping is a
+    // typically redirected, so the captured mode is `None` and restoring is a
     // no-op). On a real console it captures and restores the mode. The guard
-    // is restored when it goes out of scope at the end of this block.
+    // is restored when it goes out of scope at the end of this block, and the
+    // captured snapshot can be restored eagerly any number of times.
     {
-      let _guard = TerminalModeGuard::acquire();
+      let guard = TerminalModeGuard::acquire();
+      let saved = guard.saved();
+      saved.restore();
+      saved.restore();
     }
+    SavedTerminalMode::capture().restore();
   }
 
   #[test]
