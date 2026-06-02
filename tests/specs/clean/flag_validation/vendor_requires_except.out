@@ -1,0 +1,5 @@
+error: the following required arguments were not provided:
+  --except
+
+Usage: deno clean --except --vendor[=<vendor>] [except-paths]...
+[WILDCARD]

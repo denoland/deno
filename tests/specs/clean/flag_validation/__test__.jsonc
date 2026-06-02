@@ -1,0 +1,29 @@
+{
+  "tests": {
+    "dry_run_requires_except": {
+      "args": "clean --dry-run",
+      "output": "dry_run_requires_except.out",
+      "exitCode": 1
+    },
+    "vendor_requires_except": {
+      "args": "clean --vendor",
+      "output": "vendor_requires_except.out",
+      "exitCode": 1
+    },
+    "node_modules_dir_requires_except": {
+      "args": "clean --node-modules-dir=auto",
+      "output": "node_modules_dir_requires_except.out",
+      "exitCode": 1
+    },
+    "node_modules_linker_requires_except": {
+      "args": "clean --node-modules-linker=isolated",
+      "output": "node_modules_linker_requires_except.out",
+      "exitCode": 1
+    },
+    "except_requires_paths": {
+      "args": "clean --except",
+      "output": "except_requires_paths.out",
+      "exitCode": 1
+    }
+  }
+}
