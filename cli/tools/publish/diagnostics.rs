@@ -253,7 +253,7 @@ impl Diagnostic for PublishDiagnostic {
       SyntaxError(diagnostic) => diagnostic.message(),
       MissingLicense { .. } => Cow::Borrowed("missing license field or file"),
       UnstableRawImport { .. } => {
-        Cow::Borrowed("raw imports have not been stabilized")
+        Cow::Borrowed("bytes imports have not been stabilized")
       }
     }
   }

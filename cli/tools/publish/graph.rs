@@ -166,12 +166,15 @@ impl GraphDiagnosticsCollector {
       );
 
       for (specifier_text, dep) in &module.dependencies {
-        for asset_import in
-          dep.imports.iter().filter(|i| i.attributes.has_asset())
+        // text imports are stable, but bytes imports are not yet
+        for bytes_import in dep
+          .imports
+          .iter()
+          .filter(|i| i.attributes.get("type") == Some("bytes"))
         {
           diagnostics_collector.push(PublishDiagnostic::UnstableRawImport {
             text_info: parsed_source.text_info_lazy().clone(),
-            referrer: asset_import.specifier_range.clone(),
+            referrer: bytes_import.specifier_range.clone(),
           });
         }
 
