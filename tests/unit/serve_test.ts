@@ -3650,6 +3650,20 @@ async function writeAll(conn: Deno.Conn, bytes: Uint8Array): Promise<void> {
   }
 }
 
+async function readAtLeast(
+  conn: Deno.Conn,
+  minLength: number,
+): Promise<Uint8Array> {
+  const out = new Uint8Array(minLength);
+  let read = 0;
+  while (read < minLength) {
+    const n = await conn.read(out.subarray(read));
+    assert(n);
+    read += n;
+  }
+  return out;
+}
+
 async function assertRawRequestBadRequest(request: string): Promise<void> {
   const ac = new AbortController();
   const { promise, resolve } = Promise.withResolvers<void>();
@@ -4179,6 +4193,51 @@ Deno.test(
       ]),
     );
 
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServeRawHttp2PrefaceAutodetect() {
+    const ac = new AbortController();
+    const { promise, resolve } = Promise.withResolvers<void>();
+    await using server = Deno.serve(
+      { port: servePort, signal: ac.signal, onListen: onListen(resolve) },
+      () => {
+        fail("HTTP/2 preface should not be dispatched as an HTTP/1 request");
+        return new Response("unexpected");
+      },
+    );
+    await promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    const preface = new TextEncoder().encode(
+      "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n",
+    );
+    const emptySettingsFrame = new Uint8Array([
+      0,
+      0,
+      0,
+      4,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ]);
+    await writeAll(conn, preface);
+    await writeAll(conn, emptySettingsFrame);
+
+    const frameHeader = await readAtLeast(conn, 9);
+    assertEquals(frameHeader[3], 4); // SETTINGS
+    assertEquals(frameHeader[5], 0);
+    assertEquals(frameHeader[6], 0);
+    assertEquals(frameHeader[7], 0);
+    assertEquals(frameHeader[8], 0);
+
+    conn.close();
     ac.abort();
     await server.finished;
   },
