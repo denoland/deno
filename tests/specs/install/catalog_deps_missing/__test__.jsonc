@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "tests": {
+    "run_missing_catalog_dep": {
+      "args": "run -A packages/a/main.js",
+      "output": "catalog_missing.out",
+      "exitCode": 1
+    }
+  }
+}

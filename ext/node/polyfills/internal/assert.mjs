@@ -1,5 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-import { ERR_INTERNAL_ASSERTION } from "ext:deno_node/internal/errors.ts";
+// Copyright 2018-2026 the Deno authors. MIT license.
+(function () {
+const { core } = __bootstrap;
+const { ERR_INTERNAL_ASSERTION } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 function assert(value, message) {
   if (!value) {
@@ -13,4 +17,5 @@ function fail(message) {
 
 assert.fail = fail;
 
-export default assert;
+return assert;
+})();

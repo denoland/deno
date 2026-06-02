@@ -1,4 +1,4 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "test_macro"
@@ -14,6 +14,5 @@ proc-macro = true
 path = "lib.rs"
 
 [dependencies]
-proc-macro2.workspace = true
 quote.workspace = true
 syn.workspace = true

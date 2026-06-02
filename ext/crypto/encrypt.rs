@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
@@ -13,11 +13,16 @@ use aes_gcm::aead::generic_array::typenum::U16;
 use aes_gcm::aes::Aes128;
 use aes_gcm::aes::Aes192;
 use aes_gcm::aes::Aes256;
+use aws_lc_rs::aead::Aad;
+use aws_lc_rs::aead::CHACHA20_POLY1305;
+use aws_lc_rs::aead::LessSafeKey;
+use aws_lc_rs::aead::Nonce as AwsNonce;
+use aws_lc_rs::aead::UnboundKey;
 use ctr::Ctr32BE;
 use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use rand::rngs::OsRng;
@@ -27,6 +32,9 @@ use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+use sha3::Sha3_256;
+use sha3::Sha3_384;
+use sha3::Sha3_512;
 
 use crate::shared::*;
 
@@ -62,12 +70,28 @@ pub enum EncryptAlgorithm {
     length: usize,
     tag_length: usize,
   },
+  #[serde(rename = "AES-OCB", rename_all = "camelCase")]
+  AesOcb {
+    #[serde(with = "serde_bytes")]
+    iv: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    additional_data: Option<Vec<u8>>,
+    length: usize,
+    tag_length: usize,
+  },
   #[serde(rename = "AES-CTR", rename_all = "camelCase")]
   AesCtr {
     #[serde(with = "serde_bytes")]
     counter: Vec<u8>,
     ctr_length: usize,
     key_length: usize,
+  },
+  #[serde(rename = "ChaCha20-Poly1305", rename_all = "camelCase")]
+  ChaCha20Poly1305 {
+    #[serde(with = "serde_bytes")]
+    nonce: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    additional_data: Option<Vec<u8>>,
   },
 }
 
@@ -90,6 +114,12 @@ pub enum EncryptError {
   #[error("iv length not equal to 12 or 16")]
   InvalidIvLength,
   #[class(type)]
+  #[error("invalid ChaCha20-Poly1305 nonce length: expected 12 bytes")]
+  InvalidChaChaNonceLength,
+  #[class(type)]
+  #[error("invalid ChaCha20-Poly1305 key length: expected 32 bytes")]
+  InvalidChaChaKeyLength,
+  #[class(type)]
   #[error("invalid counter length. Currently supported 32/64/128 bits")]
   InvalidCounterLength,
   #[class("DOMExceptionOperationError")]
@@ -100,12 +130,11 @@ pub enum EncryptError {
   Failed,
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_crypto_encrypt(
   #[serde] opts: EncryptOptions,
   #[buffer] data: JsBuffer,
-) -> Result<ToJsBuffer, EncryptError> {
+) -> Result<Uint8Array, EncryptError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
     EncryptAlgorithm::RsaOaep { hash, label } => {
@@ -120,11 +149,21 @@ pub async fn op_crypto_encrypt(
       length,
       tag_length,
     } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
+    EncryptAlgorithm::AesOcb {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => encrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
     EncryptAlgorithm::AesCtr {
       counter,
       ctr_length,
       key_length,
     } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
+    EncryptAlgorithm::ChaCha20Poly1305 {
+      nonce,
+      additional_data,
+    } => encrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
   };
   let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
@@ -161,6 +200,21 @@ fn encrypt_rsa_oaep(
     ShaHash::Sha512 => rsa::Oaep {
       digest: Box::<Sha512>::default(),
       mgf_digest: Box::<Sha512>::default(),
+      label: Some(label),
+    },
+    ShaHash::Sha3_256 => rsa::Oaep {
+      digest: Box::<Sha3_256>::default(),
+      mgf_digest: Box::<Sha3_256>::default(),
+      label: Some(label),
+    },
+    ShaHash::Sha3_384 => rsa::Oaep {
+      digest: Box::<Sha3_384>::default(),
+      mgf_digest: Box::<Sha3_384>::default(),
+      label: Some(label),
+    },
+    ShaHash::Sha3_512 => rsa::Oaep {
+      digest: Box::<Sha3_512>::default(),
+      mgf_digest: Box::<Sha3_512>::default(),
       label: Some(label),
     },
   };
@@ -282,6 +336,99 @@ fn encrypt_aes_gcm(
   ciphertext.extend_from_slice(tag);
 
   Ok(ciphertext)
+}
+
+fn encrypt_aes_ocb(
+  key: V8RawKeyData,
+  length: usize,
+  tag_length: usize,
+  iv: Vec<u8>,
+  additional_data: Option<Vec<u8>>,
+  data: &[u8],
+) -> Result<Vec<u8>, EncryptError> {
+  use aes_gcm::aead::generic_array::GenericArray;
+  use ocb3::Ocb3;
+  use ocb3::aead::AeadInPlace as Ocb3AeadInPlace;
+  use ocb3::aead::KeyInit as Ocb3KeyInit;
+
+  let key = key.as_secret_key()?;
+  let additional_data = additional_data.unwrap_or_default();
+
+  let mut ciphertext = data.to_vec();
+
+  // OCB supports nonce sizes from 1 to 15 bytes (recommended: 12 bytes)
+  if iv.is_empty() || iv.len() > 15 {
+    return Err(EncryptError::InvalidIvLength);
+  }
+
+  let nonce = GenericArray::from_slice(&iv);
+
+  let tag = match length {
+    128 => {
+      let cipher = Ocb3::<aes::Aes128>::new_from_slice(key)
+        .map_err(|_| EncryptError::Failed)?;
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
+        .map_err(|_| EncryptError::Failed)?
+    }
+    192 => {
+      let cipher = Ocb3::<aes::Aes192>::new_from_slice(key)
+        .map_err(|_| EncryptError::Failed)?;
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
+        .map_err(|_| EncryptError::Failed)?
+    }
+    256 => {
+      let cipher = Ocb3::<aes::Aes256>::new_from_slice(key)
+        .map_err(|_| EncryptError::Failed)?;
+      cipher
+        .encrypt_in_place_detached(nonce, &additional_data, &mut ciphertext)
+        .map_err(|_| EncryptError::Failed)?
+    }
+    _ => return Err(EncryptError::InvalidLength),
+  };
+
+  // Truncate tag to the specified tag length
+  // OCB tag is 16 bytes by default
+  let tag = &tag[..(tag_length / 8)];
+
+  // C | T
+  ciphertext.extend_from_slice(tag);
+
+  Ok(ciphertext)
+}
+
+fn encrypt_chacha20_poly1305(
+  key: V8RawKeyData,
+  nonce: &[u8],
+  additional_data: Option<Vec<u8>>,
+  data: &[u8],
+) -> Result<Vec<u8>, EncryptError> {
+  let key_bytes = key.as_secret_key()?;
+  if key_bytes.len() != 32 {
+    return Err(EncryptError::InvalidChaChaKeyLength);
+  }
+  if nonce.len() != 12 {
+    return Err(EncryptError::InvalidChaChaNonceLength);
+  }
+  // RFC 8439 caps plaintext length per nonce at 2^32 * 64 - 64 bytes.
+  if data.len() as u64 > ((1u64 << 32) - 1) * 64 {
+    return Err(EncryptError::TooMuchData);
+  }
+
+  let unbound_key = UnboundKey::new(&CHACHA20_POLY1305, key_bytes)
+    .map_err(|_| EncryptError::Failed)?;
+  let sealing_key = LessSafeKey::new(unbound_key);
+  let aws_nonce = AwsNonce::try_assume_unique_for_key(nonce)
+    .map_err(|_| EncryptError::Failed)?;
+  let aad = additional_data.unwrap_or_default();
+
+  let mut in_out = data.to_vec();
+  sealing_key
+    .seal_in_place_append_tag(aws_nonce, Aad::from(&aad), &mut in_out)
+    .map_err(|_| EncryptError::Failed)?;
+
+  Ok(in_out)
 }
 
 fn encrypt_aes_ctr_gen<B>(

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,41 +24,42 @@
 // deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
 
-import { op_get_env_no_permission_check } from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_get_env_no_permission_check } = core.ops;
 
-import {
+const {
+  ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  ERR_OUT_OF_RANGE,
   ERR_USE_AFTER_CLOSE,
-} from "ext:deno_node/internal/errors.ts";
-import {
-  validateAbortSignal,
-  validateArray,
-  validateString,
-  validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   //   inspect,
   getStringWidth,
   stripVTControlCharacters,
-} from "ext:deno_node/internal/util/inspect.mjs";
-import EventEmitter from "node:events";
-import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
+const { EventEmitter, kFirstEventParam } = core.loadExtScript(
+  "ext:deno_node/_events.mjs",
+);
+const { emitKeypressEvents } = core.loadExtScript(
+  "ext:deno_node/internal/readline/emitKeypressEvents.mjs",
+);
+const {
   charLengthAt,
   charLengthLeft,
   commonPrefix,
   kSubstringSearch,
-} from "ext:deno_node/internal/readline/utils.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/readline/utils.mjs");
+const {
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import { Readable } from "node:stream";
-import process from "node:process";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const lazyProcess = core.createLazyLoader("node:process");
 
-import { StringDecoder } from "node:string_decoder";
-import {
+const { StringDecoder } = core.loadExtScript("ext:deno_node/string_decoder.ts");
+const {
   kAddHistory,
   kDecoder,
   kDeleteLeft,
@@ -90,8 +91,13 @@ import {
   kWordLeft,
   kWordRight,
   kWriteToOutput,
-} from "ext:deno_node/internal/readline/symbols.mjs";
-import { primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/readline/symbols.mjs");
+const {
+  validateAbortSignal,
+  validateArray,
+  validateString,
+  validateUint32,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const {
   ArrayPrototypePush,
@@ -116,47 +122,22 @@ const kMincrlfDelay = 100;
 const lineEnding = new SafeRegExp(/\r?\n|\r(?!\n)|\u2028|\u2029/g);
 
 const kLineObjectStream = Symbol("line object stream");
-export const kQuestionCancel = Symbol("kQuestionCancel");
-export const kQuestion = Symbol("kQuestion");
+const kQuestionCancel = Symbol("kQuestionCancel");
+const kQuestion = Symbol("kQuestion");
+const kKillRing = Symbol("kKillRing");
+const kKillRingCursor = Symbol("kKillRingCursor");
+const kYank = Symbol("kYank");
+const kYankPop = Symbol("kYankPop");
+const kUndoStack = Symbol("kUndoStack");
+const kRedoStack = Symbol("kRedoStack");
+const kUndo = Symbol("kUndo");
+const kRedo = Symbol("kRedo");
+const kPushToUndoStack = Symbol("kPushToUndoStack");
 
 // GNU readline library - keyseq-timeout is 500ms (default)
 const ESCAPE_CODE_TIMEOUT = 500;
 
-export {
-  kAddHistory,
-  kDecoder,
-  kDeleteLeft,
-  kDeleteLineLeft,
-  kDeleteLineRight,
-  kDeleteRight,
-  kDeleteWordLeft,
-  kDeleteWordRight,
-  kGetDisplayPos,
-  kHistoryNext,
-  kHistoryPrev,
-  kInsertString,
-  kLine,
-  kLine_buffer,
-  kMoveCursor,
-  kNormalWrite,
-  kOldPrompt,
-  kOnLine,
-  kPreviousKey,
-  kPrompt,
-  kQuestionCallback,
-  kRefreshLine,
-  kSawKeyPress,
-  kSawReturnAt,
-  kSetRawMode,
-  kTabComplete,
-  kTabCompleter,
-  kTtyWrite,
-  kWordLeft,
-  kWordRight,
-  kWriteToOutput,
-};
-
-export function InterfaceConstructor(input, output, completer, terminal) {
+function InterfaceConstructor(input, output, completer, terminal) {
   this[kSawReturnAt] = 0;
   // TODO(BridgeAR): Document this property. The name is not ideal, so we
   // might want to expose an alias and document that instead.
@@ -223,12 +204,12 @@ export function InterfaceConstructor(input, output, completer, terminal) {
     historySize = kHistorySize;
   }
 
-  if (
-    typeof historySize !== "number" ||
-    Number.isNaN(historySize) ||
-    historySize < 0
-  ) {
-    throw new ERR_INVALID_ARG_VALUE.RangeError("historySize", historySize);
+  if (typeof historySize !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("historySize", "number", historySize);
+  }
+
+  if (Number.isNaN(historySize) || historySize < 0) {
+    throw new ERR_OUT_OF_RANGE("historySize", ">= 0", historySize);
   }
 
   // Backwards compat; check the isTTY prop of the output stream
@@ -250,6 +231,10 @@ export function InterfaceConstructor(input, output, completer, terminal) {
     ? Math.max(kMincrlfDelay, crlfDelay)
     : kMincrlfDelay;
   this.completer = completer;
+  this[kKillRing] = [];
+  this[kKillRingCursor] = 0;
+  this[kUndoStack] = [];
+  this[kRedoStack] = [];
 
   this.setPrompt(prompt);
 
@@ -342,6 +327,7 @@ export function InterfaceConstructor(input, output, completer, terminal) {
   }
 
   if (signal) {
+    const process = lazyProcess().default;
     const onAborted = () => self.close();
     if (signal.aborted) {
       process.nextTick(onAborted);
@@ -360,7 +346,7 @@ export function InterfaceConstructor(input, output, completer, terminal) {
 Object.setPrototypeOf(InterfaceConstructor.prototype, EventEmitter.prototype);
 Object.setPrototypeOf(InterfaceConstructor, EventEmitter);
 
-export class Interface extends InterfaceConstructor {
+class Interface extends InterfaceConstructor {
   // eslint-disable-next-line no-useless-constructor
   constructor(input, output, completer, terminal) {
     super(input, output, completer, terminal);
@@ -549,6 +535,9 @@ export class Interface extends InterfaceConstructor {
    * @returns {void | Interface}
    */
   pause() {
+    if (this.closed) {
+      throw new ERR_USE_AFTER_CLOSE("readline");
+    }
     if (this.paused) return;
     this.input.pause();
     this.paused = true;
@@ -561,6 +550,9 @@ export class Interface extends InterfaceConstructor {
    * @returns {void | Interface}
    */
   resume() {
+    if (this.closed) {
+      throw new ERR_USE_AFTER_CLOSE("readline");
+    }
     if (!this.paused) return;
     this.input.resume();
     this.paused = false;
@@ -581,6 +573,9 @@ export class Interface extends InterfaceConstructor {
    * @returns {void}
    */
   write(d, key) {
+    if (this.closed) {
+      throw new ERR_USE_AFTER_CLOSE("readline");
+    }
     if (this.paused) this.resume();
     if (this.terminal) {
       this[kTtyWrite](d, key);
@@ -709,7 +704,7 @@ export class Interface extends InterfaceConstructor {
     const completionsWidth = completions.map(
       (e) => getStringWidth(e),
     );
-    const width = Math.max.apply(completionsWidth) + 2; // 2 space padding
+    const width = Math.max(...completionsWidth) + 2; // 2 space padding
     let maxColumns = Math.floor(this.columns / width) || 1;
     if (maxColumns === Infinity) {
       maxColumns = 1;
@@ -762,6 +757,7 @@ export class Interface extends InterfaceConstructor {
 
   [kDeleteLeft]() {
     if (this.cursor > 0 && this.line.length > 0) {
+      this[kPushToUndoStack]();
       // The number of UTF-16 units comprising the character to the left
       const charSize = charLengthLeft(this.line, this.cursor);
       this.line = this.line.slice(0, this.cursor - charSize) +
@@ -774,6 +770,7 @@ export class Interface extends InterfaceConstructor {
 
   [kDeleteRight]() {
     if (this.cursor < this.line.length) {
+      this[kPushToUndoStack]();
       // The number of UTF-16 units comprising the character to the left
       const charSize = charLengthAt(this.line, this.cursor);
       this.line = this.line.slice(0, this.cursor) +
@@ -787,6 +784,7 @@ export class Interface extends InterfaceConstructor {
 
   [kDeleteWordLeft]() {
     if (this.cursor > 0) {
+      this[kPushToUndoStack]();
       // Reverse the string and match a word near beginning
       // to avoid quadratic time complexity
       let leading = this.line.slice(0, this.cursor);
@@ -796,32 +794,98 @@ export class Interface extends InterfaceConstructor {
         0,
         leading.length - match[0].length,
       );
+      const killed = this.line.slice(leading.length, this.cursor);
       this.line = leading +
         this.line.slice(this.cursor, this.line.length);
       this.cursor = leading.length;
+      this[kKillRing].push(killed);
+      this[kKillRingCursor] = this[kKillRing].length - 1;
       this[kRefreshLine]();
     }
   }
 
   [kDeleteWordRight]() {
     if (this.cursor < this.line.length) {
+      this[kPushToUndoStack]();
       const trailing = this.line.slice(this.cursor);
       const match = trailing.match(/^(?:\s+|\W+|\w+)\s*/);
+      const killed = trailing.slice(0, match[0].length);
       this.line = this.line.slice(0, this.cursor) +
         trailing.slice(match[0].length);
+      this[kKillRing].push(killed);
+      this[kKillRingCursor] = this[kKillRing].length - 1;
       this[kRefreshLine]();
     }
   }
 
   [kDeleteLineLeft]() {
+    this[kPushToUndoStack]();
+    const killed = this.line.slice(0, this.cursor);
     this.line = this.line.slice(this.cursor);
     this.cursor = 0;
+    this[kKillRing].push(killed);
+    this[kKillRingCursor] = this[kKillRing].length - 1;
     this[kRefreshLine]();
   }
 
   [kDeleteLineRight]() {
+    this[kPushToUndoStack]();
+    const killed = this.line.slice(this.cursor);
     this.line = this.line.slice(0, this.cursor);
+    this[kKillRing].push(killed);
+    this[kKillRingCursor] = this[kKillRing].length - 1;
     this[kRefreshLine]();
+  }
+
+  [kYank]() {
+    if (this[kKillRing].length > 0) {
+      this[kKillRingCursor] = this[kKillRing].length - 1;
+      const killed = this[kKillRing][this[kKillRingCursor]];
+      this[kInsertString](killed);
+    }
+  }
+
+  [kYankPop]() {
+    if (this[kKillRing].length > 1) {
+      // Remove previously yanked text
+      const prev = this[kKillRing][this[kKillRingCursor]];
+      this.line = this.line.slice(0, this.cursor - prev.length) +
+        this.line.slice(this.cursor);
+      this.cursor -= prev.length;
+
+      // Cycle to previous entry in kill ring
+      this[kKillRingCursor]--;
+      if (this[kKillRingCursor] < 0) {
+        this[kKillRingCursor] = this[kKillRing].length - 1;
+      }
+      const killed = this[kKillRing][this[kKillRingCursor]];
+      this[kInsertString](killed);
+    }
+  }
+
+  [kPushToUndoStack]() {
+    this[kUndoStack].push({ line: this.line, cursor: this.cursor });
+    this[kRedoStack] = [];
+  }
+
+  [kUndo]() {
+    if (this[kUndoStack].length > 0) {
+      this[kRedoStack].push({ line: this.line, cursor: this.cursor });
+      const state = this[kUndoStack].pop();
+      this.line = state.line;
+      this.cursor = state.cursor;
+      this[kRefreshLine]();
+    }
+  }
+
+  [kRedo]() {
+    if (this[kRedoStack].length > 0) {
+      this[kUndoStack].push({ line: this.line, cursor: this.cursor });
+      const state = this[kRedoStack].pop();
+      this.line = state.line;
+      this.cursor = state.cursor;
+      this[kRefreshLine]();
+    }
   }
 
   clearLine() {
@@ -991,6 +1055,16 @@ export class Interface extends InterfaceConstructor {
       }
     }
 
+    // Undo (Ctrl+_) and Redo (Ctrl+^)
+    if (key.sequence === "\x1F") {
+      this[kUndo]();
+      return;
+    }
+    if (key.sequence === "\x1E") {
+      this[kRedo]();
+      return;
+    }
+
     // Ignore escape key, fixes
     // https://github.com/nodejs/node-v0.x-archive/issues/2876.
     if (key.name === "escape") return;
@@ -1072,7 +1146,12 @@ export class Interface extends InterfaceConstructor {
           this[kHistoryPrev]();
           break;
 
-        case "z":
+        case "y": // Yank killed text
+          this[kYank]();
+          break;
+
+        case "z": {
+          const process = lazyProcess().default;
           if (process.platform === "win32") break;
           if (this.listenerCount("SIGTSTP") > 0) {
             this.emit("SIGTSTP");
@@ -1095,6 +1174,7 @@ export class Interface extends InterfaceConstructor {
             process.kill(process.pid, "SIGTSTP");
           }
           break;
+        }
 
         case "w": // Delete backwards to a word boundary
         // TODO(BridgeAR): The transmitted escape sequence is `\b` and that is
@@ -1135,6 +1215,10 @@ export class Interface extends InterfaceConstructor {
 
         case "backspace": // Delete backwards to a word boundary
           this[kDeleteWordLeft]();
+          break;
+
+        case "y": // Yank pop
+          this[kYankPop]();
           break;
       }
     } else {
@@ -1240,36 +1324,55 @@ export class Interface extends InterfaceConstructor {
    */
   [Symbol.asyncIterator]() {
     if (this[kLineObjectStream] === undefined) {
-      const readable = new Readable({
-        objectMode: true,
-        read: () => {
-          this.resume();
+      this[kLineObjectStream] = EventEmitter.on(
+        this,
+        "line",
+        {
+          close: ["close"],
+          highWaterMark: 1024,
+          [kFirstEventParam]: true,
         },
-        destroy: (err, cb) => {
-          this.off("line", lineListener);
-          this.off("close", closeListener);
-          this.close();
-          cb(err);
-        },
-      });
-      const lineListener = (input) => {
-        if (!readable.push(input)) {
-          // TODO(rexagod): drain to resume flow
-          this.pause();
-        }
-      };
-      const closeListener = () => {
-        readable.push(null);
-      };
-      const errorListener = (err) => {
-        readable.destroy(err);
-      };
-      this.on("error", errorListener);
-      this.on("line", lineListener);
-      this.on("close", closeListener);
-      this[kLineObjectStream] = readable;
+      );
     }
-
-    return this[kLineObjectStream][Symbol.asyncIterator]();
+    return this[kLineObjectStream];
   }
 }
+
+return {
+  Interface,
+  InterfaceConstructor,
+  kAddHistory,
+  kDecoder,
+  kDeleteLeft,
+  kDeleteLineLeft,
+  kDeleteLineRight,
+  kDeleteRight,
+  kDeleteWordLeft,
+  kDeleteWordRight,
+  kGetDisplayPos,
+  kHistoryNext,
+  kHistoryPrev,
+  kInsertString,
+  kLine,
+  kLine_buffer,
+  kMoveCursor,
+  kNormalWrite,
+  kOldPrompt,
+  kOnLine,
+  kPreviousKey,
+  kPrompt,
+  kQuestion,
+  kQuestionCallback,
+  kQuestionCancel,
+  kRefreshLine,
+  kSawKeyPress,
+  kSawReturnAt,
+  kSetRawMode,
+  kTabComplete,
+  kTabCompleter,
+  kTtyWrite,
+  kWordLeft,
+  kWordRight,
+  kWriteToOutput,
+};
+})();

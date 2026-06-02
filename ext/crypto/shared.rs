@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rsa::RsaPrivateKey;
@@ -32,6 +33,12 @@ pub enum ShaHash {
   Sha384,
   #[serde(rename = "SHA-512")]
   Sha512,
+  #[serde(rename = "SHA3-256")]
+  Sha3_256,
+  #[serde(rename = "SHA3-384")]
+  Sha3_384,
+  #[serde(rename = "SHA3-512")]
+  Sha3_512,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]
@@ -52,12 +59,12 @@ pub enum V8RawKeyData {
   Public(JsBuffer),
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "lowercase", tag = "type", content = "data")]
+#[derive(ToV8)]
+#[to_v8(tag = "type", content = "data")]
 pub enum RustRawKeyData {
-  Secret(ToJsBuffer),
-  Private(ToJsBuffer),
-  Public(ToJsBuffer),
+  Secret(Uint8Array),
+  Private(Uint8Array),
+  Public(Uint8Array),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -167,7 +174,8 @@ impl V8RawKeyData {
     match self {
       V8RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
-        p521::EncodedPoint::from_bytes(data)
+        p521::PublicKey::from_sec1_bytes(data)
+          .map(|p| p.to_encoded_point(false))
           .map_err(|_| SharedError::ExpectedValidPublicECKey)
       }
       V8RawKeyData::Private(data) => {

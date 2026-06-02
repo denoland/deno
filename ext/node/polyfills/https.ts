@@ -1,166 +1,376 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
-import {
-  ClientRequest,
-  IncomingMessageForClient as IncomingMessage,
-  type RequestOptions,
-} from "node:http";
-import { Agent as HttpAgent } from "node:_http_agent";
-import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
-import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import { Buffer } from "node:buffer";
+(function () {
+const { core } = __bootstrap;
+const lazyTls = core.createLazyLoader("node:tls");
+const { urlToHttpOptions } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
+const lazyHttp = core.createLazyLoader("node:http");
+const lazyNet = core.createLazyLoader("node:net");
+const lazyAddressOverride = core.createLazyLoader(
+  "ext:deno_node/internal/http/address_override.js",
+);
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { ERR_INVALID_URL } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const {
+  httpServerPreClose,
+  setupConnectionsTracking,
+  storeHTTPOptions,
+} = core.createLazyLoader("node:_http_server")();
+const { Agent: HttpAgent } = core.createLazyLoader("node:_http_agent")();
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
-export class Server extends HttpServer {
-  constructor(opts, requestListener?: ServerHandler) {
-    if (typeof opts === "function") {
-      requestListener = opts;
-      opts = kEmptyObject;
-    } else if (opts == null) {
-      opts = kEmptyObject;
-    } else {
-      validateObject(opts, "options");
-    }
+const tls = lazyTls().default;
+const net = lazyNet();
+const http = lazyHttp();
+const { applyAddressOverride, startOverrideListener } = lazyAddressOverride();
+const { _connectionListener, ClientRequest, ServerImpl: HttpServer } = http;
 
-    if (opts.cert && Array.isArray(opts.cert)) {
-      notImplemented("https.Server.opts.cert array type");
-    }
-
-    if (opts.key && Array.isArray(opts.key)) {
-      notImplemented("https.Server.opts.key array type");
-    }
-
-    super(opts, requestListener);
+// https.Server extends tls.Server (which extends net.Server).
+// Each accepted TCP connection is wrapped with TLS by tls.Server's
+// connectionListener, then the HTTP _connectionListener handles the
+// HTTP protocol on the decrypted stream. Matches Node.js architecture.
+function Server(
+  this: any,
+  opts: any,
+  requestListener?: any,
+) {
+  if (!(this instanceof Server)) {
+    return new (Server as any)(opts, requestListener);
   }
 
-  _additionalServeOptions() {
-    return {
-      cert: this._opts.cert instanceof Buffer
-        ? this._opts.cert.toString()
-        : this._opts.cert,
-      key: this._opts.key instanceof Buffer
-        ? this._opts.key.toString()
-        : this._opts.key,
-    };
+  let ALPNProtocols: string[] | undefined = ["http/1.1"];
+  if (typeof opts === "function") {
+    requestListener = opts;
+    opts = kEmptyObject;
+  } else if (opts == null) {
+    opts = kEmptyObject;
+  } else {
+    validateObject(opts, "options");
+    // Only set default ALPNProtocols if the caller has not set either
+    if (opts.ALPNProtocols || opts.ALPNCallback) {
+      ALPNProtocols = undefined;
+    }
   }
 
-  _encrypted = true;
+  storeHTTPOptions.call(this, opts);
+
+  tls.Server.call(this, {
+    noDelay: true,
+    ALPNProtocols,
+    ...opts,
+  }, _connectionListener);
+
+  this.httpAllowHalfOpen = false;
+
+  if (requestListener) {
+    this.addListener("request", requestListener);
+  }
+
+  this.addListener("tlsClientError", function (this: any, err: any, conn: any) {
+    if (!this.emit("clientError", err, conn)) {
+      conn.destroy(err);
+    }
+  });
+
+  this.timeout = 0;
+  this.maxHeadersCount = null;
+  this.on("listening", setupConnectionsTracking);
 }
-export function createServer(opts, requestListener?: ServerHandler) {
-  return new Server(opts, requestListener);
+Object.setPrototypeOf(Server.prototype, tls.Server.prototype);
+Object.setPrototypeOf(Server, tls.Server);
+
+Server.prototype.closeAllConnections = HttpServer.prototype.closeAllConnections;
+Server.prototype.closeIdleConnections =
+  HttpServer.prototype.closeIdleConnections;
+Server.prototype.setTimeout = HttpServer.prototype.setTimeout;
+
+// Same DENO_SERVE_ADDRESS override hook as http.Server, but on
+// https.Server. The override listener is plain cleartext HTTP (it
+// goes directly through _connectionListener, bypassing tls wrapping)
+// because the typical use case -- Deno Deploy / desktop runtime
+// vsock/unix control channels -- is trusted local traffic.
+Server.prototype.listen = function listen(this: any, ...args: any[]) {
+  const applied = applyAddressOverride();
+  switch (applied.mode) {
+    case "none":
+      return net.Server.prototype.listen.apply(this, args);
+    case "tcp": {
+      let cb: any;
+      const last = args[args.length - 1];
+      if (typeof last === "function") {
+        cb = last;
+        args = args.slice(0, -1);
+      }
+      const rewritten: any[] = [{ host: applied.host, port: applied.port }];
+      if (cb) rewritten.push(cb);
+      return net.Server.prototype.listen.apply(this, rewritten);
+    }
+    case "override-only": {
+      let cb: any;
+      const last = args[args.length - 1];
+      if (typeof last === "function") cb = last;
+      if (cb) this.once("listening", cb);
+      this._handle = {
+        close() {},
+        ref() {},
+        unref() {},
+      };
+      startOverrideListener(this, applied.override, _connectionListener);
+      nextTick(() => this.emit("listening"));
+      return this;
+    }
+    case "duplicate": {
+      startOverrideListener(this, applied.override, _connectionListener);
+      return net.Server.prototype.listen.apply(this, args);
+    }
+  }
+};
+
+Server.prototype.close = function close(this: any) {
+  httpServerPreClose(this);
+  tls.Server.prototype.close.apply(this, arguments);
+  return this;
+};
+
+Server.prototype[Symbol.asyncDispose] = async function (this: any) {
+  await new Promise<void>((resolve, reject) => {
+    this.close((err: any) => (err ? reject(err) : resolve()));
+  });
+};
+
+function createServer(
+  opts: any,
+  requestListener?: any,
+) {
+  return new (Server as any)(opts, requestListener);
 }
 
-interface HttpsRequestOptions extends RequestOptions {
-  _: unknown;
-}
-
-// Store additional root CAs.
-// undefined means NODE_EXTRA_CA_CERTS is not checked yet.
-// null means there's no additional root CAs.
-let caCerts: string[] | undefined | null;
-
-/** Makes a request to an https server. */
-export function get(
-  url: string | URL,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function get(
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function get(
-  url: string | URL,
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-// deno-lint-ignore no-explicit-any
-export function get(...args: any[]) {
+/** Makes a GET request to an https server. */
+function get(...args: any[]) {
   const req = request(args[0], args[1], args[2]);
   req.end();
   return req;
 }
 
-export class Agent extends HttpAgent {
-  constructor(options) {
-    super(options);
-    this.defaultPort = 443;
-    this.protocol = "https:";
-    this.maxCachedSessions = this.options.maxCachedSessions;
-    if (this.maxCachedSessions === undefined) {
-      this.maxCachedSessions = 100;
-    }
-
-    this._sessionCache = {
-      map: {},
-      list: [],
-    };
+// Defined as a regular function (not a `class`) so that `https.Agent()` may be
+// invoked without `new`, matching Node:
+// https://github.com/nodejs/node/blob/main/lib/https.js
+function Agent(this: any, options: any) {
+  if (!(this instanceof Agent)) {
+    return new (Agent as any)(options);
   }
-}
 
-export const globalAgent = new Agent({
+  options = { __proto__: null, ...options };
+  options.defaultPort ??= 443;
+  options.protocol ??= "https:";
+  HttpAgent.call(this, options);
+
+  this.maxCachedSessions = this.options.maxCachedSessions;
+  if (this.maxCachedSessions === undefined) {
+    this.maxCachedSessions = 100;
+  }
+
+  this._sessionCache = {
+    map: {},
+    list: [],
+  };
+}
+Object.setPrototypeOf(Agent.prototype, HttpAgent.prototype);
+Object.setPrototypeOf(Agent, HttpAgent);
+
+Agent.prototype.getName = function getName(this: any, options: any = {}) {
+  let name = HttpAgent.prototype.getName.call(this, options);
+
+  name += ":";
+  if (options.ca) name += options.ca;
+
+  name += ":";
+  if (options.cert) name += options.cert;
+
+  name += ":";
+  if (options.clientCertEngine) name += options.clientCertEngine;
+
+  name += ":";
+  if (options.ciphers) name += options.ciphers;
+
+  name += ":";
+  if (options.key) name += options.key;
+
+  name += ":";
+  if (options.pfx) name += options.pfx;
+
+  name += ":";
+  if (options.rejectUnauthorized !== undefined) {
+    name += options.rejectUnauthorized;
+  }
+
+  name += ":";
+  if (options.servername && options.servername !== options.host) {
+    name += options.servername;
+  }
+
+  name += ":";
+  if (options.minVersion) name += options.minVersion;
+
+  name += ":";
+  if (options.maxVersion) name += options.maxVersion;
+
+  name += ":";
+  if (options.secureProtocol) name += options.secureProtocol;
+
+  name += ":";
+  if (options.crl) name += options.crl;
+
+  name += ":";
+  if (options.honorCipherOrder !== undefined) {
+    name += options.honorCipherOrder;
+  }
+
+  name += ":";
+  if (options.ecdhCurve) name += options.ecdhCurve;
+
+  name += ":";
+  if (options.dhparam) name += options.dhparam;
+
+  name += ":";
+  if (options.secureOptions !== undefined) name += options.secureOptions;
+
+  name += ":";
+  if (options.sessionIdContext) name += options.sessionIdContext;
+
+  name += ":";
+  if (options.sigalgs) name += JSON.stringify(options.sigalgs);
+
+  name += ":";
+  if (options.privateKeyIdentifier) name += options.privateKeyIdentifier;
+
+  name += ":";
+  if (options.privateKeyEngine) name += options.privateKeyEngine;
+
+  return name;
+};
+
+Agent.prototype._getSession = function _getSession(this: any, key: string) {
+  return this._sessionCache.map[key];
+};
+
+Agent.prototype._cacheSession = function _cacheSession(
+  this: any,
+  key: string,
+  session: any,
+) {
+  if (this.maxCachedSessions === 0) return;
+
+  if (this._sessionCache.map[key]) {
+    this._sessionCache.map[key] = session;
+    return;
+  }
+
+  if (this._sessionCache.list.length >= this.maxCachedSessions) {
+    const oldKey = this._sessionCache.list.shift()!;
+    delete this._sessionCache.map[oldKey];
+  }
+
+  this._sessionCache.list.push(key);
+  this._sessionCache.map[key] = session;
+};
+
+Agent.prototype._evictSession = function _evictSession(
+  this: any,
+  key: string,
+) {
+  const index = this._sessionCache.list.indexOf(key);
+  if (index === -1) return;
+
+  this._sessionCache.list.splice(index, 1);
+  delete this._sessionCache.map[key];
+};
+
+Agent.prototype.createConnection = function createConnection(
+  this: any,
+  ...args: any[]
+) {
+  let options = args[0];
+  const cb = typeof args[args.length - 1] === "function"
+    ? args[args.length - 1]
+    : undefined;
+
+  if (typeof args[0] === "number") {
+    // createConnection(port, host, options) signature
+    const opts: any = {};
+    for (let i = 1; i < args.length; i++) {
+      if (args[i] !== null && typeof args[i] === "object") {
+        Object.assign(opts, args[i]);
+      }
+    }
+    if (typeof args[0] === "number") opts.port = args[0];
+    if (typeof args[1] === "string") opts.host = args[1];
+    options = opts;
+  } else if (options !== null && typeof options === "object") {
+    options = { ...options };
+  } else {
+    options = {};
+  }
+
+  // Look up cached TLS session for reuse
+  if (options._agentKey) {
+    const session = this._getSession(options._agentKey);
+    if (session) {
+      options = { session, ...options };
+    }
+  }
+
+  const socket = tls.connect(options as any);
+
+  // Cache session on new session event
+  if (options._agentKey) {
+    socket.on("session", (session: any) => {
+      this._cacheSession(options._agentKey, session);
+    });
+
+    socket.once("close", (err: any) => {
+      if (err) this._evictSession(options._agentKey);
+    });
+  }
+
+  if (cb) {
+    socket.once("secureConnect", cb);
+  }
+
+  return socket;
+};
+
+const globalAgent = new (Agent as any)({
   keepAlive: true,
   scheduling: "lifo",
   timeout: 5000,
 });
 
-/** HttpsClientRequest class loosely follows http.ClientRequest class API. */
-class HttpsClientRequest extends ClientRequest {
-  override _encrypted = true;
-  override defaultProtocol = "https:";
-  override _getClient(): Deno.HttpClient | undefined {
-    if (caCerts === null) {
-      return undefined;
-    }
-    if (caCerts !== undefined) {
-      return createHttpClient({ caCerts, http2: false });
-    }
-    // const status = await Deno.permissions.query({
-    //   name: "env",
-    //   variable: "NODE_EXTRA_CA_CERTS",
-    // });
-    // if (status.state !== "granted") {
-    //   caCerts = null;
-    //   return undefined;
-    // }
-    const certFilename = Deno.env.get("NODE_EXTRA_CA_CERTS");
-    if (!certFilename) {
-      caCerts = null;
-      return undefined;
-    }
-    const caCert = Deno.readTextFileSync(certFilename);
-    caCerts = [caCert];
-    return createHttpClient({ caCerts, http2: false });
-  }
-}
-
 /** Makes a request to an https server. */
-export function request(
-  url: string | URL,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function request(
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-export function request(
-  url: string | URL,
-  opts: HttpsRequestOptions,
-  cb?: (res: IncomingMessage) => void,
-): HttpsClientRequest;
-// deno-lint-ignore no-explicit-any
-export function request(...args: any[]) {
-  let options = {};
+function request(...args: any[]) {
+  let options: any = {};
 
   if (typeof args[0] === "string") {
     const urlStr = args.shift();
-    options = urlToHttpOptions(new URL(urlStr));
+    // Match Node: surface invalid URL strings as ERR_INVALID_URL.
+    let parsed;
+    try {
+      parsed = new URL(urlStr);
+    } catch {
+      throw new ERR_INVALID_URL(urlStr);
+    }
+    options = urlToHttpOptions(parsed);
   } else if (args[0] instanceof URL) {
     options = urlToHttpOptions(args.shift());
   }
@@ -170,32 +380,20 @@ export function request(...args: any[]) {
   }
 
   options._defaultAgent = globalAgent;
-  if (options.agent === undefined) {
-    if (options.key !== undefined) {
-      options._defaultAgent.options.key = options.key;
-    }
-    if (options.cert !== undefined) {
-      options._defaultAgent.options.cert = options.cert;
-    }
-    if (options.ca !== undefined) {
-      options._defaultAgent.options.ca = options.ca;
-    }
-  } else {
-    if (options.key !== undefined) {
-      options.agent.options.key = options.key;
-    }
-    if (options.cert !== undefined) {
-      options.agent.options.cert = options.cert;
-    }
-    if (options.ca !== undefined) {
-      options.agent.options.ca = options.ca;
-    }
-  }
   args.unshift(options);
 
-  return new HttpsClientRequest(args[0], args[1]);
+  return new ClientRequest(args[0], args[1], args[2]);
 }
-export default {
+
+// `agent-base` (used by `@npmcli/agent`, `http-proxy-agent`, etc.) figures
+// out whether a polymorphic agent should behave as https by scanning the
+// current stack for `(https.js:` or `node:https:`. Without a marker the
+// stack only shows our polyfill path and the agent reports `protocol:
+// "http:"`, causing `http.ClientRequest` to throw `ERR_INVALID_PROTOCOL`
+// against an `https:` URL. Encode the marker in the function name.
+Object.defineProperty(request, "name", { value: "node:https:request" });
+
+return {
   Agent,
   Server,
   createServer,
@@ -203,3 +401,4 @@ export default {
   globalAgent,
   request,
 };
+})();

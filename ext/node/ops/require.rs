@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -115,7 +115,6 @@ pub enum RequireErrorKind {
 pub struct UnableToGetCwdError(#[source] pub std::io::Error);
 
 #[op2]
-#[serde]
 pub fn op_require_init_paths() -> Vec<String> {
   // todo(dsherret): this code is node compat mode specific and
   // we probably don't want it for small mammal, so ignore it for now
@@ -166,15 +165,20 @@ pub fn op_require_init_paths() -> Vec<String> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_require_node_module_paths<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
   #[string] from: &str,
 ) -> Result<Vec<String>, RequireError> {
   let sys = state.borrow::<TSys>();
-  // Guarantee that "from" is absolute.
+  // Guarantee that "from" is absolute. Avoid calling `env_current_dir()`
+  // when we don't need it — on macOS it walks the directory tree from `/`
+  // and fails with EACCES if any ancestor is unreadable (see #21585), so
+  // an unrelated absolute `from` would otherwise crash here.
+  let from_path = Path::new(from);
   let from = if from.starts_with("file:///") {
     Cow::Owned(url_to_file_path(&Url::parse(from)?)?)
+  } else if from_path.is_absolute() {
+    normalize_path(Cow::Borrowed(from_path))
   } else {
     let current_dir = &sys
       .env_current_dir()
@@ -228,7 +232,10 @@ pub fn op_require_proxy_path(#[string] filename: &str) -> Option<String> {
 
 #[op2(fast)]
 pub fn op_require_is_request_relative(#[string] request: &str) -> bool {
-  if request.starts_with("./") || request.starts_with("../") || request == ".."
+  if request.starts_with("./")
+    || request.starts_with("../")
+    || request == "."
+    || request == ".."
   {
     return true;
   }
@@ -264,15 +271,63 @@ pub fn op_require_resolve_deno_dir<
   >>();
 
   let path = Path::new(parent_filename);
+  if let Ok(folder) = resolver.resolve_package_folder_from_package(
+    request,
+    &UrlOrPathRef::from_path(path),
+  ) {
+    return Ok(Some(folder.to_string_lossy().into_owned()));
+  }
+
+  // Referrer-based resolution failed. When the referrer lives outside the
+  // global cache (e.g. a user's project file invoking `require()` through
+  // a hook installed by a package that *is* in the cache, mirroring the
+  // Playwright config-transpile flow), the npm resolver has no way to
+  // anchor the lookup. Fall back to resolving the bare specifier as a
+  // top-level dependency in the npm graph.
+  let referrer_is_in_npm_package = url_from_file_path(path)
+    .map(|url| resolver.in_npm_package(&url))
+    .unwrap_or(false);
+  if referrer_is_in_npm_package {
+    return Ok(None);
+  }
+  let package_name = bare_specifier_package_name(request);
+  if package_name.is_empty() {
+    return Ok(None);
+  }
+  let loader = state.borrow::<NodeRequireLoaderRc>();
   Ok(
-    resolver
-      .resolve_package_folder_from_package(
-        request,
-        &UrlOrPathRef::from_path(path),
-      )
-      .ok()
+    loader
+      .resolve_package_folder_from_name(package_name)
       .map(|p| p.to_string_lossy().into_owned()),
   )
+}
+
+/// Returns the npm package name portion of a bare specifier such as
+/// `pkg`, `pkg/sub`, `@scope/pkg`, or `@scope/pkg/sub`. Returns an empty
+/// string for relative or otherwise invalid specifiers.
+fn bare_specifier_package_name(specifier: &str) -> &str {
+  if specifier.is_empty()
+    || specifier.starts_with('.')
+    || specifier.starts_with('/')
+    || specifier.starts_with('#')
+  {
+    return "";
+  }
+  if let Some(rest) = specifier.strip_prefix('@') {
+    let Some(scope_end) = rest.find('/') else {
+      return "";
+    };
+    let after_scope = &rest[scope_end + 1..];
+    match after_scope.find('/') {
+      Some(rel) => &specifier[..1 + scope_end + 1 + rel],
+      None => specifier,
+    }
+  } else {
+    match specifier.find('/') {
+      Some(i) => &specifier[..i],
+      None => specifier,
+    }
+  }
 }
 
 #[op2(fast)]
@@ -296,10 +351,9 @@ pub fn op_require_is_deno_dir_package<
 }
 
 #[op2]
-#[serde]
 pub fn op_require_resolve_lookup_paths(
   #[string] request: &str,
-  #[serde] maybe_parent_paths: Option<Vec<String>>,
+  #[scoped] maybe_parent_paths: Option<Vec<String>>,
   #[string] parent_filename: &str,
 ) -> Option<Vec<String>> {
   if !request.starts_with('.')
@@ -323,15 +377,17 @@ pub fn op_require_resolve_lookup_paths(
     }
   }
 
-  // In REPL, parent.filename is null.
-  // if (!parent || !parent.id || !parent.filename) {
-  //   // Make require('./path/to/foo') work - normally the path is taken
-  //   // from realpath(__filename) but in REPL there is no filename
-  //   const mainPaths = ['.'];
-
-  //   debug('looking for %j in %j', request, mainPaths);
-  //   return mainPaths;
-  // }
+  // In REPL, parent.filename is null/empty.
+  if parent_filename.is_empty() {
+    // If parent has paths (e.g. fakeParent from require.resolve with
+    // options.paths), use those. Otherwise fall back to cwd.
+    if let Some(parent_paths) = maybe_parent_paths
+      && !parent_paths.is_empty()
+    {
+      return Some(parent_paths);
+    }
+    return Some(vec![".".to_string()]);
+  }
 
   let p = Path::new(parent_filename);
   Some(vec![p.parent().unwrap().to_string_lossy().into_owned()])
@@ -405,7 +461,7 @@ fn path_resolve<'a>(mut parts: impl Iterator<Item = &'a str>) -> PathBuf {
 
 #[op2]
 #[string]
-pub fn op_require_path_resolve(#[serde] parts: Vec<String>) -> String {
+pub fn op_require_path_resolve(#[scoped] parts: Vec<String>) -> String {
   path_resolve(parts.iter().map(|s| s.as_str()))
     .to_string_lossy()
     .into_owned()
@@ -500,7 +556,6 @@ pub fn op_require_try_self<
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_require_read_file(
   state: &mut OpState,
   #[string] file_path: &str,
@@ -518,6 +573,10 @@ pub fn op_require_read_file(
 #[op2]
 #[string]
 pub fn op_require_as_file_path(#[string] file_or_url: &str) -> Option<String> {
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "don't need error and this doesn't need to work in Wasm"
+  )]
   if let Ok(url) = Url::parse(file_or_url)
     && let Ok(p) = url.to_file_path()
   {
@@ -610,7 +669,7 @@ pub fn op_require_is_maybe_cjs(
     return Ok(false);
   };
   let loader = state.borrow::<NodeRequireLoaderRc>();
-  loader.is_maybe_cjs(&url).map_err(Into::into)
+  loader.is_maybe_cjs_from_require(&url).map_err(Into::into)
 }
 
 #[op2(stack_trace)]

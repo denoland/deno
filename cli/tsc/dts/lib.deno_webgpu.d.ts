@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-empty-interface
 
@@ -23,7 +23,7 @@ declare class GPUSupportedLimits {
   readonly maxTextureArrayLayers: number;
   readonly maxBindGroups: number;
   // TODO(@crowlKats): support max_bind_groups_plus_vertex_buffers
-  readonly maxBindGroupsPlusVertexBuffers?: number;
+  readonly maxBindGroupsPlusVertexBuffers: number;
   readonly maxBindingsPerBindGroup: number;
   readonly maxDynamicUniformBuffersPerPipelineLayout: number;
   readonly maxDynamicStorageBuffersPerPipelineLayout: number;
@@ -41,7 +41,7 @@ declare class GPUSupportedLimits {
   readonly maxVertexAttributes: number;
   readonly maxVertexBufferArrayStride: number;
   // TODO(@crowlKats): support max_inter_stage_shader_variables
-  readonly maxInterStageShaderVariables?: number;
+  readonly maxInterStageShaderVariables: number;
   readonly maxColorAttachments: number;
   readonly maxColorAttachmentBytesPerSample: number;
   readonly maxComputeWorkgroupStorageSize: number;
@@ -698,7 +698,7 @@ type GPUStorageTextureAccess =
 
 /** @category GPU */
 interface GPUStorageTextureBindingLayout {
-  access: GPUStorageTextureAccess;
+  access?: GPUStorageTextureAccess;
   format: GPUTextureFormat;
   viewDimension?: GPUTextureViewDimension;
 }
@@ -747,15 +747,17 @@ interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
 type GPUCompilationMessageType = "error" | "warning" | "info";
 
 /** @category GPU */
-interface GPUCompilationMessage {
+declare class GPUCompilationMessage {
   readonly message: string;
   readonly type: GPUCompilationMessageType;
   readonly lineNum: number;
   readonly linePos: number;
+  readonly offset: number;
+  readonly length: number;
 }
 
 /** @category GPU */
-interface GPUCompilationInfo {
+declare class GPUCompilationInfo {
   readonly messages: ReadonlyArray<GPUCompilationMessage>;
 }
 
@@ -1694,23 +1696,3 @@ interface GPUExtent3DDict {
 
 /** @category GPU */
 type GPUExtent3D = number[] | GPUExtent3DDict;
-
-/** @category GPU */
-type GPUCanvasAlphaMode = "opaque" | "premultiplied";
-
-/** @category GPU */
-interface GPUCanvasConfiguration {
-  device: GPUDevice;
-  format: GPUTextureFormat;
-  usage?: GPUTextureUsageFlags;
-  viewFormats?: GPUTextureFormat[];
-  colorSpace?: "srgb" | "display-p3";
-  alphaMode?: GPUCanvasAlphaMode;
-}
-
-/** @category GPU */
-interface GPUCanvasContext {
-  configure(configuration: GPUCanvasConfiguration): undefined;
-  unconfigure(): undefined;
-  getCurrentTexture(): GPUTexture;
-}

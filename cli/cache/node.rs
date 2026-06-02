@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -165,6 +165,7 @@ mod test {
     let cjs_analysis = DenoCjsAnalysis::Cjs(ModuleExportsAndReExports {
       exports: vec!["export1".to_string()],
       reexports: vec!["re-export1".to_string()],
+      member_reexports: vec![],
     });
     cache
       .set_cjs_analysis("file.js", CacheDBHash::new(2), &cjs_analysis)

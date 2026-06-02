@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fs;
 use std::fs::File;
@@ -148,8 +148,11 @@ impl CoverageCollector {
     );
   }
 
-  #[allow(clippy::disallowed_methods)]
   pub fn stop_collecting(&mut self) -> Result<(), CoreError> {
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "coverage always uses real fs"
+    )]
     fs::create_dir_all(&self.state.0.lock().dir)?;
     let msg_id = next_msg_id();
     self.state.0.lock().coverage_msg_id.replace(msg_id);

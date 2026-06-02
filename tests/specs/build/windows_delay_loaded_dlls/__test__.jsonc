@@ -1,0 +1,5 @@
+{
+  "if": "windows",
+  "args": "run --allow-read check_dlls.ts",
+  "output": "output.out"
+}

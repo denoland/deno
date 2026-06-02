@@ -1,4 +1,5 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+// deno-lint-ignore-file no-explicit-any prefer-primordials
 /*
 MIT License
 
@@ -26,40 +27,36 @@ SOFTWARE.
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "node:buffer";
-import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
-import { op_node_scrypt_async, op_node_scrypt_sync } from "ext:core/ops";
-import {
+(function () {
+const { core } = __bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { op_node_scrypt_async, op_node_scrypt_sync } = core.ops;
+const {
   validateFunction,
   validateInt32,
   validateInteger,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
-import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
+  ERR_CRYPTO_INVALID_SCRYPT_PARAMS,
+  ERR_INCOMPATIBLE_OPTION_PAIR,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { getArrayBufferOrView } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+);
 
-type Opts = Partial<{
-  N: number;
-  cost: number;
-  p: number;
-  parallelization: number;
-  r: number;
-  blockSize: number;
-  maxmem: number;
-}>;
-
-export function scryptSync(
-  password: HASH_DATA,
-  salt: HASH_DATA,
+function scryptSync(
+  password: any,
+  salt: any,
   keylen: number,
-  _opts?: Opts,
+  _opts?: any,
 ): Buffer {
   const options = check(password, salt, keylen, _opts);
   const { N, r, p, maxmem } = options;
-  const blen = p * 128 * r;
+  validateScryptParams(N, r, p, maxmem);
 
-  if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("exceeds max memory");
+  if (keylen === 0) {
+    return Buffer.alloc(0);
   }
 
   const buf = Buffer.alloc(keylen);
@@ -77,27 +74,26 @@ export function scryptSync(
   return buf;
 }
 
-type Callback = (err: unknown, result?: Buffer) => void;
-
-export function scrypt(
-  password: HASH_DATA,
-  salt: HASH_DATA,
+function scrypt(
+  password: any,
+  salt: any,
   keylen: number,
-  _opts: Opts | null | Callback,
-  cb?: Callback,
+  _opts: any,
+  cb?: any,
 ) {
   if (!cb) {
-    cb = _opts as Callback;
+    cb = _opts;
     _opts = null;
   }
   const options = check(password, salt, keylen, _opts);
   const { N, r, p, maxmem } = options;
 
   validateFunction(cb, "callback");
+  validateScryptParams(N, r, p, maxmem);
 
-  const blen = p * 128 * r;
-  if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("exceeds max memory");
+  if (keylen === 0) {
+    cb(null, Buffer.alloc(0));
+    return;
   }
 
   op_node_scrypt_async(
@@ -169,16 +165,36 @@ function check(password, salt, keylen, options) {
     if (maxmem === 0) maxmem = defaults.maxmem;
   }
 
-  if (N < 2 || (N & (N - 1)) !== 0) {
-    throw new Error(
-      "Invalid scrypt param: N must be a power of 2 and greater than 0",
-    );
-  }
-
   return { password, salt, keylen, N, r, p, maxmem };
 }
 
-export default {
+function validateScryptParams(N: number, r: number, p: number, maxmem: number) {
+  if (N < 2 || (N & (N - 1)) !== 0) {
+    throw new ERR_CRYPTO_INVALID_SCRYPT_PARAMS();
+  }
+
+  const NBig = BigInt(N);
+  const rBig = BigInt(r);
+  const pBig = BigInt(p);
+  const maxmemBig = BigInt(maxmem);
+  const rTimes16 = rBig * 16n;
+  if (
+    (rTimes16 <= 32n && NBig >= (1n << rTimes16)) ||
+    pBig * rBig > ((1n << 30n) - 1n) ||
+    128n * NBig * rBig >= maxmemBig
+  ) {
+    throw new ERR_CRYPTO_INVALID_SCRYPT_PARAMS(
+      "error:030000AC:digital envelope routines::memory limit exceeded",
+    );
+  }
+}
+
+return {
   scrypt,
   scryptSync,
+  default: {
+    scrypt,
+    scryptSync,
+  },
 };
+})();

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { join } from "@std/path";
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
@@ -136,10 +136,10 @@ Deno.test(async function arrayFromAsync() {
   // Taken from https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/fromAsync#examples
   // Thank you.
   const asyncIterable = (async function* () {
-    for (let i = 0; i < 5; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 10 * i));
-      yield i;
-    }
+  for (let i = 0; i < 5; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 10 * i));
+    yield i;
+  }
   })();
 
   const a = await Array.fromAsync(asyncIterable);
@@ -232,4 +232,21 @@ Deno.test(async function overwriteEventOnExternalModuleShouldNotCrash() {
   const status = await child.status;
   assert(status.success);
   await Deno.remove(tmpDir, { recursive: true });
+});
+
+Deno.test(function navigatorPlatformExists() {
+  switch (Deno.build.os) {
+    case "linux": {
+      assertEquals(navigator.platform, `Linux ${Deno.build.arch}`);
+      break;
+    }
+    case "darwin": {
+      assertEquals(navigator.platform, "MacIntel");
+      break;
+    }
+    case "windows": {
+      assertEquals(navigator.platform, "Win32");
+      break;
+    }
+  }
 });

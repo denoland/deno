@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -27,6 +27,7 @@ pub enum ProgressMessagePrompt {
   Blocking,
   Initialize,
   Cleaning,
+  Compile,
 }
 
 impl ProgressMessagePrompt {
@@ -38,6 +39,7 @@ impl ProgressMessagePrompt {
         colors::green("Initialize").to_string()
       }
       ProgressMessagePrompt::Cleaning => colors::green("Cleaning").to_string(),
+      ProgressMessagePrompt::Compile => colors::green("Compile").to_string(),
     }
   }
 }

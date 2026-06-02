@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,16 +23,20 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+(function () {
+const { core } = __bootstrap;
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_FILE_URL_HOST,
   ERR_INVALID_FILE_URL_PATH,
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,
-} from "ext:deno_node/internal/errors.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const {
   CHAR_0,
   CHAR_9,
   CHAR_AT,
@@ -68,17 +72,21 @@ import {
   CHAR_UPPERCASE_Z,
   CHAR_VERTICAL_LINE,
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
-} from "ext:deno_node/path/_constants.ts";
-import * as path from "node:path";
-import {
-  domainToASCII as idnaToASCII,
-  domainToUnicode as idnaToUnicode,
-} from "ext:deno_node/internal/idna.ts";
-import { isWindows, osType } from "ext:deno_node/_util/os.ts";
-import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
-import querystring from "node:querystring";
-import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";
-import { URL, URLSearchParams } from "ext:deno_web/00_url.js";
+} = core.loadExtScript("ext:deno_node/path/_constants.ts");
+const lazyPath = core.createLazyLoader("node:path");
+const {
+  domainToASCII: idnaToASCII,
+  domainToUnicode: idnaToUnicode,
+} = core.loadExtScript("ext:deno_node/internal/idna.ts");
+const { isWindows, osType } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { encodeStr, hexTable } = core.loadExtScript(
+  "ext:deno_node/internal/querystring.ts",
+);
+const querystring = core.loadExtScript("ext:deno_node/querystring.js").default;
+const { URL, URLSearchParams } = core.loadExtScript("ext:deno_web/00_url.js");
+const { urlToHttpOptions } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
@@ -86,6 +94,11 @@ const backslashRegEx = /\\/g;
 const newlineRegEx = /\n/g;
 const carriageReturnRegEx = /\r/g;
 const tabRegEx = /\t/g;
+const caretRegEx = /\^/g;
+const leftBracketRegEx = /\[/g;
+const rightBracketRegEx = /]/g;
+const pipeRegEx = /\|/g;
+const tildeRegEx = /~/g;
 // Reference: RFC 3986, RFC 1808, RFC 2396
 
 // define these here so at least they only have to be
@@ -154,10 +167,9 @@ const forbiddenHostChars = /[\0\t\n\r #%/:<>?@[\\\]^|]/;
 const forbiddenHostCharsIpv6 = /[\0\t\n\r #%/<>?@\\^|]/;
 
 const _url = URL;
-export { _url as URL };
 
 // Legacy URL API
-export class Url {
+class Url {
   public protocol: string | null;
   public slashes: boolean | null;
   public auth: string | null;
@@ -925,7 +937,7 @@ interface UrlObject {
   query?: string | null | ParsedUrlQueryInput | undefined;
 }
 
-export function format(
+function format(
   urlObject: string | URL | Url | UrlObject,
   options?: {
     auth: boolean;
@@ -1222,7 +1234,7 @@ function autoEscapeStr(rest: string) {
  * the query property on the returned URL object will be an unparsed, undecoded string. Default: false.
  * @param slashesDenoteHost If `true`, the first token after the literal string // and preceding the next / will be interpreted as the host
  */
-export function parse(
+function parse(
   url: string | Url,
   parseQueryString: boolean,
   slashesDenoteHost: boolean,
@@ -1238,11 +1250,11 @@ export function parse(
  * @see https://nodejs.org/api/url.html#urlresolvefrom-to
  * @legacy
  */
-export function resolve(from: string, to: string) {
+function resolve(from: string, to: string) {
   return parse(from, false, true).resolve(to);
 }
 
-export function resolveObject(source: string | Url, relative: string) {
+function resolveObject(source: string | Url, relative: string) {
   if (!source) return relative;
   return parse(source, false, true).resolveObject(relative);
 }
@@ -1253,7 +1265,7 @@ export function resolveObject(source: string | Url, relative: string) {
  * @param domain The domain to convert to an IDN
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
-export function domainToASCII(domain: string) {
+function domainToASCII(domain: string) {
   return idnaToASCII(domain);
 }
 
@@ -1263,7 +1275,7 @@ export function domainToASCII(domain: string) {
  * @param domain The IDN to convert to Unicode
  * @see https://www.rfc-editor.org/rfc/rfc3490#section-4
  */
-export function domainToUnicode(domain: string) {
+function domainToUnicode(domain: string) {
   return idnaToUnicode(domain);
 }
 
@@ -1273,7 +1285,7 @@ export function domainToUnicode(domain: string) {
  * @param path The file URL string or URL object to convert to a path.
  * @returns The fully-resolved platform-specific Node.js file path.
  */
-export function fileURLToPath(path: string | URL): string {
+function fileURLToPath(path: string | URL): string {
   if (typeof path === "string") path = new URL(path);
   else if (!(path instanceof URL)) {
     throw new ERR_INVALID_ARG_TYPE("path", ["string", "URL"], path);
@@ -1296,6 +1308,7 @@ function getPathFromURLWin(url: URL): string {
       ) {
         throw new ERR_INVALID_FILE_URL_PATH(
           "must not include encoded \\ or / characters",
+          url,
         );
       }
     }
@@ -1315,7 +1328,7 @@ function getPathFromURLWin(url: URL): string {
       letter > CHAR_LOWERCASE_Z || // a..z A..Z
       sep !== ":"
     ) {
-      throw new ERR_INVALID_FILE_URL_PATH("must be absolute");
+      throw new ERR_INVALID_FILE_URL_PATH("must be absolute", url);
     }
     return pathname.slice(1);
   }
@@ -1332,6 +1345,7 @@ function getPathFromURLPosix(url: URL): string {
       if (pathname[n + 1] === "2" && third === 102) {
         throw new ERR_INVALID_FILE_URL_PATH(
           "must not include encoded / characters",
+          url,
         );
       }
     }
@@ -1373,6 +1387,21 @@ function encodePathChars(
   if (filepath.includes("\t")) {
     filepath = filepath.replace(tabRegEx, "%09");
   }
+  if (filepath.includes("^")) {
+    filepath = filepath.replace(caretRegEx, "%5E");
+  }
+  if (filepath.includes("[")) {
+    filepath = filepath.replace(leftBracketRegEx, "%5B");
+  }
+  if (filepath.includes("]")) {
+    filepath = filepath.replace(rightBracketRegEx, "%5D");
+  }
+  if (filepath.includes("|")) {
+    filepath = filepath.replace(pipeRegEx, "%7C");
+  }
+  if (filepath.includes("~")) {
+    filepath = filepath.replace(tildeRegEx, "%7E");
+  }
   return filepath;
 }
 
@@ -1383,35 +1412,54 @@ function encodePathChars(
  * @param options The options.
  * @returns The file URL object.
  */
-export function pathToFileURL(
+function pathToFileURL(
   filepath: string,
   options: { windows?: boolean } = {},
 ): URL {
   validateString(filepath, "path");
   const windows = options?.windows;
   const outURL = new URL("file://");
-  if ((windows ?? isWindows) && filepath.startsWith("\\\\")) {
+  const isWin = windows ?? isWindows;
+  // Extended Win32 path format (\\?\C:\...) is treated as a regular drive
+  // path after stripping the \\?\ prefix. Extended UNC (\\?\UNC\server\...)
+  // still goes through the UNC branch, with the \\?\UNC\ prefix stripped.
+  if (
+    isWin && filepath.startsWith("\\\\?\\") &&
+    !filepath.startsWith("\\\\?\\UNC\\")
+  ) {
+    const stripped = filepath.slice(4);
+    outURL.pathname = encodePathChars(stripped, { windows });
+    return outURL;
+  }
+  if (isWin && filepath.startsWith("\\\\")) {
     // UNC path format: \\server\share\resource
-    const paths = filepath.split("\\");
-    if (paths.length <= 3) {
+    // Extended UNC path format: \\?\UNC\server\share\resource
+    const isExtendedUNC = filepath.startsWith("\\\\?\\UNC\\");
+    const prefixLength = isExtendedUNC ? 8 : 2;
+    const hostnameEndIndex = filepath.indexOf("\\", prefixLength);
+    if (hostnameEndIndex === -1) {
       throw new ERR_INVALID_ARG_VALUE(
         "filepath",
         filepath,
         "Missing UNC resource path",
       );
     }
-    const hostname = paths[2];
-    if (hostname.length === 0) {
+    if (hostnameEndIndex === prefixLength) {
       throw new ERR_INVALID_ARG_VALUE(
         "filepath",
         filepath,
         "Empty UNC servername",
       );
     }
+    const hostname = filepath.slice(prefixLength, hostnameEndIndex);
+    const rest = filepath.slice(hostnameEndIndex + 1);
 
     outURL.hostname = idnaToASCII(hostname);
-    outURL.pathname = encodePathChars(paths.slice(3).join("/"), { windows });
+    outURL.pathname = encodePathChars(rest.replace(backslashRegEx, "/"), {
+      windows,
+    });
   } else {
+    const path = lazyPath();
     let resolved = (windows ?? isWindows)
       ? path.win32.resolve(filepath)
       : path.posix.resolve(filepath);
@@ -1430,62 +1478,13 @@ export function pathToFileURL(
   return outURL;
 }
 
-interface HttpOptions {
-  protocol: string;
-  hostname: string;
-  hash: string;
-  search: string;
-  pathname: string;
-  path: string;
-  href: string;
-  port?: number;
-  auth?: string;
-}
-
-/**
- * This utility function converts a URL object into an ordinary options object as expected by the `http.request()` and `https.request()` APIs.
- * @see Tested in `parallel/test-url-urltooptions.js`.
- * @param url The `WHATWG URL` object to convert to an options object.
- * @returns HttpOptions
- * @returns HttpOptions.protocol Protocol to use.
- * @returns HttpOptions.hostname A domain name or IP address of the server to issue the request to.
- * @returns HttpOptions.hash The fragment portion of the URL.
- * @returns HttpOptions.search The serialized query portion of the URL.
- * @returns HttpOptions.pathname The path portion of the URL.
- * @returns HttpOptions.path Request path. Should include query string if any. E.G. `'/index.html?page=12'`. An exception is thrown when the request path contains illegal characters. Currently, only spaces are rejected but that may change in the future.
- * @returns HttpOptions.href The serialized URL.
- * @returns HttpOptions.port Port of remote server.
- * @returns HttpOptions.auth Basic authentication i.e. `'user:password'` to compute an Authorization header.
- */
-export function urlToHttpOptions(url: URL): HttpOptions {
-  const options: HttpOptions = {
-    protocol: url.protocol,
-    hostname: typeof url.hostname === "string" && url.hostname.startsWith("[")
-      ? url.hostname.slice(1, -1)
-      : url.hostname,
-    hash: url.hash,
-    search: url.search,
-    pathname: url.pathname,
-    path: `${url.pathname || ""}${url.search || ""}`,
-    href: url.href,
-  };
-  if (url.port !== "") {
-    options.port = Number(url.port);
-  }
-  if (url.username || url.password) {
-    options.auth = `${decodeURIComponent(url.username)}:${
-      decodeURIComponent(
-        url.password,
-      )
-    }`;
-  }
-  return options;
-}
-
 const URLSearchParams_ = URLSearchParams;
-export { URLSearchParams_ as URLSearchParams };
 
-export default {
+return {
+  URL: _url,
+  URLSearchParams: URLSearchParams_,
+  urlToHttpOptions,
+  Url,
   parse,
   format,
   resolve,
@@ -1494,8 +1493,5 @@ export default {
   domainToUnicode,
   fileURLToPath,
   pathToFileURL,
-  urlToHttpOptions,
-  Url,
-  URL,
-  URLSearchParams,
 };
+})();

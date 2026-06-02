@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assert, assertEquals } from "./test_util.ts";
 import { assertType, IsExact } from "@std/testing/types";
 
@@ -62,4 +62,14 @@ Deno.test(function urlPatternWithPrototypePollution() {
   } finally {
     RegExp.prototype.exec = originalExec;
   }
+});
+
+Deno.test(function urlPatternFlagsRegression() {
+  new URLPattern({ pathname: "/install(\.sh|\.ps1)" });
+});
+
+Deno.test(function urlPatternIgnoreCase() {
+  const p = new URLPattern({ pathname: "/test" }, { ignoreCase: true });
+  assert(p.test("/test", "http://localhost"));
+  assert(p.test("/TeSt", "http://localhost"));
 });

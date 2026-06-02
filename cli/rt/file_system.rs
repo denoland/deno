@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -34,6 +34,7 @@ use deno_runtime::deno_io::fs::File as DenoFile;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
+use deno_runtime::deno_io::fs::FsStatFs;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoader;
 use deno_runtime::deno_napi::DenoRtNativeAddonLoaderRc;
 use deno_runtime::deno_permissions::CheckedPath;
@@ -48,15 +49,33 @@ use sys_traits::boxed::FsReadDirBoxed;
 use url::Url;
 
 #[derive(Debug, Clone)]
-pub struct DenoRtSys(Arc<FileBackedVfs>);
+pub struct DenoRtSys {
+  vfs: Arc<FileBackedVfs>,
+  self_extracting: bool,
+}
 
 impl DenoRtSys {
   pub fn new(vfs: Arc<FileBackedVfs>) -> Self {
-    Self(vfs)
+    Self {
+      vfs,
+      self_extracting: false,
+    }
   }
 
-  pub fn as_deno_rt_native_addon_loader(&self) -> DenoRtNativeAddonLoaderRc {
-    self.0.clone()
+  pub fn new_self_extracting(vfs: Arc<FileBackedVfs>) -> Self {
+    Self {
+      vfs,
+      self_extracting: true,
+    }
+  }
+
+  pub fn maybe_native_addon_loader(&self) -> Option<DenoRtNativeAddonLoaderRc> {
+    if self.self_extracting {
+      // native addons are already on disk, no need for VFS extraction
+      None
+    } else {
+      Some(self.vfs.clone())
+    }
   }
 
   pub fn is_specifier_in_vfs(&self, specifier: &Url) -> bool {
@@ -66,15 +85,20 @@ impl DenoRtSys {
   }
 
   pub fn is_in_vfs(&self, path: &Path) -> bool {
-    self.0.is_path_within(path)
+    self.vfs.is_path_within(path)
   }
 
   fn error_if_in_vfs(&self, path: &Path) -> FsResult<()> {
-    if self.0.is_path_within(path) {
+    if !self.self_extracting && self.vfs.is_path_within(path) {
       Err(FsError::NotSupported)
     } else {
       Ok(())
     }
+  }
+
+  /// Returns true if the VFS should be consulted for this path.
+  fn is_vfs_path(&self, path: &Path) -> bool {
+    !self.self_extracting && self.vfs.is_path_within(path)
   }
 
   fn copy_to_real_path(
@@ -82,8 +106,8 @@ impl DenoRtSys {
     oldpath: &CheckedPath,
     newpath: &CheckedPath,
   ) -> std::io::Result<u64> {
-    let old_file = self.0.file_entry(oldpath)?;
-    let old_file_bytes = self.0.read_file_all(old_file)?;
+    let old_file = self.vfs.file_entry(oldpath)?;
+    let old_file_bytes = self.vfs.read_file_all(old_file)?;
     let len = old_file_bytes.len() as u64;
     RealFs
       .write_file_sync(
@@ -116,8 +140,24 @@ impl FileSystem for DenoRtSys {
   }
 
   fn chdir(&self, path: &CheckedPath) -> FsResult<()> {
-    self.error_if_in_vfs(path)?;
-    RealFs.chdir(path)
+    if self.is_vfs_path(path) {
+      // The process working directory can't actually be changed to a path
+      // inside the embedded virtual file system, but applications (e.g.
+      // Next.js standalone builds) commonly chdir into their own directory.
+      // Verify the target exists and is a directory in the VFS and treat the
+      // change as a no-op rather than failing with NotSupported. Note that
+      // Deno.cwd() still reports the previous (real) working directory.
+      if self.vfs.stat(path)?.as_fs_stat().is_directory {
+        Ok(())
+      } else {
+        Err(FsError::Io(std::io::Error::new(
+          ErrorKind::NotADirectory,
+          "Not a directory",
+        )))
+      }
+    } else {
+      RealFs.chdir(path)
+    }
   }
 
   fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
@@ -129,8 +169,8 @@ impl FileSystem for DenoRtSys {
     path: &CheckedPath,
     options: OpenOptions,
   ) -> FsResult<Rc<dyn DenoFile>> {
-    if self.0.is_path_within(path) {
-      Ok(Rc::new(self.0.open_file(path)?))
+    if self.is_vfs_path(path) {
+      Ok(Rc::new(self.vfs.open_file(path)?))
     } else {
       RealFs.open_sync(path, options)
     }
@@ -140,8 +180,8 @@ impl FileSystem for DenoRtSys {
     path: CheckedPathBuf,
     options: OpenOptions,
   ) -> FsResult<Rc<dyn DenoFile>> {
-    if self.0.is_path_within(&path) {
-      Ok(Rc::new(self.0.open_file(&path)?))
+    if self.is_vfs_path(&path) {
+      Ok(Rc::new(self.vfs.open_file(&path)?))
     } else {
       RealFs.open_async(path, options).await
     }
@@ -208,15 +248,15 @@ impl FileSystem for DenoRtSys {
   }
 
   fn exists_sync(&self, path: &CheckedPath) -> bool {
-    if self.0.is_path_within(path) {
-      self.0.exists(path)
+    if self.is_vfs_path(path) {
+      self.vfs.exists(path)
     } else {
       RealFs.exists_sync(path)
     }
   }
   async fn exists_async(&self, path: CheckedPathBuf) -> FsResult<bool> {
-    if self.0.is_path_within(&path) {
-      Ok(self.0.exists(&path))
+    if self.is_vfs_path(&path) {
+      Ok(self.vfs.exists(&path))
     } else {
       RealFs.exists_async(path).await
     }
@@ -269,13 +309,22 @@ impl FileSystem for DenoRtSys {
     RealFs.remove_async(path, recursive).await
   }
 
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.rmdir_sync(path)
+  }
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.rmdir_async(path).await
+  }
+
   fn copy_file_sync(
     &self,
     oldpath: &CheckedPath,
     newpath: &CheckedPath,
   ) -> FsResult<()> {
     self.error_if_in_vfs(newpath)?;
-    if self.0.is_path_within(oldpath) {
+    if self.is_vfs_path(oldpath) {
       self
         .copy_to_real_path(oldpath, newpath)
         .map(|_| ())
@@ -290,7 +339,7 @@ impl FileSystem for DenoRtSys {
     newpath: CheckedPathBuf,
   ) -> FsResult<()> {
     self.error_if_in_vfs(&newpath)?;
-    if self.0.is_path_within(&oldpath) {
+    if self.is_vfs_path(&oldpath) {
       let fs = self.clone();
       tokio::task::spawn_blocking(move || {
         fs.copy_to_real_path(
@@ -322,53 +371,80 @@ impl FileSystem for DenoRtSys {
   }
 
   fn stat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
-    if self.0.is_path_within(path) {
-      Ok(self.0.stat(path)?.as_fs_stat())
+    if self.is_vfs_path(path) {
+      Ok(self.vfs.stat(path)?.as_fs_stat())
     } else {
       RealFs.stat_sync(path)
     }
   }
   async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    if self.0.is_path_within(&path) {
-      Ok(self.0.stat(&path)?.as_fs_stat())
+    if self.is_vfs_path(&path) {
+      Ok(self.vfs.stat(&path)?.as_fs_stat())
     } else {
       RealFs.stat_async(path).await
     }
   }
 
   fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
-    if self.0.is_path_within(path) {
-      Ok(self.0.lstat(path)?.as_fs_stat())
+    if self.is_vfs_path(path) {
+      Ok(self.vfs.lstat(path)?.as_fs_stat())
     } else {
       RealFs.lstat_sync(path)
     }
   }
   async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
-    if self.0.is_path_within(&path) {
-      Ok(self.0.lstat(&path)?.as_fs_stat())
+    if self.is_vfs_path(&path) {
+      Ok(self.vfs.lstat(&path)?.as_fs_stat())
     } else {
       RealFs.lstat_async(path).await
     }
   }
 
+  fn statfs_sync(
+    &self,
+    path: &CheckedPath,
+    bigint: bool,
+  ) -> FsResult<FsStatFs> {
+    if self.is_vfs_path(path) {
+      // the entry must exist within the embedded read-only file system
+      self.vfs.stat(path)?;
+      Ok(vfs_statfs())
+    } else {
+      RealFs.statfs_sync(path, bigint)
+    }
+  }
+  async fn statfs_async(
+    &self,
+    path: CheckedPathBuf,
+    bigint: bool,
+  ) -> FsResult<FsStatFs> {
+    if self.is_vfs_path(&path) {
+      // the entry must exist within the embedded read-only file system
+      self.vfs.stat(&path)?;
+      Ok(vfs_statfs())
+    } else {
+      RealFs.statfs_async(path, bigint).await
+    }
+  }
+
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
-    if self.0.is_path_within(path) {
-      Ok(self.0.canonicalize(path)?)
+    if self.is_vfs_path(path) {
+      Ok(self.vfs.canonicalize(path)?)
     } else {
       RealFs.realpath_sync(path)
     }
   }
   async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    if self.0.is_path_within(&path) {
-      Ok(self.0.canonicalize(&path)?)
+    if self.is_vfs_path(&path) {
+      Ok(self.vfs.canonicalize(&path)?)
     } else {
       RealFs.realpath_async(path).await
     }
   }
 
   fn read_dir_sync(&self, path: &CheckedPath) -> FsResult<Vec<FsDirEntry>> {
-    if self.0.is_path_within(path) {
-      Ok(self.0.read_dir(path)?)
+    if self.is_vfs_path(path) {
+      Ok(self.vfs.read_dir(path)?)
     } else {
       RealFs.read_dir_sync(path)
     }
@@ -377,8 +453,8 @@ impl FileSystem for DenoRtSys {
     &self,
     path: CheckedPathBuf,
   ) -> FsResult<Vec<FsDirEntry>> {
-    if self.0.is_path_within(&path) {
-      Ok(self.0.read_dir(&path)?)
+    if self.is_vfs_path(&path) {
+      Ok(self.vfs.read_dir(&path)?)
     } else {
       RealFs.read_dir_async(path).await
     }
@@ -444,15 +520,15 @@ impl FileSystem for DenoRtSys {
   }
 
   fn read_link_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
-    if self.0.is_path_within(path) {
-      Ok(self.0.read_link(path)?)
+    if self.is_vfs_path(path) {
+      Ok(self.vfs.read_link(path)?)
     } else {
       RealFs.read_link_sync(path)
     }
   }
   async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
-    if self.0.is_path_within(&path) {
-      Ok(self.0.read_link(&path)?)
+    if self.is_vfs_path(&path) {
+      Ok(self.vfs.read_link(&path)?)
     } else {
       RealFs.read_link_async(path).await
     }
@@ -634,6 +710,14 @@ impl sys_traits::FsMetadataValue for FileBackedVfsMetadata {
   }
 }
 
+/// `statfs` result for a path within the embedded read-only file system.
+///
+/// There is no real backing device, so this reports an empty read-only file
+/// system (no free space) rather than failing or leaking host disk stats.
+fn vfs_statfs() -> FsStatFs {
+  FsStatFs::default()
+}
+
 fn not_supported(name: &str) -> std::io::Error {
   std::io::Error::new(
     ErrorKind::Unsupported,
@@ -647,8 +731,7 @@ fn not_supported(name: &str) -> std::io::Error {
 impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
   type Metadata = BoxedFsMetadataValue;
 
-  #[allow(mismatched_lifetime_syntaxes)]
-  fn file_name(&self) -> Cow<std::ffi::OsStr> {
+  fn file_name(&self) -> Cow<'_, std::ffi::OsStr> {
     Cow::Borrowed(self.metadata.name.as_ref())
   }
 
@@ -674,13 +757,16 @@ impl sys_traits::BaseFsReadDir for DenoRtSys {
   ) -> std::io::Result<
     Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>>>,
   > {
-    if self.0.is_path_within(path) {
-      let entries = self.0.read_dir_with_metadata(path)?;
+    if self.is_vfs_path(path) {
+      let entries = self.vfs.read_dir_with_metadata(path)?;
       Ok(Box::new(
         entries.map(|entry| Ok(BoxedFsDirEntry::new(entry))),
       ))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_read_dir_boxed(path)
     }
   }
@@ -705,10 +791,13 @@ impl sys_traits::BaseFsMetadata for DenoRtSys {
 
   #[inline]
   fn base_fs_metadata(&self, path: &Path) -> std::io::Result<Self::Metadata> {
-    if self.0.is_path_within(path) {
-      Ok(BoxedFsMetadataValue::new(self.0.stat(path)?))
+    if self.is_vfs_path(path) {
+      Ok(BoxedFsMetadataValue::new(self.vfs.stat(path)?))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_metadata_boxed(path)
     }
   }
@@ -718,10 +807,13 @@ impl sys_traits::BaseFsMetadata for DenoRtSys {
     &self,
     path: &Path,
   ) -> std::io::Result<Self::Metadata> {
-    if self.0.is_path_within(path) {
-      Ok(BoxedFsMetadataValue::new(self.0.lstat(path)?))
+    if self.is_vfs_path(path) {
+      Ok(BoxedFsMetadataValue::new(self.vfs.lstat(path)?))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_symlink_metadata_boxed(path)
     }
   }
@@ -733,7 +825,7 @@ impl sys_traits::BaseFsCopy for DenoRtSys {
     self
       .error_if_in_vfs(to)
       .map_err(|err| err.into_io_error())?;
-    if self.0.is_path_within(from) {
+    if self.is_vfs_path(from) {
       self.copy_to_real_path(
         // PERMISSIONS: this is ok because JS code will never use sys_traits. Probably
         // we should flip this so that the `deno_fs::FileSystem` implementation uses `sys_traits`
@@ -742,7 +834,10 @@ impl sys_traits::BaseFsCopy for DenoRtSys {
         &CheckedPath::unsafe_new(Cow::Borrowed(to)),
       )
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_types,
+        reason = "ok because we're implementing the sys"
+      )]
       sys_traits::impls::RealSys.fs_copy(from, to)
     }
   }
@@ -983,10 +1078,13 @@ impl sys_traits::BaseFsOpen for DenoRtSys {
     path: &Path,
     options: &sys_traits::OpenOptions,
   ) -> std::io::Result<Self::File> {
-    if self.0.is_path_within(path) {
-      Ok(FsFileAdapter::Vfs(self.0.open_file(path)?))
+    if self.is_vfs_path(path) {
+      Ok(FsFileAdapter::Vfs(self.vfs.open_file(path)?))
     } else {
-      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok because we're implementing the sys"
+      )]
       Ok(FsFileAdapter::Real(
         sys_traits::impls::RealSys.base_fs_open(path, options)?,
       ))
@@ -1012,7 +1110,10 @@ impl sys_traits::BaseFsSymlinkDir for DenoRtSys {
 impl sys_traits::SystemRandom for DenoRtSys {
   #[inline]
   fn sys_random(&self, buf: &mut [u8]) -> std::io::Result<()> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.sys_random(buf)
   }
 }
@@ -1020,7 +1121,10 @@ impl sys_traits::SystemRandom for DenoRtSys {
 impl sys_traits::SystemTimeNow for DenoRtSys {
   #[inline]
   fn sys_time_now(&self) -> SystemTime {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_types,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.sys_time_now()
   }
 }
@@ -1028,7 +1132,10 @@ impl sys_traits::SystemTimeNow for DenoRtSys {
 impl sys_traits::ThreadSleep for DenoRtSys {
   #[inline]
   fn thread_sleep(&self, dur: Duration) {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.thread_sleep(dur)
   }
 }
@@ -1036,7 +1143,10 @@ impl sys_traits::ThreadSleep for DenoRtSys {
 impl sys_traits::EnvCurrentDir for DenoRtSys {
   #[inline]
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.env_current_dir()
   }
 }
@@ -1044,7 +1154,10 @@ impl sys_traits::EnvCurrentDir for DenoRtSys {
 impl sys_traits::EnvHomeDir for DenoRtSys {
   #[inline]
   fn env_home_dir(&self) -> Option<PathBuf> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.env_home_dir()
   }
 }
@@ -1054,7 +1167,10 @@ impl sys_traits::BaseEnvVar for DenoRtSys {
     &self,
     key: &std::ffi::OsStr,
   ) -> Option<std::ffi::OsString> {
-    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because we're implementing the sys"
+    )]
     sys_traits::impls::RealSys.base_env_var_os(key)
   }
 }
@@ -1356,6 +1472,13 @@ impl deno_io::fs::File for FileBackedVfsFile {
     Err(FsError::NotSupported)
   }
 
+  fn try_lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+  async fn try_lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<bool> {
+    Err(FsError::NotSupported)
+  }
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     Err(FsError::NotSupported)
   }
@@ -1391,6 +1514,34 @@ impl deno_io::fs::File for FileBackedVfsFile {
 
   // lower level functionality
   fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio> {
+    Err(FsError::NotSupported)
+  }
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize> {
+    self
+      .vfs
+      .read_file(&self.file, position, buf)
+      .map_err(FsError::Io)
+  }
+  async fn read_at_async(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)> {
+    let nread = self
+      .vfs
+      .read_file(&self.file, position, &mut buf)
+      .map_err(FsError::Io)?;
+    Ok((nread, buf))
+  }
+  fn write_at_sync(
+    self: Rc<Self>,
+    _buf: &[u8],
+    _position: u64,
+  ) -> FsResult<usize> {
     Err(FsError::NotSupported)
   }
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
@@ -1439,6 +1590,17 @@ impl FileBackedVfsMetadata {
 
   pub fn as_fs_stat(&self) -> FsStat {
     // to use lower overhead, use mtime instead of all time params
+    //
+    // VFS files are always readable. Directories also get execute (traverse).
+    // Symlinks get 0o777 per Unix convention (target permissions matter).
+    // This ensures node:fs access() checks succeed for embedded files.
+    let mode = if self.file_type == sys_traits::FileType::Dir {
+      0o555 // r-xr-xr-x
+    } else if self.file_type == sys_traits::FileType::Symlink {
+      0o777 // rwxrwxrwx (conventional for symlinks)
+    } else {
+      0o444 // r--r--r--
+    };
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
       is_file: self.file_type == sys_traits::FileType::File,
@@ -1451,7 +1613,7 @@ impl FileBackedVfsMetadata {
       size: self.len,
       dev: 0,
       ino: None,
-      mode: 0,
+      mode,
       nlink: None,
       uid: 0,
       gid: 0,
@@ -1494,6 +1656,10 @@ impl FileBackedVfs {
 
   pub fn root(&self) -> &Path {
     &self.fs_root.root_path
+  }
+
+  pub fn root_dir(&self) -> &VirtualDirectory {
+    &self.fs_root.dir
   }
 
   pub fn is_path_within(&self, path: &Path) -> bool {
@@ -1690,10 +1856,14 @@ mod test {
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new();
     builder
-      .add_file_with_data_raw(&src_path.join("a.txt"), "data".into(), None)
+      .add_file_with_data_raw_for_testing(
+        &src_path.join("a.txt"),
+        "data".into(),
+        None,
+      )
       .unwrap();
     builder
-      .add_file_with_data_raw(
+      .add_file_with_data_raw_for_testing(
         &src_path.join("b.txt"),
         "data".into(),
         Some(
@@ -1705,16 +1875,20 @@ mod test {
       .unwrap();
     assert_eq!(builder.files_len(), 1); // because duplicate data
     builder
-      .add_file_with_data_raw(&src_path.join("c.txt"), "c".into(), None)
+      .add_file_with_data_raw_for_testing(
+        &src_path.join("c.txt"),
+        "c".into(),
+        None,
+      )
       .unwrap();
     builder
-      .add_file_with_data_raw(
+      .add_file_with_data_raw_for_testing(
         &src_path.join("sub_dir").join("d.txt"),
         "d".into(),
         None,
       )
       .unwrap();
-    builder.add_file_at_path(&src_path.join("e.txt")).unwrap();
+    builder.add_path(&src_path.join("e.txt")).unwrap();
     builder
       .add_symlink(&src_path.join("sub_dir").join("e.txt"))
       .unwrap();
@@ -1873,7 +2047,7 @@ mod test {
     let temp_path = temp_dir.path().canonicalize();
     let mut builder = VfsBuilder::new();
     builder
-      .add_file_with_data_raw(
+      .add_file_with_data_raw_for_testing(
         temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
         None,

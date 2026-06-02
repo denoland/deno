@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// Raise soft file descriptor limit to hard file descriptor limit.
 /// This is the difference between `ulimit -n` and `ulimit -n -H`.
 pub fn raise_fd_limit() {
   #[cfg(unix)]
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  // SAFETY: calling libc getrlimit/setrlimit with valid pointers
   unsafe {
     let mut limits = libc::rlimit {
       rlim_cur: 0,

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
@@ -12,6 +12,7 @@ use deno_core::url::Position;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use indexmap::IndexSet;
@@ -36,6 +37,8 @@ use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
 use super::tsc;
 use crate::jsr::JsrFetchResolver;
+use crate::lsp::registries::DocumentationCompletionItemData;
+use crate::util::env::resolve_cwd;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 
@@ -49,11 +52,9 @@ pub(crate) const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CompletionItemData {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub documentation: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub tsc: Option<tsc::CompletionItemData>,
+pub enum CompletionItemData {
+  Documentation(DocumentationCompletionItemData),
+  TsJs(tsc::TsJsCompletionItemData),
 }
 
 /// Check if the origin can be auto-configured for completions, and if so, send
@@ -123,14 +124,21 @@ fn to_narrow_lsp_range(
     })
     .as_byte_index(text_info.range().start);
   let text_bytes = text_info.text_str().as_bytes();
-  let is_empty = end_byte_index - 1 == start_byte_index;
-  let has_trailing_quote =
-    !is_empty && matches!(text_bytes[end_byte_index - 1], b'"' | b'\'');
+  let has_leading_quote = text_bytes
+    .get(start_byte_index)
+    .is_some_and(|b| matches!(b, b'"' | b'\''));
+  let has_trailing_quote = end_byte_index > start_byte_index
+    && text_bytes
+      .get(end_byte_index - 1)
+      .is_some_and(|b| matches!(b, b'"' | b'\''));
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
-      // skip the leading quote
-      character: (range.start.character + 1) as u32,
+      character: if has_leading_quote {
+        range.start.character + 1 // skip the leading quote
+      } else {
+        range.start.character
+      } as u32,
     },
     end: lsp::Position {
       line: range.end.line as u32,
@@ -146,7 +154,7 @@ fn to_narrow_lsp_range(
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
 pub async fn get_import_completions(
   module: &DocumentModule,
@@ -433,7 +441,7 @@ fn get_local_completions(
     .ok()?;
   let resolved_parent_path = url_to_file_path(&resolved_parent).ok()?;
   if resolved_parent_path.is_dir() {
-    let cwd = std::env::current_dir().ok()?;
+    let cwd = resolve_cwd(None).ok()?;
     let entries = std::fs::read_dir(resolved_parent_path).ok()?;
     let items = entries
       .filter_map(|de| {
@@ -682,7 +690,71 @@ async fn get_npm_completions(
   range: &lsp::Range,
   npm_search_api: &impl PackageSearchApi,
 ) -> Option<CompletionList> {
-  // First try to match `npm:some-package@<version-to-complete>`.
+  // First try to match `npm:some-package@some-version/<export-to-complete>`.
+  let req_ref = NpmPackageReqReference::from_str(specifier).ok();
+  if let Some(req_ref) = req_ref
+    && (req_ref.sub_path().is_some() || specifier.ends_with('/'))
+  {
+    let export_prefix = req_ref.sub_path().unwrap_or("");
+    let req = req_ref.req();
+    let versions = npm_search_api.versions(req.name.as_str()).await.ok()?;
+    let version = versions
+      .iter()
+      .find(|version| req.version_req.matches(version))?;
+    let nv = PackageNv {
+      name: req.name.clone(),
+      version: version.clone(),
+    };
+    let exports = npm_search_api.exports(&nv).await.ok()?;
+    let items = exports
+      .iter()
+      .enumerate()
+      .filter_map(|(idx, export)| {
+        if export == "." {
+          return None;
+        }
+        let export = export.strip_prefix("./").unwrap_or(export.as_str());
+        if !export.starts_with(export_prefix) {
+          return None;
+        }
+        let specifier = format!(
+          "{}/{export}",
+          specifier.strip_suffix(export_prefix)?.trim_end_matches('/')
+        );
+        let command = Some(lsp::Command {
+          title: "".to_string(),
+          command: "deno.cache".to_string(),
+          arguments: Some(vec![
+            json!([&specifier]),
+            json!(referrer),
+            json!({ "forceGlobalCache": true }),
+          ]),
+        });
+        let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range: *range,
+          new_text: specifier.clone(),
+        }));
+        Some(lsp::CompletionItem {
+          label: specifier,
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some(format!("{:0>10}", idx + 1)),
+          text_edit,
+          command,
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+          ),
+          ..Default::default()
+        })
+      })
+      .collect();
+    return Some(CompletionList {
+      is_incomplete: false,
+      items,
+    });
+  }
+
+  // Then try to match `npm:some-package@<version-to-complete>`.
   let bare_specifier = specifier.strip_prefix("npm:")?;
   if let Some(v_index) = parse_bare_specifier_version_index(bare_specifier) {
     let package_name = &bare_specifier[..v_index];
@@ -1631,6 +1703,63 @@ mod tests {
             ..Default::default()
           },
         ],
+      }
+    );
+  }
+
+  #[tokio::test]
+  async fn test_get_npm_completions_for_exports() {
+    let npm_search_api = TestPackageSearchApi::default().with_package_version(
+      "@denotest/routes",
+      "1.0.0",
+      &[".", "./client", "./constants", "./server"],
+    );
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 23,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 50,
+      },
+    };
+    let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
+    let actual = get_npm_completions(
+      &referrer,
+      "npm:@denotest/routes@1/co",
+      &range,
+      &npm_search_api,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+      actual,
+      CompletionList {
+        is_incomplete: false,
+        items: vec![lsp::CompletionItem {
+          label: "npm:@denotest/routes@1/constants".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000003".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:@denotest/routes@1/constants".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![
+              json!(["npm:@denotest/routes@1/constants"]),
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
+            ])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        }],
       }
     );
   }

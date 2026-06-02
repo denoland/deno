@@ -1,23 +1,17 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "node:buffer";
-import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
-import { unhexTable } from "ext:deno_node/internal_binding/_utils.ts";
-
-/**
- * Alias of querystring.parse()
- * @legacy
- */
-export const decode = parse;
-
-/**
- * Alias of querystring.stringify()
- * @legacy
- */
-export const encode = stringify;
+(function () {
+const { core } = __bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { encodeStr, hexTable } = core.loadExtScript(
+  "ext:deno_node/internal/querystring.ts",
+);
+const { unhexTable } = core.loadExtScript(
+  "ext:deno_node/internal_binding/_utils.ts",
+);
 
 /**
  * replaces encodeURIComponent()
@@ -33,15 +27,6 @@ function qsEscape(str) {
   }
   return encodeStr(str, noEscape, hexTable);
 }
-
-/**
- * Performs URL percent-encoding on the given `str` in a manner that is optimized for the specific requirements of URL query strings.
- * Used by `querystring.stringify()` and is generally not expected to be used directly.
- * It is exported primarily to allow application code to provide a replacement percent-encoding implementation if necessary by assigning `querystring.escape` to an alternative function.
- * @legacy
- * @see Tested in `test-querystring-escape.js`
- */
-export const escape = qsEscape;
 
 // deno-fmt-ignore
 const isHexTable = new Int8Array([
@@ -112,7 +97,7 @@ function addKeyVal(
  * @legacy
  * @see Tested in test-querystring.js
  */
-export function parse(
+function parse(
   str,
   sep = "&",
   eq = "=",
@@ -347,7 +332,7 @@ function encodeStringified(v, encode) {
  * @legacy
  * @see Tested in `test-querystring.js`
  */
-export function stringify(
+function stringify(
   obj,
   sep,
   eq,
@@ -397,7 +382,7 @@ export function stringify(
 /**
  * A safe fast alternative to decodeURIComponent
  */
-export function unescapeBuffer(s, decodeSpaces = false) {
+function unescapeBuffer(s, decodeSpaces = false) {
   const out = Buffer.alloc(s.length);
   let index = 0;
   let outIndex = 0;
@@ -456,13 +441,34 @@ function decodeStr(s, decoder) {
 }
 
 /**
+ * Alias of querystring.parse()
+ * @legacy
+ */
+const decode = parse;
+
+/**
+ * Alias of querystring.stringify()
+ * @legacy
+ */
+const encode = stringify;
+
+/**
+ * Performs URL percent-encoding on the given `str` in a manner that is optimized for the specific requirements of URL query strings.
+ * Used by `querystring.stringify()` and is generally not expected to be used directly.
+ * It is exported primarily to allow application code to provide a replacement percent-encoding implementation if necessary by assigning `querystring.escape` to an alternative function.
+ * @legacy
+ * @see Tested in `test-querystring-escape.js`
+ */
+const escape = qsEscape;
+
+/**
  * Performs decoding of URL percent-encoded characters on the given `str`.
  * Used by `querystring.parse()` and is generally not expected to be used directly.
  * It is exported primarily to allow application code to provide a replacement decoding implementation if necessary by assigning `querystring.unescape` to an alternative function.
  * @legacy
  * @see Tested in `test-querystring-escape.js`
  */
-export const unescape = qsUnescape;
+const unescape = qsUnescape;
 
 const QS = {
   parse,
@@ -474,4 +480,14 @@ const QS = {
   unescapeBuffer,
 };
 
-export default QS;
+return {
+  default: QS,
+  parse,
+  stringify,
+  decode,
+  encode,
+  unescape,
+  escape,
+  unescapeBuffer,
+};
+})();

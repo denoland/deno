@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,46 +23,43 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import {
+(function () {
+const { core } = __bootstrap;
+const {
   validateBoolean,
   validateNumber,
   validateOneOf,
   validatePort,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { isIP } from "ext:deno_node/internal/net.ts";
-import {
-  emitInvalidHostnameWarning,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
+const {
+  dnsOrderToNumber,
+  getDefaultDnsOrder,
   getDefaultResolver,
-  getDefaultVerbatim,
   isFamily,
   isLookupOptions,
-  Resolver as CallbackResolver,
+  Resolver: CallbackResolver,
   validateHints,
-} from "ext:deno_node/internal/dns/utils.ts";
-import type {
-  LookupAddress,
-  LookupAllOptions,
-  LookupOneOptions,
-  LookupOptions,
-  Records,
-  ResolveOptions,
-  ResolveWithTtlOptions,
-} from "ext:deno_node/internal/dns/utils.ts";
-import {
+  validDnsOrders,
+} = core.loadExtScript("ext:deno_node/internal/dns/utils.ts");
+
+const {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_ARGS,
   handleDnsError,
-} from "ext:deno_node/internal/errors.ts";
-import cares, {
-  type ChannelWrapQuery,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  default: cares,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
-} from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { toASCII } from "node:punycode";
+} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
+const { domainToASCII } = core.loadExtScript(
+  "ext:deno_node/internal/idna.ts",
+);
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -108,12 +105,17 @@ function createLookupPromise(
   hostname: string,
   all: boolean,
   hints: number,
-  verbatim: boolean,
+  dnsOrder: string,
 ): Promise<void | LookupAddress | LookupAddress[]> {
   return new Promise((resolve, reject) => {
     if (!hostname) {
-      emitInvalidHostnameWarning(hostname);
-      resolve(all ? [] : { address: null, family: family === 6 ? 6 : 4 });
+      reject(
+        new ERR_INVALID_ARG_VALUE(
+          "hostname",
+          hostname,
+          "must be a non-empty string",
+        ),
+      );
 
       return;
     }
@@ -137,10 +139,10 @@ function createLookupPromise(
 
     const err = cares.getaddrinfo(
       req,
-      toASCII(hostname),
+      domainToASCII(hostname),
       family,
       hints,
-      verbatim ? cares.DNS_ORDER_VERBATIM : cares.DNS_ORDER_IPV4_FIRST,
+      dnsOrderToNumber(dnsOrder),
     );
 
     if (err) {
@@ -151,30 +153,30 @@ function createLookupPromise(
 
 const validFamilies = [0, 4, 6];
 
-export function lookup(
+function lookup(
   hostname: string,
   family: number,
 ): Promise<void | LookupAddress | LookupAddress[]>;
-export function lookup(
+function lookup(
   hostname: string,
   options: LookupOneOptions,
 ): Promise<void | LookupAddress | LookupAddress[]>;
-export function lookup(
+function lookup(
   hostname: string,
   options: LookupAllOptions,
 ): Promise<void | LookupAddress | LookupAddress[]>;
-export function lookup(
+function lookup(
   hostname: string,
   options: LookupOptions,
 ): Promise<void | LookupAddress | LookupAddress[]>;
-export function lookup(
+function lookup(
   hostname: string,
   options: unknown,
 ): Promise<void | LookupAddress | LookupAddress[]> {
   let hints = 0;
   let family = 0;
   let all = false;
-  let verbatim = getDefaultVerbatim();
+  let dnsOrder = getDefaultDnsOrder();
 
   // Parse arguments
   if (hostname) {
@@ -216,11 +218,20 @@ export function lookup(
 
     if (options?.verbatim != null) {
       validateBoolean(options.verbatim, "options.verbatim");
-      verbatim = options.verbatim;
+      dnsOrder = options.verbatim ? "verbatim" : "ipv4first";
+    }
+
+    if ((options as Record<string, unknown>)?.order != null) {
+      validateOneOf(
+        (options as Record<string, unknown>).order,
+        "options.order",
+        validDnsOrders,
+      );
+      dnsOrder = (options as Record<string, unknown>).order as string;
     }
   }
 
-  return createLookupPromise(family, hostname, all, hints, verbatim);
+  return createLookupPromise(family, hostname, all, hints, dnsOrder);
 }
 
 function onresolve(
@@ -277,7 +288,7 @@ function createLookupServicePromise(address: string, port: number) {
   });
 }
 
-export function lookupService(address: string, port: number) {
+function lookupService(address: string, port: number) {
   if (arguments.length !== 2) {
     throw new ERR_MISSING_ARGS("address", "port");
   }
@@ -293,7 +304,7 @@ export function lookupService(address: string, port: number) {
 
 function createResolverPromise(
   resolver: Resolver,
-  bindingName: keyof ChannelWrapQuery,
+  bindingName: string,
   hostname: string,
   ttl: boolean,
 ) {
@@ -307,7 +318,7 @@ function createResolverPromise(
     req.reject = reject;
     req.ttl = ttl;
 
-    const err = resolver._handle[bindingName](req, toASCII(hostname));
+    const err = resolver._handle[bindingName](req, domainToASCII(hostname));
 
     if (err) {
       reject(dnsException(err, bindingName, hostname));
@@ -315,7 +326,7 @@ function createResolverPromise(
   });
 }
 
-function resolver(bindingName: keyof ChannelWrapQuery) {
+function resolver(bindingName: string) {
   function query(
     this: Resolver,
     name: string,
@@ -387,11 +398,11 @@ function _resolve(
 // exporting these methods which dynamically bind to the default resolver when
 // called.
 
-export function getServers(): string[] {
+function getServers(): string[] {
   return Resolver.prototype.getServers.bind(getDefaultResolver())();
 }
 
-export function resolveAny(
+function resolveAny(
   hostname: string,
 ) {
   return Resolver.prototype.resolveAny.bind(getDefaultResolver() as Resolver)(
@@ -399,41 +410,41 @@ export function resolveAny(
   );
 }
 
-export function resolve4(
+function resolve4(
   hostname: string,
 ): Promise<void>;
-export function resolve4(
+function resolve4(
   hostname: string,
   options: ResolveWithTtlOptions,
 ): Promise<void>;
-export function resolve4(
+function resolve4(
   hostname: string,
   options: ResolveOptions,
 ): Promise<void>;
-export function resolve4(hostname: string, options?: unknown) {
+function resolve4(hostname: string, options?: unknown) {
   return Resolver.prototype.resolve4.bind(getDefaultResolver() as Resolver)(
     hostname,
     options,
   );
 }
 
-export function resolve6(hostname: string): Promise<void>;
-export function resolve6(
+function resolve6(hostname: string): Promise<void>;
+function resolve6(
   hostname: string,
   options: ResolveWithTtlOptions,
 ): Promise<void>;
-export function resolve6(
+function resolve6(
   hostname: string,
   options: ResolveOptions,
 ): Promise<void>;
-export function resolve6(hostname: string, options?: unknown) {
+function resolve6(hostname: string, options?: unknown) {
   return Resolver.prototype.resolve6.bind(getDefaultResolver() as Resolver)(
     hostname,
     options,
   );
 }
 
-export function resolveCaa(
+function resolveCaa(
   hostname: string,
 ) {
   return Resolver.prototype.resolveCaa.bind(getDefaultResolver() as Resolver)(
@@ -441,7 +452,7 @@ export function resolveCaa(
   );
 }
 
-export function resolveCname(
+function resolveCname(
   hostname: string,
 ) {
   return Resolver.prototype.resolveCname.bind(getDefaultResolver() as Resolver)(
@@ -449,7 +460,7 @@ export function resolveCname(
   );
 }
 
-export function resolveMx(
+function resolveMx(
   hostname: string,
 ) {
   return Resolver.prototype.resolveMx.bind(getDefaultResolver() as Resolver)(
@@ -457,112 +468,132 @@ export function resolveMx(
   );
 }
 
-export function resolveNs(hostname: string) {
+function resolveNs(hostname: string) {
   return Resolver.prototype.resolveNs.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolveTxt(hostname: string) {
+function resolveTxt(hostname: string) {
   return Resolver.prototype.resolveTxt.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolveSrv(hostname: string) {
+function resolveSrv(hostname: string) {
   return Resolver.prototype.resolveSrv.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolvePtr(hostname: string) {
+function resolvePtr(hostname: string) {
   return Resolver.prototype.resolvePtr.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolveNaptr(hostname: string) {
+function resolveNaptr(hostname: string) {
   return Resolver.prototype.resolveNaptr.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function resolveSoa(hostname: string) {
+function resolveSoa(hostname: string) {
   return Resolver.prototype.resolveSoa.bind(getDefaultResolver() as Resolver)(
     hostname,
   );
 }
 
-export function reverse(ip: string) {
+function reverse(ip: string) {
   return Resolver.prototype.reverse.bind(getDefaultResolver() as Resolver)(
     ip,
   );
 }
 
-export function resolve(
+function resolve(
   hostname: string,
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "A",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "AAAA",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "ANY",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "CNAME",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "MX",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "NAPTR",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "NS",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "PTR",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "SOA",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "SRV",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "TXT",
 ): Promise<void>;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: string,
 ): Promise<void>;
-export function resolve(hostname: string, rrtype?: string) {
+function resolve(hostname: string, rrtype?: string) {
   return Resolver.prototype.resolve.bind(getDefaultResolver() as Resolver)(
     hostname,
     rrtype,
   );
 }
 
-export { Resolver };
-
-export default {
+return {
+  default: {
+    lookup,
+    lookupService,
+    Resolver,
+    getDefaultResultOrder: getDefaultDnsOrder,
+    getServers,
+    resolveAny,
+    resolve4,
+    resolve6,
+    resolveCaa,
+    resolveCname,
+    resolveMx,
+    resolveNs,
+    resolveTxt,
+    resolveSrv,
+    resolvePtr,
+    resolveNaptr,
+    resolveSoa,
+    resolve,
+    reverse,
+  },
+  Resolver,
+  getDefaultResultOrder: getDefaultDnsOrder,
   lookup,
   lookupService,
-  Resolver,
   getServers,
   resolveAny,
   resolve4,
@@ -579,3 +610,4 @@ export default {
   resolve,
   reverse,
 };
+})();

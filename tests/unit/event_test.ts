@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, assertStringIncludes } from "./test_util.ts";
 
 Deno.test(function eventInitializedWithType() {
@@ -142,6 +142,19 @@ Deno.test(function inspectEvent() {
   );
 });
 
+Deno.test(function removeEventListenerWithEmptyObjectOptions() {
+  const target = new EventTarget();
+  let callCount = 0;
+  const listener = () => {
+    callCount++;
+  };
+
+  target.addEventListener("foo", listener);
+  target.removeEventListener("foo", listener, {});
+  target.dispatchEvent(new Event("foo"));
+  assertEquals(callCount, 0);
+});
+
 Deno.test("default argument is null prototype", () => {
   const event = new Event("test");
   assertEquals(event.bubbles, false);
@@ -154,4 +167,24 @@ Deno.test("default argument is null prototype", () => {
 
   // @ts-ignore this is done on purpose
   delete Object.prototype.bubbles;
+});
+
+// Regression test for https://github.com/denoland/deno/issues/17321
+// `MessageEvent.source` used to be a getter that always returned `null`,
+// so any value passed via `MessageEventInit.source` was lost.
+Deno.test(function messageEventSourceIsRetainedFromInit() {
+  const channel = new MessageChannel();
+  try {
+    const e = new MessageEvent("message", { source: channel.port1 });
+    assertEquals(e.source, channel.port1);
+  } finally {
+    channel.port1.close();
+    channel.port2.close();
+  }
+
+  const e2 = new MessageEvent("message");
+  assertEquals(e2.source, null);
+
+  const e3 = new MessageEvent("message", {});
+  assertEquals(e3.source, null);
 });

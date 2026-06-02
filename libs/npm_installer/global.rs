@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -150,7 +150,12 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys> NpmPackageFsInstaller
     for package in &package_partitions.packages {
       if package.has_scripts {
         let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
-        lifecycle_scripts.add(package, &extra, Cow::Borrowed(&package_folder));
+        lifecycle_scripts.add(
+          package,
+          &extra,
+          Cow::Borrowed(&package_folder),
+          Vec::new(),
+        );
       }
     }
 

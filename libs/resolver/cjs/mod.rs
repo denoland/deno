@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_maybe_sync::MaybeDashMap;
 use deno_media_type::MediaType;
@@ -12,7 +12,7 @@ use url::Url;
 
 pub mod analyzer;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CjsTrackerRc<TInNpmPackageChecker, TSys> =
   deno_maybe_sync::MaybeArc<CjsTracker<TInNpmPackageChecker, TSys>>;
 
@@ -60,6 +60,19 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
     media_type: MediaType,
   ) -> Result<bool, PackageJsonLoadError> {
     self.treat_as_cjs_with_is_script(specifier, media_type, None)
+  }
+
+  /// Checks whether a file loaded via `require()` should be compiled as
+  /// CommonJS before falling back to ESM syntax detection.
+  pub fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+    media_type: MediaType,
+  ) -> Result<bool, PackageJsonLoadError> {
+    self
+      .is_cjs_resolver
+      .check_for_require(specifier, media_type)
+      .map(|mode| mode == ResolutionMode::Require)
   }
 
   /// Mark a file as being known CJS or ESM.
@@ -214,6 +227,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       | MediaType::Html
       | MediaType::Jsonc
       | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => {
@@ -264,6 +278,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       | MediaType::Html
       | MediaType::Jsonc
       | MediaType::Json5
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => {
@@ -332,6 +347,53 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead + FsMetadata>
       }
     } else {
       Ok(ResolutionMode::Import)
+    }
+  }
+
+  fn check_for_require(
+    &self,
+    specifier: &Url,
+    media_type: MediaType,
+  ) -> Result<ResolutionMode, PackageJsonLoadError> {
+    if specifier.scheme() != "file" {
+      return Ok(ResolutionMode::Import);
+    }
+
+    match media_type {
+      MediaType::Mts | MediaType::Mjs | MediaType::Dmts => {
+        Ok(ResolutionMode::Import)
+      }
+      MediaType::Cjs | MediaType::Cts | MediaType::Dcts => {
+        Ok(ResolutionMode::Require)
+      }
+      MediaType::Wasm | MediaType::Json => Ok(ResolutionMode::Import),
+      MediaType::Dts
+      | MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::TypeScript
+      | MediaType::Tsx
+      | MediaType::Css
+      | MediaType::Html
+      | MediaType::Jsonc
+      | MediaType::Json5
+      | MediaType::Markdown
+      | MediaType::SourceMap
+      | MediaType::Sql
+      | MediaType::Unknown => {
+        let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
+          return Ok(ResolutionMode::Import);
+        };
+        let Some(pkg_json) =
+          self.pkg_json_resolver.get_closest_package_json(&path)?
+        else {
+          return Ok(ResolutionMode::Require);
+        };
+        Ok(if pkg_json.typ == "module" && path.extension().is_some() {
+          ResolutionMode::Import
+        } else {
+          ResolutionMode::Require
+        })
+      }
     }
   }
 }

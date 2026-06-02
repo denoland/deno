@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -20,6 +20,15 @@ use crate::Instance;
 use crate::buffer::GPUBuffer;
 use crate::error::GPUGenericError;
 use crate::texture::GPUTextureFormat;
+
+fn c_string_truncated_at_first_nul<T: Into<Vec<u8>>>(
+  src: T,
+) -> std::ffi::CString {
+  std::ffi::CString::new(src).unwrap_or_else(|err| {
+    let nul_pos = err.nul_position();
+    std::ffi::CString::new(err.into_vec().split_at(nul_pos).0).unwrap()
+  })
+}
 
 pub struct GPURenderBundleEncoder {
   pub instance: Instance,
@@ -81,6 +90,7 @@ impl GPURenderBundleEncoder {
     }
   }
 
+  #[undefined]
   fn push_debug_group(
     &self,
     #[webidl] group_label: String,
@@ -90,7 +100,7 @@ impl GPURenderBundleEncoder {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
 
-    let label = std::ffi::CString::new(group_label).unwrap();
+    let label = c_string_truncated_at_first_nul(group_label);
     // SAFETY: the string the raw pointer points to lives longer than the below
     // function invocation.
     unsafe {
@@ -104,6 +114,7 @@ impl GPURenderBundleEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn pop_debug_group(&self) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
@@ -113,6 +124,7 @@ impl GPURenderBundleEncoder {
     Ok(())
   }
 
+  #[undefined]
   fn insert_debug_marker(
     &self,
     #[webidl] marker_label: String,
@@ -122,8 +134,7 @@ impl GPURenderBundleEncoder {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
 
-    let label = std::ffi::CString::new(marker_label).unwrap();
-
+    let label = c_string_truncated_at_first_nul(marker_label);
     // SAFETY: the string the raw pointer points to lives longer than the below
     // function invocation.
     unsafe {
@@ -135,6 +146,7 @@ impl GPURenderBundleEncoder {
     Ok(())
   }
 
+  #[undefined]
   fn set_bind_group<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
@@ -221,6 +233,7 @@ impl GPURenderBundleEncoder {
     Ok(())
   }
 
+  #[undefined]
   fn set_pipeline(
     &self,
     #[webidl] pipeline: Ref<crate::render_pipeline::GPURenderPipeline>,
@@ -238,6 +251,7 @@ impl GPURenderBundleEncoder {
   }
 
   #[required(2)]
+  #[undefined]
   fn set_index_buffer(
     &self,
     #[webidl] buffer: Ref<GPUBuffer>,
@@ -260,6 +274,7 @@ impl GPURenderBundleEncoder {
   }
 
   #[required(2)]
+  #[undefined]
   fn set_vertex_buffer(
     &self,
     #[webidl(options(enforce_range = true))] slot: u32,
@@ -283,6 +298,7 @@ impl GPURenderBundleEncoder {
   }
 
   #[required(1)]
+  #[undefined]
   fn draw(
     &self,
     #[webidl(options(enforce_range = true))] vertex_count: u32,
@@ -306,6 +322,7 @@ impl GPURenderBundleEncoder {
   }
 
   #[required(1)]
+  #[undefined]
   fn draw_indexed(
     &self,
     #[webidl(options(enforce_range = true))] index_count: u32,
@@ -331,6 +348,7 @@ impl GPURenderBundleEncoder {
   }
 
   #[required(2)]
+  #[undefined]
   fn draw_indirect(
     &self,
     #[webidl] indirect_buffer: Ref<GPUBuffer>,
@@ -350,6 +368,7 @@ impl GPURenderBundleEncoder {
   }
 
   #[required(2)]
+  #[undefined]
   fn draw_indexed_indirect(
     &self,
     #[webidl] indirect_buffer: Ref<GPUBuffer>,

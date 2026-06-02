@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,9 +23,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-"use strict";
-
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeMap,
   ArrayPrototypeFilter,
@@ -50,35 +49,41 @@ const {
 } = primordials;
 
 const kRejection = SymbolFor("nodejs.rejection");
-export const kEvents = Symbol("kEvents");
+const kWatermarkData = SymbolFor("nodejs.watermarkData");
+const kEvents = Symbol("kEvents");
 
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import {
+const { inspect } = core.loadExtScript(
+  "ext:deno_node/internal/util/inspect.mjs",
+);
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
   ERR_UNHANDLED_ERROR,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import { AsyncResource } from "node:async_hooks";
-import {
+const lazyAsyncHooks = core.createLazyLoader("node:async_hooks");
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
+  validateInteger,
   validateNumber,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { spliceOne } from "ext:deno_node/_utils.ts";
-import { nextTick } from "ext:deno_node/_process/process.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { spliceOne } = core.loadExtScript("ext:deno_node/_utils.ts");
+const { nextTick } = core.loadExtScript("ext:deno_node/_process/process.ts");
+const {
   eventTargetData,
   kResistStopImmediatePropagation,
-} from "ext:deno_web/02_event.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
 
-export { addAbortListener } from "./internal/events/abort_listener.mjs";
-
+const { addAbortListener } = core.loadExtScript(
+  "ext:deno_node/internal/events/abort_listener.mjs",
+);
+const kFirstEventParam = Symbol("kFirstEventParam");
 const kCapture = Symbol("kCapture");
 const kErrorMonitor = Symbol("events.errorMonitor");
 const kMaxEventTargetListeners = Symbol("events.maxEventTargetListeners");
@@ -91,23 +96,24 @@ const kMaxEventTargetListenersWarned = Symbol(
  * @param {{ captureRejections?: boolean; }} [opts]
  * @returns {EventEmitter}
  */
-export function EventEmitter(opts) {
+function EventEmitter(opts) {
   FunctionPrototypeCall(EventEmitter.init, this, opts);
 }
-export default EventEmitter;
 EventEmitter.on = on;
 EventEmitter.once = once;
 EventEmitter.getEventListeners = getEventListeners;
 EventEmitter.setMaxListeners = setMaxListeners;
 EventEmitter.getMaxListeners = getMaxListeners;
 EventEmitter.listenerCount = listenerCount;
+EventEmitter.addAbortListener = addAbortListener;
 // Backwards-compat with node 0.10.x
 EventEmitter.EventEmitter = EventEmitter;
 EventEmitter.usingDomains = false;
 
 EventEmitter.captureRejectionSymbol = kRejection;
-export const captureRejectionSymbol = EventEmitter.captureRejectionSymbol;
-export const errorMonitor = EventEmitter.errorMonitor;
+EventEmitter.errorMonitor = kErrorMonitor;
+const captureRejectionSymbol = kRejection;
+const errorMonitor = kErrorMonitor;
 
 ObjectDefineProperty(EventEmitter, "captureRejections", {
   get() {
@@ -120,8 +126,6 @@ ObjectDefineProperty(EventEmitter, "captureRejections", {
   },
   enumerable: true,
 });
-
-EventEmitter.errorMonitor = kErrorMonitor;
 
 // The default for captureRejections is false
 ObjectDefineProperty(EventEmitter.prototype, kCapture, {
@@ -136,7 +140,7 @@ EventEmitter.prototype._maxListeners = undefined;
 
 // By default EventEmitters will print a warning if more than 10 listeners are
 // added to it. This is a useful default which helps finding memory leaks.
-export let defaultMaxListeners = 10;
+let defaultMaxListeners = 10;
 
 function checkListener(listener) {
   validateFunction(listener, "listener");
@@ -174,7 +178,7 @@ Object.defineProperties(EventEmitter, {
  * @param {EventTarget[] | EventEmitter[]} [eventTargets]
  * @returns {void}
  */
-export function setMaxListeners(
+function setMaxListeners(
   n = defaultMaxListeners,
   ...eventTargets
 ) {
@@ -280,7 +284,7 @@ EventEmitter.prototype.setMaxListeners = function setMaxListeners(n) {
  * @param {EventEmitter | EventTarget} emitterOrTarget
  * @returns {number}
  */
-export function getMaxListeners(emitterOrTarget) {
+function getMaxListeners(emitterOrTarget) {
   if (typeof emitterOrTarget?.getMaxListeners === "function") {
     return _getMaxListeners(emitterOrTarget);
   } else if (
@@ -809,9 +813,12 @@ EventEmitter.prototype.listenerCount = _listenerCount;
  * @param {string | symbol} type
  * @returns {number}
  */
-export function listenerCount(emitter, type) {
+function listenerCount(emitter, type) {
   if (typeof emitter.listenerCount === "function") {
     return emitter.listenerCount(type);
+  }
+  if (emitter instanceof EventTarget) {
+    return getEventListeners(emitter, type).length;
   }
   return FunctionPrototypeCall(_listenerCount, emitter, type);
 }
@@ -861,7 +868,7 @@ function unwrapListeners(arr) {
  * @param {string | symbol} type
  * @returns {Function[]}
  */
-export function getEventListeners(emitterOrTarget, type) {
+function getEventListeners(emitterOrTarget, type) {
   // First check if EventEmitter
   if (typeof emitterOrTarget.listeners === "function") {
     return emitterOrTarget.listeners(type);
@@ -887,7 +894,7 @@ export function getEventListeners(emitterOrTarget, type) {
  * @returns {Promise}
  */
 // deno-lint-ignore require-await
-export async function once(emitter, name, options = kEmptyObject) {
+async function once(emitter, name, options = kEmptyObject) {
   validateObject(options, "options");
   const signal = options?.signal;
   validateAbortSignal(signal, "options.signal");
@@ -999,7 +1006,7 @@ const kEventsGetter = {
  * @param {{ signal: AbortSignal; }} [options]
  * @returns {AsyncIterator}
  */
-export function on(emitter, event, options = kEmptyObject) {
+function on(emitter, event, options = kEmptyObject) {
   validateObject(options, "options");
   const signal = options?.signal;
   validateAbortSignal(signal, "options.signal");
@@ -1015,16 +1022,30 @@ export function on(emitter, event, options = kEmptyObject) {
     ObjectDefineProperty(signal, kEvents, kEventsGetter);
   }
 
+  // Support both highWaterMark and highWatermark for backward compatibility
+  const highWatermark = options.highWaterMark ?? options.highWatermark ??
+    Number.MAX_SAFE_INTEGER;
+  validateInteger(highWatermark, "options.highWaterMark", 1);
+  const lowWatermark = options.lowWaterMark ?? options.lowWatermark ?? 1;
+  validateInteger(lowWatermark, "options.lowWaterMark", 1);
+
   const unconsumedEvents = [];
   const unconsumedPromises = [];
+  let paused = false;
   let error = null;
   let finished = false;
+  let size = 0;
 
   const iterator = ObjectSetPrototypeOf({
     next() {
       // First, we consume all unread events
-      const value = ArrayPrototypeShift(unconsumedEvents);
-      if (value) {
+      if (size) {
+        const value = ArrayPrototypeShift(unconsumedEvents);
+        size--;
+        if (paused && size < lowWatermark) {
+          emitter.resume();
+          paused = false;
+        }
         return Promise.resolve(createIterResult(value, false));
       }
 
@@ -1039,9 +1060,7 @@ export function on(emitter, event, options = kEmptyObject) {
       }
 
       // If the iterator is finished, resolve to done
-      if (finished) {
-        return Promise.resolve(createIterResult(undefined, true));
-      }
+      if (finished) return closeHandler();
 
       // Wait until an event happens
       return new Promise(function (resolve, reject) {
@@ -1050,24 +1069,7 @@ export function on(emitter, event, options = kEmptyObject) {
     },
 
     return() {
-      eventTargetAgnosticRemoveListener(emitter, event, eventHandler);
-      eventTargetAgnosticRemoveListener(emitter, "error", errorHandler);
-
-      if (signal) {
-        eventTargetAgnosticRemoveListener(
-          signal,
-          "abort",
-          abortListener,
-        );
-      }
-
-      finished = true;
-
-      for (const promise of unconsumedPromises) {
-        promise.resolve(createIterResult(undefined, true));
-      }
-
-      return Promise.resolve(createIterResult(undefined, true));
+      return closeHandler();
     },
 
     throw(err) {
@@ -1078,36 +1080,50 @@ export function on(emitter, event, options = kEmptyObject) {
           err,
         );
       }
-      error = err;
-      eventTargetAgnosticRemoveListener(emitter, event, eventHandler);
-      eventTargetAgnosticRemoveListener(emitter, "error", errorHandler);
-
-      if (signal) {
-        eventTargetAgnosticRemoveListener(
-          signal,
-          "abort",
-          abortListener,
-        );
-      }
+      errorHandler(err);
     },
 
     [SymbolAsyncIterator]() {
       return this;
     },
+
+    [kWatermarkData]: {
+      get size() {
+        return size;
+      },
+      get low() {
+        return lowWatermark;
+      },
+      get high() {
+        return highWatermark;
+      },
+      get isPaused() {
+        return paused;
+      },
+    },
   }, AsyncIteratorPrototype);
 
-  eventTargetAgnosticAddListener(emitter, event, eventHandler);
+  const { addEventListener, removeAll } = listenersController();
+  addEventListener(
+    emitter,
+    event,
+    options[kFirstEventParam] ? eventHandler : function (...args) {
+      return eventHandler(args);
+    },
+  );
   if (event !== "error" && typeof emitter.on === "function") {
-    emitter.on("error", errorHandler);
+    addEventListener(emitter, "error", errorHandler);
+  }
+
+  const closeEvents = options?.close;
+  if (closeEvents?.length) {
+    for (let i = 0; i < closeEvents.length; i++) {
+      addEventListener(emitter, closeEvents[i], closeHandler);
+    }
   }
 
   if (signal) {
-    eventTargetAgnosticAddListener(
-      signal,
-      "abort",
-      abortListener,
-      { once: true },
-    );
+    addEventListener(signal, "abort", abortListener, { once: true });
   }
 
   return iterator;
@@ -1116,144 +1132,176 @@ export function on(emitter, event, options = kEmptyObject) {
     errorHandler(new AbortError());
   }
 
-  function eventHandler(...args) {
-    const promise = ArrayPrototypeShift(unconsumedPromises);
-    if (promise) {
-      promise.resolve(createIterResult(args, false));
+  function eventHandler(value) {
+    if (unconsumedPromises.length === 0) {
+      size++;
+      if (!paused && size > highWatermark) {
+        paused = true;
+        emitter.pause();
+      }
+      ArrayPrototypePush(unconsumedEvents, value);
     } else {
-      ArrayPrototypePush(unconsumedEvents, args);
+      ArrayPrototypeShift(unconsumedPromises).resolve(
+        createIterResult(value, false),
+      );
     }
   }
 
   function errorHandler(err) {
-    finished = true;
-
-    const toError = ArrayPrototypeShift(unconsumedPromises);
-
-    if (toError) {
-      toError.reject(err);
-    } else {
-      // The next time we call next()
+    if (unconsumedPromises.length === 0) {
       error = err;
+    } else {
+      ArrayPrototypeShift(unconsumedPromises).reject(err);
     }
 
-    iterator.return();
+    closeHandler();
   }
+
+  function closeHandler() {
+    removeAll();
+    finished = true;
+    paused = false;
+    const doneResult = createIterResult(undefined, true);
+    while (unconsumedPromises.length > 0) {
+      ArrayPrototypeShift(unconsumedPromises).resolve(doneResult);
+    }
+
+    return Promise.resolve(doneResult);
+  }
+}
+
+function listenersController() {
+  const listeners = [];
+
+  return {
+    addEventListener(emitter, event, handler, flags) {
+      eventTargetAgnosticAddListener(emitter, event, handler, flags);
+      ArrayPrototypePush(listeners, [emitter, event, handler, flags]);
+    },
+    removeAll() {
+      while (listeners.length > 0) {
+        const entry = listeners.pop();
+        eventTargetAgnosticRemoveListener(entry[0], entry[1], entry[2]);
+      }
+    },
+  };
 }
 
 const kAsyncResource = Symbol("kAsyncResource");
 const kEventEmitter = Symbol("kEventEmitter");
 
-class EventEmitterReferencingAsyncResource extends AsyncResource {
-  /**
-   * @param {EventEmitter} ee
-   * @param {string} [type]
-   * @param {{
-   *   triggerAsyncId?: number,
-   *   requireManualDestroy?: boolean,
-   * }} [options]
-   */
-  constructor(ee, type, options) {
-    super(type, options);
-    this[kEventEmitter] = ee;
-  }
+// EventEmitterAsyncResource and its helper class are defined lazily to avoid
+// eagerly loading node:async_hooks (which provides AsyncResource).
+let _EventEmitterAsyncResource;
+function getEventEmitterAsyncResource() {
+  if (_EventEmitterAsyncResource) return _EventEmitterAsyncResource;
+  const { AsyncResource } = lazyAsyncHooks();
 
-  /**
-   * @type {EventEmitter}
-   */
-  get eventEmitter() {
-    if (this[kEventEmitter] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterReferencingAsyncResource");
+  class EventEmitterReferencingAsyncResource extends AsyncResource {
+    constructor(ee, type, options) {
+      super(type, options);
+      this[kEventEmitter] = ee;
     }
-    return this[kEventEmitter];
-  }
-}
 
-export class EventEmitterAsyncResource extends EventEmitter {
-  /**
-   * @param {{
-   *   name?: string,
-   *   triggerAsyncId?: number,
-   *   requireManualDestroy?: boolean,
-   * }} [options]
-   */
-  constructor(options = undefined) {
-    let name;
-    if (typeof options === "string") {
-      name = options;
-      options = undefined;
-    } else {
-      if (new.target === EventEmitterAsyncResource) {
-        validateString(options?.name, "options.name");
+    get eventEmitter() {
+      if (this[kEventEmitter] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterReferencingAsyncResource");
       }
-      name = options?.name || new.target.name;
+      return this[kEventEmitter];
     }
-    super(options);
-
-    this[kAsyncResource] = new EventEmitterReferencingAsyncResource(
-      this,
-      name,
-      options,
-    );
   }
 
-  /**
-   * @param {symbol,string} event
-   * @param  {...any} args
-   * @returns {boolean}
-   */
-  emit(event, ...args) {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
-    }
-    const { asyncResource } = this;
-    ArrayPrototypeUnshift(args, super.emit, this, event);
-    return FunctionPrototypeApply(
-      asyncResource.runInAsyncScope,
-      asyncResource,
-      args,
-    );
-  }
+  _EventEmitterAsyncResource = class EventEmitterAsyncResource
+    extends EventEmitter {
+    constructor(options = undefined) {
+      let name;
+      if (typeof options === "string") {
+        name = options;
+        options = undefined;
+      } else {
+        if (new.target === _EventEmitterAsyncResource) {
+          validateString(options?.name, "options.name");
+        }
+        name = options?.name || new.target.name;
+      }
+      super(options);
 
-  /**
-   * @returns {void}
-   */
-  emitDestroy() {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      this[kAsyncResource] = new EventEmitterReferencingAsyncResource(
+        this,
+        name,
+        options,
+      );
     }
-    this.asyncResource.emitDestroy();
-  }
 
-  /**
-   * @type {number}
-   */
-  get asyncId() {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+    emit(event, ...args) {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      const { asyncResource } = this;
+      ArrayPrototypeUnshift(args, super.emit, this, event);
+      return FunctionPrototypeApply(
+        asyncResource.runInAsyncScope,
+        asyncResource,
+        args,
+      );
     }
-    return this.asyncResource.asyncId();
-  }
 
-  /**
-   * @type {number}
-   */
-  get triggerAsyncId() {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+    emitDestroy() {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      this.asyncResource.emitDestroy();
     }
-    return this.asyncResource.triggerAsyncId();
-  }
 
-  /**
-   * @type {EventEmitterReferencingAsyncResource}
-   */
-  get asyncResource() {
-    if (this[kAsyncResource] === undefined) {
-      throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+    get asyncId() {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      return this.asyncResource.asyncId();
     }
-    return this[kAsyncResource];
-  }
+
+    get triggerAsyncId() {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      return this.asyncResource.triggerAsyncId();
+    }
+
+    get asyncResource() {
+      if (this[kAsyncResource] === undefined) {
+        throw new ERR_INVALID_THIS("EventEmitterAsyncResource");
+      }
+      return this[kAsyncResource];
+    }
+  };
+
+  return _EventEmitterAsyncResource;
 }
 
-EventEmitter.EventEmitterAsyncResource = EventEmitterAsyncResource;
+ObjectDefineProperty(EventEmitter, "EventEmitterAsyncResource", {
+  __proto__: null,
+  configurable: true,
+  enumerable: true,
+  get: getEventEmitterAsyncResource,
+});
+
+return {
+  addAbortListener,
+  captureRejectionSymbol,
+  default: EventEmitter,
+  defaultMaxListeners,
+  errorMonitor,
+  EventEmitter,
+  get EventEmitterAsyncResource() {
+    return getEventEmitterAsyncResource();
+  },
+  getEventListeners,
+  getMaxListeners,
+  kEvents,
+  kFirstEventParam,
+  listenerCount,
+  on,
+  once,
+  setMaxListeners,
+};
+})();

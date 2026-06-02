@@ -1,14 +1,15 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "node:buffer";
-import {
+(function () {
+const { core } = __bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH,
   ERR_INVALID_ARG_TYPE,
-} from "ext:deno_node/internal/errors.ts";
-import { core } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
   isAnyArrayBuffer,
@@ -59,7 +60,7 @@ function stdTimingSafeEqual(
   return out === 0;
 }
 
-export const timingSafeEqual = (
+const timingSafeEqual = (
   buf1: Buffer | DataView | ArrayBuffer,
   buf2: Buffer | DataView | ArrayBuffer,
 ): boolean => {
@@ -73,3 +74,6 @@ export const timingSafeEqual = (
   }
   return stdTimingSafeEqual(buf1, buf2);
 };
+
+return { timingSafeEqual, default: { timingSafeEqual } };
+})();

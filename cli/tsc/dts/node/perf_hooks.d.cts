@@ -560,6 +560,11 @@ declare module "perf_hooks" {
     class PerformanceObserver extends AsyncResource {
         constructor(callback: PerformanceObserverCallback);
         /**
+         * Returns a list of the entry types supported by the implementation.
+         * @since v16.0.0
+         */
+        static readonly supportedEntryTypes: readonly EntryType[];
+        /**
          * Disconnects the `PerformanceObserver` instance from all notifications.
          * @since v8.5.0
          */
@@ -751,7 +756,7 @@ declare module "perf_hooks" {
          * The maximum recorded event loop delay.
          * v17.4.0, v16.14.0
          */
-        readonly maxBigInt: number;
+        readonly maxBigInt: bigint;
         /**
          * The mean of the recorded event loop delays.
          * @since v11.10.0

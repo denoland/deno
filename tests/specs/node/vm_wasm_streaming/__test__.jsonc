@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "vm_wasm_streaming": {
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    }
+  }
+}

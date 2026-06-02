@@ -1,33 +1,29 @@
 // Copyright the Browserify authors. MIT License.
 // Ported from https://github.com/browserify/path-browserify/
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import type {
-  FormatInputPathObject,
-  ParsedPath,
-} from "ext:deno_node/path/_interface.ts";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   CHAR_BACKWARD_SLASH,
   CHAR_COLON,
   CHAR_DOT,
   CHAR_QUESTION_MARK,
-} from "ext:deno_node/path/_constants.ts";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/path/_constants.ts");
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
-import {
+const {
   _format,
   assertPath,
   isPathSeparator,
   isPosixPathSeparator,
   isWindowsDeviceRoot,
   normalizeString,
-} from "ext:deno_node/path/_util.ts";
-import { assert } from "ext:deno_node/_util/asserts.ts";
-import { core, primordials } from "ext:core/mod.js";
-import process from "node:process";
-import type * as fsGlob from "ext:deno_node/_fs/_fs_glob.ts";
-
-const lazyLoadGlob = core.createLazyLoader<typeof fsGlob>(
+} = core.loadExtScript("ext:deno_node/path/_util.ts");
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const lazyLoadGlob = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_glob.ts",
 );
 
@@ -47,8 +43,8 @@ const {
   TypeError,
 } = primordials;
 
-export const sep = "\\";
-export const delimiter = ";";
+const sep = "\\";
+const delimiter = ";";
 
 const WINDOWS_RESERVED_NAMES = [
   "CON",
@@ -92,7 +88,7 @@ function isWindowsReservedName(path: string, colonIndex: number): boolean {
  * Resolves path segments into a `path`
  * @param pathSegments to process to path
  */
-export function resolve(...pathSegments: string[]): string {
+function resolve(...pathSegments: string[]): string {
   let resolvedDevice = "";
   let resolvedTail = "";
   let resolvedAbsolute = false;
@@ -127,7 +123,7 @@ export function resolve(...pathSegments: string[]): string {
       // absolute path, get cwd for that drive, or the process cwd if
       // the drive cwd is not available. We're sure the device is not
       // a UNC path at this points, because UNC paths are always absolute.
-      path = process.env[`=${resolvedDevice}`] || Deno.cwd();
+      path = globalThis.process.env[`=${resolvedDevice}`] || Deno.cwd();
 
       // Verify that a cwd was found and that it actually points
       // to our drive. If not, default to the drive's root.
@@ -276,7 +272,7 @@ export function resolve(...pathSegments: string[]): string {
  * Normalizes a `path`
  * @param path to normalize
  */
-export function normalize(path: string): string {
+function normalize(path: string): string {
   assertPath(path);
   const len = path.length;
   if (len === 0) return ".";
@@ -439,7 +435,7 @@ export function normalize(path: string): string {
  * Verifies whether path is absolute
  * @param path to verify
  */
-export function isAbsolute(path: string): boolean {
+function isAbsolute(path: string): boolean {
   assertPath(path);
   const len = path.length;
   if (len === 0) return false;
@@ -461,7 +457,7 @@ export function isAbsolute(path: string): boolean {
  * Join all given a sequence of `paths`,then normalizes the resulting path.
  * @param paths to be joined and normalized
  */
-export function join(...paths: string[]): string {
+function join(...paths: string[]): string {
   const pathsCount = paths.length;
   if (pathsCount === 0) return ".";
 
@@ -525,6 +521,36 @@ export function join(...paths: string[]): string {
     }
   }
 
+  // If any path component is a Windows reserved device name (e.g. CON:,
+  // PRN:, NUL:), skip normalization to avoid resolving `..` through it.
+  // This matches Node.js behavior -- only replace `/` with `\`.
+  let hasReservedComponent = false;
+  {
+    let segStart = 0;
+    for (let i = 0; i <= joined.length; i++) {
+      if (
+        i === joined.length ||
+        isPathSeparator(StringPrototypeCharCodeAt(joined, i))
+      ) {
+        if (i > segStart) {
+          const seg = StringPrototypeSlice(joined, segStart, i);
+          const colonIdx = StringPrototypeIndexOf(seg, ":");
+          if (colonIdx !== -1 && isWindowsReservedName(seg, colonIdx)) {
+            hasReservedComponent = true;
+            break;
+          }
+        }
+        segStart = i + 1;
+      }
+    }
+  }
+
+  if (hasReservedComponent) {
+    // Only convert forward slashes to backslashes, skip normalize.
+    const parts = StringPrototypeSplit(joined, "/");
+    return ArrayPrototypeJoin(parts, "\\");
+  }
+
   return normalize(joined);
 }
 
@@ -536,7 +562,7 @@ export function join(...paths: string[]): string {
  * @param from relative path
  * @param to relative path
  */
-export function relative(from: string, to: string): string {
+function relative(from: string, to: string): string {
   assertPath(from);
   assertPath(to);
 
@@ -711,7 +737,7 @@ export function relative(from: string, to: string): string {
  * Resolves path to a namespace path
  * @param path to resolve to namespace
  */
-export function toNamespacedPath(path: string): string {
+function toNamespacedPath(path: string): string {
   // Note: this will *probably* throw somewhere.
   if (typeof path !== "string") return path;
   if (path.length === 0) return "";
@@ -748,7 +774,7 @@ export function toNamespacedPath(path: string): string {
  * Return the directory name of a `path`.
  * @param path to determine name for
  */
-export function dirname(path: string): string {
+function dirname(path: string): string {
   assertPath(path);
   const len = path.length;
   if (len === 0) return ".";
@@ -843,7 +869,7 @@ export function dirname(path: string): string {
  * @param path to process
  * @param ext of path directory
  */
-export function basename(path: string, ext = ""): string {
+function basename(path: string, ext = ""): string {
   if (ext !== undefined && typeof ext !== "string") {
     throw new ERR_INVALID_ARG_TYPE("ext", ["string"], ext);
   }
@@ -932,7 +958,7 @@ export function basename(path: string, ext = ""): string {
  * Return the extension of the `path`.
  * @param path with extension
  */
-export function extname(path: string): string {
+function extname(path: string): string {
   assertPath(path);
   let start = 0;
   let startDot = -1;
@@ -1000,7 +1026,7 @@ export function extname(path: string): string {
  * Generate a path from `FormatInputPathObject` object.
  * @param pathObject with path
  */
-export function format(pathObject: FormatInputPathObject): string {
+function format(pathObject: FormatInputPathObject): string {
   if (pathObject === null || typeof pathObject !== "object") {
     throw new ERR_INVALID_ARG_TYPE("pathObject", ["Object"], pathObject);
   }
@@ -1011,7 +1037,7 @@ export function format(pathObject: FormatInputPathObject): string {
  * Return a `ParsedPath` object of the `path`.
  * @param path to process
  */
-export function parse(path: string): ParsedPath {
+function parse(path: string): ParsedPath {
   assertPath(path);
 
   const ret: ParsedPath = { root: "", dir: "", base: "", ext: "", name: "" };
@@ -1160,15 +1186,15 @@ export function parse(path: string): ParsedPath {
   return ret;
 }
 
-export const _makeLong = toNamespacedPath;
+const _makeLong = toNamespacedPath;
 
 let lazyMatchGlobPattern: typeof fsGlob.matchGlobPattern;
-export const matchesGlob = (path: string, pattern: string): boolean => {
+const matchesGlob = (path: string, pattern: string): boolean => {
   lazyMatchGlobPattern ??= lazyLoadGlob().matchGlobPattern;
   return lazyMatchGlobPattern(path, pattern, true);
 };
 
-export default {
+const _default = {
   basename,
   delimiter,
   dirname,
@@ -1185,3 +1211,23 @@ export default {
   _makeLong,
   matchesGlob,
 };
+
+return {
+  sep,
+  delimiter,
+  resolve,
+  normalize,
+  isAbsolute,
+  join,
+  relative,
+  toNamespacedPath,
+  dirname,
+  basename,
+  extname,
+  format,
+  parse,
+  _makeLong,
+  matchesGlob,
+  default: _default,
+};
+})();

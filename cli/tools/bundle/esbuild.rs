@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -6,9 +6,9 @@ use std::sync::Arc;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm_cache::TarballCache;
+use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::workspace::WorkspaceNpmLinkPackagesRc;
 use deno_semver::package::PackageNv;
 

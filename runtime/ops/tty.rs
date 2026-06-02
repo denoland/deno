@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #[cfg(unix)]
 use std::cell::RefCell;
@@ -335,17 +335,17 @@ fn op_console_size(
     Ok(())
   }
 
-  let mut last_result = Ok(());
   // Since stdio might be piped we try to get the size of the console for all
   // of them and return the first one that succeeds.
   for rid in [0, 1, 2] {
-    last_result = check_console_size(state, result, rid);
-    if last_result.is_ok() {
-      return last_result;
+    if check_console_size(state, result, rid).is_ok() {
+      return Ok(());
     }
   }
 
-  last_result
+  Err(TtyError::Other(JsErrorBox::generic(
+    "Could not get console size: stdin, stdout, and stderr are not connected to a terminal",
+  )))
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -368,6 +368,23 @@ pub fn console_size(
     use std::os::unix::io::AsRawFd;
     let fd = std_file.as_raw_fd();
     console_size_from_fd(fd)
+  }
+}
+
+/// Get the console size from stderr (fd 2) directly, without needing
+/// a StdFile handle.
+pub fn console_size_of_stderr() -> Result<ConsoleSize, std::io::Error> {
+  #[cfg(windows)]
+  {
+    use winapi::um::processenv::GetStdHandle;
+    use winapi::um::winbase;
+    // SAFETY: GetStdHandle with STD_ERROR_HANDLE always returns a valid handle.
+    let handle = unsafe { GetStdHandle(winbase::STD_ERROR_HANDLE) };
+    console_size_from_fd(handle)
+  }
+  #[cfg(unix)]
+  {
+    console_size_from_fd(2)
   }
 }
 
@@ -453,11 +470,6 @@ deno_error::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
     ReadlineError::Interrupted => GENERIC_ERROR.into(),
     #[cfg(unix)]
     ReadlineError::Errno(e) => JsNixError(*e).get_class(),
-    ReadlineError::WindowResized => GENERIC_ERROR.into(),
-    #[cfg(windows)]
-    ReadlineError::Decode(_) => GENERIC_ERROR.into(),
-    #[cfg(windows)]
-    ReadlineError::SystemError(_) => GENERIC_ERROR.into(),
     _ => GENERIC_ERROR.into(),
   }
 });
@@ -471,7 +483,7 @@ pub fn op_read_line_prompt(
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 
-  editor.set_keyseq_timeout(1);
+  editor.set_keyseq_timeout(Some(1));
   editor
     .bind_sequence(KeyEvent(KeyCode::Esc, Modifiers::empty()), Cmd::Interrupt);
 

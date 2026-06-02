@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -96,6 +96,44 @@ Deno.test(async function httpServerShutsDownPortBeforeResolving() {
   const listener = Deno.listen({ port: servePort });
   listener!.close();
 });
+
+// Regression test for the Request properties added in
+// https://github.com/denoland/deno/issues/27763. Server-created requests are
+// built via `fromInnerRequest` (the public `Request` constructor is bypassed),
+// so the new accessors must still report the spec defaults for a Deno.serve()
+// request without adding anything to the inner request's shape.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestStandardProperties() {
+    const { promise, resolve } = Promise.withResolvers<
+      Record<string, unknown>
+    >();
+    await using server = await makeServer((req) => {
+      resolve({
+        cache: req.cache,
+        credentials: req.credentials,
+        integrity: req.integrity,
+        keepalive: req.keepalive,
+        mode: req.mode,
+        referrer: req.referrer,
+        referrerPolicy: req.referrerPolicy,
+      });
+      return new Response("ok");
+    });
+    const resp = await fetch(`http://localhost:${servePort}/`);
+    await resp.text();
+    assertEquals(await promise, {
+      cache: "default",
+      credentials: "same-origin",
+      integrity: "",
+      keepalive: false,
+      mode: "cors",
+      referrer: "about:client",
+      referrerPolicy: "",
+    });
+    await server.shutdown();
+  },
+);
 
 // When shutting down abruptly, we require that all in-progress connections are aborted,
 // no new connections are allowed, and no new transactions are allowed on existing connections.
@@ -971,8 +1009,10 @@ function createUrlTest(
     const conn = await Deno.connect({ port });
 
     const encoder = new TextEncoder();
+    // `null` omits the Host header entirely; `""` sends `Host:` with an
+    // empty value, which is a separate code path.
     const body = `${methodAndPath} HTTP/1.1\r\n${
-      host ? ("Host: " + host + "\r\n") : ""
+      host !== null ? ("Host: " + host + "\r\n") : ""
     }Content-Length: 5\r\n\r\n12345`;
     const writeResult = await conn.write(encoder.encode(body));
     assertEquals(body.length, writeResult);
@@ -1058,6 +1098,16 @@ createUrlTest(
   "CONNECT /path",
   null,
   400,
+);
+
+// Regression test for https://github.com/denoland/deno/issues/29872: an empty
+// `Host:` header must fall back to the listener's authority instead of
+// producing `request.url = "http:///path"` (which parses as hostname "path").
+createUrlTest(
+  "WithEmptyHostHeader",
+  "GET /path",
+  "",
+  "http://HOST:PORT/path",
 );
 
 Deno.test(
@@ -3467,7 +3517,7 @@ Deno.test(
     const { resolve } = Promise.withResolvers<void>();
 
     let reqCount = -1;
-    let timerId: number | undefined;
+    let timerId: NodeJS.Timeout | undefined;
     await using server = Deno.serve({
       handler: (_req) => {
         reqCount++;
@@ -3481,7 +3531,7 @@ Deno.test(
               }, 1000);
             },
             cancel() {
-              if (typeof timerId === "number") {
+              if (timerId !== undefined) {
                 clearInterval(timerId);
               }
             },
@@ -4159,6 +4209,81 @@ Deno.test(
   },
 );
 
+// Handler returning a Response-like object (prototype matches but no internal
+// slot — e.g. a subclass that skipped super(), or a Response from a different
+// realm/polyfill) must not crash the serve loop. This was the crash reported
+// in https://github.com/denoland/deno/issues/33893 for nitro+vite, where the
+// loop tore down with "Cannot read properties of undefined (reading 'status')"
+// inside `mapped` in `ext:deno_http/00_serve.ts`.
+function makeResponseLike(): Response {
+  const fake = Object.create(Response.prototype);
+  // Own-data properties for getters Deno.serve probes during validation,
+  // so the inherited (branded) accessors don't run.
+  Object.defineProperty(fake, "type", { value: "default" });
+  Object.defineProperty(fake, "bodyUsed", { value: false });
+  return fake as Response;
+}
+
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeCallbackReturnsResponseLike() {
+    const deferred = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(listeningDeferred.resolve),
+        signal: ac.signal,
+        onError: (error) => {
+          assert(error instanceof TypeError);
+          assert(
+            error.message.includes("must be a Response") &&
+              error.message.includes("constructor in this realm"),
+          );
+          deferred.resolve();
+          return new Response("recovered", { status: 200 });
+        },
+      },
+      () => makeResponseLike(),
+    );
+    await listeningDeferred.promise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    await deferred.promise;
+    ac.abort();
+    await server.finished;
+    assert(respText === "recovered");
+  },
+);
+
+// onError handler returning a Response-like object must also not crash the
+// serve loop — it should fall through to the default 500 instead.
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeErrorCallbackReturnsResponseLike() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(resolve),
+        signal: ac.signal,
+        onError: () => makeResponseLike(),
+      },
+      () => {
+        throw new Error("boom");
+      },
+    );
+    await promise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    ac.abort();
+    await server.finished;
+    assert(respText === "Internal Server Error");
+  },
+);
+
 // onError Handler must return Response class or promise that resolves Response class
 Deno.test(
   { permissions: { net: true, run: true } },
@@ -4199,7 +4324,7 @@ Deno.test(
     const ac = new AbortController();
 
     console.log("Starting server", servePort);
-    let timer: number | undefined = undefined;
+    let timer: NodeJS.Timeout | undefined = undefined;
     let _controller;
 
     await using server = Deno.serve(
@@ -4341,6 +4466,27 @@ Deno.test({
   }).catch(() => {});
 
   await server.shutdown();
+});
+
+Deno.test({
+  name: "support shutdown while open idle connection exists",
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  await using server = Deno.serve({
+    hostname: "0.0.0.0",
+    port: servePort,
+    onListen: () => resolve(),
+  }, () => new Response("Ok"));
+
+  await promise;
+
+  using conn = await Deno.connect({ port: servePort });
+
+  await server.shutdown();
+
+  const read = await conn.read(new Uint8Array(10));
+  assertEquals(read, null);
 });
 
 // https://github.com/denoland/deno/issues/27083

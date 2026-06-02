@@ -1,6 +1,5 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::num::NonZeroUsize;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -30,22 +29,26 @@ mod compile;
 mod coverage;
 #[path = "eval_tests.rs"]
 mod eval;
+#[path = "ffi_tests.rs"]
+mod ffi;
 #[path = "flags_tests.rs"]
 mod flags;
 #[path = "fmt_tests.rs"]
 mod fmt;
 #[path = "init_tests.rs"]
 mod init;
-#[path = "inspector_tests.rs"]
-mod inspector;
 #[path = "install_tests.rs"]
 mod install;
 #[path = "jsr_tests.rs"]
 mod jsr;
 #[path = "jupyter_tests.rs"]
 mod jupyter;
+#[path = "jupyter_client.rs"]
+mod jupyter_client;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "napi_tests.rs"]
+mod napi;
 #[path = "npm_tests.rs"]
 mod npm;
 #[path = "pm_tests.rs"]
@@ -53,6 +56,8 @@ mod pm;
 #[path = "publish_tests.rs"]
 mod publish;
 
+#[path = "bump_version_tests.rs"]
+mod bump_version;
 #[path = "repl_tests.rs"]
 mod repl;
 #[path = "run_tests.rs"]
@@ -61,6 +66,8 @@ mod run;
 mod serve;
 #[path = "shared_library_tests.rs"]
 mod shared_library_tests;
+#[path = "sqlite_extension_tests.rs"]
+mod sqlite_extension;
 #[path = "task_tests.rs"]
 mod task;
 #[path = "test_tests.rs"]
@@ -71,6 +78,22 @@ mod upgrade;
 mod watcher;
 
 pub fn main() {
+  let ci_hash = test_util::hash::check_ci_hash("integration", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("integration"))
+      .hash_dir(tests.join("util"))
+      .hash_dir(tests.join("testdata"))
+      .hash_dir(tests.join("registry"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path())
+      .hash_file(test_util::denort_exe_path());
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
+    return;
+  }
+
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
   let mut main_category: CollectedTestCategory<&'static TestMacroCase> =
     CollectedTestCategory {
       name: module_path!().to_string(),
@@ -78,6 +101,14 @@ pub fn main() {
       children: Default::default(),
     };
   test_util::collect_and_filter_tests(&mut main_category);
+
+  let main_category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(main_category, &shard)
+    } else {
+      main_category
+    };
+
   if main_category.is_empty() {
     return; // no tests to run for the filter
   }
@@ -139,7 +170,7 @@ pub fn main() {
   file_test_runner::run_tests(
     &watcher_tests,
     RunOptions {
-      parallelism: NonZeroUsize::new(1).unwrap(),
+      parallelism: file_test_runner::Parallelism::from_usize(1),
       reporter: reporter.clone(),
     },
     {
@@ -156,4 +187,7 @@ pub fn main() {
     },
     move |test| run_test(test, &flaky_test_tracker, Some(&parallelism)),
   );
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
+  }
 }

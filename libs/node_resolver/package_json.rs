@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -38,7 +38,7 @@ where
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type PackageJsonCacheRc =
   deno_maybe_sync::MaybeArc<dyn NodePackageJsonCache>;
 
@@ -72,7 +72,7 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type PackageJsonResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<PackageJsonResolver<TSys>>;
 
@@ -148,5 +148,36 @@ impl<'a, TSys: FsRead + FsMetadata> Iterator
       }
     }
     None
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use sys_traits::impls::InMemorySys;
+
+  use super::*;
+
+  // Regression test for https://github.com/denoland/deno/issues/27433.
+  //
+  // The LSP can be handed file paths derived from `untitled:` or
+  // `vscode-notebook-cell:` URIs (e.g. for an unsaved VSCode Jupyter
+  // notebook). Those paths can be just a root component with no parent.
+  // `get_closest_package_json` used to `unwrap()` the parent and panic.
+  #[test]
+  fn get_closest_package_json_with_rootless_path() {
+    let resolver: PackageJsonResolver<InMemorySys> =
+      PackageJsonResolver::new(InMemorySys::default(), None);
+
+    for path in [
+      Path::new("/Untitled-1.ipynb"),
+      Path::new("/"),
+      Path::new(""),
+      Path::new("Untitled-1.ipynb"),
+    ] {
+      // Must not panic. There's no package.json anywhere in the in-memory
+      // file system, so the result is `Ok(None)`.
+      let result = resolver.get_closest_package_json(path);
+      assert!(matches!(result, Ok(None)), "for {path:?}: {result:?}");
+    }
   }
 }

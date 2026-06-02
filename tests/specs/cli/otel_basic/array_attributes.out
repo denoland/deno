@@ -1,0 +1,108 @@
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "example span",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "strings",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "stringValue": "a"
+                },
+                {
+                  "stringValue": "b"
+                },
+                {
+                  "stringValue": "c"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": "numbers",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "doubleValue": 1
+                },
+                {
+                  "doubleValue": 2
+                },
+                {
+                  "doubleValue": 3.5
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": "booleans",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "boolValue": true
+                },
+                {
+                  "boolValue": false
+                },
+                {
+                  "boolValue": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": "bigints",
+          "value": {
+            "arrayValue": {
+              "values": [
+                {
+                  "intValue": "1"
+                },
+                {
+                  "intValue": "2"
+                },
+                {
+                  "intValue": "3"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "key": "empty",
+          "value": {
+            "arrayValue": {
+              "values": []
+            }
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": []
+}

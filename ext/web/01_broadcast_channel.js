@@ -1,14 +1,15 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_broadcast_recv,
   op_broadcast_send,
   op_broadcast_subscribe,
   op_broadcast_unsubscribe,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -19,26 +20,37 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const {
   defineEventHandler,
   EventTarget,
   setIsTrusted,
   setTarget,
-} from "ext:deno_web/02_event.js";
-import { defer } from "ext:deno_web/02_timers.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const { defer } = core.loadExtScript("ext:deno_web/02_timers.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const _name = Symbol("[[name]]");
 const _closed = Symbol("[[closed]]");
+const _refed = Symbol("[[refed]]");
+const refBroadcastChannel = Symbol("refBroadcastChannel");
 
 const channels = [];
 let rid = null;
+let recvPromise = null;
+let refedBroadcastChannelsCount = 0;
 
 async function recv() {
   while (channels.length > 0) {
-    const message = await op_broadcast_recv(rid);
+    recvPromise = op_broadcast_recv(rid);
+    if (refedBroadcastChannelsCount === 0) {
+      core.unrefOpPromise(recvPromise);
+    }
+    const message = await recvPromise;
+    recvPromise = null;
 
     if (message === null) {
       break;
@@ -63,7 +75,10 @@ function dispatch(source, name, data) {
     const go = () => {
       if (channel[_closed]) return;
       const event = new MessageEvent("message", {
-        data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
+        // TODO(bnoordhuis) Cache immutables.
+        data: core.deserialize(data, {
+          deserializers: core.getCloneableDeserializers(),
+        }),
         origin: "http://127.0.0.1",
       });
       setIsTrusted(event, true);
@@ -77,6 +92,7 @@ function dispatch(source, name, data) {
 class BroadcastChannel extends EventTarget {
   [_name];
   [_closed] = false;
+  [_refed] = true;
 
   get name() {
     return this[_name];
@@ -93,6 +109,7 @@ class BroadcastChannel extends EventTarget {
     this[webidl.brand] = webidl.brand;
 
     ArrayPrototypePush(channels, this);
+    refedBroadcastChannelsCount++;
 
     if (rid === null) {
       // Create the rid immediately, otherwise there is a time window (and a
@@ -121,12 +138,26 @@ class BroadcastChannel extends EventTarget {
     // Send to other listeners in this VM.
     dispatch(this, this[_name], new Uint8Array(data));
 
-    // Send to listeners in other VMs.
-    defer(() => {
-      if (!this[_closed]) {
-        op_broadcast_send(rid, this[_name], data);
+    // Send to listeners in other VMs. This must happen before returning from
+    // postMessage(), otherwise close() immediately after postMessage() can
+    // cancel the deferred send before other workers observe the message.
+    op_broadcast_send(rid, this[_name], data);
+  }
+
+  [refBroadcastChannel](ref) {
+    if (ref && !this[_refed] && !this[_closed]) {
+      refedBroadcastChannelsCount++;
+      if (refedBroadcastChannelsCount === 1 && recvPromise) {
+        core.refOpPromise(recvPromise);
       }
-    });
+      this[_refed] = true;
+    } else if (!ref && this[_refed] && !this[_closed]) {
+      refedBroadcastChannelsCount--;
+      if (refedBroadcastChannelsCount === 0 && recvPromise) {
+        core.unrefOpPromise(recvPromise);
+      }
+      this[_refed] = false;
+    }
   }
 
   close() {
@@ -136,8 +167,16 @@ class BroadcastChannel extends EventTarget {
     const index = ArrayPrototypeIndexOf(channels, this);
     if (index === -1) return;
 
+    if (this[_refed]) {
+      refedBroadcastChannelsCount--;
+      if (refedBroadcastChannelsCount === 0 && recvPromise) {
+        core.unrefOpPromise(recvPromise);
+      }
+      this[_refed] = false;
+    }
+
     ArrayPrototypeSplice(channels, index, 1);
-    if (channels.length === 0) {
+    if (channels.length === 0 && rid !== null) {
       op_broadcast_unsubscribe(rid);
     }
   }
@@ -162,4 +201,5 @@ defineEventHandler(BroadcastChannel.prototype, "message");
 defineEventHandler(BroadcastChannel.prototype, "messageerror");
 const BroadcastChannelPrototype = BroadcastChannel.prototype;
 
-export { BroadcastChannel };
+return { BroadcastChannel, refBroadcastChannel };
+})();

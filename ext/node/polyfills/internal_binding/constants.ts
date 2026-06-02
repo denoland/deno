@@ -1,6 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { op_node_build_os, op_node_fs_constants } from "ext:core/ops";
+(function () {
+const { primordials } = __bootstrap;
+const { ObjectFreeze } = primordials;
+const { core } = __bootstrap;
+const { op_node_build_os, op_node_fs_constants } = core.ops;
 
 let os: {
   dlopen: {
@@ -195,13 +199,14 @@ let os: {
     SIGXCPU?: number;
     SIGXFSZ?: number;
   };
-  UV_UDP_IPV6ONLY?: number;
+  UV_UDP_IPV6ONLY: number;
   UV_UDP_REUSEADDR: number;
 };
 
 const buildOs = op_node_build_os();
 if (buildOs === "darwin") {
   os = {
+    UV_UDP_IPV6ONLY: 2,
     UV_UDP_REUSEADDR: 4,
     dlopen: {
       RTLD_LAZY: 1,
@@ -334,6 +339,7 @@ if (buildOs === "darwin") {
   };
 } else if (buildOs === "linux" || buildOs === "android") {
   os = {
+    UV_UDP_IPV6ONLY: 2,
     UV_UDP_REUSEADDR: 4,
     dlopen: {
       RTLD_LAZY: 1,
@@ -470,6 +476,7 @@ if (buildOs === "darwin") {
   };
 } else {
   os = {
+    UV_UDP_IPV6ONLY: 2,
     UV_UDP_REUSEADDR: 4,
     dlopen: {},
     errno: {
@@ -631,11 +638,11 @@ if (buildOs === "darwin") {
   };
 }
 
-export { os };
+ObjectFreeze(os.signals);
 
-export const fs = op_node_fs_constants();
+const fs = op_node_fs_constants();
 
-export const crypto = {
+const crypto = {
   OPENSSL_VERSION_NUMBER: 269488319,
   SSL_OP_ALL: 2147485780,
   SSL_OP_ALLOW_NO_DHE_KEX: 1024,
@@ -711,7 +718,7 @@ export const crypto = {
   POINT_CONVERSION_UNCOMPRESSED: 4,
   POINT_CONVERSION_HYBRID: 6,
 } as const;
-export const zlib = {
+const zlib = {
   Z_NO_FLUSH: 0,
   Z_PARTIAL_FLUSH: 1,
   Z_SYNC_FLUSH: 2,
@@ -821,8 +828,44 @@ export const zlib = {
   BROTLI_DECODER_ERROR_ALLOC_RING_BUFFER_2: -27,
   BROTLI_DECODER_ERROR_ALLOC_BLOCK_TYPE_TREES: -30,
   BROTLI_DECODER_ERROR_UNREACHABLE: -31,
+  // Zstd flush modes / end directives
+  ZSTD_e_continue: 0,
+  ZSTD_e_flush: 1,
+  ZSTD_e_end: 2,
+  // Zstd compression parameters
+  ZSTD_c_compressionLevel: 100,
+  ZSTD_c_windowLog: 101,
+  ZSTD_c_hashLog: 102,
+  ZSTD_c_chainLog: 103,
+  ZSTD_c_searchLog: 104,
+  ZSTD_c_minMatch: 105,
+  ZSTD_c_targetLength: 106,
+  ZSTD_c_strategy: 107,
+  ZSTD_c_enableLongDistanceMatching: 160,
+  ZSTD_c_ldmHashLog: 161,
+  ZSTD_c_ldmMinMatch: 162,
+  ZSTD_c_ldmBucketSizeLog: 163,
+  ZSTD_c_ldmHashRateLog: 164,
+  ZSTD_c_contentSizeFlag: 200,
+  ZSTD_c_checksumFlag: 201,
+  ZSTD_c_dictIDFlag: 202,
+  ZSTD_c_nbWorkers: 240,
+  ZSTD_c_jobSize: 241,
+  ZSTD_c_overlapLog: 242,
+  // Zstd decompression parameters
+  ZSTD_d_windowLogMax: 100,
+  // Zstd strategy constants
+  ZSTD_fast: 1,
+  ZSTD_dfast: 2,
+  ZSTD_greedy: 3,
+  ZSTD_lazy: 4,
+  ZSTD_lazy2: 5,
+  ZSTD_btlazy2: 6,
+  ZSTD_btopt: 7,
+  ZSTD_btultra: 8,
+  ZSTD_btultra2: 9,
 } as const;
-export const trace = {
+const trace = {
   TRACE_EVENT_PHASE_BEGIN: 66,
   TRACE_EVENT_PHASE_END: 69,
   TRACE_EVENT_PHASE_COMPLETE: 88,
@@ -850,3 +893,6 @@ export const trace = {
   TRACE_EVENT_PHASE_LEAVE_CONTEXT: 41,
   TRACE_EVENT_PHASE_LINK_IDS: 61,
 } as const;
+
+return { os, fs, crypto, zlib, trace };
+})();

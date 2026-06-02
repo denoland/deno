@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // This module is vendored from std/async/delay.ts
 // (with some modifications)
 
@@ -8,7 +8,7 @@ const {
   PromiseReject,
 } = primordials;
 
-import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
+import { clearTimeout, setTimeout } from "node:timers";
 
 /** Resolve a Promise after a given amount of milliseconds. */
 export function delay(

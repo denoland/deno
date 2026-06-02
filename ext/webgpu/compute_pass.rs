@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -52,6 +52,7 @@ impl GPUComputePassEncoder {
     // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
   }
 
+  #[undefined]
   fn set_pipeline(
     &self,
     #[webidl] pipeline: Ref<crate::compute_pipeline::GPUComputePipeline>,
@@ -66,6 +67,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn dispatch_workgroups(
     &self,
     #[webidl(options(enforce_range = true))] work_group_count_x: u32,
@@ -86,6 +88,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn dispatch_workgroups_indirect(
     &self,
     #[webidl] indirect_buffer: Ref<crate::buffer::GPUBuffer>,
@@ -103,6 +106,7 @@ impl GPUComputePassEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn end(&self) {
     let err = self
       .instance
@@ -111,6 +115,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn push_debug_group(&self, #[webidl] group_label: String) {
     let err = self
       .instance
@@ -124,6 +129,7 @@ impl GPUComputePassEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn pop_debug_group(&self) {
     let err = self
       .instance
@@ -132,6 +138,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn insert_debug_marker(&self, #[webidl] marker_label: String) {
     let err = self
       .instance
@@ -144,6 +151,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn set_bind_group<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,

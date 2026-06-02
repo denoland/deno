@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::fmt::Write;
 use std::sync::atomic::AtomicUsize;
@@ -84,7 +84,7 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
       writeln!(
         &mut text,
         "{} {}{}",
-        colors::green("Download"),
+        display_entry.prompt.as_text(),
         display_entry.message,
         bytes_text,
       )

@@ -1,18 +1,25 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials ban-untagged-todo
 
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { nextTick } from "node:process";
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
+const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 const {
   ArrayPrototypeAt,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypePushApply,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   ObjectDefineProperty,
   ObjectGetPrototypeOf,
@@ -26,13 +33,18 @@ const {
   SafeMap,
   SymbolHasInstance,
 } = primordials;
-import { WeakReference } from "ext:deno_node/internal/util.mjs";
+const { WeakReference } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 // Can't delete when weakref count reaches 0 as it could increment again.
 // Only GC can be used as a valid time to clean up the channels map.
 class WeakRefMap extends SafeMap {
   #finalizers = new SafeFinalizationRegistry((key) => {
-    this.delete(key);
+    // Finalization can run after a new Channel for the same key has already
+    // replaced the previous WeakRef (test-diagnostics-channel-gc-race-
+    // condition exercises this race). Only drop the entry if the live
+    // WeakRef is empty; otherwise the new Channel would be orphaned and
+    // `channel(name)` would hand out a fresh one, breaking identity.
+    if (!this.has(key)) this.delete(key);
   });
 
   set(key, value) {
@@ -42,6 +54,10 @@ class WeakRefMap extends SafeMap {
 
   get(key) {
     return super.get(key)?.get();
+  }
+
+  has(key) {
+    return !!this.get(key);
   }
 
   incRef(key) {
@@ -94,6 +110,10 @@ function wrapStoreRun(store, data, next, transform = defaultTransform) {
 class ActiveChannel {
   subscribe(subscription) {
     validateFunction(subscription, "subscription");
+    // Replace the subscriber array with a copy so any in-flight publish that
+    // captured the previous reference keeps iterating over the snapshot
+    // it started with.
+    this._subscribers = ArrayPrototypeSlice(this._subscribers);
     ArrayPrototypePush(this._subscribers, subscription);
     channels.incRef(this.name);
   }
@@ -102,7 +122,14 @@ class ActiveChannel {
     const index = ArrayPrototypeIndexOf(this._subscribers, subscription);
     if (index === -1) return false;
 
-    ArrayPrototypeSplice(this._subscribers, index, 1);
+    // Build a new array via slice + pushApply so a concurrent publish keeps
+    // iterating over its original snapshot - matches Node and lets
+    // unsubscribe-during-publish still deliver to the remaining subscribers
+    // in that publish call.
+    const before = ArrayPrototypeSlice(this._subscribers, 0, index);
+    const after = ArrayPrototypeSlice(this._subscribers, index + 1);
+    this._subscribers = before;
+    ArrayPrototypePushApply(this._subscribers, after);
 
     channels.decRef(this.name);
     maybeMarkInactive(this);
@@ -134,9 +161,13 @@ class ActiveChannel {
   }
 
   publish(data) {
-    for (let i = 0; i < (this._subscribers?.length || 0); i++) {
+    // Capture the subscriber array up front so that subscribe/unsubscribe
+    // calls from inside a handler (which replace `this._subscribers` with a
+    // new array) don't shift or shrink the array we're walking.
+    const subscribers = this._subscribers;
+    for (let i = 0; i < (subscribers?.length || 0); i++) {
       try {
-        const onMessage = this._subscribers[i];
+        const onMessage = subscribers[i];
         onMessage(data, this.name);
       } catch (err) {
         nextTick(() => {
@@ -211,9 +242,9 @@ class Channel {
 
 const channels = new WeakRefMap();
 
-export function channel(name) {
-  const channel = channels.get(name);
-  if (channel) return channel;
+function channel(name) {
+  const ch = channels.get(name);
+  if (ch) return ch;
 
   if (typeof name !== "string" && typeof name !== "symbol") {
     throw new ERR_INVALID_ARG_TYPE("channel", ["string", "symbol"], name);
@@ -222,19 +253,19 @@ export function channel(name) {
   return new Channel(name);
 }
 
-export function subscribe(name, subscription) {
+function subscribe(name, subscription) {
   return channel(name).subscribe(subscription);
 }
 
-export function unsubscribe(name, subscription) {
+function unsubscribe(name, subscription) {
   return channel(name).unsubscribe(subscription);
 }
 
-export function hasSubscribers(name) {
-  const channel = channels.get(name);
-  if (!channel) return false;
+function hasSubscribers(name) {
+  const ch = channels.get(name);
+  if (!ch) return false;
 
-  return channel.hasSubscribers;
+  return ch.hasSubscribers;
 }
 
 const traceEvents = [
@@ -257,15 +288,15 @@ function tracingChannelFrom(nameOrChannels, name) {
   }
 
   if (typeof nameOrChannels === "object" && nameOrChannels !== null) {
-    const channel = nameOrChannels[name];
-    assertChannel(channel, `nameOrChannels.${name}`);
-    return channel;
+    const ch = nameOrChannels[name];
+    assertChannel(ch, `nameOrChannels.${name}`);
+    return ch;
   }
 
   throw new ERR_INVALID_ARG_TYPE("nameOrChannels", [
     "string",
     "object",
-    "Channel",
+    "TracingChannel",
   ], nameOrChannels);
 }
 
@@ -416,11 +447,19 @@ class TracingChannel {
   }
 }
 
-export function tracingChannel(nameOrChannels) {
+function tracingChannel(nameOrChannels) {
   return new TracingChannel(nameOrChannels);
 }
 
-export default {
+return {
+  default: {
+    channel,
+    hasSubscribers,
+    subscribe,
+    tracingChannel,
+    unsubscribe,
+    Channel,
+  },
   channel,
   hasSubscribers,
   subscribe,
@@ -428,3 +467,4 @@ export default {
   unsubscribe,
   Channel,
 };
+})();

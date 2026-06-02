@@ -1,83 +1,52 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import { primordials } from "ext:core/mod.js";
-import {
-  op_node_check_prime,
-  op_node_check_prime_async,
+(function () {
+const { core } = __bootstrap;
+const {
   op_node_check_prime_bytes,
   op_node_check_prime_bytes_async,
   op_node_gen_prime,
   op_node_gen_prime_async,
-} from "ext:core/ops";
-const {
-  StringPrototypePadStart,
-  StringPrototypeToString,
-} = primordials;
+} = core.ops;
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
-import randomFill, {
-  randomFillSync,
-} from "ext:deno_node/internal/crypto/_randomFill.mjs";
-import randomInt from "ext:deno_node/internal/crypto/_randomInt.ts";
-import {
+const { default: randomBytes } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_randomBytes.ts",
+);
+const { default: randomFill, randomFillSync } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_randomFill.mjs",
+);
+const { default: randomInt } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_randomInt.ts",
+);
+const {
   validateBoolean,
   validateFunction,
   validateInt32,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
-import { Buffer } from "node:buffer";
+  NodeError,
+  NodeRangeError,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
-export { default as randomBytes } from "ext:deno_node/internal/crypto/_randomBytes.ts";
-export {
-  default as randomFill,
-  randomFillSync,
-} from "ext:deno_node/internal/crypto/_randomFill.mjs";
-export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
+// OpenSSL BIGNUM max size: INT_MAX / (4 * BN_BITS2) words * 8 bytes/word
+// On 64-bit: (2^31 - 1) / 256 * 8 = 67108856 bytes
+const OPENSSL_BIGNUM_MAX_BYTES = (((2 ** 31 - 1) / (4 * 64)) | 0) * 8;
 
-export type LargeNumberLike =
-  | ArrayBufferView
-  | SharedArrayBuffer
-  | ArrayBuffer
-  | bigint;
-
-export interface CheckPrimeOptions {
-  /**
-   * The number of Miller-Rabin probabilistic primality iterations to perform.
-   * When the value is 0 (zero), a number of checks is used that yields a false positive rate of at most 2-64 for random input.
-   * Care must be used when selecting a number of checks.
-   * Refer to the OpenSSL documentation for the BN_is_prime_ex function nchecks options for more details.
-   *
-   * @default 0
-   */
-  checks?: number | undefined;
-}
-
-export function checkPrime(
-  candidate: LargeNumberLike,
-  callback: (err: Error | null, result: boolean) => void,
-): void;
-export function checkPrime(
-  candidate: LargeNumberLike,
-  options: CheckPrimeOptions,
-  callback: (err: Error | null, result: boolean) => void,
-): void;
-export function checkPrime(
-  candidate: LargeNumberLike,
-  options: CheckPrimeOptions | ((err: Error | null, result: boolean) => void) =
-    {},
+function checkPrime(
+  candidate: any,
+  options: any = {},
   callback?: (err: Error | null, result: boolean) => void,
 ) {
   if (typeof options === "function") {
@@ -94,13 +63,24 @@ export function checkPrime(
 
   validateInt32(checks, "options.checks", 0);
 
-  let op = op_node_check_prime_bytes_async;
+  let candidateBytes: ArrayBufferView | ArrayBuffer;
   if (typeof candidate === "bigint") {
     if (candidate < 0) {
       throw new ERR_OUT_OF_RANGE("candidate", ">= 0", candidate);
     }
-    op = op_node_check_prime_async;
-  } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
+    candidateBytes = bigintToBytes(candidate);
+  } else if (isAnyArrayBuffer(candidate) || isArrayBufferView(candidate)) {
+    const byteLength = isArrayBufferView(candidate)
+      ? (candidate as ArrayBufferView).byteLength
+      : (candidate as ArrayBuffer).byteLength;
+    if (byteLength > OPENSSL_BIGNUM_MAX_BYTES) {
+      throw new NodeError(
+        "ERR_OSSL_BN_BIGNUM_TOO_LONG",
+        "bignum too long",
+      );
+    }
+    candidateBytes = candidate;
+  } else {
     throw new ERR_INVALID_ARG_TYPE(
       "candidate",
       [
@@ -114,7 +94,7 @@ export function checkPrime(
     );
   }
 
-  op(candidate, checks).then(
+  op_node_check_prime_bytes_async(candidateBytes, checks).then(
     (result) => {
       callback?.(null, result);
     },
@@ -123,9 +103,9 @@ export function checkPrime(
   });
 }
 
-export function checkPrimeSync(
-  candidate: LargeNumberLike,
-  options: CheckPrimeOptions = {},
+function checkPrimeSync(
+  candidate: any,
+  options: any = {},
 ): boolean {
   validateObject(options, "options");
 
@@ -135,9 +115,24 @@ export function checkPrimeSync(
 
   validateInt32(checks, "options.checks", 0);
 
+  let candidateBytes: ArrayBufferView | ArrayBuffer;
   if (typeof candidate === "bigint") {
-    return op_node_check_prime(candidate, checks);
-  } else if (!isAnyArrayBuffer(candidate) && !isArrayBufferView(candidate)) {
+    if (candidate < 0) {
+      throw new ERR_OUT_OF_RANGE("candidate", ">= 0", candidate);
+    }
+    candidateBytes = bigintToBytes(candidate);
+  } else if (isAnyArrayBuffer(candidate) || isArrayBufferView(candidate)) {
+    const byteLength = isArrayBufferView(candidate)
+      ? (candidate as ArrayBufferView).byteLength
+      : (candidate as ArrayBuffer).byteLength;
+    if (byteLength > OPENSSL_BIGNUM_MAX_BYTES) {
+      throw new NodeError(
+        "ERR_OSSL_BN_BIGNUM_TOO_LONG",
+        "bignum too long",
+      );
+    }
+    candidateBytes = candidate;
+  } else {
     throw new ERR_INVALID_ARG_TYPE(
       "candidate",
       [
@@ -151,22 +146,12 @@ export function checkPrimeSync(
     );
   }
 
-  return op_node_check_prime_bytes(candidate, checks);
+  return op_node_check_prime_bytes(candidateBytes, checks);
 }
 
-export interface GeneratePrimeOptions {
-  add?: LargeNumberLike | undefined;
-  rem?: LargeNumberLike | undefined;
-  /**
-   * @default false
-   */
-  safe?: boolean | undefined;
-  bigint?: boolean | undefined;
-}
-
-export function generatePrime(
+function generatePrime(
   size: number,
-  options: GeneratePrimeOptions = {},
+  options: any = {},
   callback?: (err: Error | null, prime: ArrayBuffer | bigint) => void,
 ) {
   validateInt32(size, "size", 1);
@@ -177,31 +162,55 @@ export function generatePrime(
   validateFunction(callback, "callback");
   const {
     bigint,
+    safe,
+    add,
+    rem,
   } = validateRandomPrimeJob(size, options);
-  op_node_gen_prime_async(size).then((prime: Uint8Array) =>
-    bigint ? arrayBufferToUnsignedBigInt(prime.buffer) : prime.buffer
-  ).then((prime: ArrayBuffer | bigint) => {
-    callback?.(null, prime);
-  });
+  op_node_gen_prime_async(size, safe, add ?? null, rem ?? null).then(
+    (prime: Uint8Array) => {
+      const result = bigint
+        ? arrayBufferToUnsignedBigInt(prime.buffer)
+        : prime.buffer;
+      callback?.(null, result);
+    },
+    (err: Error) => {
+      callback?.(err, null as unknown as ArrayBuffer);
+    },
+  );
 }
 
-export function generatePrimeSync(
+function generatePrimeSync(
   size: number,
-  options: GeneratePrimeOptions = {},
+  options: any = {},
 ): ArrayBuffer | bigint {
   const {
     bigint,
+    safe,
+    add,
+    rem,
   } = validateRandomPrimeJob(size, options);
 
-  const prime = op_node_gen_prime(size);
+  const prime = op_node_gen_prime(size, safe, add ?? null, rem ?? null);
   if (bigint) return arrayBufferToUnsignedBigInt(prime.buffer);
   return prime.buffer;
 }
 
+function toUint8Array(
+  value: ArrayBuffer | ArrayBufferView | Buffer,
+): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+  if (isArrayBufferView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return new Uint8Array(value);
+}
+
 function validateRandomPrimeJob(
   size: number,
-  options: GeneratePrimeOptions,
-): GeneratePrimeOptions {
+  options: any,
+): any {
   validateInt32(size, "size", 1);
   validateObject(options, "options");
 
@@ -251,32 +260,66 @@ function validateRandomPrimeJob(
     }
   }
 
-  // TODO(@littledivy): safe, add and rem options are not implemented.
-  if (safe || add || rem) {
-    notImplemented("safe, add and rem options are not implemented.");
+  const addBuf = add ? toUint8Array(add) : undefined;
+  const remBuf = rem ? toUint8Array(rem) : undefined;
+
+  if (addBuf) {
+    const addBitCount = bitCount(addBuf);
+    if (addBitCount === 0) {
+      throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.add");
+    }
+    if (addBitCount > size) {
+      throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.add");
+    }
+
+    if (remBuf) {
+      const addBigInt = bufferToBigInt(addBuf);
+      const remBigInt = bufferToBigInt(remBuf);
+      if (addBigInt <= remBigInt) {
+        throw new NodeRangeError("ERR_OUT_OF_RANGE", "invalid options.rem");
+      }
+    }
   }
 
   return {
     safe,
     bigint,
-    add,
-    rem,
+    add: addBuf,
+    rem: remBuf,
   };
 }
 
-/**
- * 48 is the ASCII code for '0', 97 is the ASCII code for 'a'.
- * @param {number} number An integer between 0 and 15.
- * @returns {number} corresponding to the ASCII code of the hex representation
- *                   of the parameter.
- */
+function bigintToBytes(n: bigint): Uint8Array {
+  if (n === 0n) return new Uint8Array([0]);
+  const hex = n.toString(16);
+  const padded = hex.length % 2 ? "0" + hex : hex;
+  const bytes = new Uint8Array(padded.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(padded.substring(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+function bufferToBigInt(buf: Uint8Array): bigint {
+  let result = 0n;
+  for (let i = 0; i < buf.length; i++) {
+    result = (result << 8n) | BigInt(buf[i]);
+  }
+  return result;
+}
+
+function bitCount(buf: Uint8Array): number {
+  for (let i = 0; i < buf.length; i++) {
+    if (buf[i] !== 0) {
+      return (buf.length - i) * 8 - Math.clz32(buf[i]) + 24;
+    }
+  }
+  return 0;
+}
+
 const numberToHexCharCode = (number: number): number =>
   (number < 10 ? 48 : 87) + number;
 
-/**
- * @param {ArrayBuffer} buf An ArrayBuffer.
- * @return {bigint}
- */
 function arrayBufferToUnsignedBigInt(buf: ArrayBuffer): bigint {
   const length = buf.byteLength;
   const chars: number[] = Array(length * 2);
@@ -296,12 +339,12 @@ function unsignedBigIntToBuffer(bigint: bigint, name: string) {
     throw new ERR_OUT_OF_RANGE(name, ">= 0", bigint);
   }
 
-  const hex = StringPrototypeToString(bigint, 16);
-  const padded = StringPrototypePadStart(hex, hex.length + (hex.length % 2), 0);
+  const hex = bigint.toString(16);
+  const padded = hex.padStart(hex.length + (hex.length % 2), "0");
   return Buffer.from(padded, "hex");
 }
 
-export function randomUUID(options) {
+function randomUUID(options) {
   if (options !== undefined) {
     validateObject(options, "options");
   }
@@ -314,7 +357,7 @@ export function randomUUID(options) {
   return globalThis.crypto.randomUUID();
 }
 
-export default {
+return {
   checkPrime,
   checkPrimeSync,
   generatePrime,
@@ -324,4 +367,16 @@ export default {
   randomBytes,
   randomFill,
   randomFillSync,
+  default: {
+    checkPrime,
+    checkPrimeSync,
+    generatePrime,
+    generatePrimeSync,
+    randomUUID,
+    randomInt,
+    randomBytes,
+    randomFill,
+    randomFillSync,
+  },
 };
+})();

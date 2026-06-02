@@ -1,21 +1,55 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "node:buffer";
+(function () {
+const { core } = __bootstrap;
 
-export const MAX_RANDOM_VALUES = 65536;
-export const MAX_SIZE = 4294967295;
+const { Buffer, kMaxLength } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
+const {
+  emitAfter,
+  emitBefore,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
+  newAsyncId,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const {
+  validateFunction,
+  validateNumber,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { ERR_OUT_OF_RANGE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
-function generateRandomBytes(size: number) {
-  if (size > MAX_SIZE) {
-    throw new RangeError(
-      `The value of "size" is out of range. It must be >= 0 && <= ${MAX_SIZE}. Received ${size}`,
+const lazyProcess = core.createLazyLoader("node:process");
+
+const MAX_RANDOM_VALUES = 65536;
+const kMaxInt32 = 2 ** 31 - 1;
+const kMaxPossibleLength = Math.min(kMaxLength, kMaxInt32);
+const MAX_SIZE = kMaxPossibleLength;
+
+// Mirrors Node's lib/internal/crypto/random.js assertSize() with
+// elementSize = 1, offset = 0, length = Infinity.
+function assertSize(size: number): number {
+  validateNumber(size, "size");
+
+  if (Number.isNaN(size) || size > kMaxPossibleLength || size < 0) {
+    throw new ERR_OUT_OF_RANGE(
+      "size",
+      `>= 0 && <= ${kMaxPossibleLength}`,
+      size,
     );
   }
 
-  const bytes = Buffer.allocUnsafe(size);
+  return size >>> 0;
+}
+
+function generateRandomBytes(size: number) {
+  const bytes = Buffer.allocUnsafeSlow(size);
 
   //Work around for getRandomValues max generation
   if (size > MAX_RANDOM_VALUES) {
@@ -34,41 +68,57 @@ function generateRandomBytes(size: number) {
 /**
  * @param size Buffer length, must be equal or greater than zero
  */
-export default function randomBytes(size: number): Buffer;
-export default function randomBytes(
-  size: number,
-  cb?: (err: Error | null, buf?: Buffer) => void,
-): void;
-export default function randomBytes(
+function randomBytes(
   size: number,
   cb?: (err: Error | null, buf?: Buffer) => void,
 ): Buffer | void {
+  size = assertSize(size);
+  if (cb !== undefined) {
+    validateFunction(cb, "callback");
+  }
   if (typeof cb === "function") {
     let err: Error | null = null, bytes: Buffer;
     try {
       bytes = generateRandomBytes(size);
     } catch (e) {
-      //NodeJS nonsense
-      //If the size is out of range it will throw sync, otherwise throw async
-      if (
-        e instanceof RangeError &&
-        e.message.includes('The value of "size" is out of range')
-      ) {
-        throw e;
-      } else if (e instanceof Error) {
+      if (e instanceof Error) {
         err = e;
       } else {
         err = new Error("[non-error thrown]");
       }
     }
-    setTimeout(() => {
-      if (err) {
-        cb(err);
-      } else {
-        cb(null, bytes);
+
+    // Set up async_hooks tracking
+    const asyncId = newAsyncId();
+    const triggerAsyncId = executionAsyncId();
+    const resource = {};
+    emitInit(asyncId, "RANDOMBYTESREQUEST", triggerAsyncId, resource);
+
+    const process = lazyProcess().default;
+    process.nextTick(() => {
+      emitBefore(asyncId);
+      try {
+        if (err) {
+          cb(err);
+        } else {
+          cb(null, bytes);
+        }
+      } catch (callbackErr) {
+        // If there's an active domain, emit error to it
+        if (process.domain && process.domain.listenerCount("error") > 0) {
+          process.domain.emit("error", callbackErr);
+        } else {
+          throw callbackErr;
+        }
+      } finally {
+        emitAfter(asyncId);
+        emitDestroy(asyncId);
       }
-    }, 0);
+    });
   } else {
     return generateRandomBytes(size);
   }
 }
+
+return { default: randomBytes, randomBytes, MAX_RANDOM_VALUES, MAX_SIZE };
+})();

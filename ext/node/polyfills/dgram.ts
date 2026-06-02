@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,14 +23,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "node:buffer";
-import { EventEmitter } from "node:events";
-import { lookup as defaultLookup } from "node:dns";
-import type {
-  ErrnoException,
-  NodeSystemErrorCtx,
-} from "ext:deno_node/internal/errors.ts";
-import {
+(function () {
+const { core } = __bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_FD_TYPE,
@@ -43,28 +40,38 @@ import {
   ERR_SOCKET_DGRAM_NOT_RUNNING,
   errnoException,
   exceptionWithHostPort,
-} from "ext:deno_node/internal/errors.ts";
-import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { kStateSymbol, newHandle } from "ext:deno_node/internal/dgram.ts";
-import type { SocketType } from "ext:deno_node/internal/dgram.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { kStateSymbol, newHandle } = core.loadExtScript(
+  "ext:deno_node/internal/dgram.ts",
+);
+const {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   ownerSymbol,
-} from "ext:deno_node/internal/async_hooks.ts";
-import { SendWrap, UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const { SendWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
+const {
   isInt32,
   validateAbortSignal,
   validateNumber,
   validatePort,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { nextTick } from "node:process";
-import { channel } from "node:diagnostics_channel";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+  validateUint32,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
+const { channel } = core.loadExtScript("ext:deno_node/diagnostics_channel.js");
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 const { UV_UDP_REUSEADDR, UV_UDP_IPV6ONLY } = os;
 
@@ -81,29 +88,29 @@ const CONNECT_STATE_CONNECTED = 2;
 const RECV_BUFFER = true;
 const SEND_BUFFER = false;
 
-export interface AddressInfo {
+interface AddressInfo {
   address: string;
   family: number;
   port: number;
 }
 
-export type MessageType = string | Uint8Array | Buffer | DataView;
+type MessageType = string | Uint8Array | Buffer | DataView;
 
-export type RemoteInfo = {
+type RemoteInfo = {
   address: string;
   family: "IPv4" | "IPv6";
   port: number;
   size?: number;
 };
 
-export interface BindOptions {
+interface BindOptions {
   port?: number;
   address?: string;
   exclusive?: boolean;
   fd?: number;
 }
 
-export interface SocketOptions extends Abortable {
+interface SocketOptions extends Abortable {
   type: SocketType;
   reuseAddr?: boolean;
   /**
@@ -152,7 +159,7 @@ const isBindOptions = (options: unknown): options is BindOptions =>
  * New instances of `dgram.Socket` are created using `createSocket`.
  * The `new` keyword is not to be used to create `dgram.Socket` instances.
  */
-export class Socket extends EventEmitter {
+class Socket extends EventEmitter {
   [asyncIdSymbol]!: number;
   [kStateSymbol]!: SocketInternalState;
 
@@ -174,6 +181,15 @@ export class Socket extends EventEmitter {
       options = type;
       type = options.type;
       lookup = options.lookup;
+      // Match Node: validate buffer sizes before any handle setup so a
+      // bad value produces ERR_INVALID_ARG_TYPE rather than a cast error
+      // from the native op (see lib/dgram.js).
+      if (options.recvBufferSize) {
+        validateUint32(options.recvBufferSize, "options.recvBufferSize");
+      }
+      if (options.sendBufferSize) {
+        validateUint32(options.sendBufferSize, "options.sendBufferSize");
+      }
       recvBufferSize = options.recvBufferSize;
       sendBufferSize = options.sendBufferSize;
     }
@@ -528,7 +544,10 @@ export class Socket extends EventEmitter {
       return this;
     }
 
-    healthCheck(this);
+    if (!state.handle) {
+      return this;
+    }
+
     stopReceiving(this);
 
     state.handle!.close(() => {
@@ -960,8 +979,8 @@ export class Socket extends EventEmitter {
     if (typeof address === "function") {
       callback = address;
       address = undefined;
-    } else if (address && typeof address !== "string") {
-      throw new ERR_INVALID_ARG_TYPE("address", ["string", "falsy"], address);
+    } else if (address != null) {
+      validateString(address, "address");
     }
 
     healthCheck(this);
@@ -1002,6 +1021,29 @@ export class Socket extends EventEmitter {
     } else {
       afterDns(null, "");
     }
+  }
+
+  sendto(
+    buffer: unknown,
+    offset: unknown,
+    length: unknown,
+    port: unknown,
+    address: unknown,
+    callback?: unknown,
+  ) {
+    validateNumber(offset, "offset");
+    validateNumber(length, "length");
+    validateNumber(port, "port");
+    validateString(address, "address");
+
+    this.send(
+      buffer as MessageType,
+      offset as number,
+      length as number,
+      port as number,
+      address as string,
+      callback as (error: ErrnoException | null, bytes?: number) => void,
+    );
   }
 
   /**
@@ -1191,7 +1233,72 @@ export class Socket extends EventEmitter {
 
     return this;
   }
+
+  [Symbol.asyncDispose](): Promise<void> {
+    const state = this[kStateSymbol];
+    if (!state.handle) {
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      this.close(() => resolve());
+    });
+  }
 }
+
+// Deprecated properties (DEP0112)
+const deprecatedProps = [
+  "_handle",
+  "_receiving",
+  "_bindState",
+  "_queue",
+  "_reuseAddr",
+];
+const stateKeys: Record<string, string> = {
+  _handle: "handle",
+  _receiving: "receiving",
+  _bindState: "bindState",
+  _queue: "queue",
+  _reuseAddr: "reuseAddr",
+};
+
+for (const prop of deprecatedProps) {
+  Object.defineProperty(Socket.prototype, prop, {
+    get: deprecate(
+      function (this: Socket) {
+        return this[kStateSymbol][stateKeys[prop] as keyof SocketInternalState];
+      },
+      `Socket.prototype.${prop} is deprecated`,
+      "DEP0112",
+    ),
+    set: deprecate(
+      function (this: Socket, val: unknown) {
+        // deno-lint-ignore no-explicit-any
+        (this[kStateSymbol] as any)[stateKeys[prop]] = val;
+      },
+      `Socket.prototype.${prop} is deprecated`,
+      "DEP0112",
+    ),
+    configurable: true,
+    enumerable: false,
+  });
+}
+
+Socket.prototype._healthCheck = deprecate(
+  function (this: Socket) {
+    healthCheck(this);
+  },
+  "Socket.prototype._healthCheck() is deprecated",
+  "DEP0112",
+);
+
+Socket.prototype._stopReceiving = deprecate(
+  function (this: Socket) {
+    stopReceiving(this);
+  },
+  "Socket.prototype._stopReceiving() is deprecated",
+  "DEP0112",
+);
 
 /**
  * Creates a `dgram.Socket` object. Once the socket is created, calling
@@ -1219,15 +1326,15 @@ export class Socket extends EventEmitter {
  * @param options
  * @param callback Attached as a listener for `'message'` events. Optional.
  */
-export function createSocket(
+function createSocket(
   type: SocketType,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket;
-export function createSocket(
+function createSocket(
   type: SocketOptions,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket;
-export function createSocket(
+function createSocket(
   type: SocketType | SocketOptions,
   listener?: (msg: Buffer, rinfo: RemoteInfo) => void,
 ): Socket {
@@ -1548,9 +1655,12 @@ function afterSend(this: SendWrap, err: number | null, sent?: number) {
   this.callback(ex, sent);
 }
 
-export type { SocketType };
-
-export default {
+return {
+  default: {
+    createSocket,
+    Socket,
+  },
   createSocket,
   Socket,
 };
+})();

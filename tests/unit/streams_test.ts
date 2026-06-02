@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assertEquals,
   assertRejects,
@@ -6,6 +6,10 @@ import {
   fail,
 } from "./test_util.ts";
 
+// `resourceForReadableStream` is registered on the internals object only when
+// `ext:deno_web/06_streams.js` first evaluates, which is now lazy. Touch the
+// lazy `ReadableStream` global so the polyfill loads before we read it below.
+const { ReadableStream: _ReadableStream } = globalThis;
 const {
   core,
   resourceForReadableStream,
@@ -71,7 +75,7 @@ function longStream() {
 
 // Long stream with Lorem Ipsum text.
 function longAsyncStream(cancelResolve?: (value: unknown) => void) {
-  let currentTimeout: number | undefined = undefined;
+  let currentTimeout: NodeJS.Timeout | undefined = undefined;
   return new ReadableStream({
     async start(controller) {
       for (let i = 0; i < 100; i++) {
@@ -487,6 +491,7 @@ Deno.test(async function compressionStreamWritableMayBeAborted() {
     new CompressionStream("gzip").writable.getWriter().abort(),
     new CompressionStream("deflate").writable.getWriter().abort(),
     new CompressionStream("deflate-raw").writable.getWriter().abort(),
+    new CompressionStream("brotli").writable.getWriter().abort(),
   ]);
 });
 
@@ -495,6 +500,7 @@ Deno.test(async function compressionStreamReadableMayBeCancelled() {
     new CompressionStream("gzip").readable.getReader().cancel(),
     new CompressionStream("deflate").readable.getReader().cancel(),
     new CompressionStream("deflate-raw").readable.getReader().cancel(),
+    new CompressionStream("brotli").readable.getReader().cancel(),
   ]);
 });
 
@@ -503,6 +509,7 @@ Deno.test(async function decompressionStreamWritableMayBeAborted() {
     new DecompressionStream("gzip").writable.getWriter().abort(),
     new DecompressionStream("deflate").writable.getWriter().abort(),
     new DecompressionStream("deflate-raw").writable.getWriter().abort(),
+    new DecompressionStream("brotli").writable.getWriter().abort(),
   ]);
 });
 
@@ -511,6 +518,7 @@ Deno.test(async function decompressionStreamReadableMayBeCancelled() {
     new DecompressionStream("gzip").readable.getReader().cancel(),
     new DecompressionStream("deflate").readable.getReader().cancel(),
     new DecompressionStream("deflate-raw").readable.getReader().cancel(),
+    new DecompressionStream("brotli").readable.getReader().cancel(),
   ]);
 });
 
@@ -527,6 +535,37 @@ Deno.test(async function decompressionStreamValidGzipDoesNotThrow() {
     result = new Uint8Array([...result, ...chunk]);
   }
   assertEquals(result, new Uint8Array([1]));
+});
+
+Deno.test(async function decompressionStreamValidBrotliDoesNotThrow() {
+  const cs = new CompressionStream("brotli");
+  const ds = new DecompressionStream("brotli");
+  cs.readable.pipeThrough(ds);
+  const writer = cs.writable.getWriter();
+  await writer.write(new Uint8Array([1]));
+  writer.releaseLock();
+  await cs.writable.close();
+  let result = new Uint8Array();
+  for await (const chunk of ds.readable.values()) {
+    result = new Uint8Array([...result, ...chunk]);
+  }
+  assertEquals(result, new Uint8Array([1]));
+});
+
+Deno.test(async function brotliCompressionDecompressionRoundTrip() {
+  const original = new TextEncoder().encode(LOREM);
+  const cs = new CompressionStream("brotli");
+  const ds = new DecompressionStream("brotli");
+  cs.readable.pipeThrough(ds);
+  const writer = cs.writable.getWriter();
+  await writer.write(original);
+  writer.releaseLock();
+  await cs.writable.close();
+  let result = new Uint8Array();
+  for await (const chunk of ds.readable.values()) {
+    result = new Uint8Array([...result, ...chunk]);
+  }
+  assertEquals(result, original);
 });
 
 Deno.test(async function decompressionStreamInvalidGzipStillReported() {
@@ -585,7 +624,7 @@ Deno.test(async function readableStreamFromWithStringThrows() {
   function startUpstreamServer() {
     Deno.serve({ port: upstreamServerPort, signal: stopSignal.signal }, (_) => {
       // Create an infinite readable stream that emits 'a'
-      let pushTimeout: number | null = null;
+      let pushTimeout: NodeJS.Timeout | null = null;
       const readableStream = new ReadableStream({
         start(controller) {
           const encoder = new TextEncoder();
@@ -719,4 +758,33 @@ Deno.test(async function readableStreamEmittingManyChunks() {
     .pipeTo(child.stdin);
 
   assertEquals((await child.status).code, 0, "memory leak");
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33476
+// `ReadableStreamBYOBRequest.view` is always constructed as a Uint8Array
+// (matching whatwg/streams#1367), so its type should be narrowed from
+// `ArrayBufferView | null` to `Uint8Array<ArrayBuffer> | null`. The runtime
+// check verifies the actual value, and the variable annotation acts as a
+// compile-time check via `deno check`.
+Deno.test("ReadableStreamBYOBRequest.view is a Uint8Array", async () => {
+  let viewIsUint8Array = false;
+  const stream = new ReadableStream({
+    type: "bytes",
+    pull(controller) {
+      const byobReq = controller.byobRequest;
+      if (byobReq === null) return;
+      // Compile-time type check: this assignment must succeed against the
+      // narrowed signature.
+      const view: Uint8Array<ArrayBuffer> | null = byobReq.view;
+      viewIsUint8Array = view instanceof Uint8Array;
+      view![0] = 42;
+      byobReq.respond(1);
+    },
+  });
+  const reader = stream.getReader({ mode: "byob" });
+  const result = await reader.read(new Uint8Array(8));
+  reader.releaseLock();
+  assertEquals(viewIsUint8Array, true);
+  assertEquals(result.value!.byteLength, 1);
+  assertEquals(result.value![0], 42);
 });

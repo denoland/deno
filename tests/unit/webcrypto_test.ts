@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
   assert,
   assertEquals,
   assertNotEquals,
   assertRejects,
+  assertThrows,
 } from "./test_util.ts";
 
 // https://github.com/denoland/deno/issues/11664
@@ -2016,6 +2017,29 @@ Deno.test(async function testECspkiRoundTrip() {
   await crypto.subtle.importKey("spki", spki, alg, true, []);
 });
 
+// https://github.com/denoland/deno/issues/34044
+Deno.test(async function p521CompressedSpkiExportsUncompressed() {
+  // deno-fmt-ignore
+  const compressedSpki = new Uint8Array([
+    48, 88, 48, 16, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 5, 43, 129, 4, 0, 35, 3, 68, 0, 3, 1, 86, 244, 121, 248, 223, 30, 32, 167, 255, 192, 76, 228, 32, 195, 225, 84, 174, 37, 25, 150, 190, 228, 47, 3, 75, 132, 212, 27, 116, 63, 52, 228, 95, 49, 27, 129, 58, 156, 222, 200, 205, 165, 155, 187, 189, 49, 212, 96, 179, 41, 37, 33, 231, 193, 183, 34, 229, 102, 124, 3, 219, 47, 174, 117, 63,
+  ]);
+
+  const key = await crypto.subtle.importKey(
+    "spki",
+    compressedSpki,
+    { name: "ECDSA", namedCurve: "P-521" },
+    true,
+    ["verify"],
+  );
+  const exported = new Uint8Array(await crypto.subtle.exportKey("spki", key));
+
+  // deno-fmt-ignore
+  const expected = new Uint8Array([
+    48, 129, 155, 48, 16, 6, 7, 42, 134, 72, 206, 61, 2, 1, 6, 5, 43, 129, 4, 0, 35, 3, 129, 134, 0, 4, 1, 86, 244, 121, 248, 223, 30, 32, 167, 255, 192, 76, 228, 32, 195, 225, 84, 174, 37, 25, 150, 190, 228, 47, 3, 75, 132, 212, 27, 116, 63, 52, 228, 95, 49, 27, 129, 58, 156, 222, 200, 205, 165, 155, 187, 189, 49, 212, 96, 179, 41, 37, 33, 231, 193, 183, 34, 229, 102, 124, 3, 219, 47, 174, 117, 63, 1, 80, 23, 54, 207, 226, 71, 57, 67, 32, 216, 228, 175, 194, 253, 57, 181, 169, 51, 16, 97, 184, 30, 34, 65, 40, 43, 158, 23, 137, 24, 34, 181, 183, 158, 5, 47, 69, 151, 181, 150, 67, 253, 57, 55, 156, 81, 189, 81, 37, 196, 244, 139, 195, 240, 37, 206, 60, 211, 105, 83, 40, 108, 203, 56, 251,
+  ]);
+  assertEquals(exported, expected);
+});
+
 Deno.test(async function testHmacJwkImport() {
   await crypto.subtle.importKey(
     "jwk",
@@ -2146,6 +2170,36 @@ Deno.test(async function jwkKeyOpsValidation() {
   assert(publicKey);
 });
 
+// https://github.com/denoland/deno/issues/26431
+Deno.test(async function p521ExportJwkPrivateKeyRoundTrip() {
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-521" },
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+
+  const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+  assertEquals(jwk.kty, "EC");
+  assertEquals(jwk.crv, "P-521");
+  assert(jwk.x);
+  assert(jwk.y);
+  assert(jwk.d);
+
+  const imported = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "ECDSA", namedCurve: "P-521" },
+    true,
+    ["sign"],
+  );
+  assertEquals(imported.type, "private");
+
+  const reExported = await crypto.subtle.exportKey("jwk", imported);
+  assertEquals(reExported.x, jwk.x);
+  assertEquals(reExported.y, jwk.y);
+  assertEquals(reExported.d, jwk.d);
+});
+
 Deno.test(async function x25519ExportJwk() {
   const keyPair = await crypto.subtle.generateKey(
     {
@@ -2161,4 +2215,690 @@ Deno.test(async function x25519ExportJwk() {
   assertEquals(jwk.crv, "X25519");
   assert(jwk.d);
   assert(jwk.x);
+});
+
+// https://github.com/denoland/deno/issues/32330
+Deno.test(async function testSha3DigestAlgorithms() {
+  function toHex(buf: ArrayBuffer): string {
+    return [...new Uint8Array(buf)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  const data = new TextEncoder().encode("Hello, Deno!");
+
+  // SHA3-256 produces 32 bytes
+  // deno-lint-ignore camelcase
+  const sha3_256 = await crypto.subtle.digest("SHA3-256", data);
+  assertEquals(sha3_256.byteLength, 32);
+
+  // SHA3-384 produces 48 bytes
+  // deno-lint-ignore camelcase
+  const sha3_384 = await crypto.subtle.digest("SHA3-384", data);
+  assertEquals(sha3_384.byteLength, 48);
+
+  // SHA3-512 produces 64 bytes
+  // deno-lint-ignore camelcase
+  const sha3_512 = await crypto.subtle.digest("SHA3-512", data);
+  assertEquals(sha3_512.byteLength, 64);
+
+  // Verify deterministic: same input always gives same output
+  // deno-lint-ignore camelcase
+  const sha3_256_again = await crypto.subtle.digest("SHA3-256", data);
+  assertEquals(toHex(sha3_256), toHex(sha3_256_again));
+});
+
+Deno.test(async function testSha3DigestKnownVectors() {
+  function toHex(buf: ArrayBuffer): string {
+    return [...new Uint8Array(buf)]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  // Empty input test vectors (from NIST)
+  const empty = new Uint8Array(0);
+
+  assertEquals(
+    toHex(await crypto.subtle.digest("SHA3-256", empty)),
+    "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a",
+  );
+  assertEquals(
+    toHex(await crypto.subtle.digest("SHA3-384", empty)),
+    "0c63a75b845e4f7d01107d852e4c2485c51a50aaaa94fc61995e71bbee983a2ac3713831264adb47fb6bd1e058d5f004",
+  );
+  assertEquals(
+    toHex(await crypto.subtle.digest("SHA3-512", empty)),
+    "a69f73cca23a9ac5c8b567dc185a756e97c982164fe25859e0d1dcc1475c80a615b2123af1f5f94c11e3e9402c3ac558f500199d95b6d3e301758586281dcd26",
+  );
+});
+
+Deno.test(async function testSha3DigestVariousInputTypes() {
+  const text = new TextEncoder().encode("test");
+  const expected = await crypto.subtle.digest("SHA3-256", text);
+
+  // ArrayBuffer input
+  const fromBuffer = await crypto.subtle.digest("SHA3-256", text.buffer);
+  assertEquals(
+    new Uint8Array(fromBuffer),
+    new Uint8Array(expected),
+  );
+
+  // DataView input
+  const fromDataView = await crypto.subtle.digest(
+    "SHA3-256",
+    new DataView(text.buffer),
+  );
+  assertEquals(
+    new Uint8Array(fromDataView),
+    new Uint8Array(expected),
+  );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/30243
+// Importing a PKCS#8 RSA key with the wrong algorithm (ECDSA) should throw, not panic.
+Deno.test("crypto.subtle.importKey PKCS#8 with wrong algorithm does not panic", async () => {
+  const rsaKey = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  const pkcs8 = await crypto.subtle.exportKey("pkcs8", rsaKey.privateKey);
+
+  await assertRejects(() =>
+    crypto.subtle.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign"],
+    )
+  );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33032
+// Importing a raw X25519 public key whose length is not 32 bytes
+// must throw a DataError DOMException, not panic.
+Deno.test(async function x25519ImportRawInvalidLength() {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "X25519",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(33),
+        "X25519",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
+// Importing a raw X448 public key whose length is not 56 bytes
+// must throw a DataError DOMException, not panic.
+Deno.test(async function x448ImportRawInvalidLength() {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "X448",
+        false,
+        [],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
+// Importing a raw Ed25519 public key whose length is not 32 bytes
+// must throw a DataError DOMException, not panic.
+Deno.test(async function ed25519ImportRawInvalidLength() {
+  await assertRejects(
+    () =>
+      crypto.subtle.importKey(
+        "raw",
+        new Uint8Array(0),
+        "Ed25519",
+        false,
+        ["verify"],
+      ),
+    DOMException,
+    "Invalid key data",
+  );
+});
+
+// Regression test: end-user code cannot construct `Crypto`, `SubtleCrypto`,
+// or `CryptoKey` directly. Each must throw a `TypeError` with
+// `code: 'ERR_ILLEGAL_CONSTRUCTOR'`, matching Node and the upstream
+// `parallel/test-webcrypto-constructors.js` shape.
+Deno.test("crypto constructors throw ERR_ILLEGAL_CONSTRUCTOR", () => {
+  for (
+    const [Ctor, label] of [
+      [CryptoKey, "CryptoKey"],
+      [SubtleCrypto, "SubtleCrypto"],
+      [Crypto, "Crypto"],
+    ] as const
+  ) {
+    const err = assertThrows(
+      () => new Ctor(),
+      TypeError,
+      "Illegal constructor",
+      `${label}: expected TypeError`,
+    );
+    assertEquals(
+      // deno-lint-ignore no-explicit-any
+      (err as any).code,
+      "ERR_ILLEGAL_CONSTRUCTOR",
+      `${label}: code`,
+    );
+  }
+});
+
+// Tests for WICG "Modern Algorithms in the Web Cryptography API"
+// https://wicg.github.io/webcrypto-modern-algos/
+//
+// The lib.dom.d.ts shipped in Deno reflects the current Web Crypto IDL,
+// which does not yet include the WICG modern-algorithms additions. Until
+// those land upstream, parameter dictionaries for the new algorithms are
+// cast to AlgorithmIdentifier here.
+// deno-lint-ignore no-explicit-any
+type AnyAlg = any;
+
+Deno.test(async function chaCha20Poly1305RoundTrip() {
+  const key = await crypto.subtle.generateKey(
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
+    true,
+    ["encrypt", "decrypt"],
+  ) as unknown as CryptoKey;
+  assertEquals(key.algorithm.name, "ChaCha20-Poly1305");
+  assertEquals(key.type, "secret");
+
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode("Hello, ChaCha20-Poly1305!");
+  const aad = new TextEncoder().encode("authentic-aad");
+
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "ChaCha20-Poly1305", nonce, additionalData: aad } as AnyAlg,
+    key,
+    plaintext,
+  );
+  // Ciphertext includes the 16-byte Poly1305 tag.
+  assertEquals(ciphertext.byteLength, plaintext.byteLength + 16);
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "ChaCha20-Poly1305", nonce, additionalData: aad } as AnyAlg,
+    key,
+    ciphertext,
+  );
+  assertEquals(new Uint8Array(decrypted), plaintext);
+});
+
+Deno.test(async function chaCha20Poly1305TamperDetected() {
+  const key = await crypto.subtle.generateKey(
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
+    true,
+    ["encrypt", "decrypt"],
+  ) as unknown as CryptoKey;
+  const nonce = new Uint8Array(12);
+  const plaintext = new Uint8Array([1, 2, 3, 4]);
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "ChaCha20-Poly1305", nonce } as AnyAlg,
+      key,
+      plaintext,
+    ),
+  );
+  // Flip a bit in the ciphertext to corrupt the tag.
+  ciphertext[ciphertext.length - 1] ^= 1;
+  await assertRejects(() =>
+    crypto.subtle.decrypt(
+      { name: "ChaCha20-Poly1305", nonce } as AnyAlg,
+      key,
+      ciphertext,
+    ), DOMException);
+});
+
+Deno.test(async function chaCha20Poly1305RejectsBadNonceLength() {
+  const key = await crypto.subtle.generateKey(
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
+    true,
+    ["encrypt", "decrypt"],
+  ) as unknown as CryptoKey;
+  const badNonce = new Uint8Array(11); // not 12
+  await assertRejects(() =>
+    crypto.subtle.encrypt(
+      { name: "ChaCha20-Poly1305", nonce: badNonce } as AnyAlg,
+      key,
+      new Uint8Array(1),
+    ), DOMException);
+});
+
+Deno.test(async function chaCha20Poly1305ImportRawKey() {
+  const raw = new Uint8Array(32).fill(0x42);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    raw,
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const exported = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+  assertEquals(exported, raw);
+});
+
+Deno.test(async function hmacSha3SignVerify() {
+  for (const hash of ["SHA3-256", "SHA3-384", "SHA3-512"]) {
+    const key = await crypto.subtle.generateKey(
+      { name: "HMAC", hash },
+      true,
+      ["sign", "verify"],
+    ) as CryptoKey;
+    const data = new TextEncoder().encode("modern algorithms");
+    const sig = await crypto.subtle.sign("HMAC", key, data);
+    const ok = await crypto.subtle.verify("HMAC", key, sig, data);
+    assert(ok, `HMAC ${hash} verify`);
+  }
+});
+
+Deno.test(async function shakeDigest() {
+  const data = new Uint8Array(0);
+  // SHAKE128 of empty produces, for 256 bits:
+  // 7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26
+  // (NIST test vector)
+  const shake128 = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "SHAKE128", length: 256 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(shake128.length, 32);
+  assertEquals(
+    [...shake128].map((b) => b.toString(16).padStart(2, "0")).join(""),
+    "7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26",
+  );
+
+  // SHAKE256 with 512 bits.
+  const shake256 = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "SHAKE256", length: 512 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(shake256.length, 64);
+});
+
+Deno.test(async function cshakeDigest() {
+  // cSHAKE with empty function name and empty customization equals SHAKE.
+  const data = new TextEncoder().encode("hello");
+  const shake = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "SHAKE128", length: 128 } as AnyAlg,
+      data,
+    ),
+  );
+  const cshake = new Uint8Array(
+    await crypto.subtle.digest(
+      {
+        name: "cSHAKE128",
+        length: 128,
+        functionName: new Uint8Array(0),
+        customization: new Uint8Array(0),
+      } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(shake, cshake);
+
+  // Non-empty customization changes the output.
+  const customized = new Uint8Array(
+    await crypto.subtle.digest(
+      {
+        name: "cSHAKE128",
+        length: 128,
+        customization: new TextEncoder().encode("Email Signature"),
+      } as AnyAlg,
+      data,
+    ),
+  );
+  assert(customized.length === 16);
+  // Must differ from plain SHAKE.
+  let differs = false;
+  for (let i = 0; i < shake.length; i++) {
+    if (shake[i] !== customized[i]) {
+      differs = true;
+      break;
+    }
+  }
+  assert(differs);
+});
+
+Deno.test(async function turboShakeDigest() {
+  const data = new TextEncoder().encode("hello");
+  const ts128 = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "TurboSHAKE128", length: 256 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(ts128.length, 32);
+
+  // Different domain separation byte produces different output.
+  const ts128Alt = new Uint8Array(
+    await crypto.subtle.digest(
+      {
+        name: "TurboSHAKE128",
+        length: 256,
+        domainSeparation: 0x06,
+      } as AnyAlg,
+      data,
+    ),
+  );
+  assert(ts128.length === ts128Alt.length);
+  let differs = false;
+  for (let i = 0; i < ts128.length; i++) {
+    if (ts128[i] !== ts128Alt[i]) {
+      differs = true;
+      break;
+    }
+  }
+  assert(differs);
+});
+
+// ML-KEM (FIPS 203) — post-quantum key encapsulation.
+// https://wicg.github.io/webcrypto-modern-algos/#ml-kem
+
+// deno-lint-ignore no-explicit-any
+const subtleAny = crypto.subtle as any;
+
+const ML_KEM_VARIANTS = [
+  { name: "ML-KEM-512", pubLen: 800, privLen: 1632, ctLen: 768 },
+  { name: "ML-KEM-768", pubLen: 1184, privLen: 2400, ctLen: 1088 },
+  { name: "ML-KEM-1024", pubLen: 1568, privLen: 3168, ctLen: 1568 },
+] as const;
+
+for (const variant of ML_KEM_VARIANTS) {
+  Deno.test(`mlKemGenerateAndRoundTrip:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      [
+        "encapsulateKey",
+        "encapsulateBits",
+        "decapsulateKey",
+        "decapsulateBits",
+      ],
+    ) as CryptoKeyPair;
+    assertEquals(kp.publicKey.algorithm.name, variant.name);
+    assertEquals(kp.privateKey.algorithm.name, variant.name);
+    assertEquals(kp.publicKey.type, "public");
+    assertEquals(kp.privateKey.type, "private");
+
+    // encapsulateBits / decapsulateBits round trip.
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    assertEquals(enc.ciphertext.byteLength, variant.ctLen);
+    assertEquals(enc.sharedKey.byteLength, 32);
+
+    const decBits = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      kp.privateKey,
+      enc.ciphertext,
+    );
+    assertEquals(decBits.byteLength, 32);
+    assertEquals(new Uint8Array(decBits), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemEncapsulateKeyDecapsulateKey:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      [
+        "encapsulateKey",
+        "decapsulateKey",
+      ],
+    ) as CryptoKeyPair;
+
+    const { ciphertext, sharedKey: senderKey } = await subtleAny.encapsulateKey(
+      { name: variant.name },
+      kp.publicKey,
+      { name: "HMAC", hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    );
+
+    const receiverKey = await subtleAny.decapsulateKey(
+      { name: variant.name },
+      kp.privateKey,
+      ciphertext,
+      { name: "HMAC", hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    );
+
+    // Sender signs, receiver verifies — proves both ends derived the same key.
+    const data = new TextEncoder().encode("post-quantum hello");
+    const sig = await crypto.subtle.sign("HMAC", senderKey, data);
+    const ok = await crypto.subtle.verify("HMAC", receiverKey, sig, data);
+    assert(ok, `HMAC verify with decapsulated key for ${variant.name}`);
+  });
+
+  Deno.test(`mlKemImportExportRawPublic:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const exported = new Uint8Array(
+      await subtleAny.exportKey("raw-public", kp.publicKey),
+    );
+    assertEquals(exported.length, variant.pubLen);
+
+    const reimported = await subtleAny.importKey(
+      "raw-public",
+      exported,
+      { name: variant.name },
+      true,
+      ["encapsulateBits"],
+    );
+    assertEquals(reimported.algorithm.name, variant.name);
+    assertEquals(reimported.type, "public");
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      reimported,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      kp.privateKey,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemImportExportRawPrivate:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const exported = new Uint8Array(
+      await subtleAny.exportKey("raw-private", kp.privateKey),
+    );
+    assertEquals(exported.length, variant.privLen);
+
+    const reimported = await subtleAny.importKey(
+      "raw-private",
+      exported,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+    assertEquals(reimported.algorithm.name, variant.name);
+    assertEquals(reimported.type, "private");
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      reimported,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemImportExportPkcs8Spki:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const spki = new Uint8Array(
+      await subtleAny.exportKey("spki", kp.publicKey),
+    );
+    const pkcs8 = new Uint8Array(
+      await subtleAny.exportKey("pkcs8", kp.privateKey),
+    );
+
+    const reimportedPub = await subtleAny.importKey(
+      "spki",
+      spki,
+      { name: variant.name },
+      true,
+      ["encapsulateBits"],
+    );
+    const reimportedPriv = await subtleAny.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      reimportedPub,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      reimportedPriv,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemGetPublicKey:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    // deno-lint-ignore no-explicit-any
+    const derivedPub = (kp.privateKey as any).getPublicKey() as CryptoKey;
+    assertEquals(derivedPub.type, "public");
+    assertEquals(derivedPub.algorithm.name, variant.name);
+
+    const originalPubBytes = new Uint8Array(
+      await subtleAny.exportKey("raw-public", kp.publicKey),
+    );
+    const derivedPubBytes = new Uint8Array(
+      await subtleAny.exportKey("raw-public", derivedPub),
+    );
+    assertEquals(derivedPubBytes, originalPubBytes);
+  });
+
+  Deno.test(`mlKemTamperedCiphertextRejected:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    // Flip a bit somewhere in the middle of the ciphertext. ML-KEM uses
+    // implicit rejection: corrupted ciphertexts decapsulate to a pseudo-random
+    // value rather than throwing, so just check that the result differs.
+    const corrupt = new Uint8Array(enc.ciphertext);
+    corrupt[corrupt.length >> 1] ^= 0x01;
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      kp.privateKey,
+      corrupt,
+    );
+    const expected = new Uint8Array(enc.sharedKey);
+    const got = new Uint8Array(dec);
+    let equal = got.length === expected.length;
+    for (let i = 0; equal && i < got.length; i++) {
+      if (got[i] !== expected[i]) equal = false;
+    }
+    assert(!equal, `Tampered ciphertext should yield different shared key`);
+  });
+
+  Deno.test(`mlKemBadCiphertextLengthRejected:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    ) as CryptoKeyPair;
+    await assertRejects(() =>
+      subtleAny.decapsulateBits(
+        { name: variant.name },
+        kp.privateKey,
+        new Uint8Array(variant.ctLen - 1),
+      ), DOMException);
+  });
+}
+
+Deno.test(async function mlKemAlgorithmMismatchRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  await assertRejects(() =>
+    subtleAny.encapsulateBits({ name: "ML-KEM-768" }, kp.publicKey)
+  );
+});
+
+Deno.test(async function mlKemRawSeedNotYetSupported() {
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "raw-seed",
+        new Uint8Array(64),
+        { name: "ML-KEM-512" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
 });

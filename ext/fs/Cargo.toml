@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_fs"
-version = "0.135.0"
+version = "0.159.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,7 +18,6 @@ sync_fs = ["deno_maybe_sync/sync"]
 
 [dependencies]
 async-trait.workspace = true
-base32.workspace = true
 boxed_error.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
@@ -38,5 +37,5 @@ nix = { workspace = true, features = ["fs", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase"] }
-windows-sys.workspace = true
 junction.workspace = true
+windows-sys = { workspace = true, features = ["Win32_Storage_FileSystem"] }

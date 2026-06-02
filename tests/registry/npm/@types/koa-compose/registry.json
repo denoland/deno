@@ -1,0 +1,55 @@
+{
+  "name": "@types/koa-compose",
+  "dist-tags": {
+    "ts6.0": "3.2.9",
+    "ts5.3": "3.2.9",
+    "ts5.7": "3.2.9",
+    "ts5.6": "3.2.9",
+    "ts5.9": "3.2.9",
+    "ts5.8": "3.2.9",
+    "ts5.5": "3.2.9",
+    "ts5.2": "3.2.9",
+    "latest": "3.2.9",
+    "ts5.4": "3.2.9"
+  },
+  "versions": {
+    "3.2.9": {
+      "name": "@types/koa-compose",
+      "version": "3.2.9",
+      "license": "MIT",
+      "_id": "@types/koa-compose@3.2.9",
+      "dist": {
+        "shasum": "6efb945ee5573be0f4eddb728a2f6826f7a3f395",
+        "tarball": "http://localhost:4260/@types/koa-compose/koa-compose-3.2.9.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-BroAZ9FTvPiCy0Pi8tjD1OfJ7bgU1gQf0eR6e1Vm+JJATy9eKOG3hQMFtMciMawiSOVnLMdmUOC46s7HBhSTsA==",
+        "unpackedSize": 7764
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/koa-compose"
+      },
+      "description": "TypeScript definitions for koa-compose",
+      "directories": {},
+      "dependencies": {
+        "@types/koa": "*"
+      },
+      "_hasShrinkwrap": false,
+      "peerDependencies": {},
+      "typeScriptVersion": "5.2",
+      "typesPublisherContentHash": "bc3ce762435b99eb3b2c76fff560c74872741a0fc8b4d9400c93fe4a880802c8"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/koa-compose",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/koa-compose"
+  },
+  "description": "TypeScript definitions for koa-compose"
+}

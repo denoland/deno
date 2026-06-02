@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -40,7 +40,14 @@ declare namespace Deno {
     /** Waits for and resolves to the next connection to the `Listener`. */
     accept(): Promise<T>;
     /** Close closes the listener. Any pending accept promises will be rejected
-     * with errors. */
+     * with errors. A pending async iterator `next()` call will settle after the
+     * underlying accept promise is rejected.
+     *
+     * If the listener has a pending accept operation, the underlying socket may
+     * not be released until the pending promise is rejected. If you need to
+     * listen on the same address immediately after closing the listener, await
+     * the pending accept promise before calling {@linkcode Deno.listen} again.
+     */
     close(): void;
     /** Return the address of the `Listener`. */
     readonly addr: A;

@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-import { core, primordials } from "ext:core/mod.js";
-import { op_read_line_prompt } from "ext:core/ops";
+// Copyright 2018-2026 the Deno authors. MIT license.
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_read_line_prompt } = core.ops;
 const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
   primordials;
 
-import { stdin } from "ext:deno_io/12_io.js";
+const { stdin } = core.loadExtScript("ext:deno_io/12_io.js");
 
 const LF = StringPrototypeCharCodeAt("\n", 0);
 const CR = StringPrototypeCharCodeAt("\r", 0);
@@ -69,4 +70,5 @@ function readLineFromStdinSync() {
   return core.decode(new Uint8Array(buf));
 }
 
-export { alert, confirm, prompt };
+return { alert, confirm, prompt };
+})();

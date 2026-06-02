@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -6,30 +6,27 @@ use std::future::Future;
 use std::future::poll_fn;
 use std::io;
 use std::pin::Pin;
-use std::ptr::null;
 use std::rc::Rc;
 
 use bytes::Bytes;
 use bytes::BytesMut;
-use cache_control::CacheControl;
 use deno_core::AsyncMut;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::ExternalPointer;
+use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::convert::ByteString;
 use deno_core::external;
-use deno_core::futures::TryFutureExt;
 use deno_core::op2;
-use deno_core::serde_v8::from_v8;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
 use deno_core::v8;
@@ -79,6 +76,7 @@ use crate::service::HttpRecord;
 use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
 use crate::service::HttpServerState;
+use crate::service::ServerCallback;
 use crate::service::SignallingRc;
 use crate::service::handle_request;
 use crate::service::http_general_trace;
@@ -151,6 +149,24 @@ macro_rules! clone_external {
   }};
 }
 
+/// Try to clone Rc<HttpRecord> from raw external pointer.
+/// Returns None if the pointer has already been consumed by take_external.
+macro_rules! try_clone_external {
+  ($external:expr) => {{
+    let ptr = $external;
+    if ptr.is_null()
+      || ptr.align_offset(std::mem::align_of::<usize>()) != 0
+      || std::ptr::read::<usize>(ptr as _)
+        != <RcHttpRecord as deno_core::Externalizable>::external_marker()
+    {
+      None
+    } else {
+      let ptr = ExternalPointer::<RcHttpRecord>::from_raw(ptr);
+      Some(ptr.unsafely_deref().0.clone())
+    }
+  }};
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpNextError {
   #[class(inherit)]
@@ -192,6 +208,13 @@ pub enum HttpNextError {
   #[class("Http")]
   #[error("raw upgrade failed")]
   RawUpgradeFailed,
+  #[class(inherit)]
+  #[error(transparent)]
+  TakeNetworkStream(
+    #[from]
+    #[inherit]
+    deno_net::raw::TakeNetworkStreamError,
+  ),
 }
 
 #[op2(fast)]
@@ -218,7 +241,49 @@ pub fn op_http_upgrade_raw(
   Ok(state.resource_table.add(UpgradeStream::new(read, write)))
 }
 
-#[op2(async)]
+/// Upgrade a CONNECT request by sending a 200 response, awaiting the
+/// upgrade, and returning the stream resource with head bytes captured.
+#[op2]
+#[smi]
+pub async fn op_http_upgrade_raw_connect(
+  state: Rc<RefCell<OpState>>,
+  external: *const c_void,
+) -> Result<ResourceId, HttpNextError> {
+  let (http, upgrade) = {
+    // SAFETY: external is deleted before calling this op.
+    let http =
+      unsafe { take_external!(external, "op_http_upgrade_raw_connect") };
+    let upgrade = http.upgrade()?;
+    (http, upgrade)
+  };
+
+  // Send a 200 response to complete the CONNECT handshake.
+  http.response_parts().status = StatusCode::OK;
+  http.complete();
+
+  let upgraded = upgrade.await?;
+  let (stream, head_bytes) = extract_network_stream(upgraded);
+  let (read_half, write_half) = stream.into_split();
+
+  let resource =
+    UpgradeStream::new_connected(read_half, write_half, head_bytes);
+  Ok(state.borrow_mut().resource_table.add(resource))
+}
+
+/// Return the head bytes captured during a CONNECT upgrade.
+/// The bytes are returned exactly once; subsequent calls return empty.
+#[op2]
+#[buffer]
+pub fn op_http_upgrade_raw_get_head(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<Vec<u8>, HttpNextError> {
+  let resource = state.resource_table.get::<UpgradeStream>(rid)?;
+  let bytes = resource.head_bytes.borrow_mut().take();
+  Ok(bytes.map(|b| b.to_vec()).unwrap_or_default())
+}
+
+#[op2]
 #[smi]
 pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
@@ -239,6 +304,24 @@ pub async fn op_http_upgrade_websocket_next(
     stream,
     bytes,
   ))
+}
+
+/// Create a server WebSocket from a TCP stream resource (e.g. taken from a
+/// node:http TCPWrap handle). This lets ext/node hand off the raw stream
+/// without depending on deno_websocket directly.
+#[op2(fast)]
+#[smi]
+pub fn op_http_ws_create_from_stream_resource(
+  state: &mut OpState,
+  #[smi] stream_rid: ResourceId,
+  #[buffer] extra_bytes: &[u8],
+) -> Result<ResourceId, HttpNextError> {
+  let stream = deno_net::raw::take_network_stream_resource(
+    &mut state.resource_table,
+    stream_rid,
+  )?;
+  let read_buf = Bytes::copy_from_slice(extra_bytes);
+  Ok(ws_create_server_stream(state, stream, read_buf))
 }
 
 #[op2(fast)]
@@ -366,7 +449,6 @@ where
 }
 
 #[op2]
-#[serde]
 pub fn op_http_get_request_header(
   external: *const c_void,
   #[string] name: String,
@@ -449,6 +531,23 @@ pub fn op_http_get_request_headers<'scope>(
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
+/// Try to drain the entire request body without blocking.
+/// Returns the bytes as a Uint8Array iff the whole body is
+/// already buffered in hyper; returns `null` otherwise, in
+/// which case the JS caller falls through to the streaming
+/// `op_http_read_request_body` path. The body is left intact
+/// on the `null` branch.
+#[op2]
+#[buffer]
+pub fn op_http_try_take_full_request_body(
+  external: *const c_void,
+) -> Option<Vec<u8>> {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_try_take_full_request_body") };
+  http.try_take_full_request_body()
+}
+
 #[op2(fast)]
 #[smi]
 pub fn op_http_read_request_body(
@@ -519,8 +618,8 @@ pub fn op_http_set_response_headers(
     let name = pair.get_index(scope, 0).unwrap();
     let value = pair.get_index(scope, 1).unwrap();
 
-    let v8_name: ByteString = from_v8(scope, name).unwrap();
-    let v8_value: ByteString = from_v8(scope, value).unwrap();
+    let v8_name = ByteString::from_v8(scope, name).unwrap();
+    let v8_value = ByteString::from_v8(scope, value).unwrap();
     let header_name = HeaderName::from_bytes(&v8_name).unwrap();
     let header_value =
       // SAFETY: These are valid latin-1 strings
@@ -532,7 +631,7 @@ pub fn op_http_set_response_headers(
 #[op2]
 pub fn op_http_set_response_trailers(
   external: *const c_void,
-  #[serde] trailers: Vec<(ByteString, ByteString)>,
+  #[scoped] trailers: Vec<(ByteString, ByteString)>,
 ) {
   let http =
     // SAFETY: op is called with external.
@@ -607,8 +706,8 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
   }
   if let Some(cache_control) = headers.get(CACHE_CONTROL)
     && let Ok(s) = std::str::from_utf8(cache_control.as_bytes())
-    && let Some(cache_control) = CacheControl::from_value(s)
-    && cache_control.no_transform
+    && let Some(no_transform) = crate::cache_control_has_no_transform(s)
+    && no_transform
   {
     return false;
   }
@@ -619,13 +718,13 @@ fn modify_compressibility_from_response(
   compression: Compression,
   headers: &mut HeaderMap,
 ) -> Compression {
-  ensure_vary_accept_encoding(headers);
   if compression == Compression::None {
     return Compression::None;
   }
   if !is_response_compressible(headers) {
     return Compression::None;
   }
+  ensure_vary_accept_encoding(headers);
   let encoding = match compression {
     Compression::Brotli => "br",
     Compression::GZip => "gzip",
@@ -650,10 +749,6 @@ fn weaken_etag(hmap: &mut HeaderMap) {
   }
 }
 
-// Set Vary: Accept-Encoding header for direct body response.
-// Note: we set the header irrespective of whether or not we compress the data
-// to make sure cache services do not serve uncompressed data to clients that
-// support compression.
 fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
   if let Some(v) = hmap.get_mut(hyper::header::VARY)
     && let Ok(s) = v.to_str()
@@ -711,7 +806,7 @@ pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
   http.cancelled()
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_http_request_on_cancel(external: *const c_void) -> bool {
   let http =
     // SAFETY: op is called with external.
@@ -726,7 +821,7 @@ pub async fn op_http_request_on_cancel(external: *const c_void) -> bool {
 
 /// Returned promise resolves when body streaming finishes.
 /// Call [`op_http_close_after_finish`] when done with the external.
-#[op2(async)]
+#[op2]
 pub async fn op_http_set_response_body_resource(
   state: Rc<RefCell<OpState>>,
   external: *const c_void,
@@ -874,7 +969,8 @@ async fn serve_http2_autodetect(
   options: Options,
 ) -> Result<(), HttpNextError> {
   let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
-  let (matches, io) = prefix.match_prefix().await?;
+  let (matches, io) =
+    prefix.match_prefix().try_or_cancel(cancel.clone()).await?;
   if matches {
     serve_http2_unconditional(io, svc, cancel, options.http2_builder_hook)
       .await
@@ -886,11 +982,26 @@ async fn serve_http2_autodetect(
   }
 }
 
+/// Dispatch a record to the JS callback registered for the server.
+/// Wraps the record as an `ExternalPointer<RcHttpRecord>` and hands
+/// the raw pointer to the JS callback. The JS side eventually calls
+/// `take_external!` (via `op_http_set_response_*`) which consumes the
+/// refcount.
+fn dispatch_to_js(callback: &ServerCallback, record: Rc<HttpRecord>) {
+  let ptr = ExternalPointer::new(RcHttpRecord(record)).into_raw();
+  // SAFETY: callback's isolate ptr remains valid while the
+  // HttpJoinHandle is alive (the HttpJoinHandle owns the
+  // ServerCallback and is stored in the resource table; on close
+  // the resource is dropped synchronously while the isolate is still
+  // live).
+  unsafe { callback.dispatch(ptr as *mut std::ffi::c_void) };
+}
+
 fn serve_https(
   mut io: TlsStream<TcpStream>,
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  callback: Rc<ServerCallback>,
   options: Options,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
@@ -901,11 +1012,12 @@ fn serve_https(
 
   let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
+    let callback = callback.clone();
     handle_request(
       req,
       request_info.clone(),
       server_state.clone(),
-      tx.clone(),
+      move |record| dispatch_to_js(&callback, record),
       legacy_abort,
     )
   });
@@ -945,8 +1057,9 @@ fn serve_http(
   io: impl HttpServeStream,
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  callback: Rc<ServerCallback>,
   options: Options,
+  wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
     server_state,
@@ -956,17 +1069,60 @@ fn serve_http(
 
   let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
+    let callback = callback.clone();
     handle_request(
       req,
       request_info.clone(),
       server_state.clone(),
-      tx.clone(),
+      move |record| dispatch_to_js(&callback, record),
       legacy_abort,
     )
   });
+  let connection_cancel_handle_for_outer = connection_cancel_handle.clone();
   spawn(
-    serve_http2_autodetect(io, svc, listen_cancel_handle, options)
-      .try_or_cancel(connection_cancel_handle),
+    async move {
+      let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
+      let (matches, io) = prefix
+        .match_prefix()
+        .try_or_cancel(listen_cancel_handle.clone())
+        .await?;
+      let join_handle = if matches {
+        spawn(
+          async move {
+            serve_http2_unconditional(
+              io,
+              svc,
+              listen_cancel_handle,
+              options.http2_builder_hook,
+            )
+            .await
+            .map_err(HttpNextError::Hyper)
+          }
+          .try_or_cancel(connection_cancel_handle),
+        )
+      } else {
+        spawn(
+          async move {
+            serve_http11_unconditional(
+              io,
+              svc,
+              listen_cancel_handle,
+              options.http1_builder_hook,
+            )
+            .await
+            .map_err(HttpNextError::Hyper)
+          }
+          .try_or_cancel(connection_cancel_handle),
+        )
+      };
+
+      if wait_for_connection {
+        join_handle.await?
+      } else {
+        Ok(())
+      }
+    }
+    .try_or_cancel(connection_cancel_handle_for_outer),
   )
 }
 
@@ -974,8 +1130,9 @@ fn serve_http_on<HTTP>(
   connection: HTTP::Connection,
   listen_properties: &HttpListenProperties,
   lifetime: HttpLifetime,
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  callback: Rc<ServerCallback>,
   options: Options,
+  wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>>
 where
   HTTP: HttpPropertyExtractor,
@@ -986,27 +1143,56 @@ where
   let network_stream = HTTP::to_network_stream_from_connection(connection);
 
   match network_stream {
-    NetworkStream::Tcp(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
-    }
+    NetworkStream::Tcp(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     NetworkStream::Tls(conn) => {
-      serve_https(conn, connection_properties, lifetime, tx, options)
+      serve_https(conn, connection_properties, lifetime, callback, options)
     }
     #[cfg(unix)]
-    NetworkStream::Unix(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
-    }
+    NetworkStream::Unix(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     #[cfg(any(
       target_os = "android",
       target_os = "linux",
       target_os = "macos"
     ))]
-    NetworkStream::Vsock(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
-    }
-    NetworkStream::Tunnel(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
-    }
+    NetworkStream::Vsock(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
+    NetworkStream::Tunnel(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
+    #[cfg(windows)]
+    NetworkStream::WindowsPipe(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
   }
 }
 
@@ -1021,17 +1207,15 @@ struct HttpJoinHandle {
   join_handle: AsyncRefCell<Option<JoinHandle<Result<(), HttpNextError>>>>,
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
-  rx: AsyncRefCell<tokio::sync::mpsc::Receiver<Rc<HttpRecord>>>,
   server_state: SignallingRc<HttpServerState>,
 }
 
 impl HttpJoinHandle {
-  fn new(rx: tokio::sync::mpsc::Receiver<Rc<HttpRecord>>) -> Self {
+  fn new() -> Self {
     Self {
       join_handle: AsyncRefCell::new(None),
       connection_cancel_handle: CancelHandle::new_rc(),
       listen_cancel_handle: CancelHandle::new_rc(),
-      rx: AsyncRefCell::new(rx),
       server_state: HttpServerState::new(),
     }
   }
@@ -1074,10 +1258,12 @@ impl Drop for HttpJoinHandle {
 }
 
 #[op2]
-#[serde]
-pub fn op_http_serve<HTTP>(
+pub fn op_http_serve<'scope, HTTP>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
+  callback: v8::Local<'scope, v8::Function>,
 ) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
@@ -1087,11 +1273,17 @@ where
 
   let listen_properties = HTTP::listen_properties_from_listener(&listener)?;
 
-  let (tx, rx) = tokio::sync::mpsc::channel(10);
-  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
+  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new());
   let listen_cancel_clone = resource.listen_cancel_handle();
 
   let lifetime = resource.lifetime();
+  let callback_global = v8::Global::new(scope, callback);
+  let callback = Rc::new(ServerCallback::new(
+    scope,
+    isolate,
+    callback_global,
+    state.borrow().waker.clone(),
+  ));
 
   let options = {
     let state = state.borrow();
@@ -1108,11 +1300,12 @@ where
         conn,
         &listen_properties_clone,
         lifetime.clone(),
-        tx.clone(),
+        callback.clone(),
         options,
+        false,
       );
     }
-    #[allow(unreachable_code)]
+    #[allow(unreachable_code, reason = "to avoid typing closure")]
     Ok::<_, HttpNextError>(())
   });
 
@@ -1130,10 +1323,12 @@ where
 }
 
 #[op2]
-#[serde]
-pub fn op_http_serve_on<HTTP>(
+pub fn op_http_serve_on<'scope, HTTP>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
+  callback: v8::Local<'scope, v8::Function>,
 ) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
@@ -1143,8 +1338,14 @@ where
 
   let listen_properties = HTTP::listen_properties_from_connection(&connection)?;
 
-  let (tx, rx) = tokio::sync::mpsc::channel(10);
-  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
+  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new());
+  let callback_global = v8::Global::new(scope, callback);
+  let callback = Rc::new(ServerCallback::new(
+    scope,
+    isolate,
+    callback_global,
+    state.borrow().waker.clone(),
+  ));
 
   let options = {
     let state = state.borrow();
@@ -1155,8 +1356,9 @@ where
     connection,
     &listen_properties,
     resource.lifetime(),
-    tx,
+    callback,
     options,
+    true,
   );
 
   // Set the handle after we start the future
@@ -1172,61 +1374,19 @@ where
   ))
 }
 
-/// Synchronous, non-blocking call to see if there are any further HTTP requests. If anything
-/// goes wrong in this method we return null and let the async handler pick up the real error.
-#[op2(fast)]
-pub fn op_http_try_wait(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> *const c_void {
-  // The resource needs to exist.
-  let Ok(join_handle) = state.resource_table.get::<HttpJoinHandle>(rid) else {
-    return null();
-  };
-
-  // If join handle is somehow locked, just abort.
-  let Some(mut handle) =
-    RcRef::map(&join_handle, |this| &this.rx).try_borrow_mut()
-  else {
-    return null();
-  };
-
-  // See if there are any requests waiting on this channel. If not, return.
-  let Ok(record) = handle.try_recv() else {
-    return null();
-  };
-
-  let ptr = ExternalPointer::new(RcHttpRecord(record));
-  ptr.into_raw()
-}
-
-#[op2(async)]
+/// Wait for the server to finish accepting connections. Resolves
+/// when the accept-loop spawned by `op_http_serve` has exited (either
+/// from listener error or because the resource was closed).
+#[op2]
 pub async fn op_http_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<*const c_void, HttpNextError> {
-  // We will get the join handle initially, as we might be consuming requests still
+) -> Result<(), HttpNextError> {
   let join_handle = state
     .borrow_mut()
     .resource_table
     .get::<HttpJoinHandle>(rid)?;
 
-  let cancel = join_handle.listen_cancel_handle();
-  let next = async {
-    let mut recv = RcRef::map(&join_handle, |this| &this.rx).borrow_mut().await;
-    recv.recv().await
-  }
-  .or_cancel(cancel)
-  .unwrap_or_else(|_| None)
-  .await;
-
-  // Do we have a request?
-  if let Some(record) = next {
-    let ptr = ExternalPointer::new(RcHttpRecord(record));
-    return Ok(ptr.into_raw());
-  }
-
-  // No - we're shutting down
   let res = RcRef::map(join_handle, |this| &this.join_handle)
     .borrow_mut()
     .await
@@ -1235,15 +1395,13 @@ pub async fn op_http_wait(
     .await?;
 
   // Filter out shutdown (ENOTCONN) errors
-  if let Err(err) = res {
-    if is_normal_close(&err) {
-      return Ok(null());
-    }
-
+  if let Err(err) = res
+    && !is_normal_close(&err)
+  {
     return Err(err);
   }
 
-  Ok(null())
+  Ok(())
 }
 
 fn is_normal_close(err: &(dyn std::error::Error + 'static)) -> bool {
@@ -1321,7 +1479,7 @@ pub fn op_http_cancel(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_http_close(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1365,7 +1523,14 @@ enum UpgradeStreamWriteState {
     OnUpgrade,
     AsyncMut<Option<(NetworkStreamReadHalf, Bytes)>>,
   ),
+  /// Used after a CONNECT upgrade where the 200 response was already sent
+  /// by hyper. Consumes and discards the HTTP response the application
+  /// writes (since it's redundant), then switches to Network mode.
+  ConsumeResponse(BytesMut, NetworkStreamWriteHalf),
   Network(NetworkStreamWriteHalf),
+  /// The upgrade was rejected with a non-101 status code.
+  /// The response has been sent and the stream is now closed for writing.
+  Rejected,
   Failed,
 }
 
@@ -1373,6 +1538,12 @@ struct UpgradeStream {
   read: Rc<AsyncRefCell<Option<(NetworkStreamReadHalf, Bytes)>>>,
   write: AsyncRefCell<UpgradeStreamWriteState>,
   cancel_handle: CancelHandle,
+  /// Head bytes extracted during a CONNECT upgrade, available via
+  /// `op_http_upgrade_raw_get_head`.
+  head_bytes: RefCell<Option<Bytes>>,
+  /// Set to true when the upgrade was rejected with a non-101 status.
+  /// When rejected, reads return EOF and writes are silently ignored.
+  rejected: std::cell::Cell<bool>,
 }
 
 impl UpgradeStream {
@@ -1384,6 +1555,26 @@ impl UpgradeStream {
       read,
       write: AsyncRefCell::new(write),
       cancel_handle: CancelHandle::new(),
+      head_bytes: RefCell::new(None),
+      rejected: std::cell::Cell::new(false),
+    }
+  }
+
+  pub fn new_connected(
+    read_half: NetworkStreamReadHalf,
+    write_half: NetworkStreamWriteHalf,
+    head_bytes: Bytes,
+  ) -> Self {
+    let read = Rc::new(AsyncRefCell::new(Some((read_half, Bytes::new()))));
+    Self {
+      read,
+      write: AsyncRefCell::new(UpgradeStreamWriteState::ConsumeResponse(
+        BytesMut::with_capacity(128),
+        write_half,
+      )),
+      cancel_handle: CancelHandle::new(),
+      head_bytes: RefCell::new(Some(head_bytes)),
+      rejected: std::cell::Cell::new(false),
     }
   }
 
@@ -1391,6 +1582,11 @@ impl UpgradeStream {
     self: Rc<Self>,
     buf: &mut [u8],
   ) -> Result<usize, std::io::Error> {
+    // If the upgrade was rejected, return EOF
+    if self.rejected.get() {
+      return Ok(0);
+    }
+
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
     async {
       let read = RcRef::map(self, |this| &this.read);
@@ -1412,12 +1608,19 @@ impl UpgradeStream {
 
   async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, std::io::Error> {
     let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    let this = self.clone();
     async {
       let wr = RcRef::map(self, |this| &this.write);
       let mut wr = wr.borrow_mut().await;
       match std::mem::replace(&mut *wr, UpgradeStreamWriteState::Failed) {
         UpgradeStreamWriteState::Failed => {
           Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
+        }
+        UpgradeStreamWriteState::Rejected => {
+          // The upgrade was rejected and the response was already sent.
+          // Silently accept writes but don't do anything with them.
+          *wr = UpgradeStreamWriteState::Rejected;
+          Ok(buf.len())
         }
         UpgradeStreamWriteState::Parsing(
           mut bytes,
@@ -1438,38 +1641,111 @@ impl UpgradeStream {
               Ok(buf.len())
             }
             Ok(httparse::Status::Complete(n)) => {
-              if response.code != Some(StatusCode::SWITCHING_PROTOCOLS.as_u16())
+              let status_code = response.code.unwrap_or(0);
+
+              // Accept 101 (WebSocket upgrade) and 200 (CONNECT tunnel)
+              if status_code == StatusCode::SWITCHING_PROTOCOLS.as_u16()
+                || status_code == StatusCode::OK.as_u16()
               {
-                return Err(std::io::Error::other(
-                  HttpNextError::InvalidHttpStatusLine,
-                ));
+                let status = StatusCode::from_u16(status_code)
+                  .unwrap_or(StatusCode::SWITCHING_PROTOCOLS);
+                http.otel_info_set_status(status.as_u16());
+                http.response_parts().status = status;
+
+                for header in response.headers {
+                  http.response_parts().headers.append(
+                    HeaderName::from_bytes(header.name.as_bytes())
+                      .map_err(std::io::Error::other)?,
+                    HeaderValue::from_bytes(header.value)
+                      .map_err(std::io::Error::other)?,
+                  );
+                }
+
+                http.complete();
+
+                let upgraded =
+                  on_upgrade.await.map_err(std::io::Error::other)?;
+                let (stream, bytes) = extract_network_stream(upgraded);
+                let (read, write) = stream.into_split();
+
+                let _ = read_cell.insert((read, bytes));
+                *wr = UpgradeStreamWriteState::Network(write);
+
+                Ok(n - prev_len)
+              } else {
+                // Upgrade rejected - send the rejection response through hyper
+                http.otel_info_set_status(status_code);
+                http.response_parts().status =
+                  StatusCode::from_u16(status_code)
+                    .unwrap_or(StatusCode::BAD_REQUEST);
+
+                for header in response.headers {
+                  http.response_parts().headers.append(
+                    HeaderName::from_bytes(header.name.as_bytes())
+                      .map_err(std::io::Error::other)?,
+                    HeaderValue::from_bytes(header.value)
+                      .map_err(std::io::Error::other)?,
+                  );
+                }
+
+                // Any data after the headers is the response body
+                let body = bytes.split_off(n);
+                if !body.is_empty() {
+                  http.set_response_body(ResponseBytesInner::Bytes(
+                    BufView::from(body.freeze()),
+                  ));
+                }
+
+                http.complete();
+
+                // Mark as rejected - no upgrade will happen
+                *wr = UpgradeStreamWriteState::Rejected;
+                this.rejected.set(true);
+                // Drop the on_upgrade future since we're not upgrading
+                drop(on_upgrade);
+
+                Ok(buf.len())
               }
-
-              http
-                .otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
-              http.response_parts().status = StatusCode::SWITCHING_PROTOCOLS;
-
-              for header in response.headers {
-                http.response_parts().headers.append(
-                  HeaderName::from_bytes(header.name.as_bytes())
-                    .map_err(std::io::Error::other)?,
-                  HeaderValue::from_bytes(header.value)
-                    .map_err(std::io::Error::other)?,
-                );
-              }
-
-              http.complete();
-
-              let upgraded = on_upgrade.await.map_err(std::io::Error::other)?;
-              let (stream, bytes) = extract_network_stream(upgraded);
-              let (read, write) = stream.into_split();
-
-              let _ = read_cell.insert((read, bytes));
-              *wr = UpgradeStreamWriteState::Network(write);
-
-              Ok(n - prev_len)
             }
             Err(e) => Err(std::io::Error::other(e)),
+          }
+        }
+        UpgradeStreamWriteState::ConsumeResponse(mut bytes, mut stream) => {
+          bytes.extend_from_slice(buf);
+
+          let mut headers = [httparse::EMPTY_HEADER; 16];
+          let mut response = httparse::Response::new(&mut headers);
+          match response.parse(&bytes) {
+            Ok(httparse::Status::Partial) => {
+              *wr = UpgradeStreamWriteState::ConsumeResponse(bytes, stream);
+              Ok(buf.len())
+            }
+            Ok(httparse::Status::Complete(n)) => {
+              // Response consumed. Forward any trailing bytes after
+              // the response headers to the network.
+              let trailing = &bytes[n..];
+              if !trailing.is_empty() {
+                let mut written = 0;
+                while written < trailing.len() {
+                  written +=
+                    Pin::new(&mut stream).write(&trailing[written..]).await?;
+                }
+              }
+              let consumed_from_buf = n - (bytes.len() - buf.len());
+              *wr = UpgradeStreamWriteState::Network(stream);
+              Ok(consumed_from_buf)
+            }
+            Err(_) => {
+              // Not an HTTP response — treat as raw data.
+              // Write everything accumulated so far to the network.
+              let all = bytes.freeze();
+              let mut written = 0;
+              while written < all.len() {
+                written += Pin::new(&mut stream).write(&all[written..]).await?;
+              }
+              *wr = UpgradeStreamWriteState::Network(stream);
+              Ok(buf.len())
+            }
           }
         }
         UpgradeStreamWriteState::Network(mut stream) => {
@@ -1494,7 +1770,15 @@ impl UpgradeStream {
       UpgradeStreamWriteState::Failed => {
         Err(std::io::Error::other(HttpNextError::RawUpgradeFailed))
       }
+      UpgradeStreamWriteState::Rejected => {
+        // The upgrade was rejected; silently accept writes
+        Ok(buf1.len() + buf2.len())
+      }
       UpgradeStreamWriteState::Parsing(..) => {
+        drop(wr);
+        self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
+      }
+      UpgradeStreamWriteState::ConsumeResponse(..) => {
         self.write(if buf1.is_empty() { buf2 } else { buf1 }).await
       }
       UpgradeStreamWriteState::Network(stream) => {
@@ -1526,7 +1810,7 @@ pub fn op_can_write_vectored(
   state.resource_table.get::<UpgradeStream>(rid).is_ok()
 }
 
-#[op2(async)]
+#[op2]
 #[number]
 pub async fn op_raw_write_vectored(
   state: Rc<RefCell<OpState>>,
@@ -1542,9 +1826,27 @@ pub async fn op_raw_write_vectored(
 
 #[op2(fast)]
 pub fn op_http_metric_handle_otel_error(external: *const c_void) {
-  let http =
-    // SAFETY: external is deleted before calling this op.
-    unsafe { take_external!(external, "op_http_metric_handle_otel_error") };
+  // SAFETY: The external may have already been consumed by a take_external!
+  // call. Gracefully skip if the pointer is no longer valid.
+  let Some(http) = (unsafe { try_clone_external!(external) }) else {
+    return;
+  };
 
   http.otel_info_set_error("user");
+}
+
+#[op2(fast)]
+pub fn op_http_copy_span_to_otel_info(
+  external: *const c_void,
+  #[cppgc] span: &deno_telemetry::OtelSpan,
+) {
+  // SAFETY: The external may have already been consumed by a take_external!
+  // call (e.g. op_http_set_promise_complete). On some platforms (Windows),
+  // the freed memory may be reused, causing the marker check to fail.
+  // We gracefully skip the copy in that case rather than panicking.
+  let Some(http) = (unsafe { try_clone_external!(external) }) else {
+    return;
+  };
+
+  http.copy_span_to_otel_info(span);
 }

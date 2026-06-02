@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
@@ -64,11 +64,11 @@ pub mod npmrc;
 mod rt;
 pub mod workspace;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<WorkspaceResolver<TSys>>;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub(crate) type NpmCacheDirRc = deno_maybe_sync::MaybeArc<NpmCacheDir>;
 
 #[derive(Debug, Clone)]
@@ -84,7 +84,6 @@ pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
 impl DenoResolveError {
   #[cfg(feature = "graph")]
   pub fn into_deno_graph_error(self) -> deno_graph::source::ResolveError {
-    use deno_error::JsErrorBox;
     use deno_graph::source::ResolveError;
 
     match self.into_kind() {
@@ -92,16 +91,14 @@ impl DenoResolveError {
         match mapped_resolution_error {
           MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
           // deno_graph checks specifically for an ImportMapError
-          MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
-          MappedResolutionError::Workspace(e) => {
-            ResolveError::Other(JsErrorBox::from_err(e))
-          }
+          MappedResolutionError::ImportMap(e) => ResolveError::from_err(e),
+          MappedResolutionError::Workspace(e) => ResolveError::from_err(e),
           MappedResolutionError::NotFoundInCompilerOptionsPaths(e) => {
-            ResolveError::Other(JsErrorBox::from_err(e))
+            ResolveError::from_err(e)
           }
         }
       }
-      err => ResolveError::Other(JsErrorBox::from_err(err)),
+      err => ResolveError::from_err(err),
     }
   }
 
@@ -117,8 +114,8 @@ impl DenoResolveError {
       | DenoResolveErrorKind::ResolvePkgFolderFromDenoReq(_)
       | DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
       | DenoResolveErrorKind::NodeModulesOutOfDate(_)
+      | DenoResolveErrorKind::CatalogPackageNotFound(_)
       | DenoResolveErrorKind::PackageJsonDepValueParse(_)
       | DenoResolveErrorKind::PackageJsonDepValueUrlParse(_) => None,
     }
@@ -138,8 +135,8 @@ pub enum DenoResolveErrorKind {
   )]
   UnsupportedPackageJsonFileSpecifier,
   #[class(type)]
-  #[error("JSR specifiers are not yet supported in package.json")]
-  UnsupportedPackageJsonJsrReq,
+  #[error("Package '{0}' not found in catalog")]
+  CatalogPackageNotFound(String),
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
@@ -174,7 +171,7 @@ impl DenoResolveErrorKind {
     match self {
       DenoResolveErrorKind::InvalidVendorFolderImport
       | DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-      | DenoResolveErrorKind::UnsupportedPackageJsonJsrReq
+      | DenoResolveErrorKind::CatalogPackageNotFound { .. }
       | DenoResolveErrorKind::MappedResolution { .. }
       | DenoResolveErrorKind::NodeModulesOutOfDate { .. }
       | DenoResolveErrorKind::PackageJsonDepValueParse { .. }
@@ -241,7 +238,7 @@ pub struct DenoResolverOptions<
   pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type RawDenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
@@ -424,9 +421,6 @@ impl<
                     .into_box(),
                 )
               }
-              PackageJsonDepValue::JsrReq(_) => Err(
-                DenoResolveErrorKind::UnsupportedPackageJsonJsrReq.into_box(),
-              ),
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(
@@ -466,6 +460,26 @@ impl<
                     })
                 })
                 .and_then(|r| Ok(r.into_url()?)),
+              PackageJsonDepValue::Catalog(catalog_name) => self
+                .workspace_resolver
+                .resolve_catalog_dep(alias, catalog_name)
+                .ok_or_else(|| {
+                  DenoResolveErrorKind::CatalogPackageNotFound(
+                    alias.to_string(),
+                  )
+                  .into_box()
+                })
+                .and_then(|req| {
+                  Url::parse(&format!(
+                    "npm:{}{}",
+                    req,
+                    sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+                  ))
+                  .map_err(|e| {
+                    DenoResolveErrorKind::PackageJsonDepValueUrlParse(e)
+                      .into_box()
+                  })
+                }),
             })
         }
         MappedResolution::PackageJsonImport { pkg_json } => self

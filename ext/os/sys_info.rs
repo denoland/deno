@@ -1,6 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 #[cfg(target_family = "windows")]
 use std::sync::Once;
+
+use deno_core::ToV8;
 
 type LoadAvg = (f64, f64, f64);
 const DEFAULT_LOADAVG: LoadAvg = (0.0, 0.0, 0.0);
@@ -48,7 +50,7 @@ pub fn loadavg() -> LoadAvg {
 pub fn os_release() -> String {
   #[cfg(target_os = "linux")]
   {
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "requires real fs")]
     match std::fs::read_to_string("/proc/sys/kernel/osrelease") {
       Ok(mut s) => {
         s.pop(); // pop '\n'
@@ -193,8 +195,7 @@ pub fn hostname() -> String {
   }
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct MemInfo {
   pub total: u64,
   pub free: u64,
@@ -233,7 +234,7 @@ pub fn mem_info() -> Option<MemInfo> {
     }
 
     // Gets the available memory from /proc/meminfo in linux for compatibility
-    #[allow(clippy::disallowed_methods)]
+    #[allow(clippy::disallowed_methods, reason = "requires real fs")]
     if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
       let line = meminfo.lines().find(|l| l.starts_with("MemAvailable:"));
       if let Some(line) = line {

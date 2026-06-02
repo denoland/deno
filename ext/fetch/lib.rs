@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod dns;
 mod fs_fetch_handler;
@@ -29,16 +29,18 @@ use data_url::DataUrl;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
-use deno_core::JsBuffer;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
+use deno_core::convert::ByteString;
+use deno_core::convert::Uint8Array;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -87,8 +89,6 @@ use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
-use serde::Deserialize;
-use serde::Serialize;
 use tower::BoxError;
 use tower::Service;
 use tower::ServiceExt;
@@ -110,7 +110,7 @@ pub struct Options {
   ///
   /// For more info on what can be configured, see [`hyper_util::client::legacy::Builder`].
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "TODO: improve")]
   pub request_builder_hook:
     Option<fn(&mut http::Request<ReqBody>) -> Result<(), JsErrorBox>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -153,7 +153,7 @@ deno_core::extension!(deno_fetch,
     op_fetch_custom_client,
     op_fetch_promise_is_settled,
   ],
-  esm = [
+  lazy_loaded_js = [
     "20_headers.js",
     "21_formdata.js",
     "22_body.js",
@@ -221,6 +221,9 @@ pub enum FetchError {
   #[class(inherit)]
   #[error(transparent)]
   Url(#[from] url::ParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
   #[class(type)]
   #[error(transparent)]
   Method(#[from] http::method::InvalidMethod),
@@ -239,6 +242,9 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   PermissionCheck(PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(JsErrorBox),
 }
 
 impl From<deno_fs::FsError> for FetchError {
@@ -250,6 +256,9 @@ impl From<deno_fs::FsError> for FetchError {
       deno_fs::FsError::PermissionCheck(err) => {
         FetchError::PermissionCheck(err)
       }
+      deno_fs::FsError::JoinError(err) => {
+        FetchError::Other(JsErrorBox::from_err(err))
+      }
     }
   }
 }
@@ -257,7 +266,7 @@ impl From<deno_fs::FsError> for FetchError {
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
 
-pub trait FetchHandler: dyn_clone::DynClone {
+pub trait FetchHandler {
   // Return the result of the fetch request consisting of a tuple of the
   // cancelable response result, the optional fetch body resource and the
   // optional cancel handle.
@@ -267,8 +276,6 @@ pub trait FetchHandler: dyn_clone::DynClone {
     url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>);
 }
-
-dyn_clone::clone_trait_object!(FetchHandler);
 
 /// A default implementation which will error for every request.
 #[derive(Clone)]
@@ -285,8 +292,7 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 pub struct FetchReturn {
   pub request_rid: ResourceId,
   pub cancel_handle_rid: Option<ResourceId>,
@@ -298,8 +304,9 @@ pub fn get_or_create_client_from_state(
   if let Some(client) = state.try_borrow::<Client>() {
     Ok(client.clone())
   } else {
+    let permissions = state.borrow::<PermissionsContainer>().clone();
     let options = state.borrow::<Options>();
-    let client = create_client_from_options(options)?;
+    let client = create_client_from_options(options, Some(permissions))?;
     state.put::<Client>(client.clone());
     Ok(client)
   }
@@ -307,7 +314,12 @@ pub fn get_or_create_client_from_state(
 
 pub fn create_client_from_options(
   options: &Options,
+  permissions: Option<PermissionsContainer>,
 ) -> Result<Client, HttpClientCreateError> {
+  let dns_resolver = match permissions {
+    Some(p) => options.resolver.clone().with_permissions(p),
+    None => options.resolver.clone(),
+  };
   create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
@@ -316,7 +328,7 @@ pub fn create_client_from_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
-      dns_resolver: options.resolver.clone(),
+      dns_resolver,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -335,7 +347,7 @@ pub fn create_client_from_options(
   )
 }
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "TODO: improve")]
 pub struct ResourceToBodyAdapter(
   Rc<dyn Resource>,
   Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,
@@ -404,18 +416,17 @@ impl Drop for ResourceToBodyAdapter {
 }
 
 #[op2(stack_trace)]
-#[serde]
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::large_enum_variant)]
-#[allow(clippy::result_large_err)]
+#[allow(clippy::too_many_arguments, reason = "op")]
+#[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
+#[allow(clippy::result_large_err, reason = "TODO: investigate")]
 pub fn op_fetch(
   state: &mut OpState,
-  #[serde] method: ByteString,
+  #[scoped] method: ByteString,
   #[string] url: String,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[smi] client_rid: Option<u32>,
   has_body: bool,
-  #[buffer] data: Option<JsBuffer>,
+  data: Option<Uint8Array>,
   #[smi] resource: Option<ResourceId>,
 ) -> Result<FetchReturn, FetchError> {
   let (client, allow_host) = if let Some(rid) = client_rid {
@@ -466,7 +477,7 @@ pub fn op_fetch(
             // If a body is passed, we use it, and don't return a body for streaming.
             con_len = Some(data.len() as u64);
 
-            ReqBody::full(data.to_vec().into())
+            ReqBody::full(data.0.into())
           }
           (_, Some(resource)) => {
             let resource = state.resource_table.take_any(resource)?;
@@ -584,8 +595,7 @@ pub fn op_fetch(
   })
 }
 
-#[derive(Default, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, ToV8)]
 pub struct FetchResponse {
   pub status: u16,
   pub status_text: String,
@@ -600,8 +610,7 @@ pub struct FetchResponse {
   pub error: Option<(String, String)>,
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -816,32 +825,29 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, FromV8)]
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
+  #[from_v8(serde)]
   proxy: Option<Proxy>,
   pool_max_idle_per_host: Option<usize>,
+  #[from_v8(serde)]
   pool_idle_timeout: Option<serde_json::Value>,
-  #[serde(default = "default_true")]
+  #[from_v8(default = true)]
   http1: bool,
-  #[serde(default = "default_true")]
+  #[from_v8(default = true)]
   http2: bool,
-  #[serde(default)]
+  #[from_v8(default)]
   allow_host: bool,
   local_address: Option<String>,
 }
 
-fn default_true() -> bool {
-  true
-}
-
 #[op2(stack_trace)]
 #[smi]
-#[allow(clippy::result_large_err)]
+#[allow(clippy::result_large_err, reason = "TODO: investigate")]
 pub fn op_fetch_custom_client(
   state: &mut OpState,
-  #[serde] mut args: CreateHttpClientArgs,
+  #[scoped] mut args: CreateHttpClientArgs,
   #[cppgc] tls_keys: &TlsKeysHolder,
 ) -> Result<ResourceId, FetchError> {
   if let Some(proxy) = &mut args.proxy {
@@ -877,6 +883,7 @@ pub fn op_fetch_custom_client(
     }
   }
 
+  let permissions = state.borrow::<PermissionsContainer>().clone();
   let options = state.borrow::<Options>();
   let ca_certs = args
     .ca_certs
@@ -892,7 +899,7 @@ pub fn op_fetch_custom_client(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
-      dns_resolver: dns::Resolver::default(),
+      dns_resolver: dns::Resolver::default().with_permissions(permissions),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -1021,6 +1028,7 @@ pub fn create_http_client(
       .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
     http_connector.set_local_address(Some(local_addr));
   }
+  let http_connector = dns::PermissionedHttpConnector::new(http_connector);
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
@@ -1124,7 +1132,6 @@ pub fn create_http_client(
 }
 
 #[op2]
-#[serde]
 pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
   input.into()
 }
@@ -1191,10 +1198,14 @@ impl Client {
   }
 }
 
-type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
+type Connector = proxy::ProxyConnector<
+  dns::PermissionedHttpConnector<HttpConnector<dns::Resolver>>,
+>;
 
-// clippy is wrong here
-#[allow(clippy::declare_interior_mutable_const)]
+#[allow(
+  clippy::declare_interior_mutable_const,
+  reason = "clippy is wrong here"
+)]
 const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
 
 #[derive(Debug, deno_error::JsError)]
@@ -1300,6 +1311,30 @@ impl Client {
 
     let resp = self
       .inner
+      .oneshot(req)
+      .await
+      .map_err(|e| ClientSendError { uri, source: e })?;
+    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
+  }
+
+  /// Sends a request bypassing the transparent decompression middleware.
+  /// The response body will contain raw bytes (potentially compressed).
+  /// The caller is responsible for checking Content-Encoding and
+  /// decompressing if needed.
+  pub async fn send_no_decompress(
+    self,
+    mut req: http::Request<ReqBody>,
+  ) -> Result<http::Response<ResBody>, ClientSendError> {
+    self.inject_common_headers(&mut req);
+
+    req.headers_mut().entry(ACCEPT).or_insert(STAR_STAR);
+
+    let uri = req.uri().clone();
+
+    // .into_inner() unwraps the Decompression middleware layer
+    let resp = self
+      .inner
+      .into_inner()
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
@@ -1489,6 +1524,30 @@ fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
     {
       return true;
     }
+  }
+
+  // HTTP/1.1: The connection was closed before the message completed.
+  // This happens when a pooled keep-alive connection is stale (e.g. the
+  // server shut down between requests). Safe to retry because the server
+  // never received/processed the request on this connection.
+  if let Some(err) = find_source::<hyper::Error>(err)
+    && err.is_incomplete_message()
+  {
+    return true;
+  }
+
+  // Connection reset/aborted by the server before we could send the request.
+  // This is another manifestation of stale pooled connections.
+  // ConnectionReset (ECONNRESET) on Unix, ConnectionAborted (WSAECONNABORTED /
+  // os error 10053) on Windows.
+  if let Some(err) = find_source::<std::io::Error>(err)
+    && matches!(
+      err.kind(),
+      std::io::ErrorKind::ConnectionReset
+        | std::io::ErrorKind::ConnectionAborted
+    )
+  {
+    return true;
   }
 
   false
