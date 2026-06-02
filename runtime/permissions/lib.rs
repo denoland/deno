@@ -3853,7 +3853,7 @@ fn ignored_to_not_found(err: PermissionDeniedError) -> PermissionCheckError {
   #[cfg(windows)]
   fn not_found() -> std::io::Error {
     std::io::Error::from_raw_os_error(
-      winapi::shared::winerror::ERROR_FILE_NOT_FOUND as i32,
+      windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND as i32,
     )
   }
 

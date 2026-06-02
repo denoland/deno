@@ -183,6 +183,21 @@ impl<'a> BytesAppendable<'a> for &'a SpecifierStoreForSerialization<'a> {
   }
 }
 
+/// Given a canonical npm package folder (e.g.
+/// `<.deno>/<id>/node_modules/@scope/name`), walk up to the enclosing
+/// `node_modules/` directory. Embedding from there picks up sibling
+/// symlinks the deno linker creates for direct dependencies, which the
+/// canonical folder itself doesn't contain.
+fn pkg_folder_node_modules_root(folder: &Path) -> Option<&Path> {
+  let mut current = folder.parent()?;
+  loop {
+    if current.file_name() == Some(std::ffi::OsStr::new("node_modules")) {
+      return Some(current);
+    }
+    current = current.parent()?;
+  }
+}
+
 pub fn is_standalone_binary(exe_path: &Path) -> bool {
   let Ok(data) = std::fs::read(exe_path) else {
     return false;
@@ -947,21 +962,19 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .await
   }
 
-  /// Decide what to embed for `deno compile --bundle`. The bundle itself
-  /// is always shipped; this method controls whether the npm tree comes
-  /// along. We embed it in two cases:
+  /// Decide what to embed for `deno compile --bundle`. The bundle is
+  /// always shipped; this controls the npm portion. We need it when
+  /// either the CJS-from-ESM wrapper pointed at on-disk paths during
+  /// rewriting, or the resolved tree has a native (`.node`) addon — in
+  /// both cases the compiled binary will do node-module resolution at
+  /// runtime. Pure-ESM bundles with no native addons skip this and ship
+  /// nothing npm-related.
   ///
-  /// 1. The bundled output references npm packages via absolute file
-  ///    paths (esbuild's CJS-from-ESM wrapper). Signalled by the
-  ///    `compile_bundle_embed_node_modules` internal flag, set by
-  ///    `compile.rs` after rewriting those paths.
-  /// 2. The dependency tree contains a package with a `.node` native
-  ///    addon. Even if no CJS wrapper was emitted, the bundled code
-  ///    still needs the addon files reachable through node-module
-  ///    resolution at runtime.
-  ///
-  /// Pure-ESM bundles with no native addons skip this entirely and ship
-  /// nothing npm-related — a tiny self-contained binary.
+  /// When embedding is needed, we ship only the packages actually
+  /// reached: the rewriter recorded every absolute path it pointed at,
+  /// and we map each path back to its owning npm package and walk that
+  /// closure. The full resolution snapshot still goes in the metadata
+  /// so denort can resolve packages by name at runtime.
   fn fill_bundle_native_addon_vfs(
     &self,
     builder: &mut VfsBuilder,
@@ -969,10 +982,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
     let needs_for_cjs_wrapper =
       self.cli_options.compile_bundle_embed_node_modules();
-    // note: re-walks the snapshot — `find_native_addon_packages` derives
-    // `as_valid_serialized_for_system` and recursively `read_dir`s every
-    // package folder, then the Managed branch below derives the snapshot
-    // again. Bounded and compile-only, so not worth deduplicating now.
+    let referenced_paths = self.cli_options.compile_bundle_referenced_paths();
     // For BYONM the addon scan walks the workspace `node_modules` trees, so
     // it needs the workspace root (managed npm ignores it).
     let workspace_root = self
@@ -1001,9 +1011,47 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         if snapshot.as_serialized().packages.is_empty() {
           return Ok(None);
         }
-        self
-          .fill_npm_vfs(builder, Some(&snapshot), progress_bar)
-          .context("Building npm vfs for native addon support.")?;
+        // `collect_bundle_required_packages` only returns `None` for BYONM,
+        // which is handled by the `CliNpmResolver::Byonm` arm below, so a
+        // managed resolver always yields `Some` here.
+        let Some(needed_ids) =
+          super::native_addons::collect_bundle_required_packages(
+            self.npm_resolver,
+            &self.npm_system_info,
+            referenced_paths,
+          )?
+        else {
+          unreachable!(
+            "collect_bundle_required_packages returns None only for BYONM"
+          );
+        };
+        let progress =
+          progress_bar.update_with_prompt(ProgressMessagePrompt::Compile, "");
+        progress.set_total_size(needed_ids.len() as u64);
+        // Dedup the set of `<deno-cache>/<id>/node_modules/` directories we
+        // add: a single id's node_modules dir contains the canonical package
+        // folder plus sibling symlinks to its direct deps. Going one level up
+        // from the canonical folder picks both up so node-module resolution at
+        // runtime can follow the symlink chain (e.g. the NAPI-RS
+        // platform-specific sibling package).
+        let mut embedded_roots: std::collections::HashSet<PathBuf> =
+          std::collections::HashSet::new();
+        let mut done: u64 = 0;
+        for id in &needed_ids {
+          if let Ok(folder) = managed.resolve_pkg_folder_from_pkg_id(id)
+            && folder.exists()
+          {
+            let root_to_add =
+              pkg_folder_node_modules_root(&folder).unwrap_or(folder.as_path());
+            if embedded_roots.insert(root_to_add.to_path_buf()) {
+              builder.add_dir_recursive(root_to_add).with_context(|| {
+                format!("Embedding npm package at '{}'", root_to_add.display())
+              })?;
+            }
+          }
+          done += 1;
+          progress.set_position(done);
+        }
         Ok(Some(snapshot))
       }
       CliNpmResolver::Byonm(_) => {

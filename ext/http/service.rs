@@ -302,7 +302,7 @@ pub(crate) async fn handle_request<F>(
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   dispatch: F,
   legacy_abort: bool,
-) -> Result<Response, hyper_v014::Error>
+) -> Result<Response, hyper::Error>
 where
   F: FnOnce(Rc<HttpRecord>),
 {

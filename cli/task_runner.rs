@@ -637,12 +637,21 @@ pub async fn run_future_forwarding_signals<TOutput>(
     });
   }
 
+  // Save the terminal mode up front so it can be restored once the task (and
+  // all of its child processes) have finished. A child process such as a dev
+  // server may switch the terminal into raw mode and, when terminated via
+  // Ctrl+C, leave it in a broken state (no echo, no line editing). Declared
+  // first so it is dropped last, i.e. after the children have been torn down by
+  // the kill-signal drop guards below.
+  let terminal_mode_guard = crate::util::console::TerminalModeGuard::acquire();
+  let saved_terminal_mode = terminal_mode_guard.saved();
+
   let token = CancellationToken::new();
   let _token_drop_guard = token.clone().drop_guard();
   let _drop_guard = kill_signal.clone().drop_guard();
 
   spawn_future_with_cancellation(
-    listen_ctrl_c(kill_signal.clone()),
+    listen_ctrl_c(kill_signal.clone(), saved_terminal_mode),
     token.clone(),
   );
   #[cfg(unix)]
@@ -654,13 +663,23 @@ pub async fn run_future_forwarding_signals<TOutput>(
   future.await
 }
 
-async fn listen_ctrl_c(kill_signal: KillSignal) {
+async fn listen_ctrl_c(
+  kill_signal: KillSignal,
+  saved_terminal_mode: crate::util::console::SavedTerminalMode,
+) {
   while let Ok(()) = deno_signals::ctrl_c().await {
     // On windows, ctrl+c is sent to the process group, so the signal would
     // have already been sent to the child process. We still want to listen
     // for ctrl+c here to keep the process alive when receiving it, but no
     // need to forward the signal because it's already been sent.
-    if !cfg!(windows) {
+    if cfg!(windows) {
+      // A child (e.g. a dev server) may have put the terminal into raw mode.
+      // Restore it now so that input echoes again — for instance at cmd.exe's
+      // "Terminate batch job (Y/N)?" prompt that appears for `.cmd` scripts.
+      // The TerminalModeGuard still restores once more when the task ends, in
+      // case the child re-enters raw mode before exiting.
+      saved_terminal_mode.restore();
+    } else {
       kill_signal.send(deno_task_shell::SignalKind::SIGINT)
     }
   }

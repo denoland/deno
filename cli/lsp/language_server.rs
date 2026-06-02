@@ -232,6 +232,7 @@ pub struct StateSnapshot {
   pub document_modules: DocumentModules,
   pub resolver: Arc<LspResolver>,
   pub cache: Arc<LspCache>,
+  pub client_needs_file_uris_for_virtual_documents: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -308,6 +309,7 @@ pub struct Inner {
   project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
+  client_needs_file_uris_for_virtual_documents: bool,
   force_push_based_diagnostics: bool,
   registered_semantic_tokens_capabilities: bool,
   pub resolver: Arc<LspResolver>,
@@ -336,6 +338,10 @@ impl std::fmt::Debug for Inner {
       .field("npm_search_api", &self.npm_search_api)
       .field("project_version", &self.project_version)
       .field("performance", &self.performance)
+      .field(
+        "client_needs_file_uris_for_virtual_documents",
+        &self.client_needs_file_uris_for_virtual_documents,
+      )
       .field(
         "registered_semantic_tokens_capabilities",
         &self.registered_semantic_tokens_capabilities,
@@ -600,6 +606,7 @@ impl Inner {
       module_registry,
       npm_search_api,
       performance,
+      client_needs_file_uris_for_virtual_documents: false,
       registered_semantic_tokens_capabilities: false,
       force_push_based_diagnostics: false,
       resolver: Default::default(),
@@ -685,7 +692,21 @@ impl Inner {
       document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
       cache: Arc::new(self.cache.clone()),
+      client_needs_file_uris_for_virtual_documents: self
+        .client_needs_file_uris_for_virtual_documents,
     })
+  }
+
+  fn completion_context(&self) -> completions::CompletionContext<'_> {
+    completions::CompletionContext {
+      config: &self.config,
+      client: &self.client,
+      module_registry: &self.module_registry,
+      jsr_search_api: &self.jsr_search_api,
+      npm_search_api: &self.npm_search_api,
+      document_modules: &self.document_modules,
+      resolver: self.resolver.as_ref(),
+    }
   }
 
   pub fn update_tracing(&mut self) {
@@ -878,6 +899,9 @@ impl Inner {
     };
 
     if let Some(client_info) = params.client_info {
+      let client_name = client_info.name.to_lowercase();
+      self.client_needs_file_uris_for_virtual_documents =
+        client_name == "neovim" || client_name == "nvim";
       lsp_log!(
         "Connected to \"{}\" {}",
         client_info.name,
@@ -2649,8 +2673,36 @@ impl Inner {
     token: &CancellationToken,
   ) -> LspResult<Option<CompletionResponse>> {
     let mark = self.performance.mark_with_args("lsp.completion", &params);
+    let uri = &params.text_document_position.text_document.uri;
+    // Handle completions inside Deno configuration files (deno.json/jsonc)
+    // separately, since they're not "diagnosable" documents but still benefit
+    // from registry (jsr:/npm:/node:) import-specifier completion in the
+    // `imports` and `scopes` fields. Use `Enabled::Ignore` because a config
+    // file may itself be the only thing identifying its workspace as enabled.
+    if let Some(document) = self.get_document(
+      uri,
+      Enabled::Ignore,
+      Exists::Filter,
+      Diagnosable::Ignore,
+    )? && let Some(open_doc) = document.open()
+      && matches!(open_doc.language_id, LanguageId::Json | LanguageId::JsonC)
+    {
+      let url = uri_to_url(uri);
+      if completions::is_deno_config_url(&url) {
+        let response = completions::get_deno_json_import_completions(
+          &url,
+          &open_doc.text,
+          &open_doc.line_index,
+          &params.text_document_position.position,
+          &self.completion_context(),
+        )
+        .await;
+        self.performance.measure(mark);
+        return Ok(response);
+      }
+    }
     let Some(document) = self.get_document(
-      &params.text_document_position.text_document.uri,
+      uri,
       Enabled::Filter,
       Exists::Enforce,
       Diagnosable::Filter,
@@ -2680,13 +2732,7 @@ impl Inner {
       response = completions::get_import_completions(
         &module,
         &params.text_document_position.position,
-        &self.config,
-        &self.client,
-        &self.module_registry,
-        &self.jsr_search_api,
-        &self.npm_search_api,
-        &self.document_modules,
-        self.resolver.as_ref(),
+        &self.completion_context(),
       )
       .await;
     }
@@ -4041,12 +4087,14 @@ impl Inner {
       vec![referrer.clone()]
     };
 
+    let scoped_resolver = self.resolver.get_scoped_resolver(scope.as_deref());
+    roots.extend(scoped_resolver.configured_auto_import_roots());
+
     if byonm {
       roots.retain(|s| s.scheme() != "npm");
     } else {
       // always include the npm packages since resolution of one npm package
       // might affect the resolution of other npm packages
-      let scoped_resolver = self.resolver.get_scoped_resolver(scope.as_deref());
       roots.extend(
         scoped_resolver
           .npm_reqs()
@@ -4574,6 +4622,89 @@ mod tests {
           .url()
           .join("root2/folder2/inner_folder/main.ts")
           .unwrap(),
+      ])
+    );
+  }
+
+  #[test]
+  fn test_walk_workspace_reaches_enabled_nested_workspace() {
+    let temp_dir = TempDir::new();
+    temp_dir.write("repo/root.ts", ""); // no, root is disabled
+    temp_dir.write(
+      "repo/apps/backend/deno.json",
+      r#"{ "importMap": "import_map.json" }"#,
+    ); // yes
+    temp_dir.write(
+      "repo/apps/backend/import_map.json",
+      r#"{ "imports": { "core/": "../../shared/ts/core/src/" } }"#,
+    ); // yes
+    temp_dir.write("repo/apps/backend/src/run.ts", ""); // yes
+    temp_dir.write("repo/apps/web/src/main.ts", ""); // no, not enabled
+    temp_dir.write("repo/shared/ts/core/src/index.ts", ""); // no, not enabled
+
+    let root_url = temp_dir.url().join("repo/").unwrap();
+    let shared_url = temp_dir.url().join("repo/shared/").unwrap();
+    let backend_url = temp_dir.url().join("repo/apps/backend/").unwrap();
+    let web_url = temp_dir.url().join("repo/apps/web/").unwrap();
+    let mut config = Config::new_with_roots(vec![
+      shared_url.clone(),
+      backend_url.clone(),
+      web_url.clone(),
+      root_url.clone(),
+    ]);
+    config.set_client_capabilities(ClientCapabilities {
+      workspace: Some(Default::default()),
+      ..Default::default()
+    });
+    config.set_workspace_settings(
+      WorkspaceSettings {
+        enable: Some(false),
+        ..Default::default()
+      },
+      vec![
+        (
+          Arc::new(shared_url.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(backend_url.clone()),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(web_url.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(root_url.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+      ],
+    );
+
+    let (workspace_files, hit_limit) = Inner::walk_workspace(&config);
+    let workspace_files = workspace_files
+      .into_iter()
+      .map(|p| Url::from_file_path(p).unwrap())
+      .collect::<IndexSet<_>>();
+    assert!(!hit_limit);
+    assert_eq!(
+      json!(workspace_files),
+      json!([
+        backend_url.join("deno.json").unwrap(),
+        backend_url.join("import_map.json").unwrap(),
+        backend_url.join("src/run.ts").unwrap(),
       ])
     );
   }

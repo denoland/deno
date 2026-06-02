@@ -54,10 +54,6 @@ impl PrettyTestReporter {
     }
   }
 
-  pub fn with_writer(self, writer: Box<dyn std::io::Write>) -> Self {
-    Self { writer, ..self }
-  }
-
   fn force_report_wait(&mut self, description: &TestDescription) {
     if !self.in_new_line {
       writeln!(&mut self.writer).ok();
