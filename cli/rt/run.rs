@@ -1048,12 +1048,22 @@ pub async fn run(
   // binary, the parent asks us to run a specific embedded module instead of the
   // baked-in entrypoint (see ext/node/polyfills/child_process.ts). Otherwise a
   // fork() would just re-run the parent's entrypoint (issue #26304).
-  let main_module = match std::env::var(INTERNAL_CHILD_ENTRYPOINT_ENV_VAR) {
-    Ok(module_path) if !module_path.is_empty() => {
-      // Remove the var so it does not leak into any grandchild processes that
-      // inherit this environment.
-      // SAFETY: single-threaded during startup, before the runtime is created.
-      unsafe { std::env::remove_var(INTERNAL_CHILD_ENTRYPOINT_ENV_VAR) };
+  let child_entrypoint = std::env::var(INTERNAL_CHILD_ENTRYPOINT_ENV_VAR)
+    .ok()
+    .filter(|module_path| !module_path.is_empty());
+  if child_entrypoint.is_some() {
+    // Always strip the internal var so it does not leak into any grandchild
+    // processes that inherit this environment, even if we end up ignoring it.
+    // SAFETY: single-threaded during startup, before the runtime is created.
+    unsafe { std::env::remove_var(INTERNAL_CHILD_ENTRYPOINT_ENV_VAR) };
+  }
+  let main_module = match child_entrypoint {
+    // Only honor the override for a genuine fork() child, which always wires up
+    // an IPC channel (NODE_CHANNEL_FD). This keeps a stray external env var from
+    // redirecting a sealed compiled binary to run an arbitrary module with its
+    // baked-in permissions; the entrypoint is otherwise immutable. NODE_CHANNEL_FD
+    // is still present here because node_ipc_init() consumes it later.
+    Some(module_path) if std::env::var("NODE_CHANNEL_FD").is_ok() => {
       resolve_child_entrypoint(&module_path, &entrypoint, &vfs, &sys)
     }
     _ => entrypoint,
@@ -1366,7 +1376,7 @@ pub async fn run(
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
-    node_ipc_init: node_ipc_init(),
+    node_ipc_init: node_ipc_init()?,
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
@@ -1460,10 +1470,20 @@ fn resolve_child_entrypoint(
   vfs: &FileBackedVfs,
   sys: &DenoRtSys,
 ) -> Url {
+  // Falling back to the entrypoint silently would re-run the parent's
+  // entrypoint, i.e. the very symptom of #26304. Warn so the failure is
+  // diagnosable instead of looking like a successful fork.
+  let fallback = || {
+    log::warn!(
+      "Could not resolve module {:?} passed to child_process.fork(); running the compiled entrypoint instead.",
+      module_path
+    );
+    entrypoint.clone()
+  };
   let path = std::path::Path::new(module_path);
   if path.is_absolute() {
     return deno_path_util::url_from_file_path(path)
-      .unwrap_or_else(|_| entrypoint.clone());
+      .unwrap_or_else(|_| fallback());
   }
   // Prefer the sibling module embedded next to the entrypoint in the VFS.
   if let Ok(candidate) = entrypoint.join(module_path)
@@ -1482,9 +1502,10 @@ fn resolve_child_entrypoint(
   )]
   let cwd = sys.env_current_dir();
   match cwd {
-    Ok(cwd) => deno_core::resolve_path(module_path, &cwd)
-      .unwrap_or_else(|_| entrypoint.clone()),
-    Err(_) => entrypoint.clone(),
+    Ok(cwd) => {
+      deno_core::resolve_path(module_path, &cwd).unwrap_or_else(|_| fallback())
+    }
+    Err(_) => fallback(),
   }
 }
 
@@ -1493,20 +1514,30 @@ fn resolve_child_entrypoint(
 /// serialization mode) via env vars; mirror the CLI's `node_ipc_init()` here so
 /// that process.send()/process.on("message") work in a compiled binary's child
 /// (see issue #26304). Without this a fork()ed child never wires up IPC.
-fn node_ipc_init() -> Option<(i64, ChildIpcSerialization)> {
-  let node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok()?;
-  let serialization = std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
-    .ok()
-    .and_then(|s| s.parse::<ChildIpcSerialization>().ok())
-    .unwrap_or(ChildIpcSerialization::Json);
-  // Remove so that grandchild processes don't inherit these env vars.
-  // SAFETY: single-threaded at this point in startup.
-  unsafe {
-    std::env::remove_var("NODE_CHANNEL_FD");
-    std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+fn node_ipc_init() -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
+  let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
+  let maybe_serialization = if let Ok(serialization) =
+    std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
+  {
+    Some(serialization.parse::<ChildIpcSerialization>()?)
+  } else {
+    None
+  };
+  if let Some(node_channel_fd) = maybe_node_channel_fd {
+    // Remove so that grandchild processes don't inherit these env vars.
+    // SAFETY: single-threaded at this point in startup.
+    unsafe {
+      std::env::remove_var("NODE_CHANNEL_FD");
+      std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
+    }
+    let node_channel_fd = node_channel_fd.parse::<i64>()?;
+    Ok(Some((
+      node_channel_fd,
+      maybe_serialization.unwrap_or(ChildIpcSerialization::Json),
+    )))
+  } else {
+    Ok(None)
   }
-  let node_channel_fd = node_channel_fd.parse::<i64>().ok()?;
-  Some((node_channel_fd, serialization))
 }
 
 fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
