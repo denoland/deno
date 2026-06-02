@@ -90,6 +90,38 @@ pub fn verify_and_decompress_tarball(
   decompress_gzip(data)
 }
 
+/// Decompresses a gzip tarball without integrity verification.
+/// Used for user-provided tarballs (local files, remote URLs) where
+/// there is no registry-provided integrity hash.
+pub fn decompress_tarball(
+  data: &[u8],
+) -> Result<Vec<u8>, VerifyAndExtractTarballError> {
+  decompress_gzip(data)
+}
+
+/// Computes the sha512 digest of a tarball's bytes encoded as the first
+/// 16 bytes in hex (32 hex chars). This matches the prefix encoded in
+/// the cache filename for tarballs installed via `deno install <url>`
+/// (see [`cli::tools::pm`]) and is used to detect tampering of cached
+/// tarballs between installs.
+pub fn tarball_sha512_hex_prefix(data: &[u8]) -> String {
+  let result = hashing::sha512(data);
+  result
+    .as_ref()
+    .iter()
+    .take(16)
+    .map(|b| format!("{b:02x}"))
+    .collect()
+}
+
+/// Computes the SRI-style sha512 integrity string ("sha512-<base64>")
+/// of a tarball's bytes. This matches the integrity format written to
+/// the lockfile for tarball installs.
+pub fn tarball_sha512_sri(data: &[u8]) -> String {
+  let digest = hashing::sha512(data);
+  format!("sha512-{}", BASE64_STANDARD.encode(digest.as_ref()))
+}
+
 /// Uses libdeflater for faster gzip decompression with preallocated buffers.
 #[cfg(not(target_arch = "wasm32"))]
 fn decompress_gzip(

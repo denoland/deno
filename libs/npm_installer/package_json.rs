@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -15,6 +16,7 @@ use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use serde_json;
+use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
 
@@ -46,11 +48,19 @@ pub struct PackageJsonDepValueParseWithLocationError {
   pub source: PackageJsonDepValueParseError,
 }
 
+#[derive(Debug)]
+pub struct TarballUrlPkg {
+  pub alias: StackString,
+  pub url: Url,
+  pub location: Url,
+}
+
 #[derive(Debug, Default)]
 pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   local_pkgs: Vec<InstallLocalPkg>,
   patch_pkgs: Vec<InstallPatchPkg>,
+  tarball_pkgs: Vec<TarballUrlPkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
 }
 
@@ -68,6 +78,7 @@ impl NpmInstallDepsProvider {
     let mut local_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
     let mut patch_pkgs = Vec::new();
+    let mut tarball_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
@@ -143,10 +154,28 @@ impl NpmInstallDepsProvider {
           };
           match dep {
             PackageJsonDepValue::File(specifier) => {
+              let target = pkg_json.dir_path().join(specifier);
               local_pkgs.push(InstallLocalPkg {
                 alias: Some(alias.clone()),
-                target_dir: pkg_json.dir_path().join(specifier),
-              })
+                target_dir: target.clone(),
+              });
+              // For tarball file deps, read the tarball's package.json
+              // and add its dependencies as remote pkgs so the resolver
+              // installs them. This is equivalent to npm's behavior where
+              // `npm install ./foo.tgz` also resolves the tarball's deps.
+              let target_str = target.to_string_lossy();
+              if (target_str.ends_with(".tgz")
+                || target_str.ends_with(".tar.gz"))
+                && let Ok(tarball_deps) = read_tarball_dependencies(&target)
+              {
+                for (dep_alias, dep_req) in tarball_deps {
+                  pkg_pkgs.push(InstallNpmRemotePkg {
+                    alias: Some(dep_alias),
+                    base_dir: pkg_json.dir_path().to_path_buf(),
+                    req: dep_req,
+                  });
+                }
+              }
             }
             PackageJsonDepValue::Req(pkg_req) => {
               if skip_types && pkg_req.name.starts_with("@types/") {
@@ -168,6 +197,18 @@ impl NpmInstallDepsProvider {
                   alias: Some(alias.clone()),
                   base_dir: pkg_json.dir_path().to_path_buf(),
                   req: pkg_req.clone(),
+                });
+              }
+            }
+            PackageJsonDepValue::Tarball(url_str) => {
+              // Tarball URL deps from package.json require --allow-import.
+              // Collect them here; the CLI layer will check permissions
+              // before proceeding with the download.
+              if let Ok(url) = Url::parse(url_str) {
+                tarball_pkgs.push(TarballUrlPkg {
+                  alias: alias.clone(),
+                  url,
+                  location: pkg_json.specifier(),
                 });
               }
             }
@@ -256,6 +297,7 @@ impl NpmInstallDepsProvider {
       remote_pkgs,
       local_pkgs,
       patch_pkgs,
+      tarball_pkgs,
       pkg_json_dep_errors,
     }
   }
@@ -272,9 +314,74 @@ impl NpmInstallDepsProvider {
     &self.patch_pkgs
   }
 
+  pub fn tarball_pkgs(&self) -> &[TarballUrlPkg] {
+    &self.tarball_pkgs
+  }
+
   pub fn pkg_json_dep_errors(
     &self,
   ) -> &[PackageJsonDepValueParseWithLocationError] {
     &self.pkg_json_dep_errors
   }
+}
+
+/// Read a tarball's package.json and return its dependencies as
+/// (alias, PackageReq) pairs for npm resolution.
+fn read_tarball_dependencies(
+  tarball_path: &Path,
+) -> Result<Vec<(StackString, PackageReq)>, anyhow::Error> {
+  use std::io::Read;
+
+  use flate2::read::GzDecoder;
+
+  const MAX_TARBALL_SIZE: u64 = 512 * 1024 * 1024;
+
+  let tarball_bytes = sys_traits::impls::RealSys.fs_read(tarball_path)?;
+  let decoder = GzDecoder::new(&tarball_bytes[..]);
+  let mut decompressed = Vec::new();
+  decoder
+    .take(MAX_TARBALL_SIZE)
+    .read_to_end(&mut decompressed)?;
+
+  let mut archive = tar::Archive::new(&decompressed[..]);
+  for entry in archive.entries()? {
+    let mut entry = entry?;
+    let path = entry.path()?;
+    let path_str = path.to_string_lossy();
+    if path_str == "package/package.json"
+      || (path_str.ends_with("/package.json")
+        && path_str.matches('/').count() == 1)
+    {
+      let mut contents = String::new();
+      entry.read_to_string(&mut contents)?;
+      let pkg_json: serde_json::Value = serde_json::from_str(&contents)?;
+
+      let mut deps = Vec::new();
+      if let Some(serde_json::Value::Object(dependencies)) =
+        pkg_json.get("dependencies")
+      {
+        for (name, version) in dependencies {
+          if let Some(version_str) = version.as_str() {
+            // Skip file:, link:, git+, https:// deps
+            if version_str.starts_with("file:")
+              || version_str.starts_with("link:")
+              || version_str.starts_with("git+")
+              || version_str.starts_with("http://")
+              || version_str.starts_with("https://")
+            {
+              continue;
+            }
+            if let Ok(req) =
+              PackageReq::from_str(&format!("{}@{}", name, version_str))
+            {
+              deps.push((StackString::from(name.as_str()), req));
+            }
+          }
+        }
+      }
+      return Ok(deps);
+    }
+  }
+
+  Ok(Vec::new())
 }

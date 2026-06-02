@@ -879,11 +879,54 @@ impl<
         let Some(pkg_alias) = &pkg.alias else {
           continue;
         };
-        symlink_package_dir(
-          sys.as_ref(),
-          &pkg.target_dir,
-          &self.root_node_modules_path.join(pkg_alias),
-        )?;
+        let dest = self.root_node_modules_path.join(pkg_alias);
+        let target_str = pkg.target_dir.to_string_lossy();
+        if target_str.ends_with(".tgz") || target_str.ends_with(".tar.gz") {
+          // Tarball dependency: extract the tarball to node_modules
+          // instead of symlinking (tarballs are files, not directories).
+          if !sys.fs_exists_no_err(&dest) {
+            let tarball_bytes = sys.fs_read(&pkg.target_dir)?;
+            // Cached remote tarballs are named
+            // `<name>-<version>-<32-hex-prefix>.tgz` where the suffix is
+            // the first 16 bytes of the sha512 in hex. Verify it matches
+            // the bytes on disk so cache tampering between installs is
+            // surfaced before extraction.
+            if let Some(file_name) =
+              pkg.target_dir.file_name().and_then(|n| n.to_str())
+              && let Some(stem) = file_name
+                .strip_suffix(".tgz")
+                .or_else(|| file_name.strip_suffix(".tar.gz"))
+              && let Some((_, hex_prefix)) = stem.rsplit_once('-')
+              && hex_prefix.len() == 32
+              && hex_prefix.bytes().all(|b| b.is_ascii_hexdigit())
+            {
+              let computed =
+                deno_npm_cache::tarball_extract::tarball_sha512_hex_prefix(
+                  &tarball_bytes,
+                );
+              if computed != hex_prefix {
+                return Err(SyncResolutionWithFsError::TarballIntegrity {
+                  path: pkg.target_dir.clone(),
+                  expected: hex_prefix.to_string(),
+                  actual: computed,
+                });
+              }
+            }
+            let tar_data = deno_npm_cache::tarball_extract::decompress_tarball(
+              &tarball_bytes,
+            )
+            .map_err(JsErrorBox::from_err)?;
+            deno_npm_cache::tarball_extract::write_extracted_tarball(
+              sys.as_ref(),
+              &tar_data,
+              &dest,
+              deno_npm_cache::tarball_extract::TarballExtractionMode::SiblingTempDir,
+            )
+            .map_err(JsErrorBox::from_err)?;
+          }
+        } else {
+          symlink_package_dir(sys.as_ref(), &pkg.target_dir, &dest)?;
+        }
       }
     }
 
@@ -1006,6 +1049,15 @@ pub enum SyncResolutionWithFsError {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class(generic)]
+  #[error(
+    "Cached tarball integrity check failed for '{}'.\n\nExpected sha512 hex prefix: {expected}\nActual: {actual}", path.display()
+  )]
+  TarballIntegrity {
+    path: PathBuf,
+    expected: String,
+    actual: String,
+  },
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
