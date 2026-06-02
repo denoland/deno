@@ -19,6 +19,17 @@
         "DENO_CONDITIONS": "!node"
       },
       "output": "browser.out"
+    },
+    {
+      // Negation is opt-in: adding unrelated conditions must not drop the
+      // built-in "node" condition, so the node build still resolves.
+      "args": "run --quiet --conditions=custom main.js",
+      "output": "node.out"
+    },
+    {
+      // Additions and removals can be combined in a single flag.
+      "args": "run --quiet --conditions=custom,!node main.js",
+      "output": "browser.out"
     }
   ]
 }
