@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "better_sqlite3": {
+      "args": "run better_sqlite3.js",
+      "output": "better_sqlite3.out",
+      "exitCode": 1
+    },
+    "generic": {
+      "args": "run generic.js",
+      "output": "generic.out",
+      "exitCode": 1
+    }
+  }
+}
