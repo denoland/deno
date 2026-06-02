@@ -76,6 +76,14 @@ pub enum NApiError {
   #[class(type)]
   #[error("Unable to find register Node-API module at {}", .0.display())]
   ModuleNotFound(PathBuf),
+  #[class(type)]
+  #[error(
+    "Cannot load native addon at {}: it was built against the legacy Node.js \
+     native addon API (NODE_MODULE / nan), which Deno does not support. Only \
+     Node-API (N-API) addons are supported.",
+    .0.display()
+  )]
+  UnsupportedLegacyAddon(PathBuf),
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] PermissionCheckError),
@@ -147,6 +155,10 @@ pub static ERROR_MESSAGES: &[&CStr] = &[
 ];
 
 pub const NAPI_AUTO_LENGTH: usize = usize::MAX;
+
+/// `nm_version` value used by Node-API (N-API) modules. Legacy V8/nan addons
+/// registered via `node_module_register` use `NODE_MODULE_VERSION` instead.
+pub const NAPI_MODULE_VERSION: i32 = 1;
 
 thread_local! {
   pub static MODULE_TO_REGISTER: RefCell<Option<*const NapiModule>> = const { RefCell::new(None) };
@@ -694,6 +706,22 @@ fn op_napi_open<'scope>(
     )
   };
 
+  // Register the uv_compat loop so that our libuv-ABI `uv_timer_*`
+  // polyfills bridge onto Deno's event loop instead of degrading to
+  // no-ops. The loop pointer is opaque to addons — they only pass it
+  // through to other uv_* polyfill functions, which re-resolve it from
+  // this thread-local in any case.
+  {
+    let op_state = op_state.borrow();
+    if let Some(uv_loop) =
+      op_state.try_borrow::<Box<deno_core::uv_compat::UvLoop>>()
+    {
+      let loop_ptr =
+        &**uv_loop as *const deno_core::uv_compat::UvLoop as *mut _;
+      crate::uv::register_default_uv_loop(loop_ptr);
+    }
+  }
+
   // Use per-isolate Private keys (like Node.js) so that objects wrapped by one
   // addon can be unwrapped by another. Lazily create on first addon load.
   let (napi_wrap, type_tag) = {
@@ -789,13 +817,19 @@ fn op_napi_open<'scope>(
   let exports = v8::Object::new(scope);
 
   let maybe_exports = if let Some(module_to_register) = maybe_module {
+    // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
+    let nm = unsafe { &*module_to_register };
+    // A version other than `NAPI_MODULE_VERSION` (1) means this is a legacy
+    // V8/nan addon registered via `node_module_register`. We can't run its
+    // register function (it uses the unsupported legacy ABI), so bail out with
+    // a clear error instead of crashing later. See denoland/deno#26656.
+    if nm.nm_version != NAPI_MODULE_VERSION {
+      return Err(NApiError::UnsupportedLegacyAddon(path.into_owned()));
+    }
     NAPI_LOADED_MODULES.write().insert(
       real_path.to_path_buf(),
       NapiModuleHandle(module_to_register),
     );
-    // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
-    let nm = unsafe { &*module_to_register };
-    assert_eq!(nm.nm_version, 1);
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
   } else if let Some(module_to_register) =
@@ -804,7 +838,9 @@ fn op_napi_open<'scope>(
     // SAFETY: this originated from `napi_register_module`, so the
     // pointer should still be valid.
     let nm = unsafe { &*module_to_register.0 };
-    assert_eq!(nm.nm_version, 1);
+    if nm.nm_version != NAPI_MODULE_VERSION {
+      return Err(NApiError::UnsupportedLegacyAddon(path.into_owned()));
+    }
     // SAFETY: we are going blind, calling the register function on the other side.
     unsafe { (nm.nm_register_func)(env_ptr, exports.into()) }
   } else {

@@ -12,7 +12,11 @@ use std::time::UNIX_EPOCH;
 
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
+use deno_core::Canceled;
 use deno_core::OpState;
+use deno_core::RcRef;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
 use deno_core::error::ResourceError;
@@ -95,6 +99,12 @@ impl From<PermissionCheckError> for FsError {
 impl From<JoinError> for FsError {
   fn from(err: JoinError) -> Self {
     Self::JoinError(err)
+  }
+}
+
+impl From<Canceled> for FsError {
+  fn from(err: Canceled) -> Self {
+    Self::Io(err.into())
   }
 }
 
@@ -345,11 +355,24 @@ pub trait File {
 pub struct FileResource {
   name: String,
   file: Rc<dyn File>,
+  /// Cancels pending read operations when the resource is closed.
+  /// Used so streams backed by a file (especially pipes / FIFOs whose
+  /// reads can block indefinitely) can be cancelled — see
+  /// <https://github.com/denoland/deno/issues/21186>.
+  cancel_handle: CancelHandle,
 }
 
 impl FileResource {
   pub fn new(file: Rc<dyn File>, name: String) -> Self {
-    Self { name, file }
+    Self {
+      name,
+      file,
+      cancel_handle: Default::default(),
+    }
+  }
+
+  fn cancel_handle(self: &Rc<Self>) -> RcRef<CancelHandle> {
+    RcRef::map(self, |r| &r.cancel_handle)
   }
 
   fn with_resource<F, R>(
@@ -397,11 +420,13 @@ impl deno_core::Resource for FileResource {
   }
 
   fn read(self: Rc<Self>, limit: usize) -> deno_core::AsyncResult<BufView> {
+    let cancel_handle = self.cancel_handle();
     Box::pin(async move {
       self
         .file
         .clone()
         .read(limit)
+        .try_or_cancel(cancel_handle)
         .await
         .map_err(JsErrorBox::from_err)
     })
@@ -411,11 +436,13 @@ impl deno_core::Resource for FileResource {
     self: Rc<Self>,
     buf: BufMutView,
   ) -> deno_core::AsyncResult<(usize, BufMutView)> {
+    let cancel_handle = self.cancel_handle();
     Box::pin(async move {
       self
         .file
         .clone()
         .read_byob(buf)
+        .try_or_cancel(cancel_handle)
         .await
         .map_err(JsErrorBox::from_err)
     })
@@ -467,5 +494,13 @@ impl deno_core::Resource for FileResource {
 
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     self.file.clone().backing_fd()
+  }
+
+  fn close(self: Rc<Self>) {
+    // Cancel any pending read operations. Reads on pipes / FIFOs can
+    // block indefinitely; without this, a `ReadableStream` backed by
+    // such a file could never have its `cancel()` promise resolve while
+    // a read is outstanding.
+    self.cancel_handle.cancel();
   }
 }

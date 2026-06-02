@@ -39,6 +39,7 @@ EXPORTS
   node_api_create_external_string_utf16
   napi_get_value_bigint_uint64
   napi_module_register
+  node_module_register
   napi_is_typedarray
   napi_create_external_buffer
   napi_get_new_target
@@ -164,3 +165,31 @@ EXPORTS
   uv_async_init
   uv_async_send
   uv_close
+  uv_default_loop
+  uv_hrtime
+  uv_is_active
+  uv_is_closing
+  uv_ref
+  uv_unref
+  uv_has_ref
+  uv_handle_set_data
+  uv_handle_get_data
+  uv_handle_get_loop
+  uv_handle_get_type
+  uv_cpu_info
+  uv_free_cpu_info
+  uv_timer_init
+  uv_timer_start
+  uv_timer_stop
+  uv_timer_set_repeat
+  uv_timer_get_repeat
+  uv_timer_again
+  uv_thread_create
+  uv_thread_join
+  uv_thread_self
+  uv_thread_equal
+  uv_sem_init
+  uv_sem_destroy
+  uv_sem_post
+  uv_sem_wait
+  uv_sem_trywait

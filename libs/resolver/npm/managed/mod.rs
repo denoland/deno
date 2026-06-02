@@ -161,6 +161,10 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
     self.npm_cache_dir.root_dir_url()
   }
 
+  pub fn known_registries_dirnames(&self) -> &[String] {
+    self.npm_cache_dir.known_registries_dirnames()
+  }
+
   pub fn resolution(&self) -> &NpmResolutionCell {
     self.resolution.as_ref()
   }

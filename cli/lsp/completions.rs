@@ -123,14 +123,21 @@ fn to_narrow_lsp_range(
     })
     .as_byte_index(text_info.range().start);
   let text_bytes = text_info.text_str().as_bytes();
-  let is_empty = end_byte_index - 1 == start_byte_index;
-  let has_trailing_quote =
-    !is_empty && matches!(text_bytes[end_byte_index - 1], b'"' | b'\'');
+  let has_leading_quote = text_bytes
+    .get(start_byte_index)
+    .is_some_and(|b| matches!(b, b'"' | b'\''));
+  let has_trailing_quote = end_byte_index > start_byte_index
+    && text_bytes
+      .get(end_byte_index - 1)
+      .is_some_and(|b| matches!(b, b'"' | b'\''));
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
-      // skip the leading quote
-      character: (range.start.character + 1) as u32,
+      character: if has_leading_quote {
+        range.start.character + 1 // skip the leading quote
+      } else {
+        range.start.character
+      } as u32,
     },
     end: lsp::Position {
       line: range.end.line as u32,

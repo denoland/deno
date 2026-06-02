@@ -4,7 +4,10 @@ Compile [WILDCARD]main.ts to [WILDLINE]
 Embedded Files
 
 [WILDLINE]
+├── dynamic.ts ([WILDLINE])
+├── greet.ts ([WILDLINE])
 ├── hello.ts ([WILDLINE])
-└── main.ts ([WILDLINE])
+├── main.ts ([WILDLINE])
+└── subdir/* ([WILDLINE])
 
 [WILDCARD]
