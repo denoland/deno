@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;
+use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -1945,7 +1946,7 @@ impl IndexValid {
 }
 
 type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
-type ParsedSourceResult = Result<ParsedSource, deno_ast::ParseDiagnostic>;
+type ParsedSourceResult = Result<ParsedSource, Arc<JsErrorBox>>;
 type TestModuleFut =
   Shared<Pin<Box<dyn Future<Output = Option<Arc<TestModule>>> + Send>>>;
 
@@ -2094,14 +2095,43 @@ fn parse_source(
   text: Arc<str>,
   media_type: MediaType,
 ) -> ParsedSourceResult {
-  deno_ast::parse_program(deno_ast::ParseParams {
-    specifier,
-    text,
-    media_type,
-    capture_tokens: true,
-    scope_analysis: true,
-    maybe_syntax: None,
-  })
+  let specifier_for_error = specifier.clone();
+  let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+    deno_ast::parse_program(deno_ast::ParseParams {
+      specifier,
+      text,
+      media_type,
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })
+  }));
+  match result {
+    Ok(result) => {
+      result.map_err(|diagnostic| Arc::new(JsErrorBox::from_err(diagnostic)))
+    }
+    Err(error) => {
+      let error = panic_payload_to_string(&error);
+      lsp_warn!(
+        "Failed to parse \"{}\" due to parser panic: {}",
+        specifier_for_error,
+        error,
+      );
+      Err(Arc::new(JsErrorBox::generic(format!(
+        "The parser panicked while parsing this module: {error}"
+      ))))
+    }
+  }
+}
+
+fn panic_payload_to_string(error: &(dyn std::any::Any + Send)) -> String {
+  if let Some(message) = error.downcast_ref::<String>() {
+    message.clone()
+  } else if let Some(message) = error.downcast_ref::<&'static str>() {
+    message.to_string()
+  } else {
+    "unknown parser panic".to_string()
+  }
 }
 
 fn analyze_module(
@@ -2153,7 +2183,7 @@ fn analyze_module(
         deno_graph::ModuleErrorKind::Parse {
           specifier,
           mtime: None,
-          diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
+          diagnostic: diagnostic.clone(),
         }
         .into_box(),
       )),
@@ -2289,6 +2319,24 @@ console.log(b);
 console.log(b, "hello deno");
 "#
     );
+  }
+
+  #[test]
+  fn test_parse_invalid_tsx_with_jsx_pragmas_does_not_panic() {
+    let specifier = ModuleSpecifier::parse("file:///index.tsx").unwrap();
+    let result = parse_source(
+      specifier,
+      r#"/** @jsxRuntime automatic */ /** @jsxImportSource npm:preact */
+
+const Counter = () => {
+  const [count
+  <button>{count}</button>
+}
+"#
+      .into(),
+      MediaType::Tsx,
+    );
+    assert!(result.is_err());
   }
 
   #[tokio::test]

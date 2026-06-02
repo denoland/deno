@@ -3506,18 +3506,10 @@ fn parse_code_actions(
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(&module.line_index);
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
-              let specifier_index = text_edit
-                .new_text
-                .char_indices()
-                .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-              if let Some(i) = specifier_index {
-                let mut specifier_part = text_edit.new_text.split_off(i);
-                specifier_part = specifier_part.replace(
-                  &specifier_rewrite.old_specifier,
-                  &specifier_rewrite.new_specifier,
-                );
-                text_edit.new_text.push_str(&specifier_part);
-              }
+              rewrite_first_quoted_specifier(
+                &mut text_edit.new_text,
+                &specifier_rewrite.new_specifier,
+              );
               if let Some(deno_types_specifier) =
                 &specifier_rewrite.new_deno_types_specifier
               {
@@ -3775,6 +3767,23 @@ fn byte_offset_to_position(text: &str, offset: usize) -> lsp::Position {
   lsp::Position { line, character }
 }
 
+fn rewrite_first_quoted_specifier(text: &mut String, new_specifier: &str) {
+  let Some((quote_start, quote)) = text
+    .char_indices()
+    .find_map(|(i, c)| (c == '\'' || c == '"').then_some((i, c)))
+  else {
+    return;
+  };
+  let specifier_start = quote_start + quote.len_utf8();
+  let Some(quote_end) = text[specifier_start..]
+    .char_indices()
+    .find_map(|(i, c)| (c == quote).then_some(specifier_start + i))
+  else {
+    return;
+  };
+  text.replace_range(specifier_start..quote_end, new_specifier);
+}
+
 // Based on https://github.com/microsoft/vscode/blob/1.81.1/extensions/typescript-language-features/src/languageFeatures/util/snippetForFunctionCall.ts#L49.
 fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
   let mut parameters = Vec::with_capacity(3);
@@ -3900,17 +3909,10 @@ impl CompletionEntryDetails {
       .collect::<Vec<_>>();
     if let Some(specifier_rewrite) = &data.specifier_rewrite {
       for description in &mut code_action_descriptions {
-        let specifier_index = description
-          .char_indices()
-          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-        if let Some(i) = specifier_index {
-          let mut specifier_part = description.to_mut().split_off(i);
-          specifier_part = specifier_part.replace(
-            &specifier_rewrite.old_specifier,
-            &specifier_rewrite.new_specifier,
-          );
-          description.to_mut().push_str(&specifier_part);
-        }
+        rewrite_first_quoted_specifier(
+          description.to_mut(),
+          &specifier_rewrite.new_specifier,
+        );
       }
       if let Some(text_edit) = &mut text_edit {
         let new_text = match text_edit {
@@ -3919,17 +3921,10 @@ impl CompletionEntryDetails {
             &mut insert_replace_edit.new_text
           }
         };
-        let specifier_index = new_text
-          .char_indices()
-          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-        if let Some(i) = specifier_index {
-          let mut specifier_part = new_text.split_off(i);
-          specifier_part = specifier_part.replace(
-            &specifier_rewrite.old_specifier,
-            &specifier_rewrite.new_specifier,
-          );
-          new_text.push_str(&specifier_part);
-        }
+        rewrite_first_quoted_specifier(
+          new_text,
+          &specifier_rewrite.new_specifier,
+        );
         if let Some(deno_types_specifier) =
           &specifier_rewrite.new_deno_types_specifier
         {
@@ -3951,7 +3946,7 @@ impl CompletionEntryDetails {
     let (command, additional_text_edits) =
       parse_code_actions(self.code_actions.as_ref(), data, module)?;
     let mut insert_text_format = original_item.insert_text_format;
-    let insert_text = if data.use_code_snippet {
+    let mut insert_text = if data.use_code_snippet {
       insert_text_format = Some(lsp::InsertTextFormat::SNIPPET);
       Some(format!(
         "{}({})",
@@ -3964,6 +3959,21 @@ impl CompletionEntryDetails {
     } else {
       original_item.insert_text.clone()
     };
+    let mut filter_text = original_item.filter_text.clone();
+    if let Some(specifier_rewrite) = &data.specifier_rewrite {
+      if let Some(insert_text) = &mut insert_text {
+        rewrite_first_quoted_specifier(
+          insert_text,
+          &specifier_rewrite.new_specifier,
+        );
+      }
+      if let Some(filter_text) = &mut filter_text {
+        rewrite_first_quoted_specifier(
+          filter_text,
+          &specifier_rewrite.new_specifier,
+        );
+      }
+    }
 
     Ok(lsp::CompletionItem {
       data: None,
@@ -3974,6 +3984,7 @@ impl CompletionEntryDetails {
       additional_text_edits,
       insert_text,
       insert_text_format,
+      filter_text,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
       // but when `completionItem/resolve` is called, we get a list of commit chars
       // even though we might have returned an empty list in `completion` request.
@@ -4064,7 +4075,6 @@ impl CompletionInfo {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CompletionSpecifierRewrite {
-  old_specifier: String,
   new_specifier: String,
   new_deno_types_specifier: Option<String>,
 }
@@ -4408,10 +4418,23 @@ impl CompletionEntry {
           || new_deno_types_specifier.is_some()
         {
           specifier_rewrite = Some(CompletionSpecifierRewrite {
-            old_specifier: import_data.raw.module_specifier.clone(),
             new_specifier,
             new_deno_types_specifier,
           });
+        }
+      }
+      if let Some(specifier_rewrite) = &specifier_rewrite {
+        if let Some(insert_text) = &mut insert_text {
+          rewrite_first_quoted_specifier(
+            insert_text,
+            &specifier_rewrite.new_specifier,
+          );
+        }
+        if let Some(filter_text) = &mut filter_text {
+          rewrite_first_quoted_specifier(
+            filter_text,
+            &specifier_rewrite.new_specifier,
+          );
         }
       }
       // We want relative or bare (import-mapped or otherwise) specifiers to
@@ -6387,6 +6410,17 @@ mod tests {
     let actual =
       replace_links(r"test {@linkcode http://deno.land/x/mod.ts a link} test");
     assert_eq!(actual, r"test [`a link`](http://deno.land/x/mod.ts) test");
+  }
+
+  #[test]
+  fn test_rewrite_first_quoted_specifier() {
+    let mut text = r#"import { rollup } from "";"#.to_string();
+    rewrite_first_quoted_specifier(&mut text, "$rollup");
+    assert_eq!(text, r#"import { rollup } from "$rollup";"#);
+
+    let mut text = r#"import { rollup } from "npm:rollup";"#.to_string();
+    rewrite_first_quoted_specifier(&mut text, "$rollup");
+    assert_eq!(text, r#"import { rollup } from "$rollup";"#);
   }
 
   #[tokio::test]
