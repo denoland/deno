@@ -94,6 +94,7 @@ function processUrlList(urlList, urlListProcessed) {
  * @property {undefined | string} [integrity]
  * @property {undefined | boolean} [keepalive]
  * @property {undefined | "same-origin" | "no-cors" | "cors" | "navigate"} [mode]
+ * @property {undefined | "auto" | "low" | "high"} [priority]
  * @property {"follow" | "error" | "manual"} redirectMode
  * @property {undefined | string} [referrer] "client", "no-referrer", or a serialized URL
  * @property {undefined | "" | "no-referrer" | "no-referrer-when-downgrade" | "same-origin" | "origin" | "strict-origin" | "origin-when-cross-origin" | "strict-origin-when-cross-origin" | "unsafe-url"} [referrerPolicy]
@@ -230,6 +231,7 @@ function cloneInnerRequest(request, skipBody = false) {
   if (request.integrity !== undefined) cloned.integrity = request.integrity;
   if (request.keepalive !== undefined) cloned.keepalive = request.keepalive;
   if (request.mode !== undefined) cloned.mode = request.mode;
+  if (request.priority !== undefined) cloned.priority = request.priority;
   if (request.referrer !== undefined) cloned.referrer = request.referrer;
   if (request.referrerPolicy !== undefined) {
     cloned.referrerPolicy = request.referrerPolicy;
@@ -463,6 +465,11 @@ class Request {
       request.keepalive = init.keepalive;
     }
 
+    // priority
+    if (init.priority !== undefined) {
+      request.priority = init.priority;
+    }
+
     // 25.
     if (init.method !== undefined) {
       const method = init.method;
@@ -616,6 +623,11 @@ class Request {
     return this[_request].mode ?? "cors";
   }
 
+  get priority() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].priority ?? "auto";
+  }
+
   get referrer() {
     webidl.assertBranded(this, RequestPrototype);
     const referrer = this[_request].referrer;
@@ -736,6 +748,14 @@ webidl.converters["RequestMode"] = webidl.createEnumConverter(
     "cors",
   ],
 );
+webidl.converters["RequestPriority"] = webidl.createEnumConverter(
+  "RequestPriority",
+  [
+    "auto",
+    "low",
+    "high",
+  ],
+);
 webidl.converters["ReferrerPolicy"] = webidl.createEnumConverter(
   "ReferrerPolicy",
   [
@@ -769,6 +789,7 @@ webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
     { key: "redirect", converter: webidl.converters["RequestRedirect"] },
     { key: "integrity", converter: webidl.converters["DOMString"] },
     { key: "keepalive", converter: webidl.converters["boolean"] },
+    { key: "priority", converter: webidl.converters["RequestPriority"] },
     {
       key: "signal",
       converter: webidl.createNullableConverter(

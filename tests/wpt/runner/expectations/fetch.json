@@ -219,18 +219,8 @@
           "RequestCache \"reload\" mode does store the response in the cache even if a previous response is already stored with Last-Modified and fresh response"
         ]
       },
-      "request-init-priority.any.html": {
-        "expectedFailures": [
-          "new Request() throws a TypeError if any of RequestInit's members' values are invalid",
-          "fetch() with an invalid priority returns a rejected promise with a TypeError"
-        ]
-      },
-      "request-init-priority.any.worker.html": {
-        "expectedFailures": [
-          "new Request() throws a TypeError if any of RequestInit's members' values are invalid",
-          "fetch() with an invalid priority returns a rejected promise with a TypeError"
-        ]
-      },
+      "request-init-priority.any.html": true,
+      "request-init-priority.any.worker.html": true,
       "request-keepalive.any.html": {
         "expectedFailures": [
           "keepalive flag with stream body"

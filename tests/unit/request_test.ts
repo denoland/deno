@@ -87,6 +87,7 @@ Deno.test(function requestDefaultProperties() {
   assertEquals(req.integrity, "");
   assertEquals(req.keepalive, false);
   assertEquals(req.mode, "cors");
+  assertEquals(req.priority, "auto");
   assertEquals(req.referrer, "about:client");
   assertEquals(req.referrerPolicy, "");
 });
@@ -98,6 +99,7 @@ Deno.test(function requestInitProperties() {
     integrity: "sha256-abc",
     keepalive: true,
     mode: "no-cors",
+    priority: "high",
     referrer: "http://example.com/",
     referrerPolicy: "no-referrer",
   });
@@ -106,8 +108,16 @@ Deno.test(function requestInitProperties() {
   assertEquals(req.integrity, "sha256-abc");
   assertEquals(req.keepalive, true);
   assertEquals(req.mode, "no-cors");
+  assertEquals(req.priority, "high");
   assertEquals(req.referrer, "http://example.com/");
   assertEquals(req.referrerPolicy, "no-referrer");
+});
+
+Deno.test(function requestInvalidPriorityThrows() {
+  assertThrows(
+    () => new Request("http://foo/", { priority: "bogus" as RequestPriority }),
+    TypeError,
+  );
 });
 
 Deno.test(function requestReferrerEmptyString() {
@@ -148,6 +158,7 @@ Deno.test(function requestPropertiesInheritedFromRequest() {
     integrity: "sha256-abc",
     keepalive: true,
     mode: "no-cors",
+    priority: "low",
     referrer: "http://example.com/",
     referrerPolicy: "origin",
   });
@@ -157,6 +168,7 @@ Deno.test(function requestPropertiesInheritedFromRequest() {
   assertEquals(cloned.integrity, "sha256-abc");
   assertEquals(cloned.keepalive, true);
   assertEquals(cloned.mode, "no-cors");
+  assertEquals(cloned.priority, "low");
   assertEquals(cloned.referrer, "http://example.com/");
   assertEquals(cloned.referrerPolicy, "origin");
 });
@@ -168,6 +180,7 @@ Deno.test(function requestCloneCopiesAllProperties() {
     integrity: "sha384-xyz",
     keepalive: true,
     mode: "cors",
+    priority: "high",
     referrer: "http://example.com/",
     referrerPolicy: "strict-origin",
   });
@@ -177,6 +190,7 @@ Deno.test(function requestCloneCopiesAllProperties() {
   assertEquals(cloned.integrity, "sha384-xyz");
   assertEquals(cloned.keepalive, true);
   assertEquals(cloned.mode, "cors");
+  assertEquals(cloned.priority, "high");
   assertEquals(cloned.referrer, "http://example.com/");
   assertEquals(cloned.referrerPolicy, "strict-origin");
 });
