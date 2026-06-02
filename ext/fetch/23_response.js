@@ -396,6 +396,8 @@ function tryFillSingleContentTypeHeader(list, object) {
   if (contentType === null) {
     return false;
   }
+  // Safe to bypass normal header validation: tryGetSingleContentTypeHeader()
+  // accepts only the exact literal content-type values listed above.
   ArrayPrototypePush(list, ["content-type", contentType]);
   return true;
 }

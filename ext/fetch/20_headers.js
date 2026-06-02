@@ -188,6 +188,8 @@ function appendHeaderToList(list, name, value) {
   ArrayPrototypePush(list, [name, value]);
 }
 
+// Used by constructors to initialize a fresh list. This intentionally appends
+// directly to `list`; callers must not use it to mutate guarded Headers.
 function fillHeaderList(list, object, prefix, context, opts) {
   if (ArrayIsArray(object)) {
     for (let i = 0; i < object.length; ++i) {

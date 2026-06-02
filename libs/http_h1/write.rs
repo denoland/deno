@@ -35,6 +35,9 @@ pub struct ResponseContentTypeFast<'a> {
   pub keep_alive: bool,
 }
 
+// Public serializers expect callers to pass already-validated HTTP fields.
+// The release-mode assertions below are a fail-closed backstop for internal
+// misuse so invalid bytes cannot be copied to the wire.
 pub fn write_response_head(out: &mut Vec<u8>, response: ResponseHeader<'_>) {
   write_response_head_inner(out, response, false);
 }
