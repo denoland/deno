@@ -61,7 +61,6 @@ const {
   TypedArrayPrototypeSubarray,
   Uint8Array,
   Uint8ArrayPrototype,
-  Uint8ArrayPrototypeToHex,
 } = primordials;
 const {
   op_base64_decode_into,
@@ -1104,7 +1103,8 @@ Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
 };
 
 Buffer.prototype.hexSlice = function hexSlice(offset, length) {
-  return Uint8ArrayPrototypeToHex(
+  // deno-lint-ignore prefer-primordials
+  return Uint8ArrayPrototype.toHex.call(
     TypedArrayPrototypeSubarray(this, offset, length),
   );
 };
