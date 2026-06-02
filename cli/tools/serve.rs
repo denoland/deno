@@ -20,6 +20,7 @@ use crate::args::WorkspaceMainModuleResolver;
 use crate::args::parallelism_count;
 use crate::factory::CliFactory;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::open::open_url_detached;
 use crate::worker::CliMainWorkerFactory;
 
 pub async fn serve(
@@ -69,7 +70,7 @@ pub async fn serve(
 
   if serve_flags.open_site {
     let url = resolve_serve_url(serve_flags.host, serve_flags.port);
-    let _ = open::that_detached(url);
+    let _ = open_url_detached(&url);
   }
 
   let hmr = serve_flags

@@ -139,7 +139,6 @@ markup_fmt.workspace = true
 memchr.workspace = true
 notify.workspace = true
 once_cell.workspace = true
-open.workspace = true
 opentelemetry.workspace = true
 opentelemetry-otlp.workspace = true
 opentelemetry-semantic-conventions.workspace = true
@@ -186,7 +185,7 @@ zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading", "Win32_UI_Shell"] }
 deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]

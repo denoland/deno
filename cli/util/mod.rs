@@ -10,6 +10,7 @@ pub mod extract;
 pub mod file_watcher;
 pub mod fs;
 pub mod git;
+pub mod open;
 pub mod path;
 pub mod progress_bar;
 pub mod retry;
