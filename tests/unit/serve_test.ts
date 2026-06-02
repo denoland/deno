@@ -3643,6 +3643,70 @@ for (const [name, req] of badRequests) {
   );
 }
 
+async function writeAll(conn: Deno.Conn, bytes: Uint8Array): Promise<void> {
+  let written = 0;
+  while (written < bytes.length) {
+    written += await conn.write(bytes.subarray(written));
+  }
+}
+
+async function assertRawRequestBadRequest(request: string): Promise<void> {
+  const ac = new AbortController();
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  await using server = Deno.serve({
+    handler: () => {
+      fail("invalid request should be rejected before dispatch");
+      return new Response("ok");
+    },
+    port: servePort,
+    signal: ac.signal,
+    onListen: onListen(resolve),
+    onError: createOnErrorCb(ac),
+  });
+
+  await promise;
+  const conn = await Deno.connect({ port: servePort });
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  await writeAll(conn, encoder.encode(request));
+
+  const buf = new Uint8Array(128);
+  const readResult = await conn.read(buf);
+  assert(readResult);
+  const msg = decoder.decode(buf.subarray(0, readResult));
+  assert(msg.startsWith("HTTP/1.1 400 "), msg);
+  conn.close();
+
+  ac.abort();
+  await server.finished;
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRejectsOversizedRequestHead() {
+    await assertRawRequestBadRequest(
+      `GET / HTTP/1.1\r\nHost: example.domain\r\nX-Fill: ${
+        "a".repeat(64 * 1024)
+      }\r\n\r\n`,
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRejectsTooManyRequestHeaders() {
+    const headers = Array.from(
+      { length: 129 },
+      (_, index) => `X-${index}: a\r\n`,
+    ).join("");
+    await assertRawRequestBadRequest(
+      `GET / HTTP/1.1\r\nHost: example.domain\r\n${headers}\r\n`,
+    );
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerConcurrentRequests() {

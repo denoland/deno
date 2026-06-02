@@ -320,16 +320,18 @@ impl<I> SharedConn<I> {
     (self.io, self.buffered)
   }
 
-  pub fn try_take_full_body(&mut self) -> Option<Vec<u8>> {
+  pub fn try_take_full_body(&mut self) -> Result<Option<Vec<u8>>, Error> {
     if let Some(remaining) = self.protocol.content_length_remaining() {
-      let remaining = usize::try_from(remaining).ok()?;
+      let Ok(remaining) = usize::try_from(remaining) else {
+        return Ok(None);
+      };
       if self.buffered.len() < remaining {
-        return None;
+        return Ok(None);
       }
       let body = self.buffered[..remaining].to_vec();
       self.buffered.drain(..remaining);
       self.protocol.finish_body();
-      return Some(body);
+      return Ok(Some(body));
     }
 
     let mut protocol = self.protocol;
@@ -338,7 +340,7 @@ impl<I> SharedConn<I> {
 
     loop {
       let status =
-        body_status_from_buf(&mut protocol, &self.buffered[cursor..]).ok()?;
+        body_status_from_buf(&mut protocol, &self.buffered[cursor..])?;
       match status {
         ConnBodyStatus::Chunk { len, consumed, .. } => {
           body_len += len;
@@ -348,7 +350,7 @@ impl<I> SharedConn<I> {
           cursor += consumed;
           break;
         }
-        ConnBodyStatus::Partial { .. } => return None,
+        ConnBodyStatus::Partial { .. } => return Ok(None),
       }
     }
 
@@ -360,7 +362,7 @@ impl<I> SharedConn<I> {
 
     while cursor < consumed_total {
       let status =
-        body_status_from_buf(&mut protocol, &self.buffered[cursor..]).ok()?;
+        body_status_from_buf(&mut protocol, &self.buffered[cursor..])?;
       match status {
         ConnBodyStatus::Chunk {
           offset,
@@ -377,13 +379,13 @@ impl<I> SharedConn<I> {
           cursor = next;
         }
         ConnBodyStatus::Complete { .. } => break,
-        ConnBodyStatus::Partial { .. } => return None,
+        ConnBodyStatus::Partial { .. } => return Ok(None),
       }
     }
 
     self.protocol = final_protocol;
     self.buffered.drain(..consumed_total);
-    Some(body)
+    Ok(Some(body))
   }
 }
 
@@ -454,13 +456,19 @@ where
   ) -> Result<Option<Request<'a>>, Error> {
     self.finish_previous_request().await?;
 
-    while find_double_crlf(self.read_buf.filled()).is_none() {
+    let head_end = loop {
+      if let Some(head_end) = find_double_crlf(self.read_buf.filled()) {
+        break head_end;
+      }
       if self.read_buf.len() >= MAX_HEAD_BYTES {
         return Err(Error::HeadTooLarge);
       }
       if self.read_more().await? == 0 {
         return Ok(None);
       }
+    };
+    if head_end > MAX_HEAD_BYTES {
+      return Err(Error::HeadTooLarge);
     }
 
     let RequestStatus::Complete { request, consumed } = self
@@ -783,8 +791,10 @@ where
     F: for<'a> FnMut(Request<'a>) -> R,
   {
     loop {
-      let has_head = find_double_crlf(&self.buffered).is_some();
-      if has_head {
+      if let Some(head_end) = find_double_crlf(&self.buffered) {
+        if head_end > MAX_HEAD_BYTES {
+          return Poll::Ready(Err(Error::HeadTooLarge));
+        }
         let mut headers =
           [const { std::mem::MaybeUninit::uninit() }; crate::MAX_HEADERS];
         let mut parse_headers =
@@ -816,6 +826,11 @@ where
       }
 
       if self.buffered.is_empty() {
+        if let Some(head_end) = find_double_crlf(&scratch.read_buf[..read])
+          && head_end > MAX_HEAD_BYTES
+        {
+          return Poll::Ready(Err(Error::HeadTooLarge));
+        }
         let mut headers =
           [const { std::mem::MaybeUninit::uninit() }; crate::MAX_HEADERS];
         let mut parse_headers =
@@ -1749,7 +1764,7 @@ mod tests {
     .await?
     .unwrap();
     assert_eq!(body_kind, BodyKind::ContentLength(5));
-    assert_eq!(conn.try_take_full_body().as_deref(), Some(&b"hello"[..]));
+    assert_eq!(conn.try_take_full_body()?.as_deref(), Some(&b"hello"[..]));
 
     let method = std::future::poll_fn(|cx| {
       conn.poll_next_request_with(cx, &mut scratch, |request| {
@@ -1779,7 +1794,7 @@ mod tests {
     .await?
     .unwrap();
     assert_eq!(body_kind, BodyKind::Chunked);
-    assert_eq!(conn.try_take_full_body().as_deref(), Some(&b"hello"[..]));
+    assert_eq!(conn.try_take_full_body()?.as_deref(), Some(&b"hello"[..]));
     Ok(())
   }
 
@@ -1823,13 +1838,38 @@ mod tests {
     .await?
     .unwrap();
     assert_eq!(body_kind, BodyKind::ContentLength(5));
-    assert!(conn.try_take_full_body().is_none());
+    assert!(conn.try_take_full_body()?.is_none());
 
     let chunk = std::future::poll_fn(|cx| {
       conn.poll_read_body_chunk_with(cx, &mut scratch, |chunk| chunk.to_vec())
     })
     .await?;
     assert!(matches!(chunk, SharedBodyChunk::Chunk(chunk) if chunk == b"he"));
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_try_take_full_body_reports_oversized_trailers()
+  -> TestResult<()> {
+    let (mut client, server) = tokio::io::duplex(128 * 1024);
+    let mut conn = SharedConn::new(server);
+    let mut scratch = SharedScratch::new(128 * 1024, DEFAULT_WRITE_CAPACITY);
+    let mut request =
+      b"POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX: ".to_vec();
+    request.extend(std::iter::repeat_n(b'a', 64 * 1024));
+    request.extend_from_slice(b"\r\n\r\n");
+    client.write_all(&request).await?;
+
+    let body_kind = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?
+    .unwrap();
+    assert_eq!(body_kind, BodyKind::Chunked);
+    assert!(matches!(
+      conn.try_take_full_body(),
+      Err(Error::HeadTooLarge)
+    ));
     Ok(())
   }
 

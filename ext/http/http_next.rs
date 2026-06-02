@@ -1332,7 +1332,7 @@ impl<I> RawH1RequestBody<I> {
     }
     let mut conn = self.conn.borrow_mut();
     let conn = conn.as_mut()?;
-    conn.conn.try_take_full_body()
+    conn.conn.try_take_full_body().ok().flatten()
   }
 }
 
@@ -3968,7 +3968,7 @@ async fn serve_http11_raw(
     };
     if parsed.has_body
       && upgrade.is_none()
-      && let Some(body) = conn.try_take_full_body()
+      && let Some(body) = conn.try_take_full_body()?
     {
       let record = RawHttpRecord::new(
         request_info.clone(),
