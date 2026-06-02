@@ -4582,15 +4582,28 @@ mod tests {
   fn test_walk_workspace_reaches_enabled_nested_workspace() {
     let temp_dir = TempDir::new();
     temp_dir.write("repo/root.ts", ""); // no, root is disabled
-    temp_dir.write("repo/apps/backend/deno.json", "{}"); // yes
+    temp_dir.write(
+      "repo/apps/backend/deno.json",
+      r#"{ "importMap": "import_map.json" }"#,
+    ); // yes
+    temp_dir.write(
+      "repo/apps/backend/import_map.json",
+      r#"{ "imports": { "core/": "../../shared/ts/core/src/" } }"#,
+    ); // yes
     temp_dir.write("repo/apps/backend/src/run.ts", ""); // yes
     temp_dir.write("repo/apps/web/src/main.ts", ""); // no, not enabled
-    temp_dir.write("repo/shared/core/src/index.ts", ""); // no, not enabled
+    temp_dir.write("repo/shared/ts/core/src/index.ts", ""); // no, not enabled
 
     let root_url = temp_dir.url().join("repo/").unwrap();
+    let shared_url = temp_dir.url().join("repo/shared/").unwrap();
     let backend_url = temp_dir.url().join("repo/apps/backend/").unwrap();
-    let mut config =
-      Config::new_with_roots(vec![root_url.clone(), backend_url.clone()]);
+    let web_url = temp_dir.url().join("repo/apps/web/").unwrap();
+    let mut config = Config::new_with_roots(vec![
+      shared_url.clone(),
+      backend_url.clone(),
+      web_url.clone(),
+      root_url.clone(),
+    ]);
     config.set_client_capabilities(ClientCapabilities {
       workspace: Some(Default::default()),
       ..Default::default()
@@ -4602,7 +4615,7 @@ mod tests {
       },
       vec![
         (
-          Arc::new(root_url.clone()),
+          Arc::new(shared_url.clone()),
           WorkspaceSettings {
             enable: Some(false),
             ..Default::default()
@@ -4612,6 +4625,20 @@ mod tests {
           Arc::new(backend_url.clone()),
           WorkspaceSettings {
             enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(web_url.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(root_url.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
             ..Default::default()
           },
         ),
@@ -4628,6 +4655,7 @@ mod tests {
       json!(workspace_files),
       json!([
         backend_url.join("deno.json").unwrap(),
+        backend_url.join("import_map.json").unwrap(),
         backend_url.join("src/run.ts").unwrap(),
       ])
     );

@@ -2384,9 +2384,15 @@ mod tests {
   #[test]
   fn config_path_enabled_for_nested_workspace_folder() {
     let root_uri = root_dir();
+    let shared_uri = root_uri.join("shared/").unwrap();
     let backend_uri = root_uri.join("apps/backend/").unwrap();
-    let mut config =
-      Config::new_with_roots(vec![root_uri.clone(), backend_uri.clone()]);
+    let web_uri = root_uri.join("apps/web/").unwrap();
+    let mut config = Config::new_with_roots(vec![
+      shared_uri.clone(),
+      backend_uri.clone(),
+      web_uri.clone(),
+      root_uri.clone(),
+    ]);
     config.set_workspace_settings(
       WorkspaceSettings {
         enable: Some(false),
@@ -2394,7 +2400,7 @@ mod tests {
       },
       vec![
         (
-          Arc::new(root_uri.clone()),
+          Arc::new(shared_uri.clone()),
           WorkspaceSettings {
             enable: Some(false),
             ..Default::default()
@@ -2404,6 +2410,20 @@ mod tests {
           Arc::new(backend_uri.clone()),
           WorkspaceSettings {
             enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(web_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(root_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
             ..Default::default()
           },
         ),
@@ -2421,6 +2441,9 @@ mod tests {
     assert!(
       !config.specifier_enabled(&root_uri.join("apps/web/main.ts").unwrap())
     );
+    assert!(!config.specifier_enabled(
+      &root_uri.join("shared/ts/core/src/index.ts").unwrap()
+    ));
   }
 
   #[tokio::test]
