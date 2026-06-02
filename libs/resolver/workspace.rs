@@ -1201,6 +1201,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     };
     let resolve_error = match resolve_result {
       Ok(mut resolved_specifier) => {
+        // Collapse redundant path segments (e.g. `//`) introduced by
+        // non-normalized specifiers like `.//a.js`. Without this, a cyclic
+        // import graph keeps producing distinct specifiers that accumulate
+        // slashes on every cycle and never dedupe, eventually exceeding the
+        // OS file name length limit.
+        collapse_redundant_file_specifier_segments(&mut resolved_specifier);
         let mut used_compiler_options_root_dirs = false;
         let mut sloppy_reason = None;
         if let Some((probed_specifier, probed_sloppy_reason)) = self
@@ -1591,6 +1597,37 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
   pub fn has_compiler_options_root_dirs(&self) -> bool {
     self.compiler_options_resolver.read().has_root_dirs()
   }
+}
+
+/// Collapses redundant path segments (such as the empty segment produced by a
+/// `//` in the specifier) in a `file:` URL. Other schemes are left untouched.
+///
+/// `deno_path_util::normalize_path` intentionally leaves a lone `//` alone, so
+/// we rely on `Path::components()` here, which discards repeated separators and
+/// `.` segments while preserving the rest of the path verbatim.
+fn collapse_redundant_file_specifier_segments(specifier: &mut Url) {
+  if specifier.scheme() != "file" {
+    return;
+  }
+  // Quick check to avoid the path round-trip for the common case.
+  if !specifier.path().contains("//") {
+    return;
+  }
+  let Ok(path) = url_to_file_path(specifier) else {
+    return;
+  };
+  let collapsed = path.components().collect::<PathBuf>();
+  // Note: `PathBuf` compares by component, so the raw `OsStr` must be compared
+  // here to detect a difference in the separators that were collapsed.
+  if collapsed.as_os_str() == path.as_os_str() {
+    return;
+  }
+  let Ok(mut collapsed_specifier) = url_from_file_path(&collapsed) else {
+    return;
+  };
+  collapsed_specifier.set_query(specifier.query());
+  collapsed_specifier.set_fragment(specifier.fragment());
+  *specifier = collapsed_specifier;
 }
 
 #[derive(Deserialize, Serialize)]
