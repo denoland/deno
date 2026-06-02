@@ -476,7 +476,7 @@ where
       .next_request(self.read_buf.filled(), headers)
       .map_err(protocol_error)?
     else {
-      return Ok(None);
+      return Err(Error::Parse(ParseError::Invalid));
     };
     let request = request_from_core(&request);
     self.pending_head_consume = consumed;
@@ -808,7 +808,7 @@ where
           )
           .map_err(protocol_error)?
         else {
-          return Poll::Ready(Ok(None));
+          return Poll::Ready(Err(Error::Parse(ParseError::Invalid)));
         };
         let request = request_from_core(&request);
         let result = callback(request);
@@ -826,7 +826,8 @@ where
       }
 
       if self.buffered.is_empty() {
-        if let Some(head_end) = find_double_crlf(&scratch.read_buf[..read])
+        let scratch_head_end = find_double_crlf(&scratch.read_buf[..read]);
+        if let Some(head_end) = scratch_head_end
           && head_end > MAX_HEAD_BYTES
         {
           return Poll::Ready(Err(Error::HeadTooLarge));
@@ -852,6 +853,9 @@ where
               .extend_from_slice(&scratch.read_buf[consumed..read]);
           }
           return Poll::Ready(Ok(Some(result)));
+        }
+        if scratch_head_end.is_some() {
+          return Poll::Ready(Err(Error::Parse(ParseError::Invalid)));
         }
       }
 
