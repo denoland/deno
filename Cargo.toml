@@ -607,3 +607,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+# TODO(#28293): remove this patch once denoland/deno_graph#650 lands and is
+# published to crates.io, then bump the deno_graph version above.
+[patch.crates-io]
+deno_graph = { git = "https://github.com/bartlomieju/deno_graph", branch = "fix/fast-check-reexport-all-default" }
