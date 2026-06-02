@@ -697,6 +697,18 @@ impl Inner {
     })
   }
 
+  fn completion_context(&self) -> completions::CompletionContext<'_> {
+    completions::CompletionContext {
+      config: &self.config,
+      client: &self.client,
+      module_registry: &self.module_registry,
+      jsr_search_api: &self.jsr_search_api,
+      npm_search_api: &self.npm_search_api,
+      document_modules: &self.document_modules,
+      resolver: self.resolver.as_ref(),
+    }
+  }
+
   pub fn update_tracing(&mut self) {
     let tracing =
       self
@@ -2682,8 +2694,7 @@ impl Inner {
           &open_doc.text,
           &open_doc.line_index,
           &params.text_document_position.position,
-          &self.jsr_search_api,
-          &self.npm_search_api,
+          &self.completion_context(),
         )
         .await;
         self.performance.measure(mark);
@@ -2721,13 +2732,7 @@ impl Inner {
       response = completions::get_import_completions(
         &module,
         &params.text_document_position.position,
-        &self.config,
-        &self.client,
-        &self.module_registry,
-        &self.jsr_search_api,
-        &self.npm_search_api,
-        &self.document_modules,
-        self.resolver.as_ref(),
+        &self.completion_context(),
       )
       .await;
     }

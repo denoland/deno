@@ -65,6 +65,24 @@ pub enum CompletionItemData {
   TsJs(tsc::TsJsCompletionItemData),
 }
 
+/// The set of LSP services used to compute import completions.
+///
+/// These services act on document data but don't belong to any single
+/// document, so rather than threading each of them through the completion
+/// functions individually (horizontal movement), they're grouped here and
+/// passed as a single argument. This keeps the completion entry points from
+/// accumulating service parameters as new functionality is added. See
+/// https://github.com/denoland/deno/issues/26847.
+pub struct CompletionContext<'a> {
+  pub config: &'a Config,
+  pub client: &'a Client,
+  pub module_registry: &'a ModuleRegistry,
+  pub jsr_search_api: &'a CliJsrSearchApi,
+  pub npm_search_api: &'a CliNpmSearchApi,
+  pub document_modules: &'a DocumentModules,
+  pub resolver: &'a LspResolver,
+}
+
 /// Check if the origin can be auto-configured for completions, and if so, send
 /// a notification to the client.
 async fn check_auto_config_registry(
@@ -162,19 +180,19 @@ fn to_narrow_lsp_range(
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
-#[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
 #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
 pub async fn get_import_completions(
   module: &DocumentModule,
   position: &lsp::Position,
-  config: &Config,
-  client: &Client,
-  module_registries: &ModuleRegistry,
-  jsr_search_api: &CliJsrSearchApi,
-  npm_search_api: &CliNpmSearchApi,
-  document_modules: &DocumentModules,
-  resolver: &LspResolver,
+  cx: &CompletionContext<'_>,
 ) -> Option<lsp::CompletionResponse> {
+  let config = cx.config;
+  let client = cx.client;
+  let module_registries = cx.module_registry;
+  let jsr_search_api = cx.jsr_search_api;
+  let npm_search_api = cx.npm_search_api;
+  let document_modules = cx.document_modules;
+  let resolver = cx.resolver;
   let maybe_import_map = resolver
     .get_scoped_resolver(module.scope.as_deref())
     .as_workspace_resolver()
@@ -1029,9 +1047,10 @@ pub async fn get_deno_json_import_completions(
   text: &str,
   line_index: &LineIndex,
   position: &lsp::Position,
-  jsr_search_api: &CliJsrSearchApi,
-  npm_search_api: &CliNpmSearchApi,
+  cx: &CompletionContext<'_>,
 ) -> Option<lsp::CompletionResponse> {
+  let jsr_search_api = cx.jsr_search_api;
+  let npm_search_api = cx.npm_search_api;
   if !is_deno_config_url(referrer) {
     return None;
   }
