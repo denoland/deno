@@ -53,6 +53,7 @@ const {
   Symbol,
   SymbolAsyncDispose,
   TypeError,
+  TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
@@ -377,6 +378,7 @@ class InnerRequest {
     const buffered = op_http_try_take_full_request_body(this.#external);
     if (buffered !== null) {
       this.#body = new InnerBody({ body: buffered, consumed: false });
+      this.#body.length = TypedArrayPrototypeGetByteLength(buffered);
       return this.#body;
     }
     this.#streamRid = op_http_read_request_body(this.#external);

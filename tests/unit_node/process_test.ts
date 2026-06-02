@@ -222,6 +222,44 @@ Deno.test({
 });
 
 Deno.test({
+  // Regression test for https://github.com/denoland/deno/issues/24646: a
+  // spurious `ERR_MULTIPLE_CALLBACK` ("Callback called multiple times") was
+  // thrown from `onwrite` while doing many synchronous writes to
+  // `process.stdout`/`process.stderr` (e.g. commander.js help output under
+  // Jest). The full reproduction needs a test runner that evaluates files in
+  // separate module realms, but this at least exercises the stdio write path
+  // with the same empty-write / `isTTY` toggling pattern in a piped child.
+  name: "process.stdout/stderr survive many synchronous writes (#24646)",
+  async fn() {
+    const code = `
+      import process from "node:process";
+      for (let i = 0; i < 1000; i++) {
+        process.stdout.isTTY = i % 2 === 0;
+        process.stderr.isTTY = i % 2 === 0;
+        process.stdout.write("");
+        process.stderr.write("");
+        process.stdout.write("Usage: prog [options]\\n");
+        process.stderr.write("error: bad option\\n");
+      }
+      console.error("DONE_OK");
+    `;
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "--quiet", code],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const err = new TextDecoder().decode(stderr);
+    assert(
+      !err.includes("Callback called multiple times"),
+      "unexpected ERR_MULTIPLE_CALLBACK:\n" + err,
+    );
+    assert(err.includes("DONE_OK"), "child did not finish cleanly:\n" + err);
+    assertEquals(exitCode, 0);
+  },
+});
+
+Deno.test({
   name: "process.on signal",
   ignore: Deno.build.os == "windows",
   async fn() {

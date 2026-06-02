@@ -3468,6 +3468,42 @@ fn lsp_goto_type_definition_builtin() {
 }
 
 #[test(timeout = 300)]
+fn lsp_goto_type_definition_builtin_neovim_uses_file_uri() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_client_info("Neovim", Some("0.11.0".to_string()));
+  });
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "new Response();\n",
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/typeDefinition",
+    json!({
+      "textDocument": { "uri": "file:///a/file.ts" },
+      "position": { "line": 0, "character": 4 },
+    }),
+  );
+  let target_uri = res.as_array().unwrap()[0]
+    .as_object()
+    .unwrap()
+    .get("targetUri")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  assert_starts_with!(target_uri, "file://");
+  let target_path = Url::parse(target_uri).unwrap().to_file_path().unwrap();
+  let target_text = fs::read_to_string(target_path).unwrap();
+  assert!(target_text.contains("interface Response"), "{target_text}");
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_call_hierarchy() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -6188,12 +6224,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     })
     .to_string(),
   );
-  temp_dir.write(
-    "main.ts",
-    r#"
-      import "jsr:@denotest/add@1";
-    "#,
-  );
+  temp_dir.write("main.ts", "");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.cache_specifier(temp_dir.url().join("main.ts").unwrap());
@@ -10999,6 +11030,134 @@ fn lsp_completions_npm() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/24927.
+// Auto-completion for the configuration file `imports` field should suggest
+// jsr:/npm:/node: specifiers just like in script imports do.
+#[test(timeout = 300)]
+fn lsp_completions_deno_json_imports() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let deno_json_uri =
+    url_to_uri(&temp_dir.url().join("deno.json").unwrap()).unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // Layout of line 2 (0-indexed columns):
+  //     "add": "jsr:@denotest/add@"
+  // 0   4    9 11                30
+  // The closing quote sits at column 30 — a cursor at (2, 30) sits between
+  // the trailing `@` and the closing `"`, where TS would offer no help but
+  // Deno can suggest the available jsr versions.
+  client.did_open(json!({
+    "textDocument": {
+      "uri": deno_json_uri,
+      "languageId": "jsonc",
+      "version": 1,
+      "text": "{\n  \"imports\": {\n    \"add\": \"jsr:@denotest/add@\"\n  }\n}\n",
+    }
+  }));
+  let list = client.get_completion_list(
+    deno_json_uri.as_str(),
+    (2, 30),
+    json!({ "triggerKind": 2, "triggerCharacter": "@" }),
+  );
+  assert!(
+    list
+      .items
+      .iter()
+      .any(|i| i.label.starts_with("jsr:@denotest/add@")),
+    "expected a jsr:@denotest/add@<version> completion, got: {:#?}",
+    list.items.iter().map(|i| &i.label).collect::<Vec<_>>(),
+  );
+
+  // node: completion — module names are static, so this can be exercised
+  // without hitting the npm/jsr search APIs.
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": { "uri": deno_json_uri, "version": 2 },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 12 },
+            "end": { "line": 2, "character": 30 }
+          },
+          "text": "node:fs"
+        }
+      ]
+    }),
+  );
+  let list = client.get_completion_list(
+    deno_json_uri.as_str(),
+    (2, 19),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(
+    list.items.iter().any(|i| i.label == "node:fs"),
+    "expected a node:fs completion, got: {:#?}",
+    list.items.iter().map(|i| &i.label).collect::<Vec<_>>(),
+  );
+
+  // Inside `scopes.<scope>.<key>` the same completion flow applies.
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": { "uri": deno_json_uri, "version": 3 },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 4, "character": 1 }
+          },
+          "text": "{\n  \"scopes\": {\n    \"./a/\": {\n      \"add\": \"jsr:@denotest/add@\"\n    }\n  }\n}\n",
+        }
+      ]
+    }),
+  );
+  let list = client.get_completion_list(
+    deno_json_uri.as_str(),
+    (3, 32),
+    json!({ "triggerKind": 2, "triggerCharacter": "@" }),
+  );
+  assert!(
+    list
+      .items
+      .iter()
+      .any(|i| i.label.starts_with("jsr:@denotest/add@")),
+    "expected a jsr:@denotest/add@<version> completion in scopes, got: {:#?}",
+    list.items.iter().map(|i| &i.label).collect::<Vec<_>>(),
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_completions_npm_package_exports() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import x from \"npm:@denotest/types-exports-subpaths@1/c",
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (0, 55),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  assert!(list.items.iter().any(|item| {
+    item.label == "npm:@denotest/types-exports-subpaths@1/client"
+  }));
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_auto_import_npm_export_node_modules_dir_auto() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
@@ -11254,6 +11413,94 @@ fn lsp_auto_import_npm_export_import_map_workspace_member() {
       .unwrap(),
     "Add import from \"preact/hooks\"",
   );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_auto_import_node_modules_alias_only_configured_deps() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "direct": "1.0.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("node_modules/direct");
+  temp_dir.write(
+    "node_modules/direct/package.json",
+    json!({
+      "name": "direct",
+      "version": "1.0.0",
+      "types": "index.d.ts",
+      "dependencies": {
+        "transitive": "1.0.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "node_modules/direct/index.d.ts",
+    "import type { TransitiveType } from 'transitive';\nexport declare const directExport: TransitiveType;\n",
+  );
+  temp_dir.create_dir_all("node_modules/transitive");
+  temp_dir.write(
+    "node_modules/transitive/package.json",
+    json!({
+      "name": "transitive",
+      "version": "1.0.0",
+      "types": "index.d.ts",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "node_modules/transitive/index.d.ts",
+    "export interface TransitiveType {}\nexport declare const transitiveExport: TransitiveType;\n",
+  );
+  temp_dir.write(
+    "mod.ts",
+    "import { directExport } from 'direct';\nconsole.log(directExport);\n",
+  );
+  let file =
+    temp_dir.source_file("file.ts", "directExport;\ntransitiveExport;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file).all();
+  assert_eq!(diagnostics.len(), 2);
+
+  let actions = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 12 },
+      },
+      "context": {
+        "diagnostics": diagnostics,
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  let action_titles = actions
+    .as_array()
+    .unwrap()
+    .iter()
+    .filter_map(|action| action.get("title").and_then(|t| t.as_str()))
+    .collect::<Vec<_>>();
+  assert!(action_titles.contains(&"Add import from \"direct\""));
+  assert!(!action_titles.contains(&"Add import from \"transitive\""));
+
   client.shutdown();
 }
 
@@ -12394,8 +12641,8 @@ fn lsp_jupyter_import_map_and_diagnostics() {
                 "location": {
                   "uri": "deno:/asset/lib.deno.window.d.ts",
                   "range": {
-                    "start": { "line": 599, "character": 12 },
-                    "end": { "line": 599, "character": 16 },
+                    "start": { "line": 616, "character": 12 },
+                    "end": { "line": 616, "character": 16 },
                   },
                 },
                 "message": "'name' was also declared here.",
@@ -17622,6 +17869,120 @@ fn lsp_deno_json_workspace_lint_config() {
       }],
       "version": 1,
     })
+  );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/pull/24034, which made
+// the LSP feed the configured JSX factory into the linter so that
+// `no-unused-vars` doesn't flag the JSX factory binding (e.g. `React`) when it's
+// only referenced implicitly by JSX. See https://github.com/denoland/deno/issues/24039.
+#[test(timeout = 300)]
+fn lsp_jsx_no_unused_vars() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["classic", "automatic"],
+    })
+    .to_string(),
+  );
+  // The classic runtime transpiles JSX to `React.createElement(...)`, so the
+  // `React` binding is used implicitly and must not be reported as unused.
+  temp_dir.write(
+    "classic/deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react",
+        "jsxFactory": "React.createElement",
+        "jsxFragmentFactory": "React.Fragment",
+      },
+    })
+    .to_string(),
+  );
+  // The automatic runtime imports the factory itself, so `React` really is
+  // unused here and should be reported.
+  temp_dir.write(
+    "automatic/deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+      },
+    })
+    .to_string(),
+  );
+  let source = "const React = { createElement() {} };\nconst unused = 1;\nconst _div = <div />;\n";
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("classic/mod.tsx").unwrap()).unwrap(),
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": source,
+    },
+  }));
+  let lint_diagnostics = diagnostics
+    .all()
+    .into_iter()
+    .filter(|d| d.source.as_deref() == Some("deno-lint"))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(lint_diagnostics),
+    json!([{
+      "range": {
+        "start": { "line": 1, "character": 6 },
+        "end": { "line": 1, "character": 12 },
+      },
+      "severity": 2,
+      "code": "no-unused-vars",
+      "source": "deno-lint",
+      "message": "`unused` is never used\nIf this is intentional, prefix it with an underscore like `_unused`",
+    }])
+  );
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": url_to_uri(&temp_dir.url().join("classic/mod.tsx").unwrap()).unwrap(),
+      },
+    }),
+  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("automatic/mod.tsx").unwrap()).unwrap(),
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": source,
+    },
+  }));
+  let lint_diagnostics = diagnostics
+    .all()
+    .into_iter()
+    .filter(|d| d.source.as_deref() == Some("deno-lint"))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(lint_diagnostics),
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 6 },
+        "end": { "line": 0, "character": 11 },
+      },
+      "severity": 2,
+      "code": "no-unused-vars",
+      "source": "deno-lint",
+      "message": "`React` is never used\nIf this is intentional, prefix it with an underscore like `_React`",
+    }, {
+      "range": {
+        "start": { "line": 1, "character": 6 },
+        "end": { "line": 1, "character": 12 },
+      },
+      "severity": 2,
+      "code": "no-unused-vars",
+      "source": "deno-lint",
+      "message": "`unused` is never used\nIf this is intentional, prefix it with an underscore like `_unused`",
+    }])
   );
   client.shutdown();
 }

@@ -8,9 +8,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::Infallible;
 use std::ffi::c_void;
+use std::fs;
 use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -2181,7 +2183,8 @@ impl DocumentSpan {
       };
     let link = lsp::LocationLink {
       origin_selection_range,
-      target_uri: target_module.uri.as_ref().clone(),
+      target_uri: target_uri_for_client(&target_module, snapshot)
+        .unwrap_or_else(|| target_module.uri.as_ref().clone()),
       target_range,
       target_selection_range,
     };
@@ -2232,6 +2235,74 @@ impl DocumentSpan {
     }
     Ok(Some(lsp::GotoDefinitionResponse::Link(links)))
   }
+}
+
+fn target_uri_for_client(
+  target_module: &DocumentModule,
+  snapshot: &StateSnapshot,
+) -> Option<Uri> {
+  if !snapshot.client_needs_file_uris_for_virtual_documents
+    || !target_module
+      .uri
+      .scheme()
+      .as_str()
+      .eq_ignore_ascii_case("deno")
+  {
+    return None;
+  }
+  let file_path = virtual_document_file_path(target_module, snapshot)?;
+  if let Some(parent) = file_path.parent() {
+    fs::create_dir_all(parent).ok()?;
+  }
+  fs::write(&file_path, target_module.text.as_bytes()).ok()?;
+  url_to_uri(&Url::from_file_path(file_path).ok()?).ok()
+}
+
+fn virtual_document_file_path(
+  target_module: &DocumentModule,
+  snapshot: &StateSnapshot,
+) -> Option<PathBuf> {
+  let checksum =
+    deno_lib::util::checksum::r#gen(&[target_module.uri.as_str().as_bytes()]);
+  let mut file_name = target_module
+    .uri
+    .path()
+    .as_str()
+    .rsplit('/')
+    .next()
+    .filter(|s| !s.is_empty())
+    .map(sanitize_virtual_document_file_name)
+    .filter(|s| !s.is_empty())
+    .unwrap_or_else(|| "mod.ts".to_string());
+  if !file_name.contains('.') {
+    let extension = target_module.media_type.as_ts_extension();
+    if !extension.is_empty() {
+      file_name.push_str(extension);
+    }
+  }
+  Some(
+    snapshot
+      .cache
+      .deno_dir()
+      .root
+      .join("lsp")
+      .join("virtual_documents")
+      .join(checksum)
+      .join(file_name),
+  )
+}
+
+fn sanitize_virtual_document_file_name(value: &str) -> String {
+  value
+    .chars()
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+        c
+      } else {
+        '_'
+      }
+    })
+    .collect()
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -4751,7 +4822,7 @@ impl SelectionRange {
 #[derive(Debug, Default)]
 pub struct TscSpecifierMap {
   normalized_specifiers: DashMap<String, ModuleSpecifier>,
-  denormalized_specifiers: DashMap<ModuleSpecifier, String>,
+  denormalized_specifiers: DashMap<(ModuleSpecifier, bool), String>,
 }
 
 impl TscSpecifierMap {
@@ -4767,12 +4838,39 @@ impl TscSpecifierMap {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
   ) -> String {
+    self.denormalize_inner(specifier, media_type, false)
+  }
+
+  /// Denormalizes a specifier while hiding `node_modules` from TypeScript.
+  ///
+  /// TypeScript suppresses auto-import candidates from `node_modules/.deno`,
+  /// so direct package entry points that should be auto-importable are exposed
+  /// under a synthetic `$node_modules` path. Avoid using this for every
+  /// node_modules file, as that makes TypeScript treat the whole dependency
+  /// tree like user code.
+  pub fn denormalize_with_node_modules_alias(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+  ) -> String {
+    self.denormalize_inner(specifier, media_type, true)
+  }
+
+  fn denormalize_inner(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    alias_node_modules: bool,
+  ) -> String {
     let original = specifier;
-    if let Some(specifier) = self.denormalized_specifiers.get(original) {
+    if let Some(specifier) = self
+      .denormalized_specifiers
+      .get(&(original.clone(), alias_node_modules))
+    {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
-    if !specifier.contains("/node_modules/@types/node/") {
+    if alias_node_modules && !specifier.contains("/node_modules/@types/node/") {
       // The ts server doesn't give completions from files in
       // `node_modules/.deno/`. We work around it like this.
       specifier = specifier.replace("/node_modules/", "/$node_modules/");
@@ -4805,9 +4903,10 @@ impl TscSpecifierMap {
       .replace("$node_modules", "node_modules");
     let specifier = ModuleSpecifier::parse(&specifier_str)?;
     if specifier.as_str() != original {
-      self
-        .denormalized_specifiers
-        .insert(specifier.clone(), original.to_string());
+      self.denormalized_specifiers.insert(
+        (specifier.clone(), original.contains("$node_modules")),
+        original.to_string(),
+      );
     }
     Ok(specifier)
   }
@@ -4826,6 +4925,11 @@ struct State {
   last_scope: Option<Arc<Url>>,
   last_notebook_uri: Option<Arc<Uri>>,
   token: CancellationToken,
+  // Shared with the isolate's near-heap-limit callback so that a runaway
+  // request can be cancelled when the TSC isolate is about to run out of
+  // memory, instead of crashing the whole language server. See
+  // `run_tsc_thread`.
+  request_cancellation: Arc<Mutex<CancellationToken>>,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
   context: Option<super::trace::Context>,
@@ -4839,6 +4943,7 @@ impl State {
     performance: Arc<Performance>,
     pending_requests: UnboundedReceiver<Request>,
     enable_tracing: Arc<AtomicBool>,
+    request_cancellation: Arc<Mutex<CancellationToken>>,
   ) -> Self {
     Self {
       last_id: 1,
@@ -4850,6 +4955,7 @@ impl State {
       last_scope: None,
       last_notebook_uri: None,
       token: Default::default(),
+      request_cancellation,
       mark: None,
       pending_requests: Some(pending_requests),
       context: None,
@@ -5083,6 +5189,10 @@ async fn op_poll_requests(
   let state = state.try_borrow_mut::<State>().unwrap();
   state.pending_requests = Some(pending_requests);
   state.state_snapshot = snapshot;
+  // Publish this request's cancellation token so the isolate's
+  // near-heap-limit callback can cancel it if we're about to run out of
+  // memory while servicing it.
+  *state.request_cancellation.lock() = token.clone();
   state.token = token;
   state.response_tx = Some(response_tx);
   let id = state.last_id;
@@ -5130,7 +5240,7 @@ fn op_resolve_inner(
     .map(|o| {
       o.map(|(s, mt)| {
         (
-          state.specifier_map.denormalize(&s, mt),
+          denormalize_with_auto_import_alias(state, &s, mt, Some(&referrer)),
           match mt {
             MediaType::Unknown => None,
             // surface these as .js for typescript so side-effect imports
@@ -5194,6 +5304,37 @@ fn span_with_context(
   #[cfg(not(feature = "lsp-tracing"))]
   {
     span.entered()
+  }
+}
+
+fn should_alias_node_modules_for_auto_import(
+  state: &State,
+  specifier: &ModuleSpecifier,
+  scope: Option<&ModuleSpecifier>,
+) -> bool {
+  if !state.state_snapshot.resolver.in_node_modules(specifier) {
+    return false;
+  }
+  let scoped_resolver =
+    state.state_snapshot.resolver.get_scoped_resolver(scope);
+  let referrer = scope.unwrap_or(specifier);
+  scoped_resolver
+    .resource_url_to_configured_dep_key(specifier, referrer)
+    .is_some()
+}
+
+fn denormalize_with_auto_import_alias(
+  state: &State,
+  specifier: &ModuleSpecifier,
+  media_type: MediaType,
+  scope: Option<&ModuleSpecifier>,
+) -> String {
+  if should_alias_node_modules_for_auto_import(state, specifier, scope) {
+    state
+      .specifier_map
+      .denormalize_with_node_modules_alias(specifier, media_type)
+  } else {
+    state.specifier_map.denormalize(specifier, media_type)
   }
 }
 
@@ -5279,6 +5420,31 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .state_snapshot
       .resolver
       .get_scoped_resolver(scope.as_deref());
+    for specifier in scoped_resolver.configured_auto_import_roots() {
+      if specifier.scheme() != "jsr"
+        && !specifier.as_str().starts_with(jsr_url().as_str())
+      {
+        continue;
+      }
+      let referrer = compiler_options_data
+        .workspace_dir_or_source_url
+        .as_deref()
+        .or(scope.as_deref())
+        .unwrap_or(&specifier);
+      let Some((specifier, media_type, _)) =
+        state.state_snapshot.document_modules.resolve_dependency(
+          &specifier,
+          referrer,
+          ResolutionMode::Import,
+          scope.as_deref(),
+          Some(compiler_options_key),
+        )
+      else {
+        continue;
+      };
+      script_names
+        .insert(state.specifier_map.denormalize(&specifier, media_type));
+    }
     if scopes_with_node_specifier.contains(&scope) {
       script_names.insert("asset:///reference_types_node.d.ts".to_string());
     }
@@ -5348,11 +5514,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         else {
           continue;
         };
-        script_names.insert(
-          state
-            .specifier_map
-            .denormalize(&module.specifier, module.media_type),
-        );
+        script_names.insert(denormalize_with_auto_import_alias(
+          state,
+          &module.specifier,
+          module.media_type,
+          scope.as_deref(),
+        ));
       }
     }
   }
@@ -5390,11 +5557,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         .state_snapshot
         .document_modules
         .module(&document, scope.map(|s| s.as_ref()))?;
-      Some(
-        state
-          .specifier_map
-          .denormalize(&module.specifier, module.media_type),
-      )
+      Some(denormalize_with_auto_import_alias(
+        state,
+        &module.specifier,
+        module.media_type,
+        scope.map(|s| s.as_ref()),
+      ))
     }));
 
     result
@@ -5403,11 +5571,11 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   }
 
   // finally include the documents
-  for modules in state
+  for (scope, modules) in state
     .state_snapshot
     .document_modules
     .workspace_file_modules_by_scope()
-    .into_values()
+    .into_iter()
   {
     for module in modules {
       let is_open = module.open_data.is_some();
@@ -5432,18 +5600,20 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
       if let Some((types_specifier, types_media_type, _)) = &types_entry {
-        script_names.insert(
-          state
-            .specifier_map
-            .denormalize(types_specifier, *types_media_type),
-        );
+        script_names.insert(denormalize_with_auto_import_alias(
+          state,
+          types_specifier,
+          *types_media_type,
+          scope.as_deref(),
+        ));
       }
       if types_entry.is_none() || is_open {
-        script_names.insert(
-          state
-            .specifier_map
-            .denormalize(&module.specifier, module.media_type),
-        );
+        script_names.insert(denormalize_with_auto_import_alias(
+          state,
+          &module.specifier,
+          module.media_type,
+          scope.as_deref(),
+        ));
       }
     }
   }
@@ -5519,6 +5689,9 @@ fn run_tsc_thread(
   enable_tracing: Arc<AtomicBool>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
+  // Shared with the isolate's near-heap-limit callback. `op_poll_requests`
+  // keeps this updated with the in-flight request's cancellation token.
+  let request_cancellation: Arc<Mutex<CancellationToken>> = Default::default();
   let mut extensions =
     deno_runtime::snapshot_info::get_extensions_in_snapshot();
   extensions.push(deno_tsc::init(
@@ -5526,14 +5699,53 @@ fn run_tsc_thread(
     specifier_map,
     request_rx,
     enable_tracing,
+    request_cancellation.clone(),
   ));
-  let tsc_runtime = JsRuntime::new(RuntimeOptions {
+  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
     ..Default::default()
   });
+
+  // The TSC isolate runs the TypeScript language service, whose type checker
+  // can occasionally blow up to many gigabytes for pathological inputs (e.g.
+  // deeply recursive library types while a file is mid-edit). Without
+  // intervention V8 aborts the whole process with a fatal OOM, taking the
+  // entire language server down and forcing a slow restart + reindex. Install
+  // a near-heap-limit callback that instead cancels the in-flight request
+  // (the language service host polls this token via `op_is_cancelled`, so the
+  // computation unwinds with an `OperationCanceledError` that's already
+  // handled gracefully) and grants a bounded amount of extra headroom so the
+  // unwinding has room to run. See denoland/deno#25613.
+  {
+    // Extra heap we're willing to hand out, total, before giving up and
+    // letting V8 OOM as a last resort (better than exhausting all of system
+    // memory). Granted in steps so we never overshoot by much.
+    const HEADROOM_BYTES: usize = 1024 * 1024 * 1024;
+    const STEP_BYTES: usize = 128 * 1024 * 1024;
+    let request_cancellation = request_cancellation.clone();
+    tsc_runtime.add_near_heap_limit_callback(
+      move |current_limit, initial_limit| {
+        // Cancel the request being serviced so the language service unwinds
+        // at its next cancellation checkpoint and frees the memory.
+        request_cancellation.lock().cancel();
+        let ceiling = initial_limit.saturating_add(HEADROOM_BYTES);
+        if current_limit >= ceiling {
+          lsp_warn!(
+            "TSC isolate exceeded its heap headroom; cancelling the request. The language server may run out of memory."
+          );
+          current_limit
+        } else {
+          lsp_warn!(
+            "TSC isolate is near its heap limit; cancelling the in-flight request to recover."
+          );
+          (current_limit + STEP_BYTES).min(ceiling)
+        }
+      },
+    );
+  }
 
   if let Some(server) = maybe_inspector_server {
     server.register_inspector(
@@ -5620,6 +5832,7 @@ deno_core::extension!(deno_tsc,
     specifier_map: Arc<TscSpecifierMap>,
     request_rx: UnboundedReceiver<Request>,
     enable_tracing: Arc<AtomicBool>,
+    request_cancellation: Arc<Mutex<CancellationToken>>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -5628,6 +5841,7 @@ deno_core::extension!(deno_tsc,
       options.performance,
       options.request_rx,
       options.enable_tracing,
+      options.request_cancellation,
     ));
   },
   customizer = |ext: &mut deno_core::Extension| {
@@ -6365,6 +6579,7 @@ mod tests {
       linter_resolver,
       resolver,
       cache: Arc::new(cache),
+      client_needs_file_uris_for_virtual_documents: false,
     });
     let performance = Arc::new(Performance::default());
     let ts_server = TsJsServer::new(performance);
@@ -6391,6 +6606,7 @@ mod tests {
       Default::default(),
       rx,
       Arc::new(AtomicBool::new(true)),
+      Default::default(),
     );
     let mut op_state = OpState::new(None);
     op_state.put(state);
@@ -6900,6 +7116,26 @@ mod tests {
     };
     let actual = fixture.get_filter_text(None);
     assert_eq!(actual, Some("abc".to_string()));
+  }
+
+  #[test]
+  fn test_tsc_specifier_map_node_modules_alias_is_opt_in() {
+    let map = TscSpecifierMap::new();
+    let specifier = ModuleSpecifier::parse(
+      "file:///project/node_modules/.deno/pkg@1.0.0/node_modules/pkg/mod.d.ts",
+    )
+    .unwrap();
+
+    let denormalized = map.denormalize(&specifier, MediaType::Dts);
+    assert_eq!(denormalized, specifier.as_str());
+
+    let aliased =
+      map.denormalize_with_node_modules_alias(&specifier, MediaType::Dts);
+    assert_eq!(
+      aliased,
+      "file:///project/$node_modules/.deno/pkg@1.0.0/$node_modules/pkg/mod.d.ts",
+    );
+    assert_eq!(map.normalize(&aliased).unwrap(), specifier);
   }
 
   #[tokio::test]

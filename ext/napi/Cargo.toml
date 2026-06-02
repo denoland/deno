@@ -22,6 +22,7 @@ libc.workspace = true
 libloading.workspace = true
 log.workspace = true
 napi_sym.workspace = true
+object.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(windows)'.dependencies]

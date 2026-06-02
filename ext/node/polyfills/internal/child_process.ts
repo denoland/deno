@@ -1487,6 +1487,11 @@ function buildCommand(
 
     // Use the Rust parser to translate Node.js args to Deno args
     // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
+    if (args.includes("--use-env-proxy")) {
+      env.NODE_USE_ENV_PROXY = "1";
+    } else if (args.includes("--no-use-env-proxy")) {
+      env.NODE_USE_ENV_PROXY = "0";
+    }
     const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
     args = result.denoArgs;
     includeNpmProcessState = result.needsNpmProcessState;
