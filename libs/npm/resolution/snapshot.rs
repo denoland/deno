@@ -224,7 +224,7 @@ impl SerializedNpmResolutionSnapshot {
       // For each nv group, partition packages by their dep signature and
       // emit (subset → canonical) mappings for equivalent partitions.
       let mut mappings: HashMap<NpmPackageId, NpmPackageId> = HashMap::new();
-      for (_nv, indices) in &nv_to_indices {
+      for indices in nv_to_indices.values() {
         if indices.len() < 2 {
           continue;
         }
