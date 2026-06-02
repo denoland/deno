@@ -1168,6 +1168,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        minify: false,
       },
       &resolve_cwd(None).unwrap(),
     )
@@ -1201,6 +1202,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        minify: false,
       },
       &resolve_cwd(None).unwrap(),
     )
