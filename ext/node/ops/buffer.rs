@@ -221,7 +221,10 @@ pub fn op_node_encoding_slice<'a>(
     }
     2 => {
       // asciiSlice
-      if buffer.len() <= 256 && buffer.is_ascii() {
+      if buffer.len() > v8::String::MAX_LENGTH {
+        // String too long
+        None
+      } else if buffer.len() <= 256 && buffer.is_ascii() {
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
         let ascii_bytes = mask_ascii_fast(buffer);
@@ -289,6 +292,12 @@ fn decode_utf16le_from_bytes<'a>(
 ) -> Option<v8::Local<'a, v8::String>> {
   // UTF-16 must be a multiple of 2 bytes. Discard any trailing odd byte.
   let len = bytes.len() & !1;
+
+  if len > v8::String::MAX_LENGTH {
+    // String too long
+    return None;
+  }
+
   let buf = &bytes[..len];
 
   #[cfg(target_endian = "little")]
@@ -360,6 +369,11 @@ fn encode_hex_from_bytes<'a>(
   buffer: &[u8],
 ) -> Option<v8::Local<'a, v8::String>> {
   let len = buffer.len();
+
+  if len * 2 > v8::String::MAX_LENGTH {
+    // String too long
+    return None;
+  }
 
   // Allocate exactly `len` elements of `u16`.
   // This guarantees the underlying buffer is at least 2-byte aligned.
