@@ -300,8 +300,13 @@ async fn test_resolve_value_generic(
   }
 }
 
-#[test]
-fn terminate_execution_webassembly() {
+// Uses `tokio::test` because, without `--wasm-test-streaming`, async
+// `WebAssembly.compile` finishes on a V8 background thread and posts a
+// foreground task to resolve the promise. The custom V8 platform only delivers
+// those foreground tasks when the isolate was created inside a tokio runtime
+// (see `register_isolate`), so `block_on` without tokio would hang.
+#[tokio::test]
+async fn terminate_execution_webassembly() {
   let (mut runtime, _dispatch_count) = setup(Mode::Async);
   let v8_isolate_handle = runtime.v8_isolate().thread_safe_handle();
 
@@ -321,7 +326,7 @@ fn terminate_execution_webassembly() {
                                 })()
                                     "#).unwrap();
   #[allow(deprecated, reason = "test code")]
-  futures::executor::block_on(runtime.resolve_value(promise)).unwrap();
+  runtime.resolve_value(promise).await.unwrap();
   let terminator_thread = std::thread::spawn(move || {
     std::thread::sleep(std::time::Duration::from_millis(1000));
 

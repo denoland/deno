@@ -1233,9 +1233,12 @@ pub fn op_set_wasm_streaming_callback(
 ) -> Result<(), JsErrorBox> {
   let cb = v8::Global::new(scope, cb);
   let context_state_rc = JsRealm::state_from_scope(scope);
-  // The callback to pass to the v8 API has to be a unit type, so it can't
-  // borrow or move any local variables. Therefore, we're storing the JS
-  // callback in a JsRuntimeState slot.
+  // We only store the JS callback here. The v8-level streaming callback is
+  // installed natively at isolate creation (see `wasm_streaming_callback`),
+  // because v8 re-creates the `WebAssembly` object - and resets the
+  // isolate-wide streaming callback - every time a new context is created
+  // (e.g. through `node:vm`). Setting it from this op would mean any later
+  // context creation silently clobbers it. See denoland/deno#34677.
   if context_state_rc.js_wasm_streaming_cb.borrow().is_some() {
     return Err(JsErrorBox::type_error(
       "op_set_wasm_streaming_callback already called",
@@ -1243,31 +1246,42 @@ pub fn op_set_wasm_streaming_callback(
   }
   *context_state_rc.js_wasm_streaming_cb.borrow_mut() = Some(cb);
 
-  scope.set_wasm_streaming_callback(|scope, arg, wasm_streaming| {
-    let (cb_handle, streaming_rid) = {
-      let context_state_rc = JsRealm::state_from_scope(scope);
-      let cb_handle = context_state_rc
-        .js_wasm_streaming_cb
-        .borrow()
-        .as_ref()
-        .unwrap()
-        .clone();
-      let state = JsRuntime::state_from(scope);
-      let streaming_rid = state
-        .op_state
-        .borrow_mut()
-        .resource_table
-        .add(WasmStreamingResource(RefCell::new(wasm_streaming)));
-      (cb_handle, streaming_rid)
-    };
-
-    let undefined = v8::undefined(scope);
-    let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
-    cb_handle
-      .open(scope)
-      .call(scope, undefined.into(), &[arg, rid]);
-  });
   Ok(())
+}
+
+/// The isolate-wide [`v8::Isolate::set_wasm_streaming_callback`] handler. It
+/// dispatches to the JS handler registered through
+/// `op_set_wasm_streaming_callback`. This is installed once at isolate creation
+/// so that it survives v8 re-installing the `WebAssembly` object (and resetting
+/// the isolate-wide streaming callback) on every newly created context.
+pub fn wasm_streaming_callback<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  arg: v8::Local<'a, v8::Value>,
+  wasm_streaming: v8::WasmStreaming<false>,
+) {
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  let maybe_cb_handle = context_state_rc.js_wasm_streaming_cb.borrow().clone();
+  let Some(cb_handle) = maybe_cb_handle else {
+    // The JS handler is registered while the runtime bootstraps, before any
+    // user code can trigger wasm streaming. Reaching this without a handler
+    // means deno_core was misconfigured.
+    panic!("wasm streaming callback invoked before the JS handler was set");
+  };
+
+  let streaming_rid = {
+    let state = JsRuntime::state_from(scope);
+    state
+      .op_state
+      .borrow_mut()
+      .resource_table
+      .add(WasmStreamingResource(RefCell::new(wasm_streaming)))
+  };
+
+  let undefined = v8::undefined(scope);
+  let rid = serde_v8::to_v8(scope, streaming_rid).unwrap();
+  cb_handle
+    .open(scope)
+    .call(scope, undefined.into(), &[arg, rid]);
 }
 
 // This op is re-entrant as it makes a v8 call. It also cannot be fast because

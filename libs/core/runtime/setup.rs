@@ -148,7 +148,6 @@ fn v8_init(
   }
 
   let base_flags = concat!(
-    " --wasm-test-streaming",
     " --no-validate-asm",
     " --turbo_fast_api_calls",
     " --harmony-temporal",
@@ -279,6 +278,9 @@ pub fn create_isolate(
   );
   isolate.set_wasm_async_resolve_promise_callback(
     bindings::wasm_async_resolve_promise_callback,
+  );
+  isolate.set_wasm_streaming_callback(
+    crate::ops_builtin_v8::wasm_streaming_callback,
   );
 
   isolate
