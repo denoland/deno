@@ -600,15 +600,24 @@ impl ModuleLoader for EmbeddedModuleLoader {
     {
       return self.resolve_inner(raw_specifier, referrer.as_str(), kind);
     }
-    if let Some(url) = self.hook_registry.resolve(
+    let resolved = if let Some(url) = self.hook_registry.resolve(
       scope,
       raw_specifier,
       referrer,
       import_attributes,
     )? {
-      return ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err);
+      ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)
+    } else {
+      self.resolve_inner(raw_specifier, referrer, kind)
+    };
+    // Stash the full import attributes against the resolved URL so the load
+    // hook (which V8 only hands the `type` attribute) can recover them.
+    if let Ok(resolved) = &resolved {
+      self
+        .hook_registry
+        .record_resolved_attributes(resolved.as_str(), import_attributes);
     }
-    self.resolve_inner(raw_specifier, referrer, kind)
+    resolved
   }
 
   fn get_host_defined_options<'s>(
@@ -677,11 +686,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
       // The hook function itself is synchronous, but this load path has no V8
       // scope. The async bridge lets the JS event loop run the hook; blocking
       // here waiting for JS would deadlock the same runtime.
-      let import_type =
-        options.requested_module_type.as_str().map(str::to_owned);
+      let import_attributes = hook_load_import_attributes(
+        &self.hook_registry,
+        original_specifier.as_str(),
+        &options.requested_module_type,
+      );
       let receiver = self
         .hook_registry
-        .push_load(original_specifier.to_string(), import_type);
+        .push_load(original_specifier.to_string(), import_attributes);
       let this = self.clone();
       let specifier = original_specifier.clone();
       let maybe_referrer = maybe_referrer.cloned();
@@ -1356,6 +1368,24 @@ pub async fn run(
 /// Pick the `ModuleType` for source returned by a `module.registerHooks()`
 /// load hook. Honors a hook-supplied `format` first (Node's hook contract),
 /// then falls back to the importer's `with { type: "..." }` attribute.
+/// Build the `importAttributes` object handed to a `module.registerHooks()`
+/// load hook. V8 only surfaces the `type` attribute at load time, so recover
+/// the full `with { ... }` clause recorded during resolution and make sure
+/// `type` is present for the common JSON/text/bytes case.
+fn hook_load_import_attributes(
+  registry: &LoaderHookRegistry,
+  specifier: &str,
+  requested_module_type: &RequestedModuleType,
+) -> std::collections::HashMap<String, String> {
+  let mut attrs = registry.take_resolved_attributes(specifier);
+  if let Some(ty) = requested_module_type.as_str() {
+    attrs
+      .entry("type".to_string())
+      .or_insert_with(|| ty.to_string());
+  }
+  attrs
+}
+
 fn pick_hook_module_type(
   format: Option<&str>,
   requested: &deno_core::RequestedModuleType,

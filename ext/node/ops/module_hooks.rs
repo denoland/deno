@@ -16,7 +16,11 @@ use deno_error::JsErrorBox;
 struct PendingLoad {
   id: u32,
   url: String,
-  import_type: Option<String>,
+  /// The full set of `with { ... }` import attributes for this load, so the
+  /// JS load hook sees the same `context.importAttributes` Node would (not
+  /// just the `type` attribute). Captured at resolve time keyed by the
+  /// resolved URL (see [`LoaderHookRegistry::record_resolved_attributes`]).
+  import_attributes: HashMap<String, String>,
 }
 
 /// Load hook result: (source, format, effective_url).
@@ -63,6 +67,13 @@ pub struct LoaderHookRegistry {
   /// Piggybacking senders for duplicate load requests.
   load_waiters: Rc<RefCell<HashMap<String, Vec<LoadSender>>>>,
   default_resolve: Rc<RefCell<Option<DefaultResolveCb>>>,
+  /// Import attributes recorded during resolution, keyed by the resolved
+  /// module URL. The module loader's `resolve_with_scope` sees the full
+  /// `with { ... }` clause; `load` (driven by V8) only sees the `type`
+  /// attribute, so we stash the full set here at resolve time and consume it
+  /// when building the load request. This lets the JS load hook observe the
+  /// same `context.importAttributes` as Node.
+  resolved_attributes: Rc<RefCell<HashMap<String, HashMap<String, String>>>>,
 }
 
 impl LoaderHookRegistry {
@@ -155,16 +166,51 @@ impl LoaderHookRegistry {
     ))
   }
 
+  /// Record the full import attributes seen while resolving `url`, so the
+  /// later `load` of that URL can forward them to the JS load hook. Only the
+  /// `type` attribute survives into V8's load callback, so without this the
+  /// load hook would never see custom attributes (e.g. `with { x_loader }`).
+  pub fn record_resolved_attributes(
+    &self,
+    url: &str,
+    import_attributes: &HashMap<String, String>,
+  ) {
+    // Only the hook-active load path consumes these. Without a hook nothing
+    // ever takes them, so skip recording to avoid the map growing unbounded.
+    if import_attributes.is_empty() || !self.hooks_active.get() {
+      return;
+    }
+    // First write wins: when the same URL is imported with different
+    // attributes, the load bridge dedups by URL and V8 serves the first
+    // requesting import, so the load hook should observe that import's
+    // attributes (not a later importer's that gets piggybacked).
+    self
+      .resolved_attributes
+      .borrow_mut()
+      .entry(url.to_string())
+      .or_insert_with(|| import_attributes.clone());
+  }
+
+  /// Take the import attributes recorded for `url` at resolve time, falling
+  /// back to an empty set. Consuming (rather than cloning) keeps the map from
+  /// growing without bound across a long-running process.
+  pub fn take_resolved_attributes(&self, url: &str) -> HashMap<String, String> {
+    self
+      .resolved_attributes
+      .borrow_mut()
+      .remove(url)
+      .unwrap_or_default()
+  }
+
   /// Push a load request and return a receiver for the response.
   /// `Ok((Some(source), format, _))` = hook provided source,
   /// `Ok((None, _, effective_url))` = fallthrough, optionally redirected.
-  /// `import_type` is the `type` value from `with { type: "..." }` import
-  /// attributes, forwarded to JS so hooks see the correct
-  /// `context.importAttributes`.
+  /// `import_attributes` is the full `with { ... }` clause, forwarded to JS so
+  /// hooks see the correct `context.importAttributes`.
   pub fn push_load(
     &self,
     url: String,
-    import_type: Option<String>,
+    import_attributes: HashMap<String, String>,
   ) -> deno_core::futures::channel::oneshot::Receiver<Result<LoadResult, String>>
   {
     // Dedup: if there's already a pending load for this URL, piggyback.
@@ -190,7 +236,7 @@ impl LoaderHookRegistry {
     self.pending_loads.borrow_mut().push_back(PendingLoad {
       id,
       url,
-      import_type,
+      import_attributes,
     });
     if let Some(waker) = self.load_waker.borrow_mut().take() {
       waker.wake();
@@ -213,14 +259,16 @@ pub fn op_module_hooks_register(
   registry.hooks_active.set(has_resolve || has_load);
 }
 
-/// Poll for a pending load request. Returns `[id, url, importType]` or null.
-/// `importType` is the `type` value from `with { type: "..." }` import
-/// attributes (e.g. "json", "text", "bytes"), or null when none was specified.
+/// Poll for a pending load request. Returns `[id, url, importAttributes]` or
+/// null. `importAttributes` is the full `with { ... }` clause from the import
+/// (e.g. `{ type: "json" }` or `{ x_loader: "css-mod" }`), serialized as an
+/// object, so the JS load hook sees the same `context.importAttributes` Node
+/// would.
 #[op2]
 #[serde]
 pub async fn op_module_hooks_poll_load(
   state: Rc<RefCell<OpState>>,
-) -> Result<Option<(u32, String, Option<String>)>, JsErrorBox> {
+) -> Result<Option<(u32, String, HashMap<String, String>)>, JsErrorBox> {
   let registry = state.borrow().borrow::<LoaderHookRegistry>().clone();
 
   std::future::poll_fn(|cx| {
@@ -228,7 +276,7 @@ pub async fn op_module_hooks_poll_load(
       return std::task::Poll::Ready(Ok(Some((
         req.id,
         req.url,
-        req.import_type,
+        req.import_attributes,
       ))));
     }
     *registry.load_waker.borrow_mut() = Some(cx.waker().clone());
