@@ -37,5 +37,4 @@ tokio.workspace = true
 nix = { workspace = true, features = ["signal", "process"] }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = [] }
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = ["Win32_System_Threading"] }

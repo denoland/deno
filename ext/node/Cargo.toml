@@ -62,7 +62,6 @@ tokio.workspace = true
 tokio-eld.workspace = true
 url.workspace = true
 webpki-root-certs.workspace = true
-winapi.workspace = true
 zstd.workspace = true
 
 [target.'cfg(unix)'.dependencies]
@@ -73,6 +72,5 @@ nix = { workspace = true, features = ["user"] }
 cc = "1"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper"] }
-winapi = { workspace = true, features = ["consoleapi"] }
+windows-sys = { workspace = true, features = ["Win32_Networking_WinSock", "Win32_NetworkManagement_IpHelper", "Win32_System_Console", "Win32_System_SystemInformation"] }
 deno_subprocess_windows.workspace = true
