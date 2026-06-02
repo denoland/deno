@@ -17,6 +17,3 @@ path = "main.rs"
 [dependencies]
 serde_json.workspace = true
 url.workspace = true
-
-[target.'cfg(unix)'.dependencies]
-exec = "0.3.1"
