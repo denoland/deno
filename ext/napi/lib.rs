@@ -62,7 +62,10 @@ pub use value::napi_value;
 pub mod function;
 // Only used to diagnose Windows addons that link against `node.exe`; on unix the
 // helpers are exercised solely by their unit tests.
-#[cfg_attr(unix, allow(dead_code))]
+#[cfg_attr(
+  unix,
+  allow(dead_code, reason = "only used on Windows; unix runs the unit tests")
+)]
 mod pe;
 mod value;
 
