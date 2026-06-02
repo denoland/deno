@@ -314,8 +314,7 @@ pub fn mem_info() -> Option<MemInfo> {
 
     let mut mem_status =
       mem::MaybeUninit::<SystemInformation::MEMORYSTATUSEX>::uninit();
-    let length =
-      mem::size_of::<SystemInformation::MEMORYSTATUSEX>() as u32;
+    let length = mem::size_of::<SystemInformation::MEMORYSTATUSEX>() as u32;
     (*mem_status.as_mut_ptr()).dwLength = length;
 
     let result =

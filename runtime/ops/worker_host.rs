@@ -808,9 +808,7 @@ fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
 #[cfg(windows)]
 fn capture_current_thread_handle() -> u64 {
   // SAFETY: Returns the thread ID of the calling thread.
-  unsafe {
-    windows_sys::Win32::System::Threading::GetCurrentThreadId() as u64
-  }
+  unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() as u64 }
 }
 
 #[cfg(windows)]

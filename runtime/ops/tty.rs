@@ -138,9 +138,7 @@ fn op_set_raw(
 
     let mut original_mode: u32 = 0;
     // SAFETY: Win32 call
-    if unsafe { wincon::GetConsoleMode(handle, &mut original_mode) }
-      == FALSE
-    {
+    if unsafe { wincon::GetConsoleMode(handle, &mut original_mode) } == FALSE {
       return Err(TtyError::Io(Error::last_os_error()));
     }
 
@@ -210,9 +208,8 @@ fn op_set_raw(
         stdin_state.screen_buffer_info = Some(active_screen_buffer);
 
         // SAFETY: Win32 call to write the VK_RETURN event.
-        if unsafe {
-          wincon::WriteConsoleInputW(handle, &record, 1, &mut 0)
-        } == FALSE
+        if unsafe { wincon::WriteConsoleInputW(handle, &record, 1, &mut 0) }
+          == FALSE
         {
           return Err(TtyError::Io(Error::last_os_error()));
         }
