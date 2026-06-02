@@ -39,6 +39,12 @@ fn ensure_read_permission<'a>(
   state: &mut OpState,
   file_path: Cow<'a, Path>,
 ) -> Result<Cow<'a, Path>, JsErrorBox> {
+  // Fast path: when read is fully granted there's nothing to check, so skip
+  // fetching the loader and the per-call work it does (e.g. module graph
+  // lookups) entirely.
+  if state.borrow::<PermissionsContainer>().query_read_all() {
+    return Ok(file_path);
+  }
   let loader = state.borrow::<NodeRequireLoaderRc>().clone();
   let permissions = state.borrow_mut::<PermissionsContainer>();
   loader.ensure_read_permission(permissions, file_path)
