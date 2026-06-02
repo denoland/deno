@@ -11416,6 +11416,94 @@ fn lsp_auto_import_npm_export_import_map_workspace_member() {
   client.shutdown();
 }
 
+#[test(timeout = 300)]
+fn lsp_auto_import_node_modules_alias_only_configured_deps() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "direct": "1.0.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("node_modules/direct");
+  temp_dir.write(
+    "node_modules/direct/package.json",
+    json!({
+      "name": "direct",
+      "version": "1.0.0",
+      "types": "index.d.ts",
+      "dependencies": {
+        "transitive": "1.0.0",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "node_modules/direct/index.d.ts",
+    "import type { TransitiveType } from 'transitive';\nexport declare const directExport: TransitiveType;\n",
+  );
+  temp_dir.create_dir_all("node_modules/transitive");
+  temp_dir.write(
+    "node_modules/transitive/package.json",
+    json!({
+      "name": "transitive",
+      "version": "1.0.0",
+      "types": "index.d.ts",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "node_modules/transitive/index.d.ts",
+    "export interface TransitiveType {}\nexport declare const transitiveExport: TransitiveType;\n",
+  );
+  temp_dir.write(
+    "mod.ts",
+    "import { directExport } from 'direct';\nconsole.log(directExport);\n",
+  );
+  let file =
+    temp_dir.source_file("file.ts", "directExport;\ntransitiveExport;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file).all();
+  assert_eq!(diagnostics.len(), 2);
+
+  let actions = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 12 },
+      },
+      "context": {
+        "diagnostics": diagnostics,
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  let action_titles = actions
+    .as_array()
+    .unwrap()
+    .iter()
+    .filter_map(|action| action.get("title").and_then(|t| t.as_str()))
+    .collect::<Vec<_>>();
+  assert!(action_titles.contains(&"Add import from \"direct\""));
+  assert!(!action_titles.contains(&"Add import from \"transitive\""));
+
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/23869.
 #[test(timeout = 300)]
 fn lsp_auto_imports_remote_dts() {

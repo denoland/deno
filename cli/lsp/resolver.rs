@@ -833,10 +833,10 @@ impl ConfiguredDepResolutions {
             );
           }
         }
-        if let Some(key_prefix) = entry.key.strip_suffix('/')
-          && req_ref.sub_path().is_none()
+        if req_ref.sub_path().is_none()
           && let Some(dep_package_json) = &dep_package_json
         {
+          let key_prefix = entry.key.strip_suffix('/').unwrap_or(entry.key);
           insert_export_resolutions(
             key_prefix,
             &req_ref.req().to_string(),

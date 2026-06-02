@@ -4822,7 +4822,7 @@ impl SelectionRange {
 #[derive(Debug, Default)]
 pub struct TscSpecifierMap {
   normalized_specifiers: DashMap<String, ModuleSpecifier>,
-  denormalized_specifiers: DashMap<ModuleSpecifier, String>,
+  denormalized_specifiers: DashMap<(ModuleSpecifier, bool), String>,
 }
 
 impl TscSpecifierMap {
@@ -4838,12 +4838,39 @@ impl TscSpecifierMap {
     specifier: &ModuleSpecifier,
     media_type: MediaType,
   ) -> String {
+    self.denormalize_inner(specifier, media_type, false)
+  }
+
+  /// Denormalizes a specifier while hiding `node_modules` from TypeScript.
+  ///
+  /// TypeScript suppresses auto-import candidates from `node_modules/.deno`,
+  /// so direct package entry points that should be auto-importable are exposed
+  /// under a synthetic `$node_modules` path. Avoid using this for every
+  /// node_modules file, as that makes TypeScript treat the whole dependency
+  /// tree like user code.
+  pub fn denormalize_with_node_modules_alias(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+  ) -> String {
+    self.denormalize_inner(specifier, media_type, true)
+  }
+
+  fn denormalize_inner(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    alias_node_modules: bool,
+  ) -> String {
     let original = specifier;
-    if let Some(specifier) = self.denormalized_specifiers.get(original) {
+    if let Some(specifier) = self
+      .denormalized_specifiers
+      .get(&(original.clone(), alias_node_modules))
+    {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
-    if !specifier.contains("/node_modules/@types/node/") {
+    if alias_node_modules && !specifier.contains("/node_modules/@types/node/") {
       // The ts server doesn't give completions from files in
       // `node_modules/.deno/`. We work around it like this.
       specifier = specifier.replace("/node_modules/", "/$node_modules/");
@@ -4876,9 +4903,10 @@ impl TscSpecifierMap {
       .replace("$node_modules", "node_modules");
     let specifier = ModuleSpecifier::parse(&specifier_str)?;
     if specifier.as_str() != original {
-      self
-        .denormalized_specifiers
-        .insert(specifier.clone(), original.to_string());
+      self.denormalized_specifiers.insert(
+        (specifier.clone(), original.contains("$node_modules")),
+        original.to_string(),
+      );
     }
     Ok(specifier)
   }
@@ -5212,7 +5240,7 @@ fn op_resolve_inner(
     .map(|o| {
       o.map(|(s, mt)| {
         (
-          state.specifier_map.denormalize(&s, mt),
+          denormalize_with_auto_import_alias(state, &s, mt, Some(&referrer)),
           match mt {
             MediaType::Unknown => None,
             // surface these as .js for typescript so side-effect imports
@@ -5276,6 +5304,37 @@ fn span_with_context(
   #[cfg(not(feature = "lsp-tracing"))]
   {
     span.entered()
+  }
+}
+
+fn should_alias_node_modules_for_auto_import(
+  state: &State,
+  specifier: &ModuleSpecifier,
+  scope: Option<&ModuleSpecifier>,
+) -> bool {
+  if !state.state_snapshot.resolver.in_node_modules(specifier) {
+    return false;
+  }
+  let scoped_resolver =
+    state.state_snapshot.resolver.get_scoped_resolver(scope);
+  let referrer = scope.unwrap_or(specifier);
+  scoped_resolver
+    .resource_url_to_configured_dep_key(specifier, referrer)
+    .is_some()
+}
+
+fn denormalize_with_auto_import_alias(
+  state: &State,
+  specifier: &ModuleSpecifier,
+  media_type: MediaType,
+  scope: Option<&ModuleSpecifier>,
+) -> String {
+  if should_alias_node_modules_for_auto_import(state, specifier, scope) {
+    state
+      .specifier_map
+      .denormalize_with_node_modules_alias(specifier, media_type)
+  } else {
+    state.specifier_map.denormalize(specifier, media_type)
   }
 }
 
@@ -5455,11 +5514,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         else {
           continue;
         };
-        script_names.insert(
-          state
-            .specifier_map
-            .denormalize(&module.specifier, module.media_type),
-        );
+        script_names.insert(denormalize_with_auto_import_alias(
+          state,
+          &module.specifier,
+          module.media_type,
+          scope.as_deref(),
+        ));
       }
     }
   }
@@ -5497,11 +5557,12 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         .state_snapshot
         .document_modules
         .module(&document, scope.map(|s| s.as_ref()))?;
-      Some(
-        state
-          .specifier_map
-          .denormalize(&module.specifier, module.media_type),
-      )
+      Some(denormalize_with_auto_import_alias(
+        state,
+        &module.specifier,
+        module.media_type,
+        scope.map(|s| s.as_ref()),
+      ))
     }));
 
     result
@@ -5510,11 +5571,11 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   }
 
   // finally include the documents
-  for modules in state
+  for (scope, modules) in state
     .state_snapshot
     .document_modules
     .workspace_file_modules_by_scope()
-    .into_values()
+    .into_iter()
   {
     for module in modules {
       let is_open = module.open_data.is_some();
@@ -5539,18 +5600,20 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
       if let Some((types_specifier, types_media_type, _)) = &types_entry {
-        script_names.insert(
-          state
-            .specifier_map
-            .denormalize(types_specifier, *types_media_type),
-        );
+        script_names.insert(denormalize_with_auto_import_alias(
+          state,
+          types_specifier,
+          *types_media_type,
+          scope.as_deref(),
+        ));
       }
       if types_entry.is_none() || is_open {
-        script_names.insert(
-          state
-            .specifier_map
-            .denormalize(&module.specifier, module.media_type),
-        );
+        script_names.insert(denormalize_with_auto_import_alias(
+          state,
+          &module.specifier,
+          module.media_type,
+          scope.as_deref(),
+        ));
       }
     }
   }
@@ -7053,6 +7116,26 @@ mod tests {
     };
     let actual = fixture.get_filter_text(None);
     assert_eq!(actual, Some("abc".to_string()));
+  }
+
+  #[test]
+  fn test_tsc_specifier_map_node_modules_alias_is_opt_in() {
+    let map = TscSpecifierMap::new();
+    let specifier = ModuleSpecifier::parse(
+      "file:///project/node_modules/.deno/pkg@1.0.0/node_modules/pkg/mod.d.ts",
+    )
+    .unwrap();
+
+    let denormalized = map.denormalize(&specifier, MediaType::Dts);
+    assert_eq!(denormalized, specifier.as_str());
+
+    let aliased =
+      map.denormalize_with_node_modules_alias(&specifier, MediaType::Dts);
+    assert_eq!(
+      aliased,
+      "file:///project/$node_modules/.deno/pkg@1.0.0/$node_modules/pkg/mod.d.ts",
+    );
+    assert_eq!(map.normalize(&aliased).unwrap(), specifier);
   }
 
   #[tokio::test]
