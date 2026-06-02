@@ -17,7 +17,16 @@
 /// <reference lib="deno.broadcast_channel" />
 /// <reference lib="node" />
 
-/** @category Wasm */
+/** The `WebAssembly` JavaScript object acts as the namespace for all
+ * [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly)-related
+ * functionality. Unlike most global objects, it is not a constructor; it groups
+ * the functions used to compile and instantiate WebAssembly modules together
+ * with the classes (`Module`, `Instance`, `Memory`, `Table`, `Global`) and
+ * error types used to work with them.
+ *
+ * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly)
+ *
+ * @category Wasm */
 declare namespace WebAssembly {
   /**
    * The `WebAssembly.CompileError` object indicates an error during WebAssembly decoding or validation.
@@ -187,7 +196,10 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface GlobalDescriptor {
+    /** Whether the global variable can be modified after creation. Defaults to
+     * `false`. */
     mutable?: boolean;
+    /** The data type of the global variable. */
     value: ValueType;
   }
 
@@ -197,8 +209,14 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface MemoryDescriptor {
+    /** The initial size of the memory, in units of WebAssembly pages (64KB
+     * each). */
     initial: number;
+    /** The maximum size the memory is allowed to grow to, in units of
+     * WebAssembly pages. */
     maximum?: number;
+    /** Whether the memory is shared between agents (backed by a
+     * `SharedArrayBuffer`). Defaults to `false`. */
     shared?: boolean;
   }
 
@@ -208,7 +226,9 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface ModuleExportDescriptor {
+    /** The kind of entity being exported. */
     kind: ImportExportKind;
+    /** The name under which the entity is exported. */
     name: string;
   }
 
@@ -218,8 +238,11 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface ModuleImportDescriptor {
+    /** The kind of entity being imported. */
     kind: ImportExportKind;
+    /** The name of the module the entity is imported from. */
     module: string;
+    /** The name of the imported entity within its module. */
     name: string;
   }
 
@@ -229,8 +252,11 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface TableDescriptor {
+    /** The type of value stored in the table. */
     element: TableKind;
+    /** The initial number of elements in the table. */
     initial: number;
+    /** The maximum number of elements the table is allowed to grow to. */
     maximum?: number;
   }
 
@@ -239,7 +265,7 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface WebAssemblyInstantiatedSource {
-    /* A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
+    /** A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
     instance: Instance;
 
     /**
@@ -249,21 +275,39 @@ declare namespace WebAssembly {
     module: Module;
   }
 
-  /** @category Wasm */
+  /** The kind of entity referenced by a module import or export descriptor.
+   *
+   * @category Wasm */
   export type ImportExportKind = "function" | "global" | "memory" | "table";
-  /** @category Wasm */
+  /** The type of value stored in a `WebAssembly.Table`.
+   *
+   * @category Wasm */
   export type TableKind = "anyfunc";
-  /** @category Wasm */
+  /** The data type of a WebAssembly value, used to describe globals.
+   *
+   * @category Wasm */
   export type ValueType = "f32" | "f64" | "i32" | "i64";
-  /** @category Wasm */
+  /** A value that can be exported from a WebAssembly module instance.
+   *
+   * @category Wasm */
   export type ExportValue = Function | Global | Memory | Table;
-  /** @category Wasm */
+  /** The set of values exported by a WebAssembly module instance, keyed by
+   * export name.
+   *
+   * @category Wasm */
   export type Exports = Record<string, ExportValue>;
-  /** @category Wasm */
+  /** A value that can be supplied to a WebAssembly module as an import.
+   *
+   * @category Wasm */
   export type ImportValue = ExportValue | number;
-  /** @category Wasm */
+  /** The set of values imported from a single module, keyed by import name.
+   *
+   * @category Wasm */
   export type ModuleImports = Record<string, ImportValue>;
-  /** @category Wasm */
+  /** The import object supplied when instantiating a WebAssembly module,
+   * grouping imported values by module name.
+   *
+   * @category Wasm */
   export type Imports = Record<string, ModuleImports>;
 
   /**
@@ -439,7 +483,11 @@ interface ErrorEvent extends Event {
   readonly error: any;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode ErrorEvent}, used to construct an
+ * event describing an uncaught error, such as the one dispatched on the global
+ * scope as `error`.
+ *
+ * @category Events */
 declare var ErrorEvent: {
   readonly prototype: ErrorEvent;
   new (type: string, eventInitDict?: ErrorEventInit): ErrorEvent;
@@ -457,7 +505,11 @@ interface PromiseRejectionEvent extends Event {
   readonly reason: any;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode PromiseRejectionEvent}, used to
+ * construct the event dispatched on the global scope as `unhandledrejection`
+ * and `rejectionhandled` when a promise is rejected without a handler.
+ *
+ * @category Events */
 declare var PromiseRejectionEvent: {
   readonly prototype: PromiseRejectionEvent;
   new (
@@ -737,13 +789,22 @@ interface Performance extends EventTarget {
   toJSON(): any;
 }
 
-/** @category Performance */
+/** The constructor object for {@linkcode Performance}.
+ *
+ * The `Performance` instance is accessed via the global {@linkcode performance}
+ * property rather than constructed directly, so calling the constructor throws.
+ *
+ * @category Performance */
 declare var Performance: {
   readonly prototype: Performance;
   new (): never;
 };
 
-/** @category Performance */
+/** The global {@linkcode Performance} instance, providing access to
+ * high-resolution timing via `performance.now()` and the user-timing marks and
+ * measures APIs.
+ *
+ * @category Performance */
 declare var performance: Performance;
 
 /** @category Performance */
@@ -858,7 +919,11 @@ interface CustomEvent<T = any> extends Event {
   readonly detail: T;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode CustomEvent}, used to construct an
+ * event that can carry arbitrary application-defined data via its `detail`
+ * property.
+ *
+ * @category Events */
 declare var CustomEvent: {
   readonly prototype: CustomEvent;
   new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
@@ -897,9 +962,19 @@ interface Math {
   sumPrecise(values: Iterable<number>): number;
 }
 
-/** @category Intl */
+/** The `Intl` namespace groups the
+ * [ECMAScript Internationalization API](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl)
+ * constructors and functions.
+ *
+ * This declaration augments the standard `Intl` namespace with members that are
+ * not yet part of the bundled TypeScript library definitions.
+ *
+ * @category Intl */
 declare namespace Intl {
-  /** @category Intl */
+  /** Augments the standard {@linkcode Intl.Locale} interface with members not
+   * yet present in the bundled TypeScript library definitions.
+   *
+   * @category Intl */
   export interface Locale {
     /**
      * Returns the variant subtags of the locale as a single string, with
