@@ -463,9 +463,18 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
     // - /.../deno/npm/registry.npmjs.org/canvas/2.11.2/lib/bindings.js
     // - /.../.cache/deno/npm/registry.npmjs.org/canvas/2.11.2/lib/canvas.js
     // ```
-    } else if msg.contains("Cannot find module")
+    // as well as errors thrown by the `bindings` npm package (used by
+    // libxmljs and many other native addons), like:
+    // ```
+    // Uncaught Error: Could not locate the bindings file. Tried:
+    //  → /.../node_modules/libxmljs/build/xmljs.node
+    //  → /.../node_modules/libxmljs/build/Release/xmljs.node
+    // ```
+    } else if (msg.contains("Cannot find module")
       && msg.contains("Require stack")
-      && msg.contains(".node'")
+      && msg.contains(".node'"))
+      || (msg.contains("Could not locate the bindings file")
+        && msg.contains(".node"))
     {
       return vec![
         FixSuggestion::info_multiline(&[
@@ -475,6 +484,38 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
         FixSuggestion::hint_multiline(&[
           "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
           "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory.",
+        ]),
+      ];
+    // Captures the error thrown by `ext/napi` when a native addon was built
+    // against the legacy Node.js native addon ABI (the `NODE_MODULE` macro /
+    // `nan`) instead of Node-API. Such addons link against V8's C++ internals,
+    // which Deno does not expose, so they cannot be loaded. See
+    // denoland/deno#26034 (better-sqlite3) and denoland/deno#26656.
+    } else if msg.contains("legacy Node.js native addon API") {
+      // `better-sqlite3` is by far the most commonly reported offender, so
+      // point users straight at drop-in Node-API alternatives.
+      if msg.contains("better-sqlite3") || msg.contains("better_sqlite3") {
+        return vec![
+          FixSuggestion::info_multiline(&[
+            "`better-sqlite3` is built on the legacy V8/nan native addon ABI,",
+            "which depends on V8 internals that Deno does not expose.",
+          ]),
+          FixSuggestion::hint_multiline(&[
+            "Use a Node-API based alternative instead, such as the built-in",
+            "`node:sqlite` module, or the `npm:libsql` / `npm:@libsql/client`",
+            "packages (the latter expose a `better-sqlite3`-compatible API).",
+          ]),
+        ];
+      }
+      return vec![
+        FixSuggestion::info_multiline(&[
+          "This native addon uses the legacy V8/nan addon ABI, which depends",
+          "on V8 internals that Deno does not expose. Only Node-API (N-API)",
+          "addons can be loaded by Deno.",
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "Switch to a package that uses Node-API (N-API), or ask the addon's",
+          "authors to migrate it from the legacy `NODE_MODULE`/`nan` ABI.",
         ]),
       ];
     } else if msg.contains("document is not defined") {

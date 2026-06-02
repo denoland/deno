@@ -1801,6 +1801,8 @@ async fn run_watch_reload_once() {
     .arg("--allow-import")
     .arg("--watch")
     .arg("--reload")
+    .arg("-L")
+    .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .piped_output()
@@ -1808,15 +1810,23 @@ async fn run_watch_reload_once() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  wait_contains("finished", &mut stderr_lines).await;
+  wait_contains("Process started", &mut stderr_lines).await;
   let first_output = next_line(&mut stdout_lines).await.unwrap();
+
+  // Make sure the watcher is actually watching the file before we modify it,
+  // otherwise the change may be written before the watch is registered and
+  // never picked up (causing a hang/timeout).
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("finished", &mut stderr_lines).await;
 
   file_to_watch.write(file_content);
   // The remote dynamic module should not have been reloaded again.
 
-  wait_contains("finished", &mut stderr_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
   let second_output = next_line(&mut stdout_lines).await.unwrap();
   assert_eq!(second_output, first_output);
+
+  wait_contains("finished", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
 }

@@ -3,7 +3,11 @@
 // deno-lint-ignore-file no-console
 
 import { EventEmitter, once } from "node:events";
-import { createHook } from "node:async_hooks";
+import {
+  AsyncLocalStorage,
+  createHook,
+  executionAsyncResource,
+} from "node:async_hooks";
 import http, {
   IncomingMessage,
   type RequestOptions,
@@ -16,6 +20,7 @@ import net, { type AddressInfo, Socket } from "node:net";
 import fs from "node:fs";
 import type { Duplex } from "node:stream";
 import { text } from "node:stream/consumers";
+import { channel } from "node:diagnostics_channel";
 
 import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
@@ -2649,6 +2654,125 @@ Deno.test("[node/http] keep-alive timer is suspended during active request", asy
     await readBody("/slow");
   } finally {
     socket.destroy();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] AsyncLocalStorage propagates into request handler", async () => {
+  const storage = new AsyncLocalStorage<string>();
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const responseDone = Promise.withResolvers<void>();
+  const requestStart = channel("http.server.request.start");
+  const subscriber = () => storage.enterWith("request-context");
+  const server = http.createServer((_req, res) => {
+    try {
+      assertEquals(storage.getStore(), "request-context");
+      resolve();
+    } catch (err) {
+      reject(err);
+    } finally {
+      res.end("ok");
+    }
+  });
+
+  requestStart.subscribe(subscriber);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  try {
+    const port = (server.address() as AddressInfo).port;
+    const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+      res.resume();
+      res.on("end", responseDone.resolve);
+      res.on("error", responseDone.reject);
+    });
+    req.on("error", reject);
+    await Promise.all([promise, responseDone.promise]);
+  } finally {
+    requestStart.unsubscribe(subscriber);
+    storage.disable();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] AsyncLocalStorage enterWith in request handler is isolated", async () => {
+  const storage = new AsyncLocalStorage<string>();
+  const firstDone = Promise.withResolvers<void>();
+  const secondDone = Promise.withResolvers<void>();
+  let requests = 0;
+  const server = http.createServer((_req, res) => {
+    try {
+      requests++;
+      if (requests === 1) {
+        assertEquals(storage.getStore(), undefined);
+        storage.enterWith("first-request");
+        assertEquals(storage.getStore(), "first-request");
+      } else {
+        assertEquals(storage.getStore(), undefined);
+      }
+      res.end("ok");
+      if (requests === 1) {
+        firstDone.resolve();
+      } else {
+        secondDone.resolve();
+      }
+    } catch (err) {
+      firstDone.reject(err);
+      secondDone.reject(err);
+      res.destroy(err as Error);
+    }
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  try {
+    const port = (server.address() as AddressInfo).port;
+    const request = () =>
+      new Promise<void>((resolve, reject) => {
+        const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+          res.resume();
+          res.on("end", resolve);
+          res.on("error", reject);
+        });
+        req.on("error", reject);
+      });
+
+    await request();
+    await firstDone.promise;
+    await request();
+    await secondDone.promise;
+  } finally {
+    storage.disable();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+Deno.test("[node/http] async_hooks observes request execution resource", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const responseDone = Promise.withResolvers<void>();
+  const hook = createHook({
+    before() {},
+  });
+  const server = http.createServer((req, res) => {
+    try {
+      assertEquals(executionAsyncResource(), req);
+      res.end("ok");
+      resolve();
+    } catch (err) {
+      reject(err);
+    }
+  });
+
+  hook.enable();
+  try {
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as AddressInfo).port;
+    const req = http.get(`http://127.0.0.1:${port}`, (res) => {
+      res.resume();
+      res.on("end", responseDone.resolve);
+      res.on("error", responseDone.reject);
+    });
+    req.on("error", reject);
+    await Promise.all([promise, responseDone.promise]);
+  } finally {
+    hook.disable();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });

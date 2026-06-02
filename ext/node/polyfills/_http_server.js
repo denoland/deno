@@ -85,13 +85,17 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
-  enterAsyncResource,
-  exitAsyncResource,
+  enterAsyncResourceIfActive,
+  exitAsyncResourceIfActive,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
   .loadExtScript(
     "ext:deno_node/perf_hooks.js",
   );
+import {
+  applyAddressOverride,
+  startOverrideListener,
+} from "ext:deno_node/internal/http/address_override.js";
 const {
   otelState,
   builtinTracer,
@@ -919,7 +923,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   // across timers, await transitions, etc. Without this, every request would
   // share the top-level resource and concurrent requests would race on any
   // state stashed there.
-  const prevAsyncResource = enterAsyncResource(req);
+  const prevAsyncResource = enterAsyncResourceIfActive(req);
   try {
     let handled = false;
 
@@ -975,7 +979,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
       server.emit("request", req, res);
     }
   } finally {
-    exitAsyncResource(prevAsyncResource);
+    exitAsyncResourceIfActive(prevAsyncResource);
   }
 
   return 0;
@@ -1347,6 +1351,59 @@ function storeHTTPOptions(options) {
 }
 ObjectSetPrototypeOf(Server.prototype, net.Server.prototype);
 ObjectSetPrototypeOf(Server, net.Server);
+
+// Applies the DENO_SERVE_ADDRESS override before delegating to
+// net.Server.prototype.listen.
+//
+// TCP overrides rewrite the address passed to listen(). Non-TCP and
+// duplicate overrides spin up a separate Deno listener that feeds
+// synthetic "connection" events into this server.
+Server.prototype.listen = function listen(...args) {
+  const applied = applyAddressOverride();
+
+  switch (applied.mode) {
+    case "none":
+      return net.Server.prototype.listen.apply(this, args);
+
+    case "tcp": {
+      // Rewrite the listen args so the normal net.Server code binds
+      // to the override address instead of what the app requested.
+      let cb;
+      const last = args[args.length - 1];
+      if (typeof last === "function") {
+        cb = last;
+        args = args.slice(0, -1);
+      }
+      const rewritten = [{ host: applied.host, port: applied.port }];
+      if (cb) rewritten.push(cb);
+      return net.Server.prototype.listen.apply(this, rewritten);
+    }
+
+    case "override-only": {
+      // Don't bind the app-supplied TCP address at all -- the override
+      // listener is the only way into this server. `listening` on
+      // net.Server is derived from `_handle`, so install a stub that
+      // reports listening without owning a real OS handle.
+      let cb;
+      const last = args[args.length - 1];
+      if (typeof last === "function") cb = last;
+      if (cb) this.once("listening", cb);
+      this._handle = {
+        close() {},
+        ref() {},
+        unref() {},
+      };
+      startOverrideListener(this, applied.override, connectionListener);
+      nextTick(() => this.emit("listening"));
+      return this;
+    }
+
+    case "duplicate": {
+      startOverrideListener(this, applied.override, connectionListener);
+      return net.Server.prototype.listen.apply(this, args);
+    }
+  }
+};
 
 Server.prototype.setTimeout = function setTimeout(msecs, callback) {
   this.timeout = msecs;
