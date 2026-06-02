@@ -3,7 +3,7 @@
     "fmt_jsonc_default_trailing_commas": {
       "args": "fmt --ext=jsonc -",
       "input": "{\n  \"a\": 1,\n  \"b\": 2\n}\n",
-      "output": "{\n  \"a\": 1,\n  \"b\": 2,\n}\n"
+      "output": "{\n  \"a\": 1,\n  \"b\": 2\n}\n"
     },
     "fmt_jsonc_trailing_commas_never": {
       "args": "fmt --config deno.never.jsonc --ext=jsonc -",

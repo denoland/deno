@@ -2033,7 +2033,7 @@ mod test {
   }
 
   #[test]
-  fn test_jsonc_adds_trailing_commas() {
+  fn test_jsonc_does_not_add_trailing_commas_by_default() {
     let file_text = format_file(
       Path::new("test.jsonc"),
       &FileContents {
@@ -2049,16 +2049,8 @@ mod test {
       &UnstableFmtOptions::default(),
       None,
     )
-    .unwrap()
     .unwrap();
-    assert_eq!(
-      file_text,
-      r#"{
-  "a": 1,
-  "b": 2,
-}
-"#
-    );
+    assert_eq!(file_text, None);
   }
 
   #[test]
