@@ -55,5 +55,9 @@ fast-socks5.workspace = true
 rustls.workspace = true
 
 [[bench]]
+name = "headers_methods"
+harness = false
+
+[[bench]]
 name = "body"
 harness = false

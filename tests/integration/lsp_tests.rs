@@ -15035,6 +15035,237 @@ Deno.test({
 }
 
 #[test(timeout = 300)]
+fn lsp_testing_api_imported_step_helper() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./deno.jsonc", "{}");
+  temp_dir.write(
+    "./each.ts",
+    r#"
+export type TestCase = {
+  name: string;
+};
+
+export async function each(
+  testContext: Deno.TestContext,
+  testCases: TestCase[],
+  fn: (testCase: TestCase) => Promise<void> | void,
+): Promise<void> {
+  for (const testCase of testCases) {
+    await testContext.step(testCase.name, async () => {
+      await fn(testCase);
+    });
+  }
+}
+"#,
+  );
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+import { each } from "./each.ts";
+
+Deno.test("test", async (testContext) => {
+  await each(testContext, [
+    { name: "test case 1" },
+    { name: "test case 2" },
+  ], async ({ name }) => {
+    console.log(name);
+  });
+});
+"#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  assert_eq!(params.kind, TestModuleNotificationKind::Replace);
+  assert_eq!(params.label, "test.ts");
+  assert_eq!(params.tests.len(), 1);
+  let test_id = params.tests[0].id.clone();
+  assert_eq!(params.tests[0].label, "test");
+  assert_eq!(params.tests[0].steps.len(), 0);
+
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(
+    json!(&res),
+    json!({
+      "enqueued": [
+        {
+          "textDocument": { "uri": file.uri() },
+          "ids": [&test_id],
+        },
+      ],
+    }),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_id,
+        },
+      },
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  assert_eq!(params.kind, TestModuleNotificationKind::Insert);
+  assert_eq!(params.label, "test.ts");
+  assert_eq!(params.tests.len(), 1);
+  let test_case_1_id = params.tests[0].steps[0].id.clone();
+  assert_eq!(params.tests[0].id, test_id);
+  assert_eq!(params.tests[0].label, "test");
+  assert_eq!(params.tests[0].steps[0].label, "test case 1");
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_id,
+          "stepId": &test_case_1_id,
+        },
+      },
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "output");
+  assert_eq!(
+    params
+      .message
+      .data
+      .get("value")
+      .unwrap()
+      .as_str()
+      .unwrap()
+      .replace('\u{200B}', ""),
+    "test case 1\r\n",
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "passed");
+  assert_eq!(
+    params.message.data.get("test"),
+    Some(&json!({
+      "textDocument": { "uri": file.uri() },
+      "id": &test_id,
+      "stepId": &test_case_1_id,
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  assert_eq!(params.kind, TestModuleNotificationKind::Insert);
+  let test_case_2_id = params.tests[0].steps[0].id.clone();
+  assert_eq!(params.tests[0].id, test_id);
+  assert_eq!(params.tests[0].steps[0].label, "test case 2");
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "started");
+  assert_eq!(
+    params.message.data.get("test"),
+    Some(&json!({
+      "textDocument": { "uri": file.uri() },
+      "id": &test_id,
+      "stepId": &test_case_2_id,
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "output");
+  assert_eq!(
+    params
+      .message
+      .data
+      .get("value")
+      .unwrap()
+      .as_str()
+      .unwrap()
+      .replace('\u{200B}', ""),
+    "test case 2\r\n",
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "passed");
+  assert_eq!(
+    params.message.data.get("test"),
+    Some(&json!({
+      "textDocument": { "uri": file.uri() },
+      "id": &test_id,
+      "stepId": &test_case_2_id,
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  if params.message.typ != "end" {
+    assert_eq!(params.message.typ, "passed");
+    assert_eq!(
+      params.message.data.get("test"),
+      Some(&json!({
+        "textDocument": { "uri": file.uri() },
+        "id": &test_id,
+      })),
+    );
+    let notification =
+      client.read_notification_with_method::<Value>("deno/testRunProgress");
+    let params: TestRunProgressParams =
+      serde_json::from_value(notification.unwrap()).unwrap();
+    assert_eq!(params.message.typ, "end");
+  }
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_testing_api_failure() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -19476,6 +19707,65 @@ fn lsp_wasm_module() {
       }
     ])
   );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_wasm_module_multi_value_return() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  fs::write(
+    temp_dir.join("multi_value.wasm"),
+    include_bytes!("../specs/check/wasm_multi_value/multi_value.wasm"),
+  )
+  .unwrap();
+  let main = source_file(
+    temp_dir.join("main.ts"),
+    r#"
+      import { add_and_sub } from "./multi_value.wasm";
+
+      const result: number = add_and_sub(1, 2);
+      console.log(result);
+    "#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open_file(&main);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 3, "character": 12 },
+          "end": { "line": 3, "character": 18 }
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type '[number, number]' is not assignable to type 'number'."
+      }
+    ])
+  );
+
+  let hover = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": main.identifier(),
+      "position": main.range_of_nth(1, "add_and_sub").start,
+    }),
+  );
+  assert_json_subset(
+    hover,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```tsx\n(alias) add_and_sub(arg0: number, arg1: number): [number, number]\n```\n",
+      },
+    }),
+  );
+
   client.shutdown();
 }
 
