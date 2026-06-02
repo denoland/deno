@@ -12925,6 +12925,53 @@ fn lsp_jupyter_untitled_notebook() {
 }
 
 #[test(timeout = 300)]
+fn lsp_jupyter_untitled_notebook_workspace_scope() {
+  use std::str::FromStr;
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // An unsaved (untitled) notebook has no path on disk, so its cells should
+  // still resolve against the workspace's `deno.json` — including its import
+  // map. Otherwise imports like `"exports"` below would be flagged as missing
+  // dependencies, producing TS/Deno errors that go away once the notebook is
+  // saved into the workspace. Regression test for
+  // https://github.com/denoland/deno/issues/22628.
+  temp_dir.write(
+    "deno.json",
+    json!({ "imports": { "exports": "./exports.ts" } }).to_string(),
+  );
+  temp_dir.write("./exports.ts", "export const someExport = 1;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let notebook_uri = lsp::Uri::from_str("untitled:Untitled-1.ipynb").unwrap();
+  let cell_uri =
+    lsp::Uri::from_str("vscode-notebook-cell:Untitled-1.ipynb#W0sZmlsZQ%3D%3D")
+      .unwrap();
+  let diagnostics = client.notebook_did_open(
+    notebook_uri,
+    1,
+    vec![json!({
+      "uri": cell_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        // Resolved via the workspace import map.
+        "import { someExport } from \"exports\";\n",
+        // `Deno` global is available.
+        "const contents = await Deno.readTextFile(\"\");\n",
+        "console.log(someExport, contents);\n",
+      ),
+    })],
+  );
+  let messages = diagnostics.all_messages();
+  assert!(
+    messages.iter().all(|m| m.diagnostics.is_empty()),
+    "{:#?}",
+    messages
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_non_normalized_uri_diagnostics_and_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
