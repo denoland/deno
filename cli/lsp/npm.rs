@@ -6,6 +6,7 @@ use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::serde_json::Value;
 use deno_npm::resolution::NpmVersionResolver;
 use deno_npmrc::NpmRc;
 use deno_npmrc::NpmRegistryUrl;
@@ -26,6 +27,7 @@ pub struct CliNpmSearchApi {
   resolver: NpmFetchResolver,
   search_cache: DashMap<String, Arc<Vec<String>>>,
   versions_cache: DashMap<String, Arc<Vec<Version>>>,
+  exports_cache: DashMap<PackageNv, Arc<Vec<String>>>,
 }
 
 impl CliNpmSearchApi {
@@ -43,6 +45,7 @@ impl CliNpmSearchApi {
       resolver,
       search_cache: Default::default(),
       versions_cache: Default::default(),
+      exports_cache: Default::default(),
     }
   }
 
@@ -50,6 +53,7 @@ impl CliNpmSearchApi {
     self.file_fetcher.clear_memory_files();
     self.search_cache.clear();
     self.versions_cache.clear();
+    self.exports_cache.clear();
   }
 }
 
@@ -100,9 +104,45 @@ impl PackageSearchApi for CliNpmSearchApi {
 
   async fn exports(
     &self,
-    _nv: &PackageNv,
+    nv: &PackageNv,
   ) -> Result<Arc<Vec<String>>, AnyError> {
-    Ok(Default::default())
+    if let Some(exports) = self.exports_cache.get(nv) {
+      return Ok(exports.clone());
+    }
+    let info = self
+      .resolver
+      .package_info(nv.name.as_str())
+      .await
+      .ok_or_else(|| anyhow!("npm package info not found: {}", nv.name))?;
+    let version_info = info
+      .versions
+      .get(&nv.version)
+      .ok_or_else(|| anyhow!("npm package version not found: {}", nv))?;
+    let mut exports = version_info
+      .exports
+      .as_ref()
+      .map(exports_from_package_json_value)
+      .unwrap_or_default();
+    exports.sort();
+    let exports = Arc::new(exports);
+    self.exports_cache.insert(nv.clone(), exports.clone());
+    Ok(exports)
+  }
+}
+
+fn exports_from_package_json_value(value: &Value) -> Vec<String> {
+  match value {
+    Value::String(_) => vec![".".to_string()],
+    Value::Object(obj) => obj
+      .keys()
+      .filter(|key| {
+        key.as_str() == "."
+          || (key.starts_with("./")
+            && key.chars().filter(|c| *c == '*').count() != 1)
+      })
+      .cloned()
+      .collect(),
+    _ => Vec::new(),
   }
 }
 
@@ -149,5 +189,24 @@ mod tests {
         "puppeteer-extra-plugin".to_string()
       ]
     );
+  }
+
+  #[test]
+  fn test_exports_from_package_json_value() {
+    let exports = exports_from_package_json_value(&serde_json::json!({
+      ".": "./index.js",
+      "./client": "./client.js",
+      "./server": {
+        "types": "./server.d.ts",
+        "default": "./server.js"
+      },
+      "./features/*": "./features/*.js",
+      "import": "./index.mjs"
+    }));
+    assert_eq!(exports, vec![".", "./client", "./server"]);
+
+    let exports =
+      exports_from_package_json_value(&serde_json::json!("./index.js"));
+    assert_eq!(exports, vec!["."]);
   }
 }
