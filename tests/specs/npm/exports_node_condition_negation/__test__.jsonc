@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      // By default the "node" condition matches first and resolves the node
+      // build (which would not register the webgpu backend).
+      "args": "run --quiet main.js",
+      "output": "node.out"
+    },
+    {
+      // `!node` removes the "node" condition so resolution falls through to the
+      // "import" (browser/webgpu) build. See denoland/deno#25397.
+      "args": "run --quiet --conditions=!node main.js",
+      "output": "browser.out"
+    },
+    {
+      "args": "run --quiet main.js",
+      "envs": {
+        "DENO_CONDITIONS": "!node"
+      },
+      "output": "browser.out"
+    }
+  ]
+}

@@ -119,15 +119,29 @@ impl ConditionResolver {
       if user_conditions.is_empty() {
         default_conditions
       } else {
+        // A user condition prefixed with `!` removes a condition (including the
+        // built-in defaults like `node`) from the resolved set, while
+        // non-prefixed conditions are added as usual. This lets users opt out
+        // of, for example, the always-on `node` condition so that packages
+        // which gate their browser/webgpu builds behind a non-`node` condition
+        // resolve correctly (see denoland/deno#25397).
+        let removals = user_conditions
+          .iter()
+          .filter_map(|c| c.strip_prefix('!'))
+          .collect::<Vec<_>>();
         let mut new =
           Vec::with_capacity(user_conditions.len() + default_conditions.len());
-        let mut append =
-          |conditions: Cow<'_, [Cow<'static, str>]>| match conditions {
-            Cow::Borrowed(conditions) => new.extend(conditions.iter().cloned()),
-            Cow::Owned(conditions) => new.extend(conditions),
-          };
-        append(user_conditions);
-        append(default_conditions);
+        // User conditions take priority over the defaults; negated (`!`)
+        // entries are dropped here and removed from everything that follows.
+        for condition in user_conditions.iter().chain(default_conditions.iter())
+        {
+          if condition.starts_with('!')
+            || removals.contains(&condition.as_ref())
+          {
+            continue;
+          }
+          new.push(condition.clone());
+        }
         Cow::Owned(new)
       }
     }
@@ -3431,6 +3445,47 @@ mod tests {
       let actual = with_known_extension(Path::new(path), ext);
       assert_eq!(actual.to_string_lossy(), *expected);
     }
+  }
+
+  #[test]
+  fn test_condition_resolver_negation() {
+    fn import_conditions(conditions: &[&str]) -> Vec<String> {
+      let resolver = ConditionResolver::new(NodeConditionOptions {
+        conditions: conditions
+          .iter()
+          .map(|c| Cow::Owned(c.to_string()))
+          .collect(),
+        import_conditions_override: None,
+        require_conditions_override: None,
+      });
+      resolver
+        .resolve(ResolutionMode::Import)
+        .iter()
+        .map(|c| c.to_string())
+        .collect()
+    }
+
+    // No user conditions: defaults unchanged.
+    assert_eq!(
+      import_conditions(&[]),
+      vec!["deno", "node", "import", "module-sync"]
+    );
+    // Additive conditions are prepended to the defaults (existing behavior).
+    assert_eq!(
+      import_conditions(&["development"]),
+      vec!["development", "deno", "node", "import", "module-sync"]
+    );
+    // A `!` prefixed condition removes it from the resolved set, including a
+    // built-in default like `node` (see denoland/deno#25397).
+    assert_eq!(
+      import_conditions(&["!node"]),
+      vec!["deno", "import", "module-sync"]
+    );
+    // Additions and removals can be combined.
+    assert_eq!(
+      import_conditions(&["development", "!node"]),
+      vec!["development", "deno", "import", "module-sync"]
+    );
   }
 
   #[test]

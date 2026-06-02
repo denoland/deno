@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/exports-node-condition",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "node": "./node.mjs",
+      "types": "./types.d.ts",
+      "import": "./browser.mjs",
+      "default": "./browser.mjs"
+    }
+  }
+}

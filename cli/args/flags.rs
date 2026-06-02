@@ -6310,6 +6310,8 @@ fn node_conditions_arg() -> Arg {
     .long("conditions")
     .help("Use this argument to specify custom conditions for npm package exports. You can also use DENO_CONDITIONS env var.
 
+Prefix a condition with `!` to remove it from the resolved set, including built-in conditions such as `node` (e.g. `--conditions=!node`).
+
 Docs: https://docs.deno.com/go/conditional-exports")
     .use_value_delimiter(true)
     .action(ArgAction::Append)
