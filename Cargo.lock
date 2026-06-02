@@ -1891,7 +1891,7 @@ dependencies = [
  "wasm-encoder",
  "wasmparser",
  "weak-table",
- "winapi",
+ "windows-sys 0.59.0",
  "winres",
  "zip",
  "zstd",
@@ -2331,7 +2331,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2354,7 +2354,6 @@ dependencies = [
  "rayon",
  "serde",
  "thiserror 2.0.12",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -2479,7 +2478,6 @@ dependencies = [
  "rand 0.8.5",
  "tokio",
  "uuid",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -2620,6 +2618,7 @@ dependencies = [
  "libuv-sys-lite",
  "log",
  "napi_sym",
+ "object",
  "thiserror 2.0.12",
  "windows-sys 0.59.0",
 ]
@@ -2688,10 +2687,11 @@ dependencies = [
  "deno_path_util",
  "deno_permissions",
  "deno_process",
+ "deno_resolver",
  "deno_subprocess_windows",
  "deno_tls",
  "deno_whoami",
- "errno 0.3.10",
+ "errno",
  "filetime",
  "hdrhistogram",
  "idna",
@@ -2715,7 +2715,6 @@ dependencies = [
  "tokio-eld",
  "url",
  "webpki-root-certs",
- "winapi",
  "windows-sys 0.59.0",
  "zstd",
 ]
@@ -2888,7 +2887,7 @@ dependencies = [
  "tokio",
  "twox-hash 2.1.2",
  "url",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2944,10 +2943,9 @@ dependencies = [
  "deno_signals",
  "libc",
  "netif",
- "ntapi",
  "thiserror 2.0.12",
  "tokio",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3016,7 +3014,6 @@ dependencies = [
  "unicode-normalization",
  "url",
  "which 8.0.0",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -3043,7 +3040,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -3157,7 +3153,6 @@ dependencies = [
  "twox-hash 2.1.2",
  "unicode-normalization",
  "uuid",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -3186,7 +3181,7 @@ dependencies = [
  "signal-hook",
  "thiserror 2.0.12",
  "tokio",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4206,33 +4201,12 @@ checksum = "5443807d6dff69373d433ab9ef5378ad8df50ca6298caf15de6e52e24aaf54d5"
 
 [[package]]
 name = "errno"
-version = "0.2.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f639046355ee4f37944e44f60642c6f3a7efa3cf6b78c78a0d989a8ce6c396a1"
-dependencies = [
- "errno-dragonfly",
- "libc",
- "winapi",
-]
-
-[[package]]
-name = "errno"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "errno-dragonfly"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
-dependencies = [
- "cc",
- "libc",
 ]
 
 [[package]]
@@ -4290,16 +4264,6 @@ dependencies = [
  "tokio",
  "url",
  "xxhash-rust",
-]
-
-[[package]]
-name = "exec"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "886b70328cba8871bfc025858e1de4be16b1d5088f2ba50b57816f4210672615"
-dependencies = [
- "errno 0.2.8",
- "libc",
 ]
 
 [[package]]
@@ -6496,20 +6460,22 @@ dependencies = [
  "itertools 0.14.0",
  "memchr",
  "raffia",
- "tiny_pretty",
+ "tiny_pretty 0.2.0",
 ]
 
 [[package]]
 name = "markup_fmt"
-version = "0.27.0"
+version = "0.27.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0223c1b7a3a55b4d5bdc3aec6445f51754e1156b7b5615bc49dd8fa3b1d95e71"
+checksum = "83b53ac34c9d6498632dcca4ad4542b1aef7c605d1d19037207910c4efe060a9"
 dependencies = [
  "aho-corasick",
+ "anyhow",
  "css_dataset",
  "itertools 0.14.0",
  "memchr",
- "tiny_pretty",
+ "regex",
+ "tiny_pretty 0.4.2",
 ]
 
 [[package]]
@@ -6564,9 +6530,9 @@ dependencies = [
 
 [[package]]
 name = "memchr"
-version = "2.7.5"
+version = "2.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
+checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "memmap2"
@@ -6857,7 +6823,6 @@ dependencies = [
 name = "node_shim"
 version = "0.24.0"
 dependencies = [
- "exec",
  "serde_json",
  "url",
 ]
@@ -6907,15 +6872,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
 dependencies = [
  "bitflags 2.9.3",
-]
-
-[[package]]
-name = "ntapi"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8a3895c6391c39d7fe7ebc444a87eb2991b2a0bc718fdabd071eec617fc68e4"
-dependencies = [
- "winapi",
 ]
 
 [[package]]
@@ -7770,7 +7726,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dda9a64ee7296e82d1e0f4389383e6a7d8e6e2487d8391f7d028c131395fd376"
 dependencies = [
  "rowan",
- "tiny_pretty",
+ "tiny_pretty 0.2.0",
  "yaml_parser",
 ]
 
@@ -8480,7 +8436,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70dc5ec042f7a43c4a73241207cecc9873a06d45debb38b329f8541d85c2730f"
 dependencies = [
  "bitflags 2.9.3",
- "errno 0.3.10",
+ "errno",
  "libc",
  "linux-raw-sys",
  "windows-sys 0.52.0",
@@ -10005,7 +9961,7 @@ dependencies = [
  "twox-hash 2.1.2",
  "url",
  "win32job",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -10143,9 +10099,12 @@ name = "tiny_pretty"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b3f46f0549180b9c6f7f76270903f1a06867c43a03998b99dce81aa1760c3b2"
-dependencies = [
- "unicode-width 0.1.13",
-]
+
+[[package]]
+name = "tiny_pretty"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c6f118a569adc26e8a9a377130f181a461770225e588c73a00c8636b8680b6c"
 
 [[package]]
 name = "tinystr"

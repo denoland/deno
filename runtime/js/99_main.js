@@ -737,12 +737,20 @@ function disableProtoAccessor() {
         "--unstable-unsafe-proto to restore it.",
     );
   }
+  // The getter and setter must be distinct function objects: the native
+  // `__proto__` accessor has separate get/set functions, and WPT
+  // (webidl/ecmascript-binding/attributes-accessors-unique-function-objects)
+  // asserts every accessor's getter and setter are unique built-in functions.
   ObjectDefineProperty(ObjectPrototype, "__proto__", {
     __proto__: null,
     configurable: true,
     enumerable: false,
-    get: throwDisabledProto,
-    set: throwDisabledProto,
+    get: function __proto__() {
+      throwDisabledProto();
+    },
+    set: function __proto__(_value) {
+      throwDisabledProto();
+    },
   });
 }
 

@@ -477,7 +477,11 @@ declare function addEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | AddEventListenerOptions,
 ): void;
-/** @category Events */
+/** Registers an event listener for an arbitrary event `type` on the global
+ * scope.
+ *
+ * @category Events
+ */
 declare function addEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -501,7 +505,11 @@ declare function removeEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | EventListenerOptions,
 ): void;
-/** @category Events */
+/** Removes a previously registered event listener for an arbitrary event
+ * `type` from the global scope.
+ *
+ * @category Events
+ */
 declare function removeEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -593,8 +601,17 @@ declare var Location: {
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
-/** @category Platform */
+/** The {@linkcode Location} object describing the absolute URL of the main
+ * module, available when the program is started with the `--location` flag.
+ * Accessing it without `--location` throws.
+ *
+ * @category Platform */
 declare var location: Location;
 
-/** @category Platform */
+/** Gets or sets the name of the global scope's browsing context.
+ *
+ * Provided for web compatibility; Deno has no browsing context, so this is an
+ * empty string by default.
+ *
+ * @category Platform */
 declare var name: string;
