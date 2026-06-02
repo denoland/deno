@@ -874,6 +874,10 @@ Deno.test({
     const buf: any = Buffer.of(1, 2, 3, 0xff);
     assertEquals(buf.hexSlice(), "010203ff");
     assertEquals(buf.hexSlice(1, 3), "0203");
+
+    // deno-lint-ignore no-explicit-any
+    const emptyBuf: any = Buffer.of();
+    assertEquals(emptyBuf.hexSlice(), "");
   },
 });
 

@@ -206,10 +206,6 @@ pub fn op_node_encoding_slice<'a>(
 
   let buffer = &buf[start..end];
 
-  if buffer.len() == 0 {
-    return Ok(v8::String::empty(scope).into());
-  }
-
   match encoding {
     0 => {
       // utf8Slice
