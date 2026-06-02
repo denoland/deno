@@ -22,6 +22,9 @@ const proxyServer = Deno.serve(
 const proxyUrl = `http://127.0.0.1:${proxyServer.addr.port}/`;
 const encoder = new TextEncoder();
 const body = JSON.stringify({ tags: ["http-test-tag"] });
+
+// Scenario 1: forwarding a static request body should preserve the exact
+// Content-Length from the original body.
 const expectedLength = String(encoder.encode(body).byteLength);
 const resp = await fetch(proxyUrl, {
   method: "POST",
@@ -37,6 +40,8 @@ console.log(
   forwarded.contentLength === expectedLength,
 );
 
+// Scenario 2: forwarding an arbitrary user-created ReadableStream should not
+// synthesize a Content-Length. Only Deno-created static streams are known-length.
 const streamResp = await fetch(proxyUrl, {
   method: "POST",
   body: new ReadableStream({
