@@ -596,6 +596,7 @@ function isSimpleSpecialPathCode(code) {
     code === 0x40;
 }
 
+// Keep in sync with parse_simple_special_url() in ext/web/url.rs.
 function parseSimpleSpecialUrl(href) {
   let schemeEnd;
   let defaultPort;

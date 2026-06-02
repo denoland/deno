@@ -231,6 +231,22 @@ Deno.test(function urlNormalize() {
   assertEquals(url.href, "http://example.com/");
 });
 
+Deno.test(function urlSimpleSpecialFastPathMatchesRustParser() {
+  for (
+    const input of [
+      "http://1.2.3.4/",
+      "http://foo:0/",
+      "http://h/a/../b",
+      "http://foo/",
+    ]
+  ) {
+    const constructed = new URL(input);
+    const parsed = URL.parse(input);
+    assert(parsed);
+    assertEquals(constructed.href, parsed.href);
+  }
+});
+
 Deno.test(function urlModifyPathname() {
   const url = new URL("http://foo.bar/baz%qat/qux%quux");
   assertEquals(url.pathname, "/baz%qat/qux%quux");

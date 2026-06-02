@@ -108,6 +108,7 @@ fn parse_url(
   }
 }
 
+// Keep in sync with parseSimpleSpecialUrl() in ext/web/00_url.js.
 fn parse_simple_special_url(href: &str, buf: &mut [u32]) -> bool {
   let bytes = href.as_bytes();
   let (scheme_end, default_port) = if bytes.starts_with(b"http://") {
