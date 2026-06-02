@@ -114,6 +114,14 @@ function getaddrinfo(
     } catch (e) {
       if (e instanceof Deno.errors.NotCapable) {
         error = codeMap.get("EPERM")!;
+      } else if (
+        typeof (e as { uv_errcode?: number })?.uv_errcode === "number" &&
+        (e as { uv_errcode: number }).uv_errcode !== 0
+      ) {
+        // Propagate the real libuv error code reported by `getaddrinfo`
+        // (e.g. `EAI_NONAME`/`ENOTFOUND`) instead of flattening every failure
+        // to `EAI_NODATA`, so the resulting error matches Node.js.
+        error = (e as { uv_errcode: number }).uv_errcode;
       } else {
         error = codeMap.get("EAI_NODATA")!;
       }
