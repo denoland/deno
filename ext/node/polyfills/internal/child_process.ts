@@ -3,2416 +3,2605 @@
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = __bootstrap;
-const {
-  op_node_in_npm_package,
-  op_node_ipc_buffer_constructor,
-  op_node_ipc_read_advanced,
-  op_node_ipc_read_json,
-  op_node_ipc_ref,
-  op_node_ipc_unref,
-  op_node_ipc_write_advanced,
-  op_node_ipc_write_json,
-  op_node_parse_shell_args,
-  op_node_translate_cli_args,
-} = core.ops;
-const {
-  ArrayIsArray,
-  ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
-  ArrayPrototypePush,
-  ArrayPrototypeSlice,
-  ArrayPrototypeSort,
-  ArrayPrototypeUnshift,
-  ObjectHasOwn,
-  StringPrototypeIncludes,
-  StringPrototypeStartsWith,
-  StringPrototypeToUpperCase,
-} = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
-const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
-const { os } = core.loadExtScript(
-  "ext:deno_node/internal_binding/constants.ts",
-);
-const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-const lazyStream = core.createLazyLoader("node:stream");
-const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
-const {
-  AbortError,
-  ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
-  ERR_INVALID_HANDLE_TYPE,
-  ERR_INVALID_SYNC_FORK_INPUT,
-  ERR_IPC_CHANNEL_CLOSED,
-  ERR_IPC_ONE_PIPE,
-  ERR_IPC_SYNC_FORK,
-  ERR_MISSING_ARGS,
-  ERR_UNKNOWN_SIGNAL,
-} = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-const { FastBuffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-const {
-  ERR_IPC_DISCONNECTED,
-  errnoException,
-} = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
-const {
-  validateBoolean,
-  validateInt32,
-  validateObject,
-  validateOneOf,
-  validateString,
-} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-const lazyFsUtils = core.createLazyLoader(
-  "ext:deno_node/internal/fs/utils.mjs",
-);
-const lazyProcess = core.createLazyLoader("node:process");
-const { StringPrototypeSlice } = core.loadExtScript(
-  "ext:deno_node/internal/primordials.mjs",
-);
-const { Pipe, socketType } = core.loadExtScript(
-  "ext:deno_node/internal_binding/pipe_wrap.ts",
-);
-const {
-  socketType: tcpSocketType,
-  TCP,
-} = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
-const lazyNet = core.createLazyLoader("node:net");
-const { channel: createDiagnosticsChannel, tracingChannel } = core
-  .loadExtScript(
-    "ext:deno_node/diagnostics_channel.js",
+  const { core, primordials } = __bootstrap;
+  const {
+    ArrayBufferIsView,
+    ArrayPrototypeFindIndex,
+    ArrayPrototypeIncludes,
+    ArrayPrototypeIndexOf,
+    ArrayPrototypeMap,
+    DataViewPrototypeGetBuffer,
+    DataViewPrototypeGetByteLength,
+    DataViewPrototypeGetByteOffset,
+    Error,
+    ObjectEntries,
+    ObjectKeys,
+    ObjectPrototype,
+    ObjectPrototypeIsPrototypeOf,
+    ObjectSetPrototypeOf,
+    PromisePrototypeThen,
+    PromiseWithResolvers,
+    ReflectHas,
+    RegExpPrototypeExec,
+    RegExpPrototypeTest,
+    SafeArrayIterator,
+    SafePromiseAll,
+    SafeRegExp,
+    SafeSet,
+    String,
+    StringPrototypeEndsWith,
+    StringPrototypeIndexOf,
+    StringPrototypeMatch,
+    StringPrototypeReplace,
+    StringPrototypeSubstring,
+    StringPrototypeTrimStart,
+    Symbol,
+    SymbolDispose,
+    TypeErrorPrototype,
+    TypedArrayPrototypeGetBuffer,
+    TypedArrayPrototypeGetByteLength,
+    TypedArrayPrototypeGetByteOffset,
+  } = primordials;
+  const { isTypedArray } = core;
+  const {
+    op_node_in_npm_package,
+    op_node_ipc_buffer_constructor,
+    op_node_ipc_read_advanced,
+    op_node_ipc_read_json,
+    op_node_ipc_ref,
+    op_node_ipc_unref,
+    op_node_ipc_write_advanced,
+    op_node_ipc_write_json,
+    op_node_parse_shell_args,
+    op_node_translate_cli_args,
+  } = core.ops;
+  const {
+    ArrayIsArray,
+    ArrayPrototypeFilter,
+    ArrayPrototypeJoin,
+    ArrayPrototypePush,
+    ArrayPrototypeSlice,
+    ArrayPrototypeSort,
+    ArrayPrototypeUnshift,
+    ObjectHasOwn,
+    StringPrototypeIncludes,
+    StringPrototypeStartsWith,
+    StringPrototypeToUpperCase,
+  } = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
+  const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+  const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+  const { os } = core.loadExtScript(
+    "ext:deno_node/internal_binding/constants.ts",
   );
-const childProcessChannel = createDiagnosticsChannel("child_process");
-const childProcessSpawnChannel = tracingChannel("child_process.spawn");
-const lazyDgram = core.createLazyLoader("node:dgram");
-const lazyDgramInternal = () =>
-  core.loadExtScript("ext:deno_node/internal/dgram.ts");
-const lazyUdpWrap = () =>
-  core.loadExtScript("ext:deno_node/internal_binding/udp_wrap.ts");
-const {
-  kNeedsNpmProcessState,
-  nodeSpawnChild,
-  nodeSpawnSyncChild,
-} = core.loadExtScript("ext:deno_process/40_process.js");
-
-function mapValues(
-  record,
-  transformer,
-) {
-  const ret = {};
-  const entries = Object.entries(record);
-
-  for (const [key, value] of entries) {
-    if (typeof value === "undefined") {
-      continue;
-    }
-    if (value === null) {
-      continue;
-    }
-
-    const mappedValue = transformer(value);
-
-    ret[key] = mappedValue;
-  }
-
-  return ret;
-}
-
-function stdioStringToArray(
-  stdio,
-  channel,
-) {
-  const options = [];
-
-  switch (stdio) {
-    case "ignore":
-    case "overlapped":
-    case "pipe":
-      options.push(stdio, stdio, stdio);
-      break;
-    case "inherit":
-      options.push(stdio, stdio, stdio);
-      break;
-    default:
-      throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
-  }
-
-  if (channel) options.push(channel);
-
-  return options;
-}
-
-const kClosesNeeded = Symbol("_closesNeeded");
-const kClosesReceived = Symbol("_closesReceived");
-const kCanDisconnect = Symbol("_canDisconnect");
-let emittedShellDeprecation = false;
-
-// We only want to emit a close event for the child process when all of
-// the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
-// the number of opened writable streams (note this excludes `stdin`).
-function maybeClose(child) {
-  child[kClosesReceived]++;
-  if (child[kClosesNeeded] === child[kClosesReceived]) {
-    child.emit("close", child.exitCode, child.signalCode);
-  }
-}
-
-function flushStdio(subprocess) {
-  const stdio = subprocess.stdio;
-
-  if (stdio == null) return;
-
-  for (let i = 0; i < stdio.length; i++) {
-    const stream = stdio[i];
-    if (!stream || !stream.readable) {
-      continue;
-    }
-    stream.resume();
-  }
-}
-
-class ChildProcess extends EventEmitter {
-  /**
-   * The exit code of the child process. This property will be `null` until the child process exits.
-   */
-  exitCode = null;
-
-  /**
-   * This property is set to `true` after `kill()` is called.
-   */
-  killed = false;
-
-  /**
-   * The PID of this child process.
-   */
-  pid;
-
-  /**
-   * The signal received by this child process.
-   */
-  signalCode = null;
-
-  /**
-   * Command line arguments given to this child process.
-   */
-  spawnargs = [];
-
-  /**
-   * The executable file name of this child process.
-   */
-  spawnfile = "";
-
-  /**
-   * This property represents the child process's stdin.
-   */
-  stdin = null;
-
-  /**
-   * This property represents the child process's stdout.
-   */
-  stdout = null;
-
-  /**
-   * This property represents the child process's stderr.
-   */
-  stderr = null;
-
-  /**
-   * Pipes to this child process.
-   */
-  stdio = [
-    null,
-    null,
-    null,
-  ];
-
-  disconnect;
-
-  #process;
-  #spawned = Promise.withResolvers();
-  [kClosesNeeded] = 1;
-  [kClosesReceived] = 0;
-  [kCanDisconnect] = false;
-
-  constructor() {
-    super();
-
-    // 'child_process' channel fires once per ChildProcess construction, before
-    // spawn(). cluster.fork() / cp.fork() / cp.spawn() all flow through here,
-    // so a single publish site covers every entry point.
-    if (childProcessChannel.hasSubscribers) {
-      childProcessChannel.publish({ process: this });
-    }
-  }
-
-  /**
-   * Internal spawn method used by Node.js internals.
-   * This is called after creating a ChildProcess instance.
-   */
-  spawn(options) {
-    // Validate options
-    if (options == null || typeof options !== "object") {
-      throw new ERR_INVALID_ARG_TYPE("options", "object", options);
-    }
-
-    // Validate envPairs before file (Node.js validation order)
-    const { envPairs } = options;
-    if (envPairs !== undefined && !ArrayIsArray(envPairs)) {
-      throw new ERR_INVALID_ARG_TYPE("options.envPairs", "Array", envPairs);
-    }
-
-    // Validate args
-    const { args } = options;
-    if (args !== undefined && !ArrayIsArray(args)) {
-      throw new ERR_INVALID_ARG_TYPE("options.args", "Array", args);
-    }
-
-    // Validate file
-    const { file } = options;
-    if (file == null || typeof file !== "string") {
-      throw new ERR_INVALID_ARG_TYPE("options.file", "string", file);
-    }
-
-    // 'child_process.spawn' tracingChannel: publish start before invoking the
-    // platform spawn. #spawnInternal publishes end on success or error on
-    // synchronous spawn failures (ENOENT/EACCES/EPERM) itself, because it
-    // catches and handles the failure rather than re-throwing.
-    if (childProcessSpawnChannel.hasSubscribers) {
-      childProcessSpawnChannel.start.publish({ process: this, options });
-    }
-    this.#spawnInternal(file, args || [], options);
-  }
-
-  /**
-   * Internal method that performs the actual spawning.
-   */
-  #spawnInternal(
-    command,
-    args,
-    options,
-  ) {
-    const {
-      stdio = ["pipe", "pipe", "pipe"],
-      cwd,
-      signal,
-      windowsVerbatimArguments = false,
-      windowsHide = true,
-      detached,
-      envPairs,
-      uid,
-      gid,
-    } = options;
-
-    // Convert envPairs array to env object
-    const env = {};
-    if (envPairs) {
-      for (const pair of envPairs) {
-        const idx = pair.indexOf("=");
-        if (idx !== -1) {
-          env[pair.substring(0, idx)] = pair.substring(idx + 1);
-        }
-      }
-    }
-
-    const serialization = options.serialization || "json";
-    const normalizedStdio = normalizeStdioOption(stdio);
-    const [
-      stdin = "pipe",
-      stdout = "pipe",
-      stderr = "pipe",
-      ...extraStdio
-    ] = normalizedStdio;
-
-    const { Stream } = lazyStream();
-    const { Socket } = lazyNet();
-
-    // buildCommand handles Node.js to Deno CLI arg translation when spawning Deno
-    // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
-    // before slicing so we can pass it via kArgv0 for OS-level argv[0].
-    const argv0 = args.length > 0 ? args[0] : command;
-    const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
-      command,
-      args.slice(1),
-      env,
+  const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
+  const lazyStream = core.createLazyLoader("node:stream");
+  const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+  const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+  const {
+    AbortError,
+    ERR_INVALID_ARG_TYPE,
+    ERR_INVALID_ARG_VALUE,
+    ERR_INVALID_HANDLE_TYPE,
+    ERR_INVALID_SYNC_FORK_INPUT,
+    ERR_IPC_CHANNEL_CLOSED,
+    ERR_IPC_ONE_PIPE,
+    ERR_IPC_SYNC_FORK,
+    ERR_MISSING_ARGS,
+    ERR_UNKNOWN_SIGNAL,
+  } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+  const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+  const { FastBuffer } = core.loadExtScript(
+    "ext:deno_node/internal/buffer.mjs",
+  );
+  const {
+    ERR_IPC_DISCONNECTED,
+    errnoException,
+  } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+  const { codeMap } = core.loadExtScript(
+    "ext:deno_node/internal_binding/uv.ts",
+  );
+  const {
+    validateBoolean,
+    validateInt32,
+    validateObject,
+    validateOneOf,
+    validateString,
+  } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+  const { kEmptyObject } = core.loadExtScript(
+    "ext:deno_node/internal/util.mjs",
+  );
+  const lazyFsUtils = core.createLazyLoader(
+    "ext:deno_node/internal/fs/utils.mjs",
+  );
+  const lazyProcess = core.createLazyLoader("node:process");
+  const { StringPrototypeSlice } = core.loadExtScript(
+    "ext:deno_node/internal/primordials.mjs",
+  );
+  const { Pipe, socketType } = core.loadExtScript(
+    "ext:deno_node/internal_binding/pipe_wrap.ts",
+  );
+  const {
+    socketType: tcpSocketType,
+    TCP,
+  } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
+  const lazyNet = core.createLazyLoader("node:net");
+  const { channel: createDiagnosticsChannel, tracingChannel } = core
+    .loadExtScript(
+      "ext:deno_node/diagnostics_channel.js",
     );
+  const childProcessChannel = createDiagnosticsChannel("child_process");
+  const childProcessSpawnChannel = tracingChannel("child_process.spawn");
+  const lazyDgram = core.createLazyLoader("node:dgram");
+  const lazyDgramInternal = () =>
+    core.loadExtScript("ext:deno_node/internal/dgram.ts");
+  const lazyUdpWrap = () =>
+    core.loadExtScript("ext:deno_node/internal_binding/udp_wrap.ts");
+  const {
+    kNeedsNpmProcessState,
+    nodeSpawnChild,
+    nodeSpawnSyncChild,
+  } = core.loadExtScript("ext:deno_process/40_process.js");
 
-    this.spawnfile = cmd;
-    this.spawnargs = [cmd, ...cmdArgs];
+  // Precompiled regular expressions (captured as SafeRegExp so the prototype
+  // can't be tampered with at runtime).
+  const cmdExeRe = new SafeRegExp("^(?:.*\\\\)?cmd(?:\\.exe)?$", "i");
+  const winSpecialCharsRe = new SafeRegExp('[\\s"\\\\&|<>^!()]');
+  const winEscapeQuotesRe = new SafeRegExp('(\\\\*)"', "g");
+  const winTrailingBackslashRe = new SafeRegExp("(\\\\+)$");
+  const posixSpecialCharsRe = new SafeRegExp("[^a-zA-Z0-9_./-]");
+  const singleQuoteRe = new SafeRegExp("'", "g");
+  const winQuoteCharsRe = new SafeRegExp('[\\s"&|<>^]');
+  const shellVarRefRe = new SafeRegExp("\\$\\{[^}]+\\}|\\$[A-Za-z_]");
+  const unsafeInDoubleQuotesRe = new SafeRegExp("`|\\$\\(|\\\\");
+  const posixMetacharsRe = new SafeRegExp("[();&|<>`!\\n\\r\\s\"'\\\\$]");
+  const doubleQuoteRe = new SafeRegExp('"', "g");
+  const pipePrefixRe = new SafeRegExp("^\\s*\\|\\s*");
+  const shellVarMatchRe = new SafeRegExp(
+    '^(?:"\\$\\{([^}]+)\\}"|"\\$([A-Za-z_][A-Za-z0-9_]*)"|\\$\\{([^}]+)\\}|\\$([A-Za-z_][A-Za-z0-9_]*))',
+  );
 
-    const ipc = normalizedStdio.indexOf("ipc");
-    if (ipc !== -1 && normalizedStdio.indexOf("ipc", ipc + 1) !== -1) {
-      throw new ERR_IPC_ONE_PIPE();
-    }
+  function mapValues(
+    record,
+    transformer,
+  ) {
+    const ret = {};
+    const entries = ObjectEntries(record);
 
-    const extraStdioOffset = 3; // stdin, stdout, stderr
-
-    const extraStdioNormalized = [];
-    for (let i = 0; i < extraStdio.length; i++) {
-      const fd = i + extraStdioOffset;
-      if (fd === ipc) {
-        // IPC fd is handled separately in Rust via the kIpc option.
-        // Push a placeholder so the array indices stay aligned with
-        // fd numbers, but don't double-push.
-        extraStdioNormalized.push("null");
+    for (const entry of new SafeArrayIterator(entries)) {
+      const key = entry[0];
+      const value = entry[1];
+      if (typeof value === "undefined") {
         continue;
       }
-      extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
-    }
-
-    // Windows does not support uid/gid options - throw ENOTSUP synchronously.
-    if (isWindows && (uid != null || gid != null)) {
-      throw _createSpawnError("ENOTSUP", command, args.slice(1));
-    }
-
-    try {
-      this.#process = nodeSpawnChild(cmd, {
-        args: cmdArgs,
-        clearEnv: true,
-        cwd,
-        env,
-        stdin: toDenoStdio(stdin),
-        stdout: toDenoStdio(stdout),
-        stderr: toDenoStdio(stderr),
-        windowsRawArguments: windowsVerbatimArguments,
-        windowsHide,
-        uid,
-        gid,
-        detached,
-        serialization,
-        ipc,
-        extraStdio: extraStdioNormalized,
-        needsNpmProcessState: options[kNeedsNpmProcessState] ||
-          includeNpmProcessState,
-        argv0: argv0 !== cmd ? argv0 : undefined,
-      });
-      this.pid = this.#process.pid;
-
-      if (stdin === "pipe" && this.#process.stdinFd != null) {
-        const pipe = new Pipe(socketType.SOCKET);
-        pipe.open(this.#process.stdinFd);
-        this.stdin = new Socket({
-          handle: pipe,
-          writable: true,
-          readable: false,
-        });
+      if (value === null) {
+        continue;
       }
 
-      if (stdin instanceof Stream) {
-        if (streamHandleFd(stdin) >= 0) {
-          // The fd was passed directly to the child via dup(). The child
-          // reads/writes the shared pipe at the OS level. The parent's
-          // Stream is not assigned as this.stdin so the caller retains
-          // independent control of the original stream.
-        } else if (this.#process.stdinFd != null) {
-          // Stream without a usable fd - we created a pipe. Wire up
-          // JS-level piping from the user's readable stream into the
-          // child's stdin pipe.
-          const p = new Pipe(socketType.SOCKET);
-          p.open(this.#process.stdinFd);
-          const stdinSocket = new Socket({
-            handle: p,
+      const mappedValue = transformer(value);
+
+      ret[key] = mappedValue;
+    }
+
+    return ret;
+  }
+
+  function stdioStringToArray(
+    stdio,
+    channel,
+  ) {
+    const options = [];
+
+    switch (stdio) {
+      case "ignore":
+      case "overlapped":
+      case "pipe":
+        ArrayPrototypePush(options, stdio, stdio, stdio);
+        break;
+      case "inherit":
+        ArrayPrototypePush(options, stdio, stdio, stdio);
+        break;
+      default:
+        throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
+    }
+
+    if (channel) ArrayPrototypePush(options, channel);
+
+    return options;
+  }
+
+  const kClosesNeeded = Symbol("_closesNeeded");
+  const kClosesReceived = Symbol("_closesReceived");
+  const kCanDisconnect = Symbol("_canDisconnect");
+  let emittedShellDeprecation = false;
+
+  // We only want to emit a close event for the child process when all of
+  // the writable streams have closed. The value of `child[kClosesNeeded]` should be 1 +
+  // the number of opened writable streams (note this excludes `stdin`).
+  function maybeClose(child) {
+    child[kClosesReceived]++;
+    if (child[kClosesNeeded] === child[kClosesReceived]) {
+      child.emit("close", child.exitCode, child.signalCode);
+    }
+  }
+
+  function flushStdio(subprocess) {
+    const stdio = subprocess.stdio;
+
+    if (stdio == null) return;
+
+    for (let i = 0; i < stdio.length; i++) {
+      const stream = stdio[i];
+      if (!stream || !stream.readable) {
+        continue;
+      }
+      stream.resume();
+    }
+  }
+
+  class ChildProcess extends EventEmitter {
+    /**
+     * The exit code of the child process. This property will be `null` until the child process exits.
+     */
+    exitCode = null;
+
+    /**
+     * This property is set to `true` after `kill()` is called.
+     */
+    killed = false;
+
+    /**
+     * The PID of this child process.
+     */
+    pid;
+
+    /**
+     * The signal received by this child process.
+     */
+    signalCode = null;
+
+    /**
+     * Command line arguments given to this child process.
+     */
+    spawnargs = [];
+
+    /**
+     * The executable file name of this child process.
+     */
+    spawnfile = "";
+
+    /**
+     * This property represents the child process's stdin.
+     */
+    stdin = null;
+
+    /**
+     * This property represents the child process's stdout.
+     */
+    stdout = null;
+
+    /**
+     * This property represents the child process's stderr.
+     */
+    stderr = null;
+
+    /**
+     * Pipes to this child process.
+     */
+    stdio = [
+      null,
+      null,
+      null,
+    ];
+
+    disconnect;
+
+    #process;
+    #spawned = PromiseWithResolvers();
+    [kClosesNeeded] = 1;
+    [kClosesReceived] = 0;
+    [kCanDisconnect] = false;
+
+    constructor() {
+      super();
+
+      // 'child_process' channel fires once per ChildProcess construction, before
+      // spawn(). cluster.fork() / cp.fork() / cp.spawn() all flow through here,
+      // so a single publish site covers every entry point.
+      if (childProcessChannel.hasSubscribers) {
+        childProcessChannel.publish({ process: this });
+      }
+    }
+
+    /**
+     * Internal spawn method used by Node.js internals.
+     * This is called after creating a ChildProcess instance.
+     */
+    spawn(options) {
+      // Validate options
+      if (options == null || typeof options !== "object") {
+        throw new ERR_INVALID_ARG_TYPE("options", "object", options);
+      }
+
+      // Validate envPairs before file (Node.js validation order)
+      const { envPairs } = options;
+      if (envPairs !== undefined && !ArrayIsArray(envPairs)) {
+        throw new ERR_INVALID_ARG_TYPE("options.envPairs", "Array", envPairs);
+      }
+
+      // Validate args
+      const { args } = options;
+      if (args !== undefined && !ArrayIsArray(args)) {
+        throw new ERR_INVALID_ARG_TYPE("options.args", "Array", args);
+      }
+
+      // Validate file
+      const { file } = options;
+      if (file == null || typeof file !== "string") {
+        throw new ERR_INVALID_ARG_TYPE("options.file", "string", file);
+      }
+
+      // 'child_process.spawn' tracingChannel: publish start before invoking the
+      // platform spawn. #spawnInternal publishes end on success or error on
+      // synchronous spawn failures (ENOENT/EACCES/EPERM) itself, because it
+      // catches and handles the failure rather than re-throwing.
+      if (childProcessSpawnChannel.hasSubscribers) {
+        childProcessSpawnChannel.start.publish({ process: this, options });
+      }
+      this.#spawnInternal(file, args || [], options);
+    }
+
+    /**
+     * Internal method that performs the actual spawning.
+     */
+    #spawnInternal(
+      command,
+      args,
+      options,
+    ) {
+      const {
+        stdio = ["pipe", "pipe", "pipe"],
+        cwd,
+        signal,
+        windowsVerbatimArguments = false,
+        windowsHide = true,
+        detached,
+        envPairs,
+        uid,
+        gid,
+      } = options;
+
+      // Convert envPairs array to env object
+      const env = {};
+      if (envPairs) {
+        for (const pair of new SafeArrayIterator(envPairs)) {
+          const idx = StringPrototypeIndexOf(pair, "=");
+          if (idx !== -1) {
+            env[StringPrototypeSubstring(pair, 0, idx)] =
+              StringPrototypeSubstring(
+                pair,
+                idx + 1,
+              );
+          }
+        }
+      }
+
+      const serialization = options.serialization || "json";
+      const normalizedStdio = normalizeStdioOption(stdio);
+      const stdin = normalizedStdio[0] === undefined
+        ? "pipe"
+        : normalizedStdio[0];
+      const stdout = normalizedStdio[1] === undefined
+        ? "pipe"
+        : normalizedStdio[1];
+      const stderr = normalizedStdio[2] === undefined
+        ? "pipe"
+        : normalizedStdio[2];
+      const extraStdio = ArrayPrototypeSlice(normalizedStdio, 3);
+
+      const { Stream } = lazyStream();
+      const { Socket } = lazyNet();
+
+      // buildCommand handles Node.js to Deno CLI arg translation when spawning Deno
+      // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
+      // before slicing so we can pass it via kArgv0 for OS-level argv[0].
+      const argv0 = args.length > 0 ? args[0] : command;
+      const builtCommand = buildCommand(
+        command,
+        ArrayPrototypeSlice(args, 1),
+        env,
+      );
+      const cmd = builtCommand[0];
+      const cmdArgs = builtCommand[1];
+      const includeNpmProcessState = builtCommand[2];
+
+      this.spawnfile = cmd;
+      this.spawnargs = [cmd, ...new SafeArrayIterator(cmdArgs)];
+
+      const ipc = ArrayPrototypeIndexOf(normalizedStdio, "ipc");
+      if (
+        ipc !== -1 &&
+        ArrayPrototypeIndexOf(normalizedStdio, "ipc", ipc + 1) !== -1
+      ) {
+        throw new ERR_IPC_ONE_PIPE();
+      }
+
+      const extraStdioOffset = 3; // stdin, stdout, stderr
+
+      const extraStdioNormalized = [];
+      for (let i = 0; i < extraStdio.length; i++) {
+        const fd = i + extraStdioOffset;
+        if (fd === ipc) {
+          // IPC fd is handled separately in Rust via the kIpc option.
+          // Push a placeholder so the array indices stay aligned with
+          // fd numbers, but don't double-push.
+          ArrayPrototypePush(extraStdioNormalized, "null");
+          continue;
+        }
+        ArrayPrototypePush(extraStdioNormalized, toDenoStdio(extraStdio[i]));
+      }
+
+      // Windows does not support uid/gid options - throw ENOTSUP synchronously.
+      if (isWindows && (uid != null || gid != null)) {
+        throw _createSpawnError(
+          "ENOTSUP",
+          command,
+          ArrayPrototypeSlice(args, 1),
+        );
+      }
+
+      try {
+        this.#process = nodeSpawnChild(cmd, {
+          args: cmdArgs,
+          clearEnv: true,
+          cwd,
+          env,
+          stdin: toDenoStdio(stdin),
+          stdout: toDenoStdio(stdout),
+          stderr: toDenoStdio(stderr),
+          windowsRawArguments: windowsVerbatimArguments,
+          windowsHide,
+          uid,
+          gid,
+          detached,
+          serialization,
+          ipc,
+          extraStdio: extraStdioNormalized,
+          needsNpmProcessState: options[kNeedsNpmProcessState] ||
+            includeNpmProcessState,
+          argv0: argv0 !== cmd ? argv0 : undefined,
+        });
+        this.pid = this.#process.pid;
+
+        if (stdin === "pipe" && this.#process.stdinFd != null) {
+          const pipe = new Pipe(socketType.SOCKET);
+          pipe.open(this.#process.stdinFd);
+          this.stdin = new Socket({
+            handle: pipe,
             writable: true,
             readable: false,
           });
-          if (typeof stdin.pipe === "function") {
-            stdin.pipe(stdinSocket);
-          }
-          this.stdin = stdinSocket;
         }
-      }
-      if (stdout instanceof Stream) {
-        if (streamHandleFd(stdout) >= 0) {
-          // fd passed directly - see stdin comment above.
-        } else if (this.#process.stdoutFd != null) {
-          this[kClosesNeeded]++;
-          const p = new Pipe(socketType.SOCKET);
-          p.open(this.#process.stdoutFd);
-          const stdoutSocket = new Socket({
-            handle: p,
-            writable: false,
-            readable: true,
-          });
-          if (typeof stdout.write === "function") {
-            // Don't end the target stream when this child exits -- other
-            // children may also be piping into the same destination (e.g.
-            // multiple children sharing p3.stdin as their stdout).
-            stdoutSocket.pipe(stdout, { end: false });
+
+        if (ObjectPrototypeIsPrototypeOf(Stream.prototype, stdin)) {
+          if (streamHandleFd(stdin) >= 0) {
+            // The fd was passed directly to the child via dup(). The child
+            // reads/writes the shared pipe at the OS level. The parent's
+            // Stream is not assigned as this.stdin so the caller retains
+            // independent control of the original stream.
+          } else if (this.#process.stdinFd != null) {
+            // Stream without a usable fd - we created a pipe. Wire up
+            // JS-level piping from the user's readable stream into the
+            // child's stdin pipe.
+            const p = new Pipe(socketType.SOCKET);
+            p.open(this.#process.stdinFd);
+            const stdinSocket = new Socket({
+              handle: p,
+              writable: true,
+              readable: false,
+            });
+            if (typeof stdin.pipe === "function") {
+              stdin.pipe(stdinSocket);
+            }
+            this.stdin = stdinSocket;
           }
-          this.stdout = stdoutSocket;
-          stdoutSocket.on("close", () => {
-            maybeClose(this);
-          });
         }
-      }
-      if (stderr instanceof Stream) {
-        if (streamHandleFd(stderr) >= 0) {
-          // fd passed directly - see stdin comment above.
-        } else if (this.#process.stderrFd != null) {
-          this[kClosesNeeded]++;
-          const p = new Pipe(socketType.SOCKET);
-          p.open(this.#process.stderrFd);
-          const stderrSocket = new Socket({
-            handle: p,
-            writable: false,
-            readable: true,
-          });
-          if (typeof stderr.write === "function") {
-            stderrSocket.pipe(stderr, { end: false });
+        if (ObjectPrototypeIsPrototypeOf(Stream.prototype, stdout)) {
+          if (streamHandleFd(stdout) >= 0) {
+            // fd passed directly - see stdin comment above.
+          } else if (this.#process.stdoutFd != null) {
+            this[kClosesNeeded]++;
+            const p = new Pipe(socketType.SOCKET);
+            p.open(this.#process.stdoutFd);
+            const stdoutSocket = new Socket({
+              handle: p,
+              writable: false,
+              readable: true,
+            });
+            if (typeof stdout.write === "function") {
+              // Don't end the target stream when this child exits -- other
+              // children may also be piping into the same destination (e.g.
+              // multiple children sharing p3.stdin as their stdout).
+              stdoutSocket.pipe(stdout, { end: false });
+            }
+            this.stdout = stdoutSocket;
+            stdoutSocket.on("close", () => {
+              maybeClose(this);
+            });
           }
-          this.stderr = stderrSocket;
-          stderrSocket.on("close", () => {
-            maybeClose(this);
-          });
         }
-      }
+        if (ObjectPrototypeIsPrototypeOf(Stream.prototype, stderr)) {
+          if (streamHandleFd(stderr) >= 0) {
+            // fd passed directly - see stdin comment above.
+          } else if (this.#process.stderrFd != null) {
+            this[kClosesNeeded]++;
+            const p = new Pipe(socketType.SOCKET);
+            p.open(this.#process.stderrFd);
+            const stderrSocket = new Socket({
+              handle: p,
+              writable: false,
+              readable: true,
+            });
+            if (typeof stderr.write === "function") {
+              stderrSocket.pipe(stderr, { end: false });
+            }
+            this.stderr = stderrSocket;
+            stderrSocket.on("close", () => {
+              maybeClose(this);
+            });
+          }
+        }
 
-      if (stdout === "pipe" && this.#process.stdoutFd != null) {
-        this[kClosesNeeded]++;
-        const pipe = new Pipe(socketType.SOCKET);
-        pipe.open(this.#process.stdoutFd);
-        this.stdout = new Socket({
-          handle: pipe,
-          writable: false,
-          readable: true,
-        });
-        this.stdout.on("close", () => {
-          maybeClose(this);
-        });
-      }
-
-      if (stderr === "pipe" && this.#process.stderrFd != null) {
-        this[kClosesNeeded]++;
-        const pipe = new Pipe(socketType.SOCKET);
-        pipe.open(this.#process.stderrFd);
-        this.stderr = new Socket({
-          handle: pipe,
-          writable: false,
-          readable: true,
-        });
-        this.stderr.on("close", () => {
-          maybeClose(this);
-        });
-      }
-
-      this.stdio[0] = this.stdin;
-      this.stdio[1] = this.stdout;
-      this.stdio[2] = this.stderr;
-
-      if (ipc >= 0) {
-        this.stdio[ipc] = null;
-      }
-
-      const extraPipeFds = this.#process.extraPipeFds;
-      for (let i = 0; i < extraPipeFds.length; i++) {
-        const extraFd = extraPipeFds[i];
-        const fd = i + extraStdioOffset;
-        if (extraFd !== null && extraFd !== undefined) {
+        if (stdout === "pipe" && this.#process.stdoutFd != null) {
           this[kClosesNeeded]++;
           const pipe = new Pipe(socketType.SOCKET);
-          pipe.open(extraFd);
-          this.stdio[fd] = new Socket(
-            {
-              handle: pipe,
-            },
-          );
-          this.stdio[fd]?.on("close", () => {
+          pipe.open(this.#process.stdoutFd);
+          this.stdout = new Socket({
+            handle: pipe,
+            writable: false,
+            readable: true,
+          });
+          this.stdout.on("close", () => {
             maybeClose(this);
           });
         }
-      }
 
-      nextTick(() => {
-        this.emit("spawn");
-        this.#spawned.resolve();
-      });
+        if (stderr === "pipe" && this.#process.stderrFd != null) {
+          this[kClosesNeeded]++;
+          const pipe = new Pipe(socketType.SOCKET);
+          pipe.open(this.#process.stderrFd);
+          this.stderr = new Socket({
+            handle: pipe,
+            writable: false,
+            readable: true,
+          });
+          this.stderr.on("close", () => {
+            maybeClose(this);
+          });
+        }
 
-      if (signal) {
-        const killSignal = options.killSignal ?? "SIGTERM";
-        const onAbortListener = () => {
-          try {
-            if (this.kill(killSignal)) {
-              this.emit(
-                "error",
-                new AbortError(
-                  undefined,
-                  { cause: signal.reason },
-                ),
-              );
-            }
-          } catch (err) {
-            this.emit("error", err);
+        this.stdio[0] = this.stdin;
+        this.stdio[1] = this.stdout;
+        this.stdio[2] = this.stderr;
+
+        if (ipc >= 0) {
+          this.stdio[ipc] = null;
+        }
+
+        const extraPipeFds = this.#process.extraPipeFds;
+        for (let i = 0; i < extraPipeFds.length; i++) {
+          const extraFd = extraPipeFds[i];
+          const fd = i + extraStdioOffset;
+          if (extraFd !== null && extraFd !== undefined) {
+            this[kClosesNeeded]++;
+            const pipe = new Pipe(socketType.SOCKET);
+            pipe.open(extraFd);
+            this.stdio[fd] = new Socket(
+              {
+                handle: pipe,
+              },
+            );
+            this.stdio[fd]?.on("close", () => {
+              maybeClose(this);
+            });
           }
-        };
-        if (signal.aborted) {
-          nextTick(onAbortListener);
-        } else {
-          signal.addEventListener("abort", onAbortListener, { once: true });
-          this.addListener(
-            "exit",
-            () => signal.removeEventListener("abort", onAbortListener),
+        }
+
+        nextTick(() => {
+          this.emit("spawn");
+          this.#spawned.resolve();
+        });
+
+        if (signal) {
+          const killSignal = options.killSignal ?? "SIGTERM";
+          const onAbortListener = () => {
+            try {
+              if (this.kill(killSignal)) {
+                this.emit(
+                  "error",
+                  new AbortError(
+                    undefined,
+                    { cause: signal.reason },
+                  ),
+                );
+              }
+            } catch (err) {
+              this.emit("error", err);
+            }
+          };
+          if (signal.aborted) {
+            nextTick(onAbortListener);
+          } else {
+            signal.addEventListener("abort", onAbortListener, { once: true });
+            this.addListener(
+              "exit",
+              () => signal.removeEventListener("abort", onAbortListener),
+            );
+          }
+        }
+
+        const pipeRid = this.#process.ipcPipeRid;
+        if (typeof pipeRid == "number") {
+          setupChannel(this, pipeRid, serialization);
+          this[kClosesNeeded]++;
+          this.on("disconnect", () => {
+            maybeClose(this);
+          });
+        }
+
+        (async () => {
+          const status = await this.#process.status;
+          this.signalCode = this.signalCode || status.signal || null;
+          if (this.signalCode) {
+            this.exitCode = null;
+          } else {
+            this.exitCode = status.code;
+          }
+          PromisePrototypeThen(this.#spawned.promise, async () => {
+            // The 'exit' and 'close' events must be emitted after the 'spawn' event.
+            this.emit("exit", this.exitCode, this.signalCode);
+            await this.#_waitForChildStreamsToClose();
+            this.#closePipes();
+            maybeClose(this);
+            nextTick(flushStdio, this);
+          });
+        })();
+
+        // Synchronous spawn succeeded. Publish 'child_process.spawn'.end so the
+        // tracing channel mirrors Node's "end XOR error" semantics.
+        if (childProcessSpawnChannel.hasSubscribers) {
+          childProcessSpawnChannel.end.publish({ process: this });
+        }
+      } catch (err) {
+        const { Readable, Writable } = lazyStream();
+        let e = err;
+        if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
+          // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
+          e = _createSpawnError(
+            "ENOENT",
+            command,
+            ArrayPrototypeSlice(args, 1),
           );
-        }
-      }
-
-      const pipeRid = this.#process.ipcPipeRid;
-      if (typeof pipeRid == "number") {
-        setupChannel(this, pipeRid, serialization);
-        this[kClosesNeeded]++;
-        this.on("disconnect", () => {
-          maybeClose(this);
-        });
-      }
-
-      (async () => {
-        const status = await this.#process.status;
-        this.signalCode = this.signalCode || status.signal || null;
-        if (this.signalCode) {
-          this.exitCode = null;
-        } else {
-          this.exitCode = status.code;
-        }
-        this.#spawned.promise.then(async () => {
-          // The 'exit' and 'close' events must be emitted after the 'spawn' event.
-          this.emit("exit", this.exitCode, this.signalCode);
-          await this.#_waitForChildStreamsToClose();
-          this.#closePipes();
-          maybeClose(this);
-          nextTick(flushStdio, this);
-        });
-      })();
-
-      // Synchronous spawn succeeded. Publish 'child_process.spawn'.end so the
-      // tracing channel mirrors Node's "end XOR error" semantics.
-      if (childProcessSpawnChannel.hasSubscribers) {
-        childProcessSpawnChannel.end.publish({ process: this });
-      }
-    } catch (err) {
-      const { Readable, Writable } = lazyStream();
-      let e = err;
-      if (e instanceof Deno.errors.NotFound) {
-        // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
-        e = _createSpawnError("ENOENT", command, args.slice(1));
-      } else if (e instanceof Deno.errors.PermissionDenied) {
-        // Node distinguishes two failure modes that Deno collapses into
-        // PermissionDenied:
-        //   * setuid/setgid refused by the kernel -> EPERM, thrown sync,
-        //     matching `process_handle_init` in libuv.
-        //   * execve() refused because the target isn't executable -> EACCES,
-        //     emitted asynchronously on the child's 'error' event (see Node's
-        //     test-diagnostics-channel-child-process EACCES branch).
-        // Tell them apart by whether uid/gid were requested.
-        if (uid != null || gid != null) {
-          if (childProcessSpawnChannel.hasSubscribers) {
-            const epermErr = _createSpawnError(
+        } else if (
+          ObjectPrototypeIsPrototypeOf(
+            Deno.errors.PermissionDenied.prototype,
+            e,
+          )
+        ) {
+          // Node distinguishes two failure modes that Deno collapses into
+          // PermissionDenied:
+          //   * setuid/setgid refused by the kernel -> EPERM, thrown sync,
+          //     matching `process_handle_init` in libuv.
+          //   * execve() refused because the target isn't executable -> EACCES,
+          //     emitted asynchronously on the child's 'error' event (see Node's
+          //     test-diagnostics-channel-child-process EACCES branch).
+          // Tell them apart by whether uid/gid were requested.
+          if (uid != null || gid != null) {
+            if (childProcessSpawnChannel.hasSubscribers) {
+              const epermErr = _createSpawnError(
+                "EPERM",
+                command,
+                ArrayPrototypeSlice(args, 1),
+              );
+              childProcessSpawnChannel.error.publish({
+                process: this,
+                error: epermErr,
+              });
+              throw epermErr;
+            }
+            throw _createSpawnError(
               "EPERM",
               command,
-              args.slice(1),
+              ArrayPrototypeSlice(args, 1),
             );
-            childProcessSpawnChannel.error.publish({
-              process: this,
-              error: epermErr,
-            });
-            throw epermErr;
           }
-          throw _createSpawnError("EPERM", command, args.slice(1));
+          e = _createSpawnError(
+            "EACCES",
+            command,
+            ArrayPrototypeSlice(args, 1),
+          );
         }
-        e = _createSpawnError("EACCES", command, args.slice(1));
-      }
 
-      // Publish 'child_process.spawn'.error for the non-rethrow cases (ENOENT
-      // and other Deno spawn failures that turn into an async 'error' event
-      // on the child). Subscribers see the synthesized Node-style error.
-      if (childProcessSpawnChannel.hasSubscribers) {
-        childProcessSpawnChannel.error.publish({ process: this, error: e });
-      }
+        // Publish 'child_process.spawn'.error for the non-rethrow cases (ENOENT
+        // and other Deno spawn failures that turn into an async 'error' event
+        // on the child). Subscribers see the synthesized Node-style error.
+        if (childProcessSpawnChannel.hasSubscribers) {
+          childProcessSpawnChannel.error.publish({ process: this, error: e });
+        }
 
-      // Set up stdio streams even when spawn fails (Node.js creates pipes
-      // before the OS spawn call, so they exist regardless of spawn outcome).
-      if (stdin === "pipe") {
-        this.stdin = new Writable({
-          write(_chunk, _enc, cb) {
-            cb(new Error("spawn failed"));
-          },
-        });
-      }
-      if (stdout === "pipe") {
-        this.stdout = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stdout.on("close", () => {
+        // Set up stdio streams even when spawn fails (Node.js creates pipes
+        // before the OS spawn call, so they exist regardless of spawn outcome).
+        if (stdin === "pipe") {
+          this.stdin = new Writable({
+            write(_chunk, _enc, cb) {
+              cb(new Error("spawn failed"));
+            },
+          });
+        }
+        if (stdout === "pipe") {
+          this.stdout = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stdout.on("close", () => {
+            maybeClose(this);
+          });
+        }
+        if (stderr === "pipe") {
+          this.stderr = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stderr.on("close", () => {
+            maybeClose(this);
+          });
+        }
+
+        this.stdio[0] = this.stdin;
+        this.stdio[1] = this.stdout;
+        this.stdio[2] = this.stderr;
+
+        this.#_handleError(e);
+
+        // Destroy stdio streams and emit close (matching Node.js behavior
+        // where failed spawns still trigger 'close' but not 'exit').
+        nextTick(() => {
+          if (this.stdout) {
+            this.stdout.destroy();
+          }
+          if (this.stderr) {
+            this.stderr.destroy();
+          }
+          if (this.stdin) {
+            this.stdin.destroy();
+          }
           maybeClose(this);
         });
       }
-      if (stderr === "pipe") {
-        this.stderr = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stderr.on("close", () => {
-          maybeClose(this);
-        });
+    }
+
+    /**
+     * @param signal NOTE: this parameter is not yet implemented.
+     */
+    kill(signal) {
+      const process = lazyProcess().default;
+      // Signal 0 is a special case: it checks if the process exists
+      // without sending a signal (POSIX kill(pid, 0)). This must run
+      // before the `killed` check because kill(0) is an existence probe
+      // that should work even after a prior successful kill().
+      if (signal === 0 || signal === "0") {
+        try {
+          process.kill(this.pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
       }
 
-      this.stdio[0] = this.stdin;
-      this.stdio[1] = this.stdout;
-      this.stdio[2] = this.stderr;
+      if (this.killed) {
+        return false;
+      }
 
-      this.#_handleError(e);
+      let signalName = signal == null ? "SIGTERM" : toDenoSignal(signal);
+      this.#closePipes();
+      try {
+        this.#process.kill(signalName);
+      } catch (err) {
+        if (isWindows) {
+          // On Windows, unsupported signals fall back to SIGKILL
+          // (matching Node's TerminateProcess behavior).
+          try {
+            this.#process.kill("SIGKILL");
+            signalName = "SIGKILL";
+          } catch (err2) {
+            const alreadyClosed =
+              ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err2) ||
+              ObjectPrototypeIsPrototypeOf(
+                Deno.errors.PermissionDenied.prototype,
+                err2,
+              );
+            if (!alreadyClosed) {
+              throw err2;
+            }
+            return false;
+          }
+        } else {
+          const alreadyClosed =
+            ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err) ||
+            ObjectPrototypeIsPrototypeOf(
+              Deno.errors.PermissionDenied.prototype,
+              err,
+            );
+          if (!alreadyClosed) {
+            throw err;
+          }
+          // Process already exited, signal was not delivered.
+          return false;
+        }
+      }
 
-      // Destroy stdio streams and emit close (matching Node.js behavior
-      // where failed spawns still trigger 'close' but not 'exit').
+      /* Cancel any pending IPC I/O */
+      if (this[kCanDisconnect]) {
+        this.disconnect?.();
+      }
+
+      this.killed = true;
+      this.signalCode = signalName;
+      return true;
+    }
+
+    [SymbolDispose]() {
+      if (!this.killed) {
+        this.kill();
+      }
+    }
+
+    ref() {
+      this.#process.ref();
+    }
+
+    unref() {
+      this.#process.unref();
+    }
+
+    async #_waitForChildStreamsToClose() {
+      const { Readable } = lazyStream();
+      const process = lazyProcess().default;
+      const promises = [];
+      // Don't close parent process stdin if that's passed through
+      if (this.stdin && !this.stdin.destroyed && this.stdin !== process.stdin) {
+        assert(this.stdin);
+        this.stdin.destroy();
+        ArrayPrototypePush(promises, waitForStreamToClose(this.stdin));
+      }
+      // Only readable streams need to be closed
+      if (
+        this.stdout && !this.stdout.destroyed &&
+        ObjectPrototypeIsPrototypeOf(Readable.prototype, this.stdout)
+      ) {
+        ArrayPrototypePush(promises, waitForReadableToClose(this.stdout));
+      }
+      // Only readable streams need to be closed
+      if (
+        this.stderr && !this.stderr.destroyed &&
+        ObjectPrototypeIsPrototypeOf(Readable.prototype, this.stderr)
+      ) {
+        ArrayPrototypePush(promises, waitForReadableToClose(this.stderr));
+      }
+      await SafePromiseAll(promises);
+    }
+
+    #_handleError(err) {
       nextTick(() => {
-        if (this.stdout) {
-          this.stdout.destroy();
-        }
-        if (this.stderr) {
-          this.stderr.destroy();
-        }
-        if (this.stdin) {
-          this.stdin.destroy();
-        }
-        maybeClose(this);
+        this.emit("error", err); // TODO(uki00a) Convert `err` into nodejs's `SystemError` class.
       });
+    }
+
+    #closePipes() {
+      if (this.stdin) {
+        assert(this.stdin);
+        this.stdin.destroy();
+      }
+    }
+  }
+
+  function streamHandleFd(stream) {
+    const handle = stream._handle;
+    if (handle && typeof handle.fd === "number" && handle.fd >= 0) {
+      return handle.fd;
+    }
+    return -1;
+  }
+
+  function toDenoStdio(
+    pipe,
+  ) {
+    const { Stream } = lazyStream();
+    if (ObjectPrototypeIsPrototypeOf(Stream.prototype, pipe)) {
+      // If the stream has an underlying handle with a valid fd (e.g. a Socket
+      // backed by a PipeWrap), pass that fd directly to the child process.
+      // The Rust side will dup() it so both parent and child share the pipe.
+      // This matches Node.js behavior where passing a child's stdout as
+      // another child's stdin shares the underlying OS pipe.
+      const fd = streamHandleFd(pipe);
+      if (fd >= 0) {
+        return fd;
+      }
+      // For streams without a usable fd, create a pipe and set up JS-level
+      // piping after spawn.
+      return "piped";
+    }
+    if (typeof pipe === "number") {
+      return pipe;
+    }
+    switch (pipe) {
+      case "pipe":
+      case "overlapped":
+      case undefined:
+      case null:
+        return "piped";
+      case "ignore":
+        return "null";
+      case "inherit":
+        return "inherit";
+      case "ipc":
+        return "ipc_for_internal_use";
+      default:
+        throw new ERR_INVALID_ARG_VALUE("stdio", pipe);
+    }
+  }
+
+  function toDenoSignal(signal) {
+    const nodeSignals = os.signals;
+    if (typeof signal === "number") {
+      for (const name of new SafeArrayIterator(keys(nodeSignals))) {
+        if (nodeSignals[name] === signal) {
+          return name;
+        }
+      }
+      throw new ERR_UNKNOWN_SIGNAL(String(signal));
+    }
+
+    if (ReflectHas(nodeSignals, signal)) {
+      return signal;
+    }
+    // On Windows, os.signals only lists native signals. Accept any
+    // POSIX signal name so the caller can remap it to SIGTERM.
+    if (isWindows && StringPrototypeStartsWith(signal, "SIG")) {
+      return signal;
+    }
+    throw new ERR_UNKNOWN_SIGNAL(signal);
+  }
+
+  function keys(object) {
+    return ObjectKeys(object);
+  }
+
+  function copyProcessEnvToEnv(
+    env,
+    name,
+    optionEnv,
+  ) {
+    if (
+      Deno.env.get(name) &&
+      (!optionEnv ||
+        !ObjectHasOwn(optionEnv, name))
+    ) {
+      env[name] = Deno.env.get(name);
+    }
+  }
+
+  function normalizeStdioOption(
+    stdio = [
+      "pipe",
+      "pipe",
+      "pipe",
+    ],
+  ) {
+    if (ArrayIsArray(stdio)) {
+      // `[0, 1, 2]` is equivalent to `"inherit"`
+      if (
+        stdio.length === 3 &&
+        (stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2)
+      ) {
+        return ["inherit", "inherit", "inherit"];
+      }
+
+      // `[null, null, null]` is equivalent to `"pipe"
+      if (
+        stdio.length === 3 &&
+        (stdio[0] === null && stdio[1] === null && stdio[2] === null)
+      ) {
+        return ["pipe", "pipe", "pipe"];
+      }
+
+      // At least 3 stdio must be created to match node
+      while (stdio.length < 3) {
+        ArrayPrototypePush(stdio, undefined);
+      }
+      return stdio;
+    } else {
+      switch (stdio) {
+        case "overlapped":
+          if (isWindows) {
+            notImplemented("normalizeStdioOption overlapped (on windows)");
+          }
+          // 'overlapped' is same as 'piped' on non Windows system.
+          return ["pipe", "pipe", "pipe"];
+        case "pipe":
+          return ["pipe", "pipe", "pipe"];
+        case "inherit":
+          return ["inherit", "inherit", "inherit"];
+        case "ignore":
+          return ["ignore", "ignore", "ignore"];
+        default:
+          notImplemented(
+            `normalizeStdioOption stdio=${typeof stdio} (${stdio})`,
+          );
+      }
+    }
+  }
+
+  // Valid stdio string values
+  const validStdioStrings = ["ignore", "pipe", "inherit", "overlapped"];
+
+  /**
+   * Validates and processes stdio configuration.
+   * This is an internal function used by Node.js's child_process module.
+   */
+  function getValidStdio(
+    stdio,
+    sync,
+  ) {
+    const { Stream } = lazyStream();
+    let ipc;
+    let ipcFd;
+
+    // If stdio is a string, validate it
+    if (typeof stdio === "string") {
+      if (!ArrayPrototypeIncludes(validStdioStrings, stdio)) {
+        throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
+      }
+      // Convert string to array
+      stdio = [stdio, stdio, stdio];
+    } else if (!ArrayIsArray(stdio)) {
+      throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
+    }
+
+    // Expand stdio array to at least 3 elements (mutates the input array)
+    while (stdio.length < 3) {
+      ArrayPrototypePush(stdio, undefined);
+    }
+
+    // Process each stdio element
+    const result = [];
+
+    for (let i = 0; i < stdio.length; i++) {
+      const value = stdio[i];
+
+      if (value === "ipc") {
+        if (sync) {
+          throw new ERR_IPC_SYNC_FORK();
+        }
+        ipc = i;
+        ipcFd = i;
+        ArrayPrototypePush(result, { type: "ipc" });
+      } else if (value === "ignore" || value === null) {
+        ArrayPrototypePush(result, { type: "ignore" });
+      } else if (value === "pipe" || value === undefined) {
+        ArrayPrototypePush(result, { type: "pipe" });
+      } else if (value === "inherit") {
+        ArrayPrototypePush(result, { type: "inherit" });
+      } else if (value === "overlapped") {
+        ArrayPrototypePush(result, { type: "overlapped" });
+      } else if (typeof value === "number") {
+        ArrayPrototypePush(result, { type: "fd", fd: value });
+      } else if (typeof value === "string") {
+        // Invalid string value
+        throw new ERR_INVALID_SYNC_FORK_INPUT(value);
+      } else if (typeof value === "object" && value !== null) {
+        // Check if it's a Stream with fd property (like process.stdin/stdout/stderr)
+        if (
+          value.fd !== undefined && typeof value.fd === "number"
+        ) {
+          ArrayPrototypePush(result, { type: "fd", fd: value.fd });
+        } else if (ObjectPrototypeIsPrototypeOf(Stream.prototype, value)) {
+          // Valid Stream object but without fd
+          ArrayPrototypePush(result, { type: "pipe" });
+        } else {
+          // Invalid object
+          throw new ERR_INVALID_ARG_VALUE("stdio", value);
+        }
+      } else {
+        throw new ERR_INVALID_ARG_VALUE("stdio", value);
+      }
+    }
+
+    return {
+      stdio: result,
+      ipc,
+      ipcFd,
+    };
+  }
+
+  // Check for null bytes in a string and throw ERR_INVALID_ARG_VALUE if found
+  function validateNullByteNotInArg(value, name) {
+    if (StringPrototypeIncludes(value, "\0")) {
+      throw new ERR_INVALID_ARG_VALUE(
+        name,
+        value,
+        "must be a string without null bytes",
+      );
+    }
+  }
+
+  function normalizeSpawnArguments(
+    file,
+    args,
+    options,
+  ) {
+    const process = lazyProcess().default;
+    validateString(file, "file");
+
+    if (file.length === 0) {
+      throw new ERR_INVALID_ARG_VALUE("file", file, "cannot be empty");
+    }
+
+    // Check for null bytes in file
+    validateNullByteNotInArg(file, "file");
+
+    if (ArrayIsArray(args)) {
+      args = ArrayPrototypeSlice(args);
+    } else if (args == null) {
+      args = [];
+    } else if (typeof args !== "object") {
+      throw new ERR_INVALID_ARG_TYPE("args", "object", args);
+    } else {
+      options = args;
+      args = [];
+    }
+
+    // Check for null bytes in args
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (typeof arg === "string") {
+        validateNullByteNotInArg(arg, `args[${i}]`);
+      }
+    }
+
+    if (options === undefined) {
+      options = kEmptyObject;
+    } else {
+      validateObject(options, "options");
+    }
+
+    options = { __proto__: null, ...options };
+
+    let cwd = options.cwd;
+
+    // Validate the cwd, if present.
+    if (cwd != null) {
+      cwd = lazyFsUtils().getValidatedPath(cwd, "options.cwd");
+      validateNullByteNotInArg(cwd, "options.cwd");
+    }
+
+    // Validate detached, if present.
+    // deno-lint-ignore prefer-primordials
+    if (options.detached != null) {
+      // deno-lint-ignore prefer-primordials
+      validateBoolean(options.detached, "options.detached");
+    }
+
+    // Validate the uid, if present.
+    if (options.uid != null) {
+      validateInt32(options.uid, "options.uid");
+    }
+
+    // Validate the gid, if present.
+    if (options.gid != null) {
+      validateInt32(options.gid, "options.gid");
+    }
+
+    // Validate the shell, if present.
+    if (
+      options.shell != null &&
+      typeof options.shell !== "boolean" &&
+      typeof options.shell !== "string"
+    ) {
+      throw new ERR_INVALID_ARG_TYPE(
+        "options.shell",
+        ["boolean", "string"],
+        options.shell,
+      );
+    }
+    if (typeof options.shell === "string") {
+      validateNullByteNotInArg(options.shell, "options.shell");
+    }
+
+    // Validate argv0, if present.
+    if (options.argv0 != null) {
+      validateString(options.argv0, "options.argv0");
+      validateNullByteNotInArg(options.argv0, "options.argv0");
+    }
+
+    // Validate windowsHide, if present.
+    if (options.windowsHide != null) {
+      validateBoolean(options.windowsHide, "options.windowsHide");
+    }
+
+    // Validate windowsVerbatimArguments, if present.
+    let { windowsVerbatimArguments } = options;
+    if (windowsVerbatimArguments != null) {
+      validateBoolean(
+        windowsVerbatimArguments,
+        "options.windowsVerbatimArguments",
+      );
+    }
+
+    validateOneOf(options.serialization, "options.serialization", [
+      undefined,
+      "json",
+      "advanced",
+    ]);
+
+    if (options.shell) {
+      // When args are provided, escape them to prevent shell injection.
+      // When no args are provided (just a string command), the user intends
+      // for shell interpretation, so don't escape.
+      let command;
+      if (args.length > 0) {
+        if (!emittedShellDeprecation) {
+          process.emitWarning(
+            "Passing args to a child process with shell option true can lead to security " +
+              "vulnerabilities, as the arguments are not escaped, only concatenated.",
+            "DeprecationWarning",
+            "DEP0190",
+          );
+          emittedShellDeprecation = true;
+        }
+        const escapedParts = [
+          escapeShellArg(file),
+          ...new SafeArrayIterator(ArrayPrototypeMap(args, escapeShellArg)),
+        ];
+        command = ArrayPrototypeJoin(escapedParts, " ");
+      } else {
+        command = file;
+      }
+      // Set the shell, switches, and commands.
+      // Note: transformDenoShellCommand is NOT called here because buildCommand()
+      // already handles it for both `-c` (POSIX) and `/d /s /c` (cmd.exe) cases.
+      // Calling it here would cause double transformation.
+      if (process.platform === "win32") {
+        if (typeof options.shell === "string") {
+          file = options.shell;
+        } else {
+          file = Deno.env.get("comspec") || "cmd.exe";
+        }
+        // '/d /s /c' is used only for cmd.exe.
+        if (RegExpPrototypeExec(cmdExeRe, file) !== null) {
+          args = ["/d", "/s", "/c", `"${command}"`];
+          windowsVerbatimArguments = true;
+        } else {
+          args = ["-c", command];
+        }
+      } else {
+        /** TODO: add Android condition */
+        if (typeof options.shell === "string") {
+          file = options.shell;
+        } else {
+          file = "/bin/sh";
+        }
+        args = ["-c", command];
+      }
+    }
+
+    if (typeof options.argv0 === "string") {
+      ArrayPrototypeUnshift(args, options.argv0);
+    } else {
+      ArrayPrototypeUnshift(args, file);
+    }
+
+    const env = options.env || Deno.env.toObject();
+    const envPairs = [];
+
+    // process.env.NODE_V8_COVERAGE always propagates, making it possible to
+    // collect coverage for programs that spawn with white-listed environment.
+    copyProcessEnvToEnv(env, "NODE_V8_COVERAGE", options.env);
+
+    /** TODO: add `isZOS` condition */
+
+    let envKeys = [];
+    // Prototype values are intentionally included.
+    // deno-lint-ignore guard-for-in
+    for (const key in env) {
+      ArrayPrototypePush(envKeys, key);
+    }
+
+    if (process.platform === "win32") {
+      // On Windows env keys are case insensitive. Filter out duplicates,
+      // keeping only the first one (in lexicographic order)
+      const sawKey = new SafeSet();
+      envKeys = ArrayPrototypeFilter(
+        ArrayPrototypeSort(envKeys),
+        (key) => {
+          const uppercaseKey = StringPrototypeToUpperCase(key);
+          if (sawKey.has(uppercaseKey)) {
+            return false;
+          }
+          sawKey.add(uppercaseKey);
+          return true;
+        },
+      );
+    }
+
+    for (const key of new SafeArrayIterator(envKeys)) {
+      const value = env[key];
+      if (value !== undefined) {
+        // Check for null bytes in env keys and values
+        validateNullByteNotInArg(key, `options.env['${key}']`);
+        validateNullByteNotInArg(String(value), `options.env['${key}']`);
+        ArrayPrototypePush(envPairs, `${key}=${value}`);
+      }
+    }
+
+    return {
+      // Make a shallow copy so we don't clobber the user's options object.
+      __proto__: null,
+      ...options,
+      args,
+      cwd,
+      // deno-lint-ignore prefer-primordials
+      detached: !!options.detached,
+      env,
+      envPairs,
+      file,
+      windowsHide: options.windowsHide !== false,
+      windowsVerbatimArguments: !!windowsVerbatimArguments,
+      serialization: options.serialization || "json",
+    };
+  }
+
+  function waitForReadableToClose(readable) {
+    readable.resume(); // Ensure buffered data will be consumed.
+    return waitForStreamToClose(readable);
+  }
+
+  function waitForStreamToClose(stream) {
+    const deferred = PromiseWithResolvers();
+    const cleanup = () => {
+      stream.removeListener("close", onClose);
+      stream.removeListener("error", onError);
+    };
+    const onClose = () => {
+      cleanup();
+      deferred.resolve();
+    };
+    const onError = (err) => {
+      cleanup();
+      deferred.reject(err);
+    };
+    stream.once("close", onClose);
+    stream.once("error", onError);
+    return deferred.promise;
+  }
+
+  /**
+   * Escapes a string for safe use as a shell argument.
+   * On Unix, wraps in single quotes and escapes embedded single quotes.
+   * On Windows, wraps in double quotes and escapes embedded double quotes and backslashes.
+   */
+  function escapeShellArg(arg) {
+    const process = lazyProcess().default;
+    if (process.platform === "win32") {
+      // Windows: use double quotes, escape double quotes and backslashes
+      // Empty string needs to be quoted
+      if (arg === "") {
+        return '""';
+      }
+      // If no special characters, return as-is
+      // Must include cmd.exe metacharacters: &|<>^!()
+      // Note: % is not included because cmd.exe expands %VAR% even inside
+      // double quotes and there is no reliable escape for it outside batch files.
+      if (!RegExpPrototypeTest(winSpecialCharsRe, arg)) {
+        return arg;
+      }
+      // Escape backslashes before quotes, then escape quotes
+      let escaped = StringPrototypeReplace(arg, winEscapeQuotesRe, '$1$1\\"');
+      // Escape trailing backslashes
+      escaped = StringPrototypeReplace(escaped, winTrailingBackslashRe, "$1$1");
+      return `"${escaped}"`;
+    } else {
+      // Unix: use single quotes, escape embedded single quotes
+      // Empty string needs to be quoted
+      if (arg === "") {
+        return "''";
+      }
+      // If no special characters, return as-is
+      if (!RegExpPrototypeTest(posixSpecialCharsRe, arg)) {
+        return arg;
+      }
+      // Wrap in single quotes and escape any embedded single quotes
+      // Single quotes are escaped by ending the string, adding an escaped quote, and starting a new string
+      return "'" + StringPrototypeReplace(arg, singleQuoteRe, "'\\''") + "'";
     }
   }
 
   /**
-   * @param signal NOTE: this parameter is not yet implemented.
+   * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
+   * Uses the Rust CLI parser (op_node_translate_cli_args) to handle argument translation,
+   * including subcommand detection, -c/--check flag handling, and adding "run -A".
    */
-  kill(signal) {
-    const process = lazyProcess().default;
-    // Signal 0 is a special case: it checks if the process exists
-    // without sending a signal (POSIX kill(pid, 0)). This must run
-    // before the `killed` check because kill(0) is an existence probe
-    // that should work even after a prior successful kill().
-    if (signal === 0 || signal === "0") {
-      try {
-        process.kill(this.pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-
-    if (this.killed) {
-      return false;
-    }
-
-    let signalName = signal == null ? "SIGTERM" : toDenoSignal(signal);
-    this.#closePipes();
-    try {
-      this.#process.kill(signalName);
-    } catch (err) {
-      if (isWindows) {
-        // On Windows, unsupported signals fall back to SIGKILL
-        // (matching Node's TerminateProcess behavior).
-        try {
-          this.#process.kill("SIGKILL");
-          signalName = "SIGKILL";
-        } catch (err2) {
-          const alreadyClosed = err2 instanceof TypeError ||
-            err2 instanceof Deno.errors.PermissionDenied;
-          if (!alreadyClosed) {
-            throw err2;
-          }
-          return false;
-        }
-      } else {
-        const alreadyClosed = err instanceof TypeError ||
-          err instanceof Deno.errors.PermissionDenied;
-        if (!alreadyClosed) {
-          throw err;
-        }
-        // Process already exited, signal was not delivered.
-        return false;
-      }
-    }
-
-    /* Cancel any pending IPC I/O */
-    if (this[kCanDisconnect]) {
-      this.disconnect?.();
-    }
-
-    this.killed = true;
-    this.signalCode = signalName;
-    return true;
-  }
-
-  [Symbol.dispose]() {
-    if (!this.killed) {
-      this.kill();
-    }
-  }
-
-  ref() {
-    this.#process.ref();
-  }
-
-  unref() {
-    this.#process.unref();
-  }
-
-  async #_waitForChildStreamsToClose() {
-    const { Readable } = lazyStream();
-    const process = lazyProcess().default;
-    const promises = [];
-    // Don't close parent process stdin if that's passed through
-    if (this.stdin && !this.stdin.destroyed && this.stdin !== process.stdin) {
-      assert(this.stdin);
-      this.stdin.destroy();
-      promises.push(waitForStreamToClose(this.stdin));
-    }
-    // Only readable streams need to be closed
-    if (
-      this.stdout && !this.stdout.destroyed && this.stdout instanceof Readable
-    ) {
-      promises.push(waitForReadableToClose(this.stdout));
-    }
-    // Only readable streams need to be closed
-    if (
-      this.stderr && !this.stderr.destroyed && this.stderr instanceof Readable
-    ) {
-      promises.push(waitForReadableToClose(this.stderr));
-    }
-    await Promise.all(promises);
-  }
-
-  #_handleError(err) {
-    nextTick(() => {
-      this.emit("error", err); // TODO(uki00a) Convert `err` into nodejs's `SystemError` class.
-    });
-  }
-
-  #closePipes() {
-    if (this.stdin) {
-      assert(this.stdin);
-      this.stdin.destroy();
-    }
-  }
-}
-
-function streamHandleFd(stream) {
-  const handle = stream._handle;
-  if (handle && typeof handle.fd === "number" && handle.fd >= 0) {
-    return handle.fd;
-  }
-  return -1;
-}
-
-function toDenoStdio(
-  pipe,
-) {
-  const { Stream } = lazyStream();
-  if (pipe instanceof Stream) {
-    // If the stream has an underlying handle with a valid fd (e.g. a Socket
-    // backed by a PipeWrap), pass that fd directly to the child process.
-    // The Rust side will dup() it so both parent and child share the pipe.
-    // This matches Node.js behavior where passing a child's stdout as
-    // another child's stdin shares the underlying OS pipe.
-    const fd = streamHandleFd(pipe);
-    if (fd >= 0) {
-      return fd;
-    }
-    // For streams without a usable fd, create a pipe and set up JS-level
-    // piping after spawn.
-    return "piped";
-  }
-  if (typeof pipe === "number") {
-    return pipe;
-  }
-  switch (pipe) {
-    case "pipe":
-    case "overlapped":
-    case undefined:
-    case null:
-      return "piped";
-    case "ignore":
-      return "null";
-    case "inherit":
-      return "inherit";
-    case "ipc":
-      return "ipc_for_internal_use";
-    default:
-      throw new ERR_INVALID_ARG_VALUE("stdio", pipe);
-  }
-}
-
-function toDenoSignal(signal) {
-  const nodeSignals = os.signals;
-  if (typeof signal === "number") {
-    for (const name of keys(nodeSignals)) {
-      if (nodeSignals[name] === signal) {
-        return name;
-      }
-    }
-    throw new ERR_UNKNOWN_SIGNAL(String(signal));
-  }
-
-  if (signal in nodeSignals) {
-    return signal;
-  }
-  // On Windows, os.signals only lists native signals. Accept any
-  // POSIX signal name so the caller can remap it to SIGTERM.
-  if (isWindows && signal.startsWith("SIG")) {
-    return signal;
-  }
-  throw new ERR_UNKNOWN_SIGNAL(signal);
-}
-
-function keys(object) {
-  return Object.keys(object);
-}
-
-function copyProcessEnvToEnv(
-  env,
-  name,
-  optionEnv,
-) {
-  if (
-    Deno.env.get(name) &&
-    (!optionEnv ||
-      !ObjectHasOwn(optionEnv, name))
-  ) {
-    env[name] = Deno.env.get(name);
-  }
-}
-
-function normalizeStdioOption(
-  stdio = [
-    "pipe",
-    "pipe",
-    "pipe",
-  ],
-) {
-  if (Array.isArray(stdio)) {
-    // `[0, 1, 2]` is equivalent to `"inherit"`
-    if (
-      stdio.length === 3 &&
-      (stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2)
-    ) {
-      return ["inherit", "inherit", "inherit"];
-    }
-
-    // `[null, null, null]` is equivalent to `"pipe"
-    if (
-      stdio.length === 3 &&
-      (stdio[0] === null && stdio[1] === null && stdio[2] === null)
-    ) {
-      return ["pipe", "pipe", "pipe"];
-    }
-
-    // At least 3 stdio must be created to match node
-    while (stdio.length < 3) {
-      ArrayPrototypePush(stdio, undefined);
-    }
-    return stdio;
-  } else {
-    switch (stdio) {
-      case "overlapped":
-        if (isWindows) {
-          notImplemented("normalizeStdioOption overlapped (on windows)");
-        }
-        // 'overlapped' is same as 'piped' on non Windows system.
-        return ["pipe", "pipe", "pipe"];
-      case "pipe":
-        return ["pipe", "pipe", "pipe"];
-      case "inherit":
-        return ["inherit", "inherit", "inherit"];
-      case "ignore":
-        return ["ignore", "ignore", "ignore"];
-      default:
-        notImplemented(`normalizeStdioOption stdio=${typeof stdio} (${stdio})`);
-    }
-  }
-}
-
-// Valid stdio string values
-const validStdioStrings = ["ignore", "pipe", "inherit", "overlapped"];
-
-/**
- * Validates and processes stdio configuration.
- * This is an internal function used by Node.js's child_process module.
- */
-function getValidStdio(
-  stdio,
-  sync,
-) {
-  const { Stream } = lazyStream();
-  let ipc;
-  let ipcFd;
-
-  // If stdio is a string, validate it
-  if (typeof stdio === "string") {
-    if (!validStdioStrings.includes(stdio)) {
-      throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
-    }
-    // Convert string to array
-    stdio = [stdio, stdio, stdio];
-  } else if (!ArrayIsArray(stdio)) {
-    throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
-  }
-
-  // Expand stdio array to at least 3 elements (mutates the input array)
-  while (stdio.length < 3) {
-    ArrayPrototypePush(stdio, undefined);
-  }
-
-  // Process each stdio element
-  const result = [];
-
-  for (let i = 0; i < stdio.length; i++) {
-    const value = stdio[i];
-
-    if (value === "ipc") {
-      if (sync) {
-        throw new ERR_IPC_SYNC_FORK();
-      }
-      ipc = i;
-      ipcFd = i;
-      result.push({ type: "ipc" });
-    } else if (value === "ignore" || value === null) {
-      result.push({ type: "ignore" });
-    } else if (value === "pipe" || value === undefined) {
-      result.push({ type: "pipe" });
-    } else if (value === "inherit") {
-      result.push({ type: "inherit" });
-    } else if (value === "overlapped") {
-      result.push({ type: "overlapped" });
-    } else if (typeof value === "number") {
-      result.push({ type: "fd", fd: value });
-    } else if (typeof value === "string") {
-      // Invalid string value
-      throw new ERR_INVALID_SYNC_FORK_INPUT(value);
-    } else if (typeof value === "object" && value !== null) {
-      // Check if it's a Stream with fd property (like process.stdin/stdout/stderr)
-      if (
-        value.fd !== undefined && typeof value.fd === "number"
-      ) {
-        result.push({ type: "fd", fd: value.fd });
-      } else if (value instanceof Stream) {
-        // Valid Stream object but without fd
-        result.push({ type: "pipe" });
-      } else {
-        // Invalid object
-        throw new ERR_INVALID_ARG_VALUE("stdio", value);
-      }
-    } else {
-      throw new ERR_INVALID_ARG_VALUE("stdio", value);
-    }
-  }
-
-  return {
-    stdio: result,
-    ipc,
-    ipcFd,
-  };
-}
-
-// Check for null bytes in a string and throw ERR_INVALID_ARG_VALUE if found
-function validateNullByteNotInArg(value, name) {
-  if (StringPrototypeIncludes(value, "\0")) {
-    throw new ERR_INVALID_ARG_VALUE(
-      name,
-      value,
-      "must be a string without null bytes",
-    );
-  }
-}
-
-function normalizeSpawnArguments(
-  file,
-  args,
-  options,
-) {
-  const process = lazyProcess().default;
-  validateString(file, "file");
-
-  if (file.length === 0) {
-    throw new ERR_INVALID_ARG_VALUE("file", file, "cannot be empty");
-  }
-
-  // Check for null bytes in file
-  validateNullByteNotInArg(file, "file");
-
-  if (ArrayIsArray(args)) {
-    args = ArrayPrototypeSlice(args);
-  } else if (args == null) {
-    args = [];
-  } else if (typeof args !== "object") {
-    throw new ERR_INVALID_ARG_TYPE("args", "object", args);
-  } else {
-    options = args;
-    args = [];
-  }
-
-  // Check for null bytes in args
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (typeof arg === "string") {
-      validateNullByteNotInArg(arg, `args[${i}]`);
-    }
-  }
-
-  if (options === undefined) {
-    options = kEmptyObject;
-  } else {
-    validateObject(options, "options");
-  }
-
-  options = { __proto__: null, ...options };
-
-  let cwd = options.cwd;
-
-  // Validate the cwd, if present.
-  if (cwd != null) {
-    cwd = lazyFsUtils().getValidatedPath(cwd, "options.cwd");
-    validateNullByteNotInArg(cwd, "options.cwd");
-  }
-
-  // Validate detached, if present.
-  if (options.detached != null) {
-    validateBoolean(options.detached, "options.detached");
-  }
-
-  // Validate the uid, if present.
-  if (options.uid != null) {
-    validateInt32(options.uid, "options.uid");
-  }
-
-  // Validate the gid, if present.
-  if (options.gid != null) {
-    validateInt32(options.gid, "options.gid");
-  }
-
-  // Validate the shell, if present.
-  if (
-    options.shell != null &&
-    typeof options.shell !== "boolean" &&
-    typeof options.shell !== "string"
-  ) {
-    throw new ERR_INVALID_ARG_TYPE(
-      "options.shell",
-      ["boolean", "string"],
-      options.shell,
-    );
-  }
-  if (typeof options.shell === "string") {
-    validateNullByteNotInArg(options.shell, "options.shell");
-  }
-
-  // Validate argv0, if present.
-  if (options.argv0 != null) {
-    validateString(options.argv0, "options.argv0");
-    validateNullByteNotInArg(options.argv0, "options.argv0");
-  }
-
-  // Validate windowsHide, if present.
-  if (options.windowsHide != null) {
-    validateBoolean(options.windowsHide, "options.windowsHide");
-  }
-
-  // Validate windowsVerbatimArguments, if present.
-  let { windowsVerbatimArguments } = options;
-  if (windowsVerbatimArguments != null) {
-    validateBoolean(
-      windowsVerbatimArguments,
-      "options.windowsVerbatimArguments",
-    );
-  }
-
-  validateOneOf(options.serialization, "options.serialization", [
-    undefined,
-    "json",
-    "advanced",
-  ]);
-
-  if (options.shell) {
-    // When args are provided, escape them to prevent shell injection.
-    // When no args are provided (just a string command), the user intends
-    // for shell interpretation, so don't escape.
-    let command;
-    if (args.length > 0) {
-      if (!emittedShellDeprecation) {
-        process.emitWarning(
-          "Passing args to a child process with shell option true can lead to security " +
-            "vulnerabilities, as the arguments are not escaped, only concatenated.",
-          "DeprecationWarning",
-          "DEP0190",
-        );
-        emittedShellDeprecation = true;
-      }
-      const escapedParts = [escapeShellArg(file), ...args.map(escapeShellArg)];
-      command = ArrayPrototypeJoin(escapedParts, " ");
-    } else {
-      command = file;
-    }
-    // Set the shell, switches, and commands.
-    // Note: transformDenoShellCommand is NOT called here because buildCommand()
-    // already handles it for both `-c` (POSIX) and `/d /s /c` (cmd.exe) cases.
-    // Calling it here would cause double transformation.
-    if (process.platform === "win32") {
-      if (typeof options.shell === "string") {
-        file = options.shell;
-      } else {
-        file = Deno.env.get("comspec") || "cmd.exe";
-      }
-      // '/d /s /c' is used only for cmd.exe.
-      if (/^(?:.*\\)?cmd(?:\.exe)?$/i.exec(file) !== null) {
-        args = ["/d", "/s", "/c", `"${command}"`];
-        windowsVerbatimArguments = true;
-      } else {
-        args = ["-c", command];
-      }
-    } else {
-      /** TODO: add Android condition */
-      if (typeof options.shell === "string") {
-        file = options.shell;
-      } else {
-        file = "/bin/sh";
-      }
-      args = ["-c", command];
-    }
-  }
-
-  if (typeof options.argv0 === "string") {
-    ArrayPrototypeUnshift(args, options.argv0);
-  } else {
-    ArrayPrototypeUnshift(args, file);
-  }
-
-  const env = options.env || Deno.env.toObject();
-  const envPairs = [];
-
-  // process.env.NODE_V8_COVERAGE always propagates, making it possible to
-  // collect coverage for programs that spawn with white-listed environment.
-  copyProcessEnvToEnv(env, "NODE_V8_COVERAGE", options.env);
-
-  /** TODO: add `isZOS` condition */
-
-  let envKeys = [];
-  // Prototype values are intentionally included.
-  // deno-lint-ignore guard-for-in
-  for (const key in env) {
-    ArrayPrototypePush(envKeys, key);
-  }
-
-  if (process.platform === "win32") {
-    // On Windows env keys are case insensitive. Filter out duplicates,
-    // keeping only the first one (in lexicographic order)
-    /** TODO: implement SafeSet and makeSafe */
-    const sawKey = new Set();
-    envKeys = ArrayPrototypeFilter(
-      ArrayPrototypeSort(envKeys),
-      (key) => {
-        const uppercaseKey = StringPrototypeToUpperCase(key);
-        if (sawKey.has(uppercaseKey)) {
-          return false;
-        }
-        sawKey.add(uppercaseKey);
-        return true;
-      },
-    );
-  }
-
-  for (const key of envKeys) {
-    const value = env[key];
-    if (value !== undefined) {
-      // Check for null bytes in env keys and values
-      validateNullByteNotInArg(key, `options.env['${key}']`);
-      validateNullByteNotInArg(String(value), `options.env['${key}']`);
-      ArrayPrototypePush(envPairs, `${key}=${value}`);
-    }
-  }
-
-  return {
-    // Make a shallow copy so we don't clobber the user's options object.
-    __proto__: null,
-    ...options,
-    args,
-    cwd,
-    detached: !!options.detached,
+  function transformDenoShellCommand(
+    command,
     env,
-    envPairs,
-    file,
-    windowsHide: options.windowsHide !== false,
-    windowsVerbatimArguments: !!windowsVerbatimArguments,
-    serialization: options.serialization || "json",
-  };
-}
-
-function waitForReadableToClose(readable) {
-  readable.resume(); // Ensure buffered data will be consumed.
-  return waitForStreamToClose(readable);
-}
-
-function waitForStreamToClose(stream) {
-  const deferred = Promise.withResolvers();
-  const cleanup = () => {
-    stream.removeListener("close", onClose);
-    stream.removeListener("error", onError);
-  };
-  const onClose = () => {
-    cleanup();
-    deferred.resolve();
-  };
-  const onError = (err) => {
-    cleanup();
-    deferred.reject(err);
-  };
-  stream.once("close", onClose);
-  stream.once("error", onError);
-  return deferred.promise;
-}
-
-/**
- * Escapes a string for safe use as a shell argument.
- * On Unix, wraps in single quotes and escapes embedded single quotes.
- * On Windows, wraps in double quotes and escapes embedded double quotes and backslashes.
- */
-function escapeShellArg(arg) {
-  const process = lazyProcess().default;
-  if (process.platform === "win32") {
-    // Windows: use double quotes, escape double quotes and backslashes
-    // Empty string needs to be quoted
-    if (arg === "") {
-      return '""';
-    }
-    // If no special characters, return as-is
-    // Must include cmd.exe metacharacters: &|<>^!()
-    // Note: % is not included because cmd.exe expands %VAR% even inside
-    // double quotes and there is no reliable escape for it outside batch files.
-    if (!/[\s"\\&|<>^!()]/.test(arg)) {
-      return arg;
-    }
-    // Escape backslashes before quotes, then escape quotes
-    let escaped = arg.replace(/(\\*)"/g, '$1$1\\"');
-    // Escape trailing backslashes
-    escaped = escaped.replace(/(\\+)$/, "$1$1");
-    return `"${escaped}"`;
-  } else {
-    // Unix: use single quotes, escape embedded single quotes
-    // Empty string needs to be quoted
-    if (arg === "") {
-      return "''";
-    }
-    // If no special characters, return as-is
-    if (!/[^a-zA-Z0-9_./-]/.test(arg)) {
-      return arg;
-    }
-    // Wrap in single quotes and escape any embedded single quotes
-    // Single quotes are escaped by ending the string, adding an escaped quote, and starting a new string
-    return "'" + arg.replace(/'/g, "'\\''") + "'";
-  }
-}
-
-/**
- * Transforms a shell command that invokes Deno with Node.js flags into Deno-compatible flags.
- * Uses the Rust CLI parser (op_node_translate_cli_args) to handle argument translation,
- * including subcommand detection, -c/--check flag handling, and adding "run -A".
- */
-function transformDenoShellCommand(
-  command,
-  env,
-  isCmdExe = false,
-) {
-  const denoPath = Deno.execPath();
-
-  // Check if the command starts with the Deno executable (possibly quoted)
-  const quotedDenoPath = `"${denoPath}"`;
-  const singleQuotedDenoPath = `'${denoPath}'`;
-
-  let startsWithDeno = false;
-  let denoPathLength = 0;
-  let shellVarPrefix = "";
-
-  if (command.startsWith(quotedDenoPath)) {
-    startsWithDeno = true;
-    denoPathLength = quotedDenoPath.length;
-  } else if (command.startsWith(singleQuotedDenoPath)) {
-    startsWithDeno = true;
-    denoPathLength = singleQuotedDenoPath.length;
-  } else if (command.startsWith(denoPath)) {
-    startsWithDeno = true;
-    denoPathLength = denoPath.length;
-  } else if (env) {
-    // Check for shell variable that references the Deno path
-    // Pattern: "${VARNAME}", "$VARNAME", ${VARNAME}, or $VARNAME at start of command
-    const shellVarMatch = command.match(
-      /^(?:"\$\{([^}]+)\}"|\"\$([A-Za-z_][A-Za-z0-9_]*)\"|\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*))/,
-    );
-    if (shellVarMatch) {
-      const varName = shellVarMatch[1] || shellVarMatch[2] ||
-        shellVarMatch[3] || shellVarMatch[4];
-      const varValue = env[varName];
-      if (varValue !== undefined && String(varValue) === denoPath) {
-        startsWithDeno = true;
-        shellVarPrefix = shellVarMatch[0];
-        denoPathLength = shellVarMatch[0].length;
-      }
-    }
-  }
-
-  if (!startsWithDeno) {
-    return command;
-  }
-
-  // Extract the rest of the command after the Deno path
-  const rest = command.slice(denoPathLength).trimStart();
-
-  if (rest.length === 0) {
-    return command;
-  }
-
-  // Parse the command using the shell parser to separate arguments from
-  // shell operators (redirections, pipes, etc.).
-  const { args, shell_suffix: shellSuffix } = op_node_parse_shell_args(
-    rest,
-    isCmdExe,
-  );
-
-  try {
-    const result = op_node_translate_cli_args(args, false, false);
-    // Shell-quote translated args that contain metacharacters so they are
-    // safe to embed in a shell command string.
-    const quotedArgs = isWindows
-      ? result.denoArgs.map((a) => {
-        // Windows cmd.exe: use double quotes for args with spaces or
-        // special chars. Backslash is a path separator, not an escape.
-        if (/[\s"&|<>^]/.test(a)) {
-          let escaped = a.replace(/(\\*)"/g, '$1$1\\"');
-          escaped = escaped.replace(/(\\+)$/, "$1$1");
-          return `"${escaped}"`;
-        }
-        return a;
-      })
-      : result.denoArgs.map((a) => {
-        // POSIX shell quoting for translated args.
-        const hasShellVarRef = /\$\{[^}]+\}|\$[A-Za-z_]/.test(a);
-        const unsafeInDoubleQuotes = /`|\$\(|\\/.test(a);
-        const hasShellMetachars = /[();&|<>`!\n\r\s"'\\$]/.test(a);
-
-        if (hasShellMetachars) {
-          if (hasShellVarRef && !unsafeInDoubleQuotes) {
-            return '"' + a.replace(/"/g, '\\"') + '"';
-          }
-          return "'" + a.replace(/'/g, "'\\''") + "'";
-        }
-        return a;
-      });
-    const prefix = shellVarPrefix || command.slice(0, denoPathLength);
-    let transformed = prefix + " " + quotedArgs.join(" ");
-    if (shellSuffix) {
-      transformed += " " + shellSuffix;
-    }
-
-    // If the shell suffix starts with a pipe, the command after the pipe
-    // may also be a Deno invocation that needs transformation.
-    if (env) {
-      const pipeMatch = shellSuffix.match(/^\s*\|\s*/);
-      if (pipeMatch) {
-        const afterPipe = shellSuffix.slice(pipeMatch[0].length);
-        const transformedAfter = transformDenoShellCommand(
-          afterPipe,
-          env,
-          isCmdExe,
-        );
-        if (transformedAfter !== afterPipe) {
-          transformed = prefix + " " + quotedArgs.join(" ") +
-            " | " + transformedAfter;
-        }
-      }
-    }
-    return transformed;
-  } catch {
-    // If the Rust parser fails (unknown flags), return the original command
-    return command;
-  }
-}
-
-/**
- * Find the first non-flag argument in a list of command line arguments.
- * This is used to determine if the user is spawning a Deno subcommand
- * or a script, and to check if the script is in an npm package.
- */
-function findFirstNonFlagArg(args) {
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    // Stop at '--' - everything after is positional
-    if (arg === "--") {
-      return i + 1 < args.length ? args[i + 1] : null;
-    }
-    // If it doesn't start with '-', it's a positional argument
-    if (!arg.startsWith("-")) {
-      return arg;
-    }
-    // Skip known flags that take a value
-    if (
-      arg === "-e" || arg === "--eval" ||
-      arg === "-p" || arg === "--print" ||
-      arg === "-r" || arg === "--require" ||
-      arg === "-C" || arg === "--conditions" ||
-      arg === "-c" || arg === "--check" ||
-      arg === "--import" ||
-      arg === "--loader" ||
-      arg === "--experimental-loader"
-    ) {
-      i++; // Skip the next arg (the value)
-    }
-  }
-  return null;
-}
-
-/**
- * This function is based on https://github.com/nodejs/node/blob/fc6426ccc4b4cb73076356fb6dbf46a28953af01/lib/child_process.js#L504-L528.
- * Copyright Joyent, Inc. and other Node contributors. All rights reserved. MIT license.
- */
-function buildCommand(
-  file,
-  args,
-  env,
-) {
-  let includeNpmProcessState = false;
-  if (file === Deno.execPath() && !Deno.build.standalone) {
-    // Ensure all args are strings (Node allows numbers in args array)
-    args = args.map((arg) => String(arg));
-
-    // Find script path to check if it's in an npm package
-    const firstNonFlagArg = findFirstNonFlagArg(args);
-    const scriptInNpmPackage = firstNonFlagArg !== null
-      ? op_node_in_npm_package(firstNonFlagArg)
-      : false;
-
-    // Use the Rust parser to translate Node.js args to Deno args
-    // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
-    if (args.includes("--use-env-proxy")) {
-      env.NODE_USE_ENV_PROXY = "1";
-    } else if (args.includes("--no-use-env-proxy")) {
-      env.NODE_USE_ENV_PROXY = "0";
-    }
-    const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
-    args = result.denoArgs;
-    includeNpmProcessState = result.needsNpmProcessState;
-    if (result.caStores?.length) {
-      env.DENO_TLS_CA_STORE = result.caStores.join(",");
-    }
-    if (result.useOpensslCa) {
-      env.DENO_NODE_USE_OPENSSL_CA = "1";
-    } else {
-      delete env.DENO_NODE_USE_OPENSSL_CA;
-    }
-    if (result.traceEventCategories) {
-      env.DENO_NODE_TRACE_EVENT_CATEGORIES = result.traceEventCategories;
-    }
-
-    // Update NODE_OPTIONS if needed
-    if (result.nodeOptions.length > 0) {
-      const options = result.nodeOptions.join(" ");
-      if (env.NODE_OPTIONS) {
-        env.NODE_OPTIONS += " " + options;
-      } else {
-        env.NODE_OPTIONS = options;
-      }
-    }
-  }
-
-  // When spawning a shell with `-c` (e.g. spawn('/bin/sh', ['-c', cmd])),
-  // transform any Deno commands inside the shell command string so that
-  // Node.js flags are translated and `-A` is added.
-  if (
-    file !== Deno.execPath() &&
-    args.length >= 2 &&
-    args[0] === "-c"
+    isCmdExe = false,
   ) {
-    const transformed = transformDenoShellCommand(args[1], env, false);
-    if (transformed !== args[1]) {
-      args = args.slice();
-      args[1] = transformed;
-    }
-  }
-
-  // Windows cmd.exe: args are ["/d", "/s", "/c", '"command"']
-  if (
-    file !== Deno.execPath() &&
-    args.length >= 4 &&
-    args[0] === "/d" && args[1] === "/s" && args[2] === "/c"
-  ) {
-    let cmdStr = args[3];
-    // Remove wrapping quotes added by normalizeSpawnArguments
-    const hasWrappingQuotes = cmdStr.startsWith('"') && cmdStr.endsWith('"');
-    if (hasWrappingQuotes) {
-      cmdStr = cmdStr.slice(1, -1);
-    }
-    const transformed = transformDenoShellCommand(cmdStr, env, true);
-    if (transformed !== cmdStr) {
-      args = args.slice();
-      args[3] = hasWrappingQuotes ? `"${transformed}"` : transformed;
-    }
-  }
-
-  // When spawning a non-deno process that has Deno.execPath() in its args
-  // (e.g. Python given deno's path to re-invoke it), pre-translate the args
-  // that follow so the child deno process gets the correct Node.js compat
-  // flags (-A, --unstable-bare-node-builtins, etc.).
-  // This covers cases like test-stdio-closed.js on Windows, where a Python
-  // intermediary closes stdio then calls deno directly via subprocess.call.
-  if (file !== Deno.execPath()) {
     const denoPath = Deno.execPath();
-    const denoArgIndex = args.findIndex((arg) => arg === denoPath);
-    if (denoArgIndex !== -1) {
-      const argsForDeno = args.slice(denoArgIndex + 1);
-      if (argsForDeno.length > 0) {
-        try {
-          const result = op_node_translate_cli_args(argsForDeno, false, true);
-          args = [...args.slice(0, denoArgIndex + 1), ...result.denoArgs];
-        } catch {
-          // If translation fails (unknown flags), leave args unchanged
+
+    // Check if the command starts with the Deno executable (possibly quoted)
+    const quotedDenoPath = `"${denoPath}"`;
+    const singleQuotedDenoPath = `'${denoPath}'`;
+
+    let startsWithDeno = false;
+    let denoPathLength = 0;
+    let shellVarPrefix = "";
+
+    if (StringPrototypeStartsWith(command, quotedDenoPath)) {
+      startsWithDeno = true;
+      denoPathLength = quotedDenoPath.length;
+    } else if (StringPrototypeStartsWith(command, singleQuotedDenoPath)) {
+      startsWithDeno = true;
+      denoPathLength = singleQuotedDenoPath.length;
+    } else if (StringPrototypeStartsWith(command, denoPath)) {
+      startsWithDeno = true;
+      denoPathLength = denoPath.length;
+    } else if (env) {
+      // Check for shell variable that references the Deno path
+      // Pattern: "${VARNAME}", "$VARNAME", ${VARNAME}, or $VARNAME at start of command
+      const shellVarMatch = StringPrototypeMatch(command, shellVarMatchRe);
+      if (shellVarMatch) {
+        const varName = shellVarMatch[1] || shellVarMatch[2] ||
+          shellVarMatch[3] || shellVarMatch[4];
+        const varValue = env[varName];
+        if (varValue !== undefined && String(varValue) === denoPath) {
+          startsWithDeno = true;
+          shellVarPrefix = shellVarMatch[0];
+          denoPathLength = shellVarMatch[0].length;
         }
       }
     }
-  }
 
-  return [file, args, includeNpmProcessState];
-}
-
-function restorePrototype(obj) {
-  if (obj === null || typeof obj !== "object") return;
-  if (Array.isArray(obj)) {
-    for (let i = 0; i < obj.length; i++) {
-      restorePrototype(obj[i]);
+    if (!startsWithDeno) {
+      return command;
     }
-    return;
-  }
-  Object.setPrototypeOf(obj, Object.prototype);
-  for (const key of Object.keys(obj)) {
-    restorePrototype(obj[key]);
-  }
-}
 
-/** Convert a killSignal (string name or number) to its string name. */
-function _resolveKillSignalName(
-  killSignal,
-) {
-  if (typeof killSignal === "string") return killSignal;
-  if (typeof killSignal === "number") {
-    for (const [name, num] of Object.entries(os.signals)) {
-      if (num === killSignal) return name;
+    // Extract the rest of the command after the Deno path
+    const rest = StringPrototypeTrimStart(
+      StringPrototypeSlice(command, denoPathLength),
+    );
+
+    if (rest.length === 0) {
+      return command;
     }
-    return String(killSignal);
+
+    // Parse the command using the shell parser to separate arguments from
+    // shell operators (redirections, pipes, etc.).
+    const { args, shell_suffix: shellSuffix } = op_node_parse_shell_args(
+      rest,
+      isCmdExe,
+    );
+
+    try {
+      const result = op_node_translate_cli_args(args, false, false);
+      // Shell-quote translated args that contain metacharacters so they are
+      // safe to embed in a shell command string.
+      const quotedArgs = isWindows
+        ? ArrayPrototypeMap(result.denoArgs, (a) => {
+          // Windows cmd.exe: use double quotes for args with spaces or
+          // special chars. Backslash is a path separator, not an escape.
+          if (RegExpPrototypeTest(winQuoteCharsRe, a)) {
+            let escaped = StringPrototypeReplace(
+              a,
+              winEscapeQuotesRe,
+              '$1$1\\"',
+            );
+            escaped = StringPrototypeReplace(
+              escaped,
+              winTrailingBackslashRe,
+              "$1$1",
+            );
+            return `"${escaped}"`;
+          }
+          return a;
+        })
+        : ArrayPrototypeMap(result.denoArgs, (a) => {
+          // POSIX shell quoting for translated args.
+          const hasShellVarRef = RegExpPrototypeTest(shellVarRefRe, a);
+          const unsafeInDoubleQuotes = RegExpPrototypeTest(
+            unsafeInDoubleQuotesRe,
+            a,
+          );
+          const hasShellMetachars = RegExpPrototypeTest(posixMetacharsRe, a);
+
+          if (hasShellMetachars) {
+            if (hasShellVarRef && !unsafeInDoubleQuotes) {
+              return '"' + StringPrototypeReplace(a, doubleQuoteRe, '\\"') +
+                '"';
+            }
+            return "'" + StringPrototypeReplace(a, singleQuoteRe, "'\\''") +
+              "'";
+          }
+          return a;
+        });
+      const prefix = shellVarPrefix ||
+        StringPrototypeSlice(command, 0, denoPathLength);
+      let transformed = prefix + " " + ArrayPrototypeJoin(quotedArgs, " ");
+      if (shellSuffix) {
+        transformed += " " + shellSuffix;
+      }
+
+      // If the shell suffix starts with a pipe, the command after the pipe
+      // may also be a Deno invocation that needs transformation.
+      if (env) {
+        const pipeMatch = StringPrototypeMatch(shellSuffix, pipePrefixRe);
+        if (pipeMatch) {
+          const afterPipe = StringPrototypeSlice(
+            shellSuffix,
+            pipeMatch[0].length,
+          );
+          const transformedAfter = transformDenoShellCommand(
+            afterPipe,
+            env,
+            isCmdExe,
+          );
+          if (transformedAfter !== afterPipe) {
+            transformed = prefix + " " + ArrayPrototypeJoin(quotedArgs, " ") +
+              " | " + transformedAfter;
+          }
+        }
+      }
+      return transformed;
+    } catch {
+      // If the Rust parser fails (unknown flags), return the original command
+      return command;
+    }
   }
-  return "SIGTERM";
-}
 
-function _createSpawnError(
-  status,
-  command,
-  args = [],
-  sync = false,
-) {
-  const syscall = sync ? "spawnSync " : "spawn ";
-  const error = errnoException(
-    codeMap.get(status),
-    syscall + command,
-  );
-  error.path = command;
-  error.spawnargs = args;
-  return error;
-}
-
-function normalizeInput(input) {
-  if (input == null) {
+  /**
+   * Find the first non-flag argument in a list of command line arguments.
+   * This is used to determine if the user is spawning a Deno subcommand
+   * or a script, and to check if the script is in an npm package.
+   */
+  function findFirstNonFlagArg(args) {
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      // Stop at '--' - everything after is positional
+      if (arg === "--") {
+        return i + 1 < args.length ? args[i + 1] : null;
+      }
+      // If it doesn't start with '-', it's a positional argument
+      if (!StringPrototypeStartsWith(arg, "-")) {
+        return arg;
+      }
+      // Skip known flags that take a value
+      if (
+        arg === "-e" || arg === "--eval" ||
+        arg === "-p" || arg === "--print" ||
+        arg === "-r" || arg === "--require" ||
+        arg === "-C" || arg === "--conditions" ||
+        arg === "-c" || arg === "--check" ||
+        arg === "--import" ||
+        arg === "--loader" ||
+        arg === "--experimental-loader"
+      ) {
+        i++; // Skip the next arg (the value)
+      }
+    }
     return null;
   }
-  if (typeof input === "string") {
-    return Buffer.from(input);
-  }
-  if (ArrayBuffer.isView(input)) {
-    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
-  }
-  throw new ERR_INVALID_ARG_TYPE("input", [
-    "string",
-    "Buffer",
-    "TypedArray",
-    "DataView",
-  ], input);
-}
 
-function spawnSync(
-  options,
-) {
-  const {
-    env = Deno.env.toObject(),
-    input,
-    stdio = ["pipe", "pipe", "pipe"],
-    cwd,
-    encoding,
-    uid,
-    gid,
-    maxBuffer,
-    timeout,
-    killSignal,
-    windowsVerbatimArguments = false,
-    windowsHide = true,
-  } = options;
-  let command = options.file || "";
-  let args = options.args || [];
-  const [
-    stdin_ = "pipe",
-    stdout_ = "pipe",
-    stderr_ = "pipe",
-    ...extraStdio_
-  ] = normalizeStdioOption(stdio);
+  /**
+   * This function is based on https://github.com/nodejs/node/blob/fc6426ccc4b4cb73076356fb6dbf46a28953af01/lib/child_process.js#L504-L528.
+   * Copyright Joyent, Inc. and other Node contributors. All rights reserved. MIT license.
+   */
+  function buildCommand(
+    file,
+    args,
+    env,
+  ) {
+    let includeNpmProcessState = false;
+    if (file === Deno.execPath() && !Deno.build.standalone) {
+      // Ensure all args are strings (Node allows numbers in args array)
+      args = ArrayPrototypeMap(args, (arg) => String(arg));
 
-  const extraStdioNormalized = [];
-  for (let i = 0; i < extraStdio_.length; i++) {
-    const val = extraStdio_[i];
-    const fd = i + 3; // extra stdio starts at FD 3
-    // null/undefined means "don't pass this fd"
-    if (val == null) {
-      extraStdioNormalized.push("null");
-    } else if (val === "inherit") {
-      // "inherit" for extra FDs means pass the parent's FD at this index
-      extraStdioNormalized.push(fd);
-    } else {
-      extraStdioNormalized.push(toDenoStdio(val));
+      // Find script path to check if it's in an npm package
+      const firstNonFlagArg = findFirstNonFlagArg(args);
+      const scriptInNpmPackage = firstNonFlagArg !== null
+        ? op_node_in_npm_package(firstNonFlagArg)
+        : false;
+
+      // Use the Rust parser to translate Node.js args to Deno args
+      // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
+      if (ArrayPrototypeIncludes(args, "--use-env-proxy")) {
+        env.NODE_USE_ENV_PROXY = "1";
+      } else if (ArrayPrototypeIncludes(args, "--no-use-env-proxy")) {
+        env.NODE_USE_ENV_PROXY = "0";
+      }
+      const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
+      args = result.denoArgs;
+      includeNpmProcessState = result.needsNpmProcessState;
+      if (result.caStores?.length) {
+        env.DENO_TLS_CA_STORE = ArrayPrototypeJoin(result.caStores, ",");
+      }
+      if (result.useOpensslCa) {
+        env.DENO_NODE_USE_OPENSSL_CA = "1";
+      } else {
+        delete env.DENO_NODE_USE_OPENSSL_CA;
+      }
+      if (result.traceEventCategories) {
+        env.DENO_NODE_TRACE_EVENT_CATEGORIES = result.traceEventCategories;
+      }
+
+      // Update NODE_OPTIONS if needed
+      if (result.nodeOptions.length > 0) {
+        const options = ArrayPrototypeJoin(result.nodeOptions, " ");
+        if (env.NODE_OPTIONS) {
+          env.NODE_OPTIONS += " " + options;
+        } else {
+          env.NODE_OPTIONS = options;
+        }
+      }
+    }
+
+    // When spawning a shell with `-c` (e.g. spawn('/bin/sh', ['-c', cmd])),
+    // transform any Deno commands inside the shell command string so that
+    // Node.js flags are translated and `-A` is added.
+    if (
+      file !== Deno.execPath() &&
+      args.length >= 2 &&
+      args[0] === "-c"
+    ) {
+      const transformed = transformDenoShellCommand(args[1], env, false);
+      if (transformed !== args[1]) {
+        args = ArrayPrototypeSlice(args);
+        args[1] = transformed;
+      }
+    }
+
+    // Windows cmd.exe: args are ["/d", "/s", "/c", '"command"']
+    if (
+      file !== Deno.execPath() &&
+      args.length >= 4 &&
+      args[0] === "/d" && args[1] === "/s" && args[2] === "/c"
+    ) {
+      let cmdStr = args[3];
+      // Remove wrapping quotes added by normalizeSpawnArguments
+      const hasWrappingQuotes = StringPrototypeStartsWith(cmdStr, '"') &&
+        StringPrototypeEndsWith(cmdStr, '"');
+      if (hasWrappingQuotes) {
+        cmdStr = StringPrototypeSlice(cmdStr, 1, -1);
+      }
+      const transformed = transformDenoShellCommand(cmdStr, env, true);
+      if (transformed !== cmdStr) {
+        args = ArrayPrototypeSlice(args);
+        args[3] = hasWrappingQuotes ? `"${transformed}"` : transformed;
+      }
+    }
+
+    // When spawning a non-deno process that has Deno.execPath() in its args
+    // (e.g. Python given deno's path to re-invoke it), pre-translate the args
+    // that follow so the child deno process gets the correct Node.js compat
+    // flags (-A, --unstable-bare-node-builtins, etc.).
+    // This covers cases like test-stdio-closed.js on Windows, where a Python
+    // intermediary closes stdio then calls deno directly via subprocess.call.
+    if (file !== Deno.execPath()) {
+      const denoPath = Deno.execPath();
+      const denoArgIndex = ArrayPrototypeFindIndex(
+        args,
+        (arg) => arg === denoPath,
+      );
+      if (denoArgIndex !== -1) {
+        const argsForDeno = ArrayPrototypeSlice(args, denoArgIndex + 1);
+        if (argsForDeno.length > 0) {
+          try {
+            const result = op_node_translate_cli_args(argsForDeno, false, true);
+            args = [
+              ...new SafeArrayIterator(
+                ArrayPrototypeSlice(args, 0, denoArgIndex + 1),
+              ),
+              ...new SafeArrayIterator(result.denoArgs),
+            ];
+          } catch {
+            // If translation fails (unknown flags), leave args unchanged
+          }
+        }
+      }
+    }
+
+    return [file, args, includeNpmProcessState];
+  }
+
+  function restorePrototype(obj) {
+    if (obj === null || typeof obj !== "object") return;
+    if (ArrayIsArray(obj)) {
+      for (let i = 0; i < obj.length; i++) {
+        restorePrototype(obj[i]);
+      }
+      return;
+    }
+    ObjectSetPrototypeOf(obj, ObjectPrototype);
+    for (const key of new SafeArrayIterator(ObjectKeys(obj))) {
+      restorePrototype(obj[key]);
     }
   }
 
-  let includeNpmProcessState = false;
-  // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
-  // before slicing so we can pass it via kArgv0 for OS-level argv[0].
-  const argv0 = args && args.length > 0 ? args[0] : command;
-  const argsToProcess = args && args.length > 0 ? args.slice(1) : [];
-  [command, args, includeNpmProcessState] = buildCommand(
-    command,
-    argsToProcess,
-    env,
-  );
-  const input_ = normalizeInput(input);
+  /** Convert a killSignal (string name or number) to its string name. */
+  function _resolveKillSignalName(
+    killSignal,
+  ) {
+    if (typeof killSignal === "string") return killSignal;
+    if (typeof killSignal === "number") {
+      for (const entry of new SafeArrayIterator(ObjectEntries(os.signals))) {
+        const name = entry[0];
+        const num = entry[1];
+        if (num === killSignal) return name;
+      }
+      return String(killSignal);
+    }
+    return "SIGTERM";
+  }
 
-  const result = {};
-  try {
-    const output = nodeSpawnSyncChild({
-      args: [command, ...args],
+  function _createSpawnError(
+    status,
+    command,
+    args = [],
+    sync = false,
+  ) {
+    const syscall = sync ? "spawnSync " : "spawn ";
+    const error = errnoException(
+      codeMap.get(status),
+      syscall + command,
+    );
+    error.path = command;
+    error.spawnargs = args;
+    return error;
+  }
+
+  function normalizeInput(input) {
+    if (input == null) {
+      return null;
+    }
+    if (typeof input === "string") {
+      return Buffer.from(input);
+    }
+    if (ArrayBufferIsView(input)) {
+      if (isTypedArray(input)) {
+        return Buffer.from(
+          TypedArrayPrototypeGetBuffer(input),
+          TypedArrayPrototypeGetByteOffset(input),
+          TypedArrayPrototypeGetByteLength(input),
+        );
+      }
+      // ArrayBuffer.isView() is true only for TypedArrays and DataViews, so the
+      // DataView branch is the only remaining possibility here.
+      return Buffer.from(
+        DataViewPrototypeGetBuffer(input),
+        DataViewPrototypeGetByteOffset(input),
+        DataViewPrototypeGetByteLength(input),
+      );
+    }
+    throw new ERR_INVALID_ARG_TYPE("input", [
+      "string",
+      "Buffer",
+      "TypedArray",
+      "DataView",
+    ], input);
+  }
+
+  function spawnSync(
+    options,
+  ) {
+    const {
+      env = Deno.env.toObject(),
+      input,
+      stdio = ["pipe", "pipe", "pipe"],
       cwd,
-      env: mapValues(env, (value) => value.toString()),
-      argv0: argv0 !== command ? argv0 : undefined,
-      stdout: toDenoStdio(stdout_),
-      stderr: toDenoStdio(stderr_),
-      stdin: stdin_ == "inherit" ? "inherit" : "null",
+      encoding,
       uid,
       gid,
-      clearEnv: false,
-      extraStdio: extraStdioNormalized,
-      windowsRawArguments: windowsVerbatimArguments,
-      windowsHide,
-      needsNpmProcessState: options[kNeedsNpmProcessState] ||
-        includeNpmProcessState,
-      input: input_,
+      maxBuffer,
       timeout,
       killSignal,
-    });
+      windowsVerbatimArguments = false,
+      windowsHide = true,
+    } = options;
+    let command = options.file || "";
+    let args = options.args || [];
+    const normalizedStdio = normalizeStdioOption(stdio);
+    const stdin_ = normalizedStdio[0] === undefined
+      ? "pipe"
+      : normalizedStdio[0];
+    const stdout_ = normalizedStdio[1] === undefined
+      ? "pipe"
+      : normalizedStdio[1];
+    const stderr_ = normalizedStdio[2] === undefined
+      ? "pipe"
+      : normalizedStdio[2];
+    const extraStdio_ = ArrayPrototypeSlice(normalizedStdio, 3);
 
-    const status = output.signal ? null : output.code;
-    let stdout = output.stdout ? Buffer.from(output.stdout) : null;
-    let stderr = output.stderr ? Buffer.from(output.stderr) : null;
-
-    if (
-      (stdout && stdout.length > maxBuffer) ||
-      (stderr && stderr.length > maxBuffer)
-    ) {
-      result.error = _createSpawnError("ENOBUFS", command, args, true);
+    const extraStdioNormalized = [];
+    for (let i = 0; i < extraStdio_.length; i++) {
+      const val = extraStdio_[i];
+      const fd = i + 3; // extra stdio starts at FD 3
+      // null/undefined means "don't pass this fd"
+      if (val == null) {
+        ArrayPrototypePush(extraStdioNormalized, "null");
+      } else if (val === "inherit") {
+        // "inherit" for extra FDs means pass the parent's FD at this index
+        ArrayPrototypePush(extraStdioNormalized, fd);
+      } else {
+        ArrayPrototypePush(extraStdioNormalized, toDenoStdio(val));
+      }
     }
 
-    if (output.killedByTimeout) {
-      result.error = _createSpawnError("ETIMEDOUT", command, args, true);
-    }
+    let includeNpmProcessState = false;
+    // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
+    // before slicing so we can pass it via kArgv0 for OS-level argv[0].
+    const argv0 = args && args.length > 0 ? args[0] : command;
+    const argsToProcess = args && args.length > 0
+      ? ArrayPrototypeSlice(args, 1)
+      : [];
+    const builtCommand = buildCommand(
+      command,
+      argsToProcess,
+      env,
+    );
+    command = builtCommand[0];
+    args = builtCommand[1];
+    includeNpmProcessState = builtCommand[2];
+    const input_ = normalizeInput(input);
 
-    if (encoding && encoding !== "buffer") {
-      stdout = stdout && stdout.toString(encoding);
-      stderr = stderr && stderr.toString(encoding);
-    }
+    const result = {};
+    try {
+      const output = nodeSpawnSyncChild({
+        args: [command, ...new SafeArrayIterator(args)],
+        cwd,
+        // deno-lint-ignore prefer-primordials
+        env: mapValues(env, (value) => value.toString()),
+        argv0: argv0 !== command ? argv0 : undefined,
+        stdout: toDenoStdio(stdout_),
+        stderr: toDenoStdio(stderr_),
+        stdin: stdin_ == "inherit" ? "inherit" : "null",
+        uid,
+        gid,
+        clearEnv: false,
+        extraStdio: extraStdioNormalized,
+        windowsRawArguments: windowsVerbatimArguments,
+        windowsHide,
+        needsNpmProcessState: options[kNeedsNpmProcessState] ||
+          includeNpmProcessState,
+        input: input_,
+        timeout,
+        killSignal,
+      });
 
-    result.pid = output.pid;
-    // When killed by timeout, report the killSignal (matching Node.js behavior).
-    // On Windows there are no real Unix signals, but Node still reports the
-    // configured killSignal so callers can detect the timeout.
-    result.status = output.killedByTimeout ? null : status;
-    result.signal = output.killedByTimeout
-      ? _resolveKillSignalName(killSignal)
-      : output.signal;
-    result.stdout = stdout;
-    result.stderr = stderr;
-    result.output = [output.signal, stdout, stderr];
-  } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
-      result.error = _createSpawnError("ENOENT", command, args, true);
+      const status = output.signal ? null : output.code;
+      let stdout = output.stdout ? Buffer.from(output.stdout) : null;
+      let stderr = output.stderr ? Buffer.from(output.stderr) : null;
+
+      if (
+        (stdout && stdout.length > maxBuffer) ||
+        (stderr && stderr.length > maxBuffer)
+      ) {
+        result.error = _createSpawnError("ENOBUFS", command, args, true);
+      }
+
+      if (output.killedByTimeout) {
+        result.error = _createSpawnError("ETIMEDOUT", command, args, true);
+      }
+
+      if (encoding && encoding !== "buffer") {
+        // deno-lint-ignore prefer-primordials
+        stdout = stdout && stdout.toString(encoding);
+        // deno-lint-ignore prefer-primordials
+        stderr = stderr && stderr.toString(encoding);
+      }
+
+      result.pid = output.pid;
+      // When killed by timeout, report the killSignal (matching Node.js behavior).
+      // On Windows there are no real Unix signals, but Node still reports the
+      // configured killSignal so callers can detect the timeout.
+      result.status = output.killedByTimeout ? null : status;
+      result.signal = output.killedByTimeout
+        ? _resolveKillSignalName(killSignal)
+        : output.signal;
+      result.stdout = stdout;
+      result.stderr = stderr;
+      result.output = [output.signal, stdout, stderr];
+    } catch (err) {
+      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)) {
+        result.error = _createSpawnError("ENOENT", command, args, true);
+      }
     }
+    return result;
   }
-  return result;
-}
 
-const kControlDisconnect = Symbol("kControlDisconnect");
-const kPendingMessages = Symbol("kPendingMessages");
+  const kControlDisconnect = Symbol("kControlDisconnect");
+  const kPendingMessages = Symbol("kPendingMessages");
 
-// controls refcounting for the IPC channel
-class Control extends EventEmitter {
-  #channel;
-  #refs = 0;
-  #refExplicitlySet = false;
-  #connected = true;
-  [kPendingMessages] = [];
-  #serialization;
-  constructor(channel, serialization) {
-    super();
-    this.#channel = channel;
-    this.#serialization = serialization;
-  }
-
-  #ref() {
-    if (this.#connected) {
-      op_node_ipc_ref(this.#channel, this.#serialization === "json");
+  // controls refcounting for the IPC channel
+  class Control extends EventEmitter {
+    #channel;
+    #refs = 0;
+    #refExplicitlySet = false;
+    #connected = true;
+    [kPendingMessages] = [];
+    #serialization;
+    constructor(channel, serialization) {
+      super();
+      this.#channel = channel;
+      this.#serialization = serialization;
     }
-  }
 
-  #unref() {
-    if (this.#connected) {
-      op_node_ipc_unref(this.#channel, this.#serialization === "json");
+    #ref() {
+      if (this.#connected) {
+        op_node_ipc_ref(this.#channel, this.#serialization === "json");
+      }
     }
-  }
 
-  [kControlDisconnect]() {
-    this.#unref();
-    this.#connected = false;
-  }
+    #unref() {
+      if (this.#connected) {
+        op_node_ipc_unref(this.#channel, this.#serialization === "json");
+      }
+    }
 
-  refCounted() {
-    if (++this.#refs === 1 && !this.#refExplicitlySet) {
+    [kControlDisconnect]() {
+      this.#unref();
+      this.#connected = false;
+    }
+
+    refCounted() {
+      if (++this.#refs === 1 && !this.#refExplicitlySet) {
+        this.#ref();
+      }
+    }
+
+    unrefCounted() {
+      if (--this.#refs === 0 && !this.#refExplicitlySet) {
+        this.#unref();
+        this.emit("unref");
+      }
+    }
+
+    ref() {
+      this.#refExplicitlySet = true;
       this.#ref();
     }
-  }
 
-  unrefCounted() {
-    if (--this.#refs === 0 && !this.#refExplicitlySet) {
+    unref() {
+      this.#refExplicitlySet = false;
       this.#unref();
-      this.emit("unref");
     }
   }
 
-  ref() {
-    this.#refExplicitlySet = true;
-    this.#ref();
-  }
-
-  unref() {
-    this.#refExplicitlySet = false;
-    this.#unref();
-  }
-}
-
-function isInternal(msg) {
-  if (msg && typeof msg === "object") {
-    const cmd = msg["cmd"];
-    if (typeof cmd === "string") {
-      return StringPrototypeStartsWith(cmd, "NODE_");
+  function isInternal(msg) {
+    if (msg && typeof msg === "object") {
+      const cmd = msg["cmd"];
+      if (typeof cmd === "string") {
+        return StringPrototypeStartsWith(cmd, "NODE_");
+      }
     }
+    return false;
   }
-  return false;
-}
 
-function internalCmdName(msg) {
-  return StringPrototypeSlice(msg.cmd, 5);
-}
-
-let hasSetBufferConstructor = false;
-
-const IPC_HANDLE_NET_SOCKET = "net.Socket";
-const IPC_HANDLE_NET_SERVER = "net.Server";
-// node:cluster sends raw TCP/Pipe wraps (without a Socket/Server wrapper) for
-// connection handoffs (RoundRobinHandle) and shared listening sockets
-// (SharedHandle). Mirrors Node's `handleConversion["net.Native"]`.
-const IPC_HANDLE_NET_NATIVE = "net.Native";
-const IPC_HANDLE_DGRAM_SOCKET = "dgram.Socket";
-
-function rawFdFromTcpHandle(tcpHandle) {
-  if (typeof tcpHandle.fdForIpc !== "function") {
-    notImplemented("ChildProcess.send with handle on this platform");
+  function internalCmdName(msg) {
+    return StringPrototypeSlice(msg.cmd, 5);
   }
-  const rawFd = tcpHandle.fdForIpc();
-  if (rawFd < 0) {
-    throw new ERR_INVALID_HANDLE_TYPE();
-  }
-  return rawFd;
-}
 
-function getIpcHandleInfo(handle, options) {
-  const { Socket } = lazyNet();
-  const { Server: NetServer } = lazyNet();
-  const { Socket: DgramSocket } = lazyDgram();
-  if (handle instanceof Socket) {
-    if (!(handle._handle instanceof TCP)) {
-      notImplemented("ChildProcess.send with non-TCP net.Socket handle");
+  let hasSetBufferConstructor = false;
+
+  const IPC_HANDLE_NET_SOCKET = "net.Socket";
+  const IPC_HANDLE_NET_SERVER = "net.Server";
+  // node:cluster sends raw TCP/Pipe wraps (without a Socket/Server wrapper) for
+  // connection handoffs (RoundRobinHandle) and shared listening sockets
+  // (SharedHandle). Mirrors Node's `handleConversion["net.Native"]`.
+  const IPC_HANDLE_NET_NATIVE = "net.Native";
+  const IPC_HANDLE_DGRAM_SOCKET = "dgram.Socket";
+
+  function rawFdFromTcpHandle(tcpHandle) {
+    if (typeof tcpHandle.fdForIpc !== "function") {
+      notImplemented("ChildProcess.send with handle on this platform");
     }
-    return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
-      message: {
-        cmd: "NODE_HANDLE",
-        type: IPC_HANDLE_NET_SOCKET,
-        msg: undefined,
-      },
-      closeAfterSend: options.keepOpen !== true,
-      close() {
-        handle.parser = null;
-        handle._httpMessage = null;
-        handle.destroy();
-      },
-    };
-  }
-
-  if (handle instanceof NetServer) {
-    if (!(handle._handle instanceof TCP)) {
-      notImplemented("ChildProcess.send with non-TCP net.Server handle");
-    }
-    return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
-      message: {
-        cmd: "NODE_HANDLE",
-        type: IPC_HANDLE_NET_SERVER,
-        msg: undefined,
-      },
-      // Match Node's handleConversion["net.Server"].postSend, which calls
-      // server.close() once the receiver acknowledges the transfer.
-      closeAfterSend: options.keepOpen !== true,
-      close() {
-        handle.close();
-      },
-    };
-  }
-  if (handle instanceof TCP || handle instanceof Pipe) {
-    return {
-      rawFd: rawFdFromTcpHandle(handle),
-      message: {
-        cmd: "NODE_HANDLE",
-        type: IPC_HANDLE_NET_NATIVE,
-        // 0 = SOCKET, 1 = SERVER. Same encoding for TCP and Pipe.
-        socketType: handle.socketTypeForIpc(),
-        // Distinguishes the wrap type the receiver should reconstruct.
-        nativeKind: handle instanceof TCP ? "tcp" : "pipe",
-        msg: undefined,
-      },
-      // Match Node's handleConversion["net.Native"]: it has no postSend hook,
-      // so the IPC layer doesn't auto-close. Cluster's RoundRobinHandle and
-      // SharedHandle each manage their own lifecycle (the former closes the
-      // client wrap after the worker ACKs; the latter shares the listening
-      // wrap across workers).
-      closeAfterSend: false,
-      close() {
-        handle.close();
-      },
-    };
-  }
-
-  if (handle instanceof DgramSocket) {
-    const udpHandle = handle[lazyDgramInternal().kStateSymbol]?.handle;
-    if (!udpHandle || typeof udpHandle.fdForIpc !== "function") {
-      throw new ERR_INVALID_HANDLE_TYPE();
-    }
-    const rawFd = udpHandle.fdForIpc();
+    const rawFd = tcpHandle.fdForIpc();
     if (rawFd < 0) {
       throw new ERR_INVALID_HANDLE_TYPE();
     }
-    return {
-      rawFd,
-      message: {
-        cmd: "NODE_HANDLE",
-        type: IPC_HANDLE_DGRAM_SOCKET,
-        dgramType: handle.type,
-        msg: undefined,
-      },
-      // Node's handleConversion["dgram.Socket"].postSend is undefined, so
-      // the IPC layer doesn't auto-close. The socket remains usable in the
-      // sender (both parent and child share the underlying UDP socket).
-      closeAfterSend: false,
-      close() {
-        handle.close();
-      },
-    };
+    return rawFd;
   }
 
-  throw new ERR_INVALID_HANDLE_TYPE();
-}
+  function getIpcHandleInfo(handle, options) {
+    const { Socket } = lazyNet();
+    const { Server: NetServer } = lazyNet();
+    const { Socket: DgramSocket } = lazyDgram();
+    if (ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)) {
+      if (!ObjectPrototypeIsPrototypeOf(TCP.prototype, handle._handle)) {
+        notImplemented("ChildProcess.send with non-TCP net.Socket handle");
+      }
+      return {
+        rawFd: rawFdFromTcpHandle(handle._handle),
+        message: {
+          cmd: "NODE_HANDLE",
+          type: IPC_HANDLE_NET_SOCKET,
+          msg: undefined,
+        },
+        closeAfterSend: options.keepOpen !== true,
+        close() {
+          handle.parser = null;
+          handle._httpMessage = null;
+          handle.destroy();
+        },
+      };
+    }
 
-function createIpcHandle(message, rawFd) {
-  const { Socket } = lazyNet();
-  const { Server: NetServer } = lazyNet();
-  const { Socket: DgramSocket } = lazyDgram();
-  if (message.type === IPC_HANDLE_NET_SOCKET) {
-    const tcp = new TCP(tcpSocketType.SOCKET);
-    const err = tcp.open(rawFd);
-    if (err !== 0) {
-      throw errnoException(codeMap.get(err), "open");
+    if (ObjectPrototypeIsPrototypeOf(NetServer.prototype, handle)) {
+      if (!ObjectPrototypeIsPrototypeOf(TCP.prototype, handle._handle)) {
+        notImplemented("ChildProcess.send with non-TCP net.Server handle");
+      }
+      return {
+        rawFd: rawFdFromTcpHandle(handle._handle),
+        message: {
+          cmd: "NODE_HANDLE",
+          type: IPC_HANDLE_NET_SERVER,
+          msg: undefined,
+        },
+        // Match Node's handleConversion["net.Server"].postSend, which calls
+        // server.close() once the receiver acknowledges the transfer.
+        closeAfterSend: options.keepOpen !== true,
+        close() {
+          handle.close();
+        },
+      };
     }
-    try {
-      return new Socket({
-        handle: tcp,
-        readable: true,
-        writable: true,
-      });
-    } catch (err) {
-      tcp.close();
-      throw err;
+    if (
+      ObjectPrototypeIsPrototypeOf(TCP.prototype, handle) ||
+      ObjectPrototypeIsPrototypeOf(Pipe.prototype, handle)
+    ) {
+      return {
+        rawFd: rawFdFromTcpHandle(handle),
+        message: {
+          cmd: "NODE_HANDLE",
+          type: IPC_HANDLE_NET_NATIVE,
+          // 0 = SOCKET, 1 = SERVER. Same encoding for TCP and Pipe.
+          socketType: handle.socketTypeForIpc(),
+          // Distinguishes the wrap type the receiver should reconstruct.
+          nativeKind: ObjectPrototypeIsPrototypeOf(TCP.prototype, handle)
+            ? "tcp"
+            : "pipe",
+          msg: undefined,
+        },
+        // Match Node's handleConversion["net.Native"]: it has no postSend hook,
+        // so the IPC layer doesn't auto-close. Cluster's RoundRobinHandle and
+        // SharedHandle each manage their own lifecycle (the former closes the
+        // client wrap after the worker ACKs; the latter shares the listening
+        // wrap across workers).
+        closeAfterSend: false,
+        close() {
+          handle.close();
+        },
+      };
     }
+
+    if (ObjectPrototypeIsPrototypeOf(DgramSocket.prototype, handle)) {
+      const udpHandle = handle[lazyDgramInternal().kStateSymbol]?.handle;
+      if (!udpHandle || typeof udpHandle.fdForIpc !== "function") {
+        throw new ERR_INVALID_HANDLE_TYPE();
+      }
+      const rawFd = udpHandle.fdForIpc();
+      if (rawFd < 0) {
+        throw new ERR_INVALID_HANDLE_TYPE();
+      }
+      return {
+        rawFd,
+        message: {
+          cmd: "NODE_HANDLE",
+          type: IPC_HANDLE_DGRAM_SOCKET,
+          dgramType: handle.type,
+          msg: undefined,
+        },
+        // Node's handleConversion["dgram.Socket"].postSend is undefined, so
+        // the IPC layer doesn't auto-close. The socket remains usable in the
+        // sender (both parent and child share the underlying UDP socket).
+        closeAfterSend: false,
+        close() {
+          handle.close();
+        },
+      };
+    }
+
+    throw new ERR_INVALID_HANDLE_TYPE();
   }
-  if (message.type === IPC_HANDLE_NET_SERVER) {
-    const tcp = new TCP(tcpSocketType.SERVER);
-    const err = tcp.open(rawFd);
-    if (err !== 0) {
-      throw errnoException(codeMap.get(err), "open");
-    }
-    // Match Node's handleConversion["net.Server"].got: hand the wrapped
-    // handle to a fresh net.Server via listen(handle), which registers the
-    // connection callback and emits 'listening' on next tick. Our uv_listen
-    // detects an already-listening fd and skips the bind/listen syscalls.
-    const server = new NetServer();
-    try {
-      server.listen(tcp);
-      return server;
-    } catch (err) {
-      tcp.close();
-      throw err;
-    }
-  }
-  if (message.type === IPC_HANDLE_NET_NATIVE) {
-    if (message.nativeKind === "pipe") {
-      const st = message.socketType === 1
-        ? socketType.SERVER
-        : socketType.SOCKET;
-      const pipe = new Pipe(st);
-      const err = pipe.open(rawFd);
+
+  function createIpcHandle(message, rawFd) {
+    const { Socket } = lazyNet();
+    const { Server: NetServer } = lazyNet();
+    const { Socket: DgramSocket } = lazyDgram();
+    if (message.type === IPC_HANDLE_NET_SOCKET) {
+      const tcp = new TCP(tcpSocketType.SOCKET);
+      const err = tcp.open(rawFd);
       if (err !== 0) {
         throw errnoException(codeMap.get(err), "open");
       }
-      return pipe;
-    }
-    const st = message.socketType === 1
-      ? tcpSocketType.SERVER
-      : tcpSocketType.SOCKET;
-    const tcp = new TCP(st);
-    const err = tcp.open(rawFd);
-    if (err !== 0) {
-      throw errnoException(codeMap.get(err), "open");
-    }
-    // Match Node's handleConversion["net.Native"].got: just hand the raw
-    // wrap to the listener. Cluster's worker-side onconnection() / shared()
-    // takes ownership.
-    return tcp;
-  }
-  if (message.type === IPC_HANDLE_DGRAM_SOCKET) {
-    const udp = new (lazyUdpWrap().UDP)();
-    const err = udp.open(rawFd);
-    if (err !== 0) {
-      throw errnoException(codeMap.get(err), "open");
-    }
-    // Reconstruct a dgram.Socket from the transferred handle, mirroring
-    // Node's handleConversion["dgram.Socket"].got which calls
-    // socket.bind(handle).  The `bind(udpHandle)` path in dgram.ts calls
-    // replaceHandle + startListening, making the socket immediately usable.
-    const socket = new DgramSocket(message.dgramType);
-    socket.bind(udp);
-    return socket;
-  }
-  return undefined;
-}
-
-function setupChannel(
-  target,
-  ipc,
-  serialization,
-) {
-  const { Socket } = lazyNet();
-  const { Server: NetServer } = lazyNet();
-  const { Socket: DgramSocket } = lazyDgram();
-  const control = new Control(ipc, serialization);
-  target.channel = control;
-
-  if (!hasSetBufferConstructor) {
-    op_node_ipc_buffer_constructor(Buffer, FastBuffer.prototype);
-    hasSetBufferConstructor = true;
-  }
-
-  const writeFn = serialization === "json"
-    ? op_node_ipc_write_json
-    : op_node_ipc_write_advanced;
-  const readFn = serialization === "json"
-    ? op_node_ipc_read_json
-    : op_node_ipc_read_advanced;
-  // Sentinel passed to the unified write op when no handle accompanies the
-  // message. Mirrors the Rust-side `NO_RAW_FD` constant.
-  const NO_RAW_FD = -1;
-
-  // Handle-passing ACK state. Matches Node's
-  // NODE_HANDLE / NODE_HANDLE_ACK protocol in lib/internal/child_process.js:
-  // while a handle send is in flight, the sender keeps its copy of the fd
-  // open. Closing it earlier would drop the OFD refcount to 0 before the
-  // receiver has materialized its dup, and the kernel would send FIN/RST
-  // to the peer.
-  //
-  // `pendingHandleInfo` is the handle waiting for an ACK to close.
-  // `handleQueue` is non-null while we're waiting on an ACK; further
-  // sends (handle or plain message) are queued on it to preserve ordering.
-  let pendingHandleInfo = null;
-  let handleQueue = null;
-
-  function sendHandleAck() {
-    const queueOk = [true];
-    control.refCounted();
-    writeFn(ipc, { cmd: "NODE_HANDLE_ACK" }, NO_RAW_FD, queueOk).then(
-      () => control.unrefCounted(),
-      () => control.unrefCounted(),
-    );
-  }
-
-  function onHandleAck() {
-    const info = pendingHandleInfo;
-    pendingHandleInfo = null;
-    if (info && info.closeAfterSend) {
-      info.close();
-    }
-
-    const queue = handleQueue;
-    handleQueue = null;
-    if (queue) {
-      for (const item of queue) {
-        enqueueOrDispatch(item.message, item.handleInfo, item.callback);
+      try {
+        return new Socket({
+          handle: tcp,
+          readable: true,
+          writable: true,
+        });
+      } catch (err) {
+        tcp.close();
+        throw err;
       }
     }
-  }
-
-  // Release any handles we're still holding open when the channel goes away.
-  // A handle send that already wrote successfully keeps its local copy open
-  // until NODE_HANDLE_ACK arrives (see dispatch); queued sends haven't been
-  // written yet. Once the channel is torn down that ACK will never come, so
-  // those handles would leak -- and an `closeAfterSend` handle (e.g. a
-  // received net.Socket being forwarded back) is a live resource that keeps
-  // the event loop alive, so the process would hang instead of exiting. This
-  // is what made `test-cluster-send-deadlock` time out: the worker forwards
-  // its sockets back, then disconnects before the ACKs land.
-  function cleanupPendingHandles() {
-    const info = pendingHandleInfo;
-    pendingHandleInfo = null;
-    if (info && info.closeAfterSend) {
-      info.close();
-    }
-
-    const queue = handleQueue;
-    handleQueue = null;
-    if (queue) {
-      for (const item of queue) {
-        if (item.handleInfo && item.handleInfo.closeAfterSend) {
-          item.handleInfo.close();
-        }
+    if (message.type === IPC_HANDLE_NET_SERVER) {
+      const tcp = new TCP(tcpSocketType.SERVER);
+      const err = tcp.open(rawFd);
+      if (err !== 0) {
+        throw errnoException(codeMap.get(err), "open");
+      }
+      // Match Node's handleConversion["net.Server"].got: hand the wrapped
+      // handle to a fresh net.Server via listen(handle), which registers the
+      // connection callback and emits 'listening' on next tick. Our uv_listen
+      // detects an already-listening fd and skips the bind/listen syscalls.
+      const server = new NetServer();
+      try {
+        server.listen(tcp);
+        return server;
+      } catch (err) {
+        tcp.close();
+        throw err;
       }
     }
-  }
-
-  // Either queue the send (if a handle is already in flight awaiting its
-  // ACK) or write it now. `handleInfo` is the already-derived IPC handle
-  // info (see target.send) or null for a plain message.
-  function enqueueOrDispatch(message, handleInfo, callback) {
-    // If a previous handle send is still waiting for its ACK, queue this
-    // one to preserve ordering. Plain messages are queued too so they
-    // don't overtake the pending handle.
-    if (handleQueue !== null) {
-      ArrayPrototypePush(handleQueue, {
-        message,
-        handleInfo,
-        callback,
-      });
-      return handleQueue.length === 1;
-    }
-    return dispatch(message, handleInfo, callback);
-  }
-
-  function dispatch(message, handleInfo, callback) {
-    if (handleInfo) {
-      // Start queueing subsequent sends until the ACK arrives.
-      handleQueue = [];
-    }
-
-    // signals whether the queue is within the limit.
-    // if false, the sender should slow down.
-    // this acts as a backpressure mechanism.
-    const queueOk = [true];
-    control.refCounted();
-    const writePromise = handleInfo
-      ? writeFn(ipc, handleInfo.message, handleInfo.rawFd, queueOk)
-      : writeFn(ipc, message, NO_RAW_FD, queueOk);
-    writePromise
-      .then(() => {
-        control.unrefCounted();
-        if (handleInfo) {
-          // Hold the handle until NODE_HANDLE_ACK arrives; closing now
-          // would drop the OFD refcount to 0 before the receiver has
-          // materialized its dup.
-          pendingHandleInfo = handleInfo;
+    if (message.type === IPC_HANDLE_NET_NATIVE) {
+      if (message.nativeKind === "pipe") {
+        const st = message.socketType === 1
+          ? socketType.SERVER
+          : socketType.SOCKET;
+        const pipe = new Pipe(st);
+        const err = pipe.open(rawFd);
+        if (err !== 0) {
+          throw errnoException(codeMap.get(err), "open");
         }
-        if (callback) {
-          nextTick(callback, null);
-        }
-      }, (err) => {
-        control.unrefCounted();
-        if (handleInfo) {
-          // Write failed: the receiver won't ACK, so close the handle now
-          // and drain the queue to unblock any follow-up sends.
-          if (handleInfo.closeAfterSend) {
-            handleInfo.close();
-          }
-          const queue = handleQueue;
-          handleQueue = null;
-          if (queue) {
-            for (const item of queue) {
-              enqueueOrDispatch(
-                item.message,
-                item.handleInfo,
-                item.callback,
-              );
-            }
-          }
-        }
-        if (err instanceof Deno.errors.Interrupted) {
-          // Channel closed on us mid-write.
-        } else {
-          // Match Node: errors raised from a failed IPC send carry
-          // `syscall: "write"`. Tests like `test-cluster-concurrent-disconnect`
-          // assert on this when racing send() against worker disconnect.
-          const errAny = err;
-          if (errAny && typeof errAny === "object" && !errAny.syscall) {
-            errAny.syscall = "write";
-          }
-          if (typeof callback === "function") {
-            nextTick(callback, err);
-          } else {
-            nextTick(() => target.emit("error", err));
-          }
-        }
-      });
-    return queueOk[0];
-  }
-
-  async function readLoop() {
-    try {
-      while (true) {
-        if (!target.connected || target.killed) {
-          return;
-        }
-        // TODO(nathanwhit): maybe allow returning multiple messages in a single read? needs benchmarking.
-        const prom = readFn(ipc);
-        // there will always be a pending read promise,
-        // but it shouldn't keep the event loop from exiting
-        core.unrefOpPromise(prom);
-        const [msg, rawFd] = await prom;
-        if (isInternal(msg)) {
-          const cmd = internalCmdName(msg);
-          if (cmd === "CLOSE") {
-            // Channel closed.
-            target.disconnect();
-            return;
-          } else if (cmd === "HANDLE" && typeof rawFd === "number") {
-            if (serialization === "json") {
-              restorePrototype(msg);
-            }
-            // Acknowledge receipt so the sender can close its local copy.
-            sendHandleAck();
-            const handle = createIpcHandle(msg, rawFd);
-            nextTick(handleMessage, msg.msg, handle);
-            continue;
-          } else if (cmd === "HANDLE_ACK") {
-            onHandleAck();
-            continue;
-          } else {
-            // TODO(nathanwhit): if we want to support deno-node IPC interop,
-            // handle any future NODE_HANDLE_* control messages here.
-            // Emit as internalMessage for internal consumers.
-            if (serialization === "json") {
-              restorePrototype(msg);
-            }
-            nextTick(() => target.emit("internalMessage", msg));
-            continue;
-          }
-        }
-
-        nextTick(handleMessage, msg, undefined);
+        return pipe;
       }
-    } catch (err) {
-      if (
-        err instanceof Deno.errors.Interrupted ||
-        err instanceof Deno.errors.BadResource
-      ) {
-        // Channel torn down from under us; release any handles awaiting an
-        // ACK that will now never arrive so they don't keep us alive.
-        cleanupPendingHandles();
-        return;
+      const st = message.socketType === 1
+        ? tcpSocketType.SERVER
+        : tcpSocketType.SOCKET;
+      const tcp = new TCP(st);
+      const err = tcp.open(rawFd);
+      if (err !== 0) {
+        throw errnoException(codeMap.get(err), "open");
       }
-      nextTick(() => target.emit("error", err));
+      // Match Node's handleConversion["net.Native"].got: just hand the raw
+      // wrap to the listener. Cluster's worker-side onconnection() / shared()
+      // takes ownership.
+      return tcp;
     }
+    if (message.type === IPC_HANDLE_DGRAM_SOCKET) {
+      const udp = new (lazyUdpWrap().UDP)();
+      const err = udp.open(rawFd);
+      if (err !== 0) {
+        throw errnoException(codeMap.get(err), "open");
+      }
+      // Reconstruct a dgram.Socket from the transferred handle, mirroring
+      // Node's handleConversion["dgram.Socket"].got which calls
+      // socket.bind(handle).  The `bind(udpHandle)` path in dgram.ts calls
+      // replaceHandle + startListening, making the socket immediately usable.
+      const socket = new DgramSocket(message.dgramType);
+      // deno-lint-ignore prefer-primordials
+      socket.bind(udp);
+      return socket;
+    }
+    return undefined;
   }
 
-  function handleMessage(msg, handle) {
-    if (!target.channel) {
-      return;
-    }
-    // serde_v8 deserializes objects with null prototype, but Node.js IPC
-    // messages should have Object.prototype (as if from JSON.parse).
-    if (serialization === "json") {
-      restorePrototype(msg);
-    }
-    // Match Node: when a handle was attached to an internal command (e.g.
-    // NODE_CLUSTER newconn from the round-robin handle), the unwrapped
-    // payload is itself a NODE_* internal message. Route it as
-    // internalMessage so cluster's listener receives it.
-    if (isInternal(msg)) {
-      target.emit("internalMessage", msg, handle);
-      return;
-    }
-    if (target.listenerCount("message") !== 0) {
-      target.emit("message", msg, handle);
-      return;
+  function setupChannel(
+    target,
+    ipc,
+    serialization,
+  ) {
+    const { Socket } = lazyNet();
+    const { Server: NetServer } = lazyNet();
+    const { Socket: DgramSocket } = lazyDgram();
+    const control = new Control(ipc, serialization);
+    target.channel = control;
+
+    if (!hasSetBufferConstructor) {
+      op_node_ipc_buffer_constructor(Buffer, FastBuffer.prototype);
+      hasSetBufferConstructor = true;
     }
 
-    ArrayPrototypePush(target.channel[kPendingMessages], [msg, handle]);
-  }
+    const writeFn = serialization === "json"
+      ? op_node_ipc_write_json
+      : op_node_ipc_write_advanced;
+    const readFn = serialization === "json"
+      ? op_node_ipc_read_json
+      : op_node_ipc_read_advanced;
+    // Sentinel passed to the unified write op when no handle accompanies the
+    // message. Mirrors the Rust-side `NO_RAW_FD` constant.
+    const NO_RAW_FD = -1;
 
-  target.on("newListener", () => {
-    nextTick(() => {
-      if (!target.channel || !target.listenerCount("message")) {
-        return;
-      }
-      for (const pending of target.channel[kPendingMessages]) {
-        target.emit("message", pending[0], pending[1]);
-      }
-      target.channel[kPendingMessages] = [];
-    });
-  });
+    // Handle-passing ACK state. Matches Node's
+    // NODE_HANDLE / NODE_HANDLE_ACK protocol in lib/internal/child_process.js:
+    // while a handle send is in flight, the sender keeps its copy of the fd
+    // open. Closing it earlier would drop the OFD refcount to 0 before the
+    // receiver has materialized its dup, and the kernel would send FIN/RST
+    // to the peer.
+    //
+    // `pendingHandleInfo` is the handle waiting for an ACK to close.
+    // `handleQueue` is non-null while we're waiting on an ACK; further
+    // sends (handle or plain message) are queued on it to preserve ordering.
+    let pendingHandleInfo = null;
+    let handleQueue = null;
 
-  target.send = function (message, handle, options, callback) {
-    if (typeof handle === "function") {
-      callback = handle;
-      handle = undefined;
-      options = undefined;
-    } else if (typeof options === "function") {
-      callback = options;
-      options = undefined;
-    } else if (options !== undefined) {
-      validateObject(options, "options");
-    }
-
-    options = { swallowErrors: false, ...options };
-
-    if (message === undefined) {
-      throw new ERR_MISSING_ARGS("message");
-    }
-
-    if (
-      typeof message !== "string" &&
-      typeof message !== "object" &&
-      typeof message !== "number" &&
-      typeof message !== "boolean" &&
-      typeof message !== "bigint"
-    ) {
-      throw new ERR_INVALID_ARG_TYPE(
-        "message",
-        ["string", "object", "number", "boolean"],
-        message,
+    function sendHandleAck() {
+      const queueOk = [true];
+      control.refCounted();
+      PromisePrototypeThen(
+        writeFn(ipc, { cmd: "NODE_HANDLE_ACK" }, NO_RAW_FD, queueOk),
+        () => control.unrefCounted(),
+        () => control.unrefCounted(),
       );
     }
 
-    // Match Node: a falsy `handle` (undefined, null) means "no handle".
-    // Reject only non-falsy values that aren't a recognized handle type.
-    if (handle) {
-      if (
-        !(handle instanceof Socket) &&
-        !(handle instanceof NetServer) &&
-        !(handle instanceof DgramSocket) &&
-        !(handle instanceof TCP) &&
-        !(handle instanceof Pipe)
-      ) {
-        throw new ERR_INVALID_HANDLE_TYPE();
+    function onHandleAck() {
+      const info = pendingHandleInfo;
+      pendingHandleInfo = null;
+      if (info && info.closeAfterSend) {
+        info.close();
       }
-    } else {
-      handle = undefined;
+
+      const queue = handleQueue;
+      handleQueue = null;
+      if (queue) {
+        for (const item of new SafeArrayIterator(queue)) {
+          enqueueOrDispatch(item.message, item.handleInfo, item.callback);
+        }
+      }
     }
 
-    if (!target.connected) {
-      const err = new ERR_IPC_CHANNEL_CLOSED();
-      if (typeof callback === "function") {
-        nextTick(callback, err);
-      } else {
+    // Release any handles we're still holding open when the channel goes away.
+    // A handle send that already wrote successfully keeps its local copy open
+    // until NODE_HANDLE_ACK arrives (see dispatch); queued sends haven't been
+    // written yet. Once the channel is torn down that ACK will never come, so
+    // those handles would leak -- and an `closeAfterSend` handle (e.g. a
+    // received net.Socket being forwarded back) is a live resource that keeps
+    // the event loop alive, so the process would hang instead of exiting. This
+    // is what made `test-cluster-send-deadlock` time out: the worker forwards
+    // its sockets back, then disconnects before the ACKs land.
+    function cleanupPendingHandles() {
+      const info = pendingHandleInfo;
+      pendingHandleInfo = null;
+      if (info && info.closeAfterSend) {
+        info.close();
+      }
+
+      const queue = handleQueue;
+      handleQueue = null;
+      if (queue) {
+        for (const item of new SafeArrayIterator(queue)) {
+          if (item.handleInfo && item.handleInfo.closeAfterSend) {
+            item.handleInfo.close();
+          }
+        }
+      }
+    }
+
+    // Either queue the send (if a handle is already in flight awaiting its
+    // ACK) or write it now. `handleInfo` is the already-derived IPC handle
+    // info (see target.send) or null for a plain message.
+    function enqueueOrDispatch(message, handleInfo, callback) {
+      // If a previous handle send is still waiting for its ACK, queue this
+      // one to preserve ordering. Plain messages are queued too so they
+      // don't overtake the pending handle.
+      if (handleQueue !== null) {
+        ArrayPrototypePush(handleQueue, {
+          message,
+          handleInfo,
+          callback,
+        });
+        return handleQueue.length === 1;
+      }
+      return dispatch(message, handleInfo, callback);
+    }
+
+    function dispatch(message, handleInfo, callback) {
+      if (handleInfo) {
+        // Start queueing subsequent sends until the ACK arrives.
+        handleQueue = [];
+      }
+
+      // signals whether the queue is within the limit.
+      // if false, the sender should slow down.
+      // this acts as a backpressure mechanism.
+      const queueOk = [true];
+      control.refCounted();
+      const writePromise = handleInfo
+        ? writeFn(ipc, handleInfo.message, handleInfo.rawFd, queueOk)
+        : writeFn(ipc, message, NO_RAW_FD, queueOk);
+      PromisePrototypeThen(
+        writePromise,
+        () => {
+          control.unrefCounted();
+          if (handleInfo) {
+            // Hold the handle until NODE_HANDLE_ACK arrives; closing now
+            // would drop the OFD refcount to 0 before the receiver has
+            // materialized its dup.
+            pendingHandleInfo = handleInfo;
+          }
+          if (callback) {
+            nextTick(callback, null);
+          }
+        },
+        (err) => {
+          control.unrefCounted();
+          if (handleInfo) {
+            // Write failed: the receiver won't ACK, so close the handle now
+            // and drain the queue to unblock any follow-up sends.
+            if (handleInfo.closeAfterSend) {
+              handleInfo.close();
+            }
+            const queue = handleQueue;
+            handleQueue = null;
+            if (queue) {
+              for (const item of new SafeArrayIterator(queue)) {
+                enqueueOrDispatch(
+                  item.message,
+                  item.handleInfo,
+                  item.callback,
+                );
+              }
+            }
+          }
+          if (
+            ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err)
+          ) {
+            // Channel closed on us mid-write.
+          } else {
+            // Match Node: errors raised from a failed IPC send carry
+            // `syscall: "write"`. Tests like `test-cluster-concurrent-disconnect`
+            // assert on this when racing send() against worker disconnect.
+            const errAny = err;
+            if (errAny && typeof errAny === "object" && !errAny.syscall) {
+              errAny.syscall = "write";
+            }
+            if (typeof callback === "function") {
+              nextTick(callback, err);
+            } else {
+              nextTick(() => target.emit("error", err));
+            }
+          }
+        },
+      );
+      return queueOk[0];
+    }
+
+    async function readLoop() {
+      try {
+        while (true) {
+          if (!target.connected || target.killed) {
+            return;
+          }
+          // TODO(nathanwhit): maybe allow returning multiple messages in a single read? needs benchmarking.
+          const prom = readFn(ipc);
+          // there will always be a pending read promise,
+          // but it shouldn't keep the event loop from exiting
+          core.unrefOpPromise(prom);
+          const read = await prom;
+          const msg = read[0];
+          const rawFd = read[1];
+          if (isInternal(msg)) {
+            const cmd = internalCmdName(msg);
+            if (cmd === "CLOSE") {
+              // Channel closed.
+              target.disconnect();
+              return;
+            } else if (cmd === "HANDLE" && typeof rawFd === "number") {
+              if (serialization === "json") {
+                restorePrototype(msg);
+              }
+              // Acknowledge receipt so the sender can close its local copy.
+              sendHandleAck();
+              const handle = createIpcHandle(msg, rawFd);
+              nextTick(handleMessage, msg.msg, handle);
+              continue;
+            } else if (cmd === "HANDLE_ACK") {
+              onHandleAck();
+              continue;
+            } else {
+              // TODO(nathanwhit): if we want to support deno-node IPC interop,
+              // handle any future NODE_HANDLE_* control messages here.
+              // Emit as internalMessage for internal consumers.
+              if (serialization === "json") {
+                restorePrototype(msg);
+              }
+              nextTick(() => target.emit("internalMessage", msg));
+              continue;
+            }
+          }
+
+          nextTick(handleMessage, msg, undefined);
+        }
+      } catch (err) {
+        if (
+          ObjectPrototypeIsPrototypeOf(
+            Deno.errors.Interrupted.prototype,
+            err,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err)
+        ) {
+          // Channel torn down from under us; release any handles awaiting an
+          // ACK that will now never arrive so they don't keep us alive.
+          cleanupPendingHandles();
+          return;
+        }
         nextTick(() => target.emit("error", err));
       }
-      return false;
     }
 
-    // Derive the handle's IPC info eagerly, while the socket is still
-    // alive, *before* deciding whether this send must be queued. Deferring
-    // derivation until drain time (when a previous handle's ACK arrives)
-    // races against the socket being torn down -- e.g. cluster handing two
-    // connections to a worker that immediately closes them. By then the
-    // socket's `_handle` is null and getIpcHandleInfo would throw
-    // `notImplemented("ChildProcess.send with non-TCP net.Socket handle")`.
-    // fdForIpc() dups the fd, so the captured copy survives the original
-    // socket's destruction.
-    let handleInfo = null;
-    if (handle !== undefined) {
-      handleInfo = getIpcHandleInfo(handle, options);
-      handleInfo.message.msg = message;
+    function handleMessage(msg, handle) {
+      if (!target.channel) {
+        return;
+      }
+      // serde_v8 deserializes objects with null prototype, but Node.js IPC
+      // messages should have Object.prototype (as if from JSON.parse).
+      if (serialization === "json") {
+        restorePrototype(msg);
+      }
+      // Match Node: when a handle was attached to an internal command (e.g.
+      // NODE_CLUSTER newconn from the round-robin handle), the unwrapped
+      // payload is itself a NODE_* internal message. Route it as
+      // internalMessage so cluster's listener receives it.
+      if (isInternal(msg)) {
+        target.emit("internalMessage", msg, handle);
+        return;
+      }
+      if (target.listenerCount("message") !== 0) {
+        target.emit("message", msg, handle);
+        return;
+      }
+
+      ArrayPrototypePush(target.channel[kPendingMessages], [msg, handle]);
     }
 
-    return enqueueOrDispatch(message, handleInfo, callback);
-  };
-
-  target.connected = true;
-
-  target.disconnect = function () {
-    if (!target.connected) {
-      throw new ERR_IPC_DISCONNECTED();
-    }
-
-    target.connected = false;
-    target[kCanDisconnect] = false;
-    cleanupPendingHandles();
-    control[kControlDisconnect]();
-    nextTick(() => {
-      target.channel = null;
-      core.close(ipc);
-      target.emit("disconnect");
+    target.on("newListener", () => {
+      nextTick(() => {
+        if (!target.channel || !target.listenerCount("message")) {
+          return;
+        }
+        for (
+          const pending of new SafeArrayIterator(
+            target.channel[kPendingMessages],
+          )
+        ) {
+          target.emit("message", pending[0], pending[1]);
+        }
+        target.channel[kPendingMessages] = [];
+      });
     });
-  };
-  target[kCanDisconnect] = true;
 
-  // Start reading messages from the channel.
-  readLoop();
+    target.send = function (message, handle, options, callback) {
+      if (typeof handle === "function") {
+        callback = handle;
+        handle = undefined;
+        options = undefined;
+      } else if (typeof options === "function") {
+        callback = options;
+        options = undefined;
+      } else if (options !== undefined) {
+        validateObject(options, "options");
+      }
 
-  return control;
-}
+      options = { swallowErrors: false, ...options };
 
-return {
-  ChildProcess,
-  mapValues,
-  stdioStringToArray,
-  getValidStdio,
-  validateNullByteNotInArg,
-  normalizeSpawnArguments,
-  spawnSync,
-  setupChannel,
-  default: {
+      if (message === undefined) {
+        throw new ERR_MISSING_ARGS("message");
+      }
+
+      if (
+        typeof message !== "string" &&
+        typeof message !== "object" &&
+        typeof message !== "number" &&
+        typeof message !== "boolean" &&
+        typeof message !== "bigint"
+      ) {
+        throw new ERR_INVALID_ARG_TYPE(
+          "message",
+          ["string", "object", "number", "boolean"],
+          message,
+        );
+      }
+
+      // Match Node: a falsy `handle` (undefined, null) means "no handle".
+      // Reject only non-falsy values that aren't a recognized handle type.
+      if (handle) {
+        if (
+          !ObjectPrototypeIsPrototypeOf(Socket.prototype, handle) &&
+          !ObjectPrototypeIsPrototypeOf(NetServer.prototype, handle) &&
+          !ObjectPrototypeIsPrototypeOf(DgramSocket.prototype, handle) &&
+          !ObjectPrototypeIsPrototypeOf(TCP.prototype, handle) &&
+          !ObjectPrototypeIsPrototypeOf(Pipe.prototype, handle)
+        ) {
+          throw new ERR_INVALID_HANDLE_TYPE();
+        }
+      } else {
+        handle = undefined;
+      }
+
+      if (!target.connected) {
+        const err = new ERR_IPC_CHANNEL_CLOSED();
+        if (typeof callback === "function") {
+          nextTick(callback, err);
+        } else {
+          nextTick(() => target.emit("error", err));
+        }
+        return false;
+      }
+
+      // Derive the handle's IPC info eagerly, while the socket is still
+      // alive, *before* deciding whether this send must be queued. Deferring
+      // derivation until drain time (when a previous handle's ACK arrives)
+      // races against the socket being torn down -- e.g. cluster handing two
+      // connections to a worker that immediately closes them. By then the
+      // socket's `_handle` is null and getIpcHandleInfo would throw
+      // `notImplemented("ChildProcess.send with non-TCP net.Socket handle")`.
+      // fdForIpc() dups the fd, so the captured copy survives the original
+      // socket's destruction.
+      let handleInfo = null;
+      if (handle !== undefined) {
+        handleInfo = getIpcHandleInfo(handle, options);
+        handleInfo.message.msg = message;
+      }
+
+      return enqueueOrDispatch(message, handleInfo, callback);
+    };
+
+    target.connected = true;
+
+    target.disconnect = function () {
+      if (!target.connected) {
+        throw new ERR_IPC_DISCONNECTED();
+      }
+
+      target.connected = false;
+      target[kCanDisconnect] = false;
+      cleanupPendingHandles();
+      control[kControlDisconnect]();
+      nextTick(() => {
+        target.channel = null;
+        core.close(ipc);
+        target.emit("disconnect");
+      });
+    };
+    target[kCanDisconnect] = true;
+
+    // Start reading messages from the channel.
+    readLoop();
+
+    return control;
+  }
+
+  return {
     ChildProcess,
-    getValidStdio,
-    normalizeSpawnArguments,
+    mapValues,
     stdioStringToArray,
+    getValidStdio,
+    validateNullByteNotInArg,
+    normalizeSpawnArguments,
     spawnSync,
     setupChannel,
-  },
-};
+    default: {
+      ChildProcess,
+      getValidStdio,
+      normalizeSpawnArguments,
+      stdioStringToArray,
+      spawnSync,
+      setupChannel,
+    },
+  };
 })();
