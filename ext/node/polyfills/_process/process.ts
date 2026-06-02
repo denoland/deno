@@ -205,7 +205,7 @@ const env:
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-const version = "v26.3.0";
+const version = "v24.2.0";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -216,7 +216,7 @@ const version = "v26.3.0";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 const versions = {
-  node: "26.3.0",
+  node: "24.2.0",
   uv: "1.43.0",
   zlib: "1.2.11",
   brotli: "1.0.9",
