@@ -4906,6 +4906,11 @@ struct State {
   mark: Option<PerformanceMark>,
   context: Option<super::trace::Context>,
   enable_tracing: Arc<AtomicBool>,
+  // Whether a real request has been serviced since the last idle memory
+  // release. Used by `op_poll_requests` to arm the idle timer only when there's
+  // actually something to release, so a quiescent language server doesn't keep
+  // waking up to run GCs forever.
+  serviced_since_idle_release: bool,
 }
 
 impl State {
@@ -4932,6 +4937,7 @@ impl State {
       pending_requests: Some(pending_requests),
       context: None,
       enable_tracing,
+      serviced_since_idle_release: false,
     }
   }
 
@@ -5129,18 +5135,76 @@ impl<'a> ToV8<'a> for TscRequestArray {
   }
 }
 
+/// How long the TSC isolate sits without a request before it prompts V8 to
+/// collect garbage and return memory to the OS. Kept comfortably longer than
+/// typical bursts of editor activity so we don't run a collection in the middle
+/// of someone's editing session. Overridable via the
+/// `DENO_LSP_IDLE_MEMORY_RELEASE_MS` env var (mainly so tests don't have to wait
+/// out the full delay; a very large value effectively disables the behavior).
+static IDLE_MEMORY_RELEASE_DELAY: std::sync::LazyLock<std::time::Duration> =
+  std::sync::LazyLock::new(|| {
+    const DEFAULT_MS: u64 = 5000;
+    let ms = std::env::var("DENO_LSP_IDLE_MEMORY_RELEASE_MS")
+      .ok()
+      .and_then(|s| s.parse::<u64>().ok())
+      .unwrap_or(DEFAULT_MS);
+    std::time::Duration::from_millis(ms)
+  });
+
 #[op2]
 async fn op_poll_requests(
   state: Rc<RefCell<OpState>>,
 ) -> convert::OptionNull<TscRequestArray> {
-  let mut pending_requests = {
+  let (mut pending_requests, arm_idle_timer) = {
     let mut state = state.borrow_mut();
     let state = state.try_borrow_mut::<State>().unwrap();
-    state.pending_requests.take().unwrap()
+    (
+      state.pending_requests.take().unwrap(),
+      state.serviced_since_idle_release,
+    )
   };
 
   // clear the resolution cache after each request
   NodeResolutionThreadLocalCache::clear();
+
+  // While the language server sits idle the TSC isolate can hold on to a lot of
+  // dead type-checker allocations (and the V8 heap pages behind them) that won't
+  // be handed back to the OS until something forces a collection. If we've
+  // serviced a request since the last release, wait for the next one with a
+  // timeout; when it elapses, ask the JS side to prompt V8 to collect and return
+  // that memory. See denoland/deno#23577.
+  let next_request = if arm_idle_timer {
+    match tokio::time::timeout(
+      *IDLE_MEMORY_RELEASE_DELAY,
+      pending_requests.recv(),
+    )
+    .await
+    {
+      Ok(maybe_request) => maybe_request,
+      Err(_) => {
+        let mut state = state.borrow_mut();
+        let state = state.try_borrow_mut::<State>().unwrap();
+        state.pending_requests = Some(pending_requests);
+        // Only fire once per idle period; the next real request re-arms it.
+        state.serviced_since_idle_release = false;
+        // Measurement is finalized in `op_lsp_release_memory`.
+        let mark = state
+          .performance
+          .mark(format!("tsc.host.{}", TscRequest::ReleaseMemory.method()));
+        state.mark = Some(mark);
+        return Some(TscRequestArray {
+          request: TscRequest::ReleaseMemory,
+          compiler_options_key: Default::default(),
+          notebook_uri: None,
+          id: Smi(0),
+          change: None.into(),
+        })
+        .into();
+      }
+    }
+  } else {
+    pending_requests.recv().await
+  };
 
   let Some((
     request,
@@ -5152,7 +5216,7 @@ async fn op_poll_requests(
     token,
     change,
     context,
-  )) = pending_requests.recv().await
+  )) = next_request
   else {
     return None.into();
   };
@@ -5160,6 +5224,9 @@ async fn op_poll_requests(
   let mut state = state.borrow_mut();
   let state = state.try_borrow_mut::<State>().unwrap();
   state.pending_requests = Some(pending_requests);
+  // We've done real work; arm the idle timer so memory is released once the
+  // language server goes quiet again.
+  state.serviced_since_idle_release = true;
   state.state_snapshot = snapshot;
   // Publish this request's cancellation token so the isolate's
   // near-heap-limit callback can cancel it if we're about to run out of
@@ -5251,6 +5318,22 @@ fn op_respond(
   // to fail in that case and this commonly occurs.
   if !was_sent && !state.token.is_cancelled() {
     lsp_warn!("Unable to send result to client.");
+  }
+}
+
+/// Prompt V8 to free as much memory as it can and hand it back to the OS.
+/// Called from the JS side during an idle memory release (see
+/// `op_poll_requests` and `serverMainLoop`). This is a stop-the-world
+/// collection, so it must only run when the isolate would otherwise be idle.
+#[op2(fast)]
+fn op_lsp_release_memory(state: &mut OpState, scope: &mut v8::PinScope) {
+  scope.low_memory_notification();
+  // Finalize the measurement started in `op_poll_requests` for this idle
+  // release. Done here (rather than via `op_respond`, which an idle release
+  // never reaches) so the work shows up in the perf log.
+  let state = state.borrow_mut::<State>();
+  if let Some(mark) = state.mark.take() {
+    state.performance.measure(mark);
   }
 }
 
@@ -5755,6 +5838,7 @@ deno_core::extension!(deno_tsc,
     op_release,
     op_resolve,
     op_respond,
+    op_lsp_release_memory,
     op_script_names,
     op_script_version,
     op_project_version,
@@ -6153,6 +6237,10 @@ enum TscRequest {
 
   GetAmbientModules,
   CleanupSemanticCache,
+  /// Synthesized by `op_poll_requests` when the language server has been idle.
+  /// Not a real client request: the JS main loop prompts V8 to collect and
+  /// return memory, and never sends a response.
+  ReleaseMemory,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
   FindReferences((String, u32)),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6235
@@ -6368,6 +6456,7 @@ impl TscRequest {
         ("organizeImports", Some(serde_v8::to_v8(scope, args)?))
       }
       TscRequest::CleanupSemanticCache => ("$cleanupSemanticCache", None),
+      TscRequest::ReleaseMemory => ("$releaseMemory", None),
     };
 
     Ok(args)
@@ -6378,6 +6467,7 @@ impl TscRequest {
       TscRequest::GetDiagnostics(_) => "$getDiagnostics",
       TscRequest::GetAmbientModules => "$getAmbientModules",
       TscRequest::CleanupSemanticCache => "$cleanupSemanticCache",
+      TscRequest::ReleaseMemory => "$releaseMemory",
       TscRequest::FindReferences(_) => "findReferences",
       TscRequest::GetNavigationTree(_) => "getNavigationTree",
       TscRequest::GetSupportedCodeFixes => "$getSupportedCodeFixes",
