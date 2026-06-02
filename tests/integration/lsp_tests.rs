@@ -21170,3 +21170,61 @@ fn lsp_isolated_declarations() {
     "Function must have an explicit return type annotation with --isolatedDeclarations."
   );
 }
+
+// Regression test for https://github.com/denoland/deno/issues/23577: when the
+// language server goes idle, the TSC isolate should prompt V8 to collect and
+// return memory to the OS, and must keep working afterwards.
+#[test(timeout = 300)]
+fn lsp_idle_memory_release() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context
+    .new_lsp_command()
+    .collect_perf()
+    // Fire the idle release quickly so the test doesn't wait out the default.
+    .env("DENO_LSP_IDLE_MEMORY_RELEASE_MS", "50")
+    .build();
+  client.initialize_default();
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "const a: number = 1;\nconsole.log(a);\n",
+    }
+  }));
+
+  // Issue a real request so there's serviced work to release, then wait for the
+  // idle release to fire (the isolate goes quiet ~50ms after this completes).
+  let hover = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": "file:///a/file.ts" },
+      "position": { "line": 0, "character": 6 },
+    }),
+  );
+  assert!(!hover.is_null());
+
+  assert!(
+    client
+      .perf_wait_for_measure("tsc.host.$releaseMemory")
+      .measure_count("tsc.host.$releaseMemory")
+      >= 1
+  );
+
+  // The server must still answer correctly after dropping its caches.
+  let hover = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": "file:///a/file.ts" },
+      "position": { "line": 0, "character": 6 },
+    }),
+  );
+  let value = hover["contents"]["value"].as_str().unwrap();
+  assert!(
+    value.contains("const a: number"),
+    "unexpected hover after idle release: {value:?}",
+  );
+
+  client.shutdown();
+}
