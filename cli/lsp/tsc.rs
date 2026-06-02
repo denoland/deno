@@ -4897,6 +4897,11 @@ struct State {
   last_scope: Option<Arc<Url>>,
   last_notebook_uri: Option<Arc<Uri>>,
   token: CancellationToken,
+  // Shared with the isolate's near-heap-limit callback so that a runaway
+  // request can be cancelled when the TSC isolate is about to run out of
+  // memory, instead of crashing the whole language server. See
+  // `run_tsc_thread`.
+  request_cancellation: Arc<Mutex<CancellationToken>>,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
   context: Option<super::trace::Context>,
@@ -4910,6 +4915,7 @@ impl State {
     performance: Arc<Performance>,
     pending_requests: UnboundedReceiver<Request>,
     enable_tracing: Arc<AtomicBool>,
+    request_cancellation: Arc<Mutex<CancellationToken>>,
   ) -> Self {
     Self {
       last_id: 1,
@@ -4921,6 +4927,7 @@ impl State {
       last_scope: None,
       last_notebook_uri: None,
       token: Default::default(),
+      request_cancellation,
       mark: None,
       pending_requests: Some(pending_requests),
       context: None,
@@ -5154,6 +5161,10 @@ async fn op_poll_requests(
   let state = state.try_borrow_mut::<State>().unwrap();
   state.pending_requests = Some(pending_requests);
   state.state_snapshot = snapshot;
+  // Publish this request's cancellation token so the isolate's
+  // near-heap-limit callback can cancel it if we're about to run out of
+  // memory while servicing it.
+  *state.request_cancellation.lock() = token.clone();
   state.token = token;
   state.response_tx = Some(response_tx);
   let id = state.last_id;
@@ -5615,6 +5626,9 @@ fn run_tsc_thread(
   enable_tracing: Arc<AtomicBool>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
+  // Shared with the isolate's near-heap-limit callback. `op_poll_requests`
+  // keeps this updated with the in-flight request's cancellation token.
+  let request_cancellation: Arc<Mutex<CancellationToken>> = Default::default();
   let mut extensions =
     deno_runtime::snapshot_info::get_extensions_in_snapshot();
   extensions.push(deno_tsc::init(
@@ -5622,14 +5636,53 @@ fn run_tsc_thread(
     specifier_map,
     request_rx,
     enable_tracing,
+    request_cancellation.clone(),
   ));
-  let tsc_runtime = JsRuntime::new(RuntimeOptions {
+  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
     ..Default::default()
   });
+
+  // The TSC isolate runs the TypeScript language service, whose type checker
+  // can occasionally blow up to many gigabytes for pathological inputs (e.g.
+  // deeply recursive library types while a file is mid-edit). Without
+  // intervention V8 aborts the whole process with a fatal OOM, taking the
+  // entire language server down and forcing a slow restart + reindex. Install
+  // a near-heap-limit callback that instead cancels the in-flight request
+  // (the language service host polls this token via `op_is_cancelled`, so the
+  // computation unwinds with an `OperationCanceledError` that's already
+  // handled gracefully) and grants a bounded amount of extra headroom so the
+  // unwinding has room to run. See denoland/deno#25613.
+  {
+    // Extra heap we're willing to hand out, total, before giving up and
+    // letting V8 OOM as a last resort (better than exhausting all of system
+    // memory). Granted in steps so we never overshoot by much.
+    const HEADROOM_BYTES: usize = 1024 * 1024 * 1024;
+    const STEP_BYTES: usize = 128 * 1024 * 1024;
+    let request_cancellation = request_cancellation.clone();
+    tsc_runtime.add_near_heap_limit_callback(
+      move |current_limit, initial_limit| {
+        // Cancel the request being serviced so the language service unwinds
+        // at its next cancellation checkpoint and frees the memory.
+        request_cancellation.lock().cancel();
+        let ceiling = initial_limit.saturating_add(HEADROOM_BYTES);
+        if current_limit >= ceiling {
+          lsp_warn!(
+            "TSC isolate exceeded its heap headroom; cancelling the request. The language server may run out of memory."
+          );
+          current_limit
+        } else {
+          lsp_warn!(
+            "TSC isolate is near its heap limit; cancelling the in-flight request to recover."
+          );
+          (current_limit + STEP_BYTES).min(ceiling)
+        }
+      },
+    );
+  }
 
   if let Some(server) = maybe_inspector_server {
     server.register_inspector(
@@ -5716,6 +5769,7 @@ deno_core::extension!(deno_tsc,
     specifier_map: Arc<TscSpecifierMap>,
     request_rx: UnboundedReceiver<Request>,
     enable_tracing: Arc<AtomicBool>,
+    request_cancellation: Arc<Mutex<CancellationToken>>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -5724,6 +5778,7 @@ deno_core::extension!(deno_tsc,
       options.performance,
       options.request_rx,
       options.enable_tracing,
+      options.request_cancellation,
     ));
   },
   customizer = |ext: &mut deno_core::Extension| {
@@ -6488,6 +6543,7 @@ mod tests {
       Default::default(),
       rx,
       Arc::new(AtomicBool::new(true)),
+      Default::default(),
     );
     let mut op_state = OpState::new(None);
     op_state.put(state);
