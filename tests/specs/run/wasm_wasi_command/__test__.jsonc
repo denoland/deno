@@ -1,0 +1,4 @@
+{
+  "args": "run hello.wasm",
+  "output": "hello.out"
+}
