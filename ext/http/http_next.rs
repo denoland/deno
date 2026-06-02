@@ -1365,6 +1365,10 @@ impl<I> RawH1RequestBody<I> {
     }
   }
 
+  fn cancel(&self) {
+    self.canceled.set(true);
+  }
+
   fn try_take_full(&self) -> Option<Vec<u8>> {
     if self.canceled.get() {
       return None;
@@ -1407,6 +1411,16 @@ where
         deno_error::JsErrorBox::generic("request body is no longer readable"),
       )));
     };
+    conn.scratch.ensure_read_capacity(this.limit);
+    if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
+      this.body.cancel();
+      return Poll::Ready(Err(HttpNextError::Other(
+        deno_error::JsErrorBox::new(
+          "BadResource",
+          "Cannot read request body as underlying resource unavailable",
+        ),
+      )));
+    }
     conn.poll_read_body(cx, this.limit)
   }
 }
@@ -1433,6 +1447,17 @@ where
         deno_error::JsErrorBox::generic("request body is no longer readable"),
       )));
     };
+    let buf_len = this.buf.as_ref().unwrap().len();
+    conn.scratch.ensure_read_capacity(buf_len);
+    if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
+      this.body.cancel();
+      return Poll::Ready(Err(HttpNextError::Other(
+        deno_error::JsErrorBox::new(
+          "BadResource",
+          "Cannot read request body as underlying resource unavailable",
+        ),
+      )));
+    }
     let buf = this.buf.as_mut().unwrap();
     let read = ready!(conn.poll_read_body_byob(cx, buf))?;
     let buf = this.buf.take().unwrap();

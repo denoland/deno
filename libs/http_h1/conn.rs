@@ -1859,23 +1859,18 @@ mod tests {
     assert_eq!(body_kind, BodyKind::ContentLength(BODY_LEN as u64));
 
     let mut received = Vec::new();
-    loop {
-      match std::future::poll_fn(|cx| {
-        conn.poll_read_body_chunk_limited_with(
-          cx,
-          &mut scratch,
-          READ_LIMIT,
-          |chunk| chunk.to_vec(),
-        )
-      })
-      .await?
-      {
-        SharedBodyChunk::Chunk(chunk) => {
-          assert!(chunk.len() <= READ_LIMIT);
-          received.extend_from_slice(&chunk);
-        }
-        SharedBodyChunk::Complete => break,
-      }
+    while let SharedBodyChunk::Chunk(chunk) = std::future::poll_fn(|cx| {
+      conn.poll_read_body_chunk_limited_with(
+        cx,
+        &mut scratch,
+        READ_LIMIT,
+        |chunk| chunk.to_vec(),
+      )
+    })
+    .await?
+    {
+      assert!(chunk.len() <= READ_LIMIT);
+      received.extend_from_slice(&chunk);
     }
     assert_eq!(received, body);
     Ok(())
