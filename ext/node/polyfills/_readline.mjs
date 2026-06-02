@@ -20,12 +20,21 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import { op_get_env_no_permission_check } from "ext:core/ops";
+
+const {
+  DateNow,
+  FunctionPrototypeBind,
+  ObjectDefineProperties,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  Promise,
+  PromiseReject,
+  StringPrototypeSlice,
+} = primordials;
 
 const {
   clearLine,
@@ -82,7 +91,7 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/readline/interface.mjs");
 
 function Interface(input, output, completer, terminal) {
-  if (!(this instanceof Interface)) {
+  if (!ObjectPrototypeIsPrototypeOf(Interface.prototype, this)) {
     return new Interface(input, output, completer, terminal);
   }
 
@@ -100,7 +109,8 @@ function Interface(input, output, completer, terminal) {
   // NOTE(bartlomieju): in Node this is `FunctionPrototypeCall(...)`,
   // but trying to do `Function.prototype.call()` somehow doesn't work here
   // /shrug
-  InterfaceConstructor.bind(
+  FunctionPrototypeBind(
+    InterfaceConstructor,
     this,
   )(
     input,
@@ -109,12 +119,12 @@ function Interface(input, output, completer, terminal) {
     terminal,
   );
   if (op_get_env_no_permission_check("TERM") === "dumb") {
-    this._ttyWrite = _ttyWriteDumb.bind(this);
+    this._ttyWrite = FunctionPrototypeBind(_ttyWriteDumb, this);
   }
 }
 
-Object.setPrototypeOf(Interface.prototype, _Interface.prototype);
-Object.setPrototypeOf(Interface, _Interface);
+ObjectSetPrototypeOf(Interface.prototype, _Interface.prototype);
+ObjectSetPrototypeOf(Interface, _Interface);
 
 /**
  * Displays `query` by writing it to the `output`.
@@ -160,7 +170,7 @@ Interface.prototype.question[promisify.custom] = function question(
   options = typeof options === "object" && options !== null ? options : {};
 
   if (options.signal && options.signal.aborted) {
-    return Promise.reject(
+    return PromiseReject(
       new AbortError(undefined, { cause: options.signal.reason }),
     );
   }
@@ -208,115 +218,138 @@ function createInterface(input, output, completer, terminal) {
   return new Interface(input, output, completer, terminal);
 }
 
-Object.defineProperties(Interface.prototype, {
+ObjectDefineProperties(Interface.prototype, {
+  __proto__: null,
   // Redirect internal prototype methods to the underscore notation for backward
   // compatibility.
   [kSetRawMode]: {
+    __proto__: null,
     get() {
       return this._setRawMode;
     },
   },
   [kOnLine]: {
+    __proto__: null,
     get() {
       return this._onLine;
     },
   },
   [kWriteToOutput]: {
+    __proto__: null,
     get() {
       return this._writeToOutput;
     },
   },
   [kAddHistory]: {
+    __proto__: null,
     get() {
       return this._addHistory;
     },
   },
   [kRefreshLine]: {
+    __proto__: null,
     get() {
       return this._refreshLine;
     },
   },
   [kNormalWrite]: {
+    __proto__: null,
     get() {
       return this._normalWrite;
     },
   },
   [kInsertString]: {
+    __proto__: null,
     get() {
       return this._insertString;
     },
   },
   [kTabComplete]: {
+    __proto__: null,
     get() {
       return this._tabComplete;
     },
   },
   [kWordLeft]: {
+    __proto__: null,
     get() {
       return this._wordLeft;
     },
   },
   [kWordRight]: {
+    __proto__: null,
     get() {
       return this._wordRight;
     },
   },
   [kDeleteLeft]: {
+    __proto__: null,
     get() {
       return this._deleteLeft;
     },
   },
   [kDeleteRight]: {
+    __proto__: null,
     get() {
       return this._deleteRight;
     },
   },
   [kDeleteWordLeft]: {
+    __proto__: null,
     get() {
       return this._deleteWordLeft;
     },
   },
   [kDeleteWordRight]: {
+    __proto__: null,
     get() {
       return this._deleteWordRight;
     },
   },
   [kDeleteLineLeft]: {
+    __proto__: null,
     get() {
       return this._deleteLineLeft;
     },
   },
   [kDeleteLineRight]: {
+    __proto__: null,
     get() {
       return this._deleteLineRight;
     },
   },
   [kLine]: {
+    __proto__: null,
     get() {
       return this._line;
     },
   },
   [kHistoryNext]: {
+    __proto__: null,
     get() {
       return this._historyNext;
     },
   },
   [kHistoryPrev]: {
+    __proto__: null,
     get() {
       return this._historyPrev;
     },
   },
   [kGetDisplayPos]: {
+    __proto__: null,
     get() {
       return this._getDisplayPos;
     },
   },
   [kMoveCursor]: {
+    __proto__: null,
     get() {
       return this._moveCursor;
     },
   },
   [kTtyWrite]: {
+    __proto__: null,
     get() {
       return this._ttyWrite;
     },
@@ -325,6 +358,7 @@ Object.defineProperties(Interface.prototype, {
   // Defining proxies for the internal instance properties for backward
   // compatibility.
   _decoder: {
+    __proto__: null,
     get() {
       return this[kDecoder];
     },
@@ -333,6 +367,7 @@ Object.defineProperties(Interface.prototype, {
     },
   },
   _line_buffer: {
+    __proto__: null,
     get() {
       return this[kLine_buffer];
     },
@@ -341,6 +376,7 @@ Object.defineProperties(Interface.prototype, {
     },
   },
   _oldPrompt: {
+    __proto__: null,
     get() {
       return this[kOldPrompt];
     },
@@ -349,6 +385,7 @@ Object.defineProperties(Interface.prototype, {
     },
   },
   _previousKey: {
+    __proto__: null,
     get() {
       return this[kPreviousKey];
     },
@@ -357,6 +394,7 @@ Object.defineProperties(Interface.prototype, {
     },
   },
   _prompt: {
+    __proto__: null,
     get() {
       return this[kPrompt];
     },
@@ -365,6 +403,7 @@ Object.defineProperties(Interface.prototype, {
     },
   },
   _questionCallback: {
+    __proto__: null,
     get() {
       return this[kQuestionCallback];
     },
@@ -373,6 +412,7 @@ Object.defineProperties(Interface.prototype, {
     },
   },
   _sawKeyPress: {
+    __proto__: null,
     get() {
       return this[kSawKeyPress];
     },
@@ -381,6 +421,7 @@ Object.defineProperties(Interface.prototype, {
     },
   },
   _sawReturnAt: {
+    __proto__: null,
     get() {
       return this[kSawReturnAt];
     },
@@ -402,7 +443,7 @@ Interface.prototype._tabComplete = function (lastKeypressWasTab) {
   // Overriding parent method because `this.completer` in the legacy
   // implementation takes a callback instead of being an async function.
   this.pause();
-  const string = this.line.slice(0, this.cursor);
+  const string = StringPrototypeSlice(this.line, 0, this.cursor);
   this.completer(string, (err, value) => {
     this.resume();
 
@@ -459,7 +500,7 @@ function _ttyWriteDumb(s, key) {
 
   switch (key.name) {
     case "return": // Carriage return, i.e. \r
-      this[kSawReturnAt] = Date.now();
+      this[kSawReturnAt] = DateNow();
       this._line();
       break;
 
@@ -467,7 +508,7 @@ function _ttyWriteDumb(s, key) {
       // When key interval > crlfDelay
       if (
         this[kSawReturnAt] === 0 ||
-        Date.now() - this[kSawReturnAt] > this.crlfDelay
+        DateNow() - this[kSawReturnAt] > this.crlfDelay
       ) {
         this._line();
       }
