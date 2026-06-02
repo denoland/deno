@@ -396,11 +396,13 @@ pub async fn bundle_for_compile(
   // Without this, module-graph creation skips deep CJS files inside
   // `node_modules` (jiti.cjs is the canonical case) and the parent
   // `.mjs` trips an esbuild parse error when its import target can't
-  // be loaded. This is a surgical override of just the resolver's
-  // `bundle_mode` flag — narrower than swapping the whole subcommand,
-  // which would also flip `node_code_translator_mode` and disable the
-  // `.node` extension fallback that `compile --bundle` still needs
-  // for native addons.
+  // be loaded. This flips the same three resolver knobs `deno bundle`
+  // sets (`bundle_mode`, `node_code_translator_mode` = Disabled,
+  // `allow_json_imports` = Always) without otherwise swapping the
+  // subcommand, so the rest of compilation keeps Compile semantics.
+  // Disabling the code translator means the CJS analyzer's
+  // extensionless `.node` auto-resolution no longer runs, which is why
+  // the resolver grows a `.node` fallback (see `resolution.rs`).
   let mut flags = flags;
   {
     let flags_mut = Arc::make_mut(&mut flags);
@@ -770,6 +772,33 @@ var __require = __deno_internal_createRequire(import.meta.url);
     )
     .into_owned()
   }
+}
+
+// Force esbuild's CommonJS-to-ESM interop helper (`__toESM`) into "node mode"
+// for the Deno platform.
+//
+// esbuild emits a node-mode interop call (`__toESM(require_x(), 1)`) only when
+// it can tell the importing module is *explicitly* ESM (a `.mjs`/`.mts` file or
+// a file under a `"type": "module"` package.json). It learns this while walking
+// package.json during its own resolve step. In `deno bundle` resolution and
+// loading are handled by our plugin, and esbuild's plugin protocol has no way
+// to communicate a module's type, so esbuild falls back to browser-mode interop
+// which respects the `__esModule` marker and does not synthesize `.default`.
+//
+// For packages whose ESM wrapper default-imports a CJS entry that sets
+// `module.exports.__esModule = true` (e.g. tslib's `modules/index.js`), that
+// means `import_x.default` ends up undefined and module init throws. Deno's own
+// runtime always uses node-style interop here, so the bundle should too. We
+// rewrite the helper's `<isNodeMode> || !mod || !mod.__esModule` condition to
+// always pick the node-mode branch. See denoland/deno#34524.
+//
+// The variable names differ between minified and non-minified output, but the
+// `.__esModule` access and surrounding shape are stable, so a single regex
+// covers both.
+fn force_node_cjs_interop(contents: &str) -> String {
+  let re =
+    lazy_regex::regex!(r#"\w+\s*\|\|\s*!\w+\s*\|\|\s*!\w+\.__esModule\s*\?"#);
+  re.replace(contents, "1 ?").into_owned()
 }
 
 fn format_location(
@@ -1763,6 +1792,17 @@ impl DenoPluginHandler {
     let mut transform = transform::BundleImportMetaMainTransform::new(
       graph.roots.contains(specifier) || resolved_roots.contains(specifier),
     );
+    // A CJS module imported from ESM reaches us as an ESM facade the module
+    // loader generated (`import { createRequire } ...; export default mod;`).
+    // Parsing that under `MediaType::Cjs` forces script mode (see
+    // deno_ast `refine_parse_mode`), which rejects the facade's import/export
+    // statements with a parse error. Parse as JavaScript so program mode
+    // auto-detects module vs script and handles both the facade and genuine
+    // CJS scripts.
+    let media_type = match media_type {
+      deno_ast::MediaType::Cjs => deno_ast::MediaType::JavaScript,
+      other => other,
+    };
     let parsed_source = deno_ast::parse_program_with_post_process(
       deno_ast::ParseParams {
         specifier: specifier.clone(),
@@ -2121,7 +2161,7 @@ pub fn maybe_process_contents(
   if is_js {
     let string = str::from_utf8(&file.contents)?;
     let string = if should_replace_require_shim {
-      replace_require_shim(string, minified)
+      force_node_cjs_interop(&replace_require_shim(string, minified))
     } else {
       string.to_string()
     };

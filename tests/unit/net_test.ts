@@ -136,6 +136,42 @@ Deno.test(
 
 Deno.test(
   {
+    permissions: { net: true },
+  },
+  async function netTcpListenAfterCloseWhileAcceptSettles() {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const { hostname, port } = listener.addr as Deno.NetAddr;
+    const acceptPromise = listener.accept();
+    listener.close();
+    await assertRejects(
+      () => acceptPromise,
+      Deno.errors.BadResource,
+      "Listener has been closed",
+    );
+
+    const listener2 = Deno.listen({ hostname, port });
+    listener2.close();
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function netTcpListenAfterCloseWhileAsyncIteratorSettles() {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const { hostname, port } = listener.addr as Deno.NetAddr;
+    const nextPromise = listener[Symbol.asyncIterator]().next();
+    listener.close();
+    assertEquals(await nextPromise, { value: undefined, done: true });
+
+    const listener2 = Deno.listen({ hostname, port });
+    listener2.close();
+  },
+);
+
+Deno.test(
+  {
     ignore: Deno.build.os === "windows",
     permissions: { read: true, write: true },
   },

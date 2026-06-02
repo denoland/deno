@@ -868,16 +868,19 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   phase: v8::ModuleImportPhase,
   import_attributes: v8::Local<'s, v8::FixedArray>,
 ) -> Option<v8::Local<'s, v8::Promise>> {
+  let host_defined_options_kind =
+    crate::runtime::host_defined_options::read_host_defined_options_kind(
+      scope,
+      host_defined_options,
+    );
+
   // Scripts compiled by `node:vm` without an `importModuleDynamically`
   // callback tag their host-defined options so that dynamic `import()` at
   // runtime rejects with `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` instead
   // of falling through to the embedder's module loader (which would let
   // the sandboxed script reach arbitrary modules).
   if matches!(
-    crate::runtime::host_defined_options::read_host_defined_options_kind(
-      scope,
-      host_defined_options,
-    ),
+    host_defined_options_kind,
     Some(
       crate::runtime::host_defined_options::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING,
     )
@@ -887,6 +890,20 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
     let exception = vm_dynamic_import_callback_missing_exception(scope);
     resolver.reject(scope, exception);
     return Some(promise);
+  }
+
+  if matches!(
+    host_defined_options_kind,
+    Some(
+      crate::runtime::host_defined_options::host_defined_options_kind::VM_DYNAMIC_IMPORT_CALLBACK,
+    )
+  ) {
+    return Some(host_import_module_with_vm_dynamic_import_callback(
+      scope,
+      host_defined_options,
+      specifier,
+      import_attributes,
+    ));
   }
 
   // NOTE(bartlomieju): will crash for non-UTF-8 specifier
@@ -977,6 +994,75 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
   };
 
   Some(promise_new)
+}
+
+fn host_import_module_with_vm_dynamic_import_callback<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  host_defined_options: v8::Local<'s, v8::Data>,
+  specifier: v8::Local<'s, v8::String>,
+  import_attributes: v8::Local<'s, v8::FixedArray>,
+) -> v8::Local<'s, v8::Promise> {
+  let resolver = v8::PromiseResolver::new(scope).unwrap();
+  let promise = resolver.get_promise(scope);
+
+  let Some(callback_id) =
+    crate::runtime::host_defined_options::read_host_defined_options_key(
+      scope,
+      host_defined_options,
+    )
+  else {
+    let exception = vm_dynamic_import_callback_missing_exception(scope);
+    resolver.reject(scope, exception);
+    return promise;
+  };
+
+  let assertions = parse_import_attributes(
+    scope,
+    import_attributes,
+    ImportAttributesKind::DynamicImport,
+  );
+  let attributes_obj = v8::Object::new(scope);
+  for (key, value) in assertions {
+    let key = v8::String::new(scope, &key).unwrap();
+    let value = v8::String::new(scope, &value).unwrap();
+    attributes_obj.create_data_property(scope, key.into(), value.into());
+  }
+
+  v8::tc_scope!(let tc_scope, scope);
+  let callback = {
+    let state = JsRuntime::state_from(tc_scope);
+    state
+      .vm_dynamic_import_callbacks
+      .borrow()
+      .get(&callback_id)
+      .cloned()
+  };
+
+  let Some(callback) = callback else {
+    let exception = vm_dynamic_import_callback_missing_exception(tc_scope);
+    resolver.reject(tc_scope, exception);
+    return promise;
+  };
+
+  let callback = v8::Local::new(tc_scope, callback);
+  let recv = v8::undefined(tc_scope).into();
+  let args = [specifier.into(), attributes_obj.into()];
+  match callback.call(tc_scope, recv, &args) {
+    Some(value) => {
+      resolver.resolve(tc_scope, value);
+    }
+    None => {
+      if tc_scope.has_caught() {
+        let exception = tc_scope.exception().unwrap();
+        resolver.reject(tc_scope, exception);
+      } else {
+        let exception = vm_dynamic_import_callback_missing_exception(tc_scope);
+        resolver.reject(tc_scope, exception);
+      }
+    }
+  }
+
+  promise
 }
 
 /// Build a Node-style `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING` TypeError.

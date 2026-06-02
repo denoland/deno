@@ -42,6 +42,22 @@ function getCompilationSettings(settingsOrHost) {
   return /** @type {ts.CompilerOptions} */ (settingsOrHost);
 }
 
+/**
+ * Assigns `moduleName` on a source file so that tsc displays the original
+ * module specifier (e.g. in `typeof import("...")`) for non-file URL
+ * specifiers like `https://...`. For `file://` specifiers we leave it
+ * unset so tsc keeps its usual relative-path computation and so internal
+ * details like the `/$node_modules/` rewrite don't leak into hovers.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @param {string} fileName
+ */
+function setSourceFileModuleNameForDisplay(sourceFile, fileName) {
+  if (!fileName.startsWith("file:")) {
+    sourceFile.moduleName = fileName;
+  }
+}
+
 // We need to use a custom document registry in order to provide source files
 // with an impliedNodeFormat to the ts language service
 
@@ -105,6 +121,12 @@ const documentRegistry = {
       if (scriptSnapshot.isClassicScript) {
         sourceFile.externalModuleIndicator = undefined;
       }
+      // Preserve the original module specifier so that `typeof import(...)`
+      // displays the URL exactly as the user wrote it, including extensions.
+      // Without this, tsc's `getSpecifierForModuleSymbol` recomputes the
+      // specifier via `getModuleSpecifiers`, which strips `.ts` from URL
+      // imports like `https://example.com/mod.ts`. See denoland/deno#16058.
+      setSourceFileModuleNameForDisplay(sourceFile, fileName);
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     const sourceRefCount = SOURCE_REF_COUNTS.get(fileName) ?? 0;
@@ -170,6 +192,7 @@ const documentRegistry = {
       if (scriptSnapshot.isClassicScript) {
         sourceFile.externalModuleIndicator = undefined;
       }
+      setSourceFileModuleNameForDisplay(sourceFile, fileName);
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     return sourceFile;

@@ -30,6 +30,7 @@ const {
   op_v8_read_uint64,
   op_v8_read_value,
   op_v8_release_buffer,
+  op_v8_set_flags_from_string,
   op_v8_set_treat_array_buffer_views_as_host_objects,
   op_v8_query_objects_count,
   op_v8_take_heap_snapshot,
@@ -58,7 +59,7 @@ const { isArrayBufferView } = core.loadExtScript(
 const lazyFsUtils = core.createLazyLoader(
   "ext:deno_node/internal/fs/utils.mjs",
 );
-const { validateFunction, validateObject, validateOneOf } = core
+const { validateFunction, validateObject, validateOneOf, validateString } = core
   .loadExtScript(
     "ext:deno_node/internal/validators.mjs",
   );
@@ -129,15 +130,14 @@ function getHeapStatistics() {
   };
 }
 
-function setFlagsFromString() {
+function setFlagsFromString(flags: string) {
   // NOTE(bartlomieju): From Node.js docs:
   // The v8.setFlagsFromString() method can be used to programmatically set V8
   // command-line flags. This method should be used with care. Changing settings
   // after the VM has started may result in unpredictable behavior, including
   // crashes and data loss; or it may simply do nothing.
-  //
-  // Notice: "or it may simply do nothing". This is what we're gonna do,
-  // this function will just be a no-op.
+  validateString(flags, "flags");
+  op_v8_set_flags_from_string(flags);
 }
 function stopCoverage() {
   notImplemented("v8.stopCoverage");

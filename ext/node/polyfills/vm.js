@@ -10,6 +10,7 @@ const {
   op_vm_create_context,
   op_vm_create_context_without_contextify,
   op_vm_create_script,
+  op_vm_dynamic_import_callback_register,
   op_vm_is_context,
   op_vm_module_create_source_text_module,
   op_vm_module_create_synthetic_module,
@@ -64,10 +65,14 @@ const {
   SafeMap,
   SafePromiseAll,
   SafeSet,
+  SafeWeakMap,
   Symbol,
+  WeakMapPrototypeGet,
+  WeakMapPrototypeSet,
 } = primordials;
 
 const kParsingContext = Symbol("script parsing context");
+const importModuleDynamicallyMap = new SafeWeakMap();
 
 const USE_MAIN_CONTEXT_DEFAULT_LOADER = Symbol(
   "USE_MAIN_CONTEXT_DEFAULT_LOADER",
@@ -103,8 +108,16 @@ class Script {
     }
     validateBoolean(produceCachedData, "options.produceCachedData");
 
-    const useDefaultLoader =
-      importModuleDynamically === USE_MAIN_CONTEXT_DEFAULT_LOADER;
+    const referrer = { value: undefined };
+    const effectiveImportModuleDynamically =
+      importModuleDynamically === undefined && parsingContext !== undefined
+        ? WeakMapPrototypeGet(importModuleDynamicallyMap, parsingContext)
+        : importModuleDynamically;
+    const importModuleDynamicallyId = getImportModuleDynamicallyId(
+      effectiveImportModuleDynamically,
+      "options.importModuleDynamically",
+      () => referrer.value,
+    );
 
     const result = op_vm_create_script(
       code,
@@ -114,9 +127,10 @@ class Script {
       cachedData,
       produceCachedData,
       parsingContext,
-      useDefaultLoader,
+      importModuleDynamicallyId,
     );
     this.#inner = result.value;
+    referrer.value = this;
     this.cachedDataProduced = result.cached_data_produced;
     this.cachedDataRejected = result.cached_data_rejected;
     this.cachedData = result.cached_data
@@ -176,6 +190,45 @@ class Script {
   createCachedData() {
     return Buffer.from(op_vm_script_create_cached_data(this.#inner));
   }
+}
+
+function finishDynamicImportResult(result) {
+  if (isModule(result)) {
+    return PromisePrototypeThen(result.evaluate(), () => result.namespace);
+  }
+  return result;
+}
+
+function validateImportModuleDynamically(value, name) {
+  if (
+    value !== undefined &&
+    value !== USE_MAIN_CONTEXT_DEFAULT_LOADER &&
+    typeof value !== "function"
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      name,
+      "function",
+      value,
+    );
+  }
+}
+
+function getImportModuleDynamicallyId(value, name, getReferrer) {
+  validateImportModuleDynamically(value, name);
+  if (value === USE_MAIN_CONTEXT_DEFAULT_LOADER) {
+    return -1;
+  }
+  if (value === undefined) {
+    return 0;
+  }
+  return op_vm_dynamic_import_callback_register(
+    (specifier, importAttributes) => {
+      return PromisePrototypeThen(
+        PromiseResolve(value(specifier, getReferrer(), importAttributes)),
+        finishDynamicImportResult,
+      );
+    },
+  );
 }
 
 function validateContext(contextifiedObject) {
@@ -238,6 +291,7 @@ function createContext(
       origin,
       codeGeneration,
       microtaskMode,
+      importModuleDynamically,
     } = options;
 
     validateString(name, "options.name");
@@ -260,13 +314,23 @@ function createContext(
       "afterEvaluate",
       undefined,
     ]);
+    validateImportModuleDynamically(
+      importModuleDynamically,
+      "options.importModuleDynamically",
+    );
     const microtaskQueue = microtaskMode === "afterEvaluate";
 
-    return op_vm_create_context_without_contextify(
+    const context = op_vm_create_context_without_contextify(
       strings,
       wasm,
       microtaskQueue,
     );
+    WeakMapPrototypeSet(
+      importModuleDynamicallyMap,
+      context,
+      importModuleDynamically,
+    );
+    return context;
   }
 
   if (isContext(contextObject)) {
@@ -280,7 +344,7 @@ function createContext(
     origin,
     codeGeneration,
     microtaskMode,
-    // importModuleDynamically,
+    importModuleDynamically,
   } = options;
 
   validateString(name, "options.name");
@@ -303,10 +367,11 @@ function createContext(
     "afterEvaluate",
     undefined,
   ]);
+  validateImportModuleDynamically(
+    importModuleDynamically,
+    "options.importModuleDynamically",
+  );
   const microtaskQueue = microtaskMode === "afterEvaluate";
-
-  // const hostDefinedOptionId =
-  //   getHostDefinedOptionId(importModuleDynamically, name);
 
   op_vm_create_context(
     contextObject,
@@ -316,8 +381,11 @@ function createContext(
     wasm,
     microtaskQueue,
   );
-  // Register the context scope callback after the context was initialized.
-  // registerImportModuleDynamically(contextObject, importModuleDynamically);
+  WeakMapPrototypeSet(
+    importModuleDynamicallyMap,
+    contextObject,
+    importModuleDynamically,
+  );
   return contextObject;
 }
 
@@ -377,7 +445,7 @@ function compileFunction(code, params, options = { __proto__: null }) {
     produceCachedData = false,
     parsingContext = undefined,
     contextExtensions = [],
-    // importModuleDynamically,
+    importModuleDynamically,
   } = options;
 
   validateString(filename, "options.filename");
@@ -406,8 +474,16 @@ function compileFunction(code, params, options = { __proto__: null }) {
     validateObject(extension, name, { nullable: true });
   });
 
-  const useDefaultLoader =
-    options.importModuleDynamically === USE_MAIN_CONTEXT_DEFAULT_LOADER;
+  const referrer = { value: undefined };
+  const effectiveImportModuleDynamically =
+    importModuleDynamically === undefined && parsingContext !== undefined
+      ? WeakMapPrototypeGet(importModuleDynamicallyMap, parsingContext)
+      : importModuleDynamically;
+  const importModuleDynamicallyId = getImportModuleDynamicallyId(
+    effectiveImportModuleDynamically,
+    "options.importModuleDynamically",
+    () => referrer.value,
+  );
 
   const result = op_vm_compile_function(
     code,
@@ -419,8 +495,9 @@ function compileFunction(code, params, options = { __proto__: null }) {
     parsingContext,
     contextExtensions,
     params,
-    useDefaultLoader,
+    importModuleDynamicallyId,
   );
+  referrer.value = result.value;
 
   result.value.cachedDataProduced = result.cached_data_produced;
   result.value.cachedDataRejected = result.cached_data_rejected;
@@ -650,8 +727,16 @@ class SourceTextModule extends Module {
     validateInt32(lineOffset, "options.lineOffset");
     validateInt32(columnOffset, "options.columnOffset");
 
-    const useDefaultLoader =
-      importModuleDynamically === USE_MAIN_CONTEXT_DEFAULT_LOADER;
+    const referrer = { value: undefined };
+    const effectiveImportModuleDynamically =
+      importModuleDynamically === undefined && context !== undefined
+        ? WeakMapPrototypeGet(importModuleDynamicallyMap, context)
+        : importModuleDynamically;
+    const importModuleDynamicallyId = getImportModuleDynamicallyId(
+      effectiveImportModuleDynamically,
+      "options.importModuleDynamically",
+      () => referrer.value,
+    );
 
     this[kContext] = context;
     this[kWrap] = op_vm_module_create_source_text_module(
@@ -660,8 +745,9 @@ class SourceTextModule extends Module {
       lineOffset,
       columnOffset,
       context,
-      useDefaultLoader,
+      importModuleDynamicallyId,
     );
+    referrer.value = this;
     this[kModuleRequests] = buildModuleRequests(this[kWrap]);
     this[kDependencySpecifiers] = undefined;
   }

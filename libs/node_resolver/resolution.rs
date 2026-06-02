@@ -7,6 +7,8 @@ use std::io::BufReader;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use anyhow::Error as AnyError;
 use anyhow::bail;
@@ -76,9 +78,13 @@ pub static IMPORT_CONDITIONS: &[Cow<'static, str>] = &[
   Cow::Borrowed("deno"),
   Cow::Borrowed("node"),
   Cow::Borrowed("import"),
+  Cow::Borrowed("module-sync"),
 ];
-pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] =
-  &[Cow::Borrowed("require"), Cow::Borrowed("node")];
+pub static REQUIRE_CONDITIONS: &[Cow<'static, str>] = &[
+  Cow::Borrowed("require"),
+  Cow::Borrowed("node"),
+  Cow::Borrowed("module-sync"),
+];
 static TYPES_ONLY_CONDITIONS: &[Cow<'static, str>] = &[Cow::Borrowed("types")];
 
 #[derive(Debug, Default, Clone)]
@@ -86,11 +92,11 @@ pub struct NodeConditionOptions {
   pub conditions: Vec<Cow<'static, str>>,
   /// Provide a value to override the default import conditions.
   ///
-  /// Defaults to `["deno", "node", "import"]`
+  /// Defaults to `["deno", "node", "import", "module-sync"]`
   pub import_conditions_override: Option<Vec<Cow<'static, str>>>,
   /// Provide a value to override the default require conditions.
   ///
-  /// Defaults to `["require", "node"]`
+  /// Defaults to `["require", "node", "module-sync"]`
   pub require_conditions_override: Option<Vec<Cow<'static, str>>>,
 }
 
@@ -298,7 +304,7 @@ fn browser_map_key_matches(key_path: &Path, resolved_path: &Path) -> bool {
 
 #[derive(Debug)]
 struct ResolutionConfig {
-  pub bundle_mode: bool,
+  pub bundle_mode: AtomicBool,
   pub prefer_browser_field: bool,
   pub typescript_version: Option<Version>,
 }
@@ -391,7 +397,7 @@ impl<
           }),
       }),
       resolution_config: ResolutionConfig {
-        bundle_mode: options.bundle_mode,
+        bundle_mode: AtomicBool::new(options.bundle_mode),
         prefer_browser_field: options.is_browser_platform,
         typescript_version: options.typescript_version,
       },
@@ -400,6 +406,21 @@ impl<
 
   pub fn require_conditions(&self) -> &[Cow<'static, str>] {
     self.condition_resolver.require_conditions()
+  }
+
+  /// Updates whether the resolver should treat resolutions as occurring
+  /// inside a bundler (e.g. when `moduleResolution: "bundler"` is set). When
+  /// enabled, directory imports do not error and a CommonJS-style fallback
+  /// resolution is used for extensionless files.
+  pub fn set_bundle_mode(&self, bundle_mode: bool) {
+    self
+      .resolution_config
+      .bundle_mode
+      .store(bundle_mode, Ordering::Relaxed);
+  }
+
+  fn bundle_mode(&self) -> bool {
+    self.resolution_config.bundle_mode.load(Ordering::Relaxed)
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
@@ -843,9 +864,7 @@ impl<
     let maybe_file_type = self.sys.get_file_type(Cow::Borrowed(&path));
     match maybe_file_type {
       Ok(FileType::Dir) => {
-        if resolution_mode == ResolutionMode::Import
-          && !self.resolution_config.bundle_mode
-        {
+        if resolution_mode == ResolutionMode::Import && !self.bundle_mode() {
           let suggestion = self.directory_import_suggestion(&path);
           Err(
             UnsupportedDirImportError {
@@ -891,8 +910,7 @@ impl<
       }
       _ => {
         if let Err(e) = maybe_file_type
-          && (resolution_mode == ResolutionMode::Require
-            || self.resolution_config.bundle_mode)
+          && (resolution_mode == ResolutionMode::Require || self.bundle_mode())
           && e.kind() == std::io::ErrorKind::NotFound
         {
           // Match Node's `require()` resolution order: try .js, then .node
@@ -2204,7 +2222,7 @@ impl<
     fn filter_empty(value: Option<&str>) -> Option<&str> {
       value.map(|v| v.trim()).filter(|v| !v.is_empty())
     }
-    if self.resolution_config.bundle_mode {
+    if self.bundle_mode() {
       let maybe_browser = if self.resolution_config.prefer_browser_field {
         filter_empty(package_json.browser.as_deref())
       } else {
@@ -3064,6 +3082,7 @@ mod tests {
   use sys_traits::impls::InMemorySys;
 
   use super::*;
+  use crate::PackageJsonResolver;
 
   fn build_package_json(json: Value) -> PackageJson {
     PackageJson::load_from_value(PathBuf::from("/package.json"), json).unwrap()
@@ -3077,6 +3096,128 @@ mod tests {
         .map(|(k, v)| (k, BinValue::JsFile(v)))
         .collect(),
     }
+  }
+
+  #[derive(Debug)]
+  struct TestBuiltInNodeModuleChecker;
+
+  impl IsBuiltInNodeModuleChecker for TestBuiltInNodeModuleChecker {
+    fn is_builtin_node_module(&self, _module_name: &str) -> bool {
+      false
+    }
+  }
+
+  struct TestNpmPackageFolderResolver;
+
+  impl NpmPackageFolderResolver for TestNpmPackageFolderResolver {
+    fn resolve_package_folder_from_package(
+      &self,
+      _specifier: &str,
+      _referrer: &UrlOrPathRef,
+    ) -> Result<PathBuf, errors::PackageFolderResolveError> {
+      unreachable!()
+    }
+
+    fn resolve_types_package_folder(
+      &self,
+      _types_package_name: &str,
+      _maybe_package_version: Option<&Version>,
+      _maybe_referrer: Option<&UrlOrPathRef>,
+    ) -> Option<PathBuf> {
+      None
+    }
+  }
+
+  struct TestInNpmPackageChecker;
+
+  impl InNpmPackageChecker for TestInNpmPackageChecker {
+    fn in_npm_package(&self, _specifier: &Url) -> bool {
+      false
+    }
+  }
+
+  fn test_node_resolver() -> NodeResolver<
+    TestInNpmPackageChecker,
+    TestBuiltInNodeModuleChecker,
+    TestNpmPackageFolderResolver,
+    InMemorySys,
+  > {
+    let sys = InMemorySys::default();
+    NodeResolver::new(
+      TestInNpmPackageChecker,
+      TestBuiltInNodeModuleChecker,
+      TestNpmPackageFolderResolver,
+      deno_maybe_sync::new_rc(PackageJsonResolver::new(sys.clone(), None)),
+      NodeResolutionSys::new(sys, None),
+      NodeResolverOptions::default(),
+    )
+  }
+
+  #[test]
+  fn test_default_conditions_include_module_sync() {
+    assert_eq!(
+      IMPORT_CONDITIONS,
+      &[
+        Cow::Borrowed("deno"),
+        Cow::Borrowed("node"),
+        Cow::Borrowed("import"),
+        Cow::Borrowed("module-sync"),
+      ]
+    );
+    assert_eq!(
+      REQUIRE_CONDITIONS,
+      &[
+        Cow::Borrowed("require"),
+        Cow::Borrowed("node"),
+        Cow::Borrowed("module-sync"),
+      ]
+    );
+  }
+
+  #[test]
+  fn test_module_sync_condition_matches_import_and_require() {
+    let resolver = test_node_resolver();
+    let package_json_path =
+      PathBuf::from("/node_modules/module-sync-pkg/package.json");
+    let package_exports = json!({
+      ".": {
+        "module-sync": "./sync.mjs",
+        "node": "./node.cjs"
+      }
+    });
+    let package_exports = package_exports.as_object().unwrap();
+
+    let import_resolved = resolver
+      .package_exports_resolve(
+        &package_json_path,
+        ".",
+        package_exports,
+        None,
+        ResolutionMode::Import,
+        resolver.condition_resolver.resolve(ResolutionMode::Import),
+        NodeResolutionKind::Execution,
+      )
+      .unwrap();
+    let require_resolved = resolver
+      .package_exports_resolve(
+        &package_json_path,
+        ".",
+        package_exports,
+        None,
+        ResolutionMode::Require,
+        resolver.require_conditions(),
+        NodeResolutionKind::Execution,
+      )
+      .unwrap();
+
+    assert_eq!(
+      import_resolved.into_path().unwrap(),
+      PathBuf::from("/node_modules/module-sync-pkg/sync.mjs")
+    );
+    assert_eq!(
+      require_resolved.into_path().unwrap(),
+      PathBuf::from("/node_modules/module-sync-pkg/sync.mjs")
+    );
   }
 
   #[test]

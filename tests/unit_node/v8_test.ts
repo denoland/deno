@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import * as v8 from "node:v8";
+import { runInNewContext } from "node:vm";
 import { assertEquals, assertThrows } from "@std/assert";
 
 // https://github.com/nodejs/node/blob/a2bbe5ff216bc28f8dac1c36a8750025a93c3827/test/parallel/test-v8-version-tag.js#L6
@@ -48,6 +49,16 @@ Deno.test({
   name: "setFlagsFromString",
   fn() {
     v8.setFlagsFromString("--allow_natives_syntax");
+  },
+});
+
+Deno.test({
+  name: "setFlagsFromString exposes gc to new vm contexts",
+  fn() {
+    v8.setFlagsFromString("--expose_gc");
+    const gc = runInNewContext("gc");
+    assertEquals(typeof gc, "function");
+    assertEquals(gc(), undefined);
   },
 });
 

@@ -8,6 +8,7 @@ use ::tokio_util::sync::CancellationToken;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_core::FromV8;
 use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
@@ -206,8 +207,7 @@ async fn create_plugin_runner_inner(
   })
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, FromV8)]
 pub struct PluginInfo {
   pub name: String,
   pub rule_names: Vec<String>,
@@ -439,8 +439,7 @@ impl PluginHost {
       plugins_info_result
     };
     let plugins_info = plugins_info_result.unwrap();
-    let infos: Vec<PluginInfo> =
-      deno_core::serde_v8::from_v8(scope, plugins_info)?;
+    let infos = <Vec<PluginInfo> as FromV8>::from_v8(scope, plugins_info)?;
     log::debug!("Plugins installed: {}", infos.len());
 
     Ok(infos)

@@ -11,6 +11,11 @@ const { urlToHttpOptions } = core.loadExtScript(
   "ext:deno_node/internal/url.ts",
 );
 const lazyHttp = core.createLazyLoader("node:http");
+const lazyNet = core.createLazyLoader("node:net");
+const lazyAddressOverride = core.createLazyLoader(
+  "ext:deno_node/internal/http/address_override.js",
+);
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { ERR_INVALID_URL } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -26,7 +31,9 @@ const { validateObject } = core.loadExtScript(
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
 const tls = lazyTls().default;
+const net = lazyNet();
 const http = lazyHttp();
+const { applyAddressOverride, startOverrideListener } = lazyAddressOverride();
 const { _connectionListener, ClientRequest, ServerImpl: HttpServer } = http;
 
 // https.Server extends tls.Server (which extends net.Server).
@@ -87,6 +94,48 @@ Server.prototype.closeAllConnections = HttpServer.prototype.closeAllConnections;
 Server.prototype.closeIdleConnections =
   HttpServer.prototype.closeIdleConnections;
 Server.prototype.setTimeout = HttpServer.prototype.setTimeout;
+
+// Same DENO_SERVE_ADDRESS override hook as http.Server, but on
+// https.Server. The override listener is plain cleartext HTTP (it
+// goes directly through _connectionListener, bypassing tls wrapping)
+// because the typical use case -- Deno Deploy / desktop runtime
+// vsock/unix control channels -- is trusted local traffic.
+Server.prototype.listen = function listen(this: any, ...args: any[]) {
+  const applied = applyAddressOverride();
+  switch (applied.mode) {
+    case "none":
+      return net.Server.prototype.listen.apply(this, args);
+    case "tcp": {
+      let cb: any;
+      const last = args[args.length - 1];
+      if (typeof last === "function") {
+        cb = last;
+        args = args.slice(0, -1);
+      }
+      const rewritten: any[] = [{ host: applied.host, port: applied.port }];
+      if (cb) rewritten.push(cb);
+      return net.Server.prototype.listen.apply(this, rewritten);
+    }
+    case "override-only": {
+      let cb: any;
+      const last = args[args.length - 1];
+      if (typeof last === "function") cb = last;
+      if (cb) this.once("listening", cb);
+      this._handle = {
+        close() {},
+        ref() {},
+        unref() {},
+      };
+      startOverrideListener(this, applied.override, _connectionListener);
+      nextTick(() => this.emit("listening"));
+      return this;
+    }
+    case "duplicate": {
+      startOverrideListener(this, applied.override, _connectionListener);
+      return net.Server.prototype.listen.apply(this, args);
+    }
+  }
+};
 
 Server.prototype.close = function close(this: any) {
   httpServerPreClose(this);

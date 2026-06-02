@@ -178,7 +178,7 @@ pub fn op_node_buffer_compare_offset(
   )
 }
 
-#[op2]
+#[op2(reentrant)]
 pub fn op_node_decode<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   buf: v8::Local<v8::ArrayBufferView>,
@@ -186,12 +186,15 @@ pub fn op_node_decode<'a>(
   end: v8::Local<v8::Value>,
   encoding: u8,
 ) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
-  let buf = buf.get_contents(&mut [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP]);
+  let buf_len = buf.byte_length();
 
   let start =
     parse_array_index(scope, start, 0).map_err(JsErrorBox::from_err)?;
   let mut end =
-    parse_array_index(scope, end, buf.len()).map_err(JsErrorBox::from_err)?;
+    parse_array_index(scope, end, buf_len).map_err(JsErrorBox::from_err)?;
+
+  let mut storage = [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+  let buf = buf.get_contents(&mut storage);
 
   if end < start {
     end = start;

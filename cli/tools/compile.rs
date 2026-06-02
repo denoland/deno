@@ -16,6 +16,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_graph::GraphKind;
+use deno_graph::ModuleGraph;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_path_util::url_from_file_path;
@@ -31,6 +32,7 @@ use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
+use crate::graph_util::ModuleGraphCreator;
 use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
 use crate::util::temp::create_temp_node_modules_dir;
@@ -88,11 +90,16 @@ pub async fn compile(
       }
       // Enable CJS detection for Node-based frameworks.
       flags.unstable_config.detect_cjs = true;
-      if detection.name == "Next.js"
+      // These frameworks emit a pre-built/bundled server entrypoint that is
+      // not meant to be type checked by Deno (it references Node types that
+      // aren't resolvable from the build output); the framework handles its
+      // own compilation.
+      if matches!(detection.name, "Next.js" | "SvelteKit")
         && !matches!(flags.type_check_mode, TypeCheckMode::None)
       {
         log::info!(
-          "Disabling Deno type checking for Next.js compile; Next handles app compilation itself"
+          "Disabling Deno type checking for {} compile; the framework handles app compilation itself",
+          detection.name
         );
         flags.type_check_mode = TypeCheckMode::None;
       }
@@ -144,10 +151,10 @@ pub async fn compile(
       }
     }
   }
-  let mut cleanup_paths: Vec<PathBuf> = Vec::new();
-  if let Some(path) = _framework_entrypoint_file {
-    cleanup_paths.push(path);
-  }
+  // Register the framework entrypoint for cleanup up front so it's removed
+  // even if a later step (e.g. bundling) fails and unwinds via `?`.
+  let _framework_cleanup =
+    _framework_entrypoint_file.map(|p| CleanupGuard(vec![p]));
 
   // use a temporary directory with a node_modules folder when the user
   // specifies an npm package for better compatibility
@@ -167,7 +174,7 @@ pub async fn compile(
       None
     };
 
-  if compile_flags.bundle {
+  let _bundle_cleanup = if compile_flags.bundle {
     log::warn!(
       "{} deno compile --bundle is experimental and may change.",
       colors::yellow("Warning")
@@ -198,8 +205,25 @@ pub async fn compile(
       .boxed_local()
       .await?;
     flags.internal.compile_bundle_embed_node_modules = needs_npm_embed;
+    // Referenced files that live inside a `node_modules` tree are npm
+    // packages, embedded by the binary writer's npm path. The rest are local
+    // project files the bundle externalized (e.g. a sibling `.cjs` imported
+    // from ESM, which the CJS-from-ESM wrapper turns into a runtime
+    // require()). Those aren't covered by the npm embed, so add them to the
+    // include set to ship them in the VFS at their real path — that's where
+    // `__internalResolveBundlePath` looks for them at runtime.
+    for path in &referenced_abs_paths {
+      let in_node_modules =
+        path.components().any(|c| c.as_os_str() == "node_modules");
+      if !in_node_modules {
+        let included = path.display().to_string();
+        if !compile_flags.include.contains(&included) {
+          compile_flags.include.push(included);
+        }
+      }
+    }
     flags.internal.compile_bundle_referenced_paths = referenced_abs_paths;
-    compile_flags.source_file = bundle_path.display().to_string();
+    compile_flags.source_file = bundle_path.to_string_lossy().into_owned();
     // Make sure any worker bundles travel along in the VFS so the runtime
     // `new Worker(new URL(..., import.meta.url))` lookup hits them.
     for worker_path in &extra_cleanup {
@@ -207,12 +231,14 @@ pub async fn compile(
         .include
         .push(worker_path.display().to_string());
     }
-    cleanup_paths.push(bundle_path);
-    cleanup_paths.extend(extra_cleanup);
     flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
-  }
+    let mut cleanup = vec![bundle_path];
+    cleanup.extend(extra_cleanup);
+    Some(CleanupGuard(cleanup))
+  } else {
+    None
+  };
 
-  let _cleanup = CleanupGuard(cleanup_paths);
   let flags = Arc::new(flags);
   // boxed_local() is to avoid large futures
   if compile_flags.eszip {
@@ -501,23 +527,60 @@ fn rewrite_absolute_bundle_paths(
 ) -> Result<RewriteResult, AnyError> {
   let src = std::str::from_utf8(bundle_bytes)
     .context("Bundle output is not valid UTF-8")?;
+  // Only rewrite paths that actually exist on disk at build time — these are
+  // the ones the bundler emitted referring to files it expects to be
+  // reachable through the VFS at runtime.
+  Ok(rewrite_absolute_bundle_paths_inner(src, bundle_dir, |p| {
+    p.exists()
+  }))
+}
 
-  // Match string literals that look like absolute Unix paths to a JS/JSON
-  // source file. Conservative on extension on purpose — we don't want to
-  // rewrite arbitrary user-provided strings.
-  let pattern = lazy_regex::regex!(r#""(/[^"\n]+\.(?:js|cjs|mjs|json))""#);
+/// Core of [`rewrite_absolute_bundle_paths`], parameterized over the
+/// build-time existence check so it can be unit-tested with synthetic paths.
+fn rewrite_absolute_bundle_paths_inner(
+  src: &str,
+  bundle_dir: &Path,
+  path_exists: impl Fn(&Path) -> bool,
+) -> RewriteResult {
+  // Match string literals that look like an absolute path to a JS/JSON source
+  // file: either POSIX (`/a/b.js`) or a Windows drive-letter path
+  // (`C:\a\b.js` / `C:/a/b.js`). Because the bundle is JS source, a Windows
+  // path's separators arrive JS-escaped as `\\`, which the body matches as
+  // ordinary (non-`"`) characters. Conservative on extension on purpose — we
+  // don't want to rewrite arbitrary user-provided strings.
+  //
+  // Load-bearing assumption: every absolute-path literal we match is an
+  // external `require(...)` argument, i.e. a *value* position where wrapping
+  // it in `__internalResolveBundlePath(...)` stays valid JS. This holds
+  // because esbuild emits *relative* keys (no leading `/`) for the inlined
+  // `__commonJS` module map, so the only absolute literals left in the output
+  // are at external require call sites. If esbuild ever emitted an absolute
+  // `__commonJS` key (e.g. via a different `absWorkingDir`/outbase), this
+  // would rewrite it into `{ __internalResolveBundlePath("...")(...) {...} }`,
+  // a syntax error — the spec tests under `tests/specs/compile/bundle` would
+  // catch that. A genuine user string literal pointing at an existing file on
+  // disk would also be rewritten, but the build-time existence check below
+  // keeps that to paths that really resolve through the VFS.
+  let pattern = lazy_regex::regex!(
+    r#""((?:[A-Za-z]:)?[\\/][^"\n]+\.(?:js|cjs|mjs|json))""#
+  );
 
   let mut any_rewrite = false;
   let mut referenced_abs_paths: Vec<PathBuf> = Vec::new();
   let rewritten = pattern.replace_all(src, |caps: &regex::Captures<'_>| {
-    let abs = caps.get(1).unwrap().as_str();
-    let path = Path::new(abs);
-    // Only rewrite paths that actually exist on disk at build time —
-    // these are the ones the bundler emitted referring to files it
-    // expects to be reachable through the VFS at runtime.
-    if !path.exists() {
+    // Collapse JS-escaped backslashes (`C:\\a\\b.js`) back to real
+    // separators before touching the filesystem.
+    let abs = caps.get(1).unwrap().as_str().replace("\\\\", "\\");
+    let path = Path::new(&abs);
+    if !path_exists(path) {
       return caps[0].to_string();
     }
+    // Rewrite to a path relative to the bundle file. This is correct only
+    // because the VFS embeds `node_modules` at the same cwd-relative offset
+    // from the bundle that `diff_paths` computes here (bundle_dir =
+    // initial_cwd at build time, resolved at runtime against
+    // `import.meta.url`). See `fill_npm_vfs` in cli/standalone/binary.rs,
+    // which preserves that cwd-relative layout when populating the VFS.
     let Some(rel) = pathdiff::diff_paths(path, bundle_dir) else {
       return caps[0].to_string();
     };
@@ -528,11 +591,11 @@ fn rewrite_absolute_bundle_paths(
   });
 
   if !any_rewrite {
-    return Ok(RewriteResult {
-      bytes: bundle_bytes.to_vec(),
+    return RewriteResult {
+      bytes: src.as_bytes().to_vec(),
       rewrote_paths: false,
       referenced_abs_paths,
-    });
+    };
   }
 
   let prefix = r#"// Injected by deno compile --bundle: resolve absolute paths emitted by
@@ -545,11 +608,11 @@ function __internalResolveBundlePath(rel) {
   return __internalPath.join(__internalBundleDir, rel);
 }
 "#;
-  Ok(RewriteResult {
+  RewriteResult {
     bytes: format!("{prefix}{rewritten}").into_bytes(),
     rewrote_paths: true,
     referenced_abs_paths,
-  })
+  }
 }
 
 async fn compile_binary(
@@ -581,33 +644,15 @@ async fn compile_binary(
       effective_exclude.push(exc.clone());
     }
   }
-  let (module_roots, include_paths) = get_module_roots_and_include_paths(
+  let roots = get_module_roots_and_include_paths(
     entrypoint,
     &effective_include,
     &effective_exclude,
     cli_options,
   )?;
 
-  let graph = Arc::try_unwrap(
-    module_graph_creator
-      .create_graph_and_maybe_check(module_roots.clone())
-      .await?,
-  )
-  .unwrap();
-  let graph = if cli_options.type_check_mode().is_true() {
-    // In this case, the previous graph creation did type checking, which will
-    // create a module graph with types information in it. We don't want to
-    // store that in the binary so create a code only module graph from scratch.
-    module_graph_creator
-      .create_graph(
-        GraphKind::CodeOnly,
-        module_roots,
-        NpmCachingStrategy::Eager,
-      )
-      .await?
-  } else {
-    graph
-  };
+  let graph =
+    build_compile_graph(module_graph_creator, cli_options, &roots).await?;
 
   let initial_cwd =
     deno_path_util::url_from_directory_path(cli_options.initial_cwd())?;
@@ -657,7 +702,7 @@ async fn compile_binary(
         .to_string_lossy(),
       graph: &graph,
       entrypoint,
-      include_paths: &include_paths,
+      include_paths: &roots.include_paths,
       exclude_paths: effective_exclude
         .iter()
         .map(|p| cli_options.initial_cwd().join(p))
@@ -742,33 +787,15 @@ async fn compile_eszip(
       effective_exclude.push(exc.clone());
     }
   }
-  let (module_roots, _include_paths) = get_module_roots_and_include_paths(
+  let roots = get_module_roots_and_include_paths(
     entrypoint,
     &effective_include,
     &effective_exclude,
     cli_options,
   )?;
 
-  let graph = Arc::try_unwrap(
-    module_graph_creator
-      .create_graph_and_maybe_check(module_roots.clone())
-      .await?,
-  )
-  .unwrap();
-  let graph = if cli_options.type_check_mode().is_true() {
-    // In this case, the previous graph creation did type checking, which will
-    // create a module graph with types information in it. We don't want to
-    // store that in the binary so create a code only module graph from scratch.
-    module_graph_creator
-      .create_graph(
-        GraphKind::CodeOnly,
-        module_roots,
-        NpmCachingStrategy::Eager,
-      )
-      .await?
-  } else {
-    graph
-  };
+  let graph =
+    build_compile_graph(module_graph_creator, cli_options, &roots).await?;
 
   let transpile_and_emit_options = compiler_options_resolver
     .for_specifier(cli_options.workspace().root_dir_url())
@@ -889,12 +916,56 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
+struct CompileModuleRoots {
+  /// Strict graph roots (entrypoint, `--preload` and `--require` modules)
+  /// whose graph resolution errors should fail compilation.
+  strict: Vec<ModuleSpecifier>,
+  /// JS-like files brought in via `--include`; they are embedded and
+  /// transpiled but treated as best-effort assets, so their graph resolution
+  /// errors must not fail compilation (see #27505).
+  include: Vec<ModuleSpecifier>,
+  /// Raw files/directories embedded into the VFS.
+  include_paths: Vec<ModuleSpecifier>,
+}
+
+/// Builds the module graph stored in the compiled binary.
+///
+/// Only the strict roots are validated/type checked; `--include` modules are
+/// best-effort assets whose unresolved imports are embedded as-is rather than
+/// surfaced as errors (#27505).
+async fn build_compile_graph(
+  module_graph_creator: &ModuleGraphCreator,
+  cli_options: &CliOptions,
+  roots: &CompileModuleRoots,
+) -> Result<ModuleGraph, AnyError> {
+  let checked_graph = module_graph_creator
+    .create_graph_and_maybe_check(roots.strict.clone())
+    .await?;
+
+  if roots.include.is_empty() && !cli_options.type_check_mode().is_true() {
+    // Fast path: no includes and no type checking, so the validated graph is
+    // exactly what we want to store.
+    Ok(Arc::try_unwrap(checked_graph).unwrap())
+  } else {
+    // Build a code-only graph that also includes the `--include` module roots.
+    // `create_graph` does not validate, so unresolved imports inside included
+    // assets are embedded as-is rather than surfaced as errors. We also use
+    // this path after type checking so type information isn't stored in the
+    // binary.
+    let mut all_roots = roots.strict.clone();
+    all_roots.extend(roots.include.iter().cloned());
+    module_graph_creator
+      .create_graph(GraphKind::CodeOnly, all_roots, NpmCachingStrategy::Eager)
+      .await
+  }
+}
+
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
   include: &[String],
   exclude: &[String],
   cli_options: &Arc<CliOptions>,
-) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
+) -> Result<CompileModuleRoots, AnyError> {
   let initial_cwd = cli_options.initial_cwd();
 
   fn is_module_graph_module(url: &ModuleSpecifier) -> bool {
@@ -965,6 +1036,7 @@ fn get_module_roots_and_include_paths(
 
   let mut searched_paths = HashSet::new();
   let mut module_roots = Vec::new();
+  let mut include_module_roots = Vec::new();
   let mut include_paths = Vec::new();
   let exclude_set = exclude
     .iter()
@@ -974,14 +1046,14 @@ fn get_module_roots_and_include_paths(
   for side_module in include {
     let url = resolve_url_or_path(side_module, initial_cwd)?;
     if is_module_graph_module(&url) {
-      module_roots.push(url.clone());
+      include_module_roots.push(url.clone());
     } else {
       analyze_path(&url, &exclude_set, &mut searched_paths, |file_path| {
         let media_type = MediaType::from_path(file_path);
         if is_module_graph_media_type(media_type)
           && let Ok(file_url) = url_from_file_path(file_path)
         {
-          module_roots.push(file_url);
+          include_module_roots.push(file_url);
         }
       })?;
     }
@@ -998,7 +1070,11 @@ fn get_module_roots_and_include_paths(
     module_roots.push(require_module);
   }
 
-  Ok((module_roots, include_paths))
+  Ok(CompileModuleRoots {
+    strict: module_roots,
+    include: include_module_roots,
+    include_paths,
+  })
 }
 
 async fn resolve_compile_executable_output_path(
@@ -1158,5 +1234,59 @@ mod test {
     run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
     run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
     run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_native() {
+    // Use the platform-native absolute path layout so this exercises the
+    // real shape esbuild emits on each OS. On Windows the require() string in
+    // the bundle is a drive-letter path with JS-escaped backslashes
+    // (`C:\\proj\\dist\\pkg\\index.js`), which the previous Unix-only regex
+    // never matched — leaving the require pointed at a non-existent
+    // build-time path at runtime.
+    let bundle_dir = if cfg!(windows) {
+      PathBuf::from("C:\\proj\\dist")
+    } else {
+      PathBuf::from("/proj/dist")
+    };
+    let abs = bundle_dir.join("pkg").join("index.js");
+    // Escape backslashes the way they appear inside a JS string literal.
+    let abs_in_js = abs.to_string_lossy().replace('\\', "\\\\");
+    let src = format!("var m = require(\"{abs_in_js}\");\n");
+
+    let result =
+      rewrite_absolute_bundle_paths_inner(&src, &bundle_dir, |_| true);
+
+    assert!(result.rewrote_paths);
+    let out = String::from_utf8(result.bytes).unwrap();
+    assert!(
+      out.contains(r#"__internalResolveBundlePath("pkg/index.js")"#),
+      "unexpected output: {out}"
+    );
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_skips_missing() {
+    let bundle_dir = PathBuf::from("/proj/dist");
+    let src = "var m = require(\"/does/not/exist.js\");\n";
+    let result =
+      rewrite_absolute_bundle_paths_inner(src, &bundle_dir, |_| false);
+    assert!(!result.rewrote_paths);
+    assert_eq!(result.bytes.as_slice(), src.as_bytes());
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_skips_relative_key() {
+    // esbuild emits *relative* keys (no leading `/`) for inlined
+    // `__commonJS` modules. Those are object-literal keys, not require()
+    // arguments — rewriting one into `__internalResolveBundlePath("...")`
+    // would be a syntax error. The leading-separator anchor in the pattern
+    // keeps them untouched even when the path exists on disk (`|_| true`).
+    let bundle_dir = PathBuf::from("/proj/dist");
+    let src = "var b = { \"pkg/index.js\"(exports, module) { module.exports = 1; } };\n";
+    let result =
+      rewrite_absolute_bundle_paths_inner(src, &bundle_dir, |_| true);
+    assert!(!result.rewrote_paths);
+    assert_eq!(result.bytes.as_slice(), src.as_bytes());
   }
 }
