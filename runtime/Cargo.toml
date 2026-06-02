@@ -29,6 +29,10 @@ name = "deno_runtime"
 path = "lib.rs"
 
 [dependencies]
+async-trait.workspace = true
+base64.workspace = true
+boxed_error.workspace = true
+color-print.workspace = true
 deno_ast = { workspace = true, optional = true }
 deno_bundle_runtime.workspace = true
 deno_cache.workspace = true
@@ -65,10 +69,6 @@ deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
-async-trait.workspace = true
-base64.workspace = true
-boxed_error.workspace = true
-color-print.workspace = true
 ed25519-dalek.workspace = true
 encoding_rs.workspace = true
 faster-hex.workspace = true

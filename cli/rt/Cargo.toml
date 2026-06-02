@@ -50,6 +50,7 @@ deno_snapshots.workspace = true
 deno_terminal.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
+jsonc-parser = { workspace = true }
 libsui.workspace = true
 log = { workspace = true, features = ["serde"] }
 node_resolver.workspace = true

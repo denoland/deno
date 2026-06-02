@@ -387,6 +387,34 @@ async fn compile_desktop(
   Ok(())
 }
 
+/// Resolve `icon` (a `.png` or `.icns` path, possibly relative to
+/// `initial_cwd`) into an absolute path suitable for `WEF_APP_ICON`, which
+/// wef passes to `-[NSImage initWithContentsOfFile:]` (both formats are
+/// accepted, so no conversion is needed).
+#[cfg(target_os = "macos")]
+fn resolve_hmr_icon_path(
+  icon: &crate::args::IconConfig,
+  initial_cwd: &Path,
+) -> Result<PathBuf, AnyError> {
+  let icon_path = match icon {
+    crate::args::IconConfig::Single(p) => initial_cwd.join(p),
+    crate::args::IconConfig::Set(_) => {
+      deno_core::anyhow::bail!("icon sets are not supported in --hmr mode yet")
+    }
+  };
+  if !icon_path.exists() {
+    deno_core::anyhow::bail!("icon '{}' not found", icon_path.display());
+  }
+  match icon_path.extension().and_then(|e| e.to_str()) {
+    Some("icns") | Some("png") => {}
+    _ => deno_core::anyhow::bail!(
+      "icon '{}' must be .icns or .png",
+      icon_path.display()
+    ),
+  }
+  Ok(icon_path.canonicalize().unwrap_or(icon_path))
+}
+
 /// Launch the desktop app with HMR enabled after compilation.
 ///
 /// Framework dev servers provide HMR via websocket. Since they run inside
@@ -411,6 +439,20 @@ async fn run_desktop_hmr(
   let source_abs = source_dir
     .canonicalize()
     .unwrap_or(source_dir.to_path_buf());
+
+  // In HMR/inspector mode we launch the prebuilt wef.app, so a user
+  // `--icon` (or framework-detected favicon) would otherwise be ignored
+  // and the Dock would show wef's own icon. We can't rely on the bundle's
+  // `CFBundleIconFile` (the dev bundle has none) or on swapping the bundled
+  // `wef.icns` (LaunchServices caches the icon for an already-registered
+  // bundle id), so instead we pass the icon path to wef and let it call
+  // `-[NSApp setApplicationIconImage:]` at launch, which bypasses both.
+  #[cfg(target_os = "macos")]
+  let wef_app_icon = desktop_flags.icon.as_ref().and_then(|icon| {
+    resolve_hmr_icon_path(icon, &source_abs)
+      .map_err(|e| log::warn!("Could not apply custom icon: {e}"))
+      .ok()
+  });
 
   if let Some(fw) = framework
     && desktop_flags.hmr
@@ -438,6 +480,10 @@ async fn run_desktop_hmr(
     .arg(&dylib_abs)
     .env("WEF_RUNTIME_PATH", &dylib_abs)
     .current_dir(&source_abs);
+  #[cfg(target_os = "macos")]
+  if let Some(icon_path) = wef_app_icon.as_ref() {
+    cmd.env("WEF_APP_ICON", icon_path);
+  }
   // Only enable the file watcher + setScriptSource pipeline when the user
   // actually asked for HMR. `deno desktop --inspect` alone used to spin up
   // both, surprising users (and burning the inspector channel on hot

@@ -1232,11 +1232,15 @@ impl VfsRoot {
     let relative_path = match path.strip_prefix(&self.root_path) {
       Ok(p) => p,
       Err(_) => {
-        eprintln!(
-          "[VFS] path not found (outside root '{}'):\n  path: {}\n  backtrace: {:?}",
+        // "outside root" is the common host-FS fallback path in
+        // desktop --hmr / runtime-dynamic imports. Don't print at all
+        // by default; the caller falls through to a real filesystem
+        // read. Set DENO_LOG=denort=debug to see it.
+        log::debug!(
+          target: "denort",
+          "[VFS] path outside root '{}': {}",
           self.root_path.display(),
           path.display(),
-          std::backtrace::Backtrace::force_capture()
         );
         return Err(std::io::Error::new(
           std::io::ErrorKind::NotFound,
