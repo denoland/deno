@@ -221,7 +221,7 @@ impl<
 
     if !analysis.member_reexports.is_empty() {
       let mut errors = Vec::new();
-      self
+      let fallback_reexports = self
         .resolve_member_reexports(
           entry_specifier,
           &analysis.member_reexports,
@@ -229,6 +229,18 @@ impl<
           &mut errors,
         )
         .await;
+      // Members whose attached names couldn't be determined statically
+      // fall back to a wholesale re-export of the inner module.
+      if !fallback_reexports.is_empty() {
+        self
+          .analyze_reexports(
+            entry_specifier,
+            fallback_reexports,
+            &mut all_exports,
+            &mut errors,
+          )
+          .await;
+      }
       if !errors.is_empty() {
         errors.sort_by_cached_key(|e| e.to_string());
         return Err(TranslateCjsToEsmError::ExportAnalysis(errors.remove(0)));
@@ -245,6 +257,13 @@ impl<
   /// strictly narrower than treating `X` as a wildcard re-export: only
   /// names the inner module statically attaches to the specific member
   /// are advertised, so unrelated names from `X` don't leak through.
+  ///
+  /// When the attached names can't be determined statically (e.g.
+  /// graphql-tag@2's UMD wraps its `exports.gql = …` / `gql.* = …`
+  /// assignments inside the factory IIFE and builds the value through a
+  /// namespace alias), the inner specifier is returned so the caller can
+  /// fall back to a wholesale re-export, matching Node's behavior for
+  /// `module.exports = require(X).Y`.
   #[allow(
     clippy::needless_lifetimes,
     reason = "explicit lifetimes improve clarity"
@@ -255,7 +274,8 @@ impl<
     member_reexports: &[CjsMemberReExport],
     all_exports: &mut BTreeSet<String>,
     errors: &mut Vec<JsErrorBox>,
-  ) {
+  ) -> Vec<String> {
+    let mut fallback_reexports = Vec::new();
     for entry in member_reexports {
       let result = self
         .resolve(
@@ -290,7 +310,12 @@ impl<
         .await
       {
         Ok(Some(props)) => props,
-        Ok(None) => continue,
+        // Couldn't statically narrow to the member's attached names;
+        // fall back to re-exporting the inner module wholesale.
+        Ok(None) => {
+          fallback_reexports.push(entry.specifier.clone());
+          continue;
+        }
         Err(err) => {
           errors.push(err);
           continue;
@@ -303,6 +328,7 @@ impl<
         all_exports.insert(prop);
       }
     }
+    fallback_reexports
   }
 
   #[allow(
@@ -430,7 +456,7 @@ impl<
           }
 
           if !analysis.member_reexports.is_empty() {
-            self
+            let fallback_reexports = self
               .resolve_member_reexports(
                 &reexport_specifier,
                 &analysis.member_reexports,
@@ -438,6 +464,16 @@ impl<
                 errors,
               )
               .await;
+            // Members that couldn't be narrowed statically fall back to a
+            // wholesale re-export, fed back through the same loop.
+            if !fallback_reexports.is_empty() {
+              handle_reexports(
+                reexport_specifier.clone(),
+                fallback_reexports,
+                &mut analyze_futures,
+                errors,
+              );
+            }
           }
 
           all_exports.extend(

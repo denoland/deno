@@ -494,6 +494,146 @@ extern "C" fn test_uv_timer_fires(
   ptr::null_mut()
 }
 
+struct LoopHelperState {
+  env: napi_env,
+  callback: napi_ref,
+  check: *mut libuv_sys_lite::uv_check_t,
+  idle: *mut libuv_sys_lite::uv_idle_t,
+  work: *mut libuv_sys_lite::uv_work_t,
+  completed: u32,
+  work_ran: std::sync::atomic::AtomicBool,
+}
+
+unsafe fn loop_helper_complete(state: *mut LoopHelperState) {
+  unsafe {
+    (*state).completed += 1;
+    if (*state).completed != 2 {
+      return;
+    }
+    assert!((*state).work_ran.load(std::sync::atomic::Ordering::Acquire));
+
+    let env = (*state).env;
+    let mut js_cb = null_mut();
+    assert_napi_ok!(napi_get_reference_value(
+      env,
+      (*state).callback,
+      &mut js_cb
+    ));
+    let mut global: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_global(env, &mut global));
+    let mut result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_call_function(
+      env,
+      global,
+      js_cb,
+      0,
+      ptr::null(),
+      &mut result,
+    ));
+
+    libuv_sys_lite::uv_check_stop((*state).check);
+    assert_napi_ok!(napi_delete_reference(env, (*state).callback));
+    let _ = Box::from_raw((*state).check);
+    let _ = Box::from_raw((*state).idle);
+    let _ = Box::from_raw((*state).work);
+    let _ = Box::from_raw(state);
+  }
+}
+
+unsafe extern "C" fn loop_helper_check_cb(
+  check: *mut libuv_sys_lite::uv_check_t,
+) {
+  unsafe {
+    let state =
+      libuv_sys_lite::uv_handle_get_data(check.cast()) as *mut LoopHelperState;
+    loop_helper_complete(state);
+  }
+}
+
+unsafe extern "C" fn loop_helper_work_cb(work: *mut libuv_sys_lite::uv_work_t) {
+  unsafe {
+    let state = (*work).data as *mut LoopHelperState;
+    (*state)
+      .work_ran
+      .store(true, std::sync::atomic::Ordering::Release);
+  }
+}
+
+unsafe extern "C" fn loop_helper_after_work_cb(
+  work: *mut libuv_sys_lite::uv_work_t,
+  status: i32,
+) {
+  assert_eq!(status, 0);
+  unsafe {
+    let state = (*work).data as *mut LoopHelperState;
+    loop_helper_complete(state);
+  }
+}
+
+#[allow(unused_unsafe, reason = "napi_sys safe fn in unsafe extern blocks")]
+extern "C" fn test_uv_loop_helpers(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  use libuv_sys_lite::uv_check_init;
+  use libuv_sys_lite::uv_check_start;
+  use libuv_sys_lite::uv_handle_set_data;
+  use libuv_sys_lite::uv_idle_init;
+  use libuv_sys_lite::uv_idle_start;
+  use libuv_sys_lite::uv_os_getpid;
+  use libuv_sys_lite::uv_queue_work;
+
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut loop_ = null_mut();
+  unsafe {
+    assert_napi_ok!(napi_get_uv_event_loop(env, &mut loop_));
+  }
+
+  let check = Box::into_raw(Box::new(
+    MaybeUninit::<libuv_sys_lite::uv_check_t>::zeroed(),
+  )) as *mut libuv_sys_lite::uv_check_t;
+  let idle =
+    Box::into_raw(Box::new(MaybeUninit::<libuv_sys_lite::uv_idle_t>::zeroed()))
+      as *mut libuv_sys_lite::uv_idle_t;
+  let work =
+    Box::into_raw(Box::new(MaybeUninit::<libuv_sys_lite::uv_work_t>::zeroed()))
+      as *mut libuv_sys_lite::uv_work_t;
+
+  let mut js_cb = null_mut();
+  unsafe {
+    assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut js_cb));
+  }
+  let state = Box::into_raw(Box::new(LoopHelperState {
+    env,
+    callback: js_cb,
+    check,
+    idle,
+    work,
+    completed: 0,
+    work_ran: std::sync::atomic::AtomicBool::new(false),
+  }));
+
+  unsafe {
+    assert!(uv_os_getpid() > 0);
+    assert_napi_ok!(uv_check_init(loop_.cast(), check));
+    uv_handle_set_data(check.cast(), state.cast());
+    assert_napi_ok!(uv_idle_init(loop_.cast(), idle));
+    assert_napi_ok!(uv_idle_start(idle, None));
+    (*work).data = state.cast();
+    assert_napi_ok!(uv_queue_work(
+      loop_.cast(),
+      work,
+      Some(loop_helper_work_cb),
+      Some(loop_helper_after_work_cb),
+    ));
+    assert_napi_ok!(uv_check_start(check, Some(loop_helper_check_cb)));
+  }
+
+  ptr::null_mut()
+}
+
 // Exercises the libuv threading + semaphore polyfills (uv_thread_*,
 // uv_sem_*) added to the host binary in ext/napi/uv.rs. Like the other
 // uv_* symbols in this file, they are resolved from the host `deno`
@@ -581,6 +721,7 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_uv_async_ref", test_uv_async_ref),
     napi_new_property!(env, "test_uv_polyfills", test_uv_polyfills),
     napi_new_property!(env, "test_uv_timer_fires", test_uv_timer_fires),
+    napi_new_property!(env, "test_uv_loop_helpers", test_uv_loop_helpers),
     napi_new_property!(env, "test_uv_threads", test_uv_threads),
   ];
 

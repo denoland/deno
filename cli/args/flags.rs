@@ -987,9 +987,19 @@ pub struct InternalFlags {
   /// Set by `deno compile --bundle` when the bundled output contains
   /// references that need to resolve against npm packages at runtime
   /// (CJS dependencies, native addons). When true, the standalone
-  /// binary writer embeds the full npm tree even though `--bundle` is
-  /// on. Pure-ESM bundles leave this false and ship a tiny binary.
+  /// binary writer embeds (a subset of) the npm tree. Pure-ESM bundles
+  /// leave this false and ship a tiny binary.
   pub compile_bundle_embed_node_modules: bool,
+  /// Absolute paths the bundle path-rewriter resolved at build time —
+  /// the on-disk files the compiled binary will require() at runtime.
+  /// The standalone binary writer maps these back to npm packages so
+  /// it can embed only what's reachable, instead of the whole tree.
+  pub compile_bundle_referenced_paths: Vec<PathBuf>,
+  /// Force-enable bundle-style resolution config regardless of the
+  /// current subcommand. Set by `compile --bundle` so the bundle phase
+  /// of compilation pulls deep CJS files (e.g. `jiti.cjs`) into the
+  /// module graph the same way `deno bundle` does.
+  pub force_bundle_mode: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]

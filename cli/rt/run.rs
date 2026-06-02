@@ -919,22 +919,48 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     path: &std::path::Path,
   ) -> Result<FastString, JsErrorBox> {
-    let file_entry = self
-      .shared
-      .vfs
-      .file_entry(path)
-      .map_err(JsErrorBox::from_err)?;
-    let file_bytes = self
-      .shared
-      .vfs
-      .read_file_offset_with_len(
-        file_entry.transpiled_offset.unwrap_or(file_entry.offset),
-      )
-      .map_err(JsErrorBox::from_err)?;
-    Ok(match from_utf8_lossy_cow(file_bytes) {
-      Cow::Borrowed(s) => FastString::from_static(s),
-      Cow::Owned(s) => s.into(),
-    })
+    match self.shared.vfs.file_entry(path) {
+      Ok(file_entry) => {
+        let file_bytes = self
+          .shared
+          .vfs
+          .read_file_offset_with_len(
+            file_entry.transpiled_offset.unwrap_or(file_entry.offset),
+          )
+          .map_err(JsErrorBox::from_err)?;
+        Ok(match from_utf8_lossy_cow(file_bytes) {
+          Cow::Borrowed(s) => FastString::from_static(s),
+          Cow::Owned(s) => s.into(),
+        })
+      }
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        // Fall back to the host filesystem. Mirrors the fallback
+        // `StandaloneModules::read` does for the ESM loader path.
+        // Without it, a CJS `require()` that resolves to a file
+        // outside the embedded VFS (HMR / dev mode, or a dynamic
+        // import that landed on a host-FS path) would fail with
+        // "path not found" even though the file exists on disk and
+        // the permission layer already allowed reading it.
+        use sys_traits::FsRead;
+        #[allow(
+          clippy::disallowed_types,
+          reason = "use real file system because not in vfs"
+        )]
+        let bytes = sys_traits::impls::RealSys
+          .fs_read(path)
+          .map_err(JsErrorBox::from_err)?;
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        // Mirror the ESM loader path: TypeScript/JSX read from disk at
+        // runtime hasn't been transpiled at compile time, so transpile
+        // here. Non-TS media types are returned verbatim.
+        let specifier = deno_path_util::url_from_file_path(path)
+          .map_err(JsErrorBox::from_err)?;
+        let media_type = MediaType::from_specifier(&specifier);
+        let text = transpile_runtime_module(&specifier, media_type, text)?;
+        Ok(text.into())
+      }
+      Err(err) => Err(JsErrorBox::from_err(err)),
+    }
   }
 
   fn is_maybe_cjs(
@@ -943,6 +969,17 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   ) -> Result<bool, PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
+  }
+
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self
+      .shared
+      .cjs_tracker
+      .is_maybe_cjs_from_require(specifier, media_type)
   }
 }
 

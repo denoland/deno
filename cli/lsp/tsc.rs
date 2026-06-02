@@ -8,9 +8,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::Infallible;
 use std::ffi::c_void;
+use std::fs;
 use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -2181,7 +2183,8 @@ impl DocumentSpan {
       };
     let link = lsp::LocationLink {
       origin_selection_range,
-      target_uri: target_module.uri.as_ref().clone(),
+      target_uri: target_uri_for_client(&target_module, snapshot)
+        .unwrap_or_else(|| target_module.uri.as_ref().clone()),
       target_range,
       target_selection_range,
     };
@@ -2232,6 +2235,74 @@ impl DocumentSpan {
     }
     Ok(Some(lsp::GotoDefinitionResponse::Link(links)))
   }
+}
+
+fn target_uri_for_client(
+  target_module: &DocumentModule,
+  snapshot: &StateSnapshot,
+) -> Option<Uri> {
+  if !snapshot.client_needs_file_uris_for_virtual_documents
+    || !target_module
+      .uri
+      .scheme()
+      .as_str()
+      .eq_ignore_ascii_case("deno")
+  {
+    return None;
+  }
+  let file_path = virtual_document_file_path(target_module, snapshot)?;
+  if let Some(parent) = file_path.parent() {
+    fs::create_dir_all(parent).ok()?;
+  }
+  fs::write(&file_path, target_module.text.as_bytes()).ok()?;
+  url_to_uri(&Url::from_file_path(file_path).ok()?).ok()
+}
+
+fn virtual_document_file_path(
+  target_module: &DocumentModule,
+  snapshot: &StateSnapshot,
+) -> Option<PathBuf> {
+  let checksum =
+    deno_lib::util::checksum::r#gen(&[target_module.uri.as_str().as_bytes()]);
+  let mut file_name = target_module
+    .uri
+    .path()
+    .as_str()
+    .rsplit('/')
+    .next()
+    .filter(|s| !s.is_empty())
+    .map(sanitize_virtual_document_file_name)
+    .filter(|s| !s.is_empty())
+    .unwrap_or_else(|| "mod.ts".to_string());
+  if !file_name.contains('.') {
+    let extension = target_module.media_type.as_ts_extension();
+    if !extension.is_empty() {
+      file_name.push_str(extension);
+    }
+  }
+  Some(
+    snapshot
+      .cache
+      .deno_dir()
+      .root
+      .join("lsp")
+      .join("virtual_documents")
+      .join(checksum)
+      .join(file_name),
+  )
+}
+
+fn sanitize_virtual_document_file_name(value: &str) -> String {
+  value
+    .chars()
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+        c
+      } else {
+        '_'
+      }
+    })
+    .collect()
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -3506,18 +3577,10 @@ fn parse_code_actions(
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
             let mut text_edit = tc.as_text_edit(&module.line_index);
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
-              let specifier_index = text_edit
-                .new_text
-                .char_indices()
-                .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-              if let Some(i) = specifier_index {
-                let mut specifier_part = text_edit.new_text.split_off(i);
-                specifier_part = specifier_part.replace(
-                  &specifier_rewrite.old_specifier,
-                  &specifier_rewrite.new_specifier,
-                );
-                text_edit.new_text.push_str(&specifier_part);
-              }
+              rewrite_first_quoted_specifier(
+                &mut text_edit.new_text,
+                &specifier_rewrite.new_specifier,
+              );
               if let Some(deno_types_specifier) =
                 &specifier_rewrite.new_deno_types_specifier
               {
@@ -3775,6 +3838,23 @@ fn byte_offset_to_position(text: &str, offset: usize) -> lsp::Position {
   lsp::Position { line, character }
 }
 
+fn rewrite_first_quoted_specifier(text: &mut String, new_specifier: &str) {
+  let Some((quote_start, quote)) = text
+    .char_indices()
+    .find_map(|(i, c)| (c == '\'' || c == '"').then_some((i, c)))
+  else {
+    return;
+  };
+  let specifier_start = quote_start + quote.len_utf8();
+  let Some(quote_end) = text[specifier_start..]
+    .char_indices()
+    .find_map(|(i, c)| (c == quote).then_some(specifier_start + i))
+  else {
+    return;
+  };
+  text.replace_range(specifier_start..quote_end, new_specifier);
+}
+
 // Based on https://github.com/microsoft/vscode/blob/1.81.1/extensions/typescript-language-features/src/languageFeatures/util/snippetForFunctionCall.ts#L49.
 fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
   let mut parameters = Vec::with_capacity(3);
@@ -3900,17 +3980,10 @@ impl CompletionEntryDetails {
       .collect::<Vec<_>>();
     if let Some(specifier_rewrite) = &data.specifier_rewrite {
       for description in &mut code_action_descriptions {
-        let specifier_index = description
-          .char_indices()
-          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-        if let Some(i) = specifier_index {
-          let mut specifier_part = description.to_mut().split_off(i);
-          specifier_part = specifier_part.replace(
-            &specifier_rewrite.old_specifier,
-            &specifier_rewrite.new_specifier,
-          );
-          description.to_mut().push_str(&specifier_part);
-        }
+        rewrite_first_quoted_specifier(
+          description.to_mut(),
+          &specifier_rewrite.new_specifier,
+        );
       }
       if let Some(text_edit) = &mut text_edit {
         let new_text = match text_edit {
@@ -3919,17 +3992,10 @@ impl CompletionEntryDetails {
             &mut insert_replace_edit.new_text
           }
         };
-        let specifier_index = new_text
-          .char_indices()
-          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
-        if let Some(i) = specifier_index {
-          let mut specifier_part = new_text.split_off(i);
-          specifier_part = specifier_part.replace(
-            &specifier_rewrite.old_specifier,
-            &specifier_rewrite.new_specifier,
-          );
-          new_text.push_str(&specifier_part);
-        }
+        rewrite_first_quoted_specifier(
+          new_text,
+          &specifier_rewrite.new_specifier,
+        );
         if let Some(deno_types_specifier) =
           &specifier_rewrite.new_deno_types_specifier
         {
@@ -3951,7 +4017,7 @@ impl CompletionEntryDetails {
     let (command, additional_text_edits) =
       parse_code_actions(self.code_actions.as_ref(), data, module)?;
     let mut insert_text_format = original_item.insert_text_format;
-    let insert_text = if data.use_code_snippet {
+    let mut insert_text = if data.use_code_snippet {
       insert_text_format = Some(lsp::InsertTextFormat::SNIPPET);
       Some(format!(
         "{}({})",
@@ -3964,6 +4030,21 @@ impl CompletionEntryDetails {
     } else {
       original_item.insert_text.clone()
     };
+    let mut filter_text = original_item.filter_text.clone();
+    if let Some(specifier_rewrite) = &data.specifier_rewrite {
+      if let Some(insert_text) = &mut insert_text {
+        rewrite_first_quoted_specifier(
+          insert_text,
+          &specifier_rewrite.new_specifier,
+        );
+      }
+      if let Some(filter_text) = &mut filter_text {
+        rewrite_first_quoted_specifier(
+          filter_text,
+          &specifier_rewrite.new_specifier,
+        );
+      }
+    }
 
     Ok(lsp::CompletionItem {
       data: None,
@@ -3974,6 +4055,7 @@ impl CompletionEntryDetails {
       additional_text_edits,
       insert_text,
       insert_text_format,
+      filter_text,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
       // but when `completionItem/resolve` is called, we get a list of commit chars
       // even though we might have returned an empty list in `completion` request.
@@ -4064,7 +4146,6 @@ impl CompletionInfo {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CompletionSpecifierRewrite {
-  old_specifier: String,
   new_specifier: String,
   new_deno_types_specifier: Option<String>,
 }
@@ -4408,10 +4489,23 @@ impl CompletionEntry {
           || new_deno_types_specifier.is_some()
         {
           specifier_rewrite = Some(CompletionSpecifierRewrite {
-            old_specifier: import_data.raw.module_specifier.clone(),
             new_specifier,
             new_deno_types_specifier,
           });
+        }
+      }
+      if let Some(specifier_rewrite) = &specifier_rewrite {
+        if let Some(insert_text) = &mut insert_text {
+          rewrite_first_quoted_specifier(
+            insert_text,
+            &specifier_rewrite.new_specifier,
+          );
+        }
+        if let Some(filter_text) = &mut filter_text {
+          rewrite_first_quoted_specifier(
+            filter_text,
+            &specifier_rewrite.new_specifier,
+          );
         }
       }
       // We want relative or bare (import-mapped or otherwise) specifiers to
@@ -4803,6 +4897,11 @@ struct State {
   last_scope: Option<Arc<Url>>,
   last_notebook_uri: Option<Arc<Uri>>,
   token: CancellationToken,
+  // Shared with the isolate's near-heap-limit callback so that a runaway
+  // request can be cancelled when the TSC isolate is about to run out of
+  // memory, instead of crashing the whole language server. See
+  // `run_tsc_thread`.
+  request_cancellation: Arc<Mutex<CancellationToken>>,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
   context: Option<super::trace::Context>,
@@ -4816,6 +4915,7 @@ impl State {
     performance: Arc<Performance>,
     pending_requests: UnboundedReceiver<Request>,
     enable_tracing: Arc<AtomicBool>,
+    request_cancellation: Arc<Mutex<CancellationToken>>,
   ) -> Self {
     Self {
       last_id: 1,
@@ -4827,6 +4927,7 @@ impl State {
       last_scope: None,
       last_notebook_uri: None,
       token: Default::default(),
+      request_cancellation,
       mark: None,
       pending_requests: Some(pending_requests),
       context: None,
@@ -5060,6 +5161,10 @@ async fn op_poll_requests(
   let state = state.try_borrow_mut::<State>().unwrap();
   state.pending_requests = Some(pending_requests);
   state.state_snapshot = snapshot;
+  // Publish this request's cancellation token so the isolate's
+  // near-heap-limit callback can cancel it if we're about to run out of
+  // memory while servicing it.
+  *state.request_cancellation.lock() = token.clone();
   state.token = token;
   state.response_tx = Some(response_tx);
   let id = state.last_id;
@@ -5256,6 +5361,31 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .state_snapshot
       .resolver
       .get_scoped_resolver(scope.as_deref());
+    for specifier in scoped_resolver.configured_auto_import_roots() {
+      if specifier.scheme() != "jsr"
+        && !specifier.as_str().starts_with(jsr_url().as_str())
+      {
+        continue;
+      }
+      let referrer = compiler_options_data
+        .workspace_dir_or_source_url
+        .as_deref()
+        .or(scope.as_deref())
+        .unwrap_or(&specifier);
+      let Some((specifier, media_type, _)) =
+        state.state_snapshot.document_modules.resolve_dependency(
+          &specifier,
+          referrer,
+          ResolutionMode::Import,
+          scope.as_deref(),
+          Some(compiler_options_key),
+        )
+      else {
+        continue;
+      };
+      script_names
+        .insert(state.specifier_map.denormalize(&specifier, media_type));
+    }
     if scopes_with_node_specifier.contains(&scope) {
       script_names.insert("asset:///reference_types_node.d.ts".to_string());
     }
@@ -5496,6 +5626,9 @@ fn run_tsc_thread(
   enable_tracing: Arc<AtomicBool>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
+  // Shared with the isolate's near-heap-limit callback. `op_poll_requests`
+  // keeps this updated with the in-flight request's cancellation token.
+  let request_cancellation: Arc<Mutex<CancellationToken>> = Default::default();
   let mut extensions =
     deno_runtime::snapshot_info::get_extensions_in_snapshot();
   extensions.push(deno_tsc::init(
@@ -5503,14 +5636,53 @@ fn run_tsc_thread(
     specifier_map,
     request_rx,
     enable_tracing,
+    request_cancellation.clone(),
   ));
-  let tsc_runtime = JsRuntime::new(RuntimeOptions {
+  let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     create_params: create_isolate_create_params(&crate::sys::CliSys::default()),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
     ..Default::default()
   });
+
+  // The TSC isolate runs the TypeScript language service, whose type checker
+  // can occasionally blow up to many gigabytes for pathological inputs (e.g.
+  // deeply recursive library types while a file is mid-edit). Without
+  // intervention V8 aborts the whole process with a fatal OOM, taking the
+  // entire language server down and forcing a slow restart + reindex. Install
+  // a near-heap-limit callback that instead cancels the in-flight request
+  // (the language service host polls this token via `op_is_cancelled`, so the
+  // computation unwinds with an `OperationCanceledError` that's already
+  // handled gracefully) and grants a bounded amount of extra headroom so the
+  // unwinding has room to run. See denoland/deno#25613.
+  {
+    // Extra heap we're willing to hand out, total, before giving up and
+    // letting V8 OOM as a last resort (better than exhausting all of system
+    // memory). Granted in steps so we never overshoot by much.
+    const HEADROOM_BYTES: usize = 1024 * 1024 * 1024;
+    const STEP_BYTES: usize = 128 * 1024 * 1024;
+    let request_cancellation = request_cancellation.clone();
+    tsc_runtime.add_near_heap_limit_callback(
+      move |current_limit, initial_limit| {
+        // Cancel the request being serviced so the language service unwinds
+        // at its next cancellation checkpoint and frees the memory.
+        request_cancellation.lock().cancel();
+        let ceiling = initial_limit.saturating_add(HEADROOM_BYTES);
+        if current_limit >= ceiling {
+          lsp_warn!(
+            "TSC isolate exceeded its heap headroom; cancelling the request. The language server may run out of memory."
+          );
+          current_limit
+        } else {
+          lsp_warn!(
+            "TSC isolate is near its heap limit; cancelling the in-flight request to recover."
+          );
+          (current_limit + STEP_BYTES).min(ceiling)
+        }
+      },
+    );
+  }
 
   if let Some(server) = maybe_inspector_server {
     server.register_inspector(
@@ -5597,6 +5769,7 @@ deno_core::extension!(deno_tsc,
     specifier_map: Arc<TscSpecifierMap>,
     request_rx: UnboundedReceiver<Request>,
     enable_tracing: Arc<AtomicBool>,
+    request_cancellation: Arc<Mutex<CancellationToken>>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -5605,6 +5778,7 @@ deno_core::extension!(deno_tsc,
       options.performance,
       options.request_rx,
       options.enable_tracing,
+      options.request_cancellation,
     ));
   },
   customizer = |ext: &mut deno_core::Extension| {
@@ -6342,6 +6516,7 @@ mod tests {
       linter_resolver,
       resolver,
       cache: Arc::new(cache),
+      client_needs_file_uris_for_virtual_documents: false,
     });
     let performance = Arc::new(Performance::default());
     let ts_server = TsJsServer::new(performance);
@@ -6368,6 +6543,7 @@ mod tests {
       Default::default(),
       rx,
       Arc::new(AtomicBool::new(true)),
+      Default::default(),
     );
     let mut op_state = OpState::new(None);
     op_state.put(state);
@@ -6387,6 +6563,17 @@ mod tests {
     let actual =
       replace_links(r"test {@linkcode http://deno.land/x/mod.ts a link} test");
     assert_eq!(actual, r"test [`a link`](http://deno.land/x/mod.ts) test");
+  }
+
+  #[test]
+  fn test_rewrite_first_quoted_specifier() {
+    let mut text = r#"import { rollup } from "";"#.to_string();
+    rewrite_first_quoted_specifier(&mut text, "$rollup");
+    assert_eq!(text, r#"import { rollup } from "$rollup";"#);
+
+    let mut text = r#"import { rollup } from "npm:rollup";"#.to_string();
+    rewrite_first_quoted_specifier(&mut text, "$rollup");
+    assert_eq!(text, r#"import { rollup } from "$rollup";"#);
   }
 
   #[tokio::test]
