@@ -1357,33 +1357,37 @@ fn remove_dir_symlink(
 ) -> Result<(), std::io::Error> {
   let is_not_found =
     |err: &std::io::Error| err.kind() == std::io::ErrorKind::NotFound;
-  if sys_traits::impls::is_windows() {
+  // The first removal attempt uses the syscall appropriate for the entry's
+  // actual type, so keep its error around to surface if every later strategy
+  // also fails.
+  let first_err = if sys_traits::impls::is_windows() {
     // On Windows a directory symlink or junction must be removed with
     // RemoveDirectory rather than DeleteFile, and `remove_dir_all` may fail on
     // a dangling directory symlink, so remove the link itself first.
     match sys.fs_remove_dir(path) {
       Ok(()) => return Ok(()),
       Err(err) if is_not_found(&err) => return Ok(()),
-      Err(_) => {}
-    }
-    match sys.fs_remove_file(path) {
-      Ok(()) => return Ok(()),
-      Err(err) if is_not_found(&err) => return Ok(()),
-      Err(_) => {}
+      Err(err) => match sys.fs_remove_file(path) {
+        Ok(()) => return Ok(()),
+        Err(err) if is_not_found(&err) => return Ok(()),
+        // Keep the original RemoveDirectory error, not this one for the
+        // wrong entry type.
+        Err(_) => err,
+      },
     }
   } else {
     // On Unix unlinking a symlink does not follow it.
     match sys.fs_remove_file(path) {
       Ok(()) => return Ok(()),
       Err(err) if is_not_found(&err) => return Ok(()),
-      Err(_) => {}
+      Err(err) => err,
     }
-  }
+  };
   // Fall back to removing a real (possibly non-empty) directory.
   match sys.fs_remove_dir_all(path) {
     Ok(()) => Ok(()),
     Err(err) if is_not_found(&err) => Ok(()),
-    Err(err) => Err(err),
+    Err(_) => Err(first_err),
   }
 }
 
@@ -1561,17 +1565,6 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     })
     .collect::<HashSet<_>>();
 
-  // Helper closure for removing symlinks cross-platform
-  let remove_symlink = |path: &Path| -> std::io::Result<()> {
-    if sys_traits::impls::is_windows() {
-      sys
-        .fs_remove_dir(path)
-        .or_else(|_| sys.fs_remove_file(path))
-    } else {
-      sys.fs_remove_file(path)
-    }
-  };
-
   // Clean up .deno/node_modules/* symlinks for packages no longer needed
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
   let _ignore = remove_unused_node_modules_symlinks(
@@ -1580,7 +1573,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     &keep_names,
     &mut |name, path| {
       setup_cache.remove_deno_symlink(name);
-      remove_symlink(path)
+      remove_dir_symlink(sys, path)
     },
   );
 
@@ -1591,7 +1584,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     &keep_names,
     &mut |name, path| {
       setup_cache.remove_root_symlink(name);
-      remove_symlink(path)
+      remove_dir_symlink(sys, path)
     },
   );
 
@@ -1695,5 +1688,84 @@ mod test {
         .with_dep("package-a")
         .insert("package-b", "package-b@1.0.0")
     );
+  }
+
+  #[test]
+  fn test_symlink_package_dir_replaces_existing_link() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let root = temp_dir.path().to_path_buf();
+
+    let target_a = root.join("target_a");
+    let target_b = root.join("target_b");
+    std::fs::create_dir_all(&target_a).unwrap();
+    std::fs::create_dir_all(&target_b).unwrap();
+    std::fs::write(target_a.join("marker.txt"), "a").unwrap();
+    std::fs::write(target_b.join("marker.txt"), "b").unwrap();
+
+    let node_modules = root.join("node_modules");
+    std::fs::create_dir_all(&node_modules).unwrap();
+    let link = node_modules.join("pkg");
+
+    // First the link points at target_a.
+    symlink_package_dir(&sys, &target_a, &link).unwrap();
+    assert_eq!(
+      std::fs::read_to_string(link.join("marker.txt")).unwrap(),
+      "a"
+    );
+
+    // Re-creating over the pre-existing link must succeed (this is what
+    // regressed on Windows: a stale directory symlink/junction has to be
+    // removed before the new one can be created) and now resolve to target_b.
+    symlink_package_dir(&sys, &target_b, &link).unwrap();
+    assert_eq!(
+      std::fs::read_to_string(link.join("marker.txt")).unwrap(),
+      "b"
+    );
+  }
+
+  #[test]
+  fn test_create_retry_if_exists_clears_stale_entry() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let path = temp_dir.path().join("entry").to_path_buf();
+
+    // A stale entry is sitting where we want to create something new.
+    std::fs::create_dir_all(&path).unwrap();
+
+    let mut attempts = 0;
+    let result = create_retry_if_exists(&sys, &path, || {
+      attempts += 1;
+      if attempts == 1 {
+        // Simulate creation failing because the stale entry is in the way.
+        Err(std::io::Error::new(
+          std::io::ErrorKind::AlreadyExists,
+          "already exists",
+        ))
+      } else {
+        Ok(())
+      }
+    });
+
+    assert!(result.is_ok());
+    assert_eq!(attempts, 2);
+    // The stale entry must have been removed before the retry.
+    assert!(!path.exists());
+  }
+
+  #[test]
+  fn test_create_retry_if_exists_passes_through_success() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let path = temp_dir.path().join("entry").to_path_buf();
+
+    let mut attempts = 0;
+    let result = create_retry_if_exists(&sys, &path, || {
+      attempts += 1;
+      Ok(())
+    });
+
+    assert!(result.is_ok());
+    assert_eq!(attempts, 1);
   }
 }
