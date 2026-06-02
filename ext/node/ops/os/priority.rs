@@ -79,7 +79,7 @@ mod impl_ {
       let handle = if pid == 0 {
         GetCurrentProcess()
       } else {
-        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid as u32)
+        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid)
       };
       if handle.is_null() {
         Err(std::io::Error::last_os_error().into())
@@ -110,7 +110,7 @@ mod impl_ {
       let handle = if pid == 0 {
         GetCurrentProcess()
       } else {
-        OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid as u32)
+        OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid)
       };
       if handle.is_null() {
         Err(std::io::Error::last_os_error().into())
