@@ -14,6 +14,13 @@
       "args": "run npm:chalk@5/main.ts",
       "exitCode": 1,
       "output": "[WILDCARD]error[WILDCARD]"
+    },
+    // A bare specifier rewritten to `npm:` with no matching local file must
+    // fall through to npm resolution and surface its error, not be swallowed.
+    "no_local_file_falls_through_to_npm": {
+      "args": "run chalk/does_not_exist.ts",
+      "exitCode": 1,
+      "output": "[WILDCARD]error[WILDCARD]"
     }
   }
 }
