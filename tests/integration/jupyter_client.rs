@@ -100,8 +100,19 @@ impl ZmtpConn {
     let ready = make_ready_command(socket_type);
     self.stream.write_all(&ready).await?;
 
-    // Read server's READY command (skip it)
-    self.read_frame().await?;
+    // Read the server's READY command and verify it is a spec-compliant ZMTP
+    // command: the body must start with the command-name length octet (0x05)
+    // followed by "READY". This guards against the kernel regressing to a
+    // malformed READY that real libzmq clients (VSCode/JupyterLab) reject but
+    // our lenient parser would otherwise accept (regression from #34083).
+    let (ready_body, _) = self.read_frame().await?;
+    assert!(
+      ready_body.len() >= 6
+        && ready_body[0] == 5
+        && &ready_body[1..6] == b"READY",
+      "kernel READY command is not spec-compliant (missing name-length prefix): {:02x?}",
+      &ready_body[..ready_body.len().min(8)],
+    );
 
     Ok(())
   }
@@ -125,9 +136,12 @@ fn make_ready_command(socket_type: &str) -> Vec<u8> {
   let prop_name = b"Socket-Type";
   let prop_value = socket_type.as_bytes();
 
-  // Build body: name + properties
+  // ZMTP command body: <nameLen:1><name><metadata...>. The leading command-name
+  // length octet is mandatory (RFC 23/ZMTP); real libzmq peers send it and
+  // reject a command without it (regression from #34083).
   // properties: len(1) propName + len(4) propValue
   let mut body = Vec::new();
+  body.push(name.len() as u8);
   body.extend_from_slice(name);
   body.push(prop_name.len() as u8);
   body.extend_from_slice(prop_name);
