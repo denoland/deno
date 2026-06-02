@@ -6497,20 +6497,22 @@ dependencies = [
  "itertools 0.14.0",
  "memchr",
  "raffia",
- "tiny_pretty",
+ "tiny_pretty 0.2.0",
 ]
 
 [[package]]
 name = "markup_fmt"
-version = "0.27.0"
+version = "0.27.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0223c1b7a3a55b4d5bdc3aec6445f51754e1156b7b5615bc49dd8fa3b1d95e71"
+checksum = "83b53ac34c9d6498632dcca4ad4542b1aef7c605d1d19037207910c4efe060a9"
 dependencies = [
  "aho-corasick",
+ "anyhow",
  "css_dataset",
  "itertools 0.14.0",
  "memchr",
- "tiny_pretty",
+ "regex",
+ "tiny_pretty 0.4.2",
 ]
 
 [[package]]
@@ -6565,9 +6567,9 @@ dependencies = [
 
 [[package]]
 name = "memchr"
-version = "2.7.5"
+version = "2.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
+checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "memmap2"
@@ -7771,7 +7773,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dda9a64ee7296e82d1e0f4389383e6a7d8e6e2487d8391f7d028c131395fd376"
 dependencies = [
  "rowan",
- "tiny_pretty",
+ "tiny_pretty 0.2.0",
  "yaml_parser",
 ]
 
@@ -10144,9 +10146,12 @@ name = "tiny_pretty"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b3f46f0549180b9c6f7f76270903f1a06867c43a03998b99dce81aa1760c3b2"
-dependencies = [
- "unicode-width 0.1.13",
-]
+
+[[package]]
+name = "tiny_pretty"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c6f118a569adc26e8a9a377130f181a461770225e588c73a00c8636b8680b6c"
 
 [[package]]
 name = "tinystr"
