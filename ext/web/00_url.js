@@ -28,6 +28,8 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ReflectOwnKeys,
   SafeArrayIterator,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIndexOf,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   Symbol,
@@ -44,6 +46,99 @@ const { createFilteredInspectProxy } = core.loadExtScript(
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
+
+/**
+ * application/x-www-form-urlencoded JS-side parser. Handles the common
+ * ASCII-only no-percent-escape case (e.g. `id=12345&type=user&page=1`) and
+ * falls through to the Rust `op_url_parse_search_params` for any input
+ * that contains `%` (forgiving percent-decode is on the spec hot path
+ * and would need byte-level UTF-8 decoding to handle %XX where XX >=
+ * 0x80) or non-ASCII chars.
+ *
+ * Spec reference: https://url.spec.whatwg.org/#urlencoded-parsing
+ *
+ * @param {string} input
+ * @returns {[string, string][]}
+ */
+function urlencodedParseString(input) {
+  const len = input.length;
+  // Fast-path scan: bail to the Rust op if the input has any `%` (which
+  // could decode to non-ASCII bytes needing UTF-8 decode) or any char
+  // already outside the ASCII range.
+  for (let i = 0; i < len; i++) {
+    const c = StringPrototypeCharCodeAt(input, i);
+    if (c === 0x25 /* % */ || c >= 0x80) {
+      return op_url_parse_search_params(input);
+    }
+  }
+
+  // Pure-JS path: split on `&`, then split each segment on the first `=`,
+  // replacing `+` with U+0020 in name and value per the
+  // application/x-www-form-urlencoded serializer's mapping.
+  const pairs = [];
+  let segStart = 0;
+  for (let i = 0; i <= len; i++) {
+    if (i === len || StringPrototypeCharCodeAt(input, i) === 0x26 /* & */) {
+      if (i > segStart) {
+        let eqPos = i;
+        for (let j = segStart; j < i; j++) {
+          if (StringPrototypeCharCodeAt(input, j) === 0x3D /* = */) {
+            eqPos = j;
+            break;
+          }
+        }
+        let name;
+        let value;
+        if (eqPos === i) {
+          name = StringPrototypeSlice(input, segStart, i);
+          value = "";
+        } else {
+          name = StringPrototypeSlice(input, segStart, eqPos);
+          value = StringPrototypeSlice(input, eqPos + 1, i);
+        }
+        // Replace `+` with U+0020 in both name and value. Only do the
+        // substitution if there is a `+` in the slice -- the common case
+        // (no `+`) skips the allocation.
+        if (StringPrototypeIndexOf(name, "+") !== -1) {
+          name = replacePlus(name);
+        }
+        if (StringPrototypeIndexOf(value, "+") !== -1) {
+          value = replacePlus(value);
+        }
+        ArrayPrototypePush(pairs, [name, value]);
+      }
+      segStart = i + 1;
+    }
+  }
+  return pairs;
+}
+
+/**
+ * Replace every `+` with U+0020 (SP) without allocating for the common
+ * no-substitution case (caller already checked the slice contains a
+ * `+`). For ASCII-only input.
+ *
+ * @param {string} input
+ * @returns {string}
+ */
+function replacePlus(input) {
+  const len = input.length;
+  let output = "";
+  let runStart = 0;
+  for (let i = 0; i < len; i++) {
+    if (StringPrototypeCharCodeAt(input, i) === 0x2B /* + */) {
+      if (i > runStart) {
+        output += StringPrototypeSlice(input, runStart, i);
+      }
+      output += " ";
+      runStart = i + 1;
+    }
+  }
+  if (runStart < len) {
+    output += StringPrototypeSlice(input, runStart, len);
+  }
+  return output;
+}
 
 // Pre-frozen argument-name arrays used to produce Node-compatible
 // `ERR_MISSING_ARGS` messages from `webidl.requiredArguments`.
@@ -231,7 +326,7 @@ class URLSearchParams {
     if (str[0] === "?") {
       str = StringPrototypeSlice(str, 1);
     }
-    this[_list] = op_url_parse_search_params(str);
+    this[_list] = urlencodedParseString(str);
   }
 
   #updateUrlSearch() {
@@ -612,7 +707,7 @@ class URL {
   #updateSearchParams() {
     if (this.#queryObject !== null) {
       const params = this.#queryObject[_list];
-      const newParams = op_url_parse_search_params(
+      const newParams = urlencodedParseString(
         StringPrototypeSlice(this.search, 1),
       );
       ArrayPrototypeSplice(
