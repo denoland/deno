@@ -58,12 +58,8 @@ Deno.test("[node/vfs] statSync returns a real Stats instance", () => {
   fs.writeFileSync("/file.txt", "hello");
   const st = fs.statSync("/file.txt");
   // node:fs Stats has a private constructor so an instanceof check trips
-  // strict type-check; comparing the prototype chain is enough.
-  assertEquals(
-    Object.getPrototypeOf(st) === Stats.prototype ||
-      Stats.prototype.isPrototypeOf(st),
-    true,
-  );
+  // strict type-check; cast to unknown first.
+  assertInstanceOf(st, Stats as unknown as new () => unknown);
   assertEquals(st.isFile(), true);
   assertEquals(st.isDirectory(), false);
   assertEquals(st.size, 5);
