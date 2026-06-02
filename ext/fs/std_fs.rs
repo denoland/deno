@@ -640,15 +640,16 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
 fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
   // Guard against copying a file onto itself. Otherwise the destination is
   // opened with truncation (or unlinked) before the source is read, which
-  // silently empties the file. Match `cp` behavior and error instead. The
-  // `to` path is canonicalized first so the common case where it does not yet
-  // exist fails fast and skips canonicalizing `from` entirely; the full check
-  // only runs when overwriting an existing file, and it also catches
-  // equivalent paths such as `./`, `..` and symlinks.
-  if let Ok(to_real) = to.canonicalize()
-    && let Ok(from_real) = from.canonicalize()
-    && from_real == to_real
-  {
+  // silently empties the file. Match `cp` behavior and error instead.
+  //
+  // `same_file::is_same_file` compares the file identity (device + inode on
+  // Unix, file index + volume serial via the open handle on Windows) using a
+  // single stat per path, rather than fully canonicalizing both paths which
+  // would `lstat`/`readlink` every component twice. It still catches
+  // equivalent paths such as `./`, `..`, symlinks and hard links, and returns
+  // `Err` (treated as "not the same file") in the common case where the
+  // destination does not yet exist.
+  if same_file::is_same_file(from, to).unwrap_or(false) {
     return Err(
       io::Error::new(
         io::ErrorKind::InvalidInput,
