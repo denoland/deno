@@ -292,8 +292,9 @@ fn decode_utf16le_from_bytes<'a>(
 ) -> Option<v8::Local<'a, v8::String>> {
   // UTF-16 must be a multiple of 2 bytes. Discard any trailing odd byte.
   let len = bytes.len() & !1;
+  let target_len = len / 2;
 
-  if len > v8::String::MAX_LENGTH {
+  if target_len > v8::String::MAX_LENGTH {
     // String too long
     return None;
   }
@@ -314,7 +315,7 @@ fn decode_utf16le_from_bytes<'a>(
     } else {
       // Slow path: Unaligned memory (rare in V8, but must be handled).
       // Use uninitialized memory to avoid Vec's memset(0) overhead.
-      let mut u16_data = Vec::<u16>::with_capacity(len / 2);
+      let mut u16_data = Vec::<u16>::with_capacity(target_len);
 
       // SAFETY:
       // 1. `u16_data` capacity is `len / 2` `u16` elements
@@ -332,7 +333,7 @@ fn decode_utf16le_from_bytes<'a>(
           len,
         );
         // Manually set the length.
-        u16_data.set_len(len / 2);
+        u16_data.set_len(target_len);
       }
       v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
     }
@@ -341,7 +342,7 @@ fn decode_utf16le_from_bytes<'a>(
   // Fallback for big-endian architectures (uncommon environments).
   #[cfg(target_endian = "big")]
   {
-    let mut u16_data = Vec::<u16>::with_capacity(len / 2);
+    let mut u16_data = Vec::<u16>::with_capacity(target_len);
     for chunk in buf.chunks_exact(2) {
       u16_data.push(u16::from_le_bytes([chunk[0], chunk[1]]));
     }
@@ -369,8 +370,9 @@ fn encode_hex_from_bytes<'a>(
   buffer: &[u8],
 ) -> Option<v8::Local<'a, v8::String>> {
   let len = buffer.len();
+  let target_len = len * 2;
 
-  if len * 2 > v8::String::MAX_LENGTH {
+  if target_len > v8::String::MAX_LENGTH {
     // String too long
     return None;
   }
@@ -403,7 +405,7 @@ fn encode_hex_from_bytes<'a>(
   // 4. The lifetime of `bytes_slice` is strictly bound to the local `hex_chars`
   //    vector, which outlives the synchronous `v8::String::new_from_one_byte` call.
   let bytes_slice = unsafe {
-    std::slice::from_raw_parts(hex_chars.as_ptr() as *const u8, len * 2)
+    std::slice::from_raw_parts(hex_chars.as_ptr() as *const u8, target_len)
   };
 
   v8::String::new_from_one_byte(scope, bytes_slice, v8::NewStringType::Normal)
