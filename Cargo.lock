@@ -6660,8 +6660,9 @@ dependencies = [
 
 [[package]]
 name = "markup_fmt"
-version = "0.27.2"
-source = "git+https://github.com/bartlomieju/markup_fmt?rev=cc67281ff94e660db830407e1ab11450c0d1d0cf#cc67281ff94e660db830407e1ab11450c0d1d0cf"
+version = "0.27.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83b53ac34c9d6498632dcca4ad4542b1aef7c605d1d19037207910c4efe060a9"
 dependencies = [
  "aho-corasick",
  "anyhow",
