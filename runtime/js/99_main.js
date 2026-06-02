@@ -40,6 +40,7 @@ const {
   ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectKeys,
+  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
@@ -736,7 +737,7 @@ function disableProtoAccessor() {
         "--unstable-unsafe-proto to restore it.",
     );
   }
-  ObjectDefineProperty(Object.prototype, "__proto__", {
+  ObjectDefineProperty(ObjectPrototype, "__proto__", {
     __proto__: null,
     configurable: true,
     enumerable: false,
