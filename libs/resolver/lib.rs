@@ -763,8 +763,17 @@ pub fn patch_react_cves<'a>(
     log::debug!("Patched React RCE (CVE-2025-55182) in {filename}");
   }
 
-  let code2 = &*modified;
-  let mut modified = Cow::Borrowed(&*modified);
+  // Collapse the stage 1 (RCE) result back into a `Cow<'a>` before stage 2
+  // borrows it: the original input when nothing was patched, otherwise the
+  // owned patched string. Stage 2 must fall back to this (not `code`) so a
+  // stage 1 patch is preserved even when stage 2 makes no change.
+  let stage1: Cow<'a, str> = match modified {
+    Cow::Borrowed(_) => code,
+    Cow::Owned(s) => Cow::Owned(s),
+  };
+
+  let code2 = &*stage1;
+  let mut modified = Cow::Borrowed(&*stage1);
   let mut offset = 0;
 
   const PROTOTYPE_THEN: &str = ".prototype.then";
@@ -834,7 +843,7 @@ pub fn patch_react_cves<'a>(
   }
 
   match modified {
-    Cow::Borrowed(_) => code,
+    Cow::Borrowed(_) => stage1,
     Cow::Owned(s) => Cow::Owned(s),
   }
 }
