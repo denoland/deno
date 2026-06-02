@@ -602,6 +602,7 @@ impl<
           ..Default::default()
         },
         Cow::Borrowed(&package.package_path),
+        Vec::new(),
       );
     }
 
