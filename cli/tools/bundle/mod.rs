@@ -391,6 +391,23 @@ pub async fn bundle_for_compile(
     watch: false,
   };
 
+  // Force bundle-style resolver config for the duration of bundling.
+  // Without this, module-graph creation skips deep CJS files inside
+  // `node_modules` (jiti.cjs is the canonical case) and the parent
+  // `.mjs` trips an esbuild parse error when its import target can't
+  // be loaded. This flips the same three resolver knobs `deno bundle`
+  // sets (`bundle_mode`, `node_code_translator_mode` = Disabled,
+  // `allow_json_imports` = Always) without otherwise swapping the
+  // subcommand, so the rest of compilation keeps Compile semantics.
+  // Disabling the code translator means the CJS analyzer's
+  // extensionless `.node` auto-resolution no longer runs, which is why
+  // the resolver grows a `.node` fallback (see `resolution.rs`).
+  let mut flags = flags;
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.internal.force_bundle_mode = true;
+  }
+
   let bundler = bundle_init(flags, &bundle_flags).await?;
   let response = bundler.build().await?;
 
@@ -1142,6 +1159,12 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
       let is_external = r.starts_with("node:")
         || r.starts_with("bun:")
+        // Always externalize native addons regardless of `--external`.
+        // esbuild has no loader for `.node` files, and the user-facing
+        // `*.node` pre-resolve pattern doesn't catch paths that arrive
+        // here only after `.node`-extension auto-resolution (e.g. CJS
+        // `require('./build/Release/foo')`).
+        || r.ends_with(".node")
         || self
           .externals_matcher
           .as_ref()

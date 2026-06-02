@@ -995,6 +995,11 @@ pub struct InternalFlags {
   /// The standalone binary writer maps these back to npm packages so
   /// it can embed only what's reachable, instead of the whole tree.
   pub compile_bundle_referenced_paths: Vec<PathBuf>,
+  /// Force-enable bundle-style resolution config regardless of the
+  /// current subcommand. Set by `compile --bundle` so the bundle phase
+  /// of compilation pulls deep CJS files (e.g. `jiti.cjs`) into the
+  /// module graph the same way `deno bundle` does.
+  pub force_bundle_mode: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
