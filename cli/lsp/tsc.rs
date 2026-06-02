@@ -8,9 +8,11 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::Infallible;
 use std::ffi::c_void;
+use std::fs;
 use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -2181,7 +2183,8 @@ impl DocumentSpan {
       };
     let link = lsp::LocationLink {
       origin_selection_range,
-      target_uri: target_module.uri.as_ref().clone(),
+      target_uri: target_uri_for_client(&target_module, snapshot)
+        .unwrap_or_else(|| target_module.uri.as_ref().clone()),
       target_range,
       target_selection_range,
     };
@@ -2232,6 +2235,74 @@ impl DocumentSpan {
     }
     Ok(Some(lsp::GotoDefinitionResponse::Link(links)))
   }
+}
+
+fn target_uri_for_client(
+  target_module: &DocumentModule,
+  snapshot: &StateSnapshot,
+) -> Option<Uri> {
+  if !snapshot.client_needs_file_uris_for_virtual_documents
+    || !target_module
+      .uri
+      .scheme()
+      .as_str()
+      .eq_ignore_ascii_case("deno")
+  {
+    return None;
+  }
+  let file_path = virtual_document_file_path(target_module, snapshot)?;
+  if let Some(parent) = file_path.parent() {
+    fs::create_dir_all(parent).ok()?;
+  }
+  fs::write(&file_path, target_module.text.as_bytes()).ok()?;
+  url_to_uri(&Url::from_file_path(file_path).ok()?).ok()
+}
+
+fn virtual_document_file_path(
+  target_module: &DocumentModule,
+  snapshot: &StateSnapshot,
+) -> Option<PathBuf> {
+  let checksum =
+    deno_lib::util::checksum::r#gen(&[target_module.uri.as_str().as_bytes()]);
+  let mut file_name = target_module
+    .uri
+    .path()
+    .as_str()
+    .rsplit('/')
+    .next()
+    .filter(|s| !s.is_empty())
+    .map(sanitize_virtual_document_file_name)
+    .filter(|s| !s.is_empty())
+    .unwrap_or_else(|| "mod.ts".to_string());
+  if !file_name.contains('.') {
+    let extension = target_module.media_type.as_ts_extension();
+    if !extension.is_empty() {
+      file_name.push_str(extension);
+    }
+  }
+  Some(
+    snapshot
+      .cache
+      .deno_dir()
+      .root
+      .join("lsp")
+      .join("virtual_documents")
+      .join(checksum)
+      .join(file_name),
+  )
+}
+
+fn sanitize_virtual_document_file_name(value: &str) -> String {
+  value
+    .chars()
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+        c
+      } else {
+        '_'
+      }
+    })
+    .collect()
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -6390,6 +6461,7 @@ mod tests {
       linter_resolver,
       resolver,
       cache: Arc::new(cache),
+      client_needs_file_uris_for_virtual_documents: false,
     });
     let performance = Arc::new(Performance::default());
     let ts_server = TsJsServer::new(performance);

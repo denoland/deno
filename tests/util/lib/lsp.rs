@@ -417,6 +417,18 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn set_client_info(
+    &mut self,
+    name: impl Into<String>,
+    version: Option<String>,
+  ) -> &mut Self {
+    self.params.client_info = Some(ClientInfo {
+      name: name.into(),
+      version,
+    });
+    self
+  }
+
   pub fn set_workspace_folders(
     &mut self,
     folders: Vec<lsp_types::WorkspaceFolder>,
