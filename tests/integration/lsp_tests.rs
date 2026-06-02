@@ -17682,6 +17682,120 @@ fn lsp_deno_json_workspace_lint_config() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/pull/24034, which made
+// the LSP feed the configured JSX factory into the linter so that
+// `no-unused-vars` doesn't flag the JSX factory binding (e.g. `React`) when it's
+// only referenced implicitly by JSX. See https://github.com/denoland/deno/issues/24039.
+#[test(timeout = 300)]
+fn lsp_jsx_no_unused_vars() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["classic", "automatic"],
+    })
+    .to_string(),
+  );
+  // The classic runtime transpiles JSX to `React.createElement(...)`, so the
+  // `React` binding is used implicitly and must not be reported as unused.
+  temp_dir.write(
+    "classic/deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react",
+        "jsxFactory": "React.createElement",
+        "jsxFragmentFactory": "React.Fragment",
+      },
+    })
+    .to_string(),
+  );
+  // The automatic runtime imports the factory itself, so `React` really is
+  // unused here and should be reported.
+  temp_dir.write(
+    "automatic/deno.json",
+    json!({
+      "compilerOptions": {
+        "jsx": "react-jsx",
+      },
+    })
+    .to_string(),
+  );
+  let source = "const React = { createElement() {} };\nconst unused = 1;\nconst _div = <div />;\n";
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("classic/mod.tsx").unwrap()).unwrap(),
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": source,
+    },
+  }));
+  let lint_diagnostics = diagnostics
+    .all()
+    .into_iter()
+    .filter(|d| d.source.as_deref() == Some("deno-lint"))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(lint_diagnostics),
+    json!([{
+      "range": {
+        "start": { "line": 1, "character": 6 },
+        "end": { "line": 1, "character": 12 },
+      },
+      "severity": 2,
+      "code": "no-unused-vars",
+      "source": "deno-lint",
+      "message": "`unused` is never used\nIf this is intentional, prefix it with an underscore like `_unused`",
+    }])
+  );
+  client.write_notification(
+    "textDocument/didClose",
+    json!({
+      "textDocument": {
+        "uri": url_to_uri(&temp_dir.url().join("classic/mod.tsx").unwrap()).unwrap(),
+      },
+    }),
+  );
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("automatic/mod.tsx").unwrap()).unwrap(),
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": source,
+    },
+  }));
+  let lint_diagnostics = diagnostics
+    .all()
+    .into_iter()
+    .filter(|d| d.source.as_deref() == Some("deno-lint"))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(lint_diagnostics),
+    json!([{
+      "range": {
+        "start": { "line": 0, "character": 6 },
+        "end": { "line": 0, "character": 11 },
+      },
+      "severity": 2,
+      "code": "no-unused-vars",
+      "source": "deno-lint",
+      "message": "`React` is never used\nIf this is intentional, prefix it with an underscore like `_React`",
+    }, {
+      "range": {
+        "start": { "line": 1, "character": 6 },
+        "end": { "line": 1, "character": 12 },
+      },
+      "severity": 2,
+      "code": "no-unused-vars",
+      "source": "deno-lint",
+      "message": "`unused` is never used\nIf this is intentional, prefix it with an underscore like `_unused`",
+    }])
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_deno_json_workspace_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
