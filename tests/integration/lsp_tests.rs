@@ -3468,6 +3468,42 @@ fn lsp_goto_type_definition_builtin() {
 }
 
 #[test(timeout = 300)]
+fn lsp_goto_type_definition_builtin_neovim_uses_file_uri() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_client_info("Neovim", Some("0.11.0".to_string()));
+  });
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "new Response();\n",
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/typeDefinition",
+    json!({
+      "textDocument": { "uri": "file:///a/file.ts" },
+      "position": { "line": 0, "character": 4 },
+    }),
+  );
+  let target_uri = res.as_array().unwrap()[0]
+    .as_object()
+    .unwrap()
+    .get("targetUri")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  assert_starts_with!(target_uri, "file://");
+  let target_path = Url::parse(target_uri).unwrap().to_file_path().unwrap();
+  let target_text = fs::read_to_string(target_path).unwrap();
+  assert!(target_text.contains("interface Response"), "{target_text}");
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_call_hierarchy() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

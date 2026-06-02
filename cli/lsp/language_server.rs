@@ -232,6 +232,7 @@ pub struct StateSnapshot {
   pub document_modules: DocumentModules,
   pub resolver: Arc<LspResolver>,
   pub cache: Arc<LspCache>,
+  pub client_needs_file_uris_for_virtual_documents: bool,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -308,6 +309,7 @@ pub struct Inner {
   project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
+  client_needs_file_uris_for_virtual_documents: bool,
   force_push_based_diagnostics: bool,
   registered_semantic_tokens_capabilities: bool,
   pub resolver: Arc<LspResolver>,
@@ -336,6 +338,10 @@ impl std::fmt::Debug for Inner {
       .field("npm_search_api", &self.npm_search_api)
       .field("project_version", &self.project_version)
       .field("performance", &self.performance)
+      .field(
+        "client_needs_file_uris_for_virtual_documents",
+        &self.client_needs_file_uris_for_virtual_documents,
+      )
       .field(
         "registered_semantic_tokens_capabilities",
         &self.registered_semantic_tokens_capabilities,
@@ -600,6 +606,7 @@ impl Inner {
       module_registry,
       npm_search_api,
       performance,
+      client_needs_file_uris_for_virtual_documents: false,
       registered_semantic_tokens_capabilities: false,
       force_push_based_diagnostics: false,
       resolver: Default::default(),
@@ -685,6 +692,8 @@ impl Inner {
       document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
       cache: Arc::new(self.cache.clone()),
+      client_needs_file_uris_for_virtual_documents: self
+        .client_needs_file_uris_for_virtual_documents,
     })
   }
 
@@ -878,6 +887,9 @@ impl Inner {
     };
 
     if let Some(client_info) = params.client_info {
+      let client_name = client_info.name.to_lowercase();
+      self.client_needs_file_uris_for_virtual_documents =
+        client_name == "neovim" || client_name == "nvim";
       lsp_log!(
         "Connected to \"{}\" {}",
         client_info.name,
