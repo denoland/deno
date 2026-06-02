@@ -1,11 +1,63 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-this-alias no-unused-vars no-explicit-any
+// deno-lint-ignore-file no-this-alias no-unused-vars no-explicit-any
 
 import { core, primordials } from "ext:core/mod.js";
-const { Symbol } = primordials;
+const {
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeForEach,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ArrayPrototypePop,
+  ArrayPrototypePush,
+  ArrayPrototypeShift,
+  ArrayPrototypeSort,
+  ArrayPrototypeSplice,
+  ArrayPrototypeUnshift,
+  ArrayBufferIsView,
+  Boolean,
+  ErrorPrototype,
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
+  MathMax,
+  MathMin,
+  NumberIsNaN,
+  NumberParseFloat,
+  ObjectCreate,
+  ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectGetOwnPropertyNames,
+  ObjectGetPrototypeOf,
+  ObjectKeys,
+  ObjectPrototypeHasOwnProperty,
+  ObjectPrototypeIsPrototypeOf,
+  ReflectApply,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
+  SafeArrayIterator,
+  SafeRegExp,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
+  String,
+  StringPrototypeCharAt,
+  StringPrototypeEndsWith,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeRepeat,
+  StringPrototypeReplace,
+  StringPrototypeSearch,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  StringPrototypeTrim,
+  Symbol,
+  SyntaxError,
+} = primordials;
 
 import { Interface } from "ext:deno_node/_readline.mjs";
 const { commonPrefix } = core.loadExtScript(
@@ -172,21 +224,27 @@ function _shouldColorize(stream: any): boolean {
   return true;
 }
 
+const reAtFrame = new SafeRegExp(/^\s+at\s/);
+const reExtFrame = new SafeRegExp(/\bext:[a-z_]+\//);
+const reNodeParenFrame = new SafeRegExp(/\(node:[a-z_]+:/);
+const reNodeFrame = new SafeRegExp(/\bnode:[a-z_]+:\d+:\d+\)?$/);
+const reOpenParen = new SafeRegExp(/\(/);
+
 // Drop frames that originate from the REPL polyfill / deno_core internals,
 // plus the trailing top-level eval frame, so the stack matches Node's
 // `overrideStackTrace`-filtered output.
 function filterReplStack(stack: string): string {
-  const rawLines = stack.split("\n");
+  const rawLines = StringPrototypeSplit(stack, "\n");
   const filtered: string[] = [];
-  for (const line of rawLines) {
-    if (!/^\s+at\s/.test(line)) {
-      filtered.push(line);
+  for (const line of new SafeArrayIterator(rawLines)) {
+    if (!RegExpPrototypeTest(reAtFrame, line)) {
+      ArrayPrototypePush(filtered, line);
       continue;
     }
-    if (/\bext:[a-z_]+\//.test(line)) continue;
-    if (/\(node:[a-z_]+:/.test(line)) continue;
-    if (/\bnode:[a-z_]+:\d+:\d+\)?$/.test(line)) continue;
-    filtered.push(line);
+    if (RegExpPrototypeTest(reExtFrame, line)) continue;
+    if (RegExpPrototypeTest(reNodeParenFrame, line)) continue;
+    if (RegExpPrototypeTest(reNodeFrame, line)) continue;
+    ArrayPrototypePush(filtered, line);
   }
   // Mirror Node: from the bottom up, drop the last "anonymous" frame
   // (one without a function name, e.g. "    at FILE:line:col") and
@@ -197,8 +255,8 @@ function filterReplStack(stack: string): string {
   let lastAnon = -1;
   for (let i = filtered.length - 1; i >= 0; i--) {
     const ln = filtered[i];
-    if (!/^\s+at\s/.test(ln)) continue;
-    if (!/\(/.test(ln)) {
+    if (!RegExpPrototypeTest(reAtFrame, ln)) continue;
+    if (!RegExpPrototypeTest(reOpenParen, ln)) {
       lastAnon = i;
       break;
     }
@@ -206,7 +264,7 @@ function filterReplStack(stack: string): string {
   if (lastAnon !== -1) {
     filtered.length = lastAnon;
   }
-  return filtered.join("\n");
+  return ArrayPrototypeJoin(filtered, "\n");
 }
 
 // This is the default "writer" value
@@ -236,12 +294,15 @@ function _clearLine(stream: any, dir?: number) {
 // Match Node's REPL: hide the legacy `__define*Getter|Setter__` and
 // `__lookup*Getter|Setter__` prototype helpers from completion. `__proto__`
 // is intentionally kept since it is widely used.
-const _replHiddenProtoNames = new Set([
+const _replHiddenProtoNames = new SafeSet([
   "__defineGetter__",
   "__defineSetter__",
   "__lookupGetter__",
   "__lookupSetter__",
 ]);
+
+const reDigits = new SafeRegExp(/^\d+$/);
+const reIdentifier = new SafeRegExp(/^[a-zA-Z_$][\w$]*$/);
 
 function _getPropertyNames(obj: any): string[] {
   if (!obj) return [];
@@ -251,20 +312,24 @@ function _getPropertyNames(obj: any): string[] {
     // millions of name strings and trip a v8 internal assertion.
     const len = (obj as any)?.length;
     const tooBigIndexed = typeof len === "number" && len > 100_000 &&
-      (Array.isArray(obj) || ArrayBuffer.isView(obj));
+      (ArrayIsArray(obj) || ArrayBufferIsView(obj));
     if (tooBigIndexed) {
-      const symbolKeyed = Object.keys(obj).filter((k: string) =>
-        !/^\d+$/.test(k)
+      const symbolKeyed = ArrayPrototypeFilter(
+        ObjectKeys(obj),
+        (k: string) => !RegExpPrototypeTest(reDigits, k),
       );
-      return symbolKeyed.filter((name: string) => {
-        if (_replHiddenProtoNames.has(name)) return false;
-        return /^[a-zA-Z_$][\w$]*$/.test(name);
+      return ArrayPrototypeFilter(symbolKeyed, (name: string) => {
+        if (SetPrototypeHas(_replHiddenProtoNames, name)) return false;
+        return RegExpPrototypeTest(reIdentifier, name);
       });
     }
-    return Object.getOwnPropertyNames(obj).filter((name: string) => {
-      if (_replHiddenProtoNames.has(name)) return false;
-      return /^[a-zA-Z_$][\w$]*$/.test(name);
-    });
+    return ArrayPrototypeFilter(
+      ObjectGetOwnPropertyNames(obj),
+      (name: string) => {
+        if (SetPrototypeHas(_replHiddenProtoNames, name)) return false;
+        return RegExpPrototypeTest(reIdentifier, name);
+      },
+    );
   } catch {
     return [];
   }
@@ -283,8 +348,9 @@ export class Recoverable extends SyntaxError {
  * that needs to be wrapped in parens to eval as an expression.
  */
 function isObjectLiteral(code: string): boolean {
-  const trimmed = code.trim();
-  return trimmed.startsWith("{") && !trimmed.startsWith("{\\");
+  const trimmed = StringPrototypeTrim(code);
+  return StringPrototypeStartsWith(trimmed, "{") &&
+    !StringPrototypeStartsWith(trimmed, "{\\");
 }
 
 interface PreviewSession {
@@ -300,6 +366,36 @@ const { createPreviewSession: _createPreviewSession } = core.loadExtScript(
   "ext:deno_node/_repl_preview.js",
 ) as { createPreviewSession(): PreviewSession | null };
 
+const reUnexpectedEndOfInput = new SafeRegExp(/Unexpected end of input/);
+const reUnexpectedToken = new SafeRegExp(/Unexpected token/);
+const reUnterminatedString = new SafeRegExp(/Unterminated string/);
+const reUnterminatedTemplate = new SafeRegExp(/Unterminated template/);
+const reTrailingSemicolon = new SafeRegExp(/;\s*$/);
+const reBlankString = new SafeRegExp(/^\s*$/);
+const reTrailingNewline = new SafeRegExp(/\n$/);
+const reReplCommand = new SafeRegExp(/^\s*\.(\w*)$/);
+const reVarDeclaration = new SafeRegExp(
+  /^\s*(?:let|const|var)\s+[a-zA-Z_$][\w$]*$/,
+);
+const reRequireImport = new SafeRegExp(
+  /(?:^|[\s;({,])(require|import)\s*\(\s*(['"`])((?:(?!\2|\\).)*)$/,
+);
+const reExprChain = new SafeRegExp(
+  /(?:^|[\s;({\[,!~+\-*/&|^%<>?:=])((?:[a-zA-Z_$][\w$]*\??\.)*(?:[a-zA-Z_$][\w$]*)?)\.?$/,
+);
+const reNewlineChars = new SafeRegExp(/[\r\n\v]/);
+const reLeadingWhitespace = new SafeRegExp(/^\s+/);
+const reReplKeyword = new SafeRegExp(/^\.([^\s]+)\s*(.*)$/);
+const reStackFrames = new SafeRegExp(/^\s+at\s.*\n?/gm);
+const reReplFilename = new SafeRegExp(/^REPL\d+:\d+\r?\n/);
+const reReplLowerFilename = new SafeRegExp(/^repl:\d+\r?\n/);
+const reUnexpectedTokenName = new SafeRegExp(
+  /Unexpected (?:token|identifier|string|number|keyword|reserved\s+word) '(.+?)'/,
+);
+const reErrorBraces = new SafeRegExp(/^\[(.*)\](?: (\{[\s\S]*\}))?$/);
+const reLineSplit = new SafeRegExp(/(?<=\n)/);
+const reErrorName = new SafeRegExp(/^\[?([A-Z][a-z0-9_]*)*Error/);
+
 /**
  * Check if a syntax error is recoverable (i.e., the user might continue typing).
  */
@@ -310,8 +406,8 @@ function isRecoverableError(e: unknown, code: string): boolean {
   const message = (e as Error).message;
 
   // Check for common recoverable patterns
-  if (/Unexpected end of input/.test(message)) return true;
-  if (/Unexpected token/.test(message)) {
+  if (RegExpPrototypeTest(reUnexpectedEndOfInput, message)) return true;
+  if (RegExpPrototypeTest(reUnexpectedToken, message)) {
     // Check if the code has unbalanced braces/brackets/parens
     let depth = 0;
     for (let i = 0; i < code.length; i++) {
@@ -321,15 +417,15 @@ function isRecoverableError(e: unknown, code: string): boolean {
     }
     if (depth > 0) return true;
   }
-  if (/Unterminated string/.test(message)) return true;
-  if (/Unterminated template/.test(message)) return true;
+  if (RegExpPrototypeTest(reUnterminatedString, message)) return true;
+  if (RegExpPrototypeTest(reUnterminatedTemplate, message)) return true;
 
   return false;
 }
 
 function _turnOnEditorMode(repl: REPLServer) {
   repl.editorMode = true;
-  Interface.prototype.setPrompt.call(repl, "");
+  FunctionPrototypeCall(Interface.prototype.setPrompt, repl, "");
 }
 
 function _turnOffEditorMode(repl: REPLServer) {
@@ -374,13 +470,18 @@ function defineDefaultCommands(repl: REPLServer) {
   repl.defineCommand("help", {
     help: "Print this help message",
     action: function (this: REPLServer) {
-      const names = Object.keys(this.commands).sort();
-      const longestNameLength = Math.max(
-        ...names.map((name) => name.length),
+      const names = ArrayPrototypeSort(ObjectKeys(this.commands));
+      const longestNameLength = MathMax(
+        ...new SafeArrayIterator(
+          ArrayPrototypeMap(names, (name) => name.length),
+        ),
       );
-      names.forEach((name) => {
+      ArrayPrototypeForEach(names, (name) => {
         const cmd = this.commands[name];
-        const spaces = " ".repeat(longestNameLength - name.length + 3);
+        const spaces = StringPrototypeRepeat(
+          " ",
+          longestNameLength - name.length + 3,
+        );
         const line = `.${name}${cmd.help ? spaces + cmd.help : ""}\n`;
         this.output.write(line);
       });
@@ -399,7 +500,7 @@ function defineDefaultCommands(repl: REPLServer) {
         if (file === "") {
           throw new ERR_MISSING_ARGS("file");
         }
-        fs.writeFileSync(file, this.lines.join("\n"));
+        fs.writeFileSync(file, ArrayPrototypeJoin(this.lines, "\n"));
         this.output.write(`Session saved to: ${file}\n`);
       } catch (error) {
         if ((error as { code?: string })?.code === "ERR_MISSING_ARGS") {
@@ -465,9 +566,9 @@ function _memory(this: REPLServer, cmd: string) {
 
   if (cmd) {
     const len = this.lines.level.length ? this.lines.level.length - 1 : 0;
-    this.lines.push("  ".repeat(len) + cmd);
+    ArrayPrototypePush(this.lines, StringPrototypeRepeat("  ", len) + cmd);
   } else {
-    this.lines.push("");
+    ArrayPrototypePush(this.lines, "");
   }
 
   if (!cmd) {
@@ -477,36 +578,36 @@ function _memory(this: REPLServer, cmd: string) {
 
   const countMatches = (regex: RegExp, str: string) => {
     let count = 0;
-    while (regex.exec(str) !== null) count++;
+    while (RegExpPrototypeExec(regex, str) !== null) count++;
     return count;
   };
 
-  const dw = countMatches(/[{(]/g, cmd);
-  const up = countMatches(/[})]/g, cmd);
+  const dw = countMatches(new SafeRegExp(/[{(]/g), cmd);
+  const up = countMatches(new SafeRegExp(/[})]/g), cmd);
   let depth = dw - up;
 
   if (depth) {
-    (function workIt() {
+    FunctionPrototypeCall(function workIt() {
       const self = this as REPLServer;
       if (depth > 0) {
-        self.lines.level.push({
+        ArrayPrototypePush(self.lines.level, {
           line: self.lines.length - 1,
           depth: depth,
         });
       } else if (depth < 0) {
-        const curr = self.lines.level.pop();
+        const curr = ArrayPrototypePop(self.lines.level);
         if (curr) {
           const tmp = curr.depth + depth;
           if (tmp < 0) {
             depth += curr.depth;
-            workIt.call(self);
+            FunctionPrototypeCall(workIt, self);
           } else if (tmp > 0) {
             curr.depth += depth;
-            self.lines.level.push(curr);
+            ArrayPrototypePush(self.lines.level, curr);
           }
         }
       }
-    }).call(this);
+    }, this);
   }
 }
 
@@ -589,7 +690,8 @@ export class REPLServer extends (Interface as any) {
     this._domain = new EventEmitter();
 
     // Deprecated inputStream/outputStream properties (DEP0141)
-    Object.defineProperty(this, "inputStream", {
+    ObjectDefineProperty(this, "inputStream", {
+      __proto__: null,
       get: () => this.input,
       set: (val: any) => {
         this.input = val;
@@ -597,7 +699,8 @@ export class REPLServer extends (Interface as any) {
       enumerable: false,
       configurable: true,
     });
-    Object.defineProperty(this, "outputStream", {
+    ObjectDefineProperty(this, "outputStream", {
+      __proto__: null,
       get: () => this.output,
       set: (val: any) => {
         this.output = val;
@@ -641,11 +744,11 @@ export class REPLServer extends (Interface as any) {
       // matching Node's domain-based REPL.
       _installCaptureHook();
       _addNewListenerGuard();
-      _activeREPLs.push(this);
+      ArrayPrototypePush(_activeREPLs, this);
       this._processListenersAttached = true;
       this.once("exit", () => {
-        const idx = _activeREPLs.indexOf(this);
-        if (idx !== -1) _activeREPLs.splice(idx, 1);
+        const idx = ArrayPrototypeIndexOf(_activeREPLs, this);
+        if (idx !== -1) ArrayPrototypeSplice(_activeREPLs, idx, 1);
         if (this._processListenersAttached) {
           this._processListenersAttached = false;
           _removeNewListenerGuard();
@@ -672,11 +775,14 @@ export class REPLServer extends (Interface as any) {
 
       let entry: any;
       const tmpCompletionEnabled = self.isCompletionEnabled;
-      while ((entry = pausedBuffer.shift()) !== undefined) {
-        const [type, payload, isCompletionEnabled] = entry;
+      while ((entry = ArrayPrototypeShift(pausedBuffer)) !== undefined) {
+        const type = entry[0];
+        const payload = entry[1];
+        const isCompletionEnabled = entry[2];
         switch (type) {
           case "key": {
-            const [d, key] = payload;
+            const d = payload[0];
+            const key = payload[1];
             self.isCompletionEnabled = isCompletionEnabled;
             self._ttyWrite(d, key);
             break;
@@ -711,9 +817,9 @@ export class REPLServer extends (Interface as any) {
       // This matches Node.js behavior: wrap first, fallback to unwrapped.
       if (
         isObjectLiteral(code) &&
-        !/;\s*$/.test(code.trim())
+        !RegExpPrototypeTest(reTrailingSemicolon, StringPrototypeTrim(code))
       ) {
-        code = `(${code.trim()})\n`;
+        code = `(${StringPrototypeTrim(code)})\n`;
         wrappedCmd = true;
       }
 
@@ -723,7 +829,7 @@ export class REPLServer extends (Interface as any) {
           try {
             if (
               self.replMode === REPL_MODE_STRICT &&
-              !/^\s*$/.test(code)
+              !RegExpPrototypeTest(reBlankString, code)
             ) {
               code = `'use strict'; void 0;\n${code}`;
             }
@@ -756,7 +862,11 @@ export class REPLServer extends (Interface as any) {
                 error != null && typeof error === "object" &&
                 error.name === "SyntaxError"
               ) {
-                (error as any)._replSourceCode = input.replace(/\n$/, "");
+                (error as any)._replSourceCode = StringPrototypeReplace(
+                  input,
+                  reTrailingNewline,
+                  "",
+                );
               }
               err = error;
             }
@@ -803,9 +913,9 @@ export class REPLServer extends (Interface as any) {
       // names without the leading dot and a completeOn matching the typed
       // suffix (also without the dot), so e.g. completing ".b" produces
       // [['break'], 'b'].
-      const cmdMatch = /^\s*\.(\w*)$/.exec(line);
+      const cmdMatch = RegExpPrototypeExec(reReplCommand, line);
       if (cmdMatch) {
-        completionGroups.push(Object.keys(self.commands));
+        ArrayPrototypePush(completionGroups, ObjectKeys(self.commands));
         completeOn = cmdMatch[1];
         if (cmdMatch[1].length) {
           filter = cmdMatch[1];
@@ -816,7 +926,7 @@ export class REPLServer extends (Interface as any) {
 
       // Variable declarations like `let a`, `const x`, `var foo` should
       // not produce identifier completions for the binding name.
-      if (/^\s*(?:let|const|var)\s+[a-zA-Z_$][\w$]*$/.test(line)) {
+      if (RegExpPrototypeTest(reVarDeclaration, line)) {
         callback(null, [[], line]);
         return;
       }
@@ -825,38 +935,47 @@ export class REPLServer extends (Interface as any) {
       // Returns the list of public builtin modules (and, for `import(...)`,
       // their `node:` URL forms). Third-party node_modules-on-disk lookup
       // is left to a future pass.
-      const modMatch =
-        /(?:^|[\s;({,])(require|import)\s*\(\s*(['"`])((?:(?!\2|\\).)*)$/
-          .exec(line);
+      const modMatch = RegExpPrototypeExec(reRequireImport, line);
       if (modMatch) {
         const subject = modMatch[3];
         const fromModule: string[] =
-          Array.isArray((Module as any).builtinModules)
+          ArrayIsArray((Module as any).builtinModules)
             ? (Module as any).builtinModules
             : [];
-        const fromModulePublic = fromModule.filter((m: string) =>
-          !m.startsWith("_")
+        const fromModulePublic = ArrayPrototypeFilter(
+          fromModule,
+          (m: string) => !StringPrototypeStartsWith(m, "_"),
         );
-        const unprefixed = fromModulePublic.filter((m: string) =>
-          !m.startsWith("node:")
+        const unprefixed = ArrayPrototypeFilter(
+          fromModulePublic,
+          (m: string) => !StringPrototypeStartsWith(m, "node:"),
         );
-        const alreadyPrefixed = fromModulePublic.filter((m: string) =>
-          m.startsWith("node:")
+        const alreadyPrefixed = ArrayPrototypeFilter(
+          fromModulePublic,
+          (m: string) => StringPrototypeStartsWith(m, "node:"),
         );
-        const knownInModule = new Set(fromModule);
-        const replExtras = (builtinModules as string[]).filter((m: string) =>
-          !knownInModule.has(m) && !m.startsWith("_")
+        const knownInModule = new SafeSet(fromModule);
+        const replExtras = ArrayPrototypeFilter(
+          builtinModules as string[],
+          (m: string) =>
+            !SetPrototypeHas(knownInModule, m) &&
+            !StringPrototypeStartsWith(m, "_"),
         );
         // Group A: unprefixed builtins + user-pushed extras. Pushing a
         // single new entry must produce only one extra completion (no extra
         // group separator), so merge replExtras into this group.
-        completionGroups.push([...unprefixed, ...replExtras]);
+        ArrayPrototypePush(completionGroups, [
+          ...new SafeArrayIterator(unprefixed),
+          ...new SafeArrayIterator(replExtras),
+        ]);
         // Group B: every `node:` URL form. Includes both the originally-
         // prefixed names from `Module.builtinModules` (e.g. `node:sqlite`)
         // and the `node:`-prefixed forms of the unprefixed builtins.
-        completionGroups.push([
-          ...unprefixed.map((m: string) => `node:${m}`),
-          ...alreadyPrefixed,
+        ArrayPrototypePush(completionGroups, [
+          ...new SafeArrayIterator(
+            ArrayPrototypeMap(unprefixed, (m: string) => `node:${m}`),
+          ),
+          ...new SafeArrayIterator(alreadyPrefixed),
         ]);
         completeOn = subject;
         filter = subject;
@@ -865,9 +984,7 @@ export class REPLServer extends (Interface as any) {
       }
 
       // Match identifier chains: foo, foo.bar, foo.bar.baz, etc.
-      const exprMatch =
-        /(?:^|[\s;({\[,!~+\-*/&|^%<>?:=])((?:[a-zA-Z_$][\w$]*\??\.)*(?:[a-zA-Z_$][\w$]*)?)\.?$/
-          .exec(line);
+      const exprMatch = RegExpPrototypeExec(reExprChain, line);
 
       let expr = "";
 
@@ -875,13 +992,13 @@ export class REPLServer extends (Interface as any) {
         const matchStr = exprMatch[1];
         completeOn = matchStr;
 
-        if (matchStr.endsWith(".")) {
-          expr = matchStr.slice(0, -1);
+        if (StringPrototypeEndsWith(matchStr, ".")) {
+          expr = StringPrototypeSlice(matchStr, 0, -1);
           filter = "";
-        } else if (matchStr.includes(".")) {
-          const bits = matchStr.split(".");
-          filter = bits.pop()!;
-          expr = bits.join(".");
+        } else if (StringPrototypeIncludes(matchStr, ".")) {
+          const bits = StringPrototypeSplit(matchStr, ".");
+          filter = ArrayPrototypePop(bits)!;
+          expr = ArrayPrototypeJoin(bits, ".");
         } else {
           filter = matchStr;
         }
@@ -897,11 +1014,11 @@ export class REPLServer extends (Interface as any) {
         // Member expression completion
         const chaining = ".";
         let evalExpr = expr;
-        if (expr.endsWith("?")) {
+        if (StringPrototypeEndsWith(expr, "?")) {
           // `expr` already contains the trailing `?`; strip it for eval
           // and keep the chaining as a plain `.` so we render
           // `console?.log` rather than `console??.log`.
-          evalExpr = expr.slice(0, -1);
+          evalExpr = StringPrototypeSlice(expr, 0, -1);
         }
 
         const wrappedExpr = `try { ${evalExpr} } catch {}`;
@@ -918,15 +1035,15 @@ export class REPLServer extends (Interface as any) {
                   (typeof obj === "object" && obj !== null) ||
                   typeof obj === "function"
                 ) {
-                  memberGroups.push(_getPropertyNames(obj));
-                  p = Object.getPrototypeOf(obj);
+                  ArrayPrototypePush(memberGroups, _getPropertyNames(obj));
+                  p = ObjectGetPrototypeOf(obj);
                 } else {
                   p = obj.constructor ? obj.constructor.prototype : null;
                 }
                 let sentinel = 5;
                 while (p !== null && sentinel-- > 0) {
-                  memberGroups.push(_getPropertyNames(p));
-                  p = Object.getPrototypeOf(p);
+                  ArrayPrototypePush(memberGroups, _getPropertyNames(p));
+                  p = ObjectGetPrototypeOf(p);
                 }
               } catch {
                 // Proxy without getOwnPropertyNames
@@ -934,9 +1051,10 @@ export class REPLServer extends (Interface as any) {
 
               if (memberGroups.length) {
                 const prefix = expr + chaining;
-                for (const group of memberGroups) {
-                  completionGroups.push(
-                    group.map((m: string) => `${prefix}${m}`),
+                for (const group of new SafeArrayIterator(memberGroups)) {
+                  ArrayPrototypePush(
+                    completionGroups,
+                    ArrayPrototypeMap(group, (m: string) => `${prefix}${m}`),
                   );
                 }
                 if (filter) {
@@ -955,11 +1073,11 @@ export class REPLServer extends (Interface as any) {
             let sentinel = 5;
             while (obj !== null && sentinel-- > 0) {
               try {
-                completionGroups.push(_getPropertyNames(obj));
+                ArrayPrototypePush(completionGroups, _getPropertyNames(obj));
               } catch {
                 // ignore
               }
-              obj = Object.getPrototypeOf(obj);
+              obj = ObjectGetPrototypeOf(obj);
             }
           } catch {
             // ignore
@@ -971,7 +1089,7 @@ export class REPLServer extends (Interface as any) {
         // constructors as own properties, so completion misses them.
         if (!self.useGlobal) {
           try {
-            completionGroups.push(_getPropertyNames(globalThis));
+            ArrayPrototypePush(completionGroups, _getPropertyNames(globalThis));
           } catch {
             // ignore
           }
@@ -979,7 +1097,7 @@ export class REPLServer extends (Interface as any) {
 
         // JS keywords
         if (filter !== "") {
-          completionGroups.push([
+          ArrayPrototypePush(completionGroups, [
             "async",
             "await",
             "break",
@@ -1026,39 +1144,47 @@ export class REPLServer extends (Interface as any) {
       function completionGroupsLoaded() {
         // Filter by prefix
         if (completionGroups.length && filter) {
-          const lowerFilter = filter.toLowerCase();
+          const lowerFilter = StringPrototypeToLowerCase(filter);
           const filtered: string[][] = [];
-          for (const group of completionGroups) {
-            const fg = group.filter((str) =>
-              str.toLowerCase().startsWith(lowerFilter)
+          for (const group of new SafeArrayIterator(completionGroups)) {
+            const fg = ArrayPrototypeFilter(
+              group,
+              (str) =>
+                StringPrototypeStartsWith(
+                  StringPrototypeToLowerCase(str),
+                  lowerFilter,
+                ),
             );
-            if (fg.length) filtered.push(fg);
+            if (fg.length) ArrayPrototypePush(filtered, fg);
           }
           completionGroups.length = 0;
-          completionGroups.push(...filtered);
+          ArrayPrototypePush(
+            completionGroups,
+            ...new SafeArrayIterator(filtered),
+          );
         }
 
         // Deduplicate and collect
         const completions: string[] = [];
-        const seen = new Set<string>();
-        seen.add("");
+        const seen = new SafeSet<string>();
+        SetPrototypeAdd(seen, "");
 
-        for (const group of completionGroups) {
-          group.sort((a, b) => (b > a ? 1 : -1));
+        for (const group of new SafeArrayIterator(completionGroups)) {
+          ArrayPrototypeSort(group, (a, b) => (b > a ? 1 : -1));
           const prevSize = seen.size;
-          for (const item of group) {
-            if (!seen.has(item)) {
-              completions.unshift(item);
-              seen.add(item);
+          for (const item of new SafeArrayIterator(group)) {
+            if (!SetPrototypeHas(seen, item)) {
+              ArrayPrototypeUnshift(completions, item);
+              SetPrototypeAdd(seen, item);
             }
           }
           if (seen.size !== prevSize) {
-            completions.unshift("");
+            ArrayPrototypeUnshift(completions, "");
           }
         }
 
         if (completions.length > 0 && completions[0] === "") {
-          completions.shift();
+          ArrayPrototypeShift(completions);
         }
 
         callback(null, [completions, completeOn]);
@@ -1102,16 +1228,17 @@ export class REPLServer extends (Interface as any) {
         if (count !== previewCompletionCounter) return;
         if (err) return;
 
-        const [rawCompletions, completeOn] = data;
+        const rawCompletions = data[0];
+        const completeOn = data[1];
         if (!rawCompletions || rawCompletions.length === 0) return;
 
-        const completions = rawCompletions.filter(Boolean);
+        const completions = ArrayPrototypeFilter(rawCompletions, Boolean);
         if (completions.length === 0) return;
 
         const prefix = commonPrefix(completions);
         if (prefix.length <= completeOn.length) return;
 
-        const suffix = prefix.slice(completeOn.length);
+        const suffix = StringPrototypeSlice(prefix, completeOn.length);
         completionPreview = suffix;
 
         const result = self.useColors
@@ -1137,7 +1264,7 @@ export class REPLServer extends (Interface as any) {
       if (!usePreview) return;
       if (inputPreview !== null || !self.isCompletionEnabled) return;
 
-      const line = self.line.trim();
+      const line = StringPrototypeTrim(self.line);
       if (line === "") return;
 
       // Show completion preview (inline dim suffix)
@@ -1161,9 +1288,12 @@ export class REPLServer extends (Interface as any) {
       // Apply object literal wrapping for preview too
       if (
         isObjectLiteral(previewCode) &&
-        !/;\s*$/.test(previewCode.trim())
+        !RegExpPrototypeTest(
+          reTrailingSemicolon,
+          StringPrototypeTrim(previewCode),
+        )
       ) {
-        previewCode = `(${previewCode.trim()})\n`;
+        previewCode = `(${StringPrototypeTrim(previewCode)})\n`;
       }
 
       // Probe via the inspector first: if v8 reports a side effect
@@ -1209,16 +1339,16 @@ export class REPLServer extends (Interface as any) {
       if (inspected === line) return;
 
       // Truncate at newline
-      const nlIdx = inspected.search(/[\r\n\v]/);
-      if (nlIdx !== -1) inspected = inspected.slice(0, nlIdx);
+      const nlIdx = StringPrototypeSearch(inspected, reNewlineChars);
+      if (nlIdx !== -1) inspected = StringPrototypeSlice(inspected, 0, nlIdx);
 
       // Limit length
-      const maxCols = Math.min(
+      const maxCols = MathMin(
         (self as any).columns || 80,
         250,
       );
       if (inspected.length > maxCols) {
-        inspected = inspected.slice(0, maxCols - 4) + "...";
+        inspected = StringPrototypeSlice(inspected, 0, maxCols - 4) + "...";
       }
 
       inputPreview = inspected;
@@ -1300,7 +1430,7 @@ export class REPLServer extends (Interface as any) {
 
     self.resetContext();
 
-    this.commands = Object.create(null);
+    this.commands = ObjectCreate(null);
     defineDefaultCommands(this);
 
     // Figure out which "writer" function to use
@@ -1317,7 +1447,7 @@ export class REPLServer extends (Interface as any) {
     ): boolean {
       const cmd = this.commands[keyword];
       if (cmd) {
-        cmd.action.call(this, rest);
+        FunctionPrototypeCall(cmd.action, this, rest);
         return true;
       }
       return false;
@@ -1325,7 +1455,7 @@ export class REPLServer extends (Interface as any) {
 
     self.on("close", function emitExit() {
       if (paused) {
-        pausedBuffer.push(["close"]);
+        ArrayPrototypePush(pausedBuffer, ["close"]);
         return;
       }
       if (previewSession !== null) {
@@ -1372,7 +1502,7 @@ export class REPLServer extends (Interface as any) {
 
         // code alignment
         const matches = self._sawKeyPress && !self[kLoadingSymbol]
-          ? /^\s+/.exec(cmd)
+          ? RegExpPrototypeExec(reLeadingWhitespace, cmd)
           : null;
         if (matches) {
           const prefix = matches[0];
@@ -1380,25 +1510,30 @@ export class REPLServer extends (Interface as any) {
           self.line = prefix;
           self.cursor = prefix.length;
         }
-        _memory.call(self, cmd);
+        FunctionPrototypeCall(_memory, self, cmd);
         return;
       }
 
       // Check REPL keywords and empty lines against a trimmed line input.
-      const trimmedCmd = cmd.trim();
+      const trimmedCmd = StringPrototypeTrim(cmd);
 
       if (trimmedCmd) {
         if (
-          trimmedCmd.charAt(0) === "." &&
-          trimmedCmd.charAt(1) !== "." &&
-          Number.isNaN(Number.parseFloat(trimmedCmd))
+          StringPrototypeCharAt(trimmedCmd, 0) === "." &&
+          StringPrototypeCharAt(trimmedCmd, 1) !== "." &&
+          NumberIsNaN(NumberParseFloat(trimmedCmd))
         ) {
-          const matches = /^\.([^\s]+)\s*(.*)$/.exec(trimmedCmd);
+          const matches = RegExpPrototypeExec(reReplKeyword, trimmedCmd);
           const keyword = matches?.[1];
           const rest = matches?.[2];
           if (
             keyword &&
-            _parseREPLKeyword.call(self, keyword, rest || "") === true
+            FunctionPrototypeCall(
+                _parseREPLKeyword,
+                self,
+                keyword,
+                rest || "",
+              ) === true
           ) {
             return;
           }
@@ -1415,13 +1550,13 @@ export class REPLServer extends (Interface as any) {
       self.eval(evalCmd, self.context, self._resourceName, finish);
 
       function finish(e: Error | null, ret?: any) {
-        _memory.call(self, cmd);
+        FunctionPrototypeCall(_memory, self, cmd);
 
         if (
           e !== null && e !== undefined &&
           !self[kBufferedCommandSymbol] &&
-          cmd.trim().startsWith("npm ") &&
-          !(e instanceof Recoverable)
+          StringPrototypeStartsWith(StringPrototypeTrim(cmd), "npm ") &&
+          !ObjectPrototypeIsPrototypeOf(Recoverable.prototype, e)
         ) {
           self.output.write(
             "npm should be run outside of the " +
@@ -1433,7 +1568,9 @@ export class REPLServer extends (Interface as any) {
         }
 
         // If error was SyntaxError and not JSON.parse error
-        if (e instanceof Recoverable && !sawCtrlD) {
+        if (
+          ObjectPrototypeIsPrototypeOf(Recoverable.prototype, e) && !sawCtrlD
+        ) {
           // Start multiline
           self[kBufferedCommandSymbol] += cmd + "\n";
           self.displayPrompt();
@@ -1480,7 +1617,7 @@ export class REPLServer extends (Interface as any) {
     });
 
     // Wrap readline tty to enable editor mode and pausing.
-    const ttyWrite = self._ttyWrite.bind(self);
+    const ttyWrite = FunctionPrototypeBind(self._ttyWrite, self);
 
     self._ttyWrite = (d: any, key: any) => {
       key = key || {};
@@ -1488,7 +1625,7 @@ export class REPLServer extends (Interface as any) {
         paused &&
         !(self.breakEvalOnSigint && key.ctrl && key.name === "c")
       ) {
-        pausedBuffer.push([
+        ArrayPrototypePush(pausedBuffer, [
           "key",
           [d, key],
           self.isCompletionEnabled,
@@ -1567,16 +1704,21 @@ export class REPLServer extends (Interface as any) {
     let errStack = "";
 
     if (typeof e === "object" && e !== null) {
-      const isError = e instanceof Error ||
+      const isError = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) ||
         (typeof (e as any).name === "string" &&
           typeof (e as any).stack === "string");
       if (isError && (e as any).stack) {
         if (e.name === "SyntaxError") {
           // Remove stack trace
-          errStack = e.stack
-            .replace(/^\s+at\s.*\n?/gm, "")
-            .replace(/^REPL\d+:\d+\r?\n/, "")
-            .replace(/^repl:\d+\r?\n/, "");
+          errStack = StringPrototypeReplace(
+            StringPrototypeReplace(
+              StringPrototypeReplace(e.stack, reStackFrames, ""),
+              reReplFilename,
+              "",
+            ),
+            reReplLowerFilename,
+            "",
+          );
 
           // Deno's V8 doesn't include source context in SyntaxError stacks
           // like Node.js does. Add it if we have the source code attached.
@@ -1585,14 +1727,15 @@ export class REPLServer extends (Interface as any) {
             // Try to determine caret position from the error message.
             // Node.js uses V8's Message.GetStartColumn() which we don't have.
             let col = 0;
-            const tokenMatch = e.message.match(
-              /Unexpected (?:token|identifier|string|number|keyword|reserved\s+word) '(.+?)'/,
+            const tokenMatch = RegExpPrototypeExec(
+              reUnexpectedTokenName,
+              e.message,
             );
             if (tokenMatch) {
-              const idx = srcLine.indexOf(tokenMatch[1]);
+              const idx = StringPrototypeIndexOf(srcLine, tokenMatch[1]);
               if (idx !== -1) col = idx;
             }
-            const caret = " ".repeat(col) + "^";
+            const caret = StringPrototypeRepeat(" ", col) + "^";
             errStack = `${srcLine}\n${caret}\n\n${errStack}`;
           }
         } else {
@@ -1611,18 +1754,18 @@ export class REPLServer extends (Interface as any) {
           // whole error in `[ ... ]`. Temporarily hide it (and any
           // similarly own-shadowed prototype methods) for the inspect call.
           const hidden: { key: string; desc: PropertyDescriptor }[] = [];
-          for (const key of ["toString"]) {
-            const desc = Object.getOwnPropertyDescriptor(e, key);
+          for (const key of new SafeArrayIterator(["toString"])) {
+            const desc = ObjectGetOwnPropertyDescriptor(e, key);
             if (desc) {
-              hidden.push({ key, desc });
+              ArrayPrototypePush(hidden, { key, desc });
               delete (e as any)[key];
             }
           }
           try {
             errStack = this.writer(e);
           } finally {
-            for (const { key, desc } of hidden) {
-              Object.defineProperty(e, key, desc);
+            for (const { key, desc } of new SafeArrayIterator(hidden)) {
+              ObjectDefineProperty(e, key, desc);
             }
           }
         }
@@ -1638,7 +1781,7 @@ export class REPLServer extends (Interface as any) {
       // props. Node's REPL only strips the outer `[...]`, leaving the props
       // section intact.
       if (errStack[0] === "[") {
-        const m = errStack.match(/^\[(.*)\](?: (\{[\s\S]*\}))?$/);
+        const m = RegExpPrototypeExec(reErrorBraces, errStack);
         if (m) {
           errStack = m[2] ? `${m[1]} ${m[2]}` : m[1];
         }
@@ -1653,14 +1796,14 @@ export class REPLServer extends (Interface as any) {
       errStack = this.writer(e);
     }
 
-    const lines = errStack.split(/(?<=\n)/);
+    const lines = StringPrototypeSplit(errStack, reLineSplit);
     let matched = false;
 
     errStack = "";
-    lines.forEach((line: string) => {
+    ArrayPrototypeForEach(lines, (line: string) => {
       if (
         !matched &&
-        /^\[?([A-Z][a-z0-9_]*)*Error/.test(line)
+        RegExpPrototypeTest(reErrorName, line)
       ) {
         errStack += writer.options.breakLength >= line.length
           ? `Uncaught ${line}`
@@ -1675,7 +1818,7 @@ export class REPLServer extends (Interface as any) {
       errStack = `Uncaught${ln}${errStack}`;
     }
     // Normalize line endings.
-    errStack += errStack.endsWith("\n") ? "" : "\n";
+    errStack += StringPrototypeEndsWith(errStack, "\n") ? "" : "\n";
     this.output.write(errStack);
     this.clearBufferedCommand();
     this.lines.level = [];
@@ -1701,7 +1844,7 @@ export class REPLServer extends (Interface as any) {
     process.nextTick(() => {
       try {
         // @ts-ignore - calling parent close
-        Interface.prototype.close.call(self);
+        FunctionPrototypeCall(Interface.prototype.close, self);
       } catch {
         // May fail if input stream already destroyed
       }
@@ -1717,16 +1860,20 @@ export class REPLServer extends (Interface as any) {
       context = vm.createContext();
       // Match Node: copy non-builtin own properties from globalThis into the
       // new context so user-defined globals are visible at REPL start.
-      const builtinNames = new Set(
+      const builtinNames = new SafeSet(
         (vm as any).runInNewContext?.(
           "Object.getOwnPropertyNames(globalThis)",
         ) ?? [],
       );
-      for (const name of Object.getOwnPropertyNames(globalThis)) {
-        if (builtinNames.has(name)) continue;
+      for (
+        const name of new SafeArrayIterator(
+          ObjectGetOwnPropertyNames(globalThis),
+        )
+      ) {
+        if (SetPrototypeHas(builtinNames, name)) continue;
         try {
-          const desc = Object.getOwnPropertyDescriptor(globalThis, name);
-          if (desc) Object.defineProperty(context, name, desc);
+          const desc = ObjectGetOwnPropertyDescriptor(globalThis, name);
+          if (desc) ObjectDefineProperty(context, name, desc);
         } catch {
           // Non-configurable / non-writable props just get skipped.
         }
@@ -1738,7 +1885,8 @@ export class REPLServer extends (Interface as any) {
       } catch {
         _console = console;
       }
-      Object.defineProperty(context, "console", {
+      ObjectDefineProperty(context, "console", {
+        __proto__: null,
         configurable: true,
         writable: true,
         value: _console,
@@ -1747,10 +1895,13 @@ export class REPLServer extends (Interface as any) {
 
     // Set up module and require in the context
     try {
-      const replRequire = Module.createRequire(
-        path.join(process.cwd(), "repl"),
-      );
-      Object.defineProperty(context, "require", {
+      // `path` is the node:path module, not an Array; `path.join` is the
+      // path joiner.
+      // deno-lint-ignore prefer-primordials
+      const replPath = path.join(process.cwd(), "repl");
+      const replRequire = Module.createRequire(replPath);
+      ObjectDefineProperty(context, "require", {
+        __proto__: null,
         configurable: true,
         writable: true,
         value: replRequire,
@@ -1759,7 +1910,8 @@ export class REPLServer extends (Interface as any) {
       // createRequire may fail in some environments
     }
 
-    Object.defineProperty(context, "module", {
+    ObjectDefineProperty(context, "module", {
+      __proto__: null,
       configurable: true,
       writable: true,
       value: { exports: {} },
@@ -1771,10 +1923,10 @@ export class REPLServer extends (Interface as any) {
     // an explicit `require('util')`.
     const ctxRequire = (context as any).require;
     if (typeof ctxRequire === "function") {
-      for (const name of builtinModules) {
+      for (const name of new SafeArrayIterator(builtinModules)) {
         if (
-          name[0] === "_" || name.includes("/") ||
-          Object.prototype.hasOwnProperty.call(context, name)
+          name[0] === "_" || StringPrototypeIncludes(name, "/") ||
+          ObjectPrototypeHasOwnProperty(context, name)
         ) {
           continue;
         }
@@ -1783,11 +1935,13 @@ export class REPLServer extends (Interface as any) {
           (context as any)[name] = val;
         };
         try {
-          Object.defineProperty(context, name, {
+          ObjectDefineProperty(context, name, {
+            __proto__: null,
             get: () => {
               try {
                 const mod = ctxRequire(name);
-                Object.defineProperty(context, name, {
+                ObjectDefineProperty(context, name, {
+                  __proto__: null,
                   configurable: true,
                   writable: true,
                   value: mod,
@@ -1817,7 +1971,8 @@ export class REPLServer extends (Interface as any) {
     this.lines = [];
     this.lines.level = [];
 
-    Object.defineProperty(this.context, "_", {
+    ObjectDefineProperty(this.context, "_", {
+      __proto__: null,
       configurable: true,
       get: () => this.last,
       set: (value) => {
@@ -1829,7 +1984,8 @@ export class REPLServer extends (Interface as any) {
       },
     });
 
-    Object.defineProperty(this.context, "_error", {
+    ObjectDefineProperty(this.context, "_error", {
+      __proto__: null,
       configurable: true,
       get: () => this.lastError,
       set: (value) => {
@@ -1863,15 +2019,16 @@ export class REPLServer extends (Interface as any) {
   }
 
   complete(...args: any[]) {
-    Reflect.apply(this.completer, this, args);
+    ReflectApply(this.completer, this, args);
   }
 
   completeOnEditorMode(callback: any) {
     return (err: Error | null, results: any) => {
       if (err) return callback(err);
 
-      const [completions, completeOn = ""] = results;
-      let result = completions.filter(Boolean);
+      const completions = results[0];
+      const completeOn = results[1] ?? "";
+      let result = ArrayPrototypeFilter(completions, Boolean);
 
       if (completeOn && result.length !== 0) {
         result = [commonPrefix(result)];
