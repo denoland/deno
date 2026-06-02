@@ -169,19 +169,15 @@ declare namespace Deno {
     export {}; // only export exports
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Bundle Typescript/Javascript code
+  /** Bundle Typescript/Javascript code
    * @category Bundle
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function bundle(
     options: Deno.bundle.Options,
   ): Promise<Deno.bundle.Result>;
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   *  Creates a presentable WebGPU surface from given window and
+  /**  Creates a presentable WebGPU surface from given window and
    *  display handles.
    *
    *  The parameters correspond to the table below:
@@ -194,7 +190,7 @@ declare namespace Deno {
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
    * @category GPU
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export class UnsafeWindowSurface {
     /** The height of the window. */
@@ -220,12 +216,10 @@ declare namespace Deno {
     present(): void;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Represents membership of a IPv4 multicast group.
+  /** Represents membership of a IPv4 multicast group.
    *
    * @category Network
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface MulticastV4Membership {
     /** Leaves the multicast group. */
@@ -236,12 +230,10 @@ declare namespace Deno {
     setTTL: (ttl: number) => Promise<void>;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Represents membership of a IPv6 multicast group.
+  /** Represents membership of a IPv6 multicast group.
    *
    * @category Network
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface MulticastV6Membership {
     /** Leaves the multicast group. */
@@ -250,12 +242,10 @@ declare namespace Deno {
     setLoopback: (loopback: boolean) => Promise<void>;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A generic transport listener for message-oriented protocols.
+  /** A generic transport listener for message-oriented protocols.
    *
    * @category Network
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface DatagramConn
     extends AsyncIterable<[Uint8Array<ArrayBuffer>, Addr]> {
@@ -309,13 +299,11 @@ declare namespace Deno {
     reusePort?: boolean;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Unstable options which can be set when opening a datagram listener via
+  /** Unstable options which can be set when opening a datagram listener via
    * {@linkcode Deno.listenDatagram}.
    *
    * @category Network
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface UdpListenOptions extends ListenOptions {
     /** When `true` the specified address will be reused, even if another
@@ -331,9 +319,7 @@ declare namespace Deno {
     loopback?: boolean;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Listen announces on the local transport address.
+  /** Listen announces on the local transport address.
    *
    * ```ts
    * const listener1 = Deno.listenDatagram({
@@ -351,15 +337,13 @@ declare namespace Deno {
    *
    * @tags allow-net
    * @category Network
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function listenDatagram(
     options: UdpListenOptions & { transport: "udp" },
   ): DatagramConn;
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Listen announces on the local transport address.
+  /** Listen announces on the local transport address.
    *
    * ```ts
    * const listener = Deno.listenDatagram({
@@ -372,15 +356,13 @@ declare namespace Deno {
    *
    * @tags allow-read, allow-write
    * @category Network
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function listenDatagram(
     options: UnixListenOptions & { transport: "unixpacket" },
   ): DatagramConn;
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Open a new {@linkcode Deno.Kv} connection to persist data.
+  /** Open a new {@linkcode Deno.Kv} connection to persist data.
    *
    * When a path is provided, the database will be persisted to disk at that
    * path. Read and write access to the file is required.
@@ -393,16 +375,14 @@ declare namespace Deno {
    *
    * @tags allow-read, allow-write
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function openKv(path?: string): Promise<Kv>;
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * CronScheduleExpression is used as the type of `minute`, `hour`,
+  /** CronScheduleExpression is used as the type of `minute`, `hour`,
    * `dayOfMonth`, `month`, and `dayOfWeek` in {@linkcode CronSchedule}.
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export type CronScheduleExpression = number | { exact: number | number[] } | {
     start?: number;
@@ -410,12 +390,10 @@ declare namespace Deno {
     every?: number;
   };
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * CronSchedule is the interface used for JSON format
+  /** CronSchedule is the interface used for JSON format
    * cron `schedule`.
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface CronSchedule {
     minute?: CronScheduleExpression;
@@ -425,9 +403,7 @@ declare namespace Deno {
     dayOfWeek?: CronScheduleExpression;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a cron job that will periodically execute the provided handler
+  /** Create a cron job that will periodically execute the provided handler
    * callback based on the specified schedule.
    *
    * ```ts
@@ -447,7 +423,7 @@ declare namespace Deno {
    * using UTC time zone.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function cron(
     name: string,
@@ -455,9 +431,7 @@ declare namespace Deno {
     handler: () => Promise<void> | void,
   ): Promise<void>;
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Create a cron job that will periodically execute the provided handler
+  /** Create a cron job that will periodically execute the provided handler
    * callback based on the specified schedule.
    *
    * ```ts
@@ -480,7 +454,7 @@ declare namespace Deno {
    * limit of 5 retries and a maximum interval of 1 hour (3600000 milliseconds).
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function cron(
     name: string,
@@ -489,9 +463,7 @@ declare namespace Deno {
     handler: () => Promise<void> | void,
   ): Promise<void>;
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A key to be persisted in a {@linkcode Deno.Kv}. A key is a sequence
+  /** A key to be persisted in a {@linkcode Deno.Kv}. A key is a sequence
    * of {@linkcode Deno.KvKeyPart}s.
    *
    * Keys are ordered lexicographically by their parts. The first part is the
@@ -505,13 +477,11 @@ declare namespace Deno {
    * was passed to.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export type KvKey = readonly KvKeyPart[];
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A single part of a {@linkcode Deno.KvKey}. Parts are ordered
+  /** A single part of a {@linkcode Deno.KvKey}. Parts are ordered
    * lexicographically, first by their type, and within a given type by their
    * value.
    *
@@ -542,7 +512,7 @@ declare namespace Deno {
    * over the ordering of values within a type.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export type KvKeyPart =
     | Uint8Array
@@ -552,21 +522,17 @@ declare namespace Deno {
     | boolean
     | symbol;
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Consistency level of a KV operation.
+  /** Consistency level of a KV operation.
    *
    * - `strong` - This operation must be strongly-consistent.
    * - `eventual` - Eventually-consistent behavior is allowed.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export type KvConsistencyLevel = "strong" | "eventual";
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A selector that selects the range of data returned by a list operation on a
+  /** A selector that selects the range of data returned by a list operation on a
    * {@linkcode Deno.Kv}.
    *
    * The selector can either be a prefix selector or a range selector. A prefix
@@ -575,7 +541,7 @@ declare namespace Deno {
    * lexicographically between the given start and end keys.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export type KvListSelector =
     | { prefix: KvKey }
@@ -583,9 +549,7 @@ declare namespace Deno {
     | { prefix: KvKey; end: KvKey }
     | { start: KvKey; end: KvKey };
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A mutation to a key in a {@linkcode Deno.Kv}. A mutation is a
+  /** A mutation to a key in a {@linkcode Deno.Kv}. A mutation is a
    * combination of a key, a value, and a type. The type determines how the
    * mutation is applied to the key.
    *
@@ -614,7 +578,7 @@ declare namespace Deno {
    *   the value is set to the given value.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export type KvMutation =
     & { key: KvKey }
@@ -626,15 +590,13 @@ declare namespace Deno {
       | { type: "min"; value: KvU64 }
     );
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An iterator over a range of data entries in a {@linkcode Deno.Kv}.
+  /** An iterator over a range of data entries in a {@linkcode Deno.Kv}.
    *
    * The cursor getter returns the cursor that can be used to resume the
    * iteration from the current position in the future.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export class KvListIterator<T> implements AsyncIterableIterator<KvEntry<T>> {
     /**
@@ -648,16 +610,14 @@ declare namespace Deno {
     [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry<T>>;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A versioned pair of key and value in a {@linkcode Deno.Kv}.
+  /** A versioned pair of key and value in a {@linkcode Deno.Kv}.
    *
    * The `versionstamp` is a string that represents the current version of the
    * key-value pair. It can be used to perform atomic operations on the KV store
    * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface KvEntry<T> {
     key: KvKey;
@@ -665,16 +625,13 @@ declare namespace Deno {
     versionstamp: string;
   }
 
-  /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An optional versioned pair of key and value in a {@linkcode Deno.Kv}.
+  /** An optional versioned pair of key and value in a {@linkcode Deno.Kv}.
    *
    * This is the same as a {@linkcode KvEntry}, but the `value` and `versionstamp`
    * fields may be `null` if no value exists for the given key in the KV store.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export type KvEntryMaybe<T> = KvEntry<T> | {
     key: KvKey;
@@ -682,12 +639,10 @@ declare namespace Deno {
     versionstamp: null;
   };
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Options for listing key-value pairs in a {@linkcode Deno.Kv}.
+  /** Options for listing key-value pairs in a {@linkcode Deno.Kv}.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface KvListOptions {
     /**
@@ -758,24 +713,20 @@ declare namespace Deno {
     ok: false;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A check to perform as part of a {@linkcode Deno.AtomicOperation}. The check
+  /** A check to perform as part of a {@linkcode Deno.AtomicOperation}. The check
    * will fail if the versionstamp for the key-value pair in the KV store does
    * not match the given versionstamp. A check with a `null` versionstamp checks
    * that the key-value pair does not currently exist in the KV store.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface AtomicCheck {
     key: KvKey;
     versionstamp: string | null;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * An operation on a {@linkcode Deno.Kv} that can be performed
+  /** An operation on a {@linkcode Deno.Kv} that can be performed
    * atomically. Atomic operations do not auto-commit, and must be committed
    * explicitly by calling the `commit` method.
    *
@@ -808,7 +759,7 @@ declare namespace Deno {
    * and the versionstamp of the value committed to KV.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export class AtomicOperation {
     /**
@@ -890,9 +841,7 @@ declare namespace Deno {
     commit(): Promise<KvCommitResult | KvCommitError>;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A key-value database that can be used to store and retrieve data.
+  /** A key-value database that can be used to store and retrieve data.
    *
    * Data is stored as key-value pairs, where the key is a {@linkcode Deno.KvKey}
    * and the value is an arbitrary structured-serializable JavaScript value.
@@ -925,7 +874,7 @@ declare namespace Deno {
    * an exception will be thrown.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export class Kv implements Disposable {
     /**
@@ -1190,13 +1139,11 @@ declare namespace Deno {
     [Symbol.dispose](): void;
   }
 
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Wrapper type for 64-bit unsigned integers for use as values in a
+  /** Wrapper type for 64-bit unsigned integers for use as values in a
    * {@linkcode Deno.Kv}.
    *
    * @category Cloud
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export class KvU64 {
     /** Create a new `KvU64` instance from the given bigint value. If the value
@@ -4573,15 +4520,12 @@ declare namespace Deno {
   export {}; // only export exports
 }
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
+/**
  * @category Workers
- * @experimental
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
  */
 interface WorkerOptions {
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Configure permissions options to change the level of access the worker will
+  /** Configure permissions options to change the level of access the worker will
    * have. By default it will inherit permissions. Note that the permissions
    * of a worker can't be extended beyond its parent's permissions reach.
    *
@@ -4607,6 +4551,7 @@ interface WorkerOptions {
    *   }
    * );
    * ```
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   deno?: {
     /** Set to `"none"` to disable all the permissions in the worker. */
@@ -4614,10 +4559,9 @@ interface WorkerOptions {
   };
 }
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
+/**
  * @category WebSockets
- * @experimental
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
  */
 interface WebSocketStreamOptions {
   protocols?: string[];
@@ -4625,10 +4569,9 @@ interface WebSocketStreamOptions {
   headers?: HeadersInit;
 }
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
+/**
  * @category WebSockets
- * @experimental
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
  */
 interface WebSocketConnection {
   readable: ReadableStream<string | Uint8Array<ArrayBuffer>>;
@@ -4637,21 +4580,19 @@ interface WebSocketConnection {
   protocol: string;
 }
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
+/**
  * @category WebSockets
- * @experimental
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
  */
 interface WebSocketCloseInfo {
   code?: number;
   reason?: string;
 }
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
+/**
  * @tags allow-net
  * @category WebSockets
- * @experimental
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
  */
 interface WebSocketStream {
   url: string;
@@ -4660,33 +4601,30 @@ interface WebSocketStream {
   close(closeInfo?: WebSocketCloseInfo): void;
 }
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
+/**
  * @tags allow-net
  * @category WebSockets
- * @experimental
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
  */
 declare var WebSocketStream: {
   readonly prototype: WebSocketStream;
   new (url: string, options?: WebSocketStreamOptions): WebSocketStream;
 };
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
+/**
  * @tags allow-net
  * @category WebSockets
- * @experimental
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
  */
 interface WebSocketError extends DOMException {
   readonly closeCode: number;
   readonly reason: string;
 }
 
-/** **UNSTABLE**: New API, yet to be vetted.
- *
+/**
  * @tags allow-net
  * @category WebSockets
- * @experimental
+ * @experimental **UNSTABLE**: New API, yet to be vetted.
  */
 declare var WebSocketError: {
   readonly prototype: WebSocketError;

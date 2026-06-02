@@ -19,8 +19,8 @@ declare namespace Deno {
   }
 
   /**
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface VsockAddr {
     transport: "vsock";
@@ -86,9 +86,8 @@ declare namespace Deno {
 
   /** Specialized listener that accepts VSOCK connections.
    *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
-   *
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export type VsockListener = Listener<VsockConn, VsockAddr>;
 
@@ -263,9 +262,8 @@ declare namespace Deno {
   /** Options which can be set when opening a VSOCK listener via
    * {@linkcode Deno.listen}.
    *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
-   *
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface VsockListenOptions {
     cid: number;
@@ -273,8 +271,6 @@ declare namespace Deno {
   }
 
   /** Listen announces on the local transport address.
-   *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
    *
@@ -286,6 +282,7 @@ declare namespace Deno {
    *
    * @tags allow-net
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   // deno-lint-ignore adjacent-overload-signatures
   export function listen(
@@ -423,8 +420,8 @@ declare namespace Deno {
   export function connect(options: UnixConnectOptions): Promise<UnixConn>;
 
   /**
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface VsockConnectOptions {
     transport: "vsock";
@@ -437,8 +434,6 @@ declare namespace Deno {
 
   /** Connects to the hostname (default is "127.0.0.1") and port on the named
    * transport (default is "tcp"), and resolves to the connection (`Conn`).
-   *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * ```ts
    * const conn1 = await Deno.connect({ port: 80 });
@@ -453,6 +448,7 @@ declare namespace Deno {
    *
    * @tags allow-net, allow-read
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   // deno-lint-ignore adjacent-overload-signatures
   export function connect(options: VsockConnectOptions): Promise<VsockConn>;
@@ -576,9 +572,8 @@ declare namespace Deno {
   ): Promise<TlsConn>;
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicEndpointOptions {
     /**
@@ -594,9 +589,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicTransportOptions {
     /** Period of inactivity before sending a keep-alive packet. Keep-alive
@@ -630,9 +624,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface ConnectQuicOptions<ZRTT extends boolean>
     extends QuicTransportOptions {
@@ -665,9 +658,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicServerTransportOptions extends QuicTransportOptions {
     /**
@@ -687,9 +679,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicListenOptions extends QuicServerTransportOptions {
     /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
@@ -703,9 +694,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicAcceptOptions<ZRTT extends boolean>
     extends QuicServerTransportOptions {
@@ -722,9 +712,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicCloseInfo {
     /** A number representing the error code for the error. */
@@ -734,10 +723,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicSendStreamOptions {
     /** Indicates the send priority of this stream relative to other streams for
@@ -752,9 +739,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export class QuicEndpoint {
     /**
@@ -771,12 +757,10 @@ declare namespace Deno {
     /** Return the address of the `QuicListener`. */
     readonly addr: NetAddr;
 
-    /**
-     * **UNSTABLE**: New API, yet to be vetted.
-     * Listen announces on the local transport address over QUIC.
+    /** Listen announces on the local transport address over QUIC.
      *
-     * @experimental
      * @category Network
+     * @experimental **UNSTABLE**: New API, yet to be vetted.
      */
     listen(options: QuicListenOptions): QuicListener;
 
@@ -787,12 +771,10 @@ declare namespace Deno {
     close(info?: QuicCloseInfo): void;
   }
 
-  /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * Specialized listener that accepts QUIC connections.
+  /** Specialized listener that accepts QUIC connections.
    *
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicListener extends AsyncIterable<QuicIncoming> {
     /** Waits for and resolves to the next incoming connection. */
@@ -810,13 +792,11 @@ declare namespace Deno {
     readonly endpoint: QuicEndpoint;
   }
 
-  /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * An incoming connection for which the server has not yet begun its part of
+  /** An incoming connection for which the server has not yet begun its part of
    * the handshake.
    *
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicIncoming {
     /**
@@ -855,10 +835,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicConn {
     /** Close closes the listener. Any pending accept promises will be rejected
@@ -907,10 +885,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicBidirectionalStream {
     /** Returns a QuicReceiveStream instance that can be used to read incoming data. */
@@ -920,10 +896,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicSendStream
     extends WritableStream<Uint8Array<ArrayBufferLike>> {
@@ -938,10 +912,8 @@ declare namespace Deno {
   }
 
   /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @experimental
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface QuicReceiveStream
     extends ReadableStream<Uint8Array<ArrayBuffer>> {
@@ -951,9 +923,7 @@ declare namespace Deno {
     readonly id: bigint;
   }
 
-  /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   * Establishes a secure connection over QUIC using a hostname and port.  The
+  /** Establishes a secure connection over QUIC using a hostname and port.  The
    * cert file is optional and if not included Mozilla's root certificates will
    * be used. See also https://github.com/ctz/webpki-roots for specifics.
    *
@@ -970,21 +940,18 @@ declare namespace Deno {
    *
    * Requires `allow-net` permission.
    *
-   * @experimental
    * @tags allow-net
    * @category Network
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function connectQuic<ZRTT extends boolean>(
     options: ConnectQuicOptions<ZRTT>,
   ): ZRTT extends true ? (QuicConn | Promise<QuicConn>) : Promise<QuicConn>;
 
-  /**
-   * **UNSTABLE**: New API, yet to be vetted.
-   *
-   * Upgrade a QUIC connection into a WebTransport instance.
+  /** Upgrade a QUIC connection into a WebTransport instance.
    *
    * @category Network
-   * @experimental
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function upgradeWebTransport(
     conn: QuicConn,

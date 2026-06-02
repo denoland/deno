@@ -4047,8 +4047,6 @@ declare namespace Deno {
 
   /** Spawns a new subprocess, returning a {@linkcode Deno.ChildProcess} handle.
    *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
-   *
    * This is a shorthand for `new Deno.Command(command, options).spawn()`.
    *
    * By default, `stdin`, `stdout`, and `stderr` are set to `"inherit"`.
@@ -4067,6 +4065,7 @@ declare namespace Deno {
    *
    * @tags allow-run
    * @category Subprocess
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function spawn(
     command: string | URL,
@@ -4074,8 +4073,6 @@ declare namespace Deno {
   ): ChildProcess;
   /** Spawns a new subprocess with the given arguments, returning a
    * {@linkcode Deno.ChildProcess} handle.
-   *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * This is a shorthand for `new Deno.Command(command, { ...options, args }).spawn()`.
    *
@@ -4094,6 +4091,7 @@ declare namespace Deno {
    *
    * @tags allow-run
    * @category Subprocess
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function spawn(
     command: string | URL,
@@ -4102,8 +4100,6 @@ declare namespace Deno {
   ): ChildProcess;
 
   /** Spawns a subprocess, waits for it to finish, and returns the output.
-   *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * This is a shorthand for `new Deno.Command(command, options).output()`.
    *
@@ -4120,6 +4116,7 @@ declare namespace Deno {
    *
    * @tags allow-run
    * @category Subprocess
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function spawnAndWait(
     command: string | URL,
@@ -4127,8 +4124,6 @@ declare namespace Deno {
   ): Promise<CommandOutput>;
   /** Spawns a subprocess with the given arguments, waits for it to finish,
    * and returns the output.
-   *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * This is a shorthand for `new Deno.Command(command, { ...options, args }).output()`.
    *
@@ -4146,6 +4141,7 @@ declare namespace Deno {
    *
    * @tags allow-run
    * @category Subprocess
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function spawnAndWait(
     command: string | URL,
@@ -4155,8 +4151,6 @@ declare namespace Deno {
 
   /** Synchronously spawns a subprocess, waits for it to finish, and returns
    * the output.
-   *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * This is a shorthand for `new Deno.Command(command, options).outputSync()`.
    *
@@ -4173,6 +4167,7 @@ declare namespace Deno {
    *
    * @tags allow-run
    * @category Subprocess
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function spawnAndWaitSync(
     command: string | URL,
@@ -4180,8 +4175,6 @@ declare namespace Deno {
   ): CommandOutput;
   /** Synchronously spawns a subprocess with the given arguments, waits for it
    * to finish, and returns the output.
-   *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
    *
    * This is a shorthand for
    * `new Deno.Command(command, { ...options, args }).outputSync()`.
@@ -4200,6 +4193,7 @@ declare namespace Deno {
    *
    * @tags allow-run
    * @category Subprocess
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function spawnAndWaitSync(
     command: string | URL,
@@ -5571,13 +5565,11 @@ declare namespace Deno {
     path: string;
   }
 
-  /**
-   * Options that can be passed to `Deno.serve` to create a server listening on
+  /** Options that can be passed to `Deno.serve` to create a server listening on
    * a VSOCK socket.
    *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
-   *
    * @category HTTP Server
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export interface ServeVsockOptions extends ServeOptions<Deno.VsockAddr> {
     /** The transport to use. */
@@ -5693,8 +5685,6 @@ declare namespace Deno {
   ): HttpServer<Deno.UnixAddr>;
   /** Serves HTTP requests with the given option bag and handler.
    *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
-   *
    * You can specify an object with the cid and port options for the VSOCK interface.
    *
    * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
@@ -5740,6 +5730,7 @@ declare namespace Deno {
    * ```
    *
    * @category HTTP Server
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function serve(
     options: ServeVsockOptions,
@@ -5836,8 +5827,6 @@ declare namespace Deno {
    *
    * The VSOCK address family facilitates communication between virtual machines and the host they are running on: https://man7.org/linux/man-pages/man7/vsock.7.html
    *
-   * @experimental **UNSTABLE**: New API, yet to be vetted.
-   *
    * You can specify an object with the cid and port options for the VSOCK interface.
    *
    * ```ts
@@ -5859,6 +5848,7 @@ declare namespace Deno {
    * ```
    *
    * @category HTTP Server
+   * @experimental **UNSTABLE**: New API, yet to be vetted.
    */
   export function serve(
     options: ServeVsockOptions & ServeInit<Deno.VsockAddr>,
