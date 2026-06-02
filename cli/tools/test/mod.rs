@@ -40,7 +40,6 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::located_script_name;
-use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
@@ -484,11 +483,11 @@ impl TestFailure {
 }
 
 #[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, deno_core::FromV8)]
 pub enum TestResult {
   Ok,
   Ignored,
+  #[from_v8(serde)]
   Failed(TestFailure),
   Cancelled,
 }
@@ -1003,7 +1002,7 @@ pub enum RunTestsForWorkerErr {
   Core(#[from] CoreError),
   #[class(inherit)]
   #[error(transparent)]
-  SerdeV8(#[from] serde_v8::Error),
+  JsErrorBox(#[from] deno_error::JsErrorBox),
 }
 
 /// Single watchdog thread for an entire test specifier. Reused across all
@@ -1373,7 +1372,7 @@ async fn run_tests_for_worker_inner(
           Ok(r) => {
             deno_core::scope!(scope, &mut worker.js_runtime);
             let result = v8::Local::new(scope, r);
-            serde_v8::from_v8::<TestResult>(scope, result)?
+            <TestResult as deno_core::FromV8>::from_v8(scope, result)?
           }
           Err(error) => match error.into_kind() {
             CoreErrorKind::Js(js_error) => {

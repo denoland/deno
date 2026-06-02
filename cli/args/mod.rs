@@ -683,6 +683,14 @@ impl CliOptions {
     self.flags.internal.compile_bundle_embed_node_modules
   }
 
+  /// Absolute paths the `--bundle` rewriter pointed at — the on-disk
+  /// locations the compiled binary expects to require() at runtime. The
+  /// binary writer maps these back to npm packages so it can ship only
+  /// the packages actually reached, not the whole resolved tree.
+  pub fn compile_bundle_referenced_paths(&self) -> &[PathBuf] {
+    &self.flags.internal.compile_bundle_referenced_paths
+  }
+
   pub fn node_conditions(&self) -> &[String] {
     self.flags.node_conditions.as_ref()
   }
