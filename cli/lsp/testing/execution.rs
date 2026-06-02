@@ -30,6 +30,7 @@ use super::lsp_custom;
 use super::server::TestServerTests;
 use crate::args::DenoSubcommand;
 use crate::args::flags_from_vec;
+use crate::args::flags_from_vec_with_initial_cwd;
 use crate::args::parallelism_count;
 use crate::factory::CliFactory;
 use crate::lsp::client::Client;
@@ -44,6 +45,8 @@ use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::create_test_event_channel;
+use crate::util::env::load_env_variables_from_env_files;
+use crate::util::env::resolve_cwd;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
@@ -229,9 +232,32 @@ impl TestRun {
   ) -> Result<(), AnyError> {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
-    let flags = Arc::new(flags_from_vec(
-      args.into_iter().map(|s| From::from(s.as_ref())).collect(),
-    )?);
+    let args = args
+      .into_iter()
+      .map(|s| From::from(s.as_ref()))
+      .collect::<Vec<_>>();
+    let initial_cwd =
+      maybe_root_uri.and_then(|root_uri| root_uri.to_file_path().ok());
+    let mut flags = match initial_cwd {
+      Some(initial_cwd) => {
+        flags_from_vec_with_initial_cwd(args, Some(initial_cwd))?
+      }
+      None => flags_from_vec(args)?,
+    };
+    if let Some(files) = &flags.env_file {
+      let cwd = match &flags.initial_cwd {
+        Some(cwd) => Cow::Borrowed(cwd),
+        None => match resolve_cwd(None) {
+          Ok(cwd) => {
+            flags.initial_cwd = Some(cwd.into_owned());
+            Cow::Borrowed(flags.initial_cwd.as_ref().unwrap())
+          }
+          Err(_) => Cow::Owned(std::path::PathBuf::from(".")),
+        },
+      };
+      load_env_variables_from_env_files(&cwd, files, flags.log_level);
+    }
+    let flags = Arc::new(flags);
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
     let permission_desc_parser = factory.permission_desc_parser()?;
