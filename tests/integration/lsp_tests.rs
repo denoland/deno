@@ -11030,6 +11030,109 @@ fn lsp_completions_npm() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/24927.
+// Auto-completion for the configuration file `imports` field should suggest
+// jsr:/npm:/node: specifiers just like in script imports do.
+#[test(timeout = 300)]
+fn lsp_completions_deno_json_imports() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let deno_json_uri =
+    url_to_uri(&temp_dir.url().join("deno.json").unwrap()).unwrap();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // Layout of line 2 (0-indexed columns):
+  //     "add": "jsr:@denotest/add@"
+  // 0   4    9 11                30
+  // The closing quote sits at column 30 — a cursor at (2, 30) sits between
+  // the trailing `@` and the closing `"`, where TS would offer no help but
+  // Deno can suggest the available jsr versions.
+  client.did_open(json!({
+    "textDocument": {
+      "uri": deno_json_uri,
+      "languageId": "jsonc",
+      "version": 1,
+      "text": "{\n  \"imports\": {\n    \"add\": \"jsr:@denotest/add@\"\n  }\n}\n",
+    }
+  }));
+  let list = client.get_completion_list(
+    deno_json_uri.as_str(),
+    (2, 30),
+    json!({ "triggerKind": 2, "triggerCharacter": "@" }),
+  );
+  assert!(
+    list
+      .items
+      .iter()
+      .any(|i| i.label.starts_with("jsr:@denotest/add@")),
+    "expected a jsr:@denotest/add@<version> completion, got: {:#?}",
+    list.items.iter().map(|i| &i.label).collect::<Vec<_>>(),
+  );
+
+  // node: completion — module names are static, so this can be exercised
+  // without hitting the npm/jsr search APIs.
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": { "uri": deno_json_uri, "version": 2 },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 12 },
+            "end": { "line": 2, "character": 30 }
+          },
+          "text": "node:fs"
+        }
+      ]
+    }),
+  );
+  let list = client.get_completion_list(
+    deno_json_uri.as_str(),
+    (2, 19),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(
+    list.items.iter().any(|i| i.label == "node:fs"),
+    "expected a node:fs completion, got: {:#?}",
+    list.items.iter().map(|i| &i.label).collect::<Vec<_>>(),
+  );
+
+  // Inside `scopes.<scope>.<key>` the same completion flow applies.
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": { "uri": deno_json_uri, "version": 3 },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 4, "character": 1 }
+          },
+          "text": "{\n  \"scopes\": {\n    \"./a/\": {\n      \"add\": \"jsr:@denotest/add@\"\n    }\n  }\n}\n",
+        }
+      ]
+    }),
+  );
+  let list = client.get_completion_list(
+    deno_json_uri.as_str(),
+    (3, 32),
+    json!({ "triggerKind": 2, "triggerCharacter": "@" }),
+  );
+  assert!(
+    list
+      .items
+      .iter()
+      .any(|i| i.label.starts_with("jsr:@denotest/add@")),
+    "expected a jsr:@denotest/add@<version> completion in scopes, got: {:#?}",
+    list.items.iter().map(|i| &i.label).collect::<Vec<_>>(),
+  );
+
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_completions_npm_package_exports() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
