@@ -1315,7 +1315,6 @@ pub fn op_abort_wasm_streaming(
 
 // This op calls `op_apply_source_map` re-entrantly.
 #[op2(reentrant)]
-#[serde]
 pub fn op_destructure_error<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   error: v8::Local<'s, v8::Value>,
