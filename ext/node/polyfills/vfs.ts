@@ -17,7 +17,9 @@
 const { core, primordials } = __bootstrap;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const pathMod = core.loadExtScript("ext:deno_node/path/mod.ts");
-const fsUtils = core.loadExtScript("ext:deno_node/internal/fs/utils.mjs");
+const lazyFsUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
 const errorsMod = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const utilMod = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const validatorsMod = core.loadExtScript(
@@ -31,11 +33,18 @@ const lazyEvents = core.createLazyLoader("node:events");
 const lazyTimers = core.createLazyLoader("node:timers");
 const lazyNodeFs = core.createLazyLoader("node:fs");
 
-const {
-  Stats,
-  BigIntStats,
-  Dirent,
-} = fsUtils;
+let _Stats;
+let _BigIntStats;
+let _Dirent;
+function loadFsUtils() {
+  if (_Stats === undefined) {
+    const m = lazyFsUtils();
+    _Stats = m.Stats;
+    _BigIntStats = m.BigIntStats;
+    _Dirent = m.Dirent;
+  }
+  return { Stats: _Stats, BigIntStats: _BigIntStats, Dirent: _Dirent };
+}
 const { emitExperimentalWarning } = utilMod;
 const { validateBoolean } = validatorsMod;
 const { AbortError } = errorsMod;
@@ -186,6 +195,7 @@ function buildStats(
   const birthtimeMs = options?.birthtimeMs ?? now;
   const ino = inoCounter++;
 
+  const { Stats, BigIntStats } = loadFsUtils();
   if (options?.bigint) {
     return new BigIntStats(
       BigInt(kVfsDev),
@@ -242,6 +252,7 @@ function createSymlinkStats(size, options) {
 }
 
 function createZeroStats(options) {
+  const { Stats, BigIntStats } = loadFsUtils();
   if (options?.bigint) {
     return new BigIntStats(
       0n,
@@ -1181,6 +1192,7 @@ class MemoryProvider extends VirtualProvider {
     }
 
     if (withFileTypes) {
+      const { Dirent } = loadFsUtils();
       const dirents = [];
       for (const { 0: name, 1: child } of entry.children) {
         let type;
@@ -1195,6 +1207,7 @@ class MemoryProvider extends VirtualProvider {
   }
 
   #readdirRecursive(dirEntry, dirPath, withFileTypes) {
+    const { Dirent } = loadFsUtils();
     const results = [];
     const walk = (entry, currentPath, relativePath) => {
       for (const { 0: name, 1: child } of entry.children) {
@@ -2367,22 +2380,24 @@ function getStreamCtors() {
           this.emit("ready");
         });
       } else {
-        queueMicrotask(() => this.#openFile());
+        // Open synchronously so _read() always sees a valid fd. Emit
+        // open/ready on the next microtask so listeners can attach.
+        try {
+          this.#fd = this.#vfs.openSync(this.#path);
+          queueMicrotask(() => {
+            if (!this.destroyed) {
+              this.emit("open", this.#fd);
+              this.emit("ready");
+            }
+          });
+        } catch (err) {
+          queueMicrotask(() => this.destroy(err));
+        }
       }
     }
 
     get path() {
       return this.#path;
-    }
-
-    #openFile() {
-      try {
-        this.#fd = this.#vfs.openSync(this.#path);
-        this.emit("open", this.#fd);
-        this.emit("ready");
-      } catch (err) {
-        this.destroy(err);
-      }
     }
 
     _read(size) {
