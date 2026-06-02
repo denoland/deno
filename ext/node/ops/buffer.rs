@@ -220,7 +220,7 @@ pub fn op_node_encoding_slice<'a>(
       v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
     }
     2 => {
-      // ascii
+      // asciiSlice
       if buffer.len() <= 256 && buffer.is_ascii() {
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
