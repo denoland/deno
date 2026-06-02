@@ -1032,9 +1032,10 @@ impl<'a> ResolverFactory<'a> {
         link_packages.clone(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
-            NpmResolverManagedSnapshotOption::ResolveFromLockfile(
-              lockfile.clone(),
-            )
+            NpmResolverManagedSnapshotOption::ResolveFromLockfile {
+              lockfile: lockfile.clone(),
+              dedup_equivalent_peer_variants: false,
+            }
           }
           None => NpmResolverManagedSnapshotOption::Specified(None),
         },

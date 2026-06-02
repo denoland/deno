@@ -1518,6 +1518,7 @@ impl ConfigData {
       None,
       NpmInstallerFactoryOptions {
         clean_on_install: false,
+        dedup_lockfile_peer_variants: false,
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
