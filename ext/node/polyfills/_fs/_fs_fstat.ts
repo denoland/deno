@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { op_node_fs_fstat, op_node_fs_fstat_sync } = core.ops;
 
 const lazyStatUtils = core.createLazyLoader(

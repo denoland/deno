@@ -81,6 +81,23 @@ async fn test_file_fetcher_redirects() {
       FileOrRedirect::Redirect(_) => unreachable!(),
     }
   }
+
+  sys.fs_create_dir_all("/dir").unwrap();
+  let dir_url = Url::parse("file:///dir").unwrap();
+  let result = file_fetcher
+    .fetch_no_follow(&dir_url, FetchNoFollowOptions::default())
+    .await;
+  let err = result.unwrap_err();
+  assert_eq!(
+    err.to_string(),
+    "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import 'file:///dir' is not supported resolving ES modules"
+  );
+  match err.into_kind() {
+    FetchNoFollowErrorKind::UnsupportedDirImport(err) => {
+      assert_eq!(err.url, dir_url);
+    }
+    err => unreachable!("{err:?}"),
+  }
 }
 
 #[tokio::test]
@@ -173,4 +190,124 @@ fn create_file_fetcher<TClient: HttpClient>(
       auth_tokens: AuthTokens::new(None),
     },
   )
+}
+
+// Regression test for https://github.com/denoland/deno/issues/15189.
+// When a URL with a query string redirects to a target URL, subsequent
+// fetches must hit the cache for both the redirect entry and the target.
+#[tokio::test]
+async fn test_fetch_query_redirect_to_dts_is_cached() {
+  use std::sync::atomic::AtomicUsize;
+  use std::sync::atomic::Ordering;
+
+  #[derive(Debug, Clone, Default)]
+  struct TestHttpClient {
+    #[allow(clippy::disallowed_types, reason = "arc wrapper type")]
+    request_count: deno_maybe_sync::MaybeArc<AtomicUsize>,
+  }
+
+  #[async_trait::async_trait(?Send)]
+  impl HttpClient for TestHttpClient {
+    async fn send_no_follow(
+      &self,
+      url: &Url,
+      _headers: HeaderMap,
+    ) -> Result<SendResponse, SendError> {
+      self.request_count.fetch_add(1, Ordering::SeqCst);
+      if url.path() == "/swagger-client" && url.query() == Some("dts") {
+        let mut header_map = HeaderMap::new();
+        header_map.insert(
+          http::header::LOCATION,
+          "/-/swagger-client@v3.18.5-Nt8AmAsJyCx6gdL9U9cP/dist=es2019,mode=types/index.d.ts"
+            .parse()
+            .unwrap(),
+        );
+        return Ok(SendResponse::Redirect(header_map));
+      }
+      let mut header_map = HeaderMap::new();
+      header_map
+        .insert("content-type", "application/typescript".parse().unwrap());
+      Ok(SendResponse::Success(
+        header_map,
+        b"export const foo: string;\n".to_vec(),
+      ))
+    }
+  }
+
+  let sys = InMemorySys::default();
+  let client = TestHttpClient::default();
+  let request_count = client.request_count.clone();
+  let file_fetcher = create_file_fetcher(sys, client);
+  let entry_url =
+    Url::parse("https://cdn.skypack.dev/swagger-client?dts").unwrap();
+  let dts_url = Url::parse("https://cdn.skypack.dev/-/swagger-client@v3.18.5-Nt8AmAsJyCx6gdL9U9cP/dist=es2019,mode=types/index.d.ts").unwrap();
+
+  // First run: follow the redirect manually, since fetch_no_follow does not.
+  match file_fetcher
+    .fetch_no_follow(&entry_url, FetchNoFollowOptions::default())
+    .await
+    .unwrap()
+  {
+    FileOrRedirect::Redirect(url) => assert_eq!(url, dts_url),
+    FileOrRedirect::File(_) => unreachable!(),
+  }
+  match file_fetcher
+    .fetch_no_follow(&dts_url, FetchNoFollowOptions::default())
+    .await
+    .unwrap()
+  {
+    FileOrRedirect::File(file) => {
+      assert_eq!(&*file.source, b"export const foo: string;\n")
+    }
+    FileOrRedirect::Redirect(_) => unreachable!(),
+  }
+  assert_eq!(request_count.load(Ordering::SeqCst), 2);
+
+  // Second run: both lookups must come from the cache, no extra requests.
+  match file_fetcher
+    .fetch_no_follow(&entry_url, FetchNoFollowOptions::default())
+    .await
+    .unwrap()
+  {
+    FileOrRedirect::Redirect(url) => assert_eq!(url, dts_url),
+    FileOrRedirect::File(_) => unreachable!(),
+  }
+  match file_fetcher
+    .fetch_no_follow(&dts_url, FetchNoFollowOptions::default())
+    .await
+    .unwrap()
+  {
+    FileOrRedirect::File(file) => {
+      assert_eq!(&*file.source, b"export const foo: string;\n")
+    }
+    FileOrRedirect::Redirect(_) => unreachable!(),
+  }
+  assert_eq!(
+    request_count.load(Ordering::SeqCst),
+    2,
+    "second cache pass should not issue any HTTP requests"
+  );
+
+  // ensure_cached_no_follow must also return Redirect for the cached entry
+  // url, so deno_graph follows it instead of treating the redirect as the
+  // module itself.
+  assert_eq!(
+    file_fetcher
+      .ensure_cached_no_follow(&entry_url, FetchNoFollowOptions::default())
+      .await
+      .unwrap(),
+    CachedOrRedirect::Redirect(dts_url.clone()),
+  );
+  assert_eq!(
+    file_fetcher
+      .ensure_cached_no_follow(&dts_url, FetchNoFollowOptions::default())
+      .await
+      .unwrap(),
+    CachedOrRedirect::Cached,
+  );
+  assert_eq!(
+    request_count.load(Ordering::SeqCst),
+    2,
+    "ensure_cached_no_follow must not issue HTTP requests for cached entries"
+  );
 }

@@ -40,6 +40,7 @@ use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::file_fetcher::GraphLoaderReporterRc;
 use deno_resolver::graph::EnhanceGraphErrorMode;
 use deno_resolver::graph::EnhancedGraphError;
+use deno_resolver::graph::NpmTypesResolutionMode;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
 use deno_resolver::graph::format_deno_graph_error;
@@ -819,6 +820,14 @@ impl ModuleGraphBuilder {
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
       None,
+      // When type checking, an npm package that has no type declarations
+      // (e.g. a "bring your own node_modules" dependency without bundled
+      // types and without a corresponding `@types` package) should be
+      // treated as untyped rather than producing a hard "Failed resolving
+      // types" error. Falling back to the execution entrypoint matches the
+      // behaviour of the managed npm resolver. See:
+      // https://github.com/denoland/deno/issues/23507
+      NpmTypesResolutionMode::FallbackToExecution,
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
@@ -844,7 +853,7 @@ impl ModuleGraphBuilder {
           resolver: Some($resolver),
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
-          unstable_text_imports: self.cli_options.unstable_raw_imports(),
+          unstable_text_imports: true,
         }
       };
     }
@@ -871,6 +880,7 @@ impl ModuleGraphBuilder {
           self.cjs_tracker.as_ref(),
           &jsx_import_source_config_resolver,
           Some(&cloned_graph),
+          NpmTypesResolutionMode::FallbackToExecution,
         );
 
         graph
@@ -1008,6 +1018,7 @@ impl ModuleGraphBuilder {
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
       None,
+      NpmTypesResolutionMode::Strict,
     );
 
     graph.build_fast_check_type_graph(

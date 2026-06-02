@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_permissions"
-version = "0.106.0"
+version = "0.108.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,12 +21,11 @@ deno_path_util.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true
 fqdn.workspace = true
-ipnetwork.workspace = true
+ipnet.workspace = true
 libc.workspace = true
 log.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true
-percent-encoding = { workspace = true, features = [] }
 serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true

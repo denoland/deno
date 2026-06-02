@@ -214,6 +214,14 @@ declare module "node:test" {
         function only(options?: TestOptions, fn?: TestFn): Promise<void>;
         function only(fn?: TestFn): Promise<void>;
         /**
+         * Shorthand for marking a test as expected to fail. This is the same as calling {@link test} with `options.expectFailure` set to `true`.
+         * @since v24.14.0
+         */
+        function expectFailure(name?: string, options?: TestOptions, fn?: TestFn): Promise<void>;
+        function expectFailure(name?: string, fn?: TestFn): Promise<void>;
+        function expectFailure(options?: TestOptions, fn?: TestFn): Promise<void>;
+        function expectFailure(fn?: TestFn): Promise<void>;
+        /**
          * The type of a function passed to {@link test}. The first argument to this function is a {@link TestContext} object.
          * If the test uses callbacks, the callback function is passed as the second argument.
          */
@@ -1320,6 +1328,17 @@ declare module "node:test" {
              * @default false
              */
             concurrency?: number | boolean | undefined;
+            /**
+             * If truthy, the test is expected to fail. If the test fails, it is reported
+             * as passing. If the test passes, it is reported as failing. When a matcher
+             * is provided, the thrown error must match using `assert.throws()` semantics.
+             * @default false
+             * @since v24.14.0
+             */
+            expectFailure?: boolean | string | RegExp | Function | object | Error | {
+                label: string;
+                match: RegExp | Function | object | Error;
+            } | undefined;
             /**
              * If truthy, and the test context is configured to run `only` tests, then this test will be
              * run. Otherwise, the test is skipped.

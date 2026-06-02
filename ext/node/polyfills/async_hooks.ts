@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   validateFunction,
   validateObject,
@@ -16,7 +16,10 @@ const {
   emitBefore,
   emitDestroy: emitDestroyHook,
   emitInit,
+  enterAsyncResource,
+  exitAsyncResource,
   executionAsyncId: internalExecutionAsyncId,
+  executionAsyncResource: internalExecutionAsyncResource,
   newAsyncId,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 
@@ -70,7 +73,14 @@ class AsyncResource {
     emitBefore(this.#asyncId);
     try {
       setAsyncContext(this.#snapshot);
-      return ReflectApply(fn, thisArg, args);
+      // Enter this resource as the current executionAsyncResource() so that
+      // user code inside the scope observes `this` as the active resource.
+      const prevResource = enterAsyncResource(this);
+      try {
+        return ReflectApply(fn, thisArg, args);
+      } finally {
+        exitAsyncResource(prevResource);
+      }
     } finally {
       setAsyncContext(previousContext);
       emitAfter(this.#asyncId);
@@ -198,9 +208,7 @@ function triggerAsyncId() {
   return 0;
 }
 
-function executionAsyncResource() {
-  return {};
-}
+const executionAsyncResource = internalExecutionAsyncResource;
 
 const asyncWrapProviders = ObjectFreeze({
   __proto__: null,

@@ -3,6 +3,7 @@
 use std::io::Read;
 use std::sync::Arc;
 
+use deno_ast::ModuleSpecifier;
 use deno_cache_dir::file_fetcher::File;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
@@ -13,6 +14,7 @@ use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_path_util::resolve_url_or_path;
 use deno_runtime::WorkerExecutionMode;
+use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
@@ -50,6 +52,117 @@ pub fn set_npm_user_agent() {
   });
 }
 
+/// If the main module is an `npm:` specifier whose resolved bin entry is a
+/// native executable (Mach-O / ELF / PE), returns the resolved `BinValue` so
+/// callers can decide what to do with it. Returns `Ok(None)` when the bin
+/// should fall through to the JS module loader (or no bin can be resolved).
+async fn resolve_npm_native_bin(
+  factory: &CliFactory,
+  main_module: &ModuleSpecifier,
+) -> Result<Option<node_resolver::BinValue>, AnyError> {
+  if main_module.scheme() != "npm" {
+    return Ok(None);
+  }
+  let req_ref = match NpmPackageReqReference::from_specifier(main_module) {
+    Ok(req_ref) => req_ref,
+    Err(_) => return Ok(None),
+  };
+  // If the user explicitly asked for a sub-path, don't intercept.
+  if req_ref.sub_path().is_some() {
+    return Ok(None);
+  }
+
+  let cli_options = factory.cli_options()?;
+  let npm_resolver = factory.npm_resolver().await?;
+  let node_resolver = factory.node_resolver().await?;
+
+  let cwd_url =
+    match deno_path_util::url_from_directory_path(cli_options.initial_cwd()) {
+      Ok(url) => url,
+      Err(_) => return Ok(None),
+    };
+
+  let package_folder = match npm_resolver
+    .resolve_pkg_folder_from_deno_module_req(req_ref.req(), &cwd_url)
+  {
+    Ok(folder) => folder,
+    Err(_) => return Ok(None),
+  };
+
+  let bins = match node_resolver
+    .resolve_npm_binary_commands_for_package(&package_folder)
+  {
+    Ok(bins) if !bins.is_empty() => bins,
+    _ => return Ok(None),
+  };
+
+  let bin_value =
+    match crate::tools::x::find_bin_value(&bins, req_ref.req().name.as_str()) {
+      Some(bin_value) => bin_value,
+      None => return Ok(None),
+    };
+
+  // `read_bin_value` (used to build `bins`) classifies anything without a
+  // `#!` shebang as `BinValue::Executable`, so a plain `cli.mjs` ends up
+  // here too. Re-check the actual file magic so we only intercept real
+  // ELF / Mach-O / PE binaries and let JS bins fall through to the module
+  // loader as before.
+  if !is_native_binary(bin_value.path()) {
+    return Ok(None);
+  }
+
+  Ok(Some(bin_value))
+}
+
+/// If the main module resolves to a native npm bin, spawn it as a subprocess
+/// and return its exit code. Otherwise returns `Ok(None)` so the caller
+/// proceeds with the normal JS module-loading path.
+async fn try_run_npm_bin_executable(
+  factory: &CliFactory,
+  flags: &Flags,
+  main_module: &ModuleSpecifier,
+) -> Result<Option<i32>, AnyError> {
+  let Some(bin_value) = resolve_npm_native_bin(factory, main_module).await?
+  else {
+    return Ok(None);
+  };
+
+  let cli_options = factory.cli_options()?;
+  let npm_resolver = factory.npm_resolver().await?;
+  let unstable_args = cli_options.unstable_args();
+  let npm_process_state = crate::tools::x::get_npm_process_state(npm_resolver);
+  let exit_code = crate::tools::x::run_bin_value(
+    factory,
+    flags,
+    bin_value,
+    npm_process_state,
+    &unstable_args,
+  )?;
+  Ok(Some(exit_code))
+}
+
+async fn is_npm_native_bin(
+  factory: &CliFactory,
+  main_module: &ModuleSpecifier,
+) -> Result<bool, AnyError> {
+  Ok(
+    resolve_npm_native_bin(factory, main_module)
+      .await?
+      .is_some(),
+  )
+}
+
+fn is_native_binary(path: &std::path::Path) -> bool {
+  let Ok(mut file) = std::fs::File::open(path) else {
+    return false;
+  };
+  let mut buf = [0u8; 4];
+  if file.read_exact(&mut buf).is_err() {
+    return false;
+  }
+  node_resolver::is_binary(&buf)
+}
+
 pub async fn run_script(
   mode: WorkerExecutionMode,
   flags: Arc<Flags>,
@@ -65,7 +178,7 @@ pub async fn run_script(
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client_provider();
@@ -79,13 +192,14 @@ pub async fn run_script(
     deno_dir.upgrade_check_file_path(),
   );
 
-  let main_module = cli_options.resolve_main_module_with_resolver(Some(
-    &crate::args::WorkspaceMainModuleResolver::new(
-      workspace_resolver.clone(),
-      node_resolver.clone(),
-    ),
-  ))?;
-  let preload_modules = cli_options.preload_modules()?;
+  let main_module_resolver = crate::args::WorkspaceMainModuleResolver::new(
+    workspace_resolver.clone(),
+    node_resolver.clone(),
+  );
+  let main_module = cli_options
+    .resolve_main_module_with_resolver(Some(&main_module_resolver))?;
+  let preload_modules =
+    cli_options.preload_modules_with_resolver(Some(&main_module_resolver))?;
   let require_modules = cli_options.require_modules()?;
 
   if main_module.scheme() == "npm" {
@@ -93,6 +207,12 @@ pub async fn run_script(
   }
 
   maybe_npm_install(&factory).await?;
+
+  if let Some(exit_code) =
+    try_run_npm_bin_executable(&factory, &flags, main_module).await?
+  {
+    return Ok(exit_code);
+  }
 
   let worker_factory = factory
     .create_cli_main_worker_factory_with_roots(roots)
@@ -190,6 +310,12 @@ async fn run_with_watch(
 
         maybe_npm_install(&factory).await?;
 
+        if is_npm_native_bin(&factory, main_module).await? {
+          return Err(deno_core::anyhow::anyhow!(
+            "Cannot use --watch with an npm package whose bin entry is a native executable: {main_module}"
+          ));
+        }
+
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
 
         let mut worker = factory
@@ -279,6 +405,11 @@ pub async fn eval_command(
   } else {
     eval_flags.code
   };
+  // Match Node's `[eval]` URL for `-e` scripts so inspector clients (and
+  // Node compat tests) see the same script URL. V8 honors the
+  // `//# sourceURL=` comment for both classic scripts and ES modules.
+  // Appended (not prepended) so user line numbers are preserved.
+  let source_code = format!("{source_code}\n//# sourceURL=[eval]\n");
 
   // Save a fake file into file fetcher cache
   // to allow module access by TS compiler.

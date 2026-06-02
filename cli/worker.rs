@@ -43,7 +43,6 @@ pub type CreateHmrRunnerCb = Box<dyn Fn() -> HmrRunnerState + Send + Sync>;
 
 pub struct CliMainWorkerOptions {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
-  pub experimental_loaders: Vec<ModuleSpecifier>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
@@ -117,6 +116,10 @@ impl CliMainWorker {
         let sessions_state = inspector.sessions_state();
         if sessions_state.has_nonblocking_wait_for_disconnect {
           inspector.broadcast_context_destroyed();
+          // Sessions that called NodeRuntime.notifyWhenWaitingForDisconnect
+          // get a dedicated notification before the wait loop, instead of
+          // the generic Runtime.executionContextDestroyed.
+          inspector.broadcast_waiting_for_disconnect();
           // Match Node.js message format that debugger clients rely on
           log::info!("Waiting for the debugger to disconnect...");
           inspector.wait_for_sessions_disconnect();
@@ -131,9 +134,6 @@ impl CliMainWorker {
     // changes made here so that they affect deno_compile as well.
 
     log::debug!("main_module {}", self.worker.main_module());
-
-    // Register experimental loader hooks before anything else
-    self.worker.execute_experimental_loaders().await?;
 
     // Run preload modules first if they were defined
     self.worker.execute_preload_modules().await?;
@@ -283,6 +283,24 @@ impl CliMainWorker {
     self.worker.js_runtime().op_state()
   }
 
+  /// Returns a thread-safe handle to the V8 isolate. Used by the test runner
+  /// to install a handle that `op_test_isolate_exit` can call
+  /// `terminate_execution` on.
+  pub fn v8_isolate_handle(&mut self) -> v8::IsolateHandle {
+    self.worker.js_runtime().v8_isolate().thread_safe_handle()
+  }
+
+  /// Reset the V8 "terminating" flag. Called after the test runner detects
+  /// that the isolate's termination was caused by user code calling
+  /// `Deno.exit()`; this lets us cleanly tear down the worker.
+  pub fn cancel_terminate_execution(&mut self) {
+    self
+      .worker
+      .js_runtime()
+      .v8_isolate()
+      .cancel_terminate_execution();
+  }
+
   pub fn maybe_setup_hmr_runner(&mut self) -> Option<HmrRunner> {
     let setup_hmr_runner = self.shared.create_hmr_runner.as_ref()?;
 
@@ -362,7 +380,6 @@ pub enum CreateCustomWorkerError {
 }
 
 pub struct CliMainWorkerFactory {
-  experimental_loaders: Vec<ModuleSpecifier>,
   lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   npm_installer: Option<Arc<CliNpmInstaller>>,
@@ -387,7 +404,6 @@ impl CliMainWorkerFactory {
     root_permissions: PermissionsContainer,
   ) -> Self {
     Self {
-      experimental_loaders: options.experimental_loaders,
       lib_main_worker_factory,
       maybe_lockfile,
       npm_installer,
@@ -461,28 +477,41 @@ impl CliMainWorkerFactory {
     stdio: deno_runtime::deno_io::Stdio,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
-    let main_module = match NpmPackageReqReference::from_specifier(&main_module)
-    {
-      Ok(package_ref) => {
-        if let Some(npm_installer) = &self.npm_installer {
-          let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
-          let reqs = &[package_ref.req().clone()];
-          npm_installer
-            .add_package_reqs(
-              reqs,
-              if matches!(
-                self.default_npm_caching_strategy,
-                NpmCachingStrategy::Lazy
-              ) {
-                PackageCaching::Only(reqs.into())
-              } else {
-                PackageCaching::All
-              },
-            )
-            .await
-            .map_err(CreateCustomWorkerError::NpmPackageReq)?;
-        }
+    let main_module_npm_ref =
+      NpmPackageReqReference::from_specifier(&main_module).ok();
+    let mut npm_reqs = Vec::new();
+    if let Some(package_ref) = &main_module_npm_ref {
+      npm_reqs.push(package_ref.req().clone());
+    }
+    for specifier in preload_modules.iter().chain(require_modules.iter()) {
+      if let Ok(package_ref) = NpmPackageReqReference::from_specifier(specifier)
+      {
+        npm_reqs.push(package_ref.req().clone());
+      }
+    }
 
+    if !npm_reqs.is_empty()
+      && let Some(npm_installer) = &self.npm_installer
+    {
+      let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
+      npm_installer
+        .add_package_reqs(
+          &npm_reqs,
+          if matches!(
+            self.default_npm_caching_strategy,
+            NpmCachingStrategy::Lazy
+          ) {
+            PackageCaching::Only(npm_reqs.as_slice().into())
+          } else {
+            PackageCaching::All
+          },
+        )
+        .await
+        .map_err(CreateCustomWorkerError::NpmPackageReq)?;
+    }
+
+    let main_module = match main_module_npm_ref {
+      Some(package_ref) => {
         // use a fake referrer that can be used to discover the package.json if necessary
         let referrer = self.shared.initial_cwd.join("package.json")?;
         let package_folder =
@@ -505,13 +534,12 @@ impl CliMainWorkerFactory {
 
         main_module
       }
-      _ => main_module,
+      None => main_module,
     };
 
     let mut worker = self.lib_main_worker_factory.create_custom_worker(
       mode,
       main_module,
-      self.experimental_loaders.clone(),
       preload_modules,
       require_modules,
       permissions,
@@ -534,6 +562,7 @@ impl CliMainWorkerFactory {
         "40_test.js",
         "40_bench.js",
         "40_jupyter.js",
+        "jupyter_kernel.js",
         // TODO(bartlomieju): probably shouldn't include these files here?
         "40_lint_selector.js",
         "40_lint.js"

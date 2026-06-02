@@ -286,7 +286,7 @@ Usage:
   ./x test-core <filter>     Run tests matching the filter
 
 Under the hood:
-  cargo nextest run --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform" \\
+  cargo nextest run --features "deno_core/default deno_core/unsafe_use_unprotected_platform" \\
     --tests --examples \\
     -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing
   cargo nextest run -p deno_ops_compile_test_runner
@@ -297,7 +297,7 @@ Under the hood:
           : [];
         $.logStep("Running deno_core nextest...");
         await $`cargo nextest run ${filterArgs}
-          --features ${"deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform"}
+          --features ${"deno_core/default deno_core/unsafe_use_unprotected_platform"}
           --tests --examples
           -p deno_core -p build-your-own-js-snapshot -p dcore -p deno_ops -p deno_ops_compile_test_runner -p serde_v8 -p deno_core_testing`
           .cwd(root);

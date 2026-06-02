@@ -16,14 +16,14 @@ path = "lib.rs"
 crate-type = ["cdylib"]
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime.workspace = true
+deno_core.workspace = true
 
 [dependencies]
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_core.workspace = true
 deno_error.workspace = true
 deno_lib.workspace = true
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt" }

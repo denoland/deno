@@ -7,6 +7,9 @@ import { core } from "ext:core/mod.js";
 const asyncWrap = core.loadExtScript(
   "ext:deno_node/internal_binding/async_wrap.ts",
 );
+const { default: blockList } = core.loadExtScript(
+  "ext:deno_node/internal_binding/block_list.ts",
+);
 const buffer = core.loadExtScript(
   "ext:deno_node/internal_binding/buffer.ts",
 );
@@ -51,6 +54,9 @@ const httpParser = core.loadExtScript(
 const http2Binding = core.loadExtScript(
   "ext:deno_node/internal_binding/http2.ts",
 );
+const inspectorBinding = core.loadExtScript(
+  "ext:deno_node/internal_binding/inspector.js",
+);
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap
 // `errname` with a deprecation warning when --pending-deprecation is set).
@@ -73,6 +79,7 @@ for (const key of Object.keys(uvNamespace)) {
 
 const modules = {
   "async_wrap": asyncWrap,
+  "block_list": blockList,
   buffer,
   "cares_wrap": caresWrap,
   config: {},
@@ -88,7 +95,7 @@ const modules = {
   "http_parser": httpParser,
   "http2": http2Binding,
   icu: {},
-  inspector: {},
+  inspector: inspectorBinding,
   "js_stream": {},
   messaging: {},
   "module_wrap": {},

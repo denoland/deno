@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   op_get_env_no_permission_check,
   op_preview_entries,
@@ -56,6 +56,14 @@ const {
 
 // Mock trace for now
 const trace = () => {};
+const { channel: createDiagnosticsChannel } = core.loadExtScript(
+  "ext:deno_node/diagnostics_channel.js",
+);
+const onConsoleLog = createDiagnosticsChannel("console.log");
+const onConsoleInfo = createDiagnosticsChannel("console.info");
+const onConsoleDebug = createDiagnosticsChannel("console.debug");
+const onConsoleWarn = createDiagnosticsChannel("console.warn");
+const onConsoleError = createDiagnosticsChannel("console.error");
 const {
   ERR_CONSOLE_WRITABLE_STREAM,
   ERR_INCOMPATIBLE_OPTION_PAIR,
@@ -445,10 +453,37 @@ function createWriteErrorHandler(instance, streamSymbol) {
 
 const consoleMethods = {
   log(...args) {
+    if (onConsoleLog.hasSubscribers) {
+      onConsoleLog.publish(args);
+    }
+    this[kWriteToConsole](kUseStdout, this[kFormatForStdout](args));
+  },
+
+  info(...args) {
+    if (onConsoleInfo.hasSubscribers) {
+      onConsoleInfo.publish(args);
+    }
+    this[kWriteToConsole](kUseStdout, this[kFormatForStdout](args));
+  },
+
+  debug(...args) {
+    if (onConsoleDebug.hasSubscribers) {
+      onConsoleDebug.publish(args);
+    }
     this[kWriteToConsole](kUseStdout, this[kFormatForStdout](args));
   },
 
   warn(...args) {
+    if (onConsoleWarn.hasSubscribers) {
+      onConsoleWarn.publish(args);
+    }
+    this[kWriteToConsole](kUseStderr, this[kFormatForStderr](args));
+  },
+
+  error(...args) {
+    if (onConsoleError.hasSubscribers) {
+      onConsoleError.publish(args);
+    }
     this[kWriteToConsole](kUseStderr, this[kFormatForStderr](args));
   },
 
@@ -772,10 +807,7 @@ for (const method of new SafeArrayIterator(ReflectOwnKeys(consoleMethods))) {
   Console.prototype[method] = consoleMethods[method];
 }
 
-Console.prototype.debug = Console.prototype.log;
-Console.prototype.info = Console.prototype.log;
 Console.prototype.dirxml = Console.prototype.log;
-Console.prototype.error = Console.prototype.warn;
 Console.prototype.groupCollapsed = Console.prototype.group;
 
 function bindStreamsLazy(console, object) {

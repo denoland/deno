@@ -313,6 +313,7 @@ async fn compile_desktop(
     exclude: desktop_flags.exclude.clone(),
     eszip: false,
     self_extracting,
+    bundle: false,
   };
 
   let mut temp_flags = flags.clone();
