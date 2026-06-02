@@ -1,0 +1,4 @@
+body.initialised: true
+body.scope: module
+body instanceof Node: true
+program instanceof Node: true

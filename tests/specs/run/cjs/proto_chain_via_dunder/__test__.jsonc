@@ -4,6 +4,10 @@
       "args": "run --allow-read inheritance.cjs",
       "output": "inheritance.out"
     },
+    "buble_program_inheritance": {
+      "args": "run --allow-read buble_program.cjs",
+      "output": "buble_program.out"
+    },
     "esm_only_keeps_proto_deleted": {
       "args": "run esm_only.mjs",
       "output": "esm_only.out"
