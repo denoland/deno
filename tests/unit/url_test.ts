@@ -236,7 +236,6 @@ Deno.test(function urlSimpleSpecialFastPathMatchesRustParser() {
     const input of [
       "http://1.2.3.4/",
       "http://foo:0/",
-      "http://h/a/../b",
       "http://foo/",
       "https://foo:443/path?query#hash",
       "http://foo:8080/a/b?x=1&y=2",
@@ -258,6 +257,22 @@ Deno.test(function urlSimpleSpecialFastPathMatchesRustParser() {
     assertEquals(constructed.search, parsed.search);
     assertEquals(constructed.hash, parsed.hash);
     assertEquals(constructed.origin, parsed.origin);
+  }
+});
+
+Deno.test(function urlSimpleSpecialFastPathFallsBackForNormalization() {
+  for (
+    const [input, expected] of [
+      ["http://01.2.3.4/", "http://1.2.3.4/"],
+      ["http://0xff/", "http://0.0.0.255/"],
+      ["http://foo:080/", "http://foo/"],
+      ["http://foo/a/../b", "http://foo/b"],
+    ]
+  ) {
+    assertEquals(new URL(input).href, expected);
+    const parsed = URL.parse(input);
+    assert(parsed);
+    assertEquals(parsed.href, expected);
   }
 });
 
