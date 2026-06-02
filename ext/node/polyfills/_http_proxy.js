@@ -15,9 +15,27 @@
 //   - For https:// targets, https.request() opens a CONNECT tunnel through
 //     the proxy and then performs TLS on the tunneled socket.
 
-// deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const {
+  ArrayIsArray,
+  ArrayPrototypePush,
+  Number,
+  NumberIsInteger,
+  RegExpPrototypeExec,
+  SafeRegExp,
+  String,
+  StringPrototypeEndsWith,
+  StringPrototypeIndexOf,
+  StringPrototypeLastIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  StringPrototypeTrim,
+  SymbolFor,
+  TypeError,
+  decodeURIComponent,
+} = primordials;
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_INVALID_ARG_TYPE,
@@ -32,7 +50,7 @@ const NO_PROXY_KEYS = ["no_proxy", "NO_PROXY"];
 
 function isPlainObject(value) {
   if (value === null || typeof value !== "object") return false;
-  if (Array.isArray(value)) return false;
+  if (ArrayIsArray(value)) return false;
   return true;
 }
 
@@ -45,6 +63,8 @@ function readEnvKey(env, keys) {
   }
   return undefined;
 }
+
+const CRLF_RE = new SafeRegExp(/[\r\n]/);
 
 function parseProxyUrl(raw, kind, mode) {
   if (raw === undefined || raw === null || raw === "") return null;
@@ -59,7 +79,7 @@ function parseProxyUrl(raw, kind, mode) {
   // CRLF injection guard - check raw string before URL parsing strips them.
   // Matches Node's CRLF rejection in the proxy URL validator. We surface this
   // even for env-derived URLs so the auth tests get the expected error class.
-  if (/[\r\n]/.test(raw)) {
+  if (RegExpPrototypeExec(CRLF_RE, raw) !== null) {
     throw new ERR_PROXY_INVALID_CONFIG(`Invalid proxy URL: ${raw}`);
   }
   let url;
@@ -83,8 +103,11 @@ function parseProxyUrl(raw, kind, mode) {
   const password = url.password ? decodeURIComponent(url.password) : "";
   // Strip square brackets from IPv6 literals so net.connect can resolve them.
   let hostname = url.hostname;
-  if (hostname.startsWith("[") && hostname.endsWith("]")) {
-    hostname = hostname.slice(1, -1);
+  if (
+    StringPrototypeStartsWith(hostname, "[") &&
+    StringPrototypeEndsWith(hostname, "]")
+  ) {
+    hostname = StringPrototypeSlice(hostname, 1, -1);
   }
   return {
     raw,
@@ -94,16 +117,20 @@ function parseProxyUrl(raw, kind, mode) {
     username,
     password,
     auth: username
-      ? "Basic " +
-        Buffer.from(`${username}:${password}`).toString("base64")
+      // deno-lint-ignore prefer-primordials -- Buffer.from()/.toString(encoding) are not primordials.
+      ? "Basic " + Buffer.from(`${username}:${password}`).toString("base64")
       : undefined,
   };
 }
 
 // Returns the numeric value of an IPv4 dotted-quad string, or null if not
 // a valid IPv4 literal.
+const IPV4_RE = new SafeRegExp(
+  /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/,
+);
+
 function parseIPv4(s) {
-  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
+  const m = RegExpPrototypeExec(IPV4_RE, s);
   if (!m) return null;
   let acc = 0;
   for (let i = 1; i <= 4; i++) {
@@ -117,21 +144,21 @@ function parseIPv4(s) {
 // Returns { lo, hi } for a CIDR (a.b.c.d/N) or IP range (a-b), where lo/hi
 // are 32-bit IPv4 numbers; null if the input isn't recognized.
 function parseIPv4Range(s) {
-  const slash = s.indexOf("/");
+  const slash = StringPrototypeIndexOf(s, "/");
   if (slash !== -1) {
-    const ip = parseIPv4(s.slice(0, slash));
+    const ip = parseIPv4(StringPrototypeSlice(s, 0, slash));
     if (ip === null) return null;
-    const bits = Number(s.slice(slash + 1));
-    if (!Number.isInteger(bits) || bits < 0 || bits > 32) return null;
+    const bits = Number(StringPrototypeSlice(s, slash + 1));
+    if (!NumberIsInteger(bits) || bits < 0 || bits > 32) return null;
     const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
     const lo = ip & mask;
     const hi = lo | (~mask >>> 0);
     return { lo, hi };
   }
-  const dash = s.indexOf("-");
+  const dash = StringPrototypeIndexOf(s, "-");
   if (dash !== -1) {
-    const lo = parseIPv4(s.slice(0, dash));
-    const hi = parseIPv4(s.slice(dash + 1));
+    const lo = parseIPv4(StringPrototypeSlice(s, 0, dash));
+    const hi = parseIPv4(StringPrototypeSlice(s, dash + 1));
     if (lo === null || hi === null || lo > hi) return null;
     return { lo, hi };
   }
@@ -141,43 +168,44 @@ function parseIPv4Range(s) {
 function parseNoProxy(raw) {
   if (!raw) return null;
   if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
+  const trimmed = StringPrototypeTrim(raw);
   if (trimmed === "") return null;
   if (trimmed === "*") return { all: true, entries: [] };
   const entries = [];
-  const parts = trimmed.split(",");
+  const parts = StringPrototypeSplit(trimmed, ",");
   for (let i = 0; i < parts.length; i++) {
-    const part = parts[i].trim();
+    const part = StringPrototypeTrim(parts[i]);
     if (part === "") continue;
     let host = part;
     let port = null;
     // Support [::1]:8080 and host:port forms.
-    if (host.startsWith("[")) {
-      const bracket = host.indexOf("]");
+    if (StringPrototypeStartsWith(host, "[")) {
+      const bracket = StringPrototypeIndexOf(host, "]");
       if (bracket !== -1) {
-        const rest = host.slice(bracket + 1);
-        host = host.slice(1, bracket);
-        if (rest.startsWith(":")) {
-          port = rest.slice(1);
+        const rest = StringPrototypeSlice(host, bracket + 1);
+        host = StringPrototypeSlice(host, 1, bracket);
+        if (StringPrototypeStartsWith(rest, ":")) {
+          port = StringPrototypeSlice(rest, 1);
         }
       }
     } else {
-      const lastColon = host.lastIndexOf(":");
+      const lastColon = StringPrototypeLastIndexOf(host, ":");
       // Only treat trailing :NNN as a port when the host has no other colons
       // (so we don't mistake a bare IPv6 like ::1 for host:port). Also skip
       // when the host already contains "/" or "-" (CIDR / range syntax).
       if (
-        lastColon !== -1 && host.indexOf(":") === lastColon &&
-        host.indexOf("/") === -1 && host.indexOf("-") === -1
+        lastColon !== -1 && StringPrototypeIndexOf(host, ":") === lastColon &&
+        StringPrototypeIndexOf(host, "/") === -1 &&
+        StringPrototypeIndexOf(host, "-") === -1
       ) {
-        port = host.slice(lastColon + 1);
-        host = host.slice(0, lastColon);
+        port = StringPrototypeSlice(host, lastColon + 1);
+        host = StringPrototypeSlice(host, 0, lastColon);
       }
     }
     // Try CIDR or IPv4 range first (a-b, a/n).
     const range = parseIPv4Range(host);
     if (range) {
-      entries.push({
+      ArrayPrototypePush(entries, {
         host: null,
         ipRange: range,
         port: port === null ? null : Number(port),
@@ -189,15 +217,15 @@ function parseNoProxy(raw) {
     // subdomain of it". `*.example.com` is the wildcard form; `.example.com`
     // is the bare-suffix form. Both normalize to the same matcher.
     let suffixMatch = false;
-    if (host.startsWith("*.")) {
+    if (StringPrototypeStartsWith(host, "*.")) {
       suffixMatch = true;
-      host = host.slice(2);
-    } else if (host.startsWith(".")) {
+      host = StringPrototypeSlice(host, 2);
+    } else if (StringPrototypeStartsWith(host, ".")) {
       suffixMatch = true;
-      host = host.slice(1);
+      host = StringPrototypeSlice(host, 1);
     }
-    entries.push({
-      host: host.toLowerCase(),
+    ArrayPrototypePush(entries, {
+      host: StringPrototypeToLowerCase(host),
       ipRange: null,
       port: port === null ? null : Number(port),
       suffixMatch,
@@ -207,8 +235,11 @@ function parseNoProxy(raw) {
 }
 
 function stripIpv6Brackets(host) {
-  if (host && host.startsWith("[") && host.endsWith("]")) {
-    return host.slice(1, -1);
+  if (
+    host && StringPrototypeStartsWith(host, "[") &&
+    StringPrototypeEndsWith(host, "]")
+  ) {
+    return StringPrototypeSlice(host, 1, -1);
   }
   return host;
 }
@@ -216,7 +247,9 @@ function stripIpv6Brackets(host) {
 function shouldBypassProxy(noProxy, host, port) {
   if (!noProxy) return false;
   if (noProxy.all) return true;
-  const normalizedHost = stripIpv6Brackets(String(host || "")).toLowerCase();
+  const normalizedHost = StringPrototypeToLowerCase(
+    stripIpv6Brackets(String(host || "")),
+  );
   const portNum = port == null ? null : Number(port);
   const hostAsIp = parseIPv4(normalizedHost);
   for (let i = 0; i < noProxy.entries.length; i++) {
@@ -240,7 +273,7 @@ function shouldBypassProxy(noProxy, host, port) {
     if (entry.suffixMatch) {
       if (
         normalizedHost === entry.host ||
-        normalizedHost.endsWith("." + entry.host)
+        StringPrototypeEndsWith(normalizedHost, "." + entry.host)
       ) {
         return true;
       }
@@ -249,7 +282,7 @@ function shouldBypassProxy(noProxy, host, port) {
         return true;
       }
       // Bare hostnames in NO_PROXY also match subdomains.
-      if (normalizedHost.endsWith("." + entry.host)) {
+      if (StringPrototypeEndsWith(normalizedHost, "." + entry.host)) {
         return true;
       }
     }
@@ -296,7 +329,7 @@ function maybeInitFromEnv() {
   const env = (globalThis.process && globalThis.process.env) || {};
   // CLI flags (parsed at startup) override the env var, but if the flag
   // wasn't set, fall back to NODE_USE_ENV_PROXY.
-  const cliOverride = globalThis[Symbol.for("Deno.internal.useEnvProxy")];
+  const cliOverride = globalThis[SymbolFor("Deno.internal.useEnvProxy")];
   let enabled;
   if (cliOverride === true || cliOverride === false) {
     enabled = cliOverride;
