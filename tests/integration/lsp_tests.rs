@@ -6188,12 +6188,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     })
     .to_string(),
   );
-  temp_dir.write(
-    "main.ts",
-    r#"
-      import "jsr:@denotest/add@1";
-    "#,
-  );
+  temp_dir.write("main.ts", "");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.cache_specifier(temp_dir.url().join("main.ts").unwrap());
@@ -8688,6 +8683,67 @@ fn lsp_completions_optional() {
 }
 
 #[test(timeout = 300)]
+fn lsp_completions_string_union_with_dot() {
+  // Regression test for https://github.com/denoland/deno/issues/28075
+  // Completing a string union literal that contains a `.` must replace the
+  // entire string contents, not just the text after the last dot.
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "type T = \"foo.bar\" | \"foo.baz\";\nconst x: T = \"foo.b\";\n"
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (1, 19),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|i| i.label == "foo.bar")
+    .expect("expected a \"foo.bar\" completion item");
+  // The text edit must replace the whole string content (`foo.b`), spanning
+  // from just after the opening quote to the cursor, rather than relying on
+  // the editor's word-based replacement which would only replace `b`.
+  assert_eq!(
+    item.text_edit,
+    Some(lsp::CompletionTextEdit::InsertAndReplace(
+      lsp::InsertReplaceEdit {
+        new_text: "foo.bar".to_string(),
+        insert: lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 14,
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 19,
+          },
+        },
+        replace: lsp::Range {
+          start: lsp::Position {
+            line: 1,
+            character: 14,
+          },
+          end: lsp::Position {
+            line: 1,
+            character: 19,
+          },
+        },
+      }
+    ))
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_completions_auto_import() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -9173,6 +9229,51 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
         },
       },
     ]),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("existing_import.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { say } from \"cowsay\";\n\nthink({ text: \"foo\" });\n",
+    },
+  }));
+  let list = client.get_completion_list(
+    url_to_uri(&temp_dir.url().join("existing_import.ts").unwrap())
+      .unwrap()
+      .as_str(),
+    (2, 5),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "think")
+    .unwrap();
+  let mut res = client.write_request("completionItem/resolve", item);
+  let obj = res.as_object_mut().unwrap();
+  obj.remove("documentation");
+  assert_eq!(
+    res,
+    json!({
+      "label": "think",
+      "labelDetails": {
+        "description": "cowsay",
+      },
+      "kind": 3,
+      "detail": "Update import from \"cowsay\"\n\nfunction think(options: IOptions): string",
+      "sortText": "￿16_0",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 12 },
+            "end": { "line": 0, "character": 12 },
+          },
+          "newText": ", think",
+        },
+      ],
+    }),
   );
   client.shutdown();
 }
@@ -10326,6 +10427,82 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   client.shutdown();
 }
 
+#[test(timeout = 300)]
+fn lsp_completions_auto_import_in_empty_import_clause_with_import_map() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "$globals": "npm:@denotest/globals@1",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "foo.ts",
+    r#"import { getFoo } from "$globals";
+
+export function foo() {}
+"#,
+  );
+  let file = temp_dir.source_file(
+    "bar.ts",
+    r#"import { foo } from "./foo.ts";
+import { }
+
+foo();
+"#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.cache_specifier(temp_dir.url().join("foo.ts").unwrap());
+  client.read_diagnostics();
+  client.did_open_file(&file);
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (1, 9),
+    json!({ "triggerKind": 1 }),
+  );
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "getFoo")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "getFoo",
+      "labelDetails": {
+        "description": "$globals",
+      },
+      "kind": 3,
+      "detail": "function getFoo(): string",
+      "sortText": "￿11_0",
+      "filterText": "import { getFoo$1 } from \"$globals\";",
+      "insertText": "import { getFoo$1 } from \"$globals\";",
+      "insertTextFormat": 2,
+      "textEdit": {
+        "newText": "import { getFoo$1 } from \"$globals\";",
+        "insert": {
+          "start": { "line": 1, "character": 0 },
+          "end": { "line": 1, "character": 10 },
+        },
+        "replace": {
+          "start": { "line": 1, "character": 0 },
+          "end": { "line": 1, "character": 10 },
+        },
+      }
+    })
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/32288
 // and https://github.com/denoland/deno/issues/31590.
 // When an import map has a meaningful alias like "@app/": "./src/",
@@ -10388,10 +10565,7 @@ fn lsp_auto_import_local_dir_import_map_alias() {
 
 #[test(timeout = 300)]
 fn lsp_auto_import_import_map_prefer_relative() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "deno.json",
@@ -10437,6 +10611,87 @@ fn lsp_auto_import_import_map_prefer_relative() {
         ],
       },
     ]),
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_auto_import_same_dir_import_map_alias() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "$src/": "./src/",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.create_dir_all("src");
+  temp_dir.write("src/b.ts", "export const b = 1;\n");
+  let file = temp_dir.source_file("src/a.ts", "b;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let list = client.get_completion_list(
+    file.uri().as_str(),
+    (0, 1),
+    json!({ "triggerKind": 1 }),
+  );
+  let items = list
+    .items
+    .iter()
+    .filter(|i| i.label == "b")
+    .map(|i| client.write_request("completionItem/resolve", json!(i)))
+    .collect::<Vec<_>>();
+  assert_eq!(
+    json!(items),
+    json!([
+      {
+        "label": "b",
+        "labelDetails": { "description": "$src/b.ts" },
+        "kind": 6,
+        "detail": "Add import from \"$src/b.ts\"\n\nconst b: 1",
+        "sortText": "\u{ffff}16_0",
+        "additionalTextEdits": [
+          {
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 },
+            },
+            "newText": "import { b } from \"$src/b.ts\";\n\n",
+          },
+        ],
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_completions_empty_tsx_react_jsx() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{ "compilerOptions": { "jsx": "react-jsx" } }"#,
+  );
+  let file_uri = url_to_uri(&temp_dir.url().join("file.tsx").unwrap()).unwrap();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_raw(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescriptreact",
+      "version": 1,
+      "text": "",
+    }
+  }));
+  client.get_completion_list(
+    file_uri.as_str(),
+    (0, 0),
+    json!({ "triggerKind": 1 }),
   );
   client.shutdown();
 }
@@ -14781,6 +15036,237 @@ Deno.test({
 }
 
 #[test(timeout = 300)]
+fn lsp_testing_api_imported_step_helper() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./deno.jsonc", "{}");
+  temp_dir.write(
+    "./each.ts",
+    r#"
+export type TestCase = {
+  name: string;
+};
+
+export async function each(
+  testContext: Deno.TestContext,
+  testCases: TestCase[],
+  fn: (testCase: TestCase) => Promise<void> | void,
+): Promise<void> {
+  for (const testCase of testCases) {
+    await testContext.step(testCase.name, async () => {
+      await fn(testCase);
+    });
+  }
+}
+"#,
+  );
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+import { each } from "./each.ts";
+
+Deno.test("test", async (testContext) => {
+  await each(testContext, [
+    { name: "test case 1" },
+    { name: "test case 2" },
+  ], async ({ name }) => {
+    console.log(name);
+  });
+});
+"#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  assert_eq!(params.kind, TestModuleNotificationKind::Replace);
+  assert_eq!(params.label, "test.ts");
+  assert_eq!(params.tests.len(), 1);
+  let test_id = params.tests[0].id.clone();
+  assert_eq!(params.tests[0].label, "test");
+  assert_eq!(params.tests[0].steps.len(), 0);
+
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(
+    json!(&res),
+    json!({
+      "enqueued": [
+        {
+          "textDocument": { "uri": file.uri() },
+          "ids": [&test_id],
+        },
+      ],
+    }),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_id,
+        },
+      },
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  assert_eq!(params.kind, TestModuleNotificationKind::Insert);
+  assert_eq!(params.label, "test.ts");
+  assert_eq!(params.tests.len(), 1);
+  let test_case_1_id = params.tests[0].steps[0].id.clone();
+  assert_eq!(params.tests[0].id, test_id);
+  assert_eq!(params.tests[0].label, "test");
+  assert_eq!(params.tests[0].steps[0].label, "test case 1");
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": { "uri": file.uri() },
+          "id": &test_id,
+          "stepId": &test_case_1_id,
+        },
+      },
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "output");
+  assert_eq!(
+    params
+      .message
+      .data
+      .get("value")
+      .unwrap()
+      .as_str()
+      .unwrap()
+      .replace('\u{200B}', ""),
+    "test case 1\r\n",
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "passed");
+  assert_eq!(
+    params.message.data.get("test"),
+    Some(&json!({
+      "textDocument": { "uri": file.uri() },
+      "id": &test_id,
+      "stepId": &test_case_1_id,
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  assert_eq!(params.kind, TestModuleNotificationKind::Insert);
+  let test_case_2_id = params.tests[0].steps[0].id.clone();
+  assert_eq!(params.tests[0].id, test_id);
+  assert_eq!(params.tests[0].steps[0].label, "test case 2");
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "started");
+  assert_eq!(
+    params.message.data.get("test"),
+    Some(&json!({
+      "textDocument": { "uri": file.uri() },
+      "id": &test_id,
+      "stepId": &test_case_2_id,
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "output");
+  assert_eq!(
+    params
+      .message
+      .data
+      .get("value")
+      .unwrap()
+      .as_str()
+      .unwrap()
+      .replace('\u{200B}', ""),
+    "test case 2\r\n",
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.message.typ, "passed");
+  assert_eq!(
+    params.message.data.get("test"),
+    Some(&json!({
+      "textDocument": { "uri": file.uri() },
+      "id": &test_id,
+      "stepId": &test_case_2_id,
+    })),
+  );
+
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testRunProgress");
+  let params: TestRunProgressParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  if params.message.typ != "end" {
+    assert_eq!(params.message.typ, "passed");
+    assert_eq!(
+      params.message.data.get("test"),
+      Some(&json!({
+        "textDocument": { "uri": file.uri() },
+        "id": &test_id,
+      })),
+    );
+    let notification =
+      client.read_notification_with_method::<Value>("deno/testRunProgress");
+    let params: TestRunProgressParams =
+      serde_json::from_value(notification.unwrap()).unwrap();
+    assert_eq!(params.message.typ, "end");
+  }
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_testing_api_failure() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -14895,6 +15381,70 @@ fn lsp_testing_api_failure() {
     Some("end") => (),
     _ => panic!("unexpected message {}", json!(notification)),
   }
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/17119.
+// A module containing a test with an empty name throws "The test name can't
+// be empty" during evaluation. Previously this could make the language
+// server panic and the test run never terminate. The run should instead
+// finish, reporting the uncaught error.
+#[test(timeout = 300)]
+fn lsp_testing_api_empty_test_name() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("./deno.json", json!({}).to_string());
+  let file = temp_dir.source_file(
+    "test.ts",
+    "Deno.test(\"valid\", () => {});\nDeno.test(\"\", () => {});\n",
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let notification =
+    client.read_notification_with_method::<Value>("deno/testModule");
+  let params: TestModuleNotificationParams =
+    serde_json::from_value(notification.unwrap()).unwrap();
+  assert_eq!(params.text_document.uri.as_str(), file.uri().as_str());
+  // Both the valid test and the empty-named test are statically collected.
+  assert_eq!(params.tests.len(), 2);
+  let res = client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  assert_eq!(res.enqueued.len(), 1);
+  // Drain progress notifications until the run ends. The run must terminate
+  // (rather than hang or panic) and surface the empty-name error.
+  let mut saw_empty_name_error = false;
+  loop {
+    let notification = client
+      .read_notification_with_method::<Value>("deno/testRunProgress")
+      .unwrap();
+    let message = notification
+      .as_object()
+      .unwrap()
+      .get("message")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    let kind = message.get("type").and_then(|v| v.as_str());
+    if kind == Some("failed") {
+      let text = json!(message.get("messages")).to_string();
+      if text.contains("The test name can't be empty") {
+        saw_empty_name_error = true;
+      }
+    }
+    if kind == Some("end") {
+      break;
+    }
+  }
+  assert!(
+    saw_empty_name_error,
+    "expected an empty test name error to be reported",
+  );
   client.shutdown();
 }
 
@@ -17744,6 +18294,80 @@ fn lsp_tsconfig_node_modules_dts_diagnostics() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/33955 — with
+// `moduleResolution: "bundler"`, importing a subpath of an npm package whose
+// `package.json` doesn't list it under `exports` should not error in the LSP
+// when the subpath is a directory that contains an `index` declaration.
+#[test(timeout = 300)]
+fn lsp_tsconfig_module_resolution_bundler_dir_import() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "tsconfig.json",
+    json!({
+      "compilerOptions": {
+        "moduleResolution": "bundler",
+        "lib": ["esnext", "dom"],
+      },
+    })
+    .to_string(),
+  );
+  // The package only declares `main` — no `exports` field, so subpath
+  // resolution falls back to the legacy node algorithm.
+  temp_dir.write(
+    "node_modules/some-pkg/package.json",
+    json!({
+      "name": "some-pkg",
+      "main": "./index.js",
+    })
+    .to_string(),
+  );
+  source_file(
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/some-pkg/index.d.ts"),
+    "export const root: number;\n",
+  );
+  // The subpath `some-pkg/text-box` is a directory with no `package.json` —
+  // Node's strict ESM resolution would refuse this with
+  // `ERR_UNSUPPORTED_DIR_IMPORT`, but a bundler-mode resolver should probe
+  // for an `index` file.
+  source_file(
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/some-pkg/text-box/index.js"),
+    "export const value = 1;\n",
+  );
+  source_file(
+    temp_dir
+      .path()
+      .canonicalize()
+      .join("node_modules/some-pkg/text-box/index.d.ts"),
+    "export const value: number;\n",
+  );
+  let file = temp_dir.source_file(
+    "main.ts",
+    r#"
+      import { value } from "some-pkg/text-box";
+      console.log(value);
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_tsconfig_root_dirs() {
   let context = TestContextBuilder::new()
@@ -19084,6 +19708,65 @@ fn lsp_wasm_module() {
       }
     ])
   );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_wasm_module_multi_value_return() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  fs::write(
+    temp_dir.join("multi_value.wasm"),
+    include_bytes!("../specs/check/wasm_multi_value/multi_value.wasm"),
+  )
+  .unwrap();
+  let main = source_file(
+    temp_dir.join("main.ts"),
+    r#"
+      import { add_and_sub } from "./multi_value.wasm";
+
+      const result: number = add_and_sub(1, 2);
+      console.log(result);
+    "#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open_file(&main);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 3, "character": 12 },
+          "end": { "line": 3, "character": 18 }
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type '[number, number]' is not assignable to type 'number'."
+      }
+    ])
+  );
+
+  let hover = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": main.identifier(),
+      "position": main.range_of_nth(1, "add_and_sub").start,
+    }),
+  );
+  assert_json_subset(
+    hover,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```tsx\n(alias) add_and_sub(arg0: number, arg1: number): [number, number]\n```\n",
+      },
+    }),
+  );
+
   client.shutdown();
 }
 
