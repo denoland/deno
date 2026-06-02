@@ -71,9 +71,11 @@ mod x448;
 
 pub use crate::decrypt::DecryptError;
 pub use crate::decrypt::op_crypto_decrypt;
+pub use crate::decrypt::op_crypto_decrypt_sync;
 pub use crate::ed25519::Ed25519Error;
 pub use crate::encrypt::EncryptError;
 pub use crate::encrypt::op_crypto_encrypt;
+pub use crate::encrypt::op_crypto_encrypt_sync;
 pub use crate::export_key::ExportKeyError;
 pub use crate::export_key::op_crypto_export_key;
 pub use crate::generate_key::GenerateKeyError;
@@ -102,7 +104,9 @@ deno_core::extension!(deno_crypto,
     op_crypto_import_key,
     op_crypto_export_key,
     op_crypto_encrypt,
+    op_crypto_encrypt_sync,
     op_crypto_decrypt,
+    op_crypto_decrypt_sync,
     op_crypto_subtle_digest,
     op_crypto_subtle_digest_xof,
     op_crypto_random_uuid,

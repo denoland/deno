@@ -130,6 +130,46 @@ pub enum EncryptError {
   Failed,
 }
 
+// AES encryption on commodity x86 with AES-NI is roughly 1 GB/s, so any
+// payload that fits in a few cache lines finishes in well under the
+// ~30 us cost of dispatching an async op + `spawn_blocking` round-trip.
+// JS routes inputs at or below `00_crypto.js`'s threshold to this sync
+// op for the common JWT/token-style usage. RSA-OAEP stays async at any
+// size because modular exponentiation is intrinsically slow.
+#[op2]
+pub fn op_crypto_encrypt_sync(
+  #[serde] opts: EncryptOptions,
+  #[buffer] data: JsBuffer,
+) -> Result<Uint8Array, EncryptError> {
+  let key = opts.key;
+  let buf = match opts.algorithm {
+    EncryptAlgorithm::RsaOaep { hash, label } => {
+      encrypt_rsa_oaep(key, hash, label, &data)
+    }
+    EncryptAlgorithm::AesCbc { iv, length } => {
+      encrypt_aes_cbc(key, length, iv, &data)
+    }
+    EncryptAlgorithm::AesGcm {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
+    EncryptAlgorithm::AesOcb {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => encrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
+    EncryptAlgorithm::AesCtr {
+      counter,
+      ctr_length,
+      key_length,
+    } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
+  }?;
+  Ok(buf.into())
+}
+
 #[op2]
 pub async fn op_crypto_encrypt(
   #[serde] opts: EncryptOptions,

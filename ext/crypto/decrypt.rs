@@ -138,6 +138,42 @@ pub enum DecryptError {
   Rsa(rsa::Error),
 }
 
+// Sync decrypt mirrors `op_crypto_encrypt_sync` (see encrypt.rs). The same
+// throughput / dispatch-cost trade-off applies to decrypt.
+#[op2]
+pub fn op_crypto_decrypt_sync(
+  #[serde] opts: DecryptOptions,
+  #[buffer] data: JsBuffer,
+) -> Result<Uint8Array, DecryptError> {
+  let key = opts.key;
+  let buf = match opts.algorithm {
+    DecryptAlgorithm::RsaOaep { hash, label } => {
+      decrypt_rsa_oaep(key, hash, label, &data)
+    }
+    DecryptAlgorithm::AesCbc { iv, length } => {
+      decrypt_aes_cbc(key, length, iv, &data)
+    }
+    DecryptAlgorithm::AesCtr {
+      counter,
+      ctr_length,
+      key_length,
+    } => decrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
+    DecryptAlgorithm::AesGcm {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
+    DecryptAlgorithm::AesOcb {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => decrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
+  }?;
+  Ok(buf.into())
+}
+
 #[op2]
 pub async fn op_crypto_decrypt(
   #[serde] opts: DecryptOptions,

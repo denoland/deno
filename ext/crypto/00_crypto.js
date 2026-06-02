@@ -11,10 +11,12 @@ const {
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
   op_crypto_decrypt,
+  op_crypto_decrypt_sync,
   op_crypto_derive_bits,
   op_crypto_derive_bits_x25519,
   op_crypto_derive_bits_x448,
   op_crypto_encrypt,
+  op_crypto_encrypt_sync,
   op_crypto_export_key,
   op_crypto_export_pkcs8_ed25519,
   op_crypto_export_pkcs8_x25519,
@@ -927,12 +929,21 @@ class SubtleCrypto {
           );
         }
 
-        const plainText = await op_crypto_decrypt({
+        // Same dispatch as `encrypt` (see the matching comment there): AES
+        // payloads up to ~64 KB are cheaper to run on the calling thread
+        // than to hand off to `spawn_blocking`.
+        const decryptOpts = {
           key: keyData,
           algorithm: "AES-CBC",
           iv: normalizedAlgorithm.iv,
           length: key[_algorithm].length,
-        }, data);
+        };
+        let plainText;
+        if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+          plainText = op_crypto_decrypt_sync(decryptOpts, data);
+        } else {
+          plainText = await op_crypto_decrypt(decryptOpts, data);
+        }
 
         // 6.
         return TypedArrayPrototypeGetBuffer(plainText);
@@ -961,13 +972,19 @@ class SubtleCrypto {
         }
 
         // 3.
-        const cipherText = await op_crypto_decrypt({
+        const decryptOpts = {
           key: keyData,
           algorithm: "AES-CTR",
           keyLength: key[_algorithm].length,
           counter: normalizedAlgorithm.counter,
           ctrLength: normalizedAlgorithm.length,
-        }, data);
+        };
+        let cipherText;
+        if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+          cipherText = op_crypto_decrypt_sync(decryptOpts, data);
+        } else {
+          cipherText = await op_crypto_decrypt(decryptOpts, data);
+        }
 
         // 4.
         return TypedArrayPrototypeGetBuffer(cipherText);
@@ -1035,7 +1052,7 @@ class SubtleCrypto {
         }
 
         // 5-8.
-        const plaintext = await op_crypto_decrypt({
+        const decryptOpts = {
           key: keyData,
           algorithm: algorithm.name,
           length: key[_algorithm].length,
@@ -1043,7 +1060,13 @@ class SubtleCrypto {
           additionalData: normalizedAlgorithm.additionalData ||
             null,
           tagLength: normalizedAlgorithm.tagLength,
-        }, data);
+        };
+        let plaintext;
+        if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+          plaintext = op_crypto_decrypt_sync(decryptOpts, data);
+        } else {
+          plaintext = await op_crypto_decrypt(decryptOpts, data);
+        }
 
         // 9.
         return TypedArrayPrototypeGetBuffer(plaintext);
@@ -6480,12 +6503,23 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 2.
-      const cipherText = await op_crypto_encrypt({
+      // AES with AES-NI on commodity x86 is roughly 1 GB/s, so inputs up
+      // to ~64 KB finish in well under the ~30 us cost of dispatching
+      // an async op to tokio's blocking pool. Skip spawn_blocking for
+      // those. RSA-OAEP keeps using the async op because the underlying
+      // modular exponentiation is in the millisecond range.
+      const encryptOpts = {
         key: keyData,
         algorithm: "AES-CBC",
         length: key[_algorithm].length,
         iv: normalizedAlgorithm.iv,
-      }, data);
+      };
+      let cipherText;
+      if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+        cipherText = op_crypto_encrypt_sync(encryptOpts, data);
+      } else {
+        cipherText = await op_crypto_encrypt(encryptOpts, data);
+      }
 
       // 4.
       return TypedArrayPrototypeGetBuffer(cipherText);
@@ -6514,13 +6548,19 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 3.
-      const cipherText = await op_crypto_encrypt({
+      const encryptOpts = {
         key: keyData,
         algorithm: "AES-CTR",
         keyLength: key[_algorithm].length,
         counter: normalizedAlgorithm.counter,
         ctrLength: normalizedAlgorithm.length,
-      }, data);
+      };
+      let cipherText;
+      if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+        cipherText = op_crypto_encrypt_sync(encryptOpts, data);
+      } else {
+        cipherText = await op_crypto_encrypt(encryptOpts, data);
+      }
 
       // 4.
       return TypedArrayPrototypeGetBuffer(cipherText);
@@ -6582,14 +6622,20 @@ async function encrypt(normalizedAlgorithm, key, data) {
         );
       }
       // 6-7.
-      const cipherText = await op_crypto_encrypt({
+      const encryptOpts = {
         key: keyData,
         algorithm: "AES-GCM",
         length: key[_algorithm].length,
         iv: normalizedAlgorithm.iv,
         additionalData: normalizedAlgorithm.additionalData || null,
         tagLength: normalizedAlgorithm.tagLength,
-      }, data);
+      };
+      let cipherText;
+      if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+        cipherText = op_crypto_encrypt_sync(encryptOpts, data);
+      } else {
+        cipherText = await op_crypto_encrypt(encryptOpts, data);
+      }
 
       // 8.
       return TypedArrayPrototypeGetBuffer(cipherText);
@@ -6636,14 +6682,20 @@ async function encrypt(normalizedAlgorithm, key, data) {
         );
       }
       // 5-6.
-      const cipherText = await op_crypto_encrypt({
+      const encryptOpts = {
         key: keyData,
         algorithm: "AES-OCB",
         length: key[_algorithm].length,
         iv: normalizedAlgorithm.iv,
         additionalData: normalizedAlgorithm.additionalData || null,
         tagLength: normalizedAlgorithm.tagLength,
-      }, data);
+      };
+      let cipherText;
+      if (TypedArrayPrototypeGetByteLength(data) <= 64 * 1024) {
+        cipherText = op_crypto_encrypt_sync(encryptOpts, data);
+      } else {
+        cipherText = await op_crypto_encrypt(encryptOpts, data);
+      }
 
       // 7.
       return TypedArrayPrototypeGetBuffer(cipherText);

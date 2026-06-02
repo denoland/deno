@@ -48,3 +48,12 @@ thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 x25519-dalek.workspace = true
+
+[dev-dependencies]
+deno_bench_util.workspace = true
+deno_web.workspace = true
+deno_webidl.workspace = true
+
+[[bench]]
+name = "encrypt"
+harness = false
