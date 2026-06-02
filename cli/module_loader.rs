@@ -1163,15 +1163,25 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .inner_resolve(specifier, referrer.as_str(), kind, false);
       }
     }
-    if let Some(url) = self.0.hook_registry.resolve(
+    let resolved = if let Some(url) = self.0.hook_registry.resolve(
       scope,
       specifier,
       referrer,
       import_attributes,
     )? {
-      return ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err);
+      ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err)
+    } else {
+      self.0.inner_resolve(specifier, referrer, kind, false)
+    };
+    // Stash the full import attributes against the resolved URL so the load
+    // hook (which V8 only hands the `type` attribute) can recover them.
+    if let Ok(resolved) = &resolved {
+      self
+        .0
+        .hook_registry
+        .record_resolved_attributes(resolved.as_str(), import_attributes);
     }
-    self.0.inner_resolve(specifier, referrer, kind, false)
+    resolved
   }
 
   fn pump_event_loop_during_load(&self) -> bool {
@@ -1243,10 +1253,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           .unwrap_or(false)
       }
     {
-      let import_type =
-        options.requested_module_type.as_str().map(str::to_owned);
-      let receiver =
-        self.0.hook_registry.push_load(specifier.to_string(), import_type);
+      let import_attributes = hook_load_import_attributes(
+        &self.0.hook_registry,
+        specifier.as_str(),
+        &options.requested_module_type,
+      );
+      let receiver = self
+        .0
+        .hook_registry
+        .push_load(specifier.to_string(), import_attributes);
       return deno_core::ModuleLoadResponse::Async(
         async move {
           let hook_result = match receiver.await {
@@ -1652,6 +1667,24 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     extract_source_line(code, line_number)
   }
+}
+
+/// Build the `importAttributes` object handed to a `module.registerHooks()`
+/// load hook. V8 only surfaces the `type` attribute at load time, so recover
+/// the full `with { ... }` clause recorded during resolution and make sure
+/// `type` is present for the common JSON/text/bytes case.
+fn hook_load_import_attributes(
+  registry: &deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry,
+  specifier: &str,
+  requested_module_type: &deno_core::RequestedModuleType,
+) -> std::collections::HashMap<String, String> {
+  let mut attrs = registry.take_resolved_attributes(specifier);
+  if let Some(ty) = requested_module_type.as_str() {
+    attrs
+      .entry("type".to_string())
+      .or_insert_with(|| ty.to_string());
+  }
+  attrs
 }
 
 /// Pick the `ModuleType` for source returned by a `module.registerHooks()`

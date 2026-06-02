@@ -774,7 +774,7 @@ function esmResolveHookCallback(specifier, referrer, importAttributes) {
   }
   const context = {
     parentURL: referrer || undefined,
-    conditions: ["node", "import"],
+    conditions: ["node", "import", "module-sync", "node-addons"],
     importAttributes: attrs,
   };
   try {
@@ -818,6 +818,14 @@ function executeEsmLoadHookChain(fileUrl, context) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
       if (StringPrototypeStartsWith(loadUrl, "file://")) {
+        // `type: "bytes"` modules cannot be faithfully represented as a JS
+        // string here; fall through to Rust default loading, which reads the
+        // file as bytes and produces a correctly-typed module. (Reading it as
+        // a string would otherwise trip "Source code for Bytes module must be
+        // provided as bytes".)
+        if (currentContext?.importAttributes?.type === "bytes") {
+          return { source: null, shortCircuit: true };
+        }
         try {
           const source = op_require_read_file(url.fileURLToPath(loadUrl));
           return {
@@ -866,14 +874,16 @@ function _startEsmLoadLoop() {
       core.unrefOpPromise(pollPromise);
       const req = await pollPromise;
       if (req === null) break;
-      const [id, fileUrl, importType] = req;
+      const [id, fileUrl, rawAttributes] = req;
       const importAttributes = { __proto__: null };
-      if (importType !== null && importType !== undefined) {
-        importAttributes.type = importType;
+      if (rawAttributes !== null && typeof rawAttributes === "object") {
+        for (const key in rawAttributes) {
+          importAttributes[key] = rawAttributes[key];
+        }
       }
       const context = {
         format: undefined,
-        conditions: ["node", "import"],
+        conditions: ["node", "import", "module-sync", "node-addons"],
         importAttributes,
       };
       try {
