@@ -235,6 +235,12 @@ impl SharedScratch {
       write_buf: Vec::with_capacity(write_capacity),
     }
   }
+
+  pub fn ensure_read_capacity(&mut self, capacity: usize) {
+    if self.read_buf.len() < capacity {
+      self.read_buf.resize(capacity, 0);
+    }
+  }
 }
 
 impl Default for SharedScratch {
@@ -867,11 +873,25 @@ where
     &mut self,
     cx: &mut Context<'_>,
     scratch: &mut SharedScratch,
+    callback: F,
+  ) -> Poll<Result<SharedBodyChunk<R>, Error>>
+  where
+    F: for<'a> FnMut(&'a [u8]) -> R,
+  {
+    self.poll_read_body_chunk_limited_with(cx, scratch, usize::MAX, callback)
+  }
+
+  pub fn poll_read_body_chunk_limited_with<R, F>(
+    &mut self,
+    cx: &mut Context<'_>,
+    scratch: &mut SharedScratch,
+    limit: usize,
     mut callback: F,
   ) -> Poll<Result<SharedBodyChunk<R>, Error>>
   where
     F: for<'a> FnMut(&'a [u8]) -> R,
   {
+    let limit = limit.max(1);
     loop {
       if self.buffered.is_empty()
         && let ConnBodyStatus::Complete { .. } =
@@ -881,7 +901,9 @@ where
       }
 
       if !self.buffered.is_empty() {
-        match body_status_from_buf(&mut self.protocol, &self.buffered)? {
+        let read = self.buffered.len().min(limit);
+        match body_status_from_buf(&mut self.protocol, &self.buffered[..read])?
+        {
           ConnBodyStatus::Chunk {
             offset,
             len,
@@ -920,8 +942,11 @@ where
         continue;
       }
 
-      match body_status_from_buf(&mut self.protocol, &scratch.read_buf[..read])?
-      {
+      let parse_read = read.min(limit);
+      match body_status_from_buf(
+        &mut self.protocol,
+        &scratch.read_buf[..parse_read],
+      )? {
         ConnBodyStatus::Chunk {
           offset,
           len,
@@ -936,18 +961,28 @@ where
           return Poll::Ready(Ok(SharedBodyChunk::Chunk(result)));
         }
         ConnBodyStatus::Complete { consumed } => {
-          if consumed < read {
+          if consumed < parse_read {
             self
               .buffered
-              .extend_from_slice(&scratch.read_buf[consumed..read]);
+              .extend_from_slice(&scratch.read_buf[consumed..parse_read]);
+          }
+          if parse_read < read {
+            self
+              .buffered
+              .extend_from_slice(&scratch.read_buf[parse_read..read]);
           }
           return Poll::Ready(Ok(SharedBodyChunk::Complete));
         }
         ConnBodyStatus::Partial { consumed } => {
-          if consumed < read {
+          if consumed < parse_read {
             self
               .buffered
-              .extend_from_slice(&scratch.read_buf[consumed..read]);
+              .extend_from_slice(&scratch.read_buf[consumed..parse_read]);
+          }
+          if parse_read < read {
+            self
+              .buffered
+              .extend_from_slice(&scratch.read_buf[parse_read..read]);
           }
         }
       }
@@ -1796,6 +1831,53 @@ mod tests {
     .await?
     .unwrap();
     assert_eq!(method, b"GET");
+    Ok(())
+  }
+
+  #[tokio::test]
+  async fn shared_conn_content_length_body_respects_read_limit()
+  -> TestResult<()> {
+    const BODY_LEN: usize = 128 * 1024;
+    const READ_LIMIT: usize = 64 * 1024;
+
+    let (mut client, server) = tokio::io::duplex(256 * 1024);
+    let mut conn = SharedConn::new(server);
+    let mut scratch =
+      SharedScratch::new(BODY_LEN + 1024, DEFAULT_WRITE_CAPACITY);
+    let body = vec![b'a'; BODY_LEN];
+    let request = format!(
+      "POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: {BODY_LEN}\r\n\r\n"
+    );
+    client.write_all(request.as_bytes()).await?;
+    client.write_all(&body).await?;
+
+    let body_kind = std::future::poll_fn(|cx| {
+      conn.poll_next_request_with(cx, &mut scratch, |request| request.body)
+    })
+    .await?
+    .unwrap();
+    assert_eq!(body_kind, BodyKind::ContentLength(BODY_LEN as u64));
+
+    let mut received = Vec::new();
+    loop {
+      match std::future::poll_fn(|cx| {
+        conn.poll_read_body_chunk_limited_with(
+          cx,
+          &mut scratch,
+          READ_LIMIT,
+          |chunk| chunk.to_vec(),
+        )
+      })
+      .await?
+      {
+        SharedBodyChunk::Chunk(chunk) => {
+          assert!(chunk.len() <= READ_LIMIT);
+          received.extend_from_slice(&chunk);
+        }
+        SharedBodyChunk::Complete => break,
+      }
+    }
+    assert_eq!(received, body);
     Ok(())
   }
 

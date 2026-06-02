@@ -20,6 +20,7 @@ use bytes::BytesMut;
 use deno_core::AsyncMut;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -818,15 +819,38 @@ where
   fn poll_read_body(
     &mut self,
     cx: &mut Context<'_>,
-    _limit: usize,
+    limit: usize,
   ) -> Poll<Result<BufView, HttpNextError>> {
-    match ready!(self.conn.poll_read_body_chunk_with(
+    self.scratch.ensure_read_capacity(limit);
+    match ready!(self.conn.poll_read_body_chunk_limited_with(
       cx,
       &mut self.scratch,
+      limit,
       |chunk| BufView::from(chunk.to_vec())
     ))? {
       h1::SharedBodyChunk::Chunk(chunk) => Poll::Ready(Ok(chunk)),
       h1::SharedBodyChunk::Complete => Poll::Ready(Ok(BufView::empty())),
+    }
+  }
+
+  fn poll_read_body_byob(
+    &mut self,
+    cx: &mut Context<'_>,
+    buf: &mut [u8],
+  ) -> Poll<Result<usize, HttpNextError>> {
+    self.scratch.ensure_read_capacity(buf.len());
+    match ready!(self.conn.poll_read_body_chunk_limited_with(
+      cx,
+      &mut self.scratch,
+      buf.len(),
+      |chunk| {
+        let len = chunk.len();
+        buf[..len].copy_from_slice(chunk);
+        len
+      }
+    ))? {
+      h1::SharedBodyChunk::Chunk(len) => Poll::Ready(Ok(len)),
+      h1::SharedBodyChunk::Complete => Poll::Ready(Ok(0)),
     }
   }
 
@@ -1340,10 +1364,6 @@ impl<I> RawH1RequestBody<I> {
     }
   }
 
-  fn cancel(&self) {
-    self.canceled.set(true);
-  }
-
   fn try_take_full(&self) -> Option<Vec<u8>> {
     if self.canceled.get() {
       return None;
@@ -1357,6 +1377,11 @@ impl<I> RawH1RequestBody<I> {
 struct RawH1RequestBodyRead<I> {
   body: Rc<RawH1RequestBody<I>>,
   limit: usize,
+}
+
+struct RawH1RequestBodyReadByob<I> {
+  body: Rc<RawH1RequestBody<I>>,
+  buf: Option<BufMutView>,
 }
 
 impl<I> Future for RawH1RequestBodyRead<I>
@@ -1381,8 +1406,19 @@ where
         deno_error::JsErrorBox::generic("request body is no longer readable"),
       )));
     };
-    if let Poll::Ready(Ok(true)) = conn.poll_peer_closed(cx) {
-      this.body.cancel();
+    conn.poll_read_body(cx, this.limit)
+  }
+}
+
+impl<I> Future for RawH1RequestBodyReadByob<I>
+where
+  I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+  type Output = Result<(usize, BufMutView), HttpNextError>;
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    let this = self.get_mut();
+    if this.body.canceled.get() {
       return Poll::Ready(Err(HttpNextError::Other(
         deno_error::JsErrorBox::new(
           "BadResource",
@@ -1390,7 +1426,16 @@ where
         ),
       )));
     }
-    conn.poll_read_body(cx, this.limit)
+    let mut conn = this.body.conn.borrow_mut();
+    let Some(conn) = conn.as_mut() else {
+      return Poll::Ready(Err(HttpNextError::Other(
+        deno_error::JsErrorBox::generic("request body is no longer readable"),
+      )));
+    };
+    let buf = this.buf.as_mut().unwrap();
+    let read = ready!(conn.poll_read_body_byob(cx, buf))?;
+    let buf = this.buf.take().unwrap();
+    Poll::Ready(Ok((read, buf)))
   }
 }
 
@@ -1410,6 +1455,23 @@ where
           _ => deno_error::JsErrorBox::new("Http", err.to_string()),
         },
       )
+    })
+  }
+
+  fn read_byob(
+    self: Rc<Self>,
+    buf: BufMutView,
+  ) -> AsyncResult<(usize, BufMutView)> {
+    Box::pin(async move {
+      RawH1RequestBodyReadByob {
+        body: self,
+        buf: Some(buf),
+      }
+      .await
+      .map_err(|err| match err {
+        HttpNextError::Other(error) => error,
+        _ => deno_error::JsErrorBox::new("Http", err.to_string()),
+      })
     })
   }
 }
@@ -3333,7 +3395,7 @@ async fn wait_raw_response_ready(
   body_conn: &RawNetworkH1ConnectionCell,
   request_body: Option<&Rc<RawH1RequestBody<RawH1Io>>>,
 ) -> Result<(), HttpNextError> {
-  let mut request_body_canceled = false;
+  let poll_peer_closed = request_body.is_none();
   poll_fn(|cx| {
     {
       let mut inner = record.0.borrow_mut();
@@ -3343,14 +3405,13 @@ async fn wait_raw_response_ready(
       inner.response_ready_waker = Some(cx.waker().clone());
     }
 
-    if !request_body_canceled && let Some(request_body) = request_body {
+    if poll_peer_closed {
       let mut conn = body_conn.borrow_mut();
       if let Some(conn) = conn.as_mut() {
         match conn.poll_peer_closed(cx) {
           Poll::Ready(Ok(true)) => {
             record.cancel_request();
-            request_body.cancel();
-            request_body_canceled = true;
+            return Poll::Ready(Ok(()));
           }
           Poll::Ready(Ok(false)) | Poll::Pending => {}
           Poll::Ready(Err(error)) => return Poll::Ready(Err(error)),

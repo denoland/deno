@@ -3661,6 +3661,69 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerPipesLargeContentLengthRequestBody() {
+    const bodyLength = 128 * 1024;
+    const body = new Uint8Array(bodyLength);
+    body.fill(0x61);
+    const received = Promise.withResolvers<number>();
+
+    await using server = await makeServer(async (req) => {
+      assert(req.body);
+      let total = 0;
+      let chunks = 0;
+      await req.body.pipeTo(
+        new WritableStream<Uint8Array>({
+          write(chunk) {
+            chunks++;
+            total += chunk.byteLength;
+          },
+        }),
+      );
+      assert(chunks <= 4);
+      received.resolve(total);
+      return new Response(null, { status: 204 });
+    });
+
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    await writeAll(
+      conn,
+      encoder.encode(
+        `POST / HTTP/1.1\r\nHost: 127.0.0.1:${servePort}\r\n` +
+          `Content-Length: ${bodyLength}\r\n` +
+          `Content-Type: application/octet-stream\r\n` +
+          `Expect: 100-continue\r\nConnection: close\r\n\r\n`,
+      ),
+    );
+
+    const continueBytes = await readAtLeast(
+      conn,
+      "HTTP/1.1 100 Continue\r\n\r\n".length,
+    );
+    assertEquals(
+      decoder.decode(continueBytes),
+      "HTTP/1.1 100 Continue\r\n\r\n",
+    );
+
+    await writeAll(conn, body);
+    assertEquals(await received.promise, bodyLength);
+
+    const response = new Uint8Array(1024);
+    const read = await conn.read(response);
+    assert(read);
+    assertStringIncludes(
+      decoder.decode(response.subarray(0, read)),
+      "HTTP/1.1 204 No Content",
+    );
+    conn.close();
+    await server.shutdown();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerExpectContinueButNoBodyLOL() {
     const deferred = Promise.withResolvers<void>();
     const listeningDeferred = Promise.withResolvers<void>();
