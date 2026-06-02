@@ -2057,11 +2057,13 @@ impl QueryDescriptor for NetDescriptor {
   }
 
   fn as_allow(&self) -> Option<Self::AllowDesc> {
-    Some(self.clone())
+    // Store the host/port form so a granted prompt for a URL grants the host,
+    // not the one-off URL it was prompted for.
+    Some(self.normalized_for_list())
   }
 
   fn as_deny(&self) -> Self::DenyDesc {
-    self.clone()
+    self.normalized_for_list()
   }
 
   fn check_in_permission(
@@ -2087,6 +2089,13 @@ impl QueryDescriptor for NetDescriptor {
         Host::WithUrl { url, .. } => pattern.matches_url(url),
         _ => false,
       };
+    }
+
+    // Defensive: an allow/deny entry should never itself carry a URL, but if it
+    // does (e.g. a query descriptor stored without normalization), match on its
+    // host/port.
+    if let Host::WithUrl { host, .. } = &other.0 {
+      return self.matches_allow(&NetDescriptor((**host).clone(), other.1));
     }
 
     // When the access carries a URL but the entry is a plain host/port entry,
@@ -2169,6 +2178,18 @@ impl NetDescriptor {
   /// and/or path), as opposed to a plain host/port entry.
   pub fn is_url_pattern(&self) -> bool {
     matches!(self.0, Host::Url(_))
+  }
+
+  /// Reduce a query descriptor that carries a full URL ([`Host::WithUrl`]) to a
+  /// plain host/port descriptor. Used when a query is stored in an allow/deny
+  /// list (e.g. after a permission prompt is granted), so that the stored entry
+  /// grants/denies the host and port rather than the one-off URL. Other
+  /// descriptors are returned unchanged.
+  fn normalized_for_list(&self) -> NetDescriptor {
+    match &self.0 {
+      Host::WithUrl { host, .. } => NetDescriptor((**host).clone(), self.1),
+      _ => self.clone(),
+    }
   }
 }
 
@@ -6369,6 +6390,36 @@ mod tests {
     assert!(
       NetDescriptor::parse_for_query("https://example.com/api/*").is_err()
     );
+  }
+
+  #[test]
+  fn test_net_url_query_grant_is_host_scoped() {
+    // Simulates granting a permission prompt for a URL (e.g. a dynamic import):
+    // the stored allow descriptor must be the host/port, so that subsequent
+    // access to the same host/port is covered without re-prompting.
+    let granted = NetDescriptor::from_url(
+      &Url::parse("http://localhost:4545/run/019_media_types.ts").unwrap(),
+    )
+    .unwrap();
+    let allow = granted.as_allow().unwrap();
+    // The stored allow form is a plain host/port entry, not a URL pattern or a
+    // one-off URL.
+    assert!(!allow.is_url_pattern());
+    assert!(matches!(allow.0, Host::Fqdn(_) | Host::Ip(_)));
+
+    // A subsequent access to a different path on the same host/port matches it.
+    let q_same = NetDescriptor::from_url(
+      &Url::parse("http://localhost:4545/other/mod.ts").unwrap(),
+    )
+    .unwrap();
+    assert!(q_same.matches_allow(&allow));
+
+    // A different port is not covered by the grant.
+    let q_other_port = NetDescriptor::from_url(
+      &Url::parse("http://localhost:9999/other/mod.ts").unwrap(),
+    )
+    .unwrap();
+    assert!(!q_other_port.matches_allow(&allow));
   }
 
   #[test]
