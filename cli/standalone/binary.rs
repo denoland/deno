@@ -433,21 +433,22 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       match &self.npm_resolver {
         CliNpmResolver::Managed(managed) => {
           if graph.modules().any(|m| m.npm().is_some()) {
-            let snapshot = managed.resolution().snapshot();
-            let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
-              let reqs = graph
-                .specifiers()
-                .filter_map(|(s, _)| {
-                  NpmPackageReqReference::from_specifier(s)
-                    .ok()
-                    .map(|req_ref| req_ref.into_inner().req)
-                })
-                .collect::<Vec<_>>();
-              snapshot.subset(&reqs)
-            } else {
-              snapshot
-            }
-            .as_valid_serialized_for_system(&self.npm_system_info);
+            // Prune the resolution snapshot to packages actually reachable
+            // from the graph so unused entries from the lockfile/package.json
+            // don't bloat the compiled binary.
+            let reqs = graph
+              .specifiers()
+              .filter_map(|(s, _)| {
+                NpmPackageReqReference::from_specifier(s)
+                  .ok()
+                  .map(|req_ref| req_ref.into_inner().req)
+              })
+              .collect::<Vec<_>>();
+            let snapshot = managed
+              .resolution()
+              .snapshot()
+              .subset(&reqs)
+              .as_valid_serialized_for_system(&self.npm_system_info);
             if !snapshot.as_serialized().packages.is_empty() {
               self
                 .fill_npm_vfs(&mut vfs, Some(&snapshot), &progress_bar)
