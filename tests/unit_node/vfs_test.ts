@@ -57,7 +57,13 @@ Deno.test("[node/vfs] statSync returns a real Stats instance", () => {
   const fs = create(noWarn);
   fs.writeFileSync("/file.txt", "hello");
   const st = fs.statSync("/file.txt");
-  assertInstanceOf(st, Stats);
+  // node:fs Stats has a private constructor so an instanceof check trips
+  // strict type-check; comparing the prototype chain is enough.
+  assertEquals(
+    Object.getPrototypeOf(st) === Stats.prototype ||
+      Stats.prototype.isPrototypeOf(st),
+    true,
+  );
   assertEquals(st.isFile(), true);
   assertEquals(st.isDirectory(), false);
   assertEquals(st.size, 5);
@@ -238,7 +244,8 @@ Deno.test("[node/vfs] chmodSync updates mode bits", () => {
   fs.writeFileSync("/m.txt", "x");
   fs.chmodSync("/m.txt", 0o600);
   const st = fs.statSync("/m.txt");
-  assertEquals(st.mode & 0o777, 0o600);
+  // st.mode is `number | bigint`; the non-bigint path returns a number here.
+  assertEquals((st.mode as number) & 0o777, 0o600);
 });
 
 Deno.test("[node/vfs] mkdtempSync creates a unique directory", () => {
@@ -274,10 +281,7 @@ Deno.test("[node/vfs] openAsBlob returns a Blob with file content", async () => 
 Deno.test("[node/vfs] custom provider extending VirtualProvider", () => {
   const store = new Map<string, Buffer>();
   class CustomProvider extends VirtualProvider {
-    get readonly() {
-      return false;
-    }
-    statSync(p: string) {
+    override statSync(p: string) {
       const c = store.get(p);
       if (!c) {
         const e = new Error("ENOENT") as any;
@@ -293,7 +297,7 @@ Deno.test("[node/vfs] custom provider extending VirtualProvider", () => {
         isSymbolicLink: () => false,
       } as any;
     }
-    readFileSync(p: string) {
+    override readFileSync(p: string) {
       const c = store.get(p);
       if (!c) {
         const e = new Error("ENOENT") as any;
@@ -302,7 +306,7 @@ Deno.test("[node/vfs] custom provider extending VirtualProvider", () => {
       }
       return Buffer.from(c);
     }
-    writeFileSync(p: string, data: any) {
+    override writeFileSync(p: string, data: any) {
       const buf = typeof data === "string" ? Buffer.from(data) : data;
       store.set(p, Buffer.from(buf));
     }
