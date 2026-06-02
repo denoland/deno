@@ -53,6 +53,11 @@ pub struct NpmInstallerFactoryOptions {
   pub cache_setting: NpmCacheSetting,
   pub caching_strategy: NpmCachingStrategy,
   pub clean_on_install: bool,
+  /// When loading the npm snapshot from a lockfile, merge equivalent
+  /// peer-dep variants (cycle-unrolling artifacts) onto a single
+  /// canonical entry. Should be true only on install paths — `deno run`
+  /// must not silently rewrite the user's lockfile.
+  pub dedup_lockfile_peer_variants: bool,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
   /// Only install production dependencies (excludes devDependencies).
   pub production: bool,
@@ -298,9 +303,12 @@ impl<
             }
             None => match self.maybe_lockfile().await? {
               Some(lockfile) => {
-                NpmResolverManagedSnapshotOption::ResolveFromLockfile(
-                  lockfile.clone(),
-                )
+                NpmResolverManagedSnapshotOption::ResolveFromLockfile {
+                  lockfile: lockfile.clone(),
+                  dedup_equivalent_peer_variants: self
+                    .options
+                    .dedup_lockfile_peer_variants,
+                }
               }
               None => NpmResolverManagedSnapshotOption::Specified(None),
             },

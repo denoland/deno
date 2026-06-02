@@ -576,6 +576,7 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
+    crate::ops::v8::install_gc_if_exposed(scope, context);
 
     // For vanilla contexts, the sandbox IS the global proxy
     let sandbox_obj = context.global(scope);
@@ -741,6 +742,8 @@ pub fn create_v8_context<'a>(
     };
     ctx
   };
+
+  crate::ops::v8::install_gc_if_exposed(scope, context);
 
   scope.escape(context)
 }

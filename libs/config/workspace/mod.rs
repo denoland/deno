@@ -3546,11 +3546,16 @@ pub mod test {
     let link_folders = workspace_dir
       .workspace
       .link_folders()
-      .values()
+      .iter()
       .collect::<Vec<_>>();
     assert_eq!(link_folders.len(), 1);
+    let (link_dir_url, link_folder) = link_folders[0];
     assert_eq!(
-      link_folders[0].deno_json.as_ref().unwrap().specifier,
+      **link_dir_url,
+      url_from_directory_path(&root_dir().join("../dir")).unwrap()
+    );
+    assert_eq!(
+      link_folder.deno_json.as_ref().unwrap().specifier,
       url_from_file_path(&root_dir().join("../dir/deno.json")).unwrap()
     )
   }

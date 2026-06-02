@@ -1,0 +1,7 @@
+error: Uncaught (in promise) Error: Cannot load native addon at [WILDCARD]better_sqlite3.node: it was built against the legacy Node.js native addon API (NODE_MODULE / nan), which Deno does not support. Only Node-API (N-API) addons are supported.
+[WILDCARD]
+    info: `better-sqlite3` is built on the legacy V8/nan native addon ABI,
+          which depends on V8 internals that Deno does not expose.
+    hint: Use a Node-API based alternative instead, such as the built-in
+          `node:sqlite` module, or the `npm:libsql` / `npm:@libsql/client`
+          packages (the latter expose a `better-sqlite3`-compatible API).

@@ -1464,6 +1464,7 @@ mod tests {
         linter_resolver,
         resolver,
         cache: Arc::new(cache),
+        client_needs_file_uris_for_virtual_documents: false,
       },
     )
   }

@@ -987,7 +987,7 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
       if (!cfg!(windows) && link.starts_with('/')
         || cfg!(windows) && link.chars().any(|c| c == '\\'))
         && let Ok(value) =
-          deno_path_util::url_from_file_path(Path::new(link.as_ref()))
+          deno_path_util::url_from_directory_path(Path::new(link.as_ref()))
       {
         return Ok(value);
       }

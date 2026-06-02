@@ -5,7 +5,7 @@
 // than treating it as a module graph root and failing to resolve that import.
 // See #27505.
 //
-// The tiny.wasm reproducer was contributed by @CertainLach in #31457.
+// The tiny.wasm reproducer from https://github.com/denoland/deno/pull/31457#issuecomment-3688338460.
 const bytes = await Deno.readFile(new URL("./tiny.wasm", import.meta.url));
 const { instance } = await WebAssembly.instantiate(bytes, {
   some_import: { dummy: () => console.log("dummy called") },

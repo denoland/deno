@@ -67,6 +67,12 @@ pub trait NodeRequireLoader {
   fn is_maybe_cjs(&self, specifier: &Url)
   -> Result<bool, PackageJsonLoadError>;
 
+  /// Get if a module loaded via `require()` should first be compiled as CJS.
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError>;
+
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
   }
@@ -259,6 +265,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
+    ops::v8::op_v8_set_flags_from_string,
     ops::v8::op_v8_get_heap_statistics,
     ops::v8::op_v8_number_of_heap_spaces,
     ops::v8::op_v8_update_heap_space_statistics,
@@ -478,6 +485,7 @@ deno_core::extension!(deno_node,
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
     "internal/fs/handle.ts",
+    "internal/http/address_override.js",
     "internal/repl.ts",
     "_readline.mjs",
     "internal/streams/duplexify.js",
@@ -492,6 +500,7 @@ deno_core::extension!(deno_node,
     "node:_http_common" = "_http_common.js",
     "node:_http_incoming" = "_http_incoming.js",
     "node:_http_outgoing" = "_http_outgoing.ts",
+    "node:_http_proxy" = "_http_proxy.js",
     "node:_http_server" = "_http_server.js",
     "node:path" = "path.ts",
     "node:path/posix" = "path/posix.ts",

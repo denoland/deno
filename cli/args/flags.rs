@@ -221,6 +221,8 @@ pub struct CompileFlags {
   /// Bundle the entrypoint with esbuild before embedding it, instead of
   /// shipping the entire node_modules tree. Experimental.
   pub bundle: bool,
+  /// Minify the bundle. Only meaningful with `bundle: true`.
+  pub minify: bool,
 }
 
 impl CompileFlags {
@@ -984,6 +986,22 @@ pub struct InternalFlags {
   pub root_node_modules_dir_override: Option<PathBuf>,
   /// Only reads to the lockfile instead of writing to it.
   pub lockfile_skip_write: bool,
+  /// Set by `deno compile --bundle` when the bundled output contains
+  /// references that need to resolve against npm packages at runtime
+  /// (CJS dependencies, native addons). When true, the standalone
+  /// binary writer embeds (a subset of) the npm tree. Pure-ESM bundles
+  /// leave this false and ship a tiny binary.
+  pub compile_bundle_embed_node_modules: bool,
+  /// Absolute paths the bundle path-rewriter resolved at build time —
+  /// the on-disk files the compiled binary will require() at runtime.
+  /// The standalone binary writer maps these back to npm packages so
+  /// it can embed only what's reachable, instead of the whole tree.
+  pub compile_bundle_referenced_paths: Vec<PathBuf>,
+  /// Force-enable bundle-style resolution config regardless of the
+  /// current subcommand. Set by `compile --bundle` so the bundle phase
+  /// of compilation pulls deep CJS files (e.g. `jiti.cjs`) into the
+  /// module graph the same way `deno bundle` does.
+  pub force_bundle_mode: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -1689,6 +1707,11 @@ static ENV_VARS: &[EnvVar] = &[
     name: "NO_PROXY",
     description: "Comma-separated list of hosts which do not use a proxy.",
     example: Some("(module downloads, fetch)"),
+  },
+  EnvVar {
+    name: "NODE_USE_ENV_PROXY",
+    description: "If set to 1, node:http and node:https honor HTTP_PROXY,\nHTTPS_PROXY, and NO_PROXY from the environment.",
+    example: None,
   },
   EnvVar {
     name: "NPM_CONFIG_REGISTRY",
@@ -3011,6 +3034,15 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
+      .arg(
+        Arg::new("minify")
+          .long("minify")
+          .help(cstr!("<y>Experimental.</> Minify the bundled output. Only meaningful with <c>--bundle</>.
+  <p(245)>Reduces both the embedded bundle size and runtime memory use, at the cost of less readable stack traces.</>"))
+          .action(ArgAction::SetTrue)
+          .requires("bundle")
+          .help_heading(COMPILE_HEADING),
+      )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
       .arg(
@@ -4328,6 +4360,8 @@ fn run_args(command: Command, top_level: bool) -> Command {
       .arg(coverage_arg()),
   )
   .arg(tunnel_arg())
+  .arg(use_env_proxy_arg())
+  .arg(no_use_env_proxy_arg())
 }
 
 #[cfg(test)]
@@ -4532,6 +4566,7 @@ Evaluate a task from string:
           )
           .action(ArgAction::SetTrue),
       )
+      .arg(env_file_arg())
       .arg(node_modules_dir_arg())
       .arg(node_modules_linker_arg())
       .arg(tunnel_arg())
@@ -5872,6 +5907,22 @@ fn env_file_arg() -> Arg {
     .action(ArgAction::Append)
 }
 
+fn use_env_proxy_arg() -> Arg {
+  Arg::new("use-env-proxy")
+    .long("use-env-proxy")
+    .action(ArgAction::SetTrue)
+    .conflicts_with("no-use-env-proxy")
+    .help("Use HTTP_PROXY, HTTPS_PROXY, and NO_PROXY for node:http/node:https")
+}
+
+fn no_use_env_proxy_arg() -> Arg {
+  Arg::new("no-use-env-proxy")
+    .long("no-use-env-proxy")
+    .action(ArgAction::SetTrue)
+    .conflicts_with("use-env-proxy")
+    .hide(true)
+}
+
 fn reload_arg() -> Arg {
   Arg::new("reload")
     .short('r')
@@ -6874,6 +6925,7 @@ fn compile_parse(
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
   let bundle = matches.get_flag("bundle");
+  let minify = matches.get_flag("minify");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6898,6 +6950,7 @@ fn compile_parse(
     eszip,
     self_extracting,
     bundle,
+    minify,
   });
 
   Ok(())
@@ -7697,6 +7750,16 @@ fn run_parse(
   ext_arg_parse(flags, matches);
 
   flags.tunnel = matches.get_flag("tunnel");
+  if matches.get_flag("use-env-proxy") {
+    // Node's --use-env-proxy is process-wide. Deno's node polyfills read the
+    // same env variable as the Node tests when selecting global proxy config.
+    // SAFETY: CLI parsing runs before worker startup and before Deno starts
+    // any threads that could concurrently read the process environment.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "1") };
+  } else if matches.get_flag("no-use-env-proxy") {
+    // SAFETY: see the --use-env-proxy branch above.
+    unsafe { std::env::set_var("NODE_USE_ENV_PROXY", "0") };
+  }
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   let coverage_dir = matches.remove_one::<String>("coverage");
   flags.cpu_prof = cpu_prof_parse(matches);
@@ -7794,6 +7857,7 @@ fn task_parse(
   node_modules_arg_parse(flags, matches);
   node_modules_linker_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
@@ -13489,6 +13553,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          minify: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -13517,6 +13582,7 @@ mod tests {
           eszip: false,
           self_extracting: false,
           bundle: false,
+          minify: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -14021,6 +14087,51 @@ mod tests {
     assert_eq!(
       r.unwrap_err().kind(),
       clap::error::ErrorKind::UnknownArgument
+    );
+  }
+
+  #[test]
+  fn task_subcommand_env_file() {
+    let r = flags_from_vec(svec!["deno", "task", "--env-file", "build"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          filter: None,
+          eval: false,
+          no_prefix: false,
+        }),
+        env_file: Some(vec![".env".to_owned()]),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "task",
+      "--env-file=.env.dev",
+      "--env-file=.env.local",
+      "build"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Task(TaskFlags {
+          cwd: None,
+          task: Some("build".to_string()),
+          is_run: false,
+          recursive: false,
+          filter: None,
+          eval: false,
+          no_prefix: false,
+        }),
+        env_file: Some(vec![".env.dev".to_owned(), ".env.local".to_owned()]),
+        ..Flags::default()
+      }
     );
   }
 
@@ -16049,6 +16160,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           eszip: false,
           self_extracting: false,
           bundle: false,
+          minify: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],

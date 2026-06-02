@@ -179,23 +179,62 @@ pub async fn compile(
       "{} deno compile --bundle is experimental and may change.",
       colors::yellow("Warning")
     );
-    // Write the bundle next to the working directory rather than the system
-    // temp dir so the embedded VFS path stays relative to the project and
-    // doesn't bake the build machine's temp path into the binary.
-    let initial_cwd = flags.initial_cwd.clone().unwrap_or_else(|| {
+    // Auto-include the closest `package.json` to the entrypoint, if any.
+    // Lots of packages read their own `package.json` for version info
+    // (pi's `getPackageJsonPath()` walks up from `import.meta.url`),
+    // and after bundling the bundle's URL doesn't sit next to one. We
+    // ship it alongside the bundle so the walk-up succeeds without the
+    // user having to thread `--include` themselves.
+    let initial_cwd_for_pkg = flags.initial_cwd.clone().unwrap_or_else(|| {
       crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
     });
-    let bundle_path = initial_cwd.join(format!(
-      ".deno_compile_bundle_{:08x}.mjs",
-      rand::thread_rng().r#gen::<u32>()
-    ));
-    // Register for cleanup before writing so a partially written file is
-    // removed even if bundling fails.
-    let guard = CleanupGuard(vec![bundle_path.clone()]);
-    run_bundle_for_compile(&flags, &compile_flags, &bundle_path).await?;
+    if let Some(pkg_json_path) =
+      closest_package_json(&initial_cwd_for_pkg, &compile_flags.source_file)
+    {
+      let display = pkg_json_path.display().to_string();
+      if !compile_flags.include.contains(&display) {
+        compile_flags.include.push(display);
+      }
+    }
+    let BundleForCompileResult {
+      path: bundle_path,
+      needs_npm_embed,
+      referenced_abs_paths,
+      extra_cleanup,
+    } = run_bundle_for_compile(&flags, &compile_flags)
+      .boxed_local()
+      .await?;
+    flags.internal.compile_bundle_embed_node_modules = needs_npm_embed;
+    // Referenced files that live inside a `node_modules` tree are npm
+    // packages, embedded by the binary writer's npm path. The rest are local
+    // project files the bundle externalized (e.g. a sibling `.cjs` imported
+    // from ESM, which the CJS-from-ESM wrapper turns into a runtime
+    // require()). Those aren't covered by the npm embed, so add them to the
+    // include set to ship them in the VFS at their real path — that's where
+    // `__internalResolveBundlePath` looks for them at runtime.
+    for path in &referenced_abs_paths {
+      let in_node_modules =
+        path.components().any(|c| c.as_os_str() == "node_modules");
+      if !in_node_modules {
+        let included = path.display().to_string();
+        if !compile_flags.include.contains(&included) {
+          compile_flags.include.push(included);
+        }
+      }
+    }
+    flags.internal.compile_bundle_referenced_paths = referenced_abs_paths;
     compile_flags.source_file = bundle_path.to_string_lossy().into_owned();
+    // Make sure any worker bundles travel along in the VFS so the runtime
+    // `new Worker(new URL(..., import.meta.url))` lookup hits them.
+    for worker_path in &extra_cleanup {
+      compile_flags
+        .include
+        .push(worker_path.display().to_string());
+    }
     flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
-    Some(guard)
+    let mut cleanup = vec![bundle_path];
+    cleanup.extend(extra_cleanup);
+    Some(CleanupGuard(cleanup))
   } else {
     None
   };
@@ -209,23 +248,371 @@ pub async fn compile(
   }
 }
 
+struct BundleForCompileResult {
+  path: PathBuf,
+  /// True when esbuild's CJS-from-ESM wrapper appears in the bundle (in the
+  /// main entry or any worker), which means runtime require()s against npm
+  /// package paths will happen. The standalone binary writer reads this to
+  /// decide whether to embed the npm tree.
+  needs_npm_embed: bool,
+  /// Absolute paths the bundle path-rewriter resolved. Used downstream to
+  /// scope the npm-tree embed to just the packages those paths live in.
+  referenced_abs_paths: Vec<PathBuf>,
+  /// Worker bundle files produced alongside the main one; they live next to
+  /// the main bundle and must be cleaned up too.
+  extra_cleanup: Vec<PathBuf>,
+}
+
 async fn run_bundle_for_compile(
   flags: &Flags,
   compile_flags: &CompileFlags,
-  bundle_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<BundleForCompileResult, AnyError> {
   let bundle_flags = Arc::new(flags.clone());
-  let bytes = super::bundle::bundle_for_compile(
-    bundle_flags,
-    compile_flags.source_file.clone(),
-  )
-  .boxed_local()
-  .await?;
+  let initial_cwd = flags.initial_cwd.clone().unwrap_or_else(|| {
+    crate::util::env::resolve_cwd(None).unwrap().to_path_buf()
+  });
 
-  std::fs::write(bundle_path, &bytes).with_context(|| {
-    format!("Writing bundled entrypoint to '{}'", bundle_path.display())
-  })?;
-  Ok(())
+  let main_bytes = bundle_one_for_compile(
+    bundle_flags.clone(),
+    compile_flags.source_file.clone(),
+    compile_flags.minify,
+  )
+  .await?;
+  let main_rewrite = rewrite_absolute_bundle_paths(&main_bytes, &initial_cwd)?;
+  let mut needs_npm_embed = main_rewrite.rewrote_paths;
+  let mut all_referenced_paths: Vec<PathBuf> =
+    main_rewrite.referenced_abs_paths.clone();
+
+  // Scan the main bundle for `new URL("X.{ts,js,…}", import.meta.url)`
+  // patterns. Each resolvable target is a potential worker entrypoint —
+  // including ones the user code stashes in a variable before passing
+  // to `new Worker(...)`, which the previous inline-only regex missed.
+  // For each unique target we bundle it separately, write it next to
+  // the main bundle, and rewrite the URL string in the main bundle to
+  // point at the worker bundle's file name.
+  let main_src = std::str::from_utf8(&main_rewrite.bytes)
+    .context("Bundle output is not valid UTF-8")?;
+  let worker_urls = discover_worker_urls(main_src, &initial_cwd);
+
+  let mut url_replacements: Vec<(String, String)> = Vec::new();
+  let mut extra_cleanup: Vec<PathBuf> = Vec::new();
+  for (worker_url, worker_abs) in &worker_urls {
+    let worker_bytes = bundle_one_for_compile(
+      bundle_flags.clone(),
+      worker_abs.display().to_string(),
+      compile_flags.minify,
+    )
+    .await?;
+    let worker_rewrite =
+      rewrite_absolute_bundle_paths(&worker_bytes, &initial_cwd)?;
+    needs_npm_embed |= worker_rewrite.rewrote_paths;
+    all_referenced_paths.extend(worker_rewrite.referenced_abs_paths.clone());
+
+    let worker_path = initial_cwd.join(format!(
+      ".deno_compile_worker_{:08x}.mjs",
+      rand::thread_rng().r#gen::<u32>()
+    ));
+    std::fs::write(&worker_path, &worker_rewrite.bytes).with_context(|| {
+      format!(
+        "Writing bundled worker entrypoint to '{}'",
+        worker_path.display()
+      )
+    })?;
+    let worker_file_name = worker_path
+      .file_name()
+      .unwrap()
+      .to_string_lossy()
+      .into_owned();
+    url_replacements
+      .push((worker_url.clone(), format!("./{worker_file_name}")));
+    extra_cleanup.push(worker_path);
+  }
+
+  // Apply URL replacements to the main bundle source.
+  let final_main_src = if url_replacements.is_empty() {
+    main_src.to_string()
+  } else {
+    rewrite_worker_urls(main_src, &url_replacements)
+  };
+
+  let bundle_path = initial_cwd.join(format!(
+    ".deno_compile_bundle_{:08x}.mjs",
+    rand::thread_rng().r#gen::<u32>()
+  ));
+  std::fs::write(&bundle_path, final_main_src.as_bytes()).with_context(
+    || format!("Writing bundled entrypoint to '{}'", bundle_path.display()),
+  )?;
+
+  Ok(BundleForCompileResult {
+    path: bundle_path,
+    needs_npm_embed,
+    referenced_abs_paths: all_referenced_paths,
+    extra_cleanup,
+  })
+}
+
+async fn bundle_one_for_compile(
+  flags: Arc<Flags>,
+  entrypoint: String,
+  minify: bool,
+) -> Result<Vec<u8>, AnyError> {
+  // Always leave `.node` files external. esbuild has no loader for them
+  // and would error if it tried to inline a native binary; with this
+  // pattern the require() calls are emitted verbatim and resolved at
+  // runtime against the embedded VFS by the native addon loader.
+  let external = vec!["*.node".to_string()];
+  super::bundle::bundle_for_compile(flags, entrypoint, external, minify)
+    .boxed_local()
+    .await
+}
+
+/// Find every `new URL("X.{ts,js,…}", import.meta.url)` in the bundle whose
+/// `X` we can resolve to a source file on disk. Each match is a potential
+/// worker entrypoint: even when the URL is stashed in a variable and only
+/// later passed to `new Worker(...)` we still want to bundle it.
+///
+/// Resolution tries the URL as a relative path from `initial_cwd` first
+/// (covers the common case where source and bundle share a directory),
+/// then falls back to a basename search across the workspace — pi's
+/// `dist/utils/image-resize.js` does
+/// `new URL("./image-resize-worker.js", import.meta.url)` and the bundle
+/// lives at `dist/.deno_compile_bundle_*.mjs`, so basename matching is
+/// what locks it onto `dist/utils/image-resize-worker.js`.
+///
+/// Returns `(original_url_string, resolved_source_path)` pairs in source
+/// order, deduped on the URL string.
+fn discover_worker_urls(
+  bundle_src: &str,
+  initial_cwd: &Path,
+) -> Vec<(String, PathBuf)> {
+  // Match `new URL(<first-arg>, import.meta.url)` with `<first-arg>`
+  // captured non-greedily so we handle non-literal forms like the
+  // ternary pi uses:
+  //   new URL(isTs ? "./worker.ts" : "./worker.js", import.meta.url)
+  let call_pattern = lazy_regex::regex!(
+    r#"new\s+URL\s*\(\s*(.+?)\s*,\s*import\.meta\.url\s*\)"#
+  );
+  let url_string_pattern =
+    lazy_regex::regex!(r#""([^"\n]+\.(?:ts|tsx|js|jsx|mjs|cjs))""#);
+  let mut seen = std::collections::HashSet::new();
+  let mut out = Vec::new();
+  for call_caps in call_pattern.captures_iter(bundle_src) {
+    let first_arg = call_caps.get(1).unwrap().as_str();
+    for url_caps in url_string_pattern.captures_iter(first_arg) {
+      let url = url_caps.get(1).unwrap().as_str().to_string();
+      if !seen.insert(url.clone()) {
+        continue;
+      }
+      if let Some(path) = resolve_worker_url_target(&url, initial_cwd) {
+        out.push((url, path));
+      }
+    }
+  }
+  out
+}
+
+fn resolve_worker_url_target(url: &str, initial_cwd: &Path) -> Option<PathBuf> {
+  // Try as a literal relative path from the bundle's directory first.
+  let candidate = if Path::new(url).is_absolute() {
+    PathBuf::from(url)
+  } else {
+    initial_cwd.join(url)
+  };
+  if candidate.is_file() {
+    return Some(candidate);
+  }
+  // Fall back to searching by basename across the workspace. This handles
+  // bundles whose runtime location doesn't match the original source's
+  // location: the URL string is preserved by esbuild but
+  // `import.meta.url` now points at the bundle's directory.
+  let basename = Path::new(url).file_name()?;
+  find_file_by_name(initial_cwd, basename)
+}
+
+fn find_file_by_name(root: &Path, name: &std::ffi::OsStr) -> Option<PathBuf> {
+  let mut pending = std::collections::VecDeque::from([root.to_path_buf()]);
+  while let Some(dir) = pending.pop_front() {
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+      continue;
+    };
+    for entry in entries.flatten() {
+      let path = entry.path();
+      let file_name = path.file_name();
+      if path.is_dir() {
+        if matches!(
+          file_name,
+          Some(n) if n == std::ffi::OsStr::new("node_modules")
+            || n == std::ffi::OsStr::new(".git")
+            || n == std::ffi::OsStr::new("target")
+        ) {
+          continue;
+        }
+        pending.push_back(path);
+      } else if file_name == Some(name) {
+        return Some(path);
+      }
+    }
+  }
+  None
+}
+
+/// Find the closest `package.json` above the entrypoint. Walks up from
+/// the entrypoint's directory toward `initial_cwd` and returns the first
+/// `package.json` it sees. Used to auto-include the file in the VFS so
+/// `getPackageDir`-style walks at runtime succeed without the user
+/// having to add a `--include` flag.
+fn closest_package_json(
+  initial_cwd: &Path,
+  source_file: &str,
+) -> Option<PathBuf> {
+  let source_path = if Path::new(source_file).is_absolute() {
+    PathBuf::from(source_file)
+  } else {
+    initial_cwd.join(source_file)
+  };
+  let mut dir = source_path.parent()?.to_path_buf();
+  loop {
+    let candidate = dir.join("package.json");
+    if candidate.is_file() {
+      return Some(candidate);
+    }
+    if !dir.pop() {
+      return None;
+    }
+  }
+}
+
+fn rewrite_worker_urls(
+  bundle_src: &str,
+  replacements: &[(String, String)],
+) -> String {
+  // Rewrite happens inside `new URL(<arg>, import.meta.url)` only, so
+  // user code that happens to contain a string matching a worker path
+  // somewhere else (a log message, a regex, etc.) is left alone. Within
+  // each call's `<arg>` we do a literal string-substring substitution
+  // so ternaries like
+  //   new URL(isTs ? "./worker.ts" : "./worker.js", import.meta.url)
+  // get all of their string-literal branches rewritten.
+  let pattern = lazy_regex::regex!(
+    r#"(new\s+URL\s*\(\s*)(.+?)(\s*,\s*import\.meta\.url\s*\))"#
+  );
+  pattern
+    .replace_all(bundle_src, |caps: &regex::Captures<'_>| {
+      let prefix = &caps[1];
+      let mut arg = caps[2].to_string();
+      let suffix = &caps[3];
+      for (orig, replacement) in replacements {
+        let needle = format!("\"{orig}\"");
+        let with = format!("\"{replacement}\"");
+        arg = arg.replace(&needle, &with);
+      }
+      format!("{prefix}{arg}{suffix}")
+    })
+    .into_owned()
+}
+
+struct RewriteResult {
+  bytes: Vec<u8>,
+  rewrote_paths: bool,
+  /// Absolute paths the rewriter touched. These point at the build-machine
+  /// locations of files the bundled output expects to require at runtime
+  /// — typically deep inside the npm cache. The binary writer uses this
+  /// set to decide which npm packages to embed in the VFS.
+  referenced_abs_paths: Vec<PathBuf>,
+}
+
+fn rewrite_absolute_bundle_paths(
+  bundle_bytes: &[u8],
+  bundle_dir: &Path,
+) -> Result<RewriteResult, AnyError> {
+  let src = std::str::from_utf8(bundle_bytes)
+    .context("Bundle output is not valid UTF-8")?;
+  // Only rewrite paths that actually exist on disk at build time — these are
+  // the ones the bundler emitted referring to files it expects to be
+  // reachable through the VFS at runtime.
+  Ok(rewrite_absolute_bundle_paths_inner(src, bundle_dir, |p| {
+    p.exists()
+  }))
+}
+
+/// Core of [`rewrite_absolute_bundle_paths`], parameterized over the
+/// build-time existence check so it can be unit-tested with synthetic paths.
+fn rewrite_absolute_bundle_paths_inner(
+  src: &str,
+  bundle_dir: &Path,
+  path_exists: impl Fn(&Path) -> bool,
+) -> RewriteResult {
+  // Match string literals that look like an absolute path to a JS/JSON source
+  // file: either POSIX (`/a/b.js`) or a Windows drive-letter path
+  // (`C:\a\b.js` / `C:/a/b.js`). Because the bundle is JS source, a Windows
+  // path's separators arrive JS-escaped as `\\`, which the body matches as
+  // ordinary (non-`"`) characters. Conservative on extension on purpose — we
+  // don't want to rewrite arbitrary user-provided strings.
+  //
+  // Load-bearing assumption: every absolute-path literal we match is an
+  // external `require(...)` argument, i.e. a *value* position where wrapping
+  // it in `__internalResolveBundlePath(...)` stays valid JS. This holds
+  // because esbuild emits *relative* keys (no leading `/`) for the inlined
+  // `__commonJS` module map, so the only absolute literals left in the output
+  // are at external require call sites. If esbuild ever emitted an absolute
+  // `__commonJS` key (e.g. via a different `absWorkingDir`/outbase), this
+  // would rewrite it into `{ __internalResolveBundlePath("...")(...) {...} }`,
+  // a syntax error — the spec tests under `tests/specs/compile/bundle` would
+  // catch that. A genuine user string literal pointing at an existing file on
+  // disk would also be rewritten, but the build-time existence check below
+  // keeps that to paths that really resolve through the VFS.
+  let pattern = lazy_regex::regex!(
+    r#""((?:[A-Za-z]:)?[\\/][^"\n]+\.(?:js|cjs|mjs|json))""#
+  );
+
+  let mut any_rewrite = false;
+  let mut referenced_abs_paths: Vec<PathBuf> = Vec::new();
+  let rewritten = pattern.replace_all(src, |caps: &regex::Captures<'_>| {
+    // Collapse JS-escaped backslashes (`C:\\a\\b.js`) back to real
+    // separators before touching the filesystem.
+    let abs = caps.get(1).unwrap().as_str().replace("\\\\", "\\");
+    let path = Path::new(&abs);
+    if !path_exists(path) {
+      return caps[0].to_string();
+    }
+    // Rewrite to a path relative to the bundle file. This is correct only
+    // because the VFS embeds `node_modules` at the same cwd-relative offset
+    // from the bundle that `diff_paths` computes here (bundle_dir =
+    // initial_cwd at build time, resolved at runtime against
+    // `import.meta.url`). See `fill_npm_vfs` in cli/standalone/binary.rs,
+    // which preserves that cwd-relative layout when populating the VFS.
+    let Some(rel) = pathdiff::diff_paths(path, bundle_dir) else {
+      return caps[0].to_string();
+    };
+    any_rewrite = true;
+    referenced_abs_paths.push(path.to_path_buf());
+    let rel_str: String = rel.to_string_lossy().replace('\\', "/");
+    format!("__internalResolveBundlePath({:?})", rel_str.as_str())
+  });
+
+  if !any_rewrite {
+    return RewriteResult {
+      bytes: src.as_bytes().to_vec(),
+      rewrote_paths: false,
+      referenced_abs_paths,
+    };
+  }
+
+  let prefix = r#"// Injected by deno compile --bundle: resolve absolute paths emitted by
+// esbuild's CJS-from-ESM wrapper against the bundle file's runtime
+// location instead of the build-time absolute path.
+import { fileURLToPath as __internalFileURLToPath } from "node:url";
+import * as __internalPath from "node:path";
+const __internalBundleDir = __internalPath.dirname(__internalFileURLToPath(import.meta.url));
+function __internalResolveBundlePath(rel) {
+  return __internalPath.join(__internalBundleDir, rel);
+}
+"#;
+  RewriteResult {
+    bytes: format!("{prefix}{rewritten}").into_bytes(),
+    rewrote_paths: true,
+    referenced_abs_paths,
+  }
 }
 
 async fn compile_binary(
@@ -781,6 +1168,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        minify: false,
       },
       &resolve_cwd(None).unwrap(),
     )
@@ -814,6 +1202,7 @@ mod test {
         eszip: true,
         self_extracting: false,
         bundle: false,
+        minify: false,
       },
       &resolve_cwd(None).unwrap(),
     )
@@ -847,5 +1236,59 @@ mod test {
     run_test("C:\\my-exe.exe", Some("windows"), "C:\\my-exe.exe");
     run_test("C:\\my-exe.0.1.2", Some("windows"), "C:\\my-exe.0.1.2.exe");
     run_test("my-exe-0.1.2", Some("linux"), "my-exe-0.1.2");
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_native() {
+    // Use the platform-native absolute path layout so this exercises the
+    // real shape esbuild emits on each OS. On Windows the require() string in
+    // the bundle is a drive-letter path with JS-escaped backslashes
+    // (`C:\\proj\\dist\\pkg\\index.js`), which the previous Unix-only regex
+    // never matched — leaving the require pointed at a non-existent
+    // build-time path at runtime.
+    let bundle_dir = if cfg!(windows) {
+      PathBuf::from("C:\\proj\\dist")
+    } else {
+      PathBuf::from("/proj/dist")
+    };
+    let abs = bundle_dir.join("pkg").join("index.js");
+    // Escape backslashes the way they appear inside a JS string literal.
+    let abs_in_js = abs.to_string_lossy().replace('\\', "\\\\");
+    let src = format!("var m = require(\"{abs_in_js}\");\n");
+
+    let result =
+      rewrite_absolute_bundle_paths_inner(&src, &bundle_dir, |_| true);
+
+    assert!(result.rewrote_paths);
+    let out = String::from_utf8(result.bytes).unwrap();
+    assert!(
+      out.contains(r#"__internalResolveBundlePath("pkg/index.js")"#),
+      "unexpected output: {out}"
+    );
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_skips_missing() {
+    let bundle_dir = PathBuf::from("/proj/dist");
+    let src = "var m = require(\"/does/not/exist.js\");\n";
+    let result =
+      rewrite_absolute_bundle_paths_inner(src, &bundle_dir, |_| false);
+    assert!(!result.rewrote_paths);
+    assert_eq!(result.bytes.as_slice(), src.as_bytes());
+  }
+
+  #[test]
+  fn test_rewrite_absolute_bundle_paths_skips_relative_key() {
+    // esbuild emits *relative* keys (no leading `/`) for inlined
+    // `__commonJS` modules. Those are object-literal keys, not require()
+    // arguments — rewriting one into `__internalResolveBundlePath("...")`
+    // would be a syntax error. The leading-separator anchor in the pattern
+    // keeps them untouched even when the path exists on disk (`|_| true`).
+    let bundle_dir = PathBuf::from("/proj/dist");
+    let src = "var b = { \"pkg/index.js\"(exports, module) { module.exports = 1; } };\n";
+    let result =
+      rewrite_absolute_bundle_paths_inner(src, &bundle_dir, |_| true);
+    assert!(!result.rewrote_paths);
+    assert_eq!(result.bytes.as_slice(), src.as_bytes());
   }
 }

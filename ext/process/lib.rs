@@ -296,6 +296,9 @@ pub struct SpawnArgs {
   uid: Option<u32>,
   #[cfg(windows)]
   windows_raw_arguments: bool,
+  #[cfg(windows)]
+  #[serde(default)]
+  windows_hide: bool,
   ipc: Option<i32>,
 
   serialization: Option<ChildIpcSerialization>,
@@ -566,6 +569,9 @@ fn create_command(
 
     if args.windows_raw_arguments {
       command.verbatim_arguments(true);
+    }
+    if args.windows_hide {
+      command.windows_hide(true);
     }
     command.args(args.args);
   }

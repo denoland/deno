@@ -464,74 +464,12 @@
     },
     "cfrg_curves_bits_curve25519.https.any.html": true,
     "cfrg_curves_bits_curve25519.https.any.worker.html": true,
-    "cfrg_curves_bits_curve448.https.any.html": {
-      "expectedFailures": [
-        "X448 key derivation checks for all-zero value result with a key of order 0",
-        "X448 key derivation checks for all-zero value result with a key of order 1",
-        "X448 key derivation checks for all-zero value result with a key of order p-1 (order 2)",
-        "X448 key derivation checks for all-zero value result with a key of order p (=0, order 4)",
-        "X448 key derivation checks for all-zero value result with a key of order p+1 (=1, order 1)",
-        "X448 good parameters",
-        "X448 mixed case parameters",
-        "X448 short result",
-        "X448 non-multiple of 8 bits",
-        "X448 mismatched algorithms",
-        "X448 no deriveBits usage for base key",
-        "X448 public property value is a private key",
-        "X448 public property value is a secret key",
-        "X448 asking for too many bits"
-      ]
-    },
-    "cfrg_curves_bits_curve448.https.any.worker.html": {
-      "expectedFailures": [
-        "X448 key derivation checks for all-zero value result with a key of order 0",
-        "X448 key derivation checks for all-zero value result with a key of order 1",
-        "X448 key derivation checks for all-zero value result with a key of order p-1 (order 2)",
-        "X448 key derivation checks for all-zero value result with a key of order p (=0, order 4)",
-        "X448 key derivation checks for all-zero value result with a key of order p+1 (=1, order 1)",
-        "X448 good parameters",
-        "X448 mixed case parameters",
-        "X448 short result",
-        "X448 non-multiple of 8 bits",
-        "X448 mismatched algorithms",
-        "X448 no deriveBits usage for base key",
-        "X448 public property value is a private key",
-        "X448 public property value is a secret key",
-        "X448 asking for too many bits"
-      ]
-    },
+    "cfrg_curves_bits_curve448.https.any.html": true,
+    "cfrg_curves_bits_curve448.https.any.worker.html": true,
     "cfrg_curves_keys_curve25519.https.any.html": true,
     "cfrg_curves_keys_curve25519.https.any.worker.html": true,
-    "cfrg_curves_keys_curve448.https.any.html": {
-      "expectedFailures": [
-        "X448 deriveBits checks for all-zero value result with a key of order 0",
-        "X448 deriveBits checks for all-zero value result with a key of order 1",
-        "X448 deriveBits checks for all-zero value result with a key of order p-1 (order 2)",
-        "X448 deriveBits checks for all-zero value result with a key of order p (=0, order 4)",
-        "X448 deriveBits checks for all-zero value result with a key of order p+1 (=1, order 1)",
-        "X448 good parameters",
-        "X448 mixed case parameters",
-        "X448 mismatched algorithms",
-        "X448 no deriveKey usage for base key",
-        "X448 public property value is a private key",
-        "X448 public property value is a secret key"
-      ]
-    },
-    "cfrg_curves_keys_curve448.https.any.worker.html": {
-      "expectedFailures": [
-        "X448 deriveBits checks for all-zero value result with a key of order 0",
-        "X448 deriveBits checks for all-zero value result with a key of order 1",
-        "X448 deriveBits checks for all-zero value result with a key of order p-1 (order 2)",
-        "X448 deriveBits checks for all-zero value result with a key of order p (=0, order 4)",
-        "X448 deriveBits checks for all-zero value result with a key of order p+1 (=1, order 1)",
-        "X448 good parameters",
-        "X448 mixed case parameters",
-        "X448 mismatched algorithms",
-        "X448 no deriveKey usage for base key",
-        "X448 public property value is a private key",
-        "X448 public property value is a secret key"
-      ]
-    },
+    "cfrg_curves_keys_curve448.https.any.html": true,
+    "cfrg_curves_keys_curve448.https.any.worker.html": true,
     "derive_key_and_encrypt.https.any.html": true,
     "derive_key_and_encrypt.https.any.worker.html": true
   },
@@ -1830,8 +1768,6 @@
     },
     "okp_importKey_failures_X448.https.any.html": {
       "expectedFailures": [
-        "Empty usages: importKey(pkcs8, {name: X448}, true, [])",
-        "Empty usages: importKey(pkcs8, {name: X448}, false, [])",
         "Missing JWK 'x' parameter: importKey(jwk(private), {name: X448}, true, [deriveKey])",
         "Missing JWK 'x' parameter: importKey(jwk(private), {name: X448}, false, [deriveKey])",
         "Missing JWK 'x' parameter: importKey(jwk(private), {name: X448}, true, [deriveBits, deriveKey])",
@@ -1848,8 +1784,6 @@
     },
     "okp_importKey_failures_X448.https.any.worker.html": {
       "expectedFailures": [
-        "Empty usages: importKey(pkcs8, {name: X448}, true, [])",
-        "Empty usages: importKey(pkcs8, {name: X448}, false, [])",
         "Missing JWK 'x' parameter: importKey(jwk(private), {name: X448}, true, [deriveKey])",
         "Missing JWK 'x' parameter: importKey(jwk(private), {name: X448}, false, [deriveKey])",
         "Missing JWK 'x' parameter: importKey(jwk(private), {name: X448}, true, [deriveBits, deriveKey])",
@@ -2046,74 +1980,42 @@
     "okp_importKey_X25519.https.any.worker.html": true,
     "okp_importKey_X448.https.any.html": {
       "expectedFailures": [
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, true, [deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, true, [deriveKey])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveKey])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), X448, true, [deriveKey])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveKey])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, true, [deriveBits, deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, true, [deriveBits, deriveKey])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveBits, deriveKey])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), X448, true, [deriveBits, deriveKey])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveBits, deriveKey])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveBits, deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, true, [deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, true, [deriveBits])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveBits])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), X448, true, [deriveBits])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveBits])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), X448, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, false, [deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, false, [deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, false, [deriveBits, deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, false, [deriveBits, deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, false, [deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, false, [deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, false, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, false, [deriveKey, deriveBits, deriveKey, deriveBits])"
+        "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveKey, deriveBits, deriveKey, deriveBits])"
       ]
     },
     "okp_importKey_X448.https.any.worker.html": {
       "expectedFailures": [
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, true, [deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, true, [deriveKey])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveKey])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), X448, true, [deriveKey])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveKey])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, true, [deriveBits, deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, true, [deriveBits, deriveKey])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveBits, deriveKey])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), X448, true, [deriveBits, deriveKey])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveBits, deriveKey])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveBits, deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, true, [deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, true, [deriveBits])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveBits])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), X448, true, [deriveBits])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveBits])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), X448, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
         "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), {name: X448}, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, false, [deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, false, [deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, false, [deriveBits, deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, false, [deriveBits, deriveKey])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, false, [deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, false, [deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), {name: X448}, false, [deriveKey, deriveBits, deriveKey, deriveBits])",
-        "Good parameters: X448 bits (pkcs8, buffer(72), X448, false, [deriveKey, deriveBits, deriveKey, deriveBits])"
+        "Good parameters with JWK alg: X448 (jwk, object(crv, d, x, kty), X448, true, [deriveKey, deriveBits, deriveKey, deriveBits])"
       ]
     }
   },
