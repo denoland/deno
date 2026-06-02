@@ -1,4 +1,0 @@
-[WILDCARD]
-consumer1 === consumer2: true
-consumer1 === direct: true
-consumer2 === direct: true

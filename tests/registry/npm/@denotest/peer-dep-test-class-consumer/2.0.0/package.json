@@ -1,8 +1,0 @@
-{
-  "name": "@denotest/peer-dep-test-class-consumer",
-  "version": "2.0.0",
-  "dependencies": {
-    "@denotest/peer-dep-test-class": "*",
-    "@denotest/peer-dep-test-peer": "^2"
-  }
-}

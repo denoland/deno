@@ -553,17 +553,7 @@ impl<
       result?; // surface the first error
     }
 
-    // 4. Create any "copy" packages, which are used for peer dependencies.
-    //
-    // The package content (files) is identical across all copy_index variants
-    // of the same name+version — only the surrounding `node_modules`
-    // neighborhood (peer dependency symlinks) differs. Symlinking each
-    // variant's package directory to the canonical (copy_index=0) variant
-    // ensures `realpath()` deduplicates to a single path. This is what makes
-    // class identities (and therefore decorator metadata / DI tokens) stable
-    // across require chains that pass through different peer-dep variants —
-    // e.g. NestJS resolving `ModuleRef` the same way whether `require()`d by
-    // the user app or by `@nestjs/terminus`.
+    // 4. Create any "copy" packages, which are used for peer dependencies
     for package in &package_partitions.copy_packages {
       let package_cache_folder_id = package.get_package_cache_folder_id();
       let destination_path = deno_local_registry_dir
@@ -588,17 +578,7 @@ impl<
           async move {
             let sys = self.sys.clone();
             crate::rt::spawn_blocking(move || {
-              // Ensure the `node_modules/` directory of the copy variant
-              // exists; for non-scoped packages `symlink_package_dir` does
-              // not create it.
-              if let Some(parent) = package_path.parent() {
-                sys
-                  .fs_create_dir_all(parent)
-                  .map_err(SyncResolutionWithFsError::from)
-                  .map_err(JsErrorBox::from_err)?;
-              }
-              symlink_package_dir(&sys, &source_path, &package_path)
-                .map_err(SyncResolutionWithFsError::from)
+              clone_dir_recursive(&sys, &source_path, &package_path)
                 .map_err(JsErrorBox::from_err)?;
               // write out a file that indicates this folder has been initialized
               create_initialized_file(&sys, &initialized_file)
