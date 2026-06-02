@@ -1891,7 +1891,7 @@ dependencies = [
  "wasm-encoder",
  "wasmparser",
  "weak-table",
- "winapi",
+ "windows-sys 0.59.0",
  "winres",
  "zip",
  "zstd",
@@ -2331,7 +2331,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2354,7 +2354,6 @@ dependencies = [
  "rayon",
  "serde",
  "thiserror 2.0.12",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -2479,7 +2478,6 @@ dependencies = [
  "rand 0.8.5",
  "tokio",
  "uuid",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -2716,7 +2714,6 @@ dependencies = [
  "tokio-eld",
  "url",
  "webpki-root-certs",
- "winapi",
  "windows-sys 0.59.0",
  "zstd",
 ]
@@ -2889,7 +2886,7 @@ dependencies = [
  "tokio",
  "twox-hash 2.1.2",
  "url",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2945,10 +2942,9 @@ dependencies = [
  "deno_signals",
  "libc",
  "netif",
- "ntapi",
  "thiserror 2.0.12",
  "tokio",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3017,7 +3013,6 @@ dependencies = [
  "unicode-normalization",
  "url",
  "which 8.0.0",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -3044,7 +3039,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -3158,7 +3152,6 @@ dependencies = [
  "twox-hash 2.1.2",
  "unicode-normalization",
  "uuid",
- "winapi",
  "windows-sys 0.59.0",
 ]
 
@@ -3187,7 +3180,7 @@ dependencies = [
  "signal-hook",
  "thiserror 2.0.12",
  "tokio",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6913,15 +6906,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ntapi"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8a3895c6391c39d7fe7ebc444a87eb2991b2a0bc718fdabd071eec617fc68e4"
-dependencies = [
- "winapi",
-]
-
-[[package]]
 name = "nu-ansi-term"
 version = "0.50.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10008,7 +9992,7 @@ dependencies = [
  "twox-hash 2.1.2",
  "url",
  "win32job",
- "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

@@ -49,22 +49,20 @@ mod impl_ {
 
 #[cfg(windows)]
 mod impl_ {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::ntdef::NULL;
-  use winapi::um::handleapi::CloseHandle;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::processthreadsapi::GetPriorityClass;
-  use winapi::um::processthreadsapi::OpenProcess;
-  use winapi::um::processthreadsapi::SetPriorityClass;
-  use winapi::um::winbase::ABOVE_NORMAL_PRIORITY_CLASS;
-  use winapi::um::winbase::BELOW_NORMAL_PRIORITY_CLASS;
-  use winapi::um::winbase::HIGH_PRIORITY_CLASS;
-  use winapi::um::winbase::IDLE_PRIORITY_CLASS;
-  use winapi::um::winbase::NORMAL_PRIORITY_CLASS;
-  use winapi::um::winbase::REALTIME_PRIORITY_CLASS;
-  use winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION;
-  use winapi::um::winnt::PROCESS_SET_INFORMATION;
+  use windows_sys::Win32::Foundation::CloseHandle;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::System::Threading::ABOVE_NORMAL_PRIORITY_CLASS;
+  use windows_sys::Win32::System::Threading::BELOW_NORMAL_PRIORITY_CLASS;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+  use windows_sys::Win32::System::Threading::GetPriorityClass;
+  use windows_sys::Win32::System::Threading::HIGH_PRIORITY_CLASS;
+  use windows_sys::Win32::System::Threading::IDLE_PRIORITY_CLASS;
+  use windows_sys::Win32::System::Threading::NORMAL_PRIORITY_CLASS;
+  use windows_sys::Win32::System::Threading::OpenProcess;
+  use windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+  use windows_sys::Win32::System::Threading::PROCESS_SET_INFORMATION;
+  use windows_sys::Win32::System::Threading::REALTIME_PRIORITY_CLASS;
+  use windows_sys::Win32::System::Threading::SetPriorityClass;
 
   // Taken from: https://github.com/libuv/libuv/blob/a877ca2435134ef86315326ef4ef0c16bdbabf17/include/uv.h#L1318-L1323
   const PRIORITY_LOW: i32 = 19;
@@ -81,9 +79,9 @@ mod impl_ {
       let handle = if pid == 0 {
         GetCurrentProcess()
       } else {
-        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid as DWORD)
+        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid as u32)
       };
-      if handle == NULL {
+      if handle.is_null() {
         Err(std::io::Error::last_os_error().into())
       } else {
         let result = match GetPriorityClass(handle) {
@@ -112,9 +110,9 @@ mod impl_ {
       let handle = if pid == 0 {
         GetCurrentProcess()
       } else {
-        OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid as DWORD)
+        OpenProcess(PROCESS_SET_INFORMATION, FALSE, pid as u32)
       };
-      if handle == NULL {
+      if handle.is_null() {
         Err(std::io::Error::last_os_error().into())
       } else {
         let priority_class =
