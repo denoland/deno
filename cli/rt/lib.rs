@@ -66,6 +66,13 @@ fn load_env_vars(env_vars: &IndexMap<String, String>) {
 pub fn main() {
   init_logging(None, None);
 
+  // Enable ANSI virtual terminal processing on Windows consoles that don't
+  // do so by default (e.g. Windows Server / classic conhost), so that
+  // compiled binaries render colored output instead of raw escape codes.
+  // This mirrors the setup done in the main `deno` binary entrypoint.
+  #[cfg(windows)]
+  colors::enable_ansi(); // For Windows 10
+
   deno_runtime::deno_permissions::mark_standalone();
 
   rustls::crypto::aws_lc_rs::default_provider()
