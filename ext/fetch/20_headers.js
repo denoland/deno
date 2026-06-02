@@ -38,6 +38,7 @@ const _headerList = Symbol("header list");
 const _lowerNames = Symbol("lowercase header names");
 const _iterableHeaders = Symbol("iterable headers");
 const _iterableHeadersCache = Symbol("iterable headers cache");
+const _iterableHeadersCacheLen = Symbol("iterable headers cache len");
 const _guard = Symbol("guard");
 const _brand = webidl.brand;
 
@@ -165,6 +166,9 @@ function appendHeader(headers, name, value) {
     throw new TypeError("Cannot change header: headers are immutable");
   }
 
+  // Invalidate the iteration cache; any subsequent iteration must rebuild.
+  headers[_iterableHeadersCache] = undefined;
+
   // 7.
   const list = headers[_headerList];
   const lowerNames = ensureLowerNames(headers);
@@ -256,12 +260,18 @@ class Headers {
 
   get [_iterableHeaders]() {
     const list = this[_headerList];
-
+    const cached = this[_iterableHeadersCache];
+    // Cache stores `_iterableHeadersCacheLen` alongside the entries array
+    // so callers that mutate the list via `headerListFromHeaders` (push /
+    // splice / empty-and-refill) get a fresh build on the next iteration
+    // without needing to call back into Headers. Equal-length in-place
+    // mutations would silently keep the stale cache; no current caller
+    // does that. The mutator methods on this class clear the cache
+    // explicitly.
     if (
-      this[_guard] === "immutable" &&
-      this[_iterableHeadersCache] !== undefined
+      cached !== undefined && this[_iterableHeadersCacheLen] === list.length
     ) {
-      return this[_iterableHeadersCache];
+      return cached;
     }
 
     // The order of steps are not similar to the ones suggested by the
@@ -309,6 +319,7 @@ class Headers {
     );
 
     this[_iterableHeadersCache] = entries;
+    this[_iterableHeadersCacheLen] = list.length;
 
     return entries;
   }
@@ -361,6 +372,7 @@ class Headers {
       throw new TypeError("Cannot change headers: headers are immutable");
     }
 
+    this[_iterableHeadersCache] = undefined;
     const list = this[_headerList];
     const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);
@@ -469,6 +481,7 @@ class Headers {
       throw new TypeError("Cannot change headers: headers are immutable");
     }
 
+    this[_iterableHeadersCache] = undefined;
     const list = this[_headerList];
     const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);

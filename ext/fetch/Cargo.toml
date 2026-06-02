@@ -61,3 +61,7 @@ harness = false
 [[bench]]
 name = "body"
 harness = false
+
+[[bench]]
+name = "headers"
+harness = false
