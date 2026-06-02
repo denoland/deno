@@ -2718,6 +2718,7 @@ dependencies = [
  "deno_tls",
  "deno_whoami",
  "errno 0.3.10",
+ "faster-hex",
  "filetime",
  "hdrhistogram",
  "idna",
