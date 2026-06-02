@@ -237,13 +237,13 @@ fn write_response_head_inner(
       continue;
     }
     if header.name.eq_ignore_ascii_case(b"content-length") {
-      if chunked {
+      if chunked || !body_allowed {
         continue;
       }
       has_content_length = true;
     }
     if header.name.eq_ignore_ascii_case(b"transfer-encoding") {
-      if chunked {
+      if chunked || !body_allowed {
         continue;
       }
       has_transfer_encoding = true;
@@ -316,13 +316,13 @@ fn write_response_head_to_inner(
       continue;
     }
     if header.name.eq_ignore_ascii_case(b"content-length") {
-      if chunked {
+      if chunked || !body_allowed {
         continue;
       }
       has_content_length = true;
     }
     if header.name.eq_ignore_ascii_case(b"transfer-encoding") {
-      if chunked {
+      if chunked || !body_allowed {
         continue;
       }
       has_transfer_encoding = true;
@@ -799,6 +799,72 @@ mod tests {
       },
     );
     assert_eq!(out, b"HTTP/1.1 205 Reset Content\r\n\r\n");
+  }
+
+  #[test]
+  fn bodyless_status_strips_user_framing_headers() {
+    let headers = [
+      Header {
+        name: b"content-length",
+        value: b"100",
+      },
+      Header {
+        name: b"transfer-encoding",
+        value: b"chunked",
+      },
+      Header {
+        name: b"x-test",
+        value: b"ok",
+      },
+    ];
+    let mut out = Vec::new();
+    write_response_head(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http11,
+        status: 304,
+        reason: b"Not Modified",
+        headers: &headers,
+        content_length: Some(100),
+        keep_alive: true,
+      },
+    );
+    assert_eq!(out, b"HTTP/1.1 304 Not Modified\r\nx-test: ok\r\n\r\n");
+  }
+
+  #[test]
+  fn bodyless_status_strips_user_framing_headers_to_slice() {
+    let headers = [
+      Header {
+        name: b"content-length",
+        value: b"100",
+      },
+      Header {
+        name: b"transfer-encoding",
+        value: b"chunked",
+      },
+      Header {
+        name: b"x-test",
+        value: b"ok",
+      },
+    ];
+    let mut out = [0; 128];
+    let len = write_response_head_to(
+      &mut out,
+      ResponseHeader {
+        version: Version::Http11,
+        status: 204,
+        reason: b"No Content",
+        headers: &headers,
+        content_length: Some(100),
+        keep_alive: true,
+      },
+    )
+    .unwrap();
+    assert_eq!(
+      &out[..len],
+      b"HTTP/1.1 204 No Content\r\nx-test: ok\r\n\r\n"
+    );
   }
 
   #[test]

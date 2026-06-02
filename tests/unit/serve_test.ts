@@ -2804,6 +2804,78 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerIgnoredStreamingBodyClosesConnection() {
+    const firstDeferred = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+    const requests: string[] = [];
+
+    await using server = Deno.serve({
+      handler: (request) => {
+        requests.push(`${request.method} ${new URL(request.url).pathname}`);
+        firstDeferred.resolve();
+        return new Response("ok");
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const smuggled = `GET /smuggled HTTP/1.1\r\nHost: example.domain\r\n\r\n`;
+    const second =
+      `GET /second HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+    const head =
+      `POST /first HTTP/1.1\r\nHost: example.domain\r\nContent-Length: ${smuggled.length}\r\n\r\n`;
+
+    await writeAll(conn, encoder.encode(head));
+    await firstDeferred.promise;
+    try {
+      await writeAll(conn, encoder.encode(smuggled + second));
+    } catch {
+      // The fixed path may close before the client can write the unread body.
+    }
+
+    let msg = "";
+    while (true) {
+      const buf = new Uint8Array(1024);
+      let readResult: number | null;
+      try {
+        readResult = await conn.read(buf);
+      } catch (error) {
+        if (!(error instanceof Deno.errors.ConnectionReset)) {
+          throw error;
+        }
+        break;
+      }
+      if (!readResult) {
+        break;
+      }
+      msg += decoder.decode(buf.subarray(0, readResult));
+    }
+
+    assertEquals(requests, ["POST /first"]);
+    assertStringIncludes(msg, "HTTP/1.1 200 OK");
+    assertStringIncludes(msg.toLowerCase(), "connection: close");
+    assertEquals(msg.includes("/smuggled"), false);
+    assertEquals(
+      msg.indexOf("HTTP/1.1 200 OK"),
+      msg.lastIndexOf("HTTP/1.1 200 OK"),
+    );
+
+    conn.close();
+
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerHeadResponseDoesntSendBody() {
     const deferred = Promise.withResolvers<void>();
     const listeningDeferred = Promise.withResolvers<void>();
@@ -3447,7 +3519,13 @@ Deno.test(
     await using server = Deno.serve({
       handler: () => {
         deferred.resolve();
-        return new Response(null, { status: 304 });
+        return new Response(null, {
+          status: 304,
+          headers: {
+            "content-length": "100",
+            "transfer-encoding": "chunked",
+          },
+        });
       },
       port: servePort,
       signal: ac.signal,
@@ -3473,6 +3551,8 @@ Deno.test(
     const msg = decoder.decode(buf.subarray(0, readResult));
 
     assert(msg.startsWith("HTTP/1.1 304 Not Modified"));
+    assertEquals(msg.toLowerCase().includes("content-length:"), false);
+    assertEquals(msg.toLowerCase().includes("transfer-encoding:"), false);
     assert(msg.endsWith("\r\n\r\n"));
 
     conn.close();

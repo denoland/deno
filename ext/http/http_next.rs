@@ -4099,6 +4099,7 @@ async fn serve_http11_raw(
         if let Some(state) = state {
           let mut local_conn = state.conn;
           let mut local_scratch = state.scratch;
+          let keep_alive = keep_alive && !parsed.has_body;
           write_h1_flat_response(
             &mut local_conn,
             &mut local_scratch,
@@ -4178,6 +4179,7 @@ async fn serve_http11_raw(
       }
       match body {
         RawResponseBody::Flat(body) => {
+          let keep_alive = keep_alive && !parsed.has_body;
           write_h1_flat_response_shared(
             body_conn.clone(),
             parsed.version,
@@ -4189,6 +4191,11 @@ async fn serve_http11_raw(
           .await?;
         }
         RawResponseBody::Stream(body) => {
+          let response_context = RawH1ResponseContext {
+            version: response_context.version,
+            keep_alive: response_context.keep_alive && !parsed.has_body,
+            head: response_context.head,
+          };
           write_h1_stream_response_shared(
             body_conn.clone(),
             response_context,
@@ -4217,7 +4224,7 @@ async fn serve_http11_raw(
       };
       conn = state.conn;
       scratch = state.scratch;
-      if !keep_alive || cancel.is_canceled() {
+      if !keep_alive || parsed.has_body || cancel.is_canceled() {
         record_cancel_guard.disarm();
         return Ok(());
       }
