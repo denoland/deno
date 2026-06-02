@@ -313,10 +313,10 @@ extern "C" fn test_uv_polyfills(
   use libuv_sys_lite::uv_unref;
 
   unsafe {
-    // uv_hrtime must produce a non-zero, monotonically non-decreasing value.
+    // uv_hrtime must produce a monotonically non-decreasing value. Some
+    // platforms can observe the timer origin on the first read.
     let t1 = uv_hrtime();
     let t2 = uv_hrtime();
-    assert!(t1 > 0);
     assert!(t2 >= t1);
 
     // uv_default_loop returns null (Deno does not expose a libuv loop
