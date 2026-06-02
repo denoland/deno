@@ -28,6 +28,13 @@ pub struct PackageWithScript<'a> {
   pub package: &'a NpmResolutionPackage,
   pub scripts: HashMap<SmallStackString, String>,
   pub package_folder: PathBuf,
+  /// The working directories to expose as `INIT_CWD` when running the scripts.
+  ///
+  /// These are the directories of the workspace members that depend on the
+  /// package, so that workspace-aware lifecycle scripts (e.g. `@sveltejs/kit`'s
+  /// `postinstall`) operate on each member. The scripts run once per entry.
+  /// When empty, the scripts run once with the global init cwd.
+  pub init_cwds: Vec<PathBuf>,
 }
 
 pub struct LifecycleScriptsExecutorOptions<'a> {
@@ -110,6 +117,48 @@ pub trait LifecycleScriptsStrategy {
   fn has_warned(&self, package: &NpmResolutionPackage) -> bool;
 
   fn has_run(&self, package: &NpmResolutionPackage) -> bool;
+}
+
+/// Builds a map from a package id to the workspace member directories that
+/// declare it as a direct dependency. This is used to run a package's lifecycle
+/// scripts once per declaring member with `INIT_CWD` pointing at that member, so
+/// that workspace-aware scripts such as `@sveltejs/kit`'s `postinstall` operate
+/// on each member.
+///
+/// When `deno install` runs in a workspace whose root is a `deno.json` (no root
+/// `package.json`), tools that read the root `package.json` `workspaces` field
+/// (as npm/svelte-kit do) cannot discover the members. Running the script per
+/// member with the member as `INIT_CWD` reproduces what those tools would do in
+/// a `package.json` workspace.
+///
+/// Packages that are also declared directly by the workspace root are omitted
+/// so they keep running once with the global init cwd (npm's behaviour).
+pub fn member_dep_init_cwds(
+  deps_provider: &crate::package_json::NpmInstallDepsProvider,
+  snapshot: &NpmResolutionSnapshot,
+  workspace_root: Option<&Path>,
+) -> HashMap<NpmPackageId, Vec<PathBuf>> {
+  use std::collections::BTreeSet;
+  let mut declarers: HashMap<NpmPackageId, BTreeSet<PathBuf>> = HashMap::new();
+  let mut root_declared: HashSet<NpmPackageId> = HashSet::new();
+  for remote_pkg in deps_provider.remote_pkgs() {
+    let Ok(pkg) = snapshot.resolve_pkg_from_pkg_req(&remote_pkg.req) else {
+      continue;
+    };
+    if workspace_root == Some(remote_pkg.base_dir.as_path()) {
+      root_declared.insert(pkg.id.clone());
+    } else {
+      declarers
+        .entry(pkg.id.clone())
+        .or_default()
+        .insert(remote_pkg.base_dir.clone());
+    }
+  }
+  declarers
+    .into_iter()
+    .filter(|(id, _)| !root_declared.contains(id))
+    .map(|(id, dirs)| (id, dirs.into_iter().collect()))
+    .collect()
 }
 
 pub fn has_lifecycle_scripts(
@@ -205,6 +254,7 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
     package: &'a NpmResolutionPackage,
     extra: &NpmPackageExtraInfo,
     package_path: Cow<'_, Path>,
+    init_cwds: Vec<PathBuf>,
   ) {
     if has_lifecycle_scripts(self.sys, extra, &package_path) {
       if self.can_run_scripts(&package.id.nv) {
@@ -213,6 +263,7 @@ impl<'a, TSys: FsMetadata> LifecycleScripts<'a, TSys> {
             package,
             scripts: extra.scripts.clone(),
             package_folder: package_path.into_owned(),
+            init_cwds,
           });
         }
       } else if !self.has_run_scripts(package)
@@ -433,6 +484,7 @@ mod tests {
       package: snapshot.package_from_id(&pkg_id(id)).unwrap(),
       scripts: HashMap::from([("install".into(), "node-gyp rebuild".into())]),
       package_folder: PathBuf::from(format!("/tmp/{id}")),
+      init_cwds: Vec::new(),
     }
   }
 

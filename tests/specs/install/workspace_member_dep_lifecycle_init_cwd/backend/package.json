@@ -1,0 +1,7 @@
+{
+  "name": "@scope/backend",
+  "version": "1.0.0",
+  "dependencies": {
+    "@denotest/lifecycle-scripts-init-cwd": "1.0.0"
+  }
+}

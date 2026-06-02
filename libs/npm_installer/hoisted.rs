@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
+use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -419,6 +420,16 @@ impl<
       self.npm_package_extra_info_provider.clone(),
     ));
 
+    // Map a package to the workspace member directory that declares it as a
+    // direct dependency, so its lifecycle scripts run with `INIT_CWD` pointing
+    // at that member rather than the workspace root.
+    let lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>> =
+      Rc::new(crate::lifecycle_scripts::member_dep_init_cwds(
+        &self.npm_install_deps_provider,
+        snapshot,
+        self.root_node_modules_path.parent(),
+      ));
+
     // Clone top-level (hoisted) packages
     for package in layout.top_level.values() {
       let package_path = join_package_name(
@@ -430,6 +441,7 @@ impl<
         packages_with_deprecation_warnings.clone();
       let extra_info_provider = extra_info_provider.clone();
       let lifecycle_scripts = lifecycle_scripts.clone();
+      let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
       let bin_entries_to_setup = bin_entries.clone();
       let install_reporter = self.install_reporter.clone();
 
@@ -444,6 +456,7 @@ impl<
               extra_info_provider,
               bin_entries_to_setup,
               lifecycle_scripts,
+              lifecycle_script_init_cwds,
               packages_with_deprecation_warnings,
             )
             .boxed_local(),
@@ -470,6 +483,7 @@ impl<
         packages_with_deprecation_warnings.clone();
       let extra_info_provider = extra_info_provider.clone();
       let lifecycle_scripts = lifecycle_scripts.clone();
+      let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
       let bin_entries_to_setup = bin_entries.clone();
       let install_reporter = self.install_reporter.clone();
 
@@ -484,6 +498,7 @@ impl<
               extra_info_provider,
               bin_entries_to_setup,
               lifecycle_scripts,
+              lifecycle_script_init_cwds,
               packages_with_deprecation_warnings,
             )
             .boxed_local(),
@@ -662,6 +677,7 @@ impl<
     extra_info_provider: Arc<CachedNpmPackageExtraInfoProvider>,
     bin_entries_to_setup: Rc<RefCell<BinEntries<'a, impl LocalNpmInstallSys>>>,
     lifecycle_scripts: Rc<RefCell<LifecycleScripts<'a, impl FsMetadata>>>,
+    lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>>,
     packages_with_deprecation_warnings: Arc<Mutex<Vec<(PackageNv, String)>>>,
   ) -> Result<(), JsErrorBox> {
     self
@@ -732,9 +748,16 @@ impl<
     }
 
     if package.has_scripts {
-      lifecycle_scripts
-        .borrow_mut()
-        .add(package, &extra, package_path.into());
+      let init_cwds = lifecycle_script_init_cwds
+        .get(&package.id)
+        .cloned()
+        .unwrap_or_default();
+      lifecycle_scripts.borrow_mut().add(
+        package,
+        &extra,
+        package_path.into(),
+        init_cwds,
+      );
     }
 
     if package.is_deprecated
