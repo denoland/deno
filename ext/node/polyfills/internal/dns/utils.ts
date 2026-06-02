@@ -24,11 +24,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
-const lazyProcess = core.createLazyLoader("node:process");
 const {
   AI_ADDRCONFIG,
   AI_ALL,
@@ -421,23 +420,6 @@ function validateHints(hints: number) {
   }
 }
 
-let invalidHostnameWarningEmitted = false;
-
-function emitInvalidHostnameWarning(hostname: string) {
-  if (invalidHostnameWarningEmitted) {
-    return;
-  }
-
-  invalidHostnameWarningEmitted = true;
-
-  lazyProcess().default.emitWarning(
-    `The provided hostname "${hostname}" is not a valid ` +
-      "hostname, and is supported in the dns module solely for compatibility.",
-    "DeprecationWarning",
-    "DEP0118",
-  );
-}
-
 let dnsOrder: string | undefined;
 
 function ensureDnsOrder(): string {
@@ -492,7 +474,6 @@ return {
   getDefaultResolver,
   setDefaultResolver,
   validateHints,
-  emitInvalidHostnameWarning,
   getDefaultDnsOrder,
   validDnsOrders,
   dnsOrderToNumber,

@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   op_node_check_prime_bytes,
   op_node_check_prime_bytes_async,

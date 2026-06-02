@@ -3,13 +3,14 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 
 const { internalRidSymbol } = core;
 const {
   ArrayFrom,
   ArrayIsArray,
   ArrayPrototypeForEach,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
@@ -234,6 +235,12 @@ const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
 const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
 const onClientStreamFinishChannel = dc.channel("http2.client.stream.finish");
 const onClientStreamCloseChannel = dc.channel("http2.client.stream.close");
+const onClientStreamBodyChunkSentChannel = dc.channel(
+  "http2.client.stream.bodyChunkSent",
+);
+const onClientStreamBodySentChannel = dc.channel(
+  "http2.client.stream.bodySent",
+);
 const onServerStreamCreatedChannel = dc.channel("http2.server.stream.created");
 const onServerStreamStartChannel = dc.channel("http2.server.stream.start");
 const onServerStreamErrorChannel = dc.channel("http2.server.stream.error");
@@ -2237,10 +2244,42 @@ class Http2Stream extends Duplex {
   }
 
   _write(data, encoding, cb) {
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodyChunkSentChannel.hasSubscribers
+    ) {
+      onClientStreamBodyChunkSentChannel.publish({
+        stream: this,
+        writev: false,
+        data,
+        encoding,
+      });
+    }
     this[kWriteGeneric](false, data, encoding, cb);
   }
 
   _writev(data, cb) {
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodyChunkSentChannel.hasSubscribers
+    ) {
+      // `data` is the chunks array assembled by Writable.clearBuffer. When
+      // every queued write was a Buffer, the writable internals flag
+      // `chunks.allBuffers = true` and the bodyChunkSent channel reports
+      // the array of raw Buffers (matching Node's
+      // test-diagnostics-channel-http2-client-stream-body-multiple-buffers
+      // shape). For mixed encodings the {chunk, encoding} entries flow
+      // through verbatim.
+      const chunkData = data.allBuffers
+        ? ArrayPrototypeMap(data, (c) => c.chunk)
+        : data;
+      onClientStreamBodyChunkSentChannel.publish({
+        stream: this,
+        writev: true,
+        data: chunkData,
+        encoding: "",
+      });
+    }
     this[kWriteGeneric](true, data, "", cb);
   }
 
@@ -2292,6 +2331,19 @@ class Http2Stream extends Duplex {
       return;
     }
     debugStreamObj(this, "shutting down writable on _final");
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodySentChannel.hasSubscribers
+    ) {
+      // bodySent fires once per ClientHttp2Stream when the writable side has
+      // received its final chunk (or end() with no chunks). _final is the
+      // Writable.prototype hook that runs after the last _write/_writev, so
+      // this is the right spot to report the body as fully queued. Empty-body
+      // requests still publish: tests/parallel/test-diagnostics-channel-
+      // http2-client-stream-body-no-chunks asserts bodySent fires without any
+      // preceding bodyChunkSent.
+      onClientStreamBodySentChannel.publish({ stream: this });
+    }
     ReflectApply(shutdownWritable, this, [cb]);
   }
 

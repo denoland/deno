@@ -24,10 +24,11 @@
 
 // deno-lint-ignore-file prefer-primordials no-this-alias no-inner-declarations
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   Boolean,
+  DateNow,
   Error,
   NumberIsFinite,
   ObjectAssign,
@@ -59,6 +60,7 @@ import {
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
 import httpAgent from "node:_http_agent";
+import httpProxy from "node:_http_proxy";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { urlToHttpOptions } = core.loadExtScript(
   "ext:deno_node/internal/url.ts",
@@ -112,6 +114,258 @@ const kOtelSpan = Symbol("kOtelSpan");
 const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
 const kRetryOptions = Symbol("kRetryOptions");
+const kProxy = Symbol("kProxy");
+const kProxyTargetHost = Symbol("kProxyTargetHost");
+const kProxyTargetPort = Symbol("kProxyTargetPort");
+const kInspectorRequestId = Symbol("kInspectorRequestId");
+const kInspectorNetwork = Symbol("kInspectorNetwork");
+const kInspectorUrl = Symbol("kInspectorUrl");
+const kInspectorCompleted = Symbol("kInspectorCompleted");
+
+// ============================================================================
+// Inspector Network domain instrumentation (Chrome DevTools Protocol).
+//
+// When `node:inspector` has been loaded and `--inspect` is active, node:http
+// client requests emit `Network.requestWillBeSent` / `responseReceived` /
+// `dataReceived` / `loadingFinished` / `loadingFailed` events. The emitters
+// and a monotonic requestId generator are installed by
+// `ext/node/polyfills/inspector.js` onto `internals.__inspectorNetwork`,
+// so this layer is one `isEnabled()` check when the inspector is detached.
+//
+// Mirrors the implementation in ext/fetch/26_fetch.js. Differences:
+//   - `type: "Other"` rather than `"Fetch"` (matches Chrome DevTools' contract
+//     for non-fetch HTTP).
+//   - Request headers are read from `kOutHeaders` rather than a flat list.
+//   - Response body bytes are observed by wrapping `res.push`, not by teeing
+//     a ReadableStream, since IncomingMessage is a Node Readable. The wrapper
+//     stays out of the read pipeline so the response remains paused until the
+//     consumer attaches a `data` listener (asserted by the upstream test).
+// ============================================================================
+function getInspectorNetwork() {
+  const ins = internals.__inspectorNetwork;
+  if (ins && ins.isEnabled()) return ins;
+  return null;
+}
+
+function safeEmit(fn, params) {
+  try {
+    fn(params);
+  } catch {
+    // Inspector emission is purely observational - never surface as an
+    // http error to user code.
+  }
+}
+
+function joinRequestHeadersForCdp(req) {
+  const out = { __proto__: null };
+  const headers = req[kOutHeaders];
+  if (!headers) return out;
+  const keys = ObjectKeys(headers);
+  for (let i = 0; i < keys.length; i++) {
+    const lower = keys[i]; // kOutHeaders keys are already lowercase
+    const entry = headers[lower];
+    if (!entry) continue;
+    const value = entry[1];
+    let separator;
+    if (lower === "cookie") {
+      separator = "; ";
+    } else if (lower === "set-cookie") {
+      separator = "\n";
+    } else {
+      separator = ", ";
+    }
+    if (ArrayIsArray(value)) {
+      let joined = "";
+      for (let j = 0; j < value.length; j++) {
+        if (j > 0) joined += separator;
+        joined += String(value[j]);
+      }
+      out[lower] = joined;
+    } else {
+      out[lower] = String(value);
+    }
+  }
+  return out;
+}
+
+function joinResponseHeadersForCdp(rawHeaders) {
+  const out = { __proto__: null };
+  if (!rawHeaders) return out;
+  for (let i = 0; i < rawHeaders.length; i += 2) {
+    const rawName = rawHeaders[i];
+    const value = String(rawHeaders[i + 1]);
+    const lower = String(rawName).toLowerCase();
+    let separator;
+    if (lower === "cookie") {
+      separator = "; ";
+    } else if (lower === "set-cookie") {
+      separator = "\n";
+    } else {
+      separator = ", ";
+    }
+    if (out[lower] === undefined) {
+      out[lower] = value;
+    } else {
+      out[lower] = out[lower] + separator + value;
+    }
+  }
+  return out;
+}
+
+function parseContentTypeFromRawHeaders(rawHeaders) {
+  let raw = null;
+  if (rawHeaders) {
+    for (let i = 0; i < rawHeaders.length; i += 2) {
+      if (String(rawHeaders[i]).toLowerCase() === "content-type") {
+        raw = String(rawHeaders[i + 1]);
+        break;
+      }
+    }
+  }
+  if (raw === null) return { mimeType: "", charset: "" };
+  const semi = raw.indexOf(";");
+  const mimeType = semi === -1 ? raw.trim() : raw.slice(0, semi).trim();
+  let charset = "";
+  if (semi !== -1) {
+    const rest = raw.slice(semi + 1);
+    const parts = rest.split(";");
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i].trim();
+      if (p.toLowerCase().startsWith("charset=")) {
+        charset = p.slice(8).trim();
+        if (
+          charset.length >= 2 && charset[0] === '"' &&
+          charset[charset.length - 1] === '"'
+        ) {
+          charset = charset.slice(1, charset.length - 1);
+        }
+        break;
+      }
+    }
+  }
+  return { mimeType, charset };
+}
+
+function buildInspectorRequestUrl(protocol, host, port, path) {
+  let hostPart = host || "localhost";
+  if (hostPart.indexOf(":") !== -1 && hostPart.charCodeAt(0) !== 91 /* '[' */) {
+    hostPart = `[${hostPart}]`;
+  }
+  const proto = protocol || "http:";
+  const defaultPort = proto === "https:" ? 443 : 80;
+  const portStr = port && +port !== defaultPort ? `:${port}` : "";
+  return `${proto}//${hostPart}${portStr}${path || "/"}`;
+}
+
+function inspectorEmitRequestWillBeSent(req, port) {
+  const ins = getInspectorNetwork();
+  if (!ins) return;
+  const requestId = ins.nextRequestId();
+  req[kInspectorRequestId] = requestId;
+  req[kInspectorNetwork] = ins;
+  const url = buildInspectorRequestUrl(
+    req.protocol,
+    req.host,
+    port,
+    req[kPath],
+  );
+  req[kInspectorUrl] = url;
+  const headers = joinRequestHeadersForCdp(req);
+  const now = DateNow() / 1000;
+  safeEmit(ins.requestWillBeSent, {
+    requestId,
+    timestamp: now,
+    wallTime: now,
+    type: "Other",
+    request: {
+      url,
+      method: req.method,
+      headers,
+      hasPostData: false,
+    },
+  });
+}
+
+function inspectorEmitResponseReceived(req, res) {
+  const ins = req[kInspectorNetwork];
+  const requestId = req[kInspectorRequestId];
+  if (!ins || !requestId) return;
+  const rawHeaders = res.rawHeaders;
+  const headers = joinResponseHeadersForCdp(rawHeaders);
+  const { mimeType, charset } = parseContentTypeFromRawHeaders(rawHeaders);
+  safeEmit(ins.responseReceived, {
+    requestId,
+    timestamp: DateNow() / 1000,
+    type: "Other",
+    response: {
+      url: req[kInspectorUrl],
+      status: res.statusCode,
+      statusText: res.statusMessage || "",
+      headers,
+      mimeType,
+      charset,
+    },
+  });
+
+  // Wrap res.push to observe body chunks and the end-of-stream sentinel
+  // (parserOnBody -> stream.push(buf); parserOnMessageComplete ->
+  // stream.push(null)). Going through `data` events would put the stream
+  // in flowing mode, breaking the upstream test that requires it to stay
+  // paused until the consumer attaches a `data` listener.
+  let totalLength = 0;
+  const origPush = res.push;
+  res.push = function inspectorPush(chunk, encoding) {
+    if (chunk === null) {
+      if (!req[kInspectorCompleted]) {
+        req[kInspectorCompleted] = true;
+        safeEmit(ins.loadingFinished, {
+          requestId,
+          timestamp: DateNow() / 1000,
+          encodedDataLength: totalLength,
+        });
+      }
+    } else if (chunk) {
+      let len;
+      if (typeof chunk === "string") {
+        len = chunk.length;
+      } else if (chunk.byteLength !== undefined) {
+        len = chunk.byteLength;
+      } else {
+        len = 0;
+      }
+      if (len > 0) {
+        totalLength += len;
+        safeEmit(ins.dataReceived, {
+          requestId,
+          timestamp: DateNow() / 1000,
+          dataLength: len,
+          encodedDataLength: len,
+          data: chunk,
+        });
+      }
+    }
+    return origPush.call(this, chunk, encoding);
+  };
+}
+
+function inspectorEmitLoadingFailed(req, error) {
+  const ins = req[kInspectorNetwork];
+  const requestId = req[kInspectorRequestId];
+  if (!ins || !requestId || req[kInspectorCompleted]) return;
+  req[kInspectorCompleted] = true;
+  let errorText;
+  if (error && typeof error === "object" && error.message !== undefined) {
+    errorText = String(error.message);
+  } else {
+    errorText = String(error);
+  }
+  safeEmit(ins.loadingFailed, {
+    requestId,
+    timestamp: DateNow() / 1000,
+    type: "Other",
+    errorText,
+  });
+}
 
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
@@ -141,6 +395,10 @@ function emitErrorEvent(request, error) {
       error,
     });
   }
+  // ---- Inspector: Network.loadingFailed ----------------------------------
+  // Fired before the user's `error` listener so DevTools sees the failure
+  // even if the listener throws.
+  inspectorEmitLoadingFailed(request, error);
   request.emit("error", error);
 }
 
@@ -223,6 +481,32 @@ function ClientRequest(input, options, cb) {
     validateHost(options.hostname, "hostname") ||
     validateHost(options.host, "host") || "localhost";
 
+  // Proxy detection: if an env-derived proxy applies to this request,
+  // either rewrite to absolute URL (http target) or set up a CONNECT tunnel
+  // via a custom createConnection (https target). The agent's socket pool
+  // is keyed by target host:port so users can look it up the same way as
+  // a direct connection - the proxy is a transport detail tracked under
+  // _proxy on the options.
+  const proxyConfig = httpProxy.resolveAgentProxyConfig(this.agent);
+  const proxyEntry = httpProxy.selectProxy(
+    proxyConfig,
+    protocol,
+    host,
+    port,
+  );
+  if (proxyEntry) {
+    this[kProxy] = proxyEntry;
+    this[kProxyTargetHost] = host;
+    this[kProxyTargetPort] = port;
+    optsWithoutSignal._proxy = proxyEntry;
+    optsWithoutSignal._proxyTargetHost = host;
+    optsWithoutSignal._proxyTargetPort = port;
+    optsWithoutSignal._proxyProtocol = protocol;
+    optsWithoutSignal._proxyUseProxyConnection =
+      !(this.agent && this.agent.__proxyConfig !== undefined) ||
+      this.agent?.keepAlive === true;
+  }
+
   const setHost = options.setHost !== undefined
     ? Boolean(options.setHost)
     : options.setDefaultHeaders !== false;
@@ -279,6 +563,19 @@ function ClientRequest(input, options, cb) {
   this.joinDuplicateHeaders = options.joinDuplicateHeaders;
 
   this[kPath] = options.path || "/";
+
+  // For HTTP via HTTP proxy, rewrite path to an absolute URL so the proxy
+  // knows where to forward the request.
+  if (this[kProxy] && protocol === "http:") {
+    const t = this[kProxyTargetHost];
+    const formattedHost = t && t.indexOf(":") !== -1 && t.charCodeAt(0) !== 91
+      ? `[${t}]`
+      : t;
+    this[kPath] = `http://${formattedHost}:${this[kProxyTargetPort]}${
+      options.path || "/"
+    }`;
+  }
+
   if (cb) {
     this.once("response", cb);
   }
@@ -353,6 +650,21 @@ function ClientRequest(input, options, cb) {
       );
     }
 
+    if (this[kProxy] && protocol === "http:") {
+      // Mirror what _storeHeader will pick for Connection: when shouldKeepAlive
+      // is true, both Connection and Proxy-Connection are "keep-alive"; when
+      // false, both are "close". Matches Node's wire format on the proxy hop.
+      if (!this.getHeader("proxy-connection")) {
+        this.setHeader(
+          "Proxy-Connection",
+          this.shouldKeepAlive ? "keep-alive" : "close",
+        );
+      }
+      if (this[kProxy].auth && !this.getHeader("proxy-authorization")) {
+        this.setHeader("Proxy-Authorization", this[kProxy].auth);
+      }
+    }
+
     if (this.getHeader("expect")) {
       if (this._header) {
         throw new ERR_HTTP_HEADERS_SENT("render");
@@ -416,6 +728,13 @@ function ClientRequest(input, options, cb) {
       request: this,
     });
   }
+  // ---- Inspector: Network.requestWillBeSent ------------------------------
+  // Fire here so the user-code call site (e.g. `http.get(...)`) is still on
+  // the stack - `op_inspector_emit_protocol_event` captures it as the
+  // `initiator` for DevTools. Any setHeader() the caller does between the
+  // constructor returning and `req.end()` would be missed; the upstream
+  // node:http inspector implementation behaves the same way.
+  inspectorEmitRequestWillBeSent(this, port);
 }
 ObjectSetPrototypeOf(ClientRequest.prototype, OutgoingMessage.prototype);
 ObjectSetPrototypeOf(ClientRequest, OutgoingMessage);
@@ -579,6 +898,11 @@ function maybeRetryRequest(req, socket) {
   req._headerSent = false;
   req.destroyed = false;
   req._closed = false;
+  // The first attempt set reusedSocket on the stale socket. The retry runs
+  // through addRequest again, which will call agent.reuseSocket() if it
+  // happens to land on another pooled free socket. Otherwise the request
+  // goes to a brand-new connection and the flag must stay false.
+  req.reusedSocket = false;
 
   // Restore output data saved before the first flush attempt
   if (req[kRetryData]) {
@@ -840,6 +1164,11 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
     });
   }
 
+  // ---- Inspector: Network.responseReceived -------------------------------
+  // Also installs the `res.push` wrapper that emits `Network.dataReceived`
+  // and `Network.loadingFinished` once body bytes start flowing.
+  inspectorEmitResponseReceived(req, res);
+
   // Set OTel response attributes
   const span = req[kOtelSpan];
   if (span) {
@@ -1013,6 +1342,9 @@ function listenSocketTimeout(req) {
 }
 
 ClientRequest.prototype.onSocket = function onSocket(socket, err) {
+  if (socket && !err && socket.destroyed && socket.errored) {
+    err = socket.errored;
+  }
   if (socket && !err) {
     socket._httpMessage = this;
     socket.on("error", socketErrorListener);

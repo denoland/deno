@@ -5,6 +5,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core, internals, primordials } from "ext:core/mod.js";
+// Installs `internals.__inspectorNetwork` so ext/fetch (and other
+// extensions) can emit Network.* CDP events without requiring user code
+// to import `node:inspector`. Side-effect import; no exports.
+core.loadExtScript("ext:deno_node/inspector_network_bridge.js");
 const { initializeDebugEnv } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
 );
@@ -17,6 +21,9 @@ import {
   op_getegid,
   op_geteuid,
   op_getgroups,
+  op_inspector_close,
+  op_inspector_enabled,
+  op_inspector_port,
   op_node_load_env_file,
   op_node_process_constrained_memory,
   op_node_process_kill,
@@ -80,14 +87,16 @@ export {
   version,
   versions,
 };
-import {
-  createWritableStdioStream,
-  initStdin,
-} from "ext:deno_node/_process/streams.mjs";
-import {
-  addSigwinchListener,
-  WriteStream as TTYWriteStream,
-} from "ext:deno_node/internal/tty.js";
+// _process/streams.mjs and internal/tty.js are lazy-loaded so that
+// process.stdout/stderr/stdin construction (and the node:stream/net/tty
+// graph it pulls in) is deferred until first access. See Node's pattern
+// in lib/internal/bootstrap/switches/is_main_thread.js (defineStream).
+const lazyProcessStreams = core.createLazyLoader(
+  "ext:deno_node/_process/streams.mjs",
+);
+const lazyInternalTty = core.createLazyLoader(
+  "ext:deno_node/internal/tty.js",
+);
 const { enableNextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const { isAndroid, isWindows } = core.loadExtScript(
   "ext:deno_node/_util/os.ts",
@@ -117,6 +126,13 @@ import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 const { buildAllowedFlags } = core.loadExtScript(
   "ext:deno_node/internal/process/per_thread.mjs",
 );
+const {
+  getActiveHandles,
+  getActiveRequests,
+} = core.loadExtScript("ext:deno_node/internal/process/active_resources.ts");
+const {
+  getActiveResourcesInfo: getTimerActiveResourcesInfo,
+} = core.loadExtScript("ext:deno_node/internal/timers.mjs");
 import type fsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import type * as utilModule from "ext:deno_node/util.ts";
 
@@ -133,9 +149,16 @@ const lazyLoadUtil = core.createLazyLoader<typeof utilModule>(
 
 const {
   ArrayIsArray,
+  FunctionPrototypeBind,
   NumberMAX_SAFE_INTEGER,
+  ObjectCreate,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
+  ReflectGet,
+  ReflectGetOwnPropertyDescriptor,
+  ReflectGetPrototypeOf,
+  ReflectHas,
+  ReflectOwnKeys,
 } = primordials;
 
 export const argv: string[] = ["", ""];
@@ -439,6 +462,10 @@ export function memoryUsage(): {
 memoryUsage.rss = function (): number {
   return memoryUsage().rss;
 };
+
+export function getActiveResourcesInfo(): string[] {
+  return getTimerActiveResourcesInfo();
+}
 
 export function availableMemory(): number {
   return Deno.systemMemoryInfo().available;
@@ -824,6 +851,62 @@ function _removeAllSignalListeners(
 // @ts-ignore TS doesn't work well with ES5 classes
 const process = new Process();
 
+// `node:process` exposes `stdin`/`stdout`/`stderr` as ESM named exports. The
+// underlying streams are constructed lazily via accessor properties on
+// `process` (see `defineLazyStream` below), so the `let` bindings stay
+// undefined until something touches `process.stdout` etc. Code like
+// `import { stdout } from "node:process"; stdout.write("x")` would then
+// throw. Initialize the exported bindings with delegating proxies that
+// forward every operation to `process[name]`, which triggers the lazy
+// accessor on first use. Once the accessor fires, `defineLazyStream`
+// updates the `let` binding directly so subsequent reads see the real
+// stream and don't pay the proxy hop.
+function makeStreamDelegate(name: "stdin" | "stdout" | "stderr"): unknown {
+  return new Proxy(ObjectCreate(null), {
+    get(_target, prop) {
+      const real = process[name];
+      if (real == null) return undefined;
+      const value = ReflectGet(real, prop, real);
+      return typeof value === "function"
+        ? FunctionPrototypeBind(value, real)
+        : value;
+    },
+    set(_target, prop, value) {
+      const real = process[name];
+      if (real == null) return true;
+      real[prop] = value;
+      return true;
+    },
+    has(_target, prop) {
+      const real = process[name];
+      return real != null && ReflectHas(real, prop);
+    },
+    deleteProperty(_target, prop) {
+      const real = process[name];
+      if (real == null) return true;
+      delete real[prop];
+      return true;
+    },
+    ownKeys(_target) {
+      const real = process[name];
+      return real != null ? ReflectOwnKeys(real) : [];
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      const real = process[name];
+      return real != null
+        ? ReflectGetOwnPropertyDescriptor(real, prop)
+        : undefined;
+    },
+    getPrototypeOf(_target) {
+      const real = process[name];
+      return real != null ? ReflectGetPrototypeOf(real) : null;
+    },
+  });
+}
+stdin = makeStreamDelegate("stdin");
+stdout = makeStreamDelegate("stdout");
+stderr = makeStreamDelegate("stderr");
+
 /** https://nodejs.org/api/process.html#processrelease */
 Object.defineProperty(process, "release", {
   get() {
@@ -887,8 +970,17 @@ Object.defineProperty(process, "argv0", {
  */
 // Node's default inspector port (kDefaultInspectorPort in src/node_options.h).
 let _debugPort = 9229;
+let _debugPortWasSet = false;
 Object.defineProperty(process, "debugPort", {
   get() {
+    // When the inspector is running, report the actual bound port so
+    // `--inspect=...:0` reflects the ephemeral port chosen at bind
+    // time. An explicit assignment via the setter wins over this
+    // (matching Node's mutable `process.debugPort`).
+    if (!_debugPortWasSet) {
+      const port = op_inspector_port();
+      if (port !== 0) return port;
+    }
     return _debugPort;
   },
   set(val) {
@@ -900,10 +992,38 @@ Object.defineProperty(process, "debugPort", {
       );
     }
     _debugPort = port;
+    _debugPortWasSet = true;
   },
   enumerable: true,
   configurable: true,
 });
+
+/**
+ * Undocumented but public Node API: stops the inspector / debugger session
+ * if one is running. No-op if no inspector is attached. See
+ * `lib/internal/inspector.js` in the Node source.
+ */
+process._debugEnd = function _debugEnd() {
+  if (op_inspector_enabled()) {
+    op_inspector_close();
+  }
+};
+
+/**
+ * Undocumented but public Node API: starts the inspector in another process by
+ * sending `SIGUSR1` to it. On the current process, this would (in Node) open
+ * the inspector; we don't yet support reopening the inspector from JS, so for
+ * `pid === process.pid` we no-op rather than throwing, matching the
+ * "safe when no inspector is active" contract callers rely on.
+ */
+process._debugProcess = function _debugProcess(pid) {
+  if (typeof pid !== "number") {
+    throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
+  }
+  if (pid !== process.pid) {
+    process.kill(pid, "SIGUSR1");
+  }
+};
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
 process.chdir = chdir;
@@ -980,6 +1100,10 @@ process.openStdin = () => {
 process._rawDebug = (...args: unknown[]) => {
   core.print(`${format(...args)}\n`, true);
 };
+
+process.getActiveResourcesInfo = getActiveResourcesInfo;
+process._getActiveRequests = getActiveRequests;
+process._getActiveHandles = getActiveHandles;
 
 // Undocumented Node API that is used by `signal-exit` which in turn
 // is used by `node-tap`. It was marked for removal a couple of years
@@ -1488,6 +1612,95 @@ function synchronizeListeners() {
 
 internals.dispatchProcessBeforeExitEvent = dispatchProcessBeforeExitEvent;
 internals.dispatchProcessExitEvent = dispatchProcessExitEvent;
+
+const { ObjectDefineProperty: _ObjectDefineProperty } = primordials;
+
+// Install an accessor property on `target` whose getter invokes `factory()`
+// once and replaces itself with the value. Also caches the result onto
+// the module-level `stdin`/`stdout`/`stderr` exports so ESM consumers
+// that captured the binding after first access see the materialized value.
+function defineLazyStream(
+  target: object,
+  name: "stdout" | "stderr" | "stdin",
+  factory: () => unknown,
+) {
+  _ObjectDefineProperty(target, name, {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      const value = factory();
+      _ObjectDefineProperty(target, name, {
+        __proto__: null,
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value,
+      });
+      if (name === "stdout") stdout = value;
+      else if (name === "stderr") stderr = value;
+      else stdin = value;
+      return value;
+    },
+    set(value) {
+      _ObjectDefineProperty(target, name, {
+        __proto__: null,
+        configurable: true,
+        enumerable: true,
+        writable: true,
+        value,
+      });
+      if (name === "stdout") stdout = value;
+      else if (name === "stderr") stderr = value;
+      else stdin = value;
+    },
+  });
+}
+
+function makeStdoutWriter() {
+  if (io.stdout.isTerminal()) {
+    const { WriteStream, addSigwinchListener } = lazyInternalTty();
+    const s = new WriteStream(1);
+    s.fd = 1;
+    s._isStdio = true;
+    s.destroySoon = s.destroy;
+    s._destroy = function (err, cb) {
+      cb(err);
+      this._undestroy();
+      if (!this._writableState.emitClose) {
+        nextTick(() => this.emit("close"));
+      }
+    };
+    addSigwinchListener(s);
+    return s;
+  }
+  return lazyProcessStreams().createWritableStdioStream(io.stdout, "stdout");
+}
+
+function makeStderrWriter() {
+  if (io.stderr.isTerminal()) {
+    const { WriteStream, addSigwinchListener } = lazyInternalTty();
+    const s = new WriteStream(2);
+    s.fd = 2;
+    s._isStdio = true;
+    s.destroySoon = s.destroy;
+    s._destroy = function (err, cb) {
+      cb(err);
+      this._undestroy();
+      if (!this._writableState.emitClose) {
+        nextTick(() => this.emit("close"));
+      }
+    };
+    addSigwinchListener(s);
+    return s;
+  }
+  return lazyProcessStreams().createWritableStdioStream(io.stderr, "stderr");
+}
+
+function makeStdinReader() {
+  return lazyProcessStreams().initStdin();
+}
+
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
@@ -1517,58 +1730,11 @@ internals.__bootstrapNodeProcess = function (
 
     enableNextTick();
 
-    // Replace warmup stdout/stderr with proper streams
-    if (io.stdout.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stdout */
-      stdout = process.stdout = new TTYWriteStream(1);
-      // For supporting legacy API we put the FD here.
-      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
-      stdout.fd = 1;
-      // Match Node.js: stdio streams are indestructible.
-      // Libraries like mute-stream (@inquirer/prompts) call destroy()/end()
-      // on process.stdout between prompts. Without this, the underlying TTY
-      // handle is closed, breaking subsequent I/O.
-      // _isStdio also prevents Stream.pipe() from calling end() on stdout
-      // when a piped source stream ends.
-      // Ref: https://github.com/nodejs/node/blob/main/lib/internal/bootstrap/switches/is_main_thread.js
-      stdout._isStdio = true;
-      stdout.destroySoon = stdout.destroy;
-      stdout._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-        if (!this._writableState.emitClose) {
-          nextTick(() => this.emit("close"));
-        }
-      };
-      addSigwinchListener(stdout);
-    } else {
-      stdout = process.stdout = createWritableStdioStream(
-        io.stdout,
-        "stdout",
-      );
-    }
-
-    if (io.stderr.isTerminal()) {
-      /** https://nodejs.org/api/process.html#process_process_stderr */
-      stderr = process.stderr = new TTYWriteStream(2);
-      // For supporting legacy API we put the FD here.
-      stderr.fd = 2;
-      stderr._isStdio = true;
-      stderr.destroySoon = stderr.destroy;
-      stderr._destroy = function (err, cb) {
-        cb(err);
-        this._undestroy();
-        if (!this._writableState.emitClose) {
-          nextTick(() => this.emit("close"));
-        }
-      };
-      addSigwinchListener(stderr);
-    } else {
-      stderr = process.stderr = createWritableStdioStream(
-        io.stderr,
-        "stderr",
-      );
-    }
+    // Install accessor properties for stdout/stderr/stdin so we only
+    // construct them (and load node:stream/net/tty) on first access.
+    // Matches Node's lib/internal/bootstrap/switches/is_main_thread.js.
+    defineLazyStream(process, "stdout", makeStdoutWriter);
+    defineLazyStream(process, "stderr", makeStderrWriter);
 
     arch = arch_();
     platform = isWindows ? "win32" : Deno.build.os;
@@ -1607,11 +1773,9 @@ internals.__bootstrapNodeProcess = function (
       );
     }
 
-    // Replace stdin if it is not a terminal
-    const newStdin = initStdin();
-    if (newStdin) {
-      stdin = process.stdin = newStdin;
-    }
+    // Install accessor for stdin too. initStdin() returns null for the
+    // TTY case at warmup, but at runtime it always returns a stream.
+    defineLazyStream(process, "stdin", makeStdinReader);
 
     // In worker threads, replace certain process functions with stubs
     // that throw ERR_WORKER_UNSUPPORTED_OPERATION and have .disabled = true.
@@ -1651,22 +1815,27 @@ internals.__bootstrapNodeProcess = function (
         },
         configurable: true,
       });
+
+      // Inspector control APIs are main-thread-only in Node; matches the
+      // assertions in parallel/test-worker-unsupported-things.js.
+      delete process._debugEnd;
+      delete process._debugProcess;
     }
 
     delete internals.__bootstrapNodeProcess;
   } else {
-    // Warmup, assuming stdin/stdout/stderr are all terminals
-    stdin = process.stdin = initStdin(true);
-
-    /** https://nodejs.org/api/process.html#process_process_stdout */
-    stdout = process.stdout = createWritableStdioStream(
+    // Warmup branch: only reached if someone calls __bootstrapNodeProcess
+    // with warmup=true (currently commented out in 99_main.js). Loads
+    // stream modules eagerly via the lazy loader to mirror previous
+    // warmup behaviour if it gets re-enabled.
+    const ps = lazyProcessStreams();
+    stdin = process.stdin = ps.initStdin(true);
+    stdout = process.stdout = ps.createWritableStdioStream(
       io.stdout,
       "stdout",
       true,
     );
-
-    /** https://nodejs.org/api/process.html#process_process_stderr */
-    stderr = process.stderr = createWritableStdioStream(
+    stderr = process.stderr = ps.createWritableStdioStream(
       io.stderr,
       "stderr",
       true,

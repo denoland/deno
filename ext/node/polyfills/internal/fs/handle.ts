@@ -7,6 +7,7 @@ import { core, primordials } from "ext:core/mod.js";
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const lazyFs = core.createLazyLoader("node:fs");
 const lazyReadline = core.createLazyLoader("node:readline");
+const lazyBuffer = core.createLazyLoader("node:buffer");
 import { op_node_fs_close } from "ext:core/ops";
 import type {
   BinaryOptionsArgument,
@@ -54,14 +55,29 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const lazyProcess = core.createLazyLoader("node:process");
 
-const fchmodPromise = promisify(lazyFs().fchmod) as (
+// Promisified wrappers must NOT be built at module body: handle.ts is loaded
+// during `fs.promises` evaluation, and calling `lazyFs()` here re-enters
+// `node:fs`'s still-evaluating module body. Its `export const promises =
+// mod.promises` then re-triggers `get promises` -> `lazyInternalPromises()
+// .default` which is in TDZ. Build the wrappers on first call instead.
+let _fchmodPromise: any;
+const fchmodPromise = (
   fd: number,
   mode: string | number,
-) => Promise<void>;
-const fdatasyncPromise = promisify(lazyFs().fdatasync) as (
-  fd: number,
-) => Promise<void>;
-const fsyncPromise = promisify(lazyFs().fsync) as (fd: number) => Promise<void>;
+): Promise<void> => {
+  _fchmodPromise ??= promisify(lazyFs().fchmod);
+  return _fchmodPromise(fd, mode);
+};
+let _fdatasyncPromise: any;
+const fdatasyncPromise = (fd: number): Promise<void> => {
+  _fdatasyncPromise ??= promisify(lazyFs().fdatasync);
+  return _fdatasyncPromise(fd);
+};
+let _fsyncPromise: any;
+const fsyncPromise = (fd: number): Promise<void> => {
+  _fsyncPromise ??= promisify(lazyFs().fsync);
+  return _fsyncPromise(fd);
+};
 
 const {
   Error,
@@ -85,9 +101,22 @@ export const kRef = Symbol("kRef");
 export const kUnref = Symbol("kUnref");
 const kLocked = Symbol("kLocked");
 
-const ftruncatePromise = promisify(lazyFs().ftruncate);
-const fchownPromise = promisify(lazyFs().fchown);
-const futimesPromise = promisify(lazyFs().futimes);
+// See `fchmodPromise` above for why these are deferred.
+let _ftruncatePromise: any;
+const ftruncatePromise = (...args: any[]) => {
+  _ftruncatePromise ??= promisify(lazyFs().ftruncate);
+  return _ftruncatePromise(...new SafeArrayIterator(args));
+};
+let _fchownPromise: any;
+const fchownPromise = (...args: any[]) => {
+  _fchownPromise ??= promisify(lazyFs().fchown);
+  return _fchownPromise(...new SafeArrayIterator(args));
+};
+let _futimesPromise: any;
+const futimesPromise = (...args: any[]) => {
+  _futimesPromise ??= promisify(lazyFs().futimes);
+  return _futimesPromise(...new SafeArrayIterator(args));
+};
 
 interface WriteResult {
   bytesWritten: number;
@@ -137,15 +166,45 @@ export class FileHandle extends EventEmitter {
     length?: number,
     position?: number | null,
   ): Promise<ReadResult> {
-    return fsCall(
-      readPromise,
-      "read",
-      this,
-      bufferOrOpt,
-      offsetOrOpt,
-      length,
-      position,
-    );
+    // Normalize arguments to mirror Node's lib/internal/fs/promises.js
+    // FileHandle.read: when length/position are nullish in any of the three
+    // overload shapes, fall back to buffer-relative defaults rather than
+    // letting them reach fs.read() as `undefined`/`null` and get coerced
+    // to 0.
+    let buf: ArrayBufferView;
+    let offset: number;
+    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, bufferOrOpt)) {
+      buf = bufferOrOpt as ArrayBufferView;
+      if (offsetOrOpt == null || typeof offsetOrOpt === "object") {
+        // fileHandle.read(buffer, options)
+        const opts = (offsetOrOpt ?? {}) as {
+          offset?: number;
+          length?: number;
+          position?: number | null;
+        };
+        offset = opts.offset ?? 0;
+        length = opts.length ?? buf.byteLength - offset;
+        position = opts.position ?? null;
+      } else {
+        // fileHandle.read(buffer, offset, length, position)
+        offset = offsetOrOpt as number;
+        if (length == null) length = buf.byteLength - offset;
+        if (position == null) position = null;
+      }
+    } else {
+      // fileHandle.read(options)
+      const opts = (bufferOrOpt ?? {}) as {
+        buffer?: ArrayBufferView;
+        offset?: number;
+        length?: number;
+        position?: number | null;
+      };
+      buf = opts.buffer ?? lazyBuffer().Buffer.alloc(16384);
+      offset = opts.offset ?? 0;
+      length = opts.length ?? buf.byteLength - offset;
+      position = opts.position ?? null;
+    }
+    return fsCall(readPromise, "read", this, buf, offset, length, position);
   }
 
   truncate(len?: number): Promise<void> {
@@ -209,7 +268,10 @@ export class FileHandle extends EventEmitter {
 
   [kUnref]() {
     this[kRefs]--;
-    if (this[kRefs] > 0 || this.fd === -1) {
+    // Use #rid (the backing storage) rather than `this.fd` so user code that
+    // overrides FileHandle.prototype.fd can't perturb internal close logic.
+    // Mirrors Node's lib/internal/fs/promises.js use of `this[kFd]` here.
+    if (this[kRefs] > 0 || this.#rid === -1) {
       return;
     }
 
@@ -223,7 +285,7 @@ export class FileHandle extends EventEmitter {
   #close(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        op_node_fs_close(this.fd);
+        op_node_fs_close(this.#rid);
         this.#rid = -1;
         resolve();
       } catch (err) {
@@ -233,7 +295,7 @@ export class FileHandle extends EventEmitter {
   }
 
   close(): Promise<void> {
-    if (this.fd === -1) {
+    if (this.#rid === -1) {
       return PromiseResolve();
     }
 

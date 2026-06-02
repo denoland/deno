@@ -49,32 +49,14 @@
         "expectedFailures": [
           "RequestInit's window is not null",
           "Input URL has credentials",
-          "RequestInit's mode is navigate",
-          "RequestInit's referrer is invalid",
-          "RequestInit's mode is no-cors and method is not simple",
-          "RequestInit's cache mode is only-if-cached and mode is not same-origin",
-          "Request with cache mode: only-if-cached and fetch mode cors",
-          "Request with cache mode: only-if-cached and fetch mode no-cors",
-          "Bad referrerPolicy init parameter value",
-          "Bad mode init parameter value",
-          "Bad credentials init parameter value",
-          "Bad cache init parameter value"
+          "RequestInit's mode is no-cors and method is not simple"
         ]
       },
       "request-error.any.worker.html": {
         "expectedFailures": [
           "RequestInit's window is not null",
           "Input URL has credentials",
-          "RequestInit's mode is navigate",
-          "RequestInit's referrer is invalid",
-          "RequestInit's mode is no-cors and method is not simple",
-          "RequestInit's cache mode is only-if-cached and mode is not same-origin",
-          "Request with cache mode: only-if-cached and fetch mode cors",
-          "Request with cache mode: only-if-cached and fetch mode no-cors",
-          "Bad referrerPolicy init parameter value",
-          "Bad mode init parameter value",
-          "Bad credentials init parameter value",
-          "Bad cache init parameter value"
+          "RequestInit's mode is no-cors and method is not simple"
         ]
       },
       "request-headers.any.html": {
@@ -164,12 +146,6 @@
       "request-structure.any.html": {
         "expectedFailures": [
           "Check destination attribute",
-          "Check referrer attribute",
-          "Check referrerPolicy attribute",
-          "Check mode attribute",
-          "Check credentials attribute",
-          "Check cache attribute",
-          "Check integrity attribute",
           "Check isReloadNavigation attribute",
           "Check isHistoryNavigation attribute",
           "Check duplex attribute"
@@ -178,12 +154,6 @@
       "request-structure.any.worker.html": {
         "expectedFailures": [
           "Check destination attribute",
-          "Check referrer attribute",
-          "Check referrerPolicy attribute",
-          "Check mode attribute",
-          "Check credentials attribute",
-          "Check cache attribute",
-          "Check integrity attribute",
           "Check isReloadNavigation attribute",
           "Check isHistoryNavigation attribute",
           "Check duplex attribute"
@@ -261,8 +231,16 @@
           "fetch() with an invalid priority returns a rejected promise with a TypeError"
         ]
       },
-      "request-keepalive.any.html": false,
-      "request-keepalive.any.worker.html": false,
+      "request-keepalive.any.html": {
+        "expectedFailures": [
+          "keepalive flag with stream body"
+        ]
+      },
+      "request-keepalive.any.worker.html": {
+        "expectedFailures": [
+          "keepalive flag with stream body"
+        ]
+      },
       "destination": {
         "fetch-destination-frame.https.html": false,
         "fetch-destination-iframe.https.html": false,
@@ -275,41 +253,15 @@
         "construct-in-detached-frame.window.html": false,
         "url-parsing.html": false
       },
-      "request-clone.sub.html": {
-        "expectedFailures": [
-          "Check cloning a request"
-        ]
-      },
+      "request-clone.sub.html": true,
       "request-constructor-init-body-override.any.html": true,
       "request-constructor-init-body-override.any.worker.html": true,
       "request-init-001.sub.html": {
         "expectedFailures": [
-          "Check referrer init value of /relative/ressource and associated getter",
-          "Check referrer init value of http://web-platform.test:8000/relative/ressource?query=true#fragment and associated getter",
-          "Check referrer init value of http://web-platform.test:8000/ and associated getter",
-          "Check referrer init value of http://test.url and associated getter",
-          "Check referrer init value of about:client and associated getter",
-          "Check referrer init value of  and associated getter",
-          "Check referrerPolicy init value of  and associated getter",
-          "Check referrerPolicy init value of no-referrer and associated getter",
-          "Check referrerPolicy init value of no-referrer-when-downgrade and associated getter",
-          "Check referrerPolicy init value of origin and associated getter",
-          "Check referrerPolicy init value of origin-when-cross-origin and associated getter",
-          "Check referrerPolicy init value of unsafe-url and associated getter",
-          "Check referrerPolicy init value of same-origin and associated getter",
-          "Check referrerPolicy init value of strict-origin and associated getter",
-          "Check referrerPolicy init value of strict-origin-when-cross-origin and associated getter",
-          "Check mode init value of same-origin and associated getter",
-          "Check mode init value of no-cors and associated getter",
-          "Check mode init value of cors and associated getter",
-          "Check credentials init value of omit and associated getter",
-          "Check credentials init value of same-origin and associated getter",
-          "Check credentials init value of include and associated getter",
-          "Check integrity init value of  and associated getter",
-          "Check integrity init value of AZERTYUIOP1234567890 and associated getter"
+          "Check referrer init value of http://test.url and associated getter"
         ]
       },
-      "request-init-003.sub.html": false,
+      "request-init-003.sub.html": true,
       "request-keepalive-quota.html?include=fast": {
         "expectedFailures": [
           "A Keep-Alive fetch() with a body over the Quota Limit should reject."
@@ -1401,74 +1353,6 @@
       },
       "redirect-keepalive.https.any.html": false
     },
-    "idlharness.any.html": {
-      "expectedFailures": [
-        "Request interface: attribute destination",
-        "Request interface: attribute referrer",
-        "Request interface: attribute referrerPolicy",
-        "Request interface: attribute mode",
-        "Request interface: attribute credentials",
-        "Request interface: attribute cache",
-        "Request interface: attribute integrity",
-        "Request interface: attribute keepalive",
-        "Request interface: attribute isReloadNavigation",
-        "Request interface: attribute isHistoryNavigation",
-        "Request interface: attribute duplex",
-        "Request interface: attribute body",
-        "Request interface: attribute bodyUsed",
-        "Request interface: new Request('about:blank') must inherit property \"destination\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"referrer\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"referrerPolicy\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"mode\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"credentials\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"cache\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"integrity\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"keepalive\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"duplex\" with the proper type",
-        "Response interface: operation json(any, optional ResponseInit)",
-        "Response interface: attribute body",
-        "Response interface: attribute bodyUsed",
-        "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
-        "Window interface: operation fetch(RequestInfo, optional RequestInit)"
-      ]
-    },
-    "idlharness.any.worker.html": {
-      "expectedFailures": [
-        "Request interface: attribute destination",
-        "Request interface: attribute referrer",
-        "Request interface: attribute referrerPolicy",
-        "Request interface: attribute mode",
-        "Request interface: attribute credentials",
-        "Request interface: attribute cache",
-        "Request interface: attribute integrity",
-        "Request interface: attribute keepalive",
-        "Request interface: attribute isReloadNavigation",
-        "Request interface: attribute isHistoryNavigation",
-        "Request interface: attribute duplex",
-        "Request interface: attribute body",
-        "Request interface: attribute bodyUsed",
-        "Request interface: new Request('about:blank') must inherit property \"destination\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"referrer\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"referrerPolicy\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"mode\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"credentials\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"cache\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"integrity\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"keepalive\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"isReloadNavigation\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"isHistoryNavigation\" with the proper type",
-        "Request interface: new Request('about:blank') must inherit property \"duplex\" with the proper type",
-        "Response interface: operation json(any, optional ResponseInit)",
-        "Response interface: attribute body",
-        "Response interface: attribute bodyUsed",
-        "Response interface: calling redirect(USVString, optional unsigned short) on new Response() with too few arguments must throw TypeError",
-        "WorkerGlobalScope interface: operation fetch(RequestInfo, optional RequestInit)",
-        "WorkerGlobalScope interface: self must inherit property \"fetch(RequestInfo, optional RequestInit)\" with the proper type",
-        "WorkerGlobalScope interface: calling fetch(RequestInfo, optional RequestInit) on self with too few arguments must throw TypeError"
-      ]
-    },
     "abort": {
       "request.any.html": true,
       "request.any.worker.html": true,
@@ -2287,16 +2171,28 @@
     "no-vary-search.tentative.any.html": {
       "expectedFailures": [
         "When params is set to true, URL differs only by their parameters (other than `dispatch` and `uuid`) should not be cached as different entries.",
-        "When key-order is set , URLs should be compared in an order-insensitive way. Matched cases:"
+        "When key-order is set , URLs should be compared in an order-insensitive way. Matched cases:",
+        "When params names a specific parameter, URLs differing only in that parameter should be cached as the same entry.",
+        "When params names multiple parameters, URLs differing only in those parameters should be cached as the same entry.",
+        "When params=?1 is set explicitly (equivalent to bare params), URLs differing only in their parameters (other than `dispatch` and `uuid`) should be cached as the same entry.",
+        "When params names a parameter and key-order is set, URLs differing only in that parameter and parameter order should be cached as the same entry."
       ]
     },
     "no-vary-search.tentative.any.worker.html": {
       "expectedFailures": [
         "When params is set to true, URL differs only by their parameters (other than `dispatch` and `uuid`) should not be cached as different entries.",
-        "When key-order is set , URLs should be compared in an order-insensitive way. Matched cases:"
+        "When key-order is set , URLs should be compared in an order-insensitive way. Matched cases:",
+        "When params names a specific parameter, URLs differing only in that parameter should be cached as the same entry.",
+        "When params names multiple parameters, URLs differing only in those parameters should be cached as the same entry.",
+        "When params=?1 is set explicitly (equivalent to bare params), URLs differing only in their parameters (other than `dispatch` and `uuid`) should be cached as the same entry.",
+        "When params names a parameter and key-order is set, URLs differing only in that parameter and parameter order should be cached as the same entry."
       ]
     },
-    "pragma-no-cache-with-cache-control.html": false
+    "pragma-no-cache-with-cache-control.html": {
+      "expectedFailures": [
+        "Response with Cache-Control: max-age=2592000, immutable and Pragma: no-cache should be cached"
+      ]
+    }
   },
   "metadata": {
     "fetch-preflight.https.sub.any.html": false,
@@ -2391,8 +2287,7 @@
         "undefined: sec-fetch-mode",
         "undefined: sec-fetch-site"
       ]
-    },
-    "xslt.https.sub.html": false
+    }
   },
   "nosniff": {
     "parsing-nosniff.window.html": {
@@ -2517,7 +2412,6 @@
       "unknown-mime-type.sub.any.worker.html": true,
       "compressed-image-sniffing.sub.html": false,
       "img-mime-types-coverage.tentative.sub.html": false,
-      "script-js-unlabeled-gziped.sub.html": false,
       "script-unlabeled.sub.html": false,
       "script-utf16-without-bom-hint-charset.sub.html": false,
       "status.sub.html": false
@@ -2577,7 +2471,6 @@
     "dangling-markup": {
       "dangling-markup-mitigation-data-url.tentative.sub.html": false,
       "dangling-markup-mitigation.tentative.html": {
-        "flaky": true,
         "expectedFailures": [
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;b\">",
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&#10;b\">",
@@ -2590,13 +2483,14 @@
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&#10;&lt;b\">",
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;&#10;b\">",
           "\\n      <img id=\"dangling\" src=\"/images/green-1x1.png?img=\\n        &lt;\\n        &#10;b\\n      \">\\n    ",
+          "Fetch: /images/gre\\ten-1x1.png?img=<",
           "Fetch: /images/gre\\ren-1x1.png?img=<",
-          "Fetch: /images/gre\\nen-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\r=block",
           "Fetch: /images/green-1x1.png?<\\n=block",
           "Fetch: /images/green-1x1.png?<\\t=block",
-          "Fetch: /images/gre\\ten-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\r=block"
-        ]
+          "Fetch: /images/gre\\nen-1x1.png?img=<"
+        ],
+        "flaky": true
       },
       "dangling-markup-mitigation.tentative.https.html": false,
       "media.html": false,
@@ -2672,6 +2566,7 @@
         "expectedFailures": [
           "Consuming the body of a resource with bad zstd content with arrayBuffer() should reject",
           "Consuming the body of a resource with bad zstd content with blob() should reject",
+          "Consuming the body of a resource with bad zstd content with bytes() should reject",
           "Consuming the body of a resource with bad zstd content with json() should reject",
           "Consuming the body of a resource with bad zstd content with text() should reject"
         ]
@@ -2680,6 +2575,7 @@
         "expectedFailures": [
           "Consuming the body of a resource with bad zstd content with arrayBuffer() should reject",
           "Consuming the body of a resource with bad zstd content with blob() should reject",
+          "Consuming the body of a resource with bad zstd content with bytes() should reject",
           "Consuming the body of a resource with bad zstd content with json() should reject",
           "Consuming the body of a resource with bad zstd content with text() should reject"
         ]
@@ -2714,138 +2610,10 @@
     "style-html-correctly-labeled.sub.html": false
   },
   "fetch-later": {
-    "activate-after.tentative.https.window.html": false,
-    "basic.tentative.https.window.html": false,
-    "basic.tentative.https.worker.html": true,
-    "headers": {
-      "header-referrer-no-referrer-when-downgrade.tentative.https.html": false,
-      "header-referrer-no-referrer.tentative.https.html": false,
-      "header-referrer-origin-when-cross-origin.tentative.https.html": false,
-      "header-referrer-origin.tentative.https.html": false,
-      "header-referrer-same-origin.tentative.https.html": false,
-      "header-referrer-strict-origin-when-cross-origin.tentative.https.html": false,
-      "header-referrer-strict-origin.tentative.https.html": false,
-      "header-referrer-unsafe-url.tentative.https.html": false
-    },
-    "iframe.tentative.https.window.html": false,
-    "new-window.tentative.https.window.html": false,
-    "non-secure.window.html": true,
-    "policies": {
-      "csp-allowed.tentative.https.window.html": false,
-      "csp-blocked.tentative.https.window.html": false,
-      "csp-redirect-to-blocked.tentative.https.window.html": false
-    },
-    "send-on-deactivate-with-background-sync.tentative.https.window.html": false,
-    "send-on-deactivate.tentative.https.window.html": false,
-    "send-on-discard": {
-      "not-send-after-abort.tentative.https.window.html": false,
-      "send-multiple-with-activate-after.tentative.https.window.html": false,
-      "send-multiple.tentative.https.window.html": false
-    },
-    "permissions-policy": {
-      "deferred-fetch-allowed-by-permissions-policy-attribute-redirect.tentative.https.window.html": false,
-      "deferred-fetch-allowed-by-permissions-policy-attribute.tentative.https.window.html": false,
-      "deferred-fetch-allowed-by-permissions-policy.tentative.https.window.html": false,
-      "deferred-fetch-default-permissions-policy.tentative.https.window.html": false,
-      "deferred-fetch-supported-by-permissions-policy.tentative.window.html": false
-    },
-    "quota": {
-      "accumulated-oversized-payload.tentative.https.window.html": false,
-      "cross-origin-iframe": {
-        "accumulated-oversized-payload.tentative.https.window.html": false,
-        "empty-payload.tentative.https.window.html": false,
-        "max-payload.tentative.https.window.html": false,
-        "multiple-iframes.tentative.https.window.html": false,
-        "oversized-payload.tentative.https.window.html": false,
-        "small-payload.tentative.https.window.html": false
-      },
-      "empty-payload.tentative.https.window.html": {
-        "expectedFailures": [
-          "fetchLater() does not accept an empty POST request body of String.",
-          "fetchLater() does not accept an empty POST request body of ArrayBuffer.",
-          "fetchLater() does not accept an empty POST request body of URLSearchParams.",
-          "fetchLater() does not accept an empty POST request body of Blob.",
-          "fetchLater() does not accept an empty POST request body of File.",
-          "fetchLater() accept a GET request.",
-          "fetchLater() accept a DELETE request.",
-          "fetchLater() accept a PUT request."
-        ]
-      },
-      "max-payload.tentative.https.window.html": false,
-      "multiple-origins.tentative.https.window.html": false,
-      "oversized-payload.tentative.https.window.html": false,
-      "same-origin-iframe": {
-        "accumulated-oversized-payload.tentative.https.window.html": false,
-        "empty-payload.tentative.https.window.html": false,
-        "max-payload.tentative.https.window.html": false,
-        "multiple-iframes.tentative.https.window.html": false,
-        "oversized-payload.tentative.https.window.html": false,
-        "small-payload.tentative.https.window.html": false
-      },
-      "small-payload.tentative.https.window.html": false
-    }
+    "non-secure.window.html": true
   },
   "images": {
     "canvas-remote-read-remote-image-redirect.html": false
-  },
-  "private-network-access": {
-    "anchor.tentative.https.window.html?include=from-local": false,
-    "anchor.tentative.https.window.html?include=from-private": false,
-    "anchor.tentative.https.window.html?include=from-public": false,
-    "anchor.tentative.https.window.html?include=from-treat-as-public": false,
-    "anchor.tentative.window.html": false,
-    "fetch-from-treat-as-public.tentative.https.window.html": false,
-    "fetch.tentative.https.window.html?include=baseline": false,
-    "fetch.tentative.https.window.html?include=from-local": false,
-    "fetch.tentative.https.window.html?include=from-private": false,
-    "fetch.tentative.https.window.html?include=from-public": false,
-    "fetch.tentative.window.html": false,
-    "iframe.tentative.https.window.html?include=from-local": false,
-    "iframe.tentative.https.window.html?include=from-private": false,
-    "iframe.tentative.https.window.html?include=from-public": false,
-    "iframe.tentative.https.window.html?include=from-treat-as-public": false,
-    "iframe.tentative.https.window.html?include=grandparent": false,
-    "iframe.tentative.window.html": false,
-    "mixed-content-fetch.tentative.https.window.html": false,
-    "nested-worker.tentative.https.window.html": false,
-    "nested-worker.tentative.window.html": false,
-    "preflight-cache.https.tentative.window.html": false,
-    "redirect.tentative.https.window.html": false,
-    "service-worker-background-fetch.tentative.https.window.html": false,
-    "service-worker-fetch-document-treat-as-public.tentative.https.window.html": false,
-    "service-worker-fetch-document.tentative.https.window.html": false,
-    "service-worker-fetch.tentative.https.window.html?1-8": false,
-    "service-worker-fetch.tentative.https.window.html?9-last": false,
-    "service-worker-update.tentative.https.window.html": false,
-    "service-worker.tentative.https.window.html": false,
-    "shared-worker-blob-fetch.tentative.https.window.html": false,
-    "shared-worker-blob-fetch.tentative.window.html": false,
-    "shared-worker-fetch.tentative.https.window.html": false,
-    "shared-worker-fetch.tentative.window.html": false,
-    "shared-worker.tentative.https.window.html": false,
-    "shared-worker.tentative.window.html": false,
-    "websocket.tentative.https.window.html": false,
-    "websocket.tentative.window.html": false,
-    "window-open-existing.tentative.https.window.html?include=from-local": false,
-    "window-open-existing.tentative.https.window.html?include=from-private": false,
-    "window-open-existing.tentative.https.window.html?include=from-public": false,
-    "window-open-existing.tentative.https.window.html?include=from-treat-as-public": false,
-    "window-open-existing.tentative.window.html": false,
-    "window-open.tentative.https.window.html?include=from-local": false,
-    "window-open.tentative.https.window.html?include=from-private": false,
-    "window-open.tentative.https.window.html?include=from-public": false,
-    "window-open.tentative.https.window.html?include=from-treat-as-public": false,
-    "window-open.tentative.window.html": false,
-    "worker-blob-fetch.tentative.window.html": false,
-    "worker-fetch.tentative.https.window.html": false,
-    "worker-fetch.tentative.window.html": false,
-    "worker.tentative.https.window.html": false,
-    "worker.tentative.window.html": false,
-    "xhr-from-treat-as-public.tentative.https.window.html": false,
-    "xhr.https.tentative.window.html?include=from-local": false,
-    "xhr.https.tentative.window.html?include=from-private": false,
-    "xhr.https.tentative.window.html?include=from-public": false,
-    "xhr.tentative.window.html": false
   },
   "redirect-navigate": {
     "302-found-post.html": false,

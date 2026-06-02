@@ -24,7 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   validateBoolean,
   validateNumber,
@@ -35,7 +35,6 @@ const {
 const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const {
   dnsOrderToNumber,
-  emitInvalidHostnameWarning,
   getDefaultDnsOrder,
   getDefaultResolver,
   isFamily,
@@ -110,8 +109,13 @@ function createLookupPromise(
 ): Promise<void | LookupAddress | LookupAddress[]> {
   return new Promise((resolve, reject) => {
     if (!hostname) {
-      emitInvalidHostnameWarning(hostname);
-      resolve(all ? [] : { address: null, family: family === 6 ? 6 : 4 });
+      reject(
+        new ERR_INVALID_ARG_VALUE(
+          "hostname",
+          hostname,
+          "must be a non-empty string",
+        ),
+      );
 
       return;
     }

@@ -5,7 +5,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+import { op_get_env_no_permission_check } from "ext:core/ops";
 import * as net from "node:net";
+import httpProxy from "node:_http_proxy";
+const lazyTls = core.createLazyLoader("node:tls");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const { debuglog } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
@@ -14,7 +17,12 @@ let debug = debuglog("http", (fn) => {
   debug = fn;
 });
 const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
-const { symbols } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const {
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
+  symbols,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 const { async_id_symbol } = symbols;
 const { once } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
@@ -44,6 +52,53 @@ class ReusedHandle {
     this.handle = handle;
   }
 }
+
+const providerTypeNames = [
+  "NONE",
+  "DIRHANDLE",
+  "DNSCHANNEL",
+  "ELDHISTOGRAM",
+  "FILEHANDLE",
+  "FILEHANDLECLOSEREQ",
+  "FIXEDSIZEBLOBCOPY",
+  "FSEVENTWRAP",
+  "FSREQCALLBACK",
+  "FSREQPROMISE",
+  "GETADDRINFOREQWRAP",
+  "GETNAMEINFOREQWRAP",
+  "HEAPSNAPSHOT",
+  "HTTP2SESSION",
+  "HTTP2STREAM",
+  "HTTP2PING",
+  "HTTP2SETTINGS",
+  "HTTPINCOMINGMESSAGE",
+  "HTTPCLIENTREQUEST",
+  "JSSTREAM",
+  "JSUDPWRAP",
+  "MESSAGEPORT",
+  "PIPECONNECTWRAP",
+  "PIPESERVERWRAP",
+  "PIPEWRAP",
+  "PROCESSWRAP",
+  "PROMISE",
+  "QUERYWRAP",
+  "SHUTDOWNWRAP",
+  "SIGNALWRAP",
+  "STATWATCHER",
+  "STREAMPIPE",
+  "TCPCONNECTWRAP",
+  "TCPSERVERWRAP",
+  "TCPWRAP",
+  "TLSWRAP",
+  "TTYWRAP",
+  "UDPSENDWRAP",
+  "UDPWRAP",
+  "SIGINTWATCHDOG",
+  "WORKER",
+  "WORKERHEAPSNAPSHOT",
+  "WRITEWRAP",
+  "ZLIB",
+];
 
 function freeSocketErrorListener(err) {
   // deno-lint-ignore no-this-alias
@@ -96,6 +151,10 @@ export function Agent(options) {
   } else {
     this.maxTotalSockets = Infinity;
   }
+
+  // Initialize per-agent proxy state from `options.proxyEnv` (if any).
+  // Throws ERR_PROXY_INVALID_CONFIG on malformed URLs.
+  httpProxy.initAgentProxy(this, this.options);
 
   this.on("free", (socket, options) => {
     const name = this.getName(options);
@@ -199,7 +258,41 @@ function maybeEnableKeylog(eventName) {
 
 Agent.defaultMaxSockets = Infinity;
 
-Agent.prototype.createConnection = net.createConnection;
+// Default connection factory. When a proxy applies to the request, we
+// connect to the proxy host/port instead of the target. For HTTPS targets
+// going through an HTTP proxy, this base http.Agent still produces a TCP
+// socket to the proxy; the https.Agent override builds on top of this to
+// perform CONNECT-then-TLS tunneling.
+Agent.prototype.createConnection = function createConnection(options, cb) {
+  const proxy = options && options._proxy;
+  if (proxy && options._proxyProtocol === "http:") {
+    const connectOpts = {
+      __proto__: null,
+      ...options,
+      host: proxy.hostname,
+      hostname: proxy.hostname,
+      port: proxy.port,
+      servername: undefined,
+    };
+    // Strip target-specific fields that would confuse net.connect.
+    delete connectOpts._proxy;
+    delete connectOpts._proxyTargetHost;
+    delete connectOpts._proxyTargetPort;
+    delete connectOpts._proxyProtocol;
+    if (proxy.protocol === "https:") {
+      connectOpts.servername = proxy.hostname;
+      if (
+        connectOpts.ca === undefined &&
+        op_get_env_no_permission_check("NODE_EXTRA_CA_CERTS")
+      ) {
+        connectOpts.ca = lazyTls().default.getCACertificates("default");
+      }
+      return lazyTls().default.connect(connectOpts, cb);
+    }
+    return net.createConnection(connectOpts, cb);
+  }
+  return net.createConnection(options, cb);
+};
 
 // Get the key for a given set of request options
 Agent.prototype.getName = function getName(options = {}) {
@@ -574,9 +667,23 @@ function asyncResetHandle(socket) {
   // Guard against an uninitialized or user supplied Socket.
   const handle = socket._handle;
   if (handle && typeof handle.asyncReset === "function") {
+    const oldAsyncId = handle.getAsyncId();
+    const providerType = handle.getProviderType();
+    const reusedHandle = new ReusedHandle(providerType, handle);
+
+    if (oldAsyncId > 0) {
+      emitDestroy(oldAsyncId);
+    }
+
     // Assign the handle a new asyncId and run any destroy()/init() hooks.
-    handle.asyncReset(new ReusedHandle(handle.getProviderType(), handle));
+    handle.asyncReset(reusedHandle);
     socket[async_id_symbol] = handle.getAsyncId();
+    emitInit(
+      socket[async_id_symbol],
+      providerTypeNames[providerType] || "UNKNOWN",
+      executionAsyncId(),
+      reusedHandle,
+    );
   }
 }
 

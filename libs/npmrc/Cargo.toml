@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npmrc"
-version = "0.8.0"
+version = "0.10.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,7 +15,6 @@ path = "./lib.rs"
 [dependencies]
 log.workspace = true
 monch.workspace = true
-serde = { workspace = true, features = ["derive", "rc"] }
 sys_traits = { workspace = true }
 thiserror.workspace = true
 url.workspace = true

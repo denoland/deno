@@ -3,7 +3,7 @@
 
 // deno-lint-ignore-file prefer-primordials
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { inspect } = core.loadExtScript(
   "ext:deno_node/internal/util/inspect.mjs",
 );

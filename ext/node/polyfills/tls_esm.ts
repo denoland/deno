@@ -29,6 +29,9 @@ export const DEFAULT_MIN_VERSION = mod.DEFAULT_MIN_VERSION;
 export const CLIENT_RENEG_LIMIT = mod.CLIENT_RENEG_LIMIT;
 export const CLIENT_RENEG_WINDOW = mod.CLIENT_RENEG_WINDOW;
 
+let defaultMaxVersionOverride: string | undefined;
+let defaultMinVersionOverride: string | undefined;
+
 const defaultExport = {
   CryptoStream,
   SecurePair,
@@ -45,15 +48,32 @@ const defaultExport = {
   setDefaultCACertificates,
   DEFAULT_CIPHERS,
   DEFAULT_ECDH_CURVE,
-  DEFAULT_MAX_VERSION,
-  DEFAULT_MIN_VERSION,
   CLIENT_RENEG_LIMIT,
   CLIENT_RENEG_WINDOW,
 };
+const defaultExportWithAccessors = defaultExport as typeof defaultExport & {
+  DEFAULT_MAX_VERSION: string;
+  DEFAULT_MIN_VERSION: string;
+  rootCertificates: typeof rootCertificates;
+};
+
+ObjectDefineProperty(defaultExportWithAccessors, "DEFAULT_MAX_VERSION", {
+  __proto__: null,
+  configurable: true,
+  enumerable: true,
+  get: () => defaultMaxVersionOverride ?? mod.DEFAULT_MAX_VERSION,
+  set: (value) => defaultMaxVersionOverride = value,
+});
+ObjectDefineProperty(defaultExportWithAccessors, "DEFAULT_MIN_VERSION", {
+  __proto__: null,
+  configurable: true,
+  enumerable: true,
+  get: () => defaultMinVersionOverride ?? mod.DEFAULT_MIN_VERSION,
+  set: (value) => defaultMinVersionOverride = value,
+});
 // Make rootCertificates non-writable so `tls.rootCertificates = X` throws
 // TypeError in strict mode (matches Node.js behavior).
-// deno-lint-ignore no-explicit-any
-ObjectDefineProperty(defaultExport as any, "rootCertificates", {
+ObjectDefineProperty(defaultExportWithAccessors, "rootCertificates", {
   __proto__: null,
   configurable: false,
   enumerable: true,

@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { ERR_CRYPTO_FIPS_FORCED } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );

@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { internals } = globalThis.__bootstrap;
+const { internals } = __bootstrap;
 
 const kHandle = Symbol("kHandle");
 const kKeyObject = Symbol("kKeyObject");

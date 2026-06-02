@@ -87,20 +87,49 @@ pub struct CacheDBConfiguration {
 
 impl CacheDBConfiguration {
   fn create_combined_sql(&self) -> String {
+    // WSL-1's filesystem translation layer doesn't support WAL's
+    // shared-memory locking, which surfaces as `SQLITE_PROTOCOL` (error
+    // code 15: "Database lock protocol error") when two Deno processes
+    // open the same cache DB at once. Fall back to TRUNCATE journal mode
+    // there. See https://github.com/denoland/deno/issues/26441.
+    let journal_mode = if is_wsl1() { "TRUNCATE" } else { "WAL" };
     format!(
-      concat!(
-        "PRAGMA journal_mode=WAL;",
-        "PRAGMA synchronous=NORMAL;",
-        "PRAGMA temp_store=memory;",
-        "PRAGMA page_size=4096;",
-        "PRAGMA mmap_size=6000000;",
-        "PRAGMA optimize;",
-        "CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
-        "{}",
-      ),
-      self.table_initializer
+      "PRAGMA journal_mode={journal_mode};\
+       PRAGMA synchronous=NORMAL;\
+       PRAGMA temp_store=memory;\
+       PRAGMA page_size=4096;\
+       PRAGMA mmap_size=6000000;\
+       PRAGMA optimize;\
+       CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);\
+       {table_initializer}",
+      table_initializer = self.table_initializer
     )
   }
+}
+
+/// Returns whether the underlying `osrelease` string was produced by
+/// the WSL-1 kernel. The WSL-1 kernel string contains "Microsoft"; the
+/// WSL-2 kernel string contains both "microsoft" and "WSL2".
+#[cfg(any(target_os = "linux", test))]
+fn parse_wsl1_from_osrelease(osrelease: &str) -> bool {
+  let lower = osrelease.to_ascii_lowercase();
+  lower.contains("microsoft") && !lower.contains("wsl2")
+}
+
+#[cfg(target_os = "linux")]
+fn is_wsl1() -> bool {
+  use std::sync::OnceLock;
+  static IS_WSL1: OnceLock<bool> = OnceLock::new();
+  *IS_WSL1.get_or_init(|| {
+    std::fs::read_to_string("/proc/sys/kernel/osrelease")
+      .map(|s| parse_wsl1_from_osrelease(&s))
+      .unwrap_or(false)
+  })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_wsl1() -> bool {
+  false
 }
 
 #[derive(Debug)]
@@ -606,6 +635,32 @@ mod tests {
     assert_same_serialize_deserialize(CacheDBHash::new(u64::MAX - 1));
     assert_same_serialize_deserialize(CacheDBHash::new(u64::MIN));
     assert_same_serialize_deserialize(CacheDBHash::new(1));
+  }
+
+  #[test]
+  fn detects_wsl1_kernel() {
+    assert!(parse_wsl1_from_osrelease("4.4.0-19041-Microsoft"));
+    assert!(parse_wsl1_from_osrelease("4.4.0-19041-Microsoft\n"));
+    assert!(!parse_wsl1_from_osrelease(
+      "5.10.16.3-microsoft-standard-WSL2"
+    ));
+    assert!(!parse_wsl1_from_osrelease(
+      "5.15.146.1-microsoft-standard-WSL2+"
+    ));
+    assert!(!parse_wsl1_from_osrelease("5.15.0-91-generic"));
+    assert!(!parse_wsl1_from_osrelease(""));
+  }
+
+  #[test]
+  fn combined_sql_uses_truncate_on_wsl1_only() {
+    let sql = TEST_DB.create_combined_sql();
+    if is_wsl1() {
+      assert!(sql.contains("PRAGMA journal_mode=TRUNCATE"));
+      assert!(!sql.contains("PRAGMA journal_mode=WAL"));
+    } else {
+      assert!(sql.contains("PRAGMA journal_mode=WAL"));
+      assert!(!sql.contains("PRAGMA journal_mode=TRUNCATE"));
+    }
   }
 
   fn assert_same_serialize_deserialize(original_hash: CacheDBHash) {

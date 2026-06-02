@@ -109,6 +109,7 @@ builtin_ops! {
   ops_builtin_v8::op_unref_op,
   ops_builtin_v8::op_lazy_load_esm,
   ops_builtin_v8::op_load_ext_script,
+  ops_builtin_v8::op_set_captured_bootstrap,
   ops_builtin_v8::op_run_microtasks,
   ops_builtin_v8::op_drain_pending_rejections,
   ops_builtin_v8::op_compile_function,
@@ -538,10 +539,13 @@ async fn do_load_job<'s, 'i>(
     code,
   )
   .await?
-  .run_to_completion(|load, request, source| {
-    load
+  .run_to_completion(|load, step| match step {
+    crate::modules::recursive_load::RegisterStep::Register {
+      request,
+      source,
+    } => load
       .register_and_recurse(scope, request, source)
-      .map_err(|e| e.into_error(scope, false, false))
+      .map_err(|e| e.into_error(scope, false, false)),
   })
   .await?;
 

@@ -7,7 +7,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   op_node_in_npm_package,
   op_node_ipc_buffer_constructor,
@@ -84,6 +84,12 @@ const {
   TCP,
 } = core.loadExtScript("ext:deno_node/internal_binding/tcp_wrap.ts");
 const lazyNet = core.createLazyLoader("node:net");
+const { channel: createDiagnosticsChannel, tracingChannel } = core
+  .loadExtScript(
+    "ext:deno_node/diagnostics_channel.js",
+  );
+const childProcessChannel = createDiagnosticsChannel("child_process");
+const childProcessSpawnChannel = tracingChannel("child_process.spawn");
 const lazyDgram = core.createLazyLoader("node:dgram");
 const lazyDgramInternal = () =>
   core.loadExtScript("ext:deno_node/internal/dgram.ts");
@@ -236,6 +242,13 @@ class ChildProcess extends EventEmitter {
 
   constructor() {
     super();
+
+    // 'child_process' channel fires once per ChildProcess construction, before
+    // spawn(). cluster.fork() / cp.fork() / cp.spawn() all flow through here,
+    // so a single publish site covers every entry point.
+    if (childProcessChannel.hasSubscribers) {
+      childProcessChannel.publish({ process: this });
+    }
   }
 
   /**
@@ -266,6 +279,13 @@ class ChildProcess extends EventEmitter {
       throw new ERR_INVALID_ARG_TYPE("options.file", "string", file);
     }
 
+    // 'child_process.spawn' tracingChannel: publish start before invoking the
+    // platform spawn. #spawnInternal publishes end on success or error on
+    // synchronous spawn failures (ENOENT/EACCES/EPERM) itself, because it
+    // catches and handles the failure rather than re-throwing.
+    if (childProcessSpawnChannel.hasSubscribers) {
+      childProcessSpawnChannel.start.publish({ process: this, options });
+    }
     this.#spawnInternal(file, args || [], options);
   }
 
@@ -282,6 +302,7 @@ class ChildProcess extends EventEmitter {
       cwd,
       signal,
       windowsVerbatimArguments = false,
+      windowsHide = true,
       detached,
       envPairs,
       uid,
@@ -359,6 +380,7 @@ class ChildProcess extends EventEmitter {
         stdout: toDenoStdio(stdout),
         stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
+        windowsHide,
         uid,
         gid,
         detached,
@@ -564,6 +586,12 @@ class ChildProcess extends EventEmitter {
           nextTick(flushStdio, this);
         });
       })();
+
+      // Synchronous spawn succeeded. Publish 'child_process.spawn'.end so the
+      // tracing channel mirrors Node's "end XOR error" semantics.
+      if (childProcessSpawnChannel.hasSubscribers) {
+        childProcessSpawnChannel.end.publish({ process: this });
+      }
     } catch (err) {
       const { Readable, Writable } = lazyStream();
       let e = err;
@@ -571,8 +599,37 @@ class ChildProcess extends EventEmitter {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
         e = _createSpawnError("ENOENT", command, args.slice(1));
       } else if (e instanceof Deno.errors.PermissionDenied) {
-        // Node.js throws EPERM synchronously for uid/gid permission errors.
-        throw _createSpawnError("EPERM", command, args.slice(1));
+        // Node distinguishes two failure modes that Deno collapses into
+        // PermissionDenied:
+        //   * setuid/setgid refused by the kernel -> EPERM, thrown sync,
+        //     matching `process_handle_init` in libuv.
+        //   * execve() refused because the target isn't executable -> EACCES,
+        //     emitted asynchronously on the child's 'error' event (see Node's
+        //     test-diagnostics-channel-child-process EACCES branch).
+        // Tell them apart by whether uid/gid were requested.
+        if (uid != null || gid != null) {
+          if (childProcessSpawnChannel.hasSubscribers) {
+            const epermErr = _createSpawnError(
+              "EPERM",
+              command,
+              args.slice(1),
+            );
+            childProcessSpawnChannel.error.publish({
+              process: this,
+              error: epermErr,
+            });
+            throw epermErr;
+          }
+          throw _createSpawnError("EPERM", command, args.slice(1));
+        }
+        e = _createSpawnError("EACCES", command, args.slice(1));
+      }
+
+      // Publish 'child_process.spawn'.error for the non-rethrow cases (ENOENT
+      // and other Deno spawn failures that turn into an async 'error' event
+      // on the child). Subscribers see the synthesized Node-style error.
+      if (childProcessSpawnChannel.hasSubscribers) {
+        childProcessSpawnChannel.error.publish({ process: this, error: e });
       }
 
       // Set up stdio streams even when spawn fails (Node.js creates pipes
@@ -1180,7 +1237,7 @@ function normalizeSpawnArguments(
     env,
     envPairs,
     file,
-    windowsHide: !!options.windowsHide,
+    windowsHide: options.windowsHide !== false,
     windowsVerbatimArguments: !!windowsVerbatimArguments,
     serialization: options.serialization || "json",
   };
@@ -1321,7 +1378,7 @@ function transformDenoShellCommand(
     // Shell-quote translated args that contain metacharacters so they are
     // safe to embed in a shell command string.
     const quotedArgs = isWindows
-      ? result.deno_args.map((a) => {
+      ? result.denoArgs.map((a) => {
         // Windows cmd.exe: use double quotes for args with spaces or
         // special chars. Backslash is a path separator, not an escape.
         if (/[\s"&|<>^]/.test(a)) {
@@ -1331,7 +1388,7 @@ function transformDenoShellCommand(
         }
         return a;
       })
-      : result.deno_args.map((a) => {
+      : result.denoArgs.map((a) => {
         // POSIX shell quoting for translated args.
         const hasShellVarRef = /\$\{[^}]+\}|\$[A-Za-z_]/.test(a);
         const unsafeInDoubleQuotes = /`|\$\(|\\/.test(a);
@@ -1430,21 +1487,29 @@ function buildCommand(
 
     // Use the Rust parser to translate Node.js args to Deno args
     // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
-    const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
-    args = result.deno_args;
-    includeNpmProcessState = result.needs_npm_process_state;
-    if (result.ca_stores?.length) {
-      env.DENO_TLS_CA_STORE = result.ca_stores.join(",");
+    if (args.includes("--use-env-proxy")) {
+      env.NODE_USE_ENV_PROXY = "1";
+    } else if (args.includes("--no-use-env-proxy")) {
+      env.NODE_USE_ENV_PROXY = "0";
     }
-    if (result.use_openssl_ca) {
+    const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
+    args = result.denoArgs;
+    includeNpmProcessState = result.needsNpmProcessState;
+    if (result.caStores?.length) {
+      env.DENO_TLS_CA_STORE = result.caStores.join(",");
+    }
+    if (result.useOpensslCa) {
       env.DENO_NODE_USE_OPENSSL_CA = "1";
     } else {
       delete env.DENO_NODE_USE_OPENSSL_CA;
     }
+    if (result.traceEventCategories) {
+      env.DENO_NODE_TRACE_EVENT_CATEGORIES = result.traceEventCategories;
+    }
 
     // Update NODE_OPTIONS if needed
-    if (result.node_options.length > 0) {
-      const options = result.node_options.join(" ");
+    if (result.nodeOptions.length > 0) {
+      const options = result.nodeOptions.join(" ");
       if (env.NODE_OPTIONS) {
         env.NODE_OPTIONS += " " + options;
       } else {
@@ -1501,7 +1566,7 @@ function buildCommand(
       if (argsForDeno.length > 0) {
         try {
           const result = op_node_translate_cli_args(argsForDeno, false, true);
-          args = [...args.slice(0, denoArgIndex + 1), ...result.deno_args];
+          args = [...args.slice(0, denoArgIndex + 1), ...result.denoArgs];
         } catch {
           // If translation fails (unknown flags), leave args unchanged
         }
@@ -1589,6 +1654,7 @@ function spawnSync(
     timeout,
     killSignal,
     windowsVerbatimArguments = false,
+    windowsHide = true,
   } = options;
   let command = options.file || "";
   let args = options.args || [];
@@ -1641,6 +1707,7 @@ function spawnSync(
       clearEnv: false,
       extraStdio: extraStdioNormalized,
       windowsRawArguments: windowsVerbatimArguments,
+      windowsHide,
       needsNpmProcessState: options[kNeedsNpmProcessState] ||
         includeNpmProcessState,
       input: input_,
@@ -2018,9 +2085,120 @@ function setupChannel(
     handleQueue = null;
     if (queue) {
       for (const item of queue) {
-        target.send(item.message, item.handle, item.options, item.callback);
+        enqueueOrDispatch(item.message, item.handleInfo, item.callback);
       }
     }
+  }
+
+  // Release any handles we're still holding open when the channel goes away.
+  // A handle send that already wrote successfully keeps its local copy open
+  // until NODE_HANDLE_ACK arrives (see dispatch); queued sends haven't been
+  // written yet. Once the channel is torn down that ACK will never come, so
+  // those handles would leak -- and an `closeAfterSend` handle (e.g. a
+  // received net.Socket being forwarded back) is a live resource that keeps
+  // the event loop alive, so the process would hang instead of exiting. This
+  // is what made `test-cluster-send-deadlock` time out: the worker forwards
+  // its sockets back, then disconnects before the ACKs land.
+  function cleanupPendingHandles() {
+    const info = pendingHandleInfo;
+    pendingHandleInfo = null;
+    if (info && info.closeAfterSend) {
+      info.close();
+    }
+
+    const queue = handleQueue;
+    handleQueue = null;
+    if (queue) {
+      for (const item of queue) {
+        if (item.handleInfo && item.handleInfo.closeAfterSend) {
+          item.handleInfo.close();
+        }
+      }
+    }
+  }
+
+  // Either queue the send (if a handle is already in flight awaiting its
+  // ACK) or write it now. `handleInfo` is the already-derived IPC handle
+  // info (see target.send) or null for a plain message.
+  function enqueueOrDispatch(message, handleInfo, callback) {
+    // If a previous handle send is still waiting for its ACK, queue this
+    // one to preserve ordering. Plain messages are queued too so they
+    // don't overtake the pending handle.
+    if (handleQueue !== null) {
+      ArrayPrototypePush(handleQueue, {
+        message,
+        handleInfo,
+        callback,
+      });
+      return handleQueue.length === 1;
+    }
+    return dispatch(message, handleInfo, callback);
+  }
+
+  function dispatch(message, handleInfo, callback) {
+    if (handleInfo) {
+      // Start queueing subsequent sends until the ACK arrives.
+      handleQueue = [];
+    }
+
+    // signals whether the queue is within the limit.
+    // if false, the sender should slow down.
+    // this acts as a backpressure mechanism.
+    const queueOk = [true];
+    control.refCounted();
+    const writePromise = handleInfo
+      ? writeFn(ipc, handleInfo.message, handleInfo.rawFd, queueOk)
+      : writeFn(ipc, message, NO_RAW_FD, queueOk);
+    writePromise
+      .then(() => {
+        control.unrefCounted();
+        if (handleInfo) {
+          // Hold the handle until NODE_HANDLE_ACK arrives; closing now
+          // would drop the OFD refcount to 0 before the receiver has
+          // materialized its dup.
+          pendingHandleInfo = handleInfo;
+        }
+        if (callback) {
+          nextTick(callback, null);
+        }
+      }, (err) => {
+        control.unrefCounted();
+        if (handleInfo) {
+          // Write failed: the receiver won't ACK, so close the handle now
+          // and drain the queue to unblock any follow-up sends.
+          if (handleInfo.closeAfterSend) {
+            handleInfo.close();
+          }
+          const queue = handleQueue;
+          handleQueue = null;
+          if (queue) {
+            for (const item of queue) {
+              enqueueOrDispatch(
+                item.message,
+                item.handleInfo,
+                item.callback,
+              );
+            }
+          }
+        }
+        if (err instanceof Deno.errors.Interrupted) {
+          // Channel closed on us mid-write.
+        } else {
+          // Match Node: errors raised from a failed IPC send carry
+          // `syscall: "write"`. Tests like `test-cluster-concurrent-disconnect`
+          // assert on this when racing send() against worker disconnect.
+          const errAny = err;
+          if (errAny && typeof errAny === "object" && !errAny.syscall) {
+            errAny.syscall = "write";
+          }
+          if (typeof callback === "function") {
+            nextTick(callback, err);
+          } else {
+            nextTick(() => target.emit("error", err));
+          }
+        }
+      });
+    return queueOk[0];
   }
 
   async function readLoop() {
@@ -2072,6 +2250,9 @@ function setupChannel(
         err instanceof Deno.errors.Interrupted ||
         err instanceof Deno.errors.BadResource
       ) {
+        // Channel torn down from under us; release any handles awaiting an
+        // ACK that will now never arrive so they don't keep us alive.
+        cleanupPendingHandles();
         return;
       }
       nextTick(() => target.emit("error", err));
@@ -2147,7 +2328,6 @@ function setupChannel(
       );
     }
 
-    let handleInfo;
     // Match Node: a falsy `handle` (undefined, null) means "no handle".
     // Reject only non-falsy values that aren't a recognized handle type.
     if (handle) {
@@ -2174,85 +2354,22 @@ function setupChannel(
       return false;
     }
 
-    // If a previous handle send is still waiting for its ACK, queue this
-    // one to preserve ordering. Plain messages are queued too so they don't
-    // overtake the pending handle.
-    if (handleQueue !== null) {
-      ArrayPrototypePush(handleQueue, {
-        message,
-        handle,
-        options,
-        callback,
-      });
-      return handleQueue.length === 1;
-    }
-
+    // Derive the handle's IPC info eagerly, while the socket is still
+    // alive, *before* deciding whether this send must be queued. Deferring
+    // derivation until drain time (when a previous handle's ACK arrives)
+    // races against the socket being torn down -- e.g. cluster handing two
+    // connections to a worker that immediately closes them. By then the
+    // socket's `_handle` is null and getIpcHandleInfo would throw
+    // `notImplemented("ChildProcess.send with non-TCP net.Socket handle")`.
+    // fdForIpc() dups the fd, so the captured copy survives the original
+    // socket's destruction.
+    let handleInfo = null;
     if (handle !== undefined) {
       handleInfo = getIpcHandleInfo(handle, options);
       handleInfo.message.msg = message;
-      // Start queueing subsequent sends until the ACK arrives.
-      handleQueue = [];
     }
 
-    // signals whether the queue is within the limit.
-    // if false, the sender should slow down.
-    // this acts as a backpressure mechanism.
-    const queueOk = [true];
-    control.refCounted();
-    const writePromise = handleInfo
-      ? writeFn(ipc, handleInfo.message, handleInfo.rawFd, queueOk)
-      : writeFn(ipc, message, NO_RAW_FD, queueOk);
-    writePromise
-      .then(() => {
-        control.unrefCounted();
-        if (handleInfo) {
-          // Hold the handle until NODE_HANDLE_ACK arrives; closing now
-          // would drop the OFD refcount to 0 before the receiver has
-          // materialized its dup.
-          pendingHandleInfo = handleInfo;
-        }
-        if (callback) {
-          nextTick(callback, null);
-        }
-      }, (err) => {
-        control.unrefCounted();
-        if (handleInfo) {
-          // Write failed: the receiver won't ACK, so close the handle now
-          // and drain the queue to unblock any follow-up sends.
-          if (handleInfo.closeAfterSend) {
-            handleInfo.close();
-          }
-          const queue = handleQueue;
-          handleQueue = null;
-          if (queue) {
-            for (const item of queue) {
-              target.send(
-                item.message,
-                item.handle,
-                item.options,
-                item.callback,
-              );
-            }
-          }
-        }
-        if (err instanceof Deno.errors.Interrupted) {
-          // Channel closed on us mid-write.
-        } else {
-          // Match Node: errors raised from a failed IPC send carry
-          // `syscall: "write"`. Tests like `test-cluster-concurrent-disconnect`
-          // assert on this when racing send() against worker disconnect.
-          const errAny = err;
-          if (errAny && typeof errAny === "object" && !errAny.syscall) {
-            errAny.syscall = "write";
-          }
-          if (typeof callback === "function") {
-            nextTick(callback, err);
-          } else {
-            nextTick(() => target.emit("error", err));
-          }
-        }
-      });
-    return queueOk[0];
+    return enqueueOrDispatch(message, handleInfo, callback);
   };
 
   target.connected = true;
@@ -2264,6 +2381,7 @@ function setupChannel(
 
     target.connected = false;
     target[kCanDisconnect] = false;
+    cleanupPendingHandles();
     control[kControlDisconnect]();
     nextTick(() => {
       target.channel = null;

@@ -34,6 +34,11 @@
       "output": "message_port_unref.out",
       "exitCode": 0
     },
+    "broadcast_channel": {
+      "args": "run --quiet --allow-read --unstable-broadcast-channel broadcast_channel.mjs",
+      "output": "hello from worker\n",
+      "exitCode": 0
+    },
     "parent_port_unref": {
       "args": "run --allow-env --allow-read message_port_unref.mjs",
       "envs": {

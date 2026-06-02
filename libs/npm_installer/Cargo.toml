@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npm_installer"
-version = "0.42.0"
+version = "0.44.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,7 +20,6 @@ async-trait.workspace = true
 bincode.workspace = true
 boxed_error.workspace = true
 capacity_builder.workspace = true
-chrono.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
 deno_graph.workspace = true
@@ -33,7 +32,6 @@ deno_resolver = { workspace = true, features = ["graph", "sync"] }
 deno_semver.workspace = true
 deno_terminal.workspace = true
 deno_unsync.workspace = true
-dyn-clone.workspace = true
 futures.workspace = true
 lazy-regex.workspace = true
 log.workspace = true
@@ -57,7 +55,7 @@ deno_unsync = { workspace = true, features = ["tokio"] }
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation"] }
 
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["memory", "real", "serde_json"] }

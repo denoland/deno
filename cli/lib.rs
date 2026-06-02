@@ -61,6 +61,8 @@ use util::fs::canonicalize_path;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
+const UNSUPPORTED_DIR_IMPORT: &str =
+  "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import";
 
 use self::util::draw_thread::DrawThread;
 use self::util::env::resolve_cwd;
@@ -216,6 +218,9 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
+    }),
+    DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
+      tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
@@ -533,6 +538,7 @@ async fn run_subcommand(
 fn should_fallback_on_run_error(script_err: &str) -> bool {
   if script_err.starts_with(MODULE_NOT_FOUND)
     || script_err.starts_with(UNSUPPORTED_SCHEME)
+    || script_err.starts_with(UNSUPPORTED_DIR_IMPORT)
   {
     return true;
   }
@@ -551,6 +557,15 @@ fn setup_panic_hook() {
   //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    // Broken-pipe panics from `println!`/`eprintln!` (e.g. `deno | cls` on
+    // Windows, where the reader closes the pipe before we finish writing) are
+    // not bugs in Deno — they're a normal consequence of the downstream
+    // process exiting. Exit silently rather than emitting the bug-report
+    // banner. https://github.com/denoland/deno/issues/16308
+    if is_broken_pipe_print_panic(panic_info) {
+      deno_runtime::exit(1);
+    }
+
     eprintln!("\n============================================================");
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
@@ -595,6 +610,32 @@ fn setup_panic_hook() {
   }
 
   deno_core::v8::V8::set_fatal_error_handler(error_handler);
+}
+
+/// Returns `true` if `panic_info` is a panic from `std`'s print macros caused
+/// by the downstream reader of stdout/stderr closing the pipe.
+///
+/// `println!`/`print!`/`eprintln!`/`eprint!` panic with the literal payload
+/// `"failed printing to {stdout,stderr}: <io error>"` when the underlying
+/// write fails. EPIPE (Unix, 32), ERROR_BROKEN_PIPE (Windows, 109), and
+/// ERROR_NO_DATA (Windows, 232) all indicate the receiver dropped the pipe.
+fn is_broken_pipe_print_panic(panic_info: &std::panic::PanicHookInfo) -> bool {
+  let payload = panic_info.payload();
+  let msg: &str = if let Some(s) = payload.downcast_ref::<String>() {
+    s.as_str()
+  } else if let Some(&s) = payload.downcast_ref::<&'static str>() {
+    s
+  } else {
+    return false;
+  };
+  if !msg.starts_with("failed printing to stdout:")
+    && !msg.starts_with("failed printing to stderr:")
+  {
+    return false;
+  }
+  msg.contains("(os error 32)")
+    || msg.contains("(os error 109)")
+    || msg.contains("(os error 232)")
 }
 
 fn exit_with_message(message: &str, code: i32) -> ! {

@@ -9,6 +9,7 @@ use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::task::Context;
 use std::task::Poll;
@@ -18,6 +19,7 @@ use std::task::ready;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::futures::task::AtomicWaker;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use http::request::Parts;
@@ -167,6 +169,7 @@ pub struct ServerCallback {
   isolate_ptr: v8::UnsafeRawIsolatePtr,
   context: v8::Global<v8::Context>,
   callback: v8::Global<v8::Function>,
+  runtime_waker: Arc<AtomicWaker>,
 }
 
 impl ServerCallback {
@@ -174,6 +177,7 @@ impl ServerCallback {
     scope: &mut v8::PinScope<'_, '_>,
     isolate: &mut v8::Isolate,
     callback: v8::Global<v8::Function>,
+    runtime_waker: Arc<AtomicWaker>,
   ) -> Self {
     let ctx = scope.get_current_context();
     let context = v8::Global::new(scope, ctx);
@@ -183,6 +187,7 @@ impl ServerCallback {
       isolate_ptr,
       context,
       callback,
+      runtime_waker,
     }
   }
 
@@ -231,6 +236,12 @@ impl ServerCallback {
       // to the first real async-op boundary in user code -- matching
       // how Bun's onRequest invokes its handler.
       pin_scope.perform_microtask_checkpoint();
+
+      // Request arrival is handled by a standalone hyper task, not by
+      // an op future owned by JsRuntime. If the handler reached an
+      // async boundary above, the full event loop must run at least
+      // once to drive timers, ops, and uv-compatible Node I/O.
+      self.runtime_waker.wake();
     }
   }
 }
@@ -291,7 +302,7 @@ pub(crate) async fn handle_request<F>(
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   dispatch: F,
   legacy_abort: bool,
-) -> Result<Response, hyper_v014::Error>
+) -> Result<Response, hyper::Error>
 where
   F: FnOnce(Rc<HttpRecord>),
 {

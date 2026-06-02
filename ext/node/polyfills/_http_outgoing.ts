@@ -45,8 +45,13 @@ const {
   ERR_STREAM_DESTROYED,
   ERR_STREAM_NULL_VALUES,
   ERR_STREAM_WRITE_AFTER_END,
+  errnoException,
   hideStackFrames,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  kLastWriteWasAsync,
+  streamBaseState,
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -438,6 +443,10 @@ Object.defineProperties(
           return this;
         }
 
+        if (tryDirectEnd(this, chunk, encoding, callback)) {
+          return this;
+        }
+
         if (this.socket) {
           this.socket.cork();
         }
@@ -451,6 +460,8 @@ Object.defineProperties(
             callback(new Error("end already called"));
           }
         }
+        return this;
+      } else if (tryDirectEmptyEnd(this, callback)) {
         return this;
       } else if (!this._header) {
         if (this.socket) {
@@ -1198,6 +1209,241 @@ function write_(
 
 function connectionCorkNT(conn: any) {
   conn.uncork();
+}
+
+function tryDirectEnd(
+  msg: any,
+  chunk: any,
+  encoding: string | null,
+  callback: any,
+) {
+  if (
+    typeof chunk !== "string" ||
+    msg.req === undefined ||
+    msg.strictContentLength ||
+    msg._header !== null ||
+    msg.outputData.length !== 0 ||
+    msg[kChunkedLength] !== 0 ||
+    msg._bodyWriter !== null ||
+    !msg._hasBody ||
+    msg._trailer !== "" ||
+    msg._removedContLen ||
+    msg._removedTE ||
+    msg.chunkedEncoding ||
+    msg.statusCode === 204 ||
+    msg.statusCode === 304
+  ) {
+    return false;
+  }
+
+  const normalizedEncoding = normalizeDirectStringEncoding(encoding);
+  if (normalizedEncoding === null) {
+    return false;
+  }
+
+  const headers = msg[kOutHeaders];
+  if (
+    headers !== null &&
+    (headers["transfer-encoding"] !== undefined ||
+      headers.trailer !== undefined)
+  ) {
+    return false;
+  }
+
+  const socket = msg.socket;
+  const writableState = socket?._writableState;
+  if (
+    socket == null ||
+    socket.destroyed ||
+    !socket.writable ||
+    socket.connecting ||
+    socket._httpMessage !== msg ||
+    socket._handle?.isStreamBase !== true ||
+    typeof socket._handle.writeUtf8String !== "function" ||
+    (normalizedEncoding === "latin1" &&
+      typeof socket._handle.writeLatin1String !== "function") ||
+    writableState === undefined ||
+    writableState.corked !== 0 ||
+    writableState.length !== 0 ||
+    writableState.needDrain
+  ) {
+    return false;
+  }
+
+  const len = Buffer.byteLength(chunk, normalizedEncoding);
+  msg._contentLength = len;
+  msg._implicitHeader();
+
+  // The normal write fallback is _header-aware if header generation caused a
+  // guard to trip.
+  if (!msg._hasBody || msg.chunkedEncoding || msg._header === null) {
+    return false;
+  }
+
+  if (typeof callback === "function") {
+    msg.once("finish", callback);
+  }
+
+  const data = msg._header + chunk;
+  const finish = onFinish.bind(undefined, msg);
+  const result = writeDirectString(socket, data, normalizedEncoding, finish);
+
+  msg._headerSent = true;
+  msg.finished = true;
+
+  if (
+    msg.outputData.length === 0 &&
+    socket._httpMessage === msg
+  ) {
+    msg._finish();
+  }
+
+  if (result === 0) {
+    (globalThis as any).process.nextTick(finish);
+  } else if (result < 0) {
+    socket.destroy(errnoException(result, "write"));
+  }
+
+  return true;
+}
+
+function tryDirectEmptyEnd(
+  msg: any,
+  callback: any,
+) {
+  if (
+    msg.req === undefined ||
+    msg.strictContentLength ||
+    msg._headerSent ||
+    msg.outputData.length !== 0 ||
+    msg[kChunkedLength] !== 0 ||
+    msg._bodyWriter !== null ||
+    !msg._hasBody ||
+    msg._trailer !== "" ||
+    msg._removedContLen ||
+    msg._removedTE ||
+    msg.chunkedEncoding ||
+    msg.statusCode === 204 ||
+    msg.statusCode === 304
+  ) {
+    return false;
+  }
+
+  const headers = msg[kOutHeaders];
+  if (
+    headers !== null &&
+    (headers["transfer-encoding"] !== undefined ||
+      headers.trailer !== undefined)
+  ) {
+    return false;
+  }
+
+  const socket = msg.socket;
+  const writableState = socket?._writableState;
+  if (
+    socket == null ||
+    socket.destroyed ||
+    !socket.writable ||
+    socket.connecting ||
+    socket._httpMessage !== msg ||
+    socket._handle?.isStreamBase !== true ||
+    typeof socket._handle.writeLatin1String !== "function" ||
+    writableState === undefined ||
+    writableState.corked !== 0 ||
+    writableState.length !== 0 ||
+    writableState.needDrain
+  ) {
+    return false;
+  }
+
+  if (msg._header === null) {
+    msg._contentLength = 0;
+    msg._implicitHeader();
+  }
+
+  if (!msg._hasBody || msg.chunkedEncoding || msg._header === null) {
+    return false;
+  }
+
+  if (typeof callback === "function") {
+    msg.once("finish", callback);
+  }
+
+  const finish = onFinish.bind(undefined, msg);
+  const result = writeDirectString(socket, msg._header, "latin1", finish);
+
+  msg._headerSent = true;
+  msg.finished = true;
+
+  if (
+    msg.outputData.length === 0 &&
+    socket._httpMessage === msg
+  ) {
+    msg._finish();
+  }
+
+  if (result === 0) {
+    (globalThis as any).process.nextTick(finish);
+  } else if (result < 0) {
+    socket.destroy(errnoException(result, "write"));
+  }
+
+  return true;
+}
+
+function normalizeDirectStringEncoding(encoding: string | null) {
+  if (encoding === null || encoding === undefined) {
+    return "utf8";
+  }
+
+  switch (String(encoding).toLowerCase()) {
+    case "utf8":
+    case "utf-8":
+      return "utf8";
+    case "latin1":
+    case "binary":
+      return "latin1";
+    default:
+      return null;
+  }
+}
+
+function writeDirectString(
+  socket: any,
+  data: string,
+  encoding: string,
+  finish: () => void,
+) {
+  const handle = socket._handle;
+  // This terminal response write bypasses stream_base_commons completion
+  // bookkeeping; the caller finishes the ServerResponse directly.
+  socket._unrefTimer?.();
+
+  const req = {
+    oncomplete(status: number) {
+      if (status < 0) {
+        socket.destroy(errnoException(status, "write"));
+        return;
+      }
+      finish();
+    },
+  };
+
+  let err;
+  switch (encoding) {
+    case "latin1":
+      err = handle.writeLatin1String(req, data);
+      break;
+    default:
+      err = handle.writeUtf8String(req, data);
+      break;
+  }
+
+  if (err !== 0) {
+    return err;
+  }
+
+  return streamBaseState[kLastWriteWasAsync] ? 1 : 0;
 }
 
 function onFinish(outmsg: any) {

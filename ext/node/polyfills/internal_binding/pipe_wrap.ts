@@ -32,7 +32,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_node_create_pipe, PipeWrap } = core.ops;
 const { AsyncWrap, providerType } = core.loadExtScript(
   "ext:deno_node/internal_binding/async_wrap.ts",

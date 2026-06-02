@@ -134,3 +134,48 @@ Deno.test("[node/dns] lookup accepts string family values", async () => {
   const ipv6Result = await lookupPromise("localhost", { family: "IPv6" });
   assertEquals(ipv6Result.family, 6);
 });
+
+// Regression test for https://github.com/denoland/deno/issues/25927
+// `dns.lookup` must consult the operating system resolver (which reads the
+// hosts file, e.g. /etc/hosts) rather than querying DNS servers directly.
+// `localhost` is present in the hosts file on every supported platform and is
+// not resolvable through public DNS, so it exercises that path.
+Deno.test("[node/dns] lookup uses the system resolver / hosts file", async () => {
+  const { address, family } = await new Promise<
+    { address: string; family: number }
+  >((resolve, reject) => {
+    dns.lookup("localhost", (err, address, family) => {
+      if (err) reject(err);
+      else resolve({ address, family });
+    });
+  });
+  assert(
+    address === "127.0.0.1" || address === "::1",
+    `unexpected address for localhost: ${address}`,
+  );
+  assert(family === 4 || family === 6, `unexpected family: ${family}`);
+
+  const all = await lookupPromise("localhost", { all: true });
+  assert(Array.isArray(all) && all.length > 0, "expected at least one address");
+  assert(
+    all.every(({ address }) => address === "127.0.0.1" || address === "::1"),
+    `unexpected addresses for localhost: ${JSON.stringify(all)}`,
+  );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/25927
+// A failed `dns.lookup` must report the real libuv error code and errno
+// (ENOTFOUND / -3008) like Node.js, instead of flattening every failure to
+// EAI_NODATA (-3007).
+Deno.test("[node/dns] lookup of a missing host reports ENOTFOUND", async () => {
+  const err = await new Promise<ErrnoException>((resolve) => {
+    dns.lookup("nonexistent-host.invalid", (err) => {
+      resolve(err as unknown as ErrnoException);
+    });
+  });
+  assert(err, "expected an error for an unresolvable host");
+  assertEquals(err.code, "ENOTFOUND");
+  assertEquals(err.errno, -3008);
+  assertEquals(err.syscall, "getaddrinfo");
+  assertEquals(err.hostname, "nonexistent-host.invalid");
+});

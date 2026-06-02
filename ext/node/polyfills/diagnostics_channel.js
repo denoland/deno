@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials ban-untagged-todo
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { ERR_INVALID_ARG_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -18,6 +18,8 @@ const {
   ArrayPrototypeAt,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypePushApply,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   ObjectDefineProperty,
   ObjectGetPrototypeOf,
@@ -37,7 +39,12 @@ const { WeakReference } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 // Only GC can be used as a valid time to clean up the channels map.
 class WeakRefMap extends SafeMap {
   #finalizers = new SafeFinalizationRegistry((key) => {
-    this.delete(key);
+    // Finalization can run after a new Channel for the same key has already
+    // replaced the previous WeakRef (test-diagnostics-channel-gc-race-
+    // condition exercises this race). Only drop the entry if the live
+    // WeakRef is empty; otherwise the new Channel would be orphaned and
+    // `channel(name)` would hand out a fresh one, breaking identity.
+    if (!this.has(key)) this.delete(key);
   });
 
   set(key, value) {
@@ -47,6 +54,10 @@ class WeakRefMap extends SafeMap {
 
   get(key) {
     return super.get(key)?.get();
+  }
+
+  has(key) {
+    return !!this.get(key);
   }
 
   incRef(key) {
@@ -99,6 +110,10 @@ function wrapStoreRun(store, data, next, transform = defaultTransform) {
 class ActiveChannel {
   subscribe(subscription) {
     validateFunction(subscription, "subscription");
+    // Replace the subscriber array with a copy so any in-flight publish that
+    // captured the previous reference keeps iterating over the snapshot
+    // it started with.
+    this._subscribers = ArrayPrototypeSlice(this._subscribers);
     ArrayPrototypePush(this._subscribers, subscription);
     channels.incRef(this.name);
   }
@@ -107,7 +122,14 @@ class ActiveChannel {
     const index = ArrayPrototypeIndexOf(this._subscribers, subscription);
     if (index === -1) return false;
 
-    ArrayPrototypeSplice(this._subscribers, index, 1);
+    // Build a new array via slice + pushApply so a concurrent publish keeps
+    // iterating over its original snapshot - matches Node and lets
+    // unsubscribe-during-publish still deliver to the remaining subscribers
+    // in that publish call.
+    const before = ArrayPrototypeSlice(this._subscribers, 0, index);
+    const after = ArrayPrototypeSlice(this._subscribers, index + 1);
+    this._subscribers = before;
+    ArrayPrototypePushApply(this._subscribers, after);
 
     channels.decRef(this.name);
     maybeMarkInactive(this);
@@ -139,9 +161,13 @@ class ActiveChannel {
   }
 
   publish(data) {
-    for (let i = 0; i < (this._subscribers?.length || 0); i++) {
+    // Capture the subscriber array up front so that subscribe/unsubscribe
+    // calls from inside a handler (which replace `this._subscribers` with a
+    // new array) don't shift or shrink the array we're walking.
+    const subscribers = this._subscribers;
+    for (let i = 0; i < (subscribers?.length || 0); i++) {
       try {
-        const onMessage = this._subscribers[i];
+        const onMessage = subscribers[i];
         onMessage(data, this.name);
       } catch (err) {
         nextTick(() => {
@@ -270,7 +296,7 @@ function tracingChannelFrom(nameOrChannels, name) {
   throw new ERR_INVALID_ARG_TYPE("nameOrChannels", [
     "string",
     "object",
-    "Channel",
+    "TracingChannel",
   ], nameOrChannels);
 }
 

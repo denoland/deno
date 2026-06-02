@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.278.0"
+version = "0.280.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,8 +20,6 @@ bytes.workspace = true
 cssparser.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
-deno_features.workspace = true
-deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true

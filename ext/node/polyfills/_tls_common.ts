@@ -5,19 +5,24 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
+  ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
   ERR_INVALID_ARG_TYPE,
+  ERR_TLS_INVALID_PROTOCOL_METHOD,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_PROTOCOL_VERSION_CONFLICT,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
 const { isArrayBufferView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const { op_node_validate_crl, op_node_validate_pfx } = core.ops;
+const { op_node_validate_crl, op_node_load_pfx } = core.ops;
 const { createPrivateKey } = core.loadExtScript(
   "ext:deno_node/internal/crypto/keys.ts",
 );
@@ -27,14 +32,37 @@ const { createPrivateKey } = core.loadExtScript(
 // "AECDH-NULL-SHA", "@SECLEVEL=2". Meta-keywords like "ALL", "HIGH",
 // "DEFAULT" also match. We reject strings where no colon-separated entry
 // looks like a valid cipher name, which catches typos like "no-such-cipher".
-const CIPHER_NAME_RE = /^[!+\-@]?[A-Z0-9][A-Z0-9_=\-]*$/;
+const CIPHER_NAME_RE = /^[!+\-@]?[A-Z0-9][A-Z0-9_=\-]*(?:@[A-Z0-9_=\-]+)?$/;
+const CIPHER_META_NAMES = new Set([
+  "ALL",
+  "COMPLEMENTOFALL",
+  "COMPLEMENTOFDEFAULT",
+  "DEFAULT",
+  "FIPS",
+  "HIGH",
+  "LOW",
+  "MEDIUM",
+  "SUITEB128",
+  "SUITEB128ONLY",
+  "SUITEB192",
+]);
 
 function validateCipherList(ciphers: string): void {
   const entries = ciphers.split(":");
   let hasValidEntry = false;
   for (const entry of entries) {
     if (entry === "") continue;
-    if (CIPHER_NAME_RE.test(entry)) {
+    if (!CIPHER_NAME_RE.test(entry)) {
+      continue;
+    }
+    const normalized = entry.replace(/^[!+\-]/, "");
+    const name = normalized.split("@", 1)[0];
+    if (
+      normalized.startsWith("@SECLEVEL=") ||
+      CIPHER_META_NAMES.has(name) ||
+      name.startsWith("TLS_") ||
+      name.includes("-")
+    ) {
       hasValidEntry = true;
       break;
     }
@@ -214,23 +242,37 @@ function normalizeCertValue(
 function getProtocolRange(
   options: any,
 ): { minVersion: string; maxVersion: string } {
-  let minVersion = "TLSv1.2"; // Default per Node.js
-  let maxVersion = "TLSv1.3";
+  let minVersion = getDefaultMinVersion();
+  let maxVersion = getDefaultMaxVersion();
 
   if (options.secureProtocol) {
-    const range = kProtocolMap[options.secureProtocol];
-    if (!range) {
-      throw new ERR_TLS_INVALID_PROTOCOL_VERSION(
-        options.secureProtocol,
-        "secureProtocol",
-      );
-    }
-
-    // If secureProtocol is set, minVersion/maxVersion must not also be set
+    // If secureProtocol is set, minVersion/maxVersion must not also be set.
+    // Node raises this conflict before validating the protocol method string.
     if (options.minVersion || options.maxVersion) {
       throw new ERR_TLS_PROTOCOL_VERSION_CONFLICT(
         options.minVersion || options.maxVersion,
         "secureProtocol",
+      );
+    }
+
+    const range = kProtocolMap[options.secureProtocol];
+    if (!range) {
+      if (
+        options.secureProtocol === "SSLv2_method" ||
+        options.secureProtocol === "SSLv2_client_method" ||
+        options.secureProtocol === "SSLv2_server_method"
+      ) {
+        throw new ERR_TLS_INVALID_PROTOCOL_METHOD("SSLv2 methods disabled");
+      }
+      if (
+        options.secureProtocol === "SSLv3_method" ||
+        options.secureProtocol === "SSLv3_client_method" ||
+        options.secureProtocol === "SSLv3_server_method"
+      ) {
+        throw new ERR_TLS_INVALID_PROTOCOL_METHOD("SSLv3 methods disabled");
+      }
+      throw new ERR_TLS_INVALID_PROTOCOL_METHOD(
+        `Unknown method: ${options.secureProtocol}`,
       );
     }
 
@@ -257,6 +299,20 @@ function getProtocolRange(
   }
 
   return { minVersion, maxVersion };
+}
+
+function getDefaultMinVersion(): string {
+  if (getOptionValue("--tls-min-v1.0")) return "TLSv1";
+  if (getOptionValue("--tls-min-v1.1")) return "TLSv1.1";
+  if (getOptionValue("--tls-min-v1.2")) return "TLSv1.2";
+  if (getOptionValue("--tls-min-v1.3")) return "TLSv1.3";
+  return "TLSv1.2";
+}
+
+function getDefaultMaxVersion(): string {
+  if (getOptionValue("--tls-max-v1.3")) return "TLSv1.3";
+  if (getOptionValue("--tls-max-v1.2")) return "TLSv1.2";
+  return "TLSv1.3";
 }
 
 function isValidKeyCertValue(val: any): boolean {
@@ -309,11 +365,77 @@ function toUint8Array(val: any): Uint8Array {
   return new TextEncoder().encode(String(val));
 }
 
+// Node accepts `cert` as <string>|<Buffer>|<Array<string|Buffer>>. Multiple PEM
+// blocks can be concatenated in a single string, so flatten array forms into
+// one PEM-encoded string for the rustls path. Anything that can't be coerced
+// to a PEM string is skipped.
+function normalizeCertPem(val: any): string | undefined {
+  if (val == null) return undefined;
+  if (globalThis.Array.isArray(val)) {
+    const parts: string[] = [];
+    for (const item of val) {
+      if (item == null) continue;
+      const s = toStringOrUndefined(item);
+      if (s !== undefined && s !== "") parts.push(s);
+    }
+    if (parts.length === 0) return undefined;
+    return parts.join("\n");
+  }
+  return toStringOrUndefined(val);
+}
+
+// Node accepts `key` as <string>|<Buffer>|<Array<string|Buffer|Object>> where
+// the object form is `{ pem, passphrase? }`. rustls_pemfile cannot read
+// encrypted PKCS#1/PKCS#8 blocks, so decrypt any passphrase-protected entries
+// via `createPrivateKey` and re-export as unencrypted PKCS#8 PEM before
+// concatenating.
+function normalizeKeyPem(
+  val: any,
+  defaultPassphrase: any,
+): string | undefined {
+  if (val == null) return undefined;
+  const items = globalThis.Array.isArray(val) ? val : [val];
+  const parts: string[] = [];
+  for (const item of items) {
+    if (item == null) continue;
+    let pem: string | undefined;
+    let passphrase = defaultPassphrase;
+    if (
+      typeof item === "object" && !isArrayBufferView(item) &&
+      !(item instanceof globalThis.ArrayBuffer)
+    ) {
+      pem = toStringOrUndefined((item as any).pem ?? (item as any).key);
+      if ((item as any).passphrase != null) {
+        passphrase = (item as any).passphrase;
+      }
+    } else {
+      pem = toStringOrUndefined(item);
+    }
+    if (pem === undefined || pem === "") continue;
+    if (passphrase != null) {
+      try {
+        const keyObject = createPrivateKey({
+          key: pem,
+          passphrase: String(passphrase),
+        });
+        pem = keyObject.export({ format: "pem", type: "pkcs8" }) as string;
+      } catch {
+        // Fall through with the original PEM; the TLS layer will surface a
+        // proper error if it really is unreadable.
+      }
+    }
+    parts.push(pem);
+  }
+  if (parts.length === 0) return undefined;
+  return parts.join("\n");
+}
+
 const secureContextBrand = new WeakSet<object>();
 
 class SecureContext {
   context: {
     ca?: string | string[];
+    useDefaultCA?: boolean;
     cert?: string;
     key?: string;
     minVersion: string;
@@ -360,6 +482,12 @@ class SecureContext {
         "options.privateKeyIdentifier",
       );
     }
+    if (
+      options.privateKeyEngine != null &&
+      options.privateKeyIdentifier != null
+    ) {
+      throw new ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED();
+    }
     if (options.ecdhCurve != null) {
       validateString(options.ecdhCurve, "options.ecdhCurve");
     }
@@ -368,13 +496,51 @@ class SecureContext {
     validateKeyCertOption(options.key, "options.key", true);
     validateKeyCertOption(options.ca, "options.ca", false);
 
-    // Validate PFX / PKCS#12 data.
+    // Load PFX / PKCS#12 data: extract the cert + private key so they can
+    // be used by the underlying TLS implementation. Any additional certs
+    // present in the PFX are merged into `ca`. Caller-supplied `cert`/`key`
+    // (and `ca`) take precedence, matching Node, which loads PFX first and
+    // then layers explicit cert/key on top.
+    //
+    // Node accepts both a single <string>|<Buffer> and an
+    // <Array<string|Buffer|{ buf, passphrase? }>>; an empty array (which
+    // playwright passes when no PFX is configured) must be a no-op rather
+    // than feeding an empty buffer to the parser.
+    let pfxCert: string | undefined;
+    let pfxKey: string | undefined;
+    let pfxCa: string[] | undefined;
     if (options.pfx != null) {
-      const pfxData = toUint8Array(options.pfx);
-      const pfxPassphrase = options.passphrase != null
-        ? String(options.passphrase)
-        : null;
-      op_node_validate_pfx(pfxData, pfxPassphrase);
+      const pfxItems = globalThis.Array.isArray(options.pfx)
+        ? options.pfx
+        : [options.pfx];
+      for (const item of pfxItems) {
+        if (item == null) continue;
+        let buf: any = item;
+        let passphrase: any = options.passphrase;
+        if (
+          typeof item === "object" && !isArrayBufferView(item) &&
+          !(item instanceof globalThis.ArrayBuffer) &&
+          ((item as any).buf !== undefined ||
+            (item as any).passphrase !== undefined)
+        ) {
+          buf = (item as any).buf;
+          if ((item as any).passphrase != null) {
+            passphrase = (item as any).passphrase;
+          }
+        }
+        if (buf == null) continue;
+        const pfxData = toUint8Array(buf);
+        const pfxPassphrase = passphrase != null ? String(passphrase) : null;
+        const loaded = op_node_load_pfx(pfxData, pfxPassphrase);
+        if (pfxCert === undefined) {
+          pfxCert = loaded.cert;
+          pfxKey = loaded.key;
+        }
+        if (loaded.ca?.length) {
+          if (pfxCa === undefined) pfxCa = [];
+          pfxCa.push(...loaded.ca);
+        }
+      }
     }
 
     // Validate CRL data.
@@ -395,10 +561,13 @@ class SecureContext {
 
     const { minVersion, maxVersion } = getProtocolRange(options);
 
+    const effectiveCa = options.ca != null ? options.ca : pfxCa;
+    const useDefaultCA = !effectiveCa;
     this.context = {
-      ca: normalizeCertValue(options.ca),
-      cert: toStringOrUndefined(options.cert),
-      key: toStringOrUndefined(options.key),
+      ca: useDefaultCA ? undefined : normalizeCertValue(effectiveCa),
+      useDefaultCA,
+      cert: normalizeCertPem(options.cert) ?? pfxCert,
+      key: normalizeKeyPem(options.key, options.passphrase) ?? pfxKey,
       minVersion,
       maxVersion,
       ciphers: options.ciphers,
@@ -424,6 +593,26 @@ class SecureContext {
     ) {
       if (!secureContextBrand.has(this)) {
         throw new TypeError("Illegal invocation");
+      }
+    };
+    (this.context as any).addCACert = function addCACert(
+      this: any,
+      cert: any,
+    ) {
+      if (!secureContextBrand.has(this)) {
+        throw new TypeError("Illegal invocation");
+      }
+      validateKeyCertOption(cert, "cert", false);
+      const normalized = toStringOrUndefined(cert);
+      if (normalized === undefined) {
+        return;
+      }
+      if (this.ca === undefined) {
+        this.ca = normalized;
+      } else if (globalThis.Array.isArray(this.ca)) {
+        this.ca.push(normalized);
+      } else {
+        this.ca = [this.ca, normalized];
       }
     };
   }

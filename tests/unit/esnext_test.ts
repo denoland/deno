@@ -57,3 +57,25 @@ Deno.test(function float16Array() {
   assertEquals(sorted[2], 2);
   assertEquals(sorted[3], 11.25);
 });
+
+Deno.test(function mathSumPrecise() {
+  assertEquals(Math.sumPrecise([1, 2, 3]), 6);
+  assertEquals(Math.sumPrecise([]), -0);
+  // Avoids the accumulated rounding error from naive `+` reduction:
+  // `0.1 + 0.2 + 0.3` is `0.6000000000000001`.
+  assertEquals(Math.sumPrecise([0.1, 0.2, 0.3]), 0.6);
+  // Accepts arbitrary iterables.
+  function* gen() {
+    yield 1.5;
+    yield 2.5;
+    yield 3.5;
+  }
+  assertEquals(Math.sumPrecise(gen()), 7.5);
+});
+
+Deno.test(function intlLocaleVariants() {
+  const variants: string | undefined =
+    new Intl.Locale("de-DE-1996-fonipa").variants;
+  assertEquals(variants, "1996-fonipa");
+  assertEquals(new Intl.Locale("en-US").variants, undefined);
+});

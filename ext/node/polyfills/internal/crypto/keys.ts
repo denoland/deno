@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials no-explicit-any
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 
 const {
   ArrayPrototypeIncludes,
@@ -703,6 +703,14 @@ class SecretKeyObject extends KeyObject {
     return undefined;
   }
 
+  [core.hostObjectBrand]() {
+    return {
+      type: "NodeCryptoKeyObject",
+      keyType: "secret",
+      keyData: new Uint8Array(op_node_export_secret_key(this[kHandle])),
+    };
+  }
+
   toCryptoKey(
     algorithm: string | object,
     extractable: boolean,
@@ -839,6 +847,16 @@ class PrivateKeyObject extends AsymmetricKeyObject {
     super("private", handle);
   }
 
+  [core.hostObjectBrand]() {
+    return {
+      type: "NodeCryptoKeyObject",
+      keyType: "private",
+      keyData: new Uint8Array(
+        op_node_export_private_key_der(this[kHandle], "pkcs8", null, null),
+      ),
+    };
+  }
+
   toCryptoKey(
     algorithm: string | object,
     extractable: boolean,
@@ -915,6 +933,16 @@ class PrivateKeyObject extends AsymmetricKeyObject {
 class PublicKeyObject extends AsymmetricKeyObject {
   constructor(handle: any) {
     super("public", handle);
+  }
+
+  [core.hostObjectBrand]() {
+    return {
+      type: "NodeCryptoKeyObject",
+      keyType: "public",
+      keyData: new Uint8Array(
+        op_node_export_public_key_der(this[kHandle], "spki"),
+      ),
+    };
   }
 
   toCryptoKey(
@@ -1025,6 +1053,37 @@ function createSecretKey(
     }
   }
 }
+
+core.registerCloneableResource("NodeCryptoKeyObject", (data) => {
+  switch (data.keyType) {
+    case "secret": {
+      const handle = op_node_create_secret_key(data.keyData);
+      return new SecretKeyObject(handle);
+    }
+    case "public": {
+      const handle = op_node_create_public_key(
+        data.keyData,
+        "der",
+        "spki",
+        undefined,
+      );
+      return new PublicKeyObject(handle);
+    }
+    case "private": {
+      const handle = op_node_create_private_key(
+        data.keyData,
+        "der",
+        "pkcs8",
+        undefined,
+      );
+      return new PrivateKeyObject(handle);
+    }
+    default:
+      throw new TypeError(
+        `Unsupported KeyObject type for structured clone: ${data.keyType}`,
+      );
+  }
+});
 
 return {
   getArrayBufferOrView,

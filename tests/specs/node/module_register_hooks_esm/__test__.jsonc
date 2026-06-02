@@ -8,13 +8,15 @@
       "args": "run -A test_fallthrough.mjs",
       "output": "test_fallthrough.out"
     },
-    "fallthrough_dynamic": {
-      "args": "run -A test_fallthrough_dynamic.mjs",
-      "output": "test_fallthrough_dynamic.out"
+    "default_resolve": {
+      "cwd": "default_resolve",
+      "args": "run -A test.mjs",
+      "output": "default_resolve/test.out"
     },
-    "custom_filetype": {
-      "args": "run -A test_custom_filetype.mjs",
-      "output": "test_custom_filetype.out"
+    "worker": {
+      "cwd": "worker",
+      "args": "run -A main.mjs",
+      "output": "worker/main.out"
     }
   }
 }

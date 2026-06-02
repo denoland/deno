@@ -24,7 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const {
   op_node_udp_bind,
   op_node_udp_fd_for_ipc,

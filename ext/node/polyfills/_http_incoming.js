@@ -374,6 +374,19 @@ function matchKnownFields(field, lowercased) {
 
 IncomingMessage.prototype._addHeaderLine = _addHeaderLine;
 function _addHeaderLine(field, value, dest) {
+  if (
+    field.length > 2 && field[1] === "-" &&
+    (field[0] === "X" || field[0] === "x")
+  ) {
+    field = field.toLowerCase();
+    if (typeof dest[field] === "string") {
+      dest[field] += ", " + value;
+    } else {
+      dest[field] = value;
+    }
+    return;
+  }
+
   field = matchKnownFields(field);
   const flag = field.charCodeAt(0);
   if (flag === 0 || flag === 2) {

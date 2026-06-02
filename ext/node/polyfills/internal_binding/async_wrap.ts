@@ -28,7 +28,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { AsyncWrap, op_node_new_async_id } = core.ops;
 
 function registerDestroyHook(

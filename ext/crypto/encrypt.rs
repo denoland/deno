@@ -13,6 +13,11 @@ use aes_gcm::aead::generic_array::typenum::U16;
 use aes_gcm::aes::Aes128;
 use aes_gcm::aes::Aes192;
 use aes_gcm::aes::Aes256;
+use aws_lc_rs::aead::Aad;
+use aws_lc_rs::aead::CHACHA20_POLY1305;
+use aws_lc_rs::aead::LessSafeKey;
+use aws_lc_rs::aead::Nonce as AwsNonce;
+use aws_lc_rs::aead::UnboundKey;
 use ctr::Ctr32BE;
 use ctr::Ctr64BE;
 use ctr::Ctr128BE;
@@ -81,6 +86,13 @@ pub enum EncryptAlgorithm {
     ctr_length: usize,
     key_length: usize,
   },
+  #[serde(rename = "ChaCha20-Poly1305", rename_all = "camelCase")]
+  ChaCha20Poly1305 {
+    #[serde(with = "serde_bytes")]
+    nonce: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    additional_data: Option<Vec<u8>>,
+  },
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -101,6 +113,12 @@ pub enum EncryptError {
   #[class(type)]
   #[error("iv length not equal to 12 or 16")]
   InvalidIvLength,
+  #[class(type)]
+  #[error("invalid ChaCha20-Poly1305 nonce length: expected 12 bytes")]
+  InvalidChaChaNonceLength,
+  #[class(type)]
+  #[error("invalid ChaCha20-Poly1305 key length: expected 32 bytes")]
+  InvalidChaChaKeyLength,
   #[class(type)]
   #[error("invalid counter length. Currently supported 32/64/128 bits")]
   InvalidCounterLength,
@@ -142,6 +160,10 @@ pub async fn op_crypto_encrypt(
       ctr_length,
       key_length,
     } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
+    EncryptAlgorithm::ChaCha20Poly1305 {
+      nonce,
+      additional_data,
+    } => encrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
   };
   let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
@@ -374,6 +396,39 @@ fn encrypt_aes_ocb(
   ciphertext.extend_from_slice(tag);
 
   Ok(ciphertext)
+}
+
+fn encrypt_chacha20_poly1305(
+  key: V8RawKeyData,
+  nonce: &[u8],
+  additional_data: Option<Vec<u8>>,
+  data: &[u8],
+) -> Result<Vec<u8>, EncryptError> {
+  let key_bytes = key.as_secret_key()?;
+  if key_bytes.len() != 32 {
+    return Err(EncryptError::InvalidChaChaKeyLength);
+  }
+  if nonce.len() != 12 {
+    return Err(EncryptError::InvalidChaChaNonceLength);
+  }
+  // RFC 8439 caps plaintext length per nonce at 2^32 * 64 - 64 bytes.
+  if data.len() as u64 > ((1u64 << 32) - 1) * 64 {
+    return Err(EncryptError::TooMuchData);
+  }
+
+  let unbound_key = UnboundKey::new(&CHACHA20_POLY1305, key_bytes)
+    .map_err(|_| EncryptError::Failed)?;
+  let sealing_key = LessSafeKey::new(unbound_key);
+  let aws_nonce = AwsNonce::try_assume_unique_for_key(nonce)
+    .map_err(|_| EncryptError::Failed)?;
+  let aad = additional_data.unwrap_or_default();
+
+  let mut in_out = data.to_vec();
+  sealing_key
+    .seal_in_place_append_tag(aws_nonce, Aad::from(&aad), &mut in_out)
+    .map_err(|_| EncryptError::Failed)?;
+
+  Ok(in_out)
 }
 
 fn encrypt_aes_ctr_gen<B>(
