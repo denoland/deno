@@ -12,6 +12,9 @@ const answer3 = confirm(); // Answer with default
 console.log(`Your answer is ${answer3}`);
 const windows = prompt("What is Windows EOL?");
 console.log(`Your answer is ${JSON.stringify(windows)}`);
+const unicode = prompt("Type some unicode:");
+console.log(`Your unicode answer is ${JSON.stringify(unicode)}`);
+console.log(`bytes=${new TextEncoder().encode(unicode ?? "")}`);
 alert("Hi");
 alert();
 console.log("The end of test");

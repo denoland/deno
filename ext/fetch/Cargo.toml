@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.264.0"
+version = "0.273.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,6 @@ deno_io.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
-dyn-clone.workspace = true
 error_reporter.workspace = true
 h2.workspace = true
 hickory-resolver.workspace = true
@@ -36,7 +35,6 @@ hyper-util.workspace = true
 ipnet.workspace = true
 percent-encoding.workspace = true
 rustls-webpki.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -50,5 +48,16 @@ tower-service.workspace = true
 tokio-vsock.workspace = true
 
 [dev-dependencies]
+deno_bench_util.workspace = true
+deno_web.workspace = true
+deno_webidl.workspace = true
 fast-socks5.workspace = true
 rustls.workspace = true
+
+[[bench]]
+name = "headers_methods"
+harness = false
+
+[[bench]]
+name = "body"
+harness = false

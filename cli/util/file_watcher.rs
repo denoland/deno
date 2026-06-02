@@ -39,7 +39,7 @@ use crate::util::fs::canonicalize_path;
 
 const CLEAR_SCREEN: &str = "\x1B[H\x1B[2J\x1B[3J";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
-const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
 
 struct DebouncedReceiver {
   // The `recv()` call could be used in a tokio `select!` macro,
@@ -63,9 +63,7 @@ impl DebouncedReceiver {
 
   async fn recv(&mut self) -> Option<Vec<PathBuf>> {
     if self.received_items.is_empty() {
-      self
-        .received_items
-        .extend(self.receiver.recv().await?.into_iter());
+      self.received_items.extend(self.receiver.recv().await?);
     }
 
     loop {
@@ -312,7 +310,7 @@ where
   let initial_cwd_url = initial_cwd
     .as_ref()
     .and_then(|path| deno_path_util::url_from_directory_path(path).ok());
-  let exclude_set = flags.resolve_watch_exclude_set()?;
+  let exclude_set = Arc::new(flags.resolve_watch_exclude_set()?);
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
   let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -363,7 +361,15 @@ where
       tokio::task::yield_now().await;
     }
 
-    let mut watcher = new_watcher(watcher_sender.clone())?;
+    // The previous iteration of the watched program may have changed the
+    // process's working directory (e.g. via `Deno.chdir()`). Restore it
+    // before starting the next run so that module resolution, watched
+    // paths, and `Deno.cwd()` all behave as they did on the first run.
+    if let Some(initial_cwd) = &initial_cwd {
+      let _ = std::env::set_current_dir(initial_cwd);
+    }
+
+    let mut watcher = new_watcher(watcher_sender.clone(), exclude_set.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
 
     let receiver_future = async {
@@ -492,6 +498,7 @@ where
 
 fn new_watcher(
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
+  exclude_set: Arc<PathOrPatternSet>,
 ) -> Result<RecommendedWatcher, AnyError> {
   Ok(Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
@@ -506,11 +513,23 @@ fn new_watcher(
         return;
       }
 
-      let paths = event
+      let canonicalized: Vec<PathBuf> = event
         .paths
         .iter()
         .filter_map(|path| canonicalize_path(path).ok())
         .collect();
+      let paths: Vec<PathBuf> = canonicalized
+        .iter()
+        .filter(|path| !exclude_set.matches_path(path))
+        .cloned()
+        .collect();
+
+      // Only bail when the empty result was caused by exclusion, not
+      // by canonicalize failures — preserves pre-PR behavior for
+      // file-removal events.
+      if paths.is_empty() && !canonicalized.is_empty() {
+        return;
+      }
 
       sender.send(paths).unwrap();
     },

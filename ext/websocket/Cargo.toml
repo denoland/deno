@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_websocket"
-version = "0.245.0"
+version = "0.254.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -28,7 +28,5 @@ http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 once_cell.workspace = true
-rustls-tokio-stream.workspace = true
-serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

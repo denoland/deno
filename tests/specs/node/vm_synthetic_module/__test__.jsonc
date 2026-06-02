@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "synthetic_module": {
+      "args": "run main.mjs",
+      "output": "ok sync\nok async\nok throw\nok options\n"
+    }
+  }
+}

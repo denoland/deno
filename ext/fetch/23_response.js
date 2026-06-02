@@ -1,35 +1,33 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../url/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import {
-  byteLowerCase,
+(function () {
+const { core, primordials } = __bootstrap;
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const {
   HTTP_TAB_OR_SPACE,
   regexMatcher,
   serializeJSValueToJSONString,
-} from "ext:deno_web/00_infra.js";
-import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import { extractMimeType } from "ext:deno_web/01_mimesniff.js";
-import { URL } from "ext:deno_web/00_url.js";
-import {
+} = core.loadExtScript("ext:deno_web/00_infra.js");
+const { extractBody, mixinBody } = core.loadExtScript(
+  "ext:deno_fetch/22_body.js",
+);
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const { extractMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const {
+  ensureLowerNames,
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const { markNotSerializable } = core.loadExtScript(
+  "ext:deno_web/13_message_port.js",
+);
 const {
   ArrayPrototypeMap,
   ArrayPrototypePush,
@@ -219,16 +217,18 @@ function initializeAResponse(response, init, bodyWithType) {
     response[_response].body = body;
 
     if (contentType !== null) {
-      let hasContentType = false;
       const list = headerListFromHeaders(headers);
-      for (let i = 0; i < list.length; i++) {
-        if (byteLowerCase(list[i][0]) === "content-type") {
+      const lowerNames = ensureLowerNames(headers);
+      let hasContentType = false;
+      for (let i = 0; i < lowerNames.length; i++) {
+        if (lowerNames[i] === "content-type") {
           hasContentType = true;
           break;
         }
       }
       if (!hasContentType) {
         ArrayPrototypePush(list, ["Content-Type", contentType]);
+        ArrayPrototypePush(lowerNames, "content-type");
       }
     }
   }
@@ -293,7 +293,7 @@ class Response {
    * @param {ResponseInit} init
    * @returns {Response}
    */
-  static json(data = undefined, init = { __proto__: null }) {
+  static json(data = undefined, init = undefined) {
     const prefix = "Failed to execute 'Response.json'";
     data = webidlConvertersAny(data);
     init = webidlConvertersResponseInitFast(init, prefix, "Argument 2");
@@ -446,6 +446,7 @@ ObjectDefineProperties(Response, {
   error: { __proto__: null, enumerable: true },
 });
 const ResponsePrototype = Response.prototype;
+markNotSerializable(ResponsePrototype);
 mixinBody(ResponsePrototype, _body, _mimeType);
 
 webidl.converters["Response"] = webidl.createInterfaceConverter(
@@ -516,7 +517,7 @@ function fromInnerResponse(inner, guard) {
   return response;
 }
 
-export {
+return {
   abortedNetworkError,
   fromInnerResponse,
   networkError,
@@ -527,3 +528,4 @@ export {
   ResponsePrototype,
   toInnerResponse,
 };
+})();

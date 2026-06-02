@@ -132,10 +132,8 @@ where
         (KeyCode::Down | KeyCode::Char('j'), KeyModifiers::NONE) => {
           currently_selected = (currently_selected + 1) % items.len();
         }
-        (KeyCode::Char(' '), _) => {
-          if !checked.insert(currently_selected) {
-            checked.remove(&currently_selected);
-          }
+        (KeyCode::Char(' '), _) if !checked.insert(currently_selected) => {
+          checked.remove(&currently_selected);
         }
         (KeyCode::Char('a'), _) => {
           if (0..items.len()).all(|idx| checked.contains(&idx)) {

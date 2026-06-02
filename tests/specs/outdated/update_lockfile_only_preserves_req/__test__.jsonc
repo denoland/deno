@@ -1,0 +1,34 @@
+{
+  "tempDir": true,
+  "tests": {
+    // --lockfile-only must not modify package.json. With a
+    // `<X.Y.Z` style constraint, prior behavior rewrote it to `^...`,
+    // narrowing the user's allowed range. See denoland/deno#33727.
+    "preserves_lt_constraint": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "update --lockfile-only",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./package.json').trim());"
+          ],
+          "output": "package.json.out"
+        },
+        {
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./deno.lock').trim());"
+          ],
+          "output": "deno.lock.out"
+        }
+      ]
+    }
+  }
+}

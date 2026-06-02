@@ -23,9 +23,20 @@
       // Note: successful exit asserts that the test passed
       "exitCode": 0
     },
+    "message_port_dedupe": {
+      // Test for https://github.com/denoland/deno/issues/33373
+      "args": "run message_port_dedupe.mjs",
+      "output": "message_port_dedupe.out",
+      "exitCode": 0
+    },
     "message_port_unref": {
       "args": "run --allow-env --allow-read message_port_unref.mjs",
       "output": "message_port_unref.out",
+      "exitCode": 0
+    },
+    "broadcast_channel": {
+      "args": "run --quiet --allow-read --unstable-broadcast-channel broadcast_channel.mjs",
+      "output": "hello from worker\n",
       "exitCode": 0
     },
     "parent_port_unref": {
@@ -48,6 +59,12 @@
       // Node.js behavior. Libraries like fflate depend on this.
       "args": "run --quiet eval_sloppy_mode.mjs",
       "output": "sloppy mode works, myGlobal=42\n",
+      "exitCode": 0
+    },
+    "parent_port_isolation": {
+      // Test for https://github.com/denoland/deno/issues/17171
+      "args": "run --quiet --allow-read parent_port_isolation.mjs",
+      "output": "postMessage isolation: post_message_ok\nno double delivery: count:1\n",
       "exitCode": 0
     }
   }

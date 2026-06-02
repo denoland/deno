@@ -53,7 +53,16 @@ pub struct NpmInstallerFactoryOptions {
   pub cache_setting: NpmCacheSetting,
   pub caching_strategy: NpmCachingStrategy,
   pub clean_on_install: bool,
+  /// When loading the npm snapshot from a lockfile, merge equivalent
+  /// peer-dep variants (cycle-unrolling artifacts) onto a single
+  /// canonical entry. Should be true only on install paths — `deno run`
+  /// must not silently rewrite the user's lockfile.
+  pub dedup_lockfile_peer_variants: bool,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
+  /// Only install production dependencies (excludes devDependencies).
+  pub production: bool,
+  /// Exclude @types/* packages from installation.
+  pub skip_types: bool,
   /// Resolves the npm resolution snapshot from the environment.
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
 }
@@ -294,9 +303,12 @@ impl<
             }
             None => match self.maybe_lockfile().await? {
               Some(lockfile) => {
-                NpmResolverManagedSnapshotOption::ResolveFromLockfile(
-                  lockfile.clone(),
-                )
+                NpmResolverManagedSnapshotOption::ResolveFromLockfile {
+                  lockfile: lockfile.clone(),
+                  dedup_equivalent_peer_variants: self
+                    .options
+                    .dedup_lockfile_peer_variants,
+                }
               }
               None => NpmResolverManagedSnapshotOption::Specified(None),
             },
@@ -362,6 +374,8 @@ impl<
             npm_cache.clone(),
             Arc::new(NpmInstallDepsProvider::from_workspace(
               &workspace_factory.workspace_directory()?.workspace,
+              self.options.production,
+              self.options.skip_types,
             )),
             registry_info_provider.clone(),
             self.resolver_factory.npm_resolution().clone(),
@@ -376,6 +390,7 @@ impl<
               maybe_node_modules_path: workspace_factory
                 .node_modules_dir_path()?
                 .map(|p| p.to_path_buf()),
+              linker_mode: workspace_factory.node_modules_linker_mode()?,
               lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
               system_info: self.resolver_factory.npm_system_info().clone(),
               workspace_link_packages: workspace_npm_link_packages.clone(),

@@ -50,6 +50,9 @@ use sha2::Digest;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+use sha3::Sha3_256;
+use sha3::Sha3_384;
+use sha3::Sha3_512;
 use signature::hazmat::PrehashSigner;
 use signature::hazmat::PrehashVerifier; // Re-export rand
 
@@ -60,6 +63,8 @@ mod export_key;
 mod generate_key;
 mod import_key;
 mod key;
+mod mldsa;
+mod mlkem;
 mod shared;
 mod x25519;
 mod x448;
@@ -79,6 +84,8 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
+pub use crate::mldsa::MlDsaError;
+pub use crate::mlkem::MlKemError;
 pub use crate::shared::SharedError;
 use crate::shared::V8RawKeyData;
 pub use crate::x448::X448Error;
@@ -97,6 +104,7 @@ deno_core::extension!(deno_crypto,
     op_crypto_encrypt,
     op_crypto_decrypt,
     op_crypto_subtle_digest,
+    op_crypto_subtle_digest_xof,
     op_crypto_random_uuid,
     op_crypto_wrap_key,
     op_crypto_unwrap_key,
@@ -123,8 +131,26 @@ deno_core::extension!(deno_crypto,
     ed25519::op_crypto_export_spki_ed25519,
     ed25519::op_crypto_export_pkcs8_ed25519,
     ed25519::op_crypto_jwk_x_ed25519,
+    mldsa::op_crypto_mldsa_from_seed,
+    mldsa::op_crypto_mldsa_from_raw_private,
+    mldsa::op_crypto_mldsa_from_pkcs8,
+    mldsa::op_crypto_mldsa_from_spki,
+    mldsa::op_crypto_mldsa_export_pkcs8,
+    mldsa::op_crypto_mldsa_export_spki,
+    mldsa::op_crypto_sign_mldsa,
+    mldsa::op_crypto_verify_mldsa,
+    mlkem::op_crypto_ml_kem_generate_key,
+    mlkem::op_crypto_ml_kem_encapsulate,
+    mlkem::op_crypto_ml_kem_decapsulate,
+    mlkem::op_crypto_ml_kem_import_spki,
+    mlkem::op_crypto_ml_kem_import_pkcs8,
+    mlkem::op_crypto_ml_kem_export_spki,
+    mlkem::op_crypto_ml_kem_export_pkcs8,
+    mlkem::op_crypto_ml_kem_get_public_key,
+    mlkem::op_crypto_ml_kem_validate_private_key,
+    mlkem::op_crypto_ml_kem_validate_public_key,
   ],
-  esm = [ "00_crypto.js" ],
+  lazy_loaded_js = [ "00_crypto.js" ],
   options = {
     maybe_seed: Option<u64>,
   },
@@ -326,6 +352,7 @@ pub async fn op_crypto_sign_key(
             let signing_key = SigningKey::<Sha512>::new(private_key);
             signing_key.sign(data)
           }
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         }
         .to_vec()
       }
@@ -359,6 +386,7 @@ pub async fn op_crypto_sign_key(
             let hashed = Sha512::digest(data);
             signing_key.sign(Some(&mut rng), &private_key, &hashed)?
           }
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         }
         .to_vec()
       }
@@ -377,6 +405,7 @@ pub async fn op_crypto_sign_key(
               CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
               CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
               CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+              _ => return Err(CryptoError::UnsupportedAlgorithm),
             };
             // Sign the prehashed message, producing a raw r||s signature.
             let signature: P256Signature =
@@ -392,6 +421,7 @@ pub async fn op_crypto_sign_key(
               CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
               CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
               CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+              _ => return Err(CryptoError::UnsupportedAlgorithm),
             };
             let signature: P384Signature =
               signing_key.sign_prehash(&prehash)?;
@@ -408,6 +438,7 @@ pub async fn op_crypto_sign_key(
               CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
               CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
               CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+              _ => return Err(CryptoError::UnsupportedAlgorithm),
             };
             // P-521 field size is 66 bytes; bits2field requires at least
             // half that (33 bytes). Left-pad shorter hashes to meet the
@@ -426,13 +457,25 @@ pub async fn op_crypto_sign_key(
         }
       }
       Algorithm::Hmac => {
-        let hash: HmacAlgorithm =
-          args.hash.ok_or_else(JsErrorBox::not_supported)?.into();
+        let hash = args.hash.ok_or_else(JsErrorBox::not_supported)?;
 
-        let key = HmacKey::new(hash, &args.key.data);
-
-        let signature = aws_lc_rs::hmac::sign(&key, data);
-        signature.as_ref().to_vec()
+        match hash {
+          CryptoHash::Sha3_256 => {
+            hmac_sign::<hmac::Hmac<Sha3_256>>(&args.key.data, data)?
+          }
+          CryptoHash::Sha3_384 => {
+            hmac_sign::<hmac::Hmac<Sha3_384>>(&args.key.data, data)?
+          }
+          CryptoHash::Sha3_512 => {
+            hmac_sign::<hmac::Hmac<Sha3_512>>(&args.key.data, data)?
+          }
+          _ => {
+            let hash: HmacAlgorithm = hash.into();
+            let key = HmacKey::new(hash, &args.key.data);
+            let signature = aws_lc_rs::hmac::sign(&key, data);
+            signature.as_ref().to_vec()
+          }
+        }
       }
       _ => return Err(CryptoError::UnsupportedAlgorithm),
     };
@@ -440,6 +483,27 @@ pub async fn op_crypto_sign_key(
     Ok(signature.into())
   })
   .await?
+}
+
+fn hmac_sign<M: hmac::Mac + hmac::digest::KeyInit>(
+  key: &[u8],
+  data: &[u8],
+) -> Result<Vec<u8>, CryptoError> {
+  let mut mac = <M as hmac::Mac>::new_from_slice(key)
+    .map_err(|_| CryptoError::InvalidKeyLength)?;
+  mac.update(data);
+  Ok(mac.finalize().into_bytes().to_vec())
+}
+
+fn hmac_verify<M: hmac::Mac + hmac::digest::KeyInit>(
+  key: &[u8],
+  data: &[u8],
+  signature: &[u8],
+) -> Result<bool, CryptoError> {
+  let mut mac = <M as hmac::Mac>::new_from_slice(key)
+    .map_err(|_| CryptoError::InvalidKeyLength)?;
+  mac.update(data);
+  Ok(mac.verify_slice(signature).is_ok())
 }
 
 #[derive(deno_core::FromV8)]
@@ -488,6 +552,7 @@ pub async fn op_crypto_verify_key(
             let verifying_key = VerifyingKey::<Sha512>::new(public_key);
             verifying_key.verify(data, &signature).is_ok()
           }
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         }
       }
       Algorithm::RsaPss => {
@@ -520,13 +585,33 @@ pub async fn op_crypto_verify_key(
             let hashed = Sha512::digest(data);
             pss.verify(&public_key, &hashed, signature).is_ok()
           }
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         }
       }
       Algorithm::Hmac => {
-        let hash: HmacAlgorithm =
-          args.hash.ok_or_else(JsErrorBox::not_supported)?.into();
-        let key = HmacKey::new(hash, &args.key.data);
-        aws_lc_rs::hmac::verify(&key, data, &args.signature).is_ok()
+        let hash = args.hash.ok_or_else(JsErrorBox::not_supported)?;
+        match hash {
+          CryptoHash::Sha3_256 => hmac_verify::<hmac::Hmac<Sha3_256>>(
+            &args.key.data,
+            data,
+            &args.signature,
+          )?,
+          CryptoHash::Sha3_384 => hmac_verify::<hmac::Hmac<Sha3_384>>(
+            &args.key.data,
+            data,
+            &args.signature,
+          )?,
+          CryptoHash::Sha3_512 => hmac_verify::<hmac::Hmac<Sha3_512>>(
+            &args.key.data,
+            data,
+            &args.signature,
+          )?,
+          _ => {
+            let hash: HmacAlgorithm = hash.into();
+            let key = HmacKey::new(hash, &args.key.data);
+            aws_lc_rs::hmac::verify(&key, data, &args.signature).is_ok()
+          }
+        }
       }
       Algorithm::Ecdsa => {
         let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;
@@ -555,6 +640,7 @@ pub async fn op_crypto_verify_key(
                   CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
                   CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
                   CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                  _ => return Err(CryptoError::UnsupportedAlgorithm),
                 };
                 verifying_key.verify_prehash(&prehash, &signature).is_ok()
               }
@@ -583,6 +669,7 @@ pub async fn op_crypto_verify_key(
                   CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
                   CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
                   CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                  _ => return Err(CryptoError::UnsupportedAlgorithm),
                 };
                 verifying_key.verify_prehash(&prehash, &signature).is_ok()
               }
@@ -613,6 +700,7 @@ pub async fn op_crypto_verify_key(
                   CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
                   CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
                   CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+                  _ => return Err(CryptoError::UnsupportedAlgorithm),
                 };
                 // P-521 field size is 66 bytes; bits2field requires at least
                 // half that (33 bytes). Left-pad shorter hashes to meet the
@@ -679,6 +767,7 @@ pub async fn op_crypto_derive_bits(
           CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
           CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
           CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         };
 
         // This will never panic. We have already checked length earlier.
@@ -810,6 +899,7 @@ pub async fn op_crypto_derive_bits(
           CryptoHash::Sha256 => hkdf::HKDF_SHA256,
           CryptoHash::Sha384 => hkdf::HKDF_SHA384,
           CryptoHash::Sha512 => hkdf::HKDF_SHA512,
+          _ => return Err(CryptoError::UnsupportedAlgorithm),
         };
 
         let info = args.info.ok_or(CryptoError::MissingArgumentInfo)?;
@@ -877,6 +967,139 @@ pub async fn op_crypto_subtle_digest(
       .into()
   })
   .await?;
+
+  Ok(output)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", tag = "name")]
+pub enum SubtleDigestXof {
+  #[serde(rename = "SHAKE128", rename_all = "camelCase")]
+  Shake128 { length: u32 },
+  #[serde(rename = "SHAKE256", rename_all = "camelCase")]
+  Shake256 { length: u32 },
+  #[serde(rename = "cSHAKE128", rename_all = "camelCase")]
+  CShake128 {
+    length: u32,
+    #[serde(with = "serde_bytes", default)]
+    function_name: Option<Vec<u8>>,
+    #[serde(with = "serde_bytes", default)]
+    customization: Option<Vec<u8>>,
+  },
+  #[serde(rename = "cSHAKE256", rename_all = "camelCase")]
+  CShake256 {
+    length: u32,
+    #[serde(with = "serde_bytes", default)]
+    function_name: Option<Vec<u8>>,
+    #[serde(with = "serde_bytes", default)]
+    customization: Option<Vec<u8>>,
+  },
+  #[serde(rename = "TurboSHAKE128", rename_all = "camelCase")]
+  TurboShake128 {
+    length: u32,
+    domain_separation: Option<u8>,
+  },
+  #[serde(rename = "TurboSHAKE256", rename_all = "camelCase")]
+  TurboShake256 {
+    length: u32,
+    domain_separation: Option<u8>,
+  },
+}
+
+#[op2]
+pub async fn op_crypto_subtle_digest_xof(
+  #[serde] algorithm: SubtleDigestXof,
+  #[buffer] data: JsBuffer,
+) -> Result<Uint8Array, CryptoError> {
+  let output = spawn_blocking(move || {
+    use sha3::digest::ExtendableOutput;
+    use sha3::digest::Update;
+    use sha3::digest::XofReader;
+
+    let length_bits = match &algorithm {
+      SubtleDigestXof::Shake128 { length, .. }
+      | SubtleDigestXof::Shake256 { length, .. }
+      | SubtleDigestXof::CShake128 { length, .. }
+      | SubtleDigestXof::CShake256 { length, .. }
+      | SubtleDigestXof::TurboShake128 { length, .. }
+      | SubtleDigestXof::TurboShake256 { length, .. } => *length,
+    };
+    if !length_bits.is_multiple_of(8) {
+      return Err(CryptoError::InvalidKeyLength);
+    }
+    let out_len = (length_bits / 8) as usize;
+    let mut out = vec![0u8; out_len];
+
+    match algorithm {
+      SubtleDigestXof::Shake128 { .. } => {
+        let mut h = sha3::Shake128::default();
+        h.update(&data);
+        h.finalize_xof().read(&mut out);
+      }
+      SubtleDigestXof::Shake256 { .. } => {
+        let mut h = sha3::Shake256::default();
+        h.update(&data);
+        h.finalize_xof().read(&mut out);
+      }
+      SubtleDigestXof::CShake128 {
+        function_name,
+        customization,
+        ..
+      } => {
+        use sha3::digest::core_api::CoreWrapper;
+        let core = sha3::CShake128Core::new_with_function_name(
+          function_name.as_deref().unwrap_or(&[]),
+          customization.as_deref().unwrap_or(&[]),
+        );
+        let mut h: sha3::CShake128 = CoreWrapper::from_core(core);
+        h.update(&data);
+        h.finalize_xof().read(&mut out);
+      }
+      SubtleDigestXof::CShake256 {
+        function_name,
+        customization,
+        ..
+      } => {
+        use sha3::digest::core_api::CoreWrapper;
+        let core = sha3::CShake256Core::new_with_function_name(
+          function_name.as_deref().unwrap_or(&[]),
+          customization.as_deref().unwrap_or(&[]),
+        );
+        let mut h: sha3::CShake256 = CoreWrapper::from_core(core);
+        h.update(&data);
+        h.finalize_xof().read(&mut out);
+      }
+      SubtleDigestXof::TurboShake128 {
+        domain_separation, ..
+      } => {
+        use sha3::digest::core_api::CoreWrapper;
+        let d = domain_separation.unwrap_or(0x1F);
+        if !(0x01..=0x7F).contains(&d) {
+          return Err(CryptoError::UnsupportedAlgorithm);
+        }
+        let core = sha3::TurboShake128Core::new(d);
+        let mut h: sha3::TurboShake128 = CoreWrapper::from_core(core);
+        h.update(&data);
+        h.finalize_xof().read(&mut out);
+      }
+      SubtleDigestXof::TurboShake256 {
+        domain_separation, ..
+      } => {
+        use sha3::digest::core_api::CoreWrapper;
+        let d = domain_separation.unwrap_or(0x1F);
+        if !(0x01..=0x7F).contains(&d) {
+          return Err(CryptoError::UnsupportedAlgorithm);
+        }
+        let core = sha3::TurboShake256Core::new(d);
+        let mut h: sha3::TurboShake256 = CoreWrapper::from_core(core);
+        h.update(&data);
+        h.finalize_xof().read(&mut out);
+      }
+    }
+
+    Ok(Uint8Array::from(out))
+  })
+  .await??;
 
   Ok(output)
 }

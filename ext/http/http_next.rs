@@ -6,12 +6,10 @@ use std::future::Future;
 use std::future::poll_fn;
 use std::io;
 use std::pin::Pin;
-use std::ptr::null;
 use std::rc::Rc;
 
 use bytes::Bytes;
 use bytes::BytesMut;
-use cache_control::CacheControl;
 use deno_core::AsyncMut;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -28,7 +26,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::convert::ByteString;
 use deno_core::external;
-use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
@@ -79,6 +76,7 @@ use crate::service::HttpRecord;
 use crate::service::HttpRecordResponse;
 use crate::service::HttpRequestBodyAutocloser;
 use crate::service::HttpServerState;
+use crate::service::ServerCallback;
 use crate::service::SignallingRc;
 use crate::service::handle_request;
 use crate::service::http_general_trace;
@@ -151,6 +149,24 @@ macro_rules! clone_external {
   }};
 }
 
+/// Try to clone Rc<HttpRecord> from raw external pointer.
+/// Returns None if the pointer has already been consumed by take_external.
+macro_rules! try_clone_external {
+  ($external:expr) => {{
+    let ptr = $external;
+    if ptr.is_null()
+      || ptr.align_offset(std::mem::align_of::<usize>()) != 0
+      || std::ptr::read::<usize>(ptr as _)
+        != <RcHttpRecord as deno_core::Externalizable>::external_marker()
+    {
+      None
+    } else {
+      let ptr = ExternalPointer::<RcHttpRecord>::from_raw(ptr);
+      Some(ptr.unsafely_deref().0.clone())
+    }
+  }};
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpNextError {
   #[class(inherit)]
@@ -192,6 +208,13 @@ pub enum HttpNextError {
   #[class("Http")]
   #[error("raw upgrade failed")]
   RawUpgradeFailed,
+  #[class(inherit)]
+  #[error(transparent)]
+  TakeNetworkStream(
+    #[from]
+    #[inherit]
+    deno_net::raw::TakeNetworkStreamError,
+  ),
 }
 
 #[op2(fast)]
@@ -281,6 +304,24 @@ pub async fn op_http_upgrade_websocket_next(
     stream,
     bytes,
   ))
+}
+
+/// Create a server WebSocket from a TCP stream resource (e.g. taken from a
+/// node:http TCPWrap handle). This lets ext/node hand off the raw stream
+/// without depending on deno_websocket directly.
+#[op2(fast)]
+#[smi]
+pub fn op_http_ws_create_from_stream_resource(
+  state: &mut OpState,
+  #[smi] stream_rid: ResourceId,
+  #[buffer] extra_bytes: &[u8],
+) -> Result<ResourceId, HttpNextError> {
+  let stream = deno_net::raw::take_network_stream_resource(
+    &mut state.resource_table,
+    stream_rid,
+  )?;
+  let read_buf = Bytes::copy_from_slice(extra_bytes);
+  Ok(ws_create_server_stream(state, stream, read_buf))
 }
 
 #[op2(fast)]
@@ -490,6 +531,23 @@ pub fn op_http_get_request_headers<'scope>(
   v8::Array::new_with_elements(scope, vec.as_slice())
 }
 
+/// Try to drain the entire request body without blocking.
+/// Returns the bytes as a Uint8Array iff the whole body is
+/// already buffered in hyper; returns `null` otherwise, in
+/// which case the JS caller falls through to the streaming
+/// `op_http_read_request_body` path. The body is left intact
+/// on the `null` branch.
+#[op2]
+#[buffer]
+pub fn op_http_try_take_full_request_body(
+  external: *const c_void,
+) -> Option<Vec<u8>> {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_try_take_full_request_body") };
+  http.try_take_full_request_body()
+}
+
 #[op2(fast)]
 #[smi]
 pub fn op_http_read_request_body(
@@ -648,8 +706,8 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
   }
   if let Some(cache_control) = headers.get(CACHE_CONTROL)
     && let Ok(s) = std::str::from_utf8(cache_control.as_bytes())
-    && let Some(cache_control) = CacheControl::from_value(s)
-    && cache_control.no_transform
+    && let Some(no_transform) = crate::cache_control_has_no_transform(s)
+    && no_transform
   {
     return false;
   }
@@ -660,13 +718,13 @@ fn modify_compressibility_from_response(
   compression: Compression,
   headers: &mut HeaderMap,
 ) -> Compression {
-  ensure_vary_accept_encoding(headers);
   if compression == Compression::None {
     return Compression::None;
   }
   if !is_response_compressible(headers) {
     return Compression::None;
   }
+  ensure_vary_accept_encoding(headers);
   let encoding = match compression {
     Compression::Brotli => "br",
     Compression::GZip => "gzip",
@@ -691,10 +749,6 @@ fn weaken_etag(hmap: &mut HeaderMap) {
   }
 }
 
-// Set Vary: Accept-Encoding header for direct body response.
-// Note: we set the header irrespective of whether or not we compress the data
-// to make sure cache services do not serve uncompressed data to clients that
-// support compression.
 fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
   if let Some(v) = hmap.get_mut(hyper::header::VARY)
     && let Ok(s) = v.to_str()
@@ -928,11 +982,26 @@ async fn serve_http2_autodetect(
   }
 }
 
+/// Dispatch a record to the JS callback registered for the server.
+/// Wraps the record as an `ExternalPointer<RcHttpRecord>` and hands
+/// the raw pointer to the JS callback. The JS side eventually calls
+/// `take_external!` (via `op_http_set_response_*`) which consumes the
+/// refcount.
+fn dispatch_to_js(callback: &ServerCallback, record: Rc<HttpRecord>) {
+  let ptr = ExternalPointer::new(RcHttpRecord(record)).into_raw();
+  // SAFETY: callback's isolate ptr remains valid while the
+  // HttpJoinHandle is alive (the HttpJoinHandle owns the
+  // ServerCallback and is stored in the resource table; on close
+  // the resource is dropped synchronously while the isolate is still
+  // live).
+  unsafe { callback.dispatch(ptr as *mut std::ffi::c_void) };
+}
+
 fn serve_https(
   mut io: TlsStream<TcpStream>,
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  callback: Rc<ServerCallback>,
   options: Options,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
@@ -943,11 +1012,12 @@ fn serve_https(
 
   let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
+    let callback = callback.clone();
     handle_request(
       req,
       request_info.clone(),
       server_state.clone(),
-      tx.clone(),
+      move |record| dispatch_to_js(&callback, record),
       legacy_abort,
     )
   });
@@ -987,8 +1057,9 @@ fn serve_http(
   io: impl HttpServeStream,
   request_info: HttpConnectionProperties,
   lifetime: HttpLifetime,
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  callback: Rc<ServerCallback>,
   options: Options,
+  wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>> {
   let HttpLifetime {
     server_state,
@@ -998,17 +1069,60 @@ fn serve_http(
 
   let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
+    let callback = callback.clone();
     handle_request(
       req,
       request_info.clone(),
       server_state.clone(),
-      tx.clone(),
+      move |record| dispatch_to_js(&callback, record),
       legacy_abort,
     )
   });
+  let connection_cancel_handle_for_outer = connection_cancel_handle.clone();
   spawn(
-    serve_http2_autodetect(io, svc, listen_cancel_handle, options)
-      .try_or_cancel(connection_cancel_handle),
+    async move {
+      let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
+      let (matches, io) = prefix
+        .match_prefix()
+        .try_or_cancel(listen_cancel_handle.clone())
+        .await?;
+      let join_handle = if matches {
+        spawn(
+          async move {
+            serve_http2_unconditional(
+              io,
+              svc,
+              listen_cancel_handle,
+              options.http2_builder_hook,
+            )
+            .await
+            .map_err(HttpNextError::Hyper)
+          }
+          .try_or_cancel(connection_cancel_handle),
+        )
+      } else {
+        spawn(
+          async move {
+            serve_http11_unconditional(
+              io,
+              svc,
+              listen_cancel_handle,
+              options.http1_builder_hook,
+            )
+            .await
+            .map_err(HttpNextError::Hyper)
+          }
+          .try_or_cancel(connection_cancel_handle),
+        )
+      };
+
+      if wait_for_connection {
+        join_handle.await?
+      } else {
+        Ok(())
+      }
+    }
+    .try_or_cancel(connection_cancel_handle_for_outer),
   )
 }
 
@@ -1016,8 +1130,9 @@ fn serve_http_on<HTTP>(
   connection: HTTP::Connection,
   listen_properties: &HttpListenProperties,
   lifetime: HttpLifetime,
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  callback: Rc<ServerCallback>,
   options: Options,
+  wait_for_connection: bool,
 ) -> JoinHandle<Result<(), HttpNextError>>
 where
   HTTP: HttpPropertyExtractor,
@@ -1028,31 +1143,56 @@ where
   let network_stream = HTTP::to_network_stream_from_connection(connection);
 
   match network_stream {
-    NetworkStream::Tcp(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
-    }
+    NetworkStream::Tcp(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     NetworkStream::Tls(conn) => {
-      serve_https(conn, connection_properties, lifetime, tx, options)
+      serve_https(conn, connection_properties, lifetime, callback, options)
     }
     #[cfg(unix)]
-    NetworkStream::Unix(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
-    }
+    NetworkStream::Unix(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     #[cfg(any(
       target_os = "android",
       target_os = "linux",
       target_os = "macos"
     ))]
-    NetworkStream::Vsock(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
-    }
-    NetworkStream::Tunnel(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
-    }
+    NetworkStream::Vsock(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
+    NetworkStream::Tunnel(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
     #[cfg(windows)]
-    NetworkStream::WindowsPipe(conn) => {
-      serve_http(conn, connection_properties, lifetime, tx, options)
-    }
+    NetworkStream::WindowsPipe(conn) => serve_http(
+      conn,
+      connection_properties,
+      lifetime,
+      callback,
+      options,
+      wait_for_connection,
+    ),
   }
 }
 
@@ -1067,17 +1207,15 @@ struct HttpJoinHandle {
   join_handle: AsyncRefCell<Option<JoinHandle<Result<(), HttpNextError>>>>,
   connection_cancel_handle: Rc<CancelHandle>,
   listen_cancel_handle: Rc<CancelHandle>,
-  rx: AsyncRefCell<tokio::sync::mpsc::Receiver<Rc<HttpRecord>>>,
   server_state: SignallingRc<HttpServerState>,
 }
 
 impl HttpJoinHandle {
-  fn new(rx: tokio::sync::mpsc::Receiver<Rc<HttpRecord>>) -> Self {
+  fn new() -> Self {
     Self {
       join_handle: AsyncRefCell::new(None),
       connection_cancel_handle: CancelHandle::new_rc(),
       listen_cancel_handle: CancelHandle::new_rc(),
-      rx: AsyncRefCell::new(rx),
       server_state: HttpServerState::new(),
     }
   }
@@ -1120,9 +1258,12 @@ impl Drop for HttpJoinHandle {
 }
 
 #[op2]
-pub fn op_http_serve<HTTP>(
+pub fn op_http_serve<'scope, HTTP>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
+  callback: v8::Local<'scope, v8::Function>,
 ) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
@@ -1132,11 +1273,17 @@ where
 
   let listen_properties = HTTP::listen_properties_from_listener(&listener)?;
 
-  let (tx, rx) = tokio::sync::mpsc::channel(10);
-  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
+  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new());
   let listen_cancel_clone = resource.listen_cancel_handle();
 
   let lifetime = resource.lifetime();
+  let callback_global = v8::Global::new(scope, callback);
+  let callback = Rc::new(ServerCallback::new(
+    scope,
+    isolate,
+    callback_global,
+    state.borrow().waker.clone(),
+  ));
 
   let options = {
     let state = state.borrow();
@@ -1153,8 +1300,9 @@ where
         conn,
         &listen_properties_clone,
         lifetime.clone(),
-        tx.clone(),
+        callback.clone(),
         options,
+        false,
       );
     }
     #[allow(unreachable_code, reason = "to avoid typing closure")]
@@ -1175,9 +1323,12 @@ where
 }
 
 #[op2]
-pub fn op_http_serve_on<HTTP>(
+pub fn op_http_serve_on<'scope, HTTP>(
+  scope: &mut v8::PinScope<'scope, '_>,
+  isolate: &mut v8::Isolate,
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
+  callback: v8::Local<'scope, v8::Function>,
 ) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
@@ -1187,8 +1338,14 @@ where
 
   let listen_properties = HTTP::listen_properties_from_connection(&connection)?;
 
-  let (tx, rx) = tokio::sync::mpsc::channel(10);
-  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new(rx));
+  let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle::new());
+  let callback_global = v8::Global::new(scope, callback);
+  let callback = Rc::new(ServerCallback::new(
+    scope,
+    isolate,
+    callback_global,
+    state.borrow().waker.clone(),
+  ));
 
   let options = {
     let state = state.borrow();
@@ -1199,8 +1356,9 @@ where
     connection,
     &listen_properties,
     resource.lifetime(),
-    tx,
+    callback,
     options,
+    true,
   );
 
   // Set the handle after we start the future
@@ -1216,61 +1374,19 @@ where
   ))
 }
 
-/// Synchronous, non-blocking call to see if there are any further HTTP requests. If anything
-/// goes wrong in this method we return null and let the async handler pick up the real error.
-#[op2(fast)]
-pub fn op_http_try_wait(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> *const c_void {
-  // The resource needs to exist.
-  let Ok(join_handle) = state.resource_table.get::<HttpJoinHandle>(rid) else {
-    return null();
-  };
-
-  // If join handle is somehow locked, just abort.
-  let Some(mut handle) =
-    RcRef::map(&join_handle, |this| &this.rx).try_borrow_mut()
-  else {
-    return null();
-  };
-
-  // See if there are any requests waiting on this channel. If not, return.
-  let Ok(record) = handle.try_recv() else {
-    return null();
-  };
-
-  let ptr = ExternalPointer::new(RcHttpRecord(record));
-  ptr.into_raw()
-}
-
+/// Wait for the server to finish accepting connections. Resolves
+/// when the accept-loop spawned by `op_http_serve` has exited (either
+/// from listener error or because the resource was closed).
 #[op2]
 pub async fn op_http_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<*const c_void, HttpNextError> {
-  // We will get the join handle initially, as we might be consuming requests still
+) -> Result<(), HttpNextError> {
   let join_handle = state
     .borrow_mut()
     .resource_table
     .get::<HttpJoinHandle>(rid)?;
 
-  let cancel = join_handle.listen_cancel_handle();
-  let next = async {
-    let mut recv = RcRef::map(&join_handle, |this| &this.rx).borrow_mut().await;
-    recv.recv().await
-  }
-  .or_cancel(cancel)
-  .unwrap_or_else(|_| None)
-  .await;
-
-  // Do we have a request?
-  if let Some(record) = next {
-    let ptr = ExternalPointer::new(RcHttpRecord(record));
-    return Ok(ptr.into_raw());
-  }
-
-  // No - we're shutting down
   let res = RcRef::map(join_handle, |this| &this.join_handle)
     .borrow_mut()
     .await
@@ -1279,15 +1395,13 @@ pub async fn op_http_wait(
     .await?;
 
   // Filter out shutdown (ENOTCONN) errors
-  if let Err(err) = res {
-    if is_normal_close(&err) {
-      return Ok(null());
-    }
-
+  if let Err(err) = res
+    && !is_normal_close(&err)
+  {
     return Err(err);
   }
 
-  Ok(null())
+  Ok(())
 }
 
 fn is_normal_close(err: &(dyn std::error::Error + 'static)) -> bool {
@@ -1712,9 +1826,11 @@ pub async fn op_raw_write_vectored(
 
 #[op2(fast)]
 pub fn op_http_metric_handle_otel_error(external: *const c_void) {
-  let http =
-    // SAFETY: external is deleted before calling this op.
-    unsafe { take_external!(external, "op_http_metric_handle_otel_error") };
+  // SAFETY: The external may have already been consumed by a take_external!
+  // call. Gracefully skip if the pointer is no longer valid.
+  let Some(http) = (unsafe { try_clone_external!(external) }) else {
+    return;
+  };
 
   http.otel_info_set_error("user");
 }
@@ -1724,9 +1840,13 @@ pub fn op_http_copy_span_to_otel_info(
   external: *const c_void,
   #[cppgc] span: &deno_telemetry::OtelSpan,
 ) {
-  let http =
-    // SAFETY: op is called with external.
-    unsafe { clone_external!(external, "op_http_copy_span_to_otel_info") };
+  // SAFETY: The external may have already been consumed by a take_external!
+  // call (e.g. op_http_set_promise_complete). On some platforms (Windows),
+  // the freed memory may be reused, causing the marker check to fail.
+  // We gracefully skip the copy in that case rather than panicking.
+  let Some(http) = (unsafe { try_clone_external!(external) }) else {
+    return;
+  };
 
   http.copy_span_to_otel_info(span);
 }

@@ -2,44 +2,48 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file prefer-primordials no-explicit-any
 
-import {
+(function () {
+const { core } = __bootstrap;
+const {
   op_node_get_hash_size,
   op_node_hkdf,
   op_node_hkdf_async,
-} from "ext:core/ops";
+} = core.ops;
 
-import {
+const {
   validateFunction,
   validateInteger,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_CRYPTO_INVALID_KEYLEN,
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   hideStackFrames,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   kHandle,
   toBuf,
   validateByteSource,
-} from "ext:deno_node/internal/crypto/util.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
+const {
   createSecretKey,
-  KeyObject,
-} from "ext:deno_node/internal/crypto/keys.ts";
-import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
-import { kMaxLength } from "ext:deno_node/internal/buffer.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+const { kMaxLength } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "ext:deno_node/internal/util/types.ts";
-import { isKeyObject } from "ext:deno_node/internal/crypto/_keys.ts";
-import { getHashes } from "ext:deno_node/internal/crypto/hash.ts";
-import { Buffer } from "node:buffer";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const { isKeyObject } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/_keys.ts",
+);
+const { getHashes } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/hash.ts",
+);
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
 // Consume raw bytes for any ArrayBufferView/ArrayBuffer; strings via toBuf.
 function toRawBytes(x: unknown): Buffer {
@@ -89,7 +93,7 @@ const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
   };
 });
 
-function prepareKey(key: BinaryLike | KeyObject) {
+function prepareKey(key: any) {
   if (isKeyObject(key)) {
     return key;
   }
@@ -118,11 +122,11 @@ function prepareKey(key: BinaryLike | KeyObject) {
   return createSecretKey(key);
 }
 
-export function hkdf(
+function hkdf(
   hash: string,
-  key: BinaryLike | KeyObject,
-  salt: BinaryLike,
-  info: BinaryLike,
+  key: any,
+  salt: any,
+  info: any,
   length: number,
   callback: (err: Error | null, derivedKey: ArrayBuffer | undefined) => void,
 ) {
@@ -143,11 +147,11 @@ export function hkdf(
     .catch((err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined));
 }
 
-export function hkdfSync(
+function hkdfSync(
   hash: string,
-  key: BinaryLike | KeyObject,
-  salt: BinaryLike,
-  info: BinaryLike,
+  key: any,
+  salt: any,
+  info: any,
   length: number,
 ) {
   ({ hash, key, salt, info, length } = validateParameters(
@@ -181,7 +185,12 @@ function validateAlgorithm(algorithm: string) {
   }
 }
 
-export default {
+return {
   hkdf,
   hkdfSync,
+  default: {
+    hkdf,
+    hkdfSync,
+  },
 };
+})();

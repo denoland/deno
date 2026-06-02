@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "deny_net_numeric_hostname_subnet": {
+      "args": "run --allow-net --deny-net=127.0.0.0/8 main.ts",
+      "output": "main.out"
+    }
+  }
+}

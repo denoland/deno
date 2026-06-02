@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_os"
-version = "0.57.0"
+version = "0.66.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,11 +21,8 @@ deno_permissions.workspace = true
 deno_signals.workspace = true
 libc.workspace = true
 netif.workspace = true
-once_cell.workspace = true
-serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "sysinfoapi", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
-ntapi = "0.4.0"
+windows-sys = { workspace = true, features = ["Wdk_System_SystemServices", "Win32_Foundation", "Win32_Networking_WinSock", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_System_Time"] }

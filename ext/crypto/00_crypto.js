@@ -1,18 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../../core/internal.d.ts" />
-/// <reference path="../../core/lib.deno_core.d.ts" />
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials, internals } = __bootstrap;
 const {
   isArrayBuffer,
   isTypedArray,
   isDataView,
 } = core;
-import {
+const {
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
   op_crypto_decrypt,
@@ -40,16 +35,35 @@ import {
   op_crypto_import_spki_x25519,
   op_crypto_import_spki_x448,
   op_crypto_jwk_x_ed25519,
+  op_crypto_ml_kem_decapsulate,
+  op_crypto_ml_kem_encapsulate,
+  op_crypto_ml_kem_export_pkcs8,
+  op_crypto_ml_kem_export_spki,
+  op_crypto_ml_kem_generate_key,
+  op_crypto_ml_kem_get_public_key,
+  op_crypto_ml_kem_import_pkcs8,
+  op_crypto_ml_kem_import_spki,
+  op_crypto_ml_kem_validate_private_key,
+  op_crypto_ml_kem_validate_public_key,
+  op_crypto_mldsa_export_pkcs8,
+  op_crypto_mldsa_export_spki,
+  op_crypto_mldsa_from_pkcs8,
+  op_crypto_mldsa_from_raw_private,
+  op_crypto_mldsa_from_seed,
+  op_crypto_mldsa_from_spki,
   op_crypto_random_uuid,
   op_crypto_sign_ed25519,
   op_crypto_sign_key,
+  op_crypto_sign_mldsa,
   op_crypto_subtle_digest,
+  op_crypto_subtle_digest_xof,
   op_crypto_unwrap_key,
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
+  op_crypto_verify_mldsa,
   op_crypto_wrap_key,
   op_crypto_x25519_public_key,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -88,10 +102,12 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const { kKeyObject } = internals;
 
 const supportedNamedCurves = ["P-256", "P-384", "P-521"];
 const recognisedUsages = [
@@ -103,6 +119,10 @@ const recognisedUsages = [
   "deriveBits",
   "wrapKey",
   "unwrapKey",
+  "encapsulateKey",
+  "encapsulateBits",
+  "decapsulateKey",
+  "decapsulateBits",
 ];
 
 const simpleAlgorithmDictionaries = {
@@ -122,6 +142,17 @@ const simpleAlgorithmDictionaries = {
   RsaOaepParams: { label: "BufferSource" },
   RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
   EcKeyImportParams: {},
+  ChaCha20Poly1305Params: {
+    nonce: "BufferSource",
+    additionalData: "BufferSource",
+  },
+  ShakeParams: {},
+  CShakeParams: {
+    functionName: "BufferSource",
+    customization: "BufferSource",
+  },
+  TurboShakeParams: {},
+  MlDsaParams: { context: "BufferSource" },
 };
 
 const supportedAlgorithms = {
@@ -133,6 +164,12 @@ const supportedAlgorithms = {
     "SHA3-256": null,
     "SHA3-384": null,
     "SHA3-512": null,
+    "SHAKE128": "ShakeParams",
+    "SHAKE256": "ShakeParams",
+    "cSHAKE128": "CShakeParams",
+    "cSHAKE256": "CShakeParams",
+    "TurboSHAKE128": "TurboShakeParams",
+    "TurboSHAKE256": "TurboShakeParams",
   },
   "generateKey": {
     "RSASSA-PKCS1-v1_5": "RsaHashedKeyGenParams",
@@ -146,9 +183,16 @@ const supportedAlgorithms = {
     "AES-OCB": "AesKeyGenParams",
     "AES-KW": "AesKeyGenParams",
     "HMAC": "HmacKeyGenParams",
+    "ChaCha20-Poly1305": null,
     "X25519": null,
     "X448": null,
     "Ed25519": null,
+    "ML-KEM-512": null,
+    "ML-KEM-768": null,
+    "ML-KEM-1024": null,
+    "ML-DSA-44": null,
+    "ML-DSA-65": null,
+    "ML-DSA-87": null,
   },
   "sign": {
     "RSASSA-PKCS1-v1_5": null,
@@ -156,6 +200,9 @@ const supportedAlgorithms = {
     "ECDSA": "EcdsaParams",
     "HMAC": null,
     "Ed25519": null,
+    "ML-DSA-44": "MlDsaParams",
+    "ML-DSA-65": "MlDsaParams",
+    "ML-DSA-87": "MlDsaParams",
   },
   "verify": {
     "RSASSA-PKCS1-v1_5": null,
@@ -163,6 +210,9 @@ const supportedAlgorithms = {
     "ECDSA": "EcdsaParams",
     "HMAC": null,
     "Ed25519": null,
+    "ML-DSA-44": "MlDsaParams",
+    "ML-DSA-65": "MlDsaParams",
+    "ML-DSA-87": "MlDsaParams",
   },
   "importKey": {
     "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
@@ -182,6 +232,22 @@ const supportedAlgorithms = {
     "Ed25519": null,
     "X25519": null,
     "X448": null,
+    "ML-KEM-512": null,
+    "ML-KEM-768": null,
+    "ML-KEM-1024": null,
+    "ML-DSA-44": null,
+    "ML-DSA-65": null,
+    "ML-DSA-87": null,
+  },
+  "encapsulate": {
+    "ML-KEM-512": null,
+    "ML-KEM-768": null,
+    "ML-KEM-1024": null,
+  },
+  "decapsulate": {
+    "ML-KEM-512": null,
+    "ML-KEM-768": null,
+    "ML-KEM-1024": null,
   },
   "deriveBits": {
     "HKDF": "HkdfParams",
@@ -196,7 +262,7 @@ const supportedAlgorithms = {
     "AES-GCM": "AesGcmParams",
     "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
-    "ChaCha20-Poly1305": null,
+    "ChaCha20-Poly1305": "ChaCha20Poly1305Params",
   },
   "decrypt": {
     "RSA-OAEP": "RsaOaepParams",
@@ -204,7 +270,7 @@ const supportedAlgorithms = {
     "AES-GCM": "AesGcmParams",
     "AES-OCB": "AesGcmParams",
     "AES-CTR": "AesCtrParams",
-    "ChaCha20-Poly1305": null,
+    "ChaCha20-Poly1305": "ChaCha20Poly1305Params",
   },
   "get key length": {
     "AES-CBC": "AesDerivedKeyParams",
@@ -403,6 +469,80 @@ class CryptoKey {
     return this[_algorithm];
   }
 
+  /**
+   * Derive the public key associated with this CryptoKey, when the underlying
+   * algorithm supports it (currently ML-KEM decapsulation keys and ML-DSA
+   * signing keys).
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#CryptoKey-method-getPublicKey
+   *
+   * @returns {CryptoKey}
+   */
+  getPublicKey() {
+    webidl.assertBranded(this, CryptoKeyPrototype);
+    if (this[_type] !== "private") {
+      throw new DOMException(
+        "getPublicKey() is only valid on private keys",
+        "InvalidAccessError",
+      );
+    }
+
+    const algorithm = this[_algorithm];
+    const algorithmName = algorithm.name;
+    switch (algorithmName) {
+      case "ML-KEM-512":
+      case "ML-KEM-768":
+      case "ML-KEM-1024": {
+        const handle = this[_handle];
+        const privateKeyBytes = WeakMapPrototypeGet(KEY_STORE, handle);
+        let publicKeyBytes;
+        try {
+          publicKeyBytes = op_crypto_ml_kem_get_public_key(
+            algorithmName,
+            privateKeyBytes,
+          );
+        } catch (_) {
+          throw new DOMException(
+            "Failed to derive public key",
+            "OperationError",
+          );
+        }
+        const pubHandle = {};
+        WeakMapPrototypeSet(KEY_STORE, pubHandle, publicKeyBytes);
+        const filteredUsages = ArrayPrototypeFilter(
+          this[_usages],
+          (u) => u === "encapsulateKey" || u === "encapsulateBits",
+        );
+        return constructKey(
+          "public",
+          true,
+          filteredUsages.length > 0
+            ? filteredUsages
+            : ["encapsulateKey", "encapsulateBits"],
+          { name: algorithmName },
+          pubHandle,
+        );
+      }
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87": {
+        const pub = WeakMapPrototypeGet(MLDSA_PUBLIC_FROM_PRIVATE, this);
+        if (pub === undefined) {
+          throw new DOMException(
+            "Public key is not available",
+            "InvalidAccessError",
+          );
+        }
+        return pub;
+      }
+      default:
+        throw new DOMException(
+          `getPublicKey() is not supported for ${algorithmName}`,
+          "NotSupportedError",
+        );
+    }
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
@@ -484,6 +624,35 @@ function usageIntersection(a, b) {
 // TODO(lucacasonato): this should be moved to rust
 /** @type {WeakMap<object, object>} */
 const KEY_STORE = new SafeWeakMap();
+
+/** @type {WeakMap<CryptoKey, CryptoKey>} */
+const MLDSA_PUBLIC_FROM_PRIVATE = new SafeWeakMap();
+
+function mldsaVariantId(name) {
+  switch (name) {
+    case "ML-DSA-44":
+      return 0;
+    case "ML-DSA-65":
+      return 1;
+    case "ML-DSA-87":
+      return 2;
+    default:
+      throw new TypeError(`Unknown ML-DSA variant: ${name}`);
+  }
+}
+
+function mldsaPublicKeyLen(variant) {
+  switch (variant) {
+    case 0:
+      return 1312;
+    case 1:
+      return 1952;
+    case 2:
+      return 2592;
+    default:
+      throw new TypeError("Unknown ML-DSA variant");
+  }
+}
 
 function getKeyLength(algorithm) {
   switch (algorithm.name) {
@@ -581,6 +750,48 @@ class SubtleCrypto {
     data = copyBuffer(data);
 
     algorithm = normalizeAlgorithm(algorithm, "digest");
+
+    switch (algorithm.name) {
+      case "SHAKE128":
+      case "SHAKE256":
+      case "cSHAKE128":
+      case "cSHAKE256":
+      case "TurboSHAKE128":
+      case "TurboSHAKE256": {
+        if (algorithm.length === undefined || algorithm.length === 0) {
+          throw new DOMException(
+            `'length' must be a positive multiple of 8 for ${algorithm.name}`,
+            "OperationError",
+          );
+        }
+        if (algorithm.length % 8 !== 0) {
+          throw new DOMException(
+            `'length' must be a multiple of 8 for ${algorithm.name}`,
+            "OperationError",
+          );
+        }
+        if (
+          (algorithm.name === "TurboSHAKE128" ||
+            algorithm.name === "TurboSHAKE256") &&
+          algorithm.domainSeparation !== undefined &&
+          (algorithm.domainSeparation < 0x01 ||
+            algorithm.domainSeparation > 0x7F)
+        ) {
+          throw new DOMException(
+            "'domainSeparation' must be in [0x01, 0x7F]",
+            "OperationError",
+          );
+        }
+        const xofResult = await op_crypto_subtle_digest_xof({
+          name: algorithm.name,
+          length: algorithm.length,
+          functionName: algorithm.functionName ?? null,
+          customization: algorithm.customization ?? null,
+          domainSeparation: algorithm.domainSeparation ?? null,
+        }, data);
+        return TypedArrayPrototypeGetBuffer(xofResult);
+      }
+    }
 
     const result = await op_crypto_subtle_digest(
       algorithm.name,
@@ -837,6 +1048,40 @@ class SubtleCrypto {
         // 9.
         return TypedArrayPrototypeGetBuffer(plaintext);
       }
+      case "ChaCha20-Poly1305": {
+        if (normalizedAlgorithm.nonce === undefined) {
+          throw new TypeError("nonce is required");
+        }
+        normalizedAlgorithm.nonce = copyBuffer(normalizedAlgorithm.nonce);
+        if (
+          TypedArrayPrototypeGetByteLength(normalizedAlgorithm.nonce) !== 12
+        ) {
+          throw new DOMException(
+            "ChaCha20-Poly1305 nonce must be 12 bytes",
+            "OperationError",
+          );
+        }
+        if (TypedArrayPrototypeGetByteLength(data) < 16) {
+          throw new DOMException(
+            "The provided data is too small",
+            "OperationError",
+          );
+        }
+        if (normalizedAlgorithm.additionalData !== undefined) {
+          normalizedAlgorithm.additionalData = copyBuffer(
+            normalizedAlgorithm.additionalData,
+          );
+        }
+
+        const plaintext = await op_crypto_decrypt({
+          key: keyData,
+          algorithm: "ChaCha20-Poly1305",
+          nonce: normalizedAlgorithm.nonce,
+          additionalData: normalizedAlgorithm.additionalData || null,
+        }, data);
+
+        return TypedArrayPrototypeGetBuffer(plaintext);
+      }
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
     }
@@ -981,6 +1226,25 @@ class SubtleCrypto {
         }
         return TypedArrayPrototypeGetBuffer(signature);
       }
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87": {
+        if (key[_type] !== "private") {
+          throw new DOMException(
+            "Key type not supported",
+            "InvalidAccessError",
+          );
+        }
+        const variant = mldsaVariantId(normalizedAlgorithm.name);
+        const context = normalizedAlgorithm.context;
+        const signature = op_crypto_sign_mldsa(
+          variant,
+          keyData.privateKey,
+          data,
+          context !== undefined ? context : null,
+        );
+        return TypedArrayPrototypeGetBuffer(signature);
+      }
     }
 
     throw new TypeError("Unreachable");
@@ -1092,6 +1356,12 @@ class SubtleCrypto {
         result = exportKeyEd25519(format, key, innerKey);
         break;
       }
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87": {
+        result = exportKeyMlDsa(format, key, innerKey);
+        break;
+      }
       case "X448": {
         result = exportKeyX448(format, key, innerKey);
         break;
@@ -1110,6 +1380,12 @@ class SubtleCrypto {
       }
       case "ChaCha20-Poly1305": {
         result = exportKeyChaCha20Poly1305(format, key, innerKey);
+        break;
+      }
+      case "ML-KEM-512":
+      case "ML-KEM-768":
+      case "ML-KEM-1024": {
+        result = exportKeyMlKem(format, key, innerKey);
         break;
       }
       default:
@@ -1383,6 +1659,25 @@ class SubtleCrypto {
         }
 
         return op_crypto_verify_ed25519(keyData, data, signature);
+      }
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87": {
+        if (key[_type] !== "public") {
+          throw new DOMException(
+            "Key type not supported",
+            "InvalidAccessError",
+          );
+        }
+        const variant = mldsaVariantId(normalizedAlgorithm.name);
+        const context = normalizedAlgorithm.context;
+        return op_crypto_verify_mldsa(
+          variant,
+          keyData,
+          data,
+          signature,
+          context !== undefined ? context : null,
+        );
       }
     }
 
@@ -1729,11 +2024,364 @@ class SubtleCrypto {
     return result;
   }
 
+  /**
+   * Encapsulate a fresh shared secret to the given encapsulation key and
+   * return the shared secret as a CryptoKey, along with the ciphertext.
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-encapsulateKey
+   *
+   * @param {AlgorithmIdentifier} algorithm
+   * @param {CryptoKey} encapsulationKey
+   * @param {AlgorithmIdentifier} sharedKeyAlgorithm
+   * @param {boolean} extractable
+   * @param {KeyUsage[]} usages
+   * @returns {Promise<{ciphertext: ArrayBuffer, sharedKey: CryptoKey}>}
+   */
+  async encapsulateKey(
+    algorithm,
+    encapsulationKey,
+    sharedKeyAlgorithm,
+    extractable,
+    usages,
+  ) {
+    webidl.assertBranded(this, SubtleCryptoPrototype);
+    const prefix = "Failed to execute 'encapsulateKey' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 5, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
+      prefix,
+      "Argument 1",
+    );
+    encapsulationKey = webidl.converters.CryptoKey(
+      encapsulationKey,
+      prefix,
+      "Argument 2",
+    );
+    sharedKeyAlgorithm = webidl.converters.AlgorithmIdentifier(
+      sharedKeyAlgorithm,
+      prefix,
+      "Argument 3",
+    );
+    extractable = webidl.converters.boolean(extractable, prefix, "Argument 4");
+    usages = webidl.converters["sequence<KeyUsage>"](
+      usages,
+      prefix,
+      "Argument 5",
+    );
+
+    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encapsulate");
+
+    if (encapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+      throw new DOMException(
+        "Encapsulation key algorithm does not match",
+        "InvalidAccessError",
+      );
+    }
+    if (encapsulationKey[_type] !== "public") {
+      throw new DOMException(
+        "Encapsulation key must be a public key",
+        "InvalidAccessError",
+      );
+    }
+    if (!ArrayPrototypeIncludes(encapsulationKey[_usages], "encapsulateKey")) {
+      throw new DOMException(
+        "Encapsulation key usages must include 'encapsulateKey'",
+        "InvalidAccessError",
+      );
+    }
+
+    const { ciphertext, sharedSecret } = mlKemEncapsulate(
+      normalizedAlgorithm,
+      encapsulationKey,
+    );
+
+    const sharedKey = await this.importKey(
+      "raw",
+      sharedSecret,
+      sharedKeyAlgorithm,
+      extractable,
+      usages,
+    );
+
+    return {
+      ciphertext: TypedArrayPrototypeGetBuffer(ciphertext),
+      sharedKey,
+    };
+  }
+
+  /**
+   * Encapsulate a fresh shared secret to the given encapsulation key and
+   * return the raw shared secret bytes.
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-encapsulateBits
+   *
+   * @param {AlgorithmIdentifier} algorithm
+   * @param {CryptoKey} encapsulationKey
+   * @returns {Promise<{ciphertext: ArrayBuffer, sharedKey: ArrayBuffer}>}
+   */
+  // deno-lint-ignore require-await
+  async encapsulateBits(algorithm, encapsulationKey) {
+    webidl.assertBranded(this, SubtleCryptoPrototype);
+    const prefix = "Failed to execute 'encapsulateBits' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
+      prefix,
+      "Argument 1",
+    );
+    encapsulationKey = webidl.converters.CryptoKey(
+      encapsulationKey,
+      prefix,
+      "Argument 2",
+    );
+
+    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encapsulate");
+
+    if (encapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+      throw new DOMException(
+        "Encapsulation key algorithm does not match",
+        "InvalidAccessError",
+      );
+    }
+    if (encapsulationKey[_type] !== "public") {
+      throw new DOMException(
+        "Encapsulation key must be a public key",
+        "InvalidAccessError",
+      );
+    }
+    if (!ArrayPrototypeIncludes(encapsulationKey[_usages], "encapsulateBits")) {
+      throw new DOMException(
+        "Encapsulation key usages must include 'encapsulateBits'",
+        "InvalidAccessError",
+      );
+    }
+
+    const { ciphertext, sharedSecret } = mlKemEncapsulate(
+      normalizedAlgorithm,
+      encapsulationKey,
+    );
+    return {
+      ciphertext: TypedArrayPrototypeGetBuffer(ciphertext),
+      sharedKey: TypedArrayPrototypeGetBuffer(sharedSecret),
+    };
+  }
+
+  /**
+   * Decapsulate the given ciphertext using the provided decapsulation key,
+   * importing the resulting shared secret as a CryptoKey under
+   * `sharedKeyAlgorithm`.
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-decapsulateKey
+   *
+   * @param {AlgorithmIdentifier} algorithm
+   * @param {CryptoKey} decapsulationKey
+   * @param {BufferSource} ciphertext
+   * @param {AlgorithmIdentifier} sharedKeyAlgorithm
+   * @param {boolean} extractable
+   * @param {KeyUsage[]} usages
+   * @returns {Promise<CryptoKey>}
+   */
+  async decapsulateKey(
+    algorithm,
+    decapsulationKey,
+    ciphertext,
+    sharedKeyAlgorithm,
+    extractable,
+    usages,
+  ) {
+    webidl.assertBranded(this, SubtleCryptoPrototype);
+    const prefix = "Failed to execute 'decapsulateKey' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 6, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
+      prefix,
+      "Argument 1",
+    );
+    decapsulationKey = webidl.converters.CryptoKey(
+      decapsulationKey,
+      prefix,
+      "Argument 2",
+    );
+    ciphertext = webidl.converters.BufferSource(
+      ciphertext,
+      prefix,
+      "Argument 3",
+    );
+    sharedKeyAlgorithm = webidl.converters.AlgorithmIdentifier(
+      sharedKeyAlgorithm,
+      prefix,
+      "Argument 4",
+    );
+    extractable = webidl.converters.boolean(extractable, prefix, "Argument 5");
+    usages = webidl.converters["sequence<KeyUsage>"](
+      usages,
+      prefix,
+      "Argument 6",
+    );
+
+    ciphertext = copyBuffer(ciphertext);
+    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decapsulate");
+    if (decapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+      throw new DOMException(
+        "Decapsulation key algorithm does not match",
+        "InvalidAccessError",
+      );
+    }
+    if (decapsulationKey[_type] !== "private") {
+      throw new DOMException(
+        "Decapsulation key must be a private key",
+        "InvalidAccessError",
+      );
+    }
+    if (!ArrayPrototypeIncludes(decapsulationKey[_usages], "decapsulateKey")) {
+      throw new DOMException(
+        "Decapsulation key usages must include 'decapsulateKey'",
+        "InvalidAccessError",
+      );
+    }
+
+    const sharedSecret = mlKemDecapsulate(
+      normalizedAlgorithm,
+      decapsulationKey,
+      ciphertext,
+    );
+
+    return await this.importKey(
+      "raw",
+      sharedSecret,
+      sharedKeyAlgorithm,
+      extractable,
+      usages,
+    );
+  }
+
+  /**
+   * Decapsulate the given ciphertext using the provided decapsulation key
+   * and return the raw shared secret bytes.
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-decapsulateBits
+   *
+   * @param {AlgorithmIdentifier} algorithm
+   * @param {CryptoKey} decapsulationKey
+   * @param {BufferSource} ciphertext
+   * @returns {Promise<ArrayBuffer>}
+   */
+  // deno-lint-ignore require-await
+  async decapsulateBits(algorithm, decapsulationKey, ciphertext) {
+    webidl.assertBranded(this, SubtleCryptoPrototype);
+    const prefix = "Failed to execute 'decapsulateBits' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
+      prefix,
+      "Argument 1",
+    );
+    decapsulationKey = webidl.converters.CryptoKey(
+      decapsulationKey,
+      prefix,
+      "Argument 2",
+    );
+    ciphertext = webidl.converters.BufferSource(
+      ciphertext,
+      prefix,
+      "Argument 3",
+    );
+
+    ciphertext = copyBuffer(ciphertext);
+    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decapsulate");
+    if (decapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+      throw new DOMException(
+        "Decapsulation key algorithm does not match",
+        "InvalidAccessError",
+      );
+    }
+    if (decapsulationKey[_type] !== "private") {
+      throw new DOMException(
+        "Decapsulation key must be a private key",
+        "InvalidAccessError",
+      );
+    }
+    if (!ArrayPrototypeIncludes(decapsulationKey[_usages], "decapsulateBits")) {
+      throw new DOMException(
+        "Decapsulation key usages must include 'decapsulateBits'",
+        "InvalidAccessError",
+      );
+    }
+
+    const sharedSecret = mlKemDecapsulate(
+      normalizedAlgorithm,
+      decapsulationKey,
+      ciphertext,
+    );
+    return TypedArrayPrototypeGetBuffer(sharedSecret);
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }
 }
 const SubtleCryptoPrototype = SubtleCrypto.prototype;
+
+function mlKemEncapsulate(normalizedAlgorithm, encapsulationKey) {
+  switch (normalizedAlgorithm.name) {
+    case "ML-KEM-512":
+    case "ML-KEM-768":
+    case "ML-KEM-1024": {
+      const handle = encapsulationKey[_handle];
+      const publicKeyBytes = WeakMapPrototypeGet(KEY_STORE, handle);
+      let result;
+      try {
+        result = op_crypto_ml_kem_encapsulate(
+          normalizedAlgorithm.name,
+          publicKeyBytes,
+        );
+      } catch (_) {
+        throw new DOMException("Encapsulation failed", "OperationError");
+      }
+      return {
+        ciphertext: result.ciphertext,
+        sharedSecret: result.sharedSecret,
+      };
+    }
+    default:
+      throw new DOMException(
+        `Encapsulation not supported for ${normalizedAlgorithm.name}`,
+        "NotSupportedError",
+      );
+  }
+}
+
+function mlKemDecapsulate(normalizedAlgorithm, decapsulationKey, ciphertext) {
+  switch (normalizedAlgorithm.name) {
+    case "ML-KEM-512":
+    case "ML-KEM-768":
+    case "ML-KEM-1024": {
+      const expectedCtSize = ML_KEM_CIPHERTEXT_SIZES[normalizedAlgorithm.name];
+      if (TypedArrayPrototypeGetByteLength(ciphertext) !== expectedCtSize) {
+        throw new DOMException(
+          `ML-KEM ${normalizedAlgorithm.name} ciphertext must be ${expectedCtSize} bytes`,
+          "OperationError",
+        );
+      }
+      const handle = decapsulationKey[_handle];
+      const privateKeyBytes = WeakMapPrototypeGet(KEY_STORE, handle);
+      try {
+        return op_crypto_ml_kem_decapsulate(
+          normalizedAlgorithm.name,
+          privateKeyBytes,
+          ciphertext,
+        );
+      } catch (_) {
+        throw new DOMException("Decapsulation failed", "OperationError");
+      }
+    }
+    default:
+      throw new DOMException(
+        `Decapsulation not supported for ${normalizedAlgorithm.name}`,
+        "NotSupportedError",
+      );
+  }
+}
 
 async function generateKey(normalizedAlgorithm, extractable, usages) {
   const algorithmName = normalizedAlgorithm.name;
@@ -2139,6 +2787,97 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
 
       return { publicKey, privateKey };
     }
+    case "ML-DSA-44":
+    case "ML-DSA-65":
+    case "ML-DSA-87": {
+      if (
+        ArrayPrototypeFind(
+          usages,
+          (u) => !ArrayPrototypeIncludes(["sign", "verify"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      const variant = mldsaVariantId(algorithmName);
+      const seed = new Uint8Array(32);
+      op_crypto_get_random_values(seed);
+      const { privateKey: privateKeyBytes, publicKey: publicKeyBytes } =
+        op_crypto_mldsa_from_seed(variant, seed);
+
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, {
+        seed,
+        privateKey: privateKeyBytes,
+      });
+
+      const publicHandle = {};
+      WeakMapPrototypeSet(KEY_STORE, publicHandle, publicKeyBytes);
+
+      const algorithm = {
+        name: algorithmName,
+      };
+
+      const publicKey = constructKey(
+        "public",
+        true,
+        usageIntersection(usages, ["verify"]),
+        algorithm,
+        publicHandle,
+      );
+
+      const privateKey = constructKey(
+        "private",
+        extractable,
+        usageIntersection(usages, ["sign"]),
+        algorithm,
+        handle,
+      );
+
+      WeakMapPrototypeSet(MLDSA_PUBLIC_FROM_PRIVATE, privateKey, publicKey);
+
+      return { publicKey, privateKey };
+    }
+    case "ChaCha20-Poly1305": {
+      // 1.
+      if (
+        ArrayPrototypeFind(
+          usages,
+          (u) =>
+            !ArrayPrototypeIncludes([
+              "encrypt",
+              "decrypt",
+              "wrapKey",
+              "unwrapKey",
+            ], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      // 2. ChaCha20-Poly1305 keys are always 256 bits.
+      const keyData = await op_crypto_generate_key({
+        algorithm: "AES",
+        length: 256,
+      });
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, {
+        type: "secret",
+        data: keyData,
+      });
+
+      const algorithm = {
+        name: algorithmName,
+      };
+
+      return constructKey(
+        "secret",
+        extractable,
+        usages,
+        algorithm,
+        handle,
+      );
+    }
     case "HMAC": {
       // 1.
       if (
@@ -2193,6 +2932,55 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       // 14.
       return key;
     }
+    case "ML-KEM-512":
+    case "ML-KEM-768":
+    case "ML-KEM-1024": {
+      // ML-KEM (FIPS 203) keys use the encapsulateKey/decapsulateKey usages
+      // defined in the WICG Modern Algorithms spec.
+      for (let i = 0; i < usages.length; i++) {
+        if (
+          !ArrayPrototypeIncludes(
+            [
+              "encapsulateKey",
+              "encapsulateBits",
+              "decapsulateKey",
+              "decapsulateBits",
+            ],
+            usages[i],
+          )
+        ) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+
+      const { privateKey: privBytes, publicKey: pubBytes } =
+        op_crypto_ml_kem_generate_key(algorithmName);
+
+      const algorithm = { name: algorithmName };
+
+      const privHandle = {};
+      WeakMapPrototypeSet(KEY_STORE, privHandle, privBytes);
+
+      const pubHandle = {};
+      WeakMapPrototypeSet(KEY_STORE, pubHandle, pubBytes);
+
+      const publicKey = constructKey(
+        "public",
+        true,
+        usageIntersection(usages, ["encapsulateKey", "encapsulateBits"]),
+        algorithm,
+        pubHandle,
+      );
+      const privateKey = constructKey(
+        "private",
+        extractable,
+        usageIntersection(usages, ["decapsulateKey", "decapsulateBits"]),
+        algorithm,
+        privHandle,
+      );
+
+      return { publicKey, privateKey };
+    }
   }
 }
 
@@ -2207,6 +2995,10 @@ function importKeyX448(
       // 1.
       if (keyUsages.length > 0) {
         throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 56) {
+        throw new DOMException("Invalid key data", "DataError");
       }
 
       const handle = {};
@@ -2263,7 +3055,7 @@ function importKeyX448(
         throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
-      const privateKeyData = new Uint8Array(32);
+      const privateKeyData = new Uint8Array(56);
       if (!op_crypto_import_pkcs8_x448(keyData, privateKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
@@ -2360,7 +3152,15 @@ function importKeyX448(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = op_crypto_base64url_decode(jwk.d);
+        let privateKeyData;
+        try {
+          privateKeyData = op_crypto_base64url_decode(jwk.d);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 56) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2378,7 +3178,15 @@ function importKeyX448(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = op_crypto_base64url_decode(jwk.x);
+        let publicKeyData;
+        try {
+          publicKeyData = op_crypto_base64url_decode(jwk.x);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 56) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -2417,6 +3225,10 @@ function importKeyEd25519(
         ) !== undefined
       ) {
         throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException("Invalid key data", "DataError");
       }
 
       const handle = {};
@@ -2589,6 +3401,9 @@ function importKeyEd25519(
         } catch (_) {
           throw new DOMException("Invalid private key data", "DataError");
         }
+        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 32) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2610,6 +3425,9 @@ function importKeyEd25519(
         try {
           publicKeyData = op_crypto_base64url_decode(jwk.x);
         } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 32) {
           throw new DOMException("Invalid public key data", "DataError");
         }
 
@@ -2645,6 +3463,10 @@ function importKeyX25519(
       // 1.
       if (keyUsages.length > 0) {
         throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException("Invalid key data", "DataError");
       }
 
       const handle = {};
@@ -2798,7 +3620,15 @@ function importKeyX25519(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = op_crypto_base64url_decode(jwk.d);
+        let privateKeyData;
+        try {
+          privateKeyData = op_crypto_base64url_decode(jwk.d);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 32) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2816,7 +3646,15 @@ function importKeyX25519(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = op_crypto_base64url_decode(jwk.x);
+        let publicKeyData;
+        try {
+          publicKeyData = op_crypto_base64url_decode(jwk.x);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 32) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -2906,6 +3744,217 @@ function exportKeyChaCha20Poly1305(format, _key, innerKey) {
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
+const ML_KEM_PRIVATE_SIZES = {
+  "ML-KEM-512": 1632,
+  "ML-KEM-768": 2400,
+  "ML-KEM-1024": 3168,
+};
+const ML_KEM_PUBLIC_SIZES = {
+  "ML-KEM-512": 800,
+  "ML-KEM-768": 1184,
+  "ML-KEM-1024": 1568,
+};
+const ML_KEM_CIPHERTEXT_SIZES = {
+  "ML-KEM-512": 768,
+  "ML-KEM-768": 1088,
+  "ML-KEM-1024": 1568,
+};
+
+const ML_KEM_PRIVATE_USAGES = ["decapsulateKey", "decapsulateBits"];
+const ML_KEM_PUBLIC_USAGES = ["encapsulateKey", "encapsulateBits"];
+
+function importKeyMlKem(
+  format,
+  normalizedAlgorithm,
+  keyData,
+  extractable,
+  keyUsages,
+) {
+  const algorithmName = normalizedAlgorithm.name;
+  const algorithm = { name: algorithmName };
+
+  switch (format) {
+    case "raw-public": {
+      // Public encapsulation key.
+      const expectedSize = ML_KEM_PUBLIC_SIZES[algorithmName];
+      if (TypedArrayPrototypeGetByteLength(keyData) !== expectedSize) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      for (let i = 0; i < keyUsages.length; i++) {
+        if (!ArrayPrototypeIncludes(ML_KEM_PUBLIC_USAGES, keyUsages[i])) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+      if (
+        !op_crypto_ml_kem_validate_public_key(algorithmName, keyData)
+      ) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+      return constructKey(
+        "public",
+        extractable,
+        usageIntersection(keyUsages, ML_KEM_PUBLIC_USAGES),
+        algorithm,
+        handle,
+      );
+    }
+    case "raw-private": {
+      // Private decapsulation key in FIPS 203 expanded form.
+      const expectedSize = ML_KEM_PRIVATE_SIZES[algorithmName];
+      if (TypedArrayPrototypeGetByteLength(keyData) !== expectedSize) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      for (let i = 0; i < keyUsages.length; i++) {
+        if (!ArrayPrototypeIncludes(ML_KEM_PRIVATE_USAGES, keyUsages[i])) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+      if (
+        !op_crypto_ml_kem_validate_private_key(algorithmName, keyData)
+      ) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+      return constructKey(
+        "private",
+        extractable,
+        usageIntersection(keyUsages, ML_KEM_PRIVATE_USAGES),
+        algorithm,
+        handle,
+      );
+    }
+    case "raw-seed": {
+      // FIPS 203 64-byte seed format. Not yet supported by the aws-lc-rs
+      // backend; tracked as a follow-up.
+      throw new DOMException(
+        "ML-KEM 'raw-seed' format is not yet supported",
+        "NotSupportedError",
+      );
+    }
+    case "spki": {
+      for (let i = 0; i < keyUsages.length; i++) {
+        if (!ArrayPrototypeIncludes(ML_KEM_PUBLIC_USAGES, keyUsages[i])) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+      let imported;
+      try {
+        imported = op_crypto_ml_kem_import_spki(keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      if (imported.variant !== algorithmName) {
+        throw new DOMException(
+          "Imported key algorithm does not match",
+          "DataError",
+        );
+      }
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, imported.publicKey);
+      return constructKey(
+        "public",
+        extractable,
+        usageIntersection(keyUsages, ML_KEM_PUBLIC_USAGES),
+        algorithm,
+        handle,
+      );
+    }
+    case "pkcs8": {
+      for (let i = 0; i < keyUsages.length; i++) {
+        if (!ArrayPrototypeIncludes(ML_KEM_PRIVATE_USAGES, keyUsages[i])) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+      let imported;
+      try {
+        imported = op_crypto_ml_kem_import_pkcs8(keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      if (imported.variant !== algorithmName) {
+        throw new DOMException(
+          "Imported key algorithm does not match",
+          "DataError",
+        );
+      }
+      const handle = {};
+      WeakMapPrototypeSet(KEY_STORE, handle, imported.privateKey);
+      return constructKey(
+        "private",
+        extractable,
+        usageIntersection(keyUsages, ML_KEM_PRIVATE_USAGES),
+        algorithm,
+        handle,
+      );
+    }
+    default:
+      throw new DOMException(
+        "Unsupported key format for ML-KEM",
+        "NotSupportedError",
+      );
+  }
+}
+
+function exportKeyMlKem(format, key, innerKey) {
+  const algorithmName = key[_algorithm].name;
+  const type = key[_type];
+
+  switch (format) {
+    case "raw-public": {
+      if (type !== "public") {
+        throw new DOMException(
+          "'raw-public' is only valid for public keys",
+          "InvalidAccessError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(innerKey);
+    }
+    case "raw-private": {
+      if (type !== "private") {
+        throw new DOMException(
+          "'raw-private' is only valid for private keys",
+          "InvalidAccessError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(innerKey);
+    }
+    case "raw-seed": {
+      throw new DOMException(
+        "ML-KEM 'raw-seed' format is not yet supported",
+        "NotSupportedError",
+      );
+    }
+    case "spki": {
+      if (type !== "public") {
+        throw new DOMException(
+          "'spki' is only valid for public keys",
+          "InvalidAccessError",
+        );
+      }
+      const der = op_crypto_ml_kem_export_spki(algorithmName, innerKey);
+      return TypedArrayPrototypeGetBuffer(der);
+    }
+    case "pkcs8": {
+      if (type !== "private") {
+        throw new DOMException(
+          "'pkcs8' is only valid for private keys",
+          "InvalidAccessError",
+        );
+      }
+      const der = op_crypto_ml_kem_export_pkcs8(algorithmName, innerKey);
+      return TypedArrayPrototypeGetBuffer(der);
+    }
+    default:
+      throw new DOMException(
+        "Unsupported key format for ML-KEM",
+        "NotSupportedError",
+      );
   }
 }
 
@@ -3676,6 +4725,220 @@ function importKeyEC(
   }
 }
 
+function importKeyMlDsa(
+  format,
+  normalizedAlgorithm,
+  keyData,
+  extractable,
+  keyUsages,
+) {
+  const algorithmName = normalizedAlgorithm.name;
+  const variant = mldsaVariantId(algorithmName);
+
+  const makePublicKey = (publicBytes) => {
+    const handle = {};
+    WeakMapPrototypeSet(KEY_STORE, handle, publicBytes);
+    return constructKey(
+      "public",
+      extractable,
+      usageIntersection(keyUsages, ["verify"]),
+      { name: algorithmName },
+      handle,
+    );
+  };
+
+  const makePrivateKey = (seed, privateBytes, publicBytes) => {
+    const handle = {};
+    WeakMapPrototypeSet(KEY_STORE, handle, {
+      seed,
+      privateKey: privateBytes,
+    });
+    const privateKey = constructKey(
+      "private",
+      extractable,
+      usageIntersection(keyUsages, ["sign"]),
+      { name: algorithmName },
+      handle,
+    );
+    WeakMapPrototypeSet(
+      MLDSA_PUBLIC_FROM_PRIVATE,
+      privateKey,
+      makePublicKey(publicBytes),
+    );
+    return privateKey;
+  };
+
+  switch (format) {
+    case "raw-seed": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["sign"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      let res;
+      try {
+        res = op_crypto_mldsa_from_seed(variant, keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      const seedCopy = TypedArrayPrototypeSlice(keyData);
+      return makePrivateKey(seedCopy, res.privateKey, res.publicKey);
+    }
+    case "raw-private": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["sign"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      let res;
+      try {
+        res = op_crypto_mldsa_from_raw_private(variant, keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      return makePrivateKey(null, res.privateKey, res.publicKey);
+    }
+    case "raw-public": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["verify"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      const expected = mldsaPublicKeyLen(variant);
+      if (TypedArrayPrototypeGetByteLength(keyData) !== expected) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      return makePublicKey(TypedArrayPrototypeSlice(keyData));
+    }
+    case "pkcs8": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["sign"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      let res;
+      try {
+        res = op_crypto_mldsa_from_pkcs8(variant, keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      return makePrivateKey(
+        res.seed !== undefined && res.seed !== null ? res.seed : null,
+        res.privateKey,
+        res.publicKey,
+      );
+    }
+    case "spki": {
+      if (
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(["verify"], u),
+        ) !== undefined
+      ) {
+        throw new DOMException("Invalid key usage", "SyntaxError");
+      }
+      let pub;
+      try {
+        pub = op_crypto_mldsa_from_spki(variant, keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      return makePublicKey(pub);
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
+function exportKeyMlDsa(format, key, innerKey) {
+  const algorithmName = key[_algorithm].name;
+  const variant = mldsaVariantId(algorithmName);
+
+  switch (format) {
+    case "raw-seed": {
+      if (key[_type] !== "private") {
+        throw new DOMException(
+          "Key is not a private key",
+          "InvalidAccessError",
+        );
+      }
+      const seed = innerKey?.seed;
+      if (seed == null) {
+        throw new DOMException(
+          "Seed is not available for this key",
+          "OperationError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(seed));
+    }
+    case "raw-private": {
+      if (key[_type] !== "private") {
+        throw new DOMException(
+          "Key is not a private key",
+          "InvalidAccessError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(
+        TypedArrayPrototypeSlice(innerKey.privateKey),
+      );
+    }
+    case "raw-public": {
+      if (key[_type] !== "public") {
+        throw new DOMException(
+          "Key is not a public key",
+          "InvalidAccessError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(innerKey));
+    }
+    case "pkcs8": {
+      if (key[_type] !== "private") {
+        throw new DOMException(
+          "Key is not a private key",
+          "InvalidAccessError",
+        );
+      }
+      const seed = innerKey?.seed;
+      if (seed == null) {
+        throw new DOMException(
+          "PKCS#8 export requires the original ML-DSA seed; this key was " +
+            "imported without one",
+          "OperationError",
+        );
+      }
+      const der = op_crypto_mldsa_export_pkcs8(variant, seed);
+      return TypedArrayPrototypeGetBuffer(der);
+    }
+    case "spki": {
+      if (key[_type] !== "public") {
+        throw new DOMException(
+          "Key is not a public key",
+          "InvalidAccessError",
+        );
+      }
+      const der = op_crypto_mldsa_export_spki(variant, innerKey);
+      return TypedArrayPrototypeGetBuffer(der);
+    }
+    default:
+      throw new DOMException("Not implemented", "NotSupportedError");
+  }
+}
+
 // deno-lint-ignore require-await
 async function importKeyInner(
   format,
@@ -3773,6 +5036,28 @@ async function importKeyInner(
     case "Ed25519": {
       return importKeyEd25519(
         format,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "ML-KEM-512":
+    case "ML-KEM-768":
+    case "ML-KEM-1024": {
+      return importKeyMlKem(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        keyUsages,
+      );
+    }
+    case "ML-DSA-44":
+    case "ML-DSA-65":
+    case "ML-DSA-87": {
+      return importKeyMlDsa(
+        format,
+        normalizedAlgorithm,
         keyData,
         extractable,
         keyUsages,
@@ -4665,9 +5950,9 @@ function exportKeyX448(format, key, innerKey) {
       }
 
       const pkcs8Der = op_crypto_export_pkcs8_x448(
-        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+        new Uint8Array([0x04, 0x3a, ...new SafeArrayIterator(innerKey)]),
       );
-      pkcs8Der[15] = 0x20;
+      pkcs8Der[15] = 0x38;
       return TypedArrayPrototypeGetBuffer(pkcs8Der);
     }
     case "jwk": {
@@ -5363,6 +6648,36 @@ async function encrypt(normalizedAlgorithm, key, data) {
       // 7.
       return TypedArrayPrototypeGetBuffer(cipherText);
     }
+    case "ChaCha20-Poly1305": {
+      if (normalizedAlgorithm.nonce === undefined) {
+        throw new TypeError("nonce is required");
+      }
+      normalizedAlgorithm.nonce = copyBuffer(normalizedAlgorithm.nonce);
+      if (TypedArrayPrototypeGetByteLength(normalizedAlgorithm.nonce) !== 12) {
+        throw new DOMException(
+          "ChaCha20-Poly1305 nonce must be 12 bytes",
+          "OperationError",
+        );
+      }
+      // RFC 8439 plaintext size cap.
+      if (TypedArrayPrototypeGetByteLength(data) > ((2 ** 32) - 1) * 64) {
+        throw new DOMException("Plaintext too large", "OperationError");
+      }
+      if (normalizedAlgorithm.additionalData !== undefined) {
+        normalizedAlgorithm.additionalData = copyBuffer(
+          normalizedAlgorithm.additionalData,
+        );
+      }
+
+      const cipherText = await op_crypto_encrypt({
+        key: keyData,
+        algorithm: "ChaCha20-Poly1305",
+        nonce: normalizedAlgorithm.nonce,
+        additionalData: normalizedAlgorithm.additionalData || null,
+      }, data);
+
+      return TypedArrayPrototypeGetBuffer(cipherText);
+    }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
   }
@@ -5386,11 +6701,6 @@ class Crypto {
       op_crypto_get_random_values(typedArray);
       return typedArray;
     }
-    typedArray = webidl.converters.ArrayBufferView(
-      typedArray,
-      prefix,
-      "Argument 1",
-    );
     switch (tag) {
       case "Int8Array":
       case "Uint8ClampedArray":
@@ -5403,7 +6713,7 @@ class Crypto {
         break;
       default:
         throw new DOMException(
-          "The provided ArrayBufferView is not an integer array type",
+          "The provided value is not an integer-type TypedArray",
           "TypeMismatchError",
         );
     }
@@ -5475,6 +6785,10 @@ webidl.converters.KeyFormat = webidl.createEnumConverter("KeyFormat", [
   "pkcs8",
   "spki",
   "jwk",
+  // WICG modern algorithms (ML-KEM, ML-DSA): split raw key formats.
+  "raw-public",
+  "raw-private",
+  "raw-seed",
 ]);
 
 webidl.converters.KeyUsage = webidl.createEnumConverter("KeyUsage", [
@@ -5486,6 +6800,11 @@ webidl.converters.KeyUsage = webidl.createEnumConverter("KeyUsage", [
   "deriveBits",
   "wrapKey",
   "unwrapKey",
+  // WICG modern algorithms (ML-KEM): KEM-specific usages.
+  "encapsulateKey",
+  "encapsulateBits",
+  "decapsulateKey",
+  "decapsulateBits",
 ]);
 
 webidl.converters["sequence<KeyUsage>"] = webidl.createSequenceConverter(
@@ -5941,6 +7260,89 @@ const dictEcdhKeyDeriveParams = [
 webidl.converters.EcdhKeyDeriveParams = webidl
   .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
 
+const dictChaCha20Poly1305Params = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "nonce",
+    converter: webidl.converters["BufferSource"],
+    required: true,
+  },
+  {
+    key: "additionalData",
+    converter: webidl.converters["BufferSource"],
+  },
+];
+
+webidl.converters.ChaCha20Poly1305Params = webidl.createDictionaryConverter(
+  "ChaCha20Poly1305Params",
+  dictChaCha20Poly1305Params,
+);
+
+const dictShakeParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "length",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    required: true,
+  },
+];
+
+webidl.converters.ShakeParams = webidl.createDictionaryConverter(
+  "ShakeParams",
+  dictShakeParams,
+);
+
+const dictCShakeParams = [
+  ...new SafeArrayIterator(dictShakeParams),
+  {
+    key: "functionName",
+    converter: webidl.converters["BufferSource"],
+  },
+  {
+    key: "customization",
+    converter: webidl.converters["BufferSource"],
+  },
+];
+
+webidl.converters.CShakeParams = webidl.createDictionaryConverter(
+  "CShakeParams",
+  dictCShakeParams,
+);
+
+const dictTurboShakeParams = [
+  ...new SafeArrayIterator(dictShakeParams),
+  {
+    key: "domainSeparation",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["octet"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+  },
+];
+
+webidl.converters.TurboShakeParams = webidl.createDictionaryConverter(
+  "TurboShakeParams",
+  dictTurboShakeParams,
+);
+
+const dictMlDsaParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "context",
+    converter: webidl.converters["BufferSource"],
+  },
+];
+
+webidl.converters.MlDsaParams = webidl.createDictionaryConverter(
+  "MlDsaParams",
+  dictMlDsaParams,
+);
+
 // Bridge functions for Node.js KeyObject interop
 
 /**
@@ -5985,6 +7387,14 @@ function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
       case "X448":
         data = op_crypto_export_spki_x448(innerKey);
         break;
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87":
+        data = op_crypto_mldsa_export_spki(
+          mldsaVariantId(algorithmName),
+          innerKey,
+        );
+        break;
       default:
         throw new TypeError(`Unsupported algorithm: ${algorithmName}`);
     }
@@ -6026,11 +7436,24 @@ function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
     }
     case "X448": {
       data = op_crypto_export_pkcs8_x448(
-        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
+        new Uint8Array([0x04, 0x3a, ...new SafeArrayIterator(innerKey)]),
       );
-      data[15] = 0x20;
+      data[15] = 0x38;
       break;
     }
+    case "ML-DSA-44":
+    case "ML-DSA-65":
+    case "ML-DSA-87":
+      if (innerKey?.seed == null) {
+        throw new TypeError(
+          `Cannot export ${algorithmName} private key without a seed`,
+        );
+      }
+      data = op_crypto_mldsa_export_pkcs8(
+        mldsaVariantId(algorithmName),
+        innerKey.seed,
+      );
+      break;
     default:
       throw new TypeError(`Unsupported algorithm: ${algorithmName}`);
   }
@@ -6116,12 +7539,22 @@ function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
       return importKeyX25519(format, keyData, extractable, usages);
     case "Ed25519":
       return importKeyEd25519(format, keyData, extractable, usages);
+    case "ML-DSA-44":
+    case "ML-DSA-65":
+    case "ML-DSA-87":
+      return importKeyMlDsa(
+        format,
+        normalizedAlgorithm,
+        keyData,
+        extractable,
+        usages,
+      );
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
   }
 }
 
-export {
+return {
   Crypto,
   crypto,
   CryptoKey,
@@ -6129,3 +7562,4 @@ export {
   importCryptoKeySync,
   SubtleCrypto,
 };
+})();

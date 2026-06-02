@@ -187,11 +187,8 @@ impl RuntimeState {
   }
 }
 
-#[async_trait(?Send)]
 impl CronHandler for LocalCronHandler {
-  type EH = CronExecutionHandle;
-
-  fn create(&self, spec: CronSpec) -> Result<Self::EH, CronError> {
+  fn create(&self, spec: CronSpec) -> Result<Rc<dyn CronHandle>, CronError> {
     // Ensure that the cron loop is started.
     self.cron_loop_join_handle.get_or_init(|| {
       let (cron_schedule_tx, cron_schedule_rx) =
@@ -233,7 +230,7 @@ impl CronHandler for LocalCronHandler {
     };
     runtime_state.crons.insert(spec.name.clone(), cron);
 
-    Ok(CronExecutionHandle {
+    Ok(Rc::new(CronExecutionHandle {
       name: spec.name.clone(),
       cron_schedule_tx: self.cron_schedule_tx.get().unwrap().clone(),
       concurrency_limiter: self.concurrency_limiter.clone(),
@@ -243,7 +240,7 @@ impl CronHandler for LocalCronHandler {
         shutdown_tx: Some(next_tx),
         permit: None,
       }),
-    })
+    }))
   }
 }
 

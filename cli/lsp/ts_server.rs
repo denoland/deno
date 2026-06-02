@@ -16,8 +16,6 @@ use tower_lsp::lsp_types as lsp;
 use super::documents::DocumentModule;
 use super::language_server::StateSnapshot;
 use super::tsc;
-use crate::cache::DenoDir;
-use crate::http_util::HttpClientProvider;
 use crate::lsp::analysis::TsFixActionCollector;
 use crate::lsp::analysis::fix_ts_import_changes_for_file_rename;
 use crate::lsp::completions;
@@ -32,32 +30,21 @@ use crate::lsp::performance::Performance;
 use crate::lsp::refactor;
 use crate::lsp::tsc::TsJsServer;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
-use crate::lsp::tsgo::TsGoServer;
 use crate::lsp::urls::uri_to_url;
 
 #[derive(Debug)]
 pub enum TsServer {
   Js(TsJsServer),
-  Go(TsGoServer),
 }
 
 impl TsServer {
-  pub fn new(
-    performance: Arc<Performance>,
-    deno_dir: &DenoDir,
-    http_client_provider: &Arc<HttpClientProvider>,
-  ) -> Self {
-    if std::env::var("DENO_UNSTABLE_TSGO_LSP").is_ok() {
-      Self::Go(TsGoServer::new(deno_dir, http_client_provider))
-    } else {
-      Self::Js(TsJsServer::new(performance))
-    }
+  pub fn new(performance: Arc<Performance>) -> Self {
+    Self::Js(TsJsServer::new(performance))
   }
 
   pub fn is_started(&self) -> bool {
     match self {
       Self::Js(ts_server) => ts_server.is_started(),
-      Self::Go(ts_server) => ts_server.is_started(),
     }
   }
 
@@ -98,9 +85,6 @@ impl TsServer {
           new_notebook_keys,
         );
       }
-      Self::Go(ts_server) => {
-        ts_server.project_changed(documents, configuration_changed, snapshot);
-      }
     }
   }
 
@@ -118,16 +102,6 @@ impl TsServer {
             snapshot,
             compiler_options_key,
             notebook_uri,
-            token,
-          )
-          .await
-      }
-      Self::Go(ts_server) => {
-        ts_server
-          .get_ambient_modules(
-            compiler_options_key,
-            notebook_uri,
-            snapshot,
             token,
           )
           .await
@@ -166,24 +140,13 @@ impl TsServer {
           &snapshot.document_modules,
         ))
       }
-      Self::Go(ts_server) => {
-        let report = ts_server
-          .provide_diagnostics(module, &snapshot, token)
-          .await?;
-        let lsp::DocumentDiagnosticReport::Full(report) = report else {
-          unreachable!(
-            "tsgo currently always returns a full diagnostics report"
-          );
-        };
-        Ok(report.full_document_diagnostic_report.items)
-      }
     }
   }
 
   pub async fn provide_references(
     &self,
     document: &Document,
-    module: &DocumentModule,
+    _module: &DocumentModule,
     position: lsp::Position,
     context: lsp::ReferenceContext,
     snapshot: &Arc<StateSnapshot>,
@@ -235,11 +198,6 @@ impl TsServer {
         }
         Ok(Some(locations.into_iter().collect()))
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_references(module, position, context, snapshot, token)
-          .await
-      }
     }
   }
 
@@ -277,9 +235,6 @@ impl TsServer {
         } else {
           Ok(Some(code_lenses))
         }
-      }
-      Self::Go(ts_server) => {
-        ts_server.provide_code_lenses(module, snapshot, token).await
       }
     }
   }
@@ -319,11 +274,6 @@ impl TsServer {
         };
         Ok(response)
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_document_symbols(module, snapshot, token)
-          .await
-      }
     }
   }
 
@@ -341,11 +291,6 @@ impl TsServer {
           .get_quick_info(snapshot.clone(), module, position, token)
           .await?;
         Ok(quick_info.map(|qi| qi.to_hover(module, &snapshot)))
-      }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_hover(module, position, snapshot, token)
-          .await
       }
     }
   }
@@ -528,11 +473,6 @@ impl TsServer {
 
         Ok(Some(actions))
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_code_actions(module, range, context, &snapshot, token)
-          .await
-      }
     }
   }
 
@@ -567,11 +507,6 @@ impl TsServer {
           })
           .transpose()
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_document_highlights(module, position, snapshot, token)
-          .await
-      }
     }
   }
 
@@ -602,11 +537,6 @@ impl TsServer {
           token,
         )
         .map_err(|err| anyhow!("Unable to convert definition info: {:#}", err))
-      }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_definition(module, position, snapshot, token)
-          .await
       }
     }
   }
@@ -639,11 +569,6 @@ impl TsServer {
         .map_err(|err| {
           anyhow!("Unable to convert type definition info: {:#}", err)
         })
-      }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_type_definition(module, position, snapshot, token)
-          .await
       }
     }
   }
@@ -701,11 +626,6 @@ impl TsServer {
           })
           .transpose()
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_completion(module, position, context, snapshot, token)
-          .await
-      }
     }
   }
 
@@ -759,21 +679,13 @@ impl TsServer {
           }
         }
       }
-      Self::Go(ts_server) => {
-        let CompletionItemData::TsGo(data) = data else {
-          return Ok(item);
-        };
-        ts_server
-          .resolve_completion_item(module, item, data, snapshot, token)
-          .await
-      }
     }
   }
 
   pub async fn provide_implementations(
     &self,
     document: &Document,
-    module: &DocumentModule,
+    _module: &DocumentModule,
     position: lsp::Position,
     snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
@@ -825,11 +737,6 @@ impl TsServer {
           anyhow!("Unable to convert implementation info: {:#}", err)
         })
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_implementations(module, position, snapshot, token)
-          .await
-      }
     }
   }
 
@@ -863,18 +770,13 @@ impl TsServer {
           Ok(None)
         }
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_folding_range(module, snapshot, token)
-          .await
-      }
     }
   }
 
   pub async fn provide_call_hierarchy_incoming_calls(
     &self,
     document: &Document,
-    module: &DocumentModule,
+    _module: &DocumentModule,
     item: &lsp::CallHierarchyItem,
     snapshot: &Arc<StateSnapshot>,
     token: &CancellationToken,
@@ -922,11 +824,6 @@ impl TsServer {
           .collect::<Result<Vec<_>, _>>()?;
         Ok(Some(incoming_calls))
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_call_hierarchy_incoming_calls(module, item, snapshot, token)
-          .await
-      }
     }
   }
 
@@ -959,11 +856,6 @@ impl TsServer {
           })
           .collect::<Result<_, _>>()?;
         Ok(Some(outgoing_calls))
-      }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_call_hierarchy_outgoing_calls(module, item, snapshot, token)
-          .await
       }
     }
   }
@@ -1003,11 +895,6 @@ impl TsServer {
           })
           .transpose()
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_prepare_call_hierarchy(module, position, snapshot, token)
-          .await
-      }
     }
   }
 
@@ -1015,7 +902,7 @@ impl TsServer {
   pub async fn provide_rename(
     &self,
     document: &Document,
-    module: &DocumentModule,
+    _module: &DocumentModule,
     position: lsp::Position,
     new_name: &str,
     language_server: &language_server::Inner,
@@ -1074,11 +961,6 @@ impl TsServer {
           Ok(Some(workspace_edit))
         }
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_rename(module, position, new_name, snapshot, token)
-          .await
-      }
     }
   }
 
@@ -1109,11 +991,6 @@ impl TsServer {
         }
         Ok(Some(selection_ranges))
       }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_selection_ranges(module, positions, snapshot, token)
-          .await
-      }
     }
   }
 
@@ -1125,20 +1002,16 @@ impl TsServer {
   ) -> Result<Option<lsp::SemanticTokensResult>, AnyError> {
     let semantic_tokens = module
       .semantic_tokens_full
-      .get_or_try_init(async || {
-        match self {
-          Self::Js(ts_server) => ts_server
-            .get_encoded_semantic_classifications(
-              snapshot,
-              module,
-              0..module.line_index.text_content_length_utf16().into(),
-              token,
-            )
-            .await?
-            .to_semantic_tokens(&module.line_index, token),
-          // TODO(nayeemrmn): Fix when tsgo supports semantic tokens.
-          Self::Go(_) => Ok(Default::default()),
-        }
+      .get_or_try_init(async || match self {
+        Self::Js(ts_server) => ts_server
+          .get_encoded_semantic_classifications(
+            snapshot,
+            module,
+            0..module.line_index.text_content_length_utf16().into(),
+            token,
+          )
+          .await?
+          .to_semantic_tokens(&module.line_index, token),
       })
       .await?
       .clone();
@@ -1176,8 +1049,6 @@ impl TsServer {
         )
         .await?
         .to_semantic_tokens(&module.line_index, token)?,
-      // TODO(nayeemrmn): Fix when tsgo supports semantic tokens.
-      Self::Go(_) => Default::default(),
     };
     if semantic_tokens.data.is_empty() {
       Ok(None)
@@ -1227,11 +1098,6 @@ impl TsServer {
           .map_err(|err| {
             anyhow!("Unable to convert signature help items: {:#}", err)
           })
-      }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_signature_help(module, position, context, snapshot, token)
-          .await
       }
     }
   }
@@ -1302,8 +1168,6 @@ impl TsServer {
           token,
         )
       }
-      // TODO(nayeemrmn): Fix when tsgo supports edits for file renames.
-      Self::Go(_) => Ok(None),
     }
   }
 
@@ -1345,11 +1209,6 @@ impl TsServer {
               .collect()
           })
           .transpose()
-      }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_inlay_hint(module, range, snapshot, token)
-          .await
       }
     }
   }
@@ -1419,11 +1278,6 @@ impl TsServer {
           Some(symbol_information)
         };
         Ok(symbol_information)
-      }
-      Self::Go(ts_server) => {
-        ts_server
-          .provide_workspace_symbol(query, snapshot, token)
-          .await
       }
     }
   }

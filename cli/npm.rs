@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -17,8 +18,6 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmResolutionPackage;
-use deno_npm::npm_rc::RegistryConfig;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfosIterator;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -34,6 +33,8 @@ use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use deno_npm_installer::lifecycle_scripts::PackageWithScript;
 use deno_npm_installer::lifecycle_scripts::compute_lifecycle_script_layers;
 use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
+use deno_npmrc::RegistryConfig;
+use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
@@ -511,7 +512,17 @@ impl DenoTaskLifeCycleScriptsExecutor {
       package,
       scripts,
       package_folder,
+      init_cwds,
     } = pkg;
+    // Run the scripts once per workspace member that depends on this package,
+    // with `INIT_CWD` pointing at that member, so workspace-aware scripts (e.g.
+    // `@sveltejs/kit`'s `postinstall`) operate on each member. When no member
+    // declares the package directly, run once with the global init cwd.
+    let init_cwds: Vec<&Path> = if init_cwds.is_empty() {
+      vec![options.init_cwd]
+    } else {
+      init_cwds.iter().map(|p| p.as_path()).collect()
+    };
 
     // each concurrent package gets its own temp file to avoid fd races
     let temp_file_fd = deno_runtime::deno_process::npm_process_state_tempfile(
@@ -540,66 +551,71 @@ impl DenoTaskLifeCycleScriptsExecutor {
       .await;
 
     let mut failed = None;
-    for script_name in ["preinstall", "install", "postinstall"] {
-      if let Some(script) = scripts.get(script_name) {
-        if script_name == "install"
-          && is_broken_default_install_script(sys, script, package_folder)
-        {
-          continue;
-        }
-        let _guard = self.progress_bar.update_with_prompt(
-          ProgressMessagePrompt::Initialize,
-          &format!("{}: running '{script_name}' script", package.id.nv),
-        );
-        let crate::task_runner::TaskResult {
-          exit_code,
-          stderr,
-          stdout,
-        } = crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
-          task_name: script_name,
-          script,
-          cwd: package_folder.clone(),
-          env_vars: env_vars.clone(),
-          custom_commands: custom_commands.clone(),
-          init_cwd: options.init_cwd,
-          argv: &[],
-          root_node_modules_dir: Some(options.root_node_modules_dir_path),
-          stdio: Some(crate::task_runner::TaskIo {
-            stderr: TaskStdio::piped(),
-            stdout: TaskStdio::piped(),
-          }),
-          kill_signal: kill_signal.clone(),
-        })
-        .await
-        .map_err(DenoTaskLifecycleScriptsError::Task)?;
-        let stdout = stdout.unwrap();
-        let stderr = stderr.unwrap();
-        if exit_code != 0 {
-          log::warn!(
-            "error: script '{}' in '{}' failed with exit code {}{}{}",
-            script_name,
-            package.id.nv,
-            exit_code,
-            if !stdout.trim_ascii().is_empty() {
-              format!(
-                "\nstdout:\n{}\n",
-                String::from_utf8_lossy(&stdout).trim()
-              )
-            } else {
-              String::new()
-            },
-            if !stderr.trim_ascii().is_empty() {
-              format!(
-                "\nstderr:\n{}\n",
-                String::from_utf8_lossy(&stderr).trim()
-              )
-            } else {
-              String::new()
-            },
+    'cwds: for init_cwd in init_cwds {
+      for script_name in ["preinstall", "install", "postinstall"] {
+        if let Some(script) = scripts.get(script_name) {
+          if script_name == "install"
+            && is_broken_default_install_script(sys, script, package_folder)
+          {
+            continue;
+          }
+          let _guard = self.progress_bar.update_with_prompt(
+            ProgressMessagePrompt::Initialize,
+            &format!("{}: running '{script_name}' script", package.id.nv),
           );
-          failed = Some(&package.id.nv);
-          // assume if earlier script fails, later ones will fail too
-          break;
+          let crate::task_runner::TaskResult {
+            exit_code,
+            stderr,
+            stdout,
+          } =
+            crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
+              task_name: script_name,
+              script,
+              cwd: package_folder.clone(),
+              env_vars: env_vars.clone(),
+              custom_commands: custom_commands.clone(),
+              init_cwd,
+              argv: &[],
+              node_modules_bin_dirs: &[options
+                .root_node_modules_dir_path
+                .join(".bin")],
+              stdio: Some(crate::task_runner::TaskIo {
+                stderr: TaskStdio::piped(),
+                stdout: TaskStdio::piped(),
+              }),
+              kill_signal: kill_signal.clone(),
+            })
+            .await
+            .map_err(DenoTaskLifecycleScriptsError::Task)?;
+          let stdout = stdout.unwrap();
+          let stderr = stderr.unwrap();
+          if exit_code != 0 {
+            log::warn!(
+              "error: script '{}' in '{}' failed with exit code {}{}{}",
+              script_name,
+              package.id.nv,
+              exit_code,
+              if !stdout.trim_ascii().is_empty() {
+                format!(
+                  "\nstdout:\n{}\n",
+                  String::from_utf8_lossy(&stdout).trim()
+                )
+              } else {
+                String::new()
+              },
+              if !stderr.trim_ascii().is_empty() {
+                format!(
+                  "\nstderr:\n{}\n",
+                  String::from_utf8_lossy(&stderr).trim()
+                )
+              } else {
+                String::new()
+              },
+            );
+            failed = Some(&package.id.nv);
+            // assume if earlier script fails, later ones will fail too
+            break 'cwds;
+          }
         }
       }
     }

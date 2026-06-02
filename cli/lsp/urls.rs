@@ -87,31 +87,12 @@ pub fn normalize_non_file_uri(uri: &Uri) -> Uri {
     &percent_encoding::percent_decode_str(uri.path().as_str())
       .decode_utf8_lossy(),
   );
-  let encoded_query = uri.query().map(|query| {
-    let mut encoded_query = fluent_uri::pct_enc::EString::<
-      fluent_uri::pct_enc::encoder::Query,
-    >::new();
-    encoded_query
-      .encode_str::<fluent_uri::pct_enc::encoder::Query>(query.as_str());
-    encoded_query
-  });
-  let encoded_fragment = uri.fragment().map(|fragment| {
-    let mut encoded_fragment = fluent_uri::pct_enc::EString::<
-      fluent_uri::pct_enc::encoder::Fragment,
-    >::new();
-    encoded_fragment
-      .encode_str::<fluent_uri::pct_enc::encoder::Fragment>(fragment.as_str());
-    encoded_fragment
-  });
   fluent_uri::Uri::builder()
     .scheme(uri.scheme())
     .optional(fluent_uri::build::Builder::authority, uri.authority())
     .path(encoded_path.as_ref())
-    .optional(fluent_uri::build::Builder::query, encoded_query.as_deref())
-    .optional(
-      fluent_uri::build::Builder::fragment,
-      encoded_fragment.as_deref(),
-    )
+    .optional(fluent_uri::build::Builder::query, uri.query())
+    .optional(fluent_uri::build::Builder::fragment, uri.fragment())
     .build()
     .expect("component constraints should be met by the above")
     .into()
@@ -261,4 +242,46 @@ pub fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
   }
 
   inner(path.as_ref())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_normalize_non_file_uri_no_double_encode_fragment() {
+    // Notebook cell URIs have percent-encoded fragments (base64 padding).
+    let uri: Uri =
+      "vscode-notebook-cell:/Users/test/scratch.ipynb#W1sZmlsZQ%3D%3D"
+        .parse()
+        .unwrap();
+    let normalized = normalize_non_file_uri(&uri);
+    assert_eq!(
+      normalized.as_str(),
+      "vscode-notebook-cell:/Users/test/scratch.ipynb#W1sZmlsZQ%3D%3D"
+    );
+    // Ensure idempotency.
+    let normalized2 = normalize_non_file_uri(&normalized);
+    assert_eq!(normalized.as_str(), normalized2.as_str());
+  }
+
+  #[test]
+  fn test_normalize_uri_notebook_cell_idempotent() {
+    let uri: Uri =
+      "vscode-notebook-cell:/Users/test/scratch.ipynb#W0sZmlsZQ%3D%3D.ts"
+        .parse()
+        .unwrap();
+    let n1 = normalize_uri(&uri);
+    let n2 = normalize_uri(&n1);
+    assert_eq!(n1.as_str(), n2.as_str());
+  }
+
+  #[test]
+  fn test_normalize_non_file_uri_no_double_encode_query() {
+    let uri: Uri = "custom-scheme:/path?key=val%20ue".parse().unwrap();
+    let normalized = normalize_non_file_uri(&uri);
+    assert_eq!(normalized.as_str(), "custom-scheme:/path?key=val%20ue");
+    let normalized2 = normalize_non_file_uri(&normalized);
+    assert_eq!(normalized.as_str(), normalized2.as_str());
+  }
 }

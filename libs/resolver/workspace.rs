@@ -845,6 +845,7 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   fs_cache_options: FsCacheOptions,
   compiler_options_resolver: CompilerOptionsResolverCellRc,
   sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
+  catalogs: IndexMap<String, IndexMap<String, String>>,
 }
 
 impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
@@ -979,6 +980,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       fs_cache_options: options.fs_cache_options,
       compiler_options_resolver,
       sloppy_imports_resolver,
+      catalogs: workspace.catalogs().clone(),
     })
   }
 
@@ -995,6 +997,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     sloppy_imports_options: SloppyImportsOptions,
     fs_cache_options: FsCacheOptions,
     sys: TSys,
+    catalogs: IndexMap<String, IndexMap<String, String>>,
   ) -> Self {
     let maybe_import_map =
       maybe_import_map.map(|import_map| ImportMapWithDiagnostics {
@@ -1033,6 +1036,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       fs_cache_options,
       compiler_options_resolver,
       sloppy_imports_resolver,
+      catalogs,
     }
   }
 
@@ -1077,6 +1081,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_resolution: self.pkg_json_dep_resolution(),
       sloppy_imports_options: self.sloppy_imports_options,
       fs_cache_options: self.fs_cache_options,
+      catalogs: self.catalogs.clone(),
     }
   }
 
@@ -1139,6 +1144,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       serializable_workspace_resolver.sloppy_imports_options,
       serializable_workspace_resolver.fs_cache_options,
       sys,
+      serializable_workspace_resolver.catalogs,
     ))
   }
 
@@ -1294,8 +1300,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         );
       }
 
-      // 2.1. Try to resolve the bare specifier to a workspace member
-      for member in &self.jsr_pkgs {
+      // 2.1. Try to resolve the bare specifier to a workspace member.
+      // Linked packages are not resolved here — using a linked package
+      // requires a `jsr:` specifier or an import map entry, otherwise the
+      // bare specifier would resolve even when no JSR or import map
+      // declaration exists.
+      for member in self.jsr_pkgs.iter().filter(|p| !p.is_link) {
         if let Some(path) = specifier.strip_prefix(&member.name)
           && (path.is_empty() || path.starts_with('/'))
         {
@@ -1549,6 +1559,24 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     }
   }
 
+  pub fn catalogs(&self) -> &IndexMap<String, IndexMap<String, String>> {
+    &self.catalogs
+  }
+
+  pub fn resolve_catalog_dep(
+    &self,
+    name: &str,
+    catalog_name: &str,
+  ) -> Option<PackageReq> {
+    let catalog = self.catalogs.get(catalog_name)?;
+    let version_req_str = catalog.get(name)?;
+    let version_req = VersionReq::parse_from_npm(version_req_str).ok()?;
+    Some(PackageReq {
+      name: name.into(),
+      version_req,
+    })
+  }
+
   pub fn pkg_json_dep_resolution(&self) -> PackageJsonDepResolution {
     self.pkg_json_dep_resolution
   }
@@ -1593,6 +1621,8 @@ pub struct SerializableWorkspaceResolver<'a> {
   pub pkg_json_resolution: PackageJsonDepResolution,
   pub sloppy_imports_options: SloppyImportsOptions,
   pub fs_cache_options: FsCacheOptions,
+  #[serde(default)]
+  pub catalogs: IndexMap<String, IndexMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1701,6 +1731,7 @@ fn pkg_json_to_version_info(
     .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
   Ok(NpmPackageVersionInfo {
     version,
+    exports: pkg_json.exports.clone().map(serde_json::Value::Object),
     dist: None,
     bin: pkg_json
       .bin
@@ -2856,19 +2887,16 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    match resolver
+    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
+    // or an import map entry is required.
+    let err = resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap()
-    {
-      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
-      }
-      _ => unreachable!(),
-    }
+      .unwrap_err();
+    assert!(err.is_unmapped_bare_specifier());
     // matching version
     match resolver
       .resolve(
@@ -2933,19 +2961,16 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    match resolver
+    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
+    // or an import map entry is required.
+    let err = resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap()
-    {
-      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
-      }
-      _ => unreachable!(),
-    }
+      .unwrap_err();
+    assert!(err.is_unmapped_bare_specifier());
     // always resolves, no matter what version
     match resolver
       .resolve(
@@ -3233,6 +3258,7 @@ mod test {
       .unwrap(),
       NpmPackageVersionInfo {
         version: Version::parse_from_npm("1.0.0").unwrap(),
+        exports: None,
         dist: None,
         has_install_script: None,
         bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(

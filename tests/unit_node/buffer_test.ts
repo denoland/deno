@@ -4,6 +4,7 @@ import {
   constants,
   File as BufferFile,
   resolveObjectURL,
+  transcode,
 } from "node:buffer";
 import { assertEquals, assertThrows } from "@std/assert";
 import { strictEqual } from "node:assert";
@@ -275,6 +276,29 @@ Deno.test({
       Buffer.concat([buffer3, buffer4], maxLength2).length,
       maxLength2,
     );
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] Buffer.allocUnsafe does not truncate lengths > 2^32",
+  ignore: true, // requires >4GB of memory
+  fn() {
+    const size = 2 ** 32 + 5;
+    const buf = Buffer.allocUnsafe(size);
+    assertEquals(buf.length, size);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] Buffer concat does not truncate buffers larger than 4GB",
+  ignore: true, // requires >4GB of memory
+  fn() {
+    const size = 2 ** 32 + 5;
+    const largeBuffer = Buffer.alloc(size);
+    largeBuffer.fill(111);
+    const result = Buffer.concat([largeBuffer]);
+    assertEquals(result.length, size);
+    assertEquals(Array.from(result.subarray(0, 5)), [111, 111, 111, 111, 111]);
   },
 });
 
@@ -621,6 +645,29 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/34286
+Deno.test({
+  name: "[node/buffer] base64Slice allows omitting arguments",
+  fn() {
+    const buf = Buffer.of(1, 2, 3);
+    // @ts-expect-error Buffer.prototype.base64Slice is an undocumented API
+    assertEquals(buf.base64Slice(), "AQID");
+    // @ts-expect-error Buffer.prototype.base64Slice is an undocumented API
+    assertEquals(buf.base64Slice(0, 3), "AQID");
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] base64urlSlice allows omitting arguments",
+  fn() {
+    const buf = Buffer.of(1, 2, 3);
+    // @ts-expect-error Buffer.prototype.base64urlSlice is an undocumented API
+    assertEquals(buf.base64urlSlice(), "AQID");
+    // @ts-expect-error Buffer.prototype.base64urlSlice is an undocumented API
+    assertEquals(buf.base64urlSlice(0, 3), "AQID");
+  },
+});
+
 Deno.test({
   name: "[node/buffer] isEncoding returns true for valid encodings",
   fn() {
@@ -755,6 +802,28 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] utf8Slice handles buffer detach during index coercion",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.alloc(1024);
+    const arrayBuffer = buf.buffer;
+    const start = {
+      valueOf() {
+        structuredClone(arrayBuffer, { transfer: [arrayBuffer] });
+        return 0;
+      },
+    };
+
+    assertThrows(
+      () => buf.utf8Slice(start, 10),
+      RangeError,
+      "Index out of range",
+    );
+    assertEquals(arrayBuffer.byteLength, 0);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] hexSlice returns correct string",
   fn() {
     // deno-lint-ignore no-explicit-any
@@ -804,5 +873,40 @@ Deno.test({
     assertEquals(resolveObjectURL(1 as any), undefined);
     // deno-lint-ignore no-explicit-any
     assertEquals(resolveObjectURL({} as any), undefined);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] transcode UTF-16LE to UTF-8 with odd-length input",
+  fn() {
+    // Odd-length: trailing byte is dropped (matches Node.js)
+    const odd = Buffer.from([0x61, 0x00, 0x62]);
+    assertEquals(transcode(odd, "utf16le", "utf8").toString(), "a");
+
+    // Even-length: normal case
+    const even = Buffer.from([0x48, 0x00, 0x69, 0x00]);
+    assertEquals(transcode(even, "utf16le", "utf8").toString(), "Hi");
+
+    // Empty buffer
+    const empty = Buffer.alloc(0);
+    assertEquals(transcode(empty, "utf16le", "utf8").toString(), "");
+
+    // Single byte (all trailing, dropped)
+    const single = Buffer.from([0x41]);
+    assertEquals(transcode(single, "utf16le", "utf8").toString(), "");
+  },
+});
+
+// Node's real Buffer has no _isBuffer marker; the npm `buffer` polyfill
+// (feross/buffer) sets it to true and libraries like bson use that to detect
+// a non-Node runtime and fall back to a Uint8Array codepath that breaks
+// mongodb SCRAM auth (denoland/deno#34468).
+Deno.test({
+  name: "[node/buffer] Buffer.prototype does not expose _isBuffer marker",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    assertEquals((Buffer.prototype as any)._isBuffer, undefined);
+    // deno-lint-ignore no-explicit-any
+    assertEquals((Buffer.alloc(1) as any)._isBuffer, undefined);
   },
 });

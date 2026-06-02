@@ -353,6 +353,14 @@ fn req_host<'a>(
 
   // TODO(mmastrac): Most requests will use this path and we probably will want to optimize it in the future
   if let Some(host) = headers.get(HOST) {
+    // An empty `Host` header value is treated as if no Host header was sent,
+    // so the listener's fallback authority is used and `request.url` stays a
+    // valid URL. Hyper's HTTP/1 parser already trims OWS from header values,
+    // so whitespace-only `Host:` values reach us as empty bytes.
+    // See https://github.com/denoland/deno/issues/29872.
+    if host.is_empty() {
+      return None;
+    }
     return Some(match host.to_str() {
       Ok(host) => Cow::Borrowed(host),
       Err(_) => Cow::Owned(

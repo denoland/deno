@@ -260,13 +260,12 @@ pub(crate) fn generate_op2(
   let fn_args = Ident::new("args", Span::call_site());
   let scope = Ident::new("scope", Span::call_site());
   let info = Ident::new("info", Span::call_site());
+  let parts = Ident::new("parts", Span::call_site());
   let opctx = Ident::new("opctx", Span::call_site());
   let opstate = Ident::new("opstate", Span::call_site());
   let js_runtime_state = Ident::new("js_runtime_state", Span::call_site());
   let promise_id = Ident::new("promise_id", Span::call_site());
   let slow_function = Ident::new("v8_fn_ptr", Span::call_site());
-  let slow_function_metrics =
-    Ident::new("v8_fn_ptr_metrics", Span::call_site());
   let fast_function = Ident::new("v8_fn_ptr_fast", Span::call_site());
   let fast_function_metrics =
     Ident::new("v8_fn_ptr_fast_metrics", Span::call_site());
@@ -284,6 +283,7 @@ pub(crate) fn generate_op2(
     fn_args,
     scope,
     info,
+    parts,
     opctx,
     opstate,
     js_runtime_state,
@@ -291,8 +291,8 @@ pub(crate) fn generate_op2(
     result,
     retval,
     needs_args,
+    needs_parts: false,
     slow_function: slow_function.clone(),
-    slow_function_metrics: slow_function_metrics.clone(),
     fast_function,
     fast_function_metrics,
     promise_id,
@@ -458,7 +458,7 @@ pub(crate) fn generate_op2(
           /*arg_count*/ #arg_count as u8,
           /*no_side_effect*/ #no_side_effect,
           /*slow_fn*/ Self::#slow_function as _,
-          /*slow_fn_metrics*/ Self::#slow_function_metrics as _,
+          /*slow_fn_impl*/ Self::slow_function_impl,
           /*accessor_type*/ #accessor_type,
           /*fast_fn*/ #fast_definition,
           /*fast_fn_metrics*/ #fast_definition_metrics,

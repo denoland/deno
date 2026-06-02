@@ -2,7 +2,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArgumentsObject,
@@ -28,13 +29,19 @@ const {
   isWeakMap,
   isWeakSet,
 } = core;
-import {
+const {
   op_get_constructor_name,
   op_get_non_index_property_names,
+  op_now,
   op_preview_entries,
-} from "ext:core/ops";
-import * as ops from "ext:core/ops";
-import { URLPrototype } from "ext:deno_web/00_url.js";
+} = core.ops;
+let _URLPrototype;
+function getURLPrototype() {
+  if (!_URLPrototype) {
+    _URLPrototype = core.loadExtScript("ext:deno_web/00_url.js").URLPrototype;
+  }
+  return _URLPrototype;
+}
 const {
   AggregateError,
   AggregateErrorPrototype,
@@ -128,10 +135,8 @@ const {
   ObjectValues,
   Promise,
   PromisePrototype,
-  Proxy,
   RangeError,
   RangeErrorPrototype,
-  ReflectGet,
   ReflectGetOwnPropertyDescriptor,
   ReflectGetPrototypeOf,
   ReflectHas,
@@ -213,11 +218,11 @@ const lazyLoadModule = core.createLazyLoader(
 );
 
 let currentTime = DateNow;
-if (ops.op_now) {
+if (op_now) {
   const hrU8 = new Uint8Array(8);
   const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
   currentTime = function opNow() {
-    ops.op_now(hrU8);
+    op_now(hrU8);
     return (hr[0] * 1000 + hr[1] / 1e6);
   };
 }
@@ -236,19 +241,6 @@ function getStdoutNoColor() {
 
 function getStderrNoColor() {
   return noColorStderr();
-}
-
-class AssertionError extends Error {
-  name = "AssertionError";
-  constructor(message) {
-    super(message);
-  }
-}
-
-function assert(cond, msg = "Assertion failed") {
-  if (!cond) {
-    throw new AssertionError(msg);
-  }
 }
 
 // Attempt to JSON.stringify, returning "[Circular]" only for circular
@@ -536,35 +528,51 @@ function formatValue(
   const context = value;
   // Always check for proxies to prevent side effects and to prevent triggering
   // any proxy handlers.
-  // TODO(wafuwafu13): Set Proxy
-  const proxyDetails = core.getProxyDetails(value);
-  // const proxy = getProxyDetails(value, !!ctx.showProxy);
-  // if (proxy !== undefined) {
-  //   if (ctx.showProxy) {
-  //     return formatProxy(ctx, proxy, recurseTimes);
-  //   }
-  //   value = proxy;
-  // }
+  let proxyDetails = core.getProxyDetails(value);
+  // Match Node.js: when not in `showProxy` mode, inspect the proxy target
+  // directly. This avoids invoking any proxy traps (which may have side
+  // effects or throw -- e.g. an `ownKeys` trap that violates the invariant
+  // by returning a non-object). Downstream code branches on whether
+  // `proxyDetails` is null to decide which value to operate on, so clearing
+  // it here keeps those branches consistent now that `value` is the target.
+  if (proxyDetails !== null && !ctx.showProxy) {
+    value = proxyDetails[0];
+    proxyDetails = null;
+  }
 
   // Provide a hook for user-specified inspect functions.
   // Check that value is an object with an inspect function on it.
+  // When `showProxy` is false, `value` is already the proxy target (see the
+  // unwrap above), so traps are never triggered here. When `showProxy` is
+  // true, we keep the proxy as `value` but still resolve the inspect symbol
+  // on the underlying target via `proxyDetails[0]` to avoid get/has traps
+  // (matching Node.js -- and necessary for proxies that respond to arbitrary
+  // property access, e.g. grammy/nodejs-polars). The call itself uses
+  // `value` so `this` inside a custom inspector is whatever the caller
+  // originally passed.
   if (ctx.customInspect) {
+    const inspectTarget = proxyDetails ? proxyDetails[0] : value;
     if (
-      ReflectHas(value, customInspect) &&
-      typeof value[customInspect] === "function"
+      ReflectHas(inspectTarget, customInspect) &&
+      typeof inspectTarget[customInspect] === "function"
     ) {
       return String(value[customInspect](inspect, ctx));
     } else if (
-      ReflectHas(value, privateCustomInspect) &&
-      typeof value[privateCustomInspect] === "function"
+      ReflectHas(inspectTarget, privateCustomInspect) &&
+      typeof inspectTarget[privateCustomInspect] === "function"
     ) {
       // TODO(nayeemrmn): `inspect` is passed as an argument because custom
       // inspect implementations in `extensions` need it, but may not have access
       // to the `Deno` namespace in web workers. Remove when the `Deno`
       // namespace is always enabled.
       return String(value[privateCustomInspect](inspect, ctx));
-    } else if (ReflectHas(value, nodeCustomInspectSymbol)) {
-      const maybeCustom = value[nodeCustomInspectSymbol];
+    } else {
+      let maybeCustom;
+      try {
+        maybeCustom = inspectTarget[nodeCustomInspectSymbol];
+      } catch {
+        // ignore
+      }
       if (
         typeof maybeCustom === "function" &&
         // Filter out the util module, its inspect function is special.
@@ -714,7 +722,11 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
 
   let tag;
   if (!proxyDetails) {
-    tag = value[SymbolToStringTag];
+    try {
+      tag = value[SymbolToStringTag];
+    } catch {
+      // Symbol.toStringTag getter may throw (e.g. circular JSON.stringify)
+    }
   }
   // Only list the tag in case it's non-enumerable / not an own property.
   // Otherwise we'd print this twice.
@@ -1003,7 +1015,7 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
           return base;
         }
       } else if (
-        ObjectPrototypeIsPrototypeOf(URLPrototype, value) &&
+        ObjectPrototypeIsPrototypeOf(getURLPrototype(), value) &&
         !(recurseTimes > ctx.depth && ctx.depth !== null)
       ) {
         base = value.href;
@@ -1409,29 +1421,55 @@ function getCtxStyle(value, constructor, tag) {
 // Look up the keys of the object.
 function getKeys(value, showHidden) {
   let keys;
-  const symbols = ObjectGetOwnPropertySymbols(value);
+  let symbols;
+  try {
+    symbols = ObjectGetOwnPropertySymbols(value);
+  } catch {
+    // `ObjectGetOwnPropertySymbols` triggers the `[[OwnPropertyKeys]]`
+    // internal method, which is observable on exotic objects (e.g. a
+    // Proxy with a throwing `ownKeys` trap). The inspect path normally
+    // unwraps proxies to their target before reaching here, so this is
+    // purely defensive.
+    symbols = [];
+  }
   if (showHidden) {
-    keys = ObjectGetOwnPropertyNames(value);
+    try {
+      keys = ObjectGetOwnPropertyNames(value);
+    } catch {
+      keys = [];
+    }
     if (symbols.length !== 0) {
       ArrayPrototypePushApply(keys, symbols);
     }
   } else {
-    // This might throw if `value` is a Module Namespace Object from an
-    // unevaluated module, but we don't want to perform the actual type
-    // check because it's expensive.
+    // `ObjectKeys` can throw for a Module Namespace Object from an
+    // unevaluated module (ReferenceError), and could in principle throw
+    // for other exotic objects whose property-descriptor lookups have
+    // side effects (e.g. a Proxy whose `getOwnPropertyDescriptor` trap
+    // throws -- see denoland/deno#24980). The proxy unwrap in
+    // `formatValue` should prevent the proxy case from reaching here,
+    // but we fall back to `ObjectGetOwnPropertyNames` for any failure
+    // rather than asserting so an unexpected case degrades gracefully
+    // instead of surfacing as "AssertionError: Assertion failed".
     // TODO(devsnek): track https://github.com/tc39/ecma262/issues/1209
     // and modify this logic as needed.
     try {
       keys = ObjectKeys(value);
-    } catch (err) {
-      assert(
-        isNativeError(err) && err.name === "ReferenceError" &&
-          isModuleNamespaceObject(value),
-      );
-      keys = ObjectGetOwnPropertyNames(value);
+    } catch {
+      try {
+        keys = ObjectGetOwnPropertyNames(value);
+      } catch {
+        keys = [];
+      }
     }
     if (symbols.length !== 0) {
-      const filter = (key) => ObjectPrototypePropertyIsEnumerable(value, key);
+      const filter = (key) => {
+        try {
+          return ObjectPrototypePropertyIsEnumerable(value, key);
+        } catch {
+          return false;
+        }
+      };
       ArrayPrototypePushApply(keys, ArrayPrototypeFilter(symbols, filter));
     }
   }
@@ -2073,15 +2111,15 @@ function formatError(err, constructor, tag, ctx, keys) {
 }
 
 const hexSliceLookupTable = function () {
-  const alphabet = "0123456789abcdef";
-  const table = [];
-  for (let i = 0; i < 16; ++i) {
-    const i16 = i * 16;
-    for (let j = 0; j < 16; ++j) {
-      table[i16 + j] = alphabet[i] + alphabet[j];
-    }
+const alphabet = "0123456789abcdef";
+const table = [];
+for (let i = 0; i < 16; ++i) {
+  const i16 = i * 16;
+  for (let j = 0; j < 16; ++j) {
+    table[i16 + j] = alphabet[i] + alphabet[j];
   }
-  return table;
+}
+return table;
 }();
 
 function hexSlice(buf, start, end) {
@@ -2696,14 +2734,15 @@ function formatSetIterInner(
 // Matches all ansi escape code sequences in a string
 const ansiPattern = "[\\u001B\\u009B][[\\]()#;?]*" +
   "(?:(?:(?:(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]+)*" +
-  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)?\\u0007)" +
-  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))";
+  "|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/#&.:=?%@~_]*)*)" +
+  "?(?:\\u0007|\\u001B\\u005C|\\u009C))" +
+  "|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))";
 const ansi = new SafeRegExp(ansiPattern, "g");
 
 /**
  * Returns the number of columns required to display the given string.
  */
-export function getStringWidth(str, removeControlChars = true) {
+function getStringWidth(str, removeControlChars = true) {
   let width = 0;
 
   if (removeControlChars) {
@@ -2737,7 +2776,7 @@ const isZeroWidthCodePoint = (code) => {
 /**
  * Remove all VT control characters. Use to estimate displayed string width.
  */
-export function stripVTControlCharacters(str) {
+function stripVTControlCharacters(str) {
   return StringPrototypeReplace(str, ansi, "");
 }
 
@@ -3654,6 +3693,14 @@ class Console {
   #printFunc = null;
   #countMap = new SafeMap();
   #timerMap = new SafeMap();
+  // Reference to the namespace object returned from the constructor. Arrow
+  // class fields capture `this` lexically (the Console instance), but
+  // `wrapConsole` patches methods on the returned namespace object, not on
+  // the instance. Reaching back through `#consoleRef` lets `group` invoke
+  // the wrapped `log`, matching Node's behavior of emitting both a
+  // `startGroup` and a `log` event so DevTools renders the label inside
+  // the group container.
+  #consoleRef = null;
   [isConsoleInstance] = false;
 
   constructor(printFunc) {
@@ -3674,6 +3721,7 @@ class Console {
       },
     });
     ObjectAssign(console, this);
+    this.#consoleRef = console;
     return console;
   }
 
@@ -3718,7 +3766,11 @@ class Console {
     );
   };
 
-  dirxml = this.dir;
+  // Per https://console.spec.whatwg.org/#dirxml, dirxml uses the log
+  // printer (not dir). Node also aliases console.dirxml to log (see
+  // lib/internal/console/constructor.js). Use a fresh arrow so the
+  // method's .name is "dirxml" rather than "dir".
+  dirxml = (...args) => this.log(...new SafeArrayIterator(args));
 
   warn = (...args) => {
     this.#printFunc(
@@ -3961,7 +4013,12 @@ class Console {
 
   group = (...label) => {
     if (label.length > 0) {
-      this.log(...new SafeArrayIterator(label));
+      // Route through the namespace object's `log` so that, when the
+      // inspector wraps console methods, both the V8 console binding (for
+      // DevTools) and the internal `log` (for the terminal) are invoked.
+      // Without this, DevTools receives a `startGroup` event but no
+      // matching `log`, leaving the group container without a visible label.
+      this.#consoleRef.log(...new SafeArrayIterator(label));
     }
     this.indentLevel++;
   };
@@ -4032,45 +4089,31 @@ function inspect(
   return formatValue(ctx, value, 0);
 }
 
-/** Creates a proxy that represents a subset of the properties
- * of the original object optionally without evaluating the properties
- * in order to get the values. */
+/** Creates an object that represents a subset of the properties of the
+ * original object, suitable for handing to `inspect()`. The returned value
+ * carries the original object's class name and the listed keys as own
+ * enumerable data properties. Previously this returned a Proxy with traps
+ * exposing the filtered view, but since `inspect()` now mirrors Node.js and
+ * skips proxy traps in default mode, we materialise the view eagerly. */
 function createFilteredInspectProxy({ object, keys, evaluate }) {
-  const obj = class {};
+  const cls = class {};
   if (object.constructor?.name) {
-    ObjectDefineProperty(obj, "name", {
+    ObjectDefineProperty(cls, "name", {
       __proto__: null,
       value: object.constructor.name,
     });
   }
 
-  return new Proxy(new obj(), {
-    get(_target, key) {
-      if (key === SymbolToStringTag) {
-        return object.constructor?.name;
-      } else if (ArrayPrototypeIncludes(keys, key)) {
-        return ReflectGet(object, key);
-      } else {
-        return undefined;
-      }
-    },
-    getOwnPropertyDescriptor(_target, key) {
-      if (!ArrayPrototypeIncludes(keys, key)) {
-        return undefined;
-      } else if (evaluate) {
-        return getEvaluatedDescriptor(object, key);
-      } else {
-        return getDescendantPropertyDescriptor(object, key) ??
-          getEvaluatedDescriptor(object, key);
-      }
-    },
-    has(_target, key) {
-      return ArrayPrototypeIncludes(keys, key);
-    },
-    ownKeys() {
-      return keys;
-    },
-  });
+  const result = new cls();
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const descriptor = evaluate
+      ? getEvaluatedDescriptor(object, key)
+      : (getDescendantPropertyDescriptor(object, key) ??
+        getEvaluatedDescriptor(object, key));
+    ObjectDefineProperty(result, key, descriptor);
+  }
+  return result;
 
   function getDescendantPropertyDescriptor(object, key) {
     let propertyDescriptor = ReflectGetOwnPropertyDescriptor(object, key);
@@ -4099,7 +4142,7 @@ internals.inspectArgs = inspectArgs;
 internals.parseCss = parseCss;
 internals.parseCssColor = parseCssColor;
 
-export {
+return {
   colors,
   Console,
   createFilteredInspectProxy,
@@ -4112,10 +4155,13 @@ export {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
+  getStringWidth,
   getStdoutNoColor,
   inspect,
   inspectArgs,
   quoteString,
   setNoColorFns,
+  stripVTControlCharacters,
   styles,
 };
+})();

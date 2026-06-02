@@ -437,7 +437,7 @@ fn permissions_trace() {
       test_util::assertions::assert_wildcard_match(&text, concat!(
       "┏ ⚠️  Deno requests sys access to \"hostname\".\r\n",
       "┠─ Requested by `Deno.hostname()` API.\r\n",
-      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:43:10)\r\n",
+      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:[WILDLINE]:[WILDLINE])\r\n",
       "┃  ├─ foo (file://[WILDCARD]/run/permissions_trace.ts:2:8)\r\n",
       "┃  ├─ bar (file://[WILDCARD]/run/permissions_trace.ts:6:3)\r\n",
       "┃  └─ file://[WILDCARD]/run/permissions_trace.ts:9:1\r\n",
@@ -1676,6 +1676,14 @@ mod permissions {
         console.expect("What is Windows EOL? ");
         console.write_line("windows");
         console.expect("Your answer is \"windows\"");
+        console.expect("Type some unicode: ");
+        console.write_line_raw("Hello! ążć 🦕");
+        console.expect("Your unicode answer is \"Hello! ążć 🦕\"");
+        // \u{ą} = 0xC4 0x85, \u{ż} = 0xC5 0xBC, \u{ć} = 0xC4 0x87,
+        // \u{1F995} = 0xF0 0x9F 0xA6 0x95 (🦕)
+        console.expect(
+          "bytes=72,101,108,108,111,33,32,196,133,197,188,196,135,32,240,159,166,149",
+        );
         console.expect("Hi [Enter] ");
         console.write_line("");
         console.expect("Alert [Enter] ");
@@ -2567,6 +2575,29 @@ fn broken_stdout_repl() {
     assert_contains!(stderr, "Broken pipe (os error 32)");
   }
   assert_not_contains!(stderr, "panic");
+}
+
+// Regression test for https://github.com/denoland/deno/issues/16308 — when
+// `println!` panics on a broken stdout pipe (e.g. `deno | cls` on Windows),
+// the panic hook should exit cleanly instead of printing the bug-report banner.
+#[test]
+fn broken_stdout_no_panic_banner() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("info")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap();
+  assert_not_contains!(stderr, "Deno has panicked");
+  assert_not_contains!(stderr, "panicked at");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -3569,6 +3600,97 @@ fn readline_multi_prompt_pty() {
       console.expect("Q2?");
       console.write_line("world");
       console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32997
+// Verifies that toggling raw mode between consecutive prompts (like
+// vite create, @clack/prompts) properly restores console mode so
+// stdin continues to work for subsequent prompts.
+#[test]
+fn tty_raw_mode_toggle_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_toggle.ts"])
+    .with_pty(|mut console| {
+      console.expect("Step1?");
+      console.write_line("a");
+      console.expect("Got1: a");
+      console.expect("Step2?");
+      console.write_line("b");
+      console.expect("Got2: b");
+      console.expect("Step3?");
+      console.write_line("c");
+      console.expect("Got3: c");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32996
+// Verifies that Unicode characters are correctly written through TTY
+// output (WriteConsoleW), regardless of console code page.
+#[test]
+fn tty_unicode_output_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_unicode_output.ts"])
+    .with_pty(|mut console| {
+      console.expect("┌─────────────┐");
+      console.expect("│ Hello World │");
+      console.expect("└─────────────┘");
+      console.expect("café résumé naïve");
+      console.expect("OK");
+    });
+}
+
+// Tests that line-mode TTY reading works correctly with the threaded
+// ReadConsoleW approach (matching libuv's uv_tty_line_read_thread).
+// Exercises consecutive line-mode prompts without raw mode.
+#[test]
+fn tty_line_mode_read_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_line_mode_read.ts"])
+    .with_pty(|mut console| {
+      console.expect("Name?");
+      console.write_line("Alice");
+      console.expect("Hello, Alice");
+      console.expect("Color?");
+      console.write_line("blue");
+      console.expect("You like blue");
+    });
+}
+
+// Tests that arrow keys in raw mode are correctly mapped to VT100
+// escape sequences via ReadConsoleInputW + get_vt100_fn_key.
+#[test]
+fn tty_raw_mode_arrow_keys_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_arrow_keys.ts"])
+    .with_pty(|mut console| {
+      console.write_raw("\x1b[A"); // Up arrow
+      console.expect("UP");
+      console.write_raw("\x1b[B"); // Down arrow
+      console.expect("DOWN");
+      console.write_raw("\x1b[C"); // Right arrow
+      console.expect("RIGHT");
+      console.write_raw("\x1b[D"); // Left arrow
+      console.expect("LEFT");
+    });
+}
+
+// Tests that Ctrl+C (0x03) is delivered as data in raw mode.
+// Without proper INPUT_RECORD processing via ReadConsoleInputW,
+// the event loop would block and Ctrl+C data would never arrive.
+#[test]
+fn tty_ctrl_c_raw_mode_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_ctrl_c_raw_mode.ts"])
+    .with_pty(|mut console| {
+      console.expect("READY");
+      console.write_raw("\x03"); // Ctrl+C
+      console.expect("GOT_CTRL_C");
     });
 }
 
