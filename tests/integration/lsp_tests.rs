@@ -6188,12 +6188,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
     })
     .to_string(),
   );
-  temp_dir.write(
-    "main.ts",
-    r#"
-      import "jsr:@denotest/add@1";
-    "#,
-  );
+  temp_dir.write("main.ts", "");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.cache_specifier(temp_dir.url().join("main.ts").unwrap());
