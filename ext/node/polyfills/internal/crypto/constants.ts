@@ -2,13 +2,13 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 (function () {
-  const { internals, primordials } = __bootstrap;
-  const { Symbol } = primordials;
+const { internals, primordials } = __bootstrap;
+const { Symbol } = primordials;
 
-  const kHandle = Symbol("kHandle");
-  const kKeyObject = Symbol("kKeyObject");
+const kHandle = Symbol("kHandle");
+const kKeyObject = Symbol("kKeyObject");
 
-  internals.kKeyObject = kKeyObject;
+internals.kKeyObject = kKeyObject;
 
-  return { kHandle, kKeyObject };
+return { kHandle, kKeyObject };
 })();

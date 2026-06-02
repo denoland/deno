@@ -1,730 +1,522 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-  "use strict";
-  const { core, primordials } = __bootstrap;
-  const {
-    ArrayPrototypeForEach,
-    ArrayPrototypeIndexOf,
-    ArrayPrototypePush,
-    ArrayPrototypeSplice,
-    Error,
-    ErrorPrototype,
-    MapPrototypeDelete,
-    MapPrototypeGet,
-    MapPrototypeSet,
-    ObjectDefineProperty,
-    ObjectPrototypeHasOwnProperty,
-    ObjectGetOwnPropertyDescriptor,
-    ObjectGetPrototypeOf,
-    ObjectPrototypeIsPrototypeOf,
-    Promise,
-    PromisePrototypeThen,
-    PromiseResolve,
-    PromiseWithResolvers,
-    ReflectApply,
-    ReflectConstruct,
-    RegExpPrototypeExec,
-    RegExpPrototypeTest,
-    SafeArrayIterator,
-    SafeMap,
-    SafeRegExp,
-    String,
-    StringPrototypeMatch,
-    Symbol,
-    SymbolFor,
-    TypeError,
-    queueMicrotask,
-  } = primordials;
+"use strict";
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypeForEach,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  Error,
+  ErrorPrototype,
+  MapPrototypeDelete,
+  MapPrototypeGet,
+  MapPrototypeSet,
+  ObjectDefineProperty,
+  ObjectPrototypeHasOwnProperty,
+  ObjectGetOwnPropertyDescriptor,
+  ObjectGetPrototypeOf,
+  ObjectPrototypeIsPrototypeOf,
+  Promise,
+  PromisePrototypeThen,
+  PromiseResolve,
+  PromiseWithResolvers,
+  ReflectApply,
+  ReflectConstruct,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
+  SafeArrayIterator,
+  SafeMap,
+  SafeRegExp,
+  String,
+  StringPrototypeMatch,
+  Symbol,
+  SymbolFor,
+  TypeError,
+  queueMicrotask,
+} = primordials;
 
-  let errorHandlersInstalled = false;
+let errorHandlersInstalled = false;
 
-  let activeNodeTests = 0;
+let activeNodeTests = 0;
 
-  let pendingCallbackReject = null;
+let pendingCallbackReject = null;
 
-  function sanitizeThrowValue(err) {
-    if (err === null || err === undefined || typeof err !== "object") {
-      return err;
-    }
-    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
-      return err;
-    }
-    const inspectSymbol = SymbolFor("nodejs.util.inspect.custom");
-    if (typeof err[inspectSymbol] !== "function") {
-      return err;
-    }
-    try {
-      Deno.inspect(err);
-      return err;
-    } catch {
-      return new Error(
-        "test threw a non-Error object with a throwing custom inspect",
-      );
-    }
+function sanitizeThrowValue(err) {
+  if (err === null || err === undefined || typeof err !== "object") {
+    return err;
   }
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
+    return err;
+  }
+  const inspectSymbol = SymbolFor("nodejs.util.inspect.custom");
+  if (typeof err[inspectSymbol] !== "function") {
+    return err;
+  }
+  try {
+    Deno.inspect(err);
+    return err;
+  } catch {
+    return new Error(
+      "test threw a non-Error object with a throwing custom inspect",
+    );
+  }
+}
 
-  function installErrorHandlers() {
-    if (errorHandlersInstalled) return;
-    errorHandlersInstalled = true;
+function installErrorHandlers() {
+  if (errorHandlersInstalled) return;
+  errorHandlersInstalled = true;
 
-    globalThis.addEventListener("unhandledrejection", (event) => {
-      if (activeNodeTests > 0) {
-        event.preventDefault();
-      }
+  globalThis.addEventListener("unhandledrejection", (event) => {
+    if (activeNodeTests > 0) {
+      event.preventDefault();
+    }
+  });
+
+  globalThis.addEventListener("error", (event) => {
+    if (activeNodeTests > 0) {
+      event.preventDefault();
+    }
+    if (pendingCallbackReject !== null) {
+      pendingCallbackReject(event.error ?? new Error("uncaught error"));
+      pendingCallbackReject = null;
+    }
+  });
+}
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
+const {
+  validateFunction,
+  validateInteger,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const {
+  tapEscape,
+  tapIndent,
+} = core.loadExtScript("ext:deno_node/internal/test/reporters.ts");
+
+const methodsToCopy = [
+  "deepEqual",
+  "deepStrictEqual",
+  "doesNotMatch",
+  "doesNotReject",
+  "doesNotThrow",
+  "equal",
+  "fail",
+  "ifError",
+  "match",
+  "notDeepEqual",
+  "notDeepStrictEqual",
+  "notEqual",
+  "notStrictEqual",
+  "partialDeepStrictEqual",
+  "rejects",
+  "strictEqual",
+  "throws",
+  "ok",
+];
+
+let assertObject = undefined;
+function getAssertObject() {
+  if (assertObject === undefined) {
+    assertObject = { __proto__: null };
+    ArrayPrototypeForEach(methodsToCopy, (method) => {
+      assertObject[method] = assert[method];
     });
-
-    globalThis.addEventListener("error", (event) => {
-      if (activeNodeTests > 0) {
-        event.preventDefault();
-      }
-      if (pendingCallbackReject !== null) {
-        pendingCallbackReject(event.error ?? new Error("uncaught error"));
-        pendingCallbackReject = null;
-      }
-    });
   }
-  const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-  const {
-    validateFunction,
-    validateInteger,
-  } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-  const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-  const {
-    tapEscape,
-    tapIndent,
-  } = core.loadExtScript("ext:deno_node/internal/test/reporters.ts");
+  return assertObject;
+}
 
-  const methodsToCopy = [
-    "deepEqual",
-    "deepStrictEqual",
-    "doesNotMatch",
-    "doesNotReject",
-    "doesNotThrow",
-    "equal",
-    "fail",
-    "ifError",
-    "match",
-    "notDeepEqual",
-    "notDeepStrictEqual",
-    "notEqual",
-    "notStrictEqual",
-    "partialDeepStrictEqual",
-    "rejects",
-    "strictEqual",
-    "throws",
-    "ok",
-  ];
+// Lazy access to other node polyfills; loading these eagerly at module
+// init causes circular initialization issues during snapshotting.
+let _Readable = null;
+function getReadable() {
+  if (_Readable === null) {
+    _Readable = core.loadExtScript(
+      "ext:deno_node/internal/streams/readable.js",
+    ).Readable;
+  }
+  return _Readable;
+}
+let _fsWatch = null;
+function getFsWatch() {
+  if (_fsWatch === null) {
+    _fsWatch = core.loadExtScript("ext:deno_node/fs.ts").watch;
+  }
+  return _fsWatch;
+}
+const lazyProcess = core.createLazyLoader("node:process");
 
-  let assertObject = undefined;
-  function getAssertObject() {
-    if (assertObject === undefined) {
-      assertObject = { __proto__: null };
-      ArrayPrototypeForEach(methodsToCopy, (method) => {
-        assertObject[method] = assert[method];
-      });
-    }
-    return assertObject;
+// node:test `run()` implementation.
+//
+// Returns a `TestsStream`-compatible Readable that emits structured events
+// describing the test run lifecycle. We currently support the watch-mode
+// event stream (`test:watch:drained`, `test:watch:restarted`) which is the
+// minimum required for the Node.js `test-runner/test-run-watch-*` fixtures
+// that drive watch behavior through the programmatic API. Actual test file
+// discovery / execution remains TODO and is gated behind separate work; the
+// stream emits a single empty run cycle, then either ends (watch:false) or
+// waits for filesystem changes to trigger restarts (watch:true).
+//
+// See test-runner/test-run-watch-*.mjs in the Node compat suite for the
+// behavior this implements.
+function run(options) {
+  options = options ?? {};
+  const watch = options.watch === true;
+  const signal = options.signal;
+  let cwd = options.cwd;
+  if (cwd === undefined) {
+    cwd = lazyProcess().default.cwd();
   }
 
-  // Lazy access to other node polyfills; loading these eagerly at module
-  // init causes circular initialization issues during snapshotting.
-  let _Readable = null;
-  function getReadable() {
-    if (_Readable === null) {
-      _Readable = core.loadExtScript(
-        "ext:deno_node/internal/streams/readable.js",
-      ).Readable;
+  const Readable = getReadable();
+  const stream = new Readable({
+    __proto__: null,
+    objectMode: true,
+    // We push events imperatively; the consumer just needs a no-op `_read`.
+    read() {},
+  });
+
+  let watcher = null;
+  let finished = false;
+  let pendingRestartTimer = null;
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    if (pendingRestartTimer !== null) {
+      clearTimeout(pendingRestartTimer);
+      pendingRestartTimer = null;
     }
-    return _Readable;
+    if (watcher !== null) {
+      try {
+        watcher.close();
+      } catch { /* ignore */ }
+      watcher = null;
+    }
+    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
+    stream.push(null);
   }
-  let _fsWatch = null;
-  function getFsWatch() {
-    if (_fsWatch === null) {
-      _fsWatch = core.loadExtScript("ext:deno_node/fs.ts").watch;
-    }
-    return _fsWatch;
+
+  function emit(type) {
+    if (finished) return;
+    const data = { __proto__: null };
+    // Node's TestsStream emits each lifecycle entry both as a data chunk
+    // (consumed via async iteration / `'data'` listeners) and as a named
+    // event so callers can attach `.on('test:watch:drained', ...)` directly.
+    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
+    stream.push({ __proto__: null, type, data });
+    stream.emit(type, data);
   }
-  const lazyProcess = core.createLazyLoader("node:process");
 
-  // node:test `run()` implementation.
-  //
-  // Returns a `TestsStream`-compatible Readable that emits structured events
-  // describing the test run lifecycle. We currently support the watch-mode
-  // event stream (`test:watch:drained`, `test:watch:restarted`) which is the
-  // minimum required for the Node.js `test-runner/test-run-watch-*` fixtures
-  // that drive watch behavior through the programmatic API. Actual test file
-  // discovery / execution remains TODO and is gated behind separate work; the
-  // stream emits a single empty run cycle, then either ends (watch:false) or
-  // waits for filesystem changes to trigger restarts (watch:true).
-  //
-  // See test-runner/test-run-watch-*.mjs in the Node compat suite for the
-  // behavior this implements.
-  function run(options) {
-    options = options ?? {};
-    const watch = options.watch === true;
-    const signal = options.signal;
-    let cwd = options.cwd;
-    if (cwd === undefined) {
-      cwd = lazyProcess().default.cwd();
+  function drained() {
+    emit("test:watch:drained");
+  }
+
+  function scheduleRestart() {
+    if (finished) return;
+    // Debounce bursts of fs events so a single user-visible change produces
+    // exactly one restart cycle (Node's watcher coalesces likewise).
+    if (pendingRestartTimer !== null) {
+      clearTimeout(pendingRestartTimer);
     }
-
-    const Readable = getReadable();
-    const stream = new Readable({
-      __proto__: null,
-      objectMode: true,
-      // We push events imperatively; the consumer just needs a no-op `_read`.
-      read() {},
-    });
-
-    let watcher = null;
-    let finished = false;
-    let pendingRestartTimer = null;
-
-    function finish() {
+    pendingRestartTimer = setTimeout(() => {
+      pendingRestartTimer = null;
       if (finished) return;
-      finished = true;
-      if (pendingRestartTimer !== null) {
-        clearTimeout(pendingRestartTimer);
-        pendingRestartTimer = null;
-      }
-      if (watcher !== null) {
-        try {
-          watcher.close();
-        } catch { /* ignore */ }
-        watcher = null;
-      }
-      // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
-      stream.push(null);
-    }
-
-    function emit(type) {
-      if (finished) return;
-      const data = { __proto__: null };
-      // Node's TestsStream emits each lifecycle entry both as a data chunk
-      // (consumed via async iteration / `'data'` listeners) and as a named
-      // event so callers can attach `.on('test:watch:drained', ...)` directly.
-      // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
-      stream.push({ __proto__: null, type, data });
-      stream.emit(type, data);
-    }
-
-    function drained() {
-      emit("test:watch:drained");
-    }
-
-    function scheduleRestart() {
-      if (finished) return;
-      // Debounce bursts of fs events so a single user-visible change produces
-      // exactly one restart cycle (Node's watcher coalesces likewise).
-      if (pendingRestartTimer !== null) {
-        clearTimeout(pendingRestartTimer);
-      }
-      pendingRestartTimer = setTimeout(() => {
-        pendingRestartTimer = null;
-        if (finished) return;
-        emit("test:watch:restarted");
-        drained();
-      }, 50);
-    }
-
-    if (signal) {
-      if (signal.aborted) {
-        // Resolve the initial drained on next tick to keep callers that
-        // `await once(stream, 'test:watch:drained')` working.
-        queueMicrotask(() => {
-          drained();
-          finish();
-        });
-        return stream;
-      }
-      signal.addEventListener("abort", finish, { once: true });
-    }
-
-    // Emit the initial "drained" event after the current microtask completes
-    // so that consumers attaching `.on('data')` synchronously after `run(...)`
-    // returns still observe the event.
-    queueMicrotask(() => {
+      emit("test:watch:restarted");
       drained();
-      if (!watch) {
+    }, 50);
+  }
+
+  if (signal) {
+    if (signal.aborted) {
+      // Resolve the initial drained on next tick to keep callers that
+      // `await once(stream, 'test:watch:drained')` working.
+      queueMicrotask(() => {
+        drained();
         finish();
-        return;
-      }
+      });
+      return stream;
+    }
+    signal.addEventListener("abort", finish, { once: true });
+  }
+
+  // Emit the initial "drained" event after the current microtask completes
+  // so that consumers attaching `.on('data')` synchronously after `run(...)`
+  // returns still observe the event.
+  queueMicrotask(() => {
+    drained();
+    if (!watch) {
+      finish();
+      return;
+    }
+    try {
+      const fsWatch = getFsWatch();
+      watcher = fsWatch(cwd, { recursive: true }, () => {
+        scheduleRestart();
+      });
+      watcher.on("error", () => {
+        finish();
+      });
+    } catch {
+      // If we can't watch (e.g. cwd doesn't exist), end the stream gracefully.
+      finish();
+    }
+  });
+
+  return stream;
+}
+
+function noop() {}
+
+const skippedSymbol = Symbol("skipped");
+
+// Detect Node.js-compatible `--test-reporter=...` selection so the polyfill
+// can emit reporter output matching Node's snapshot fixtures. Deno's CLI does
+// not consume `--test-reporter`; instead, our `child_process` polyfill (via
+// node_shim) propagates the value through NODE_OPTIONS when one Deno process
+// spawns another using Node-style flags. Reading the env var here keeps the
+// detection self-contained and avoids new Rust plumbing.
+function detectNodeTestReporter() {
+  const env = globalThis.Deno?.env;
+  if (!env) return null;
+  let value = null;
+  try {
+    value = env.get("NODE_TEST_REPORTER");
+  } catch { /* permission denied */ }
+  if (value) return value;
+  let nodeOptions = "";
+  try {
+    nodeOptions = env.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  if (!nodeOptions) return null;
+  // Match the first `--test-reporter` occurrence; support both `=value` and
+  // space-separated forms. We intentionally do not handle multiple reporters
+  // (Node lets you stack reporters with destinations); the snapshot tests use
+  // a single reporter and that is what we target.
+  const match = StringPrototypeMatch(
+    nodeOptions,
+    new SafeRegExp(/--test-reporter(?:=|\s+)(\S+)/),
+  );
+  return match ? match[1] : null;
+}
+
+// Resolve lazily: testing.ts ships inside Deno's startup snapshot, so any env
+// lookups performed at module-evaluation time observe the build environment,
+// not the running process. Memoize on the first call so we still only read the
+// env once.
+let nodeTestReporterCache;
+function getNodeTestReporter() {
+  if (nodeTestReporterCache !== undefined) return nodeTestReporterCache;
+  nodeTestReporterCache = detectNodeTestReporter();
+  return nodeTestReporterCache;
+}
+function isTapMode() {
+  return getNodeTestReporter() === "tap";
+}
+
+function getTapSuiteALS() {
+  if (tapSuiteALS !== null) return tapSuiteALS;
+  const mod = core.loadExtScript("ext:deno_node/async_hooks.ts");
+  const ALS = mod.AsyncLocalStorage;
+  tapSuiteALS = new ALS();
+  return tapSuiteALS;
+}
+
+function getTapCurrentSuite() {
+  if (tapSuiteALS !== null) {
+    const fromAls = tapSuiteALS.getStore();
+    if (fromAls !== undefined) return fromAls;
+  }
+  return tapCurrentSuiteSync;
+}
+
+// Parse `--test-skip-pattern` from NODE_OPTIONS so the TAP-mode polyfill can
+// filter tests Node-style. A bare string is interpreted as a regex source;
+// `/.../flags` is a regex literal.
+function parsePatternFlag(flag) {
+  const env = globalThis.Deno?.env;
+  if (!env) return null;
+  let nodeOptions = "";
+  try {
+    nodeOptions = env.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  if (!nodeOptions) return null;
+  const out = [];
+  const re = new SafeRegExp(`${flag}(?:=|\\s+)(\\S+)`, "g");
+  let m;
+  while ((m = RegExpPrototypeExec(re, nodeOptions)) !== null) {
+    const value = m[1];
+    let pattern;
+    const litMatch = StringPrototypeMatch(
+      value,
+      new SafeRegExp(/^\/(.*)\/([a-z]*)$/),
+    );
+    if (litMatch) {
       try {
-        const fsWatch = getFsWatch();
-        watcher = fsWatch(cwd, { recursive: true }, () => {
-          scheduleRestart();
-        });
-        watcher.on("error", () => {
-          finish();
-        });
+        pattern = new SafeRegExp(litMatch[1], litMatch[2]);
       } catch {
-        // If we can't watch (e.g. cwd doesn't exist), end the stream gracefully.
-        finish();
+        continue;
       }
-    });
-
-    return stream;
-  }
-
-  function noop() {}
-
-  const skippedSymbol = Symbol("skipped");
-
-  // Detect Node.js-compatible `--test-reporter=...` selection so the polyfill
-  // can emit reporter output matching Node's snapshot fixtures. Deno's CLI does
-  // not consume `--test-reporter`; instead, our `child_process` polyfill (via
-  // node_shim) propagates the value through NODE_OPTIONS when one Deno process
-  // spawns another using Node-style flags. Reading the env var here keeps the
-  // detection self-contained and avoids new Rust plumbing.
-  function detectNodeTestReporter() {
-    const env = globalThis.Deno?.env;
-    if (!env) return null;
-    let value = null;
-    try {
-      value = env.get("NODE_TEST_REPORTER");
-    } catch { /* permission denied */ }
-    if (value) return value;
-    let nodeOptions = "";
-    try {
-      nodeOptions = env.get("NODE_OPTIONS") || "";
-    } catch { /* permission denied */ }
-    if (!nodeOptions) return null;
-    // Match the first `--test-reporter` occurrence; support both `=value` and
-    // space-separated forms. We intentionally do not handle multiple reporters
-    // (Node lets you stack reporters with destinations); the snapshot tests use
-    // a single reporter and that is what we target.
-    const match = StringPrototypeMatch(
-      nodeOptions,
-      new SafeRegExp(/--test-reporter(?:=|\s+)(\S+)/),
-    );
-    return match ? match[1] : null;
-  }
-
-  // Resolve lazily: testing.ts ships inside Deno's startup snapshot, so any env
-  // lookups performed at module-evaluation time observe the build environment,
-  // not the running process. Memoize on the first call so we still only read the
-  // env once.
-  let nodeTestReporterCache;
-  function getNodeTestReporter() {
-    if (nodeTestReporterCache !== undefined) return nodeTestReporterCache;
-    nodeTestReporterCache = detectNodeTestReporter();
-    return nodeTestReporterCache;
-  }
-  function isTapMode() {
-    return getNodeTestReporter() === "tap";
-  }
-
-  function getTapSuiteALS() {
-    if (tapSuiteALS !== null) return tapSuiteALS;
-    const mod = core.loadExtScript("ext:deno_node/async_hooks.ts");
-    const ALS = mod.AsyncLocalStorage;
-    tapSuiteALS = new ALS();
-    return tapSuiteALS;
-  }
-
-  function getTapCurrentSuite() {
-    if (tapSuiteALS !== null) {
-      const fromAls = tapSuiteALS.getStore();
-      if (fromAls !== undefined) return fromAls;
-    }
-    return tapCurrentSuiteSync;
-  }
-
-  // Parse `--test-skip-pattern` from NODE_OPTIONS so the TAP-mode polyfill can
-  // filter tests Node-style. A bare string is interpreted as a regex source;
-  // `/.../flags` is a regex literal.
-  function parsePatternFlag(flag) {
-    const env = globalThis.Deno?.env;
-    if (!env) return null;
-    let nodeOptions = "";
-    try {
-      nodeOptions = env.get("NODE_OPTIONS") || "";
-    } catch { /* permission denied */ }
-    if (!nodeOptions) return null;
-    const out = [];
-    const re = new SafeRegExp(`${flag}(?:=|\\s+)(\\S+)`, "g");
-    let m;
-    while ((m = RegExpPrototypeExec(re, nodeOptions)) !== null) {
-      const value = m[1];
-      let pattern;
-      const litMatch = StringPrototypeMatch(
-        value,
-        new SafeRegExp(/^\/(.*)\/([a-z]*)$/),
-      );
-      if (litMatch) {
-        try {
-          pattern = new SafeRegExp(litMatch[1], litMatch[2]);
-        } catch {
-          continue;
-        }
-      } else {
-        try {
-          pattern = new SafeRegExp(value);
-        } catch {
-          continue;
-        }
-      }
-      ArrayPrototypePush(out, pattern);
-    }
-    return out.length > 0 ? out : null;
-  }
-
-  let testSkipPatternCache;
-  function getTestSkipPatterns() {
-    if (testSkipPatternCache !== undefined) return testSkipPatternCache;
-    testSkipPatternCache = parsePatternFlag("--test-skip-pattern");
-    return testSkipPatternCache;
-  }
-
-  let testOnlyFlagCache;
-  function isTestOnlyFlagSet() {
-    if (testOnlyFlagCache !== undefined) return testOnlyFlagCache;
-    const env = globalThis.Deno?.env;
-    if (!env) {
-      testOnlyFlagCache = false;
-      return false;
-    }
-    let nodeOptions = "";
-    try {
-      nodeOptions = env.get("NODE_OPTIONS") || "";
-    } catch { /* permission denied */ }
-    testOnlyFlagCache = RegExpPrototypeTest(
-      new SafeRegExp(/(^|\s)--test-only(\s|=|$)/),
-      nodeOptions,
-    );
-    return testOnlyFlagCache;
-  }
-
-  const TEST_ONLY_WARNING =
-    "# 'only' and 'runOnly' require the --test-only command-line option.";
-
-  function matchesAnyPattern(name, patterns) {
-    for (const p of new SafeArrayIterator(patterns)) {
-      if (RegExpPrototypeTest(p, name)) return true;
-    }
-    return false;
-  }
-
-  // Returns true if the given test/suite name should be excluded from the run.
-  function shouldSkipByPattern(name) {
-    const skip = getTestSkipPatterns();
-    if (skip && matchesAnyPattern(String(name), skip)) return true;
-    return false;
-  }
-
-  // Top-level queue of test/suite entries collected synchronously while the
-  // script body evaluates. Children of describe() blocks live under their parent
-  // entry's `children` array, populated during the synchronous descend through
-  // the describe body.
-  const tapTopEntries = [];
-  let tapRunScheduled = false;
-  // AsyncLocalStorage tracking the currently-active describe() so that test()
-  // and describe() calls made inside an async describe body - even after
-  // `await` boundaries - still register against the surrounding suite. The
-  // fallback variable handles synchronous nesting before ALS is loaded.
-  let tapCurrentSuiteSync = null;
-  let tapSuiteALS = null;
-  const tapStats = {
-    tests: 0,
-    suites: 0,
-    pass: 0,
-    fail: 0,
-    cancelled: 0,
-    skipped: 0,
-    todo: 0,
-  };
-
-  function tapWrite(line) {
-    // deno-lint-ignore no-console
-    console.log(line);
-  }
-
-  function tapDirective(options) {
-    if (options.skip) {
-      const msg = options.skip === true ? "" : tapEscape(String(options.skip));
-      return msg ? ` # SKIP ${msg}` : " # SKIP";
-    }
-    if (options.todo) {
-      const msg = options.todo === true ? "" : tapEscape(String(options.todo));
-      return msg ? ` # TODO ${msg}` : " # TODO";
-    }
-    return "";
-  }
-
-  function tapYaml(depth, type) {
-    const pad = tapIndent(depth) + "  ";
-    tapWrite(`${pad}---`);
-    tapWrite(`${pad}duration_ms: 0`);
-    tapWrite(`${pad}type: '${type}'`);
-    tapWrite(`${pad}...`);
-  }
-
-  class TapContext {
-    #diagnostics = [];
-    #name;
-    #depth;
-    #subtestTail = PromiseResolve();
-    #subtestCount = 0;
-    #parentChildren;
-    // Per-context "warning printed" flag for the `--test-only` diagnostic.
-    // Mutated by `runTapEntry` when a child uses `only: true`.
-    onlyWarningEmitted = false;
-
-    constructor(name, depth, parentChildren) {
-      this.#name = name;
-      this.#depth = depth;
-      this.#parentChildren = parentChildren;
-    }
-
-    get name() {
-      return this.#name;
-    }
-
-    get fullName() {
-      return this.#name;
-    }
-
-    get signal() {
-      // Provide an AbortSignal so consumers that read t.signal don't crash; the
-      // minimal TAP runner does not currently honour aborts.
-      return new AbortController().signal;
-    }
-
-    get assert() {
-      return getAssertObject();
-    }
-
-    get mock() {
-      return mock;
-    }
-
-    diagnostic(message) {
-      ArrayPrototypePush(this.#diagnostics, String(message));
-    }
-
-    _drainDiagnostics() {
-      const out = this.#diagnostics;
-      this.#diagnostics = [];
-      return out;
-    }
-
-    // Subtest registration: `t.test(name, opts?, fn?)` queues a subtest that runs
-    // sequentially in the order it was registered. Concurrent calls (Promise.all)
-    // are serialized through the parent's subtest tail.
-    test(name, options, fn) {
-      const prepared = prepareOptions(name, options, fn, {});
-      this.#subtestCount++;
-      const n = this.#subtestCount;
-      const childDepth = this.#depth + 1;
-      const entry = {
-        name: prepared.name,
-        fn: prepared.fn,
-        options: prepared.options,
-        kind: "test",
-        children: [],
-        bodyPromise: null,
-        bodyError: null,
-      };
-      if (this.#parentChildren) {
-        ArrayPrototypePush(this.#parentChildren, entry);
-      }
-      // deno-lint-ignore no-this-alias
-      const parentState = this;
-      const p = PromisePrototypeThen(
-        this.#subtestTail,
-        () => runTapEntry(entry, childDepth, n, parentState),
-      );
-      this.#subtestTail = PromisePrototypeThen(p, () => {}, () => {});
-      return p;
-    }
-
-    _drainSubtests() {
-      return this.#subtestTail;
-    }
-
-    _subtestCount() {
-      return this.#subtestCount;
-    }
-  }
-
-  function scheduleTapRun() {
-    if (tapRunScheduled) return;
-    tapRunScheduled = true;
-    // Defer to the macrotask queue so synchronous top-level test() calls finish
-    // queueing before we start running.
-    setTimeout(() => {
-      runTapTop();
-    }, 0);
-  }
-
-  async function runTapTop() {
-    // Hold the event loop open while tests run so that fixtures using
-    // unref'd timers (Node's runner keeps itself alive internally) don't cause
-    // Deno to exit before subtests complete.
-    const keepAlive = setInterval(() => {}, 1 << 30);
-    try {
-      // Match Node's ordering: top-level `before()` callbacks fire before the
-      // `TAP version 13` line, so any console output they produce appears
-      // before the reporter header in the captured stream.
-      if (rootBeforeHooks.length > 0) {
-        const rootCtx = { name: "<root>", fullName: "<root>" };
-        for (const hook of new SafeArrayIterator(rootBeforeHooks)) {
-          try {
-            const r = ReflectApply(hook, null, [rootCtx]);
-            if (isThenable(r)) await r;
-          } catch {
-            /* swallow to keep parity with Node's lenient hook errors */
-          }
-        }
-      }
-      tapWrite("TAP version 13");
-      let n = 0;
-      const topState = { onlyWarningEmitted: false };
-      for (const entry of new SafeArrayIterator(tapTopEntries)) {
-        n++;
-        await runTapEntry(entry, 0, n, topState);
-      }
-      // Drain top-level `after()` hooks before printing the plan/summary so
-      // their console output appears between the last test and the `1..N` line.
-      if (rootAfterHooks.length > 0) {
-        const rootCtx = { name: "<root>", fullName: "<root>" };
-        const hooks = ArrayPrototypeSplice(
-          rootAfterHooks,
-          0,
-          rootAfterHooks.length,
-        );
-        for (const hook of new SafeArrayIterator(hooks)) {
-          try {
-            const r = ReflectApply(hook, null, [rootCtx]);
-            if (isThenable(r)) await r;
-          } catch { /* swallow */ }
-        }
-      }
-      tapWrite(`1..${n}`);
-      tapWrite(`# tests ${tapStats.tests}`);
-      tapWrite(`# suites ${tapStats.suites}`);
-      tapWrite(`# pass ${tapStats.pass}`);
-      tapWrite(`# fail ${tapStats.fail}`);
-      tapWrite(`# cancelled ${tapStats.cancelled}`);
-      tapWrite(`# skipped ${tapStats.skipped}`);
-      tapWrite(`# todo ${tapStats.todo}`);
-      tapWrite(`# duration_ms 0`);
-    } finally {
-      clearInterval(keepAlive);
-    }
-    if (tapStats.fail > 0 || tapStats.cancelled > 0) {
-      try {
-        globalThis.Deno?.exit?.(1);
-      } catch { /* exit unavailable */ }
-    }
-  }
-
-  // Recursively run a test or suite entry, emitting TAP output at the given
-  // nesting depth. `parentState` is the runtime state of the immediate parent
-  // (a TapContext for test-bodies, or a `{ onlyWarningEmitted }` object for
-  // suite/root scopes); it's used to emit the `# 'only' and 'runOnly' require
-  // the --test-only command-line option.` warning at most once per parent.
-  async function runTapEntry(entry, depth, n, parentState) {
-    const indent = tapIndent(depth);
-    const isSuite = entry.kind === "suite";
-    tapWrite(`${indent}# Subtest: ${tapEscape(entry.name)}`);
-    const directive = tapDirective(entry.options);
-
-    let status = "ok";
-    let diagnostics = [];
-    let childCount = 0;
-
-    // Each test/suite body gets its own state object so warnings emitted
-    // because of an `only: true` child don't leak across siblings.
-    const myChildrenState = { onlyWarningEmitted: false };
-
-    if (entry.options.skip) {
-      if (isSuite) {
-        tapStats.suites++;
-      } else {
-        tapStats.skipped++;
-        tapStats.tests++;
-      }
-    } else if (entry.options.todo) {
-      // Per Node behavior, a TODO test that throws is not counted as a failure.
-      // The runner skips invoking the body to match snapshot output.
-      if (isSuite) {
-        tapStats.suites++;
-      } else {
-        tapStats.todo++;
-        tapStats.tests++;
-      }
-    } else if (isSuite) {
-      try {
-        if (entry.bodyError) throw entry.bodyError;
-        if (entry.bodyPromise) await entry.bodyPromise;
-        let childN = 0;
-        for (const child of new SafeArrayIterator(entry.children)) {
-          childN++;
-          await runTapEntry(child, depth + 1, childN, myChildrenState);
-        }
-        childCount = childN;
-      } catch (_err) {
-        status = "not ok";
-        tapStats.fail++;
-      }
-      tapStats.suites++;
     } else {
-      // test/it body
-      const ctx = new TapContext(entry.name, depth, entry.children);
       try {
-        const ret = ReflectApply(entry.fn, ctx, [ctx]);
-        if (isThenable(ret)) await ret;
-        // Wait for any concurrent t.test() calls (e.g. Promise.all([...])).
-        await ctx._drainSubtests();
-        childCount = ctx._subtestCount();
-        tapStats.pass++;
-      } catch (_err) {
-        status = "not ok";
-        tapStats.fail++;
-        // Even on failure, drain any in-flight subtests so their output is
-        // emitted before the parent's "not ok" line.
-        try {
-          await ctx._drainSubtests();
-        } catch { /* ignore */ }
-        childCount = ctx._subtestCount();
+        pattern = new SafeRegExp(value);
+      } catch {
+        continue;
       }
-      diagnostics = ctx._drainDiagnostics();
-      tapStats.tests++;
     }
+    ArrayPrototypePush(out, pattern);
+  }
+  return out.length > 0 ? out : null;
+}
 
-    if (childCount > 0) {
-      tapWrite(`${tapIndent(depth + 1)}1..${childCount}`);
-    }
+let testSkipPatternCache;
+function getTestSkipPatterns() {
+  if (testSkipPatternCache !== undefined) return testSkipPatternCache;
+  testSkipPatternCache = parsePatternFlag("--test-skip-pattern");
+  return testSkipPatternCache;
+}
 
-    tapWrite(`${indent}${status} ${n} - ${tapEscape(entry.name)}${directive}`);
-    tapYaml(depth, isSuite ? "suite" : "test");
-    for (const d of new SafeArrayIterator(diagnostics)) {
-      tapWrite(`${indent}# ${tapEscape(d)}`);
-    }
-    // If this entry was registered with `only: true` and the `--test-only` flag
-    // wasn't supplied, Node prints a one-off warning in the parent's scope
-    // immediately after the entry's yaml/diagnostics. Emit it at the same depth
-    // and only once per parent.
-    if (
-      entry.options.only &&
-      !isTestOnlyFlagSet() &&
-      parentState &&
-      !parentState.onlyWarningEmitted
-    ) {
-      tapWrite(`${indent}${TEST_ONLY_WARNING}`);
-      parentState.onlyWarningEmitted = true;
-    }
+let testOnlyFlagCache;
+function isTestOnlyFlagSet() {
+  if (testOnlyFlagCache !== undefined) return testOnlyFlagCache;
+  const env = globalThis.Deno?.env;
+  if (!env) {
+    testOnlyFlagCache = false;
+    return false;
+  }
+  let nodeOptions = "";
+  try {
+    nodeOptions = env.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  testOnlyFlagCache = RegExpPrototypeTest(
+    new SafeRegExp(/(^|\s)--test-only(\s|=|$)/),
+    nodeOptions,
+  );
+  return testOnlyFlagCache;
+}
+
+const TEST_ONLY_WARNING =
+  "# 'only' and 'runOnly' require the --test-only command-line option.";
+
+function matchesAnyPattern(name, patterns) {
+  for (const p of new SafeArrayIterator(patterns)) {
+    if (RegExpPrototypeTest(p, name)) return true;
+  }
+  return false;
+}
+
+// Returns true if the given test/suite name should be excluded from the run.
+function shouldSkipByPattern(name) {
+  const skip = getTestSkipPatterns();
+  if (skip && matchesAnyPattern(String(name), skip)) return true;
+  return false;
+}
+
+// Top-level queue of test/suite entries collected synchronously while the
+// script body evaluates. Children of describe() blocks live under their parent
+// entry's `children` array, populated during the synchronous descend through
+// the describe body.
+const tapTopEntries = [];
+let tapRunScheduled = false;
+// AsyncLocalStorage tracking the currently-active describe() so that test()
+// and describe() calls made inside an async describe body - even after
+// `await` boundaries - still register against the surrounding suite. The
+// fallback variable handles synchronous nesting before ALS is loaded.
+let tapCurrentSuiteSync = null;
+let tapSuiteALS = null;
+const tapStats = {
+  tests: 0,
+  suites: 0,
+  pass: 0,
+  fail: 0,
+  cancelled: 0,
+  skipped: 0,
+  todo: 0,
+};
+
+function tapWrite(line) {
+  // deno-lint-ignore no-console
+  console.log(line);
+}
+
+function tapDirective(options) {
+  if (options.skip) {
+    const msg = options.skip === true ? "" : tapEscape(String(options.skip));
+    return msg ? ` # SKIP ${msg}` : " # SKIP";
+  }
+  if (options.todo) {
+    const msg = options.todo === true ? "" : tapEscape(String(options.todo));
+    return msg ? ` # TODO ${msg}` : " # TODO";
+  }
+  return "";
+}
+
+function tapYaml(depth, type) {
+  const pad = tapIndent(depth) + "  ";
+  tapWrite(`${pad}---`);
+  tapWrite(`${pad}duration_ms: 0`);
+  tapWrite(`${pad}type: '${type}'`);
+  tapWrite(`${pad}...`);
+}
+
+class TapContext {
+  #diagnostics = [];
+  #name;
+  #depth;
+  #subtestTail = PromiseResolve();
+  #subtestCount = 0;
+  #parentChildren;
+  // Per-context "warning printed" flag for the `--test-only` diagnostic.
+  // Mutated by `runTapEntry` when a child uses `only: true`.
+  onlyWarningEmitted = false;
+
+  constructor(name, depth, parentChildren) {
+    this.#name = name;
+    this.#depth = depth;
+    this.#parentChildren = parentChildren;
   }
 
-  function queueTapTest(name, options, fn, overrides) {
-    const prepared = prepareOptions(name, options, fn, overrides);
-    if (shouldSkipByPattern(prepared.name)) {
-      // Filtered out entirely: do not register or run.
-      scheduleTapRun();
-      return PromiseResolve();
-    }
+  get name() {
+    return this.#name;
+  }
+
+  get fullName() {
+    return this.#name;
+  }
+
+  get signal() {
+    // Provide an AbortSignal so consumers that read t.signal don't crash; the
+    // minimal TAP runner does not currently honour aborts.
+    return new AbortController().signal;
+  }
+
+  get assert() {
+    return getAssertObject();
+  }
+
+  get mock() {
+    return mock;
+  }
+
+  diagnostic(message) {
+    ArrayPrototypePush(this.#diagnostics, String(message));
+  }
+
+  _drainDiagnostics() {
+    const out = this.#diagnostics;
+    this.#diagnostics = [];
+    return out;
+  }
+
+  // Subtest registration: `t.test(name, opts?, fn?)` queues a subtest that runs
+  // sequentially in the order it was registered. Concurrent calls (Promise.all)
+  // are serialized through the parent's subtest tail.
+  test(name, options, fn) {
+    const prepared = prepareOptions(name, options, fn, {});
+    this.#subtestCount++;
+    const n = this.#subtestCount;
+    const childDepth = this.#depth + 1;
     const entry = {
       name: prepared.name,
       fn: prepared.fn,
@@ -734,1061 +526,1267 @@
       bodyPromise: null,
       bodyError: null,
     };
-    const parentSuite = getTapCurrentSuite();
-    if (parentSuite !== null) {
-      ArrayPrototypePush(parentSuite.children, entry);
-    } else {
-      ArrayPrototypePush(tapTopEntries, entry);
-      scheduleTapRun();
+    if (this.#parentChildren) {
+      ArrayPrototypePush(this.#parentChildren, entry);
     }
+    // deno-lint-ignore no-this-alias
+    const parentState = this;
+    const p = PromisePrototypeThen(
+      this.#subtestTail,
+      () => runTapEntry(entry, childDepth, n, parentState),
+    );
+    this.#subtestTail = PromisePrototypeThen(p, () => {}, () => {});
+    return p;
+  }
+
+  _drainSubtests() {
+    return this.#subtestTail;
+  }
+
+  _subtestCount() {
+    return this.#subtestCount;
+  }
+}
+
+function scheduleTapRun() {
+  if (tapRunScheduled) return;
+  tapRunScheduled = true;
+  // Defer to the macrotask queue so synchronous top-level test() calls finish
+  // queueing before we start running.
+  setTimeout(() => {
+    runTapTop();
+  }, 0);
+}
+
+async function runTapTop() {
+  // Hold the event loop open while tests run so that fixtures using
+  // unref'd timers (Node's runner keeps itself alive internally) don't cause
+  // Deno to exit before subtests complete.
+  const keepAlive = setInterval(() => {}, 1 << 30);
+  try {
+    // Match Node's ordering: top-level `before()` callbacks fire before the
+    // `TAP version 13` line, so any console output they produce appears
+    // before the reporter header in the captured stream.
+    if (rootBeforeHooks.length > 0) {
+      const rootCtx = { name: "<root>", fullName: "<root>" };
+      for (const hook of new SafeArrayIterator(rootBeforeHooks)) {
+        try {
+          const r = ReflectApply(hook, null, [rootCtx]);
+          if (isThenable(r)) await r;
+        } catch {
+          /* swallow to keep parity with Node's lenient hook errors */
+        }
+      }
+    }
+    tapWrite("TAP version 13");
+    let n = 0;
+    const topState = { onlyWarningEmitted: false };
+    for (const entry of new SafeArrayIterator(tapTopEntries)) {
+      n++;
+      await runTapEntry(entry, 0, n, topState);
+    }
+    // Drain top-level `after()` hooks before printing the plan/summary so
+    // their console output appears between the last test and the `1..N` line.
+    if (rootAfterHooks.length > 0) {
+      const rootCtx = { name: "<root>", fullName: "<root>" };
+      const hooks = ArrayPrototypeSplice(
+        rootAfterHooks,
+        0,
+        rootAfterHooks.length,
+      );
+      for (const hook of new SafeArrayIterator(hooks)) {
+        try {
+          const r = ReflectApply(hook, null, [rootCtx]);
+          if (isThenable(r)) await r;
+        } catch { /* swallow */ }
+      }
+    }
+    tapWrite(`1..${n}`);
+    tapWrite(`# tests ${tapStats.tests}`);
+    tapWrite(`# suites ${tapStats.suites}`);
+    tapWrite(`# pass ${tapStats.pass}`);
+    tapWrite(`# fail ${tapStats.fail}`);
+    tapWrite(`# cancelled ${tapStats.cancelled}`);
+    tapWrite(`# skipped ${tapStats.skipped}`);
+    tapWrite(`# todo ${tapStats.todo}`);
+    tapWrite(`# duration_ms 0`);
+  } finally {
+    clearInterval(keepAlive);
+  }
+  if (tapStats.fail > 0 || tapStats.cancelled > 0) {
+    try {
+      globalThis.Deno?.exit?.(1);
+    } catch { /* exit unavailable */ }
+  }
+}
+
+// Recursively run a test or suite entry, emitting TAP output at the given
+// nesting depth. `parentState` is the runtime state of the immediate parent
+// (a TapContext for test-bodies, or a `{ onlyWarningEmitted }` object for
+// suite/root scopes); it's used to emit the `# 'only' and 'runOnly' require
+// the --test-only command-line option.` warning at most once per parent.
+async function runTapEntry(entry, depth, n, parentState) {
+  const indent = tapIndent(depth);
+  const isSuite = entry.kind === "suite";
+  tapWrite(`${indent}# Subtest: ${tapEscape(entry.name)}`);
+  const directive = tapDirective(entry.options);
+
+  let status = "ok";
+  let diagnostics = [];
+  let childCount = 0;
+
+  // Each test/suite body gets its own state object so warnings emitted
+  // because of an `only: true` child don't leak across siblings.
+  const myChildrenState = { onlyWarningEmitted: false };
+
+  if (entry.options.skip) {
+    if (isSuite) {
+      tapStats.suites++;
+    } else {
+      tapStats.skipped++;
+      tapStats.tests++;
+    }
+  } else if (entry.options.todo) {
+    // Per Node behavior, a TODO test that throws is not counted as a failure.
+    // The runner skips invoking the body to match snapshot output.
+    if (isSuite) {
+      tapStats.suites++;
+    } else {
+      tapStats.todo++;
+      tapStats.tests++;
+    }
+  } else if (isSuite) {
+    try {
+      if (entry.bodyError) throw entry.bodyError;
+      if (entry.bodyPromise) await entry.bodyPromise;
+      let childN = 0;
+      for (const child of new SafeArrayIterator(entry.children)) {
+        childN++;
+        await runTapEntry(child, depth + 1, childN, myChildrenState);
+      }
+      childCount = childN;
+    } catch (_err) {
+      status = "not ok";
+      tapStats.fail++;
+    }
+    tapStats.suites++;
+  } else {
+    // test/it body
+    const ctx = new TapContext(entry.name, depth, entry.children);
+    try {
+      const ret = ReflectApply(entry.fn, ctx, [ctx]);
+      if (isThenable(ret)) await ret;
+      // Wait for any concurrent t.test() calls (e.g. Promise.all([...])).
+      await ctx._drainSubtests();
+      childCount = ctx._subtestCount();
+      tapStats.pass++;
+    } catch (_err) {
+      status = "not ok";
+      tapStats.fail++;
+      // Even on failure, drain any in-flight subtests so their output is
+      // emitted before the parent's "not ok" line.
+      try {
+        await ctx._drainSubtests();
+      } catch { /* ignore */ }
+      childCount = ctx._subtestCount();
+    }
+    diagnostics = ctx._drainDiagnostics();
+    tapStats.tests++;
+  }
+
+  if (childCount > 0) {
+    tapWrite(`${tapIndent(depth + 1)}1..${childCount}`);
+  }
+
+  tapWrite(`${indent}${status} ${n} - ${tapEscape(entry.name)}${directive}`);
+  tapYaml(depth, isSuite ? "suite" : "test");
+  for (const d of new SafeArrayIterator(diagnostics)) {
+    tapWrite(`${indent}# ${tapEscape(d)}`);
+  }
+  // If this entry was registered with `only: true` and the `--test-only` flag
+  // wasn't supplied, Node prints a one-off warning in the parent's scope
+  // immediately after the entry's yaml/diagnostics. Emit it at the same depth
+  // and only once per parent.
+  if (
+    entry.options.only &&
+    !isTestOnlyFlagSet() &&
+    parentState &&
+    !parentState.onlyWarningEmitted
+  ) {
+    tapWrite(`${indent}${TEST_ONLY_WARNING}`);
+    parentState.onlyWarningEmitted = true;
+  }
+}
+
+function queueTapTest(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+  if (shouldSkipByPattern(prepared.name)) {
+    // Filtered out entirely: do not register or run.
+    scheduleTapRun();
     return PromiseResolve();
   }
+  const entry = {
+    name: prepared.name,
+    fn: prepared.fn,
+    options: prepared.options,
+    kind: "test",
+    children: [],
+    bodyPromise: null,
+    bodyError: null,
+  };
+  const parentSuite = getTapCurrentSuite();
+  if (parentSuite !== null) {
+    ArrayPrototypePush(parentSuite.children, entry);
+  } else {
+    ArrayPrototypePush(tapTopEntries, entry);
+    scheduleTapRun();
+  }
+  return PromiseResolve();
+}
 
-  function queueTapSuite(name, options, fn, overrides) {
-    const prepared = prepareOptions(name, options, fn, overrides);
-    if (shouldSkipByPattern(prepared.name)) {
-      // Filtered out entirely: do not register, but the suite body must not
-      // run (it would otherwise add unwanted children to the parent).
-      scheduleTapRun();
-      return PromiseResolve();
-    }
-    const entry = {
-      name: prepared.name,
-      fn: prepared.fn,
-      options: prepared.options,
-      kind: "suite",
-      children: [],
-      bodyPromise: null,
-      bodyError: null,
-    };
-    const parentSuite = getTapCurrentSuite();
-    if (parentSuite !== null) {
-      ArrayPrototypePush(parentSuite.children, entry);
-    } else {
-      ArrayPrototypePush(tapTopEntries, entry);
-      scheduleTapRun();
-    }
-    // Evaluate the suite body inside an AsyncLocalStorage scope so any nested
-    // describe()/test() calls - including those scheduled after `await` inside
-    // the body - register against this suite, not the outer (or null) scope.
-    // The sync fallback handles environments without ALS available.
-    const als = getTapSuiteALS();
-    const prev = tapCurrentSuiteSync;
-    tapCurrentSuiteSync = entry;
-    try {
-      als.run(entry, () => {
-        try {
-          const ret = ReflectApply(prepared.fn, null, []);
-          if (isThenable(ret)) entry.bodyPromise = ret;
-        } catch (err) {
-          entry.bodyError = err;
-        }
-      });
-    } finally {
-      tapCurrentSuiteSync = prev;
-    }
+function queueTapSuite(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+  if (shouldSkipByPattern(prepared.name)) {
+    // Filtered out entirely: do not register, but the suite body must not
+    // run (it would otherwise add unwanted children to the parent).
+    scheduleTapRun();
     return PromiseResolve();
   }
-
-  function isThenable(value) {
-    return value !== null && value !== undefined &&
-      typeof value.then === "function";
+  const entry = {
+    name: prepared.name,
+    fn: prepared.fn,
+    options: prepared.options,
+    kind: "suite",
+    children: [],
+    bodyPromise: null,
+    bodyError: null,
+  };
+  const parentSuite = getTapCurrentSuite();
+  if (parentSuite !== null) {
+    ArrayPrototypePush(parentSuite.children, entry);
+  } else {
+    ArrayPrototypePush(tapTopEntries, entry);
+    scheduleTapRun();
   }
-
-  function getExpectFailureMatch(expectFailure) {
-    if (
-      expectFailure !== null && typeof expectFailure === "object" &&
-      ObjectPrototypeHasOwnProperty(expectFailure, "match")
-    ) {
-      return expectFailure.match;
-    }
-    if (
-      expectFailure === true ||
-      typeof expectFailure === "string" ||
-      expectFailure === undefined
-    ) {
-      return undefined;
-    }
-    return expectFailure;
+  // Evaluate the suite body inside an AsyncLocalStorage scope so any nested
+  // describe()/test() calls - including those scheduled after `await` inside
+  // the body - register against this suite, not the outer (or null) scope.
+  // The sync fallback handles environments without ALS available.
+  const als = getTapSuiteALS();
+  const prev = tapCurrentSuiteSync;
+  tapCurrentSuiteSync = entry;
+  try {
+    als.run(entry, () => {
+      try {
+        const ret = ReflectApply(prepared.fn, null, []);
+        if (isThenable(ret)) entry.bodyPromise = ret;
+      } catch (err) {
+        entry.bodyError = err;
+      }
+    });
+  } finally {
+    tapCurrentSuiteSync = prev;
   }
+  return PromiseResolve();
+}
 
-  function assertExpectedFailure(err, expectFailure) {
-    const match = getExpectFailureMatch(expectFailure);
-    if (match !== undefined) {
-      assert.throws(() => {
-        throw err;
-      }, match);
-    }
+function isThenable(value) {
+  return value !== null && value !== undefined &&
+    typeof value.then === "function";
+}
+
+function getExpectFailureMatch(expectFailure) {
+  if (
+    expectFailure !== null && typeof expectFailure === "object" &&
+    ObjectPrototypeHasOwnProperty(expectFailure, "match")
+  ) {
+    return expectFailure.match;
   }
-
-  async function runNodeTestFunction(fn, nodeTestContext) {
-    if (fn.length >= 2) {
-      // Node-style callback API: fn(t, done) - wait for `done()` (or promise
-      // rejection) before treating the test as complete.
-      await new Promise((testResolve, testReject) => {
-        pendingCallbackReject = testReject;
-        const done = (err) => {
-          pendingCallbackReject = null;
-          if (err) testReject(err);
-          else testResolve(undefined);
-        };
-        try {
-          const result = ReflectApply(fn, nodeTestContext, [
-            nodeTestContext,
-            done,
-          ]);
-          if (isThenable(result)) {
-            PromisePrototypeThen(result, undefined, (err) => {
-              pendingCallbackReject = null;
-              testReject(err);
-            });
-          }
-        } catch (err) {
-          pendingCallbackReject = null;
-          testReject(err);
-        }
-      });
-      return undefined;
-    }
-    return await ReflectApply(fn, nodeTestContext, [nodeTestContext]);
-  }
-
-  async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
-    if (
-      !options.expectFailure ||
-      options.skip ||
-      options.todo
-    ) {
-      const result = await runNodeTestFunction(fn, nodeTestContext);
-      nodeTestContext._checkPlan();
-      return result;
-    }
-
-    let failed = false;
-    try {
-      await runNodeTestFunction(fn, nodeTestContext);
-      nodeTestContext._checkPlan();
-    } catch (err) {
-      failed = true;
-      assertExpectedFailure(err, options.expectFailure);
-    }
-
-    if (!failed) {
-      throw new Error("test was expected to fail but passed");
-    }
+  if (
+    expectFailure === true ||
+    typeof expectFailure === "string" ||
+    expectFailure === undefined
+  ) {
     return undefined;
   }
+  return expectFailure;
+}
 
-  class TestPlan {
-    #expected;
-    #actual = 0;
+function assertExpectedFailure(err, expectFailure) {
+  const match = getExpectFailureMatch(expectFailure);
+  if (match !== undefined) {
+    assert.throws(() => {
+      throw err;
+    }, match);
+  }
+}
 
-    constructor(count) {
-      this.#expected = count;
-    }
-
-    increment() {
-      this.#actual++;
-    }
-
-    check() {
-      if (this.#actual !== this.#expected) {
-        throw new Error(
-          `plan expected ${this.#expected} assertion(s) but received ${this.#actual}`,
-        );
+async function runNodeTestFunction(fn, nodeTestContext) {
+  if (fn.length >= 2) {
+    // Node-style callback API: fn(t, done) - wait for `done()` (or promise
+    // rejection) before treating the test as complete.
+    await new Promise((testResolve, testReject) => {
+      pendingCallbackReject = testReject;
+      const done = (err) => {
+        pendingCallbackReject = null;
+        if (err) testReject(err);
+        else testResolve(undefined);
+      };
+      try {
+        const result = ReflectApply(fn, nodeTestContext, [
+          nodeTestContext,
+          done,
+        ]);
+        if (isThenable(result)) {
+          PromisePrototypeThen(result, undefined, (err) => {
+            pendingCallbackReject = null;
+            testReject(err);
+          });
+        }
+      } catch (err) {
+        pendingCallbackReject = null;
+        testReject(err);
       }
-    }
+    });
+    return undefined;
+  }
+  return await ReflectApply(fn, nodeTestContext, [nodeTestContext]);
+}
+
+async function runPossiblyExpectingFailure(fn, nodeTestContext, options) {
+  if (
+    !options.expectFailure ||
+    options.skip ||
+    options.todo
+  ) {
+    const result = await runNodeTestFunction(fn, nodeTestContext);
+    nodeTestContext._checkPlan();
+    return result;
   }
 
-  class NodeTestContext {
-    #denoContext;
-    #afterHooks = [];
-    #beforeHooks = [];
-    #parent;
-    #skipped = false;
-    #name;
-    #abortController = new AbortController();
-    #plan;
-    #planAssert;
-    #beforeEachHooks = [];
-    #afterEachHooks = [];
+  let failed = false;
+  try {
+    await runNodeTestFunction(fn, nodeTestContext);
+    nodeTestContext._checkPlan();
+  } catch (err) {
+    failed = true;
+    assertExpectedFailure(err, options.expectFailure);
+  }
 
-    constructor(t, parent, name) {
-      this.#denoContext = t;
-      this.#parent = parent;
-      this.#name = name;
-    }
+  if (!failed) {
+    throw new Error("test was expected to fail but passed");
+  }
+  return undefined;
+}
 
-    get [skippedSymbol]() {
-      return this.#skipped || (this.#parent?.[skippedSymbol] ?? false);
-    }
+class TestPlan {
+  #expected;
+  #actual = 0;
 
-    get assert() {
-      if (this.#plan) {
-        if (!this.#planAssert) {
-          const plan = this.#plan;
-          const base = getAssertObject();
-          const wrapped = { __proto__: null };
-          ArrayPrototypeForEach(methodsToCopy, (method) => {
-            wrapped[method] = function (...args) {
-              plan.increment();
-              return ReflectApply(base[method], this, args);
-            };
-          });
-          this.#planAssert = wrapped;
-        }
-        return this.#planAssert;
-      }
-      return getAssertObject();
-    }
+  constructor(count) {
+    this.#expected = count;
+  }
 
-    plan(count) {
-      validateInteger(count, "count", 1);
-      this.#plan = new TestPlan(count);
-    }
+  increment() {
+    this.#actual++;
+  }
 
-    _checkPlan() {
-      if (this.#plan) this.#plan.check();
-    }
-
-    get signal() {
-      return this.#abortController.signal;
-    }
-
-    get name() {
-      return this.#name;
-    }
-
-    get fullName() {
-      if (this.#parent) {
-        return this.#parent.fullName + " > " + this.#name;
-      }
-      return this.#name;
-    }
-
-    diagnostic(message) {
-      // deno-lint-ignore no-console
-      console.log("DIAGNOSTIC:", message);
-    }
-
-    get mock() {
-      return mock;
-    }
-
-    runOnly() {
-      notImplemented("test.TestContext.runOnly");
-      return null;
-    }
-
-    skip() {
-      this.#skipped = true;
-      return null;
-    }
-
-    todo() {
-      this.#skipped = true;
-      return null;
-    }
-
-    test(name, options, fn) {
-      const prepared = prepareOptions(name, options, fn, {});
-      if (this.#plan) this.#plan.increment();
-      // deno-lint-ignore no-this-alias
-      const parentContext = this;
-      const after = async () => {
-        for (const hook of new SafeArrayIterator(this.#afterHooks)) {
-          await hook();
-        }
-      };
-      const before = async () => {
-        for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
-          await hook();
-        }
-      };
-      return PromisePrototypeThen(
-        this.#denoContext.step({
-          name: prepared.name,
-          fn: async (denoTestContext) => {
-            const newNodeTextContext = new NodeTestContext(
-              denoTestContext,
-              parentContext,
-              prepared.name,
-            );
-            try {
-              await before();
-              for (
-                const hook of new SafeArrayIterator(
-                  parentContext.#beforeEachHooks,
-                )
-              ) {
-                await hook();
-              }
-              await runPossiblyExpectingFailure(
-                prepared.fn,
-                newNodeTextContext,
-                prepared.options,
-              );
-              await after();
-            } catch (err) {
-              if (!newNodeTextContext[skippedSymbol]) {
-                throw err;
-              }
-              try {
-                await after();
-              } catch { /* ignore, test is already failing */ }
-            } finally {
-              for (
-                const hook of new SafeArrayIterator(
-                  parentContext.#afterEachHooks,
-                )
-              ) {
-                await hook();
-              }
-            }
-          },
-          ignore: !!prepared.options.todo || !!prepared.options.skip,
-          sanitizeExit: false,
-          sanitizeOps: false,
-          sanitizeResources: false,
-        }),
-        () => undefined,
+  check() {
+    if (this.#actual !== this.#expected) {
+      throw new Error(
+        `plan expected ${this.#expected} assertion(s) but received ${this.#actual}`,
       );
     }
+  }
+}
 
-    before(fn, _options) {
-      if (typeof fn !== "function") {
-        throw new TypeError("before() requires a function");
-      }
-      ArrayPrototypePush(this.#beforeHooks, fn);
-    }
+class NodeTestContext {
+  #denoContext;
+  #afterHooks = [];
+  #beforeHooks = [];
+  #parent;
+  #skipped = false;
+  #name;
+  #abortController = new AbortController();
+  #plan;
+  #planAssert;
+  #beforeEachHooks = [];
+  #afterEachHooks = [];
 
-    after(fn, _options) {
-      if (typeof fn !== "function") {
-        throw new TypeError("after() requires a function");
-      }
-      ArrayPrototypePush(this.#afterHooks, fn);
-    }
-
-    beforeEach(fn, _options) {
-      if (typeof fn !== "function") {
-        throw new TypeError("beforeEach() requires a function");
-      }
-      ArrayPrototypePush(this.#beforeEachHooks, fn);
-    }
-
-    afterEach(fn, _options) {
-      if (typeof fn !== "function") {
-        throw new TypeError("afterEach() requires a function");
-      }
-      ArrayPrototypePush(this.#afterEachHooks, fn);
-    }
+  constructor(t, parent, name) {
+    this.#denoContext = t;
+    this.#parent = parent;
+    this.#name = name;
   }
 
-  let currentSuite = null;
-
-  const rootBeforeHooks = [];
-  const rootAfterHooks = [];
-  const rootBeforeEachHooks = [];
-  const rootAfterEachHooks = [];
-  let rootBeforeRan = false;
-
-  async function runRootBeforeOnce() {
-    if (rootBeforeRan) return;
-    rootBeforeRan = true;
-    if (rootBeforeHooks.length === 0) return;
-    const rootCtx = { name: "<root>", fullName: "<root>" };
-    for (const hook of new SafeArrayIterator(rootBeforeHooks)) {
-      await hook(rootCtx);
-    }
+  get [skippedSymbol]() {
+    return this.#skipped || (this.#parent?.[skippedSymbol] ?? false);
   }
 
-  async function runRootAfterIfDone() {
-    if (activeNodeTests !== 0) return;
-    if (rootAfterHooks.length === 0) return;
-    const rootCtx = { name: "<root>", fullName: "<root>" };
-    // Snapshot and clear so we only run once even if more tests get queued.
-    const hooks = ArrayPrototypeSplice(
-      rootAfterHooks,
-      0,
-      rootAfterHooks.length,
-    );
-    for (const hook of new SafeArrayIterator(hooks)) {
-      try {
-        await hook(rootCtx);
-      } catch { /* ignore */ }
+  get assert() {
+    if (this.#plan) {
+      if (!this.#planAssert) {
+        const plan = this.#plan;
+        const base = getAssertObject();
+        const wrapped = { __proto__: null };
+        ArrayPrototypeForEach(methodsToCopy, (method) => {
+          wrapped[method] = function (...args) {
+            plan.increment();
+            return ReflectApply(base[method], this, args);
+          };
+        });
+        this.#planAssert = wrapped;
+      }
+      return this.#planAssert;
     }
+    return getAssertObject();
   }
 
-  class TestSuite {
-    #denoTestContext;
-    nodeTestContext;
-    entries = [];
-    beforeAllHooks = [];
-    afterAllHooks = [];
-    beforeEachHooks = [];
-    afterEachHooks = [];
+  plan(count) {
+    validateInteger(count, "count", 1);
+    this.#plan = new TestPlan(count);
+  }
 
-    constructor(t, nodeTestContext) {
-      this.#denoTestContext = t;
-      this.nodeTestContext = nodeTestContext;
+  _checkPlan() {
+    if (this.#plan) this.#plan.check();
+  }
+
+  get signal() {
+    return this.#abortController.signal;
+  }
+
+  get name() {
+    return this.#name;
+  }
+
+  get fullName() {
+    if (this.#parent) {
+      return this.#parent.fullName + " > " + this.#name;
     }
+    return this.#name;
+  }
 
-    addTest(name, options, fn, overrides) {
-      const prepared = prepareOptions(name, options, fn, overrides);
-      const beforeEach = this.beforeEachHooks;
-      const afterEach = this.afterEachHooks;
-      const suiteNodeContext = this.nodeTestContext;
-      ArrayPrototypePush(this.entries, {
+  diagnostic(message) {
+    // deno-lint-ignore no-console
+    console.log("DIAGNOSTIC:", message);
+  }
+
+  get mock() {
+    return mock;
+  }
+
+  runOnly() {
+    notImplemented("test.TestContext.runOnly");
+    return null;
+  }
+
+  skip() {
+    this.#skipped = true;
+    return null;
+  }
+
+  todo() {
+    this.#skipped = true;
+    return null;
+  }
+
+  test(name, options, fn) {
+    const prepared = prepareOptions(name, options, fn, {});
+    if (this.#plan) this.#plan.increment();
+    // deno-lint-ignore no-this-alias
+    const parentContext = this;
+    const after = async () => {
+      for (const hook of new SafeArrayIterator(this.#afterHooks)) {
+        await hook();
+      }
+    };
+    const before = async () => {
+      for (const hook of new SafeArrayIterator(this.#beforeHooks)) {
+        await hook();
+      }
+    };
+    return PromisePrototypeThen(
+      this.#denoContext.step({
         name: prepared.name,
         fn: async (denoTestContext) => {
           const newNodeTextContext = new NodeTestContext(
             denoTestContext,
-            suiteNodeContext,
+            parentContext,
             prepared.name,
           );
           try {
-            for (const hook of new SafeArrayIterator(beforeEach)) {
-              await hook(newNodeTextContext);
+            await before();
+            for (
+              const hook of new SafeArrayIterator(
+                parentContext.#beforeEachHooks,
+              )
+            ) {
+              await hook();
             }
-            return await runPossiblyExpectingFailure(
+            await runPossiblyExpectingFailure(
               prepared.fn,
               newNodeTextContext,
               prepared.options,
             );
+            await after();
           } catch (err) {
-            if (newNodeTextContext[skippedSymbol]) {
-              return undefined;
-            } else {
+            if (!newNodeTextContext[skippedSymbol]) {
               throw err;
             }
+            try {
+              await after();
+            } catch { /* ignore, test is already failing */ }
           } finally {
-            for (const hook of new SafeArrayIterator(afterEach)) {
-              try {
-                await hook(newNodeTextContext);
-              } catch { /* ignore */ }
+            for (
+              const hook of new SafeArrayIterator(
+                parentContext.#afterEachHooks,
+              )
+            ) {
+              await hook();
             }
           }
         },
         ignore: !!prepared.options.todo || !!prepared.options.skip,
-      });
-    }
-
-    addSuite(name, options, fn, overrides) {
-      const prepared = prepareOptions(name, options, fn, overrides);
-      const { promise, resolve } = PromiseWithResolvers();
-      const parentSuiteContext = this.nodeTestContext;
-      ArrayPrototypePush(this.entries, {
-        name: prepared.name,
-        fn: wrapSuiteFn(
-          prepared.fn,
-          resolve,
-          prepared.name,
-          parentSuiteContext,
-        ),
-        ignore: !!prepared.options.todo || !!prepared.options.skip,
-      });
-      return promise;
-    }
-
-    async execute() {
-      for (const entry of new SafeArrayIterator(this.entries)) {
-        await this.#denoTestContext.step({
-          name: entry.name,
-          fn: entry.fn,
-          ignore: entry.ignore,
-          sanitizeExit: false,
-          sanitizeOps: false,
-          sanitizeResources: false,
-        });
-      }
-    }
+        sanitizeExit: false,
+        sanitizeOps: false,
+        sanitizeResources: false,
+      }),
+      () => undefined,
+    );
   }
 
-  function prepareOptions(name, options, fn, overrides) {
-    if (typeof name === "function") {
-      fn = name;
-    } else if (name !== null && typeof name === "object") {
-      fn = options;
-      options = name;
-    } else if (typeof options === "function") {
-      fn = options;
-    }
-
-    if (options === null || typeof options !== "object") {
-      options = {};
-    }
-
-    const finalOptions = { ...options, ...overrides };
-
+  before(fn, _options) {
     if (typeof fn !== "function") {
-      fn = noop;
+      throw new TypeError("before() requires a function");
     }
-
-    if (typeof name !== "string" || name === "") {
-      name = fn.name || "<anonymous>";
-    }
-
-    return { fn, options: finalOptions, name };
+    ArrayPrototypePush(this.#beforeHooks, fn);
   }
 
-  function wrapTestFn(fn, resolve, name, options) {
-    return async function (t) {
-      const nodeTestContext = new NodeTestContext(t, undefined, name);
-      let beforeEachOk = false;
-      try {
-        await runRootBeforeOnce();
-        for (const hook of new SafeArrayIterator(rootBeforeEachHooks)) {
-          await hook(nodeTestContext);
-        }
-        beforeEachOk = true;
-        await runPossiblyExpectingFailure(fn, nodeTestContext, options);
-      } catch (err) {
-        if (!nodeTestContext[skippedSymbol]) {
-          throw sanitizeThrowValue(err);
-        }
-      } finally {
-        if (beforeEachOk) {
-          for (const hook of new SafeArrayIterator(rootAfterEachHooks)) {
-            try {
-              await hook(nodeTestContext);
-            } catch { /* swallow to match node behavior on hook error */ }
-          }
-        }
-        activeNodeTests--;
-        await runRootAfterIfDone();
-        resolve();
-      }
-    };
+  after(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("after() requires a function");
+    }
+    ArrayPrototypePush(this.#afterHooks, fn);
   }
 
-  function prepareDenoTest(name, options, fn, overrides) {
+  beforeEach(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("beforeEach() requires a function");
+    }
+    ArrayPrototypePush(this.#beforeEachHooks, fn);
+  }
+
+  afterEach(fn, _options) {
+    if (typeof fn !== "function") {
+      throw new TypeError("afterEach() requires a function");
+    }
+    ArrayPrototypePush(this.#afterEachHooks, fn);
+  }
+}
+
+let currentSuite = null;
+
+const rootBeforeHooks = [];
+const rootAfterHooks = [];
+const rootBeforeEachHooks = [];
+const rootAfterEachHooks = [];
+let rootBeforeRan = false;
+
+async function runRootBeforeOnce() {
+  if (rootBeforeRan) return;
+  rootBeforeRan = true;
+  if (rootBeforeHooks.length === 0) return;
+  const rootCtx = { name: "<root>", fullName: "<root>" };
+  for (const hook of new SafeArrayIterator(rootBeforeHooks)) {
+    await hook(rootCtx);
+  }
+}
+
+async function runRootAfterIfDone() {
+  if (activeNodeTests !== 0) return;
+  if (rootAfterHooks.length === 0) return;
+  const rootCtx = { name: "<root>", fullName: "<root>" };
+  // Snapshot and clear so we only run once even if more tests get queued.
+  const hooks = ArrayPrototypeSplice(
+    rootAfterHooks,
+    0,
+    rootAfterHooks.length,
+  );
+  for (const hook of new SafeArrayIterator(hooks)) {
+    try {
+      await hook(rootCtx);
+    } catch { /* ignore */ }
+  }
+}
+
+class TestSuite {
+  #denoTestContext;
+  nodeTestContext;
+  entries = [];
+  beforeAllHooks = [];
+  afterAllHooks = [];
+  beforeEachHooks = [];
+  afterEachHooks = [];
+
+  constructor(t, nodeTestContext) {
+    this.#denoTestContext = t;
+    this.nodeTestContext = nodeTestContext;
+  }
+
+  addTest(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
-
-    activeNodeTests++;
-
-    const denoTestOptions = {
+    const beforeEach = this.beforeEachHooks;
+    const afterEach = this.afterEachHooks;
+    const suiteNodeContext = this.nodeTestContext;
+    ArrayPrototypePush(this.entries, {
       name: prepared.name,
-      fn: wrapTestFn(prepared.fn, noop, prepared.name, prepared.options),
-      only: prepared.options.only,
-      ignore: !!prepared.options.todo || !!prepared.options.skip,
-      sanitizeOnly: false,
-      sanitizeExit: false,
-      sanitizeOps: false,
-      sanitizeResources: false,
-    };
-    Deno.test(denoTestOptions);
-    // Node resolves the returned promise on test completion, but the
-    // Deno runner only executes registered tests after the module
-    // finishes evaluating, so top-level `await test(...)` deadlocks.
-    // Resolve immediately to unblock; the test still runs and is
-    // reported normally. Trade-off: code that awaits `test()` for
-    // sequencing (`await test('a'); await test('b')`) sees them run
-    // out of order.
-    return PromiseResolve();
-  }
-
-  function wrapSuiteFn(fn, resolve, name, parentNodeContext) {
-    return async function (t) {
-      const isTopLevel = parentNodeContext === undefined;
-      if (isTopLevel) await runRootBeforeOnce();
-      const suiteNodeContext = new NodeTestContext(t, parentNodeContext, name);
-      const prevSuite = currentSuite;
-      const suite = currentSuite = new TestSuite(t, suiteNodeContext);
-      try {
-        fn(suiteNodeContext);
-      } finally {
-        currentSuite = prevSuite;
-      }
-      try {
-        for (const hook of new SafeArrayIterator(suite.beforeAllHooks)) {
-          await hook();
-        }
-        await suite.execute();
-      } finally {
+      fn: async (denoTestContext) => {
+        const newNodeTextContext = new NodeTestContext(
+          denoTestContext,
+          suiteNodeContext,
+          prepared.name,
+        );
         try {
-          for (const hook of new SafeArrayIterator(suite.afterAllHooks)) {
-            await hook();
+          for (const hook of new SafeArrayIterator(beforeEach)) {
+            await hook(newNodeTextContext);
+          }
+          return await runPossiblyExpectingFailure(
+            prepared.fn,
+            newNodeTextContext,
+            prepared.options,
+          );
+        } catch (err) {
+          if (newNodeTextContext[skippedSymbol]) {
+            return undefined;
+          } else {
+            throw err;
           }
         } finally {
-          if (isTopLevel) {
-            activeNodeTests--;
-            await runRootAfterIfDone();
+          for (const hook of new SafeArrayIterator(afterEach)) {
+            try {
+              await hook(newNodeTextContext);
+            } catch { /* ignore */ }
           }
-          resolve();
+        }
+      },
+      ignore: !!prepared.options.todo || !!prepared.options.skip,
+    });
+  }
+
+  addSuite(name, options, fn, overrides) {
+    const prepared = prepareOptions(name, options, fn, overrides);
+    const { promise, resolve } = PromiseWithResolvers();
+    const parentSuiteContext = this.nodeTestContext;
+    ArrayPrototypePush(this.entries, {
+      name: prepared.name,
+      fn: wrapSuiteFn(
+        prepared.fn,
+        resolve,
+        prepared.name,
+        parentSuiteContext,
+      ),
+      ignore: !!prepared.options.todo || !!prepared.options.skip,
+    });
+    return promise;
+  }
+
+  async execute() {
+    for (const entry of new SafeArrayIterator(this.entries)) {
+      await this.#denoTestContext.step({
+        name: entry.name,
+        fn: entry.fn,
+        ignore: entry.ignore,
+        sanitizeExit: false,
+        sanitizeOps: false,
+        sanitizeResources: false,
+      });
+    }
+  }
+}
+
+function prepareOptions(name, options, fn, overrides) {
+  if (typeof name === "function") {
+    fn = name;
+  } else if (name !== null && typeof name === "object") {
+    fn = options;
+    options = name;
+  } else if (typeof options === "function") {
+    fn = options;
+  }
+
+  if (options === null || typeof options !== "object") {
+    options = {};
+  }
+
+  const finalOptions = { ...options, ...overrides };
+
+  if (typeof fn !== "function") {
+    fn = noop;
+  }
+
+  if (typeof name !== "string" || name === "") {
+    name = fn.name || "<anonymous>";
+  }
+
+  return { fn, options: finalOptions, name };
+}
+
+function wrapTestFn(fn, resolve, name, options) {
+  return async function (t) {
+    const nodeTestContext = new NodeTestContext(t, undefined, name);
+    let beforeEachOk = false;
+    try {
+      await runRootBeforeOnce();
+      for (const hook of new SafeArrayIterator(rootBeforeEachHooks)) {
+        await hook(nodeTestContext);
+      }
+      beforeEachOk = true;
+      await runPossiblyExpectingFailure(fn, nodeTestContext, options);
+    } catch (err) {
+      if (!nodeTestContext[skippedSymbol]) {
+        throw sanitizeThrowValue(err);
+      }
+    } finally {
+      if (beforeEachOk) {
+        for (const hook of new SafeArrayIterator(rootAfterEachHooks)) {
+          try {
+            await hook(nodeTestContext);
+          } catch { /* swallow to match node behavior on hook error */ }
         }
       }
-    };
-  }
-
-  function prepareDenoTestForSuite(name, options, fn, overrides) {
-    const prepared = prepareOptions(name, options, fn, overrides);
-
-    activeNodeTests++;
-
-    const denoTestOptions = {
-      name: prepared.name,
-      fn: wrapSuiteFn(prepared.fn, noop, prepared.name, undefined),
-      only: prepared.options.only,
-      ignore: !!prepared.options.todo || !!prepared.options.skip,
-      sanitizeOnly: false,
-      sanitizeExit: false,
-      sanitizeOps: false,
-      sanitizeResources: false,
-    };
-    Deno.test(denoTestOptions);
-    // See `prepareDenoTest` for the Node-divergence trade-off; top-level
-    // `await suite(...)` would deadlock if we waited for completion.
-    return PromiseResolve();
-  }
-
-  function test(name, options, fn, overrides) {
-    installErrorHandlers();
-    if (isTapMode()) {
-      return queueTapTest(name, options, fn, overrides);
+      activeNodeTests--;
+      await runRootAfterIfDone();
+      resolve();
     }
-    if (currentSuite) {
-      return currentSuite.addTest(name, options, fn, overrides);
+  };
+}
+
+function prepareDenoTest(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+
+  activeNodeTests++;
+
+  const denoTestOptions = {
+    name: prepared.name,
+    fn: wrapTestFn(prepared.fn, noop, prepared.name, prepared.options),
+    only: prepared.options.only,
+    ignore: !!prepared.options.todo || !!prepared.options.skip,
+    sanitizeOnly: false,
+    sanitizeExit: false,
+    sanitizeOps: false,
+    sanitizeResources: false,
+  };
+  Deno.test(denoTestOptions);
+  // Node resolves the returned promise on test completion, but the
+  // Deno runner only executes registered tests after the module
+  // finishes evaluating, so top-level `await test(...)` deadlocks.
+  // Resolve immediately to unblock; the test still runs and is
+  // reported normally. Trade-off: code that awaits `test()` for
+  // sequencing (`await test('a'); await test('b')`) sees them run
+  // out of order.
+  return PromiseResolve();
+}
+
+function wrapSuiteFn(fn, resolve, name, parentNodeContext) {
+  return async function (t) {
+    const isTopLevel = parentNodeContext === undefined;
+    if (isTopLevel) await runRootBeforeOnce();
+    const suiteNodeContext = new NodeTestContext(t, parentNodeContext, name);
+    const prevSuite = currentSuite;
+    const suite = currentSuite = new TestSuite(t, suiteNodeContext);
+    try {
+      fn(suiteNodeContext);
+    } finally {
+      currentSuite = prevSuite;
     }
-    return prepareDenoTest(name, options, fn, overrides);
-  }
-
-  test.skip = function skip(name, options, fn) {
-    return test(name, options, fn, { skip: true });
-  };
-
-  test.todo = function todo(name, options, fn) {
-    return test(name, options, fn, { todo: true });
-  };
-
-  test.only = function only(name, options, fn) {
-    return test(name, options, fn, { only: true });
-  };
-
-  test.expectFailure = function expectFailure(name, options, fn) {
-    return test(name, options, fn, { expectFailure: true });
-  };
-
-  function suite(name, options, fn, overrides) {
-    installErrorHandlers();
-    if (isTapMode()) {
-      return queueTapSuite(name, options, fn, overrides);
-    }
-    if (currentSuite) {
-      return currentSuite.addSuite(name, options, fn, overrides);
-    }
-    return prepareDenoTestForSuite(name, options, fn, overrides);
-  }
-
-  suite.skip = function skip(name, options, fn) {
-    return suite(name, options, fn, { skip: true });
-  };
-  suite.todo = function todo(name, options, fn) {
-    return suite(name, options, fn, { todo: true });
-  };
-  suite.only = function only(name, options, fn) {
-    return suite(name, options, fn, { only: true });
-  };
-
-  const it = test;
-  const describe = suite;
-
-  function before(fn, _options) {
-    if (typeof fn !== "function") {
-      throw new TypeError("before() requires a function argument");
-    }
-    if (isTapMode()) {
-      const tapSuite = getTapCurrentSuite();
-      if (tapSuite !== null) {
-        ArrayPrototypePush(tapSuite.beforeAllHooks ??= [], fn);
-        return;
+    try {
+      for (const hook of new SafeArrayIterator(suite.beforeAllHooks)) {
+        await hook();
       }
-      ArrayPrototypePush(rootBeforeHooks, fn);
-      // A bare top-level `before()` with no tests must still produce TAP
-      // output (`before` runs, then `TAP version 13`, then `1..0`).
-      scheduleTapRun();
-      return;
+      await suite.execute();
+    } finally {
+      try {
+        for (const hook of new SafeArrayIterator(suite.afterAllHooks)) {
+          await hook();
+        }
+      } finally {
+        if (isTopLevel) {
+          activeNodeTests--;
+          await runRootAfterIfDone();
+        }
+        resolve();
+      }
     }
-    if (currentSuite) {
-      ArrayPrototypePush(currentSuite.beforeAllHooks, fn);
+  };
+}
+
+function prepareDenoTestForSuite(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+
+  activeNodeTests++;
+
+  const denoTestOptions = {
+    name: prepared.name,
+    fn: wrapSuiteFn(prepared.fn, noop, prepared.name, undefined),
+    only: prepared.options.only,
+    ignore: !!prepared.options.todo || !!prepared.options.skip,
+    sanitizeOnly: false,
+    sanitizeExit: false,
+    sanitizeOps: false,
+    sanitizeResources: false,
+  };
+  Deno.test(denoTestOptions);
+  // See `prepareDenoTest` for the Node-divergence trade-off; top-level
+  // `await suite(...)` would deadlock if we waited for completion.
+  return PromiseResolve();
+}
+
+function test(name, options, fn, overrides) {
+  installErrorHandlers();
+  if (isTapMode()) {
+    return queueTapTest(name, options, fn, overrides);
+  }
+  if (currentSuite) {
+    return currentSuite.addTest(name, options, fn, overrides);
+  }
+  return prepareDenoTest(name, options, fn, overrides);
+}
+
+test.skip = function skip(name, options, fn) {
+  return test(name, options, fn, { skip: true });
+};
+
+test.todo = function todo(name, options, fn) {
+  return test(name, options, fn, { todo: true });
+};
+
+test.only = function only(name, options, fn) {
+  return test(name, options, fn, { only: true });
+};
+
+test.expectFailure = function expectFailure(name, options, fn) {
+  return test(name, options, fn, { expectFailure: true });
+};
+
+function suite(name, options, fn, overrides) {
+  installErrorHandlers();
+  if (isTapMode()) {
+    return queueTapSuite(name, options, fn, overrides);
+  }
+  if (currentSuite) {
+    return currentSuite.addSuite(name, options, fn, overrides);
+  }
+  return prepareDenoTestForSuite(name, options, fn, overrides);
+}
+
+suite.skip = function skip(name, options, fn) {
+  return suite(name, options, fn, { skip: true });
+};
+suite.todo = function todo(name, options, fn) {
+  return suite(name, options, fn, { todo: true });
+};
+suite.only = function only(name, options, fn) {
+  return suite(name, options, fn, { only: true });
+};
+
+const it = test;
+const describe = suite;
+
+function before(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("before() requires a function argument");
+  }
+  if (isTapMode()) {
+    const tapSuite = getTapCurrentSuite();
+    if (tapSuite !== null) {
+      ArrayPrototypePush(tapSuite.beforeAllHooks ??= [], fn);
       return;
     }
     ArrayPrototypePush(rootBeforeHooks, fn);
+    // A bare top-level `before()` with no tests must still produce TAP
+    // output (`before` runs, then `TAP version 13`, then `1..0`).
+    scheduleTapRun();
+    return;
   }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.beforeAllHooks, fn);
+    return;
+  }
+  ArrayPrototypePush(rootBeforeHooks, fn);
+}
 
-  function after(fn, _options) {
-    if (typeof fn !== "function") {
-      throw new TypeError("after() requires a function argument");
-    }
-    if (isTapMode()) {
-      const tapSuite = getTapCurrentSuite();
-      if (tapSuite !== null) {
-        ArrayPrototypePush(tapSuite.afterAllHooks ??= [], fn);
-        return;
-      }
-      ArrayPrototypePush(rootAfterHooks, fn);
-      scheduleTapRun();
-      return;
-    }
-    if (currentSuite) {
-      ArrayPrototypePush(currentSuite.afterAllHooks, fn);
+function after(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("after() requires a function argument");
+  }
+  if (isTapMode()) {
+    const tapSuite = getTapCurrentSuite();
+    if (tapSuite !== null) {
+      ArrayPrototypePush(tapSuite.afterAllHooks ??= [], fn);
       return;
     }
     ArrayPrototypePush(rootAfterHooks, fn);
+    scheduleTapRun();
+    return;
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.afterAllHooks, fn);
+    return;
+  }
+  ArrayPrototypePush(rootAfterHooks, fn);
+}
+
+function beforeEach(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("beforeEach() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.beforeEachHooks, fn);
+    return;
+  }
+  ArrayPrototypePush(rootBeforeEachHooks, fn);
+}
+
+function afterEach(fn, _options) {
+  if (typeof fn !== "function") {
+    throw new TypeError("afterEach() requires a function argument");
+  }
+  if (currentSuite) {
+    ArrayPrototypePush(currentSuite.afterEachHooks, fn);
+    return;
+  }
+  ArrayPrototypePush(rootAfterEachHooks, fn);
+}
+
+test.it = test;
+test.describe = suite;
+test.suite = suite;
+test.before = before;
+test.after = after;
+test.beforeEach = beforeEach;
+test.afterEach = afterEach;
+
+const activeMocks = [];
+
+class MockFunctionContext {
+  #calls = [];
+  #implementation;
+  #restore;
+  #times;
+  #onceImplementations = new SafeMap();
+
+  constructor(implementation, restore, times) {
+    this.#implementation = implementation;
+    this.#restore = restore;
+    this.#times = times;
   }
 
-  function beforeEach(fn, _options) {
-    if (typeof fn !== "function") {
-      throw new TypeError("beforeEach() requires a function argument");
-    }
-    if (currentSuite) {
-      ArrayPrototypePush(currentSuite.beforeEachHooks, fn);
-      return;
-    }
-    ArrayPrototypePush(rootBeforeEachHooks, fn);
+  get calls() {
+    return this.#calls;
   }
 
-  function afterEach(fn, _options) {
-    if (typeof fn !== "function") {
-      throw new TypeError("afterEach() requires a function argument");
-    }
-    if (currentSuite) {
-      ArrayPrototypePush(currentSuite.afterEachHooks, fn);
-      return;
-    }
-    ArrayPrototypePush(rootAfterEachHooks, fn);
+  callCount() {
+    return this.#calls.length;
   }
 
-  test.it = test;
-  test.describe = suite;
-  test.suite = suite;
-  test.before = before;
-  test.after = after;
-  test.beforeEach = beforeEach;
-  test.afterEach = afterEach;
+  mockImplementation(implementation) {
+    validateFunction(implementation, "implementation");
+    this.#implementation = implementation;
+  }
 
-  const activeMocks = [];
-
-  class MockFunctionContext {
-    #calls = [];
-    #implementation;
-    #restore;
-    #times;
-    #onceImplementations = new SafeMap();
-
-    constructor(implementation, restore, times) {
-      this.#implementation = implementation;
-      this.#restore = restore;
-      this.#times = times;
+  mockImplementationOnce(implementation, onCall) {
+    validateFunction(implementation, "implementation");
+    if (onCall !== undefined) {
+      validateInteger(onCall, "onCall", 0);
     }
+    const call = onCall ?? this.#calls.length;
+    MapPrototypeSet(this.#onceImplementations, call, implementation);
+  }
 
-    get calls() {
-      return this.#calls;
+  resetCalls() {
+    ArrayPrototypeSplice(this.#calls, 0, this.#calls.length);
+  }
+
+  restore() {
+    if (this.#restore) {
+      this.#restore();
+      this.#restore = undefined;
     }
-
-    callCount() {
-      return this.#calls.length;
-    }
-
-    mockImplementation(implementation) {
-      validateFunction(implementation, "implementation");
-      this.#implementation = implementation;
-    }
-
-    mockImplementationOnce(implementation, onCall) {
-      validateFunction(implementation, "implementation");
-      if (onCall !== undefined) {
-        validateInteger(onCall, "onCall", 0);
-      }
-      const call = onCall ?? this.#calls.length;
-      MapPrototypeSet(this.#onceImplementations, call, implementation);
-    }
-
-    resetCalls() {
-      ArrayPrototypeSplice(this.#calls, 0, this.#calls.length);
-    }
-
-    restore() {
-      if (this.#restore) {
-        this.#restore();
-        this.#restore = undefined;
-      }
-      this._restored = true;
-      const idx = ArrayPrototypeIndexOf(activeMocks, this);
-      if (idx !== -1) {
-        ArrayPrototypeSplice(activeMocks, idx, 1);
-      }
-    }
-
-    _recordCall(thisArg, args, result, error, target) {
-      ArrayPrototypePush(this.#calls, {
-        arguments: args,
-        error,
-        result,
-        stack: new Error(),
-        target,
-        this: thisArg,
-      });
-    }
-
-    _shouldMock() {
-      if (this._restored) return false;
-      if (this.#times === undefined) return true;
-      return this.#calls.length < this.#times;
-    }
-
-    _getImplementation() {
-      return this.#implementation;
-    }
-
-    _nextImpl() {
-      const nextCall = this.#calls.length;
-      const onceImpl = MapPrototypeGet(this.#onceImplementations, nextCall);
-      if (onceImpl) {
-        MapPrototypeDelete(this.#onceImplementations, nextCall);
-        return onceImpl;
-      }
-      return this.#implementation;
+    this._restored = true;
+    const idx = ArrayPrototypeIndexOf(activeMocks, this);
+    if (idx !== -1) {
+      ArrayPrototypeSplice(activeMocks, idx, 1);
     }
   }
 
-  function createMockFunction(original, implementation, ctx) {
-    const mockFn = function (...args) {
-      const newTarget = new.target;
-      const isCtor = newTarget !== undefined;
-      // The IIFE wrapping this module is sloppy, so a plain call leaks
-      // globalThis as `this`. Match strict-mode/Node semantics.
-      const thisArg = !isCtor && this === globalThis ? undefined : this;
-      const impl = ctx._shouldMock()
-        ? (ctx._nextImpl() ?? implementation ?? original)
-        : original;
+  _recordCall(thisArg, args, result, error, target) {
+    ArrayPrototypePush(this.#calls, {
+      arguments: args,
+      error,
+      result,
+      stack: new Error(),
+      target,
+      this: thisArg,
+    });
+  }
 
-      let result;
-      let error;
+  _shouldMock() {
+    if (this._restored) return false;
+    if (this.#times === undefined) return true;
+    return this.#calls.length < this.#times;
+  }
 
-      // If called directly (not via subclass), use the original constructor
-      // so the produced instance has its prototype, and so call.target reports
-      // the user's class (not the mock wrapper).
-      const ctorTarget = isCtor && newTarget === mockFn ? impl : newTarget;
-      try {
-        if (isCtor) {
-          result = impl ? ReflectConstruct(impl, args, ctorTarget) : undefined;
-        } else {
-          result = impl ? ReflectApply(impl, thisArg, args) : undefined;
-        }
-      } catch (e) {
-        error = e;
-        ctx._recordCall(
-          isCtor ? thisArg : thisArg,
-          args,
-          undefined,
-          error,
-          ctorTarget,
-        );
-        throw e;
+  _getImplementation() {
+    return this.#implementation;
+  }
+
+  _nextImpl() {
+    const nextCall = this.#calls.length;
+    const onceImpl = MapPrototypeGet(this.#onceImplementations, nextCall);
+    if (onceImpl) {
+      MapPrototypeDelete(this.#onceImplementations, nextCall);
+      return onceImpl;
+    }
+    return this.#implementation;
+  }
+}
+
+function createMockFunction(original, implementation, ctx) {
+  const mockFn = function (...args) {
+    const newTarget = new.target;
+    const isCtor = newTarget !== undefined;
+    // The IIFE wrapping this module is sloppy, so a plain call leaks
+    // globalThis as `this`. Match strict-mode/Node semantics.
+    const thisArg = !isCtor && this === globalThis ? undefined : this;
+    const impl = ctx._shouldMock()
+      ? (ctx._nextImpl() ?? implementation ?? original)
+      : original;
+
+    let result;
+    let error;
+
+    // If called directly (not via subclass), use the original constructor
+    // so the produced instance has its prototype, and so call.target reports
+    // the user's class (not the mock wrapper).
+    const ctorTarget = isCtor && newTarget === mockFn ? impl : newTarget;
+    try {
+      if (isCtor) {
+        result = impl ? ReflectConstruct(impl, args, ctorTarget) : undefined;
+      } else {
+        result = impl ? ReflectApply(impl, thisArg, args) : undefined;
       }
-
+    } catch (e) {
+      error = e;
       ctx._recordCall(
-        isCtor ? result : thisArg,
+        isCtor ? thisArg : thisArg,
         args,
-        result,
         undefined,
+        error,
         ctorTarget,
       );
-      return result;
-    };
-
-    ObjectDefineProperty(mockFn, "mock", {
-      __proto__: null,
-      value: ctx,
-      writable: false,
-      enumerable: false,
-      configurable: false,
-    });
-
-    return mockFn;
-  }
-
-  function findPropertyDescriptor(obj, name) {
-    let current = obj;
-    while (current !== null && current !== undefined) {
-      const desc = ObjectGetOwnPropertyDescriptor(current, name);
-      if (desc) return desc;
-      current = ObjectGetPrototypeOf(current);
+      throw e;
     }
-    return undefined;
+
+    ctx._recordCall(
+      isCtor ? result : thisArg,
+      args,
+      result,
+      undefined,
+      ctorTarget,
+    );
+    return result;
+  };
+
+  ObjectDefineProperty(mockFn, "mock", {
+    __proto__: null,
+    value: ctx,
+    writable: false,
+    enumerable: false,
+    configurable: false,
+  });
+
+  return mockFn;
+}
+
+function findPropertyDescriptor(obj, name) {
+  let current = obj;
+  while (current !== null && current !== undefined) {
+    const desc = ObjectGetOwnPropertyDescriptor(current, name);
+    if (desc) return desc;
+    current = ObjectGetPrototypeOf(current);
+  }
+  return undefined;
+}
+
+function mockMethodImpl(object, methodName, implementation, options) {
+  if (
+    implementation !== null && typeof implementation === "object" &&
+    typeof implementation !== "function"
+  ) {
+    options = implementation;
+    implementation = undefined;
   }
 
-  function mockMethodImpl(object, methodName, implementation, options) {
-    if (
-      implementation !== null && typeof implementation === "object" &&
-      typeof implementation !== "function"
+  const descriptor = findPropertyDescriptor(object, methodName);
+  if (!descriptor) {
+    throw new TypeError(
+      `Cannot mock property '${String(methodName)}' because it does not exist`,
+    );
+  }
+
+  const isGetter = options?.getter ?? false;
+  const isSetter = options?.setter ?? false;
+
+  let original;
+  if (isGetter) {
+    original = descriptor.get;
+  } else if (isSetter) {
+    original = descriptor.set;
+  } else {
+    original = descriptor.value;
+  }
+
+  if (typeof original !== "function") {
+    throw new TypeError(
+      `Cannot mock property '${
+        String(methodName)
+      }' because it is not a function`,
+    );
+  }
+
+  const restore = () => {
+    ObjectDefineProperty(object, methodName, descriptor);
+  };
+
+  const impl = implementation === undefined ? original : implementation;
+  const ctx = new MockFunctionContext(impl, restore, options?.times);
+  ArrayPrototypePush(activeMocks, ctx);
+
+  const mockFn = createMockFunction(original, impl, ctx);
+
+  const mockDescriptor = {
+    configurable: descriptor.configurable,
+    enumerable: descriptor.enumerable,
+  };
+
+  if (isGetter) {
+    mockDescriptor.get = mockFn;
+    mockDescriptor.set = descriptor.set;
+  } else if (isSetter) {
+    mockDescriptor.get = descriptor.get;
+    mockDescriptor.set = mockFn;
+  } else {
+    mockDescriptor.writable = descriptor.writable;
+    mockDescriptor.value = mockFn;
+  }
+
+  ObjectDefineProperty(object, methodName, mockDescriptor);
+
+  return mockFn;
+}
+
+const mock = {
+  fn: (original, implementation, options) => {
+    if (original !== null && typeof original === "object") {
+      options = original;
+      original = undefined;
+      implementation = undefined;
+    } else if (
+      implementation !== null && typeof implementation === "object"
     ) {
+      options = implementation;
+      implementation = original;
+    }
+
+    const ctx = new MockFunctionContext(
+      implementation ?? original,
+      undefined,
+      options?.times,
+    );
+    ArrayPrototypePush(activeMocks, ctx);
+
+    const mockFn = createMockFunction(
+      original,
+      implementation ?? original,
+      ctx,
+    );
+    return mockFn;
+  },
+
+  getter: (object, methodName, implementation, options) => {
+    if (implementation !== null && typeof implementation === "object") {
       options = implementation;
       implementation = undefined;
     }
+    return mockMethodImpl(object, methodName, implementation, {
+      ...options,
+      getter: true,
+    });
+  },
 
-    const descriptor = findPropertyDescriptor(object, methodName);
-    if (!descriptor) {
-      throw new TypeError(
-        `Cannot mock property '${
-          String(methodName)
-        }' because it does not exist`,
-      );
+  method: (object, methodName, implementation, options) => {
+    return mockMethodImpl(object, methodName, implementation, options);
+  },
+
+  reset: () => {
+    ArrayPrototypeForEach(activeMocks, (ctx) => {
+      ctx.resetCalls();
+    });
+  },
+
+  restoreAll: () => {
+    while (activeMocks.length > 0) {
+      const ctx = activeMocks[activeMocks.length - 1];
+      ctx.restore();
     }
+  },
 
-    const isGetter = options?.getter ?? false;
-    const isSetter = options?.setter ?? false;
-
-    let original;
-    if (isGetter) {
-      original = descriptor.get;
-    } else if (isSetter) {
-      original = descriptor.set;
-    } else {
-      original = descriptor.value;
+  setter: (object, methodName, implementation, options) => {
+    if (implementation !== null && typeof implementation === "object") {
+      options = implementation;
+      implementation = undefined;
     }
+    return mockMethodImpl(object, methodName, implementation, {
+      ...options,
+      setter: true,
+    });
+  },
 
-    if (typeof original !== "function") {
-      throw new TypeError(
-        `Cannot mock property '${
-          String(methodName)
-        }' because it is not a function`,
-      );
-    }
-
-    const restore = () => {
-      ObjectDefineProperty(object, methodName, descriptor);
-    };
-
-    const impl = implementation === undefined ? original : implementation;
-    const ctx = new MockFunctionContext(impl, restore, options?.times);
-    ArrayPrototypePush(activeMocks, ctx);
-
-    const mockFn = createMockFunction(original, impl, ctx);
-
-    const mockDescriptor = {
-      configurable: descriptor.configurable,
-      enumerable: descriptor.enumerable,
-    };
-
-    if (isGetter) {
-      mockDescriptor.get = mockFn;
-      mockDescriptor.set = descriptor.set;
-    } else if (isSetter) {
-      mockDescriptor.get = descriptor.get;
-      mockDescriptor.set = mockFn;
-    } else {
-      mockDescriptor.writable = descriptor.writable;
-      mockDescriptor.value = mockFn;
-    }
-
-    ObjectDefineProperty(object, methodName, mockDescriptor);
-
-    return mockFn;
-  }
-
-  const mock = {
-    fn: (original, implementation, options) => {
-      if (original !== null && typeof original === "object") {
-        options = original;
-        original = undefined;
-        implementation = undefined;
-      } else if (
-        implementation !== null && typeof implementation === "object"
-      ) {
-        options = implementation;
-        implementation = original;
-      }
-
-      const ctx = new MockFunctionContext(
-        implementation ?? original,
-        undefined,
-        options?.times,
-      );
-      ArrayPrototypePush(activeMocks, ctx);
-
-      const mockFn = createMockFunction(
-        original,
-        implementation ?? original,
-        ctx,
-      );
-      return mockFn;
+  timers: {
+    enable: () => {
+      notImplemented("test.mock.timers.enable");
     },
-
-    getter: (object, methodName, implementation, options) => {
-      if (implementation !== null && typeof implementation === "object") {
-        options = implementation;
-        implementation = undefined;
-      }
-      return mockMethodImpl(object, methodName, implementation, {
-        ...options,
-        getter: true,
-      });
-    },
-
-    method: (object, methodName, implementation, options) => {
-      return mockMethodImpl(object, methodName, implementation, options);
-    },
-
     reset: () => {
-      ArrayPrototypeForEach(activeMocks, (ctx) => {
-        ctx.resetCalls();
-      });
+      notImplemented("test.mock.timers.reset");
     },
-
-    restoreAll: () => {
-      while (activeMocks.length > 0) {
-        const ctx = activeMocks[activeMocks.length - 1];
-        ctx.restore();
-      }
+    tick: () => {
+      notImplemented("test.mock.timers.tick");
     },
-
-    setter: (object, methodName, implementation, options) => {
-      if (implementation !== null && typeof implementation === "object") {
-        options = implementation;
-        implementation = undefined;
-      }
-      return mockMethodImpl(object, methodName, implementation, {
-        ...options,
-        setter: true,
-      });
+    runAll: () => {
+      notImplemented("test.mock.timers.runAll");
     },
+  },
+};
 
-    timers: {
-      enable: () => {
-        notImplemented("test.mock.timers.enable");
-      },
-      reset: () => {
-        notImplemented("test.mock.timers.reset");
-      },
-      tick: () => {
-        notImplemented("test.mock.timers.tick");
-      },
-      runAll: () => {
-        notImplemented("test.mock.timers.runAll");
-      },
-    },
-  };
+test.test = test;
+test.mock = mock;
+test.before = before;
+test.after = after;
+test.beforeEach = beforeEach;
+test.afterEach = afterEach;
+test.run = run;
 
-  test.test = test;
-  test.mock = mock;
-  test.before = before;
-  test.after = after;
-  test.beforeEach = beforeEach;
-  test.afterEach = afterEach;
-  test.run = run;
-
-  return {
-    run,
-    test,
-    suite,
-    it,
-    describe,
-    before,
-    after,
-    beforeEach,
-    afterEach,
-    mock,
-    default: test,
-  };
+return {
+  run,
+  test,
+  suite,
+  it,
+  describe,
+  before,
+  after,
+  beforeEach,
+  afterEach,
+  mock,
+  default: test,
+};
 })();

@@ -1,162 +1,162 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-  const { core, primordials } = __bootstrap;
-  const { op_node_fill_random, op_node_fill_random_async } = core.ops;
-  const {
-    MathMin,
-    NumberIsNaN,
-    PromisePrototypeThen,
-    TypedArrayPrototypeGetBuffer,
-    Uint8Array,
-  } = primordials;
+const { core, primordials } = __bootstrap;
+const { op_node_fill_random, op_node_fill_random_async } = core.ops;
+const {
+  MathMin,
+  NumberIsNaN,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetBuffer,
+  Uint8Array,
+} = primordials;
 
-  const { Buffer, kMaxLength } = core.loadExtScript(
-    "ext:deno_node/internal/buffer.mjs",
-  );
-  const { isAnyArrayBuffer, isArrayBufferView } = core.loadExtScript(
-    "ext:deno_node/internal/util/types.ts",
-  );
-  const {
-    ERR_INVALID_ARG_TYPE,
-    ERR_OUT_OF_RANGE,
-  } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-  const {
-    validateFunction,
-    validateNumber,
-  } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { Buffer, kMaxLength } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
+const { isAnyArrayBuffer, isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const {
+  ERR_INVALID_ARG_TYPE,
+  ERR_OUT_OF_RANGE,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  validateFunction,
+  validateNumber,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
-  const kMaxInt32 = 2 ** 31 - 1;
-  const kMaxPossibleLength = MathMin(kMaxLength, kMaxInt32);
+const kMaxInt32 = 2 ** 31 - 1;
+const kMaxPossibleLength = MathMin(kMaxLength, kMaxInt32);
 
-  // Mirrors Node's lib/internal/crypto/random.js assertOffset().
-  function assertOffset(offset, elementSize, length) {
-    validateNumber(offset, "offset");
-    offset *= elementSize;
+// Mirrors Node's lib/internal/crypto/random.js assertOffset().
+function assertOffset(offset, elementSize, length) {
+  validateNumber(offset, "offset");
+  offset *= elementSize;
 
-    const maxLength = MathMin(length, kMaxPossibleLength);
-    if (NumberIsNaN(offset) || offset > maxLength || offset < 0) {
-      throw new ERR_OUT_OF_RANGE("offset", `>= 0 && <= ${maxLength}`, offset);
-    }
-
-    return offset >>> 0;
+  const maxLength = MathMin(length, kMaxPossibleLength);
+  if (NumberIsNaN(offset) || offset > maxLength || offset < 0) {
+    throw new ERR_OUT_OF_RANGE("offset", `>= 0 && <= ${maxLength}`, offset);
   }
 
-  // Mirrors Node's lib/internal/crypto/random.js assertSize().
-  function assertSize(size, elementSize, offset, length) {
-    validateNumber(size, "size");
-    size *= elementSize;
+  return offset >>> 0;
+}
 
-    if (NumberIsNaN(size) || size > kMaxPossibleLength || size < 0) {
-      throw new ERR_OUT_OF_RANGE(
-        "size",
-        `>= 0 && <= ${kMaxPossibleLength}`,
+// Mirrors Node's lib/internal/crypto/random.js assertSize().
+function assertSize(size, elementSize, offset, length) {
+  validateNumber(size, "size");
+  size *= elementSize;
+
+  if (NumberIsNaN(size) || size > kMaxPossibleLength || size < 0) {
+    throw new ERR_OUT_OF_RANGE(
+      "size",
+      `>= 0 && <= ${kMaxPossibleLength}`,
+      size,
+    );
+  }
+
+  if (size + offset > length) {
+    throw new ERR_OUT_OF_RANGE(
+      "size + offset",
+      `<= ${length}`,
+      size + offset,
+    );
+  }
+
+  return size >>> 0;
+}
+
+function randomFill(buf, offset, size, cb) {
+  if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "buf",
+      ["ArrayBuffer", "ArrayBufferView"],
+      buf,
+    );
+  }
+
+  const elementSize = buf.BYTES_PER_ELEMENT || 1;
+
+  if (typeof offset === "function") {
+    cb = offset;
+    offset = 0;
+    // Size is a length here; assertSize() turns it into a number of bytes.
+    size = buf.length;
+  } else if (typeof size === "function") {
+    cb = size;
+    size = buf.length - offset;
+  } else {
+    validateFunction(cb, "callback");
+  }
+
+  // deno-lint-ignore prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
+  offset = assertOffset(offset, elementSize, buf.byteLength);
+
+  if (size === undefined) {
+    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
+    size = buf.byteLength - offset;
+  } else {
+    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
+    size = assertSize(size, elementSize, offset, buf.byteLength);
+  }
+
+  if (size === 0) {
+    cb(null, buf);
+    return;
+  }
+
+  PromisePrototypeThen(op_node_fill_random_async(size), (randomData) => {
+    const randomBuf = Buffer.from(TypedArrayPrototypeGetBuffer(randomData));
+    const target = isAnyArrayBuffer(buf)
+      ? new Uint8Array(buf, offset, size)
+      : new Uint8Array(
+        // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
+        buf.buffer,
+        // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
+        buf.byteOffset + offset,
         size,
       );
-    }
+    target.set(
+      new Uint8Array(TypedArrayPrototypeGetBuffer(randomBuf), 0, size),
+    );
+    cb(null, buf);
+  });
+}
 
-    if (size + offset > length) {
-      throw new ERR_OUT_OF_RANGE(
-        "size + offset",
-        `<= ${length}`,
-        size + offset,
-      );
-    }
-
-    return size >>> 0;
+function randomFillSync(buf, offset = 0, size) {
+  if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "buf",
+      ["ArrayBuffer", "ArrayBufferView"],
+      buf,
+    );
   }
 
-  function randomFill(buf, offset, size, cb) {
-    if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
-      throw new ERR_INVALID_ARG_TYPE(
-        "buf",
-        ["ArrayBuffer", "ArrayBufferView"],
-        buf,
-      );
-    }
+  const elementSize = buf.BYTES_PER_ELEMENT || 1;
 
-    const elementSize = buf.BYTES_PER_ELEMENT || 1;
+  // deno-lint-ignore prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
+  offset = assertOffset(offset, elementSize, buf.byteLength);
 
-    if (typeof offset === "function") {
-      cb = offset;
-      offset = 0;
-      // Size is a length here; assertSize() turns it into a number of bytes.
-      size = buf.length;
-    } else if (typeof size === "function") {
-      cb = size;
-      size = buf.length - offset;
-    } else {
-      validateFunction(cb, "callback");
-    }
-
-    // deno-lint-ignore prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
-    offset = assertOffset(offset, elementSize, buf.byteLength);
-
-    if (size === undefined) {
-      // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
-      size = buf.byteLength - offset;
-    } else {
-      // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
-      size = assertSize(size, elementSize, offset, buf.byteLength);
-    }
-
-    if (size === 0) {
-      cb(null, buf);
-      return;
-    }
-
-    PromisePrototypeThen(op_node_fill_random_async(size), (randomData) => {
-      const randomBuf = Buffer.from(TypedArrayPrototypeGetBuffer(randomData));
-      const target = isAnyArrayBuffer(buf)
-        ? new Uint8Array(buf, offset, size)
-        : new Uint8Array(
-          // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
-          buf.buffer,
-          // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
-          buf.byteOffset + offset,
-          size,
-        );
-      target.set(
-        new Uint8Array(TypedArrayPrototypeGetBuffer(randomBuf), 0, size),
-      );
-      cb(null, buf);
-    });
+  if (size === undefined) {
+    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
+    size = buf.byteLength - offset;
+  } else {
+    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
+    size = assertSize(size, elementSize, offset, buf.byteLength);
   }
 
-  function randomFillSync(buf, offset = 0, size) {
-    if (!isAnyArrayBuffer(buf) && !isArrayBufferView(buf)) {
-      throw new ERR_INVALID_ARG_TYPE(
-        "buf",
-        ["ArrayBuffer", "ArrayBufferView"],
-        buf,
-      );
-    }
-
-    const elementSize = buf.BYTES_PER_ELEMENT || 1;
-
-    // deno-lint-ignore prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
-    offset = assertOffset(offset, elementSize, buf.byteLength);
-
-    if (size === undefined) {
-      // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
-      size = buf.byteLength - offset;
-    } else {
-      // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
-      size = assertSize(size, elementSize, offset, buf.byteLength);
-    }
-
-    if (size === 0) {
-      return buf;
-    }
-
-    const bytes = isAnyArrayBuffer(buf)
-      ? new Uint8Array(buf, offset, size)
-      // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
-      : new Uint8Array(buf.buffer, buf.byteOffset + offset, size);
-    op_node_fill_random(bytes);
-
+  if (size === 0) {
     return buf;
   }
 
-  return { default: randomFill, randomFill, randomFillSync };
+  const bytes = isAnyArrayBuffer(buf)
+    ? new Uint8Array(buf, offset, size)
+    // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
+    : new Uint8Array(buf.buffer, buf.byteOffset + offset, size);
+  op_node_fill_random(bytes);
+
+  return buf;
+}
+
+return { default: randomFill, randomFill, randomFillSync };
 })();

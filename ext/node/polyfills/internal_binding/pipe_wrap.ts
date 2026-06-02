@@ -30,149 +30,149 @@
 // setPendingInstances) are on PipeWrap itself.
 
 (function () {
-  const { core, primordials } = __bootstrap;
-  const { op_node_create_pipe, PipeWrap } = core.ops;
-  const { AsyncWrap, providerType } = core.loadExtScript(
-    "ext:deno_node/internal_binding/async_wrap.ts",
-  );
-  const { ceilPowOf2 } = core.loadExtScript(
-    "ext:deno_node/internal_binding/_listen.ts",
-  );
-  const { codeMap } = core.loadExtScript(
-    "ext:deno_node/internal_binding/uv.ts",
-  );
-  const { fs } = core.loadExtScript(
-    "ext:deno_node/internal_binding/constants.ts",
-  );
+const { core, primordials } = __bootstrap;
+const { op_node_create_pipe, PipeWrap } = core.ops;
+const { AsyncWrap, providerType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
+);
+const { ceilPowOf2 } = core.loadExtScript(
+  "ext:deno_node/internal_binding/_listen.ts",
+);
+const { codeMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
+const { fs } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 
-  const { FunctionPrototypeCall, MapPrototypeGet } = primordials;
+const { FunctionPrototypeCall, MapPrototypeGet } = primordials;
 
-  // Mark PipeWrap as a StreamBase handle, matching Node's StreamBase::AddMethods.
-  PipeWrap.prototype.isStreamBase = true;
+// Mark PipeWrap as a StreamBase handle, matching Node's StreamBase::AddMethods.
+PipeWrap.prototype.isStreamBase = true;
 
-  /** The type of pipe socket. */
-  enum socketType {
-    SOCKET,
-    SERVER,
-    IPC,
+/** The type of pipe socket. */
+enum socketType {
+  SOCKET,
+  SERVER,
+  IPC,
+}
+
+enum constants {
+  SOCKET = socketType.SOCKET,
+  SERVER = socketType.SERVER,
+  IPC = socketType.IPC,
+  UV_READABLE = 1,
+  UV_WRITABLE = 2,
+}
+
+class PipeConnectWrap extends AsyncWrap {
+  oncomplete!: (
+    status: number,
+    handle: unknown,
+    req: PipeConnectWrap,
+    readable: boolean,
+    writeable: boolean,
+  ) => void;
+  address!: string;
+
+  constructor() {
+    super(providerType.PIPECONNECTWRAP);
+  }
+}
+
+// Translate UV_READABLE/UV_WRITABLE flags to POSIX mode bits before calling
+// the native fchmod op (which takes raw chmod bits).
+const nativeFchmod = PipeWrap.prototype.fchmod;
+PipeWrap.prototype.fchmod = function (mode: number): number {
+  if (
+    mode !== constants.UV_READABLE &&
+    mode !== constants.UV_WRITABLE &&
+    mode !== (constants.UV_WRITABLE | constants.UV_READABLE)
+  ) {
+    return MapPrototypeGet(codeMap, "EINVAL");
   }
 
-  enum constants {
-    SOCKET = socketType.SOCKET,
-    SERVER = socketType.SERVER,
-    IPC = socketType.IPC,
-    UV_READABLE = 1,
-    UV_WRITABLE = 2,
+  let desiredMode = 0;
+  if (mode & constants.UV_READABLE) {
+    desiredMode |= fs.S_IRUSR | fs.S_IRGRP | fs.S_IROTH;
+  }
+  if (mode & constants.UV_WRITABLE) {
+    desiredMode |= fs.S_IWUSR | fs.S_IWGRP | fs.S_IWOTH;
   }
 
-  class PipeConnectWrap extends AsyncWrap {
-    oncomplete!: (
-      status: number,
-      handle: unknown,
-      req: PipeConnectWrap,
-      readable: boolean,
-      writeable: boolean,
-    ) => void;
-    address!: string;
+  return FunctionPrototypeCall(nativeFchmod, this, desiredMode);
+};
 
-    constructor() {
-      super(providerType.PIPECONNECTWRAP);
-    }
-  }
+// Round up the backlog to the next power of two (matching the previous
+// implementation). TCP uses the raw backlog; pipes historically rounded.
+const nativeListen = PipeWrap.prototype.listen;
+PipeWrap.prototype.listen = function (backlog: number): number {
+  return FunctionPrototypeCall(nativeListen, this, ceilPowOf2(backlog + 1));
+};
 
-  // Translate UV_READABLE/UV_WRITABLE flags to POSIX mode bits before calling
-  // the native fchmod op (which takes raw chmod bits).
-  const nativeFchmod = PipeWrap.prototype.fchmod;
-  PipeWrap.prototype.fchmod = function (mode: number): number {
-    if (
-      mode !== constants.UV_READABLE &&
-      mode !== constants.UV_WRITABLE &&
-      mode !== (constants.UV_WRITABLE | constants.UV_READABLE)
-    ) {
-      return MapPrototypeGet(codeMap, "EINVAL");
-    }
-
-    let desiredMode = 0;
-    if (mode & constants.UV_READABLE) {
-      desiredMode |= fs.S_IRUSR | fs.S_IRGRP | fs.S_IROTH;
-    }
-    if (mode & constants.UV_WRITABLE) {
-      desiredMode |= fs.S_IWUSR | fs.S_IWGRP | fs.S_IWOTH;
-    }
-
-    return FunctionPrototypeCall(nativeFchmod, this, desiredMode);
-  };
-
-  // Round up the backlog to the next power of two (matching the previous
-  // implementation). TCP uses the raw backlog; pipes historically rounded.
-  const nativeListen = PipeWrap.prototype.listen;
-  PipeWrap.prototype.listen = function (backlog: number): number {
-    return FunctionPrototypeCall(nativeListen, this, ceilPowOf2(backlog + 1));
-  };
-
-  /**
-   * Wrap the native PipeWrap.listen() to handle connection acceptance.
-   * The Rust server_connection_cb fires onconnection(status), and this
-   * wrapper creates client handles and calls uv_accept before forwarding
-   * to the user's onconnection(status, clientHandle).
-   */
-  function setupListenWrap(serverHandle: InstanceType<typeof PipeWrap>) {
-    const userOnConnection = serverHandle.onconnection;
-    serverHandle.onconnection = function (status: number) {
-      if (status !== 0) {
-        if (userOnConnection) {
-          FunctionPrototypeCall(
-            userOnConnection,
-            serverHandle,
-            status,
-            undefined,
-          );
-        }
-        return;
-      }
-
-      const clientHandle = new PipeWrap(socketType.SOCKET);
-      const acceptErr = serverHandle.accept(clientHandle);
-      if (acceptErr !== 0) {
-        if (userOnConnection) {
-          FunctionPrototypeCall(
-            userOnConnection,
-            serverHandle,
-            acceptErr,
-            undefined,
-          );
-        }
-        return;
-      }
-
+/**
+ * Wrap the native PipeWrap.listen() to handle connection acceptance.
+ * The Rust server_connection_cb fires onconnection(status), and this
+ * wrapper creates client handles and calls uv_accept before forwarding
+ * to the user's onconnection(status, clientHandle).
+ */
+function setupListenWrap(serverHandle: InstanceType<typeof PipeWrap>) {
+  const userOnConnection = serverHandle.onconnection;
+  serverHandle.onconnection = function (status: number) {
+    if (status !== 0) {
       if (userOnConnection) {
-        FunctionPrototypeCall(userOnConnection, serverHandle, 0, clientHandle);
+        FunctionPrototypeCall(
+          userOnConnection,
+          serverHandle,
+          status,
+          undefined,
+        );
       }
-    };
-  }
+      return;
+    }
 
-  // Re-export the Rust PipeWrap as Pipe.
+    const clientHandle = new PipeWrap(socketType.SOCKET);
+    const acceptErr = serverHandle.accept(clientHandle);
+    if (acceptErr !== 0) {
+      if (userOnConnection) {
+        FunctionPrototypeCall(
+          userOnConnection,
+          serverHandle,
+          acceptErr,
+          undefined,
+        );
+      }
+      return;
+    }
 
-  /** Create an anonymous pipe pair. Returns [readFd, writeFd]. */
-  function createPipe(): [number, number] {
-    return op_node_create_pipe();
-  }
-
-  const _defaultExport = {
-    Pipe: PipeWrap,
-    PipeConnectWrap,
-    constants,
-    setupListenWrap,
-    createPipe,
+    if (userOnConnection) {
+      FunctionPrototypeCall(userOnConnection, serverHandle, 0, clientHandle);
+    }
   };
+}
 
-  return {
-    Pipe: PipeWrap,
-    setupListenWrap,
-    createPipe,
-    PipeConnectWrap,
-    socketType,
-    constants,
-    default: _defaultExport,
-  };
+// Re-export the Rust PipeWrap as Pipe.
+
+/** Create an anonymous pipe pair. Returns [readFd, writeFd]. */
+function createPipe(): [number, number] {
+  return op_node_create_pipe();
+}
+
+const _defaultExport = {
+  Pipe: PipeWrap,
+  PipeConnectWrap,
+  constants,
+  setupListenWrap,
+  createPipe,
+};
+
+return {
+  Pipe: PipeWrap,
+  setupListenWrap,
+  createPipe,
+  PipeConnectWrap,
+  socketType,
+  constants,
+  default: _defaultExport,
+};
 })();
