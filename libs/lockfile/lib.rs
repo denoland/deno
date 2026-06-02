@@ -606,6 +606,43 @@ impl LockfileContent {
     })
   }
 
+  /// Merges the two sides of a resolved git merge conflict into a single
+  /// content. Identity-keyed sections (`npm`, `jsr`, `remote`, `redirects`)
+  /// are unioned because a given key always maps to the same deterministic
+  /// value regardless of which branch wrote it, so a conflict there is
+  /// spurious. The only genuine conflict surface is `specifiers` (a version
+  /// requirement mapped to a resolved version); there the higher resolved
+  /// version is kept and the normal resolution pass validates it against the
+  /// manifest afterwards. The `workspace` section is recomputed from the
+  /// manifests by `set_workspace_config`, so "ours" is kept as-is.
+  fn merge_conflict_sides(mut ours: Self, theirs: Self) -> Self {
+    for (req, version) in theirs.packages.specifiers {
+      match ours.packages.specifiers.entry(req) {
+        HashMapEntry::Vacant(entry) => {
+          entry.insert(version);
+        }
+        HashMapEntry::Occupied(mut entry) => {
+          if specifier_version_is_higher(&version, entry.get()) {
+            entry.insert(version);
+          }
+        }
+      }
+    }
+    for (nv, info) in theirs.packages.jsr {
+      ours.packages.jsr.entry(nv).or_insert(info);
+    }
+    for (id, info) in theirs.packages.npm {
+      ours.packages.npm.entry(id).or_insert(info);
+    }
+    for (from, to) in theirs.redirects {
+      ours.redirects.entry(from).or_insert(to);
+    }
+    for (url, hash) in theirs.remote {
+      ours.remote.entry(url).or_insert(hash);
+    }
+    ours
+  }
+
   pub fn is_empty(&self) -> bool {
     self.packages.is_empty()
       && self.redirects.is_empty()
@@ -642,7 +679,7 @@ impl Lockfile {
     opts: NewLockfileOptions<'_>,
     provider: &dyn NpmPackageInfoProvider,
   ) -> Result<Lockfile, Box<LockfileError>> {
-    async fn load_content(
+    async fn parse_content(
       content: &str,
       provider: &dyn NpmPackageInfoProvider,
     ) -> Result<LockfileContent, LockfileErrorReason> {
@@ -694,6 +731,38 @@ impl Lockfile {
       Ok(content)
     }
 
+    // Parses the lockfile, transparently resolving git merge conflict markers
+    // when present. The clean (no-conflict) path is untouched: conflict
+    // handling only runs after `serde_json` has already failed to parse, so
+    // there is no added cost on a valid lockfile. The returned bool indicates
+    // whether a conflict was resolved, so the caller can mark the lockfile as
+    // changed and have it rewritten without the markers.
+    async fn load_content(
+      content: &str,
+      provider: &dyn NpmPackageInfoProvider,
+    ) -> Result<(LockfileContent, bool), LockfileErrorReason> {
+      match parse_content(content, provider).await {
+        Ok(content) => Ok((content, false)),
+        Err(LockfileErrorReason::ParseError(parse_err)) => {
+          let Some((ours, theirs)) = split_git_conflict_sides(content) else {
+            // Not a merge conflict, just invalid JSON.
+            return Err(LockfileErrorReason::ParseError(parse_err));
+          };
+          // Both reconstructed sides must parse on their own. If either does
+          // not, the file is corrupt beyond a plain merge conflict, so report
+          // the original parse error rather than guessing.
+          let Ok(ours) = parse_content(&ours, provider).await else {
+            return Err(LockfileErrorReason::ParseError(parse_err));
+          };
+          let Ok(theirs) = parse_content(&theirs, provider).await else {
+            return Err(LockfileErrorReason::ParseError(parse_err));
+          };
+          Ok((LockfileContent::merge_conflict_sides(ours, theirs), true))
+        }
+        Err(other) => Err(other),
+      }
+    }
+
     // Writing a lock file always uses the new format.
     if opts.overwrite {
       return Ok(Lockfile {
@@ -710,16 +779,19 @@ impl Lockfile {
         source: LockfileErrorReason::Empty,
       }));
     }
-    let content =
-      load_content(opts.content, provider)
-        .await
-        .map_err(|reason| LockfileError {
-          file_path: opts.file_path.display().to_string(),
-          source: reason,
-        })?;
+    let (content, resolved_conflict) = load_content(opts.content, provider)
+      .await
+      .map_err(|reason| LockfileError {
+        file_path: opts.file_path.display().to_string(),
+        source: reason,
+      })?;
     Ok(Lockfile {
       overwrite: opts.overwrite,
-      has_content_changed: false,
+      // A resolved merge conflict means the on-disk text still contains
+      // markers, so mark the content as changed to have it rewritten cleanly.
+      // In frozen mode this surfaces through the existing changed-lockfile
+      // check rather than silently rewriting.
+      has_content_changed: resolved_conflict,
       content,
       filename: opts.file_path,
     })
@@ -1169,6 +1241,80 @@ impl Lockfile {
   }
 }
 
+/// Reconstructs the two sides of every git merge conflict hunk in `content`
+/// so each side can be parsed as a standalone lockfile. Lines outside any
+/// conflict are kept in both sides; a diff3 base section (between `|||||||`
+/// and `=======`) is discarded. Returns `None` when there are no conflict
+/// markers at all.
+fn split_git_conflict_sides(content: &str) -> Option<(String, String)> {
+  enum Section {
+    Both,
+    Ours,
+    Base,
+    Theirs,
+  }
+
+  let mut saw_conflict = false;
+  let mut section = Section::Both;
+  let mut ours = String::with_capacity(content.len());
+  let mut theirs = String::with_capacity(content.len());
+  for line in content.split_inclusive('\n') {
+    let marker = line.trim_end_matches(['\n', '\r']);
+    if marker.starts_with("<<<<<<<") {
+      saw_conflict = true;
+      section = Section::Ours;
+      continue;
+    }
+    if matches!(section, Section::Ours) && marker.starts_with("|||||||") {
+      section = Section::Base;
+      continue;
+    }
+    if matches!(section, Section::Ours | Section::Base)
+      && marker.starts_with("=======")
+    {
+      section = Section::Theirs;
+      continue;
+    }
+    if matches!(section, Section::Ours | Section::Base | Section::Theirs)
+      && marker.starts_with(">>>>>>>")
+    {
+      section = Section::Both;
+      continue;
+    }
+    match section {
+      Section::Both => {
+        ours.push_str(line);
+        theirs.push_str(line);
+      }
+      Section::Ours => ours.push_str(line),
+      Section::Theirs => theirs.push_str(line),
+      // diff3 base content is the common ancestor; drop it.
+      Section::Base => {}
+    }
+  }
+
+  if saw_conflict {
+    Some((ours, theirs))
+  } else {
+    None
+  }
+}
+
+/// Whether `candidate` is a higher resolved version than `current`. The values
+/// may carry a `__peer-dep` suffix, which is ignored for comparison. Returns
+/// `false` when either side cannot be parsed, keeping the existing ("ours")
+/// value.
+fn specifier_version_is_higher(candidate: &str, current: &str) -> bool {
+  fn parse(value: &str) -> Option<Version> {
+    let base = value.split("__").next().unwrap_or(value);
+    Version::parse_from_npm(base).ok()
+  }
+  match (parse(candidate), parse(current)) {
+    (Some(candidate), Some(current)) => candidate > current,
+    _ => false,
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::path::Path;
@@ -1284,6 +1430,71 @@ mod tests {
       }
       _ => unreachable!(),
     }
+  }
+
+  #[test]
+  fn resolves_git_merge_conflict() {
+    // A v5 lockfile with conflicts in both the `specifiers` and `npm`
+    // sections. The two sides disagree on the resolved std/assert version and
+    // each adds a distinct npm package.
+    let content = r#"{
+  "version": "5",
+  "specifiers": {
+<<<<<<< HEAD
+    "jsr:@std/assert@^1": "1.0.10",
+    "npm:chalk@^5": "5.3.0"
+=======
+    "jsr:@std/assert@^1": "1.0.8",
+    "npm:picocolors@^1": "1.0.0"
+>>>>>>> branch
+  },
+  "npm": {
+<<<<<<< HEAD
+    "chalk@5.3.0": { "integrity": "sha512-aaa" }
+=======
+    "picocolors@1.0.0": { "integrity": "sha512-bbb" }
+>>>>>>> branch
+  }
+}"#;
+
+    let lockfile = new_lockfile(NewLockfileOptions {
+      file_path: PathBuf::from("/foo"),
+      content,
+      overwrite: false,
+    })
+    .unwrap();
+
+    // The conflict was resolved, so the lockfile is flagged for rewrite.
+    assert!(lockfile.has_content_changed);
+
+    let specifiers = &lockfile.content.packages.specifiers;
+    // Union of both sides' specifiers.
+    assert_eq!(specifiers.len(), 3);
+    // On the genuine conflict, the higher resolved version wins.
+    assert_eq!(
+      specifiers
+        .get(&JsrDepPackageReq::from_str("jsr:@std/assert@^1").unwrap())
+        .unwrap()
+        .as_str(),
+      "1.0.10"
+    );
+
+    // The npm sections are unioned.
+    let npm = &lockfile.content.packages.npm;
+    assert_eq!(npm.len(), 2);
+    assert!(npm.contains_key("chalk@5.3.0"));
+    assert!(npm.contains_key("picocolors@1.0.0"));
+  }
+
+  #[test]
+  fn corrupt_lockfile_without_conflict_markers_still_errors() {
+    let err = new_lockfile(NewLockfileOptions {
+      file_path: PathBuf::from("/foo"),
+      content: "{ not valid json",
+      overwrite: false,
+    })
+    .unwrap_err();
+    assert!(matches!(err.source, LockfileErrorReason::ParseError(_)));
   }
 
   #[test]
