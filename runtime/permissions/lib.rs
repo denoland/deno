@@ -2164,6 +2164,12 @@ impl NetDescriptor {
   pub fn into_import(self) -> ImportDescriptor {
     ImportDescriptor(self)
   }
+
+  /// Whether this descriptor is a URL pattern entry (one that carries a scheme
+  /// and/or path), as opposed to a plain host/port entry.
+  pub fn is_url_pattern(&self) -> bool {
+    matches!(self.0, Host::Url(_))
+  }
 }
 
 #[derive(Debug, thiserror::Error)]

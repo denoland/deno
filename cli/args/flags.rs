@@ -8523,7 +8523,7 @@ fn unsafely_ignore_certificate_errors_parse(
   if let Some(ic_wl) =
     matches.remove_many::<String>("unsafely-ignore-certificate-errors")
   {
-    let ic_allowlist = flags_net::parse(ic_wl.collect())?;
+    let ic_allowlist = flags_net::parse_host_only(ic_wl.collect())?;
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
   Ok(())
@@ -15572,15 +15572,26 @@ mod tests {
 
   #[test]
   fn net_flag_with_url() {
+    // URLs (with a scheme and/or path) are accepted as URL pattern entries.
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--allow-net=https://example.com",
+      "--allow-net=https://example.com/api/*",
       "script.ts"
     ]);
     assert_eq!(
-      r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          allow_net: Some(svec!["https://example.com/api/*"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
     );
   }
 
@@ -15637,29 +15648,51 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
 
   #[test]
   fn allow_import_with_url() {
+    // URLs (with a scheme and/or path) are accepted as URL pattern entries.
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--allow-import=https://example.com",
+      "--allow-import=https://example.com/x/*",
       "script.ts"
     ]);
     assert_eq!(
-      r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          allow_import: Some(svec!["https://example.com/x/*"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
     );
   }
 
   #[test]
   fn deny_import_with_url() {
+    // URLs (with a scheme and/or path) are accepted as URL pattern entries.
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--deny-import=https://example.com",
+      "--deny-import=https://example.com/x/*",
       "script.ts",
     ]);
     assert_eq!(
-      r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          deny_import: Some(svec!["https://example.com/x/*"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
     );
   }
 
