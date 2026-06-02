@@ -3392,3 +3392,161 @@ Deno.test(
     await promise;
   },
 );
+
+// deno-lint-ignore no-explicit-any
+type ProxyAgentLike = any;
+// deno-lint-ignore no-explicit-any
+type HttpWithProxy = any;
+
+Deno.test("[node/http] setGlobalProxyFromEnv validates input", () => {
+  for (const bad of [42, "string", null, [], true]) {
+    let err: { code?: string } | undefined;
+    try {
+      (http as HttpWithProxy).setGlobalProxyFromEnv(bad);
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    assert(err, `expected throw for ${typeof bad}`);
+    assertEquals(err!.code, "ERR_INVALID_ARG_TYPE");
+  }
+});
+
+Deno.test("[node/http] setGlobalProxyFromEnv rejects malformed proxy URLs", () => {
+  for (
+    const cfg of [{ http_proxy: "not a url" }, { https_proxy: "not a url" }]
+  ) {
+    let err: { code?: string } | undefined;
+    try {
+      (http as HttpWithProxy).setGlobalProxyFromEnv(cfg);
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    assert(err);
+    assertEquals(err!.code, "ERR_PROXY_INVALID_CONFIG");
+  }
+});
+
+Deno.test("[node/http] setGlobalProxyFromEnv returns a restore function", () => {
+  const restore = (http as HttpWithProxy).setGlobalProxyFromEnv({
+    http_proxy: "http://127.0.0.1:9999",
+  });
+  assertEquals(typeof restore, "function");
+  restore();
+  // calling twice is a no-op
+  restore();
+});
+
+Deno.test("[node/http] Agent proxyEnv rejects CRLF-injected proxy URLs", () => {
+  for (
+    const proxyUrl of [
+      "http://user\r:pass@proxy.example.com:8080",
+      "http://user\n:pass@proxy.example.com:8080",
+      "http://user:pass\r@proxy.example.com:8080",
+      "http://user:pass\n@proxy.example.com:8080",
+      "http://user\r\nHost: example.com:pass@proxy.example.com:8080",
+    ]
+  ) {
+    let err: { code?: string } | undefined;
+    try {
+      new http.Agent({
+        proxyEnv: { HTTP_PROXY: proxyUrl },
+      } as ProxyAgentLike);
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    assert(err, `expected throw for ${JSON.stringify(proxyUrl)}`);
+    assertEquals(err!.code, "ERR_PROXY_INVALID_CONFIG");
+  }
+});
+
+Deno.test(
+  "[node/http] http.request through HTTP_PROXY rewrites to absolute URL",
+  async () => {
+    // Verifies the proxy receives the full URL form (GET http://target/path)
+    // and a Proxy-Connection header, then forwards the body back.
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const proxy = http.createServer((req, res) => {
+      try {
+        assertEquals(req.method, "GET");
+        assert(req.url!.startsWith("http://"));
+        assertEquals(req.headers["proxy-connection"], "keep-alive");
+        assertEquals(req.headers["connection"], "keep-alive");
+      } catch (e) {
+        reject(e);
+        res.statusCode = 500;
+        res.end("test-fail");
+        return;
+      }
+      res.end("via-proxy");
+    });
+    proxy.listen(0, () => {
+      const proxyPort = (proxy.address() as AddressInfo).port;
+      // unreachable target - the proxy intercepts and short-circuits.
+      const req = http.request({
+        hostname: "127.0.0.1",
+        port: 1,
+        path: "/foo",
+        agent: new http.Agent({
+          keepAlive: true,
+          proxyEnv: {
+            HTTP_PROXY: `http://127.0.0.1:${proxyPort}`,
+          },
+        } as ProxyAgentLike),
+      }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          try {
+            assertEquals(Buffer.concat(chunks).toString(), "via-proxy");
+            proxy.close();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    await promise;
+  },
+);
+
+Deno.test(
+  "[node/http] NO_PROXY bypasses configured HTTP_PROXY",
+  async () => {
+    // If NO_PROXY matches the target, the request should hit the origin
+    // directly rather than the configured (and unreachable) proxy.
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const origin = http.createServer((_req, res) => res.end("direct"));
+    origin.listen(0, () => {
+      const port = (origin.address() as AddressInfo).port;
+      const req = http.request({
+        hostname: "127.0.0.1",
+        port,
+        path: "/",
+        agent: new http.Agent({
+          proxyEnv: {
+            HTTP_PROXY: "http://10.255.255.1:1",
+            NO_PROXY: "127.0.0.1",
+          },
+        } as ProxyAgentLike),
+      }, (res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          try {
+            assertEquals(Buffer.concat(chunks).toString(), "direct");
+            origin.close();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+      req.on("error", reject);
+      req.end();
+    });
+    await promise;
+  },
+);
