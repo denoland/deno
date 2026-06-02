@@ -19,9 +19,11 @@ const proxyServer = Deno.serve(
   },
 );
 
+const proxyUrl = `http://127.0.0.1:${proxyServer.addr.port}/`;
+const encoder = new TextEncoder();
 const body = JSON.stringify({ tags: ["http-test-tag"] });
-const expectedLength = String(new TextEncoder().encode(body).byteLength);
-const resp = await fetch(`http://127.0.0.1:${proxyServer.addr.port}/`, {
+const expectedLength = String(encoder.encode(body).byteLength);
+const resp = await fetch(proxyUrl, {
   method: "POST",
   body,
 });
@@ -33,6 +35,25 @@ console.log("expected length:", expectedLength);
 console.log(
   "content-length preserved:",
   forwarded.contentLength === expectedLength,
+);
+
+const streamResp = await fetch(proxyUrl, {
+  method: "POST",
+  body: new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(body));
+      controller.close();
+    },
+  }),
+  duplex: "half",
+});
+const streamForwarded = await streamResp.json();
+
+console.log("stream body forwarded:", streamForwarded.body === body);
+console.log("stream content-length:", streamForwarded.contentLength);
+console.log(
+  "stream content-length unknown:",
+  streamForwarded.contentLength === null,
 );
 
 await proxyServer.shutdown();
