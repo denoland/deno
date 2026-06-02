@@ -640,11 +640,13 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
 fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
   // Guard against copying a file onto itself. Otherwise the destination is
   // opened with truncation (or unlinked) before the source is read, which
-  // silently empties the file. Match `cp` behavior and error instead. This
-  // only triggers when both paths resolve to the same existing file; the
-  // common case where `to` does not yet exist fails to canonicalize and is
-  // skipped.
-  if let (Ok(from_real), Ok(to_real)) = (from.canonicalize(), to.canonicalize())
+  // silently empties the file. Match `cp` behavior and error instead. The
+  // `to` path is canonicalized first so the common case where it does not yet
+  // exist fails fast and skips canonicalizing `from` entirely; the full check
+  // only runs when overwriting an existing file, and it also catches
+  // equivalent paths such as `./`, `..` and symlinks.
+  if let Ok(to_real) = to.canonicalize()
+    && let Ok(from_real) = from.canonicalize()
     && from_real == to_real
   {
     return Err(
