@@ -638,6 +638,24 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
 }
 
 fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
+  // Guard against copying a file onto itself. Otherwise the destination is
+  // opened with truncation (or unlinked) before the source is read, which
+  // silently empties the file. Match `cp` behavior and error instead. This
+  // only triggers when both paths resolve to the same existing file; the
+  // common case where `to` does not yet exist fails to canonicalize and is
+  // skipped.
+  if let (Ok(from_real), Ok(to_real)) = (from.canonicalize(), to.canonicalize())
+    && from_real == to_real
+  {
+    return Err(
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "Source and destination paths refer to the same file",
+      )
+      .into(),
+    );
+  }
+
   #[cfg(target_os = "macos")]
   {
     use std::ffi::CString;
