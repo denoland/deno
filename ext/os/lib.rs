@@ -223,10 +223,16 @@ fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
   fn map_kv(kv: (OsString, OsString)) -> Option<(String, String)> {
-    kv.0
-      .into_string()
-      .ok()
-      .and_then(|key| kv.1.into_string().ok().map(|value| (key, value)))
+    let key = kv.0.into_string().ok()?;
+    // Skip keys that `Deno.env.get`/`set`/`delete` would reject, so that
+    // enumeration stays consistent with the rest of the API. On Windows,
+    // cmd.exe exposes hidden per-drive cwd variables such as `=C:` which
+    // contain `=` and are not meant to be surfaced to users.
+    if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+      return None;
+    }
+    let value = kv.1.into_string().ok()?;
+    Some((key, value))
   }
 
   let permissions_container = state.borrow::<PermissionsContainer>();
