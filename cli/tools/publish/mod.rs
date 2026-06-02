@@ -1041,14 +1041,14 @@ async fn publish_package(
     let status = resp.status();
     let meta_bytes = resp.collect().await?.to_bytes();
 
-    if !status.is_success() {
-      bail!(
-        "Failed to fetch package manifest from {meta_url}: status {status}\n\n{}",
-        response_body_snippet(&meta_bytes),
-      );
-    }
-
     if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
+      if !status.is_success() {
+        bail!(
+          "Failed to fetch package manifest from {meta_url}: status {status}\n\n{}",
+          response_body_snippet(&meta_bytes),
+        );
+      }
+
       verify_version_manifest(&meta_bytes, &package).with_context(|| {
         format!("Failed to verify package manifest from {meta_url}")
       })?;
