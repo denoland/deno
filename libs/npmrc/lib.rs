@@ -1029,6 +1029,91 @@ registry=${VAR_FOUND}
       resolved_npm_rc.tarball_config_for_package(&other_host, "@myscope/pkg"),
       None,
     );
+
+    // Same host but a different port is a different origin: no fallback.
+    let other_port = Url::parse(
+      "https://gitlab.example.com:8443/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&other_port, "@myscope/pkg"),
+      None,
+    );
+
+    // Same host but a downgraded scheme is a different origin: the token must
+    // not be sent over http when the registry is https.
+    let other_scheme = Url::parse(
+      "http://gitlab.example.com/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&other_scheme, "@myscope/pkg"),
+      None,
+    );
+
+    // A package whose scope has no configured registry does not fall back to an
+    // unrelated scope's auth.
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&tarball_url, "@other/pkg"),
+      None,
+    );
+  }
+
+  #[test]
+  fn test_tarball_config_for_package_default_scope() {
+    // An instance-level registry configured as the default (unscoped) registry
+    // serves tarballs from a different path; the fallback resolves through
+    // `default_config` for unscoped packages.
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+registry=https://gitlab.example.com/api/v4/packages/npm/
+//gitlab.example.com/api/v4/packages/npm/:_authToken=GITLABTOKEN
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(resolved_npm_rc.tarball_config(&tarball_url), None);
+    assert_eq!(
+      resolved_npm_rc
+        .tarball_config_for_package(&tarball_url, "pkg")
+        .unwrap()
+        .auth_token
+        .as_deref(),
+      Some("GITLABTOKEN"),
+    );
+  }
+
+  #[test]
+  fn test_tarball_config_for_package_no_auth() {
+    // Same-origin tarball but the registry carries no credentials: there is
+    // nothing to fall back to, so no config is returned.
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+@myscope:registry=https://gitlab.example.com/api/v4/packages/npm/
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&tarball_url, "@myscope/pkg"),
+      None,
+    );
   }
 
   fn npm_url(url: &str) -> NpmRegistryUrl {
