@@ -456,6 +456,27 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
       return vec![FixSuggestion::hint(
         "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
       )];
+    // `isolated-vm` is a native addon built directly on V8's C++ internals,
+    // which Deno does not expose. It fails either with a `Cannot find module
+    // './out/isolated_vm'` error (when the addon was never built, the most
+    // commonly reported case) or, if built, with the legacy native addon ABI
+    // error from `ext/napi`. Either way it cannot run in Deno, so point users
+    // at the supported isolation primitives. See denoland/deno#25130.
+    } else if (msg.contains("isolated_vm") || msg.contains("isolated-vm"))
+      && (msg.contains("Cannot find module")
+        || msg.contains("legacy Node.js native addon API"))
+    {
+      return vec![
+        FixSuggestion::info_multiline(&[
+          "`isolated-vm` is a native addon built directly on V8's C++ internals,",
+          "which Deno does not expose, so it cannot be loaded in Deno.",
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "To run code in a separate isolate, use a `Worker`: it executes in its",
+          "own isolate and thread and can be sandboxed via the `deno.permissions`",
+          "option. For in-process sandboxing, the `node:vm` module is also available.",
+        ]),
+      ];
     // Try to capture errors like:
     // ```
     // Uncaught Error: Cannot find module '../build/Release/canvas.node'
