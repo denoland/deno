@@ -12625,30 +12625,12 @@ fn lsp_jupyter_import_map_and_diagnostics() {
             "source": "deno-ts",
             "message": "Type 'number' is not assignable to type 'string'.",
           },
-          // TODO(nayeemrmn): This only errors for classic scripts which we use
-          // for notebook cells. Figure out a workaround.
-          {
-            "range": {
-              "start": { "line": 12, "character": 16 },
-              "end": { "line": 12, "character": 20 },
-            },
-            "severity": 1,
-            "code": 2451,
-            "source": "deno-ts",
-            "message": "Cannot redeclare block-scoped variable 'name'.",
-            "relatedInformation": [
-              {
-                "location": {
-                  "uri": "deno:/asset/lib.deno.window.d.ts",
-                  "range": {
-                    "start": { "line": 616, "character": 12 },
-                    "end": { "line": 616, "character": 16 },
-                  },
-                },
-                "message": "'name' was also declared here.",
-              },
-            ],
-          },
+          // Note: `const name = "Hello"` does not error here even though it
+          // shadows the ambient `name` global from `lib.deno.window.d.ts`.
+          // Notebook cells are classic scripts, so such a redeclaration would
+          // normally produce a spurious error; we filter it out because the
+          // conflicting declaration is in a default library.
+          // See https://github.com/denoland/deno/issues/22628.
         ],
         "version": 1,
       },
