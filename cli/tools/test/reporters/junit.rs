@@ -121,12 +121,13 @@ impl TestReporter for JunitTestReporter {
   fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
   fn report_wait(&mut self, _description: &TestDescription) {}
 
-  fn report_output(&mut self, _output: &[u8]) {
+  fn report_output(&mut self, _metadata: &OutputMetadata, _output: &[u8]) {
     /*
-     TODO(skycoop): Right now I can't include stdout/stderr in the report because
-     we have a global pair of output streams that don't differentiate between the
-     output of different tests. This is a nice to have feature, so we can come
-     back to it later
+     TODO(skycoop): Right now we don't include stdout/stderr in the report.
+     `_metadata` now identifies the test/step that produced each chunk of
+     output (via `test_id`/`step_ids`), so this could be wired up to attach
+     captured output to the corresponding `<testcase>`. This is a nice to have
+     feature, so we can come back to it later.
     */
   }
 

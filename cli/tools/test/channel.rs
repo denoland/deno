@@ -5,6 +5,7 @@ use std::future::Future;
 use std::future::poll_fn;
 use std::io::Write;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::task::Poll;
@@ -12,6 +13,7 @@ use std::task::ready;
 use std::time::Duration;
 
 use deno_core::parking_lot;
+use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::lock_api::RawMutex;
 use deno_core::parking_lot::lock_api::RawMutexTimed;
 use deno_runtime::deno_io::AsyncPipeRead;
@@ -26,7 +28,14 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::WeakUnboundedSender;
 use tokio::sync::mpsc::error::SendError;
 
+use super::OutputMetadata;
 use super::TestEvent;
+
+/// Shared, mutable view of the test context that captured stdout/stderr output
+/// should be attributed to. The worker thread updates this (via
+/// [`TestEventSender`]) as it enters and leaves tests and steps, while the
+/// capture thread reads it (via [`TestStream`]) to tag each chunk of output.
+type SharedOutputMetadata = Arc<Mutex<OutputMetadata>>;
 
 /// 8-byte sync marker that is unlikely to appear in normal output. Equivalent
 /// to the string `"\u{200B}\0\u{200B}\0"`.
@@ -88,7 +97,10 @@ pub fn create_test_event_channel() -> (TestEventSenderFactory, TestEventReceiver
 pub fn create_single_test_event_channel()
 -> (TestEventWorkerSender, TestEventReceiver) {
   let (factory, receiver) = create_test_event_channel();
-  (factory.worker(), receiver)
+  // Single-worker callers (REPL, Jupyter) don't run tests with a meaningful
+  // origin, and there's only one worker so output can't be mis-attributed
+  // across workers; an empty origin is sufficient.
+  (factory.worker(String::new()), receiver)
 }
 
 /// Polls for the next [`TestEvent`] from any worker. Events from multiple worker
@@ -108,6 +120,7 @@ struct TestStream {
   id: usize,
   read_opt: Option<AsyncPipeRead>,
   sender: UnboundedSender<(usize, TestEvent)>,
+  metadata: SharedOutputMetadata,
 }
 
 impl TestStream {
@@ -115,6 +128,7 @@ impl TestStream {
     id: usize,
     pipe_reader: PipeRead,
     sender: UnboundedSender<(usize, TestEvent)>,
+    metadata: SharedOutputMetadata,
   ) -> std::io::Result<Self> {
     // This may fail if the tokio runtime is shutting down
     let read_opt = Some(pipe_reader.into_async()?);
@@ -122,6 +136,7 @@ impl TestStream {
       id,
       read_opt,
       sender,
+      metadata,
     })
   }
 
@@ -133,7 +148,10 @@ impl TestStream {
       true
     } else if self
       .sender
-      .send((self.id, TestEvent::Output(buffer)))
+      .send((
+        self.id,
+        TestEvent::Output(self.metadata.lock().clone(), buffer),
+      ))
       .is_err()
     {
       self.read_opt.take();
@@ -247,7 +265,11 @@ pub struct TestEventSenderFactory {
 
 impl TestEventSenderFactory {
   /// Create a [`TestEventWorkerSender`], along with a stdout/stderr stream.
-  pub fn worker(&self) -> TestEventWorkerSender {
+  ///
+  /// `origin` is the module specifier of the worker; it is recorded on every
+  /// [`OutputMetadata`] this worker emits so the reporter can attribute output
+  /// to the correct module even when multiple workers run in parallel.
+  pub fn worker(&self, origin: String) -> TestEventWorkerSender {
     let id = self.worker_id.fetch_add(1, Ordering::AcqRel);
     let (stdout_reader, stdout_writer) = pipe().unwrap();
     let (stderr_reader, stderr_writer) = pipe().unwrap();
@@ -256,6 +278,12 @@ impl TestEventSenderFactory {
     let stdout = stdout_writer.try_clone().unwrap();
     let stderr = stderr_writer.try_clone().unwrap();
     let sender = self.sender.clone();
+    let metadata = Arc::new(Mutex::new(OutputMetadata {
+      origin,
+      test_id: None,
+      step_ids: Vec::new(),
+    }));
+    let stream_metadata = metadata.clone();
 
     // Each worker spawns its own output monitoring and serialization task. This task will
     // poll the stdout/stderr streams and interleave that data with `TestEvents` generated
@@ -274,9 +302,14 @@ impl TestEventSenderFactory {
         .build()
         .unwrap();
       runtime.block_on(tokio::task::unconstrained(async move {
-        let mut test_stdout =
-          TestStream::new(id, stdout_reader, sender.clone())?;
-        let mut test_stderr = TestStream::new(id, stderr_reader, sender)?;
+        let mut test_stdout = TestStream::new(
+          id,
+          stdout_reader,
+          sender.clone(),
+          stream_metadata.clone(),
+        )?;
+        let mut test_stderr =
+          TestStream::new(id, stderr_reader, sender, stream_metadata)?;
 
         // This ensures that the stdout and stderr streams in the select! loop below cannot starve each
         // other.
@@ -331,6 +364,7 @@ impl TestEventSenderFactory {
       sync_sender,
       stdout_writer,
       stderr_writer,
+      metadata,
     };
 
     TestEventWorkerSender {
@@ -393,6 +427,10 @@ pub struct TestEventSender {
   sync_sender: UnboundedSender<(SendMutex, SendMutex)>,
   stdout_writer: PipeWrite,
   stderr_writer: PipeWrite,
+  /// The output context that the capture thread tags emitted output with. The
+  /// worker updates this as it enters/leaves tests and steps; see
+  /// [`Self::update_output_metadata`].
+  metadata: SharedOutputMetadata,
 }
 
 impl TestEventSender {
@@ -402,7 +440,44 @@ impl TestEventSender {
     if message.requires_stdio_sync() {
       self.flush()?;
     }
+    // Update the output attribution context *after* flushing, so that any
+    // output produced before this event was tagged with the previous context.
+    self.update_output_metadata(&message);
     Ok(self.sender.send((self.id, message))?)
+  }
+
+  /// Adjust the shared [`OutputMetadata`] in response to a test event that
+  /// changes which test or step is executing. This must run after
+  /// [`Self::flush`] so that output emitted under the previous context has
+  /// already been drained and tagged.
+  fn update_output_metadata(&mut self, message: &TestEvent) {
+    match message {
+      // Entering a test: subsequent output belongs to this test, in global
+      // (non-step) scope.
+      TestEvent::Wait(id) => {
+        let mut metadata = self.metadata.lock();
+        metadata.test_id = Some(*id);
+        metadata.step_ids.clear();
+      }
+      // Leaving a test: subsequent output is back in global scope.
+      TestEvent::Result(..) => {
+        let mut metadata = self.metadata.lock();
+        metadata.test_id = None;
+        metadata.step_ids.clear();
+      }
+      // Entering a step: track it so concurrent steps can be distinguished.
+      TestEvent::StepWait(id) => {
+        self.metadata.lock().step_ids.push(*id);
+      }
+      // Leaving a step: stop attributing output to it.
+      TestEvent::StepResult(id, ..) => {
+        let mut metadata = self.metadata.lock();
+        if let Some(pos) = metadata.step_ids.iter().position(|s| s == id) {
+          metadata.step_ids.remove(pos);
+        }
+      }
+      _ => {}
+    }
   }
 
   /// Ensure that all output has been fully flushed by writing a sync marker into the
@@ -445,6 +520,70 @@ mod tests {
 
   use super::*;
   use crate::tools::test::TestResult;
+  use crate::tools::test::TestStepResult;
+
+  /// Test that captured output is tagged with the test/step context that was
+  /// active when it was emitted, even as that context changes.
+  #[tokio::test]
+  async fn test_output_metadata() {
+    test_util::timeout!(60);
+    let (mut worker, mut receiver) = create_single_test_event_channel();
+    let recv_handle = spawn(async move {
+      let mut events = vec![];
+      while let Some((_, message)) = receiver.recv().await {
+        events.push(message);
+      }
+      events
+    });
+    let send_handle = spawn_blocking(move || {
+      // Global scope (no test running).
+      worker.stdout.write_all(b"global").unwrap();
+      // Enter test 1.
+      worker.sender.send(TestEvent::Wait(1)).unwrap();
+      worker.stdout.write_all(b"in-test").unwrap();
+      // Enter step 2.
+      worker.sender.send(TestEvent::StepWait(2)).unwrap();
+      worker.stdout.write_all(b"in-step").unwrap();
+      // Leave step 2.
+      worker
+        .sender
+        .send(TestEvent::StepResult(2, TestStepResult::Ok, 0))
+        .unwrap();
+      worker.stdout.write_all(b"after-step").unwrap();
+      // Leave test 1.
+      worker
+        .sender
+        .send(TestEvent::Result(1, TestResult::Ok, 0))
+        .unwrap();
+      worker.stdout.write_all(b"after-test").unwrap();
+      worker.sender.flush().unwrap();
+    });
+    send_handle.await.unwrap();
+    let events = recv_handle.await.unwrap();
+
+    let outputs: Vec<(Option<usize>, Vec<usize>, String)> = events
+      .into_iter()
+      .filter_map(|e| match e {
+        TestEvent::Output(meta, text) => Some((
+          meta.test_id,
+          meta.step_ids,
+          String::from_utf8(text).unwrap(),
+        )),
+        _ => None,
+      })
+      .collect();
+
+    assert_eq!(
+      outputs,
+      vec![
+        (None, vec![], "global".to_string()),
+        (Some(1), vec![], "in-test".to_string()),
+        (Some(1), vec![2], "in-step".to_string()),
+        (Some(1), vec![], "after-step".to_string()),
+        (None, vec![], "after-test".to_string()),
+      ]
+    );
+  }
 
   /// Test that output is correctly interleaved with messages.
   #[tokio::test]
@@ -483,7 +622,7 @@ mod tests {
     let mut count = 0;
     for message in messages {
       match message {
-        TestEvent::Output(vec) => {
+        TestEvent::Output(_, vec) => {
           assert_eq!(vec[0], expected);
           count += vec.len();
         }
@@ -614,7 +753,7 @@ mod tests {
       while let Some((_, message)) = receiver.recv().await {
         if i % 2 == 0 {
           let expected_text = format!("{:08x}", i / 2).into_bytes();
-          let TestEvent::Output(text) = message else {
+          let TestEvent::Output(_, text) = message else {
             panic!("Incorrect message: {message:?}");
           };
           assert_eq!(text, expected_text);
@@ -660,7 +799,7 @@ mod tests {
         .unwrap();
       drop(worker);
       let (_, message) = receiver.recv().await.unwrap();
-      let TestEvent::Output(text) = message else {
+      let TestEvent::Output(_, text) = message else {
         panic!("Incorrect message: {message:?}");
       };
       assert_eq!(text.as_slice(), b"hello");

@@ -279,7 +279,8 @@ impl TestRun {
       let worker_factory = worker_factory.clone();
       let cli_options = cli_options.clone();
       let permission_desc_parser = permission_desc_parser.clone();
-      let worker_sender = test_event_sender_factory.worker();
+      let worker_sender =
+        test_event_sender_factory.worker(specifier.to_string());
       let fail_fast_tracker = fail_fast_tracker.clone();
       let lsp_filter = self.filters.get(&specifier);
       let filter = test::TestFilter {
@@ -382,8 +383,8 @@ impl TestRun {
             test::TestEvent::Wait(id) => {
               reporter.report_wait(tests.read().get(&id).unwrap());
             }
-            test::TestEvent::Output(output) => {
-              reporter.report_output(&output);
+            test::TestEvent::Output(metadata, output) => {
+              reporter.report_output(&metadata, &output);
             }
             test::TestEvent::Slow(id, elapsed) => {
               reporter.report_slow(tests.read().get(&id).unwrap(), elapsed);
@@ -673,11 +674,15 @@ impl LspTestReporter {
 
   fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
 
-  fn report_output(&mut self, output: &[u8]) {
+  fn report_output(&mut self, metadata: &test::OutputMetadata, output: &[u8]) {
+    // Attribute the output to the specific test/step that emitted it, using
+    // the metadata captured alongside the output. This is reliable even when
+    // tests (or steps) run concurrently, unlike a single "current test" field
+    // which would be clobbered by interleaved events from parallel workers.
     let test = self
-      .current_test
-      .as_ref()
-      .map(|id| self.tests.get(id).unwrap().as_test_identifier(&self.tests));
+      .output_attribution(metadata)
+      .and_then(|id| self.tests.get(&id))
+      .map(|desc| desc.as_test_identifier(&self.tests));
     let value = String::from_utf8_lossy(output).replace('\n', "\r\n");
     self.progress(lsp_custom::TestRunProgressMessage::Output {
       value,
@@ -685,6 +690,37 @@ impl LspTestReporter {
       // TODO(@kitsonk) test output should include a location
       location: None,
     })
+  }
+
+  /// Determine which test or step a chunk of output should be attributed to.
+  ///
+  /// - With no in-flight steps, attribute to the executing test (if any).
+  /// - When the in-flight steps form a single ancestor chain (i.e. nested
+  ///   steps), attribute to the innermost one.
+  /// - When multiple unrelated steps are in flight (parallel `t.step()`), the
+  ///   output cannot be unambiguously attributed to one step, so attribute it
+  ///   to the parent test instead.
+  fn output_attribution(
+    &self,
+    metadata: &test::OutputMetadata,
+  ) -> Option<usize> {
+    let Some(&innermost) = metadata.step_ids.last() else {
+      return metadata.test_id;
+    };
+    // Walk the innermost step's ancestor chain (steps + owning test).
+    let mut chain = HashSet::new();
+    let mut current = Some(innermost);
+    while let Some(id) = current {
+      if !chain.insert(id) {
+        break;
+      }
+      current = self.tests.get(&id).and_then(|desc| desc.parent_id());
+    }
+    if metadata.step_ids.iter().all(|id| chain.contains(id)) {
+      Some(innermost)
+    } else {
+      metadata.test_id
+    }
   }
 
   fn report_result(

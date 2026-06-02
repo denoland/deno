@@ -523,12 +523,32 @@ pub struct TestPlan {
   pub used_only: bool,
 }
 
+/// Identifies the test context that a chunk of captured stdout/stderr output
+/// was emitted from. This lets the reporter associate output with the specific
+/// test (and step) that produced it, even when tests or steps run concurrently
+/// and their output would otherwise interleave ambiguously on the shared
+/// stdio streams.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OutputMetadata {
+  /// The origin (module specifier) of the worker that produced the output.
+  pub origin: String,
+  /// The id of the test that was executing when the output was emitted, or
+  /// `None` if the output was emitted from global scope (e.g. top-level code,
+  /// `beforeAll`/`afterAll` hooks, or a dangling async task).
+  pub test_id: Option<usize>,
+  /// The ids of the test steps that were executing when the output was
+  /// emitted. This is a list (rather than a single id) to support parallel
+  /// `t.step()` calls: when more than one step is in-flight, output cannot be
+  /// unambiguously attributed to a single step.
+  pub step_ids: Vec<usize>,
+}
+
 #[derive(Debug)]
 pub enum TestEvent {
   Register(Arc<TestDescriptions>),
   Plan(TestPlan),
   Wait(usize),
-  Output(Vec<u8>),
+  Output(OutputMetadata, Vec<u8>),
   Slow(usize, u64),
   Result(usize, TestResult, u64),
   UncaughtError(String, Box<JsError>),
@@ -563,6 +583,7 @@ impl TestEvent {
     matches!(
       self,
       TestEvent::Plan(..)
+        | TestEvent::Wait(..)
         | TestEvent::Result(..)
         | TestEvent::StepWait(..)
         | TestEvent::StepResult(..)
@@ -1506,7 +1527,7 @@ async fn test_specifiers(
     let specifier_dir = cli_options.workspace().resolve_member_dir(&specifier);
     let preload_modules = preload_modules.clone();
     let require_modules = require_modules.clone();
-    let worker_sender = test_event_sender_factory.worker();
+    let worker_sender = test_event_sender_factory.worker(specifier.to_string());
     let fail_fast_tracker = fail_fast_tracker.clone();
     let specifier_options = options.specifier.clone();
     let cli_options = cli_options.clone();
@@ -1592,8 +1613,8 @@ pub async fn report_tests(
           reporter.report_wait(tests.get(&id).unwrap());
         }
       }
-      TestEvent::Output(output) => {
-        reporter.report_output(&output);
+      TestEvent::Output(metadata, output) => {
+        reporter.report_output(&metadata, &output);
       }
       TestEvent::Slow(id, elapsed) => {
         reporter.report_slow(tests.get(&id).unwrap(), elapsed);

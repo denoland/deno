@@ -37,9 +37,9 @@ impl TestReporter for CompoundTestReporter {
     }
   }
 
-  fn report_output(&mut self, output: &[u8]) {
+  fn report_output(&mut self, metadata: &OutputMetadata, output: &[u8]) {
     for reporter in &mut self.test_reporters {
-      reporter.report_output(output);
+      reporter.report_output(metadata, output);
     }
   }
 

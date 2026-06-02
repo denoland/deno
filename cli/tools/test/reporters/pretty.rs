@@ -220,7 +220,7 @@ impl TestReporter for PrettyTestReporter {
     )
     .ok();
   }
-  fn report_output(&mut self, output: &[u8]) {
+  fn report_output(&mut self, _metadata: &OutputMetadata, output: &[u8]) {
     if !self.echo_output {
       return;
     }
