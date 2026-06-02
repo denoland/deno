@@ -653,6 +653,15 @@ impl CliFactory {
             | DenoSubcommand::X { .. }
             | DenoSubcommand::BumpVersion { .. } => false,
           },
+          dedup_lockfile_peer_variants: matches!(
+            cli_options.sub_command(),
+            DenoSubcommand::Add { .. }
+              | DenoSubcommand::ApproveScripts { .. }
+              | DenoSubcommand::Remove { .. }
+              | DenoSubcommand::Cache { .. }
+              | DenoSubcommand::Ci { .. }
+              | DenoSubcommand::Install(InstallFlags::Local(_, _)),
+          ),
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
           ),

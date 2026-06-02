@@ -998,6 +998,12 @@ pub struct SnapshotFromLockfileParams<'a> {
   pub link_packages: &'a HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
   pub lockfile: &'a Lockfile,
   pub default_tarball_url: &'a dyn DefaultTarballUrlProvider,
+  /// If true, merge equivalent peer-dep variants that differ only in
+  /// cycle-unrolling depth (see
+  /// [`SerializedNpmResolutionSnapshot::dedup_equivalent_peer_variants`]).
+  /// Should only be set on install paths — `deno run` must not silently
+  /// rewrite the user's lockfile.
+  pub dedup_equivalent_peer_variants: bool,
 }
 
 pub trait DefaultTarballUrlProvider {
@@ -1156,13 +1162,16 @@ pub fn snapshot_from_lockfile(
     packages,
     root_packages,
   };
-  // Old lockfiles may contain spurious peer-dep variants of the same
-  // name+version whose `NpmPackageId` strings differ only in cycle
-  // unrolling depth. Merge them so install produces a single physical
-  // copy per nv (matches pnpm) — preserving class identity for
-  // libraries that rely on decorator metadata (NestJS DI). See
-  // deno#26427.
-  snapshot.dedup_equivalent_peer_variants();
+  if params.dedup_equivalent_peer_variants {
+    // Old lockfiles may contain spurious peer-dep variants of the same
+    // name+version whose `NpmPackageId` strings differ only in cycle
+    // unrolling depth. Merge them so install produces a single physical
+    // copy per nv (matches pnpm) — preserving class identity for
+    // libraries that rely on decorator metadata (NestJS DI). See
+    // deno#26427. Gated to install paths so `deno run` doesn't rewrite
+    // the user's lockfile out from under them.
+    snapshot.dedup_equivalent_peer_variants();
+  }
   let snapshot = snapshot.into_valid()?;
   Ok(snapshot)
 }
@@ -1632,6 +1641,7 @@ mod tests {
         lockfile: &lockfile,
         link_packages: &Default::default(),
         default_tarball_url: &TestDefaultTarballUrlProvider,
+        dedup_equivalent_peer_variants: false,
       })
       .is_ok()
     );
@@ -1683,6 +1693,7 @@ mod tests {
       lockfile: &lockfile,
       link_packages: &Default::default(),
       default_tarball_url: &TestDefaultTarballUrlProvider,
+      dedup_equivalent_peer_variants: false,
     })
     .unwrap();
     assert_eq!(
@@ -1849,6 +1860,7 @@ mod tests {
       lockfile: &lockfile,
       link_packages,
       default_tarball_url: &TestDefaultTarballUrlProvider,
+      dedup_equivalent_peer_variants: false,
     })
     .unwrap();
 
@@ -1914,6 +1926,7 @@ mod tests {
       lockfile: &lockfile,
       link_packages,
       default_tarball_url: &TestDefaultTarballUrlProvider,
+      dedup_equivalent_peer_variants: false,
     })
     .unwrap();
 
