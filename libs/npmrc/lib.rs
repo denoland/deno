@@ -46,6 +46,15 @@ pub struct RegistryConfig {
   pub keyfile: Option<String>,
 }
 
+impl RegistryConfig {
+  /// Whether this config carries credentials usable for authentication.
+  pub fn has_auth(&self) -> bool {
+    self.auth_token.is_some()
+      || self.auth.is_some()
+      || (self.username.is_some() && self.password.is_some())
+  }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NpmRc {
   pub registry: Option<String>,
@@ -316,6 +325,41 @@ impl ResolvedNpmRc {
       }
     }
     best_match.map(|(_, config)| config)
+  }
+
+  /// Like [`Self::tarball_config`], but falls back to the scoped registry's
+  /// config for `package_name` when the tarball is served from the same origin
+  /// as that registry.
+  ///
+  /// Some registries (e.g. GitLab instance-level npm registries) serve tarballs
+  /// from a different path than the registry endpoint, so a plain path-prefix
+  /// match against the tarball URL misses the auth that is configured for the
+  /// registry. See https://github.com/denoland/deno/issues/27759
+  pub fn tarball_config_for_package(
+    &self,
+    tarball_url: &Url,
+    package_name: &str,
+  ) -> Option<&Arc<RegistryConfig>> {
+    if let Some(config) = self.tarball_config(tarball_url) {
+      return Some(config);
+    }
+    let scope_registry = match get_scope_name(package_name) {
+      Some(scope) => self.scopes.get(scope)?,
+      None => &self.default_config,
+    };
+    // Only fall back when the tarball is served from the same origin as the
+    // registry the package was resolved from, and that registry actually has
+    // credentials. This keeps the token from leaking to unrelated hosts.
+    let registry_url = &scope_registry.registry_url;
+    let same_origin = registry_url.scheme() == tarball_url.scheme()
+      && registry_url.host_str() == tarball_url.host_str()
+      && registry_url.port_or_known_default()
+        == tarball_url.port_or_known_default();
+    if same_origin && scope_registry.config.has_auth() {
+      Some(&scope_registry.config)
+    } else {
+      None
+    }
   }
 }
 
@@ -932,6 +976,58 @@ registry=${VAR_FOUND}
     assert_eq!(
       resolved.default_config.registry_url.as_str(),
       "http://npmrc.registry.example.com/"
+    );
+  }
+
+  #[test]
+  fn test_gitlab_instance_level_tarball_auth() {
+    // GitLab "instance-level" npm registries serve tarballs from a different
+    // path than the registry endpoint:
+    //   registry: https://gitlab.example.com/api/v4/packages/npm/
+    //   tarball:  https://gitlab.example.com/api/v4/projects/4055/packages/npm/@scope/pkg/-/...tgz
+    // The auth token is scoped to the registry path, so a plain path-prefix
+    // match against the tarball URL fails. See
+    // https://github.com/denoland/deno/issues/27759
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+@myscope:registry=https://gitlab.example.com/api/v4/packages/npm/
+//gitlab.example.com/api/v4/packages/npm/:_authToken=GITLABTOKEN
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/@myscope/pkg/-/@myscope/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+
+    // Plain path-prefix matching (npm-compatible) does not find the auth,
+    // because the tarball path differs from the registry path.
+    assert_eq!(resolved_npm_rc.tarball_config(&tarball_url), None);
+
+    // Package-aware lookup falls back to the scoped registry's auth because the
+    // tarball is served from the same host as the scope's registry.
+    assert_eq!(
+      resolved_npm_rc
+        .tarball_config_for_package(&tarball_url, "@myscope/pkg")
+        .unwrap()
+        .auth_token
+        .as_deref(),
+      Some("GITLABTOKEN"),
+    );
+
+    // The fallback must not apply a scope's token to an unrelated host.
+    let other_host = Url::parse(
+      "https://evil.example.org/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&other_host, "@myscope/pkg"),
+      None,
     );
   }
 

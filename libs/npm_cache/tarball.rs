@@ -195,8 +195,11 @@ impl<THttpClient: NpmCacheHttpClient, TSys: NpmCacheSys>
 
       // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
       // registry, so we MUST get the auth for the tarball URL and not the registry URL.
+      // When the tarball path doesn't match a configured auth scope, fall back to the
+      // package's scoped registry auth if the tarball is on the same origin (e.g. GitLab
+      // instance-level registries serve tarballs from a different path than the registry).
       let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
-      let maybe_registry_config = tarball_cache.npmrc.tarball_config(&tarball_uri);
+      let maybe_registry_config = tarball_cache.npmrc.tarball_config_for_package(&tarball_uri, &package_nv.name);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_value_for_npm_registry(c).ok()?);
 
       if let Some(reporter) = &reporter {
