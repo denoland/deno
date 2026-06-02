@@ -19485,6 +19485,65 @@ fn lsp_wasm_module() {
 }
 
 #[test(timeout = 300)]
+fn lsp_wasm_module_multi_value_return() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir().path();
+  fs::write(
+    temp_dir.join("multi_value.wasm"),
+    include_bytes!("../specs/check/wasm_multi_value/multi_value.wasm"),
+  )
+  .unwrap();
+  let main = source_file(
+    temp_dir.join("main.ts"),
+    r#"
+      import { add_and_sub } from "./multi_value.wasm";
+
+      const result: number = add_and_sub(1, 2);
+      console.log(result);
+    "#,
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open_file(&main);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 3, "character": 12 },
+          "end": { "line": 3, "character": 18 }
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type '[number, number]' is not assignable to type 'number'."
+      }
+    ])
+  );
+
+  let hover = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": main.identifier(),
+      "position": main.range_of_nth(1, "add_and_sub").start,
+    }),
+  );
+  assert_json_subset(
+    hover,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```tsx\n(alias) add_and_sub(arg0: number, arg1: number): [number, number]\n```\n",
+      },
+    }),
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn wildcard_augment() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
