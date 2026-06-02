@@ -3041,6 +3041,20 @@ const compressionTestCases = [
     expect: "br",
   },
   {
+    name: "RefusedCompression",
+    length: 1024,
+    in: { "Accept-Encoding": "br;q=0, gzip;q=0" },
+    out: { "Content-Type": "text/plain" },
+    expect: null,
+  },
+  {
+    name: "CompressionSubstring",
+    length: 1024,
+    in: { "Accept-Encoding": "xbr, gzipx" },
+    out: { "Content-Type": "text/plain" },
+    expect: null,
+  },
+  {
     name: "IncompressibleRange",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
@@ -3112,7 +3126,7 @@ for (const testCase of compressionTestCases) {
               resp.headers.get("content-encoding"),
               testCase.out["Content-Encoding"] || null,
             );
-          } else if (testCase.expect == "gzip") {
+          } else if (testCase.expect == "gzip" || testCase.expect == "br") {
             // Note the fetch will transparently decompress this response, BUT we can detect that a response
             // was compressed by the lack of a content length.
             assertEquals(body.byteLength, testCase.length);

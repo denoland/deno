@@ -704,12 +704,30 @@ fn raw_request_compression(headers: &RawRequestHeaders) -> Compression {
   let Ok(accept_encoding) = std::str::from_utf8(&accept_encoding) else {
     return Compression::None;
   };
-  if accept_encoding.contains("br") {
-    Compression::Brotli
-  } else if accept_encoding.contains("gzip") {
-    Compression::GZip
-  } else {
-    Compression::None
+  match accept_encoding {
+    // Firefox and Chrome send this -- no need to parse.
+    "gzip, deflate, br" => return Compression::Brotli,
+    "gzip, deflate, br, zstd" => return Compression::Brotli,
+    "gzip" => return Compression::GZip,
+    "br" => return Compression::Brotli,
+    _ => {}
+  }
+
+  let accepted =
+    fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding))
+      .filter(|r| {
+        matches!(
+          r,
+          Ok((
+            Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
+            _
+          ))
+        )
+      });
+  match fly_accept_encoding::preferred(accepted) {
+    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
+    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
+    _ => Compression::None,
   }
 }
 
@@ -3080,8 +3098,9 @@ fn raw_h1_date() -> [u8; RAW_H1_DATE_LEN] {
   RAW_H1_DATE_CACHE.with_borrow_mut(|cache| {
     if now > cache.next_update {
       cache.pos = 0;
-      let _ = write!(cache, "{}", httpdate::HttpDate::from(now));
-      debug_assert_eq!(cache.pos, RAW_H1_DATE_LEN);
+      write!(cache, "{}", httpdate::HttpDate::from(now))
+        .expect("http date exceeded raw H1 date buffer");
+      assert_eq!(cache.pos, RAW_H1_DATE_LEN);
       cache.next_update = now + Duration::from_secs(1);
     }
     cache.value
@@ -3091,6 +3110,9 @@ fn raw_h1_date() -> [u8; RAW_H1_DATE_LEN] {
 impl fmt::Write for RawH1DateCache {
   fn write_str(&mut self, value: &str) -> fmt::Result {
     let end = self.pos + value.len();
+    if end > self.value.len() {
+      return Err(fmt::Error);
+    }
     self.value[self.pos..end].copy_from_slice(value.as_bytes());
     self.pos = end;
     Ok(())

@@ -1504,6 +1504,8 @@ fn upgrade_kind_from_core(upgrade: CoreUpgradeKind) -> UpgradeKind {
 }
 
 fn find_double_crlf(buf: &[u8]) -> Option<usize> {
+  // This is only a readiness gate. `Protocol`/httparse remains authoritative
+  // for the actual request-head parse and consumed byte count.
   let mut cursor = 0;
   while let Some(offset) = memchr::memchr(b'\n', &buf[cursor..]) {
     let i = cursor + offset;

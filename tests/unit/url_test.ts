@@ -238,12 +238,26 @@ Deno.test(function urlSimpleSpecialFastPathMatchesRustParser() {
       "http://foo:0/",
       "http://h/a/../b",
       "http://foo/",
+      "https://foo:443/path?query#hash",
+      "http://foo:8080/a/b?x=1&y=2",
+      "http://foo.test/",
+      "http://sub.foo.test/path",
     ]
   ) {
     const constructed = new URL(input);
     const parsed = URL.parse(input);
     assert(parsed);
     assertEquals(constructed.href, parsed.href);
+    assertEquals(constructed.protocol, parsed.protocol);
+    assertEquals(constructed.username, parsed.username);
+    assertEquals(constructed.password, parsed.password);
+    assertEquals(constructed.host, parsed.host);
+    assertEquals(constructed.hostname, parsed.hostname);
+    assertEquals(constructed.port, parsed.port);
+    assertEquals(constructed.pathname, parsed.pathname);
+    assertEquals(constructed.search, parsed.search);
+    assertEquals(constructed.hash, parsed.hash);
+    assertEquals(constructed.origin, parsed.origin);
   }
 });
 

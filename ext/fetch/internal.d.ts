@@ -66,25 +66,12 @@ declare module "ext:deno_fetch/22_body.js" {
   };
 }
 
-declare module "ext:deno_fetch/26_fetch.js" {
-  function toInnerRequest(request: Request): InnerRequest;
-  function fromInnerRequest(
-    inner: InnerRequest,
-    guard:
-      | "request"
-      | "immutable"
-      | "request-no-cors"
-      | "response"
-      | "none",
-    skipBody: boolean,
-  ): Request;
+declare module "ext:deno_fetch/23_response.js" {
   function redirectStatus(status: number): boolean;
   function nullBodyStatus(status: number): boolean;
-  function newInnerRequest(
-    method: string,
-    url: any,
-    headerList?: [string, string][],
-    body?: fetchBody.InnerBody,
+  function newInnerResponse(
+    status?: number,
+    statusMessage?: string,
   ): InnerResponse;
   function getInnerResponse(response: Response): InnerResponse | undefined;
   function toInnerResponse(response: Response): InnerResponse;
@@ -99,4 +86,24 @@ declare module "ext:deno_fetch/26_fetch.js" {
       | "none",
   ): Response;
   function networkError(error: string): InnerResponse;
+}
+
+declare module "ext:deno_fetch/26_fetch.js" {
+  function toInnerRequest(request: Request): InnerRequest;
+  function fromInnerRequest(
+    inner: InnerRequest,
+    guard:
+      | "request"
+      | "immutable"
+      | "request-no-cors"
+      | "response"
+      | "none",
+    skipBody: boolean,
+  ): Request;
+  function newInnerRequest(
+    method: string,
+    url: any,
+    headerList?: [string, string][],
+    body?: fetchBody.InnerBody,
+  ): InnerResponse;
 }
