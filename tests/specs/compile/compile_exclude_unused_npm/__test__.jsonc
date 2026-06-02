@@ -6,7 +6,7 @@
       "output": "[WILDCARD]"
     },
     {
-      "args": "compile -A --output out main.ts",
+      "args": "compile -A --exclude-unused-npm --output out main.ts",
       "output": "compile.out"
     }
   ]

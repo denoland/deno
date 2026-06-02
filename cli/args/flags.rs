@@ -224,6 +224,11 @@ pub struct CompileFlags {
   pub bundle: bool,
   /// Minify the bundle. Only meaningful with `bundle: true`.
   pub minify: bool,
+  /// Prune the embedded managed npm snapshot to only those packages reachable
+  /// from npm specifiers in the module graph. Opt-in because non-statically
+  /// analyzable dynamic imports may not appear in the graph; pass
+  /// `--include npm:<pkg>` for any such packages.
+  pub exclude_unused_npm: bool,
 }
 
 impl CompileFlags {
@@ -3061,6 +3066,17 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
   <p(245)>Reduces both the embedded bundle size and runtime memory use, at the cost of less readable stack traces.</>"))
           .action(ArgAction::SetTrue)
           .requires("bundle")
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(
+        Arg::new("exclude-unused-npm")
+          .long("exclude-unused-npm")
+          .help(cstr!("Embed only the npm packages reachable from the module graph (managed npm; no <c>node_modules</> directory).
+  <p(245)>Without this flag the full managed npm snapshot from the lockfile / package.json is embedded.
+  Reduces binary size when the lockfile contains packages the entrypoint does not import.
+  Skips packages that are only reached through non-statically-analyzable dynamic imports;
+  pass those with <c>--include npm:<<pkg></> if needed.</>"))
+          .action(ArgAction::SetTrue)
           .help_heading(COMPILE_HEADING),
       )
       .arg(watch_arg(false))
@@ -6949,6 +6965,7 @@ fn compile_parse(
   let self_extracting = matches.get_flag("self-extracting");
   let bundle = matches.get_flag("bundle");
   let minify = matches.get_flag("minify");
+  let exclude_unused_npm = matches.get_flag("exclude-unused-npm");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6975,6 +6992,7 @@ fn compile_parse(
     self_extracting,
     bundle,
     minify,
+    exclude_unused_npm,
   });
 
   Ok(())
@@ -13617,6 +13635,7 @@ mod tests {
           self_extracting: false,
           bundle: false,
           minify: false,
+          exclude_unused_npm: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -13647,6 +13666,7 @@ mod tests {
           self_extracting: false,
           bundle: false,
           minify: false,
+          exclude_unused_npm: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -16248,6 +16268,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           self_extracting: false,
           bundle: false,
           minify: false,
+          exclude_unused_npm: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],
