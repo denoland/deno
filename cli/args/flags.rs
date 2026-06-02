@@ -6516,6 +6516,12 @@ impl CommandExt for Command {
         arg = arg.alias("sloppy-imports");
       }
 
+      // `--unsafe-proto` is a stable shorthand for `--unstable-unsafe-proto`;
+      // it enables the same behavior without being spelled as an unstable flag.
+      if feature.flag_name == "unstable-unsafe-proto" {
+        arg = arg.alias("unsafe-proto");
+      }
+
       arg = arg.long_help(long_help_val);
       cmd = cmd.arg(arg);
     }
