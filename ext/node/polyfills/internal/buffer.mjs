@@ -72,7 +72,7 @@ const {
   op_node_buffer_compare,
   op_node_buffer_compare_offset,
   op_node_call_is_from_dependency,
-  op_node_decode,
+  op_node_encoding_slice,
   op_transcode,
 } = core.ops;
 
@@ -707,7 +707,7 @@ Buffer.prototype.swap64 = function swap64() {
 };
 
 function decodeUtf8(buffer, start, end) {
-  return op_node_decode(
+  return op_node_encoding_slice(
     buffer,
     start,
     end,
@@ -716,7 +716,7 @@ function decodeUtf8(buffer, start, end) {
 }
 
 function decodeLatin1(buffer, start, end) {
-  return op_node_decode(
+  return op_node_encoding_slice(
     buffer,
     start,
     end,
@@ -725,7 +725,7 @@ function decodeLatin1(buffer, start, end) {
 }
 
 function decodeAscii(buffer, start, end) {
-  return op_node_decode(
+  return op_node_encoding_slice(
     buffer,
     start,
     end,
@@ -734,11 +734,20 @@ function decodeAscii(buffer, start, end) {
 }
 
 function decodeUtf16le(buffer, start, end) {
-  return op_node_decode(
+  return op_node_encoding_slice(
     buffer,
     start,
     end,
     3,
+  );
+}
+
+function encodeHex(buffer, start, end) {
+  return op_node_encoding_slice(
+    buffer,
+    start,
+    end,
+    4,
   );
 }
 
@@ -1103,10 +1112,7 @@ Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
 };
 
 Buffer.prototype.hexSlice = function hexSlice(offset, length) {
-  // deno-lint-ignore prefer-primordials
-  return Uint8ArrayPrototype.toHex.call(
-    TypedArrayPrototypeSubarray(this, offset, length),
-  );
+  return encodeHex(this, offset, length);
 };
 
 Buffer.prototype.latin1Slice = function latin1Slice(offset, length) {

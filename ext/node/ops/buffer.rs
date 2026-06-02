@@ -179,7 +179,7 @@ pub fn op_node_buffer_compare_offset(
 }
 
 #[op2(reentrant)]
-pub fn op_node_decode<'a>(
+pub fn op_node_encoding_slice<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   buf: v8::Local<v8::ArrayBufferView>,
   start: v8::Local<v8::Value>,
@@ -208,7 +208,7 @@ pub fn op_node_decode<'a>(
 
   match encoding {
     0 => {
-      // utf-8
+      // utf8Slice
       if buffer.len() <= 256 && buffer.is_ascii() {
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
@@ -216,7 +216,7 @@ pub fn op_node_decode<'a>(
       }
     }
     1 => {
-      // latin1
+      // latin1Slice
       v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
     }
     2 => {
@@ -233,8 +233,12 @@ pub fn op_node_decode<'a>(
       }
     }
     3 => {
-      // utf-16le (ucs2)
+      // ucs2Slice
       decode_utf16le_from_bytes(scope, buffer)
+    }
+    4 => {
+      // hexSlice
+      encode_hex_from_bytes(scope, buffer)
     }
     _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
   }
@@ -334,6 +338,61 @@ fn decode_utf16le_from_bytes<'a>(
     }
     v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
   }
+}
+
+/// Computes a lookup table for hex encoding at compile time.
+const fn compute_hex_lut() -> [u16; 256] {
+  let mut table = [0; 256];
+  let chars = b"0123456789abcdef";
+  let mut i = 0;
+  while i < 256 {
+    table[i] = u16::from_ne_bytes([chars[i >> 4], chars[i & 0x0f]]);
+    i += 1;
+  }
+  table
+}
+
+static HEX_LUT: [u16; 256] = compute_hex_lut();
+
+#[inline(always)]
+fn encode_hex_from_bytes<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  buffer: &[u8],
+) -> Option<v8::Local<'a, v8::String>> {
+  let len = buffer.len();
+
+  // Allocate exactly `len` elements of `u16`.
+  // This guarantees the underlying buffer is at least 2-byte aligned.
+  let mut hex_chars = Vec::<u16>::with_capacity(len);
+
+  // SAFETY:
+  // 1. `hex_chars` is allocated with exactly `len` capacity of `u16` elements.
+  // 2. Because `hex_chars` is a Vec<u16>, `as_mut_ptr()` returns a pointer that
+  //    is naturally 2-byte aligned. This makes direct dereference assignment
+  //    safe without needing `write_unaligned`.
+  // 3. The loop runs exactly `len` times, preventing buffer overflows.
+  // 4. `HEX_LUT` ensures all written data consists of valid ASCII characters.
+  // 5. `set_len(len)` is called only after all elements are fully initialized.
+  unsafe {
+    let ptr = hex_chars.as_mut_ptr();
+    for i in 0..len {
+      *ptr.add(i) = HEX_LUT[buffer[i] as usize];
+    }
+    hex_chars.set_len(len);
+  }
+
+  // SAFETY:
+  // 1. Casting a `*const u16` pointer to a `*const u8` pointer is safe because
+  //    `u8` has a less strict alignment requirement (1-byte) than `u16` (2-byte).
+  // 2. A `Vec<u16>` of length `len` contains exactly `len * 2` bytes.
+  // 3. The memory is fully initialized by the previous block.
+  // 4. The lifetime of `bytes_slice` is strictly bound to the local `hex_chars`
+  //    vector, which outlives the synchronous `v8::String::new_from_one_byte` call.
+  let bytes_slice = unsafe {
+    std::slice::from_raw_parts(hex_chars.as_ptr() as *const u8, len * 2)
+  };
+
+  v8::String::new_from_one_byte(scope, bytes_slice, v8::NewStringType::Normal)
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
