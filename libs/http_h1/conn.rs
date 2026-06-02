@@ -971,6 +971,22 @@ where
     }
   }
 
+  pub async fn discard_body_with_scratch(
+    &mut self,
+    scratch: &mut SharedScratch,
+  ) -> Result<(), Error> {
+    loop {
+      match std::future::poll_fn(|cx| {
+        self.poll_read_body_chunk_with(cx, scratch, |_| ())
+      })
+      .await?
+      {
+        SharedBodyChunk::Chunk(()) => {}
+        SharedBodyChunk::Complete => return Ok(()),
+      }
+    }
+  }
+
   pub async fn write_response_with_scratch(
     &mut self,
     scratch: &mut SharedScratch,

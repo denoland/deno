@@ -4139,6 +4139,9 @@ async fn serve_http11_raw(
             || !keep_alive
             || cancel.is_canceled()
           {
+            if parsed.has_body {
+              let _ = conn.discard_body_with_scratch(&mut scratch).await;
+            }
             return Ok(());
           }
           continue;
@@ -4247,6 +4250,9 @@ async fn serve_http11_raw(
       conn = state.conn;
       scratch = state.scratch;
       if !keep_alive || parsed.has_body || cancel.is_canceled() {
+        if parsed.has_body {
+          let _ = conn.discard_body_with_scratch(&mut scratch).await;
+        }
         record_cancel_guard.disarm();
         return Ok(());
       }
@@ -4492,7 +4498,7 @@ fn serve_https(
         )
         .await
       } else {
-        serve_http2_autodetect(
+        Box::pin(serve_http2_autodetect(
           io,
           svc,
           raw_request_info,
@@ -4500,7 +4506,7 @@ fn serve_https(
           listen_cancel_handle,
           raw_server_state,
           options,
-        )
+        ))
         .await
       }
     }
