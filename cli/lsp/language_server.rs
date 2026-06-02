@@ -2661,8 +2661,37 @@ impl Inner {
     token: &CancellationToken,
   ) -> LspResult<Option<CompletionResponse>> {
     let mark = self.performance.mark_with_args("lsp.completion", &params);
+    let uri = &params.text_document_position.text_document.uri;
+    // Handle completions inside Deno configuration files (deno.json/jsonc)
+    // separately, since they're not "diagnosable" documents but still benefit
+    // from registry (jsr:/npm:/node:) import-specifier completion in the
+    // `imports` and `scopes` fields. Use `Enabled::Ignore` because a config
+    // file may itself be the only thing identifying its workspace as enabled.
+    if let Some(document) = self.get_document(
+      uri,
+      Enabled::Ignore,
+      Exists::Filter,
+      Diagnosable::Ignore,
+    )? && let Some(open_doc) = document.open()
+      && matches!(open_doc.language_id, LanguageId::Json | LanguageId::JsonC)
+    {
+      let url = uri_to_url(uri);
+      if completions::is_deno_config_url(&url) {
+        let response = completions::get_deno_json_import_completions(
+          &url,
+          &open_doc.text,
+          &open_doc.line_index,
+          &params.text_document_position.position,
+          &self.jsr_search_api,
+          &self.npm_search_api,
+        )
+        .await;
+        self.performance.measure(mark);
+        return Ok(response);
+      }
+    }
     let Some(document) = self.get_document(
-      &params.text_document_position.text_document.uri,
+      uri,
       Enabled::Filter,
       Exists::Enforce,
       Diagnosable::Filter,
