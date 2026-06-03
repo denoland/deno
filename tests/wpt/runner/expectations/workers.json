@@ -21,8 +21,7 @@
       },
       "expected-self-properties.worker.html": {
         "expectedFailures": [
-          "existence of XMLHttpRequest",
-          "existence of SharedWorker"
+          "existence of XMLHttpRequest"
         ]
       },
       "unexpected-self-properties.worker.html": true,
@@ -483,12 +482,7 @@
       "indexedDB is present"
     ]
   },
-  "dedicated-worker-from-blob-url.window.html": {
-    "expectedFailures": [
-      "Creating a dedicated worker from a blob URL works immediately before revoking."
-    ],
-    "flaky": true
-  },
+  "dedicated-worker-from-blob-url.window.html": false,
   "dedicated-worker-parse-error-failure.html": false,
   "multi-globals": {
     "url-parsing.html": false
@@ -512,6 +506,5 @@
   "shared-worker-parse-error-failure.html": false,
   "shared-worker-partitioned-cookies.tentative.https.html": false,
   "shared-worker-partitioned.tentative.html": false,
-  "worker-request-animation-frame.html": false,
-  "WorkerNavigator_userAgentData.https.tentative.html": false
+  "worker-request-animation-frame.html": false
 }

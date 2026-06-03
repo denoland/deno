@@ -40,6 +40,7 @@ const {
   ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectKeys,
+  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
@@ -718,6 +719,41 @@ const executionModes = {
   jupyter: 8,
 };
 
+// By default Deno disables the `Object.prototype.__proto__` accessor for
+// security reasons (it can be used for prototype pollution), see
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+//
+// Instead of `delete`-ing the property (which silently turns `obj.__proto__`
+// reads into `undefined` and writes into a useless own property, making bugs
+// hard to track down) we replace it with an accessor that throws a descriptive
+// error, similar to Node's `--disable-proto=throw`. The `__proto__` key in
+// object literals (e.g. `{ __proto__: null }`) is separate syntax and keeps
+// working. The `--unstable-unsafe-proto` flag restores the native accessor.
+function disableProtoAccessor() {
+  function throwDisabledProto() {
+    throw new TypeError(
+      'The "Object.prototype.__proto__" accessor is disabled. Use ' +
+        "Object.getPrototypeOf()/Object.setPrototypeOf() instead, or run with " +
+        "--unstable-unsafe-proto to restore it.",
+    );
+  }
+  // The getter and setter must be distinct function objects: the native
+  // `__proto__` accessor has separate get/set functions, and WPT
+  // (webidl/ecmascript-binding/attributes-accessors-unique-function-objects)
+  // asserts every accessor's getter and setter are unique built-in functions.
+  ObjectDefineProperty(ObjectPrototype, "__proto__", {
+    __proto__: null,
+    configurable: true,
+    enumerable: false,
+    get: function __proto__() {
+      throwDisabledProto();
+    },
+    set: function __proto__(_value) {
+      throwDisabledProto();
+    },
+  });
+}
+
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
     if (hasBootstrapped) {
@@ -910,9 +946,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1042,9 +1076,7 @@ function bootstrapWorkerRuntime(
     delete finalDenoNs.mainModule;
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
