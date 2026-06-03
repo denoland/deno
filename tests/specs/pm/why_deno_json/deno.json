@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "express": "npm:express@4.22.1",
+    "@types/express": "npm:@types/express@5.0.2"
+  }
+}

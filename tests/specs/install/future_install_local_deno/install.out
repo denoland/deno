@@ -13,3 +13,7 @@ Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 Download http://127.0.0.1:4250/@std/testing/1.0.0/bdd.ts
 Download http://127.0.0.1:4250/@std/testing/1.0.0/types.ts
 [UNORDERED_END]
+
+Dependencies:
++ npm:@denotest/esm-basic 1.0.0
+

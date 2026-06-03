@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "custom_name": {
+      "steps": [
+        {
+          "args": "run --cpu-prof-dir=. --cpu-prof-name=custom.cpuprofile main.js",
+          "output": "main.out"
+        },
+        {
+          "args": "run --allow-read verify.js",
+          "output": "Valid profile\n"
+        }
+      ]
+    }
+  }
+}

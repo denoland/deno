@@ -1,9 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
@@ -114,7 +113,7 @@ impl DenoTestCollector {
             {
               match key_value_prop.value.as_ref() {
                 ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
-                  let name = lit_str.value.to_string();
+                  let name = lit_str.value.to_string_lossy().to_string();
                   self.add_code_lenses(name, range);
                 }
                 ast::Expr::Tpl(tpl) if tpl.quasis.len() == 1 => {
@@ -133,7 +132,7 @@ impl DenoTestCollector {
           }
         }
         ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
-          let name = lit_str.value.to_string();
+          let name = lit_str.value.to_string_lossy().to_string();
           self.add_code_lenses(name, range);
         }
         ast::Expr::Tpl(tpl) if tpl.quasis.len() == 1 => {
@@ -399,7 +398,7 @@ pub fn collect_test(
 pub fn collect_tsc(
   uri: &Uri,
   code_lens_settings: &CodeLensSettings,
-  line_index: Arc<LineIndex>,
+  line_index: &LineIndex,
   navigation_tree: &NavigationTree,
   token: &CancellationToken,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
@@ -412,16 +411,16 @@ pub fn collect_tsc(
       let source = CodeLensSource::Implementations;
       match i.kind {
         tsc::ScriptElementKind::InterfaceElement => {
-          code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
         tsc::ScriptElementKind::ClassElement
         | tsc::ScriptElementKind::MemberFunctionElement
         | tsc::ScriptElementKind::MemberVariableElement
         | tsc::ScriptElementKind::MemberGetAccessorElement
-        | tsc::ScriptElementKind::MemberSetAccessorElement => {
-          if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
-          }
+        | tsc::ScriptElementKind::MemberSetAccessorElement
+          if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) =>
+        {
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
         _ => (),
       }
@@ -433,30 +432,28 @@ pub fn collect_tsc(
       if let Some(parent) = &mp
         && parent.kind == tsc::ScriptElementKind::EnumElement
       {
-        code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
+        code_lenses.push(i.to_code_lens(line_index, uri, source));
       }
       match i.kind {
-        tsc::ScriptElementKind::FunctionElement => {
-          if code_lens_settings.references_all_functions {
-            code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
-          }
+        tsc::ScriptElementKind::FunctionElement
+          if code_lens_settings.references_all_functions =>
+        {
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
         tsc::ScriptElementKind::ConstElement
         | tsc::ScriptElementKind::LetElement
-        | tsc::ScriptElementKind::VariableElement => {
-          if EXPORT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
-          }
+        | tsc::ScriptElementKind::VariableElement
+          if EXPORT_MODIFIER.is_match(&i.kind_modifiers) =>
+        {
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
-        tsc::ScriptElementKind::ClassElement => {
-          if i.text != "<class>" {
-            code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
-          }
+        tsc::ScriptElementKind::ClassElement if i.text != "<class>" => {
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
         tsc::ScriptElementKind::InterfaceElement
         | tsc::ScriptElementKind::TypeElement
         | tsc::ScriptElementKind::EnumElement => {
-          code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
+          code_lenses.push(i.to_code_lens(line_index, uri, source));
         }
         tsc::ScriptElementKind::LocalFunctionElement
         | tsc::ScriptElementKind::MemberFunctionElement
@@ -471,11 +468,7 @@ pub fn collect_tsc(
               tsc::ScriptElementKind::ClassElement
               | tsc::ScriptElementKind::InterfaceElement
               | tsc::ScriptElementKind::TypeElement => {
-                code_lenses.push(i.to_code_lens(
-                  line_index.clone(),
-                  uri,
-                  source,
-                ));
+                code_lenses.push(i.to_code_lens(line_index, uri, source));
               }
               _ => (),
             }

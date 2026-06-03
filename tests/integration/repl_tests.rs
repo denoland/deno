@@ -1,14 +1,15 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util as util;
-use test_util::assert_contains;
-use test_util::assert_ends_with;
-use test_util::assert_not_contains;
+use test_util::test;
 use util::TempDir;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_ends_with;
+use util::assert_not_contains;
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_multiline() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("(\n1 + 2\n)");
@@ -42,7 +43,7 @@ fn pty_multiline() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_null() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("null");
@@ -50,7 +51,7 @@ fn pty_null() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_unpaired_braces() {
   for right_brace in &[")", "]", "}"] {
     util::with_pty(&["repl"], |mut console| {
@@ -60,7 +61,7 @@ fn pty_unpaired_braces() {
   }
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_bad_input() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("'\\u{1f3b5}'[0]");
@@ -68,7 +69,7 @@ fn pty_bad_input() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_syntax_error_input() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("('\\u')");
@@ -82,7 +83,7 @@ fn pty_syntax_error_input() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_complete_symbol() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line_raw("Symbol.it\t");
@@ -90,7 +91,7 @@ fn pty_complete_symbol() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_complete_declarations() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("class MyClass {}");
@@ -104,7 +105,7 @@ fn pty_complete_declarations() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_complete_primitives() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("let func = function test(){}");
@@ -126,7 +127,7 @@ fn pty_complete_primitives() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_complete_expression() {
   util::with_pty(&["repl"], |mut console| {
     console.write_raw("Deno.\t\t");
@@ -136,62 +137,7 @@ fn pty_complete_expression() {
   });
 }
 
-#[flaky_test::flaky_test]
-fn pty_complete_imports() {
-  let context = TestContextBuilder::default().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("subdir");
-  temp_dir.write("./subdir/my_file.ts", "");
-  temp_dir.create_dir_all("run");
-  temp_dir.write("./run/hello.ts", "console.log('Hello World');");
-  temp_dir.write(
-    "./run/output.ts",
-    r#"export function output(text: string) {
-  console.log(text);
-}
-"#,
-  );
-  context
-    .new_command()
-    .args_vec(["repl", "-A"])
-    .with_pty(|mut console| {
-      // single quotes
-      console.write_line_raw("import './run/hel\t'");
-      console.expect("Hello World");
-      // double quotes
-      console.write_line_raw("import { output } from \"./run/out\t\"");
-      console.expect("\"./run/output.ts\"");
-      console.write_line_raw("output('testing output');");
-      console.expect("testing output");
-    });
-
-  // ensure when the directory changes that the suggestions come from the cwd
-  context
-    .new_command()
-    .args_vec(["repl", "-A"])
-    .with_pty(|mut console| {
-      console.write_line("Deno.chdir('./subdir');");
-      console.expect("undefined");
-      console.write_line_raw("import '../run/he\t'");
-      console.expect("Hello World");
-    });
-}
-
-#[flaky_test::flaky_test]
-fn pty_complete_imports_no_panic_empty_specifier() {
-  // does not panic when tabbing when empty
-  util::with_pty(&["repl", "-A"], |mut console| {
-    if cfg!(windows) {
-      console.write_line_raw("import '\t'");
-      console.expect_any(&["not prefixed with", "https://deno.land"]);
-    } else {
-      console.write_raw("import '\t");
-      console.expect("import 'https://deno.land");
-    }
-  });
-}
-
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_ignore_symbols() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line_raw("Array.Symbol\t");
@@ -199,7 +145,7 @@ fn pty_ignore_symbols() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_assign_global_this() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("globalThis = 40 + 2;");
@@ -207,7 +153,7 @@ fn pty_assign_global_this() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_assign_deno_keys_and_deno() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
@@ -222,7 +168,7 @@ fn pty_assign_deno_keys_and_deno() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_internal_repl() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("'Length: ' + Object.keys(globalThis).filter(k => k.startsWith('__DENO_')).length;");
@@ -238,7 +184,7 @@ fn pty_internal_repl() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_emoji() {
   // windows was having issues displaying this
   util::with_pty(&["repl"], |mut console| {
@@ -247,7 +193,7 @@ fn pty_emoji() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn console_log() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('hello');");
@@ -271,7 +217,7 @@ fn console_log() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn object_literal() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("{}");
@@ -281,7 +227,7 @@ fn object_literal() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn block_expression() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("{};");
@@ -291,7 +237,7 @@ fn block_expression() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn await_resolve() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("await Promise.resolve('done')");
@@ -299,7 +245,7 @@ fn await_resolve() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn await_timeout() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("await new Promise((r) => setTimeout(r, 0, 'done'))");
@@ -307,7 +253,7 @@ fn await_timeout() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn let_redeclaration() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("let foo = 0;");
@@ -321,7 +267,7 @@ fn let_redeclaration() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn repl_cwd() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -342,7 +288,7 @@ fn repl_cwd() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn typescript() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("function add(a: number, b: number) { return a + b }");
@@ -354,7 +300,7 @@ fn typescript() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn typescript_declarations() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("namespace Test { export enum Values { A, B, C } }");
@@ -370,7 +316,7 @@ fn typescript_declarations() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn typescript_decorators() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -394,7 +340,7 @@ fn typescript_decorators() {
   );
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn eof() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("1 + 2");
@@ -402,7 +348,7 @@ fn eof() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn strict() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("let a = {};");
@@ -416,7 +362,7 @@ fn strict() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn close_command() {
   let (out, err) = util::run_and_collect_output(
     true,
@@ -430,7 +376,7 @@ fn close_command() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn function() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("Deno.writeFileSync");
@@ -438,7 +384,7 @@ fn function() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn multiline() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("(\n1 + 2\n)");
@@ -446,7 +392,7 @@ fn multiline() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn import() {
   let context = TestContextBuilder::default()
     .use_copy_temp_dir("./subdir")
@@ -460,7 +406,7 @@ fn import() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn import_declarations() {
   let context = TestContextBuilder::default()
     .use_copy_temp_dir("./subdir")
@@ -474,7 +420,7 @@ fn import_declarations() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn exports_stripped() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("const test = 5 + 1; export default test;");
@@ -484,7 +430,7 @@ fn exports_stripped() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn call_eval_unterminated() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("eval('{')");
@@ -492,7 +438,7 @@ fn call_eval_unterminated() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn unpaired_braces() {
   util::with_pty(&["repl"], |mut console| {
     for right_brace in &[")", "]", "}"] {
@@ -502,7 +448,7 @@ fn unpaired_braces() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn reference_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("not_a_variable");
@@ -510,7 +456,7 @@ fn reference_error() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn syntax_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("syntax error");
@@ -521,7 +467,7 @@ fn syntax_error() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn jsx_errors_without_pragma() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("const element = <div />;");
@@ -529,7 +475,7 @@ fn jsx_errors_without_pragma() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn jsx_import_source() {
   let context = TestContextBuilder::default()
     .use_temp_cwd()
@@ -546,7 +492,7 @@ fn jsx_import_source() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn type_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console()");
@@ -554,7 +500,7 @@ fn type_error() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn variable() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("var a = 123 + 456;");
@@ -564,7 +510,7 @@ fn variable() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn lexical_scoped_variable() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("let a = 123 + 456;");
@@ -574,7 +520,7 @@ fn lexical_scoped_variable() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn missing_deno_dir() {
   use std::fs::read_dir;
   let temp_dir = TempDir::new();
@@ -594,7 +540,7 @@ fn missing_deno_dir() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn custom_history_path() {
   use std::fs::read;
   let temp_dir = TempDir::new();
@@ -614,7 +560,7 @@ fn custom_history_path() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn disable_history_file() {
   let deno_dir = util::new_deno_dir();
   let default_history_path = deno_dir.path().join("deno_history.txt");
@@ -634,7 +580,7 @@ fn disable_history_file() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn save_last_eval() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("1 + 2");
@@ -644,7 +590,7 @@ fn save_last_eval() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn save_last_thrown() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("throw 1 + 2");
@@ -654,7 +600,7 @@ fn save_last_thrown() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn assign_underscore() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("_ = 1");
@@ -666,7 +612,7 @@ fn assign_underscore() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn assign_underscore_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("_error = 1");
@@ -678,7 +624,7 @@ fn assign_underscore_error() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn custom_inspect() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
@@ -694,7 +640,7 @@ fn custom_inspect() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn eval_flag_valid_input() {
   util::with_pty(&["repl", "--eval", "const t = 10;"], |mut console| {
     console.write_line("t * 500");
@@ -702,7 +648,7 @@ fn eval_flag_valid_input() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn eval_flag_parse_error() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
@@ -719,7 +665,7 @@ fn eval_flag_parse_error() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn eval_flag_runtime_error() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
@@ -733,7 +679,7 @@ fn eval_flag_runtime_error() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn eval_file_flag_valid_input() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
@@ -746,7 +692,7 @@ fn eval_file_flag_valid_input() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn eval_file_flag_call_defined_function() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
@@ -759,7 +705,7 @@ fn eval_file_flag_call_defined_function() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn eval_file_flag_http_input() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
@@ -772,7 +718,7 @@ fn eval_file_flag_http_input() {
   assert!(err.contains("Download"));
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn eval_file_flag_multiple_files() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
@@ -789,7 +735,7 @@ fn eval_file_flag_multiple_files() {
   assert_contains!(err, "Download");
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_clear_function() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('h' + 'ello');");
@@ -812,7 +758,7 @@ fn pty_clear_function() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_tab_handler() {
   // If the last character is **not** whitespace, we show the completions
   util::with_pty(&["repl"], |mut console| {
@@ -833,7 +779,7 @@ fn pty_tab_handler() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn repl_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
@@ -846,7 +792,7 @@ fn repl_error() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn repl_reject() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
@@ -865,7 +811,7 @@ fn repl_reject() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn repl_report_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
@@ -879,7 +825,7 @@ fn repl_report_error() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn repl_error_undefined() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(r#"throw undefined;"#);
@@ -893,7 +839,7 @@ fn repl_error_undefined() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_aggregate_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("await Promise.any([])");
@@ -901,7 +847,7 @@ fn pty_aggregate_error() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn repl_with_quiet_flag() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
@@ -916,7 +862,7 @@ fn repl_with_quiet_flag() {
   assert!(err.is_empty(), "Error: {}", err);
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn repl_deno_test() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line_raw(
@@ -957,7 +903,7 @@ fn repl_deno_test() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn npm_packages() {
   let mut env_vars = util::env_vars_for_npm_tests();
   env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
@@ -976,8 +922,8 @@ fn npm_packages() {
       true,
     );
 
+    assert!(err.is_empty(), "stderr: {}\nstdout: {}", err, out);
     assert_contains!(out, "hello");
-    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -992,8 +938,8 @@ fn npm_packages() {
       true,
     );
 
+    assert!(err.is_empty(), "stderr: {}\nstdout: {}", err, out);
     assert_contains!(out, "hello");
-    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -1043,7 +989,7 @@ fn npm_packages() {
   }
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_tab_indexable_props() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("const arr = [1, 2, 3]");
@@ -1058,7 +1004,7 @@ fn pty_tab_indexable_props() {
   });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn package_json_uncached_no_error() {
   let test_context = TestContextBuilder::for_npm()
     .use_temp_cwd()
@@ -1087,7 +1033,7 @@ fn package_json_uncached_no_error() {
     // should support getting the package now though
     console
       .write_line("import { getValue, setValue } from '@denotest/esm-basic';");
-    console.expect_all(&["undefined", "Download"]);
+    console.expect("undefined");
     console.write_line("setValue(12 + 30);");
     console.expect("undefined");
     console.write_line("getValue()");
@@ -1097,20 +1043,7 @@ fn package_json_uncached_no_error() {
   });
 }
 
-#[flaky_test::flaky_test]
-fn closed_file_pre_load_does_not_occur() {
-  TestContext::default()
-    .new_command()
-    .args_vec(["repl", "-A", "--log-level=debug"])
-    .with_pty(|console| {
-      assert_contains!(
-        console.all_output(),
-        "Skipped workspace walk due to client incapability.",
-      );
-    });
-}
-
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn env_file() {
   TestContext::default()
     .new_command()
@@ -1127,7 +1060,7 @@ fn env_file() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/20528
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn pty_promise_was_collected_regression_test() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
@@ -1141,7 +1074,7 @@ fn pty_promise_was_collected_regression_test() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn eval_file_promise_error() {
   let (out, err) = util::run_and_collect_output_with_args(
     true,
@@ -1154,7 +1087,7 @@ fn eval_file_promise_error() {
   assert!(err.is_empty());
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn repl_json_imports() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1173,7 +1106,7 @@ fn repl_json_imports() {
     });
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn repl_no_globalthis() {
   let context = TestContextBuilder::default().use_temp_cwd().build();
   context
@@ -1186,5 +1119,55 @@ fn repl_no_globalthis() {
       console.write_line_raw("console.log('Hello World')");
       console.expect(r#"Hello World"#);
       console.expect(r#"undefined"#);
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/34360.
+// Running `babel-node` (or any user code that calls `repl.start` with both
+// a custom `eval` and `preview: true`) used to evaluate the typed input
+// via `vm.Script` on every keystroke. That produced visible side effects
+// the moment a closing paren completed an expression -- `console.log("hi")`
+// would print "hi" while still being typed.
+#[test(flaky)]
+fn pty_node_repl_no_preview_side_effects_with_custom_eval() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.mjs",
+    r#"import repl from "node:repl";
+globalThis.__sideEffectCount = 0;
+const server = repl.start({
+  prompt: "> ",
+  // babel-node's pattern: custom eval + preview enabled. Preview must
+  // not re-run the typed input via vm.Script.
+  preview: true,
+  useGlobal: true,
+  eval(_code, _ctx, _file, cb) {
+    process.stdout.write(
+      "EVALED__side_effect=" + globalThis.__sideEffectCount + "\n",
+    );
+    cb(null);
+  },
+});
+server.on("exit", () => process.exit(0));
+"#,
+  );
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args_vec(["run", "-A", "main.mjs"])
+    .with_pty(|mut console| {
+      console.expect("> ");
+      // Type a fully-formed expression that *would* increment the side-
+      // effect counter if the preview path eagerly ran user code via
+      // `vm.Script`. Critically, do not press Enter yet.
+      console.write_raw("(globalThis.__sideEffectCount++, 0)");
+      // Give the REPL plenty of time to (not) run the preview eval.
+      console.human_delay();
+      // Now press Enter. The custom eval reports the counter value: it
+      // must still be 0, meaning no preview-time side effects occurred.
+      console.write_raw("\r");
+      console.expect("EVALED__side_effect=0");
+      console.write_raw(".exit\r");
     });
 }

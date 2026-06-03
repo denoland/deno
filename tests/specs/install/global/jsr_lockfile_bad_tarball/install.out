@@ -1,0 +1,7 @@
+Download http://127.0.0.1:4250/@denotest/echo-lockfile-bad-tarball/meta.json
+Download http://127.0.0.1:4250/@denotest/echo-lockfile-bad-tarball/1.0.0/deno.lock
+Warning Not using lockfile from JSR package @denotest/echo-lockfile-bad-tarball@1.0.0 because it contains an npm tarball URL ("https://evil.example.com/chalk/-/chalk-5.0.0.tgz") not from a configured npm registry. This may indicate a security issue.
+Download http://127.0.0.1:4250/@denotest/echo-lockfile-bad-tarball/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/echo-lockfile-bad-tarball/1.0.0/mod.ts
+✅ Successfully installed echo-lockfile-bad-tarball
+[WILDCARD]

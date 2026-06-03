@@ -5,3 +5,7 @@ Download http://127.0.0.1:4250/@denotest/add/1.0.0_meta.json
 Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
 Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
 [UNORDERED_END]
+
+Dependencies:
++ npm:@denotest/esm-basic 1.0.0
+

@@ -8,6 +8,9 @@ Download http://localhost:4260/@denotest/add/1.0.0.tgz
 Initialize @denotest/add@1.0.0
 Download http://localhost:4260/@denotest/deprecated-package/1.0.0.tgz
 Initialize @denotest/deprecated-package@1.0.0
-Warning The following packages are deprecated:
-┖─ npm:@denotest/deprecated-package@1.0.0 (Deprecated version)
+╭ Warning
+│
+│  The following packages are deprecated:
+│  npm:@denotest/deprecated-package@1.0.0 (Deprecated version)
+╰─
 [UNORDERED_END]

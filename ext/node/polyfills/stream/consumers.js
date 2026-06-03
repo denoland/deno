@@ -1,14 +1,15 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
-import { Blob } from "ext:deno_web/09_file.js";
-import { Buffer } from "node:buffer";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const { Blob } = core.loadExtScript("ext:deno_web/09_file.js");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_STATE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
   ArrayBufferIsView,
@@ -27,16 +28,6 @@ function validateStreamIterator(stream) {
   }
 }
 
-/**
- * @typedef {import('../internal/webstreams/readablestream').ReadableStream
- * } ReadableStream
- * @typedef {import('../internal/streams/readable')} Readable
- */
-
-/**
- * @param {AsyncIterable|ReadableStream|Readable} stream
- * @returns {Promise<Blob>}
- */
 async function blob(stream) {
   const chunks = [];
   const iter = validateStreamIterator(stream);
@@ -46,27 +37,19 @@ async function blob(stream) {
   return new Blob(chunks);
 }
 
-/**
- * @param {AsyncIterable|ReadableStream|Readable} stream
- * @returns {Promise<ArrayBuffer>}
- */
 async function arrayBuffer(stream) {
   const ret = await blob(stream);
   return ret.arrayBuffer();
 }
 
-/**
- * @param {AsyncIterable|ReadableStream|Readable} stream
- * @returns {Promise<Buffer>}
- */
 async function buffer(stream) {
   return Buffer.from(await arrayBuffer(stream));
 }
 
-/**
- * @param {AsyncIterable|ReadableStream|Readable} stream
- * @returns {Promise<string>}
- */
+async function bytes(stream) {
+  return new Uint8Array(await arrayBuffer(stream));
+}
+
 async function text(stream) {
   const dec = new TextDecoder();
   let str = "";
@@ -91,22 +74,17 @@ async function text(stream) {
   return str;
 }
 
-/**
- * @param {AsyncIterable|ReadableStream|Readable} stream
- * @returns {Promise<any>}
- */
 async function json(stream) {
   const str = await text(stream);
   return JSONParse(str);
 }
 
-const _defaultExport1 = {
+return {
   arrayBuffer,
   blob,
   buffer,
+  bytes,
   text,
   json,
 };
-
-export default _defaultExport1;
-export { arrayBuffer, blob, buffer, json, text };
+})();

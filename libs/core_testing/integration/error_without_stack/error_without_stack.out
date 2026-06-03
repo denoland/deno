@@ -1,0 +1,2 @@
+[ERR] SyntaxError: Invalid or unexpected token
+[ERR]     at test:///integration/error_without_stack/error_without_stack.js:2:1

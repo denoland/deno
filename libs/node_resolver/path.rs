@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Component;
@@ -127,56 +127,56 @@ pub trait PathClean<T> {
 
 impl PathClean<PathBuf> for PathBuf {
   fn clean(&self) -> PathBuf {
-    fn is_clean_path(path: &Path) -> bool {
-      let path = path.to_string_lossy();
-      let mut current_index = 0;
-      while let Some(index) = path[current_index..].find("\\.") {
-        let trailing_index = index + current_index + 2;
-        let mut trailing_chars = path[trailing_index..].chars();
-        match trailing_chars.next() {
-          Some('.') => match trailing_chars.next() {
-            Some('/') | Some('\\') | None => {
-              return false;
-            }
-            _ => {}
-          },
-          Some('/') | Some('\\') => {
-            return false;
-          }
-          _ => {}
-        }
-        current_index = trailing_index;
-      }
-      true
-    }
-
-    let path = path_clean::PathClean::clean(self);
-    if cfg!(windows) && !is_clean_path(&path) {
-      // temporary workaround because path_clean::PathClean::clean is
-      // not good enough on windows
-      let mut components = Vec::new();
-
-      for component in path.components() {
-        match component {
-          Component::CurDir => {
-            // skip
-          }
-          Component::ParentDir => {
-            let maybe_last_component = components.pop();
-            if !matches!(maybe_last_component, Some(Component::Normal(_))) {
-              panic!("Error normalizing: {}", path.display());
-            }
-          }
-          Component::Normal(_) | Component::RootDir | Component::Prefix(_) => {
-            components.push(component);
-          }
-        }
-      }
-      components.into_iter().collect::<PathBuf>()
+    if cfg!(windows) {
+      // `path_clean::clean` is purely lexical and only splits on `/`, so on
+      // Windows it mishandles paths that mix `\` separators with
+      // `/`-separated `..` segments. This happens when a backslash base path
+      // is joined with a forward-slash relative specifier coming from JS
+      // source (e.g. `require("../../types")`), producing a path like
+      // `C:\pkg\dist\cjs\api\max\../../types`. `path_clean` then treats the
+      // whole `C:\...\max\..` prefix as a single segment and the following
+      // `..` backtracks over all of it, collapsing the path down to just
+      // `types`. Walk the components ourselves instead, which correctly
+      // understands both separators and the path prefix.
+      clean_via_components(self)
     } else {
-      path
+      path_clean::PathClean::clean(self)
     }
   }
+}
+
+/// Lexically normalize a path by walking its components, eliminating `.`
+/// elements and resolving `..` elements against the preceding component. This
+/// mirrors `path_clean::clean`'s semantics but, unlike that crate, correctly
+/// handles Windows paths that mix `\` and `/` separators (`Path::components`
+/// treats both as separators on Windows). `..` segments that would escape the
+/// root are dropped, and leading `..` segments on a relative path are kept.
+#[cfg_attr(not(windows), allow(dead_code, reason = "only used on windows"))]
+fn clean_via_components(path: &Path) -> PathBuf {
+  let mut components: Vec<Component> = Vec::new();
+  for component in path.components() {
+    match component {
+      Component::CurDir => {
+        // skip `.`
+      }
+      Component::ParentDir => match components.last() {
+        Some(Component::Normal(_)) => {
+          components.pop();
+        }
+        // can't go above the root, so drop the `..`
+        Some(Component::RootDir | Component::Prefix(_)) => {}
+        // leading `..` on a relative path (or after another `..`) is kept
+        _ => components.push(component),
+      },
+      Component::Normal(_) | Component::RootDir | Component::Prefix(_) => {
+        components.push(component);
+      }
+    }
+  }
+  if components.is_empty() {
+    return PathBuf::from(".");
+  }
+  components.into_iter().collect::<PathBuf>()
 }
 
 #[cfg(test)]
@@ -189,9 +189,47 @@ mod test {
     run_test("C:\\test\\./file.txt", "C:\\test\\file.txt");
     run_test("C:\\test\\../other/file.txt", "C:\\other\\file.txt");
     run_test("C:\\test\\../other\\file.txt", "C:\\other\\file.txt");
+    // Backslash base path joined with a forward-slash relative specifier
+    // containing two or more `..` segments. Regression test for
+    // https://github.com/denoland/deno/issues/29910 where this collapsed
+    // down to just `types` because `path_clean` only splits on `/`.
+    run_test("C:\\a\\b\\c\\d\\../../types", "C:\\a\\b\\types");
+    run_test("C:\\a\\b\\c\\d\\../../../types", "C:\\a\\types");
+    run_test("C:\\a\\b\\c\\../../helpers/x", "C:\\a\\helpers\\x");
+    // `..` at/above the root is dropped.
+    run_test("C:\\a\\../../types", "C:\\types");
+    run_test("C:\\..", "C:\\");
 
     fn run_test(input: &str, expected: &str) {
       assert_eq!(PathBuf::from(input).clean(), PathBuf::from(expected));
+    }
+  }
+
+  #[test]
+  fn test_clean_via_components() {
+    use super::*;
+
+    // Portable coverage of the component-walking normalizer used on Windows.
+    // Uses `/` separators so it parses identically on every platform; the
+    // `#[cfg(windows)]` test above covers backslash/prefix handling.
+    let cases = [
+      ("test/path/..", "test"),
+      ("test/../path", "path"),
+      ("test/path/../../another/path", "another/path"),
+      ("./test/./path", "test/path"),
+      ("/test/../path", "/path"),
+      ("/test/path/../../../..", "/"),
+      ("test/path/../../../..", "../.."),
+      ("../test/path", "../test/path"),
+      ("a/b/c/d/../../types", "a/b/types"),
+      ("test/..", "."),
+    ];
+    for (input, expected) in cases {
+      assert_eq!(
+        clean_via_components(Path::new(input)),
+        PathBuf::from(expected),
+        "input: {input}"
+      );
     }
   }
 }

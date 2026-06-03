@@ -1,0 +1,57 @@
+{
+  "tempDir": true,
+  "tests": {
+    "dx": {
+      "if": "${IF}",
+      "steps": [
+        {
+          "args": "x --install-alias dx",
+          "output": ""
+        },
+        {
+          "commandName": "dx${COMMAND_SUFFIX}",
+          "args": "",
+          "output": "alias.out"
+        }
+      ]
+    },
+    "dnx": {
+      "if": "${IF}",
+      "steps": [
+        {
+          "args": "x --install-alias dnx",
+          "output": ""
+        },
+        {
+          "commandName": "dnx${COMMAND_SUFFIX}",
+          "args": "",
+          "output": "alias.out"
+        }
+      ]
+    },
+    "other": {
+      "if": "${IF}",
+      "steps": [
+        {
+          "args": "x --install-alias deno-x-shim",
+          "output": ""
+        },
+        {
+          "commandName": "deno-x-shim${COMMAND_SUFFIX}",
+          "args": "",
+          "output": "alias.out"
+        }
+      ]
+    }
+  },
+  "variants": {
+    "windows": {
+      "IF": "windows",
+      "COMMAND_SUFFIX": ".cmd"
+    },
+    "unix": {
+      "IF": "unix",
+      "COMMAND_SUFFIX": ""
+    }
+  }
+}

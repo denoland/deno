@@ -1,0 +1,27 @@
+{
+  // Regression test for the standalone runtime's host-FS fallback path.
+  //
+  // When `require()` or a dynamic `import()` resolves to a file that
+  // isn't in the embedded VFS (HMR / dev mode, or a runtime-resolved
+  // path the compile-time graph walker couldn't follow), the runtime
+  // now (a) reads the file from the host filesystem in the CJS loader
+  // path and (b) runs CJS export analysis live with deno_ast.
+  //
+  // Before the fix, named imports from CJS modules using the
+  // TypeScript-emitted `Object.defineProperty(exports, "name", { get })`
+  // pattern — used by packages like `@opentelemetry/api` — would fail
+  // with "does not provide an export named 'name'" because the runtime
+  // assumed ESM when no embedded analysis existed for the file.
+  "tempDir": true,
+  "steps": [{
+    "args": "run --allow-write setup.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "compile -A --no-check --output bin main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "commandName": "./bin",
+    "args": [],
+    "output": "ok 42\n"
+  }]
+}

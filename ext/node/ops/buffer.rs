@@ -1,8 +1,23 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8_static_strings;
 use deno_error::JsErrorBox;
+
+#[op2(fast)]
+pub fn op_mark_as_untransferable(
+  scope: &mut v8::PinScope<'_, '_>,
+  ab: v8::Local<v8::ArrayBuffer>,
+) {
+  v8_static_strings! {
+      UNTRANSFERABLE = "untransferable",
+  }
+
+  let key = UNTRANSFERABLE.v8_string(scope).unwrap();
+  ab.set_detach_key(key.into());
+}
 
 #[op2(fast)]
 pub fn op_is_ascii(#[buffer] buf: &[u8]) -> bool {
@@ -15,12 +30,11 @@ pub fn op_is_utf8(#[buffer] buf: &[u8]) -> bool {
 }
 
 #[op2]
-#[buffer]
 pub fn op_transcode(
   #[buffer] source: &[u8],
   #[string] from_encoding: &str,
   #[string] to_encoding: &str,
-) -> Result<Vec<u8>, JsErrorBox> {
+) -> Result<Uint8Array, JsErrorBox> {
   match (from_encoding, to_encoding) {
     ("utf8", "ascii") => Ok(utf8_to_ascii(source)),
     ("utf8", "latin1") => Ok(utf8_to_latin1(source)),
@@ -35,34 +49,34 @@ pub fn op_transcode(
   }
 }
 
-fn latin1_ascii_to_utf16le(source: &[u8]) -> Vec<u8> {
+fn latin1_ascii_to_utf16le(source: &[u8]) -> Uint8Array {
   let mut result = Vec::with_capacity(source.len() * 2);
   for &byte in source {
     result.push(byte);
     result.push(0);
   }
-  result
+  result.into()
 }
 
-fn utf16le_to_utf8(source: &[u8]) -> Result<Vec<u8>, JsErrorBox> {
+fn utf16le_to_utf8(source: &[u8]) -> Result<Uint8Array, JsErrorBox> {
   let ucs2_vec: Vec<u16> = source
-    .chunks(2)
+    .chunks_exact(2)
     .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
     .collect();
   String::from_utf16(&ucs2_vec)
-    .map(|utf8_string| utf8_string.into_bytes())
+    .map(|utf8_string| utf8_string.into_bytes().into())
     .map_err(|e| JsErrorBox::generic(format!("Invalid UTF-16 sequence: {}", e)))
 }
 
-fn utf8_to_utf16le(source: &[u8]) -> Result<Vec<u8>, JsErrorBox> {
+fn utf8_to_utf16le(source: &[u8]) -> Result<Uint8Array, JsErrorBox> {
   let utf8_string =
     std::str::from_utf8(source).map_err(JsErrorBox::from_err)?;
   let ucs2_vec: Vec<u16> = utf8_string.encode_utf16().collect();
   let bytes: Vec<u8> = ucs2_vec.iter().flat_map(|&x| x.to_le_bytes()).collect();
-  Ok(bytes)
+  Ok(bytes.into())
 }
 
-fn utf8_to_latin1(source: &[u8]) -> Vec<u8> {
+fn utf8_to_latin1(source: &[u8]) -> Uint8Array {
   let mut latin1_bytes = Vec::with_capacity(source.len());
   let mut i = 0;
   while i < source.len() {
@@ -94,10 +108,10 @@ fn utf8_to_latin1(source: &[u8]) -> Vec<u8> {
       }
     }
   }
-  latin1_bytes
+  latin1_bytes.into()
 }
 
-fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
+fn utf8_to_ascii(source: &[u8]) -> Uint8Array {
   let mut ascii_bytes = Vec::with_capacity(source.len());
   let mut i = 0;
   while i < source.len() {
@@ -118,22 +132,69 @@ fn utf8_to_ascii(source: &[u8]) -> Vec<u8> {
       }
     }
   }
-  ascii_bytes
+  ascii_bytes.into()
 }
 
-#[op2]
-pub fn op_node_decode_utf8<'a>(
+#[op2(fast)]
+#[smi]
+pub fn op_node_buffer_compare(
+  #[buffer] buf1: &[u8],
+  #[buffer] buf2: &[u8],
+) -> i32 {
+  buf1.cmp(buf2) as i32
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_buffer_compare_offset(
+  #[buffer] source: &[u8],
+  #[buffer] target: &[u8],
+  #[smi] source_start: usize,
+  #[smi] target_start: usize,
+  #[smi] source_end: usize,
+  #[smi] target_end: usize,
+) -> Result<i32, JsErrorBox> {
+  if source_start > source.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRangeNamed(
+      "sourceStart".to_string(),
+    )));
+  }
+  if target_start > target.len() {
+    return Err(JsErrorBox::from_err(BufferError::OutOfRangeNamed(
+      "targetStart".to_string(),
+    )));
+  }
+
+  if source_start > source_end {
+    panic!("source_start > source_end");
+  }
+  if target_start > target_end {
+    panic!("target_start > target_end");
+  }
+
+  Ok(
+    source[source_start..source_end].cmp(&target[target_start..target_end])
+      as i32,
+  )
+}
+
+#[op2(reentrant)]
+pub fn op_node_decode<'a>(
   scope: &mut v8::PinScope<'a, '_>,
   buf: v8::Local<v8::ArrayBufferView>,
   start: v8::Local<v8::Value>,
   end: v8::Local<v8::Value>,
+  encoding: u8,
 ) -> Result<v8::Local<'a, v8::String>, JsErrorBox> {
-  let buf = buf.get_contents(&mut [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP]);
+  let buf_len = buf.byte_length();
 
   let start =
     parse_array_index(scope, start, 0).map_err(JsErrorBox::from_err)?;
   let mut end =
-    parse_array_index(scope, end, buf.len()).map_err(JsErrorBox::from_err)?;
+    parse_array_index(scope, end, buf_len).map_err(JsErrorBox::from_err)?;
+
+  let mut storage = [0; v8::TYPED_ARRAY_MAX_SIZE_IN_HEAP];
+  let buf = buf.get_contents(&mut storage);
 
   if end < start {
     end = start;
@@ -145,13 +206,22 @@ pub fn op_node_decode_utf8<'a>(
 
   let buffer = &buf[start..end];
 
-  if buffer.len() <= 256 && buffer.is_ascii() {
-    v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
-      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
-  } else {
-    v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
-      .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
+  match encoding {
+    0 => {
+      // utf-8
+      if buffer.len() <= 256 && buffer.is_ascii() {
+        v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+      } else {
+        v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
+      }
+    }
+    1 => {
+      // latin1
+      v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
+    }
+    _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
   }
+  .ok_or_else(|| JsErrorBox::from_err(BufferError::StringTooLong))
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -170,6 +240,10 @@ enum BufferError {
   #[class(range)]
   #[property("code" = "ERR_OUT_OF_RANGE")]
   OutOfRange,
+  #[error("The value of \"{0}\" is out of range.")]
+  #[class(range)]
+  #[property("code" = "ERR_OUT_OF_RANGE")]
+  OutOfRangeNamed(String),
 }
 
 #[inline(always)]

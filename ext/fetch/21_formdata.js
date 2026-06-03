@@ -1,22 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
   Blob,
   BlobPrototype,
   File,
   FilePrototype,
-} from "ext:deno_web/09_file.js";
+} = core.loadExtScript("ext:deno_web/09_file.js");
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
@@ -145,11 +137,14 @@ class FormData {
     name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const list = this[entryList];
+    let writeIdx = 0;
     for (let i = 0; i < list.length; i++) {
-      if (list[i].name === name) {
-        ArrayPrototypeSplice(list, i, 1);
-        i--;
+      if (list[i].name !== name) {
+        list[writeIdx++] = list[i];
       }
+    }
+    if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
   }
 
@@ -247,20 +242,22 @@ class FormData {
     const entry = createEntry(name, valueOrBlobValue, filename);
 
     const list = this[entryList];
+    let writeIdx = 0;
     let added = false;
     for (let i = 0; i < list.length; i++) {
       if (list[i].name === name) {
         if (!added) {
-          list[i] = entry;
+          list[writeIdx++] = entry;
           added = true;
-        } else {
-          ArrayPrototypeSplice(list, i, 1);
-          i--;
         }
+      } else {
+        list[writeIdx++] = list[i];
       }
     }
     if (!added) {
       ArrayPrototypePush(list, entry);
+    } else if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
   }
 
@@ -554,10 +551,11 @@ function formDataFromEntries(entries) {
 webidl.converters["FormData"] = webidl
   .createInterfaceConverter("FormData", FormDataPrototype);
 
-export {
+return {
   FormData,
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
 };
+})();

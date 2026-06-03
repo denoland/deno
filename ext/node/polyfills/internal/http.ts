@@ -1,9 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-
-import { setUnrefTimeout } from "node:timers";
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   Date,
   DatePrototypeToUTCString,
@@ -13,7 +11,7 @@ const {
 
 let utcCache: string | undefined;
 
-export function utcDate() {
+function utcDate() {
   if (!utcCache) cache();
   return utcCache;
 }
@@ -21,25 +19,26 @@ export function utcDate() {
 function cache() {
   const d = new Date();
   utcCache = DatePrototypeToUTCString(d);
-  setUnrefTimeout(resetCache, 1000 - DatePrototypeGetMilliseconds(d));
+  core.createSystemTimer(resetCache, 1000 - DatePrototypeGetMilliseconds(d));
 }
 
 function resetCache() {
   utcCache = undefined;
 }
 
-export function emitStatistics(
-  _statistics: { startTime: [number, number] } | null,
-) {
-  notImplemented("internal/http.emitStatistics");
-}
+const kOutHeaders = Symbol("kOutHeaders");
+const kNeedDrain = Symbol("kNeedDrain");
 
-export const kOutHeaders = Symbol("kOutHeaders");
-export const kNeedDrain = Symbol("kNeedDrain");
-
-export default {
+const _defaultExport = {
   utcDate,
-  emitStatistics,
   kOutHeaders,
   kNeedDrain,
 };
+
+return {
+  utcDate,
+  kOutHeaders,
+  kNeedDrain,
+  default: _defaultExport,
+};
+})();

@@ -1,12 +1,13 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   isDate,
   internalRidSymbol,
   createCancelHandle,
 } = core;
-import {
+const {
   op_fs_chdir,
   op_fs_chmod_async,
   op_fs_chmod_sync,
@@ -24,6 +25,8 @@ import {
   op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
+  op_fs_flock_try_async,
+  op_fs_flock_try_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
   op_fs_funlock_sync,
@@ -69,7 +72,7 @@ import {
   op_fs_write_file_async,
   op_fs_write_file_sync,
   op_set_raw,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFilter,
   Date,
@@ -92,14 +95,19 @@ const {
   Uint32Array,
 } = primordials;
 
-import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import {
-  readableStreamForRid,
-  ReadableStreamPrototype,
-  writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+const { read, readSync, write, writeSync } = core.loadExtScript(
+  "ext:deno_io/12_io.js",
+);
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+// Defer loading the 208 KB `06_streams.js` polyfill: these helpers are only
+// used inside File class methods and writeFile-family functions, so pay
+// the parse cost on first use rather than at every startup.
+let _streamsImpl;
+function lazyStreams() {
+  return _streamsImpl ??
+    (_streamsImpl = core.loadExtScript("ext:deno_web/06_streams.js"));
+}
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 
 function chmodSync(path, mode) {
   op_fs_chmod_sync(pathFromURL(path), mode);
@@ -654,14 +662,19 @@ class FsFile {
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.#rid);
+      this.#readable = lazyStreams().readableStreamForRid(this.#rid);
     }
     return this.#readable;
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.#rid);
+      this.#writable = lazyStreams().writableStreamForRid(
+        this.#rid,
+        true,
+        undefined,
+        { bufferSize: 64 * 1024 },
+      );
     }
     return this.#writable;
   }
@@ -707,6 +720,14 @@ class FsFile {
 
   async lock(exclusive = false) {
     await op_fs_flock_async(this.#rid, exclusive);
+  }
+
+  tryLockSync(exclusive = false) {
+    return op_fs_flock_try_sync(this.#rid, exclusive);
+  }
+
+  async tryLock(exclusive = false) {
+    return await op_fs_flock_try_async(this.#rid, exclusive);
   }
 
   unlockSync() {
@@ -841,7 +862,9 @@ async function writeFile(
     options.signal[abortSignal.add](abortHandler);
   }
   try {
-    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
+    if (
+      ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)
+    ) {
       const file = await open(path, {
         mode: options.mode,
         append: options.append ?? false,
@@ -888,7 +911,9 @@ function writeTextFile(
   data,
   options = { __proto__: null },
 ) {
-  if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
+  if (
+    ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)
+  ) {
     return writeFile(
       path,
       data.pipeThrough(new TextEncoderStream()),
@@ -900,7 +925,7 @@ function writeTextFile(
   }
 }
 
-export {
+return {
   chdir,
   chmod,
   chmodSync,
@@ -952,3 +977,4 @@ export {
   writeTextFile,
   writeTextFileSync,
 };
+})();

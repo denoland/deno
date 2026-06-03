@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -18,12 +18,15 @@ use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::ResolveNpmBinaryEntrypointError;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_runtime::CpuProfilerConfig;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::coverage::CoverageCollector;
+use deno_runtime::cpu_prof_filename;
+use deno_runtime::cpu_profiler::CpuProfiler;
+use deno_runtime::deno_os::OpExitCallbacks;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
-use sys_traits::EnvCurrentDir;
 use tokio::select;
 
 use crate::args::CliLockfile;
@@ -41,17 +44,19 @@ pub type CreateHmrRunnerCb = Box<dyn Fn() -> HmrRunnerState + Send + Sync>;
 pub struct CliMainWorkerOptions {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub maybe_coverage_dir: Option<PathBuf>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
   pub needs_test_modules: bool,
-  pub maybe_initial_cwd: Option<Arc<ModuleSpecifier>>,
+  pub initial_cwd: Arc<ModuleSpecifier>,
 }
 
 /// Data shared between the factory and workers.
 struct SharedState {
   pub create_hmr_runner: Option<CreateHmrRunnerCb>,
   pub maybe_coverage_dir: Option<PathBuf>,
+  pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
-  pub maybe_initial_cwd: Option<Arc<ModuleSpecifier>>,
+  pub initial_cwd: Arc<ModuleSpecifier>,
 }
 
 pub struct CliMainWorker {
@@ -71,8 +76,59 @@ impl CliMainWorker {
   }
 
   pub async fn run(&mut self) -> Result<i32, CoreError> {
-    let mut maybe_coverage_collector = self.maybe_setup_coverage_collector();
+    let maybe_coverage_collector = self.maybe_setup_coverage_collector();
+    let maybe_cpu_profiler = self.maybe_setup_cpu_profiler();
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner();
+
+    // Wrap profiler and coverage in Rc<RefCell<Option<...>>> so that
+    // both the normal cleanup path and the Deno.exit() op_exit path
+    // can stop them. Whichever runs first takes the value; the other
+    // finds None and skips.
+    let coverage_cell: Rc<RefCell<Option<CoverageCollector>>> =
+      Rc::new(RefCell::new(maybe_coverage_collector));
+    let profiler_cell: Rc<RefCell<Option<CpuProfiler>>> =
+      Rc::new(RefCell::new(maybe_cpu_profiler));
+
+    // Register exit callbacks so Deno.exit() flushes profiling/coverage
+    // data before calling std::process::exit().
+    {
+      let coverage_for_exit = coverage_cell.clone();
+      let profiler_for_exit = profiler_cell.clone();
+      let inspector = self.worker.js_runtime().inspector();
+      let mut cbs = OpExitCallbacks::default();
+      cbs.push(Box::new(move || {
+        if let Some(mut cc) = coverage_for_exit.borrow_mut().take() {
+          let _ = cc.stop_collecting();
+        }
+      }));
+      cbs.push(Box::new(move || {
+        if let Some(mut cp) = profiler_for_exit.borrow_mut().take() {
+          let _ = cp.stop_profiling();
+        }
+      }));
+      // When an inspector session is connected, notify it that the
+      // execution context is being destroyed before exiting. Without this,
+      // process.exit() would call std::process::exit() immediately,
+      // skipping the normal event-loop shutdown path where V8's
+      // context_destroyed is called and Runtime.executionContextDestroyed
+      // is sent to debuggers.
+      cbs.push(Box::new(move || {
+        let sessions_state = inspector.sessions_state();
+        if sessions_state.has_nonblocking_wait_for_disconnect {
+          inspector.broadcast_context_destroyed();
+          // Sessions that called NodeRuntime.notifyWhenWaitingForDisconnect
+          // get a dedicated notification before the wait loop, instead of
+          // the generic Runtime.executionContextDestroyed.
+          inspector.broadcast_waiting_for_disconnect();
+          // Match Node.js message format that debugger clients rely on
+          log::info!("Waiting for the debugger to disconnect...");
+          inspector.wait_for_sessions_disconnect();
+        }
+      }));
+      self.worker.js_runtime().op_state().borrow_mut().put(cbs);
+    }
+
+    let has_coverage = coverage_cell.borrow().is_some();
 
     // WARNING: Remember to update cli/lib/worker.rs to align with
     // changes made here so that they affect deno_compile as well.
@@ -109,10 +165,7 @@ impl CliMainWorker {
         }
       } else {
         // TODO(bartlomieju): this might not be needed anymore
-        self
-          .worker
-          .run_event_loop(maybe_coverage_collector.is_none())
-          .await?;
+        self.worker.run_event_loop(!has_coverage).await?;
       }
 
       let web_continue = self.worker.dispatch_beforeunload_event()?;
@@ -126,9 +179,13 @@ impl CliMainWorker {
 
     self.worker.dispatch_unload_event()?;
     self.worker.dispatch_process_exit_event()?;
+    self.worker.run_napi_ref_finalizers();
 
-    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
+    if let Some(mut coverage_collector) = coverage_cell.borrow_mut().take() {
       coverage_collector.stop_collecting()?;
+    }
+    if let Some(mut cpu_profiler) = profiler_cell.borrow_mut().take() {
+      cpu_profiler.stop_profiling()?;
     }
     if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
       hmr_runner.stop();
@@ -157,9 +214,16 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), CoreError> {
-        self.inner.execute_main_module().await?;
-        self.inner.worker.dispatch_load_event()?;
+        // Set pending_unload before module execution so that if the future
+        // is cancelled during a top-level await, Drop will still dispatch
+        // the unload event for any handlers registered during partial
+        // module evaluation.
         self.pending_unload = true;
+        if let Err(e) = self.inner.execute_main_module().await {
+          self.pending_unload = false;
+          return Err(e);
+        }
+        self.inner.worker.dispatch_load_event()?;
 
         let result = loop {
           match self.inner.worker.run_event_loop(false).await {
@@ -181,6 +245,7 @@ impl CliMainWorker {
 
         self.inner.worker.dispatch_unload_event()?;
         self.inner.worker.dispatch_process_exit_event()?;
+        self.inner.worker.run_napi_ref_finalizers();
 
         Ok(())
       }
@@ -190,6 +255,7 @@ impl CliMainWorker {
       fn drop(&mut self) {
         if self.pending_unload {
           let _ = self.inner.worker.dispatch_unload_event();
+          let _ = self.inner.worker.dispatch_process_exit_event();
         }
       }
     }
@@ -217,6 +283,24 @@ impl CliMainWorker {
     self.worker.js_runtime().op_state()
   }
 
+  /// Returns a thread-safe handle to the V8 isolate. Used by the test runner
+  /// to install a handle that `op_test_isolate_exit` can call
+  /// `terminate_execution` on.
+  pub fn v8_isolate_handle(&mut self) -> v8::IsolateHandle {
+    self.worker.js_runtime().v8_isolate().thread_safe_handle()
+  }
+
+  /// Reset the V8 "terminating" flag. Called after the test runner detects
+  /// that the isolate's termination was caused by user code calling
+  /// `Deno.exit()`; this lets us cleanly tear down the worker.
+  pub fn cancel_terminate_execution(&mut self) {
+    self
+      .worker
+      .js_runtime()
+      .v8_isolate()
+      .cancel_terminate_execution();
+  }
+
   pub fn maybe_setup_hmr_runner(&mut self) -> Option<HmrRunner> {
     let setup_hmr_runner = self.shared.create_hmr_runner.as_ref()?;
 
@@ -240,6 +324,23 @@ impl CliMainWorker {
     coverage_collector.start_collecting();
 
     Some(coverage_collector)
+  }
+
+  pub fn maybe_setup_cpu_profiler(&mut self) -> Option<CpuProfiler> {
+    let config = self.shared.maybe_cpu_prof_config.as_ref()?;
+    let filename = cpu_prof_filename(config, None);
+
+    let mut cpu_profiler = CpuProfiler::new(
+      self.worker.js_runtime(),
+      config.dir.clone(),
+      filename,
+      config.interval,
+      config.md,
+      config.flamegraph,
+    );
+    cpu_profiler.start_profiling();
+
+    Some(cpu_profiler)
   }
 
   pub fn execute_script_static(
@@ -286,13 +387,12 @@ pub struct CliMainWorkerFactory {
   progress_bar: ProgressBar,
   root_permissions: PermissionsContainer,
   shared: Arc<SharedState>,
-  sys: CliSys,
   default_npm_caching_strategy: NpmCachingStrategy,
   needs_test_modules: bool,
 }
 
 impl CliMainWorkerFactory {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
@@ -300,7 +400,6 @@ impl CliMainWorkerFactory {
     npm_installer: Option<Arc<CliNpmInstaller>>,
     npm_resolver: CliNpmResolver,
     progress_bar: ProgressBar,
-    sys: CliSys,
     options: CliMainWorkerOptions,
     root_permissions: PermissionsContainer,
   ) -> Self {
@@ -311,12 +410,12 @@ impl CliMainWorkerFactory {
       npm_resolver,
       progress_bar,
       root_permissions,
-      sys,
       shared: Arc::new(SharedState {
         create_hmr_runner: options.create_hmr_runner,
         maybe_coverage_dir: options.maybe_coverage_dir,
+        maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         maybe_file_watcher_communicator,
-        maybe_initial_cwd: options.maybe_initial_cwd,
+        initial_cwd: options.initial_cwd,
       }),
       default_npm_caching_strategy: options.default_npm_caching_strategy,
       needs_test_modules: options.needs_test_modules,
@@ -328,12 +427,14 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
         mode,
         main_module,
         preload_modules,
+        require_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -347,6 +448,7 @@ impl CliMainWorkerFactory {
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
@@ -354,6 +456,7 @@ impl CliMainWorkerFactory {
         mode,
         main_module,
         preload_modules,
+        require_modules,
         self.root_permissions.clone(),
         vec![],
         Default::default(),
@@ -362,44 +465,55 @@ impl CliMainWorkerFactory {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub async fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
     preload_modules: Vec<ModuleSpecifier>,
+    require_modules: Vec<ModuleSpecifier>,
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
-    let main_module = match NpmPackageReqReference::from_specifier(&main_module)
-    {
-      Ok(package_ref) => {
-        if let Some(npm_installer) = &self.npm_installer {
-          let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
-          let reqs = &[package_ref.req().clone()];
-          npm_installer
-            .add_package_reqs(
-              reqs,
-              if matches!(
-                self.default_npm_caching_strategy,
-                NpmCachingStrategy::Lazy
-              ) {
-                PackageCaching::Only(reqs.into())
-              } else {
-                PackageCaching::All
-              },
-            )
-            .await
-            .map_err(CreateCustomWorkerError::NpmPackageReq)?;
-        }
+    let main_module_npm_ref =
+      NpmPackageReqReference::from_specifier(&main_module).ok();
+    let mut npm_reqs = Vec::new();
+    if let Some(package_ref) = &main_module_npm_ref {
+      npm_reqs.push(package_ref.req().clone());
+    }
+    for specifier in preload_modules.iter().chain(require_modules.iter()) {
+      if let Ok(package_ref) = NpmPackageReqReference::from_specifier(specifier)
+      {
+        npm_reqs.push(package_ref.req().clone());
+      }
+    }
 
+    if !npm_reqs.is_empty()
+      && let Some(npm_installer) = &self.npm_installer
+    {
+      let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
+      npm_installer
+        .add_package_reqs(
+          &npm_reqs,
+          if matches!(
+            self.default_npm_caching_strategy,
+            NpmCachingStrategy::Lazy
+          ) {
+            PackageCaching::Only(npm_reqs.as_slice().into())
+          } else {
+            PackageCaching::All
+          },
+        )
+        .await
+        .map_err(CreateCustomWorkerError::NpmPackageReq)?;
+    }
+
+    let main_module = match main_module_npm_ref {
+      Some(package_ref) => {
         // use a fake referrer that can be used to discover the package.json if necessary
-        let referrer =
-          ModuleSpecifier::from_directory_path(self.sys.env_current_dir()?)
-            .unwrap()
-            .join("package.json")?;
+        let referrer = self.shared.initial_cwd.join("package.json")?;
         let package_folder =
           self.npm_resolver.resolve_pkg_folder_from_deno_module_req(
             package_ref.req(),
@@ -420,13 +534,14 @@ impl CliMainWorkerFactory {
 
         main_module
       }
-      _ => main_module,
+      None => main_module,
     };
 
     let mut worker = self.lib_main_worker_factory.create_custom_worker(
       mode,
       main_module,
       preload_modules,
+      require_modules,
       permissions,
       custom_extensions,
       stdio,
@@ -447,18 +562,17 @@ impl CliMainWorkerFactory {
         "40_test.js",
         "40_bench.js",
         "40_jupyter.js",
+        "jupyter_kernel.js",
         // TODO(bartlomieju): probably shouldn't include these files here?
         "40_lint_selector.js",
         "40_lint.js"
       );
     }
 
-    if let Some(initial_cwd) = &self.shared.maybe_initial_cwd {
-      let op_state = worker.js_runtime().op_state();
-      op_state
-        .borrow_mut()
-        .put(deno_core::error::InitialCwd(initial_cwd.clone()));
-    }
+    let op_state = worker.js_runtime().op_state();
+    op_state.borrow_mut().put(deno_core::error::InitialCwd(
+      self.shared.initial_cwd.clone(),
+    ));
 
     Ok(CliMainWorker {
       worker,
@@ -467,8 +581,8 @@ impl CliMainWorkerFactory {
   }
 }
 
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::rc::Rc;
@@ -483,10 +597,11 @@ mod tests {
   use deno_runtime::worker::WorkerServiceOptions;
 
   use super::*;
+  use crate::util::env::resolve_cwd;
 
   fn create_test_worker() -> MainWorker {
     let main_module =
-      resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
+      resolve_path("./hello.js", &resolve_cwd(None).unwrap()).unwrap();
     let fs = Arc::new(RealFs);
     let permission_desc_parser = Arc::new(
       RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
@@ -562,8 +677,7 @@ mod tests {
     // "foo" is not a valid module specifier so this should return an error.
     let mut worker = create_test_worker();
     let module_specifier =
-      resolve_path("./does-not-exist", &std::env::current_dir().unwrap())
-        .unwrap();
+      resolve_path("./does-not-exist", &resolve_cwd(None).unwrap()).unwrap();
     let result = worker.execute_main_module(&module_specifier).await;
     assert!(result.is_err());
   }

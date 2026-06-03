@@ -9,8 +9,9 @@ Initialize @denotest/basic@1.0.0
 Installed 2 packages in [WILDLINE]
 Reused 0 packages from cache
 Downloaded 0 packages from JSR
-Downloaded 4 packages from npm
-++++
+Downloaded 2 packages from npm
+++
 
 Dependencies:
 [WILDCARD]
+

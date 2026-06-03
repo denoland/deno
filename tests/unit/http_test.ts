@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // @ts-nocheck `Deno.serveHttp()` was soft-removed in Deno 2.
 
 // deno-lint-ignore-file no-deprecated-deno-api
@@ -2714,6 +2714,53 @@ Deno.test(
 
     const response = await promise;
     assertEquals(response, null);
+  },
+);
+
+// `respondWith` on a Response-like object (prototype chain matches `Response`
+// but the internal slot is missing — e.g. a subclass that skipped super(), or
+// a Response from a different realm/polyfill) must reject with a clear
+// TypeError instead of crashing on `innerResp.body`. Mirrors the Deno.serve
+// guard added in https://github.com/denoland/deno/pull/34416.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRespondWithResponseLike() {
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
+    const serverPromise = (async () => {
+      const listener = Deno.listen({ port: listenPort });
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { respondWith } = e;
+      const fake = Object.create(Response.prototype);
+      Object.defineProperty(fake, "type", { value: "default" });
+      Object.defineProperty(fake, "bodyUsed", { value: false });
+      const err = await assertRejects(
+        () => respondWith(fake),
+        TypeError,
+      );
+      assert(
+        err.message.includes(
+          "First argument to 'respondWith' must be a Response",
+        ),
+        `unexpected message: ${err.message}`,
+      );
+      assert(
+        err.message.includes("constructor in this realm"),
+        `unexpected message: ${err.message}`,
+      );
+    })();
+
+    const conn = await Deno.connect({ port: listenPort });
+    const body =
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:${listenPort}\r\nConnection: close\r\n\r\n`;
+    await conn.write(new TextEncoder().encode(body));
+    await serverPromise;
+    conn.close();
+    httpConn!.close();
   },
 );
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -130,6 +130,53 @@ for (const { name, value } of VALUE_CASES) {
     assertEquals(result.value, value);
   });
 }
+
+dbTest("set and get Blob value", async (db) => {
+  const blob = new Blob(["Hello, world!"], { type: "text/plain" });
+  await db.set(["a"], blob);
+  const result = await db.get<Blob>(["a"]);
+  assert(result.value instanceof Blob);
+  assertEquals(result.value.type, "text/plain");
+  assertEquals(await result.value.text(), "Hello, world!");
+});
+
+dbTest("set and get File value", async (db) => {
+  const file = new File(["contents"], "name.txt", {
+    type: "text/plain",
+    lastModified: 12345,
+  });
+  await db.set(["a"], file);
+  const result = await db.get<File>(["a"]);
+  assert(result.value instanceof File);
+  assertEquals(result.value.name, "name.txt");
+  assertEquals(result.value.type, "text/plain");
+  assertEquals(result.value.lastModified, 12345);
+  assertEquals(await result.value.text(), "contents");
+});
+
+dbTest("set and get DOMException value", async (db) => {
+  const ex = new DOMException("oops", "DataCloneError");
+  await db.set(["a"], ex);
+  const result = await db.get<DOMException>(["a"]);
+  assert(result.value instanceof DOMException);
+  assertEquals(result.value.name, "DataCloneError");
+  assertEquals(result.value.message, "oops");
+});
+
+dbTest("set and get CryptoKey value", async (db) => {
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  await db.set(["a"], key);
+  const result = await db.get<CryptoKey>(["a"]);
+  assert(result.value instanceof CryptoKey);
+  assertEquals(result.value.type, "secret");
+  const algorithm = result.value.algorithm as AesKeyAlgorithm;
+  assertEquals(algorithm.name, "AES-GCM");
+  assertEquals(algorithm.length, 256);
+});
 
 dbTest("set and get recursive object", async (db) => {
   // deno-lint-ignore no-explicit-any

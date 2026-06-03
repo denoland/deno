@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -181,6 +181,38 @@ impl JsrCacheResolver {
         .join(&format!("{}/{}/{}", &nv.name, &nv.version, &path))
         .ok()
     }
+  }
+
+  pub fn auto_import_resource_urls(
+    &self,
+    req_ref: &JsrPackageReqReference,
+  ) -> Vec<ModuleSpecifier> {
+    let req = req_ref.req().clone();
+    let Some(nv) = self.req_to_nv(&req) else {
+      return Vec::new();
+    };
+    let Some(info) = self.package_version_info(&nv) else {
+      return Vec::new();
+    };
+    let maybe_export_prefix = req_ref.sub_path().map(|s| s.trim_matches('/'));
+    info
+      .exports()
+      .filter_map(|(export, _)| {
+        let export = export.strip_prefix("./").unwrap_or(export);
+        if let Some(export_prefix) = maybe_export_prefix
+          && !export.starts_with(export_prefix)
+        {
+          return None;
+        }
+        let req_ref = if export == "." {
+          JsrPackageReqReference::from_str(&format!("jsr:{req}")).ok()?
+        } else {
+          JsrPackageReqReference::from_str(&format!("jsr:{req}/{export}"))
+            .ok()?
+        };
+        self.jsr_to_resource_url(&req_ref)
+      })
+      .collect()
   }
 
   pub fn lookup_bare_specifier_for_workspace_file(

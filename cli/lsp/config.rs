@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -35,13 +35,13 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::NpmInstallerFactory;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
+use deno_npmrc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_package_json::PackageJsonCacheResult;
 use deno_path_util::url_to_file_path;
@@ -69,7 +69,9 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::logging::lsp_warn;
 use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::NpmPackumentFormat;
 use crate::sys::CliSys;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -265,18 +267,13 @@ impl Default for InlayHintsParamNamesOptions {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum InlayHintsParamNamesEnabled {
+  #[default]
   None,
   Literals,
   All,
-}
-
-impl Default for InlayHintsParamNamesEnabled {
-  fn default() -> Self {
-    Self::None
-  }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -379,47 +376,38 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   Ok(o.filter(|s| !s.is_empty()))
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ImportModuleSpecifier {
   NonRelative,
   ProjectRelative,
   Relative,
+  #[default]
   Shortest,
 }
 
-impl Default for ImportModuleSpecifier {
-  fn default() -> Self {
-    Self::Shortest
-  }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum JsxAttributeCompletionStyle {
+  #[default]
   Auto,
   Braces,
   None,
 }
 
-impl Default for JsxAttributeCompletionStyle {
-  fn default() -> Self {
-    Self::Auto
-  }
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum QuoteStyle {
+  #[default]
   Auto,
   Double,
   Single,
-}
-
-impl Default for QuoteStyle {
-  fn default() -> Self {
-    Self::Auto
-  }
 }
 
 impl From<&FmtOptionsConfig> for QuoteStyle {
@@ -481,18 +469,15 @@ pub struct UpdateImportsOnFileMoveOptions {
   pub enabled: UpdateImportsOnFileMoveEnabled,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(
+  Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum UpdateImportsOnFileMoveEnabled {
   Always,
+  #[default]
   Prompt,
   Never,
-}
-
-impl Default for UpdateImportsOnFileMoveEnabled {
-  fn default() -> Self {
-    Self::Prompt
-  }
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -596,6 +581,13 @@ pub struct WorkspaceSettings {
   #[serde(default = "default_document_preload_limit")]
   pub document_preload_limit: usize,
 
+  /// Disables the server-capability for pull diagnostics to force push-based
+  /// diagnostics. NOTE: This is read and stored from the initialization
+  /// options. This value may be updated on configuration change events but
+  /// the new value will be ignored.
+  #[serde(default)]
+  pub force_push_based_diagnostics: bool,
+
   #[serde(default)]
   pub suggest: DenoCompletionSettings,
 
@@ -643,6 +635,7 @@ impl Default for WorkspaceSettings {
       log_file: false,
       lint: true,
       document_preload_limit: default_document_preload_limit(),
+      force_push_based_diagnostics: false,
       suggest: Default::default(),
       testing: Default::default(),
       tls_certificate: None,
@@ -855,37 +848,34 @@ impl Settings {
   pub fn path_enabled(&self, path: &Path) -> Option<bool> {
     let (settings, mut folder_uri) = self.get_for_path(path);
     folder_uri = folder_uri.or(self.first_folder.as_ref());
-    let mut disable_paths = vec![];
-    let mut enable_paths = None;
-    if let Some(folder_uri) = folder_uri
+    let enabled = if let Some(folder_uri) = folder_uri
       && let Ok(folder_path) = url_to_file_path(folder_uri)
     {
-      disable_paths = settings
-        .disable_paths
-        .iter()
-        .map(|p| folder_path.join(p))
-        .collect::<Vec<_>>();
-      enable_paths = settings.enable_paths.as_ref().map(|enable_paths| {
-        enable_paths
-          .iter()
-          .map(|p| folder_path.join(p))
-          .collect::<Vec<_>>()
-      });
-    }
-
-    if disable_paths.iter().any(|p| path.starts_with(p)) {
-      Some(false)
-    } else if let Some(enable_paths) = &enable_paths {
-      for enable_path in enable_paths {
-        // Also enable if the checked path is a dir containing an enabled path.
-        if path.starts_with(enable_path) || enable_path.starts_with(path) {
-          return Some(true);
-        }
-      }
-      Some(false)
+      path_enabled_for_settings(settings, &folder_path, path)
     } else {
       settings.enable
+    };
+    if enabled != Some(false) {
+      return enabled;
     }
+
+    // If the path is an ancestor of a separately enabled workspace folder, it
+    // must remain enabled so the workspace walk can reach that folder.
+    for (folder_uri, settings) in &self.by_workspace_folder {
+      let Some(settings) = settings else {
+        continue;
+      };
+      let Ok(folder_path) = url_to_file_path(folder_uri) else {
+        continue;
+      };
+      if !folder_path.starts_with(path) {
+        continue;
+      }
+      if path_enabled_for_settings(settings, &folder_path, path) == Some(true) {
+        return Some(true);
+      }
+    }
+    enabled
   }
 
   /// Returns `None` if the value should be deferred to the presence of a
@@ -953,6 +943,32 @@ impl Settings {
     }
     hasher.write_hashable(&self.first_folder);
     hasher.finish()
+  }
+}
+
+fn path_enabled_for_settings(
+  settings: &WorkspaceSettings,
+  folder_path: &Path,
+  path: &Path,
+) -> Option<bool> {
+  let disable_paths = settings
+    .disable_paths
+    .iter()
+    .map(|p| folder_path.join(p))
+    .collect::<Vec<_>>();
+  if disable_paths.iter().any(|p| path.starts_with(p)) {
+    return Some(false);
+  }
+  if let Some(enable_paths) = &settings.enable_paths {
+    for enable_path in enable_paths.iter().map(|p| folder_path.join(p)) {
+      // Also enable if the checked path is a dir containing an enabled path.
+      if path.starts_with(&enable_path) || enable_path.starts_with(path) {
+        return Some(true);
+      }
+    }
+    Some(false)
+  } else {
+    settings.enable
   }
 }
 
@@ -1053,9 +1069,12 @@ impl Config {
       | MediaType::Dcts
       | MediaType::Tsx => Some(&workspace_settings.typescript),
       MediaType::Json
+      | MediaType::Jsonc
+      | MediaType::Json5
       | MediaType::Wasm
       | MediaType::Css
       | MediaType::Html
+      | MediaType::Markdown
       | MediaType::SourceMap
       | MediaType::Sql
       | MediaType::Unknown => None,
@@ -1086,7 +1105,7 @@ impl Config {
   }
 
   pub fn uri_enabled(&self, uri: &Uri) -> bool {
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("deno")) {
+    if uri.scheme().as_str().eq_ignore_ascii_case("deno") {
       return true;
     }
     self.specifier_enabled(&uri_to_url(uri))
@@ -1186,7 +1205,7 @@ impl Config {
   pub fn diagnostic_refresh_capable(&self) -> bool {
     (|| {
       let workspace = self.client_capabilities.workspace.as_ref()?;
-      workspace.diagnostic.as_ref()?.refresh_support
+      workspace.diagnostics.as_ref()?.refresh_support
     })()
     .unwrap_or(false)
   }
@@ -1223,6 +1242,14 @@ impl Config {
     })()
     .unwrap_or(false)
   }
+
+  pub fn client_provided_organize_imports_capable(&self) -> bool {
+    (|| {
+      let experimental = self.client_capabilities.experimental.as_ref()?;
+      experimental.get("clientProvidedOrganizeImports")?.as_bool()
+    })()
+    .unwrap_or(false)
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1255,7 +1282,7 @@ pub struct ConfigData {
 }
 
 impl ConfigData {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   async fn load(
     specified_config: Option<&Path>,
     scope: &Arc<Url>,
@@ -1288,7 +1315,10 @@ impl ConfigData {
             deno_json_cache: Some(deno_json_cache),
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
-            discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
+            discover_pkg_json: !has_flag_env_var(
+              &CliSys::default(),
+              "DENO_NO_PACKAGE_JSON",
+            ),
             maybe_vendor_override: None,
           },
         )
@@ -1391,7 +1421,7 @@ impl ConfigData {
       Some(Arc::new(specifier))
     })();
 
-    if let Some(deno_json) = member_dir.maybe_deno_json() {
+    if let Some(deno_json) = member_dir.member_deno_json() {
       lsp_log!(
         "  Resolved Deno configuration file: \"{}\"",
         deno_json.specifier
@@ -1403,7 +1433,7 @@ impl ConfigData {
       );
     }
 
-    if let Some(pkg_json) = member_dir.maybe_pkg_json() {
+    if let Some(pkg_json) = member_dir.member_pkg_json() {
       lsp_log!("  Resolved package.json: \"{}\"", pkg_json.specifier());
 
       add_watched_file(
@@ -1439,6 +1469,7 @@ impl ConfigData {
           &member_dir.workspace,
           byonm,
         )),
+        node_modules_linker: None,
         no_lock: false,
         no_npm: false,
         npm_process_state: None,
@@ -1467,8 +1498,8 @@ impl ConfigData {
         package_json_cache: None,
         package_json_dep_resolution: None,
         specified_import_map: None,
-        types_node_version_req: Some(crate::npm::get_types_node_version_req()),
         unstable_sloppy_imports: false,
+        require_modules: vec![],
       },
     );
     let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
@@ -1480,14 +1511,19 @@ impl ConfigData {
           // will only happen in the tests
           .unwrap_or_else(|| Arc::new(HttpClientProvider::new(None, None))),
         pb.clone(),
+        NpmPackumentFormat::Abbreviated,
       )),
       Arc::new(NullLifecycleScriptsExecutor),
       pb,
       None,
       NpmInstallerFactoryOptions {
+        clean_on_install: false,
+        dedup_lockfile_peer_variants: false,
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
+        production: false,
+        skip_types: false,
         resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
       },
     );
@@ -1586,17 +1622,17 @@ impl ConfigData {
         ConfigWatchedFileType::ImportMap,
       );
     }
+    let is_config_import_map = member_dir
+      .member_deno_json()
+      .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+      .or_else(|| {
+        member_dir
+          .workspace
+          .root_deno_json()
+          .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
+      })
+      .unwrap_or(false);
     let mut import_map_from_settings = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
       if is_config_import_map {
         None
       } else {
@@ -1609,16 +1645,6 @@ impl ConfigData {
     };
 
     let specified_import_map = {
-      let is_config_import_map = member_dir
-        .maybe_deno_json()
-        .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        .or_else(|| {
-          member_dir
-            .workspace
-            .root_deno_json()
-            .map(|c| c.is_an_import_map() || c.json.import_map.is_some())
-        })
-        .unwrap_or(false);
       if is_config_import_map {
         import_map_from_settings = None;
       }
@@ -1685,11 +1711,11 @@ impl ConfigData {
   pub fn maybe_deno_json(
     &self,
   ) -> Option<&Arc<deno_config::deno_json::ConfigFile>> {
-    self.member_dir.maybe_deno_json()
+    self.member_dir.member_or_root_deno_json()
   }
 
   pub fn maybe_pkg_json(&self) -> Option<&Arc<deno_package_json::PackageJson>> {
-    self.member_dir.maybe_pkg_json()
+    self.member_dir.member_or_root_pkg_json()
   }
 
   pub fn scope_contains_specifier(&self, specifier: &ModuleSpecifier) -> bool {
@@ -1742,16 +1768,16 @@ impl ConfigTree {
   pub fn config_files(&self) -> Vec<&Arc<ConfigFile>> {
     self
       .scopes
-      .iter()
-      .filter_map(|(_, d)| d.maybe_deno_json())
+      .values()
+      .filter_map(|d| d.maybe_deno_json())
       .collect()
   }
 
   pub fn package_jsons(&self) -> Vec<&Arc<PackageJson>> {
     self
       .scopes
-      .iter()
-      .filter_map(|(_, d)| d.maybe_pkg_json())
+      .values()
+      .filter_map(|d| d.maybe_pkg_json())
       .collect()
   }
 
@@ -1852,7 +1878,7 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    let fs_root_url = std::fs::canonicalize("/")
+    let fs_root_url = canonicalize_path(Path::new("/"))
       .ok()
       .and_then(|p| Url::from_directory_path(p).ok())
       .unwrap_or_else(|| Url::parse("file:///").unwrap());
@@ -2162,6 +2188,7 @@ mod tests {
         log_file: false,
         lint: true,
         document_preload_limit: 1_000,
+        force_push_based_diagnostics: false,
         suggest: DenoCompletionSettings {
           imports: ImportCompletionSettings {
             auto_discover: true,
@@ -2353,6 +2380,71 @@ mod tests {
       vec![],
     );
     assert!(!config.specifier_enabled(&root_uri.join("mod.ts").unwrap()));
+  }
+
+  #[test]
+  fn config_path_enabled_for_nested_workspace_folder() {
+    let root_uri = root_dir();
+    let shared_uri = root_uri.join("shared/").unwrap();
+    let backend_uri = root_uri.join("apps/backend/").unwrap();
+    let web_uri = root_uri.join("apps/web/").unwrap();
+    let mut config = Config::new_with_roots(vec![
+      shared_uri.clone(),
+      backend_uri.clone(),
+      web_uri.clone(),
+      root_uri.clone(),
+    ]);
+    config.set_workspace_settings(
+      WorkspaceSettings {
+        enable: Some(false),
+        ..Default::default()
+      },
+      vec![
+        (
+          Arc::new(shared_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(backend_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(web_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(root_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+      ],
+    );
+
+    assert!(
+      config.settings.path_enabled(
+        &url_to_file_path(&root_uri.join("apps/").unwrap()).unwrap()
+      ) == Some(true)
+    );
+    assert!(
+      config.specifier_enabled(&backend_uri.join("src/main.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled(&root_uri.join("apps/web/main.ts").unwrap())
+    );
+    assert!(!config.specifier_enabled(
+      &root_uri.join("shared/ts/core/src/index.ts").unwrap()
+    ));
   }
 
   #[tokio::test]

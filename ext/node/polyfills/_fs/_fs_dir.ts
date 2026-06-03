@@ -1,13 +1,15 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   type Dirent,
   direntFromDeno,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { assert } from "ext:deno_node/_util/asserts.ts";
-import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";
-import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const { ERR_MISSING_ARGS } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 
 const {
   Promise,
@@ -15,6 +17,8 @@ const {
   Uint8ArrayPrototype,
   PromisePrototypeThen,
   SymbolAsyncIterator,
+  SymbolAsyncDispose,
+  SymbolDispose,
   ArrayIteratorPrototypeNext,
   AsyncGeneratorPrototypeNext,
   SymbolIterator,
@@ -50,12 +54,16 @@ export default class Dir {
         AsyncGeneratorPrototypeNext(this.#asyncIterator),
         (iteratorResult) => {
           resolve(
-            iteratorResult.done ? null : direntFromDeno(iteratorResult.value),
+            iteratorResult.done
+              ? null
+              : direntFromDeno(iteratorResult.value, this.#dirPath),
           );
           if (callback) {
             callback(
               null,
-              iteratorResult.done ? null : direntFromDeno(iteratorResult.value),
+              iteratorResult.done
+                ? null
+                : direntFromDeno(iteratorResult.value, this.#dirPath),
             );
           }
         },
@@ -78,7 +86,7 @@ export default class Dir {
     if (iteratorResult.done) {
       return null;
     } else {
-      return direntFromDeno(iteratorResult.value);
+      return direntFromDeno(iteratorResult.value, this.#dirPath);
     }
   }
 
@@ -104,6 +112,14 @@ export default class Dir {
    */
   closeSync() {
     //No op
+  }
+
+  [SymbolDispose]() {
+    this.closeSync();
+  }
+
+  [SymbolAsyncDispose](): Promise<void> {
+    return this.close();
   }
 
   async *[SymbolAsyncIterator](): AsyncIterableIterator<Dirent> {

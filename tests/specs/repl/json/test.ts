@@ -3,6 +3,7 @@ const {
   getExtraPipeRids,
   writableStreamForRid,
   readableStreamForRid,
+  core: { close },
 } = Deno[Deno.internal];
 
 const command = new Deno.Command(Deno.execPath(), {
@@ -99,3 +100,8 @@ const readable = readableStreamForRid(pipeRid);
   console.log(JSON.parse(new TextDecoder().decode(value)));
   reader.releaseLock();
 }
+
+// Test EOF (ctrl+d): closing the underlying socket should cause a clean exit
+close(pipeRid);
+const status = await child.status;
+console.log(status.code);

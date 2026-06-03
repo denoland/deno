@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assert, assertEquals, assertRejects } from "./test_util.ts";
 
 // just a hack to get a body object
@@ -31,6 +31,29 @@ Deno.test(async function arrayBufferFromByteArrays() {
     const text = new TextDecoder("utf-8").decode(await body.arrayBuffer());
     assertEquals(text, "ahoyhoy8");
   }
+});
+
+// Regression test: set/delete on a FormData with many entries sharing a name
+// must run in linear time. A quadratic implementation would take many seconds
+// (or minutes) at this size; the linear implementation finishes in
+// milliseconds. The 5s bound is intentionally loose to avoid CI flakes.
+Deno.test(function formDataSetDeleteManyDuplicatesIsLinear() {
+  const N = 20_000;
+
+  const a = new FormData();
+  for (let i = 0; i < N; i++) a.append("dup", String(i));
+  const t1 = performance.now();
+  a.delete("dup");
+  assert(performance.now() - t1 < 5_000);
+  assertEquals(a.get("dup"), null);
+
+  const b = new FormData();
+  for (let i = 0; i < N; i++) b.append("dup", String(i));
+  const t2 = performance.now();
+  b.set("dup", "final");
+  assert(performance.now() - t2 < 5_000);
+  assertEquals(b.get("dup"), "final");
+  assertEquals(b.getAll("dup").length, 1);
 });
 
 //FormData

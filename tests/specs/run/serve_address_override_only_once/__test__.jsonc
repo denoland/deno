@@ -1,0 +1,11 @@
+{
+  "tests": {
+    "serve_address_override_only_once": {
+      "args": "run --allow-net main.ts",
+      "envs": {
+        "DENO_SERVE_ADDRESS": "tcp:127.0.0.1:9001"
+      },
+      "output": "main.out"
+    }
+  }
+}

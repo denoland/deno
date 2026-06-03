@@ -1,28 +1,32 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_url_get_serialization,
   op_url_parse,
   op_url_parse_search_params,
   op_url_parse_with_base,
   op_url_reparse,
   op_url_stringify_search_params,
-} from "ext:core/ops";
+} = core.ops;
 const {
-  ArrayIsArray,
+  ArrayFrom,
+  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSome,
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
+  ObjectGetOwnPropertyDescriptor,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  ReflectOwnKeys,
   SafeArrayIterator,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
@@ -33,11 +37,18 @@ const {
   Uint32Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "./01_console.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
 
 const _list = Symbol("list");
 const _urlObject = Symbol("url object");
+
+// Pre-frozen argument-name arrays used to produce Node-compatible
+// `ERR_MISSING_ARGS` messages from `webidl.requiredArguments`.
+const NAME_ARG_NAMES = ["name"];
+const APPEND_ARG_NAMES = ["name", "value"];
 
 // WARNING: must match rust code's UrlSetter::*
 const SET_HASH = 0;
@@ -109,48 +120,118 @@ class URLSearchParams {
   /**
    * @param {string | [string][] | Record<string, string>} init
    */
-  constructor(init = "") {
-    const prefix = "Failed to construct 'URL'";
-    init = webidl.converters
-      ["sequence<sequence<USVString>> or record<USVString, USVString> or USVString"](
-        init,
-        prefix,
-        "Argument 1",
-      );
+  constructor(init = undefined) {
     this[webidl.brand] = webidl.brand;
-    if (!init) {
-      // if there is no query string, return early
+    // Node treats `null` and `undefined` as a missing argument (empty params).
+    // The WHATWG spec would stringify them via the union conversion, but
+    // browsers actually never observe this case in practice; matching Node
+    // here unblocks node:url compat without affecting WPT.
+    if (init === null || init === undefined) {
       this[_list] = [];
       return;
     }
 
-    if (typeof init === "string") {
-      // Overload: USVString
-      // If init is a string and starts with U+003F (?),
-      // remove the first code point from init.
-      if (init[0] == "?") {
-        init = StringPrototypeSlice(init, 1);
-      }
-      this[_list] = op_url_parse_search_params(init);
-    } else if (ArrayIsArray(init)) {
-      // Overload: sequence<sequence<USVString>>
-      this[_list] = ArrayPrototypeMap(init, (pair, i) => {
-        if (pair.length !== 2) {
-          throw new TypeError(
-            `${prefix}: Item ${
-              i + 0
-            } in the parameter list does have length 2 exactly`,
-          );
+    if (typeof init === "object" || typeof init === "function") {
+      // Object overloads: either iterable of pairs or a record.
+      const method = init[SymbolIterator];
+      if (method !== undefined && method !== null) {
+        if (typeof method !== "function") {
+          const err = new TypeError("Query pairs must be iterable");
+          err.code = "ERR_ARG_NOT_ITERABLE";
+          throw err;
         }
-        return [pair[0], pair[1]];
-      });
-    } else {
-      // Overload: record<USVString, USVString>
-      this[_list] = ArrayPrototypeMap(
-        ObjectKeys(init),
-        (key) => [key, init[key]],
-      );
+        // Sequence<sequence<USVString>>
+        const pairs = [];
+        // deno-lint-ignore prefer-primordials
+        const iter = method.call(init);
+        if (iter == null || typeof iter.next !== "function") {
+          const err = new TypeError(
+            "Each query pair must be an iterable [name, value] tuple",
+          );
+          err.code = "ERR_INVALID_TUPLE";
+          throw err;
+        }
+        while (true) {
+          // deno-lint-ignore prefer-primordials
+          const res = iter.next();
+          if (res == null) {
+            const err = new TypeError(
+              "Each query pair must be an iterable [name, value] tuple",
+            );
+            err.code = "ERR_INVALID_TUPLE";
+            throw err;
+          }
+          if (res.done === true) break;
+          const pair = res.value;
+          if (
+            (typeof pair !== "object" && typeof pair !== "function") ||
+            pair === null ||
+            typeof pair[SymbolIterator] !== "function"
+          ) {
+            const err = new TypeError(
+              "Each query pair must be an iterable [name, value] tuple",
+            );
+            err.code = "ERR_INVALID_TUPLE";
+            throw err;
+          }
+          const entry = [];
+          for (const v of new SafeArrayIterator(ArrayFrom(pair))) {
+            ArrayPrototypePush(
+              entry,
+              webidl.converters.USVString(v, undefined, undefined),
+            );
+          }
+          if (entry.length !== 2) {
+            const err = new TypeError(
+              "Each query pair must be an iterable [name, value] tuple",
+            );
+            err.code = "ERR_INVALID_TUPLE";
+            throw err;
+          }
+          ArrayPrototypePush(pairs, entry);
+        }
+        this[_list] = pairs;
+        return;
+      }
+      // Record<USVString, USVString>. We iterate own enumerable keys
+      // (including Symbol keys so USVString coercion throws on them, like
+      // Node does) and dedupe by the USVString-coerced name so that two keys
+      // collapsing to U+FFFD overwrite each other instead of appearing twice
+      // in the iterator output.
+      const result = { __proto__: null };
+      const allKeys = ReflectOwnKeys(init);
+      for (let i = 0; i < allKeys.length; i++) {
+        const key = allKeys[i];
+        const desc = ObjectGetOwnPropertyDescriptor(init, key);
+        if (desc !== undefined && desc.enumerable === true) {
+          const name = webidl.converters.USVString(key, undefined, undefined);
+          const value = webidl.converters.USVString(
+            init[key],
+            undefined,
+            undefined,
+          );
+          result[name] = value;
+        }
+      }
+      const list = [];
+      const resultKeys = ObjectKeys(result);
+      for (let i = 0; i < resultKeys.length; i++) {
+        ArrayPrototypePush(list, [resultKeys[i], result[resultKeys[i]]]);
+      }
+      this[_list] = list;
+      return;
     }
+
+    // USVString overload.
+    let str = webidl.converters.USVString(init, undefined, undefined);
+    if (str.length === 0) {
+      this[_list] = [];
+      return;
+    }
+    if (str[0] === "?") {
+      str = StringPrototypeSlice(str, 1);
+    }
+    this[_list] = op_url_parse_search_params(str);
   }
 
   #updateUrlSearch() {
@@ -167,9 +248,9 @@ class URLSearchParams {
    * @param {string} value
    */
   append(name, value) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
+    webidl.requiredArguments(arguments.length, 2, prefix, APPEND_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     value = webidl.converters.USVString(value, prefix, "Argument 2");
     ArrayPrototypePush(this[_list], [name, value]);
@@ -181,29 +262,29 @@ class URLSearchParams {
    * @param {string} [value]
    */
   delete(name, value = undefined) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const list = this[_list];
-    let i = 0;
+    let writeIdx = 0;
     if (value === undefined) {
-      while (i < list.length) {
-        if (list[i][0] === name) {
-          ArrayPrototypeSplice(list, i, 1);
-        } else {
-          i++;
+      for (let i = 0; i < list.length; i++) {
+        if (list[i][0] !== name) {
+          list[writeIdx++] = list[i];
         }
       }
     } else {
       value = webidl.converters.USVString(value, prefix, "Argument 2");
-      while (i < list.length) {
-        if (list[i][0] === name && list[i][1] === value) {
-          ArrayPrototypeSplice(list, i, 1);
-        } else {
-          i++;
+      for (let i = 0; i < list.length; i++) {
+        const entry = list[i];
+        if (entry[0] !== name || entry[1] !== value) {
+          list[writeIdx++] = entry;
         }
       }
+    }
+    if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
     this.#updateUrlSearch();
   }
@@ -213,9 +294,9 @@ class URLSearchParams {
    * @returns {string[]}
    */
   getAll(name) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'getAll' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const values = [];
     const entries = this[_list];
@@ -233,9 +314,9 @@ class URLSearchParams {
    * @return {string | null}
    */
   get(name) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'get' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const entries = this[_list];
     for (let i = 0; i < entries.length; ++i) {
@@ -253,9 +334,9 @@ class URLSearchParams {
    * @return {boolean}
    */
   has(name, value = undefined) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'has' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
+    webidl.requiredArguments(arguments.length, 1, prefix, NAME_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     if (value !== undefined) {
       value = webidl.converters.USVString(value, prefix, "Argument 2");
@@ -272,9 +353,9 @@ class URLSearchParams {
    * @param {string} value
    */
   set(name, value) {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     const prefix = "Failed to execute 'set' on 'URLSearchParams'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
+    webidl.requiredArguments(arguments.length, 2, prefix, APPEND_ARG_NAMES);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     value = webidl.converters.USVString(value, prefix, "Argument 2");
 
@@ -283,19 +364,18 @@ class URLSearchParams {
     // If there are any name-value pairs whose name is name, in list,
     // set the value of the first such name-value pair to value
     // and remove the others.
+    let writeIdx = 0;
     let found = false;
-    let i = 0;
-    while (i < list.length) {
-      if (list[i][0] === name) {
+    for (let i = 0; i < list.length; i++) {
+      const entry = list[i];
+      if (entry[0] === name) {
         if (!found) {
-          list[i][1] = value;
+          entry[1] = value;
+          list[writeIdx++] = entry;
           found = true;
-          i++;
-        } else {
-          ArrayPrototypeSplice(list, i, 1);
         }
       } else {
-        i++;
+        list[writeIdx++] = entry;
       }
     }
 
@@ -303,13 +383,15 @@ class URLSearchParams {
     // and value is value, to list.
     if (!found) {
       ArrayPrototypePush(list, [name, value]);
+    } else if (writeIdx !== list.length) {
+      ArrayPrototypeSplice(list, writeIdx);
     }
 
     this.#updateUrlSearch();
   }
 
   sort() {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     ArrayPrototypeSort(
       this[_list],
       (a, b) => (a[0] === b[0] ? 0 : a[0] > b[0] ? 1 : -1),
@@ -321,13 +403,49 @@ class URLSearchParams {
    * @return {string}
    */
   toString() {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     return op_url_stringify_search_params(this[_list]);
   }
 
   get size() {
-    webidl.assertBranded(this, URLSearchParamsPrototype);
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
     return this[_list].length;
+  }
+
+  // Node exposes this as a method on URLSearchParams.prototype so that
+  // `Object.getOwnPropertyDescriptor(URLSearchParams.prototype,
+  // Symbol.for("nodejs.util.inspect.custom"))` is not undefined. We delegate
+  // to Deno's `privateCustomInspect` to preserve the Map-like formatting
+  // (`URLSearchParams { 'a' => 'b' }`) that node compat tests expect.
+  [SymbolFor("nodejs.util.inspect.custom")](_depth, inspectOptions, inspect) {
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
+    return this[SymbolFor("Deno.privateCustomInspect")](
+      inspect,
+      inspectOptions,
+    );
+  }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    webidl.assertBranded(this, URLSearchParamsPrototype, "URLSearchParams");
+    if (
+      typeof inspectOptions?.depth === "number" && inspectOptions.depth < 0
+    ) {
+      return "[Object]";
+    }
+    const entries = this[_list];
+    if (entries.length === 0) return "URLSearchParams {}";
+    const pairs = ArrayPrototypeMap(
+      entries,
+      (e) =>
+        `${inspect(e[0], inspectOptions)} => ${inspect(e[1], inspectOptions)}`,
+    );
+    const inlined = ArrayPrototypeJoin(pairs, ", ");
+    const breakLength = inspectOptions?.breakLength;
+    const oneLine = `URLSearchParams { ${inlined} }`;
+    if (typeof breakLength === "number" && oneLine.length > breakLength) {
+      return `URLSearchParams {\n  ${ArrayPrototypeJoin(pairs, ",\n  ")} }`;
+    }
+    return oneLine;
   }
 }
 
@@ -477,6 +595,16 @@ class URL {
           "search",
         ],
       }),
+      inspectOptions,
+    );
+  }
+
+  // See URLSearchParams: Node exposes this as a method so that the descriptor
+  // lookup is not undefined. Deno's own inspector still prefers
+  // Deno.privateCustomInspect, so this is effectively the same code path.
+  [SymbolFor("nodejs.util.inspect.custom")](_depth, inspectOptions, inspect) {
+    return this[SymbolFor("Deno.privateCustomInspect")](
+      inspect,
       inspectOptions,
     );
   }
@@ -898,10 +1026,11 @@ webidl
     return webidl.converters.USVString(V, prefix, context, opts);
   };
 
-export {
+return {
   parseUrlEncoded,
   URL,
   URLPrototype,
   URLSearchParams,
   URLSearchParamsPrototype,
 };
+})();

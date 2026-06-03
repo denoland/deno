@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
-import { op_webstorage_iterate_keys, Storage } from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_webstorage_iterate_keys, Storage } = core.ops;
 const {
   SymbolFor,
   ObjectFromEntries,
@@ -65,7 +66,8 @@ function createStorage(persistent) {
       if (ReflectHas(target, key)) {
         return true;
       }
-      return typeof key === "string" && typeof target.getItem(key) === "string";
+      return typeof key === "string" &&
+        typeof target.getItem(key) === "string";
     },
 
     ownKeys() {
@@ -123,4 +125,5 @@ function sessionStorage() {
   return sessionStorageStorage;
 }
 
-export { localStorage, sessionStorage, Storage };
+return { localStorage, sessionStorage, Storage };
+})();

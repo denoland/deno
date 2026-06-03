@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import * as net from "node:net";
 import { assert, assertEquals } from "@std/assert";
@@ -8,6 +8,9 @@ import * as dns from "node:dns";
 import * as dnsPromises from "node:dns/promises";
 import util from "node:util";
 import console from "node:console";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 Deno.test("[node/net] close event emits after error event - when host is not found", async () => {
   const socket = net.createConnection(27009, "doesnotexist");
@@ -26,6 +29,24 @@ Deno.test("[node/net] close event emits after error event - when host is not fou
 
   // `error` happens before `close`
   assertEquals(events, ["error", "close"]);
+});
+
+// Regression for https://github.com/denoland/deno/issues/33879. When a handle
+// exposes `getAsyncId` borrowed from `TCP.prototype` (or any AsyncWrap-derived
+// prototype) but isn't itself a real AsyncWrap, Node silently falls back to a
+// fresh async id rather than throwing. The Deno op2 brand check throws
+// `TypeError: expected AsyncWrap`, so `_getNewAsyncId` has to swallow that.
+Deno.test("[node/net] Socket falls back when handle.getAsyncId has wrong receiver", () => {
+  const { TCP } = require("internal/test/binding").internalBinding("tcp_wrap");
+  const socket = new net.Socket({
+    handle: {
+      getAsyncId: TCP.prototype.getAsyncId,
+    },
+    readable: false,
+    writable: false,
+    // deno-lint-ignore no-explicit-any
+  } as any);
+  socket.destroy();
 });
 
 Deno.test("[node/net] close event emits after error event - when connection is refused", async () => {
@@ -302,4 +323,21 @@ Deno.test("[node/dns] resolve IPv6 addresses", async () => {
   for (const { address } of resolve6ttlResults) {
     await dnsPromises.lookup(address);
   }
+});
+
+Deno.test("[node/net] Socket.remoteFamily returns string", async () => {
+  const deferred = Promise.withResolvers<void>();
+  const server = net.createServer((socket) => {
+    // Default-host listen() binds dual-stack, so IPv4 connections arrive
+    // through the IPv6 socket as IPv4-mapped addresses with family "IPv6".
+    assertEquals(typeof socket.remoteFamily, "string");
+    socket.end();
+    server.close(() => deferred.resolve());
+  });
+  server.listen(0, () => {
+    const { port } = server.address() as net.AddressInfo;
+    const client = net.createConnection(port, "127.0.0.1");
+    client.on("end", () => client.destroy());
+  });
+  await deferred.promise;
 });

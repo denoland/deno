@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // This module is browser compatible.
 
 import { normalize as posixNormalize } from "jsr:@std/path@^0.220.1/posix/normalize";

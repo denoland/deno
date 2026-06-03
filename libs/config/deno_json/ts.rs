@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -30,6 +30,8 @@ pub struct EmitConfigOptions {
   pub jsx_fragment_factory: String,
   pub jsx_import_source: Option<String>,
   pub jsx_precompile_skip_elements: Option<Vec<String>>,
+  #[serde(default)]
+  pub verbatim_module_syntax: bool,
 }
 
 /// A structure for managing the configuration of TypeScript

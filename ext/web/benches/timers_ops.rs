@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_bench_util::bench_js_async;
 use deno_bench_util::bench_or_profile;
@@ -26,7 +26,12 @@ fn setup() -> Vec<Extension> {
 
   vec![
     deno_webidl::deno_webidl::init(),
-    deno_web::deno_web::init(Default::default(), None, Default::default()),
+    deno_web::deno_web::init(
+      Default::default(),
+      None,
+      Default::default(),
+      Default::default(),
+    ),
     bench_setup::init(),
   ]
 }

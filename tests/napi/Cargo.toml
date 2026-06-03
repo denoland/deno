@@ -1,4 +1,4 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "test_napi"
@@ -14,10 +14,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 libuv-sys-lite.workspace = true
-napi-sys = { workspace = true, features = ["napi7"] }
-
-[dev-dependencies]
-test_util.workspace = true
-
-[build-dependencies]
-napi-build.workspace = true
+napi_sys.workspace = true

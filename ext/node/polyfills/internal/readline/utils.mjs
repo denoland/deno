@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -20,16 +20,34 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+(function () {
 "use strict";
 
-const kUTF16SurrogateThreshold = 0x10000; // 2 ** 16
-const kEscape = "\x1b";
-export const kSubstringSearch = Symbol("kSubstringSearch");
+const { primordials } = __bootstrap;
+const {
+  ArrayPrototypeSlice,
+  ArrayPrototypeSort,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
+  SafeRegExp,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
+  StringPrototypeCodePointAt,
+  StringPrototypeSlice,
+  StringPrototypeToLowerCase,
+  Symbol,
+} = primordials;
 
-export function CSI(strings, ...args) {
+const kUTF16SurrogateThreshold = 0x10000; // 2 ** 16
+
+const kFunctionKeyCodeRe = new SafeRegExp("^(\\d\\d?)(;(\\d))?([~^$])$");
+const kOtherKeyCodeRe = new SafeRegExp("^((\\d;)?(\\d))?([A-Za-z])$");
+const kAlphaNumericRe = new SafeRegExp("^[0-9A-Za-z]$");
+const kUpperCaseRe = new SafeRegExp("^[A-Z]$");
+const kEscape = "\x1b";
+const kSubstringSearch = Symbol("kSubstringSearch");
+
+function CSI(strings, ...args) {
   let ret = `${kEscape}[`;
   for (let n = 0; n < strings.length; n++) {
     ret += strings[n];
@@ -50,57 +68,57 @@ CSI.kClearScreenDown = `${kEscape}[0J`;
 // 'a\u0301' and '\u0301a' (both have the same visual output).
 // Check Canonical_Combining_Class in
 // http://userguide.icu-project.org/strings/properties
-export function charLengthLeft(str, i) {
+function charLengthLeft(str, i) {
   if (i <= 0) {
     return 0;
   }
   if (
     (i > 1 &&
-      str.codePointAt(i - 2) >= kUTF16SurrogateThreshold) ||
-    str.codePointAt(i - 1) >= kUTF16SurrogateThreshold
+      StringPrototypeCodePointAt(str, i - 2) >= kUTF16SurrogateThreshold) ||
+    StringPrototypeCodePointAt(str, i - 1) >= kUTF16SurrogateThreshold
   ) {
     return 2;
   }
   return 1;
 }
 
-export function charLengthAt(str, i) {
+function charLengthAt(str, i) {
   if (str.length <= i) {
     // Pretend to move to the right. This is necessary to autocomplete while
     // moving to the right.
     return 1;
   }
-  return str.codePointAt(i) >= kUTF16SurrogateThreshold ? 2 : 1;
+  return StringPrototypeCodePointAt(str, i) >= kUTF16SurrogateThreshold ? 2 : 1;
 }
 
 /*
-  Some patterns seen in terminal key escape codes, derived from combos seen
-  at http://www.midnight-commander.org/browser/lib/tty/key.c
+    Some patterns seen in terminal key escape codes, derived from combos seen
+    at http://www.midnight-commander.org/browser/lib/tty/key.c
 
-  ESC letter
-  ESC [ letter
-  ESC [ modifier letter
-  ESC [ 1 ; modifier letter
-  ESC [ num char
-  ESC [ num ; modifier char
-  ESC O letter
-  ESC O modifier letter
-  ESC O 1 ; modifier letter
-  ESC N letter
-  ESC [ [ num ; modifier char
-  ESC [ [ 1 ; modifier letter
-  ESC ESC [ num char
-  ESC ESC O letter
+    ESC letter
+    ESC [ letter
+    ESC [ modifier letter
+    ESC [ 1 ; modifier letter
+    ESC [ num char
+    ESC [ num ; modifier char
+    ESC O letter
+    ESC O modifier letter
+    ESC O 1 ; modifier letter
+    ESC N letter
+    ESC [ [ num ; modifier char
+    ESC [ [ 1 ; modifier letter
+    ESC ESC [ num char
+    ESC ESC O letter
 
-  - char is usually ~ but $ and ^ also happen with rxvt
-  - modifier is 1 +
-                (shift     * 1) +
-                (left_alt  * 2) +
-                (ctrl      * 4) +
-                (right_alt * 8)
-  - two leading ESCs apparently mean the same as one leading ESC
-*/
-export function* emitKeys(stream) {
+    - char is usually ~ but $ and ^ also happen with rxvt
+    - modifier is 1 +
+                  (shift     * 1) +
+                  (left_alt  * 2) +
+                  (ctrl      * 4) +
+                  (right_alt * 8)
+    - two leading ESCs apparently mean the same as one leading ESC
+  */
+function* emitKeys(stream) {
   while (true) {
     let ch = yield;
     let s = ch;
@@ -200,14 +218,14 @@ export function* emitKeys(stream) {
          * We buffered enough data, now trying to extract code
          * and modifier from it
          */
-        const cmd = s.slice(cmdStart);
+        const cmd = StringPrototypeSlice(s, cmdStart);
         let match;
 
-        if ((match = cmd.match(/^(\d\d?)(;(\d))?([~^$])$/))) {
+        if ((match = RegExpPrototypeExec(kFunctionKeyCodeRe, cmd))) {
           code += match[1] + match[4];
           modifier = (match[3] || 1) - 1;
         } else if (
-          (match = cmd.match(/^((\d;)?(\d))?([A-Za-z])$/))
+          (match = RegExpPrototypeExec(kOtherKeyCodeRe, cmd))
         ) {
           code += match[4];
           modifier = (match[3] || 1) - 1;
@@ -529,14 +547,14 @@ export function* emitKeys(stream) {
       key.meta = escaped;
     } else if (!escaped && ch <= "\x1a") {
       // ctrl+letter
-      key.name = String.fromCharCode(
-        ch.charCodeAt() + "a".charCodeAt() - 1,
+      key.name = StringFromCharCode(
+        StringPrototypeCharCodeAt(ch) + StringPrototypeCharCodeAt("a") - 1,
       );
       key.ctrl = true;
-    } else if (/^[0-9A-Za-z]$/.test(ch)) {
+    } else if (RegExpPrototypeTest(kAlphaNumericRe, ch)) {
       // Letter, number, shift+letter
-      key.name = ch.toLowerCase();
-      key.shift = /^[A-Z]$/.test(ch);
+      key.name = StringPrototypeToLowerCase(ch);
+      key.shift = RegExpPrototypeTest(kUpperCaseRe, ch);
       key.meta = escaped;
     } else if (escaped) {
       // Escape sequence timeout
@@ -558,22 +576,22 @@ export function* emitKeys(stream) {
 }
 
 // This runs in O(n log n).
-export function commonPrefix(strings) {
+function commonPrefix(strings) {
   if (strings.length === 1) {
     return strings[0];
   }
-  const sorted = strings.slice().sort();
+  const sorted = ArrayPrototypeSort(ArrayPrototypeSlice(strings));
   const min = sorted[0];
   const max = sorted[sorted.length - 1];
   for (let i = 0; i < min.length; i++) {
     if (min[i] !== max[i]) {
-      return min.slice(0, i);
+      return StringPrototypeSlice(min, 0, i);
     }
   }
   return min;
 }
 
-export default {
+const _defaultExport = {
   CSI,
   charLengthAt,
   charLengthLeft,
@@ -581,3 +599,14 @@ export default {
   commonPrefix,
   kSubstringSearch,
 };
+
+return {
+  CSI,
+  charLengthLeft,
+  charLengthAt,
+  emitKeys,
+  commonPrefix,
+  kSubstringSearch,
+  default: _defaultExport,
+};
+})();

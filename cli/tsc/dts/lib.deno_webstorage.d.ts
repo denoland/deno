@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -41,7 +41,13 @@ interface Storage {
   [name: string]: any;
 }
 
-/** @category Storage */
+/** The constructor object for {@linkcode Storage}.
+ *
+ * `Storage` instances are accessed via the global `localStorage` and
+ * `sessionStorage` properties rather than constructed directly, so calling the
+ * constructor throws.
+ *
+ * @category Storage */
 declare var Storage: {
   readonly prototype: Storage;
   new (): never;

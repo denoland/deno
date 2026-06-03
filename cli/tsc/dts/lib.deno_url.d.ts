@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -187,7 +187,10 @@ interface URLSearchParams {
   readonly size: number;
 }
 
-/** @category URL */
+/** The constructor object for {@linkcode URLSearchParams}, used to create a new
+ * `URLSearchParams` object for parsing and building URL query strings.
+ *
+ * @category URL */
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   /**

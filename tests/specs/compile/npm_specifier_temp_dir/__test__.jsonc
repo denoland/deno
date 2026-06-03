@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "compile -A --output cowsay npm:cowsay",
+    "output": "[WILDCARD]"
+  }, {
+    "commandName": "./cowsay",
+    "args": "moo",
+    "output": "[WILDCARD]moo[WILDCARD]"
+  }, {
+    // it should be compiling this in a temp directory instead of the
+    // current working directory
+    "args": [
+      "eval",
+      "['node_modules', 'Deno.lock'].forEach(dirName => { try { Deno.statSync(dirName) } catch (err) { console.log(err instanceof Deno.errors.NotFound) } })"
+    ],
+    "output": "true\ntrue\n"
+  }]
+}

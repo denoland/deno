@@ -1,4 +1,5 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
 
@@ -8,6 +9,7 @@ use std::sync::Arc;
 
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 pub use wgpu_core;
@@ -20,12 +22,12 @@ mod adapter;
 mod bind_group;
 mod bind_group_layout;
 pub mod buffer;
-mod byow;
+pub mod canvas;
 mod command_buffer;
 mod command_encoder;
 mod compute_pass;
 mod compute_pipeline;
-mod device;
+pub mod device;
 pub mod error;
 mod pipeline_layout;
 mod query_set;
@@ -35,22 +37,30 @@ mod render_pass;
 mod render_pipeline;
 mod sampler;
 mod shader;
-mod surface;
 pub mod texture;
 mod webidl;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "cargo build script output")]
 pub fn print_linker_flags(name: &str) {
   if cfg!(windows) {
-    // these dls load slowly, so delay loading them
+    // these dlls load slowly, so delay loading them
     let dlls = [
       // webgpu
       "d3dcompiler_47",
       "OPENGL32",
+      "gdi32",
+      "setupapi",
+      "oleaut32",
+      "combase",
       // network related functions
       "iphlpapi",
+      // timer functions
+      "winmm",
+      // debugging/diagnostics (only needed on panic/crash)
+      "dbghelp",
+      "psapi",
     ];
     for dll in dlls {
       println!("cargo:rustc-link-arg-bin={name}=/delayload:{dll}.dll");
@@ -91,16 +101,18 @@ deno_core::extension!(
     render_pass::GPURenderPassEncoder,
     render_pipeline::GPURenderPipeline,
     sampler::GPUSampler,
+    shader::GPUCompilationInfo,
+    shader::GPUCompilationMessage,
     shader::GPUShaderModule,
     adapter::GPUSupportedFeatures,
     adapter::GPUSupportedLimits,
     texture::GPUTexture,
     texture::GPUTextureView,
-    byow::UnsafeWindowSurface,
-    surface::GPUCanvasContext,
+    texture::GPUExternalTexture,
+    canvas::GPUCanvasContext,
   ],
-  esm = ["00_init.js", "02_surface.js"],
   lazy_loaded_esm = ["01_webgpu.js"],
+  lazy_loaded_js = ["00_init.js"],
 );
 
 #[op2]
@@ -130,7 +142,7 @@ pub struct GPU;
 
 // SAFETY: we're sure this can be GCed
 unsafe impl GarbageCollected for GPU {
-  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
 
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPU"
@@ -145,7 +157,6 @@ impl GPU {
     Err(GPUGenericError::InvalidConstructor)
   }
 
-  #[async_method]
   #[cppgc]
   async fn request_adapter(
     &self,
@@ -154,28 +165,7 @@ impl GPU {
   ) -> Option<adapter::GPUAdapter> {
     let mut state = state.borrow_mut();
 
-    let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
-      |_| wgpu_types::Backends::all(),
-      |s| wgpu_types::Backends::from_comma_list(&s),
-    );
-    let instance = if let Some(instance) = state.try_borrow::<Instance>() {
-      instance
-    } else {
-      state.put(Arc::new(wgpu_core::global::Global::new(
-        "webgpu",
-        &wgpu_types::InstanceDescriptor {
-          backends,
-          flags: wgpu_types::InstanceFlags::from_build_config(),
-          backend_options: wgpu_types::BackendOptions {
-            dx12: wgpu_types::Dx12BackendOptions {
-              shader_compiler: wgpu_types::Dx12Compiler::Fxc,
-            },
-            gl: wgpu_types::GlBackendOptions::default(),
-          },
-        },
-      )));
-      state.borrow::<Instance>()
-    };
+    let (backends, instance) = get_or_init_instance(&mut state);
 
     let descriptor = wgpu_core::instance::RequestAdapterOptions {
       power_preference: options
@@ -193,7 +183,7 @@ impl GPU {
     let id = instance.request_adapter(&descriptor, backends, None).ok()?;
 
     Some(adapter::GPUAdapter {
-      instance: instance.clone(),
+      instance,
       features: SameObject::new(),
       limits: SameObject::new(),
       info: Rc::new(SameObject::new()),
@@ -220,55 +210,39 @@ fn transform_label<'a>(label: String) -> Option<std::borrow::Cow<'a, str>> {
   }
 }
 
-#[derive(Debug)]
-pub(crate) struct SameObject<T: GarbageCollected + 'static> {
-  cell: std::cell::OnceCell<v8::Global<v8::Object>>,
-  _phantom_data: std::marker::PhantomData<T>,
-}
+pub fn get_or_init_instance(
+  state: &mut OpState,
+) -> (wgpu_types::Backends, Instance) {
+  let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
+    |_| wgpu_types::Backends::all(),
+    |s| wgpu_types::Backends::from_comma_list(&s),
+  );
 
-impl<T: GarbageCollected + 'static> SameObject<T> {
-  #[allow(clippy::new_without_default)]
-  pub fn new() -> Self {
-    Self {
-      cell: Default::default(),
-      _phantom_data: Default::default(),
-    }
-  }
+  let instance = if let Some(instance) = state.try_borrow::<Instance>() {
+    instance.clone()
+  } else {
+    state.put(Arc::new(wgpu_core::global::Global::new(
+      "webgpu",
+      &wgpu_types::InstanceDescriptor {
+        backends,
+        flags: wgpu_types::InstanceFlags::from_build_config(),
+        memory_budget_thresholds: wgpu_types::MemoryBudgetThresholds {
+          for_resource_creation: Some(97),
+          for_device_loss: Some(99),
+        },
+        backend_options: wgpu_types::BackendOptions {
+          dx12: wgpu_types::Dx12BackendOptions {
+            shader_compiler: wgpu_types::Dx12Compiler::Fxc,
+            ..Default::default()
+          },
+          gl: wgpu_types::GlBackendOptions::default(),
+          noop: wgpu_types::NoopBackendOptions::default(),
+        },
+      },
+      None,
+    )));
+    state.borrow::<Instance>().clone()
+  };
 
-  pub fn get<F>(
-    &self,
-    scope: &mut v8::PinScope<'_, '_>,
-    f: F,
-  ) -> v8::Global<v8::Object>
-  where
-    F: FnOnce(&mut v8::PinScope<'_, '_>) -> T,
-  {
-    self
-      .cell
-      .get_or_init(|| {
-        let v = f(scope);
-        let obj = deno_core::cppgc::make_cppgc_object(scope, v);
-        v8::Global::new(scope, obj)
-      })
-      .clone()
-  }
-
-  #[allow(unused)]
-  pub fn set(
-    &self,
-    scope: &mut v8::PinScope<'_, '_>,
-    value: T,
-  ) -> Result<(), v8::Global<v8::Object>> {
-    let obj = deno_core::cppgc::make_cppgc_object(scope, value);
-    self.cell.set(v8::Global::new(scope, obj))
-  }
-
-  pub fn try_unwrap(
-    &self,
-    scope: &mut v8::PinScope<'_, '_>,
-  ) -> Option<deno_core::cppgc::UnsafePtr<T>> {
-    let obj = self.cell.get()?;
-    let val = v8::Local::new(scope, obj);
-    deno_core::cppgc::try_unwrap_cppgc_object(scope, val.cast())
-  }
+  (backends, instance)
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -45,14 +45,11 @@
 
 // TODO(cmorten): migrate punycode logic to "icu" internal binding and/or "url"
 // internal module so there can be re-use within the "url" module etc.
-
+(function () {
 "use strict";
-
-import {
-  op_node_idna_domain_to_ascii,
-  op_node_idna_domain_to_unicode,
-} from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+const { core, primordials } = __bootstrap;
+const { op_node_idna_domain_to_ascii, op_node_idna_domain_to_unicode } =
+  core.ops;
 const {
   ArrayPrototypePush,
   SafeArrayIterator,
@@ -113,21 +110,29 @@ function ucs2encode(array: number[]) {
   return StringFromCodePoint(...new SafeArrayIterator(array));
 }
 
-export const ucs2 = {
+const ucs2 = {
   decode: ucs2decode,
   encode: ucs2encode,
 };
 
 /**
  *  Converts a domain to ASCII as per the IDNA spec
+ *  Returns an empty string if the domain is invalid
  */
-export function domainToASCII(domain: string) {
+function domainToASCII(domain: string) {
   return op_node_idna_domain_to_ascii(domain);
 }
 
 /**
  *  Converts a domain to Unicode as per the IDNA spec
  */
-export function domainToUnicode(domain: string) {
+function domainToUnicode(domain: string) {
   return op_node_idna_domain_to_unicode(domain);
 }
+
+return {
+  domainToASCII,
+  domainToUnicode,
+  ucs2,
+};
+})();

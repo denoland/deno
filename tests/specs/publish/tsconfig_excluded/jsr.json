@@ -1,0 +1,12 @@
+{
+  "name": "@package/test",
+  "version": "0.1.0",
+  "exports": "./dist/main.js",
+  "publish": {
+    "include": [
+      "dist/main.js",
+      "jsr.json",
+      "LICENSE"
+    ]
+  }
+}

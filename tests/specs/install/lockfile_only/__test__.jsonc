@@ -1,0 +1,30 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install --lockfile-only npm:@denotest/esm-basic",
+      "output": "install.out"
+    },
+    {
+      // Verify node_modules was not created. Also that the lockfile was created and contains the package
+      "args": [
+        "eval",
+        " try { Deno.statSync('node_modules') } catch { console.log(true) } const lock = JSON.parse(Deno.readTextFileSync('deno.lock')); console.log(Object.keys(lock.npm).includes('@denotest/esm-basic@1.0.0'))"
+      ],
+      "output": "true\ntrue\n"
+    },
+    {
+      // Now run install without --lockfile-only to create node_modules
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      // Verify node_modules was created this time
+      "args": [
+        "eval",
+        "console.log(Deno.statSync('node_modules').isDirectory)"
+      ],
+      "output": "true\n"
+    }
+  ]
+}

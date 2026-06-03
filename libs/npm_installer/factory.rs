@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -7,6 +7,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
 use deno_npm_cache::NpmCacheHttpClient;
 use deno_npm_cache::NpmCacheSetting;
+use deno_npm_cache::NpmPackumentFormat;
 use deno_npm_cache::RegistryInfoProvider;
 use deno_npm_cache::TarballCache;
 use deno_resolver::factory::ResolverFactory;
@@ -21,6 +22,7 @@ use futures::FutureExt;
 
 use crate::LifecycleScriptsConfig;
 use crate::NpmInstaller;
+use crate::NpmInstallerOptions;
 use crate::Reporter;
 use crate::graph::NpmCachingStrategy;
 use crate::graph::NpmDenoGraphResolver;
@@ -50,7 +52,17 @@ type ResolveNpmResolutionSnapshotFn = Box<
 pub struct NpmInstallerFactoryOptions {
   pub cache_setting: NpmCacheSetting,
   pub caching_strategy: NpmCachingStrategy,
+  pub clean_on_install: bool,
+  /// When loading the npm snapshot from a lockfile, merge equivalent
+  /// peer-dep variants (cycle-unrolling artifacts) onto a single
+  /// canonical entry. Should be true only on install paths — `deno run`
+  /// must not silently rewrite the user's lockfile.
+  pub dedup_lockfile_peer_variants: bool,
   pub lifecycle_scripts_config: LifecycleScriptsConfig,
+  /// Only install production dependencies (excludes devDependencies).
+  pub production: bool,
+  /// Exclude @types/* packages from installation.
+  pub skip_types: bool,
   /// Resolves the npm resolution snapshot from the environment.
   pub resolve_npm_resolution_snapshot: ResolveNpmResolutionSnapshotFn,
 }
@@ -291,9 +303,12 @@ impl<
             }
             None => match self.maybe_lockfile().await? {
               Some(lockfile) => {
-                NpmResolverManagedSnapshotOption::ResolveFromLockfile(
-                  lockfile.clone(),
-                )
+                NpmResolverManagedSnapshotOption::ResolveFromLockfile {
+                  lockfile: lockfile.clone(),
+                  dedup_equivalent_peer_variants: self
+                    .options
+                    .dedup_lockfile_peer_variants,
+                }
               }
               None => NpmResolverManagedSnapshotOption::Specified(None),
             },
@@ -354,10 +369,13 @@ impl<
           let workspace_npm_link_packages =
             workspace_factory.workspace_npm_link_packages()?;
           Ok(Arc::new(NpmInstaller::new(
+            self.install_reporter.clone(),
             self.lifecycle_scripts_executor.clone(),
             npm_cache.clone(),
             Arc::new(NpmInstallDepsProvider::from_workspace(
               &workspace_factory.workspace_directory()?.workspace,
+              self.options.production,
+              self.options.skip_types,
             )),
             registry_info_provider.clone(),
             self.resolver_factory.npm_resolution().clone(),
@@ -366,14 +384,17 @@ impl<
             &self.reporter,
             workspace_factory.sys().clone(),
             self.tarball_cache()?.clone(),
-            self.maybe_lockfile().await?.cloned(),
-            workspace_factory
-              .node_modules_dir_path()?
-              .map(|p| p.to_path_buf()),
-            self.lifecycle_scripts_config()?.clone(),
-            self.resolver_factory.npm_system_info().clone(),
-            workspace_npm_link_packages.clone(),
-            self.install_reporter.clone(),
+            NpmInstallerOptions {
+              clean_on_install: self.options.clean_on_install,
+              maybe_lockfile: self.maybe_lockfile().await?.cloned(),
+              maybe_node_modules_path: workspace_factory
+                .node_modules_dir_path()?
+                .map(|p| p.to_path_buf()),
+              linker_mode: workspace_factory.node_modules_linker_mode()?,
+              lifecycle_scripts: self.lifecycle_scripts_config()?.clone(),
+              system_info: self.resolver_factory.npm_system_info().clone(),
+              workspace_link_packages: workspace_npm_link_packages.clone(),
+            },
           )))
         }
         .boxed_local(),
@@ -388,10 +409,22 @@ impl<
     anyhow::Error,
   > {
     self.registry_info_provider.get_or_try_init(|| {
+      let packument_format = if self
+        .resolver_factory
+        .minimum_dependency_age_config()
+        .ok()
+        .and_then(|c| c.age.as_ref().and_then(|d| d.into_option()))
+        .is_some()
+      {
+        NpmPackumentFormat::Full
+      } else {
+        NpmPackumentFormat::Abbreviated
+      };
       Ok(Arc::new(RegistryInfoProvider::new(
         self.npm_cache()?.clone(),
         self.http_client().clone(),
         self.workspace_factory().npmrc()?.clone(),
+        packument_format,
       )))
     })
   }

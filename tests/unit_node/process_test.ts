@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-undef no-console
 
@@ -10,6 +10,7 @@ import process, {
   env,
   execArgv as importedExecArgv,
   execPath as importedExecPath,
+  getActiveResourcesInfo as importedGetActiveResourcesInfo,
   getegid,
   geteuid,
   getgid,
@@ -39,8 +40,16 @@ import * as path from "@std/path";
 import { delay } from "@std/async/delay";
 import { stub } from "@std/testing/mock";
 import { execSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as net from "node:net";
+import nodeAssert from "node:assert";
 
 const testDir = new URL(".", import.meta.url);
+
+const processWithActiveResources = process as typeof process & {
+  _getActiveHandles(): unknown[];
+  _getActiveRequests(): unknown[];
+};
 
 function getGroupNameFromSystem(gid: number): string {
   const stdout = execSync(`grep ":${gid}:" /etc/group`).toString();
@@ -75,16 +84,19 @@ Deno.test({
 Deno.test({
   name: "process.chdir failure",
   fn() {
-    assertThrows(
+    // process.chdir now wraps Deno errors into Node-shaped uv errors with
+    // syscall/path/dest, so a missing directory throws a plain Error with
+    // code "ENOENT" rather than Deno.errors.NotFound.
+    const err = assertThrows(
       () => {
         process.chdir("non-existent-directory-name");
       },
-      Deno.errors.NotFound,
-      "file",
-      // On every OS Deno returns: "No such file" except for Windows, where it's:
-      // "The system cannot find the file specified. (os error 2)" so "file" is
-      // the only common string here.
-    );
+      Error,
+      "ENOENT",
+    ) as Error & { code?: string; syscall?: string; dest?: string };
+    assertEquals(err.code, "ENOENT");
+    assertEquals(err.syscall, "chdir");
+    assertEquals(err.dest, "non-existent-directory-name");
   },
 });
 
@@ -103,6 +115,8 @@ Deno.test({
     assertEquals(typeof process.versions.modules, "string");
     assertEquals(typeof process.versions.nghttp2, "string");
     assertEquals(typeof process.versions.napi, "string");
+    // Must match the NAPI_VERSION in ext/napi/js_native_api.rs
+    assertEquals(process.versions.napi, "9");
     assertEquals(typeof process.versions.llhttp, "string");
     assertEquals(typeof process.versions.openssl, "string");
     assertEquals(typeof process.versions.cldr, "string");
@@ -204,6 +218,44 @@ Deno.test({
 
     const decoder = new TextDecoder();
     assertEquals(stripAnsiCode(decoder.decode(stdout).trim()), "1\n2");
+  },
+});
+
+Deno.test({
+  // Regression test for https://github.com/denoland/deno/issues/24646: a
+  // spurious `ERR_MULTIPLE_CALLBACK` ("Callback called multiple times") was
+  // thrown from `onwrite` while doing many synchronous writes to
+  // `process.stdout`/`process.stderr` (e.g. commander.js help output under
+  // Jest). The full reproduction needs a test runner that evaluates files in
+  // separate module realms, but this at least exercises the stdio write path
+  // with the same empty-write / `isTTY` toggling pattern in a piped child.
+  name: "process.stdout/stderr survive many synchronous writes (#24646)",
+  async fn() {
+    const code = `
+      import process from "node:process";
+      for (let i = 0; i < 1000; i++) {
+        process.stdout.isTTY = i % 2 === 0;
+        process.stderr.isTTY = i % 2 === 0;
+        process.stdout.write("");
+        process.stderr.write("");
+        process.stdout.write("Usage: prog [options]\\n");
+        process.stderr.write("error: bad option\\n");
+      }
+      console.error("DONE_OK");
+    `;
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "--quiet", code],
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const err = new TextDecoder().decode(stderr);
+    assert(
+      !err.includes("Callback called multiple times"),
+      "unexpected ERR_MULTIPLE_CALLBACK:\n" + err,
+    );
+    assert(err.includes("DONE_OK"), "child did not finish cleanly:\n" + err);
+    assertEquals(exitCode, 0);
   },
 });
 
@@ -361,6 +413,8 @@ Deno.test({
     assert(Array.isArray(process.argv.slice(2)));
     assertEquals(process.argv.indexOf(Deno.execPath()), 0);
     assertEquals(process.argv.indexOf(path.fromFileUrl(Deno.mainModule)), 1);
+    // argv[0] should be the executable path (same as process.execPath), this is Node.js behavior
+    assertEquals(process.argv[0], Deno.execPath());
   },
 });
 
@@ -513,38 +567,23 @@ Deno.test({
 });
 
 Deno.test({
-  // NB(Tango992): Node.js does not support using symbols as env keys,
-  // thus this test should be omitted once we align with Node.js behavior.
-  name: "process.env: setting and getting a symbol key",
-  fn() {
-    const symbol = Symbol.for("foo");
-    // @ts-expect-error setting a symbol key
-    process.env[symbol] = "foo";
-    // @ts-expect-error getting a symbol key
-    assertEquals(process.env[symbol], "foo");
-    assert(Reflect.has(process.env, symbol));
-
-    // @ts-expect-error deleting a symbol key
-    delete process.env[symbol];
-    assertFalse(Reflect.has(process.env, symbol));
-
-    Object.defineProperty(process.env, symbol, {
-      value: "bar",
-      configurable: true,
-      writable: true,
-      enumerable: true,
-    });
-    // @ts-expect-error getting a symbol key
-    assertEquals(process.env[symbol], "bar");
-  },
-});
-
-Deno.test({
   name: "process.stdin",
   fn() {
     // @ts-ignore `Deno.stdin.rid` was soft-removed in Deno 2.
     assertEquals(process.stdin.fd, Deno.stdin.rid);
-    assertEquals(process.stdin.isTTY, Deno.stdin.isTerminal());
+    const isTTY = Deno.stdin.isTerminal();
+    assertEquals(process.stdin.isTTY, isTTY);
+
+    // Allows overwriting `process.stdin.isTTY` (mirrors stdout/stderr from #26130)
+    const original = process.stdin.isTTY;
+    try {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = !isTTY;
+      assertEquals(process.stdin.isTTY, !isTTY);
+    } finally {
+      // @ts-ignore isTTY is defined as readonly in types but we allow setting it
+      process.stdin.isTTY = original;
+    }
   },
 });
 
@@ -815,6 +854,93 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.getActiveResourcesInfo reports active timers",
+  fn() {
+    const countTimeouts = () =>
+      process.getActiveResourcesInfo().filter((type) => type === "Timeout")
+        .length;
+    const before = countTimeouts();
+    const timer = setTimeout(() => {}, 1000);
+    try {
+      assertEquals(countTimeouts(), before + 1);
+      assertEquals(importedGetActiveResourcesInfo(), [
+        ...process.getActiveResourcesInfo(),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+});
+
+Deno.test({
+  name: "process._getActiveRequests reports pending fs requests",
+  async fn() {
+    const tempFile = Deno.makeTempFileSync();
+    try {
+      const before = processWithActiveResources._getActiveRequests().length;
+      const promises = Array.from(
+        { length: 12 },
+        () =>
+          new Promise<number>((resolve, reject) => {
+            fs.open(tempFile, "r", (err, fd) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(fd);
+              }
+            });
+          }),
+      );
+
+      assertEquals(
+        processWithActiveResources._getActiveRequests().length,
+        before + 12,
+      );
+
+      const fds = await Promise.all(promises);
+      for (const fd of fds) {
+        fs.closeSync(fd);
+      }
+      assertEquals(
+        processWithActiveResources._getActiveRequests().length,
+        before,
+      );
+    } finally {
+      Deno.removeSync(tempFile);
+    }
+  },
+});
+
+Deno.test({
+  name: "process._getActiveHandles reports active net handles",
+  async fn() {
+    let acceptedSocket: net.Socket | undefined;
+    const server = net.createServer((socket) => {
+      acceptedSocket = socket;
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    const serverConnection = once(server, "connection");
+    const clientSocket = net.connect(
+      (server.address() as net.AddressInfo).port,
+    );
+    try {
+      await Promise.all([once(clientSocket, "connect"), serverConnection]);
+
+      const handles = processWithActiveResources._getActiveHandles();
+      assert(handles.includes(server));
+      assert(handles.includes(clientSocket));
+      assert(acceptedSocket);
+      assert(handles.includes(acceptedSocket));
+    } finally {
+      clientSocket.destroy();
+      acceptedSocket?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+});
+
+Deno.test({
   name: "process.hrtime",
   // TODO(kt3k): Enable this test
   ignore: true,
@@ -852,7 +978,6 @@ Deno.test("process.on, process.off, process.removeListener doesn't throw on unim
     "beforeExit",
     "disconnect",
     "message",
-    "multipleResolves",
     "rejectionHandled",
     "uncaughtException",
     "uncaughtExceptionMonitor",
@@ -938,6 +1063,7 @@ Deno.test("process.config", () => {
   assert(process.config !== undefined);
   assert(process.config.target_defaults !== undefined);
   assert(process.config.variables !== undefined);
+  assertEquals(process.config.variables.host_arch, process.arch);
 });
 
 Deno.test("process._exiting", () => {
@@ -946,6 +1072,7 @@ Deno.test("process._exiting", () => {
 });
 
 Deno.test("process.execPath", () => {
+  assertEquals(typeof process.execPath, "string");
   assertEquals(process.execPath, process.argv[0]);
 });
 
@@ -1063,10 +1190,14 @@ Deno.test({
 Deno.test({
   name: "process.title",
   fn() {
-    assertEquals(process.title, "deno");
-    // Verify that setting the value has no effect.
+    // Default process.title should be the execPath (matches Node.js behavior)
+    assertEquals(process.title, process.execPath);
+    // Setting process.title should work
+    const original = process.title;
     process.title = "foo";
-    assertEquals(process.title, "deno");
+    assertEquals(process.title, "foo");
+    // Restore
+    process.title = original;
   },
 });
 
@@ -1092,6 +1223,51 @@ Deno.test({
     assert(uv.errname);
     assert(typeof uv.errname === "function");
     assertEquals(uv.errname(-1), "EPERM");
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getErrorMessage",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMessage);
+    assert(typeof uv.getErrorMessage === "function");
+    assertEquals(uv.getErrorMessage(-1), "operation not permitted");
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getErrorMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getErrorMap);
+    assert(typeof uv.getErrorMap === "function");
+    const errorMap = uv.getErrorMap();
+    assert(errorMap instanceof Map);
+    // errorMap maps error code (number) to [name, message]
+    assertEquals(errorMap.get(-1), ["EPERM", "operation not permitted"]);
+  },
+});
+
+Deno.test({
+  name: "process.binding('uv').getCodeMap",
+  ignore: Deno.build.os === "windows",
+  fn() {
+    // @ts-ignore: untyped internal binding, not actually supposed to be
+    // used by userland modules in Node.js
+    const uv = process.binding("uv");
+    assert(uv.getCodeMap);
+    assert(typeof uv.getCodeMap === "function");
+    const codeMap = uv.getCodeMap();
+    assert(codeMap instanceof Map);
+    // codeMap maps error name (string) to error code (number)
+    assertEquals(codeMap.get("EPERM"), -1);
   },
 });
 
@@ -1162,6 +1338,26 @@ Deno.test({
     assert(typeof result.header.host === "string");
     delete result.header.host;
 
+    // glibc fields only exist on Linux+glibc builds; on musl Linux and
+    // non-Linux platforms the keys must be absent so libc-flavor detection
+    // works (denoland/deno#33948).
+    const isGlibc = Deno.build.os === "linux" && Deno.build.env === "gnu";
+    if (isGlibc) {
+      assertEquals(result.header.glibcVersionRuntime, "2.38");
+      assertEquals(result.header.glibcVersionCompiler, "2.38");
+      delete result.header.glibcVersionRuntime;
+      delete result.header.glibcVersionCompiler;
+    } else {
+      assert(
+        !("glibcVersionRuntime" in result.header),
+        "glibcVersionRuntime must not be present on non-glibc platforms",
+      );
+      assert(
+        !("glibcVersionCompiler" in result.header),
+        "glibcVersionCompiler must not be present on non-glibc platforms",
+      );
+    }
+
     // test hardcoded part
     assertEquals(result, {
       header: {
@@ -1170,8 +1366,6 @@ Deno.test({
         trigger: "GetReport",
         threadId: 0,
         commandLine: ["node"],
-        glibcVersionRuntime: "2.38",
-        glibcVersionCompiler: "2.38",
         wordSize: 64,
         release: {
           name: "node",
@@ -1258,6 +1452,7 @@ Deno.test(function importedExecArgvTest() {
 });
 
 Deno.test(function importedExecPathTest() {
+  assertEquals(typeof importedExecPath, "string");
   assertEquals(importedExecPath, Deno.execPath());
 });
 
@@ -1503,5 +1698,158 @@ Deno.test({
   ignore: Deno.build.os !== "windows" && Deno.build.os !== "android",
   fn() {
     assertEquals(process.setuid, undefined);
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile()",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Deno.args[0]);
+
+    assert.strictEqual(process.env.FOO, "foo");
+    assert.strictEqual(process.env.BAR, "bar");
+    assert.strictEqual(process.env.BAZ, "baz");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() with buffer path",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=foo\nBAR=bar\nBAZ=baz";
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Buffer.from(Deno.args[0]));
+
+    assert.strictEqual(process.env.FOO, "foo");
+    assert.strictEqual(process.env.BAR, "bar");
+    assert.strictEqual(process.env.BAZ, "baz");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() with non-existent file",
+  fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+
+    nodeAssert.throws(
+      () => process.loadEnvFile(envFilePath),
+      {
+        code: "ENOENT",
+        syscall: "open",
+        path: envFilePath,
+      },
+    );
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() trim null characters in env values",
+  async fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const envContent = "FOO=f\0oo\nBAR=bar\n";
+    Deno.writeTextFileSync(envFilePath, envContent);
+
+    const code = `
+    import assert from "node:assert";
+    import process from "node:process";
+    process.loadEnvFile(Deno.args[0]);
+
+    assert.strictEqual(process.env.FOO, "f");
+    assert.strictEqual(process.env.BAR, "bar");
+    `;
+
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["eval", code, envFilePath],
+      cwd: testDir,
+      stderr: "piped",
+      stdout: "piped",
+    });
+    const { code: exitCode, stderr } = await command.output();
+    const decoder = new TextDecoder();
+    const stderrStr = decoder.decode(stderr).trim();
+    if (exitCode !== 0) {
+      console.error("Error output:", stderrStr);
+    }
+
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+Deno.test({
+  name: "process.loadEnvFile() does not throw on invalid UTF-8 encoding",
+  fn() {
+    const dirPath = Deno.makeTempDirSync();
+    const envFilePath = path.join(dirPath, "envfile.env");
+    const contentArray = new Uint8Array([0xff, 0xfe, 0xfd]);
+    Deno.writeFileSync(envFilePath, contentArray);
+    // should load fine as in Node.js
+    process.loadEnvFile(envFilePath);
+    Deno.removeSync(dirPath, { recursive: true });
+  },
+});
+
+// Regression test: signal handlers receive the signal name as first argument
+Deno.test({
+  name: "[node/process] signal handlers receive signal name",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const received: string[] = [];
+    const handler = (signal: string) => {
+      received.push(signal);
+    };
+    process.once("SIGUSR1", handler);
+    process.kill(process.pid, "SIGUSR1");
+    // Signal delivery is async; wait for it
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assertEquals(received, ["SIGUSR1"]);
   },
 });

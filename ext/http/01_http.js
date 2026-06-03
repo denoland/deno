@@ -1,12 +1,13 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
   internalRidSymbol,
 } = core;
-import {
+const {
   op_http_accept,
   op_http_headers,
   op_http_shutdown,
@@ -15,7 +16,7 @@ import {
   op_http_write,
   op_http_write_headers,
   op_http_write_resource,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ObjectPrototypeIsPrototypeOf,
   SafeSet,
@@ -30,37 +31,28 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
 } = primordials;
-import { _ws } from "ext:deno_http/02_websocket.ts";
-import { InnerBody } from "ext:deno_fetch/22_body.js";
-import { Event } from "ext:deno_web/02_event.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
-import {
+const { _ws } = core.loadExtScript("ext:deno_http/02_websocket.ts");
+const { InnerBody } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const { Event } = core.loadExtScript("ext:deno_web/02_event.js");
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const {
   ResponsePrototype,
   toInnerResponse,
-} from "ext:deno_fetch/23_response.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_response.js");
+const {
   abortRequest,
   fromInnerRequest,
   newInnerRequest,
-} from "ext:deno_fetch/23_request.js";
-import {
-  _eventLoop,
-  _idleTimeoutDuration,
-  _idleTimeoutTimeout,
-  _protocol,
-  _readyState,
-  _rid,
-  _role,
-  _serverHandleIdleTimeout,
-  SERVER,
-  WebSocket,
-} from "ext:deno_websocket/01_websocket.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/23_request.js");
+const loadWebSocket = core.createLazyLoader(
+  "ext:deno_websocket/01_websocket.js",
+);
+const {
   getReadableStreamResourceBacking,
   readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 const connErrorSymbol = Symbol("connError");
 
@@ -210,7 +202,17 @@ function createRespondWith(
         );
       }
 
+      // The Response prototype check above passes for Response-like objects
+      // that don't carry the internal slot (e.g. `Object.create(Response.prototype)`
+      // or a polyfilled/foreign-realm Response). Reject those here instead of
+      // crashing later on `innerResp.body`. Mirrors the Deno.serve guard
+      // added in #34416.
       const innerResp = toInnerResponse(resp);
+      if (innerResp === undefined) {
+        throw new TypeError(
+          "First argument to 'respondWith' must be a Response constructed via the Response constructor in this realm",
+        );
+      }
 
       // If response body length is known, it will be sent synchronously in a
       // single op, in other case a "response body" resource will be created and
@@ -358,6 +360,17 @@ function createRespondWith(
 
       const ws = resp[_ws];
       if (ws) {
+        const {
+          _eventLoop,
+          _idleTimeoutDuration,
+          _idleTimeoutTimeout,
+          _protocol,
+          _readyState,
+          _rid,
+          _role,
+          _serverHandleIdleTimeout,
+          SERVER,
+        } = loadWebSocket();
         const wsRid = await op_http_upgrade_websocket(
           readStreamRid,
         );
@@ -366,7 +379,7 @@ function createRespondWith(
 
         httpConn.close();
 
-        ws[_readyState] = WebSocket.OPEN;
+        ws[_readyState] = 1; // WebSocket.OPEN
         ws[_role] = SERVER;
         const event = new Event("open");
         ws.dispatchEvent(event);
@@ -399,4 +412,5 @@ function serveHttp(conn) {
   return new HttpConn(rid, conn.remoteAddr, conn.localAddr);
 }
 
-export { HttpConn, serveHttp };
+return { HttpConn, serveHttp };
+})();
