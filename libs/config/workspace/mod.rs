@@ -7075,10 +7075,8 @@ pub mod test {
         }
       }),
     );
-    sys.fs_insert_json(
-      root_dir().join("packages/backend/deno.json"),
-      json!({}),
-    );
+    sys
+      .fs_insert_json(root_dir().join("packages/backend/deno.json"), json!({}));
     sys.fs_insert(
       root_dir().join("packages/backend/main.ts"),
       "Deno.serve(() => new Response('hi'));",
@@ -7123,10 +7121,8 @@ pub mod test {
         }
       }),
     );
-    sys.fs_insert_json(
-      root_dir().join("packages/backend/deno.json"),
-      json!({}),
-    );
+    sys
+      .fs_insert_json(root_dir().join("packages/backend/deno.json"), json!({}));
     sys.fs_insert(
       root_dir().join("packages/backend/main.ts"),
       "Deno.serve(() => new Response('hi'));",
