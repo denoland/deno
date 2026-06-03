@@ -7773,9 +7773,16 @@ fn run_parse(
     Some(mut script_arg) => {
       let script = script_arg.next().unwrap();
       flags.argv.extend(script_arg);
+      let watch = watch_arg_parse_with_paths(matches)?;
+      if script == "-" && watch.is_some() {
+        return Err(clap::Error::raw(
+          clap::error::ErrorKind::ArgumentConflict,
+          "--watch and --watch-hmr cannot be used while reading from stdin.\n",
+        ));
+      }
       flags.subcommand = DenoSubcommand::Run(RunFlags {
         script,
-        watch: watch_arg_parse_with_paths(matches)?,
+        watch,
         bare,
         coverage_dir,
         print_task_list: false,
@@ -9318,6 +9325,24 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn run_watch_with_stdin_is_error() {
+    // `--watch` and `--watch-hmr` cannot be combined with reading from stdin,
+    // previously `--watch-hmr -` panicked and `--watch -` was silently ignored.
+    for watch_flag in ["--watch", "--watch-hmr", "--unstable-hmr"] {
+      let r = flags_from_vec(svec!["deno", "run", watch_flag, "-"]);
+      assert_eq!(
+        r.unwrap_err().kind(),
+        clap::error::ErrorKind::ArgumentConflict,
+        "expected conflict for {watch_flag}"
+      );
+    }
+
+    // a regular script with the same flags must still parse fine
+    let r = flags_from_vec(svec!["deno", "run", "--watch-hmr", "script.ts"]);
+    assert!(r.is_ok());
   }
 
   #[test]
