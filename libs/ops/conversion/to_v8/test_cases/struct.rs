@@ -12,3 +12,13 @@ pub struct Struct {
   d: u16,
   f: Option<u32>,
 }
+
+#[derive(ToV8)]
+pub struct SkipIfNoneStruct {
+  a: u8,
+  #[to_v8(skip_if_none)]
+  b: Option<u32>,
+  #[to_v8(rename = "cc", skip_if_none)]
+  c: Option<String>,
+  d: bool,
+}

@@ -30,6 +30,58 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
         .map(TryInto::try_into)
         .collect::<Result<Vec<StructField>, Error>>()?;
 
+      // A `skip_if_none` field is only present in the resulting object when its
+      // `Option` is `Some`, so the key set is only known at runtime. The fixed
+      // `with_prototype_and_properties` fast path can't express that, so fall
+      // back to pushing keys/values into vectors (preserving declaration order)
+      // when any field opts in. Otherwise keep the cheaper fixed-array path.
+      let any_skip_if_none = fields.iter().any(|field| field.skip_if_none);
+
+      if any_skip_if_none {
+        let len = fields.len();
+        let pushes = fields
+          .into_iter()
+          .map(|field| {
+            let key = crate::get_internalized_string(field.js_name)?;
+            let name = field.name.clone();
+            let converter =
+              convert_or_serde(field.serde, field.ty.span(), field.name);
+            let push = quote! {
+              __keys.push(#key);
+              __values.push(#converter);
+            };
+            Ok(if field.skip_if_none {
+              quote! {
+                if ::std::option::Option::is_some(&#name) {
+                  #push
+                }
+              }
+            } else {
+              push
+            })
+          })
+          .collect::<Result<Vec<_>, Error>>()?;
+
+        let body = quote! {
+          let __null = ::deno_core::v8::null(__scope).into();
+          let mut __keys: ::std::vec::Vec<::deno_core::v8::Local<::deno_core::v8::Name>> =
+            ::std::vec::Vec::with_capacity(#len);
+          let mut __values: ::std::vec::Vec<::deno_core::v8::Local<::deno_core::v8::Value>> =
+            ::std::vec::Vec::with_capacity(#len);
+
+          #(#pushes)*
+
+          Ok::<_, ::deno_error::JsErrorBox>(::deno_core::v8::Object::with_prototype_and_properties(
+            __scope,
+            __null,
+            &__keys,
+            &__values,
+          ).into())
+        };
+
+        return Ok(body);
+      }
+
       let mut names = Vec::with_capacity(fields.len());
       let mut converters = Vec::with_capacity(fields.len());
 
@@ -98,6 +150,7 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
 pub struct StructField {
   pub name: Ident,
   serde: bool,
+  skip_if_none: bool,
   ty: Type,
   pub js_name: Ident,
 }
@@ -110,6 +163,7 @@ impl TryFrom<Field> for StructField {
       mut rename,
       mut serde,
     } = crate::conversion::StructFieldArgumentShared::parse(&value.attrs)?;
+    let mut skip_if_none = false;
 
     for attr in value.attrs {
       if attr.path().is_ident("to_v8") {
@@ -124,6 +178,7 @@ impl TryFrom<Field> for StructField {
               rename = Some(value.value())
             }
             StructFieldArgument::Serde { .. } => serde = true,
+            StructFieldArgument::SkipIfNone { .. } => skip_if_none = true,
           }
         }
       }
@@ -138,6 +193,7 @@ impl TryFrom<Field> for StructField {
       js_name,
       name,
       serde,
+      skip_if_none,
       ty: value.ty,
     })
   }
@@ -153,6 +209,9 @@ pub(crate) enum StructFieldArgument {
   Serde {
     name_token: shared_kw::serde,
   },
+  SkipIfNone {
+    name_token: shared_kw::skip_if_none,
+  },
 }
 
 impl Parse for StructFieldArgument {
@@ -166,6 +225,10 @@ impl Parse for StructFieldArgument {
       })
     } else if lookahead.peek(shared_kw::serde) {
       Ok(StructFieldArgument::Serde {
+        name_token: input.parse()?,
+      })
+    } else if lookahead.peek(shared_kw::skip_if_none) {
+      Ok(StructFieldArgument::SkipIfNone {
         name_token: input.parse()?,
       })
     } else {
