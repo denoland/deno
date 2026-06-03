@@ -792,6 +792,27 @@ export function filterMapDiagnostic(diagnostic) {
     if (diagnostic.code == 1375 || diagnostic.code == 1431) {
       return false;
     }
+    // Notebook cells are analyzed as classic scripts so that top-level
+    // declarations are shared between cells. As a side effect, declaring a
+    // top-level binding whose name matches an ambient global from the default
+    // libraries (e.g. `const name = ...` shadowing `declare var name` in
+    // `lib.deno.window.d.ts`) is reported as a redeclaration, even though it's
+    // valid in a notebook. Suppress these when the conflicting declaration
+    // lives in a default library.
+    // See https://github.com/denoland/deno/issues/22628.
+    if (
+      // 2300: Duplicate identifier.
+      // 2403: Subsequent variable declarations must have the same type.
+      // 2451: Cannot redeclare block-scoped variable.
+      (diagnostic.code === 2300 || diagnostic.code === 2403 ||
+        diagnostic.code === 2451) &&
+      diagnostic.relatedInformation?.some((related) =>
+        related.file?.isDeclarationFile &&
+        related.file?.fileName?.startsWith(ASSETS_URL_PREFIX)
+      )
+    ) {
+      return false;
+    }
   }
   // make the diagnostic for using an `export =` in an es module a warning
   if (diagnostic.code === 1203) {
