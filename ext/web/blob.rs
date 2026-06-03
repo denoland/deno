@@ -3,10 +3,11 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::future::Future;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::OpState;
@@ -36,6 +37,9 @@ pub enum BlobError {
 use crate::Location;
 
 pub type PartMap = HashMap<Uuid, Arc<dyn BlobPart + Send + Sync>>;
+
+pub type BlobPartReadFuture<'a> =
+  Pin<Box<dyn Future<Output = &'a [u8]> + Send + 'a>>;
 
 #[derive(Default, Debug)]
 pub struct BlobStore {
@@ -133,10 +137,9 @@ impl Blob {
   }
 }
 
-#[async_trait]
 pub trait BlobPart: Debug {
   // TODO(lucacsonato): this should be a stream!
-  async fn read<'a>(&'a self) -> &'a [u8];
+  fn read<'a>(&'a self) -> BlobPartReadFuture<'a>;
   fn size(&self) -> usize;
 }
 
@@ -149,10 +152,9 @@ impl From<Vec<u8>> for InMemoryBlobPart {
   }
 }
 
-#[async_trait]
 impl BlobPart for InMemoryBlobPart {
-  async fn read<'a>(&'a self) -> &'a [u8] {
-    &self.0
+  fn read<'a>(&'a self) -> BlobPartReadFuture<'a> {
+    Box::pin(async move { self.0.as_slice() })
   }
 
   fn size(&self) -> usize {
@@ -167,11 +169,12 @@ pub struct SlicedBlobPart {
   len: usize,
 }
 
-#[async_trait]
 impl BlobPart for SlicedBlobPart {
-  async fn read<'a>(&'a self) -> &'a [u8] {
-    let original = self.part.read().await;
-    &original[self.start..self.start + self.len]
+  fn read<'a>(&'a self) -> BlobPartReadFuture<'a> {
+    Box::pin(async move {
+      let original = self.part.read().await;
+      &original[self.start..self.start + self.len]
+    })
   }
 
   fn size(&self) -> usize {
@@ -336,5 +339,53 @@ pub fn op_blob_from_object_url(
       }))
     }
     _ => Ok(None),
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn blob_part(data: Vec<u8>) -> Arc<dyn BlobPart + Send + Sync> {
+    Arc::new(InMemoryBlobPart::from(data))
+  }
+
+  #[test]
+  fn in_memory_blob_part_reads_bytes() {
+    let part = InMemoryBlobPart::from(vec![1, 2, 3]);
+
+    assert_eq!(futures::executor::block_on(part.read()), &[1, 2, 3]);
+    assert_eq!(part.size(), 3);
+  }
+
+  #[test]
+  fn sliced_blob_part_reads_window() {
+    let part = blob_part(vec![1, 2, 3, 4, 5]);
+    let sliced = SlicedBlobPart {
+      part,
+      start: 1,
+      len: 3,
+    };
+
+    assert_eq!(futures::executor::block_on(sliced.read()), &[2, 3, 4]);
+    assert_eq!(sliced.size(), 3);
+  }
+
+  #[test]
+  fn blob_read_all_concatenates_parts() {
+    let sliced = SlicedBlobPart {
+      part: blob_part(vec![3, 4, 5]),
+      start: 1,
+      len: 2,
+    };
+    let blob = Blob {
+      media_type: String::new(),
+      parts: vec![blob_part(vec![1, 2]), Arc::new(sliced)],
+    };
+
+    assert_eq!(
+      futures::executor::block_on(blob.read_all()),
+      vec![1, 2, 4, 5]
+    );
   }
 }

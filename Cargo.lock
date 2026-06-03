@@ -3396,7 +3396,6 @@ name = "deno_web"
 version = "0.281.0"
 dependencies = [
  "approx",
- "async-trait",
  "brotli",
  "bytes",
  "cssparser",
