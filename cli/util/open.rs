@@ -11,12 +11,12 @@ use std::process::Stdio;
 pub fn open_url_detached(url: &str) -> io::Result<()> {
   #[cfg(windows)]
   {
-    return shell_execute_open(url);
+    shell_execute_open(url)
   }
 
   #[cfg(target_os = "macos")]
   {
-    return spawn_detached("/usr/bin/open", &[OsStr::new(url)]);
+    spawn_detached("/usr/bin/open", &[OsStr::new(url)])
   }
 
   #[cfg(all(unix, not(target_os = "macos")))]
