@@ -301,8 +301,8 @@ fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
   //    before `set_len(len)` is called.
   unsafe {
     while len - i >= CHUNK_SIZE {
-      let chunk = std::ptr::read_unaligned(src.add(i) as *const usize);
-      std::ptr::write_unaligned(dst.add(i) as *mut usize, chunk & MASK);
+      let chunk = src.add(i).cast::<usize>().read_unaligned();
+      dst.add(i).cast::<usize>().write_unaligned(chunk & MASK);
       i += CHUNK_SIZE;
     }
 
