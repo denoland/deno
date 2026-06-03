@@ -169,6 +169,11 @@ pub struct VersionFlags {
   pub release_notes: Option<String>,
   /// Don't write any files; just print what would happen.
   pub dry_run: bool,
+  /// Explicit path to the manifest file to bump. May point to a `deno.json`
+  /// (or `.jsonc`) or a `package.json`. When set, single-file mode is forced
+  /// (workspace auto-detection is bypassed). Useful when both `deno.json` and
+  /// `package.json` exist in the same directory.
+  pub config: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -5097,6 +5102,20 @@ release note is prepended to <p(245)>Releases.md</>."
             "[conventional-commits mode] Path to the release notes file to prepend. Default: Releases.md",
           ),
       )
+      .arg(
+        Arg::new("config")
+          .long("config")
+          .short('c')
+          .value_name("FILE")
+          .value_hint(ValueHint::FilePath)
+          .help(cstr!(
+            "Explicit path to the manifest file to bump.
+  <p(245)>May point to a `deno.json`/`deno.jsonc` or a `package.json`. When
+  set, single-file mode is forced (workspace auto-detection is bypassed).
+  Useful when both `deno.json` and `package.json` exist in the same
+  directory.</>"
+          )),
+      )
   })
 }
 
@@ -6727,6 +6746,7 @@ fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     import_map: matches.remove_one::<String>("import-map"),
     release_notes: matches.remove_one::<String>("release-notes"),
     dry_run: matches.get_flag("dry-run"),
+    config: matches.remove_one::<String>("config"),
   });
 }
 
@@ -16704,6 +16724,48 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           base: Some("main".to_string()),
           import_map: Some("import_map.json".to_string()),
           release_notes: Some("Releases.md".to_string()),
+          config: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_config() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "bump-version",
+      "patch",
+      "--config",
+      "package.json",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+          config: Some("package.json".to_string()),
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "bump-version",
+      "-c",
+      "package.json",
+      "patch",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+          config: Some("package.json".to_string()),
+          ..Default::default()
         }),
         ..Flags::default()
       }

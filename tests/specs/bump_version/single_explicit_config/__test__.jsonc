@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "bump-version --config package.json patch",
+    "output": "patch.out"
+  }, {
+    "args": "bump-version -c package.json",
+    "output": "after_pkg.out"
+  }, {
+    "args": "bump-version",
+    "output": "after_deno.out"
+  }]
+}

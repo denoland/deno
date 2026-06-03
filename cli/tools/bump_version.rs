@@ -173,16 +173,46 @@ fn increment_version(
 
 fn load_single_config(
   cli_options: &CliOptions,
+  version_flags: &VersionFlags,
 ) -> Result<ConfigUpdater, AnyError> {
-  let start_dir = &cli_options.start_dir;
+  // Explicit --config takes precedence over auto-detection. May point at a
+  // deno.json/.jsonc or a package.json.
+  if let Some(path) = &version_flags.config {
+    let abs = if Path::new(path).is_absolute() {
+      PathBuf::from(path)
+    } else {
+      cli_options.initial_cwd().join(path)
+    };
+    if !abs.exists() {
+      bail!("Config file not found: {}", abs.display());
+    }
+    return ConfigUpdater::new(abs);
+  }
 
-  // Check for deno.json first - it takes priority
-  if let Some(deno_json) = start_dir.member_deno_json() {
-    let config_path = deno_path_util::url_to_file_path(&deno_json.specifier)
+  let start_dir = &cli_options.start_dir;
+  let deno_json = start_dir.member_deno_json();
+  let pkg_json = start_dir.member_pkg_json();
+
+  // Prefer the manifest that actually carries a `version` field. When both
+  // deno.json and package.json are present (common when a JSR/npm dual-published
+  // package uses deno.json purely for toolchain config), this lets users bump
+  // package.json's version even though deno.json is also present.
+  if let Some(deno_json) = deno_json {
+    let path = deno_path_util::url_to_file_path(&deno_json.specifier)
       .context("Failed to convert deno.json URL to path")?;
-    return ConfigUpdater::new(config_path);
-  } else if let Some(pkg_json) = start_dir.member_pkg_json() {
-    // Only fall back to package.json if deno.json doesn't exist
+    if deno_json.json.version.is_some() {
+      return ConfigUpdater::new(path);
+    }
+    if let Some(pkg_json) = pkg_json
+      && pkg_json.version.is_some()
+    {
+      return ConfigUpdater::new(pkg_json.path.clone());
+    }
+    // Neither has a version; default to deno.json so we can write/initialize.
+    return ConfigUpdater::new(path);
+  }
+
+  if let Some(pkg_json) = pkg_json {
     return ConfigUpdater::new(pkg_json.path.clone());
   }
 
@@ -201,9 +231,18 @@ pub fn bump_version_command(
   let at_workspace_root =
     cli_options.start_dir.dir_url() == workspace.root_dir_url();
   let jsr_pkg_count = workspace.jsr_packages().count();
-  let workspace_mode = match version_flags.workspace {
-    Some(b) => b,
-    None => at_workspace_root && jsr_pkg_count > 1,
+  // An explicit --config targets a single manifest; workspace mode does not
+  // apply to it.
+  let workspace_mode = if version_flags.config.is_some() {
+    if version_flags.workspace == Some(true) {
+      bail!("--workspace and --config are mutually exclusive");
+    }
+    false
+  } else {
+    match version_flags.workspace {
+      Some(b) => b,
+      None => at_workspace_root && jsr_pkg_count > 1,
+    }
   };
 
   if workspace_mode {
@@ -218,7 +257,7 @@ fn bump_single(
   cli_options: &CliOptions,
   version_flags: &VersionFlags,
 ) -> Result<(), AnyError> {
-  let mut config = load_single_config(cli_options)?;
+  let mut config = load_single_config(cli_options, version_flags)?;
 
   let current_version = if let Some(version_str) = config.get_version() {
     Version::parse_standard(&version_str).with_context(|| {
