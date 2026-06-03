@@ -23,8 +23,6 @@
 // Logic and comments translated pretty much one-to-one from node's impl
 // (https://github.com/nodejs/node/blob/ba06c5c509956dc413f91b755c1c93798bb700d4/src/string_decoder.cc)
 
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
 const { core, primordials } = __bootstrap;
 const bufMod = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
@@ -69,7 +67,9 @@ const ENCODING_HEX = 6;
 function normalizeEncoding(enc) {
   const encoding = castEncoding(enc ?? null);
   if (!encoding) {
-    if (typeof enc !== "string" || StringPrototypeToLowerCase(enc) !== "raw") {
+    if (
+      typeof enc !== "string" || StringPrototypeToLowerCase(enc) !== "raw"
+    ) {
       throw new ERR_UNKNOWN_ENCODING(
         enc,
       );
@@ -120,6 +120,7 @@ function bufferToString(buf, encoding, start, end) {
       `Cannot create a string longer than 0x${maxStringLengthHex} characters`,
     );
   }
+  // deno-lint-ignore prefer-primordials -- buf is a Buffer; Buffer.prototype.toString(encoding) is not String.prototype.toString
   return buf.toString(encoding, start, end);
 }
 

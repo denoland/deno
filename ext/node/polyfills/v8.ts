@@ -3,17 +3,46 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
 const { core, primordials } = __bootstrap;
 const {
+  Array,
   ArrayPrototypePush,
+  BigInt64Array,
+  BigUint64Array,
+  DataView,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  Date,
+  DateNow,
+  DatePrototypeGetDate,
+  DatePrototypeGetFullYear,
+  DatePrototypeGetHours,
+  DatePrototypeGetMinutes,
+  DatePrototypeGetMonth,
+  DatePrototypeGetSeconds,
+  Error,
+  Float32Array,
+  Float64Array,
+  Int16Array,
+  Int32Array,
+  Int8Array,
   ObjectFreeze,
   ObjectPrototypeToString,
+  String,
+  StringPrototypePadStart,
+  Symbol,
   SymbolDispose,
   SymbolSpecies,
+  TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  Uint16Array,
+  Uint32Array,
+  Uint8Array,
+  Uint8ClampedArray,
 } = primordials;
 const {
   op_v8_cached_data_version_tag,
@@ -53,9 +82,25 @@ const lazyFs = core.createLazyLoader("node:fs");
 const lazyStream = core.createLazyLoader("node:stream");
 
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-const { isArrayBufferView } = core.loadExtScript(
+const { isArrayBufferView, isDataView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
+
+function getViewBuffer(view: ArrayBufferView): ArrayBufferLike {
+  return isDataView(view)
+    ? DataViewPrototypeGetBuffer(view as DataView)
+    : TypedArrayPrototypeGetBuffer(view as Uint8Array);
+}
+function getViewByteOffset(view: ArrayBufferView): number {
+  return isDataView(view)
+    ? DataViewPrototypeGetByteOffset(view as DataView)
+    : TypedArrayPrototypeGetByteOffset(view as Uint8Array);
+}
+function getViewByteLength(view: ArrayBufferView): number {
+  return isDataView(view)
+    ? DataViewPrototypeGetByteLength(view as DataView)
+    : TypedArrayPrototypeGetByteLength(view as Uint8Array);
+}
 const lazyFsUtils = core.createLazyLoader(
   "ext:deno_node/internal/fs/utils.mjs",
 );
@@ -156,18 +201,38 @@ function writeHeapSnapshot(
     filename = lazyFsUtils().getValidatedPath(filename) as string;
   } else {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    const hours = String(now.getHours()).padStart(2, "0");
-    const minutes = String(now.getMinutes()).padStart(2, "0");
-    const seconds = String(now.getSeconds()).padStart(2, "0");
+    const year = DatePrototypeGetFullYear(now);
+    const month = StringPrototypePadStart(
+      String(DatePrototypeGetMonth(now) + 1),
+      2,
+      "0",
+    );
+    const day = StringPrototypePadStart(
+      String(DatePrototypeGetDate(now)),
+      2,
+      "0",
+    );
+    const hours = StringPrototypePadStart(
+      String(DatePrototypeGetHours(now)),
+      2,
+      "0",
+    );
+    const minutes = StringPrototypePadStart(
+      String(DatePrototypeGetMinutes(now)),
+      2,
+      "0",
+    );
+    const seconds = StringPrototypePadStart(
+      String(DatePrototypeGetSeconds(now)),
+      2,
+      "0",
+    );
     const pid = globalThis.process?.pid ?? 0;
     const thread = 0;
     const seq = ++heapSnapshotCounter;
     filename =
       `Heap.${year}${month}${day}.${hours}${minutes}${seconds}.${pid}.${thread}.${
-        String(seq).padStart(3, "0")
+        StringPrototypePadStart(String(seq), 3, "0")
       }.heapsnapshot`;
   }
   if (options !== undefined) {
@@ -301,9 +366,12 @@ class Deserializer {
   }
   readRawBytes(length: number): Buffer {
     const offset = this._readRawBytes(length);
+    // `this.buffer` is the Deserializer's own field, not a TypedArray getter.
+    // deno-lint-ignore prefer-primordials
+    const view = this.buffer;
     return Buffer.from(
-      this.buffer.buffer,
-      this.buffer.byteOffset + offset,
+      getViewBuffer(view),
+      getViewByteOffset(view) + offset,
       length,
     );
   }
@@ -379,9 +447,13 @@ class DefaultSerializer extends Serializer {
       }
     }
     this.writeUint32(i);
-    this.writeUint32(abView.byteLength);
+    this.writeUint32(getViewByteLength(abView));
     this.writeRawBytes(
-      new Uint8Array(abView.buffer, abView.byteOffset, abView.byteLength),
+      new Uint8Array(
+        getViewBuffer(abView),
+        getViewByteOffset(abView),
+        getViewByteLength(abView),
+      ),
     );
   }
 }
@@ -415,7 +487,7 @@ class GCProfiler {
   start() {
     if (this[kGCHandle] !== null) return;
     const handle = op_v8_gc_profiler_new();
-    this[kGCStartTime] = Date.now();
+    this[kGCStartTime] = DateNow();
     op_v8_gc_profiler_start(handle);
     this[kGCHandle] = handle;
   }
@@ -424,7 +496,7 @@ class GCProfiler {
     const handle = this[kGCHandle];
     if (handle === null) return undefined;
     this[kGCHandle] = null;
-    const endTime = Date.now();
+    const endTime = DateNow();
     const result = op_v8_gc_profiler_stop(handle);
     if (result === null) return undefined;
     return {
@@ -513,10 +585,13 @@ class DefaultDeserializer extends Deserializer {
     const byteOffset = this._readRawBytes(byteLength);
     const BYTES_PER_ELEMENT = ctor?.BYTES_PER_ELEMENT ?? 1;
 
-    const offset = this.buffer.byteOffset + byteOffset;
+    // `this.buffer` is the Deserializer's own field, not a TypedArray getter.
+    // deno-lint-ignore prefer-primordials
+    const view = this.buffer;
+    const offset = getViewByteOffset(view) + byteOffset;
     if (offset % BYTES_PER_ELEMENT === 0) {
       return new ctor(
-        this.buffer.buffer,
+        getViewBuffer(view),
         offset,
         byteLength / BYTES_PER_ELEMENT,
       );
@@ -524,13 +599,13 @@ class DefaultDeserializer extends Deserializer {
     // Copy to an aligned buffer first.
     const bufferCopy = Buffer.allocUnsafe(byteLength);
     Buffer.from(
-      this.buffer.buffer,
+      getViewBuffer(view),
       byteOffset,
       byteLength,
     ).copy(bufferCopy);
     return new ctor(
-      bufferCopy.buffer,
-      bufferCopy.byteOffset,
+      TypedArrayPrototypeGetBuffer(bufferCopy),
+      TypedArrayPrototypeGetByteOffset(bufferCopy),
       byteLength / BYTES_PER_ELEMENT,
     );
   }
