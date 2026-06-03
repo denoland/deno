@@ -171,101 +171,41 @@ pub struct TsEvaluateResponse {
   pub value: cdp::EvaluateResponse,
 }
 
-// V8 inspector's `Runtime.callFunctionOn` re-serializes any `CallArgument.value`
-// into a v8::String when no objectId is provided (see V8
-// `inspector/injected-script.cc::resolveCallArgument` /
-// `inspector/string-util.cc::toV8String`). Primitive `Runtime.evaluate`
-// results have a `value` but no `objectId`, so passing them straight back as
-// CallArgument values can overflow `v8::String::kMaxLength` and crash V8 with
-// "v8::ToLocalChecked Empty MaybeLocal". The reserialization can expand each
-// source char up to ~6x (e.g. NUL -> "^@"); divide by 8 for headroom.
-const SAFE_CALL_ARGUMENT_BYTES: usize = (1 << 29) / 8;
+// V8 inspector's `Runtime.callFunctionOn` reserializes any `CallArgument` that
+// carries a `value` but no `objectId` by building a `v8::String` from the JSON
+// encoding of that value (see V8 `inspector/injected-script.cc::
+// resolveCallArgument` / `inspector/string-util.cc::toV8String`). Primitive
+// `Runtime.evaluate` results always carry a `value` and never an `objectId`, so
+// handing one straight back crashes V8 with "v8::ToLocalChecked Empty
+// MaybeLocal" once that JSON encoding exceeds `v8::String::kMaxLength`. JSON
+// string encoding grows a source char by at most 6x (a control char such as
+// NUL becomes the six-byte `\u0000`), so a primitive string whose worst-case
+// encoding could exceed kMaxLength is unsafe to round-trip.
+const V8_STRING_MAX_LENGTH: usize = (1 << 29) - 24;
+const MAX_JSON_STRING_EXPANSION: usize = 6;
+const SAFE_CALL_ARGUMENT_BYTES: usize =
+  V8_STRING_MAX_LENGTH / MAX_JSON_STRING_EXPANSION;
 
-/// Returns `true` if passing this remote object back as a CallArgument value
-/// would risk overflowing V8 inspector's reserialization limit. Only matters
-/// for primitives — objects are sent by `objectId` and never reserialized.
-fn is_too_large_for_call_argument(obj: &cdp::RemoteObject) -> bool {
+/// Number of characters of an oversized string we render before eliding the
+/// rest. Always far below [`SAFE_CALL_ARGUMENT_BYTES`], so the prefix is safe to
+/// send back through V8 inspector for formatting.
+const OVERSIZED_STRING_PREVIEW_CHARS: usize = 10_000;
+
+/// If `obj` is a primitive string too large to safely round-trip back into V8
+/// as a `CallArgument` value, returns that string. Objects are referenced by
+/// `objectId` and never reserialized, so they are always safe and yield `None`.
+fn oversized_primitive_string(obj: &cdp::RemoteObject) -> Option<&str> {
   if obj.object_id.is_some() {
-    return false;
+    return None;
   }
   match obj.value.as_ref() {
-    Some(serde_json::Value::String(s)) => s.len() > SAFE_CALL_ARGUMENT_BYTES,
-    _ => false,
-  }
-}
-
-/// Locally render a primitive [`cdp::RemoteObject`] that's too large to safely
-/// round-trip through V8 inspector. Mimics `Deno.inspect` output for strings:
-/// quoted, truncated at 10 000 chars with a "... N more characters" trailer.
-fn format_remote_primitive_locally(
-  obj: &cdp::RemoteObject,
-  use_color: bool,
-) -> String {
-  const MAX_DISPLAY_CHARS: usize = 10_000;
-  let Some(serde_json::Value::String(s)) = obj.value.as_ref() else {
-    return obj
-      .description
-      .clone()
-      .or_else(|| obj.value.as_ref().map(|v| v.to_string()))
-      .unwrap_or_default();
-  };
-
-  // Truncate at a char boundary so we don't slice through a UTF-8 sequence.
-  let total_chars = s.chars().count();
-  let (truncated, trailer) = if total_chars > MAX_DISPLAY_CHARS {
-    let head: String = s.chars().take(MAX_DISPLAY_CHARS).collect();
-    let remaining = total_chars - MAX_DISPLAY_CHARS;
-    let suffix = format!(
-      "... {remaining} more character{}",
-      if remaining == 1 { "" } else { "s" }
-    );
-    (head, suffix)
-  } else {
-    (s.clone(), String::new())
-  };
-
-  // Pick a quote char that doesn't appear in the truncated head, matching
-  // ext/web/01_console.js's quoteString preference order.
-  let quote = if !truncated.contains('"') {
-    '"'
-  } else if !truncated.contains('\'') {
-    '\''
-  } else {
-    '`'
-  };
-
-  // Escape backslash, the chosen quote, and control characters, matching the
-  // escape sequences emitted by ext/web/01_console.js's replaceEscapeSequences.
-  let mut escaped = String::with_capacity(truncated.len() + 2);
-  escaped.push(quote);
-  for c in truncated.chars() {
-    match c {
-      '\\' => escaped.push_str("\\\\"),
-      '\u{0008}' => escaped.push_str("\\b"),
-      '\u{000c}' => escaped.push_str("\\f"),
-      '\n' => escaped.push_str("\\n"),
-      '\r' => escaped.push_str("\\r"),
-      '\t' => escaped.push_str("\\t"),
-      '\u{000b}' => escaped.push_str("\\v"),
-      c if c == quote => {
-        escaped.push('\\');
-        escaped.push(c);
-      }
-      c if (c as u32) < 0x20 || ((c as u32) >= 0x7f && (c as u32) <= 0x9f) => {
-        use std::fmt::Write;
-        let _ = write!(escaped, "\\x{:02x}", c as u32);
-      }
-      c => escaped.push(c),
+    Some(serde_json::Value::String(s))
+      if s.len() > SAFE_CALL_ARGUMENT_BYTES =>
+    {
+      Some(s.as_str())
     }
+    _ => None,
   }
-  escaped.push(quote);
-
-  let body = if use_color {
-    colors::green(escaped).to_string()
-  } else {
-    escaped
-  };
-  format!("{body}{trailer}")
 }
 
 pub struct ReplSession {
@@ -721,7 +661,9 @@ impl ReplSession {
     &mut self,
     error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
-    if is_too_large_for_call_argument(error) {
+    if oversized_primitive_string(error).is_some() {
+      // Too large to round-trip back into V8 (see `oversized_primitive_string`),
+      // so we can't retain it in `_error`; clear it rather than crash.
       self
         .call_function_on_repl_internal_obj(
           r#"function () { this.lastThrownError = undefined; }"#.to_string(),
@@ -757,7 +699,9 @@ impl ReplSession {
     &mut self,
     evaluate_result: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
-    if is_too_large_for_call_argument(evaluate_result) {
+    if oversized_primitive_string(evaluate_result).is_some() {
+      // Too large to round-trip back into V8 (see `oversized_primitive_string`),
+      // so we can't retain it in `_`; clear it rather than crash.
       self
         .call_function_on_repl_internal_obj(
           r#"function () { this.lastEvalResult = undefined; }"#.to_string(),
@@ -861,12 +805,36 @@ impl ReplSession {
     &mut self,
     evaluate_result: &cdp::RemoteObject,
   ) -> Result<String, AnyError> {
-    if is_too_large_for_call_argument(evaluate_result) {
-      return Ok(format_remote_primitive_locally(
-        evaluate_result,
-        colors::use_color(),
-      ));
-    }
+    // A primitive string too large to round-trip back into V8 (see
+    // `oversized_primitive_string`) is rendered from a bounded prefix. The
+    // prefix still flows through `Deno.inspect` below, so quoting, escaping and
+    // coloring match every other result; a trailer records the elided count.
+    let truncated;
+    let (target, trailer) = match oversized_primitive_string(evaluate_result) {
+      Some(s) => {
+        let head: String =
+          s.chars().take(OVERSIZED_STRING_PREVIEW_CHARS).collect();
+        let elided = s.chars().count() - head.chars().count();
+        truncated = cdp::RemoteObject {
+          kind: "string".to_string(),
+          value: Some(Value::String(head)),
+          unserializable_value: None,
+          description: None,
+          object_id: None,
+        };
+        let trailer = if elided == 0 {
+          String::new()
+        } else {
+          format!(
+            "... {elided} more character{}",
+            if elided == 1 { "" } else { "s" }
+          )
+        };
+        (&truncated, trailer)
+      }
+      None => (evaluate_result, String::new()),
+    };
+
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
@@ -880,7 +848,7 @@ impl ReplSession {
           }
         }"#
           .to_string(),
-        std::slice::from_ref(evaluate_result),
+        std::slice::from_ref(target),
       )
       .await?;
     let s = response
@@ -890,7 +858,7 @@ impl ReplSession {
       .or(response.result.description)
       .ok_or_else(|| anyhow!("failed to evaluate expression"))?;
 
-    Ok(s)
+    Ok(format!("{s}{trailer}"))
   }
 
   async fn evaluate_ts_expression(
