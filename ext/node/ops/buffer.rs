@@ -307,7 +307,7 @@ fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
     }
 
     while i < len {
-      std::ptr::write(dst.add(i), *src.add(i) & 0x7F);
+      dst.add(i).write(*src.add(i) & 0x7F);
       i += 1;
     }
 
