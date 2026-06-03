@@ -3695,7 +3695,8 @@ The following information is shown:
           .long("json")
           .help("UNSTABLE: Outputs the information in JSON format")
           .action(ArgAction::SetTrue),
-      ))
+      )
+      .arg(min_dep_age_arg()))
       .arg(allow_import_arg())
       .arg(deny_import_arg())
 }
@@ -7381,6 +7382,7 @@ fn info_parse(
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
+  min_dep_age_arg_parse(flags, matches);
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.remove_one::<String>("file"),
