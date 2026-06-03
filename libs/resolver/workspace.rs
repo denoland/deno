@@ -2203,6 +2203,144 @@ mod test {
   }
 
   #[test]
+  fn auto_link_external_import_map() {
+    // A project that references an external package by relative path should
+    // resolve that package's own bare specifier imports against its own
+    // import map, without needing a `links` entry (issue #26764).
+    let sys = InMemorySys::default();
+    let repo2 = root_dir().join("repo2");
+    let repo1 = root_dir().join("repo1");
+    sys.fs_insert_json(
+      repo2.join("deno.json"),
+      json!({
+        "imports": {
+          "@jpravetz/bmod": "../repo1/bmod/mod.ts",
+        },
+      }),
+    );
+    sys.fs_insert_json(
+      repo1.join("bmod/deno.json"),
+      json!({
+        "imports": {
+          "@scope/amod": "../amod/mod.ts",
+        },
+      }),
+    );
+
+    let workspace = workspace_at_start_dir(&sys, &repo2);
+    let resolver = create_resolver(&workspace);
+    let referrer = url_from_file_path(&repo1.join("bmod/mod.ts")).unwrap();
+    let resolution = resolver
+      .resolve("@scope/amod", &referrer, ResolutionKind::Execution)
+      .unwrap();
+    let MappedResolution::Normal { specifier, .. } = &resolution else {
+      unreachable!("{:#?}", &resolution);
+    };
+    assert_eq!(
+      specifier.as_str(),
+      url_from_file_path(&repo1.join("amod/mod.ts"))
+        .unwrap()
+        .as_str()
+    );
+  }
+
+  #[test]
+  fn auto_link_external_import_map_transitive() {
+    // Auto-discovery follows path import entries transitively across several
+    // external packages.
+    let sys = InMemorySys::default();
+    let repo2 = root_dir().join("repo2");
+    let repo1 = root_dir().join("repo1");
+    let repo3 = root_dir().join("repo3");
+    sys.fs_insert_json(
+      repo2.join("deno.json"),
+      json!({
+        "imports": { "@a/bmod": "../repo1/bmod/mod.ts" },
+      }),
+    );
+    sys.fs_insert_json(
+      repo1.join("bmod/deno.json"),
+      json!({
+        "imports": { "@a/cmod": "../../repo3/cmod/mod.ts" },
+      }),
+    );
+    sys.fs_insert_json(
+      repo3.join("cmod/deno.json"),
+      json!({
+        "imports": { "@a/dmod": "./sub/mod.ts" },
+      }),
+    );
+
+    let workspace = workspace_at_start_dir(&sys, &repo2);
+    let resolver = create_resolver(&workspace);
+    let referrer = url_from_file_path(&repo3.join("cmod/mod.ts")).unwrap();
+    let resolution = resolver
+      .resolve("@a/dmod", &referrer, ResolutionKind::Execution)
+      .unwrap();
+    let MappedResolution::Normal { specifier, .. } = &resolution else {
+      unreachable!("{:#?}", &resolution);
+    };
+    assert_eq!(
+      specifier.as_str(),
+      url_from_file_path(&repo3.join("cmod/sub/mod.ts"))
+        .unwrap()
+        .as_str()
+    );
+  }
+
+  #[test]
+  fn auto_link_external_import_map_cycle() {
+    // Mutually-referencing external packages must terminate discovery and
+    // still resolve both directions.
+    let sys = InMemorySys::default();
+    let repo2 = root_dir().join("repo2");
+    let repo1 = root_dir().join("repo1");
+    sys.fs_insert_json(
+      repo2.join("deno.json"),
+      json!({
+        "imports": { "@x/bmod": "../repo1/bmod/mod.ts" },
+      }),
+    );
+    sys.fs_insert_json(
+      repo1.join("bmod/deno.json"),
+      json!({
+        "imports": { "@x/emod": "../emod/mod.ts" },
+      }),
+    );
+    sys.fs_insert_json(
+      repo1.join("emod/deno.json"),
+      json!({
+        "imports": { "@x/bmod": "../bmod/mod.ts" },
+      }),
+    );
+
+    let workspace = workspace_at_start_dir(&sys, &repo2);
+    let resolver = create_resolver(&workspace);
+    let resolve = |specifier: &str, referrer: &Path| {
+      let referrer = url_from_file_path(referrer).unwrap();
+      let resolution = resolver
+        .resolve(specifier, &referrer, ResolutionKind::Execution)
+        .unwrap();
+      match resolution {
+        MappedResolution::Normal { specifier, .. } => specifier,
+        other => unreachable!("{:#?}", other),
+      }
+    };
+    assert_eq!(
+      resolve("@x/emod", &repo1.join("bmod/mod.ts")).as_str(),
+      url_from_file_path(&repo1.join("emod/mod.ts"))
+        .unwrap()
+        .as_str()
+    );
+    assert_eq!(
+      resolve("@x/bmod", &repo1.join("emod/mod.ts")).as_str(),
+      url_from_file_path(&repo1.join("bmod/mod.ts"))
+        .unwrap()
+        .as_str()
+    );
+  }
+
+  #[test]
   fn root_member_imports_and_scopes() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(

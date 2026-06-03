@@ -1,0 +1,23 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/26764
+  // repo2 references a package in repo1 by relative path. That package has its
+  // own import map referencing a sibling package by bare specifier. Without any
+  // "links" field, Deno should auto-discover repo1's deno.json so the bare
+  // specifier resolves.
+  "tempDir": true,
+  "cwd": "./repo2",
+  "tests": {
+    "run": {
+      "args": "run main.ts",
+      "output": "42\n"
+    },
+    "check": {
+      "args": "check main.ts",
+      "output": "check.out"
+    },
+    "lint": {
+      "args": "lint",
+      "output": "Checked 1 file\n"
+    }
+  }
+}
