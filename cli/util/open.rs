@@ -1,9 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::io;
-
 #[cfg(unix)]
 use std::ffi::OsStr;
+use std::io;
 #[cfg(unix)]
 use std::process::Command;
 #[cfg(unix)]
