@@ -21,7 +21,7 @@
         "color-convert@2.0.1"
       ],
       "registryUrl": "http://localhost:4260/",
-      "localPath": "[WILDCARD]ansi-styles[WILDCHAR]4.3.0"
+      "localPath": "[WILDCARD]ansi-styles[WILDCARD]4.3.0"
     },
     "chalk@4.1.2": {
       "name": "chalk",
@@ -31,7 +31,7 @@
         "supports-color@7.2.0"
       ],
       "registryUrl": "http://localhost:4260/",
-      "localPath": "[WILDCARD]chalk[WILDCHAR]4.1.2"
+      "localPath": "[WILDCARD]chalk[WILDCARD]4.1.2"
     },
     "color-convert@2.0.1": {
       "name": "color-convert",
@@ -40,21 +40,21 @@
         "color-name@1.1.4"
       ],
       "registryUrl": "http://localhost:4260/",
-      "localPath": "[WILDCARD]color-convert[WILDCHAR]2.0.1"
+      "localPath": "[WILDCARD]color-convert[WILDCARD]2.0.1"
     },
     "color-name@1.1.4": {
       "name": "color-name",
       "version": "1.1.4",
       "dependencies": [],
       "registryUrl": "http://localhost:4260/",
-      "localPath": "[WILDCARD]color-name[WILDCHAR]1.1.4"
+      "localPath": "[WILDCARD]color-name[WILDCARD]1.1.4"
     },
     "has-flag@4.0.0": {
       "name": "has-flag",
       "version": "4.0.0",
       "dependencies": [],
       "registryUrl": "http://localhost:4260/",
-      "localPath": "[WILDCARD]has-flag[WILDCHAR]4.0.0"
+      "localPath": "[WILDCARD]has-flag[WILDCARD]4.0.0"
     },
     "supports-color@7.2.0": {
       "name": "supports-color",
@@ -63,7 +63,7 @@
         "has-flag@4.0.0"
       ],
       "registryUrl": "http://localhost:4260/",
-      "localPath": "[WILDCARD]supports-color[WILDCHAR]7.2.0"
+      "localPath": "[WILDCARD]supports-color[WILDCARD]7.2.0"
     }
   }
 }
