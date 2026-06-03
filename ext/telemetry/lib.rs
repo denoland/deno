@@ -945,6 +945,7 @@ pub struct OtelGlobals {
   pub id_generator: DenoIdGenerator,
   pub meter_provider: SdkMeterProvider,
   pub builtin_instrumentation_scope: InstrumentationScope,
+  pub span_event_count_limit: usize,
   pub config: OtelConfig,
 }
 
@@ -956,6 +957,31 @@ impl OtelGlobals {
   pub fn has_metrics(&self) -> bool {
     self.config.metrics_enabled
   }
+}
+
+/// Default maximum number of events per span, per the OpenTelemetry SDK spec
+/// for `OTEL_SPAN_EVENT_COUNT_LIMIT`.
+const DEFAULT_SPAN_EVENT_COUNT_LIMIT: usize = 128;
+
+/// Resolve the span event count limit from `OTEL_SPAN_EVENT_COUNT_LIMIT`,
+/// falling back to the spec default of 128.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#span-limits>
+fn span_event_count_limit_from_env(sys: &impl TelemetrySys) -> usize {
+  sys
+    .env_var("OTEL_SPAN_EVENT_COUNT_LIMIT")
+    .ok()
+    .and_then(|v| v.trim().parse::<usize>().ok())
+    .unwrap_or(DEFAULT_SPAN_EVENT_COUNT_LIMIT)
+}
+
+/// The effective span event count limit from the initialized globals, falling
+/// back to the spec default if telemetry is not yet initialized.
+fn span_event_count_limit() -> usize {
+  OTEL_GLOBALS
+    .get()
+    .map(|g| g.span_event_count_limit)
+    .unwrap_or(DEFAULT_SPAN_EVENT_COUNT_LIMIT)
 }
 
 pub static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
@@ -1142,6 +1168,8 @@ pub fn init(
     DenoIdGenerator::random()
   };
 
+  let span_event_count_limit = span_event_count_limit_from_env(sys);
+
   OTEL_GLOBALS
     .set(OtelGlobals {
       log_processor,
@@ -1149,6 +1177,7 @@ pub fn init(
       id_generator,
       meter_provider,
       builtin_instrumentation_scope,
+      span_event_count_limit,
       config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
@@ -1958,10 +1987,17 @@ impl OtelSpan {
         .checked_add(Duration::from_secs_f64(start_time / 1000.0))
         .unwrap()
     };
+    let limit = span_event_count_limit();
     let mut state = self.0.borrow_mut();
     let OtelSpanState::Recording(span) = &mut **state else {
       return;
     };
+    // Enforce OTEL_SPAN_EVENT_COUNT_LIMIT: once the limit is reached, drop
+    // further events and count them in droppedEventsCount.
+    if span.events.events.len() >= limit {
+      span.events.dropped_count += 1;
+      return;
+    }
     span
       .events
       .events
