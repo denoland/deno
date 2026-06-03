@@ -24,7 +24,6 @@ use uuid::Uuid;
 
 use crate::jupyter_client::DealerSocket;
 use crate::jupyter_client::ReqSocket;
-use crate::jupyter_client::RouterSocket;
 use crate::jupyter_client::SubSocket;
 
 /// Jupyter connection file format
@@ -206,7 +205,7 @@ struct JupyterClient {
   control: Arc<Mutex<DealerSocket>>,
   shell: Arc<Mutex<DealerSocket>>,
   io_pub: Arc<Mutex<SubSocket>>,
-  stdin: Arc<Mutex<RouterSocket>>,
+  stdin: Arc<Mutex<DealerSocket>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -236,7 +235,7 @@ impl JupyterClient {
       async { DealerSocket::connect(&ctrl_addr).await.unwrap() },
       async { DealerSocket::connect(&shell_addr).await.unwrap() },
       async { SubSocket::connect(&iopub_addr).await.unwrap() },
-      async { RouterSocket::connect(&stdin_addr).await.unwrap() },
+      async { DealerSocket::connect(&stdin_addr).await.unwrap() },
     );
 
     Self {

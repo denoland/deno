@@ -326,6 +326,7 @@ webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"
 which = { version = "8.0.0", default-features = false }
 yoke = { version = "0.7.4", features = ["derive"] }
+zeromq = "0.6"
 zip = { version = "2.4.1", default-features = false, features = ["flate2"] }
 
 opentelemetry = "0.27.0"
