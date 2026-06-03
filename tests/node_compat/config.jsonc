@@ -3112,6 +3112,7 @@
     "parallel/test-require-invalid-package.js": {},
     "parallel/test-require-json.js": {},
     "parallel/test-require-long-path.js": {},
+    "parallel/test-require-node-prefix.js": {},
     "parallel/test-require-nul.js": {},
     "parallel/test-require-process.js": {},
     "parallel/test-require-resolve.js": {},

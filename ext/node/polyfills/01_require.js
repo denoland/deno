@@ -1669,15 +1669,19 @@ Module._resolveFilename = function (
 
   if (StringPrototypeStartsWith(request, "node:")) {
     const id = StringPrototypeSlice(request, 5);
-    if (id in nativeModuleExports) {
+    // `internal/*` modules are not requirable via the `node:` scheme from
+    // userland (Node only exposes them under `--expose-internals`), matching
+    // `isBuiltin` and the public `builtinModules` list.
+    if (
+      id in nativeModuleExports &&
+      !StringPrototypeStartsWith(id, "internal/")
+    ) {
       return request;
     }
     if (hookEntries.length > 0 && !insideResolveHook) {
       return request;
     }
-    const err = new Error(`Cannot find module '${request}'`);
-    err.code = "MODULE_NOT_FOUND";
-    throw err;
+    throw new internalErrors.ERR_UNKNOWN_BUILTIN_MODULE(request);
   }
 
   let paths;
