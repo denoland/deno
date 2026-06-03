@@ -2585,8 +2585,8 @@ impl WorkspaceDirectory {
       return Ok(None);
     };
     // NOTE: unlike fmt/lint/test/bench/publish, deploy intentionally does NOT
-    // run `exclude_includes_with_member_for_base_for_root` here. Deploy resolves
-    // a single application's file set from the workspace root, so a root
+    // run `exclude_includes_with_member_for_base_for_root`. Deploy resolves a
+    // single application's file set from the workspace root, so a root
     // `deploy.include` that points at a workspace member (e.g.
     // `./packages/backend/**`) is an explicit instruction to ship those files,
     // not a member contributing its own files. Stripping those includes left
@@ -7075,7 +7075,10 @@ pub mod test {
         }
       }),
     );
-    sys.fs_insert_json(root_dir().join("packages/backend/deno.json"), json!({}));
+    sys.fs_insert_json(
+      root_dir().join("packages/backend/deno.json"),
+      json!({}),
+    );
     sys.fs_insert(
       root_dir().join("packages/backend/main.ts"),
       "Deno.serve(() => new Response('hi'));",
@@ -7120,7 +7123,10 @@ pub mod test {
         }
       }),
     );
-    sys.fs_insert_json(root_dir().join("packages/backend/deno.json"), json!({}));
+    sys.fs_insert_json(
+      root_dir().join("packages/backend/deno.json"),
+      json!({}),
+    );
     sys.fs_insert(
       root_dir().join("packages/backend/main.ts"),
       "Deno.serve(() => new Response('hi'));",
