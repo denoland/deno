@@ -20979,6 +20979,116 @@ fn lsp_will_rename_files_move_to_different_dir() {
   client.shutdown();
 }
 
+/// Regression test for https://github.com/denoland/deno/issues/20583.
+// TODO(nayeemrmn): Enable for tsgo when implemented upstream:
+// https://github.com/microsoft/typescript-go/issues/2244
+#[test(timeout = 300)]
+fn lsp_will_rename_files_preserves_import_map_alias() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "@b/": "./b/",
+      },
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file("a/foo.ts", "import \"@b/bar.ts\";\n");
+  temp_dir.write("b/bar.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": temp_dir.path().join("b/bar.ts").uri_file(),
+          "newUri": temp_dir.path().join("b/baz.ts").uri_file(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": { "uri": file.uri(), "version": 1 },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 8 },
+                "end": { "line": 0, "character": 17 },
+              },
+              "newText": "@b/baz.ts",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/20583
+/// with scoped import map entries.
+// TODO(nayeemrmn): Enable for tsgo when implemented upstream:
+// https://github.com/microsoft/typescript-go/issues/2244
+#[test(timeout = 300)]
+fn lsp_will_rename_files_preserves_import_map_scope_alias() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "scopes": {
+        "./a/": { "b/": "./b/" },
+        "./b/": { "a/": "./a/" },
+      },
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file("a/foo.ts", "import \"b/bar.ts\";\n");
+  temp_dir.write("b/bar.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": temp_dir.path().join("b/bar.ts").uri_file(),
+          "newUri": temp_dir.path().join("b/baz.ts").uri_file(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": { "uri": file.uri(), "version": 1 },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 8 },
+                "end": { "line": 0, "character": 16 },
+              },
+              "newText": "b/baz.ts",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_push_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
