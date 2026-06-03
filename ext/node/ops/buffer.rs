@@ -178,6 +178,10 @@ pub fn op_node_buffer_compare_offset(
   )
 }
 
+// Threshold for falling back to V8's internal string copy allocation
+// instead of creating an ExternalString to reduce GC finalizer overhead.
+const ZERO_COPY_THRESHOLD: usize = 1024;
+
 #[op2(reentrant)]
 pub fn op_node_encoding_slice<'a>(
   scope: &mut v8::PinScope<'a, '_>,
@@ -210,6 +214,7 @@ pub fn op_node_encoding_slice<'a>(
     0 => {
       // utf8Slice
       if buffer.len() <= 256 && buffer.is_ascii() {
+        // Must copy bytes to a string
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
         v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
@@ -217,6 +222,7 @@ pub fn op_node_encoding_slice<'a>(
     }
     1 => {
       // latin1Slice
+      // Must copy bytes to a string
       v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
     }
     2 => {
@@ -224,10 +230,16 @@ pub fn op_node_encoding_slice<'a>(
       if buffer.len() > v8::String::MAX_LENGTH {
         // String too long
         None
-      } else if buffer.len() <= 256 && buffer.is_ascii() {
+      } else if buffer.len() > ZERO_COPY_THRESHOLD {
+        let ascii_bytes = mask_ascii_fast(buffer);
+        // Create a V8 string with zero-copy
+        v8::String::new_external_onebyte(scope, ascii_bytes.into_boxed_slice())
+      } else if buffer.is_ascii() {
+        // Must copy bytes to a string
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
         let ascii_bytes = mask_ascii_fast(buffer);
+        // Copy bytes to a string
         v8::String::new_from_one_byte(
           scope,
           &ascii_bytes,
@@ -241,20 +253,26 @@ pub fn op_node_encoding_slice<'a>(
     }
     4 => {
       // hexSlice
-      let target_len = buffer.len() * 2;
-      if target_len > v8::String::MAX_LENGTH {
+      if buffer.len() > (v8::String::MAX_LENGTH / 2) {
         // String too long
         None
       } else {
-        let mut hex_bytes = vec![0; target_len];
+        let target_len = buffer.len() * 2;
+        let mut hex_bytes = vec![0u8; target_len];
         if let Err(e) = faster_hex::hex_encode(buffer, &mut hex_bytes) {
           return Err(JsErrorBox::generic(format!("Hex encode failed: {}", e)));
         }
-        v8::String::new_from_one_byte(
-          scope,
-          &hex_bytes,
-          v8::NewStringType::Normal,
-        )
+        if target_len <= ZERO_COPY_THRESHOLD {
+          // Copy bytes to a string
+          v8::String::new_from_one_byte(
+            scope,
+            &hex_bytes,
+            v8::NewStringType::Normal,
+          )
+        } else {
+          // Create a V8 string with zero-copy
+          v8::String::new_external_onebyte(scope, hex_bytes.into_boxed_slice())
+        }
       }
     }
     _ => return Err(JsErrorBox::from_err(BufferError::InvalidType)),
@@ -289,7 +307,7 @@ fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
     }
 
     while i < len {
-      *dst.add(i) = *src.add(i) & 0x7F;
+      std::ptr::write(dst.add(i), *src.add(i) & 0x7F);
       i += 1;
     }
 
@@ -325,6 +343,7 @@ fn decode_utf16le_from_bytes<'a>(
 
     if prefix.is_empty() && suffix.is_empty() {
       // Fast path: Memory is perfectly 2-byte aligned.
+      // Must copy bytes to a string
       v8::String::new_from_two_byte(scope, u16_slice, v8::NewStringType::Normal)
     } else {
       // Slow path: Unaligned memory (rare in V8, but must be handled).
@@ -349,7 +368,17 @@ fn decode_utf16le_from_bytes<'a>(
         // Manually set the length.
         u16_data.set_len(target_len);
       }
-      v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
+      if len <= ZERO_COPY_THRESHOLD {
+        // Copy bytes to a string
+        v8::String::new_from_two_byte(
+          scope,
+          &u16_data,
+          v8::NewStringType::Normal,
+        )
+      } else {
+        // Create a V8 string with zero-copy
+        v8::String::new_external_twobyte(scope, u16_data.into_boxed_slice())
+      }
     }
   }
 
@@ -360,7 +389,13 @@ fn decode_utf16le_from_bytes<'a>(
     for chunk in buf.chunks_exact(2) {
       u16_data.push(u16::from_le_bytes([chunk[0], chunk[1]]));
     }
-    v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
+    if len <= ZERO_COPY_THRESHOLD {
+      // Copy bytes to a string
+      v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
+    } else {
+      // Create a V8 string with zero-copy
+      v8::String::new_external_twobyte(scope, u16_data.into_boxed_slice())
+    }
   }
 }
 
