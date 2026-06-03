@@ -127,7 +127,6 @@ imara-diff.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
-keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
@@ -191,6 +190,13 @@ deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["linux-native"] }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
+
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 
