@@ -3077,3 +3077,327 @@ pub fn op_geometry_matrix_set_matrix_value<'a>(
     Ok(())
   }
 }
+
+#[cfg(test)]
+mod tests {
+  //! Differential tests for the hand-rolled matrix math that replaced
+  //! `nalgebra` (see #34771). Each production routine is checked against an
+  //! independent reference implementation written here (a different algorithm,
+  //! not just a copy), so a transposed index or flipped sign in the production
+  //! code fails the test. Matrices are stored column-major: element `(row,
+  //! col)` lives at index `col * 4 + row`, matching `Matrix4`.
+
+  use approx::assert_relative_eq;
+
+  use super::Matrix4;
+  use super::Vector4;
+  use super::rotation_from_axis_angle;
+  use super::rotation_from_euler_angles;
+
+  /// Deterministic SplitMix64 PRNG so the test is reproducible without pulling
+  /// in `rand`.
+  struct Rng(u64);
+
+  impl Rng {
+    fn next_u64(&mut self) -> u64 {
+      self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
+      let mut z = self.0;
+      z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+      z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+      z ^ (z >> 31)
+    }
+
+    /// Uniform `f64` in `[lo, hi)`.
+    fn range(&mut self, lo: f64, hi: f64) -> f64 {
+      let u = (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64;
+      lo + (hi - lo) * u
+    }
+
+    fn matrix(&mut self, lo: f64, hi: f64) -> [f64; 16] {
+      let mut m = [0.0; 16];
+      for v in &mut m {
+        *v = self.range(lo, hi);
+      }
+      m
+    }
+  }
+
+  #[inline]
+  fn at(m: &[f64; 16], row: usize, col: usize) -> f64 {
+    m[col * 4 + row]
+  }
+
+  /// Naive triple-loop matrix product, `lhs * rhs`, independent of
+  /// `Matrix4::multiply`'s indexing.
+  fn ref_mul(lhs: &[f64; 16], rhs: &[f64; 16]) -> [f64; 16] {
+    let mut out = [0.0; 16];
+    for col in 0..4 {
+      for row in 0..4 {
+        let mut sum = 0.0;
+        for k in 0..4 {
+          sum += at(lhs, row, k) * at(rhs, k, col);
+        }
+        out[col * 4 + row] = sum;
+      }
+    }
+    out
+  }
+
+  /// 4x4 inverse via Gauss-Jordan elimination with partial pivoting. This is a
+  /// completely different algorithm from the production adjugate/cofactor
+  /// expansion, so agreement between the two is strong evidence of
+  /// correctness. Returns the inverse plus the smallest pivot magnitude
+  /// encountered (a cheap conditioning proxy used to skip ill-conditioned
+  /// samples).
+  // Index-based loops are clearer than iterators here: the elimination step
+  // mutates one row while reading another, which iterator borrows can't express.
+  #[allow(clippy::needless_range_loop)]
+  fn ref_inverse(m: &[f64; 16]) -> Option<([f64; 16], f64)> {
+    // Augmented [A | I], row-major working storage.
+    let mut a = [[0.0f64; 8]; 4];
+    for row in 0..4 {
+      for col in 0..4 {
+        a[row][col] = at(m, row, col);
+      }
+      a[row][4 + row] = 1.0;
+    }
+
+    let mut min_pivot = f64::INFINITY;
+    for col in 0..4 {
+      // Partial pivot: pick the row at or below `col` with the largest
+      // magnitude in this column.
+      let mut pivot_row = col;
+      for row in (col + 1)..4 {
+        if a[row][col].abs() > a[pivot_row][col].abs() {
+          pivot_row = row;
+        }
+      }
+      let pivot = a[pivot_row][col];
+      if pivot == 0.0 {
+        return None;
+      }
+      min_pivot = min_pivot.min(pivot.abs());
+      a.swap(col, pivot_row);
+
+      let inv_pivot = 1.0 / a[col][col];
+      for v in &mut a[col] {
+        *v *= inv_pivot;
+      }
+      for row in 0..4 {
+        if row == col {
+          continue;
+        }
+        let factor = a[row][col];
+        if factor == 0.0 {
+          continue;
+        }
+        for k in 0..8 {
+          a[row][k] -= factor * a[col][k];
+        }
+      }
+    }
+
+    let mut inv = [0.0; 16];
+    for row in 0..4 {
+      for col in 0..4 {
+        inv[col * 4 + row] = a[row][4 + col];
+      }
+    }
+    Some((inv, min_pivot))
+  }
+
+  /// Homogeneous 4x4 from a 3x3 rotation given as `r[row][col]`.
+  fn homogeneous(r: [[f64; 3]; 3]) -> [f64; 16] {
+    let mut m = [0.0; 16];
+    for row in 0..3 {
+      for col in 0..3 {
+        m[col * 4 + row] = r[row][col];
+      }
+    }
+    m[15] = 1.0;
+    m
+  }
+
+  fn rot_x(a: f64) -> [f64; 16] {
+    let (s, c) = a.sin_cos();
+    homogeneous([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+  }
+
+  fn rot_y(a: f64) -> [f64; 16] {
+    let (s, c) = a.sin_cos();
+    homogeneous([[c, 0.0, s], [0.0, 1.0, 0.0], [-s, 0.0, c]])
+  }
+
+  fn rot_z(a: f64) -> [f64; 16] {
+    let (s, c) = a.sin_cos();
+    homogeneous([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+  }
+
+  fn assert_matrix_eq(actual: &[f64], expected: &[f64], max_relative: f64) {
+    for (i, (a, e)) in actual.iter().zip(expected.iter()).enumerate() {
+      assert!(
+        approx::relative_eq!(a, e, max_relative = max_relative, epsilon = 1e-9),
+        "mismatch at index {i} (row {}, col {}): {a} != {e}",
+        i % 4,
+        i / 4,
+      );
+    }
+  }
+
+  #[test]
+  fn multiply_matches_reference() {
+    let mut rng = Rng(0x1234_5678);
+    for _ in 0..2000 {
+      let a = rng.matrix(-5.0, 5.0);
+      let b = rng.matrix(-5.0, 5.0);
+      let got = Matrix4::multiply(
+        &Matrix4::from_column_slice(&a),
+        &Matrix4::from_column_slice(&b),
+      );
+      assert_matrix_eq(got.as_slice(), &ref_mul(&a, &b), 1e-12);
+    }
+  }
+
+  #[test]
+  fn multiply_vector_matches_reference() {
+    let mut rng = Rng(0xC0FF_EE42);
+    for _ in 0..2000 {
+      let m = rng.matrix(-5.0, 5.0);
+      let v = [
+        rng.range(-5.0, 5.0),
+        rng.range(-5.0, 5.0),
+        rng.range(-5.0, 5.0),
+        rng.range(-5.0, 5.0),
+      ];
+      let got = Matrix4::from_column_slice(&m)
+        .multiply_vector(&Vector4::new(v[0], v[1], v[2], v[3]));
+      let expected = [
+        at(&m, 0, 0) * v[0]
+          + at(&m, 0, 1) * v[1]
+          + at(&m, 0, 2) * v[2]
+          + at(&m, 0, 3) * v[3],
+        at(&m, 1, 0) * v[0]
+          + at(&m, 1, 1) * v[1]
+          + at(&m, 1, 2) * v[2]
+          + at(&m, 1, 3) * v[3],
+        at(&m, 2, 0) * v[0]
+          + at(&m, 2, 1) * v[1]
+          + at(&m, 2, 2) * v[2]
+          + at(&m, 2, 3) * v[3],
+        at(&m, 3, 0) * v[0]
+          + at(&m, 3, 1) * v[1]
+          + at(&m, 3, 2) * v[2]
+          + at(&m, 3, 3) * v[3],
+      ];
+      for (a, e) in [got.x, got.y, got.z, got.w].iter().zip(expected.iter()) {
+        assert_relative_eq!(a, e, max_relative = 1e-12, epsilon = 1e-9);
+      }
+    }
+  }
+
+  #[test]
+  fn inverse_matches_gauss_jordan_and_round_trips() {
+    let mut rng = Rng(0xDEAD_BEEF);
+    let identity = Matrix4::identity();
+    let mut well_conditioned = 0;
+    for _ in 0..5000 {
+      let m = rng.matrix(-1.0, 1.0);
+      let Some((ref_inv, min_pivot)) = ref_inverse(&m) else {
+        continue;
+      };
+      // Skip ill-conditioned matrices: with a tiny pivot the two algorithms
+      // legitimately diverge in the last digits, which says nothing about
+      // correctness.
+      if min_pivot < 1e-3 {
+        continue;
+      }
+      well_conditioned += 1;
+
+      let mut prod = Matrix4::from_column_slice(&m);
+      assert!(
+        prod.try_inverse_mut(),
+        "production inverse failed on a matrix the reference inverted"
+      );
+
+      // Cross-check against the independent Gauss-Jordan result.
+      assert_matrix_eq(prod.as_slice(), &ref_inv, 1e-6);
+
+      // Invariant: M * M^-1 == I.
+      let round_trip =
+        Matrix4::multiply(&Matrix4::from_column_slice(&m), &prod);
+      assert_matrix_eq(round_trip.as_slice(), identity.as_slice(), 1e-6);
+    }
+    // Make sure the conditioning filter didn't skip ~everything.
+    assert!(
+      well_conditioned > 500,
+      "only {well_conditioned} well-conditioned samples; filter too strict"
+    );
+  }
+
+  #[test]
+  fn singular_matrix_is_not_inverted() {
+    // Column 3 == column 1, so the matrix is rank-deficient.
+    let mut singular = Matrix4::identity();
+    for row in 0..4 {
+      singular[(row, 3)] = singular[(row, 1)];
+    }
+    assert!(!singular.try_inverse_mut());
+  }
+
+  #[test]
+  fn euler_matches_composed_axis_rotations() {
+    let mut rng = Rng(0x00C0_1DEE);
+    for _ in 0..2000 {
+      let roll = rng.range(-3.2, 3.2);
+      let pitch = rng.range(-3.2, 3.2);
+      let yaw = rng.range(-3.2, 3.2);
+      // Production composition is R = Rz(yaw) * Ry(pitch) * Rx(roll).
+      let expected =
+        ref_mul(&ref_mul(&rot_z(yaw), &rot_y(pitch)), &rot_x(roll));
+      let got = rotation_from_euler_angles(roll, pitch, yaw);
+      assert_matrix_eq(got.as_slice(), &expected, 1e-12);
+    }
+  }
+
+  #[test]
+  fn axis_angle_matches_quaternion() {
+    let mut rng = Rng(0xFACE_F00D);
+    for _ in 0..2000 {
+      let mut x = rng.range(-1.0, 1.0);
+      let mut y = rng.range(-1.0, 1.0);
+      let mut z = rng.range(-1.0, 1.0);
+      let len = (x * x + y * y + z * z).sqrt();
+      if len < 1e-3 {
+        continue; // degenerate axis
+      }
+      x /= len;
+      y /= len;
+      z /= len;
+      let angle = rng.range(-3.2, 3.2);
+
+      // Independent reference: build the rotation from a unit quaternion.
+      let (s, c) = (angle / 2.0).sin_cos();
+      let (qw, qx, qy, qz) = (c, s * x, s * y, s * z);
+      let expected = homogeneous([
+        [
+          1.0 - 2.0 * (qy * qy + qz * qz),
+          2.0 * (qx * qy - qz * qw),
+          2.0 * (qx * qz + qy * qw),
+        ],
+        [
+          2.0 * (qx * qy + qz * qw),
+          1.0 - 2.0 * (qx * qx + qz * qz),
+          2.0 * (qy * qz - qx * qw),
+        ],
+        [
+          2.0 * (qx * qz - qy * qw),
+          2.0 * (qy * qz + qx * qw),
+          1.0 - 2.0 * (qx * qx + qy * qy),
+        ],
+      ]);
+
+      let got = rotation_from_axis_angle(x, y, z, angle);
+      assert_matrix_eq(got.as_slice(), &expected, 1e-9);
+    }
+  }
+}
