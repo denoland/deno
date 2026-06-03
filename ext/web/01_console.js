@@ -3425,10 +3425,22 @@ function colorEquals(color1, color2) {
     color1?.[2] == color2?.[2];
 }
 
+// `background-color` and `color` can be stored either as an already parsed
+// `[r, g, b]` array or as a raw string (a named color like "white" or a
+// hex/rgb/hsl string). Normalize both sides to `[r, g, b]` arrays before
+// comparing, otherwise raw strings get compared by character index and two
+// different colors sharing a prefix (e.g. "#FFFFFF" and "#FFAFC8", which share
+// the same red component) are wrongly treated as equal. See #21605.
+function cssColorEquals(color1, color2) {
+  const c1 = typeof color1 === "string" ? parseCssColor(color1) : color1;
+  const c2 = typeof color2 === "string" ? parseCssColor(color2) : color2;
+  return colorEquals(c1, c2);
+}
+
 function cssToAnsi(css, prevCss = null) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
-  if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
+  if (!cssColorEquals(css.backgroundColor, prevCss.backgroundColor)) {
     if (css.backgroundColor == null) {
       ansi += "\x1b[49m";
     } else if (css.backgroundColor == "black") {
@@ -3462,7 +3474,7 @@ function cssToAnsi(css, prevCss = null) {
       }
     }
   }
-  if (!colorEquals(css.color, prevCss.color)) {
+  if (!cssColorEquals(css.color, prevCss.color)) {
     if (css.color == null) {
       ansi += "\x1b[39m";
     } else if (css.color == "black") {
