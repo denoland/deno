@@ -1,0 +1,5 @@
+{
+  "args": "info --quiet --conditions=development main.ts",
+  "output": "main.out",
+  "exitCode": 0
+}
