@@ -1929,7 +1929,6 @@ dependencies = [
  "walkdir",
  "wasm-encoder",
  "wasmparser",
- "weak-table",
  "windows-sys 0.59.0",
  "winres",
  "zip",
@@ -10968,12 +10967,6 @@ dependencies = [
  "semver",
  "serde",
 ]
-
-[[package]]
-name = "weak-table"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "323f4da9523e9a669e1eaf9c6e763892769b1d38c623913647bfdc1532fe4549"
 
 [[package]]
 name = "web-sys"
