@@ -6,7 +6,11 @@
 //   1. Explicit `proxyEnv` option on an http.Agent (per-agent only)
 //   2. `http.setGlobalProxyFromEnv(config)` (process-wide override)
 //   3. NODE_USE_ENV_PROXY=1 env var or --use-env-proxy CLI flag
-//      (reads HTTP_PROXY / HTTPS_PROXY / NO_PROXY from process.env)
+//      (reads HTTP_PROXY / HTTPS_PROXY / NO_PROXY from the environment)
+//
+// The proxy-related env vars are read with op_get_env_no_permission_check so
+// they work without --allow-env, matching how Node reads them and how other
+// privileged node env vars (NODE_EXTRA_CA_CERTS, ...) are read in the runtime.
 //
 // When a proxy applies to a request:
 //   - For http:// targets, http.request() rewrites to an absolute URL and
@@ -18,6 +22,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+import { op_get_env_no_permission_check } from "ext:core/ops";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_INVALID_ARG_TYPE,
@@ -29,6 +34,36 @@ const {
 const HTTP_PROXY_KEYS = ["http_proxy", "HTTP_PROXY"];
 const HTTPS_PROXY_KEYS = ["https_proxy", "HTTPS_PROXY"];
 const NO_PROXY_KEYS = ["no_proxy", "NO_PROXY"];
+
+// All proxy-related env vars we read from the process environment. These are
+// treated as privileged runtime configuration and read without a --allow-env
+// permission check, the same way NODE_EXTRA_CA_CERTS / NODE_TLS_REJECT_*  are
+// read elsewhere in the node polyfills. Reading them through process.env would
+// otherwise require the user to pass --allow-env just to use proxy support.
+const PRIVILEGED_ENV_KEYS = [
+  "http_proxy",
+  "HTTP_PROXY",
+  "https_proxy",
+  "HTTPS_PROXY",
+  "no_proxy",
+  "NO_PROXY",
+  "NODE_USE_ENV_PROXY",
+];
+
+// Builds a plain env-like object from the privileged ops, so the rest of this
+// module can read proxy config without touching process.env (which is
+// permission-checked).
+function readPrivilegedEnv() {
+  const env = { __proto__: null };
+  for (let i = 0; i < PRIVILEGED_ENV_KEYS.length; i++) {
+    const key = PRIVILEGED_ENV_KEYS[i];
+    const value = op_get_env_no_permission_check(key);
+    if (value !== undefined && value !== null) {
+      env[key] = value;
+    }
+  }
+  return env;
+}
 
 function isPlainObject(value) {
   if (value === null || typeof value !== "object") return false;
@@ -293,7 +328,7 @@ let initializedFromEnv = false;
 function maybeInitFromEnv() {
   if (initializedFromEnv) return;
   initializedFromEnv = true;
-  const env = (globalThis.process && globalThis.process.env) || {};
+  const env = readPrivilegedEnv();
   // CLI flags (parsed at startup) override the env var, but if the flag
   // wasn't set, fall back to NODE_USE_ENV_PROXY.
   const cliOverride = globalThis[Symbol.for("Deno.internal.useEnvProxy")];
@@ -320,7 +355,7 @@ function getGlobalProxyConfig() {
 function setGlobalProxyFromEnv(input) {
   let env;
   if (input === undefined) {
-    env = (globalThis.process && globalThis.process.env) || {};
+    env = readPrivilegedEnv();
   } else if (!isPlainObject(input)) {
     throw new ERR_INVALID_ARG_TYPE(
       "proxyEnv",
@@ -384,7 +419,7 @@ function hasGlobalProxy() {
 // Called by the runtime bootstrap if NODE_USE_ENV_PROXY=1 (or
 // --use-env-proxy) is set. Reads the process.env at that time.
 function initFromStartupEnv() {
-  const env = (globalThis.process && globalThis.process.env) || {};
+  const env = readPrivilegedEnv();
   // Don't throw on startup if env vars are malformed - fall back to direct.
   try {
     const cfg = buildProxyConfig(env, "env");
