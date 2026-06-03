@@ -3232,6 +3232,8 @@ Show documentation for runtime built-ins:
         .arg(no_remote_arg())
         .arg(allow_import_arg())
         .arg(deny_import_arg())
+        .arg(node_conditions_arg())
+        .arg(min_dep_age_arg())
         .arg(
           Arg::new("json")
             .long("json")
@@ -7103,6 +7105,8 @@ fn doc_parse(
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
+  node_conditions_args_parse(flags, matches);
+  min_dep_age_arg_parse(flags, matches);
 
   let source_files_val = matches.remove_many::<String>("source_file");
   let source_files = if let Some(val) = source_files_val {
