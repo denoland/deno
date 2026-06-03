@@ -905,6 +905,15 @@ dbTest("list prefix with small batch size reverse", async (db) => {
   ]);
 });
 
+dbTest("list prefix with non-integer batch size throws", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"] }, { batchSize: 2.3 })),
+    Error,
+    "batchSize must be a positive integer",
+  );
+});
+
 dbTest("list prefix with small batch size and limit", async (db) => {
   const versionstamp = await setupData(db);
   const entries = await collect(
