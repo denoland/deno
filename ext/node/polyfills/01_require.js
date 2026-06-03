@@ -1375,6 +1375,25 @@ Module._resolveLookupPaths = function (request, parent) {
 };
 
 Module._load = function (request, parent, isMain) {
+  // A `node:`-prefixed `require()` of a specifier that isn't a user-requirable
+  // builtin throws ERR_UNKNOWN_BUILTIN_MODULE. This covers unknown ids and
+  // `internal/*` modules (Node only exposes those under `--expose-internals`).
+  // `require.resolve()` goes through `_resolveFilename` directly and instead
+  // reports MODULE_NOT_FOUND, so this check lives here rather than there.
+  if (
+    typeof request === "string" &&
+    StringPrototypeStartsWith(request, "node:") &&
+    !(hookEntries.length > 0 && !insideResolveHook)
+  ) {
+    const id = StringPrototypeSlice(request, 5);
+    if (
+      !(id in nativeModuleExports) ||
+      StringPrototypeStartsWith(id, "internal/")
+    ) {
+      throw new internalErrors.ERR_UNKNOWN_BUILTIN_MODULE(request);
+    }
+  }
+
   let relResolveCacheIdentifier;
   if (parent) {
     // Fast path for (lazy loaded) modules in the same directory. The indirect
@@ -1669,19 +1688,18 @@ Module._resolveFilename = function (
 
   if (StringPrototypeStartsWith(request, "node:")) {
     const id = StringPrototypeSlice(request, 5);
-    // `internal/*` modules are not requirable via the `node:` scheme from
-    // userland (Node only exposes them under `--expose-internals`), matching
-    // `isBuiltin` and the public `builtinModules` list.
-    if (
-      id in nativeModuleExports &&
-      !StringPrototypeStartsWith(id, "internal/")
-    ) {
+    if (id in nativeModuleExports) {
       return request;
     }
     if (hookEntries.length > 0 && !insideResolveHook) {
       return request;
     }
-    throw new internalErrors.ERR_UNKNOWN_BUILTIN_MODULE(request);
+    // `require.resolve("node:unknown")` reports MODULE_NOT_FOUND, unlike
+    // `require("node:unknown")` which throws ERR_UNKNOWN_BUILTIN_MODULE from
+    // `Module._load`.
+    const err = new Error(`Cannot find module '${request}'`);
+    err.code = "MODULE_NOT_FOUND";
+    throw err;
   }
 
   let paths;
