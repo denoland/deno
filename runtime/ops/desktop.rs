@@ -309,7 +309,19 @@ pub fn register_bind_call(
 /// All per-window methods take a `window_id` identifying the target window.
 pub trait DesktopApi: Send + Sync + 'static {
   /// Create a new window with the given dimensions and return its ID.
-  fn create_window(&self, width: i32, height: i32) -> u32;
+  ///
+  /// `frameless` drops the title bar and standard window chrome.
+  /// `no_activate` makes the window a floating, non-activating utility panel
+  /// (used for tray / menu-bar popovers): it floats above normal windows and
+  /// does not steal key focus from the foreground app when shown. Both are
+  /// creation-time properties and cannot be changed afterwards.
+  fn create_window(
+    &self,
+    width: i32,
+    height: i32,
+    frameless: bool,
+    no_activate: bool,
+  ) -> u32;
   /// Close a specific window.
   fn close_window(&self, window_id: u32);
   /// Returns true if the given window has been closed (either via
@@ -415,6 +427,11 @@ pub trait DesktopApi: Send + Sync + 'static {
   /// Set the right-click context menu on the tray icon. `None` clears
   /// any menu previously set.
   fn set_tray_menu(&self, tray_id: u32, menu: Option<Vec<MenuItem>>);
+  /// The tray icon's screen rectangle `(x, y, width, height)` in the same
+  /// top-left-origin coordinate space as window positions, or `None` if the
+  /// icon has no on-screen position yet or the backend can't report it. Used
+  /// to anchor a popover window under the icon.
+  fn get_tray_bounds(&self, tray_id: u32) -> Option<(i32, i32, i32, i32)>;
 
   /// Show an OS notification. Returns the notification id (`0` if the
   /// backend doesn't support system notifications). Events for this
@@ -524,7 +541,13 @@ impl BrowserWindow {
       .unwrap_or_else(|| {
         let width = options.as_ref().and_then(|o| o.width).unwrap_or(800);
         let height = options.as_ref().and_then(|o| o.height).unwrap_or(600);
-        api.create_window(width, height)
+        let frameless =
+          options.as_ref().and_then(|o| o.frameless).unwrap_or(false);
+        let no_activate = options
+          .as_ref()
+          .and_then(|o| o.no_activate)
+          .unwrap_or(false);
+        api.create_window(width, height, frameless, no_activate)
       });
 
     if let Some(options) = &options {
@@ -792,6 +815,8 @@ struct BrowserWindowOptions {
   y: Option<i32>,
   resizable: Option<bool>,
   always_on_top: Option<bool>,
+  frameless: Option<bool>,
+  no_activate: Option<bool>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -1419,10 +1444,32 @@ impl Tray {
     self.api.set_tray_menu(self.tray_id, menu);
   }
 
+  #[serde]
+  fn get_bounds(&self) -> Option<TrayBounds> {
+    self
+      .api
+      .get_tray_bounds(self.tray_id)
+      .map(|(x, y, width, height)| TrayBounds {
+        x,
+        y,
+        width,
+        height,
+      })
+  }
+
   #[fast]
   fn destroy(&self) {
     self.api.destroy_tray(self.tray_id);
   }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrayBounds {
+  x: i32,
+  y: i32,
+  width: i32,
+  height: i32,
 }
 
 struct Notification {

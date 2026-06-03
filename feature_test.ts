@@ -346,99 +346,105 @@ Deno.dock.addEventListener("reopen", (e: CustomEvent) => {
 
 // ── Tray ────────────────────────────────────────────────────────────────────
 
-// Tiny 16×16 transparent PNG (just a pixel grid placeholder) — enough
-// to feed `Tray.setIcon()` without bundling a real image.
-const TRAY_ICON_PNG = new Uint8Array([
-  0x89,
-  0x50,
-  0x4e,
-  0x47,
-  0x0d,
-  0x0a,
-  0x1a,
-  0x0a,
-  0x00,
-  0x00,
-  0x00,
-  0x0d,
-  0x49,
-  0x48,
-  0x44,
-  0x52,
-  0x00,
-  0x00,
-  0x00,
-  0x10,
-  0x00,
-  0x00,
-  0x00,
-  0x10,
-  0x08,
-  0x06,
-  0x00,
-  0x00,
-  0x00,
-  0x1f,
-  0xf3,
-  0xff,
-  0x61,
-  0x00,
-  0x00,
-  0x00,
-  0x1f,
-  0x49,
-  0x44,
-  0x41,
-  0x54,
-  0x38,
-  0x8d,
-  0x63,
-  0xfc,
-  0xff,
-  0xff,
-  0x3f,
-  0x03,
-  0x35,
-  0x00,
-  0x20,
-  0x80,
-  0x98,
-  0x18,
-  0x44,
-  0x71,
-  0x10,
-  0xc5,
-  0x41,
-  0x14,
-  0x07,
-  0x51,
-  0x1c,
-  0x44,
-  0x71,
-  0x10,
-  0x00,
-  0x00,
-  0xb6,
-  0xfd,
-  0x00,
-  0x01,
-  0x4f,
-  0x88,
-  0xa1,
-  0xc7,
-  0x00,
-  0x00,
-  0x00,
-  0x00,
-  0x49,
-  0x45,
-  0x4e,
-  0x44,
-  0xae,
-  0x42,
-  0x60,
-  0x82,
-]);
+// A visible tray icon, generated at runtime so we don't bundle an image
+// file: a filled black circle on a transparent field, encoded as a valid
+// RGBA PNG. macOS renders it as a template image (adapts to the menu bar's
+// light/dark appearance); other platforms show it as-is.
+function makeTrayIconPng(size: number): Uint8Array {
+  const rowLen = 1 + size * 4;
+  const raw = new Uint8Array(rowLen * size);
+  const center = (size - 1) / 2;
+  const radius = size / 2 - 1;
+  for (let y = 0; y < size; y++) {
+    const rowStart = y * rowLen;
+    raw[rowStart] = 0; // filter: none
+    for (let x = 0; x < size; x++) {
+      const dx = x - center;
+      const dy = y - center;
+      const inside = dx * dx + dy * dy <= radius * radius;
+      const p = rowStart + 1 + x * 4;
+      raw[p + 3] = inside ? 0xff : 0x00; // opaque black inside, else clear
+    }
+  }
+
+  const crcTable = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let v = n;
+    for (let k = 0; k < 8; k++) v = v & 1 ? 0xedb88320 ^ (v >>> 1) : v >>> 1;
+    crcTable[n] = v >>> 0;
+  }
+  const crc32 = (data: Uint8Array): number => {
+    let v = 0xffffffff;
+    for (let i = 0; i < data.length; i++) {
+      v = crcTable[(v ^ data[i]) & 0xff] ^ (v >>> 8);
+    }
+    return (v ^ 0xffffffff) >>> 0;
+  };
+
+  // zlib stream: header + one stored deflate block + adler32 checksum.
+  const len = raw.length;
+  const zlib = new Uint8Array(2 + 5 + len + 4);
+  zlib[0] = 0x78;
+  zlib[1] = 0x01;
+  zlib[2] = 0x01; // BFINAL=1, BTYPE=00 (stored)
+  zlib[3] = len & 0xff;
+  zlib[4] = (len >> 8) & 0xff;
+  const nlen = ~len & 0xffff;
+  zlib[5] = nlen & 0xff;
+  zlib[6] = (nlen >> 8) & 0xff;
+  zlib.set(raw, 7);
+  let a = 1;
+  let b = 0;
+  for (let i = 0; i < len; i++) {
+    a = (a + raw[i]) % 65521;
+    b = (b + a) % 65521;
+  }
+  const adler = ((b << 16) | a) >>> 0;
+  const ao = 7 + len;
+  zlib[ao] = (adler >>> 24) & 0xff;
+  zlib[ao + 1] = (adler >>> 16) & 0xff;
+  zlib[ao + 2] = (adler >>> 8) & 0xff;
+  zlib[ao + 3] = adler & 0xff;
+
+  const chunk = (type: string, data: Uint8Array): Uint8Array => {
+    const typeBytes = new TextEncoder().encode(type);
+    const body = new Uint8Array(typeBytes.length + data.length);
+    body.set(typeBytes, 0);
+    body.set(data, typeBytes.length);
+    const out = new Uint8Array(4 + body.length + 4);
+    const dv = new DataView(out.buffer);
+    dv.setUint32(0, data.length);
+    out.set(body, 4);
+    dv.setUint32(4 + body.length, crc32(body));
+    return out;
+  };
+
+  const ihdr = new Uint8Array(13);
+  const idv = new DataView(ihdr.buffer);
+  idv.setUint32(0, size);
+  idv.setUint32(4, size);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // color type: RGBA
+
+  const sig = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const parts = [
+    sig,
+    chunk("IHDR", ihdr),
+    chunk("IDAT", zlib),
+    chunk("IEND", new Uint8Array(0)),
+  ];
+  let total = 0;
+  for (const p of parts) total += p.length;
+  const png = new Uint8Array(total);
+  let off = 0;
+  for (const p of parts) {
+    png.set(p, off);
+    off += p.length;
+  }
+  return png;
+}
+
+const TRAY_ICON_PNG = makeTrayIconPng(16);
 
 const trayMenu: Deno.MenuItem[] = [
   { item: { label: "Tray Item A", id: "tray-a", enabled: true } },
@@ -448,6 +454,20 @@ const trayMenu: Deno.MenuItem[] = [
 ];
 
 let activeTray: Deno.Tray | null = null;
+let trayPanel: Deno.TrayPanel | null = null;
+
+// Self-contained content for the tray popover panel (no server route needed).
+const PANEL_HTML =
+  `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;` +
+  `height:100vh;display:flex;flex-direction:column;align-items:center;` +
+  `justify-content:center;gap:6px;font-family:system-ui,sans-serif;` +
+  `background:#1e293b;color:#fff">` +
+  `<div style="font-size:18px;font-weight:600">Tray Panel</div>` +
+  `<div style="font-size:12px;opacity:.7">frameless &middot; non-activating</div>` +
+  `<div style="font-size:11px;opacity:.5">click outside to dismiss</div>` +
+  `</body></html>`;
+const PANEL_URL = "data:text/html;charset=utf-8," +
+  encodeURIComponent(PANEL_HTML);
 
 win.bind("trayCreate", async () => {
   if (activeTray) return { ok: true, trayId: activeTray.trayId, reused: true };
@@ -474,6 +494,10 @@ win.bind("trayCreate", async () => {
 
 win.bind("trayDestroy", async () => {
   if (!activeTray) return { ok: false, reason: "no active tray" };
+  if (trayPanel) {
+    trayPanel.destroy();
+    trayPanel = null;
+  }
   activeTray.destroy();
   activeTray = null;
   return { ok: true };
@@ -482,6 +506,39 @@ win.bind("trayDestroy", async () => {
 win.bind("traySetTooltip", async (text: unknown) => {
   if (!activeTray) return { ok: false, reason: "no active tray" };
   activeTray.setTooltip(String(text));
+  return { ok: true };
+});
+
+// Tray.getBounds(): the icon's screen rectangle, used to anchor a popover.
+// null on platforms that can't report it (Linux).
+win.bind("trayGetBounds", async () => {
+  if (!activeTray) return { ok: false, reason: "no active tray" };
+  return { ok: true, bounds: activeTray.getBounds() };
+});
+
+// Tray.attachPanel(): the menu-bar-app convenience — a frameless,
+// non-activating popover that toggles on tray click and hides on blur.
+win.bind("trayAttachPanel", async () => {
+  if (!activeTray) return { ok: false, reason: "no active tray" };
+  if (trayPanel) return { ok: true, reused: true };
+  trayPanel = activeTray.attachPanel({
+    url: PANEL_URL,
+    width: 280,
+    height: 160,
+  });
+  return { ok: true, reused: false, windowId: trayPanel.window.windowId };
+});
+
+win.bind("trayPanelToggle", async () => {
+  if (!trayPanel) return { ok: false, reason: "no panel attached" };
+  trayPanel.toggle();
+  return { ok: true, visible: trayPanel.visible };
+});
+
+win.bind("trayDetachPanel", async () => {
+  if (!trayPanel) return { ok: false, reason: "no panel attached" };
+  trayPanel.destroy();
+  trayPanel = null;
   return { ok: true };
 });
 
@@ -975,7 +1032,13 @@ const html = `<!DOCTYPE html>
         <button onclick="trayDestroy()">Destroy Tray</button>
         <button onclick="traySetTooltip()">Set Tooltip</button>
       </div>
-      <div id="tray-log" class="log">Click the tray icon (or its menu) once created.</div>
+      <div class="btn-row">
+        <button onclick="trayGetBounds()">Get Bounds</button>
+        <button onclick="trayAttachPanel()">Attach Panel</button>
+        <button onclick="trayPanelToggle()">Toggle Panel</button>
+        <button onclick="trayDetachPanel()">Detach Panel</button>
+      </div>
+      <div id="tray-log" class="log">Create the tray, then Attach Panel and click the tray icon to toggle the popover.</div>
     </div>
 
     <!-- Notifications (Web Notifications API) -->
@@ -1256,6 +1319,27 @@ const html = `<!DOCTYPE html>
     const r = await bindings.traySetTooltip(text);
     document.getElementById("tray-log").textContent =
       "setTooltip(" + JSON.stringify(text) + ") => " + JSON.stringify(r);
+  }
+  async function trayGetBounds() {
+    const r = await bindings.trayGetBounds();
+    document.getElementById("tray-log").textContent =
+      "getBounds => " + JSON.stringify(r);
+  }
+  async function trayAttachPanel() {
+    const r = await bindings.trayAttachPanel();
+    document.getElementById("tray-log").textContent =
+      "attachPanel => " + JSON.stringify(r) +
+      " — now click the tray icon to toggle it";
+  }
+  async function trayPanelToggle() {
+    const r = await bindings.trayPanelToggle();
+    document.getElementById("tray-log").textContent =
+      "toggle => " + JSON.stringify(r);
+  }
+  async function trayDetachPanel() {
+    const r = await bindings.trayDetachPanel();
+    document.getElementById("tray-log").textContent =
+      "detachPanel => " + JSON.stringify(r);
   }
 
   // ── Notifications ────────────────────────────────────────────────────────

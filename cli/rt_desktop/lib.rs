@@ -42,7 +42,7 @@ use denort::run::RunOptions;
 /// makes the failure mode obvious instead of "the desktop app silently won't
 /// launch".
 const _: () = assert!(
-  just_wef::WEF_API_VERSION == 24,
+  just_wef::WEF_API_VERSION == 25,
   "WEF_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when just-wef bumps its API version",
 );
 
@@ -207,8 +207,21 @@ impl WefDesktopApi {
 }
 
 impl denort::desktop::DesktopApi for WefDesktopApi {
-  fn create_window(&self, width: i32, height: i32) -> u32 {
-    let window = just_wef::Window::new(width, height);
+  fn create_window(
+    &self,
+    width: i32,
+    height: i32,
+    frameless: bool,
+    no_activate: bool,
+  ) -> u32 {
+    let window = just_wef::Window::new_with_options(
+      width,
+      height,
+      just_wef::WindowOptions {
+        frameless,
+        no_activate,
+      },
+    );
     let window = self.setup_window_events(window);
     let id = window.id();
     self.open_windows.lock().unwrap().insert(id);
@@ -635,6 +648,11 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       }
       None => tray.clear_menu(),
     }
+  }
+
+  fn get_tray_bounds(&self, tray_id: u32) -> Option<(i32, i32, i32, i32)> {
+    let trays = self.trays.lock().unwrap();
+    trays.get(&tray_id)?.get_bounds()
   }
 
   fn show_notification(
@@ -1660,7 +1678,7 @@ async fn run_desktop(
       }
 
       // Create the initial window and wire up event handlers.
-      let window_id = api.create_window(800, 600);
+      let window_id = api.create_window(800, 600, false, false);
       initial_window_id.store(window_id, Ordering::Release);
 
       denort::desktop::init_desktop_state(

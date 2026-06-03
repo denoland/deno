@@ -355,6 +355,106 @@ pub const DESKTOP_JS: &str = r#"
   internals.defineEventHandler(TrayPrototype, "dblclick");
   internals.defineEventHandler(TrayPrototype, "menuclick");
 
+  // High-level convenience: wire a frameless, non-activating popover window
+  // to this tray icon (the classic menu-bar-app pattern). Built entirely on
+  // the primitives — `new BrowserWindow({ frameless, noActivate })`,
+  // `tray.getBounds()`, the tray "click" event and the window "blur" event.
+  TrayPrototype.attachPanel = function(options) {
+    if (typeof options === "string") options = { url: options };
+    options = options ?? {};
+    const width = options.width ?? 360;
+    const height = options.height ?? 480;
+    const hideOnBlur = options.hideOnBlur ?? true;
+    const positionFn = options.position;
+    const tray = this;
+
+    const window = new Deno.BrowserWindow({
+      width,
+      height,
+      frameless: true,
+      noActivate: true,
+      resizable: false,
+    });
+    window.hide();
+    if (options.url != null) window.navigate(options.url);
+
+    let visible = false;
+    // Guards the click -> blur -> click toggle race: a tray click on a
+    // focused panel blurs it (hiding via the blur handler) *before* the
+    // tray "click" fires, which would otherwise immediately re-show it.
+    let suppressNextShow = false;
+
+    const place = () => {
+      const bounds = tray.getBounds();
+      // No bounds (e.g. Linux, where the tray protocol has no geometry):
+      // leave the window at its current position.
+      if (!bounds) return;
+      const pos = positionFn
+        ? positionFn(bounds, { width, height })
+        : {
+          x: Math.round(bounds.x + bounds.width / 2 - width / 2),
+          y: Math.round(bounds.y + bounds.height),
+        };
+      window.setPosition(pos.x, pos.y);
+    };
+
+    const show = () => {
+      place();
+      window.show();
+      // Take key focus so the panel is interactive and so losing focus
+      // (clicking elsewhere) dismisses it via the blur handler.
+      window.focus();
+      visible = true;
+    };
+    const hide = () => {
+      window.hide();
+      visible = false;
+    };
+    const toggle = () => {
+      if (visible) hide();
+      else show();
+    };
+
+    const onTrayClick = () => {
+      if (suppressNextShow) {
+        suppressNextShow = false;
+        return;
+      }
+      toggle();
+    };
+    tray.addEventListener("click", onTrayClick);
+
+    let onBlur = null;
+    if (hideOnBlur) {
+      onBlur = () => {
+        if (!visible) return;
+        hide();
+        // If this blur was caused by clicking the tray icon, the tray
+        // "click" is about to fire — tell it to stay hidden.
+        suppressNextShow = true;
+        setTimeout(() => {
+          suppressNextShow = false;
+        }, 250);
+      };
+      window.addEventListener("blur", onBlur);
+    }
+
+    return {
+      window,
+      get visible() {
+        return visible;
+      },
+      show,
+      hide,
+      toggle,
+      destroy() {
+        tray.removeEventListener("click", onTrayClick);
+        if (onBlur) window.removeEventListener("blur", onBlur);
+        window.close();
+      },
+    };
+  };
+
   // --- Web Notifications API ---
   //
   // Backend wants raw PNG bytes for the icon while the Web Notifications

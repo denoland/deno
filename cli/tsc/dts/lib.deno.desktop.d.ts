@@ -300,6 +300,20 @@ declare namespace Deno {
     resizable?: boolean;
     /** @default {false} */
     alwaysOnTop?: boolean;
+    /** Remove the title bar and standard window chrome (border, traffic
+     * light / caption buttons). Set at creation time only.
+     *
+     * @default {false} */
+    frameless?: boolean;
+    /** Create the window as a floating, non-activating utility "panel": it
+     * floats above normal windows and does not activate the app or steal key
+     * focus from the foreground app when shown. Combined with
+     * {@linkcode frameless} and {@linkcode Tray.getBounds}, this is the
+     * configuration used for tray / menu-bar popovers. Set at creation time
+     * only.
+     *
+     * @default {false} */
+    noActivate?: boolean;
   }
 
   interface BrowserWindowObject {
@@ -544,6 +558,56 @@ declare namespace Deno {
   /** App-level dock / taskbar singleton. */
   export const dock: Dock;
 
+  /** The tray icon's bounding rectangle in screen coordinates, in the same
+   * top-left-origin space as {@linkcode BrowserWindow.setPosition}. Use it to
+   * anchor a popover window under the icon. */
+  interface TrayBounds {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }
+
+  interface TrayPanelOptions {
+    /** URL to load in the panel window. */
+    url?: string;
+    /** Panel width in pixels. @default {360} */
+    width?: number;
+    /** Panel height in pixels. @default {480} */
+    height?: number;
+    /** Hide the panel when it loses focus (click-outside to dismiss).
+     * @default {true} */
+    hideOnBlur?: boolean;
+    /** Override where the panel is placed. Receives the tray icon's bounds
+     * and the panel size, and returns the top-left screen position. The
+     * default centers the panel horizontally under the icon — correct for a
+     * top menu bar; provide this to place it elsewhere (e.g. above a
+     * bottom-edge taskbar). */
+    position?: (
+      trayBounds: TrayBounds,
+      panelSize: { width: number; height: number },
+    ) => { x: number; y: number };
+  }
+
+  /** Handle to a tray-attached popover window created by
+   * {@linkcode Tray.attachPanel}. */
+  interface TrayPanel {
+    /** The underlying panel window — use it to `bind()`, `executeJs()`,
+     * open devtools, etc. */
+    readonly window: BrowserWindow;
+    /** Whether the panel is currently shown. */
+    readonly visible: boolean;
+    /** Show the panel, positioned under the tray icon. */
+    show(): void;
+    /** Hide the panel. */
+    hide(): void;
+    /** Toggle the panel's visibility. */
+    toggle(): void;
+    /** Detach the panel: remove the tray/blur listeners and close the
+     * window. */
+    destroy(): void;
+  }
+
   interface TrayEventMap {
     click: MouseEvent;
     dblclick: MouseEvent;
@@ -584,6 +648,33 @@ declare namespace Deno {
      * `"menuclick"` events on the tray. Pass `null` to remove any
      * menu previously set. */
     setMenu(menu: MenuItem[] | null): void;
+
+    /** The tray icon's bounding rectangle in screen coordinates, or `null`
+     * if the icon has no on-screen position yet or the platform can't report
+     * it. Typically called from a `"click"` handler to position a popover
+     * {@linkcode BrowserWindow} (created with `frameless` + `noActivate`)
+     * under the icon. */
+    getBounds(): TrayBounds | null;
+
+    /** Attach a frameless, non-activating popover window to this tray icon
+     * (the classic menu-bar-app pattern). The returned panel toggles on tray
+     * click, is positioned under the icon via {@linkcode Tray.getBounds}, and
+     * hides when it loses focus.
+     *
+     * Convenience built on the primitives; for full control create a
+     * `frameless` + `noActivate` {@linkcode BrowserWindow} yourself.
+     *
+     * ```ts
+     * const tray = new Deno.Tray();
+     * tray.setIcon(iconBytes);
+     * const panel = tray.attachPanel({ url: "https://localhost:8000/panel" });
+     * panel.window.bind("doThing", async () => { ... });
+     * ```
+     *
+     * Pass a string as shorthand for `{ url }`. On Linux the icon position
+     * can't be queried, so the panel shows at its last position rather than
+     * anchored to the icon. */
+    attachPanel(options: TrayPanelOptions | string): TrayPanel;
 
     /** Remove the tray icon from the OS status area. The instance must
      * not be used after this call. */
