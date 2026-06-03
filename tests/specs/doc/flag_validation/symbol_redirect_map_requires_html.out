@@ -1,0 +1,5 @@
+error: the following required arguments were not provided:
+  --html
+
+Usage: deno doc --html --symbol-redirect-map=<symbol-redirect-map> <source_file>...
+

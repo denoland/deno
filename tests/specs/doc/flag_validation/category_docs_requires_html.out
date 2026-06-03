@@ -1,0 +1,5 @@
+error: the following required arguments were not provided:
+  --html
+
+Usage: deno doc --html --category-docs=<category-docs> <source_file>...
+

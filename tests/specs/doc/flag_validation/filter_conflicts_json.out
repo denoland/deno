@@ -1,0 +1,4 @@
+error: the argument '--json' cannot be used with '--filter <filter>'
+
+Usage: deno doc --json <source_file>...
+

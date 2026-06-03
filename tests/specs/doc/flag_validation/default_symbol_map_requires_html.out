@@ -1,0 +1,5 @@
+error: the following required arguments were not provided:
+  --html
+
+Usage: deno doc --html --default-symbol-map=<default-symbol-map> <source_file>...
+

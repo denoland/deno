@@ -1,0 +1,4 @@
+error: the argument '--html' cannot be used with '--filter <filter>'
+
+Usage: deno doc --html <source_file>...
+

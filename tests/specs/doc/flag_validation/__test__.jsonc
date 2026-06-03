@@ -1,0 +1,44 @@
+{
+  "tests": {
+    "json_conflicts_html": {
+      "args": "doc --json --html mod.ts",
+      "output": "json_conflicts_html.out",
+      "exitCode": 1
+    },
+    "filter_conflicts_json": {
+      "args": "doc --json --filter=Foo mod.ts",
+      "output": "filter_conflicts_json.out",
+      "exitCode": 1
+    },
+    "filter_conflicts_lint": {
+      "args": "doc --lint --filter=Foo mod.ts",
+      "output": "filter_conflicts_lint.out",
+      "exitCode": 1
+    },
+    "filter_conflicts_html": {
+      "args": "doc --html --filter=Foo mod.ts",
+      "output": "filter_conflicts_html.out",
+      "exitCode": 1
+    },
+    "category_docs_requires_html": {
+      "args": "doc --category-docs=cat.json mod.ts",
+      "output": "category_docs_requires_html.out",
+      "exitCode": 1
+    },
+    "symbol_redirect_map_requires_html": {
+      "args": "doc --symbol-redirect-map=map.json mod.ts",
+      "output": "symbol_redirect_map_requires_html.out",
+      "exitCode": 1
+    },
+    "strip_trailing_html_requires_html": {
+      "args": "doc --strip-trailing-html mod.ts",
+      "output": "strip_trailing_html_requires_html.out",
+      "exitCode": 1
+    },
+    "default_symbol_map_requires_html": {
+      "args": "doc --default-symbol-map=def.json mod.ts",
+      "output": "default_symbol_map_requires_html.out",
+      "exitCode": 1
+    }
+  }
+}

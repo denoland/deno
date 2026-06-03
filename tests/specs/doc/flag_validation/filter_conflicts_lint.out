@@ -1,0 +1,4 @@
+error: the argument '--lint' cannot be used with '--filter <filter>'
+
+Usage: deno doc --lint <source_file>...
+

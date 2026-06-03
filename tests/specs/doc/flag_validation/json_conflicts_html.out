@@ -1,0 +1,4 @@
+error: the argument '--json' cannot be used with '--html'
+
+Usage: deno doc --json <source_file>...
+
