@@ -1,0 +1,5 @@
+error: invalid value '-1' for '--fail-fast[=<N>]': invalid digit found in string
+
+
+Caused by:
+    invalid digit found in string

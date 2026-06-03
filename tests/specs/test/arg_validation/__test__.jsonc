@@ -1,0 +1,19 @@
+{
+  "tests": {
+    "fail_fast_zero": {
+      "args": "test --fail-fast=0",
+      "output": "fail_fast_zero.out",
+      "exitCode": 1
+    },
+    "fail_fast_negative": {
+      "args": "test --fail-fast=-1",
+      "output": "fail_fast_negative.out",
+      "exitCode": 1
+    },
+    "reporter_invalid": {
+      "args": "test --reporter=bogus",
+      "output": "reporter_invalid.out",
+      "exitCode": 1
+    }
+  }
+}

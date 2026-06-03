@@ -1,0 +1,5 @@
+error: invalid value '0' for '--fail-fast[=<N>]': number would be zero for non-zero type
+
+
+Caused by:
+    number would be zero for non-zero type
