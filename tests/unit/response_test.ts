@@ -100,3 +100,38 @@ Deno.test(async function responseBodyUsed() {
   response.body;
   assert(response.bodyUsed);
 });
+
+// A body extracted from a BodyInit (string, typed array, ...) must be exposed
+// as a readable byte stream, so a BYOB reader can be acquired from it.
+// https://github.com/denoland/deno/issues/17386
+Deno.test(async function responseBodyByobReader() {
+  async function readByob(stream: ReadableStream<Uint8Array>) {
+    const reader = stream.getReader({ mode: "byob" });
+    const chunks: number[] = [];
+    while (true) {
+      const { value, done } = await reader.read(new Uint8Array(16));
+      if (done) break;
+      chunks.push(...value);
+    }
+    return new Uint8Array(chunks);
+  }
+
+  assertEquals(
+    await readByob(new Response(new Uint8Array([1, 2, 3])).body!),
+    new Uint8Array([1, 2, 3]),
+  );
+  assertEquals(
+    await readByob(new Response("foo").body!),
+    new TextEncoder().encode("foo"),
+  );
+  assertEquals(
+    await readByob(new Response(new Uint8Array()).body!),
+    new Uint8Array(),
+  );
+  assertEquals(
+    await readByob(
+      new Request("http://localhost/", { method: "POST", body: "bar" }).body!,
+    ),
+    new TextEncoder().encode("bar"),
+  );
+});

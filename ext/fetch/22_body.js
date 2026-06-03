@@ -91,14 +91,18 @@ class InnerBody {
     ) {
       const { body, consumed } = this.streamOrStatic;
       if (consumed) {
-        this.streamOrStatic = new ReadableStream();
+        this.streamOrStatic = new ReadableStream({ type: "bytes" });
         this.streamOrStatic.getReader();
         readableStreamDisturb(this.streamOrStatic);
         readableStreamClose(this.streamOrStatic);
       } else {
         this.streamOrStatic = new ReadableStream({
+          type: "bytes",
           start(controller) {
-            controller.enqueue(chunkToU8(body));
+            const chunk = chunkToU8(body);
+            if (TypedArrayPrototypeGetByteLength(chunk) > 0) {
+              controller.enqueue(chunk);
+            }
             controller.close();
           },
         });
