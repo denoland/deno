@@ -1,0 +1,20 @@
+{
+  "tests": {
+    "print_object": {
+      "args": "eval --quiet -p ({a:1,b:[2,3],c:\"x\"})",
+      "output": "{ a: 1, b: [ 2, 3 ], c: \"x\" }\n"
+    },
+    "print_array": {
+      "args": "eval --quiet -p [1,2,3].map((x)=>x*2)",
+      "output": "[ 2, 4, 6 ]\n"
+    },
+    "print_does_not_await_promise": {
+      "args": "eval --quiet -p Promise.resolve(5)",
+      "output": "Promise { 5 }\n"
+    },
+    "top_level_await_in_body": {
+      "args": "eval --quiet console.log(await(Promise.resolve(\"ok\")))",
+      "output": "ok\n"
+    }
+  }
+}
