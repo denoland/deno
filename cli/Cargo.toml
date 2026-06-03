@@ -139,7 +139,6 @@ markup_fmt.workspace = true
 memchr.workspace = true
 notify.workspace = true
 once_cell.workspace = true
-open.workspace = true
 opentelemetry.workspace = true
 opentelemetry-otlp.workspace = true
 opentelemetry-semantic-conventions.workspace = true
