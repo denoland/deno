@@ -236,8 +236,13 @@ class Kv {
       consistency?: Deno.KvConsistencyLevel;
     } = { __proto__: null },
   ): KvListIterator {
-    if (options.limit !== undefined && options.limit <= 0) {
-      throw new Error(`Limit must be positive: received ${options.limit}`);
+    if (
+      options.limit !== undefined &&
+      (!NumberIsInteger(options.limit) || options.limit <= 0)
+    ) {
+      throw new Error(
+        `Limit must be a positive integer: received ${options.limit}`,
+      );
     }
 
     let batchSize = options.batchSize ?? (options.limit ?? 100);

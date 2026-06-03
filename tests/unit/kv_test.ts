@@ -914,6 +914,15 @@ dbTest("list prefix with non-integer batch size throws", async (db) => {
   );
 });
 
+dbTest("list prefix with non-integer limit throws", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"] }, { limit: 2.3 })),
+    Error,
+    "Limit must be a positive integer",
+  );
+});
+
 dbTest("set with invalid expireIn throws", async (db) => {
   // A non-finite expireIn (notably Infinity) used to panic the process when
   // the native layer computed the absolute expiry; these must be rejected.
@@ -938,6 +947,27 @@ dbTest("set with invalid expireIn throws", async (db) => {
   const res = await db.set(["a"], 1, { expireIn: 1000 });
   assert(res.ok);
 });
+
+dbTest(
+  "set with too-large expireIn throws instead of panicking",
+  async (db) => {
+    // A large but valid integer passes the JS integer check, but computing the
+    // absolute expiry overflows in the native layer. It must surface as an
+    // error rather than panic the process.
+    await assertRejects(
+      () => db.set(["a"], 1, { expireIn: Number.MAX_SAFE_INTEGER }),
+      TypeError,
+      "expireIn is too large",
+    );
+    await assertRejects(
+      () =>
+        db.atomic().set(["a"], 1, { expireIn: Number.MAX_SAFE_INTEGER })
+          .commit(),
+      TypeError,
+      "expireIn is too large",
+    );
+  },
+);
 
 dbTest("list prefix with small batch size and limit", async (db) => {
   const versionstamp = await setupData(db);
