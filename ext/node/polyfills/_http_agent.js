@@ -5,7 +5,10 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { core } from "ext:core/mod.js";
+import { op_get_env_no_permission_check } from "ext:core/ops";
 import * as net from "node:net";
+import httpProxy from "node:_http_proxy";
+const lazyTls = core.createLazyLoader("node:tls");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 const { debuglog } = core.loadExtScript(
   "ext:deno_node/internal/util/debuglog.ts",
@@ -149,6 +152,10 @@ export function Agent(options) {
     this.maxTotalSockets = Infinity;
   }
 
+  // Initialize per-agent proxy state from `options.proxyEnv` (if any).
+  // Throws ERR_PROXY_INVALID_CONFIG on malformed URLs.
+  httpProxy.initAgentProxy(this, this.options);
+
   this.on("free", (socket, options) => {
     const name = this.getName(options);
     debug("agent.on(free)", name);
@@ -251,7 +258,41 @@ function maybeEnableKeylog(eventName) {
 
 Agent.defaultMaxSockets = Infinity;
 
-Agent.prototype.createConnection = net.createConnection;
+// Default connection factory. When a proxy applies to the request, we
+// connect to the proxy host/port instead of the target. For HTTPS targets
+// going through an HTTP proxy, this base http.Agent still produces a TCP
+// socket to the proxy; the https.Agent override builds on top of this to
+// perform CONNECT-then-TLS tunneling.
+Agent.prototype.createConnection = function createConnection(options, cb) {
+  const proxy = options && options._proxy;
+  if (proxy && options._proxyProtocol === "http:") {
+    const connectOpts = {
+      __proto__: null,
+      ...options,
+      host: proxy.hostname,
+      hostname: proxy.hostname,
+      port: proxy.port,
+      servername: undefined,
+    };
+    // Strip target-specific fields that would confuse net.connect.
+    delete connectOpts._proxy;
+    delete connectOpts._proxyTargetHost;
+    delete connectOpts._proxyTargetPort;
+    delete connectOpts._proxyProtocol;
+    if (proxy.protocol === "https:") {
+      connectOpts.servername = proxy.hostname;
+      if (
+        connectOpts.ca === undefined &&
+        op_get_env_no_permission_check("NODE_EXTRA_CA_CERTS")
+      ) {
+        connectOpts.ca = lazyTls().default.getCACertificates("default");
+      }
+      return lazyTls().default.connect(connectOpts, cb);
+    }
+    return net.createConnection(connectOpts, cb);
+  }
+  return net.createConnection(options, cb);
+};
 
 // Get the key for a given set of request options
 Agent.prototype.getName = function getName(options = {}) {

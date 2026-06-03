@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;
+use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -42,7 +43,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
-use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
 use weak_table::PtrWeakKeyHashMap;
 use weak_table::WeakValueHashMap;
@@ -61,6 +61,7 @@ use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
 use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
+use super::urls::uri_is_in_memory;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
@@ -206,8 +207,8 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
   Some(uri)
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, deno_core::ToV8)]
+#[to_v8(untagged)]
 pub enum DocumentText {
   Static(&'static str),
   Arc(Arc<str>),
@@ -1531,7 +1532,18 @@ impl DocumentModules {
   pub fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
     let url = uri_to_url(uri);
     if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
-      let scope = self.config.tree.scope_for_specifier(&url);
+      let mut scope = self.config.tree.scope_for_specifier(&url);
+      // In-memory documents (untitled files and unsaved notebook cells) convert
+      // to a `file:` URL at the filesystem root, which matches no workspace
+      // scope. Associate them with the workspace root so its config (import
+      // map, compiler options) applies — matching the behavior once the
+      // document is saved into the workspace. See denoland/deno#22628.
+      if scope.is_none()
+        && uri_is_in_memory(uri)
+        && let Some(root_url) = self.config.root_url()
+      {
+        scope = self.config.tree.scope_for_specifier(root_url);
+      }
       return Some(scope);
     }
     None
@@ -1946,7 +1958,7 @@ impl IndexValid {
 }
 
 type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
-type ParsedSourceResult = Result<ParsedSource, deno_ast::ParseDiagnostic>;
+type ParsedSourceResult = Result<ParsedSource, Arc<JsErrorBox>>;
 type TestModuleFut =
   Shared<Pin<Box<dyn Future<Output = Option<Arc<TestModule>>> + Send>>>;
 
@@ -2095,14 +2107,43 @@ fn parse_source(
   text: Arc<str>,
   media_type: MediaType,
 ) -> ParsedSourceResult {
-  deno_ast::parse_program(deno_ast::ParseParams {
-    specifier,
-    text,
-    media_type,
-    capture_tokens: true,
-    scope_analysis: true,
-    maybe_syntax: None,
-  })
+  let specifier_for_error = specifier.clone();
+  let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+    deno_ast::parse_program(deno_ast::ParseParams {
+      specifier,
+      text,
+      media_type,
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })
+  }));
+  match result {
+    Ok(result) => {
+      result.map_err(|diagnostic| Arc::new(JsErrorBox::from_err(diagnostic)))
+    }
+    Err(error) => {
+      let error = panic_payload_to_string(&error);
+      lsp_warn!(
+        "Failed to parse \"{}\" due to parser panic: {}",
+        specifier_for_error,
+        error,
+      );
+      Err(Arc::new(JsErrorBox::generic(format!(
+        "The parser panicked while parsing this module: {error}"
+      ))))
+    }
+  }
+}
+
+fn panic_payload_to_string(error: &(dyn std::any::Any + Send)) -> String {
+  if let Some(message) = error.downcast_ref::<String>() {
+    message.clone()
+  } else if let Some(message) = error.downcast_ref::<&'static str>() {
+    message.to_string()
+  } else {
+    "unknown parser panic".to_string()
+  }
 }
 
 fn analyze_module(
@@ -2154,7 +2195,7 @@ fn analyze_module(
         deno_graph::ModuleErrorKind::Parse {
           specifier,
           mtime: None,
-          diagnostic: Arc::new(JsErrorBox::from_err(diagnostic.clone())),
+          diagnostic: diagnostic.clone(),
         }
         .into_box(),
       )),
@@ -2290,6 +2331,24 @@ console.log(b);
 console.log(b, "hello deno");
 "#
     );
+  }
+
+  #[test]
+  fn test_parse_invalid_tsx_with_jsx_pragmas_does_not_panic() {
+    let specifier = ModuleSpecifier::parse("file:///index.tsx").unwrap();
+    let result = parse_source(
+      specifier,
+      r#"/** @jsxRuntime automatic */ /** @jsxImportSource npm:preact */
+
+const Counter = () => {
+  const [count
+  <button>{count}</button>
+}
+"#
+      .into(),
+      MediaType::Tsx,
+    );
+    assert!(result.is_err());
   }
 
   #[tokio::test]

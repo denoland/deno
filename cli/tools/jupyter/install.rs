@@ -62,11 +62,34 @@ fn stable_exe_path(current_exe: &Path, path_var: Option<OsString>) -> PathBuf {
 }
 
 fn get_user_data_dir() -> Result<PathBuf, AnyError> {
-  Ok(if let Some(env_var) = std::env::var_os(TEST_ENV_VAR_NAME) {
-    PathBuf::from(env_var)
-  } else {
-    jupyter_runtime::dirs::user_data_dir()?
-  })
+  if let Some(env_var) = std::env::var_os(TEST_ENV_VAR_NAME) {
+    return Ok(PathBuf::from(env_var));
+  }
+  // Platform-specific Jupyter user data directory (mirrors runtimelib behavior).
+  #[cfg(target_os = "macos")]
+  {
+    let home = std::env::var_os("HOME")
+      .map(PathBuf::from)
+      .ok_or_else(|| deno_core::anyhow::anyhow!("HOME not set"))?;
+    Ok(home.join("Library").join("Jupyter"))
+  }
+  #[cfg(target_os = "windows")]
+  {
+    let appdata = std::env::var_os("APPDATA")
+      .map(PathBuf::from)
+      .ok_or_else(|| deno_core::anyhow::anyhow!("APPDATA not set"))?;
+    Ok(appdata.join("jupyter"))
+  }
+  #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+  {
+    if let Some(xdg) = std::env::var_os("XDG_DATA_HOME") {
+      return Ok(PathBuf::from(xdg).join("jupyter"));
+    }
+    let home = std::env::var_os("HOME")
+      .map(PathBuf::from)
+      .ok_or_else(|| deno_core::anyhow::anyhow!("HOME not set"))?;
+    Ok(home.join(".local").join("share").join("jupyter"))
+  }
 }
 
 pub fn status(maybe_name: Option<&str>) -> Result<(), AnyError> {

@@ -32,7 +32,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["errhandlingapi", "minwindef", "ntdef", "winbase", "winnt"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Globalization", "Win32_System_Diagnostics_Debug"] }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_aarch, values("x86_64", "aarch64"))'] }

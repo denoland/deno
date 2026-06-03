@@ -40,6 +40,7 @@ const {
   ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectKeys,
+  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
@@ -461,6 +462,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "SyntaxError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionIndexSizeError",
+  function DOMExceptionIndexSizeError(msg) {
+    return new DOMException(msg, "IndexSizeError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
@@ -578,11 +585,25 @@ const NOT_IMPORTED_OPS = [
   "op_register_bench",
   "op_bench_get_origin",
 
-  // Related to `Deno.jupyter` API
+  // Related to `Deno.jupyter` REPL API
   "op_jupyter_broadcast",
   "op_jupyter_input",
   "op_jupyter_create_png_from_texture",
   "op_jupyter_get_buffer",
+  // Related to the Jupyter ZMQ kernel worker
+  "op_jupyter_get_connection_info",
+  "op_jupyter_repl_evaluate",
+  "op_jupyter_repl_get_properties",
+  "op_jupyter_repl_global_lexical_scope_names",
+  "op_jupyter_repl_call_function_on_args",
+  "op_jupyter_repl_call_function_on",
+  "op_jupyter_repl_interrupt",
+  "op_jupyter_repl_cancel_interrupt",
+  "op_jupyter_recv_iopub",
+  "op_jupyter_recv_input",
+  "op_jupyter_send_input_reply",
+  "op_jupyter_deno_version",
+  "op_jupyter_typescript_version",
   // Used in jupyter API
   "op_base64_encode",
 
@@ -697,6 +718,41 @@ const executionModes = {
   serve: 7,
   jupyter: 8,
 };
+
+// By default Deno disables the `Object.prototype.__proto__` accessor for
+// security reasons (it can be used for prototype pollution), see
+// https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
+//
+// Instead of `delete`-ing the property (which silently turns `obj.__proto__`
+// reads into `undefined` and writes into a useless own property, making bugs
+// hard to track down) we replace it with an accessor that throws a descriptive
+// error, similar to Node's `--disable-proto=throw`. The `__proto__` key in
+// object literals (e.g. `{ __proto__: null }`) is separate syntax and keeps
+// working. The `--unstable-unsafe-proto` flag restores the native accessor.
+function disableProtoAccessor() {
+  function throwDisabledProto() {
+    throw new TypeError(
+      'The "Object.prototype.__proto__" accessor is disabled. Use ' +
+        "Object.getPrototypeOf()/Object.setPrototypeOf() instead, or run with " +
+        "--unstable-unsafe-proto to restore it.",
+    );
+  }
+  // The getter and setter must be distinct function objects: the native
+  // `__proto__` accessor has separate get/set functions, and WPT
+  // (webidl/ecmascript-binding/attributes-accessors-unique-function-objects)
+  // asserts every accessor's getter and setter are unique built-in functions.
+  ObjectDefineProperty(ObjectPrototype, "__proto__", {
+    __proto__: null,
+    configurable: true,
+    enumerable: false,
+    get: function __proto__() {
+      throwDisabledProto();
+    },
+    set: function __proto__(_value) {
+      throwDisabledProto();
+    },
+  });
+}
 
 function bootstrapMainRuntime(runtimeOptions, warmup = false) {
   if (!warmup) {
@@ -890,9 +946,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     }
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1022,9 +1076,7 @@ function bootstrapWorkerRuntime(
     delete finalDenoNs.mainModule;
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
-      // Removes the `__proto__` for security reasons.
-      // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
-      delete Object.prototype.__proto__;
+      disableProtoAccessor();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global

@@ -55,7 +55,7 @@ deno_unsync = { workspace = true, features = ["tokio"] }
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation"] }
 
 [dev-dependencies]
 sys_traits = { workspace = true, features = ["memory", "real", "serde_json"] }

@@ -1,9 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assert, assertEquals, assertStringIncludes } from "./test_util.ts";
+import { fromFileUrl } from "@std/path";
 
-const testdataPath =
-  new URL("../testdata/inspector/", import.meta.url).pathname;
+const testdataPath = fromFileUrl(
+  new URL("../testdata/inspector/", import.meta.url),
+);
 
 interface CDPMessage {
   id?: number;
@@ -1214,6 +1216,138 @@ Deno.test("inspector_break_on_first_line_in_test", async () => {
     await tester.close();
     tester.kill();
     await tester.waitForExit();
+  }
+});
+
+// Regression test for https://github.com/denoland/deno/issues/19289.
+// `deno test --inspect-brk` must wait for an attached debugger that opted into
+// `NodeRuntime.notifyWhenWaitingForDisconnect` (as Chrome DevTools does)
+// before exiting; otherwise an in-progress Performance recording is dropped
+// the moment the test finishes.
+async function assertTestWaitsForDebuggerDisconnect(args: string[]) {
+  const tester = await InspectorTester.create(
+    args,
+    {
+      notificationFilter: ignoreScriptParsed,
+      env: { NO_COLOR: "1" },
+    },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "NodeRuntime.notifyWhenWaitingForDisconnect",
+        params: { enabled: true },
+      },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2, {
+      prefixMatch: '{"id":2,"result":{"debuggerId":',
+    });
+    await tester.expectResponse(3);
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    tester.send({ id: 4, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(4);
+    await tester.expectNotification("Debugger.paused");
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    // The test must run to completion. Before the fix the process would
+    // race past the inspector wait and exit before the runtime emitted
+    // `Runtime.executionContextDestroyed`, leaving the websocket dangling.
+    const line1 = await tester.nextStdoutLine();
+    assert(
+      line1.includes("running 1 test from"),
+      `Expected test start, got: ${line1}`,
+    );
+    const line2 = await tester.nextStdoutLine();
+    assert(line2.includes("basic test ... ok"), `Expected ok, got: ${line2}`);
+
+    // The runtime should now be parked waiting for us to disconnect. Wait
+    // for the context-destroyed notification; proof that the wait kicked
+    // in, since on the buggy path the process would exit instead.
+    await tester.expectNotification("Runtime.executionContextDestroyed");
+
+    // Closing the socket signals the debugger has disconnected; the runtime
+    // should now exit cleanly with code 0.
+    await tester.close();
+    const status = await tester.waitForExit();
+    assertEquals(status.code, 0);
+  } finally {
+    tester.kill();
+    await tester.waitForExit();
+  }
+}
+
+Deno.test("inspector_test_waits_for_debugger_disconnect", async () => {
+  if (Deno.build.os === "windows") return;
+
+  const script = `${testdataPath}/inspector_test.js`;
+  await assertTestWaitsForDebuggerDisconnect([
+    "test",
+    "-A",
+    "--inspect-brk=0",
+    script,
+  ]);
+});
+
+Deno.test("inspector_test_coverage_does_not_block_shutdown", async () => {
+  const coverageDir = await Deno.makeTempDir();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  try {
+    const script = `${testdataPath}/inspector_test.js`;
+
+    // `--coverage` uses a local blocking inspector session internally. It is
+    // mutually exclusive with `--inspect-brk`, but it still exercises the
+    // shutdown ordering that must stop coverage before waiting for inspector
+    // sessions to disconnect.
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["test", "-A", `--coverage=${coverageDir}`, script],
+      stdout: "piped",
+      stderr: "piped",
+      env: { NO_COLOR: "1" },
+    }).spawn();
+
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // Process may have exited between the timeout firing and kill.
+      }
+    }, 10_000);
+
+    const output = await child.output();
+    const stdout = new TextDecoder().decode(output.stdout);
+    const stderr = new TextDecoder().decode(output.stderr);
+    assert(
+      !timedOut,
+      `deno test --coverage did not exit cleanly.\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    );
+    assertEquals(output.code, 0, `stdout:\n${stdout}\nstderr:\n${stderr}`);
+    assertStringIncludes(stdout, "basic test ... ok");
+    const coverageFiles = [];
+    for await (const entry of Deno.readDir(coverageDir)) {
+      if (entry.isFile) coverageFiles.push(entry.name);
+    }
+    assert(
+      coverageFiles.length > 0,
+      `Expected coverage output.\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    );
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+    await Deno.remove(coverageDir, { recursive: true });
   }
 });
 

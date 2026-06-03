@@ -143,9 +143,11 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
   // Safety: Assumes correct behavior of platform-specific syscalls and data structures.
   unsafe {
-    let mut system_info: winapi::um::sysinfoapi::SYSTEM_INFO =
+    let mut system_info: windows_sys::Win32::System::SystemInformation::SYSTEM_INFO =
       std::mem::zeroed();
-    winapi::um::sysinfoapi::GetSystemInfo(&mut system_info);
+    windows_sys::Win32::System::SystemInformation::GetSystemInfo(
+      &mut system_info,
+    );
 
     let cpu_count = system_info.dwNumberOfProcessors as usize;
 

@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
+use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -345,8 +346,12 @@ impl<
     &self,
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), SyncResolutionWithFsError> {
-    if snapshot.is_empty()
-      && self.npm_install_deps_provider.local_pkgs().is_empty()
+    let has_no_packages = snapshot.is_empty()
+      && self.npm_install_deps_provider.local_pkgs().is_empty();
+    let deno_marker_dir = self.root_node_modules_path.join(".deno");
+    if has_no_packages
+      && (!self.clean_on_install
+        || !self.sys.fs_exists_no_err(&deno_marker_dir))
     {
       return Ok(());
     }
@@ -361,7 +366,6 @@ impl<
     sys.fs_create_dir_all(&self.root_node_modules_path)?;
 
     // Use a marker directory for the lock file (reuse .deno for compatibility)
-    let deno_marker_dir = self.root_node_modules_path.join(".deno");
     sys.fs_create_dir_all(&deno_marker_dir)?;
 
     let bin_node_modules_dir_path = self.root_node_modules_path.join(".bin");
@@ -416,6 +420,16 @@ impl<
       self.npm_package_extra_info_provider.clone(),
     ));
 
+    // Map a package to the workspace member directory that declares it as a
+    // direct dependency, so its lifecycle scripts run with `INIT_CWD` pointing
+    // at that member rather than the workspace root.
+    let lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>> =
+      Rc::new(crate::lifecycle_scripts::member_dep_init_cwds(
+        &self.npm_install_deps_provider,
+        snapshot,
+        self.root_node_modules_path.parent(),
+      ));
+
     // Clone top-level (hoisted) packages
     for package in layout.top_level.values() {
       let package_path = join_package_name(
@@ -427,6 +441,7 @@ impl<
         packages_with_deprecation_warnings.clone();
       let extra_info_provider = extra_info_provider.clone();
       let lifecycle_scripts = lifecycle_scripts.clone();
+      let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
       let bin_entries_to_setup = bin_entries.clone();
       let install_reporter = self.install_reporter.clone();
 
@@ -441,6 +456,7 @@ impl<
               extra_info_provider,
               bin_entries_to_setup,
               lifecycle_scripts,
+              lifecycle_script_init_cwds,
               packages_with_deprecation_warnings,
             )
             .boxed_local(),
@@ -467,6 +483,7 @@ impl<
         packages_with_deprecation_warnings.clone();
       let extra_info_provider = extra_info_provider.clone();
       let lifecycle_scripts = lifecycle_scripts.clone();
+      let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
       let bin_entries_to_setup = bin_entries.clone();
       let install_reporter = self.install_reporter.clone();
 
@@ -481,6 +498,7 @@ impl<
               extra_info_provider,
               bin_entries_to_setup,
               lifecycle_scripts,
+              lifecycle_script_init_cwds,
               packages_with_deprecation_warnings,
             )
             .boxed_local(),
@@ -659,6 +677,7 @@ impl<
     extra_info_provider: Arc<CachedNpmPackageExtraInfoProvider>,
     bin_entries_to_setup: Rc<RefCell<BinEntries<'a, impl LocalNpmInstallSys>>>,
     lifecycle_scripts: Rc<RefCell<LifecycleScripts<'a, impl FsMetadata>>>,
+    lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>>,
     packages_with_deprecation_warnings: Arc<Mutex<Vec<(PackageNv, String)>>>,
   ) -> Result<(), JsErrorBox> {
     self
@@ -729,9 +748,16 @@ impl<
     }
 
     if package.has_scripts {
-      lifecycle_scripts
-        .borrow_mut()
-        .add(package, &extra, package_path.into());
+      let init_cwds = lifecycle_script_init_cwds
+        .get(&package.id)
+        .cloned()
+        .unwrap_or_default();
+      lifecycle_scripts.borrow_mut().add(
+        package,
+        &extra,
+        package_path.into(),
+        init_cwds,
+      );
     }
 
     if package.is_deprecated
@@ -755,6 +781,18 @@ fn cleanup_hoisted_packages(
   let expected_names: HashSet<&str> =
     layout.top_level.keys().map(|k| k.as_str()).collect();
 
+  fn remove_unexpected_package(
+    sys: &impl LocalNpmInstallSys,
+    path: &Path,
+    name: &str,
+    expected_names: &HashSet<&str>,
+  ) {
+    if expected_names.contains(name) {
+      return;
+    }
+    let _ = sys.fs_remove_dir_all(path);
+  }
+
   if let Ok(entries) = sys.fs_read_dir(root_node_modules_path) {
     for entry in entries.flatten() {
       let name = entry.file_name();
@@ -764,12 +802,33 @@ fn cleanup_hoisted_packages(
       {
         continue;
       }
-      // Skip scoped packages for now (they start with @)
       if name_str.starts_with('@') {
+        let scope_path = root_node_modules_path.join(&*name_str);
+        let Ok(scope_entries) = sys.fs_read_dir(&scope_path) else {
+          continue;
+        };
+        for scope_entry in scope_entries.flatten() {
+          let package_name = scope_entry.file_name();
+          let package_name = package_name.to_string_lossy();
+          let full_name = format!("{name_str}/{package_name}");
+          remove_unexpected_package(
+            sys,
+            &scope_entry.path(),
+            &full_name,
+            &expected_names,
+          );
+        }
+        if sys
+          .fs_read_dir(&scope_path)
+          .map(|mut entries| entries.next().is_none())
+          .unwrap_or(false)
+        {
+          let _ = sys.fs_remove_dir(&scope_path);
+        }
         continue;
       }
       let path = root_node_modules_path.join(&*name_str);
-      let _ = sys.fs_remove_dir_all(&path);
+      remove_unexpected_package(sys, &path, &name_str, &expected_names);
     }
   }
 }
