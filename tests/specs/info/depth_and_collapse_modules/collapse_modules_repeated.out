@@ -1,0 +1,10 @@
+local: [WILDLINE]repeated.ts
+type: TypeScript
+dependencies: 4 unique
+size: [WILDLINE]
+
+file:///[WILDLINE]/repeated.ts ([WILDLINE])
+├─┬ file:///[WILDLINE]/repeat_a.ts ([WILDLINE])
+│ └── jsr:@denotest/module-graph[WILDCARD] (+ 2 files, [WILDLINE])
+└─┬ file:///[WILDLINE]/repeat_b.ts ([WILDLINE])
+  └── jsr:@denotest/module-graph[WILDCARD] *
