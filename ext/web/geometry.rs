@@ -3149,9 +3149,10 @@ mod tests {
   /// correctness. Returns the inverse plus the smallest pivot magnitude
   /// encountered (a cheap conditioning proxy used to skip ill-conditioned
   /// samples).
-  // Index-based loops are clearer than iterators here: the elimination step
-  // mutates one row while reading another, which iterator borrows can't express.
-  #[allow(clippy::needless_range_loop)]
+  #[allow(
+    clippy::needless_range_loop,
+    reason = "elimination mutates one row while reading another; iterator borrows can't express it"
+  )]
   fn ref_inverse(m: &[f64; 16]) -> Option<([f64; 16], f64)> {
     // Augmented [A | I], row-major working storage.
     let mut a = [[0.0f64; 8]; 4];
