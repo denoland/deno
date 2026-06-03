@@ -1,0 +1,4 @@
+error: the argument '--empty' cannot be used with '--lib'
+
+Usage: deno init --empty [DIRECTORY OR PACKAGE]...
+

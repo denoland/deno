@@ -1,0 +1,4 @@
+error: the argument '--npm' cannot be used with '--jsr'
+
+Usage: deno init --npm [DIRECTORY OR PACKAGE]...
+

@@ -1,0 +1,4 @@
+error: the argument '--npm' cannot be used with '--serve'
+
+Usage: deno init --npm [DIRECTORY OR PACKAGE]...
+

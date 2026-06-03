@@ -1,0 +1,4 @@
+error: the argument '--jsr' cannot be used with '--serve'
+
+Usage: deno init --jsr [DIRECTORY OR PACKAGE]...
+

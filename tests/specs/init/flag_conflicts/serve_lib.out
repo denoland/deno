@@ -1,0 +1,4 @@
+error: the argument '--serve' cannot be used with '--lib'
+
+Usage: deno init --serve [DIRECTORY OR PACKAGE]...
+

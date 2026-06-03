@@ -1,0 +1,4 @@
+error: the argument '--jsr' cannot be used with '--lib'
+
+Usage: deno init --jsr [DIRECTORY OR PACKAGE]...
+

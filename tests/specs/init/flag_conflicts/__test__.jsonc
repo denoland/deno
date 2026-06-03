@@ -1,0 +1,54 @@
+{
+  "tests": {
+    "npm_jsr": {
+      "args": "init --npm --jsr proj",
+      "output": "npm_jsr.out",
+      "exitCode": 1
+    },
+    "npm_lib": {
+      "args": "init --npm --lib proj",
+      "output": "npm_lib.out",
+      "exitCode": 1
+    },
+    "npm_serve": {
+      "args": "init --npm --serve proj",
+      "output": "npm_serve.out",
+      "exitCode": 1
+    },
+    "npm_empty": {
+      "args": "init --npm --empty proj",
+      "output": "npm_empty.out",
+      "exitCode": 1
+    },
+    "jsr_lib": {
+      "args": "init --jsr --lib proj",
+      "output": "jsr_lib.out",
+      "exitCode": 1
+    },
+    "jsr_serve": {
+      "args": "init --jsr --serve proj",
+      "output": "jsr_serve.out",
+      "exitCode": 1
+    },
+    "jsr_empty": {
+      "args": "init --jsr --empty proj",
+      "output": "jsr_empty.out",
+      "exitCode": 1
+    },
+    "serve_lib": {
+      "args": "init --serve --lib proj",
+      "output": "serve_lib.out",
+      "exitCode": 1
+    },
+    "empty_lib": {
+      "args": "init --empty --lib proj",
+      "output": "empty_lib.out",
+      "exitCode": 1
+    },
+    "empty_serve": {
+      "args": "init --empty --serve proj",
+      "output": "empty_serve.out",
+      "exitCode": 1
+    }
+  }
+}
