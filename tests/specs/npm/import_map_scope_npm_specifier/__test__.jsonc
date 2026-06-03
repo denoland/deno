@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "managed": {
+      "args": "run --quiet --allow-read main.ts",
+      "output": "2\n",
+      "exitCode": 0
+    },
+    "node_modules_dir": {
+      "args": "run --quiet --allow-read --node-modules-dir=auto main.ts",
+      "output": "2\n",
+      "exitCode": 0
+    }
+  }
+}

@@ -1325,6 +1325,72 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       .collect()
   }
 
+  /// Whether the import map declares any `scopes` keyed by an `npm:`
+  /// specifier (e.g. `"npm:react@18.2.0"`).
+  ///
+  /// This is used to gate transitive npm specifier mapping so that the common
+  /// case (no such scopes) does not pay the cost of looking up the npm package
+  /// a referrer belongs to.
+  pub fn has_npm_specifier_scopes(&self) -> bool {
+    self
+      .maybe_import_map
+      .as_ref()
+      .is_some_and(|m| m.import_map.scopes().any(|s| s.key.starts_with("npm:")))
+  }
+
+  /// Resolves a bare `specifier` imported from within the npm package
+  /// identified by `package_referrer` (an `npm:<name>@<version>` URL),
+  /// consulting only the import map `scopes`.
+  ///
+  /// This powers transitive dependency mapping for npm packages, where an
+  /// import map like the following remaps a dependency of `react`:
+  ///
+  /// ```jsonc
+  /// {
+  ///   "imports": { "react": "npm:react@18.2.0" },
+  ///   "scopes": {
+  ///     "npm:react@18.2.0": {
+  ///       "loose-envify": "npm:loose-envify@1.2.3"
+  ///     }
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// Returns `None` when there is no import map, no `scopes` entry applies to
+  /// the npm package, or the specifier is not mapped by an applicable scope —
+  /// in which case the caller should fall back to normal node resolution.
+  pub fn resolve_npm_scoped_specifier(
+    &self,
+    specifier: &str,
+    package_referrer: &Url,
+  ) -> Option<Result<Url, MappedResolutionError>> {
+    let import_map = &self.maybe_import_map.as_ref()?.import_map;
+    // Only consult the import map when a scope actually applies to this npm
+    // package, so that the transitive dependencies of packages the user has
+    // not scoped keep their normal node resolution (and top-level `imports`
+    // do not leak into them).
+    let referrer_str = package_referrer.as_str();
+    let has_matching_scope = import_map.scopes().any(|scope| {
+      scope.key == referrer_str
+        || (scope.key.ends_with('/') && referrer_str.starts_with(scope.key))
+    });
+    if !has_matching_scope {
+      return None;
+    }
+    match import_map.resolve(specifier, package_referrer) {
+      Ok(url) => Some(Ok(url)),
+      Err(err) => {
+        let err = MappedResolutionError::ImportMap(err);
+        if err.is_unmapped_bare_specifier() {
+          // not mapped by the scope (nor top-level imports) — fall back
+          None
+        } else {
+          Some(Err(err))
+        }
+      }
+    }
+  }
+
   pub fn resolve<'a>(
     &'a self,
     specifier: &str,

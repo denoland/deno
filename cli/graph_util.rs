@@ -51,6 +51,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::SmallStackString;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use import_map::ImportMapErrorKind;
 use node_resolver::errors::NodeJsErrorCode;
 use sys_traits::FsMetadata;
@@ -901,6 +902,42 @@ impl ModuleGraphBuilder {
     Ok(())
   }
 
+  /// Collects the `npm:` package requirements declared in import map `scopes`
+  /// keyed by an `npm:` specifier (e.g. transitive dependency overrides for an
+  /// npm package).
+  fn import_map_scope_npm_reqs(&self) -> Vec<PackageReq> {
+    let Some(import_map) =
+      self.resolver.workspace_resolver().maybe_import_map()
+    else {
+      return Vec::new();
+    };
+    let mut seen = HashSet::new();
+    let mut reqs = Vec::new();
+    for scope in import_map.scopes() {
+      // only scopes keyed by an npm specifier remap npm package dependencies
+      if !scope.key.starts_with("npm:") {
+        continue;
+      }
+      for entry in scope.imports.entries() {
+        let maybe_req = entry
+          .raw_value
+          .and_then(|v| NpmPackageReqReference::from_str(v).ok())
+          .or_else(|| {
+            entry
+              .value
+              .and_then(|u| NpmPackageReqReference::from_specifier(u).ok())
+          })
+          .map(|r| r.into_inner().req);
+        if let Some(req) = maybe_req
+          && seen.insert(req.clone())
+        {
+          reqs.push(req);
+        }
+      }
+    }
+    reqs
+  }
+
   async fn build_graph_with_npm_resolution_and_build_options<'a>(
     &self,
     graph: &mut ModuleGraph,
@@ -923,6 +960,25 @@ impl ModuleGraphBuilder {
         .await?;
       if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
         npm_installer.cache_packages(PackageCaching::All).await?;
+      }
+    }
+
+    // Seed the npm snapshot with dependencies referenced by import map `scopes`
+    // keyed by an `npm:` specifier. These remap an npm package's transitive
+    // dependency to a version that may not otherwise be part of the dependency
+    // graph (and thus would not be installed), so they must be added explicitly
+    // for the override to be resolvable at runtime.
+    if let Some(npm_installer) = &self.npm_installer {
+      let scope_reqs = self.import_map_scope_npm_reqs();
+      if !scope_reqs.is_empty() {
+        match npm_caching.as_package_caching(&scope_reqs) {
+          Some(caching) => {
+            npm_installer.add_package_reqs(&scope_reqs, caching).await?;
+          }
+          None => {
+            npm_installer.add_package_reqs_no_cache(&scope_reqs).await?;
+          }
+        }
       }
     }
 
