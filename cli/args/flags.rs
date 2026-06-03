@@ -1630,6 +1630,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: Some("(defaults to $HOME/.deno/bin)"),
   },
   EnvVar {
+    name: "DENO_JOBS",
+    description: "Number of parallel workers used for the --parallel flag with the test\nsubcommand. Defaults to the number of available CPUs.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_KV_DB_MODE",
     description: "Controls whether Deno.openKv() API should use disk based or in-memory\ndatabase.",
     example: None,
@@ -1652,6 +1657,11 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_NO_PACKAGE_JSON",
     description: "Disables auto-resolution of package.json.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_NO_PROMPT",
+    description: "Set to disable permission prompts on access\n(alternative to passing --no-prompt on invocation).",
     example: None,
   },
   EnvVar {
@@ -1691,6 +1701,11 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_USE_CGROUPS",
     description: "Use cgroups to determine V8 memory limit.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_V8_FLAGS",
+    description: "Set V8 command line options. Equivalent to using the --v8-flags flag;\nflags passed via --v8-flags are appended after these.",
     example: None,
   },
   EnvVar {
