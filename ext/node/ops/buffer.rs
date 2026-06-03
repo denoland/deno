@@ -289,8 +289,8 @@ fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
   let dst = ascii_bytes.as_mut_ptr();
 
   let mut i = 0;
-  let chunk_size = std::mem::size_of::<usize>();
-  let mask = usize::from_ne_bytes([0x7F; std::mem::size_of::<usize>()]);
+  const CHUNK_SIZE: usize = std::mem::size_of::<usize>();
+  let mask = usize::from_ne_bytes([0x7F; CHUNK_SIZE]);
 
   // SAFETY:
   // 1. `ascii_bytes` capacity is `len`. Loop bounds ensure pointers
@@ -300,10 +300,10 @@ fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
   // 3. The first `len` bytes of `dst` are completely initialized
   //    before `set_len(len)` is called.
   unsafe {
-    while i + chunk_size <= len {
+    while i + CHUNK_SIZE <= len {
       let chunk = std::ptr::read_unaligned(src.add(i) as *const usize);
       std::ptr::write_unaligned(dst.add(i) as *mut usize, chunk & mask);
-      i += chunk_size;
+      i += CHUNK_SIZE;
     }
 
     while i < len {
