@@ -104,6 +104,7 @@ clap_complete.workspace = true
 clap_complete_fig.workspace = true
 color-print.workspace = true
 console_static_text.workspace = true
+crc32fast.workspace = true
 crossterm.workspace = true
 dashmap.workspace = true
 deno_dotenv.workspace = true
@@ -180,7 +181,6 @@ uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 wasm-encoder = { version = "0.244.0", features = ["wasmparser"] }
 wasmparser = "0.244.0"
-zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]

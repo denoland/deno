@@ -1817,6 +1817,7 @@ dependencies = [
  "clap_complete_fig",
  "color-print",
  "console_static_text",
+ "crc32fast",
  "crossterm",
  "dashmap",
  "deno_ast",
@@ -1931,7 +1932,6 @@ dependencies = [
  "wasmparser",
  "windows-sys 0.59.0",
  "winres",
- "zip",
  "zstd",
 ]
 
