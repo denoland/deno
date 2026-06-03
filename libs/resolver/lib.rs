@@ -319,6 +319,10 @@ impl<
     }
   }
 
+  pub fn workspace_resolver(&self) -> &WorkspaceResolverRc<TSys> {
+    &self.workspace_resolver
+  }
+
   pub fn resolve(
     &self,
     raw_specifier: &str,
@@ -329,6 +333,7 @@ impl<
     let mut found_package_json_dep = false;
     let mut maybe_diagnostic = None;
     // Use node resolution if we're in an npm package
+    let mut npm_scoped_resolution = None;
     if let Some(node_and_npm_resolver) = self.node_and_npm_resolver.as_ref() {
       let node_resolver = &node_and_npm_resolver.node_resolver;
       if referrer.scheme() == "file"
@@ -342,25 +347,45 @@ impl<
           resolution_mode,
           resolution_kind
         );
-        return node_resolver
-          .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
-          .and_then(|res| {
-            Ok(DenoResolution {
-              url: res.into_url()?,
-              found_package_json_dep,
-              maybe_diagnostic,
-            })
-          })
-          .map_err(|e| e.into());
+        // First, give the import map a chance to remap the transitive
+        // dependency via a `scopes` entry keyed by the npm package the
+        // referrer belongs to (e.g. `"npm:react@18.2.0"`). When that applies,
+        // fall through to the regular post-processing below so the mapped
+        // (typically `npm:`) specifier is resolved like any other.
+        match self.maybe_resolve_npm_scoped(raw_specifier, referrer) {
+          Some(resolution) => {
+            npm_scoped_resolution = Some(resolution);
+          }
+          None => {
+            return node_resolver
+              .resolve(
+                raw_specifier,
+                referrer,
+                resolution_mode,
+                resolution_kind,
+              )
+              .and_then(|res| {
+                Ok(DenoResolution {
+                  url: res.into_url()?,
+                  found_package_json_dep,
+                  maybe_diagnostic,
+                })
+              })
+              .map_err(|e| e.into());
+          }
+        }
       }
     }
 
     // Attempt to resolve with the workspace resolver
-    let result = self.workspace_resolver.resolve(
-      raw_specifier,
-      referrer,
-      resolution_kind.into(),
-    );
+    let result = match npm_scoped_resolution {
+      Some(result) => result,
+      None => self.workspace_resolver.resolve(
+        raw_specifier,
+        referrer,
+        resolution_kind.into(),
+      ),
+    };
     let result = match result {
       Ok(resolution) => match resolution {
         MappedResolution::Normal {
@@ -666,6 +691,58 @@ impl<
 
         Err(err)
       }
+    }
+  }
+
+  /// Attempts to remap a bare specifier imported from within an npm package
+  /// using import map `scopes` keyed by the referrer's npm package
+  /// (`npm:<name>@<version>`). This implements transitive dependency mapping
+  /// for `npm:` specifiers.
+  ///
+  /// Returns `None` when no such mapping applies, in which case the caller
+  /// should fall back to normal node resolution.
+  fn maybe_resolve_npm_scoped<'a>(
+    &'a self,
+    raw_specifier: &str,
+    referrer: &Url,
+  ) -> Option<Result<MappedResolution<'a>, MappedResolutionError>> {
+    // Cheap gate: skip unless the import map declares any `npm:` scopes.
+    if !self.workspace_resolver.has_npm_specifier_scopes() {
+      return None;
+    }
+    // Only bare specifiers can be remapped; relative/absolute specifiers, URLs
+    // and package self-imports (`#...`) keep their normal node resolution.
+    if raw_specifier.starts_with('.')
+      || raw_specifier.starts_with('/')
+      || raw_specifier.starts_with('#')
+      || Url::parse(raw_specifier).is_ok()
+    {
+      return None;
+    }
+    // Determine the npm package (name@version) the referrer belongs to by
+    // reading its closest package.json.
+    let node_resolver = &self.node_and_npm_resolver.as_ref()?.node_resolver;
+    let referrer_ref = UrlOrPathRef::from_url(referrer);
+    let referrer_path = referrer_ref.path().ok()?;
+    let pkg_json = node_resolver
+      .pkg_json_resolver()
+      .get_closest_package_json(referrer_path)
+      .ok()??;
+    let name = pkg_json.name.as_deref()?;
+    let version = pkg_json.version.as_deref()?;
+    let package_referrer = Url::parse(&format!("npm:{name}@{version}")).ok()?;
+    match self
+      .workspace_resolver
+      .resolve_npm_scoped_specifier(raw_specifier, &package_referrer)?
+    {
+      Ok(specifier) => Some(Ok(MappedResolution::Normal {
+        specifier,
+        sloppy_reason: None,
+        used_import_map: true,
+        used_compiler_options_root_dirs: false,
+        maybe_diagnostic: None,
+      })),
+      Err(err) => Some(Err(err)),
     }
   }
 
