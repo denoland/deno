@@ -1,0 +1,1 @@
+hello from npm package data file

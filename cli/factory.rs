@@ -1201,6 +1201,24 @@ impl CliFactory {
       ))),
     );
 
+    // npm packages may read their own bundled data files (e.g. a package that
+    // ships a JSON/wasm/binary asset and loads it at runtime). Those files live
+    // inside the local `node_modules` directory and/or the global npm cache, so
+    // grant implicit read access to those directories. This lets such packages
+    // run without requiring the user to pass `--allow-read` (see #18607).
+    let mut root_permissions = self.root_permissions_container()?.clone();
+    {
+      let mut implicit_read_paths = Vec::with_capacity(2);
+      if let Some(node_modules_dir) = npm_resolver.root_node_modules_path() {
+        implicit_read_paths.push(node_modules_dir.to_path_buf());
+      }
+      if let Some(managed) = npm_resolver.as_managed() {
+        implicit_read_paths
+          .push(managed.global_cache_root_path().to_path_buf());
+      }
+      root_permissions.set_implicit_read_allowlist(implicit_read_paths);
+    }
+
     Ok(CliMainWorkerFactory::new(
       lib_main_worker_factory,
       maybe_file_watcher_communicator,
@@ -1209,7 +1227,7 @@ impl CliFactory {
       npm_resolver.clone(),
       self.text_only_progress_bar().clone(),
       self.create_cli_main_worker_options()?,
-      self.root_permissions_container()?.clone(),
+      root_permissions,
     ))
   }
 

@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "node_modules_dir": {
+      "tempDir": true,
+      "args": "run --node-modules-dir=auto main.ts",
+      "output": "main.out"
+    },
+    "global_cache": {
+      "tempDir": true,
+      "args": "run --node-modules-dir=none main.ts",
+      "output": "main.out"
+    }
+  }
+}

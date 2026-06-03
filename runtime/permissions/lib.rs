@@ -3903,6 +3903,13 @@ impl PermissionCheckError {
 #[derive(Clone, Debug)]
 pub struct PermissionsContainer {
   descriptor_parser: Arc<dyn PermissionDescriptorParser>,
+  /// Directories whose contents are implicitly granted read access without an
+  /// explicit `--allow-read`. This is used for npm package directories (the
+  /// local `node_modules` directory and the global npm cache) so that npm
+  /// packages can read their own bundled data files without requiring the user
+  /// to grant read permissions. The paths are stored pre-normalized for
+  /// comparison (see [`comparison_path`]).
+  implicit_read_allowlist: Arc<Vec<PathBuf>>,
   inner: Arc<Mutex<Permissions>>,
 }
 
@@ -3913,13 +3920,39 @@ impl PermissionsContainer {
   ) -> Self {
     Self {
       descriptor_parser,
+      implicit_read_allowlist: Default::default(),
       inner: Arc::new(Mutex::new(perms)),
     }
+  }
+
+  /// Adds directories whose contents are implicitly readable without an
+  /// explicit `--allow-read` flag. Intended for npm package directories so that
+  /// npm packages can read their own bundled data files. Only read access is
+  /// granted; write access still requires the relevant permission.
+  pub fn set_implicit_read_allowlist(&mut self, paths: Vec<PathBuf>) {
+    self.implicit_read_allowlist = Arc::new(
+      paths
+        .into_iter()
+        .map(|p| comparison_path(&normalize_path(Cow::Owned(p))))
+        .collect(),
+    );
+  }
+
+  /// Returns `true` if the given already-parsed path query refers to a location
+  /// inside one of the implicitly-readable directories (see
+  /// [`Self::set_implicit_read_allowlist`]).
+  fn is_implicit_read_allowed(&self, desc: &PathQueryDescriptor) -> bool {
+    !self.implicit_read_allowlist.is_empty()
+      && self
+        .implicit_read_allowlist
+        .iter()
+        .any(|root| desc.cmp_path.starts_with(root))
   }
 
   pub fn deep_clone(&self) -> PermissionsContainer {
     Self {
       descriptor_parser: self.descriptor_parser.clone(),
+      implicit_read_allowlist: self.implicit_read_allowlist.clone(),
       inner: Arc::new(Mutex::new(self.inner.lock().clone())),
     }
   }
@@ -4006,10 +4039,11 @@ impl PermissionsContainer {
       },
     )?;
 
-    Ok(PermissionsContainer::new(
-      self.descriptor_parser.clone(),
-      worker_perms,
-    ))
+    Ok(PermissionsContainer {
+      descriptor_parser: self.descriptor_parser.clone(),
+      implicit_read_allowlist: self.implicit_read_allowlist.clone(),
+      inner: Arc::new(Mutex::new(worker_perms)),
+    })
   }
 
   #[inline(always)]
@@ -4111,10 +4145,6 @@ impl PermissionsContainer {
           canonicalized: false,
         });
       }
-      let should_check_read =
-        access_kind.is_read() && !inner.read.is_allow_all();
-      let should_check_write =
-        access_kind.is_write() && !inner.write.is_allow_all();
       let path_descriptor =
         self.descriptor_parser.parse_path_query(path.clone())?;
       let path_descriptor = match blind_requested {
@@ -4123,6 +4153,15 @@ impl PermissionsContainer {
         }
         None => path_descriptor,
       };
+      // npm package directories (node_modules + the global npm cache) are
+      // implicitly readable so that npm packages can read their own bundled
+      // data files without an explicit `--allow-read`. This only applies to
+      // read access; writes still require the relevant permission.
+      let should_check_read = access_kind.is_read()
+        && !inner.read.is_allow_all()
+        && !self.is_implicit_read_allowed(&path_descriptor);
+      let should_check_write =
+        access_kind.is_write() && !inner.write.is_allow_all();
       if !should_check_read && !should_check_write {
         write_audit(ReadQueryDescriptor::flag_name(), &path);
         write_audit(WriteQueryDescriptor::flag_name(), &path);
@@ -5619,6 +5658,52 @@ mod tests {
         is_ok
       );
     }
+  }
+
+  #[test]
+  fn implicit_read_allowlist() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    // No read permissions granted at all.
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
+    perms.set_implicit_read_allowlist(vec![
+      PathBuf::from("/project/node_modules"),
+      PathBuf::from("/cache/npm"),
+    ]);
+
+    let read_ok = |perms: &PermissionsContainer, path: &str| {
+      perms
+        .check_open(Cow::Borrowed(Path::new(path)), OpenAccessKind::Read, None)
+        .is_ok()
+    };
+    let write_ok = |perms: &PermissionsContainer, path: &str| {
+      perms
+        .check_open(Cow::Borrowed(Path::new(path)), OpenAccessKind::Write, None)
+        .is_ok()
+    };
+
+    // Reads inside the implicitly-allowed directories are granted.
+    assert!(read_ok(&perms, "/project/node_modules/pkg/data.txt"));
+    assert!(read_ok(&perms, "/project/node_modules"));
+    assert!(read_ok(&perms, "/cache/npm/registry/pkg/1.0.0/data.json"));
+    // Needs normalizing.
+    assert!(read_ok(&perms, "/project/node_modules/pkg/../pkg/data.txt"));
+
+    // Reads outside the implicitly-allowed directories still require permission.
+    assert!(!read_ok(&perms, "/project/secret.txt"));
+    // A sibling directory that merely shares a prefix must not match.
+    assert!(!read_ok(&perms, "/project/node_modules_evil/data.txt"));
+
+    // Writes are never implicitly granted, even inside the directories.
+    assert!(!write_ok(&perms, "/project/node_modules/pkg/data.txt"));
+    assert!(!write_ok(&perms, "/cache/npm/registry/pkg/1.0.0/data.json"));
   }
 
   #[test]
