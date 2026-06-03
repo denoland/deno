@@ -1900,14 +1900,25 @@ fn harmonize_cached_wef_identifiers(
 fn harmonize_wef_app_identifiers(wef_app: &Path) -> Result<(), AnyError> {
   let bundle_id = read_bundle_identifier(wef_app)?;
   let macos_dir = wef_app.join("Contents/MacOS");
+
+  // wef writes a `.wef/` runtime-data cache directly inside the bundle's
+  // `Contents/MacOS/` at runtime. When codesign(1) signs the main
+  // executable (`Contents/MacOS/wef`) it seals the *whole* bundle and trips
+  // over that stray directory with "bundle format unrecognized", aborting
+  // the re-sign — which silently breaks notification permission on every
+  // launch after the first run created the cache. Park it just outside the
+  // bundle while we sign and move it back afterwards (it would regenerate
+  // anyway, but preserving it avoids a cold-start penalty). The guard
+  // restores it even if signing errors out below.
+  let _parked = park_bundle_cache_dir(&macos_dir);
+
   for entry in std::fs::read_dir(&macos_dir)?.flatten() {
     let path = entry.path();
     // Skip non-Mach-O files (`Contents/MacOS/` legitimately contains
-    // shell launchers and update sentinels, plus wef's runtime data
-    // cache under `.wef/` which is a *directory* — `is_file` filters
-    // both directories and shell scripts; `is_macho_file` rejects the
-    // rest). Skipping these is critical: handing them to codesign
-    // would fail with "bundle format unrecognized" and abort the run.
+    // shell launchers and update sentinels). `is_file` filters both
+    // directories and shell scripts; `is_macho_file` rejects the rest.
+    // Skipping these is critical: handing them to codesign would fail
+    // with "bundle format unrecognized" and abort the run.
     if !path.is_file() || !is_macho_file(&path) {
       continue;
     }
@@ -1917,6 +1928,54 @@ fn harmonize_wef_app_identifiers(wef_app: &Path) -> Result<(), AnyError> {
     codesign_one(&path, "-", None, Some(&bundle_id))?;
   }
   Ok(())
+}
+
+/// RAII guard that moves a directory parked by [`park_bundle_cache_dir`]
+/// back into the bundle on drop. Best-effort: a failed restore is ignored
+/// (the cache regenerates on next launch).
+#[cfg(target_os = "macos")]
+struct ParkedCacheDir {
+  parked_at: PathBuf,
+  restore_to: PathBuf,
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for ParkedCacheDir {
+  fn drop(&mut self) {
+    if self.parked_at.exists() {
+      let _ = std::fs::rename(&self.parked_at, &self.restore_to);
+    }
+  }
+}
+
+/// If `<macos_dir>/.wef` exists, move it just outside the `.app` bundle so
+/// codesign's bundle sealing doesn't choke on it, returning a guard that
+/// restores it on drop. Returns `None` when there's nothing to park or it
+/// can't be relocated — in which case signing proceeds as before (and may
+/// fail loudly, same as the previous behaviour).
+#[cfg(target_os = "macos")]
+fn park_bundle_cache_dir(macos_dir: &Path) -> Option<ParkedCacheDir> {
+  let cache = macos_dir.join(".wef");
+  if !cache.exists() {
+    return None;
+  }
+  // Park it next to the `.app` (outside `Contents/`, so it's not part of
+  // what codesign seals). `macos_dir` is `<app>/Contents/MacOS`, so three
+  // parents up is the directory containing the `.app`. Staying on the same
+  // volume keeps the rename atomic and cheap.
+  let app_parent = macos_dir.parent()?.parent()?.parent()?;
+  let parked_at = app_parent.join(".wef-harmonize-parked");
+  // Clear any debris from a previously interrupted run.
+  if parked_at.exists() {
+    let _ = std::fs::remove_dir_all(&parked_at);
+  }
+  match std::fs::rename(&cache, &parked_at) {
+    Ok(()) => Some(ParkedCacheDir {
+      parked_at,
+      restore_to: cache,
+    }),
+    Err(_) => None,
+  }
 }
 
 /// Read the code-signing identifier of `path` (`codesign -dv` →
