@@ -10,6 +10,7 @@ use syn::Error;
 use syn::Field;
 use syn::Fields;
 use syn::LitStr;
+use syn::Path;
 use syn::Token;
 use syn::Type;
 use syn::ext::IdentExt;
@@ -30,29 +31,33 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
         .map(TryInto::try_into)
         .collect::<Result<Vec<StructField>, Error>>()?;
 
-      // A `skip_if_none` field is only present in the resulting object when its
-      // `Option` is `Some`, so the key set is only known at runtime. The fixed
-      // `with_prototype_and_properties` fast path can't express that, so fall
-      // back to pushing keys/values into vectors (preserving declaration order)
-      // when any field opts in. Otherwise keep the cheaper fixed-array path.
-      let any_skip_if_none = fields.iter().any(|field| field.skip_if_none);
+      // A `skip_if = <predicate>` field is conditionally present, so its key set
+      // is only known at runtime. The fixed `with_prototype_and_properties` fast
+      // path can't express that, so fall back to pushing keys/values into vectors
+      // (preserving declaration order) when any field opts in. Otherwise keep the
+      // cheaper fixed-array path.
+      let any_skip_if = fields.iter().any(|field| field.skip_if.is_some());
 
-      if any_skip_if_none {
+      if any_skip_if {
         let len = fields.len();
         let pushes = fields
           .into_iter()
           .map(|field| {
             let key = crate::get_internalized_string(field.js_name)?;
             let name = field.name.clone();
+            let skip_if = field.skip_if.clone();
             let converter =
               convert_or_serde(field.serde, field.ty.span(), field.name);
             let push = quote! {
               __keys.push(#key);
               __values.push(#converter);
             };
-            Ok(if field.skip_if_none {
+            // Mirrors serde's `skip_serializing_if`: the predicate is called on
+            // a reference to the field and the field is skipped when it returns
+            // true.
+            Ok(if let Some(skip_if) = skip_if {
               quote! {
-                if ::std::option::Option::is_some(&#name) {
+                if !#skip_if(&#name) {
                   #push
                 }
               }
@@ -150,7 +155,7 @@ pub fn get_body(span: Span, data: DataStruct) -> Result<TokenStream, Error> {
 pub struct StructField {
   pub name: Ident,
   serde: bool,
-  skip_if_none: bool,
+  skip_if: Option<Path>,
   ty: Type,
   pub js_name: Ident,
 }
@@ -163,7 +168,7 @@ impl TryFrom<Field> for StructField {
       mut rename,
       mut serde,
     } = crate::conversion::StructFieldArgumentShared::parse(&value.attrs)?;
-    let mut skip_if_none = false;
+    let mut skip_if = None;
 
     for attr in value.attrs {
       if attr.path().is_ident("to_v8") {
@@ -178,7 +183,7 @@ impl TryFrom<Field> for StructField {
               rename = Some(value.value())
             }
             StructFieldArgument::Serde { .. } => serde = true,
-            StructFieldArgument::SkipIfNone { .. } => skip_if_none = true,
+            StructFieldArgument::SkipIf { value, .. } => skip_if = Some(value),
           }
         }
       }
@@ -193,7 +198,7 @@ impl TryFrom<Field> for StructField {
       js_name,
       name,
       serde,
-      skip_if_none,
+      skip_if,
       ty: value.ty,
     })
   }
@@ -209,8 +214,12 @@ pub(crate) enum StructFieldArgument {
   Serde {
     name_token: shared_kw::serde,
   },
-  SkipIfNone {
-    name_token: shared_kw::skip_if_none,
+  // `skip_if = <predicate>` — mirrors serde's `skip_serializing_if` but takes an
+  // unquoted path (e.g. `Option::is_none`) rather than a string literal.
+  SkipIf {
+    name_token: shared_kw::skip_if,
+    eq_token: Token![=],
+    value: Path,
   },
 }
 
@@ -227,9 +236,11 @@ impl Parse for StructFieldArgument {
       Ok(StructFieldArgument::Serde {
         name_token: input.parse()?,
       })
-    } else if lookahead.peek(shared_kw::skip_if_none) {
-      Ok(StructFieldArgument::SkipIfNone {
+    } else if lookahead.peek(shared_kw::skip_if) {
+      Ok(StructFieldArgument::SkipIf {
         name_token: input.parse()?,
+        eq_token: input.parse()?,
+        value: input.parse()?,
       })
     } else {
       Err(lookahead.error())

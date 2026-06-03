@@ -14,11 +14,13 @@ pub struct Struct {
 }
 
 #[derive(ToV8)]
-pub struct SkipIfNoneStruct {
+pub struct SkipIfStruct {
   a: u8,
-  #[to_v8(skip_if_none)]
+  #[to_v8(skip_if = Option::is_none)]
   b: Option<u32>,
-  #[to_v8(rename = "cc", skip_if_none)]
+  #[to_v8(rename = "cc", skip_if = Option::is_none)]
   c: Option<String>,
+  #[to_v8(skip_if = Vec::is_empty)]
+  e: Vec<u32>,
   d: bool,
 }

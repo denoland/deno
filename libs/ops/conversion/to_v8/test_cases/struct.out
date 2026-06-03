@@ -61,20 +61,20 @@ impl<'a> ::deno_core::convert::ToV8<'a> for Struct {
     }
 }
 
-impl<'a> ::deno_core::convert::ToV8<'a> for SkipIfNoneStruct {
+impl<'a> ::deno_core::convert::ToV8<'a> for SkipIfStruct {
     type Error = ::deno_error::JsErrorBox;
     fn to_v8<'i>(
         self,
         __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
     ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error> {
-        let Self { a, b, c, d } = self;
+        let Self { a, b, c, e, d } = self;
         let __null = ::deno_core::v8::null(__scope).into();
         let mut __keys: ::std::vec::Vec<::deno_core::v8::Local<::deno_core::v8::Name>> = ::std::vec::Vec::with_capacity(
-            4usize,
+            5usize,
         );
         let mut __values: ::std::vec::Vec<
             ::deno_core::v8::Local<::deno_core::v8::Value>,
-        > = ::std::vec::Vec::with_capacity(4usize);
+        > = ::std::vec::Vec::with_capacity(5usize);
         __keys
             .push(
                 ::deno_core::v8::String::new_from_one_byte(
@@ -90,7 +90,7 @@ impl<'a> ::deno_core::convert::ToV8<'a> for SkipIfNoneStruct {
                 ::deno_core::convert::ToV8::to_v8(a, __scope)
                     .map_err(::deno_error::JsErrorBox::from_err)?,
             );
-        if ::std::option::Option::is_some(&b) {
+        if !Option::is_none(&b) {
             __keys
                 .push(
                     ::deno_core::v8::String::new_from_one_byte(
@@ -107,7 +107,7 @@ impl<'a> ::deno_core::convert::ToV8<'a> for SkipIfNoneStruct {
                         .map_err(::deno_error::JsErrorBox::from_err)?,
                 );
         }
-        if ::std::option::Option::is_some(&c) {
+        if !Option::is_none(&c) {
             __keys
                 .push(
                     ::deno_core::v8::String::new_from_one_byte(
@@ -121,6 +121,23 @@ impl<'a> ::deno_core::convert::ToV8<'a> for SkipIfNoneStruct {
             __values
                 .push(
                     ::deno_core::convert::ToV8::to_v8(c, __scope)
+                        .map_err(::deno_error::JsErrorBox::from_err)?,
+                );
+        }
+        if !Vec::is_empty(&e) {
+            __keys
+                .push(
+                    ::deno_core::v8::String::new_from_one_byte(
+                            __scope,
+                            "e".as_bytes(),
+                            ::deno_core::v8::NewStringType::Internalized,
+                        )
+                        .unwrap()
+                        .into(),
+                );
+            __values
+                .push(
+                    ::deno_core::convert::ToV8::to_v8(e, __scope)
                         .map_err(::deno_error::JsErrorBox::from_err)?,
                 );
         }

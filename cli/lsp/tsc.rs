@@ -6223,7 +6223,7 @@ impl UserPreferences {
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItemsOptions {
   #[serde(skip_serializing_if = "Option::is_none")]
-  #[to_v8(skip_if_none)]
+  #[to_v8(skip_if = Option::is_none)]
   pub trigger_reason: Option<SignatureHelpTriggerReason>,
 }
 
@@ -6255,7 +6255,7 @@ impl From<lsp::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
 pub struct SignatureHelpTriggerReason {
   pub kind: SignatureHelpTriggerKind,
   #[serde(skip_serializing_if = "Option::is_none")]
-  #[to_v8(skip_if_none)]
+  #[to_v8(skip_if = Option::is_none)]
   pub trigger_character: Option<String>,
 }
 
