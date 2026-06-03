@@ -77,6 +77,18 @@ function validateQueueDelay(delay: number) {
   }
 }
 
+function validateExpireIn(expireIn: number | undefined) {
+  if (expireIn === undefined) return;
+  // Reject NaN, Infinity, fractional and negative values. A non-finite
+  // expireIn otherwise reaches the native layer and overflows when computing
+  // the absolute expiry, panicking the process.
+  if (!NumberIsInteger(expireIn) || expireIn < 0) {
+    throw new TypeError(
+      `expireIn must be a non-negative integer: received ${expireIn}`,
+    );
+  }
+}
+
 const maxQueueBackoffIntervals = 5;
 const maxQueueBackoffInterval = 60 * 60 * 1000;
 
@@ -193,6 +205,7 @@ class Kv {
   }
 
   async set(key: Deno.KvKey, value: unknown, options?: { expireIn?: number }) {
+    validateExpireIn(options?.expireIn);
     const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
       [],
@@ -471,6 +484,7 @@ class AtomicOperation {
           if (typeof mutation.expireIn === "number") {
             expireIn = mutation.expireIn;
           }
+          validateExpireIn(expireIn);
           /* falls through */
         case "sum":
         case "min":
@@ -524,6 +538,7 @@ class AtomicOperation {
     value: unknown,
     options?: { expireIn?: number },
   ): this {
+    validateExpireIn(options?.expireIn);
     ArrayPrototypePush(this.#mutations, [
       key,
       "set",

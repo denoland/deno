@@ -914,6 +914,31 @@ dbTest("list prefix with non-integer batch size throws", async (db) => {
   );
 });
 
+dbTest("set with invalid expireIn throws", async (db) => {
+  // A non-finite expireIn (notably Infinity) used to panic the process when
+  // the native layer computed the absolute expiry; these must be rejected.
+  for (const expireIn of [-1, 1.5, NaN, Infinity]) {
+    await assertRejects(
+      () => db.set(["a"], 1, { expireIn }),
+      TypeError,
+      "expireIn must be a non-negative integer",
+    );
+    assertThrows(
+      () => db.atomic().set(["a"], 1, { expireIn }),
+      TypeError,
+      "expireIn must be a non-negative integer",
+    );
+    assertThrows(
+      () => db.atomic().mutate({ type: "set", key: ["a"], value: 1, expireIn }),
+      TypeError,
+      "expireIn must be a non-negative integer",
+    );
+  }
+  // A valid expireIn still works.
+  const res = await db.set(["a"], 1, { expireIn: 1000 });
+  assert(res.ok);
+});
+
 dbTest("list prefix with small batch size and limit", async (db) => {
   const versionstamp = await setupData(db);
   const entries = await collect(
