@@ -454,6 +454,24 @@ async fn run_desktop_hmr(
       .ok()
   });
 
+  // The prebuilt wef bundle would otherwise present itself as "wef" in the
+  // menu bar, Dock and Cmd-Tab switcher. Pass a clearer name (the configured
+  // app name / project directory) so wef can override the process name at
+  // launch. `desktop_flags.output` is already resolved from `--output`,
+  // deno.json `desktop.app.name`, or the project dir before we get here.
+  let app_name = desktop_flags
+    .output
+    .as_deref()
+    .map(Path::new)
+    .and_then(|p| p.file_stem())
+    .map(|s| s.to_string_lossy().into_owned())
+    .or_else(|| {
+      source_abs
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+    })
+    .filter(|s| !s.is_empty());
+
   if let Some(fw) = framework
     && desktop_flags.hmr
   {
@@ -483,6 +501,9 @@ async fn run_desktop_hmr(
   #[cfg(target_os = "macos")]
   if let Some(icon_path) = wef_app_icon.as_ref() {
     cmd.env("WEF_APP_ICON", icon_path);
+  }
+  if let Some(name) = app_name.as_ref() {
+    cmd.env("WEF_APP_NAME", name);
   }
   // Only enable the file watcher + setScriptSource pipeline when the user
   // actually asked for HMR. `deno desktop --inspect` alone used to spin up
@@ -1847,7 +1868,7 @@ fn codesign_one(
 /// identifier matches its host bundle's `CFBundleIdentifier`. Run once
 /// per fresh download; HMR mode runs wef.app directly (no per-project
 /// wrapper), so without this UN sees `Identifier=wef` /
-/// `CFBundleIdentifier=io.wef.<backend>` and refuses notification
+/// `CFBundleIdentifier=com.deno.desktop` and refuses notification
 /// authorization. Best-effort: failures here are logged but don't
 /// abort the install, since most desktop features still work without
 /// notifications.
