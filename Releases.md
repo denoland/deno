@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.8.2 / 2026.06.03
 
-- Revert "fix(runtime): throw a descriptive error for disabled **proto**
-  accessor (#34730)" (#34772)
 - feat(compile): improve --bundle dependency resolution and add --minify
   (#34536)
 - feat(compile): scope --bundle npm embed to packages actually reached (#34532)
@@ -22,7 +20,6 @@ https://github.com/denoland/deno_install
   (#34662)
 - feat(jupyter): rewrite kernel in JS, drop zeromq/runtimelib deps (#34083)
 - feat(lsp): autocomplete jsr:/npm:/node: in deno.json(c) imports (#34724)
-- feat(ops): add enum support to FromV8 derive (#34241)
 - feat(publish): unfurl import specifiers in Wasm modules (#34549)
 - feat(task): support --env-file flag (#34508)
 - feat(task): support exclusion groups in task name wildcards (#34506)
@@ -172,8 +169,6 @@ https://github.com/denoland/deno_install
   (#34666)
 - fix(runtime): suggest N-API alternatives for legacy V8/nan addons (#34695)
 - fix(runtime): suggest Worker/node:vm alternatives for npm:isolated-vm (#34702)
-- fix(runtime): throw a descriptive error for disabled **proto** accessor
-  (#34730)
 - fix(runtime/ops): unwatch shared RecommendedWatcher on FsWatcher close
   (#34467)
 - fix(task): preserve trailing backslashes in task arguments (#34505)
