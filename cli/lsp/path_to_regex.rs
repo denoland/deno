@@ -443,19 +443,17 @@ impl RouteRegex {
   #[cfg(test)]
   fn find<'a>(&self, path: &'a str) -> Option<RouteMatch<'a>> {
     self.re.find_iter(path).find_map(|m| {
-      if let Some(end) =
-        self.boundary.as_ref().map_or(Some(m.end()), |boundary| {
+      self
+        .boundary
+        .as_ref()
+        .map_or(Some(m.end()), |boundary| {
           boundary.checked_end(path, m.end())
         })
-      {
-        Some(RouteMatch {
+        .map(|end| RouteMatch {
           path,
           start: m.start(),
           end,
         })
-      } else {
-        None
-      }
     })
   }
 
@@ -738,7 +736,7 @@ pub fn tokens_to_regex(
     let re = RouteRegex::new(&route, sensitive, boundary)?;
     let maybe_keys = if keys.is_empty() { None } else { Some(keys) };
 
-    return Ok((re, maybe_keys));
+    Ok((re, maybe_keys))
   } else {
     let is_end_delimited = match maybe_end_token {
       Some(Token::String(mut s)) => {
@@ -766,7 +764,7 @@ pub fn tokens_to_regex(
     let re = RouteRegex::new(&route, sensitive, boundary)?;
     let maybe_keys = if keys.is_empty() { None } else { Some(keys) };
 
-    return Ok((re, maybe_keys));
+    Ok((re, maybe_keys))
   }
 }
 
