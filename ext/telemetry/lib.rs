@@ -945,6 +945,7 @@ pub struct OtelGlobals {
   pub id_generator: DenoIdGenerator,
   pub meter_provider: SdkMeterProvider,
   pub builtin_instrumentation_scope: InstrumentationScope,
+  pub span_attribute_count_limit: usize,
   pub config: OtelConfig,
 }
 
@@ -956,6 +957,40 @@ impl OtelGlobals {
   pub fn has_metrics(&self) -> bool {
     self.config.metrics_enabled
   }
+}
+
+/// Default maximum number of attributes per span (and per span event / link),
+/// as defined by the OpenTelemetry SDK spec for `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`
+/// (and `OTEL_ATTRIBUTE_COUNT_LIMIT`).
+const DEFAULT_ATTRIBUTE_COUNT_LIMIT: usize = 128;
+
+/// Resolve the span attribute count limit from the environment, honoring
+/// `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT` and falling back to the general
+/// `OTEL_ATTRIBUTE_COUNT_LIMIT`, then to the spec default of 128.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#attribute-limits>
+fn span_attribute_count_limit_from_env(sys: &impl TelemetrySys) -> usize {
+  [
+    "OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT",
+    "OTEL_ATTRIBUTE_COUNT_LIMIT",
+  ]
+  .into_iter()
+  .find_map(|name| {
+    sys
+      .env_var(name)
+      .ok()
+      .and_then(|v| v.trim().parse::<usize>().ok())
+  })
+  .unwrap_or(DEFAULT_ATTRIBUTE_COUNT_LIMIT)
+}
+
+/// The effective span attribute count limit from the initialized globals,
+/// falling back to the spec default if telemetry is not yet initialized.
+fn attribute_count_limit() -> usize {
+  OTEL_GLOBALS
+    .get()
+    .map(|g| g.span_attribute_count_limit)
+    .unwrap_or(DEFAULT_ATTRIBUTE_COUNT_LIMIT)
 }
 
 pub static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
@@ -1142,6 +1177,8 @@ pub fn init(
     DenoIdGenerator::random()
   };
 
+  let span_attribute_count_limit = span_attribute_count_limit_from_env(sys);
+
   OTEL_GLOBALS
     .set(OtelGlobals {
       log_processor,
@@ -1149,6 +1186,7 @@ pub fn init(
       id_generator,
       meter_provider,
       builtin_instrumentation_scope,
+      span_attribute_count_limit,
       config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
@@ -1455,16 +1493,17 @@ macro_rules! attr_raw {
 }
 
 macro_rules! attr {
-  ($scope:ident, $attributes:expr $(=> $dropped_attributes_count:expr)?, $name:expr, $value:expr) => {
-    let attr = attr_raw!($scope, $name, $value);
-    if let Some(kv) = attr {
+  ($scope:ident, $attributes:expr => $dropped_attributes_count:expr, $limit:expr, $name:expr, $value:expr) => {
+    // Enforce the configured per-element attribute count limit
+    // (`OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`): once the limit is reached, further
+    // attributes are dropped and counted, matching the OpenTelemetry SDK spec.
+    if $attributes.len() >= $limit {
+      $dropped_attributes_count += 1;
+    } else if let Some(kv) = attr_raw!($scope, $name, $value) {
       $attributes.push(kv);
+    } else {
+      $dropped_attributes_count += 1;
     }
-    $(
-      else {
-        $dropped_attributes_count += 1;
-      }
-    )?
   };
 }
 
@@ -2043,6 +2082,7 @@ fn op_otel_span_attribute1<'s>(
   else {
     return;
   };
+  let limit = attribute_count_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
@@ -2050,7 +2090,7 @@ fn op_otel_span_attribute1<'s>(
     else {
       return;
     };
-    attr!(scope, attributes => *dropped_attributes_count, key, value);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key, value);
   }
 }
 
@@ -2069,6 +2109,7 @@ fn op_otel_span_attribute2<'s>(
   else {
     return;
   };
+  let limit = attribute_count_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
@@ -2076,8 +2117,8 @@ fn op_otel_span_attribute2<'s>(
     else {
       return;
     };
-    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key2, value2);
   }
 }
 
@@ -2099,6 +2140,7 @@ fn op_otel_span_attribute3<'s>(
   else {
     return;
   };
+  let limit = attribute_count_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
@@ -2106,9 +2148,9 @@ fn op_otel_span_attribute3<'s>(
     else {
       return;
     };
-    attr!(scope, attributes => *dropped_attributes_count, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, key2, value2);
-    attr!(scope, attributes => *dropped_attributes_count, key3, value3);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key2, value2);
+    attr!(scope, attributes => *dropped_attributes_count, limit, key3, value3);
   }
 }
 
