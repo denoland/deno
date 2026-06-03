@@ -287,6 +287,7 @@ pub enum FsEventsError {
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
 }
+
 fn make_watch_sender(
   id: u64,
   paths: Vec<PathBuf>,
@@ -329,8 +330,15 @@ fn ensure_watcher(
         // that the user is watching.
         if let Ok(event) = &res2 {
           // Skip events whose path falls under one of the ignored paths.
+          // Removed files are checked too so deletions inside an ignored
+          // directory don't leak through (canonicalize/is_same_file fail
+          // for paths that no longer exist).
           if event.paths.iter().any(|event_path| {
             event_matches_watched_paths(
+              event_path,
+              &ws.ignore,
+              &ws.canonical_ignore,
+            ) || removed_event_matches_watched_paths(
               event_path,
               &ws.ignore,
               &ws.canonical_ignore,

@@ -21,7 +21,9 @@ class FsWatcher {
   #closed = false;
 
   constructor(paths, options) {
-    const { recursive, ignore } = options;
+    // `recursive` defaults to true even when other options are provided, so
+    // `watchFs(path, { ignore })` keeps watching subdirectories.
+    const { recursive = true, ignore } = options;
     const ignorePaths = ignore === undefined
       ? []
       : (ArrayIsArray(ignore) ? ignore : [ignore]);

@@ -375,3 +375,74 @@ Deno.test(
     assertEquals(event!.kind, "remove");
   },
 );
+
+// The `ignore` option must filter out events whose paths fall under an
+// ignored directory, while still delivering events for everything else.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsIgnore() {
+    const testDir = await makeTempDir();
+    const ignoredDir = testDir + "/ignored";
+    const nestedDir = testDir + "/nested";
+    Deno.mkdirSync(ignoredDir);
+    Deno.mkdirSync(nestedDir);
+    await delay(100);
+
+    using watcher = Deno.watchFs(testDir, { ignore: [ignoredDir] });
+
+    // Activity inside the ignored directory must never surface.
+    Deno.writeFileSync(ignoredDir + "/skip.txt", new Uint8Array([1, 2, 3]));
+
+    // A file in a non-ignored subdirectory is created afterwards and is what
+    // we expect to observe. Using a nested directory also confirms that the
+    // default recursive watch still applies when `ignore` is passed.
+    await delay(100);
+    const realFile = nestedDir + "/real.txt";
+    Deno.writeFileSync(realFile, new Uint8Array([1, 2, 3]));
+
+    for await (const event of watcher) {
+      for (const path of event.paths) {
+        assert(
+          !path.includes("ignored"),
+          `Received event for an ignored path: ${path}`,
+        );
+      }
+      if (event.kind === "create" || event.kind === "modify") {
+        assert(event.paths[0].includes("real.txt"));
+        break;
+      }
+    }
+  },
+);
+
+// A single string (not an array) is accepted for `ignore`.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsIgnoreSingleString() {
+    const testDir = await makeTempDir();
+    const ignoredDir = testDir + "/ignored";
+    Deno.mkdirSync(ignoredDir);
+    await delay(100);
+
+    using watcher = Deno.watchFs(testDir, { ignore: ignoredDir });
+
+    Deno.writeFileSync(ignoredDir + "/skip.txt", new Uint8Array([1, 2, 3]));
+
+    await delay(100);
+    const realFile = testDir + "/real.txt";
+    Deno.writeFileSync(realFile, new Uint8Array([1, 2, 3]));
+
+    for await (const event of watcher) {
+      for (const path of event.paths) {
+        assert(
+          !path.includes("ignored"),
+          `Received event for an ignored path: ${path}`,
+        );
+      }
+      if (event.kind === "create" || event.kind === "modify") {
+        assert(event.paths[0].includes("real.txt"));
+        break;
+      }
+    }
+  },
+);
