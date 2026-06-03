@@ -26,6 +26,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::anyhow::anyhow;
+use deno_core::convert::Number;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
 use deno_core::error::AnyError;
@@ -42,6 +43,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
+use deno_error::JsErrorBox;
 use deno_graph::source::Resolver;
 use deno_lib::util::result::InfallibleResultExt;
 use deno_lib::worker::create_isolate_create_params;
@@ -5125,7 +5127,7 @@ struct TscRequestArray {
 }
 
 impl<'a> ToV8<'a> for TscRequestArray {
-  type Error = serde_v8::Error;
+  type Error = JsErrorBox;
 
   fn to_v8(
     self,
@@ -5133,7 +5135,7 @@ impl<'a> ToV8<'a> for TscRequestArray {
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     let id = self.id.to_v8(scope).unwrap_infallible();
 
-    let (method_name, args) = self.request.to_server_request(scope)?;
+    let (method_name, args) = self.request.into_server_request(scope)?;
 
     let method_name = deno_core::FastString::from_static(method_name)
       .v8_string(scope)
@@ -5141,8 +5143,10 @@ impl<'a> ToV8<'a> for TscRequestArray {
       .into();
     let args = args.unwrap_or_else(|| v8::Array::new(scope, 0).into());
     let compiler_options_key =
-      serde_v8::to_v8(scope, self.compiler_options_key)?;
-    let notebook_uri = serde_v8::to_v8(scope, self.notebook_uri)?;
+      serde_v8::to_v8(scope, self.compiler_options_key)
+        .map_err(JsErrorBox::from_err)?;
+    let notebook_uri = serde_v8::to_v8(scope, self.notebook_uri)
+      .map_err(JsErrorBox::from_err)?;
 
     let change = self.change.to_v8(scope).unwrap_infallible();
 
@@ -6420,104 +6424,124 @@ impl TscRequest {
   /// Converts the request into a tuple containing the method name and the
   /// arguments (in the form of a V8 value) to be passed to the server request
   /// function
-  fn to_server_request<'s>(
-    &self,
+  fn into_server_request<'s>(
+    self,
     scope: &mut v8::PinScope<'s, '_>,
-  ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), serde_v8::Error>
-  {
+  ) -> Result<(&'static str, Option<v8::Local<'s, v8::Value>>), JsErrorBox> {
+    // Requests whose arguments are positional tuples of primitives serialize to
+    // a `v8::Array` via the `ToV8` derives/impls (matching serde's tuple
+    // encoding). Bare integers are wrapped in `Number` so they map to a JS
+    // `number` exactly as serde did. Requests carrying richer config structs
+    // (`UserPreferences`, `FormatCodeSettings`, …) or `#[serde(flatten)]` stay
+    // on `serde_v8::to_v8` until those types grow `ToV8` impls.
     let args = match self {
-      TscRequest::GetDiagnostics(args) => {
-        ("$getDiagnostics", Some(serde_v8::to_v8(scope, args)?))
-      }
+      TscRequest::GetDiagnostics(args) => (
+        "$getDiagnostics",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
       TscRequest::GetAmbientModules => ("$getAmbientModules", None),
-      TscRequest::FindReferences(args) => {
-        ("findReferences", Some(serde_v8::to_v8(scope, args)?))
-      }
+      TscRequest::FindReferences((specifier, position)) => (
+        "findReferences",
+        Some((specifier, Number(position)).to_v8(scope)?),
+      ),
       TscRequest::GetNavigationTree(args) => {
-        ("getNavigationTree", Some(serde_v8::to_v8(scope, args)?))
+        ("getNavigationTree", Some(args.to_v8(scope)?))
       }
       TscRequest::GetSupportedCodeFixes => ("$getSupportedCodeFixes", None),
-      TscRequest::GetQuickInfoAtPosition(args) => (
+      TscRequest::GetQuickInfoAtPosition((specifier, position)) => (
         "getQuickInfoAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
       TscRequest::GetCodeFixesAtPosition(args) => (
         "getCodeFixesAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
       TscRequest::GetApplicableRefactors(args) => (
         "getApplicableRefactors",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
-      TscRequest::GetCombinedCodeFix(args) => {
-        ("getCombinedCodeFix", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::GetEditsForRefactor(args) => {
-        ("getEditsForRefactor", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::GetEditsForFileRename(args) => {
-        ("getEditsForFileRename", Some(serde_v8::to_v8(scope, args)?))
-      }
+      TscRequest::GetCombinedCodeFix(args) => (
+        "getCombinedCodeFix",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
+      TscRequest::GetEditsForRefactor(args) => (
+        "getEditsForRefactor",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
+      TscRequest::GetEditsForFileRename(args) => (
+        "getEditsForFileRename",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
       TscRequest::GetDocumentHighlights(args) => {
-        ("getDocumentHighlights", Some(serde_v8::to_v8(scope, args)?))
+        let (specifier, position, files_to_search) = *args;
+        (
+          "getDocumentHighlights",
+          Some((specifier, Number(position), files_to_search).to_v8(scope)?),
+        )
       }
-      TscRequest::GetDefinitionAndBoundSpan(args) => (
+      TscRequest::GetDefinitionAndBoundSpan((specifier, position)) => (
         "getDefinitionAndBoundSpan",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
-      TscRequest::GetTypeDefinitionAtPosition(args) => (
+      TscRequest::GetTypeDefinitionAtPosition((specifier, position)) => (
         "getTypeDefinitionAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
       TscRequest::GetCompletionsAtPosition(args) => (
         "getCompletionsAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
       TscRequest::GetCompletionEntryDetails(args) => (
         "getCompletionEntryDetails",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
-      TscRequest::GetImplementationAtPosition(args) => (
+      TscRequest::GetImplementationAtPosition((specifier, position)) => (
         "getImplementationAtPosition",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
       TscRequest::GetOutliningSpans(args) => {
-        ("getOutliningSpans", Some(serde_v8::to_v8(scope, args)?))
+        ("getOutliningSpans", Some(args.to_v8(scope)?))
       }
-      TscRequest::ProvideCallHierarchyIncomingCalls(args) => (
+      TscRequest::ProvideCallHierarchyIncomingCalls((specifier, position)) => (
         "provideCallHierarchyIncomingCalls",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
-      TscRequest::ProvideCallHierarchyOutgoingCalls(args) => (
+      TscRequest::ProvideCallHierarchyOutgoingCalls((specifier, position)) => (
         "provideCallHierarchyOutgoingCalls",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
-      TscRequest::PrepareCallHierarchy(args) => {
-        ("prepareCallHierarchy", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::FindRenameLocations(args) => {
-        ("findRenameLocations", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::GetSmartSelectionRange(args) => (
+      TscRequest::PrepareCallHierarchy((specifier, position)) => (
+        "prepareCallHierarchy",
+        Some((specifier, Number(position)).to_v8(scope)?),
+      ),
+      TscRequest::FindRenameLocations(args) => (
+        "findRenameLocations",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
+      TscRequest::GetSmartSelectionRange((specifier, position)) => (
         "getSmartSelectionRange",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some((specifier, Number(position)).to_v8(scope)?),
       ),
       TscRequest::GetEncodedSemanticClassifications(args) => (
         "getEncodedSemanticClassifications",
-        Some(serde_v8::to_v8(scope, args)?),
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
-      TscRequest::GetSignatureHelpItems(args) => {
-        ("getSignatureHelpItems", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::GetNavigateToItems(args) => {
-        ("getNavigateToItems", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::ProvideInlayHints(args) => {
-        ("provideInlayHints", Some(serde_v8::to_v8(scope, args)?))
-      }
-      TscRequest::OrganizeImports(args) => {
-        ("organizeImports", Some(serde_v8::to_v8(scope, args)?))
-      }
+      TscRequest::GetSignatureHelpItems(args) => (
+        "getSignatureHelpItems",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
+      TscRequest::GetNavigateToItems((search, max_result_count, file)) => (
+        "getNavigateToItems",
+        Some((search, max_result_count.map(Number), file).to_v8(scope)?),
+      ),
+      TscRequest::ProvideInlayHints(args) => (
+        "provideInlayHints",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
+      TscRequest::OrganizeImports(args) => (
+        "organizeImports",
+        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+      ),
       TscRequest::CleanupSemanticCache => ("$cleanupSemanticCache", None),
       TscRequest::ReleaseMemory => ("$releaseMemory", None),
     };

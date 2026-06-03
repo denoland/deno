@@ -92,26 +92,39 @@ async function writeAll(conn, buf) {
 }
 
 async function sendFrames(conn, frames) {
-  for (let i = 0; i < frames.length; i++) {
-    const more = i < frames.length - 1;
-    await writeAll(conn, makeShortFrame(frames[i], more));
+  // Coalesce all ZMTP frames into a single write. libzmq peers
+  // (VSCode/JupyterLab) send each message as one write; emitting many small
+  // writes interacts badly with Nagle/delayed-ACK and can stall delivery.
+  const encoded = frames.map((frame, i) =>
+    makeShortFrame(frame, i < frames.length - 1)
+  );
+  const total = encoded.reduce((acc, f) => acc + f.length, 0);
+  const buf = new Uint8Array(total);
+  let offset = 0;
+  for (const f of encoded) {
+    buf.set(f, offset);
+    offset += f.length;
   }
+  await writeAll(conn, buf);
 }
 
-// --- ZMTP 3.1 handshake --------------------------------------------------------
+// --- ZMTP 3.0 handshake --------------------------------------------------------
 
-function makeGreeting(socketType, asServer) {
+function makeGreeting() {
+  // 64-octet ZMTP greeting: signature (0xff, 8 zero pad, 0x7f), version 3.0,
+  // 20-octet mechanism ("NULL"), as-server flag, 31 filler octets. The NULL
+  // mechanism is symmetric and libzmq (VSCode/JupyterLab) sends as-server=0 with
+  // an all-zero signature pad; a binding peer that sets as-server=1 or a nonzero
+  // pad byte leaves a real libzmq peer in a handshake state where it never
+  // delivers our messages. Mirror what the previous libzmq-based kernel sent.
+  // Regression from #34083 (the JS kernel rewrite).
   const buf = new Uint8Array(64);
   buf[0] = 0xff;
-  // bytes 1..8 are padding zeros
-  buf[8] = 0x01;
   buf[9] = 0x7f;
   buf[10] = 0x03; // version major
-  buf[11] = 0x01; // version minor
-  const mech = ENC.encode("NULL");
-  buf.set(mech, 12);
-  buf[32] = asServer ? 1 : 0;
-  // rest is zeros (filler)
+  buf[11] = 0x00; // version minor
+  buf.set(ENC.encode("NULL"), 12); // mechanism, null-padded to 20 octets
+  buf[32] = 0x00; // as-server
   return buf;
 }
 
@@ -120,10 +133,16 @@ function makeReadyCommand(socketType) {
   const nameBytes = ENC.encode("READY");
   const propName = ENC.encode("Socket-Type");
 
+  // ZMTP command body: <nameLen:1><name><metadata...>. The leading command-name
+  // length octet is mandatory; without it libzmq (VSCode/JupyterLab) parses the
+  // first body byte ('R'=0x52=82) as the name length, fails to parse the
+  // command, and tears down the connection so the handshake never completes.
+  // Regression from #34083 (the JS kernel rewrite).
   // property encoding: <len1:propNameLen><propName><len4:valueLen><value>
   const propLen = 1 + propName.length + 4 + sockBytes.length;
-  const body = new Uint8Array(nameBytes.length + propLen);
+  const body = new Uint8Array(1 + nameBytes.length + propLen);
   let o = 0;
+  body[o++] = nameBytes.length;
   body.set(nameBytes, o);
   o += nameBytes.length;
   body[o++] = propName.length;
@@ -136,17 +155,12 @@ function makeReadyCommand(socketType) {
   return makeShortFrame(body, false, true); // command flag
 }
 
-async function zmtpHandshake(conn, socketType, asServer) {
-  const greeting = makeGreeting(socketType, asServer);
-  await writeAll(conn, greeting);
-
-  // Read peer's greeting (64 bytes)
+async function zmtpHandshake(conn, socketType) {
+  await writeAll(conn, makeGreeting());
+  // Read the peer's 64-octet greeting.
   await readExact(conn, 64);
-
-  // Send READY command
+  // NULL security handshake: exchange READY commands.
   await writeAll(conn, makeReadyCommand(socketType));
-
-  // Read peer's READY command (skip it)
   await readFrame(conn);
 }
 
@@ -277,7 +291,7 @@ async function runHeartbeat(port, ip) {
     const conn = await listener.accept();
     (async () => {
       try {
-        await zmtpHandshake(conn, "REP", true);
+        await zmtpHandshake(conn, "REP");
         while (true) {
           const frames = await recvMultipart(conn);
           // Echo back
@@ -347,7 +361,7 @@ class RouterSocket {
     this.peers.set(peerKey, conn);
     (async () => {
       try {
-        await zmtpHandshake(conn, "ROUTER", true);
+        await zmtpHandshake(conn, "ROUTER");
         while (true) {
           const frames = await recvMultipart(conn);
           this.incoming.push({ peerId, peerKey, frames });
@@ -387,9 +401,8 @@ class RouterSocket {
   async sendAll(frames) {
     const dead = [];
     for (const [peerKey, conn] of this.peers) {
-      const peerId = new Uint8Array(peerKey.split(",").map(Number));
       try {
-        await sendFrames(conn, [peerId, ...frames]);
+        await sendFrames(conn, frames);
       } catch {
         dead.push(peerKey);
       }
@@ -417,7 +430,7 @@ class PubSocket {
         const conn = await listener.accept();
         (async () => {
           try {
-            await zmtpHandshake(conn, "PUB", true);
+            await zmtpHandshake(conn, "PUB");
             // SUB sockets send a SUBSCRIBE command; drain it
             const subFrame = await recvMultipart(conn);
             void subFrame;
@@ -661,7 +674,7 @@ async function startJupyterKernel() {
         replyContent,
         parentHeader,
       );
-      await socket.send(peerId, [peerId, ...replyFrames]);
+      await socket.send(peerId, replyFrames);
       await publishStatus("idle", parentHeader);
       return;
     }
@@ -727,7 +740,7 @@ async function startJupyterKernel() {
           },
           parentHeader,
         );
-        await socket.send(peerId, [peerId, ...replyFrames]);
+        await socket.send(peerId, replyFrames);
       } else {
         // Success: publish the result
         const result = evalResult?.value?.result;
@@ -752,7 +765,7 @@ async function startJupyterKernel() {
           },
           parentHeader,
         );
-        await socket.send(peerId, [peerId, ...replyFrames]);
+        await socket.send(peerId, replyFrames);
       }
     } else {
       // Null result means eval was skipped or interrupted
@@ -770,7 +783,7 @@ async function startJupyterKernel() {
         },
         parentHeader,
       );
-      await socket.send(peerId, [peerId, ...replyFrames]);
+      await socket.send(peerId, replyFrames);
     }
 
     await publishStatus("idle", parentHeader);
@@ -815,7 +828,7 @@ async function startJupyterKernel() {
           kernelInfo(),
           parentHeader,
         );
-        await socket.send(peerId, [peerId, ...replyFrames]);
+        await socket.send(peerId, replyFrames);
       } else if (msgType === "complete_request") {
         const userCode = msg.content?.code || "";
         const cursorPos = msg.content?.cursor_pos || userCode.length;
@@ -855,7 +868,7 @@ async function startJupyterKernel() {
           },
           parentHeader,
         );
-        await socket.send(peerId, [peerId, ...replyFrames]);
+        await socket.send(peerId, replyFrames);
       } else if (msgType === "is_complete_request") {
         const result = checkIsComplete(msg.content?.code || "");
         const replyFrames = await encodeMsg(
@@ -866,7 +879,7 @@ async function startJupyterKernel() {
           result,
           parentHeader,
         );
-        await socket.send(peerId, [peerId, ...replyFrames]);
+        await socket.send(peerId, replyFrames);
       } else if (msgType === "inspect_request") {
         const replyFrames = await encodeMsg(
           session,
@@ -881,7 +894,7 @@ async function startJupyterKernel() {
           },
           parentHeader,
         );
-        await socket.send(peerId, [peerId, ...replyFrames]);
+        await socket.send(peerId, replyFrames);
       } else if (msgType === "history_request") {
         const replyFrames = await encodeMsg(
           session,
@@ -891,7 +904,7 @@ async function startJupyterKernel() {
           { status: "ok", history: [] },
           parentHeader,
         );
-        await socket.send(peerId, [peerId, ...replyFrames]);
+        await socket.send(peerId, replyFrames);
       } else if (msgType === "comm_info_request") {
         const replyFrames = await encodeMsg(
           session,
@@ -901,7 +914,7 @@ async function startJupyterKernel() {
           { status: "ok", comms: {} },
           parentHeader,
         );
-        await socket.send(peerId, [peerId, ...replyFrames]);
+        await socket.send(peerId, replyFrames);
       } else if (msgType === "comm_open") {
         const replyFrames = await encodeMsg(
           session,
@@ -911,7 +924,7 @@ async function startJupyterKernel() {
           { comm_id: msg.content?.comm_id, data: {} },
           parentHeader,
         );
-        await socket.send(peerId, [peerId, ...replyFrames]);
+        await socket.send(peerId, replyFrames);
       }
     } finally {
       await publishStatus("idle", parentHeader);
@@ -947,7 +960,7 @@ async function startJupyterKernel() {
         kernelInfo(),
         parentHeader,
       );
-      await socket.send(peerId, [peerId, ...replyFrames]);
+      await socket.send(peerId, replyFrames);
     } else if (msgType === "shutdown_request") {
       const restart = msg.content?.restart || false;
       const replyFrames = await encodeMsg(
@@ -958,7 +971,7 @@ async function startJupyterKernel() {
         { status: "ok", restart },
         parentHeader,
       );
-      await socket.send(peerId, [peerId, ...replyFrames]);
+      await socket.send(peerId, replyFrames);
       shuttingDown = true;
       // The Jupyter protocol expects the kernel process to exit after
       // sending a shutdown reply. Even on restart the frontend spawns a
@@ -976,7 +989,7 @@ async function startJupyterKernel() {
         { status: "ok" },
         parentHeader,
       );
-      await socket.send(peerId, [peerId, ...replyFrames]);
+      await socket.send(peerId, replyFrames);
     } else if (msgType === "debug_request") {
       // Not supported
     }
