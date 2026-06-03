@@ -1,0 +1,34 @@
+{
+  "tests": {
+    "single_quote": {
+      "args": "fmt --single-quote -",
+      "input": "const x = \"hello\";\n",
+      "output": "const x = 'hello';\n"
+    },
+    "no_semicolons": {
+      "args": "fmt --no-semicolons -",
+      "input": "const x = 1;\nconst y = 2;\n",
+      "output": "const x = 1\nconst y = 2\n"
+    },
+    "use_tabs": {
+      "args": "fmt --use-tabs -",
+      "input": "function f() {\nreturn 1;\n}\n",
+      "output": "function f() {\n\treturn 1;\n}\n"
+    },
+    "indent_width": {
+      "args": "fmt --indent-width=4 -",
+      "input": "function f() {\nreturn 1;\n}\n",
+      "output": "function f() {\n    return 1;\n}\n"
+    },
+    "line_width": {
+      "args": "fmt --line-width=40 -",
+      "input": "const result = someFunction(argumentOne, argumentTwo, argumentThree);\n",
+      "output": "const result = someFunction(\n  argumentOne,\n  argumentTwo,\n  argumentThree,\n);\n"
+    },
+    "prose_wrap_always": {
+      "args": "fmt --ext=md --prose-wrap=always --line-width=40 -",
+      "input": "one two three four five six seven eight nine ten eleven twelve thirteen fourteen\n",
+      "output": "one two three four five six seven eight\nnine ten eleven twelve thirteen fourteen\n"
+    }
+  }
+}
