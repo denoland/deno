@@ -21,7 +21,7 @@ pub fn open_url_detached(url: &str) -> io::Result<()> {
 
   #[cfg(all(unix, not(target_os = "macos")))]
   {
-    return open_url_detached_linux(url);
+    open_url_detached_linux(url)
   }
 }
 
@@ -40,9 +40,7 @@ fn open_url_detached_linux(url: &str) -> io::Result<()> {
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
-fn linux_open_commands<'a>(
-  url: &'a str,
-) -> Vec<(&'static str, Vec<&'a OsStr>)> {
+fn linux_open_commands(url: &str) -> Vec<(&'static str, Vec<&OsStr>)> {
   let mut commands = Vec::with_capacity(6);
   if is_wsl() {
     commands.push(("wslview", vec![OsStr::new(url)]));
