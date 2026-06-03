@@ -820,8 +820,8 @@
       "queue-microtask-cross-realm-callback-report-exception.html": false
     },
     "scripting": {
-      "reporterror.any.html": false,
-      "reporterror.any.worker.html": false,
+      "reporterror.any.html": true,
+      "reporterror.any.worker.html": true,
       "events": {
         "event-handler-processing-algorithm-error": {
           "synthetic-errorevent-click.worker.html": true,

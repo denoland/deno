@@ -1637,7 +1637,13 @@ function defineEventHandler(
 let reportExceptionStackedCalls = 0;
 
 // https://html.spec.whatwg.org/#report-the-exception
-function reportException(error) {
+//
+// `terminate` controls what happens when the error is not handled (the
+// dispatched "error" event is not canceled). For genuinely uncaught
+// exceptions this reports the error and terminates the program, but
+// `reportError()` must report the exception *without* aborting, so it passes
+// `terminate = false`.
+function reportException(error, terminate = true) {
   reportExceptionStackedCalls++;
   const jsError = core.destructureError(error);
   const message = jsError.exceptionMessage;
@@ -1674,7 +1680,13 @@ function reportException(error) {
   });
   // Avoid recursing `reportException()` via error handlers more than once.
   if (reportExceptionStackedCalls > 1 || globalThis_.dispatchEvent(event)) {
-    core.reportUnhandledException(error);
+    if (terminate) {
+      core.reportUnhandledException(error);
+    } else {
+      // `reportError()`: the exception was not handled, so report it to the
+      // console, but do not terminate the program.
+      globalThis_.console.error(error);
+    }
   }
   reportExceptionStackedCalls--;
 }
@@ -1690,7 +1702,7 @@ function reportError(error) {
   checkThis(this);
   const prefix = "Failed to execute 'reportError'";
   webidl.requiredArguments(arguments.length, 1, prefix);
-  reportException(error);
+  reportException(error, false);
 }
 
 return {
