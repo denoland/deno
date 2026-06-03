@@ -61,6 +61,7 @@ use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
 use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
+use super::urls::uri_is_in_memory;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
@@ -1531,7 +1532,18 @@ impl DocumentModules {
   pub fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
     let url = uri_to_url(uri);
     if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
-      let scope = self.config.tree.scope_for_specifier(&url);
+      let mut scope = self.config.tree.scope_for_specifier(&url);
+      // In-memory documents (untitled files and unsaved notebook cells) convert
+      // to a `file:` URL at the filesystem root, which matches no workspace
+      // scope. Associate them with the workspace root so its config (import
+      // map, compiler options) applies — matching the behavior once the
+      // document is saved into the workspace. See denoland/deno#22628.
+      if scope.is_none()
+        && uri_is_in_memory(uri)
+        && let Some(root_url) = self.config.root_url()
+      {
+        scope = self.config.tree.scope_for_specifier(root_url);
+      }
       return Some(scope);
     }
     None
