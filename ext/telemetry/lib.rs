@@ -1980,8 +1980,7 @@ impl OtelTracer {
       true,
       TraceState::NONE,
     );
-    let sampled =
-      sampler.should_sample(Some(&parent_context), parent_trace_id);
+    let sampled = sampler.should_sample(Some(&parent_context), parent_trace_id);
     let span_context = SpanContext::new(
       parent_trace_id,
       id_generator.new_span_id(),
