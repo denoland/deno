@@ -2,13 +2,13 @@
   "tests": {
     "managed": {
       "tempDir": true,
-      "args": "run --quiet --allow-read main.ts",
+      "args": "run --no-lock --quiet --allow-read main.ts",
       "output": "2\n",
       "exitCode": 0
     },
     "node_modules_dir": {
       "tempDir": true,
-      "args": "run --quiet --allow-read --node-modules-dir=auto main.ts",
+      "args": "run --no-lock --quiet --allow-read --node-modules-dir=auto main.ts",
       "output": "2\n",
       "exitCode": 0
     }
