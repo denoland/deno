@@ -1,0 +1,7 @@
+{
+  "name": "pkg-a",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": { "pkg-b": "*" },
+  "exports": { ".": "./src/index.ts" }
+}
