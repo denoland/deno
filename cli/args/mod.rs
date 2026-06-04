@@ -506,6 +506,26 @@ impl WorkspaceMainModuleResolver {
         )?
         .into_url()?,
     };
+
+    // When the workspace resolver rewrites a bare specifier like
+    // `chalk/main.ts` into `npm:chalk@5/main.ts` via an import map alias,
+    // prefer a matching local file relative to cwd. Explicit `npm:`
+    // invocations keep strict semantics because the input itself starts
+    // with `npm:`.
+    if !specifier.starts_with("npm:")
+      && url.scheme() == "npm"
+      && let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url)
+      && npm_ref.sub_path().is_some()
+      && let Ok(cwd_path) = deno_path_util::url_to_file_path(cwd)
+    {
+      let local_path = cwd_path.join(specifier);
+      if local_path.is_file()
+        && let Ok(local_url) = deno_path_util::url_from_file_path(&local_path)
+      {
+        return Ok(local_url);
+      }
+    }
+
     Ok(url)
   }
 }

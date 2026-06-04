@@ -765,45 +765,63 @@ async fn find_package_and_select_version_for_req(
     };
     let prefixed_name = format!("{}:{}", T::SPECIFIER_PREFIX, req.name);
     let help_if_found_in_fallback = S::HELP;
-    let nv = match main_resolver.req_to_nv(req).await {
-      Ok(Some(nv)) => nv,
-      Ok(None) => {
-        if fallback_resolver
-          .req_to_nv(req)
-          .await
-          .ok()
-          .flatten()
-          .is_some()
-        {
-          // it's in the other registry
-          return Ok(PackageAndVersion::NotFound {
-            package: prefixed_name,
-            help: Some(help_if_found_in_fallback),
-            package_req: req.clone(),
-          });
-        }
-
-        return Ok(PackageAndVersion::NotFound {
-          package: prefixed_name,
-          help: None,
-          package_req: req.clone(),
-        });
+    // JSR has no dist-tags, so a tag can't go through req_to_nv
+    // (VersionReq::matches panics on a tag). "@latest" is conventionally
+    // understood as "the newest version", so resolve it to the latest
+    // published version; reject any other tag rather than silently treating
+    // it as latest. npm resolves dist-tags natively via its registry, so this
+    // only applies to JSR.
+    let maybe_nv = if matches!(
+      &add_package_req.value,
+      AddRmPackageReqValue::Jsr(_)
+    ) && let Some(tag) = req.version_req.tag()
+    {
+      if tag != "latest" {
+        bail!(
+          "{} does not support the tag '{tag}'. JSR has no dist-tags; use '@latest' or a version requirement instead.",
+          prefixed_name,
+        );
       }
-      Err(err) => {
-        if req.version_req.version_text() == "*"
-          && let Some(pre_release_version) =
-            main_resolver.latest_version(&req.name).await
-        {
-          return Ok(PackageAndVersion::NotFound {
-            package: prefixed_name,
-            package_req: req.clone(),
-            help: Some(NotFoundHelp::PreReleaseVersion(
-              pre_release_version.clone(),
-            )),
-          });
+      main_resolver
+        .latest_version(&req.name)
+        .await
+        .map(|version| PackageNv {
+          name: req.name.clone(),
+          version,
+        })
+    } else {
+      match main_resolver.req_to_nv(req).await {
+        Ok(maybe_nv) => maybe_nv,
+        Err(err) => {
+          if req.version_req.version_text() == "*"
+            && let Some(pre_release_version) =
+              main_resolver.latest_version(&req.name).await
+          {
+            return Ok(PackageAndVersion::NotFound {
+              package: prefixed_name,
+              package_req: req.clone(),
+              help: Some(NotFoundHelp::PreReleaseVersion(
+                pre_release_version.clone(),
+              )),
+            });
+          }
+          return Err(err);
         }
-        return Err(err);
       }
+    };
+    let Some(nv) = maybe_nv else {
+      // Not in the primary registry; point at the other one if it's there.
+      let help = fallback_resolver
+        .req_to_nv(req)
+        .await
+        .ok()
+        .flatten()
+        .map(|_| help_if_found_in_fallback);
+      return Ok(PackageAndVersion::NotFound {
+        package: prefixed_name,
+        help,
+        package_req: req.clone(),
+      });
     };
     let range_symbol = if req.version_req.version_text().starts_with('~') {
       "~"
