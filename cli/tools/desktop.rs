@@ -992,8 +992,8 @@ impl WefBackendResolver {
     // release page. The latter is unsigned, so trusting it would let anyone
     // who can write to the wef release host swap both archive and sums
     // together (TOFU). The lock file is reviewed in PRs when WEF_VERSION
-    // bumps, so this is the trust anchor.
-    check_pinned_sums_version()?;
+    // bumps, so this is the trust anchor. That the lock file's pinned version
+    // matches WEF_VERSION is asserted at build time (see cli/build.rs).
     let expected = parse_sha256sum(WEF_PINNED_SUMS, &archive).ok_or_else(|| {
       deno_core::anyhow::anyhow!(
         "no pinned SHA-256 for {archive} in cli/wef_sums.lock \
@@ -1225,35 +1225,6 @@ fn wef_release_url(file: &str) -> String {
   format!(
     "https://github.com/littledivy/just-wef/releases/download/v{WEF_VERSION}/{file}"
   )
-}
-
-/// Confirm the pinned digests file targets the same WEF_VERSION the binary
-/// was built against. The lock file optionally carries a `# version: vX.Y.Z`
-/// directive; when present it must match `WEF_VERSION`.
-fn check_pinned_sums_version() -> Result<(), AnyError> {
-  for line in WEF_PINNED_SUMS.lines() {
-    let trimmed = line.trim_start();
-    let Some(rest) = trimmed.strip_prefix('#') else {
-      continue;
-    };
-    let rest = rest.trim();
-    let Some(version) = rest.strip_prefix("version:") else {
-      continue;
-    };
-    let pinned = version.trim().trim_start_matches('v');
-    if pinned.is_empty() {
-      bail!(
-        "cli/wef_sums.lock has no pinned WEF version — populate it for v{WEF_VERSION} before downloading wef backends"
-      );
-    }
-    if pinned != WEF_VERSION {
-      bail!(
-        "cli/wef_sums.lock pins WEF v{pinned} but this build expects v{WEF_VERSION} — refresh the lock file"
-      );
-    }
-    return Ok(());
-  }
-  Ok(())
 }
 
 /// Pick out the hex digest for `file` from a GNU `sha256sum`-style file. Each

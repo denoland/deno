@@ -613,10 +613,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
-
-# Local wef checkout — temporarily routes `just-wef` through the in-tree
-# wef sources so the new sync dialog ABI can be developed against without
-# cutting a release. Drop this once the matching just-wef is on crates.io
-# and `WEF_VERSION` is bumped.
-[patch.crates-io]
-just-wef = { path = "../wef/capi" }

@@ -27,7 +27,7 @@ deno_runtime.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt" }
-just-wef = "0.1.0"
+just-wef = "0.2.0"
 libsui.workspace = true
 
 log = { workspace = true, features = ["serde"] }

@@ -12,20 +12,20 @@
 # A `# version: vX.Y.Z` directive (optional) is matched against WEF_VERSION
 # at build time to guard against forgetting to refresh this file.
 #
-# version: v0.1.0
+# version: v0.2.0
 
-f0be7f05fb9046751f007d6b2f1fe604313262cb894c4a92732ad1f5b177ae0f  wef-cef-aarch64-apple-darwin.tar.gz
-4ae1ba6df0020babe9f8b5133ad3892875a4fc14e9c13d281f4cc067d574bc86  wef-cef-aarch64-unknown-linux-gnu.tar.gz
-332ed51622228adfe9610c4054b612abfe69cc29b33a5038e6673495796f10d5  wef-cef-x86_64-apple-darwin.tar.gz
-3d1b662ffffb1ba94dba5829bf7963b8ec34c6ac144a5508b9d0115970ae3e8d  wef-cef-x86_64-unknown-linux-gnu.tar.gz
-c8d3b58e888145c57f79c9a05c3fd72bebaca65a7cd349e4dbf7e6a7863d42b0  wef-webview-aarch64-apple-darwin.tar.gz
-37eb159c1ef83ebb5fff63d0877f94aa3b75af89e27e95324caa97161d6dec1f  wef-webview-aarch64-unknown-linux-gnu.tar.gz
-396b40e34ed323f2ca031f009f41f813688bb64bc6647bc95519ccb77e30836c  wef-webview-x86_64-apple-darwin.tar.gz
-e8768e82bf8b6487b007061d7d8bb453a99995e5473a07357800723871b07a1a  wef-webview-x86_64-unknown-linux-gnu.tar.gz
-88acda82afd92244f0e2e7894f951b5ac71c0fd66011211add136605492ed4df  wef-winit-aarch64-apple-darwin.tar.gz
-1f8f62f59eeb96bb88e16c83793154b214416f055eaa754e1cfdae20ea0b0b4c  wef-winit-aarch64-unknown-linux-gnu.tar.gz
-4319cd19f07dcb3c261411e62138c293a76bfcfa29cd4909bf0fbc173a3d4cb5  wef-winit-x86_64-apple-darwin.tar.gz
-d59f751b9696c755ecb5bdb88926ada4d0fe33ace98e179379fafae4fa682bda  wef-winit-x86_64-unknown-linux-gnu.tar.gz
-914dfb0b7527c61535ef290231df586eeab751d559844b14d1d12cdbf7abe441  wef-cef-x86_64-pc-windows-msvc.zip
-c282171d67b290efac6631d1829760676ef2bb342e94081f10441a91015b7b5f  wef-webview-x86_64-pc-windows-msvc.zip
-38f62598a01391df8252ad1feea14eee28406de6b4adf29c7c8cf715ecf95202  wef-winit-x86_64-pc-windows-msvc.zip
+4aa73e0699a362878b14afe8b1d4722d8967c00cd1a214d329e632bbf3821db1  wef-cef-aarch64-apple-darwin.tar.gz
+c05d9de9de507a354a14fdb5a3e8420835a64775eaf59c96d64cda9b90601b0a  wef-cef-aarch64-unknown-linux-gnu.tar.gz
+eee1dcbb0d2daed68ef7ed7f300b57c96fe9301f13edbad25bf73fb85d38746f  wef-cef-x86_64-apple-darwin.tar.gz
+942aa2933baaa511d79ae29b63c35f7311bc8c7f11ed6a2f80a264ace61c19ab  wef-cef-x86_64-unknown-linux-gnu.tar.gz
+7fef71e310ab4f48752632a4f5be49c7370b19623624b791aeed5da21a044712  wef-webview-aarch64-apple-darwin.tar.gz
+f459d4b1533c5b9fff6f8c1caee95e6e9f39469e952e2fde1d1fa0b5f47d77c2  wef-webview-aarch64-unknown-linux-gnu.tar.gz
+68322d288dd711ea95cf134f893cf04f14e663a825b331e50aac91183e677f53  wef-webview-x86_64-apple-darwin.tar.gz
+13ad4c452795fe23f0a856da3cb39b2ee0f63ee961f426062ebbf305aeb3eaf3  wef-webview-x86_64-unknown-linux-gnu.tar.gz
+e26bc21c7ae09a67f11cdb9bc47b575a8488b923e7d0b9cc1b9c73e54247f89c  wef-winit-aarch64-apple-darwin.tar.gz
+6fab8a318217a29f36cd5fa67d102155752e4af160fbe3ba5f4c7b738168d19b  wef-winit-aarch64-unknown-linux-gnu.tar.gz
+447c85f629dc1860e094909fbbe73a80291f96c94046057cfd32d67558300f5e  wef-winit-x86_64-apple-darwin.tar.gz
+87a80c5a0752eff3ad759c35181d970e242b254ea65fa704181ca185f1aff663  wef-winit-x86_64-unknown-linux-gnu.tar.gz
+66d6da9a5619a165dcb24bb044ed5095da32fc4274285b1bf239e3195f682984  wef-cef-x86_64-pc-windows-msvc.zip
+60483f850fc9aebe67d114c0e0520e0c7bf189ff7a4ba511299e02a041d44b80  wef-webview-x86_64-pc-windows-msvc.zip
+682af766db732595f7b1afc3486e76b4f27d90fec1226fbacdda367758914dcc  wef-winit-x86_64-pc-windows-msvc.zip

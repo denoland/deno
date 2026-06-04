@@ -265,6 +265,12 @@ fn compress_sources(out_dir: &Path) {
 /// expose it as the `WEF_VERSION` rustc env var. Desktop backend downloads are
 /// resolved against `github.com/littledivy/just-wef/releases/tag/v{WEF_VERSION}`, so
 /// tying this to Cargo.lock keeps a single source of truth.
+///
+/// Also asserts that `cli/wef_sums.lock` (the trust anchor for those downloads)
+/// pins the same version, failing the build if someone bumps the crate without
+/// refreshing the digests. This is a pure consistency check between two
+/// checked-in files, so it runs here rather than at runtime — a stale lock file
+/// becomes a compile error instead of a first-launch failure.
 fn emit_wef_version() {
   let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
   let lock_path = Path::new(&manifest_dir).join("../Cargo.lock");
@@ -275,6 +281,7 @@ fn emit_wef_version() {
     Err(_) => return,
   };
 
+  let mut wef_version = None;
   let mut in_wef = false;
   for line in lock.lines() {
     if line == "name = \"just-wef\"" {
@@ -285,13 +292,56 @@ fn emit_wef_version() {
       if let Some(rest) = line.strip_prefix("version = \"")
         && let Some(version) = rest.strip_suffix('"')
       {
-        println!("cargo:rustc-env=WEF_VERSION={}", version);
-        return;
+        wef_version = Some(version.to_string());
+        break;
       }
       if line.starts_with("[[package]]") {
         break;
       }
     }
+  }
+
+  let Some(wef_version) = wef_version else {
+    return;
+  };
+  println!("cargo:rustc-env=WEF_VERSION={wef_version}");
+
+  check_wef_pinned_sums_version(&manifest_dir, &wef_version);
+}
+
+/// Confirm `cli/wef_sums.lock` targets `wef_version`. The lock file carries a
+/// `# version: vX.Y.Z` directive that must match the `just-wef` crate version
+/// the binary is built against; a mismatch means the pinned digests are stale.
+fn check_wef_pinned_sums_version(manifest_dir: &str, wef_version: &str) {
+  let sums_path = Path::new(manifest_dir).join("wef_sums.lock");
+  println!("cargo:rerun-if-changed={}", sums_path.display());
+
+  let sums = match std::fs::read_to_string(&sums_path) {
+    Ok(s) => s,
+    Err(_) => return,
+  };
+
+  for line in sums.lines() {
+    let Some(rest) = line.trim_start().strip_prefix('#') else {
+      continue;
+    };
+    let Some(version) = rest.trim().strip_prefix("version:") else {
+      continue;
+    };
+    let pinned = version.trim().trim_start_matches('v');
+    if pinned.is_empty() {
+      panic!(
+        "cli/wef_sums.lock has no pinned WEF version — populate it for \
+         v{wef_version} before building"
+      );
+    }
+    if pinned != wef_version {
+      panic!(
+        "cli/wef_sums.lock pins WEF v{pinned} but this build expects \
+         v{wef_version} — refresh the lock file from the upstream SHA256SUMS"
+      );
+    }
+    return;
   }
 }
 

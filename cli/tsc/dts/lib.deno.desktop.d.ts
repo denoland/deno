@@ -2,6 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
+/// <reference lib="deno.window" />
 /// <reference lib="deno.shared_globals" />
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
@@ -239,6 +240,8 @@ declare interface Permissions {
   query(descriptor: PermissionDescriptor): Promise<PermissionStatus>;
 }
 
+/** Extends the {@linkcode Navigator} provided by `deno.window` with the
+ * Permissions API surface available to `deno desktop` apps. */
 declare interface Navigator {
   readonly permissions: Permissions;
 }
@@ -329,12 +332,31 @@ declare namespace Deno {
     | BrowserWindowValue[]
     | Uint8Array;
 
+  /** The value a {@linkcode BrowserWindow.bind} handler may resolve with.
+   *
+   * Handler results are serialized to JSON before crossing into the
+   * webview, so this is intentionally more permissive than
+   * {@linkcode BrowserWindowValue}: `undefined` (and optional) properties
+   * are dropped during serialization, and nested objects need not be typed
+   * as {@linkcode BrowserWindowValue}. This lets handlers return ordinary
+   * discriminated unions and `Record<string, unknown>` shapes without
+   * casting. */
+  type BrowserWindowReturn =
+    | null
+    | undefined
+    | boolean
+    | number
+    | string
+    | Uint8Array
+    | readonly BrowserWindowReturn[]
+    | { readonly [key: string]: unknown };
+
   export type WindowBindings = Record<
     string,
     (
       this: BrowserWindow,
       ...args: BrowserWindowValue[]
-    ) => Promise<BrowserWindowValue>
+    ) => Promise<BrowserWindowReturn>
   >;
 
   /** Constrains T to a record of async binding functions. */
@@ -342,7 +364,7 @@ declare namespace Deno {
     [K in keyof T]: (
       this: BrowserWindow,
       ...args: BrowserWindowValue[]
-    ) => Promise<BrowserWindowValue>;
+    ) => Promise<BrowserWindowReturn>;
   };
 
   export type MenuItem =
@@ -516,9 +538,10 @@ declare namespace Deno {
      * button (Windows), or set the urgency hint on the focused window
      * (Linux).
      *
-     * `"informational"` (the default) triggers a single bounce;
-     * `"critical"` bounces continuously until the app is focused. */
-    bounce(type?: "informational" | "critical"): void;
+     * When `critical` is `false` (the default) this triggers a single
+     * bounce; when `true` it bounces continuously until the app is
+     * focused. */
+    bounce(critical?: boolean): void;
 
     /** Set a custom right-click menu on the app's dock icon. Pass
      * `null` to remove any menu previously set.
@@ -561,14 +584,14 @@ declare namespace Deno {
   /** The tray icon's bounding rectangle in screen coordinates, in the same
    * top-left-origin space as {@linkcode BrowserWindow.setPosition}. Use it to
    * anchor a popover window under the icon. */
-  interface TrayBounds {
+  export interface TrayBounds {
     x: number;
     y: number;
     width: number;
     height: number;
   }
 
-  interface TrayPanelOptions {
+  export interface TrayPanelOptions {
     /** URL to load in the panel window. */
     url?: string;
     /** Panel width in pixels. @default {360} */
@@ -591,7 +614,7 @@ declare namespace Deno {
 
   /** Handle to a tray-attached popover window created by
    * {@linkcode Tray.attachPanel}. */
-  interface TrayPanel {
+  export interface TrayPanel {
     /** The underlying panel window — use it to `bind()`, `executeJs()`,
      * open devtools, etc. */
     readonly window: BrowserWindow;
