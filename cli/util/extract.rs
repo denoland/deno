@@ -145,7 +145,7 @@ fn extract_files_from_source_comments(
     r"```(?P<attributes>[^\r\n]*)\r?\n(?P<body>[\S\s]*?)```"
   );
   let lines_regex =
-    lazy_regex::regex!(r"(?:\* ?)((#!+).*)|(?:\* ?)(?:\# ?)?(.*)");
+    lazy_regex::regex!(r"(?:\* ?(?:> ?)*)((#!+).*)|(?:\* ?(?:> ?)*)(?:\# ?)?(.*)");
 
   let files = comments
     .iter()
@@ -1387,6 +1387,48 @@ Deno.test("file:///main.ts$3-8.ts", async ()=>{
           specifier: "file:///main.ts$3-8.ts",
           media_type: MediaType::TypeScript,
         }],
+      },
+      // https://github.com/denoland/deno/issues/25980
+      // Code blocks nested inside blockquotes in JSDoc comments should have
+      // the blockquote `> ` prefix stripped so the extracted source is valid.
+      Test {
+        input: Input {
+          source: r#"/**
+ * ```ts
+ * console.log("outside");
+ * ```
+ *
+ * > [!NOTE]
+ * > This is a note.
+ * >
+ * > ```ts
+ * > console.log("inside blockquote");
+ * > ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![
+          Expected {
+            source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$2-5.ts", async ()=>{
+    console.log("outside");
+});
+"#,
+            specifier: "file:///main.ts$2-5.ts",
+            media_type: MediaType::TypeScript,
+          },
+          Expected {
+            source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$9-12.ts", async ()=>{
+    console.log("inside blockquote");
+});
+"#,
+            specifier: "file:///main.ts$9-12.ts",
+            media_type: MediaType::TypeScript,
+          },
+        ],
       },
     ];
 
