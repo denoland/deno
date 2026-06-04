@@ -78,6 +78,22 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function fetchBadPortBlocked() {
+    // Ports on the Fetch Standard "bad ports" list must be rejected with a
+    // network error before any TCP connection is attempted.
+    // https://fetch.spec.whatwg.org/#bad-port
+    await assertRejects(
+      async () => {
+        await fetch("http://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function fetchDnsError() {
     await assertRejects(
       async () => {

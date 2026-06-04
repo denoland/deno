@@ -85,6 +85,95 @@ const REDIRECT_SENSITIVE_HEADER_NAMES = [
   "cookie",
 ];
 
+// https://fetch.spec.whatwg.org/#bad-port
+// "bad ports" that fetch must block before any network I/O occurs. Keys are
+// the (leading-zero-free) port strings produced by `URL.prototype.port`, so a
+// lookup is a single `BAD_PORTS[url.port]` with no parsing. `__proto__: null`
+// keeps the lookup safe from prototype pollution.
+const BAD_PORTS = {
+  __proto__: null,
+  "1": true, // tcpmux
+  "7": true, // echo
+  "9": true, // discard
+  "11": true, // systat
+  "13": true, // daytime
+  "15": true, // netstat
+  "17": true, // qotd
+  "19": true, // chargen
+  "20": true, // ftp-data
+  "21": true, // ftp
+  "22": true, // ssh
+  "23": true, // telnet
+  "25": true, // smtp
+  "37": true, // time
+  "42": true, // name
+  "43": true, // nicname
+  "53": true, // domain
+  "69": true, // tftp
+  "77": true, // priv-rjs
+  "79": true, // finger
+  "87": true, // ttylink
+  "95": true, // supdup
+  "101": true, // hostname
+  "102": true, // iso-tsap
+  "103": true, // gppitnp
+  "104": true, // acr-nema
+  "109": true, // pop2
+  "110": true, // pop3
+  "111": true, // sunrpc
+  "113": true, // auth
+  "115": true, // sftp
+  "117": true, // uucp-path
+  "119": true, // nntp
+  "123": true, // ntp
+  "135": true, // loc-srv / epmap
+  "137": true, // netbios-ns
+  "139": true, // netbios-ssn
+  "143": true, // imap2
+  "161": true, // snmp
+  "179": true, // bgp
+  "389": true, // ldap
+  "427": true, // svrloc
+  "465": true, // submissions
+  "512": true, // exec
+  "513": true, // login
+  "514": true, // shell
+  "515": true, // printer
+  "526": true, // tempo
+  "530": true, // courier
+  "531": true, // chat
+  "532": true, // netnews
+  "540": true, // uucp
+  "548": true, // afp
+  "554": true, // rtsp
+  "556": true, // remotefs
+  "563": true, // nntp+ssl
+  "587": true, // submission
+  "601": true, // syslog-conn
+  "636": true, // ldap+ssl
+  "989": true, // ftps-data
+  "990": true, // ftps
+  "993": true, // imap+ssl
+  "995": true, // pop3+ssl
+  "1719": true, // h323gatestat
+  "1720": true, // h323hostcall
+  "1723": true, // pptp
+  "2049": true, // nfs
+  "3659": true, // apple-sasl
+  "4045": true, // lockd
+  "5060": true, // sip
+  "5061": true, // sips
+  "6000": true, // x11
+  "6566": true, // sane-port
+  "6665": true, // ircu
+  "6666": true, // ircu
+  "6667": true, // ircu
+  "6668": true, // ircu
+  "6669": true, // ircu
+  "6697": true, // ircs-u
+  "10080": true, // amanda
+};
+
 // ============================================================================
 // Inspector Network domain instrumentation (Chrome DevTools Protocol).
 //
@@ -276,6 +365,14 @@ function createResponseBodyStream(responseBodyRid, terminator) {
  * @returns {Promise<InnerResponse>}
  */
 async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
+  // https://fetch.spec.whatwg.org/#main-fetch step 5: if the request should be
+  // blocked due to a bad port, return a network error before any network I/O
+  // occurs. This applies to every hop, including those reached via redirects.
+  const portString = new URL(req.currentUrl()).port;
+  if (portString !== "" && BAD_PORTS[portString] === true) {
+    return networkError(`Requests to port ${portString} are blocked`);
+  }
+
   if (req.blobUrlEntry !== null) {
     if (req.method !== "GET") {
       throw new TypeError("Blob URL fetch only supports GET method");
