@@ -11,6 +11,7 @@ use deno_maybe_sync::new_rc;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonLoadError;
 use deno_package_json::PackageJsonRc;
+use deno_path_util::normalize_path;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_parent;
@@ -1001,9 +1002,34 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
         })?;
       Ok(link_dir_url)
     };
+  let (pattern_links, path_links): (Vec<_>, Vec<_>) = link_members
+    .iter()
+    .partition(|link| link_has_glob_chars(link));
+  let mut link_dir_urls = Vec::with_capacity(link_members.len());
+  for raw_member in path_links {
+    link_dir_urls.push((raw_member.clone(), resolve_link_dir_url(raw_member)?));
+  }
+  if !pattern_links.is_empty() {
+    let pattern_link_dir_urls = collect_link_config_folders(
+      sys,
+      pattern_links,
+      &root_config_file_directory_url,
+      &workspace_deno_json.dir_path(),
+    )
+    .map_err(|err| WorkspaceDiscoverErrorKind::ResolveLink {
+      base: root_config_file_directory_url.clone(),
+      link: "<glob>".to_string(),
+      source: err,
+    })?;
+    link_dir_urls.extend(
+      pattern_link_dir_urls
+        .into_iter()
+        .map(|link_dir_url| ("<glob>".to_string(), link_dir_url)),
+    );
+  }
+
   let mut final_config_folders = BTreeMap::new();
-  for raw_member in &link_members {
-    let link_dir_url = resolve_link_dir_url(raw_member)?;
+  for (raw_member, link_dir_url) in link_dir_urls {
     let link_configs = resolve_link_member_config_folders(
       sys,
       &link_dir_url,
@@ -1033,6 +1059,120 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
   }
 
   Ok(final_config_folders)
+}
+
+#[allow(
+  clippy::result_large_err,
+  reason = "ResolveWorkspaceLinkErrorKind is large by design"
+)]
+fn collect_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
+  sys: &TSys,
+  raw_links: Vec<&String>,
+  root_config_file_directory_url: &Url,
+  root_config_file_directory_path: &Path,
+) -> Result<Vec<Url>, ResolveWorkspaceLinkError> {
+  let patterns = raw_links
+    .into_iter()
+    .flat_map(|raw_link| {
+      ["deno.json", "deno.jsonc", "package.json"]
+        .into_iter()
+        .map(move |config_file_name| (raw_link, config_file_name))
+    })
+    .map(|(raw_link, config_file_name)| {
+      let link =
+        format!("{}{}", ensure_trailing_slash(raw_link), config_file_name);
+      link_to_path_or_pattern(
+        &link,
+        raw_link,
+        root_config_file_directory_url,
+        root_config_file_directory_path,
+      )
+    })
+    .collect::<Result<Vec<_>, _>>()?;
+  let config_paths = FileCollector::new(|_| true)
+    .ignore_git_folder()
+    .ignore_node_modules()
+    .collect_file_patterns(
+      sys,
+      &FilePatterns {
+        base: root_config_file_directory_path.to_path_buf(),
+        include: Some(PathOrPatternSet::new(patterns)),
+        exclude: PathOrPatternSet::new(Vec::new()),
+      },
+    );
+  let mut link_dir_urls = Vec::with_capacity(config_paths.len());
+  for config_path in config_paths {
+    if let Some(link_dir_path) = config_path.parent() {
+      link_dir_urls.push(url_from_directory_path(link_dir_path)?);
+    }
+  }
+  Ok(link_dir_urls)
+}
+
+#[allow(
+  clippy::result_large_err,
+  reason = "ResolveWorkspaceLinkErrorKind is large by design"
+)]
+fn link_to_path_or_pattern(
+  link: &str,
+  raw_link: &str,
+  root_config_file_directory_url: &Url,
+  root_config_file_directory_path: &Path,
+) -> Result<PathOrPattern, ResolveWorkspaceLinkErrorKind> {
+  if link.starts_with("file://") {
+    let url =
+      Url::parse(link).map_err(ResolveWorkspaceLinkErrorKind::InvalidLink)?;
+    let path = url_to_file_path(&url)?;
+    PathOrPattern::new(&path.to_string_lossy()).map_err(|source| {
+      ResolveWorkspaceLinkErrorKind::LinkToPattern {
+        base: root_config_file_directory_url.clone(),
+        link: raw_link.to_string(),
+        source,
+      }
+    })
+  } else if Path::new(link).is_absolute() {
+    PathOrPattern::new(link).map_err(|source| {
+      ResolveWorkspaceLinkErrorKind::LinkToPattern {
+        base: root_config_file_directory_url.clone(),
+        link: raw_link.to_string(),
+        source,
+      }
+    })
+  } else {
+    let (is_negated, link) = match link.strip_prefix('!') {
+      Some(link) => (true, link),
+      None => (false, link),
+    };
+    let has_glob_chars = link.chars().any(|c| matches!(c, '*' | '?'));
+    let link_path =
+      normalize_path(Cow::Owned(root_config_file_directory_path.join(link)));
+    if is_negated && !has_glob_chars {
+      return Ok(PathOrPattern::NegatedPath(link_path.into_owned()));
+    }
+    let link = if is_negated {
+      Cow::Owned(format!("!{}", link_path.to_string_lossy()))
+    } else {
+      link_path.to_string_lossy()
+    };
+    PathOrPattern::new(&link).map_err(|source| {
+      ResolveWorkspaceLinkErrorKind::LinkToPattern {
+        base: root_config_file_directory_url.clone(),
+        link: raw_link.to_string(),
+        source,
+      }
+    })
+  }
+}
+
+fn link_has_glob_chars(link: &str) -> bool {
+  if link.starts_with("http://")
+    || link.starts_with("https://")
+    || link.starts_with("npm:")
+    || link.starts_with("jsr:")
+  {
+    return false;
+  }
+  link.chars().any(|c| matches!(c, '*' | '?')) || link.starts_with('!')
 }
 
 fn resolve_link_member_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
