@@ -47,6 +47,23 @@ pub async fn clean(
   let factory = CliFactory::from_flags(flags);
   let deno_dir = factory.deno_dir()?;
   if deno_dir.root.exists() {
+    if clean_flags.dry_run {
+      let mut cleaner = FsCleaner::default();
+      cleaner.tally(&deno_dir.root)?;
+
+      log::info!(
+        "{} {} {}",
+        colors::green("Would remove"),
+        deno_dir.root.display(),
+        colors::gray(&format!(
+          "({} files, {})",
+          cleaner.files_removed + cleaner.dirs_removed,
+          display::human_size(cleaner.bytes_removed as f64)
+        ))
+      );
+      return Ok(());
+    }
+
     let no_of_files = walkdir::WalkDir::new(&deno_dir.root).into_iter().count();
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
     let progress_guard =
