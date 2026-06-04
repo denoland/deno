@@ -31,6 +31,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
+use import_map::ImportMapDiagnostic;
 use import_map::ImportMapErrorKind;
 use log::error;
 use lsp_types::Uri;
@@ -44,6 +45,7 @@ use tower_lsp::lsp_types as lsp;
 use super::analysis;
 use super::analysis::import_map_lookup;
 use super::client::Client;
+use super::config::ConfigWatchedFileType;
 use super::documents::Document;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
@@ -651,6 +653,8 @@ pub enum DenoDiagnostic {
   /// A `x-deno-warning` is associated with the specifier and should be displayed
   /// as a warning to the user.
   DenoWarn(String),
+  /// The import map file has invalid JSON or invalid import map entries.
+  ImportMapDiagnostic(String),
   /// An informational diagnostic that indicates an existing specifier can be
   /// remapped to an import map import specifier.
   ImportMapRemap { from: String, to: String },
@@ -680,6 +684,7 @@ impl DenoDiagnostic {
   fn code(&self) -> &str {
     match self {
       Self::DenoWarn(_) => "deno-warn",
+      Self::ImportMapDiagnostic(_) => "import-map-diagnostic",
       Self::ImportMapRemap { .. } => "import-map-remap",
       Self::InvalidAttributeType(_) => "invalid-attribute-type",
       Self::NoAttributeType => "no-attribute-type",
@@ -925,6 +930,7 @@ impl DenoDiagnostic {
 
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
+      Self::ImportMapDiagnostic(message) => (lsp::DiagnosticSeverity::ERROR, message.to_string(), None),
       Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
       Self::InvalidAttributeType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an attribute type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
@@ -1340,6 +1346,151 @@ fn diagnose_dependency(
   }
 }
 
+fn import_map_diagnostic_range(
+  document: &OpenDocument,
+  text: &str,
+  maybe_text: Option<&str>,
+) -> lsp::Range {
+  if let Some(text_to_find) = maybe_text
+    && let Some(index) = text.find(text_to_find)
+  {
+    let start = TextSize::from(index as u32);
+    let end = TextSize::from((index + text_to_find.len()) as u32);
+    return lsp::Range {
+      start: document.line_index.position_utf16(start),
+      end: document.line_index.position_utf16(end),
+    };
+  }
+  lsp::Range::default()
+}
+
+fn json_error_range(err: &serde_json::Error) -> lsp::Range {
+  let line = err.line().saturating_sub(1) as u32;
+  let character = err.column().saturating_sub(1) as u32;
+  lsp::Range {
+    start: lsp::Position { line, character },
+    end: lsp::Position { line, character },
+  }
+}
+
+fn import_map_parse_diagnostic_to_lsp(
+  diagnostic: &ImportMapDiagnostic,
+) -> lsp::Diagnostic {
+  DenoDiagnostic::ImportMapDiagnostic(diagnostic.to_string())
+    .to_lsp_diagnostic(&lsp::Range::default())
+}
+
+fn diagnose_import_map_entry_value(
+  diagnostics: &mut Vec<lsp::Diagnostic>,
+  document: &OpenDocument,
+  text: &str,
+  scope: &ModuleSpecifier,
+  snapshot: &StateSnapshot,
+  raw_value: Option<&str>,
+  value: Option<&ModuleSpecifier>,
+) {
+  let Some(value) = value else {
+    return;
+  };
+  let diagnostic = match value.scheme() {
+    "http" | "https" => {
+      let http_cache = snapshot.cache.for_specifier(Some(scope));
+      if http_cache.contains(value) {
+        return;
+      }
+      DenoDiagnostic::NoCache(value.clone())
+    }
+    "jsr" => {
+      let Ok(pkg_ref) = JsrPackageReqReference::from_specifier(value) else {
+        return;
+      };
+      let scoped_resolver = snapshot.resolver.get_scoped_resolver(Some(scope));
+      if scoped_resolver.jsr_to_resource_url(&pkg_ref).is_some() {
+        return;
+      }
+      let req = pkg_ref.into_inner().req;
+      DenoDiagnostic::NotInstalledJsr(req, value.clone())
+    }
+    "npm" => {
+      let Ok(pkg_ref) = NpmPackageReqReference::from_specifier(value) else {
+        return;
+      };
+      let req = pkg_ref.req().clone();
+      let scoped_resolver = snapshot.resolver.get_scoped_resolver(Some(scope));
+      if scoped_resolver
+        .as_maybe_managed_npm_resolver()
+        .is_some_and(|npm_resolver| npm_resolver.is_pkg_req_folder_cached(&req))
+      {
+        return;
+      }
+      DenoDiagnostic::NotInstalledNpm(req, value.clone())
+    }
+    _ => return,
+  };
+  let range = import_map_diagnostic_range(document, text, raw_value);
+  diagnostics.push(diagnostic.to_lsp_diagnostic(&range));
+}
+
+pub(crate) fn generate_import_map_diagnostics(
+  document: &Arc<OpenDocument>,
+  snapshot: &StateSnapshot,
+) -> Vec<lsp::Diagnostic> {
+  let specifier = uri_to_url(&document.uri);
+  let Some((scope, ConfigWatchedFileType::ImportMap)) =
+    snapshot.config.tree.watched_file_type(&specifier)
+  else {
+    return Vec::new();
+  };
+  let text = document.text.as_ref();
+  let parse_result = import_map::parse_from_json(specifier.clone(), text);
+  match parse_result {
+    Ok(import_map) => {
+      let mut diagnostics = import_map
+        .diagnostics
+        .iter()
+        .map(import_map_parse_diagnostic_to_lsp)
+        .collect::<Vec<_>>();
+      for entry in import_map.import_map.imports().entries() {
+        diagnose_import_map_entry_value(
+          &mut diagnostics,
+          document,
+          text,
+          scope,
+          snapshot,
+          entry.raw_value,
+          entry.value,
+        );
+      }
+      for scope_entry in import_map.import_map.scopes() {
+        for entry in scope_entry.imports.entries() {
+          diagnose_import_map_entry_value(
+            &mut diagnostics,
+            document,
+            text,
+            scope,
+            snapshot,
+            entry.raw_value,
+            entry.value,
+          );
+        }
+      }
+      diagnostics
+    }
+    Err(err) => match err.as_kind() {
+      ImportMapErrorKind::JsonParse(err) => vec![
+        DenoDiagnostic::ImportMapDiagnostic(format!(
+          "Unable to parse import map JSON: {err}"
+        ))
+        .to_lsp_diagnostic(&json_error_range(err)),
+      ],
+      _ => vec![
+        DenoDiagnostic::ImportMapDiagnostic(err.to_string())
+          .to_lsp_diagnostic(&lsp::Range::default()),
+      ],
+    },
+  }
+}
+
 async fn publish_document_diagnostics(
   document: &Arc<OpenDocument>,
   diagnostics: Vec<lsp::Diagnostic>,
@@ -1367,8 +1518,10 @@ async fn generate_document_diagnostics(
   >,
   token: &CancellationToken,
 ) -> Result<Vec<lsp::Diagnostic>, AnyError> {
+  let mut import_map_diagnostics =
+    generate_import_map_diagnostics(document, snapshot);
   if !document.is_diagnosable() {
-    return Ok(Vec::new());
+    return Ok(import_map_diagnostics);
   }
   let document_ = Document::Open(document.clone());
   let module = match snapshot.document_modules.primary_module(&document_) {
@@ -1403,6 +1556,10 @@ async fn generate_document_diagnostics(
     token,
   )
   .await
+  .map(|mut diagnostics| {
+    import_map_diagnostics.append(&mut diagnostics);
+    import_map_diagnostics
+  })
 }
 
 pub async fn generate_module_diagnostics(
@@ -1711,6 +1868,126 @@ mod tests {
         Some((doc.uri.as_ref().clone(), diagnostics))
       })
       .collect::<Vec<_>>()
+  }
+
+  fn generate_all_import_map_diagnostics(
+    snapshot: &StateSnapshot,
+  ) -> Vec<(Uri, Vec<lsp::Diagnostic>)> {
+    snapshot
+      .document_modules
+      .documents
+      .open_docs()
+      .map(|doc| {
+        (
+          doc.uri.as_ref().clone(),
+          generate_import_map_diagnostics(doc, snapshot),
+        )
+      })
+      .collect::<Vec<_>>()
+  }
+
+  #[tokio::test]
+  async fn test_import_map_document_diagnostics() {
+    let (temp_dir, snapshot) = setup(
+      &[(
+        "import-map.json",
+        r#"{
+  "imports": {
+    "remote": "https://deno.land/x/example/mod.ts",
+    "bad": null
+  },
+  "unexpected": true
+}"#,
+        1,
+        LanguageId::Json,
+      )],
+      Some((
+        "deno.json",
+        r#"{
+        "importMap": "./import-map.json"
+      }"#,
+      )),
+    )
+    .await;
+    let actual = generate_all_import_map_diagnostics(&snapshot);
+    assert_eq!(
+      json!(actual),
+      json!([
+        [
+          url_to_uri(&temp_dir.url().join("import-map.json").unwrap()).unwrap(),
+          [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "severity": 1,
+              "code": "import-map-diagnostic",
+              "source": "deno",
+              "message": "Invalid address \"null\" for the specifier key \"bad\". Addresses must be strings.",
+            },
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "severity": 1,
+              "code": "import-map-diagnostic",
+              "source": "deno",
+              "message": "Invalid top-level key \"unexpected\". Only \"imports\" and \"scopes\" can be present.",
+            },
+            {
+              "range": {
+                "start": { "line": 2, "character": 15 },
+                "end": { "line": 2, "character": 49 },
+              },
+              "severity": 1,
+              "code": "no-cache",
+              "source": "deno",
+              "message": "Uncached or missing remote URL: https://deno.land/x/example/mod.ts",
+              "data": {
+                "specifier": "https://deno.land/x/example/mod.ts",
+              },
+            },
+          ],
+        ],
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn test_import_map_document_json_parse_diagnostic() {
+    let (temp_dir, snapshot) = setup(
+      &[("import-map.json", r#"{ "imports": "#, 1, LanguageId::Json)],
+      Some((
+        "deno.json",
+        r#"{
+        "importMap": "./import-map.json"
+      }"#,
+      )),
+    )
+    .await;
+    let actual = generate_all_import_map_diagnostics(&snapshot);
+    assert_eq!(
+      json!(actual),
+      json!([
+        [
+          url_to_uri(&temp_dir.url().join("import-map.json").unwrap()).unwrap(),
+          [
+            {
+              "range": {
+                "start": { "line": 0, "character": 12 },
+                "end": { "line": 0, "character": 12 },
+              },
+              "severity": 1,
+              "code": "import-map-diagnostic",
+              "source": "deno",
+              "message": "Unable to parse import map JSON: EOF while parsing a value at line 1 column 13",
+            },
+          ],
+        ],
+      ]),
+    );
   }
 
   #[tokio::test]
