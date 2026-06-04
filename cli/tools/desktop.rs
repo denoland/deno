@@ -50,6 +50,7 @@ pub async fn desktop(
   let cli_options = factory.cli_options()?;
   let desktop_config = cli_options.start_dir.to_desktop_config()?.clone();
   let wef_resolver = Arc::new(WefBackendResolver::new(&factory)?);
+  let deno_dir_root = factory.deno_dir()?.root.clone();
 
   if let Some(output) = desktop_config.output
     && desktop_flags.output.is_none()
@@ -127,12 +128,25 @@ pub async fn desktop(
       log::info!("Building for target: {}", target);
       let mut desktop_flags = desktop_flags.clone();
       desktop_flags.target = Some(target.to_string());
-      compile_desktop(flags.clone(), desktop_flags, cli_options, &wef_resolver)
-        .await?;
+      compile_desktop(
+        flags.clone(),
+        desktop_flags,
+        cli_options,
+        &wef_resolver,
+        &deno_dir_root,
+      )
+      .await?;
     }
     Ok(())
   } else {
-    compile_desktop(flags, desktop_flags, cli_options, &wef_resolver).await
+    compile_desktop(
+      flags,
+      desktop_flags,
+      cli_options,
+      &wef_resolver,
+      &deno_dir_root,
+    )
+    .await
   }
 }
 
@@ -141,6 +155,7 @@ async fn compile_desktop(
   mut desktop_flags: DesktopFlags,
   cli_options: &Arc<CliOptions>,
   wef_resolver: &WefBackendResolver,
+  deno_dir_root: &Path,
 ) -> Result<(), AnyError> {
   // If the user asked for a `.dmg` (macOS) installer via `--output`, strip
   // the extension for the intermediate compile/bundle step and remember the
@@ -202,7 +217,7 @@ async fn compile_desktop(
   } else {
     None
   };
-  let _desktop_entrypoint_file = if desktop_flags.source_file == "." {
+  let desktop_entrypoint_file = if desktop_flags.source_file == "." {
     let cwd = &detection_cwd;
     if let Some(detection) = detected_framework.as_ref() {
       let entrypoint_code = detection.entrypoint_code.clone();
@@ -218,12 +233,29 @@ async fn compile_desktop(
         );
         flags.type_check_mode = TypeCheckMode::None;
       }
+      // Sweep stale entrypoints leaked by previous interrupted runs. The
+      // NamedTempFile below cleans up on drop, but a Ctrl-C delivers SIGINT
+      // to the whole process group (see `run_desktop_hmr`) and the parent
+      // exits without running destructors — so the dev loop would otherwise
+      // accumulate `.deno_desktop_entry-*.ts` files in the project root.
+      const ENTRY_PREFIX: &str = ".deno_desktop_entry-";
+      if let Ok(entries) = std::fs::read_dir(cwd) {
+        for entry in entries.flatten() {
+          if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(ENTRY_PREFIX)
+          {
+            let _ = std::fs::remove_file(entry.path());
+          }
+        }
+      }
       // Write a temporary entrypoint file. tempfile gives us a unique
       // name (no collision between concurrent `deno desktop` runs in
       // the same project) and 0600 mode (no symlink-pre-creation
       // attack); cleanup-on-drop replaces the explicit guard.
       let entrypoint_temp = tempfile::Builder::new()
-        .prefix(".deno_desktop_entry-")
+        .prefix(ENTRY_PREFIX)
         .suffix(".ts")
         .tempfile_in(cwd)
         .with_context(|| {
@@ -258,10 +290,12 @@ async fn compile_desktop(
     None
   };
 
-  let self_extracting = _desktop_entrypoint_file.is_some();
-  // `_desktop_entrypoint_file` (a NamedTempFile) keeps the file alive
-  // until end-of-scope and removes it on drop. Hold it past
-  // compile_binary by keeping it bound here.
+  let self_extracting = desktop_entrypoint_file.is_some();
+  // `desktop_entrypoint_file` (a NamedTempFile) keeps the file alive while
+  // `compile_binary` reads it. It is explicitly closed right after compilation
+  // (see below) rather than on drop: the long-running `run_desktop_hmr` wait
+  // exits on Ctrl-C without running destructors, so a drop-only guard would
+  // leak the entrypoint for the whole dev session.
 
   // No explicit icon, but a framework was detected — try to use its
   // favicon (e.g. `public/favicon.ico`, `app/icon.png`) as the app icon
@@ -299,9 +333,49 @@ async fn compile_desktop(
     }
   }
 
+  let inspector_requested = flags.inspect.is_some()
+    || flags.inspect_brk.is_some()
+    || flags.inspect_wait.is_some();
+
+  // In HMR/inspector mode the compiled dylib is a throwaway dev artifact: we
+  // load it directly rather than packaging it into a `.app`. Writing it into
+  // the cwd litters the project with `<name>.dylib`, its compile temp file
+  // (`<name>.dylib.tmp-*`) and the runtime auto-update sidecars
+  // (`.update-ok`, `.backup`). Redirect it into a stable per-project dir under
+  // `deno_dir` so the cwd stays clean. The path is keyed by the project dir so
+  // it's stable across relaunches (the auto-update / rollback sentinels rely on
+  // a consistent dylib path).
+  let hmr_output_override = if desktop_flags.hmr || inspector_requested {
+    let name = desktop_flags
+      .output
+      .as_deref()
+      .map(Path::new)
+      .and_then(|p| p.file_stem())
+      .map(|s| s.to_string_lossy().into_owned())
+      .or_else(|| {
+        detection_cwd
+          .file_name()
+          .map(|s| s.to_string_lossy().into_owned())
+      })
+      .filter(|s| !s.is_empty())
+      .unwrap_or_else(|| "app".to_string());
+    let key = faster_hex::hex_string(&sha2::Sha256::digest(
+      detection_cwd.to_string_lossy().as_bytes(),
+    ));
+    let dir = deno_dir_root.join("desktop").join(&key[..16]);
+    std::fs::create_dir_all(&dir).with_context(|| {
+      format!("failed to create desktop dev dir {}", dir.display())
+    })?;
+    Some(dir.join(name).to_string_lossy().into_owned())
+  } else {
+    None
+  };
+
   let compile_flags = CompileFlags {
     source_file: desktop_flags.source_file.clone(),
-    output: desktop_flags.output.clone(),
+    output: hmr_output_override
+      .clone()
+      .or_else(|| desktop_flags.output.clone()),
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
     no_terminal: false,
@@ -324,9 +398,13 @@ async fn compile_desktop(
     super::compile::compile_binary(Arc::new(temp_flags), compile_flags, true)
       .await?;
 
-  let inspector_requested = flags.inspect.is_some()
-    || flags.inspect_brk.is_some()
-    || flags.inspect_wait.is_some();
+  // The temp entrypoint is embedded in the compiled dylib's VFS now; nothing
+  // downstream reads it from disk. Remove it deterministically here so the
+  // long-running HMR session (which exits on Ctrl-C without running the
+  // drop guard) can't leave it behind in the project root.
+  if let Some(entrypoint_file) = desktop_entrypoint_file {
+    let _ = entrypoint_file.close();
+  }
 
   if desktop_flags.hmr || inspector_requested {
     let backend = desktop_flags.backend.as_deref().unwrap_or("webview");
