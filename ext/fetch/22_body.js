@@ -58,6 +58,12 @@ const {
 /** @type {WeakMap<ReadableStream<Uint8Array>, number>} */
 const staticBodyLength = new SafeWeakMap();
 
+// Set on a resource-backed response body stream to lazily run a one-shot
+// callback the first time the body is actually engaged (read or handed to a
+// reader). Used by fetch to defer starting the connection-closed watcher so an
+// unconsumed response body can still be garbage-collected promptly.
+const _onStreamAccess = Symbol("onStreamAccess");
+
 /**
  * @param {Uint8Array | string} chunk
  * @returns {Uint8Array}
@@ -115,7 +121,13 @@ class InnerBody {
         this.streamOrStatic = stream;
       }
     }
-    return this.streamOrStatic;
+    const stream = this.streamOrStatic;
+    const onAccess = stream[_onStreamAccess];
+    if (onAccess !== undefined) {
+      stream[_onStreamAccess] = undefined;
+      onAccess();
+    }
+    return stream;
   }
 
   /**
@@ -583,5 +595,5 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],
 );
 
-return { extractBody, InnerBody, mixinBody, packageData };
+return { _onStreamAccess, extractBody, InnerBody, mixinBody, packageData };
 })();

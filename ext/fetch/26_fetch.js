@@ -23,6 +23,7 @@ const {
   PromisePrototypeCatch,
   SafeArrayIterator,
   SafePromisePrototypeFinally,
+  SafeWeakRef,
   String,
   StringPrototypeEndsWith,
   StringPrototypeIndexOf,
@@ -34,6 +35,7 @@ const {
   TypeError,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
+  WeakRefPrototypeDeref,
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -45,7 +47,7 @@ const {
   ReadableStreamPrototype,
   resourceForReadableStream,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
-const { extractBody, InnerBody } = core.loadExtScript(
+const { _onStreamAccess, extractBody, InnerBody } = core.loadExtScript(
   "ext:deno_fetch/22_body.js",
 );
 const { processUrlList, Request, toInnerRequest } = core.loadExtScript(
@@ -256,6 +258,33 @@ function opFetchSend(rid) {
  * @param {AbortSignal} [terminator]
  * @returns {ReadableStream<Uint8Array>}
  */
+// Proactively watch for the connection closing/erroring so that
+// `reader.closed` rejects (and `read()` doesn't hang) on a network error that
+// happens after the response headers were received, even when the consumer
+// isn't actively reading the body.
+//
+// The readable stream is referenced only weakly and the op promise is unref'd,
+// so this watcher neither keeps the event loop alive nor prevents the response
+// body from being garbage-collected (and its resource finalized).
+// See https://github.com/denoland/deno/issues/16246
+function watchResponseBodyClosed(responseBodyRid, readableRef) {
+  const closedPromise = op_fetch_response_closed(responseBodyRid);
+  core.unrefOpPromise(closedPromise);
+  PromisePrototypeThen(
+    closedPromise,
+    // Resolved: the body finished cleanly (or was torn down). The stream is
+    // closed through the normal read EOF path, so there is nothing to do here.
+    undefined,
+    (err) => {
+      const stream = WeakRefPrototypeDeref(readableRef);
+      if (stream !== undefined) {
+        errorReadableStream(stream, err);
+      }
+      core.tryClose(responseBodyRid);
+    },
+  );
+}
+
 function createResponseBodyStream(responseBodyRid, terminator) {
   const readable = readableStreamForRid(responseBodyRid);
 
@@ -267,21 +296,15 @@ function createResponseBodyStream(responseBodyRid, terminator) {
   // TODO(lucacasonato): clean up registration
   terminator[abortSignal.add](onAbort);
 
-  // Proactively watch for the connection closing/erroring so that
-  // `reader.closed` rejects (and `read()` doesn't hang) on a network error
-  // that happens after the response headers were received, even when the
-  // consumer isn't actively reading the body.
-  // See https://github.com/denoland/deno/issues/16246
-  PromisePrototypeThen(
-    op_fetch_response_closed(responseBodyRid),
-    // Resolved: the body finished cleanly. The stream is closed through the
-    // normal read EOF path, so there is nothing to do here.
-    undefined,
-    (err) => {
-      errorReadableStream(readable, err);
-      core.tryClose(responseBodyRid);
-    },
-  );
+  // Start the connection-closed watcher lazily, only once the body is actually
+  // engaged (read or handed to a reader). Creating the `WeakRef` eagerly would
+  // keep the stream alive for an extra GC cycle (per `WeakRef` semantics),
+  // delaying finalization of a response body that is never consumed. The thunk
+  // is stored on the stream itself (a collectable self-reference), so it does
+  // not keep the stream alive on its own.
+  readable[_onStreamAccess] = () => {
+    watchResponseBodyClosed(responseBodyRid, new SafeWeakRef(readable));
+  };
 
   return readable;
 }

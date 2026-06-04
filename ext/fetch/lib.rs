@@ -752,15 +752,25 @@ struct BodyReaderShared {
 }
 
 impl BodyReaderShared {
-  /// Whether the body has terminated and all buffered data has been consumed,
-  /// i.e. it is safe for `closed` to resolve/reject.
-  fn drained_terminal(&self) -> Option<BodyTerminal> {
+  /// The terminal status, if `closed` can settle now.
+  ///
+  /// A clean termination settles immediately even if buffered data is still
+  /// pending (future reads will serve it); settling promptly lets the watcher
+  /// op release its reference to the JS stream so an unconsumed response can be
+  /// garbage-collected. An error only settles once all buffered data has been
+  /// consumed, so a read-first consumer still receives its data before the
+  /// stream is errored.
+  fn settled_terminal(&self) -> Option<BodyTerminal> {
     let terminal = self.terminal.borrow();
     let result = terminal.as_ref()?;
-    if self.buffered.get() == 0 && self.leftover.borrow().is_none() {
-      Some(result.clone())
-    } else {
-      None
+    match result {
+      Ok(()) => Some(Ok(())),
+      Err(_)
+        if self.buffered.get() == 0 && self.leftover.borrow().is_none() =>
+      {
+        Some(result.clone())
+      }
+      Err(_) => None,
     }
   }
 }
@@ -941,7 +951,7 @@ impl FetchResponseResource {
     // down (set by `BodyReader::drop`).
     drop(self);
     loop {
-      if let Some(result) = shared.drained_terminal() {
+      if let Some(result) = shared.settled_terminal() {
         return match result {
           Ok(()) => Ok(()),
           Err(err) => Err(JsErrorBox::type_error(err)),
