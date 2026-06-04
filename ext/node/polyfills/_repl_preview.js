@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-lint-ignore-file prefer-primordials
-
 // Tiny IIFE-wrapped helper for `node:repl`'s inline preview path. Lives
 // here (rather than in `repl.ts`) because the deno_node ops we need are
 // only reachable from scripts loaded via `core.loadExtScript` -- those
@@ -12,7 +10,17 @@
 // `libs/core/01_core.js`.
 
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypePush,
+  JSONParse,
+  JSONStringify,
+  MapPrototypeDelete,
+  MapPrototypeGet,
+  MapPrototypeSet,
+  SafeArrayIterator,
+  SafeMap,
+} = primordials;
 const {
   op_node_repl_inspector_connect,
   op_inspector_dispatch,
@@ -46,21 +54,21 @@ const {
 function createPreviewSession() {
   let session;
   let nextId = 1;
-  const responses = new Map();
+  const responses = new SafeMap();
   const notifications = [];
 
   try {
     session = op_node_repl_inspector_connect((messageStr) => {
       let parsed;
       try {
-        parsed = JSON.parse(messageStr);
+        parsed = JSONParse(messageStr);
       } catch {
         return;
       }
       if (parsed.id !== undefined) {
-        responses.set(parsed.id, parsed);
+        MapPrototypeSet(responses, parsed.id, parsed);
       } else if (parsed.method) {
-        notifications.push(parsed);
+        ArrayPrototypePush(notifications, parsed);
       }
     });
   } catch {
@@ -72,12 +80,12 @@ function createPreviewSession() {
     const message = { id, method };
     if (params) message.params = params;
     try {
-      op_inspector_dispatch(session, JSON.stringify(message));
+      op_inspector_dispatch(session, JSONStringify(message));
     } catch {
       return undefined;
     }
-    const res = responses.get(id);
-    responses.delete(id);
+    const res = MapPrototypeGet(responses, id);
+    MapPrototypeDelete(responses, id);
     return res;
   }
 
@@ -93,7 +101,7 @@ function createPreviewSession() {
   // `executionContextCreated` notification v8 fired during
   // `Runtime.enable`.
   let mainContextId;
-  for (const n of notifications) {
+  for (const n of new SafeArrayIterator(notifications)) {
     if (n.method !== "Runtime.executionContextCreated") continue;
     const ctx = n.params && n.params.context;
     if (!ctx) continue;

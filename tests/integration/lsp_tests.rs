@@ -238,6 +238,84 @@ fn unadded_dependency_message_with_import_map() {
 }
 
 #[test(timeout = 300)]
+fn lsp_doc_lint_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // A publishable package: `deno doc --lint` checks its export entrypoints for
+  // missing documentation.
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}"#,
+  );
+  temp_dir.write(
+    "mod.ts",
+    "export function add(a: number, b: number) {\n  return a + b;\n}\n",
+  );
+  // A non-exported module should not be doc linted.
+  temp_dir.write(
+    "other.ts",
+    "export function sub(a: number, b: number) {\n  return a - b;\n}\n",
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let mod_uri = url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": mod_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("mod.ts"),
+    }
+  }));
+  let messages = diagnostics
+    .for_file(&mod_uri)
+    .into_iter()
+    .filter(|d| d.source.as_deref() == Some("deno-doc"))
+    .map(|d| d.message)
+    .collect::<Vec<_>>();
+  assert!(
+    messages
+      .iter()
+      .any(|m| m.contains("missing JSDoc documentation")),
+    "expected a missing-jsdoc diagnostic, got: {messages:#?}"
+  );
+  assert!(
+    messages
+      .iter()
+      .any(|m| m.contains("missing an explicit return type")),
+    "expected a missing-return-type diagnostic, got: {messages:#?}"
+  );
+
+  // A module that isn't an export entrypoint should have no doc lint
+  // diagnostics.
+  let other_uri =
+    url_to_uri(&temp_dir.url().join("other.ts").unwrap()).unwrap();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": other_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("other.ts"),
+    }
+  }));
+  assert!(
+    diagnostics
+      .for_file(&other_uri)
+      .into_iter()
+      .all(|d| d.source.as_deref() != Some("deno-doc")),
+    "non-export module should not be doc linted"
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn unadded_dependency_message() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -12625,30 +12703,12 @@ fn lsp_jupyter_import_map_and_diagnostics() {
             "source": "deno-ts",
             "message": "Type 'number' is not assignable to type 'string'.",
           },
-          // TODO(nayeemrmn): This only errors for classic scripts which we use
-          // for notebook cells. Figure out a workaround.
-          {
-            "range": {
-              "start": { "line": 12, "character": 16 },
-              "end": { "line": 12, "character": 20 },
-            },
-            "severity": 1,
-            "code": 2451,
-            "source": "deno-ts",
-            "message": "Cannot redeclare block-scoped variable 'name'.",
-            "relatedInformation": [
-              {
-                "location": {
-                  "uri": "deno:/asset/lib.deno.window.d.ts",
-                  "range": {
-                    "start": { "line": 616, "character": 12 },
-                    "end": { "line": 616, "character": 16 },
-                  },
-                },
-                "message": "'name' was also declared here.",
-              },
-            ],
-          },
+          // Note: `const name = "Hello"` does not error here even though it
+          // shadows the ambient `name` global from `lib.deno.window.d.ts`.
+          // Notebook cells are classic scripts, so such a redeclaration would
+          // normally produce a spurious error; we filter it out because the
+          // conflicting declaration is in a default library.
+          // See https://github.com/denoland/deno/issues/22628.
         ],
         "version": 1,
       },
@@ -12937,6 +12997,53 @@ fn lsp_jupyter_untitled_notebook() {
   assert!(
     messages.iter().all(|m| m.diagnostics.is_empty()),
     "{:?}",
+    messages
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_jupyter_untitled_notebook_workspace_scope() {
+  use std::str::FromStr;
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // An unsaved (untitled) notebook has no path on disk, so its cells should
+  // still resolve against the workspace's `deno.json` — including its import
+  // map. Otherwise imports like `"exports"` below would be flagged as missing
+  // dependencies, producing TS/Deno errors that go away once the notebook is
+  // saved into the workspace. Regression test for
+  // https://github.com/denoland/deno/issues/22628.
+  temp_dir.write(
+    "deno.json",
+    json!({ "imports": { "exports": "./exports.ts" } }).to_string(),
+  );
+  temp_dir.write("./exports.ts", "export const someExport = 1;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let notebook_uri = lsp::Uri::from_str("untitled:Untitled-1.ipynb").unwrap();
+  let cell_uri =
+    lsp::Uri::from_str("vscode-notebook-cell:Untitled-1.ipynb#W0sZmlsZQ%3D%3D")
+      .unwrap();
+  let diagnostics = client.notebook_did_open(
+    notebook_uri,
+    1,
+    vec![json!({
+      "uri": cell_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        // Resolved via the workspace import map.
+        "import { someExport } from \"exports\";\n",
+        // `Deno` global is available.
+        "const contents = await Deno.readTextFile(\"\");\n",
+        "console.log(someExport, contents);\n",
+      ),
+    })],
+  );
+  let messages = diagnostics.all_messages();
+  assert!(
+    messages.iter().all(|m| m.diagnostics.is_empty()),
+    "{:#?}",
     messages
   );
   client.shutdown();
@@ -21013,6 +21120,116 @@ fn lsp_will_rename_files_move_to_different_dir() {
                 "end": { "line": 0, "character": 18 },
               },
               "newText": "../other.ts",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/20583.
+// TODO(nayeemrmn): Enable for tsgo when implemented upstream:
+// https://github.com/microsoft/typescript-go/issues/2244
+#[test(timeout = 300)]
+fn lsp_will_rename_files_preserves_import_map_alias() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "@b/": "./b/",
+      },
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file("a/foo.ts", "import \"@b/bar.ts\";\n");
+  temp_dir.write("b/bar.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": temp_dir.path().join("b/bar.ts").uri_file(),
+          "newUri": temp_dir.path().join("b/baz.ts").uri_file(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": { "uri": file.uri(), "version": 1 },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 8 },
+                "end": { "line": 0, "character": 17 },
+              },
+              "newText": "@b/baz.ts",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
+/// Regression test for https://github.com/denoland/deno/issues/20583
+/// with scoped import map entries.
+// TODO(nayeemrmn): Enable for tsgo when implemented upstream:
+// https://github.com/microsoft/typescript-go/issues/2244
+#[test(timeout = 300)]
+fn lsp_will_rename_files_preserves_import_map_scope_alias() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "scopes": {
+        "./a/": { "b/": "./b/" },
+        "./b/": { "a/": "./a/" },
+      },
+    })
+    .to_string(),
+  );
+  let file = temp_dir.source_file("a/foo.ts", "import \"b/bar.ts\";\n");
+  temp_dir.write("b/bar.ts", "");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "workspace/willRenameFiles",
+    json!({
+      "files": [
+        {
+          "oldUri": temp_dir.path().join("b/bar.ts").uri_file(),
+          "newUri": temp_dir.path().join("b/baz.ts").uri_file(),
+        },
+      ],
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "documentChanges": [
+        {
+          "textDocument": { "uri": file.uri(), "version": 1 },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 0, "character": 8 },
+                "end": { "line": 0, "character": 16 },
+              },
+              "newText": "b/baz.ts",
             },
           ],
         },

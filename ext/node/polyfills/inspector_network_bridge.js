@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-lint-ignore-file prefer-primordials
-
 // Installs `internals.__inspectorNetwork`, the bridge that other
 // extensions (ext/fetch, http, websocket) use to emit `Network.*` CDP
 // events without depending on ext/node directly. It needs to be
@@ -18,8 +16,11 @@ const {
   op_inspector_enabled,
 } = core.ops;
 const {
+  ArrayBufferPrototype,
   JSONStringify,
   ObjectAssign,
+  ObjectPrototypeIsPrototypeOf,
+  TypeError,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
@@ -29,7 +30,11 @@ function encodeNetworkData(data) {
   if (data == null) return undefined;
   if (typeof data === "string") {
     const buf = core.encode(data);
-    return op_base64_encode_from_buffer(buf, 0, buf.byteLength);
+    return op_base64_encode_from_buffer(
+      buf,
+      0,
+      TypedArrayPrototypeGetByteLength(buf),
+    );
   }
   if (TypedArrayPrototypeGetSymbolToStringTag(data) === "Uint8Array") {
     return op_base64_encode_from_buffer(
@@ -38,9 +43,13 @@ function encodeNetworkData(data) {
       TypedArrayPrototypeGetByteLength(data),
     );
   }
-  if (data instanceof ArrayBuffer) {
+  if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
     const view = new Uint8Array(data);
-    return op_base64_encode_from_buffer(view, 0, view.byteLength);
+    return op_base64_encode_from_buffer(
+      view,
+      0,
+      TypedArrayPrototypeGetByteLength(view),
+    );
   }
   throw new TypeError(
     "Expected data to be a string, Buffer, Uint8Array, or ArrayBuffer",
@@ -71,7 +80,7 @@ function emitFrame(eventName, params) {
     let view = null;
     if (TypedArrayPrototypeGetSymbolToStringTag(payload) === "Uint8Array") {
       view = payload;
-    } else if (payload instanceof ArrayBuffer) {
+    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, payload)) {
       view = new Uint8Array(payload);
     }
     if (view !== null) {

@@ -623,7 +623,7 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
     {
       use std::os::windows::prelude::MetadataExt;
 
-      use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
+      use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY;
       if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
         fs::remove_dir(path)
       } else {
@@ -638,6 +638,26 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
 }
 
 fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
+  // Guard against copying a file onto itself. Otherwise the destination is
+  // opened with truncation (or unlinked) before the source is read, which
+  // silently empties the file. Match `cp` behavior and error instead. The
+  // `to` path is canonicalized first so the common case where it does not yet
+  // exist fails fast and skips canonicalizing `from` entirely; the full check
+  // only runs when overwriting an existing file, and it also catches
+  // equivalent paths such as `./`, `..` and symlinks.
+  if let Ok(to_real) = to.canonicalize()
+    && let Ok(from_real) = from.canonicalize()
+    && from_real == to_real
+  {
+    return Err(
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "Source and destination paths refer to the same file",
+      )
+      .into(),
+    );
+  }
+
   #[cfg(target_os = "macos")]
   {
     use std::ffi::CString;
@@ -937,8 +957,8 @@ fn open_for_stat_windows(
 ) -> io::Result<fs::File> {
   use std::os::windows::fs::OpenOptionsExt;
 
-  use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
-  use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
+  use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+  use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
 
   let reparse_flag = if do_not_follow_symlink {
     FILE_FLAG_OPEN_REPARSE_POINT
@@ -1318,7 +1338,9 @@ pub fn open_options_for_checked_path(
     _ = path; // not used on windows
     // allow opening directories
     use std::os::windows::fs::OpenOptionsExt;
-    opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    opts.custom_flags(
+      windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS,
+    );
   }
 
   #[cfg(unix)]

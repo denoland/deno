@@ -881,7 +881,7 @@ impl Inner {
 
     // exit this process when the parent is lost
     if let Some(parent_pid) = params.process_id {
-      parent_process_checker::start(parent_pid)
+      parent_process_checker::start(parent_pid);
     }
 
     let version = format!(

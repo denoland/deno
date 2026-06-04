@@ -1,11 +1,34 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypeShift,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  ArrayPrototypeUnshift,
+  Error,
+  FunctionPrototypeApply,
+  FunctionPrototypeCall,
+  JSONStringify,
+  Number,
+  ObjectAssign,
+  ObjectDefineProperty,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  Promise,
+  RegExpPrototypeExec,
+  SafeRegExp,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIndexOf,
+  StringPrototypeSplit,
+  SymbolAsyncDispose,
+} = primordials;
 const { op_get_env_no_permission_check } = core.ops;
 const lazyTls = core.createLazyLoader("node:tls");
 const lazyNet = core.createLazyLoader("node:net");
@@ -29,7 +52,9 @@ const { Agent: HttpAgent } = core.createLazyLoader("node:_http_agent")();
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 
 const tls = lazyTls().default;
@@ -54,7 +79,7 @@ function Server(
   opts: any,
   requestListener?: any,
 ) {
-  if (!(this instanceof Server)) {
+  if (!ObjectPrototypeIsPrototypeOf(Server.prototype, this)) {
     return new (Server as any)(opts, requestListener);
   }
 
@@ -72,9 +97,9 @@ function Server(
     }
   }
 
-  storeHTTPOptions.call(this, opts);
+  FunctionPrototypeCall(storeHTTPOptions, this, opts);
 
-  tls.Server.call(this, {
+  FunctionPrototypeCall(tls.Server, this, {
     noDelay: true,
     ALPNProtocols,
     ...opts,
@@ -86,18 +111,21 @@ function Server(
     this.addListener("request", requestListener);
   }
 
-  this.addListener("tlsClientError", function (this: any, err: any, conn: any) {
-    if (!this.emit("clientError", err, conn)) {
-      conn.destroy(err);
-    }
-  });
+  this.addListener(
+    "tlsClientError",
+    function (this: any, err: any, conn: any) {
+      if (!this.emit("clientError", err, conn)) {
+        conn.destroy(err);
+      }
+    },
+  );
 
   this.timeout = 0;
   this.maxHeadersCount = null;
   this.on("listening", setupConnectionsTracking);
 }
-Object.setPrototypeOf(Server.prototype, tls.Server.prototype);
-Object.setPrototypeOf(Server, tls.Server);
+ObjectSetPrototypeOf(Server.prototype, tls.Server.prototype);
+ObjectSetPrototypeOf(Server, tls.Server);
 
 Server.prototype.closeAllConnections = HttpServer.prototype.closeAllConnections;
 Server.prototype.closeIdleConnections =
@@ -113,17 +141,21 @@ Server.prototype.listen = function listen(this: any, ...args: any[]) {
   const applied = applyAddressOverride();
   switch (applied.mode) {
     case "none":
-      return net.Server.prototype.listen.apply(this, args);
+      return FunctionPrototypeApply(net.Server.prototype.listen, this, args);
     case "tcp": {
       let cb: any;
       const last = args[args.length - 1];
       if (typeof last === "function") {
         cb = last;
-        args = args.slice(0, -1);
+        args = ArrayPrototypeSlice(args, 0, -1);
       }
       const rewritten: any[] = [{ host: applied.host, port: applied.port }];
-      if (cb) rewritten.push(cb);
-      return net.Server.prototype.listen.apply(this, rewritten);
+      if (cb) ArrayPrototypePush(rewritten, cb);
+      return FunctionPrototypeApply(
+        net.Server.prototype.listen,
+        this,
+        rewritten,
+      );
     }
     case "override-only": {
       let cb: any;
@@ -141,18 +173,18 @@ Server.prototype.listen = function listen(this: any, ...args: any[]) {
     }
     case "duplicate": {
       startOverrideListener(this, applied.override, _connectionListener);
-      return net.Server.prototype.listen.apply(this, args);
+      return FunctionPrototypeApply(net.Server.prototype.listen, this, args);
     }
   }
 };
 
 Server.prototype.close = function close(this: any) {
   httpServerPreClose(this);
-  tls.Server.prototype.close.apply(this, arguments);
+  FunctionPrototypeApply(tls.Server.prototype.close, this, arguments);
   return this;
 };
 
-Server.prototype[Symbol.asyncDispose] = async function (this: any) {
+Server.prototype[SymbolAsyncDispose] = async function (this: any) {
   await new Promise<void>((resolve, reject) => {
     this.close((err: any) => (err ? reject(err) : resolve()));
   });
@@ -176,14 +208,14 @@ function get(...args: any[]) {
 // invoked without `new`, matching Node:
 // https://github.com/nodejs/node/blob/main/lib/https.js
 function Agent(this: any, options: any) {
-  if (!(this instanceof Agent)) {
+  if (!ObjectPrototypeIsPrototypeOf(Agent.prototype, this)) {
     return new (Agent as any)(options);
   }
 
   options = { __proto__: null, ...options };
   options.defaultPort ??= 443;
   options.protocol ??= "https:";
-  HttpAgent.call(this, options);
+  FunctionPrototypeCall(HttpAgent, this, options);
 
   this.maxCachedSessions = this.options.maxCachedSessions;
   if (this.maxCachedSessions === undefined) {
@@ -195,11 +227,18 @@ function Agent(this: any, options: any) {
     list: [],
   };
 }
-Object.setPrototypeOf(Agent.prototype, HttpAgent.prototype);
-Object.setPrototypeOf(Agent, HttpAgent);
+ObjectSetPrototypeOf(Agent.prototype, HttpAgent.prototype);
+ObjectSetPrototypeOf(Agent, HttpAgent);
 
-Agent.prototype.getName = function getName(this: any, options: any = {}) {
-  let name = HttpAgent.prototype.getName.call(this, options);
+Agent.prototype.getName = function getName(
+  this: any,
+  options: any = { __proto__: null },
+) {
+  let name = FunctionPrototypeCall(
+    HttpAgent.prototype.getName,
+    this,
+    options,
+  );
 
   name += ":";
   if (options.ca) name += options.ca;
@@ -259,7 +298,7 @@ Agent.prototype.getName = function getName(this: any, options: any = {}) {
   if (options.sessionIdContext) name += options.sessionIdContext;
 
   name += ":";
-  if (options.sigalgs) name += JSON.stringify(options.sigalgs);
+  if (options.sigalgs) name += JSONStringify(options.sigalgs);
 
   name += ":";
   if (options.privateKeyIdentifier) name += options.privateKeyIdentifier;
@@ -287,11 +326,11 @@ Agent.prototype._cacheSession = function _cacheSession(
   }
 
   if (this._sessionCache.list.length >= this.maxCachedSessions) {
-    const oldKey = this._sessionCache.list.shift()!;
+    const oldKey = ArrayPrototypeShift(this._sessionCache.list)!;
     delete this._sessionCache.map[oldKey];
   }
 
-  this._sessionCache.list.push(key);
+  ArrayPrototypePush(this._sessionCache.list, key);
   this._sessionCache.map[key] = session;
 };
 
@@ -299,10 +338,10 @@ Agent.prototype._evictSession = function _evictSession(
   this: any,
   key: string,
 ) {
-  const index = this._sessionCache.list.indexOf(key);
+  const index = ArrayPrototypeIndexOf(this._sessionCache.list, key);
   if (index === -1) return;
 
-  this._sessionCache.list.splice(index, 1);
+  ArrayPrototypeSplice(this._sessionCache.list, index, 1);
   delete this._sessionCache.map[key];
 };
 
@@ -320,7 +359,7 @@ Agent.prototype.createConnection = function createConnection(
     const opts: any = {};
     for (let i = 1; i < args.length; i++) {
       if (args[i] !== null && typeof args[i] === "object") {
-        Object.assign(opts, args[i]);
+        ObjectAssign(opts, args[i]);
       }
     }
     if (typeof args[0] === "number") opts.port = args[0];
@@ -380,17 +419,20 @@ Agent.prototype.createConnection = function createConnection(
 //   - non-2xx CONNECT responses as ERR_HTTP_TUNNEL_FAILED-ish errors
 //   - request/agent timeouts during CONNECT with a message containing
 //     "timed out after Nms" so tests for tunnel-timeout match
+const STATUS_LINE_RE = new SafeRegExp(/^HTTP\/1\.\d\s+(\d{3})/);
+
 function openCONNECTTunnel(agent: any, options: any, cb: any) {
   const proxy = options._proxy;
   const targetHost = options._proxyTargetHost;
   const targetPort = options._proxyTargetPort;
-  const hostHeader = targetHost.indexOf(":") !== -1 &&
-      targetHost.charCodeAt(0) !== 91
+  const hostHeader = StringPrototypeIndexOf(targetHost, ":") !== -1 &&
+      StringPrototypeCharCodeAt(targetHost, 0) !== 91
     ? `[${targetHost}]:${targetPort}`
     : `${targetHost}:${targetPort}`;
 
   let tunnelSocket: any;
-  const timeout = options.timeout || (agent.options && agent.options.timeout) ||
+  const timeout = options.timeout ||
+    (agent.options && agent.options.timeout) ||
     0;
 
   // Initial TCP/TLS connection to the proxy itself.
@@ -485,7 +527,9 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
     // Buffer raw bytes until we've parsed the response status line + headers.
     let buf = Buffer.alloc(0);
     function onData(chunk: any) {
+      // deno-lint-ignore prefer-primordials -- Buffer.concat is a Buffer static
       buf = Buffer.concat([buf, chunk]);
+      // deno-lint-ignore prefer-primordials -- Buffer.prototype.indexOf
       const idx = buf.indexOf("\r\n\r\n");
       if (idx === -1) {
         // Need more data; if too much is buffered without headers, bail.
@@ -499,10 +543,12 @@ function openCONNECTTunnel(agent: any, options: any, cb: any) {
       waitingForTunnelResponse = false;
       tunnelSocket.removeListener("end", failUnexpectedEnd);
       tunnelSocket.removeListener("close", failUnexpectedEnd);
+      // deno-lint-ignore prefer-primordials -- Buffer.prototype.slice/toString
       const headerStr = buf.slice(0, idx).toString("ascii");
+      // deno-lint-ignore prefer-primordials -- Buffer.prototype.slice
       const remainder = buf.slice(idx + 4);
-      const statusLine = headerStr.split("\r\n", 1)[0];
-      const m = /^HTTP\/1\.\d\s+(\d{3})/.exec(statusLine);
+      const statusLine = StringPrototypeSplit(headerStr, "\r\n", 1)[0];
+      const m = RegExpPrototypeExec(STATUS_LINE_RE, statusLine);
       if (!m) {
         fail(
           new ERR_PROXY_TUNNEL(
@@ -605,7 +651,7 @@ function request(...args: any[]) {
   let options: any = {};
 
   if (typeof args[0] === "string") {
-    const urlStr = args.shift();
+    const urlStr = ArrayPrototypeShift(args);
     // Match Node: surface invalid URL strings as ERR_INVALID_URL.
     let parsed;
     try {
@@ -614,16 +660,16 @@ function request(...args: any[]) {
       throw new ERR_INVALID_URL(urlStr);
     }
     options = urlToHttpOptions(parsed);
-  } else if (args[0] instanceof URL) {
-    options = urlToHttpOptions(args.shift());
+  } else if (ObjectPrototypeIsPrototypeOf(URL.prototype, args[0])) {
+    options = urlToHttpOptions(ArrayPrototypeShift(args));
   }
 
   if (args[0] && typeof args[0] !== "function") {
-    Object.assign(options, args.shift());
+    ObjectAssign(options, ArrayPrototypeShift(args));
   }
 
   options._defaultAgent = globalAgent;
-  args.unshift(options);
+  ArrayPrototypeUnshift(args, options);
 
   return new ClientRequest(args[0], args[1], args[2]);
 }
@@ -634,7 +680,10 @@ function request(...args: any[]) {
 // stack only shows our polyfill path and the agent reports `protocol:
 // "http:"`, causing `http.ClientRequest` to throw `ERR_INVALID_PROTOCOL`
 // against an `https:` URL. Encode the marker in the function name.
-Object.defineProperty(request, "name", { value: "node:https:request" });
+ObjectDefineProperty(request, "name", {
+  __proto__: null,
+  value: "node:https:request",
+});
 
 return {
   Agent,

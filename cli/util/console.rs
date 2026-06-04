@@ -178,13 +178,12 @@ impl Drop for RawMode {
 
 #[cfg(windows)]
 mod windows_vt_input {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::um::consoleapi::GetConsoleMode;
-  use winapi::um::consoleapi::SetConsoleMode;
-  use winapi::um::processenv::GetStdHandle;
-  use winapi::um::winbase::STD_INPUT_HANDLE;
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+  use windows_sys::Win32::System::Console::SetConsoleMode;
 
-  const ENABLE_VIRTUAL_TERMINAL_INPUT: DWORD = 0x0200;
+  const ENABLE_VIRTUAL_TERMINAL_INPUT: u32 = 0x0200;
 
   /// Clear ENABLE_VIRTUAL_TERMINAL_INPUT on stdin and return the
   /// original mode so it can be restored later.
@@ -196,7 +195,7 @@ mod windows_vt_input {
       if handle.is_null() {
         return None;
       }
-      let mut mode: DWORD = 0;
+      let mut mode: u32 = 0;
       if GetConsoleMode(handle, &mut mode) == 0 {
         return None;
       }
@@ -247,10 +246,10 @@ impl SavedTerminalMode {
     {
       Self {
         stdin_mode: windows_console_mode::get(
-          winapi::um::winbase::STD_INPUT_HANDLE,
+          windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
         ),
         stdout_mode: windows_console_mode::get(
-          winapi::um::winbase::STD_OUTPUT_HANDLE,
+          windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
         ),
       }
     }
@@ -265,11 +264,11 @@ impl SavedTerminalMode {
     #[cfg(windows)]
     {
       windows_console_mode::set(
-        winapi::um::winbase::STD_INPUT_HANDLE,
+        windows_sys::Win32::System::Console::STD_INPUT_HANDLE,
         self.stdin_mode,
       );
       windows_console_mode::set(
-        winapi::um::winbase::STD_OUTPUT_HANDLE,
+        windows_sys::Win32::System::Console::STD_OUTPUT_HANDLE,
         self.stdout_mode,
       );
     }
@@ -302,15 +301,15 @@ impl Drop for TerminalModeGuard {
 
 #[cfg(windows)]
 mod windows_console_mode {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::um::consoleapi::GetConsoleMode;
-  use winapi::um::consoleapi::SetConsoleMode;
-  use winapi::um::processenv::GetStdHandle;
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_HANDLE;
+  use windows_sys::Win32::System::Console::SetConsoleMode;
 
   /// Reads the console mode for the given std handle. Returns `None` when the
   /// handle is not a console (e.g. redirected to a pipe or file), in which case
   /// there is no mode to restore.
-  pub fn get(std_handle: DWORD) -> Option<u32> {
+  pub fn get(std_handle: STD_HANDLE) -> Option<u32> {
     // SAFETY: GetStdHandle/GetConsoleMode are safe Windows API calls with
     // valid handle constants.
     unsafe {
@@ -318,7 +317,7 @@ mod windows_console_mode {
       if handle.is_null() {
         return None;
       }
-      let mut mode: DWORD = 0;
+      let mut mode: u32 = 0;
       if GetConsoleMode(handle, &mut mode) == 0 {
         return None;
       }
@@ -326,7 +325,7 @@ mod windows_console_mode {
     }
   }
 
-  pub fn set(std_handle: DWORD, mode: Option<u32>) {
+  pub fn set(std_handle: STD_HANDLE, mode: Option<u32>) {
     let Some(mode) = mode else {
       return;
     };

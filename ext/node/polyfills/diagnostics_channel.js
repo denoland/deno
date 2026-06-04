@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials ban-untagged-todo
+// deno-lint-ignore-file ban-untagged-todo
 
 (function () {
 const { core, primordials } = __bootstrap;
@@ -23,17 +22,22 @@ const {
   ArrayPrototypeSplice,
   ObjectDefineProperty,
   ObjectGetPrototypeOf,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
-  Promise,
+  PromisePrototype,
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
   ReflectApply,
+  SafeArrayIterator,
   SafeFinalizationRegistry,
   SafeMap,
+  SafeMapIterator,
   SymbolHasInstance,
 } = primordials;
-const { WeakReference } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { WeakReference } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 
 // Can't delete when weakref count reaches 0 as it could increment again.
 // Only GC can be used as a valid time to clean up the channels map.
@@ -186,7 +190,7 @@ class ActiveChannel {
       return ReflectApply(fn, thisArg, args);
     };
 
-    for (const entry of this._stores.entries()) {
+    for (const entry of new SafeMapIterator(this._stores)) {
       const store = entry[0];
       const transform = entry[1];
       run = wrapStoreRun(store, data, run, transform);
@@ -277,6 +281,10 @@ const traceEvents = [
 ];
 
 function assertChannel(value, name) {
+  // Channel defines a custom [Symbol.hasInstance] (accepting both Channel and
+  // ActiveChannel prototypes), so this instanceof must stay to preserve that
+  // behavior; ObjectPrototypeIsPrototypeOf would bypass it.
+  // deno-lint-ignore prefer-primordials
   if (!(value instanceof Channel)) {
     throw new ERR_INVALID_ARG_TYPE(name, ["Channel"], value);
   }
@@ -302,7 +310,7 @@ function tracingChannelFrom(nameOrChannels, name) {
 
 class TracingChannel {
   constructor(nameOrChannels) {
-    for (const eventName of traceEvents) {
+    for (const eventName of new SafeArrayIterator(traceEvents)) {
       ObjectDefineProperty(this, eventName, {
         __proto__: null,
         value: tracingChannelFrom(nameOrChannels, eventName),
@@ -319,7 +327,7 @@ class TracingChannel {
   }
 
   subscribe(handlers) {
-    for (const name of traceEvents) {
+    for (const name of new SafeArrayIterator(traceEvents)) {
       if (!handlers[name]) continue;
 
       this[name]?.subscribe(handlers[name]);
@@ -329,7 +337,7 @@ class TracingChannel {
   unsubscribe(handlers) {
     let done = true;
 
-    for (const name of traceEvents) {
+    for (const name of new SafeArrayIterator(traceEvents)) {
       if (!handlers[name]) continue;
 
       if (!this[name]?.unsubscribe(handlers[name])) {
@@ -340,7 +348,7 @@ class TracingChannel {
     return done;
   }
 
-  traceSync(fn, context = {}, thisArg, ...args) {
+  traceSync(fn, context = { __proto__: null }, thisArg, ...args) {
     if (!this.hasSubscribers) {
       return ReflectApply(fn, thisArg, args);
     }
@@ -362,7 +370,7 @@ class TracingChannel {
     });
   }
 
-  tracePromise(fn, context = {}, thisArg, ...args) {
+  tracePromise(fn, context = { __proto__: null }, thisArg, ...args) {
     if (!this.hasSubscribers) {
       return ReflectApply(fn, thisArg, args);
     }
@@ -390,7 +398,7 @@ class TracingChannel {
       try {
         let promise = ReflectApply(fn, thisArg, args);
         // Convert thenables to native promises
-        if (!(promise instanceof Promise)) {
+        if (!ObjectPrototypeIsPrototypeOf(PromisePrototype, promise)) {
           promise = PromiseResolve(promise);
         }
         return PromisePrototypeThen(promise, resolve, reject);
@@ -404,7 +412,13 @@ class TracingChannel {
     });
   }
 
-  traceCallback(fn, position = -1, context = {}, thisArg, ...args) {
+  traceCallback(
+    fn,
+    position = -1,
+    context = { __proto__: null },
+    thisArg,
+    ...args
+  ) {
     if (!this.hasSubscribers) {
       return ReflectApply(fn, thisArg, args);
     }
