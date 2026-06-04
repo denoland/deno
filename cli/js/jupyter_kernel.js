@@ -1138,8 +1138,11 @@ async function startJupyterKernel() {
       try {
         const reply = decodeMsg(frames);
         if (!(await hmacVerify(key, reply.signedParts, reply.sig))) {
-          // Ignore an input_reply whose HMAC signature doesn't verify.
-          return null;
+          // Ignore an input_reply whose HMAC signature doesn't verify and keep
+          // waiting for a valid one, so a forged frame can't cancel a
+          // legitimate input prompt. This matches the shell/control paths,
+          // which drop bad messages and stay alive.
+          continue;
         }
         if (reply.header?.msg_type === "input_reply") {
           const raw = reply.content?.value;
