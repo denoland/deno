@@ -51,41 +51,10 @@ impl PublishOrderGraph {
 
   /// There could be pending packages if there's a circular dependency.
   pub fn ensure_no_pending(&self) -> Result<(), AnyError> {
-    // this is inefficient, but that's ok because it's simple and will
-    // only ever happen when there's an error
-    fn identify_cycle<'a>(
-      current_name: &'a String,
-      mut visited: HashSet<&'a String>,
-      packages: &HashMap<String, HashSet<String>>,
-    ) -> Option<Vec<String>> {
-      if visited.insert(current_name) {
-        let deps = packages.get(current_name).unwrap();
-        for dep in deps {
-          if let Some(mut cycle) =
-            identify_cycle(dep, visited.clone(), packages)
-          {
-            cycle.push(current_name.to_string());
-            return Some(cycle);
-          }
-        }
-        None
-      } else {
-        Some(vec![current_name.to_string()])
-      }
-    }
-
     if self.in_degree.is_empty() {
       Ok(())
     } else {
-      let mut pkg_names = self.in_degree.keys().collect::<Vec<_>>();
-      pkg_names.sort(); // determinism
-      let mut cycle =
-        identify_cycle(pkg_names[0], HashSet::new(), &self.packages).unwrap();
-      cycle.reverse();
-      bail!(
-        "Circular package dependency detected: {}",
-        cycle.join(" -> ")
-      );
+      ensure_no_cycles(&self.packages)
     }
   }
 
@@ -112,11 +81,58 @@ impl PublishOrderGraph {
   }
 }
 
+/// Identifies a cycle in the package dependency graph starting from
+/// `current_name`, returning the cycle in dependency order (e.g.
+/// `["a", "b", "c", "a"]` for `a -> b -> c -> a`).
+///
+/// This is inefficient, but that's ok because it's simple and will only ever
+/// happen when there's an error.
+fn identify_cycle(
+  current_name: &str,
+  mut visited: HashSet<String>,
+  packages: &HashMap<String, HashSet<String>>,
+) -> Option<Vec<String>> {
+  if visited.insert(current_name.to_string()) {
+    let deps = packages.get(current_name)?;
+    for dep in deps {
+      if let Some(mut cycle) = identify_cycle(dep, visited.clone(), packages) {
+        cycle.push(current_name.to_string());
+        return Some(cycle);
+      }
+    }
+    None
+  } else {
+    Some(vec![current_name.to_string()])
+  }
+}
+
+/// Detects a circular package dependency, returning an error describing the
+/// cycle if one is found. Run this before any side effects (like publishing
+/// authorization) so users get fast feedback.
+fn ensure_no_cycles(
+  packages: &HashMap<String, HashSet<String>>,
+) -> Result<(), AnyError> {
+  let mut pkg_names = packages.keys().collect::<Vec<_>>();
+  pkg_names.sort(); // determinism
+  for pkg_name in pkg_names {
+    if let Some(mut cycle) = identify_cycle(pkg_name, HashSet::new(), packages)
+    {
+      cycle.reverse();
+      bail!(
+        "Circular package dependency detected: {}",
+        cycle.join(" -> ")
+      );
+    }
+  }
+  Ok(())
+}
+
 pub fn build_publish_order_graph(
   graph: &ModuleGraph,
   roots: &[JsrPackageConfig],
 ) -> Result<PublishOrderGraph, AnyError> {
   let packages = build_pkg_deps(graph, roots)?;
+  ensure_no_cycles(&packages)?;
   Ok(build_publish_order_graph_from_pkgs_deps(packages))
 }
 
@@ -290,6 +306,40 @@ mod test {
     assert!(graph.next().is_empty());
     assert_eq!(
       graph.ensure_no_pending().unwrap_err().to_string(),
+      "Circular package dependency detected: a -> b -> c -> a"
+    );
+  }
+
+  #[test]
+  fn test_ensure_no_cycles() {
+    // no cycle
+    ensure_no_cycles(&HashMap::from([
+      ("a".to_string(), HashSet::from(["b".to_string()])),
+      ("b".to_string(), HashSet::from(["c".to_string()])),
+      ("c".to_string(), HashSet::new()),
+    ]))
+    .unwrap();
+
+    // direct cycle between two packages
+    assert_eq!(
+      ensure_no_cycles(&HashMap::from([
+        ("a".to_string(), HashSet::from(["b".to_string()])),
+        ("b".to_string(), HashSet::from(["a".to_string()])),
+      ]))
+      .unwrap_err()
+      .to_string(),
+      "Circular package dependency detected: a -> b -> a"
+    );
+
+    // longer cycle, detected before any side effects
+    assert_eq!(
+      ensure_no_cycles(&HashMap::from([
+        ("a".to_string(), HashSet::from(["b".to_string()])),
+        ("b".to_string(), HashSet::from(["c".to_string()])),
+        ("c".to_string(), HashSet::from(["a".to_string()])),
+      ]))
+      .unwrap_err()
+      .to_string(),
       "Circular package dependency detected: a -> b -> c -> a"
     );
   }
