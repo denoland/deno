@@ -5,6 +5,7 @@ const { core, internals, primordials } = __bootstrap;
 const {
   op_fetch,
   op_fetch_promise_is_settled,
+  op_fetch_response_closed,
   op_fetch_send,
   op_wasm_streaming_feed,
   op_wasm_streaming_set_url,
@@ -265,6 +266,22 @@ function createResponseBodyStream(responseBodyRid, terminator) {
 
   // TODO(lucacasonato): clean up registration
   terminator[abortSignal.add](onAbort);
+
+  // Proactively watch for the connection closing/erroring so that
+  // `reader.closed` rejects (and `read()` doesn't hang) on a network error
+  // that happens after the response headers were received, even when the
+  // consumer isn't actively reading the body.
+  // See https://github.com/denoland/deno/issues/16246
+  PromisePrototypeThen(
+    op_fetch_response_closed(responseBodyRid),
+    // Resolved: the body finished cleanly. The stream is closed through the
+    // normal read EOF path, so there is nothing to do here.
+    undefined,
+    (err) => {
+      errorReadableStream(readable, err);
+      core.tryClose(responseBodyRid);
+    },
+  );
 
   return readable;
 }

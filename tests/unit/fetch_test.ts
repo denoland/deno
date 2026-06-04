@@ -2437,3 +2437,84 @@ Deno.test(
     assertEquals(await resp3.text(), "Not found");
   },
 );
+
+// Server that sends the response headers (with a chunked body) and optionally a
+// single body chunk, then abruptly closes the connection without terminating
+// the chunked body. Reading past what was sent therefore errors.
+function closeAfterHeadersServer(
+  addr: string,
+  opts: { chunk?: string } = {},
+): Deno.Listener {
+  const [hostname, port] = addr.split(":");
+  const listener = Deno.listen({ hostname, port: Number(port) });
+
+  (async () => {
+    try {
+      for await (const conn of listener) {
+        try {
+          // Read (and discard) the request.
+          await conn.read(new Uint8Array(2 ** 14));
+          let head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+          if (opts.chunk !== undefined) {
+            head += `${opts.chunk.length.toString(16)}\r\n${opts.chunk}\r\n`;
+          }
+          await conn.write(new TextEncoder().encode(head));
+        } finally {
+          // Close before sending the terminating `0\r\n\r\n` chunk.
+          conn.close();
+        }
+      }
+    } catch {
+      // Listener closed by the test.
+    }
+  })();
+
+  return listener;
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  // Regression test for https://github.com/denoland/deno/issues/16246:
+  // `reader.closed` must reject when the connection is closed, even when the
+  // consumer never reads the body.
+  async function fetchReaderClosedRejectsOnConnectionClose() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const listener = closeAfterHeadersServer(addr);
+    const response = await fetch(`http://${addr}/`);
+    const reader = response.body!.getReader();
+    await assertRejects(() => reader.closed, TypeError);
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  // Regression test for the WPT `error-after-response` case: after reading a
+  // chunk successfully, `reader.closed` must reject when the connection errors.
+  async function fetchReaderClosedRejectsAfterFirstChunk() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const listener = closeAfterHeadersServer(addr, { chunk: "TEST_CHUNK" });
+    const response = await fetch(`http://${addr}/`);
+    const reader = response.body!.getReader();
+    const first = await reader.read();
+    assertEquals(new TextDecoder().decode(first.value), "TEST_CHUNK");
+    await assertRejects(() => reader.closed, TypeError);
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  // A second `read()` after a successful first chunk must reject when the
+  // connection errors mid-body.
+  async function fetchReadRejectsAfterFirstChunk() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const listener = closeAfterHeadersServer(addr, { chunk: "TEST_CHUNK" });
+    const response = await fetch(`http://${addr}/`);
+    const reader = response.body!.getReader();
+    const first = await reader.read();
+    assertEquals(new TextDecoder().decode(first.value), "TEST_CHUNK");
+    await assertRejects(() => reader.read(), TypeError);
+    listener.close();
+  },
+);
