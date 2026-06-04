@@ -22,6 +22,8 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+use async_compression::tokio::bufread::BrotliDecoder;
+use async_compression::tokio::bufread::GzipDecoder;
 use bytes::Bytes;
 // Re-export data_url
 pub use data_url;
@@ -71,16 +73,21 @@ use http::Uri;
 use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
 use http::header::AUTHORIZATION;
+use http::header::CONTENT_ENCODING;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
+use http::header::TRANSFER_ENCODING;
 use http::header::USER_AGENT;
+use http_body_util::BodyDataStream;
 use http_body_util::BodyExt;
+use http_body_util::StreamBody;
 use http_body_util::combinators::BoxBody;
 use hyper::body::Frame;
+use hyper::body::Incoming;
 use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::client::legacy::connect::Connection;
 use hyper_util::client::legacy::connect::HttpConnector;
@@ -89,11 +96,12 @@ use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use hyper_util::rt::TokioTimer;
 pub use proxy::basic_auth;
+use tokio_util::io::ReaderStream;
+use tokio_util::io::StreamReader;
 use tower::BoxError;
 use tower::Service;
 use tower::ServiceExt;
 use tower::retry;
-use tower_http::decompression::Decompression;
 
 #[derive(Clone)]
 pub struct Options {
@@ -1122,7 +1130,7 @@ pub fn create_http_client(
 
   let pooled_client = builder.build(connector.clone());
   let retry_client = retry::Retry::new(FetchRetry, pooled_client);
-  let decompress = Decompression::new(retry_client).gzip(true).br(true);
+  let decompress = DecompressionService::new(retry_client);
 
   Ok(Client {
     inner: decompress,
@@ -1138,14 +1146,150 @@ pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
 
 #[derive(Clone, Debug)]
 pub struct Client {
-  inner: Decompression<
-    retry::Retry<
-      FetchRetry,
-      hyper_util::client::legacy::Client<Connector, ReqBody>,
-    >,
-  >,
+  inner: DecompressionService<FetchClient>,
   connector: Connector,
   user_agent: HeaderValue,
+}
+
+type FetchClient = retry::Retry<
+  FetchRetry,
+  hyper_util::client::legacy::Client<Connector, ReqBody>,
+>;
+
+#[derive(Clone, Debug)]
+struct DecompressionService<S> {
+  inner: S,
+}
+
+impl<S> DecompressionService<S> {
+  fn new(inner: S) -> Self {
+    Self { inner }
+  }
+
+  fn into_inner(self) -> S {
+    self.inner
+  }
+}
+
+impl<S> Service<http::Request<ReqBody>> for DecompressionService<S>
+where
+  S: Service<http::Request<ReqBody>, Response = http::Response<Incoming>>
+    + 'static,
+  S::Future: Send + 'static,
+  S::Error: 'static,
+{
+  type Response = http::Response<ResBody>;
+  type Error = S::Error;
+  type Future =
+    Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+  fn poll_ready(
+    &mut self,
+    cx: &mut Context<'_>,
+  ) -> Poll<Result<(), Self::Error>> {
+    self.inner.poll_ready(cx)
+  }
+
+  fn call(&mut self, mut req: http::Request<ReqBody>) -> Self::Future {
+    let skip_decompression = req.headers().contains_key(RANGE)
+      || req.headers().get(ACCEPT_ENCODING).is_some_and(|value| {
+        value.as_bytes().eq_ignore_ascii_case(b"identity")
+      });
+    if req.headers().contains_key(RANGE) {
+      req
+        .headers_mut()
+        .entry(ACCEPT_ENCODING)
+        .or_insert_with(|| HeaderValue::from_static("identity"));
+    } else {
+      req
+        .headers_mut()
+        .entry(ACCEPT_ENCODING)
+        .or_insert_with(|| HeaderValue::from_static("gzip,br"));
+    }
+
+    let fut = self.inner.call(req);
+    Box::pin(async move {
+      let resp = fut.await?;
+      Ok(decompress_response(resp, skip_decompression))
+    })
+  }
+}
+
+fn decompress_response(
+  resp: http::Response<Incoming>,
+  skip_decompression: bool,
+) -> http::Response<ResBody> {
+  if skip_decompression {
+    return resp.map(box_raw_body);
+  }
+
+  match resp
+    .headers()
+    .get(CONTENT_ENCODING)
+    .and_then(content_encoding_decode_kind)
+  {
+    Some(DecodeKind::Gzip) => decode_response(resp, DecodeKind::Gzip),
+    Some(DecodeKind::Brotli) => decode_response(resp, DecodeKind::Brotli),
+    _ => resp.map(box_raw_body),
+  }
+}
+
+fn content_encoding_decode_kind(encoding: &HeaderValue) -> Option<DecodeKind> {
+  let encoding = std::str::from_utf8(encoding.as_bytes()).ok()?.trim();
+  if encoding.contains(',') {
+    return None;
+  }
+  if encoding.eq_ignore_ascii_case("gzip") {
+    Some(DecodeKind::Gzip)
+  } else if encoding.eq_ignore_ascii_case("br") {
+    Some(DecodeKind::Brotli)
+  } else {
+    None
+  }
+}
+
+enum DecodeKind {
+  Gzip,
+  Brotli,
+}
+
+fn decode_response(
+  resp: http::Response<Incoming>,
+  kind: DecodeKind,
+) -> http::Response<ResBody> {
+  let (mut parts, body) = resp.into_parts();
+  parts.headers.remove(CONTENT_ENCODING);
+  parts.headers.remove(CONTENT_LENGTH);
+  parts.headers.remove(TRANSFER_ENCODING);
+
+  let stream = BodyDataStream::new(
+    body.map_err(|err| std::io::Error::other(err.to_string())),
+  );
+  let reader = StreamReader::new(stream);
+  let body = match kind {
+    DecodeKind::Gzip => box_reader_body(GzipDecoder::new(reader)),
+    DecodeKind::Brotli => box_reader_body(BrotliDecoder::new(reader)),
+  };
+
+  http::Response::from_parts(parts, body)
+}
+
+fn box_reader_body<R>(reader: R) -> ResBody
+where
+  R: tokio::io::AsyncRead + Send + Sync + 'static,
+{
+  let stream = ReaderStream::new(reader).map(|result| {
+    result
+      .map(Frame::data)
+      .map_err(|err| JsErrorBox::generic(err.to_string()))
+  });
+  BoxBody::new(StreamBody::new(stream))
+}
+
+fn box_raw_body(body: Incoming) -> ResBody {
+  body
+    .map_err(|err| JsErrorBox::generic(err.to_string()))
+    .boxed()
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1314,7 +1458,7 @@ impl Client {
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
+    Ok(resp)
   }
 
   /// Sends a request bypassing the transparent decompression middleware.
@@ -1331,14 +1475,14 @@ impl Client {
 
     let uri = req.uri().clone();
 
-    // .into_inner() unwraps the Decompression middleware layer
+    // .into_inner() unwraps the transparent decompression layer.
     let resp = self
       .inner
       .into_inner()
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
+    Ok(resp.map(box_raw_body))
   }
 }
 

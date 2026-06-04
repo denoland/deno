@@ -308,7 +308,6 @@ tokio-rustls = { version = "0.26.0", default-features = false, features = ["aws_
 tokio-socks = "0.5.3"
 tokio-util = "0.7.16"
 tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }
-tower-http = { version = "0.6.1", features = ["decompression-br", "decompression-gzip"] }
 tower-lsp = { package = "deno_tower_lsp", version = "=0.5.0", features = ["proposed"] }
 tower-service = "0.3.2"
 tracing = "0.1"

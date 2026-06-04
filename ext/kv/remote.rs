@@ -82,29 +82,34 @@ pub struct FetchResponse(http::Response<deno_fetch::ResBody>);
 
 impl RemoteTransport for FetchClient {
   type Response = FetchResponse;
-  async fn post(
+  fn post(
     &self,
     url: Url,
     headers: http::HeaderMap,
     body: Bytes,
-  ) -> Result<(Url, http::StatusCode, Self::Response), JsErrorBox> {
-    let body = deno_fetch::ReqBody::full(body);
-    let mut req = http::Request::new(body);
-    *req.method_mut() = http::Method::POST;
-    *req.uri_mut() =
-      url.as_str().parse().map_err(|e: http::uri::InvalidUri| {
-        JsErrorBox::type_error(e.to_string())
-      })?;
-    *req.headers_mut() = headers;
+  ) -> impl std::future::Future<
+    Output = Result<(Url, http::StatusCode, Self::Response), JsErrorBox>,
+  > + Send
+  + Sync {
+    let client = self.0.clone();
+    async move {
+      tokio::spawn(async move {
+        let body = deno_fetch::ReqBody::full(body);
+        let mut req = http::Request::new(body);
+        *req.method_mut() = http::Method::POST;
+        *req.uri_mut() =
+          url.as_str().parse().map_err(|e: http::uri::InvalidUri| {
+            JsErrorBox::type_error(e.to_string())
+          })?;
+        *req.headers_mut() = headers;
 
-    let res = self
-      .0
-      .clone()
-      .send(req)
+        let res = client.send(req).await.map_err(JsErrorBox::from_err)?;
+        let status = res.status();
+        Ok((url, status, FetchResponse(res)))
+      })
       .await
-      .map_err(JsErrorBox::from_err)?;
-    let status = res.status();
-    Ok((url, status, FetchResponse(res)))
+      .map_err(JsErrorBox::from_err)?
+    }
   }
 }
 
