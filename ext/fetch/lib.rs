@@ -779,6 +779,16 @@ impl Drop for BodyReader {
     if let Some(task) = &self.task {
       task.abort();
     }
+    // The resource is being torn down (e.g. the body was cancelled/aborted
+    // before it finished). Force any `closed` waiter to complete so that the
+    // `op_fetch_response_closed` op doesn't leak: mark a clean termination if
+    // none was recorded and drop any pending/buffered data.
+    if self.shared.terminal.borrow().is_none() {
+      *self.shared.terminal.borrow_mut() = Some(Ok(()));
+    }
+    self.shared.buffered.set(0);
+    *self.shared.leftover.borrow_mut() = None;
+    self.shared.notify.notify_one();
   }
 }
 
@@ -925,22 +935,19 @@ impl FetchResponseResource {
       .borrow()
       .clone()
       .expect("body reader is initialized by ensure_body_reader");
-    let fut = async move {
-      loop {
-        if let Some(result) = shared.drained_terminal() {
-          return match result {
-            Ok(()) => Ok(()),
-            Err(err) => Err(JsErrorBox::type_error(err)),
-          };
-        }
-        shared.notify.notified().await;
+    // Release the resource handle so this op does not keep the resource (and
+    // its background task) alive. The op completes either when the body
+    // terminates (set by the background task) or when the resource is torn
+    // down (set by `BodyReader::drop`).
+    drop(self);
+    loop {
+      if let Some(result) = shared.drained_terminal() {
+        return match result {
+          Ok(()) => Ok(()),
+          Err(err) => Err(JsErrorBox::type_error(err)),
+        };
       }
-    };
-    let cancel_handle = RcRef::map(self, |r| &r.cancel);
-    match fut.or_cancel(cancel_handle).await {
-      Ok(result) => result,
-      // Cancelled because the resource was closed; nothing to report.
-      Err(_) => Ok(()),
+      shared.notify.notified().await;
     }
   }
 }
