@@ -586,8 +586,9 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     }
     let click_tx = self.event_tx.clone();
     let tray = tray.on_click(move || {
-      let _ = click_tx
-        .send(deno_runtime::ops::desktop::DesktopEvent::TrayClick { tray_id });
+      let _ = click_tx.try_send(
+        deno_runtime::ops::desktop::DesktopEvent::TrayClick { tray_id },
+      );
     });
     let dblclick_tx = self.event_tx.clone();
     tray.set_double_click_handler(move || {
