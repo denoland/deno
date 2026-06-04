@@ -2,10 +2,12 @@
 
 use core::str;
 use std::borrow::Cow;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use deno_core::FromV8;
+use deno_error::JsErrorBox;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
@@ -14,6 +16,7 @@ use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
+use deno_permissions::PermissionsContainer;
 use serde::Deserialize;
 
 #[derive(FromV8, Default, Debug, Clone, Copy)]
@@ -143,6 +146,30 @@ pub struct FsDirEntry {
 
 #[allow(clippy::disallowed_types, reason = "definition")]
 pub type FileSystemRc = deno_maybe_sync::MaybeArc<dyn FileSystem>;
+#[allow(clippy::disallowed_types, reason = "definition")]
+pub type NpmPackageFsResolverRc =
+  deno_maybe_sync::MaybeArc<dyn NpmPackageFsResolver>;
+
+#[async_trait::async_trait(?Send)]
+pub trait NpmPackageFsResolver:
+  std::fmt::Debug + MaybeSend + MaybeSync
+{
+  fn resolve_npm_package_sync(
+    &self,
+    specifier: &str,
+  ) -> Result<Option<PathBuf>, JsErrorBox>;
+
+  async fn resolve_npm_package_async(
+    &self,
+    specifier: String,
+  ) -> Result<Option<PathBuf>, JsErrorBox>;
+
+  fn ensure_read_permission<'a>(
+    &self,
+    permissions: &mut PermissionsContainer,
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, JsErrorBox>;
+}
 
 #[async_trait::async_trait(?Send)]
 pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {

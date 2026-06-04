@@ -635,6 +635,7 @@ mod tests {
         compiled_wasm_module_store: Default::default(),
         v8_code_cache: Default::default(),
         fs,
+        npm_fs_resolver: None,
         bundle_provider: None,
       },
       options,

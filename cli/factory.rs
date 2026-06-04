@@ -94,6 +94,7 @@ use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmGraphResolver;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmInstallerFactory;
+use crate::npm::CliNpmPackageFsResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::DenoTaskLifeCycleScriptsExecutor;
 use crate::npm::NpmPackumentFormat;
@@ -1157,6 +1158,8 @@ impl CliFactory {
     let fs = self.fs();
     let node_resolver = self.node_resolver().await?;
     let npm_resolver = self.npm_resolver().await?;
+    let resolver_factory = self.resolver_factory()?;
+    let workspace_factory = self.workspace_factory()?;
     let maybe_file_watcher_communicator = if cli_options.has_hmr() {
       Some(self.watcher_communicator.clone().unwrap())
     } else {
@@ -1174,6 +1177,29 @@ impl CliFactory {
         md: cli_options.cpu_prof_md(),
         flamegraph: cli_options.cpu_prof_flamegraph(),
       });
+    let npm_registry_permission_checker = {
+      let mode = if resolver_factory.use_byonm()? {
+        NpmRegistryReadPermissionCheckerMode::Byonm
+      } else if let Some(node_modules_dir) =
+        workspace_factory.node_modules_dir_path()?
+      {
+        NpmRegistryReadPermissionCheckerMode::Local(
+          node_modules_dir.to_path_buf(),
+        )
+      } else {
+        NpmRegistryReadPermissionCheckerMode::Global(
+          self.npm_cache_dir()?.root_dir().to_path_buf(),
+        )
+      };
+      Arc::new(NpmRegistryReadPermissionChecker::new(self.sys(), mode))
+    };
+    let npm_fs_resolver = Arc::new(CliNpmPackageFsResolver::new(
+      self.npm_installer_if_managed().await?.cloned(),
+      npm_resolver.clone(),
+      npm_registry_permission_checker,
+      deno_path_util::url_from_directory_path(cli_options.initial_cwd())?
+        .join("package.json")?,
+    ));
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
       self.blob_store().clone(),
@@ -1185,6 +1211,7 @@ impl CliFactory {
       None, // DenoRtNativeAddonLoader
       self.feature_checker()?.clone(),
       fs.clone(),
+      Some(npm_fs_resolver),
       cli_options.coverage_dir(),
       maybe_cpu_prof_config_for_workers,
       Box::new(module_loader_factory),

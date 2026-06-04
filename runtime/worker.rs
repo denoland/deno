@@ -36,6 +36,7 @@ use deno_core::v8;
 use deno_cron::CronHandler;
 use deno_cron::CronHandlerImpl;
 use deno_fs::FileSystem;
+use deno_fs::NpmPackageFsResolverRc;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_napi::DenoRtNativeAddonLoaderRc;
@@ -176,6 +177,7 @@ pub struct WorkerServiceOptions<
   pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
+  pub npm_fs_resolver: Option<NpmPackageFsResolverRc>,
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
@@ -575,7 +577,10 @@ impl MainWorker {
           ..Default::default()
         }),
         deno_io::deno_io::args(Some(options.stdio)),
-        deno_fs::deno_fs::args(services.fs.clone()),
+        deno_fs::deno_fs::args(
+          services.fs.clone(),
+          services.npm_fs_resolver.clone(),
+        ),
         deno_os::deno_os::args(Some(exit_code.clone())),
         deno_process::deno_process::args(services.npm_process_state_provider),
         deno_node::deno_node::args::<

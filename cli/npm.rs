@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
+use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -16,6 +17,7 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
+use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::registry::NpmPackageInfo;
@@ -27,6 +29,7 @@ use deno_npm_cache::NpmCacheHttpClientResponse;
 use deno_npm_installer::BinEntries;
 use deno_npm_installer::CachedNpmPackageExtraInfoProvider;
 use deno_npm_installer::ExpectedExtraInfo;
+use deno_npm_installer::PackageCaching;
 use deno_npm_installer::lifecycle_scripts::LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutor;
 use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
@@ -38,6 +41,8 @@ use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_task_shell::KillSignal;
@@ -72,6 +77,162 @@ pub type CliNpmGraphResolver = deno_npm_installer::graph::NpmDenoGraphResolver<
 >;
 
 pub use deno_npm_cache::NpmPackumentFormat;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum NpmPackageFsError {
+  #[class(inherit)]
+  #[error(
+    "Failed parsing npm package specifier for file system read: {specifier}"
+  )]
+  Parse {
+    specifier: String,
+    #[source]
+    #[inherit]
+    source: deno_semver::package::PackageReqReferenceParseError,
+  },
+  #[class(inherit)]
+  #[error("Failed caching npm package for file system read: {specifier}")]
+  Cache {
+    specifier: String,
+    #[source]
+    #[inherit]
+    source: JsErrorBox,
+  },
+  #[class(inherit)]
+  #[error(
+    "Failed resolving npm package path for file system read: {specifier}"
+  )]
+  Resolve {
+    specifier: String,
+    #[source]
+    #[inherit]
+    source: deno_resolver::npm::ResolvePkgFolderFromDenoReqError,
+  },
+}
+
+#[derive(Debug)]
+pub struct CliNpmPackageFsResolver {
+  npm_installer: Option<Arc<CliNpmInstaller>>,
+  npm_resolver: CliNpmResolver,
+  npm_registry_permission_checker:
+    Arc<NpmRegistryReadPermissionChecker<CliSys>>,
+  referrer: Url,
+}
+
+impl CliNpmPackageFsResolver {
+  pub fn new(
+    npm_installer: Option<Arc<CliNpmInstaller>>,
+    npm_resolver: CliNpmResolver,
+    npm_registry_permission_checker: Arc<
+      NpmRegistryReadPermissionChecker<CliSys>,
+    >,
+    referrer: Url,
+  ) -> Self {
+    Self {
+      npm_installer,
+      npm_resolver,
+      npm_registry_permission_checker,
+      referrer,
+    }
+  }
+
+  fn parse_specifier(
+    specifier: &str,
+  ) -> Result<Option<NpmPackageReqReference>, JsErrorBox> {
+    if !specifier.starts_with("npm:") {
+      return Ok(None);
+    }
+    NpmPackageReqReference::from_str(specifier)
+      .map(Some)
+      .map_err(|source| {
+        JsErrorBox::from_err(NpmPackageFsError::Parse {
+          specifier: specifier.to_string(),
+          source,
+        })
+      })
+  }
+
+  fn resolve_package_path(
+    &self,
+    package_ref: &NpmPackageReqReference,
+  ) -> Result<PathBuf, JsErrorBox> {
+    let package_folder = self
+      .npm_resolver
+      .resolve_pkg_folder_from_deno_module_req(
+        package_ref.req(),
+        &self.referrer,
+      )
+      .map_err(|source| {
+        JsErrorBox::from_err(NpmPackageFsError::Resolve {
+          specifier: package_ref.to_string(),
+          source,
+        })
+      })?;
+    let Some(sub_path) = package_ref.sub_path() else {
+      return Ok(package_folder);
+    };
+    let path = Path::new(sub_path);
+    if path.components().any(|component| {
+      matches!(
+        component,
+        Component::ParentDir | Component::RootDir | Component::Prefix(_)
+      )
+    }) {
+      return Err(JsErrorBox::type_error(format!(
+        "Invalid npm package path: {sub_path}",
+      )));
+    }
+    Ok(package_folder.join(path))
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+impl deno_runtime::deno_fs::NpmPackageFsResolver for CliNpmPackageFsResolver {
+  fn resolve_npm_package_sync(
+    &self,
+    specifier: &str,
+  ) -> Result<Option<PathBuf>, JsErrorBox> {
+    let Some(package_ref) = Self::parse_specifier(specifier)? else {
+      return Ok(None);
+    };
+    self.resolve_package_path(&package_ref).map(Some)
+  }
+
+  async fn resolve_npm_package_async(
+    &self,
+    specifier: String,
+  ) -> Result<Option<PathBuf>, JsErrorBox> {
+    let Some(package_ref) = Self::parse_specifier(&specifier)? else {
+      return Ok(None);
+    };
+    if let Some(npm_installer) = &self.npm_installer {
+      let package_reqs = vec![package_ref.req().clone()];
+      npm_installer
+        .add_package_reqs(
+          &package_reqs,
+          PackageCaching::Only(package_reqs.as_slice().into()),
+        )
+        .await
+        .map_err(|source| {
+          JsErrorBox::from_err(NpmPackageFsError::Cache {
+            specifier: specifier.clone(),
+            source,
+          })
+        })?;
+    }
+    self.resolve_package_path(&package_ref).map(Some)
+  }
+
+  fn ensure_read_permission<'a>(
+    &self,
+    permissions: &mut PermissionsContainer,
+    path: Cow<'a, Path>,
+  ) -> Result<Cow<'a, Path>, JsErrorBox> {
+    self
+      .npm_registry_permission_checker
+      .ensure_read_permission(permissions, path)
+  }
+}
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {

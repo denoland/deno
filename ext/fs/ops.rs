@@ -39,6 +39,7 @@ use crate::OpenOptions;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
+use crate::interface::NpmPackageFsResolverRc;
 
 #[derive(Debug, Boxed, deno_error::JsError)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);
@@ -109,6 +110,24 @@ fn open_options_to_access_kind(open_options: &OpenOptions) -> OpenAccessKind {
     (false, true) => OpenAccessKind::Write,
     (true, false) | (false, false) => OpenAccessKind::Read,
   }
+}
+
+fn maybe_npm_fs_resolver(state: &OpState) -> Option<NpmPackageFsResolverRc> {
+  state.try_borrow::<NpmPackageFsResolverRc>().cloned()
+}
+
+fn check_npm_read_permission<'a>(
+  state: &mut OpState,
+  resolver: &NpmPackageFsResolverRc,
+  path: Cow<'a, Path>,
+) -> Result<CheckedPath<'a>, FsOpsError> {
+  let path = resolver
+    .ensure_read_permission(
+      state.borrow_mut::<deno_permissions::PermissionsContainer>(),
+      path,
+    )
+    .map_err(|err| FsOpsErrorKind::Other(err).into_box())?;
+  Ok(CheckedPath::unsafe_new(path))
 }
 
 #[op2]
@@ -1480,7 +1499,17 @@ pub fn op_fs_read_file_sync(
   #[string] path: &str,
   #[smi] flags: Option<i32>,
 ) -> Result<Uint8Array, FsOpsError> {
-  let path = Path::new(path);
+  let npm_resolver = maybe_npm_fs_resolver(state);
+  let resolved_npm_path = match &npm_resolver {
+    Some(resolver) => resolver
+      .resolve_npm_package_sync(path)
+      .map_err(|err| FsOpsErrorKind::Other(err).into_box())?,
+    None => None,
+  };
+  let is_npm_path = resolved_npm_path.is_some();
+  let path = resolved_npm_path
+    .as_deref()
+    .unwrap_or_else(|| Path::new(path));
   let options = if let Some(flags) = flags {
     OpenOptions::from(flags)
   } else {
@@ -1488,13 +1517,22 @@ pub fn op_fs_read_file_sync(
   };
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state
-    .borrow::<deno_permissions::PermissionsContainer>()
-    .check_open(
+  let access_kind = open_options_to_access_kind(&options);
+  let path = if is_npm_path && access_kind == OpenAccessKind::Read {
+    check_npm_read_permission(
+      state,
+      npm_resolver.as_ref().unwrap(),
       Cow::Borrowed(path),
-      open_options_to_access_kind(&options),
-      Some("Deno.readFileSync()"),
-    )?;
+    )?
+  } else {
+    state
+      .borrow::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Borrowed(path),
+        access_kind,
+        Some("Deno.readFileSync()"),
+      )?
+  };
 
   let buf = fs
     .read_file_sync(&path, options)
@@ -1511,7 +1549,16 @@ pub async fn op_fs_read_file_async(
   #[smi] cancel_rid: Option<ResourceId>,
   #[smi] flags: Option<i32>,
 ) -> Result<Uint8Array, FsOpsError> {
-  let path = PathBuf::from(path);
+  let npm_resolver = maybe_npm_fs_resolver(&state.borrow());
+  let resolved_npm_path = match &npm_resolver {
+    Some(resolver) => resolver
+      .resolve_npm_package_async(path.clone())
+      .await
+      .map_err(|err| FsOpsErrorKind::Other(err).into_box())?,
+    None => None,
+  };
+  let is_npm_path = resolved_npm_path.is_some();
+  let path = resolved_npm_path.unwrap_or_else(|| PathBuf::from(path));
   let options = if let Some(flags) = flags {
     OpenOptions::from(flags)
   } else {
@@ -1519,16 +1566,21 @@ pub async fn op_fs_read_file_async(
   };
 
   let (fs, cancel_handle, path) = {
-    let state = state.borrow();
+    let mut state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    let path = state
-      .borrow::<deno_permissions::PermissionsContainer>()
-      .check_open(
+    let access_kind = open_options_to_access_kind(&options);
+    let path = if is_npm_path && access_kind == OpenAccessKind::Read {
+      check_npm_read_permission(
+        &mut state,
+        npm_resolver.as_ref().unwrap(),
         Cow::Owned(path),
-        open_options_to_access_kind(&options),
-        Some("Deno.readFile()"),
-      )?;
+      )?
+    } else {
+      state
+        .borrow::<deno_permissions::PermissionsContainer>()
+        .check_open(Cow::Owned(path), access_kind, Some("Deno.readFile()"))?
+    };
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
@@ -1557,16 +1609,34 @@ pub fn op_fs_read_file_text_sync(
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<FastString, FsOpsError> {
-  let path = Path::new(path);
+  let npm_resolver = maybe_npm_fs_resolver(state);
+  let resolved_npm_path = match &npm_resolver {
+    Some(resolver) => resolver
+      .resolve_npm_package_sync(path)
+      .map_err(|err| FsOpsErrorKind::Other(err).into_box())?,
+    None => None,
+  };
+  let is_npm_path = resolved_npm_path.is_some();
+  let path = resolved_npm_path
+    .as_deref()
+    .unwrap_or_else(|| Path::new(path));
 
   let fs = state.borrow::<FileSystemRc>().clone();
-  let path = state
-    .borrow::<deno_permissions::PermissionsContainer>()
-    .check_open(
+  let path = if is_npm_path {
+    check_npm_read_permission(
+      state,
+      npm_resolver.as_ref().unwrap(),
       Cow::Borrowed(path),
-      OpenAccessKind::Read,
-      Some("Deno.readFileSync()"),
-    )?;
+    )?
+  } else {
+    state
+      .borrow::<deno_permissions::PermissionsContainer>()
+      .check_open(
+        Cow::Borrowed(path),
+        OpenAccessKind::Read,
+        Some("Deno.readFileSync()"),
+      )?
+  };
   let str = fs
     .read_text_file_lossy_sync(&path)
     .context_path("readfile", &path)?;
@@ -1582,19 +1652,36 @@ pub async fn op_fs_read_file_text_async(
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<FastString, FsOpsError> {
-  let path = PathBuf::from(path);
+  let npm_resolver = maybe_npm_fs_resolver(&state.borrow());
+  let resolved_npm_path = match &npm_resolver {
+    Some(resolver) => resolver
+      .resolve_npm_package_async(path.clone())
+      .await
+      .map_err(|err| FsOpsErrorKind::Other(err).into_box())?,
+    None => None,
+  };
+  let is_npm_path = resolved_npm_path.is_some();
+  let path = resolved_npm_path.unwrap_or_else(|| PathBuf::from(path));
 
   let (fs, cancel_handle, path) = {
-    let state = state.borrow_mut();
+    let mut state = state.borrow_mut();
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
-    let path = state
-      .borrow::<deno_permissions::PermissionsContainer>()
-      .check_open(
+    let path = if is_npm_path {
+      check_npm_read_permission(
+        &mut state,
+        npm_resolver.as_ref().unwrap(),
         Cow::Owned(path),
-        OpenAccessKind::Read,
-        Some("Deno.readFile()"),
-      )?;
+      )?
+    } else {
+      state
+        .borrow::<deno_permissions::PermissionsContainer>()
+        .check_open(
+          Cow::Owned(path),
+          OpenAccessKind::Read,
+          Some("Deno.readFile()"),
+        )?
+    };
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 

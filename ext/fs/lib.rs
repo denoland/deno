@@ -13,6 +13,8 @@ pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;
 pub use crate::interface::FsFileType;
+pub use crate::interface::NpmPackageFsResolver;
+pub use crate::interface::NpmPackageFsResolverRc;
 pub use crate::interface::OpenOptions;
 pub use crate::ops::FsOpsError;
 pub use crate::ops::FsOpsErrorKind;
@@ -100,8 +102,12 @@ deno_core::extension!(deno_fs,
   lazy_loaded_js = [ "30_fs.js" ],
   options = {
     fs: FileSystemRc,
+    npm_fs_resolver: Option<NpmPackageFsResolverRc>,
   },
   state = |state, options| {
     state.put(options.fs);
+    if let Some(npm_fs_resolver) = options.npm_fs_resolver {
+      state.put(npm_fs_resolver);
+    }
   },
 );

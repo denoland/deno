@@ -42,6 +42,7 @@ use deno_core::v8;
 use deno_cron::CronHandlerImpl;
 use deno_error::JsErrorClass;
 use deno_fs::FileSystem;
+use deno_fs::NpmPackageFsResolverRc;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_napi::DenoRtNativeAddonLoaderRc;
@@ -352,6 +353,7 @@ pub struct WebWorkerServiceOptions<
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
   pub feature_checker: Arc<FeatureChecker>,
   pub fs: Arc<dyn FileSystem>,
+  pub npm_fs_resolver: Option<NpmPackageFsResolverRc>,
   pub main_inspector_session_tx: MainInspectorSessionChannel,
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_services: Option<
@@ -565,7 +567,10 @@ impl WebWorker {
         ..Default::default()
       }),
       deno_io::deno_io::init(Some(options.stdio)),
-      deno_fs::deno_fs::init(services.fs.clone()),
+      deno_fs::deno_fs::init(
+        services.fs.clone(),
+        services.npm_fs_resolver.clone(),
+      ),
       deno_os::deno_os::init(Some(deno_os::ExitCode::default())),
       deno_process::deno_process::init(services.npm_process_state_provider),
       deno_node_crypto::deno_node_crypto::init(),
