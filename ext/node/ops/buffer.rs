@@ -353,9 +353,9 @@ fn decode_utf16le_from_bytes<'a>(
   #[cfg(target_endian = "little")]
   {
     // Attempt a zero-copy cast to &[u16]
-    // SAFETY: `u16` allows any internal bit combination and has
-    // no invalid bit patterns. Reinterpreting an initialized
-    // `u8` memory block as `u16` is completely safe.
+    // SAFETY:
+    // `u16` has no invalid bit patterns. Reinterpreting
+    // any initialized `u8` pairs as `u16` is safe.
     let (prefix, u16_slice, suffix) = unsafe { buf.align_to::<u16>() };
 
     if prefix.is_empty() && suffix.is_empty() {
@@ -368,18 +368,18 @@ fn decode_utf16le_from_bytes<'a>(
       let mut u16_data = Vec::<u16>::with_capacity(target_len);
 
       // SAFETY:
-      // 1. `u16_data` capacity is `len / 2` `u16` elements
-      //    (which perfectly equals `len` bytes).
-      // 2. Source and destination pointers point to differently
-      //    allocated memory regions (non-overlapping).
-      // 3. Copying `len` bytes will not exceed `buf` bounds.
-      // 4. Memory is fully initialized after the copy, making
-      //    `set_len(len / 2)` safe to call.
+      // 1. `buf` is valid for reads of `len` bytes.
+      // 2. `u16_data` has a capacity of `target_len`
+      //    `u16`s (exactly `len` bytes), so writing
+      //    `len` bytes is within bounds.
+      // 3. Source and destination do not overlap.
+      // 4. `copy_nonoverlapping` fully initializes
+      //    the memory, making `set_len` safe.
       unsafe {
         // Memcpy the data byte-by-byte into the newly allocated Vec memory.
         std::ptr::copy_nonoverlapping(
           buf.as_ptr(),
-          u16_data.as_mut_ptr() as *mut u8,
+          u16_data.as_mut_ptr().cast::<u8>(),
           len,
         );
         // Manually set the length.
@@ -402,10 +402,10 @@ fn decode_utf16le_from_bytes<'a>(
   // Fallback for big-endian architectures (uncommon environments).
   #[cfg(target_endian = "big")]
   {
-    let mut u16_data = Vec::<u16>::with_capacity(target_len);
-    for chunk in buf.chunks_exact(2) {
-      u16_data.push(u16::from_le_bytes([chunk[0], chunk[1]]));
-    }
+    let u16_data = buf
+      .chunks_exact(2)
+      .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+      .collect();
     if len <= ZERO_COPY_THRESHOLD {
       // Copy bytes to a string
       v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
