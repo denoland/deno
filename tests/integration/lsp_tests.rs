@@ -5986,6 +5986,82 @@ fn lsp_status_file() {
 }
 
 #[test(timeout = 300)]
+fn lsp_code_actions_deno_test_ignore_only() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_test.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        "Deno.test(\"basic\", () => {});\n",
+        "Deno.test({ name: \"object\", fn: () => {}, ignore: true, only: false });\n",
+      ),
+    },
+  }));
+
+  let test_code_actions = |client: &mut LspClient, line| {
+    let res = client.write_request(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file_test.ts"
+        },
+        "range": {
+          "start": { "line": line, "character": 5 },
+          "end": { "line": line, "character": 5 },
+        },
+        "context": {
+          "diagnostics": [],
+          "only": ["refactor.rewrite"],
+        }
+      }),
+    );
+    serde_json::from_value::<Vec<lsp::CodeAction>>(res).unwrap()
+  };
+  let action_texts = |actions: Vec<lsp::CodeAction>| {
+    actions
+      .into_iter()
+      .filter_map(|action| {
+        let new_text = action
+          .edit?
+          .changes?
+          .into_values()
+          .next()?
+          .into_iter()
+          .next()?
+          .new_text;
+        Some((action.title, new_text))
+      })
+      .collect::<Vec<_>>()
+  };
+
+  assert_eq!(
+    action_texts(test_code_actions(&mut client, 0)),
+    vec![
+      (
+        "Ignore test".to_string(),
+        r#"{ name: "basic", fn: () => {}, ignore: true }"#.to_string(),
+      ),
+      (
+        "Only test".to_string(),
+        r#"{ name: "basic", fn: () => {}, only: true }"#.to_string(),
+      ),
+    ],
+  );
+  assert_eq!(
+    action_texts(test_code_actions(&mut client, 1)),
+    vec![
+      ("Unignore test".to_string(), "false".to_string()),
+      ("Only test".to_string(), "true".to_string()),
+    ],
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_code_actions_deno_cache() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
