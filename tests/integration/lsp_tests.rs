@@ -238,6 +238,84 @@ fn unadded_dependency_message_with_import_map() {
 }
 
 #[test(timeout = 300)]
+fn lsp_doc_lint_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // A publishable package: `deno doc --lint` checks its export entrypoints for
+  // missing documentation.
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}"#,
+  );
+  temp_dir.write(
+    "mod.ts",
+    "export function add(a: number, b: number) {\n  return a + b;\n}\n",
+  );
+  // A non-exported module should not be doc linted.
+  temp_dir.write(
+    "other.ts",
+    "export function sub(a: number, b: number) {\n  return a - b;\n}\n",
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let mod_uri = url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": mod_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("mod.ts"),
+    }
+  }));
+  let messages = diagnostics
+    .for_file(&mod_uri)
+    .into_iter()
+    .filter(|d| d.source.as_deref() == Some("deno-doc"))
+    .map(|d| d.message)
+    .collect::<Vec<_>>();
+  assert!(
+    messages
+      .iter()
+      .any(|m| m.contains("missing JSDoc documentation")),
+    "expected a missing-jsdoc diagnostic, got: {messages:#?}"
+  );
+  assert!(
+    messages
+      .iter()
+      .any(|m| m.contains("missing an explicit return type")),
+    "expected a missing-return-type diagnostic, got: {messages:#?}"
+  );
+
+  // A module that isn't an export entrypoint should have no doc lint
+  // diagnostics.
+  let other_uri =
+    url_to_uri(&temp_dir.url().join("other.ts").unwrap()).unwrap();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": other_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("other.ts"),
+    }
+  }));
+  assert!(
+    diagnostics
+      .for_file(&other_uri)
+      .into_iter()
+      .all(|d| d.source.as_deref() != Some("deno-doc")),
+    "non-export module should not be doc linted"
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn unadded_dependency_message() {
   let context = TestContextBuilder::new()
     .use_http_server()
