@@ -758,7 +758,8 @@ async fn tcp_keepalive_sets_so_keepalive_on_connected_socket() {
       ));
     }
 
-    for _ in 0..100 {
+    // Generous budget so the test stays reliable on slow/loaded CI runners.
+    for _ in 0..2000 {
       tick(runtime).await;
       if connected.get() {
         break;
