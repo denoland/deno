@@ -1,7 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
 "use strict";
 const { core, primordials } = __bootstrap;
@@ -23,14 +21,20 @@ const {
   Promise,
   PromisePrototypeThen,
   PromiseResolve,
+  PromiseWithResolvers,
   ReflectApply,
   ReflectConstruct,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeRegExp,
   String,
+  StringPrototypeMatch,
   Symbol,
   SymbolFor,
   TypeError,
+  queueMicrotask,
 } = primordials;
 
 let errorHandlersInstalled = false;
@@ -190,6 +194,7 @@ function run(options) {
       } catch { /* ignore */ }
       watcher = null;
     }
+    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
     stream.push(null);
   }
 
@@ -199,6 +204,7 @@ function run(options) {
     // Node's TestsStream emits each lifecycle entry both as a data chunk
     // (consumed via async iteration / `'data'` listeners) and as a named
     // event so callers can attach `.on('test:watch:drained', ...)` directly.
+    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
     stream.push({ __proto__: null, type, data });
     stream.emit(type, data);
   }
@@ -288,7 +294,10 @@ function detectNodeTestReporter() {
   // space-separated forms. We intentionally do not handle multiple reporters
   // (Node lets you stack reporters with destinations); the snapshot tests use
   // a single reporter and that is what we target.
-  const match = nodeOptions.match(/--test-reporter(?:=|\s+)(\S+)/);
+  const match = StringPrototypeMatch(
+    nodeOptions,
+    new SafeRegExp(/--test-reporter(?:=|\s+)(\S+)/),
+  );
   return match ? match[1] : null;
 }
 
@@ -334,21 +343,24 @@ function parsePatternFlag(flag) {
   } catch { /* permission denied */ }
   if (!nodeOptions) return null;
   const out = [];
-  const re = new RegExp(`${flag}(?:=|\\s+)(\\S+)`, "g");
+  const re = new SafeRegExp(`${flag}(?:=|\\s+)(\\S+)`, "g");
   let m;
-  while ((m = re.exec(nodeOptions)) !== null) {
+  while ((m = RegExpPrototypeExec(re, nodeOptions)) !== null) {
     const value = m[1];
     let pattern;
-    const litMatch = value.match(/^\/(.*)\/([a-z]*)$/);
+    const litMatch = StringPrototypeMatch(
+      value,
+      new SafeRegExp(/^\/(.*)\/([a-z]*)$/),
+    );
     if (litMatch) {
       try {
-        pattern = new RegExp(litMatch[1], litMatch[2]);
+        pattern = new SafeRegExp(litMatch[1], litMatch[2]);
       } catch {
         continue;
       }
     } else {
       try {
-        pattern = new RegExp(value);
+        pattern = new SafeRegExp(value);
       } catch {
         continue;
       }
@@ -377,7 +389,10 @@ function isTestOnlyFlagSet() {
   try {
     nodeOptions = env.get("NODE_OPTIONS") || "";
   } catch { /* permission denied */ }
-  testOnlyFlagCache = /(^|\s)--test-only(\s|=|$)/.test(nodeOptions);
+  testOnlyFlagCache = RegExpPrototypeTest(
+    new SafeRegExp(/(^|\s)--test-only(\s|=|$)/),
+    nodeOptions,
+  );
   return testOnlyFlagCache;
 }
 
@@ -386,7 +401,7 @@ const TEST_ONLY_WARNING =
 
 function matchesAnyPattern(name, patterns) {
   for (const p of new SafeArrayIterator(patterns)) {
-    if (p.test(name)) return true;
+    if (RegExpPrototypeTest(p, name)) return true;
   }
   return false;
 }
@@ -558,7 +573,9 @@ async function runTapTop() {
         try {
           const r = ReflectApply(hook, null, [rootCtx]);
           if (isThenable(r)) await r;
-        } catch { /* swallow to keep parity with Node's lenient hook errors */ }
+        } catch {
+          /* swallow to keep parity with Node's lenient hook errors */
+        }
       }
     }
     tapWrite("TAP version 13");
@@ -1090,7 +1107,11 @@ async function runRootAfterIfDone() {
   if (rootAfterHooks.length === 0) return;
   const rootCtx = { name: "<root>", fullName: "<root>" };
   // Snapshot and clear so we only run once even if more tests get queued.
-  const hooks = ArrayPrototypeSplice(rootAfterHooks, 0, rootAfterHooks.length);
+  const hooks = ArrayPrototypeSplice(
+    rootAfterHooks,
+    0,
+    rootAfterHooks.length,
+  );
   for (const hook of new SafeArrayIterator(hooks)) {
     try {
       await hook(rootCtx);
@@ -1154,11 +1175,16 @@ class TestSuite {
 
   addSuite(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
-    const { promise, resolve } = Promise.withResolvers();
+    const { promise, resolve } = PromiseWithResolvers();
     const parentSuiteContext = this.nodeTestContext;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
-      fn: wrapSuiteFn(prepared.fn, resolve, prepared.name, parentSuiteContext),
+      fn: wrapSuiteFn(
+        prepared.fn,
+        resolve,
+        prepared.name,
+        parentSuiteContext,
+      ),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
     });
     return promise;
@@ -1665,7 +1691,9 @@ const mock = {
       options = original;
       original = undefined;
       implementation = undefined;
-    } else if (implementation !== null && typeof implementation === "object") {
+    } else if (
+      implementation !== null && typeof implementation === "object"
+    ) {
       options = implementation;
       implementation = original;
     }

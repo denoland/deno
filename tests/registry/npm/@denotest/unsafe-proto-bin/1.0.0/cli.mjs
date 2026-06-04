@@ -1,14 +1,6 @@
 #!/usr/bin/env node
 
-let hasUnsafeProto;
-try {
-  // When the `__proto__` accessor is disabled this throws; with
-  // --unstable-unsafe-proto the native accessor returns the prototype.
-  ({}).__proto__;
-  hasUnsafeProto = true;
-} catch {
-  hasUnsafeProto = false;
-}
+const hasUnsafeProto = Object.hasOwn(Object.prototype, "__proto__");
 if (hasUnsafeProto) {
   console.log("unsafe proto enabled");
 } else {

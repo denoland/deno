@@ -1,19 +1,40 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   forgivingBase64Decode,
   forgivingBase64UrlDecode,
 } = core.loadExtScript("ext:deno_web/00_infra.js");
+const {
+  DataView,
+  DataViewPrototypeGetUint16,
+  DataViewPrototypeSetUint16,
+  Error,
+  Int8Array,
+  MathMin,
+  NumberPOSITIVE_INFINITY,
+  SafeRegExp,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIndexOf,
+  StringPrototypeReplace,
+  StringPrototypeReplaceAll,
+  StringPrototypeSubstring,
+  StringPrototypeTrim,
+  StringPrototypeTrimStart,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypedArrayPrototypeSubarray,
+  Uint8Array,
+} = primordials;
 
 function asciiToBytes(str: string) {
   const length = str.length;
   const byteArray = new Uint8Array(length);
   for (let i = 0; i < length; ++i) {
-    byteArray[i] = str.charCodeAt(i) & 255;
+    byteArray[i] = StringPrototypeCharCodeAt(str, i) & 255;
   }
   return byteArray;
 }
@@ -24,19 +45,25 @@ function base64ToBytes(str: string) {
   } catch {
     // Convert base64url characters to standard base64 before cleaning,
     // so that the padding logic in base64clean works correctly.
-    str = str.replaceAll("-", "+").replaceAll("_", "/");
+    str = StringPrototypeReplaceAll(
+      StringPrototypeReplaceAll(str, "-", "+"),
+      "_",
+      "/",
+    );
     str = base64clean(str);
     return forgivingBase64Decode(str);
   }
 }
 
-const INVALID_BASE64_RE = /[^+/0-9A-Za-z-_]/g;
+const INVALID_BASE64_RE = new SafeRegExp(/[^+/0-9A-Za-z-_]/g);
 function base64clean(str: string) {
   // Node takes equal signs as end of the Base64 encoding
-  const eqIndex = str.indexOf("=");
-  str = eqIndex !== -1 ? str.substring(0, eqIndex).trimStart() : str.trim();
+  const eqIndex = StringPrototypeIndexOf(str, "=");
+  str = eqIndex !== -1
+    ? StringPrototypeTrimStart(StringPrototypeSubstring(str, 0, eqIndex))
+    : StringPrototypeTrim(str);
   // Node strips out invalid characters like \n and \t from the string, std/base64 does not
-  str = str.replace(INVALID_BASE64_RE, "");
+  str = StringPrototypeReplace(str, INVALID_BASE64_RE, "");
   // Node converts strings with length < 2 to ''
   const length = str.length;
   if (length < 2) return "";
@@ -46,7 +73,7 @@ function base64clean(str: string) {
       return str;
     case 1:
       // A single base64 char can't encode a full byte; drop it like Node does
-      return str.substring(0, length - 1);
+      return StringPrototypeSubstring(str, 0, length - 1);
     case 2:
       return `${str}==`;
     case 3:
@@ -58,7 +85,11 @@ function base64clean(str: string) {
 
 function base64UrlToBytes(str: string) {
   str = base64clean(str);
-  str = str.replaceAll("+", "-").replaceAll("/", "_");
+  str = StringPrototypeReplaceAll(
+    StringPrototypeReplaceAll(str, "+", "-"),
+    "/",
+    "_",
+  );
   return forgivingBase64UrlDecode(str);
 }
 
@@ -88,8 +119,8 @@ function hexToBytes(str: string) {
   const byteArray = new Uint8Array(length);
   let i: number;
   for (i = 0; i < length; i++) {
-    const a = unhexTable[str.charCodeAt(i * 2) & 0xff];
-    const b = unhexTable[str.charCodeAt(i * 2 + 1) & 0xff];
+    const a = unhexTable[StringPrototypeCharCodeAt(str, i * 2) & 0xff];
+    const b = unhexTable[StringPrototypeCharCodeAt(str, i * 2 + 1) & 0xff];
     if (!~a || !~b) {
       break;
     }
@@ -98,23 +129,35 @@ function hexToBytes(str: string) {
   // Returning a buffer subarray is okay: This API's return value
   // is never exposed to users and is only ever used for its length
   // and the data within the subarray.
-  return i === length ? byteArray : byteArray.subarray(0, i);
+  return i === length
+    ? byteArray
+    : TypedArrayPrototypeSubarray(byteArray, 0, i);
 }
 
 function utf16leToBytes(str: string, units?: number) {
   // If units is defined, round it to even values for 16 byte "steps"
   // and use it as an upper bound value for our string byte array's length.
-  const length = Math.min(str.length * 2, units ? (units >>> 1) * 2 : Infinity);
+  const length = MathMin(
+    str.length * 2,
+    units ? (units >>> 1) * 2 : NumberPOSITIVE_INFINITY,
+  );
   const byteArray = new Uint8Array(length);
-  const view = new DataView(byteArray.buffer);
+  const view = new DataView(TypedArrayPrototypeGetBuffer(byteArray));
   let i: number;
   for (i = 0; i * 2 < length; i++) {
-    view.setUint16(i * 2, str.charCodeAt(i), true);
+    DataViewPrototypeSetUint16(
+      view,
+      i * 2,
+      StringPrototypeCharCodeAt(str, i),
+      true,
+    );
   }
   // Returning a buffer subarray is okay: This API's return value
   // is never exposed to users and is only ever used for its length
   // and the data within the subarray.
-  return i * 2 === length ? byteArray : byteArray.subarray(0, i * 2);
+  return i * 2 === length
+    ? byteArray
+    : TypedArrayPrototypeSubarray(byteArray, 0, i * 2);
 }
 
 return {
