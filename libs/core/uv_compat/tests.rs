@@ -665,18 +665,164 @@ async fn tcp_nodelay() {
   .await;
 }
 
-// ========== TCP keepalive / simultaneous_accepts (no-ops) ==========
+// ========== TCP keepalive / simultaneous_accepts ==========
 
 #[tokio::test(flavor = "current_thread")]
-async fn tcp_keepalive_is_noop() {
+async fn tcp_keepalive_without_socket_is_ok() {
+  // Without an underlying socket the request is recorded (and applied
+  // later when the socket is created) rather than erroring.
   run_test(async |_runtime, uv_loop| {
     let mut tcp = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
     let tcp_ptr = tcp.as_mut_ptr();
     unsafe {
       uv_tcp_init(uv_loop, tcp_ptr);
       assert_ok(uv_tcp_keepalive(tcp_ptr, 1, 60));
+      assert_eq!((*tcp_ptr).internal_keepalive, Some((true, 60)));
       assert_ok(uv_tcp_simultaneous_accepts(tcp_ptr, 1));
     }
+  })
+  .await;
+}
+
+/// Regression test for tedious/mssql ECONNRESET (denoland/deno#34729):
+/// `socket.setKeepAlive()` must actually toggle `SO_KEEPALIVE` on the
+/// underlying socket. The native TCPWrap rewrite had regressed this to a
+/// silent no-op, so libraries that rely on TCP keepalive to keep
+/// tunneled/long-lived connections alive lost that protection.
+#[cfg(unix)]
+#[tokio::test(flavor = "current_thread")]
+async fn tcp_keepalive_sets_so_keepalive_on_connected_socket() {
+  use std::os::unix::io::AsRawFd;
+
+  run_test(async |runtime, uv_loop| {
+    let mut server = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let server_ptr = server.as_mut_ptr();
+
+    unsafe extern "C" fn on_connection(_: *mut uv_stream_t, status: i32) {
+      assert_eq!(status, 0);
+    }
+
+    let server_port: u16;
+    unsafe {
+      uv_tcp_init(uv_loop, server_ptr);
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), 0, addr.as_mut_ptr());
+      assert_ok(uv_tcp_bind(
+        server_ptr,
+        addr.as_ptr() as *const c_void,
+        0,
+        0,
+      ));
+      assert_ok(uv_listen(
+        server_ptr as *mut uv_stream_t,
+        128,
+        Some(on_connection),
+      ));
+      let mut name = std::mem::MaybeUninit::<sockaddr_in>::zeroed();
+      let mut namelen = std::mem::size_of::<sockaddr_in>() as i32;
+      uv_tcp_getsockname(
+        server_ptr,
+        name.as_mut_ptr() as *mut c_void,
+        &mut namelen,
+      );
+      server_port = u16::from_be(name.assume_init_ref().sin_port);
+    }
+
+    let connected = Rc::new(Cell::new(false));
+    let connected_ptr = Rc::into_raw(connected.clone());
+
+    unsafe extern "C" fn on_connect(req: *mut uv_connect_t, status: i32) {
+      assert_eq!(status, 0);
+      let connected = unsafe { Rc::from_raw((*req).data as *const Cell<bool>) };
+      connected.set(true);
+      let _ = Rc::into_raw(connected);
+    }
+
+    let mut client = std::mem::MaybeUninit::<uv_tcp_t>::uninit();
+    let client_ptr = client.as_mut_ptr();
+    let mut connect_req = std::mem::MaybeUninit::<uv_connect_t>::uninit();
+    let connect_req_ptr = connect_req.as_mut_ptr();
+
+    unsafe {
+      uv_tcp_init(uv_loop, client_ptr);
+      (*connect_req_ptr).data = connected_ptr as *mut c_void;
+      let mut addr = std::mem::MaybeUninit::<sockaddr_in>::uninit();
+      let ip = std::ffi::CString::new("127.0.0.1").unwrap();
+      uv_ip4_addr(ip.as_ptr(), server_port as i32, addr.as_mut_ptr());
+      assert_ok(uv_tcp_connect(
+        connect_req_ptr,
+        client_ptr,
+        addr.as_ptr() as *const c_void,
+        Some(on_connect),
+      ));
+    }
+
+    for _ in 0..100 {
+      tick(runtime).await;
+      if connected.get() {
+        break;
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(connected.get(), "Client should have connected");
+
+    unsafe {
+      // Enable keepalive on the connected client and confirm the kernel
+      // socket actually has SO_KEEPALIVE set.
+      assert_ok(uv_tcp_keepalive(client_ptr, 1, 45));
+      let fd = (*client_ptr)
+        .internal_stream
+        .as_ref()
+        .expect("connected client should have a stream")
+        .as_raw_fd();
+
+      let mut val: libc::c_int = 0;
+      let mut len = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+      let rc = libc::getsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_KEEPALIVE,
+        &mut val as *mut _ as *mut c_void,
+        &mut len,
+      );
+      assert_eq!(rc, 0, "getsockopt(SO_KEEPALIVE) failed");
+      assert_ne!(val, 0, "SO_KEEPALIVE should be enabled");
+
+      // Linux exposes the idle delay via TCP_KEEPIDLE; verify it was set.
+      #[cfg(any(target_os = "linux", target_os = "android"))]
+      {
+        let mut idle: libc::c_int = 0;
+        let mut ilen = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+        let rc = libc::getsockopt(
+          fd,
+          libc::IPPROTO_TCP,
+          libc::TCP_KEEPIDLE,
+          &mut idle as *mut _ as *mut c_void,
+          &mut ilen,
+        );
+        assert_eq!(rc, 0, "getsockopt(TCP_KEEPIDLE) failed");
+        assert_eq!(idle, 45, "TCP_KEEPIDLE should match requested delay");
+      }
+
+      // Disabling clears SO_KEEPALIVE again.
+      assert_ok(uv_tcp_keepalive(client_ptr, 0, 0));
+      let mut val2: libc::c_int = 1;
+      let mut len2 = std::mem::size_of::<libc::c_int>() as libc::socklen_t;
+      libc::getsockopt(
+        fd,
+        libc::SOL_SOCKET,
+        libc::SO_KEEPALIVE,
+        &mut val2 as *mut _ as *mut c_void,
+        &mut len2,
+      );
+      assert_eq!(val2, 0, "SO_KEEPALIVE should be disabled");
+
+      uv_close(client_ptr as *mut uv_handle_t, None);
+      uv_close(server_ptr as *mut uv_handle_t, None);
+      Rc::from_raw(connected_ptr);
+    }
+    tick(runtime).await;
   })
   .await;
 }

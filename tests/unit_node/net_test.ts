@@ -68,6 +68,35 @@ Deno.test("[node/net] close event emits after error event - when connection is r
   assertEquals(events, ["error", "close"]);
 });
 
+// Regression for https://github.com/denoland/deno/issues/34729. The native
+// TCPWrap must expose `setKeepAlive` so `socket.setKeepAlive()` toggles
+// SO_KEEPALIVE on the underlying socket instead of silently no-op'ing.
+// Libraries such as `tedious`/`mssql` enable keepalive right after connecting
+// to keep tunneled connections alive; losing it surfaced as ECONNRESET.
+Deno.test("[node/net] socket.setKeepAlive() reaches the handle", async () => {
+  const server = net.createServer((socket) => {
+    socket.end();
+  });
+  const listening = Promise.withResolvers<void>();
+  server.listen(0, "127.0.0.1", () => listening.resolve());
+  await listening.promise;
+  const { port } = server.address() as net.AddressInfo;
+
+  const done = Promise.withResolvers<void>();
+  const socket = net.connect(port, "127.0.0.1", () => {
+    // The handle backing a connected TCP socket must implement setKeepAlive.
+    // deno-lint-ignore no-explicit-any
+    assertEquals(typeof (socket as any)._handle.setKeepAlive, "function");
+    // Must not throw and must return the socket for chaining (Node API).
+    assertEquals(socket.setKeepAlive(true, 30000), socket);
+    socket.setKeepAlive(false);
+    socket.destroy();
+    done.resolve();
+  });
+  await done.promise;
+  server.close();
+});
+
 Deno.test("[node/net] the port is available immediately after close callback", async () => {
   const deferred = Promise.withResolvers<void>();
 
