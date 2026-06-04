@@ -1741,6 +1741,7 @@ mod tests {
         r#"{
         "imports": {
           "/~/std/": "../std/",
+          "a/": "../a/",
           "$@/": "./",
           "$a/": "../a/"
         }
@@ -1777,7 +1778,22 @@ mod tests {
         ],
         [
           url_to_uri(&temp_dir.url().join("a/file2.ts").unwrap()).unwrap(),
-          [],
+          [
+            {
+              "range": {
+                "start": { "line": 0, "character": 19 },
+                "end": { "line": 0, "character": 30 },
+              },
+              "severity": 4,
+              "code": "import-map-remap",
+              "source": "deno",
+              "message": "The import specifier can be remapped to \"$@/file.ts\" which will resolve it via the active import map.",
+              "data": {
+                "from": "./file.ts",
+                "to": "$@/file.ts",
+              },
+            },
+          ],
         ],
       ]),
     );
