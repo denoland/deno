@@ -25,11 +25,14 @@
 // - https://github.com/nodejs/node/blob/master/src/async_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/async_wrap.h
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
 const { AsyncWrap, op_node_new_async_id } = core.ops;
+const {
+  Float64Array,
+  ObjectKeys,
+  Uint32Array,
+} = primordials;
 
 function registerDestroyHook(
   // deno-lint-ignore no-explicit-any
@@ -56,7 +59,7 @@ enum constants {
   kStackLength,
 }
 
-const asyncHookFields = new Uint32Array(Object.keys(constants).length);
+const asyncHookFields = new Uint32Array(ObjectKeys(constants).length);
 
 // Increment the internal id counter and return the value.
 function newAsyncId() {
@@ -70,7 +73,7 @@ enum UidFields {
   kUidFieldsCount,
 }
 
-const asyncIdFields = new Float64Array(Object.keys(UidFields).length);
+const asyncIdFields = new Float64Array(ObjectKeys(UidFields).length);
 
 // `kDefaultTriggerAsyncId` should be `-1`, this indicates that there is no
 // specified default value and it should fallback to the executionAsyncId.

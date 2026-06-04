@@ -1,10 +1,30 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayFrom,
+  ArrayIsArray,
+  ArrayPrototypeJoin,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeUnshift,
+  JSONParse,
+  JSONStringify,
+  MathTrunc,
+  Number,
+  NumberPrototypeToString,
+  ReflectApply,
+  SafeArrayIterator,
+  SafeMap,
+  SafeSet,
+  SafeSetIterator,
+  StringFromCharCode,
+  StringPrototypeEndsWith,
+  StringPrototypeStartsWith,
+  Symbol,
+  Uint8Array,
+} = primordials;
 const { ERR_TRACE_EVENTS_CATEGORY_REQUIRED } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -64,9 +84,9 @@ const kMaxTracingCount = 10;
 const PHASE_NESTABLE_ASYNC_BEGIN = 98; // 'b'
 const PHASE_NESTABLE_ASYNC_END = 101; // 'e'
 
-const enabledTracingObjects = new Set();
-const categoryBuffers = new Map();
-const categoryRefCounts = new Map();
+const enabledTracingObjects = new SafeSet();
+const categoryBuffers = new SafeMap();
+const categoryRefCounts = new SafeMap();
 const recordedEvents = [];
 let asyncHooksRefcount = 0;
 let exitHandlerRegistered = false;
@@ -121,7 +141,7 @@ class Tracing {
   enable() {
     if (!this[kEnabled]) {
       this[kEnabled] = true;
-      for (const category of this[kCategories]) {
+      for (const category of new SafeArrayIterator(this[kCategories])) {
         incrementCategory(category);
       }
       enabledTracingObjects.add(this);
@@ -141,7 +161,7 @@ class Tracing {
   disable() {
     if (this[kEnabled]) {
       this[kEnabled] = false;
-      for (const category of this[kCategories]) {
+      for (const category of new SafeArrayIterator(this[kCategories])) {
         decrementCategory(category);
       }
       enabledTracingObjects.delete(this);
@@ -153,7 +173,7 @@ class Tracing {
   }
 
   get categories() {
-    return this[kCategories].join(",");
+    return ArrayPrototypeJoin(this[kCategories], ",");
   }
 }
 
@@ -167,24 +187,24 @@ function createTracing(options) {
 }
 
 function getEnabledCategories() {
-  const seen = new Set();
-  for (const tracing of enabledTracingObjects) {
-    for (const category of tracing[kCategories]) {
+  const seen = new SafeSet();
+  for (const tracing of new SafeSetIterator(enabledTracingObjects)) {
+    for (const category of new SafeArrayIterator(tracing[kCategories])) {
       seen.add(category);
     }
   }
   if (seen.size === 0) {
     return undefined;
   }
-  return [...seen].join(",");
+  return ArrayPrototypeJoin(ArrayFrom(seen), ",");
 }
 
 function nowMicros() {
-  return Math.trunc(performance.now() * 1000);
+  return MathTrunc(performance.now() * 1000);
 }
 
 function trace(phase, category, name, id, scope) {
-  const ph = String.fromCharCode(phase);
+  const ph = StringFromCharCode(phase);
   const p = getProc();
   const event = {
     pid: p ? p.pid : 0,
@@ -195,14 +215,14 @@ function trace(phase, category, name, id, scope) {
     name,
   };
   if (id !== undefined && id !== null) {
-    event.id = "0x" + Number(id).toString(16);
+    event.id = "0x" + NumberPrototypeToString(Number(id), 16);
   }
   if (scope !== undefined && scope !== null) {
     event.args = { scope };
   } else {
     event.args = {};
   }
-  recordedEvents.push(event);
+  ArrayPrototypePush(recordedEvents, event);
   ensureExitHandlerInstalled();
 }
 
@@ -229,7 +249,7 @@ function getFs() {
 
 function writeMainTraceFile(pid) {
   const fs = getFs();
-  const allEvents = recordedEvents.slice();
+  const allEvents = ArrayPrototypeSlice(recordedEvents);
   // Pull in any worker-thread slices written by this process before exit.
   let entries;
   try {
@@ -238,16 +258,21 @@ function writeMainTraceFile(pid) {
     entries = [];
   }
   const prefix = `.deno_trace_events_${pid}_t`;
-  for (const entryName of entries) {
+  for (const entryName of new SafeArrayIterator(entries)) {
     if (typeof entryName !== "string") continue;
-    if (!entryName.startsWith(prefix) || !entryName.endsWith(".json")) {
+    if (
+      !StringPrototypeStartsWith(entryName, prefix) ||
+      !StringPrototypeEndsWith(entryName, ".json")
+    ) {
       continue;
     }
     try {
       const text = fs.readFileSync(entryName, "utf-8");
-      const slice = JSON.parse(text);
-      if (slice && Array.isArray(slice.traceEvents)) {
-        for (const ev of slice.traceEvents) allEvents.push(ev);
+      const slice = JSONParse(text);
+      if (slice && ArrayIsArray(slice.traceEvents)) {
+        for (const ev of new SafeArrayIterator(slice.traceEvents)) {
+          ArrayPrototypePush(allEvents, ev);
+        }
       }
     } catch {
       // Skip unreadable / partial slice files.
@@ -266,7 +291,7 @@ function writeMainTraceFile(pid) {
     filename = `node_trace.${rotation}.log`;
   }
   try {
-    fs.writeFileSync(filename, JSON.stringify({ traceEvents: allEvents }));
+    fs.writeFileSync(filename, JSONStringify({ traceEvents: allEvents }));
   } catch {
     // Best-effort exit-time write.
   }
@@ -278,7 +303,7 @@ function writeWorkerSliceFile(pid) {
   try {
     getFs().writeFileSync(
       filename,
-      JSON.stringify({ traceEvents: recordedEvents }),
+      JSONStringify({ traceEvents: recordedEvents }),
     );
   } catch {
     // Best-effort exit-time write.
@@ -310,13 +335,15 @@ function installAsyncHooksTimerTracing() {
 
   globalThis.setTimeout = function (cb, ms, ...args) {
     if (typeof cb !== "function") {
-      return originalSetTimeout(cb, ms, ...args);
+      const callArgs = ArrayPrototypeSlice(args);
+      ArrayPrototypeUnshift(callArgs, cb, ms);
+      return ReflectApply(originalSetTimeout, null, callArgs);
     }
     const id = ++traceIdCounter;
     trace(PHASE_NESTABLE_ASYNC_BEGIN, "node,node.async_hooks", "Timeout", id);
     const wrapped = function () {
       try {
-        return cb.apply(this, arguments);
+        return ReflectApply(cb, this, arguments);
       } finally {
         trace(
           PHASE_NESTABLE_ASYNC_END,
@@ -326,13 +353,17 @@ function installAsyncHooksTimerTracing() {
         );
       }
     };
-    return originalSetTimeout(wrapped, ms, ...args);
+    const callArgs = ArrayPrototypeSlice(args);
+    ArrayPrototypeUnshift(callArgs, wrapped, ms);
+    return ReflectApply(originalSetTimeout, null, callArgs);
   };
 
   if (typeof originalSetImmediate === "function") {
     globalThis.setImmediate = function (cb, ...args) {
       if (typeof cb !== "function") {
-        return originalSetImmediate(cb, ...args);
+        const callArgs = ArrayPrototypeSlice(args);
+        ArrayPrototypeUnshift(callArgs, cb);
+        return ReflectApply(originalSetImmediate, null, callArgs);
       }
       const id = ++traceIdCounter;
       trace(
@@ -343,7 +374,7 @@ function installAsyncHooksTimerTracing() {
       );
       const wrapped = function () {
         try {
-          return cb.apply(this, arguments);
+          return ReflectApply(cb, this, arguments);
         } finally {
           trace(
             PHASE_NESTABLE_ASYNC_END,
@@ -353,7 +384,9 @@ function installAsyncHooksTimerTracing() {
           );
         }
       };
-      return originalSetImmediate(wrapped, ...args);
+      const callArgs = ArrayPrototypeSlice(args);
+      ArrayPrototypeUnshift(callArgs, wrapped);
+      return ReflectApply(originalSetImmediate, null, callArgs);
     };
   }
 }
