@@ -191,6 +191,45 @@ async function hmacSign(key, parts) {
     .join("");
 }
 
+// Verifies the HMAC-SHA256 signature a peer sent against the signed frames.
+// Returns true when the signature is valid, or when no key is configured
+// (matching `hmacSign`, which emits an empty signature in that case).
+//
+// Incoming messages that fail this check must be dropped: the kernel runs with
+// full permissions, so without signature verification any local process able
+// to reach the kernel's (loopback) TCP ports could inject an `execute_request`
+// and run arbitrary code. The Jupyter wire protocol requires this check.
+async function hmacVerify(key, parts, sig) {
+  if (!key || key.length === 0) return true;
+  // The signature travels as a lowercase hex string; decode it to bytes.
+  if (typeof sig !== "string" || sig.length === 0 || sig.length % 2 !== 0) {
+    return false;
+  }
+  const sigBytes = new Uint8Array(sig.length / 2);
+  for (let i = 0; i < sigBytes.length; i++) {
+    const byte = Number.parseInt(sig.slice(i * 2, i * 2 + 2), 16);
+    if (Number.isNaN(byte)) return false;
+    sigBytes[i] = byte;
+  }
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    ENC.encode(key),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  const combined = new Uint8Array(
+    parts.reduce((acc, p) => acc + p.length, 0),
+  );
+  let offset = 0;
+  for (const p of parts) {
+    combined.set(p, offset);
+    offset += p.length;
+  }
+  // crypto.subtle.verify performs the comparison without leaking timing.
+  return await crypto.subtle.verify("HMAC", cryptoKey, sigBytes, combined);
+}
+
 function makeHeader(session, msgType) {
   return JSON.stringify({
     msg_id: crypto.randomUUID(),
@@ -258,13 +297,26 @@ function decodeMsg(frames) {
 
   const identities = frames.slice(0, delimIdx);
   const sig = DEC.decode(frames[delimIdx + 1]);
+  // The raw bytes of the four frames the signature is computed over. Kept so
+  // the signature can be verified against exactly what was received, rather
+  // than a re-serialization that might differ byte-for-byte.
+  const signedParts = frames.slice(delimIdx + 2, delimIdx + 6);
   const header = JSON.parse(DEC.decode(frames[delimIdx + 2]));
   const parentHeader = JSON.parse(DEC.decode(frames[delimIdx + 3]));
   const metadata = JSON.parse(DEC.decode(frames[delimIdx + 4]));
   const content = JSON.parse(DEC.decode(frames[delimIdx + 5]));
   const buffers = frames.slice(delimIdx + 6);
 
-  return { identities, sig, header, parentHeader, metadata, content, buffers };
+  return {
+    identities,
+    sig,
+    signedParts,
+    header,
+    parentHeader,
+    metadata,
+    content,
+    buffers,
+  };
 }
 
 // --- ZMTP socket helpers -------------------------------------------------------
@@ -806,6 +858,10 @@ async function startJupyterKernel() {
 
   async function handleShellMessage(socket, peerId, frames) {
     const msg = decodeMsg(frames);
+    if (!(await hmacVerify(key, msg.signedParts, msg.sig))) {
+      // Drop messages whose HMAC signature doesn't match the connection key.
+      return;
+    }
     const msgType = msg.header?.msg_type;
     const parentHeader = msg.header;
 
@@ -948,6 +1004,10 @@ async function startJupyterKernel() {
 
   async function handleControlMessage(socket, peerId, frames) {
     const msg = decodeMsg(frames);
+    if (!(await hmacVerify(key, msg.signedParts, msg.sig))) {
+      // Drop messages whose HMAC signature doesn't match the connection key.
+      return;
+    }
     const msgType = msg.header?.msg_type;
     const parentHeader = msg.header;
 
@@ -1077,6 +1137,10 @@ async function startJupyterKernel() {
       const { frames } = await stdin.recv();
       try {
         const reply = decodeMsg(frames);
+        if (!(await hmacVerify(key, reply.signedParts, reply.sig))) {
+          // Ignore an input_reply whose HMAC signature doesn't verify.
+          return null;
+        }
         if (reply.header?.msg_type === "input_reply") {
           const raw = reply.content?.value;
           return typeof raw === "string" ? raw : null;
