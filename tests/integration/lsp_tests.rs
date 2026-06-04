@@ -544,6 +544,75 @@ fn lsp_import_map_diagnostics() {
 }
 
 #[test(timeout = 300)]
+fn lsp_hover_dependency_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "imports": {
+    "foo": "./lib/foo.ts",
+    "bar/": "./lib/bar/"
+  }
+}"#,
+  );
+  temp_dir.write("lib/foo.ts", "export const foo = 1;\n");
+  temp_dir.write("lib/bar/baz.ts", "export const baz = 2;\n");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.json");
+  });
+
+  let uri = url_to_uri(&temp_dir.url().join("main.ts").unwrap()).unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"foo\";\nimport \"bar/baz.ts\";\n"
+    }
+  }));
+  client.read_diagnostics();
+
+  // Hovering over a literal import map mapping.
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": uri },
+      "position": { "line": 0, "character": 8 }
+    }),
+  );
+  let value = res
+    .pointer("/contents/value")
+    .and_then(|v| v.as_str())
+    .unwrap();
+  assert!(
+    value.contains("**Import Map**: `foo` → `./lib/foo.ts` _(deno.json)_"),
+    "{value}"
+  );
+
+  // Hovering over a prefix ("/"-suffixed) import map mapping.
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": uri },
+      "position": { "line": 1, "character": 8 }
+    }),
+  );
+  let value = res
+    .pointer("/contents/value")
+    .and_then(|v| v.as_str())
+    .unwrap();
+  assert!(
+    value.contains("**Import Map**: `bar/` → `./lib/bar/` _(deno.json)_"),
+    "{value}"
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_import_map_remote() {
   let context = TestContextBuilder::new()
     .use_http_server()
