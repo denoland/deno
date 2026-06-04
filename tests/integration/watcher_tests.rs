@@ -673,6 +673,64 @@ async fn serve_watch_all() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/30046
+// `deno serve` used to ignore `--watch-exclude` entirely, so writing to an
+// excluded file that's part of the module graph would trigger a restart.
+#[test(flaky)]
+async fn serve_watch_with_excluded_paths() {
+  let t = TempDir::new();
+
+  let excluded_file = t.path().join("excluded.js");
+  excluded_file.write("export const foo = 0;");
+
+  let main_file = t.path().join("main_file_to_watch.js");
+  main_file.write(
+    "import { foo } from './excluded.js';
+    console.log('ran', foo);
+    export default { fetch: () => new Response('ok') };",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch")
+    .arg("--watch-exclude=excluded.js")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-net")
+    .arg(&main_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("ran", &mut stdout_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  // Writing the excluded file must not trigger a restart. Writing the watched
+  // main file must, and the first restart we observe must be for the main file
+  // rather than the excluded one.
+  excluded_file.write("export const foo = 42;");
+  main_file.write(
+    "import { foo } from './excluded.js';
+    console.log('ran2', foo);
+    export default { fetch: () => new Response('ok') };",
+  );
+
+  let restart = wait_contains("File change detected", &mut stderr_lines).await;
+  assert!(
+    restart.contains("main_file_to_watch.js"),
+    "unexpected file triggered restart: {restart}"
+  );
+  assert!(
+    !restart.contains("excluded.js"),
+    "excluded file triggered a restart: {restart}"
+  );
+  wait_contains("ran2", &mut stdout_lines).await;
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn run_watch_npm_specifier() {
   let _g = util::http_server();

@@ -764,6 +764,9 @@ impl DenoSubcommand {
       Self::Run(RunFlags {
         watch: Some(flags), ..
       })
+      | Self::Serve(ServeFlags {
+        watch: Some(flags), ..
+      })
       | Self::Test(TestFlags {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::WithPaths(flags)),
