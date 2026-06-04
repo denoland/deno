@@ -798,6 +798,7 @@ Deno.test({
     assertEquals(buf.latin1Slice().length, 4);
     assertEquals(buf.latin1Slice(), "\x01\x02\x03\xff");
     assertEquals(buf.latin1Slice(1, 3), "\x02\x03");
+    assertEquals(buf.latin1Slice(1, 0), "");
   },
 });
 

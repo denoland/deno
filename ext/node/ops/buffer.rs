@@ -208,6 +208,10 @@ pub fn op_node_encoding_slice<'a>(
     return Err(JsErrorBox::from_err(BufferError::OutOfRange));
   }
 
+  if end == start {
+    return Ok(v8::String::empty(scope));
+  }
+
   let buffer = &buf[start..end];
 
   match encoding {
@@ -282,33 +286,46 @@ pub fn op_node_encoding_slice<'a>(
 
 #[inline(always)]
 fn mask_ascii_fast(bytes: &[u8]) -> Vec<u8> {
+  const CHUNK_SIZE: usize = std::mem::size_of::<usize>();
+  const MASK: usize = usize::from_ne_bytes([0x7F; CHUNK_SIZE]);
+
   let len = bytes.len();
   let mut ascii_bytes = Vec::<u8>::with_capacity(len);
 
   let src = bytes.as_ptr();
   let dst = ascii_bytes.as_mut_ptr();
 
-  let mut i: usize = 0;
-  const CHUNK_SIZE: usize = std::mem::size_of::<usize>();
-  const MASK: usize = usize::from_ne_bytes([0x7F; CHUNK_SIZE]);
-
   // SAFETY:
-  // 1. `ascii_bytes` capacity is `len`. Loop bounds ensure pointers
-  //    do not read or write out of bounds.
-  // 2. `read_unaligned` and `write_unaligned` prevent misalignment
-  //    issues when casting `u8` pointers to `usize`.
-  // 3. The first `len` bytes of `dst` are completely initialized
-  //    before `set_len(len)` is called.
+  // 1. Bounds & Capacity:
+  //    - `src` is valid for `len` bytes.
+  //    - `dst` has an allocated capacity of `len` bytes.
+  //    - If `len >= CHUNK_SIZE`: `i < limit` implies
+  //      `i + CHUNK_SIZE < len`. The out-of-loop block at `limit`
+  //      accesses exactly the last `CHUNK_SIZE` bytes.
+  //    - If `len < CHUNK_SIZE`: The `for` loop bounds are `0..len`.
+  //    Therefore, all pointer arithmetic stays within valid bounds.
+  // 2. Alignment:
+  //    `read_unaligned` and `write_unaligned` are used for `usize`
+  //    accesses, preventing UB from potentially unaligned pointers.
+  // 3. Initialization:
+  //    Every byte from `0` to `len` in `dst` is guaranteed to be
+  //    written before `set_len(len)` is called. Overlapping writes
+  //    are idempotent and safe.
   unsafe {
-    while len - i >= CHUNK_SIZE {
-      let chunk = src.add(i).cast::<usize>().read_unaligned();
-      dst.add(i).cast::<usize>().write_unaligned(chunk & MASK);
-      i += CHUNK_SIZE;
-    }
-
-    while i < len {
-      dst.add(i).write(*src.add(i) & 0x7F);
-      i += 1;
+    if len >= CHUNK_SIZE {
+      let limit = len - CHUNK_SIZE;
+      let mut i: usize = 0;
+      while i < limit {
+        let tmp = src.add(i).cast::<usize>().read_unaligned();
+        dst.add(i).cast::<usize>().write_unaligned(tmp & MASK);
+        i += CHUNK_SIZE;
+      }
+      let tmp = src.add(limit).cast::<usize>().read_unaligned();
+      dst.add(limit).cast::<usize>().write_unaligned(tmp & MASK);
+    } else {
+      for i in 0..len {
+        dst.add(i).write(src.add(i).read() & 0x7F);
+      }
     }
 
     ascii_bytes.set_len(len);
