@@ -43,7 +43,7 @@ use tokio_util::task::AbortOnDropHandle;
 use tower_lsp::lsp_types as lsp;
 
 use super::analysis;
-use super::analysis::import_map_lookup;
+use super::analysis::import_map_lookup_for_diagnostic;
 use super::client::Client;
 use super::config::ConfigWatchedFileType;
 use super::documents::Document;
@@ -1288,7 +1288,7 @@ fn diagnose_dependency(
       .ok()
       .or_else(|| dependency.maybe_type.ok());
     if let Some(resolved) = resolved
-      && let Some(to) = import_map_lookup(
+      && let Some(to) = import_map_lookup_for_diagnostic(
         import_map,
         &resolved.specifier,
         &referrer_module.specifier,
