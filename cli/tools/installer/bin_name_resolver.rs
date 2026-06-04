@@ -4,9 +4,12 @@ use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmVersionResolver;
+use deno_semver::VersionReq;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 
 use crate::http_util::HttpClientProvider;
 
@@ -114,19 +117,8 @@ impl<'a> BinNameResolver<'a> {
     &self,
     npm_ref: &NpmPackageReqReference,
   ) -> Result<Option<Vec<(String, String)>>, AnyError> {
-    let package_info = self
-      .npm_registry_api
-      .package_info(&npm_ref.req().name)
-      .await?;
-    let version_resolver =
-      self.npm_version_resolver.get_for_package(&package_info);
-    let version_info = version_resolver
-      .resolve_best_package_version_info(
-        &npm_ref.req().version_req,
-        Vec::new().into_iter(),
-      )
-      .ok();
-    let Some(version_info) = version_info else {
+    let Some(version_info) = self.resolve_npm_version_info(npm_ref).await?
+    else {
       return Ok(None);
     };
     let Some(bin_entries) = version_info.bin.as_ref() else {
@@ -142,6 +134,25 @@ impl<'a> BinNameResolver<'a> {
         data.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
       )),
     }
+  }
+
+  async fn resolve_npm_version_info(
+    &self,
+    npm_ref: &NpmPackageReqReference,
+  ) -> Result<Option<NpmPackageVersionInfo>, AnyError> {
+    let package_info = self
+      .npm_registry_api
+      .package_info(&npm_ref.req().name)
+      .await?;
+    let version_resolver =
+      self.npm_version_resolver.get_for_package(&package_info);
+    let version_info = version_resolver
+      .resolve_best_package_version_info(
+        &npm_ref.req().version_req,
+        Vec::new().into_iter(),
+      )
+      .ok();
+    Ok(version_info.cloned())
   }
 
   async fn resolve_name_from_npm(
@@ -188,6 +199,31 @@ impl<'a> BinNameResolver<'a> {
   ) -> Option<Vec<(String, String)>> {
     let npm_ref = NpmPackageReqReference::from_specifier(url).ok()?;
     self.resolve_npm_bin_entries(&npm_ref).await.ok().flatten()
+  }
+
+  pub async fn resolve_npm_lifecycle_scripts_package_req(
+    &self,
+    url: &Url,
+  ) -> Result<Option<PackageReq>, AnyError> {
+    let npm_ref = NpmPackageReqReference::from_specifier(url)?;
+    let Some(version_info) = self.resolve_npm_version_info(&npm_ref).await?
+    else {
+      return Ok(None);
+    };
+    let has_lifecycle_scripts =
+      version_info.has_install_script.unwrap_or(false)
+        || version_info.scripts.contains_key("preinstall")
+        || version_info.scripts.contains_key("install")
+        || version_info.scripts.contains_key("postinstall");
+    if !has_lifecycle_scripts {
+      return Ok(None);
+    }
+    let version_req =
+      VersionReq::parse_from_npm(&version_info.version.to_string())?;
+    Ok(Some(PackageReq {
+      name: npm_ref.req().name.clone(),
+      version_req,
+    }))
   }
 }
 

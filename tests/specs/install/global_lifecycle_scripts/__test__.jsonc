@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install --global --root ./bins --allow-scripts=npm:@denotest/bin-created-by-lifecycle npm:@denotest/bin-created-by-lifecycle",
+      "output": "install.out"
+    },
+    {
+      "args": "run -A assert.js",
+      "output": ""
+    }
+  ]
+}
