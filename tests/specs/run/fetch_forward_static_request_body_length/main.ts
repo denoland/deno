@@ -1,18 +1,31 @@
 const echoServer = Deno.serve(
   { hostname: "127.0.0.1", port: 0, onListen() {} },
   async (req: Request) => {
-    return Response.json({
+    const forwarded = {
       contentLength: req.headers.get("content-length"),
       body: await req.text(),
-    });
+    };
+    if (new URL(req.url).pathname === "/split") {
+      resolveSplitForwarded(forwarded);
+    }
+    return Response.json(forwarded);
   },
 );
 
 const echoUrl = `http://127.0.0.1:${echoServer.addr.port}/`;
+let resolveSplitForwarded: (
+  forwarded: { contentLength: string | null; body: string },
+) => void;
+const splitForwardedPromise = new Promise<
+  { contentLength: string | null; body: string }
+>((resolve) => {
+  resolveSplitForwarded = resolve;
+});
 const proxyServer = Deno.serve(
   { hostname: "127.0.0.1", port: 0, onListen() {} },
   (req: Request) => {
-    return fetch(echoUrl, {
+    const path = new URL(req.url).pathname;
+    return fetch(path === "/split" ? `${echoUrl}split` : echoUrl, {
       method: "POST",
       body: req.body,
     });
@@ -61,5 +74,38 @@ console.log(
   streamForwarded.contentLength === null,
 );
 
+// Scenario 3: if the request body has only partially arrived when the proxy
+// reads req.body, the forwarded request should still use the full length and
+// stream all bytes.
+const splitBody = JSON.stringify({
+  tags: ["http-12345678-1234-1234-1234-123456789abc"],
+});
+const splitExpectedLength = String(encoder.encode(splitBody).byteLength);
+const splitAt = splitBody.length - 3;
+const conn = await Deno.connect({
+  hostname: "127.0.0.1",
+  port: proxyServer.addr.port,
+});
+await conn.write(encoder.encode(
+  `POST /split HTTP/1.1\r\nhost: x\r\ncontent-length: ${splitExpectedLength}\r\n\r\n` +
+    splitBody.slice(0, splitAt),
+));
+await new Promise((resolve) => setTimeout(resolve, 200));
+await conn.write(encoder.encode(splitBody.slice(splitAt)));
+const splitForwarded = await splitForwardedPromise;
+
+console.log("split body forwarded:", splitForwarded.body === splitBody);
+console.log("split content-length:", splitForwarded.contentLength);
+console.log("split expected length:", splitExpectedLength);
+console.log(
+  "split content-length preserved:",
+  splitForwarded.contentLength === splitExpectedLength,
+);
+
+try {
+  conn.close();
+} catch {
+  // The server may already have closed the connection.
+}
 await proxyServer.shutdown();
 await echoServer.shutdown();
