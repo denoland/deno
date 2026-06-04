@@ -92,6 +92,7 @@ const REDIRECT_SENSITIVE_HEADER_NAMES = [
 // keeps the lookup safe from prototype pollution.
 const BAD_PORTS = {
   __proto__: null,
+  "0": true, // (port 0)
   "1": true, // tcpmux
   "7": true, // echo
   "9": true, // discard
@@ -161,6 +162,7 @@ const BAD_PORTS = {
   "2049": true, // nfs
   "3659": true, // apple-sasl
   "4045": true, // lockd
+  "4190": true, // sieve
   "5060": true, // sip
   "5061": true, // sips
   "6000": true, // x11
@@ -170,6 +172,7 @@ const BAD_PORTS = {
   "6667": true, // ircu
   "6668": true, // ircu
   "6669": true, // ircu
+  "6679": true, // osaut
   "6697": true, // ircs-u
   "10080": true, // amanda
 };
