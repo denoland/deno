@@ -8,14 +8,12 @@ const {
 } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {
   DataView,
-  DataViewPrototypeGetUint16,
   DataViewPrototypeSetUint16,
   Error,
   Int8Array,
   MathMin,
   NumberPOSITIVE_INFINITY,
   SafeRegExp,
-  StringFromCharCode,
   StringPrototypeCharCodeAt,
   StringPrototypeIndexOf,
   StringPrototypeReplace,
@@ -24,8 +22,6 @@ const {
   StringPrototypeTrim,
   StringPrototypeTrimStart,
   TypedArrayPrototypeGetBuffer,
-  TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeSubarray,
   Uint8Array,
 } = primordials;
