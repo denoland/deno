@@ -195,6 +195,22 @@ impl JupyterMsg {
       ..Default::default()
     }
   }
+
+  // Computes the HMAC-SHA256 signature over the four signed frames, exactly as
+  // `to_frames` serializes them, and stores it as a lowercase hex string.
+  fn sign(&mut self, key: &str) {
+    use hmac::Hmac;
+    use hmac::Mac;
+    use sha2::Sha256;
+
+    let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).unwrap();
+    mac.update(&serde_json::to_vec(&self.header).unwrap());
+    mac.update(self.parent_header.to_string().as_bytes());
+    mac.update(self.metadata.to_string().as_bytes());
+    mac.update(self.content.to_string().as_bytes());
+    let digest = mac.finalize().into_bytes();
+    self.signature = digest.iter().map(|b| format!("{b:02x}")).collect();
+  }
 }
 
 #[derive(Clone)]
@@ -277,8 +293,17 @@ impl JupyterClient {
     content: Value,
   ) -> Result<JupyterMsg> {
     let msg = JupyterMsg::new(self.session, msg_type, content);
-    let frames = msg.to_frames();
-    let bytes_frames: Vec<Bytes> = frames;
+    self.send_msg(channel, &msg).await?;
+    Ok(msg)
+  }
+
+  // Sends a pre-built message verbatim, so tests can control the signature.
+  async fn send_msg(
+    &self,
+    channel: JupyterChannel,
+    msg: &JupyterMsg,
+  ) -> Result<()> {
+    let bytes_frames: Vec<Bytes> = msg.to_frames();
     match channel {
       Control => {
         self
@@ -306,7 +331,7 @@ impl JupyterClient {
       }
       IoPub => panic!("Cannot send over IOPub"),
     }
-    Ok(msg)
+    Ok(())
   }
 
   async fn recv(&self, channel: JupyterChannel) -> Result<JupyterMsg> {
@@ -397,8 +422,15 @@ async fn server_ready(conn: &ConnectionSpec) -> bool {
 }
 
 async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
+  setup_server_with_key("").await
+}
+
+async fn setup_server_with_key(
+  key: &str,
+) -> (TestContext, ConnectionSpec, JupyterServerProcess) {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let (mut conn, mut listeners) = ConnectionSpec::new();
+  conn.key = key.into();
   let conn_file = context.temp_dir().path().join("connection.json");
   conn_file.write_json(&conn);
 
@@ -432,6 +464,7 @@ async fn setup_server() -> (TestContext, ConnectionSpec, JupyterServerProcess) {
     }
 
     (conn, listeners) = ConnectionSpec::new();
+    conn.key = key.into();
     conn_file.write_json(&conn);
     drop(listeners);
     process = start_process(&conn_file);
@@ -561,6 +594,49 @@ async fn jupyter_execute_request() -> Result<()> {
       "text": "asdf\n",
     }),
   );
+
+  Ok(())
+}
+
+// Regression test for the HMAC signature verification of incoming messages.
+// When a connection key is configured, the kernel must reject `execute_request`s
+// whose signature doesn't verify (otherwise any local process able to reach the
+// kernel's TCP ports could run arbitrary code), and accept correctly-signed
+// ones.
+#[test]
+async fn jupyter_rejects_invalid_hmac_signature() -> Result<()> {
+  const KEY: &str = "super-secret-connection-key";
+  let (_ctx, conn, _process) = setup_server_with_key(KEY).await;
+  let client = JupyterClient::new(&conn).await;
+  client.io_subscribe("").await?;
+  client.send_heartbeat(b"ping").await?;
+  let _ = client.recv_heartbeat().await?;
+
+  let content = json!({
+    "silent": false,
+    "store_history": false,
+    "code": "1 + 1",
+  });
+
+  // A request carrying a bogus signature (the attacker doesn't know the key)
+  // must be dropped: the kernel should not send back any execute_reply.
+  let mut forged =
+    JupyterMsg::new(client.session, "execute_request", content.clone());
+  forged.signature = "00".repeat(32); // valid hex, wrong HMAC
+  client.send_msg(Shell, &forged).await?;
+  let dropped = timeout(Duration::from_secs(3), client.recv(Shell)).await;
+  assert!(
+    dropped.is_err(),
+    "kernel must not reply to a request with an invalid HMAC signature, got: {dropped:#?}"
+  );
+
+  // A correctly-signed request from a peer that knows the key is processed.
+  let mut signed = JupyterMsg::new(client.session, "execute_request", content);
+  signed.sign(KEY);
+  client.send_msg(Shell, &signed).await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(reply.content, json!({ "status": "ok" }));
 
   Ok(())
 }

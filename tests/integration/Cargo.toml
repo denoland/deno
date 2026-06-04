@@ -30,6 +30,7 @@ fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 file_test_runner.workspace = true
 hickory-proto.workspace = true
 hickory-server.workspace = true
+hmac.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -44,6 +45,7 @@ rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 sys_traits = { workspace = true, features = ["real", "getrandom", "libc", "winapi"] }
 tempfile.workspace = true
 test_util = { workspace = true, features = ["lsp"] }
