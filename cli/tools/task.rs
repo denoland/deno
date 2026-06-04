@@ -210,6 +210,7 @@ pub async fn execute_script(
     cli_options,
     maybe_lockfile,
     concurrency: no_of_concurrent_tasks.into(),
+    task_ui: std::cell::RefCell::new(None),
   };
 
   let kill_signal = KillSignal::default();
@@ -374,6 +375,8 @@ struct TaskRunner<'a> {
   cli_options: &'a CliOptions,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   concurrency: usize,
+  /// Active experimental task TUI, set for the duration of a parallel run.
+  task_ui: std::cell::RefCell<Option<crate::task_runner_tui::TaskUi>>,
 }
 
 impl<'a> TaskRunner<'a> {
@@ -578,6 +581,21 @@ impl<'a> TaskRunner<'a> {
       }
     }
 
+    // Opt-in experimental TUI: only when more than one task runs concurrently.
+    let (tui_render_thread, mut tui_quit_rx) =
+      if crate::task_runner_tui::tui_enabled()
+        && concurrent_task_color_indices.len() > 1
+      {
+        let ui = crate::task_runner_tui::TaskUi::new();
+        let (quit_tx, quit_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+        let thread =
+          crate::task_runner_tui::spawn_render_thread(ui.clone(), quit_tx);
+        *self.task_ui.borrow_mut() = Some(ui);
+        (Some(thread), Some(quit_rx))
+      } else {
+        (None, None)
+      };
+
     let mut context = PendingTasksContext {
       completed: HashSet::with_capacity(tasks.len()),
       running: HashSet::with_capacity(self.concurrency),
@@ -589,6 +607,7 @@ impl<'a> TaskRunner<'a> {
     };
 
     let mut queue = futures_unordered::FuturesUnordered::new();
+    let mut final_result: Result<i32, AnyError> = Ok(0);
 
     while context.has_remaining_tasks() {
       while queue.len() < self.concurrency {
@@ -603,20 +622,50 @@ impl<'a> TaskRunner<'a> {
       }
 
       // If queue is empty at this point, then there are no more tasks in the queue.
-      let Some(result) = queue.next().await else {
+      let next = if let Some(quit_rx) = tui_quit_rx.as_mut() {
+        tokio::select! {
+          biased;
+          _ = quit_rx.recv() => {
+            kill_signal.send(deno_task_shell::SignalKind::SIGINT);
+            final_result = Ok(130);
+            break;
+          }
+          result = queue.next() => result,
+        }
+      } else {
+        queue.next().await
+      };
+      let Some(result) = next else {
         debug_assert_eq!(context.tasks.len(), 0);
         break;
       };
 
-      let (exit_code, name) = result?;
-      if exit_code > 0 {
-        return Ok(exit_code);
+      match result {
+        Err(err) => {
+          final_result = Err(err);
+          break;
+        }
+        Ok((exit_code, name)) => {
+          if exit_code > 0 {
+            final_result = Ok(exit_code);
+            break;
+          }
+          context.mark_complete(name);
+        }
       }
-
-      context.mark_complete(name);
     }
 
-    Ok(0)
+    // Tear down the TUI (if active) before returning so the terminal is
+    // restored regardless of how the run ended.
+    if let Some(thread) = tui_render_thread {
+      if let Some(ui) = self.task_ui.borrow().as_ref() {
+        ui.finish();
+      }
+      let _ = thread.join();
+    }
+    *self.task_ui.borrow_mut() = None;
+
+    final_result
   }
 
   #[allow(
@@ -758,13 +807,19 @@ impl<'a> TaskRunner<'a> {
       parallel_info,
     } = opts;
 
-    self.output_task(
-      task_name,
-      package_name,
-      &task_runner::get_script_with_args(script, argv),
-    );
+    // Clone out the active TUI handle (if any) so we never hold the RefCell
+    // borrow across an await point below.
+    let task_ui = self.task_ui.borrow().clone();
 
-    let (stdio, prefix_handles) = if let Some(info) = parallel_info {
+    if task_ui.is_none() {
+      self.output_task(
+        task_name,
+        package_name,
+        &task_runner::get_script_with_args(script, argv),
+      );
+    }
+
+    let (stdio, prefix_handles, tui_idx) = if let Some(info) = parallel_info {
       // Right-align the entire `[name]` block so brackets line up across rows,
       // putting the leading padding spaces *outside* the brackets.
       let inner: Cow<str> = if info.include_package
@@ -774,15 +829,20 @@ impl<'a> TaskRunner<'a> {
       } else {
         Cow::Borrowed(task_name)
       };
-      let label = format!("[{}]", inner);
-      let padded_label =
-        format!("{:>width$}", label, width = info.label_pad_width + 2);
-      let prefix =
-        format!("{} ", colorize_task_prefix(&padded_label, info.color_index));
-      let (io, handles) = task_runner::make_prefixed_task_io(prefix);
-      (Some(io), handles)
+      if let Some(ui) = &task_ui {
+        let (io, idx, handles) = ui.make_task_io(inner.into_owned());
+        (Some(io), handles, Some(idx))
+      } else {
+        let label = format!("[{}]", inner);
+        let padded_label =
+          format!("{:>width$}", label, width = info.label_pad_width + 2);
+        let prefix =
+          format!("{} ", colorize_task_prefix(&padded_label, info.color_index));
+        let (io, handles) = task_runner::make_prefixed_task_io(prefix);
+        (Some(io), handles, None)
+      }
     } else {
-      (None, vec![])
+      (None, vec![], None)
     };
 
     let exit_code = task_runner::run_task(task_runner::RunTaskOptions {
@@ -802,6 +862,10 @@ impl<'a> TaskRunner<'a> {
 
     for handle in prefix_handles {
       let _ = handle.await;
+    }
+
+    if let (Some(ui), Some(idx)) = (&task_ui, tui_idx) {
+      ui.mark_finished(idx);
     }
 
     Ok(exit_code)
