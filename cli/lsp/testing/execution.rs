@@ -44,6 +44,8 @@ use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::create_test_event_channel;
+use crate::util::env::load_env_variables_from_env_files;
+use crate::util::env::resolve_cwd_or_fallback;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
@@ -165,6 +167,9 @@ pub struct TestRun {
   tests: TestServerTests,
   token: CancellationToken,
   workspace_settings: config::WorkspaceSettings,
+  /// `--env-file` paths inherited from the `test` task in deno.json. Resolved
+  /// once at run construction so `get_args` doesn't depend on the config tree.
+  test_task_env_files: Vec<String>,
 }
 
 impl TestRun {
@@ -172,11 +177,14 @@ impl TestRun {
     params: &lsp_custom::TestRunRequestParams,
     tests: TestServerTests,
     workspace_settings: config::WorkspaceSettings,
+    config_tree: &config::ConfigTree,
   ) -> Self {
     let (queue, filters) = {
       let tests = tests.lock().await;
       as_queue_and_filters(params, &tests)
     };
+
+    let test_task_env_files = collect_test_task_env_files(&queue, config_tree);
 
     Self {
       id: params.id,
@@ -186,6 +194,7 @@ impl TestRun {
       tests,
       token: CancellationToken::new(),
       workspace_settings,
+      test_task_env_files,
     }
   }
 
@@ -232,6 +241,15 @@ impl TestRun {
     let flags = Arc::new(flags_from_vec(
       args.into_iter().map(|s| From::from(s.as_ref())).collect(),
     )?);
+    // The CLI loads `--env-file` paths in `cli::lib::main`, before the
+    // subcommand factory runs. The LSP test runner bypasses that, so apply
+    // them here against the process environment before constructing the
+    // worker factory. Without this, tests that read env vars at module load
+    // wouldn't see values from a deno.json `test` task's `--env-file`.
+    if let Some(env_files) = &flags.env_file {
+      let cwd = resolve_cwd_or_fallback(flags.initial_cwd.as_deref());
+      load_env_variables_from_env_files(&cwd, env_files, flags.log_level);
+    }
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
     let permission_desc_parser = factory.permission_desc_parser()?;
@@ -514,8 +532,95 @@ impl TestRun {
     {
       args.push(Cow::Borrowed("--inspect"));
     }
+    // Inherit `--env-file` paths from the `test` task in deno.json when the
+    // user hasn't already supplied one via `deno.testing.args`. Without this,
+    // running tests from VSCode wouldn't see env vars that `deno task test`
+    // loads (see https://github.com/denoland/deno/issues/28797).
+    let has_env_file_arg = args.iter().any(|a| {
+      let a = a.as_ref();
+      a == "--env-file"
+        || a == "--env"
+        || a.starts_with("--env-file=")
+        || a.starts_with("--env=")
+    });
+    if !has_env_file_arg {
+      for env_file in &self.test_task_env_files {
+        args.push(Cow::Owned(format!("--env-file={env_file}")));
+      }
+    }
     args
   }
+}
+
+/// Walks each unique scope reached by the queued specifiers and harvests
+/// `--env-file` paths from its deno.json `test` task. Each path is resolved
+/// against the deno.json's directory (matching how `deno task test` reads
+/// them) so the LSP process's cwd doesn't change the answer. Scopes are
+/// deduplicated so a workspace with one shared deno.json is processed once.
+fn collect_test_task_env_files(
+  queue: &HashSet<ModuleSpecifier>,
+  config_tree: &config::ConfigTree,
+) -> Vec<String> {
+  let mut env_files = Vec::new();
+  let mut seen_scopes: HashSet<Arc<deno_core::url::Url>> = HashSet::new();
+  let mut seen_env_files: HashSet<String> = HashSet::new();
+  for specifier in queue {
+    let Some(data) = config_tree.data_for_specifier(specifier) else {
+      continue;
+    };
+    if !seen_scopes.insert(data.scope.clone()) {
+      continue;
+    }
+    let Some(config_file) = data.maybe_deno_json() else {
+      continue;
+    };
+    let Ok(Some(tasks)) = config_file.to_tasks_config() else {
+      continue;
+    };
+    let Some(task) = tasks.get("test") else {
+      continue;
+    };
+    let Some(command) = &task.command else {
+      continue;
+    };
+    let config_dir = config_file
+      .specifier
+      .to_file_path()
+      .ok()
+      .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
+    for env_file in extract_env_files_from_command(command) {
+      let resolved = match &config_dir {
+        Some(dir) => dir.join(&env_file).to_string_lossy().into_owned(),
+        None => env_file,
+      };
+      if seen_env_files.insert(resolved.clone()) {
+        env_files.push(resolved);
+      }
+    }
+  }
+  env_files
+}
+
+/// Scans a task command string for `--env-file`/`--env` flags and returns the
+/// associated file paths. A bare `--env-file` flag (no value) defaults to
+/// `.env` to match the CLI behavior. Shell operators in the surrounding
+/// command are intentionally ignored — picking up an env-file flag from
+/// anywhere in a compound task is the user's intent in practice.
+fn extract_env_files_from_command(command: &str) -> Vec<String> {
+  let Some(tokens) = shlex::split(command) else {
+    return Vec::new();
+  };
+  let mut env_files = Vec::new();
+  for token in &tokens {
+    if let Some(rest) = token.strip_prefix("--env-file=") {
+      env_files.push(rest.to_string());
+    } else if let Some(rest) = token.strip_prefix("--env=") {
+      env_files.push(rest.to_string());
+    } else if token == "--env-file" || token == "--env" {
+      env_files.push(".env".to_string());
+    }
+  }
+  env_files
 }
 
 #[derive(Debug, PartialEq)]
@@ -1007,6 +1112,54 @@ mod tests {
         "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94"
           .to_string()
       ]
+    );
+  }
+
+  #[test]
+  fn test_extract_env_files_from_command() {
+    // Plain `deno test --env-file=.env.test -A` (the case from
+    // https://github.com/denoland/deno/issues/28797).
+    assert_eq!(
+      extract_env_files_from_command("deno test --env-file=.env.test -A"),
+      vec![".env.test".to_string()],
+    );
+    // Bare `--env-file` defaults to `.env` (matches CLI default).
+    assert_eq!(
+      extract_env_files_from_command("deno test --env-file -A"),
+      vec![".env".to_string()],
+    );
+    // `--env` alias.
+    assert_eq!(
+      extract_env_files_from_command("deno test --env=.env.local"),
+      vec![".env.local".to_string()],
+    );
+    // Multiple env files, possibly amid other args.
+    assert_eq!(
+      extract_env_files_from_command(
+        "deno test --env-file=.env --env-file=.env.test -A"
+      ),
+      vec![".env".to_string(), ".env.test".to_string()],
+    );
+    // Compound shell commands — we still extract the env file the user
+    // intended for the test run.
+    assert_eq!(
+      extract_env_files_from_command(
+        "deno fmt && deno test --env-file=.env.test"
+      ),
+      vec![".env.test".to_string()],
+    );
+    // Quoted path containing whitespace is preserved by the shlex split.
+    assert_eq!(
+      extract_env_files_from_command(
+        "deno test --env-file=\"my env/.env.test\""
+      ),
+      vec!["my env/.env.test".to_string()],
+    );
+    // No env-file flag.
+    assert!(extract_env_files_from_command("deno test -A").is_empty());
+    // Malformed command (unterminated quote) is treated as no env files.
+    assert!(
+      extract_env_files_from_command("deno test --env-file=\"foo").is_empty()
     );
   }
 }

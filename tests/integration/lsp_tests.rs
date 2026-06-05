@@ -16386,6 +16386,71 @@ fn lsp_testing_api_empty_test_name() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28797.
+// When deno.json declares a `test` task with `--env-file=...`, the LSP test
+// runner should load that env file too — otherwise tests that read env vars at
+// module load throw before any test runs and VSCode reports "The test run did
+// not record any output".
+#[test(timeout = 300)]
+fn lsp_testing_api_inherits_test_task_env_file() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "./deno.json",
+    json!({
+      "tasks": {
+        "test": "deno test --env-file=.env.test -A",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("./.env.test", "MY_SECRET=from_env_file\n");
+  let file = temp_dir.source_file(
+    "test.ts",
+    r#"
+      const secret = Deno.env.get("MY_SECRET");
+      if (!secret) throw new Error("MY_SECRET is not set");
+      Deno.test("uses env", () => {});
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  client.read_notification_with_method::<Value>("deno/testModule");
+  client.write_request_with_res_as::<TestRunResponseParams>(
+    "deno/testRun",
+    json!({
+      "id": 1,
+      "kind": "run",
+    }),
+  );
+  let mut passed = false;
+  loop {
+    let notification = client
+      .read_notification_with_method::<Value>("deno/testRunProgress")
+      .unwrap();
+    let message = notification
+      .as_object()
+      .unwrap()
+      .get("message")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    let kind = message.get("type").and_then(|v| v.as_str());
+    if kind == Some("passed") {
+      passed = true;
+    }
+    if kind == Some("end") {
+      break;
+    }
+  }
+  assert!(
+    passed,
+    "test should pass: --env-file from deno.json `test` task should be honored",
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn lsp_testing_api_describe_it_failure() {
   let context = TestContextBuilder::new()

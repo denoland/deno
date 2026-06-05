@@ -4437,7 +4437,11 @@ impl Inner {
       match params.map(serde_json::from_value) {
         Some(Ok(params)) => {
           testing_server
-            .run_request(params, self.config.workspace_settings().clone())
+            .run_request(
+              params,
+              self.config.workspace_settings().clone(),
+              &self.config.tree,
+            )
             .await
         }
         Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
