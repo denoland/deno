@@ -178,8 +178,8 @@ typed-arena.workspace = true
 unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
-wasm-encoder = { version = "0.244.0", features = ["wasmparser"] }
-wasmparser = "0.244.0"
+wasm-encoder = { version = "0.244.0", default-features = false, features = ["std", "wasmparser"] }
+wasmparser = { version = "0.244.0", default-features = false, features = ["features", "std", "validate"] }
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
