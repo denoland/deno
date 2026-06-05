@@ -960,6 +960,25 @@ pub async fn remove(
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
   let force_package_json = remove_flags.package_json;
+
+  // Removing from a configuration file should never *create* one. If there is
+  // no config to modify, there is nothing to remove, so bail out before
+  // `load_configs` would scaffold an empty deno.json/package.json.
+  {
+    let factory = CliFactory::from_flags(flags.clone());
+    let start_dir = &factory.cli_options()?.start_dir;
+    let has_config = if force_package_json {
+      start_dir.member_pkg_json().is_some()
+    } else {
+      start_dir.member_pkg_json().is_some()
+        || start_dir.member_deno_json().is_some()
+    };
+    if !has_config {
+      log::info!("No packages were removed");
+      return Ok(());
+    }
+  }
+
   let (_, npm_config, deno_config) =
     load_configs(&flags, || false, force_package_json)?;
 

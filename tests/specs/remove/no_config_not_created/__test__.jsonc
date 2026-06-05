@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": ["remove", "@std/foo"],
+    "output": "No packages were removed\n"
+  }, {
+    "args": [
+      "eval",
+      "try { Deno.statSync('deno.json'); console.log('EXISTS') } catch (e) { console.log(e instanceof Deno.errors.NotFound ? 'MISSING' : 'ERR') }"
+    ],
+    "output": "MISSING\n"
+  }]
+}
