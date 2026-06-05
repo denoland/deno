@@ -542,6 +542,16 @@ function fastSyncResponseOrStream(
       innerRequest?.close(success);
       op_http_close_after_finish(req);
     },
+    () => {
+      // Setting up the streamed response body failed because the backing
+      // resource was unavailable (e.g. a `using` file handle that was disposed
+      // when the handler returned, leaving `file.readable` backed by a closed
+      // rid). No response has been sent at this point, so complete the request
+      // with a 500 instead of letting the rejection escape as a fatal
+      // unhandled promise rejection that would take the whole server down.
+      innerRequest?.close();
+      op_http_set_promise_complete(req, 500);
+    },
   );
 }
 
