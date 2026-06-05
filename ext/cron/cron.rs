@@ -412,6 +412,8 @@ fn parse_day_of_week(input: &str) -> Result<u32, ParseError> {
     "THU" => Ok(4),
     "FRI" => Ok(5),
     "SAT" => Ok(6),
+    // Saffron compat: numeric weekdays are 1=Sun..7=Sat (offset by one from
+    // the named form, where SUN=0..SAT=6), so `1` != `MON`.
     _ => match parse_number(input, 1, 7)? {
       7 => Ok(6),
       day => Ok(day - 1),
