@@ -3,3 +3,4 @@ spawnSync: hi hi status: 0
 Deno.Command sync: deno deno
 execFile: async async
 spawn: spawn spawn
+non-executable: rejected

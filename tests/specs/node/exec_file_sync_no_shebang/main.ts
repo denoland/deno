@@ -46,3 +46,16 @@ await new Promise<void>((resolve, reject) => {
     resolve();
   });
 });
+
+// 6. A non-executable file must NOT be run through the shell. The shell
+// fallback only applies on ENOEXEC (executable but unrecognized format); a
+// file without the execute bit fails with EACCES, matching Node.js. This guards
+// against the fallback being too eager and running files it shouldn't.
+const noexec = "./noexec.sh";
+writeFileSync(noexec, 'echo "should not run";\n', { mode: 0o644 });
+try {
+  execFileSync(noexec, { encoding: "utf8" });
+  console.log("non-executable: UNEXPECTEDLY ran");
+} catch {
+  console.log("non-executable: rejected");
+}
