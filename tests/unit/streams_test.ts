@@ -1,10 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import {
-  assertEquals,
-  assertRejects,
-  assertThrows,
-  fail,
-} from "./test_util.ts";
+import { assertEquals, assertRejects, fail } from "./test_util.ts";
 
 // `resourceForReadableStream` is registered on the internals object only when
 // `ext:deno_web/06_streams.js` first evaluates, which is now lazy. Touch the
@@ -578,13 +573,14 @@ Deno.test(async function decompressionStreamInvalidGzipStillReported() {
   );
 });
 
-Deno.test(function readableStreamFromWithStringThrows() {
-  assertThrows(
-    // @ts-expect-error: primitives are not acceptable
-    () => ReadableStream.from("string"),
-    TypeError,
-    "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async iterable.",
-  );
+Deno.test(async function readableStreamFromString() {
+  // Per the Streams spec, ReadableStream.from() accepts any iterable, including
+  // strings, which are iterated by code point.
+  const stream = ReadableStream.from("ab");
+  const reader = stream.getReader();
+  assertEquals(await reader.read(), { value: "a", done: false });
+  assertEquals(await reader.read(), { value: "b", done: false });
+  assertEquals((await reader.read()).done, true);
 });
 
 Deno.test(async function readableStreamFromWithStringThrows() {
