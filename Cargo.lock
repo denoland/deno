@@ -2550,7 +2550,6 @@ dependencies = [
  "serde",
  "sys_traits",
  "thiserror 2.0.12",
- "tokio",
  "url",
 ]
 

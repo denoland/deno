@@ -1175,13 +1175,14 @@ impl<S> Service<http::Request<ReqBody>> for DecompressionService<S>
 where
   S: Service<http::Request<ReqBody>, Response = http::Response<Incoming>>
     + 'static,
-  S::Future: Send + 'static,
+  S::Future: Send + Sync + 'static,
   S::Error: 'static,
 {
   type Response = http::Response<ResBody>;
   type Error = S::Error;
-  type Future =
-    Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+  type Future = Pin<
+    Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send + Sync>,
+  >;
 
   fn poll_ready(
     &mut self,
