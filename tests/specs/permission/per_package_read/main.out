@@ -1,0 +1,5 @@
+app: secret-data
+npm:dotenv sync: secret-data
+npm:dotenv async: secret-data
+npm:evil-tracker sync DENIED: this package is not allowed filesystem read access
+npm:evil-tracker async DENIED: this package is not allowed filesystem read access

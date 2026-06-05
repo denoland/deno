@@ -22,6 +22,7 @@ use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::error::ResourceError;
 use deno_core::op2;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
@@ -181,13 +182,100 @@ impl From<FsOpenOptions> for OpenOptions {
   }
 }
 
+/// Whether the per-package permission feature is enabled in this `OpState`.
+fn per_module_enabled(state: &OpState) -> bool {
+  state
+    .try_borrow::<deno_permissions::PerModulePermissions>()
+    .is_some_and(|p| p.enabled())
+}
+
+/// Per-package permission overlay (prototype): deny filesystem reads from
+/// packages disallowed by policy, before the process-wide permission check.
+/// `caller` is the first user stack frame's script specifier (resolved by the
+/// caller, since async ops have no live scope). See
+/// docs/proposals/per-module-permissions.md.
+fn enforce_per_module_read(
+  state: &OpState,
+  caller: Option<&str>,
+) -> Result<(), FsOpsError> {
+  let Some(perms) =
+    state.try_borrow::<deno_permissions::PerModulePermissions>()
+  else {
+    return Ok(());
+  };
+  if !perms.enabled() {
+    return Ok(());
+  }
+  // A `None` caller (internal `ext:`/`node:` code or origin-less generated
+  // code) is treated as unrestricted in this prototype.
+  let Some(caller) = caller else {
+    return Ok(());
+  };
+  if perms.is_read_denied_specifier(caller) {
+    return Err(
+      FsOpsErrorKind::Permission(PermissionCheckError::PermissionDenied(
+        perms.read_denied_error(),
+      ))
+      .into(),
+    );
+  }
+  Ok(())
+}
+
+/// Read-path check for sync ops, which have a live scope: resolve the first
+/// user frame and enforce. The immediate caller of an op is always an internal
+/// `ext:` wrapper, so `GetCurrentHostDefinedOptions()` (top frame) cannot
+/// identify the user module; we walk the stack instead, like
+/// `op_node_call_is_from_dependency`.
+fn check_per_module_read(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &OpState,
+) -> Result<(), FsOpsError> {
+  if !per_module_enabled(state) {
+    return Ok(());
+  }
+  let caller = deno_core::first_user_script_name(scope);
+  enforce_per_module_read(state, caller.as_deref())
+}
+
+/// A path-string op argument that also captures the first user stack frame at
+/// argument-conversion time. Async ops run their bodies without a live v8
+/// scope, so they cannot walk the stack themselves; capturing the caller here
+/// (synchronously, at dispatch, while the user frame is still on the stack)
+/// lets them run the per-package check. See section 10 of the proposal.
+struct PathWithCaller {
+  path: String,
+  caller: Option<String>,
+}
+
+impl<'a> deno_core::FromV8<'a> for PathWithCaller {
+  type Error = std::convert::Infallible;
+
+  fn from_v8<'i>(
+    scope: &mut v8::PinScope<'a, 'i>,
+    value: v8::Local<'a, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    let path = String::from_v8(scope, value)?;
+    let op_state = deno_core::JsRuntime::op_state_from(scope);
+    let enabled = per_module_enabled(&op_state.borrow());
+    // Only pay for the stack walk when the feature is enabled.
+    let caller = enabled
+      .then(|| deno_core::first_user_script_name(scope))
+      .flatten();
+    Ok(Self { path, caller })
+  }
+}
+
 #[op2(stack_trace)]
 #[smi]
 pub fn op_fs_open_sync(
+  scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   #[string] path: &str,
   #[scoped] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError> {
+  check_per_module_read(scope, state)?;
+
   let options = match options {
     Some(options) => OpenOptions::from(options),
     None => OpenOptions::read(),
@@ -1476,10 +1564,13 @@ pub async fn op_fs_write_file_async(
 
 #[op2(stack_trace)]
 pub fn op_fs_read_file_sync(
+  scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   #[string] path: &str,
   #[smi] flags: Option<i32>,
 ) -> Result<Uint8Array, FsOpsError> {
+  check_per_module_read(scope, state)?;
+
   let path = Path::new(path);
   let options = if let Some(flags) = flags {
     OpenOptions::from(flags)
@@ -1507,10 +1598,11 @@ pub fn op_fs_read_file_sync(
 #[op2(stack_trace)]
 pub async fn op_fs_read_file_async(
   state: Rc<RefCell<OpState>>,
-  #[string] path: String,
+  #[scoped] req: PathWithCaller,
   #[smi] cancel_rid: Option<ResourceId>,
   #[smi] flags: Option<i32>,
 ) -> Result<Uint8Array, FsOpsError> {
+  let PathWithCaller { path, caller } = req;
   let path = PathBuf::from(path);
   let options = if let Some(flags) = flags {
     OpenOptions::from(flags)
@@ -1520,6 +1612,7 @@ pub async fn op_fs_read_file_async(
 
   let (fs, cancel_handle, path) = {
     let state = state.borrow();
+    enforce_per_module_read(&state, caller.as_deref())?;
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
     let path = state
@@ -1554,9 +1647,12 @@ pub async fn op_fs_read_file_async(
 
 #[op2(stack_trace)]
 pub fn op_fs_read_file_text_sync(
+  scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   #[string] path: &str,
 ) -> Result<FastString, FsOpsError> {
+  check_per_module_read(scope, state)?;
+
   let path = Path::new(path);
 
   let fs = state.borrow::<FileSystemRc>().clone();
@@ -1579,13 +1675,15 @@ pub fn op_fs_read_file_text_sync(
 #[op2(stack_trace)]
 pub async fn op_fs_read_file_text_async(
   state: Rc<RefCell<OpState>>,
-  #[string] path: String,
+  #[scoped] req: PathWithCaller,
   #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<FastString, FsOpsError> {
+  let PathWithCaller { path, caller } = req;
   let path = PathBuf::from(path);
 
   let (fs, cancel_handle, path) = {
     let state = state.borrow_mut();
+    enforce_per_module_read(&state, caller.as_deref())?;
     let cancel_handle = cancel_rid
       .and_then(|rid| state.resource_table.get::<CancelHandle>(rid).ok());
     let path = state

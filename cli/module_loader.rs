@@ -1143,11 +1143,29 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     scope: &mut deno_core::v8::PinScope<'s, '_>,
     name: &str,
   ) -> Option<deno_core::v8::Local<'s, deno_core::v8::Data>> {
-    let name = deno_core::ModuleSpecifier::parse(name).ok()?;
-    if self.0.shared.in_npm_pkg_checker.in_npm_package(&name) {
-      Some(create_host_defined_options(scope))
-    } else {
-      None
+    let parsed = deno_core::ModuleSpecifier::parse(name).ok()?;
+    let is_npm = self.0.shared.in_npm_pkg_checker.in_npm_package(&parsed);
+
+    // When per-module permissions are enabled, assign this module a stable id
+    // and embed it in the host-defined options so ops can resolve the currently
+    // executing module. See docs/proposals/per-module-permissions.md.
+    let op_state = deno_core::JsRuntime::op_state_from(scope);
+    let module_id = {
+      let mut op_state = op_state.borrow_mut();
+      match op_state
+        .try_borrow_mut::<deno_runtime::deno_permissions::PerModulePermissions>(
+        ) {
+        Some(perms) if perms.enabled() => Some(perms.assign(name)),
+        _ => None,
+      }
+    };
+
+    match module_id {
+      Some(id) => Some(deno_core::create_module_host_defined_options(
+        scope, is_npm, id,
+      )),
+      None if is_npm => Some(create_host_defined_options(scope)),
+      None => None,
     }
   }
 

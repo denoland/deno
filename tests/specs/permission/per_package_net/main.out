@@ -1,0 +1,3 @@
+webserver: listening on :45999 ok
+webserver :46000 DENIED: this package is not allowed network access to this address
+widget :45999 DENIED: this package is not allowed network access to this address

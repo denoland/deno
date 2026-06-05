@@ -13,6 +13,10 @@ use crate::JsRuntime;
 pub const HOST_DEFINED_OPTIONS_KIND_INDEX: usize = 0;
 pub const HOST_DEFINED_OPTIONS_KEY_INDEX: usize = 1;
 
+/// Index of the per-module id inside the host-defined-options PrimitiveArray
+/// produced by [`create_module_host_defined_options`].
+pub const MODULE_ID_INDEX: usize = 1;
+
 /// Kind tags written at [`HOST_DEFINED_OPTIONS_KIND_INDEX`].
 pub mod host_defined_options_kind {
   /// Script created by `node:vm` (`vm.Script`, `vm.runInThisContext`,
@@ -50,6 +54,82 @@ pub fn create_host_defined_options_with_kind_and_key<'s>(
   let key_value = v8::Integer::new_from_unsigned(scope, key);
   arr.set(scope, HOST_DEFINED_OPTIONS_KEY_INDEX, key_value.into());
   arr.into()
+}
+
+/// Build host-defined options carrying a per-module identity. Index 0 holds a
+/// boolean marking whether the module is node-managed (this is what the
+/// "managed globals" code reads back), index 1 holds the module id. The boolean
+/// at index 0 also disambiguates these options from the `node:vm` options, which
+/// store an integer kind there (see [`create_host_defined_options_with_kind`]).
+pub fn create_module_host_defined_options<'s>(
+  scope: &mut PinScope<'s, '_>,
+  is_node: bool,
+  module_id: u32,
+) -> v8::Local<'s, v8::Data> {
+  let arr = v8::PrimitiveArray::new(scope, 2);
+  let node = v8::Boolean::new(scope, is_node);
+  arr.set(scope, HOST_DEFINED_OPTIONS_KIND_INDEX, node.into());
+  let id = v8::Integer::new_from_unsigned(scope, module_id);
+  arr.set(scope, MODULE_ID_INDEX, id.into());
+  arr.into()
+}
+
+/// Read the module id attached to the script of the currently executing JS
+/// frame, if any. Returns `None` when there is no current script, when the
+/// script carries no host-defined options, or when the options were not
+/// produced by [`create_module_host_defined_options`] (for example internal
+/// `ext:` scripts with empty options, or `node:vm` scripts whose index 0 is an
+/// integer kind rather than a boolean).
+pub fn current_module_id(scope: &mut PinScope<'_, '_>) -> Option<u32> {
+  let opts = scope.get_current_host_defined_options()?;
+  // SAFETY: `Local<PrimitiveArray>` is layout-compatible with `Local<Data>`,
+  // and V8 guarantees host-defined options are always a PrimitiveArray.
+  let arr: v8::Local<v8::PrimitiveArray> = unsafe {
+    std::mem::transmute::<v8::Local<v8::Data>, v8::Local<v8::PrimitiveArray>>(
+      opts,
+    )
+  };
+  if arr.length() <= MODULE_ID_INDEX {
+    return None;
+  }
+  // Module-loader options store a boolean at index 0; `node:vm` options store
+  // an integer kind there. Reject the latter so we never read a vm callback key
+  // as a module id.
+  let marker: v8::Local<v8::Value> =
+    arr.get(scope, HOST_DEFINED_OPTIONS_KIND_INDEX).into();
+  if !marker.is_boolean() {
+    return None;
+  }
+  let value: v8::Local<v8::Value> = arr.get(scope, MODULE_ID_INDEX).into();
+  let int = v8::Local::<v8::Uint32>::try_from(value).ok()?;
+  Some(int.value())
+}
+
+/// Walk the current V8 stack and return the script name (specifier) of the
+/// first user frame, skipping internal `ext:` and `node:` frames. This is the
+/// "first user frame" identity used for op-level per-module checks: the
+/// immediate caller of an op is always an internal wrapper, so
+/// [`current_module_id`] (which reflects the top frame) cannot see the user
+/// module. Mirrors the walk in `op_node_call_is_from_dependency`.
+pub fn first_user_script_name(scope: &mut PinScope<'_, '_>) -> Option<String> {
+  let stack = v8::StackTrace::current_stack_trace(scope, 16)?;
+  for i in 0..stack.get_frame_count() {
+    let Some(frame) = stack.get_frame(scope, i) else {
+      continue;
+    };
+    if !frame.is_user_javascript() {
+      continue;
+    }
+    let Some(name) = frame.get_script_name(scope) else {
+      continue;
+    };
+    let name = name.to_rust_string_lossy(scope);
+    if name.starts_with("ext:") || name.starts_with("node:") {
+      continue;
+    }
+    return Some(name);
+  }
+  None
 }
 
 /// Read the kind tag from a host-defined-options value. Returns `None`
