@@ -4169,6 +4169,34 @@ impl Inner {
       );
     }
 
+    let open_modules = self
+      .document_modules
+      .documents
+      .open_docs()
+      .filter(|d| d.is_diagnosable())
+      .flat_map(|d| {
+        self
+          .document_modules
+          .module(&Document::Open(d.clone()), scope.as_deref())
+      })
+      .collect::<Vec<_>>();
+    for module in &open_modules {
+      roots.extend(
+        module
+          .dependencies
+          .values()
+          .filter_map(|d| d.get_type())
+          .cloned(),
+      );
+      roots.extend(
+        module
+          .types_dependency
+          .iter()
+          .flat_map(|d| d.dependency.maybe_specifier())
+          .cloned(),
+      );
+    }
+
     let workspace_settings = self.config.workspace_settings();
     let initial_cwd = config_data
       .and_then(|d| d.scope.to_file_path().ok())
@@ -4209,17 +4237,6 @@ impl Inner {
       cli_factory.set_workspace_dir(d.member_dir.clone());
     };
 
-    let open_modules = self
-      .document_modules
-      .documents
-      .open_docs()
-      .filter(|d| d.is_diagnosable())
-      .flat_map(|d| {
-        self
-          .document_modules
-          .module(&Document::Open(d.clone()), scope.as_deref())
-      })
-      .collect();
     Ok(PrepareCacheResult {
       cli_factory,
       open_modules,
