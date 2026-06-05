@@ -277,7 +277,6 @@ rustls-tokio-stream = "=0.8.0"
 rustls-webpki = "0.102"
 rustyline = { version = "=17.0.0", features = ["custom-bindings"] }
 rustyline-derive = "=0.11.1"
-saffron = "=0.1.0"
 same-file = "1.0.6"
 scopeguard = "1.2.0"
 semver = "=1.0.25"
