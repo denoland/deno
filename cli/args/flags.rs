@@ -2879,8 +2879,7 @@ fn clean_subcommand() -> Command {
         Arg::new("dry-run")
           .long("dry-run")
           .action(ArgAction::SetTrue)
-          .help("Show what would be removed without performing any actions")
-          .requires("except"),
+          .help("Show what would be removed without performing any actions"),
       )
       .arg(node_modules_dir_arg().requires("except"))
       .arg(node_modules_linker_arg().requires("except"))
@@ -6905,7 +6904,7 @@ fn check_parse(
 fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let mut clean_flags = CleanFlags {
     except_paths: Vec::new(),
-    dry_run: false,
+    dry_run: matches.get_flag("dry-run"),
   };
   if matches.get_flag("except") {
     clean_flags.except_paths = matches
@@ -6913,7 +6912,6 @@ fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .unwrap()
       .collect::<Vec<_>>();
     flags.cached_only = true;
-    clean_flags.dry_run = matches.get_flag("dry-run");
     node_modules_and_vendor_dir_arg_parse(flags, matches);
   }
   flags.subcommand = DenoSubcommand::Clean(clean_flags);
@@ -16081,9 +16079,18 @@ Usage: deno lint [OPTIONS] [files]...\n"
           dry_run: true,
         },
       ),
+      (
+        svec!["--dry-run"],
+        CleanFlags {
+          except_paths: vec![],
+          dry_run: true,
+        },
+      ),
     ];
     for (input, expected) in cases {
-      let cached_only = !input.is_empty();
+      // `--except` builds a module graph of the retained paths, so it parses
+      // with `--cached-only`; other invocations (e.g. `--dry-run` alone) don't.
+      let cached_only = input.iter().any(|arg| arg == "--except");
       let mut args = svec!["deno", "clean"];
       args.extend(input);
       let r = flags_from_vec(args.clone())
