@@ -371,9 +371,19 @@ async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
   // https://fetch.spec.whatwg.org/#main-fetch step 5: if the request should be
   // blocked due to a bad port, return a network error before any network I/O
   // occurs. This applies to every hop, including those reached via redirects.
-  const portString = new URL(req.currentUrl()).port;
-  if (portString !== "" && BAD_PORTS[portString] === true) {
-    return networkError(`Requests to port ${portString} are blocked`);
+  //
+  // Per https://fetch.spec.whatwg.org/#block-bad-port the check only applies
+  // when the URL's scheme is an HTTP(S) scheme, so https bad ports (e.g.
+  // https://example.com:22) are blocked too, while non-HTTP(S) schemes are
+  // left alone. The spec's ALPN note covers *new* protocols negotiated over
+  // TLS; it does not exempt https fetch from the list. This matches Node's
+  // undici (`requestBadPort` gates on `urlIsHttpHttpsScheme`).
+  const url = new URL(req.currentUrl());
+  if (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    url.port !== "" && BAD_PORTS[url.port] === true
+  ) {
+    return networkError(`Requests to port ${url.port} are blocked`);
   }
 
   if (req.blobUrlEntry !== null) {

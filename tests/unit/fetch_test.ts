@@ -89,6 +89,15 @@ Deno.test(
       TypeError,
       "Requests to port 6000 are blocked",
     );
+    // The block applies to HTTP(S) schemes, so https bad ports are rejected
+    // before any TLS handshake too.
+    await assertRejects(
+      async () => {
+        await fetch("https://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
+    );
   },
 );
 
