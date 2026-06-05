@@ -427,6 +427,192 @@ fn lsp_import_map() {
 }
 
 #[test(timeout = 300)]
+fn lsp_import_map_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let import_map = r#"{
+  "imports": {
+    "remote": "https://deno.land/x/example/mod.ts",
+    "bad": null
+  },
+  "unexpected": true
+}"#;
+  temp_dir.write("deno.json", r#"{ "importMap": "import-map.json" }"#);
+  temp_dir.write("import-map.json", import_map);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri =
+    url_to_uri(&temp_dir.url().join("import-map.json").unwrap()).unwrap();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "json",
+      "version": 1,
+      "text": import_map
+    }
+  }));
+
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
+        },
+        "severity": 1,
+        "code": "import-map-diagnostic",
+        "source": "deno",
+        "message": "Invalid address \"null\" for the specifier key \"bad\". Addresses must be strings.",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
+        },
+        "severity": 1,
+        "code": "import-map-diagnostic",
+        "source": "deno",
+        "message": "Invalid top-level key \"unexpected\". Only \"imports\" and \"scopes\" can be present.",
+      },
+      {
+        "range": {
+          "start": { "line": 2, "character": 15 },
+          "end": { "line": 2, "character": 49 },
+        },
+        "severity": 1,
+        "code": "no-cache",
+        "source": "deno",
+        "message": "Uncached or missing remote URL: https://deno.land/x/example/mod.ts",
+        "data": {
+          "specifier": "https://deno.land/x/example/mod.ts",
+        },
+      },
+    ]),
+  );
+
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 6, "character": 0 },
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    json!(res),
+    json!([
+      {
+        "title": "Cache \"https://deno.land/x/example/mod.ts\" and its dependencies.",
+        "kind": "quickfix",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 2, "character": 15 },
+              "end": { "line": 2, "character": 49 },
+            },
+            "severity": 1,
+            "code": "no-cache",
+            "source": "deno",
+            "message": "Uncached or missing remote URL: https://deno.land/x/example/mod.ts",
+            "data": {
+              "specifier": "https://deno.land/x/example/mod.ts",
+            },
+          },
+        ],
+        "command": {
+          "title": "",
+          "command": "deno.cache",
+          "arguments": [
+            ["https://deno.land/x/example/mod.ts"],
+            temp_dir.url().join("import-map.json").unwrap(),
+          ],
+        },
+      },
+    ]),
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
+fn lsp_hover_dependency_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "imports": {
+    "foo": "./lib/foo.ts",
+    "bar/": "./lib/bar/"
+  }
+}"#,
+  );
+  temp_dir.write("lib/foo.ts", "export const foo = 1;\n");
+  temp_dir.write("lib/bar/baz.ts", "export const baz = 2;\n");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.json");
+  });
+
+  let uri = url_to_uri(&temp_dir.url().join("main.ts").unwrap()).unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"foo\";\nimport \"bar/baz.ts\";\n"
+    }
+  }));
+  client.read_diagnostics();
+
+  // Hovering over a literal import map mapping.
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": uri },
+      "position": { "line": 0, "character": 8 }
+    }),
+  );
+  let value = res
+    .pointer("/contents/value")
+    .and_then(|v| v.as_str())
+    .unwrap();
+  assert!(
+    value.contains("**Import Map**: `foo` → `./lib/foo.ts` _(deno.json)_"),
+    "{value}"
+  );
+
+  // Hovering over a prefix ("/"-suffixed) import map mapping.
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": uri },
+      "position": { "line": 1, "character": 8 }
+    }),
+  );
+  let value = res
+    .pointer("/contents/value")
+    .and_then(|v| v.as_str())
+    .unwrap();
+  assert!(
+    value.contains("**Import Map**: `bar/` → `./lib/bar/` _(deno.json)_"),
+    "{value}"
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_import_map_remote() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3266,7 +3452,7 @@ fn lsp_hover_typescript_types_via_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n"
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n\n**Import Map**: `foo` → `http://127.0.0.1:4545/xTypeScriptTypes.js` _(deno.json)_\n"
       },
       "range": {
         "start": { "line": 0, "character": 19 },
@@ -7719,12 +7905,16 @@ fn lsp_code_actions_import_map_remap() {
       "imports": {
         "foo": "./foo.ts",
         "bar": "./bar.ts",
+        "postgres": "./postgres/mod.ts",
+        "postgres/": "./postgres/",
       },
     })
     .to_string(),
   );
   temp_dir.write("foo.ts", "");
   temp_dir.write("bar.ts", "");
+  temp_dir.write("postgres/mod.ts", "");
+  temp_dir.write("postgres/query/query.ts", "");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
@@ -7735,6 +7925,8 @@ fn lsp_code_actions_import_map_remap() {
       "text": r#"
         import "./foo.ts";
         import type {} from "./bar.ts";
+        import "postgres";
+        import "postgres/query/query.ts";
       "#,
     }
   }));
@@ -15035,6 +15227,78 @@ fn lsp_code_actions_lint_fixes() {
 }
 
 #[test(timeout = 300)]
+fn lsp_no_slow_types_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  // a publishable JSR package - its public API is checked for slow types
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}
+"#,
+  );
+  // `add` is missing an explicit return type, which is a slow type
+  temp_dir.write(
+    "mod.ts",
+    "export function add(a: number, b: number) {\n  return a + b;\n}\n",
+  );
+  // not part of the package's public API, so it shouldn't be checked
+  temp_dir.write(
+    "other.ts",
+    "export function sub(a: number, b: number) {\n  return a - b;\n}\n",
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("mod.ts"),
+    }
+  }));
+  let mod_diagnostics = diagnostics.all();
+  assert!(
+    mod_diagnostics.iter().any(|d| {
+      d.source.as_deref() == Some("deno-lint")
+        && d.code
+          == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
+    }),
+    "expected a no-slow-types diagnostic on the package entrypoint, got: {mod_diagnostics:#?}"
+  );
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("other.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("other.ts"),
+    }
+  }));
+  let other_diagnostics = diagnostics.all_messages();
+  let other_uri =
+    url_to_uri(&temp_dir.url().join("other.ts").unwrap()).unwrap();
+  assert!(
+    !other_diagnostics
+      .iter()
+      .filter(|m| m.uri == other_uri)
+      .flat_map(|m| m.diagnostics.iter())
+      .any(|d| {
+        d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
+      }),
+    "expected no no-slow-types diagnostics on a non-export module, got: {other_diagnostics:#?}"
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_lint_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17051,7 +17315,7 @@ fn lsp_deno_json_scopes_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./foo1.ts` _(deno.json)_\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -17081,7 +17345,7 @@ fn lsp_deno_json_scopes_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./foo2.ts` _(deno.json)_\n", temp_dir.url().join("project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -17111,7 +17375,7 @@ fn lsp_deno_json_scopes_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project2/project3/foo3.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./foo3.ts` _(deno.json)_\n", temp_dir.url().join("project2/project3/foo3.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -18356,7 +18620,7 @@ fn lsp_deno_json_workspace_import_map() {
       json!({
         "contents": {
           "kind": "markdown",
-          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./foo1.ts` _(deno.json)_\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
         },
         "range": {
           "start": { "line": 0, "character": 7 },
@@ -18390,7 +18654,7 @@ fn lsp_deno_json_workspace_import_map() {
       json!({
         "contents": {
           "kind": "markdown",
-          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project1/project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
+          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./project2/foo2.ts` _(deno.json)_\n", temp_dir.url().join("project1/project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
         },
         "range": {
           "start": { "line": 0, "character": 7 },

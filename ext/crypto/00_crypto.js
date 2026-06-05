@@ -146,7 +146,7 @@ const simpleAlgorithmDictionaries = {
   RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
   EcKeyImportParams: {},
   ChaCha20Poly1305Params: {
-    nonce: "BufferSource",
+    iv: "BufferSource",
     additionalData: "BufferSource",
   },
   ShakeParams: {},
@@ -281,6 +281,7 @@ const supportedAlgorithms = {
     "AES-GCM": "AesDerivedKeyParams",
     "AES-KW": "AesDerivedKeyParams",
     "HMAC": "HmacImportParams",
+    "ChaCha20-Poly1305": null,
     "HKDF": null,
     "PBKDF2": null,
   },
@@ -650,6 +651,19 @@ function mldsaPublicKeyLen(variant) {
   }
 }
 
+function mldsaBytesEqual(a, b) {
+  const len = TypedArrayPrototypeGetByteLength(a);
+  if (len !== TypedArrayPrototypeGetByteLength(b)) {
+    return false;
+  }
+  for (let i = 0; i < len; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function getKeyLength(algorithm) {
   switch (algorithm.name) {
     case "AES-CBC":
@@ -709,6 +723,10 @@ function getKeyLength(algorithm) {
       // 2.
       return length;
     }
+    case "ChaCha20-Poly1305": {
+      // ChaCha20-Poly1305 keys are always 256 bits.
+      return 256;
+    }
     case "HKDF": {
       // 1.
       return null;
@@ -754,15 +772,17 @@ class SubtleCrypto {
       case "cSHAKE256":
       case "TurboSHAKE128":
       case "TurboSHAKE256": {
-        if (algorithm.length === undefined || algorithm.length === 0) {
+        if (
+          algorithm.outputLength === undefined || algorithm.outputLength === 0
+        ) {
           throw new DOMException(
-            `'length' must be a positive multiple of 8 for ${algorithm.name}`,
+            `'outputLength' must be a positive multiple of 8 for ${algorithm.name}`,
             "OperationError",
           );
         }
-        if (algorithm.length % 8 !== 0) {
+        if (algorithm.outputLength % 8 !== 0) {
           throw new DOMException(
-            `'length' must be a multiple of 8 for ${algorithm.name}`,
+            `'outputLength' must be a multiple of 8 for ${algorithm.name}`,
             "OperationError",
           );
         }
@@ -780,7 +800,7 @@ class SubtleCrypto {
         }
         const xofResult = await op_crypto_subtle_digest_xof({
           name: algorithm.name,
-          length: algorithm.length,
+          outputLength: algorithm.outputLength,
           functionName: algorithm.functionName ?? null,
           customization: algorithm.customization ?? null,
           domainSeparation: algorithm.domainSeparation ?? null,
@@ -1040,15 +1060,15 @@ class SubtleCrypto {
         return TypedArrayPrototypeGetBuffer(plaintext);
       }
       case "ChaCha20-Poly1305": {
-        if (normalizedAlgorithm.nonce === undefined) {
-          throw new TypeError("nonce is required");
+        if (normalizedAlgorithm.iv === undefined) {
+          throw new TypeError("iv is required");
         }
-        normalizedAlgorithm.nonce = copyBuffer(normalizedAlgorithm.nonce);
+        normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
         if (
-          TypedArrayPrototypeGetByteLength(normalizedAlgorithm.nonce) !== 12
+          TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv) !== 12
         ) {
           throw new DOMException(
-            "ChaCha20-Poly1305 nonce must be 12 bytes",
+            "ChaCha20-Poly1305 iv must be 12 bytes",
             "OperationError",
           );
         }
@@ -1066,7 +1086,7 @@ class SubtleCrypto {
 
         const plaintext = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "ChaCha20-Poly1305",
-          nonce: normalizedAlgorithm.nonce,
+          nonce: normalizedAlgorithm.iv,
           additionalData: normalizedAlgorithm.additionalData || null,
         }, data);
 
@@ -1508,8 +1528,11 @@ class SubtleCrypto {
     );
 
     // 15.
+    // Use "raw-secret" (the unified symmetric key format) so deriveKey works
+    // for both the existing symmetric algorithms (where "raw" is an alias) and
+    // the modern ones (e.g. ChaCha20-Poly1305) that only accept "raw-secret".
     const result = await this.importKey(
-      "raw",
+      "raw-secret",
       secret,
       normalizedDerivedKeyAlgorithmImport,
       extractable,
@@ -3835,6 +3858,14 @@ function exportKeyAES(
 ) {
   switch (format) {
     // 2.
+    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    // AES-OCB is a newer (tentative) algorithm whose "raw-secret" support is
+    // tracked separately, so it is intentionally excluded from the alias here.
+    case "raw-secret":
+      if (key[_algorithm].name === "AES-OCB") {
+        throw new DOMException("Not implemented", "NotSupportedError");
+      }
+      /* falls through */
     case "raw": {
       // 1.
       const data = innerKey.data;
@@ -3887,11 +3918,38 @@ function exportKeyAES(
   }
 }
 
-function exportKeyChaCha20Poly1305(format, _key, innerKey) {
+function exportKeyChaCha20Poly1305(format, key, innerKey) {
   switch (format) {
-    case "raw": {
+    // ChaCha20-Poly1305 is a modern symmetric algorithm and therefore only
+    // recognizes "raw-secret" (not the "raw" alias).
+    case "raw-secret": {
       const data = innerKey.data;
       return TypedArrayPrototypeGetBuffer(data);
+    }
+    case "jwk": {
+      // 1-2.
+      const jwk = {
+        kty: "oct",
+      };
+
+      // 3.
+      const data = op_crypto_export_key({
+        format: "jwksecret",
+        algorithm: "AES",
+      }, innerKey);
+      jwk.k = data.k;
+
+      // 4.
+      jwk.alg = "C20P";
+
+      // 5.
+      jwk.key_ops = key.usages;
+
+      // 6.
+      jwk.ext = key[_extractable];
+
+      // 7.
+      return jwk;
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
@@ -4125,36 +4183,124 @@ function importKeyChaCha20Poly1305(
     throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
+  let data;
   switch (format) {
-    case "raw": {
+    // ChaCha20-Poly1305 is a modern symmetric algorithm and therefore only
+    // recognizes "raw-secret" (not the "raw" alias).
+    case "raw-secret": {
       if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
         throw new DOMException(
           "Invalid key length: ChaCha20-Poly1305 requires 256-bit key",
           "DataError",
         );
       }
+      data = keyData;
+      break;
+    }
+    case "jwk": {
+      const jwk = keyData;
 
-      const handle = {};
-      setKeyData(handle, {
-        type: "secret",
-        data: keyData,
-      });
+      // 2.
+      if (jwk.kty !== "oct") {
+        throw new DOMException(
+          "'kty' property of JsonWebKey must be 'oct'",
+          "DataError",
+        );
+      }
 
-      const algorithm = {
-        name: "ChaCha20-Poly1305",
-      };
+      // Section 6.4.1 of RFC7518
+      if (jwk.k === undefined) {
+        throw new DOMException(
+          "'k' property of JsonWebKey must be present",
+          "DataError",
+        );
+      }
 
-      return constructKey(
-        "secret",
-        extractable,
-        usageIntersection(keyUsages, recognisedUsages),
-        algorithm,
-        handle,
+      // 4.
+      const { rawData } = op_crypto_import_key(
+        { algorithm: "AES" },
+        { jwkSecret: jwk },
       );
+      data = rawData.data;
+
+      // 5.
+      if (TypedArrayPrototypeGetByteLength(data) !== 32) {
+        throw new DOMException(
+          "Invalid key length: ChaCha20-Poly1305 requires 256-bit key",
+          "DataError",
+        );
+      }
+
+      // 6.
+      if (jwk.alg !== undefined && jwk.alg !== "C20P") {
+        throw new DOMException(`Invalid algorithm: ${jwk.alg}`, "DataError");
+      }
+
+      // 7.
+      if (
+        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
+      ) {
+        throw new DOMException("Invalid key usage", "DataError");
+      }
+
+      // 8.
+      // Section 4.3 of RFC7517
+      if (jwk.key_ops !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            jwk.key_ops,
+            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+          ) !== undefined
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        if (
+          !ArrayPrototypeEvery(
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
+          )
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+      }
+
+      // 9.
+      if (jwk.ext === false && extractable === true) {
+        throw new DOMException(
+          "'ext' property of JsonWebKey must not be false if extractable is true",
+          "DataError",
+        );
+      }
+      break;
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
   }
+
+  const handle = {};
+  setKeyData(handle, {
+    type: "secret",
+    data,
+  });
+
+  const algorithm = {
+    name: "ChaCha20-Poly1305",
+  };
+
+  return constructKey(
+    "secret",
+    extractable,
+    usageIntersection(keyUsages, recognisedUsages),
+    algorithm,
+    handle,
+  );
 }
 
 function importKeyAES(
@@ -4181,6 +4327,14 @@ function importKeyAES(
   let data = keyData;
 
   switch (format) {
+    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    // AES-OCB is a newer (tentative) algorithm whose "raw-secret" support is
+    // tracked separately, so it is intentionally excluded from the alias here.
+    case "raw-secret":
+      if (algorithmName === "AES-OCB") {
+        throw new DOMException("Not implemented", "NotSupportedError");
+      }
+      /* falls through */
     case "raw": {
       // 2.
       if (
@@ -4359,6 +4513,8 @@ function importKeyHMAC(
 
   // 4. https://w3c.github.io/webcrypto/#hmac-operations
   switch (format) {
+    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    case "raw-secret":
     case "raw": {
       data = keyData;
       hash = normalizedAlgorithm.hash;
@@ -5011,6 +5167,126 @@ function importKeyMlDsa(
       }
       return makePublicKey(pub);
     }
+    case "jwk": {
+      // 1.
+      const jwk = keyData;
+
+      // 2.
+      if (jwk.priv !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["sign"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      } else {
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["verify"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+
+      // 3.
+      if (jwk.kty !== "AKP") {
+        throw new DOMException("Invalid key type", "DataError");
+      }
+
+      // 4.
+      if (jwk.alg !== algorithmName) {
+        throw new DOMException("Invalid algorithm", "DataError");
+      }
+
+      // 5.
+      if (
+        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
+      ) {
+        throw new DOMException("Invalid key usage", "DataError");
+      }
+
+      // 6.
+      if (jwk.key_ops !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            jwk.key_ops,
+            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+          ) !== undefined
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        if (
+          !ArrayPrototypeEvery(
+            jwk.key_ops,
+            (u) => ArrayPrototypeIncludes(keyUsages, u),
+          )
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+      }
+
+      // 7.
+      if (jwk.ext !== undefined && jwk.ext === false && extractable) {
+        throw new DOMException("Invalid key extractability", "DataError");
+      }
+
+      // 8.
+      if (jwk.priv !== undefined) {
+        let seed;
+        try {
+          seed = op_crypto_base64url_decode(jwk.priv);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(seed) !== 32) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        let res;
+        try {
+          res = op_crypto_mldsa_from_seed(variant, seed);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+
+        // The 'pub' field must be present and equal to the public key
+        // derived from the seed.
+        let pub;
+        try {
+          pub = op_crypto_base64url_decode(jwk.pub);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (!mldsaBytesEqual(pub, res.publicKey)) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+
+        return makePrivateKey(seed, res.privateKey, res.publicKey);
+      } else {
+        let pub;
+        try {
+          pub = op_crypto_base64url_decode(jwk.pub);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (
+          TypedArrayPrototypeGetByteLength(pub) !== mldsaPublicKeyLen(variant)
+        ) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        return makePublicKey(pub);
+      }
+    }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
   }
@@ -5084,6 +5360,30 @@ function exportKeyMlDsa(format, key, innerKey) {
       }
       const der = op_crypto_mldsa_export_spki(variant, innerKey);
       return TypedArrayPrototypeGetBuffer(der);
+    }
+    case "jwk": {
+      const jwk = {
+        kty: "AKP",
+        alg: algorithmName,
+        "key_ops": key.usages,
+        ext: key[_extractable],
+      };
+      if (key[_type] === "private") {
+        const seed = innerKey?.seed;
+        if (seed == null) {
+          throw new DOMException(
+            "JWK export requires the original ML-DSA seed; this key was " +
+              "imported without one",
+            "OperationError",
+          );
+        }
+        const publicKey = WeakMapPrototypeGet(MLDSA_PUBLIC_FROM_PRIVATE, key);
+        jwk.pub = op_crypto_base64url_encode(getKeyData(publicKey[_handle]));
+        jwk.priv = op_crypto_base64url_encode(seed);
+      } else {
+        jwk.pub = op_crypto_base64url_encode(innerKey);
+      }
+      return jwk;
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
@@ -5674,7 +5974,8 @@ function importKeyHKDF(
   extractable,
   keyUsages,
 ) {
-  if (format !== "raw") {
+  // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+  if (format !== "raw" && format !== "raw-secret") {
     throw new DOMException("Format not supported", "NotSupportedError");
   }
 
@@ -5726,7 +6027,8 @@ function importKeyPBKDF2(
   keyUsages,
 ) {
   // 1.
-  if (format !== "raw") {
+  // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+  if (format !== "raw" && format !== "raw-secret") {
     throw new DOMException("Format not supported", "NotSupportedError");
   }
 
@@ -5779,6 +6081,8 @@ function exportKeyHMAC(format, key, innerKey) {
 
   switch (format) {
     // 3.
+    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    case "raw-secret":
     case "raw": {
       const bits = innerKey.data;
       // TODO(petamoriken): Uint8Array does not have push method
@@ -6792,13 +7096,13 @@ async function encrypt(normalizedAlgorithm, key, data) {
       return TypedArrayPrototypeGetBuffer(cipherText);
     }
     case "ChaCha20-Poly1305": {
-      if (normalizedAlgorithm.nonce === undefined) {
-        throw new TypeError("nonce is required");
+      if (normalizedAlgorithm.iv === undefined) {
+        throw new TypeError("iv is required");
       }
-      normalizedAlgorithm.nonce = copyBuffer(normalizedAlgorithm.nonce);
-      if (TypedArrayPrototypeGetByteLength(normalizedAlgorithm.nonce) !== 12) {
+      normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
+      if (TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv) !== 12) {
         throw new DOMException(
-          "ChaCha20-Poly1305 nonce must be 12 bytes",
+          "ChaCha20-Poly1305 iv must be 12 bytes",
           "OperationError",
         );
       }
@@ -6814,7 +7118,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
 
       const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "ChaCha20-Poly1305",
-        nonce: normalizedAlgorithm.nonce,
+        nonce: normalizedAlgorithm.iv,
         additionalData: normalizedAlgorithm.additionalData || null,
       }, data);
 
@@ -6927,6 +7231,10 @@ webidl.converters.KeyFormat = webidl.createEnumConverter("KeyFormat", [
   "pkcs8",
   "spki",
   "jwk",
+  // WICG modern algorithms: unified symmetric secret key format. For the
+  // existing symmetric algorithms `raw` is treated as an alias of `raw-secret`,
+  // while new algorithms (e.g. ChaCha20-Poly1305) only recognize `raw-secret`.
+  "raw-secret",
   // WICG modern algorithms (ML-KEM, ML-DSA): split raw key formats.
   "raw-public",
   "raw-private",
@@ -7243,6 +7551,16 @@ const dictJsonWebKey = [
     key: "k",
     converter: webidl.converters["DOMString"],
   },
+  // AKP (Algorithm Key Pair) key type, used by ML-DSA and other modern
+  // algorithms. https://www.rfc-editor.org/rfc/rfc9964
+  {
+    key: "pub",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "priv",
+    converter: webidl.converters["DOMString"],
+  },
 ];
 
 webidl.converters.JsonWebKey = webidl.createDictionaryConverter(
@@ -7405,7 +7723,7 @@ webidl.converters.EcdhKeyDeriveParams = webidl
 const dictChaCha20Poly1305Params = [
   ...new SafeArrayIterator(dictAlgorithm),
   {
-    key: "nonce",
+    key: "iv",
     converter: webidl.converters["BufferSource"],
     required: true,
   },
@@ -7423,7 +7741,7 @@ webidl.converters.ChaCha20Poly1305Params = webidl.createDictionaryConverter(
 const dictShakeParams = [
   ...new SafeArrayIterator(dictAlgorithm),
   {
-    key: "length",
+    key: "outputLength",
     converter: (V, prefix, context, opts) =>
       webidl.converters["unsigned long"](V, prefix, context, {
         ...opts,
@@ -7669,8 +7987,10 @@ function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
         ["wrapKey", "unwrapKey"],
       );
     case "ChaCha20-Poly1305":
+      // The node:crypto interop boundary uses "raw" for secret key bytes;
+      // ChaCha20-Poly1305 only recognizes the unified "raw-secret" format.
       return importKeyChaCha20Poly1305(
-        format,
+        format === "raw" ? "raw-secret" : format,
         keyData,
         extractable,
         usages,
