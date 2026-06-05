@@ -3323,6 +3323,23 @@ pub fn script_origin<'s, 'i>(
   )
 }
 
+/// Helper injected into the synthetic module for `.wasm` files that have global
+/// exports. Per the Wasm ESM integration, a global export is unwrapped to its
+/// underlying JS value (e.g. an `i32` global exports the number directly)
+/// instead of being exposed as a `WebAssembly.Global` object, matching Node.js.
+/// Reading `.value` throws for `v128` globals, so we fall back to the
+/// `WebAssembly.Global` object in that case. The value is read once at
+/// instantiation (a snapshot), so a later mutation of a mutable global is not
+/// reflected in the export, which also matches Node.
+const WASM_GLOBAL_UNWRAP_HELPER: &str = "const unwrapWasmGlobal = (g) => { try { return g.value; } catch { return g; } };\n";
+
+/// Whether a Wasm export is a global. The export kind is read directly from the
+/// export section, so this is reliable even though we parse the module with
+/// `skip_types: true` and never resolve the global's value type.
+fn is_wasm_global_export(export_type: &wasm_dep_analyzer::ExportType) -> bool {
+  matches!(export_type, wasm_dep_analyzer::ExportType::Global(_))
+}
+
 fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
   struct ImportInfo {
     key_escaped: String,
@@ -3351,17 +3368,19 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
   }
 
   let aggregated_imports = aggregate_wasm_module_imports(&wasm_deps.imports);
-  let escaped_export_names = wasm_deps
+  let exports = wasm_deps
     .exports
     .iter()
     .map(|e| {
-      if e.name == "default" {
+      let escaped_name = if e.name == "default" {
         Cow::Borrowed(e.name)
       } else {
         Cow::Owned(e.name.escape_default().to_string())
-      }
+      };
+      (escaped_name, is_wasm_global_export(&e.export_type))
     })
     .collect::<Vec<_>>();
+  let has_global_export = exports.iter().any(|(_, is_global)| *is_global);
 
   StringBuilder::build(|builder| {
     builder.append("import source wasmMod from \"");
@@ -3416,17 +3435,36 @@ fn render_js_wasm_module(specifier: &str, wasm_deps: WasmDeps) -> String {
       );
     }
 
-    for (idx, escaped_name) in escaped_export_names.iter().enumerate() {
+    if has_global_export {
+      builder.append(WASM_GLOBAL_UNWRAP_HELPER);
+    }
+
+    for (idx, (escaped_name, is_global)) in exports.iter().enumerate() {
       if escaped_name == "default" {
-        builder.append("export default modInstance.exports.");
-        builder.append(escaped_name);
+        builder.append("export default ");
+        if *is_global {
+          builder.append("unwrapWasmGlobal(modInstance.exports.");
+          builder.append(escaped_name);
+          builder.append(")");
+        } else {
+          builder.append("modInstance.exports.");
+          builder.append(escaped_name);
+        }
         builder.append(";\n");
       } else {
         builder.append("const export");
         builder.append(idx);
-        builder.append(" = modInstance.exports[\"");
-        builder.append(escaped_name);
-        builder.append("\"];\nexport { export");
+        builder.append(" = ");
+        if *is_global {
+          builder.append("unwrapWasmGlobal(modInstance.exports[\"");
+          builder.append(escaped_name);
+          builder.append("\"])");
+        } else {
+          builder.append("modInstance.exports[\"");
+          builder.append(escaped_name);
+          builder.append("\"]");
+        }
+        builder.append(";\nexport { export");
         builder.append(idx);
         builder.append(" as \"");
         builder.append(escaped_name);
@@ -3548,13 +3586,14 @@ const importsObject = {
   },
 };
 const modInstance = new import.meta.WasmInstance(wasmMod, importsObject);
+const unwrapWasmGlobal = (g) => { try { return g.value; } catch { return g; } };
 const export0 = modInstance.exports["export1"];
 export { export0 as "export1" };
 const export1 = modInstance.exports["export2"];
 export { export1 as "export2" };
 const export2 = modInstance.exports["export3"];
 export { export2 as "export3" };
-const export3 = modInstance.exports["export4"];
+const export3 = unwrapWasmGlobal(modInstance.exports["export4"]);
 export { export3 as "export4" };
 const export4 = modInstance.exports["export5"];
 export { export4 as "export5" };
@@ -3594,6 +3633,89 @@ const importsObject = {
 const modInstance = new import.meta.WasmInstance(wasmMod, importsObject);
 const export0 = modInstance.exports["\n"];
 export { export0 as "\n" };
+"#,
+  );
+}
+
+#[test]
+fn test_render_js_wasm_module_global_unwrap() {
+  fn global(
+    value_type: wasm_dep_analyzer::ValueType,
+    mutability: bool,
+  ) -> wasm_dep_analyzer::ExportType {
+    wasm_dep_analyzer::ExportType::Global(Ok(wasm_dep_analyzer::GlobalType {
+      value_type,
+      mutability,
+    }))
+  }
+
+  let deps = WasmDeps {
+    imports: vec![],
+    exports: vec![
+      // immutable numeric global -> unwrapped to its value at runtime
+      wasm_dep_analyzer::Export {
+        name: "answer",
+        index: 0,
+        export_type: global(wasm_dep_analyzer::ValueType::I32, false),
+      },
+      // mutable numeric global -> still unwrapped (snapshot at instantiation)
+      wasm_dep_analyzer::Export {
+        name: "counter",
+        index: 1,
+        export_type: global(wasm_dep_analyzer::ValueType::I64, true),
+      },
+      // unresolved value type (e.g. v128 / reference type) is still a global
+      // by kind, so it is wrapped; the helper falls back to the
+      // WebAssembly.Global object if reading `.value` throws (v128).
+      wasm_dep_analyzer::Export {
+        name: "vec",
+        index: 2,
+        export_type: global(wasm_dep_analyzer::ValueType::Unknown, false),
+      },
+      // global whose value type failed to parse -> still wrapped by kind
+      wasm_dep_analyzer::Export {
+        name: "broken",
+        index: 3,
+        export_type: wasm_dep_analyzer::ExportType::Global(Err(
+          wasm_dep_analyzer::ParseError::UnresolvedExportType,
+        )),
+      },
+      // non-global export is left untouched
+      wasm_dep_analyzer::Export {
+        name: "fn_export",
+        index: 4,
+        export_type: wasm_dep_analyzer::ExportType::Function(Ok(
+          wasm_dep_analyzer::FunctionSignature {
+            params: vec![],
+            returns: vec![],
+          },
+        )),
+      },
+      // default export that is a global -> unwrapped
+      wasm_dep_analyzer::Export {
+        name: "default",
+        index: 5,
+        export_type: global(wasm_dep_analyzer::ValueType::F64, false),
+      },
+    ],
+  };
+  let rendered = render_js_wasm_module("./globals.wasm", deps);
+  pretty_assertions::assert_eq!(
+    rendered,
+    r#"import source wasmMod from "./globals.wasm";
+const modInstance = new import.meta.WasmInstance(wasmMod);
+const unwrapWasmGlobal = (g) => { try { return g.value; } catch { return g; } };
+const export0 = unwrapWasmGlobal(modInstance.exports["answer"]);
+export { export0 as "answer" };
+const export1 = unwrapWasmGlobal(modInstance.exports["counter"]);
+export { export1 as "counter" };
+const export2 = unwrapWasmGlobal(modInstance.exports["vec"]);
+export { export2 as "vec" };
+const export3 = unwrapWasmGlobal(modInstance.exports["broken"]);
+export { export3 as "broken" };
+const export4 = modInstance.exports["fn_export"];
+export { export4 as "fn_export" };
+export default unwrapWasmGlobal(modInstance.exports.default);
 "#,
   );
 }
