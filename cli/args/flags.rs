@@ -11645,6 +11645,76 @@ mod tests {
     );
   }
 
+  // The dependency and registry subcommands also accept --env-file so that
+  // registry credentials kept in a .env file can be loaded before the command
+  // resolves a dependency graph or talks to a registry.
+  #[test]
+  fn dep_and_registry_subcommands_env_file() {
+    // (args, expected env_file) pairs, one per supported subcommand.
+    let cases: Vec<(Vec<std::ffi::OsString>, Vec<String>)> = vec![
+      (
+        svec!["deno", "add", "--env-file", "@david/which"],
+        svec![".env"],
+      ),
+      (svec!["deno", "audit", "--env-file"], svec![".env"]),
+      (svec!["deno", "why", "--env-file", "express"], svec![".env"]),
+      (svec!["deno", "outdated", "--env-file"], svec![".env"]),
+      (svec!["deno", "update", "--env-file"], svec![".env"]),
+      (
+        svec!["deno", "bundle", "--env-file", "main.ts"],
+        svec![".env"],
+      ),
+      (
+        svec!["deno", "check", "--env-file", "main.ts"],
+        svec![".env"],
+      ),
+      (svec!["deno", "doc", "--env-file", "main.ts"], svec![".env"]),
+      (
+        svec!["deno", "info", "--env-file", "main.ts"],
+        svec![".env"],
+      ),
+      (svec!["deno", "ci", "--env-file"], svec![".env"]),
+      (svec!["deno", "publish", "--env-file"], svec![".env"]),
+      (svec!["deno", "pack", "--env-file"], svec![".env"]),
+    ];
+    for (args, expected) in cases {
+      let flags = flags_from_vec(args.clone())
+        .unwrap_or_else(|e| panic!("failed to parse {args:?}: {e}"));
+      assert_eq!(
+        flags.env_file,
+        Some(expected),
+        "unexpected env_file for {args:?}",
+      );
+    }
+  }
+
+  #[test]
+  fn dep_and_registry_subcommands_env_file_explicit_and_multiple() {
+    // An explicit path is honored.
+    let flags =
+      flags_from_vec(svec!["deno", "check", "--env-file=.prod.env", "main.ts"])
+        .unwrap();
+    assert_eq!(flags.env_file, Some(svec![".prod.env"]));
+
+    // The --env alias works the same as --env-file.
+    let flags =
+      flags_from_vec(svec!["deno", "outdated", "--env=.prod.env"]).unwrap();
+    assert_eq!(flags.env_file, Some(svec![".prod.env"]));
+
+    // Multiple --env-file flags accumulate in order.
+    let flags = flags_from_vec(svec![
+      "deno",
+      "publish",
+      "--env-file",
+      "--env-file=.prod.env"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.env_file,
+      Some(svec![".env".to_owned(), ".prod.env".to_owned()])
+    );
+  }
+
   #[test]
   fn cache_multiple() {
     let r =
