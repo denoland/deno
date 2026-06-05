@@ -7,11 +7,14 @@
 // `fastSyncResponseOrStream`. It must instead respond with a 500 and keep the
 // server alive for subsequent requests.
 
+const tempFile = Deno.makeTempFileSync();
+Deno.writeTextFileSync(tempFile, "hello from a soon-to-be-closed file");
+
 const ac = new AbortController();
 const server = Deno.serve(
   { port: 0, signal: ac.signal, onListen() {} },
   async (_req) => {
-    using file = await Deno.open(new URL(import.meta.url).pathname);
+    using file = await Deno.open(tempFile);
     return new Response(file.readable);
   },
 );
@@ -29,4 +32,5 @@ console.log("second status:", res2.status);
 
 ac.abort();
 await server.finished;
+Deno.removeSync(tempFile);
 console.log("server shut down cleanly");
