@@ -452,6 +452,25 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
           "Run again with `--unstable-net` flag to enable this API.",
         ),
       ];
+    } else if msg.contains("invalid peer certificate: UnknownIssuer") {
+      // The certificate chain isn't trusted by Deno's CA store (the default is
+      // Mozilla's bundle). This commonly happens with `mkcert` dev certs or a
+      // corporate TLS proxy, whose root is in the OS trust store but not
+      // Mozilla's. See denoland/deno#25366.
+      return vec![
+        FixSuggestion::info(
+          "The TLS certificate could not be verified against Deno's trusted certificate authorities.",
+        ),
+        FixSuggestion::hint_multiline(&[
+          "If the certificate is trusted by your operating system (for example, issued",
+          cstr!(
+            "by <u>mkcert</> or a corporate proxy), run again with <u>DENO_TLS_CA_STORE=mozilla,system</>."
+          ),
+        ]),
+        FixSuggestion::hint(cstr!(
+          "Otherwise pass <u>--unsafely-ignore-certificate-errors</> to bypass verification (insecure)."
+        )),
+      ];
     } else if msg.contains("client error (Connect): invalid peer certificate") {
       return vec![FixSuggestion::hint(
         "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",

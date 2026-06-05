@@ -65,6 +65,7 @@ const {
   op_crypto_verify_mldsa,
   op_crypto_wrap_key,
   op_crypto_x25519_public_key,
+  op_crypto_x448_public_key,
 } = core.ops;
 const {
   ArrayBufferIsView,
@@ -472,79 +473,6 @@ class CryptoKey {
     return this[_algorithm];
   }
 
-  /**
-   * Derive the public key associated with this CryptoKey, when the underlying
-   * algorithm supports it (currently ML-KEM decapsulation keys and ML-DSA
-   * signing keys).
-   *
-   * https://wicg.github.io/webcrypto-modern-algos/#CryptoKey-method-getPublicKey
-   *
-   * @returns {CryptoKey}
-   */
-  getPublicKey() {
-    webidl.assertBranded(this, CryptoKeyPrototype);
-    if (this[_type] !== "private") {
-      throw new DOMException(
-        "getPublicKey() is only valid on private keys",
-        "InvalidAccessError",
-      );
-    }
-
-    const algorithm = this[_algorithm];
-    const algorithmName = algorithm.name;
-    switch (algorithmName) {
-      case "ML-KEM-512":
-      case "ML-KEM-768":
-      case "ML-KEM-1024": {
-        const handle = this[_handle];
-        let publicKeyBytes;
-        try {
-          publicKeyBytes = op_crypto_ml_kem_get_public_key(
-            algorithmName,
-            handle.cppgc,
-          );
-        } catch (_) {
-          throw new DOMException(
-            "Failed to derive public key",
-            "OperationError",
-          );
-        }
-        const pubHandle = {};
-        setKeyData(pubHandle, publicKeyBytes);
-        const filteredUsages = ArrayPrototypeFilter(
-          this[_usages],
-          (u) => u === "encapsulateKey" || u === "encapsulateBits",
-        );
-        return constructKey(
-          "public",
-          true,
-          filteredUsages.length > 0
-            ? filteredUsages
-            : ["encapsulateKey", "encapsulateBits"],
-          { name: algorithmName },
-          pubHandle,
-        );
-      }
-      case "ML-DSA-44":
-      case "ML-DSA-65":
-      case "ML-DSA-87": {
-        const pub = WeakMapPrototypeGet(MLDSA_PUBLIC_FROM_PRIVATE, this);
-        if (pub === undefined) {
-          throw new DOMException(
-            "Public key is not available",
-            "InvalidAccessError",
-          );
-        }
-        return pub;
-      }
-      default:
-        throw new DOMException(
-          `getPublicKey() is not supported for ${algorithmName}`,
-          "NotSupportedError",
-        );
-    }
-  }
-
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
@@ -621,6 +549,21 @@ function usageIntersection(a, b) {
     a,
     (i) => ArrayPrototypeIncludes(b, i),
   );
+}
+
+/**
+ * Throw a SyntaxError if any requested usage is not valid for a public key of
+ * the algorithm (i.e. is not present in `allowed`).
+ *
+ * @param {string[]} requested
+ * @param {string[]} allowed
+ */
+function validatePublicKeyUsages(requested, allowed) {
+  for (let i = 0; i < requested.length; i++) {
+    if (!ArrayPrototypeIncludes(allowed, requested[i])) {
+      throw new DOMException("Invalid key usage", "SyntaxError");
+    }
+  }
 }
 
 // The key material for every CryptoKey lives in Rust, wrapped in a V8
@@ -2376,6 +2319,183 @@ class SubtleCrypto {
       ciphertext,
     );
     return TypedArrayPrototypeGetBuffer(sharedSecret);
+  }
+
+  /**
+   * Derive the public key associated with a private key, for asymmetric
+   * algorithms (RSA, EC, Ed25519, X25519/X448 and the post-quantum ML-KEM and
+   * ML-DSA families).
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-getPublicKey
+   *
+   * @param {CryptoKey} key
+   * @param {KeyUsage[]} keyUsages
+   * @returns {Promise<CryptoKey>}
+   */
+  async getPublicKey(key, keyUsages) {
+    webidl.assertBranded(this, SubtleCryptoPrototype);
+    const prefix = "Failed to execute 'getPublicKey' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 1");
+    keyUsages = webidl.converters["sequence<KeyUsage>"](
+      keyUsages,
+      prefix,
+      "Argument 2",
+    );
+
+    const algorithm = key[_algorithm];
+    const algorithmName = algorithm.name;
+
+    // 1. Algorithms that cannot derive a public key reject with a
+    // NotSupportedError (this also covers symmetric and KDF algorithms).
+    switch (algorithmName) {
+      case "RSASSA-PKCS1-v1_5":
+      case "RSA-PSS":
+      case "RSA-OAEP":
+      case "ECDSA":
+      case "ECDH":
+      case "Ed25519":
+      case "X25519":
+      case "X448":
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87":
+      case "ML-KEM-512":
+      case "ML-KEM-768":
+      case "ML-KEM-1024":
+        break;
+      default:
+        throw new DOMException(
+          `getPublicKey() is not supported for ${algorithmName}`,
+          "NotSupportedError",
+        );
+    }
+
+    // 2. The public key can only be derived from a private key.
+    if (key[_type] !== "private") {
+      throw new DOMException(
+        "Public keys can only be derived from private keys",
+        "InvalidAccessError",
+      );
+    }
+
+    // 3. Derive the public key. For ML-KEM/ML-DSA the usages allowed for a
+    // public key are validated here; for the other algorithms the derived
+    // public key material is re-imported, which performs the same per-algorithm
+    // usage validation (rejecting invalid usages with a SyntaxError).
+    switch (algorithmName) {
+      case "ML-KEM-512":
+      case "ML-KEM-768":
+      case "ML-KEM-1024": {
+        validatePublicKeyUsages(keyUsages, ML_KEM_PUBLIC_USAGES);
+        let publicKeyBytes;
+        try {
+          publicKeyBytes = op_crypto_ml_kem_get_public_key(
+            algorithmName,
+            key[_handle].cppgc,
+          );
+        } catch (_) {
+          throw new DOMException(
+            "Failed to derive public key",
+            "OperationError",
+          );
+        }
+        const pubHandle = {};
+        setKeyData(pubHandle, publicKeyBytes);
+        return constructKey(
+          "public",
+          true,
+          keyUsages,
+          { name: algorithmName },
+          pubHandle,
+        );
+      }
+      case "ML-DSA-44":
+      case "ML-DSA-65":
+      case "ML-DSA-87": {
+        validatePublicKeyUsages(keyUsages, ["verify"]);
+        // The matching public key is derived and stored alongside the private
+        // key at generate/import time; reuse its key material.
+        const pub = WeakMapPrototypeGet(MLDSA_PUBLIC_FROM_PRIVATE, key);
+        if (pub === undefined) {
+          throw new DOMException(
+            "Failed to derive public key",
+            "OperationError",
+          );
+        }
+        return constructKey(
+          "public",
+          true,
+          keyUsages,
+          { name: algorithmName },
+          pub[_handle],
+        );
+      }
+      case "RSASSA-PKCS1-v1_5":
+      case "RSA-PSS":
+      case "RSA-OAEP": {
+        let spki;
+        try {
+          spki = op_crypto_export_key({
+            algorithm: algorithmName,
+            format: "spki",
+          }, getKeyData(key[_handle]));
+        } catch (_) {
+          throw new DOMException(
+            "Failed to derive public key",
+            "OperationError",
+          );
+        }
+        return await this.importKey("spki", spki, algorithm, true, keyUsages);
+      }
+      case "ECDSA":
+      case "ECDH": {
+        let spki;
+        try {
+          spki = op_crypto_export_key({
+            algorithm: algorithmName,
+            namedCurve: algorithm.namedCurve,
+            format: "spki",
+          }, getKeyData(key[_handle]));
+        } catch (_) {
+          throw new DOMException(
+            "Failed to derive public key",
+            "OperationError",
+          );
+        }
+        return await this.importKey("spki", spki, algorithm, true, keyUsages);
+      }
+      default: {
+        // Ed25519, X25519 and X448 store raw key material; derive the raw
+        // public key from the private key and re-import it as a JWK.
+        let x;
+        try {
+          switch (algorithmName) {
+            case "Ed25519":
+              x = op_crypto_jwk_x_ed25519(getKeyData(key[_handle]));
+              break;
+            case "X25519":
+              x = op_crypto_x25519_public_key(getKeyData(key[_handle]));
+              break;
+            default: // X448
+              x = op_crypto_x448_public_key(getKeyData(key[_handle]));
+              break;
+          }
+        } catch (_) {
+          throw new DOMException(
+            "Failed to derive public key",
+            "OperationError",
+          );
+        }
+        const jwk = {
+          kty: "OKP",
+          crv: algorithmName,
+          x,
+          ext: true,
+        };
+        return await this.importKey("jwk", jwk, algorithm, true, keyUsages);
+      }
+    }
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {

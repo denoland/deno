@@ -46,7 +46,7 @@ use tokio_util::task::AbortOnDropHandle;
 use tower_lsp::lsp_types as lsp;
 
 use super::analysis;
-use super::analysis::import_map_lookup;
+use super::analysis::import_map_lookup_for_diagnostic;
 use super::client::Client;
 use super::config::ConfigWatchedFileType;
 use super::documents::Document;
@@ -1339,7 +1339,7 @@ fn diagnose_dependency(
       .ok()
       .or_else(|| dependency.maybe_type.ok());
     if let Some(resolved) = resolved
-      && let Some(to) = import_map_lookup(
+      && let Some(to) = import_map_lookup_for_diagnostic(
         import_map,
         &resolved.specifier,
         &referrer_module.specifier,
@@ -2330,22 +2330,7 @@ mod tests {
         ],
         [
           url_to_uri(&temp_dir.url().join("a/file2.ts").unwrap()).unwrap(),
-          [
-            {
-              "range": {
-                "start": { "line": 0, "character": 18 },
-                "end": { "line": 0, "character": 29 },
-              },
-              "severity": 4,
-              "code": "import-map-remap",
-              "source": "deno",
-              "message": "The import specifier can be remapped to \"$a/file.ts\" which will resolve it via the active import map.",
-              "data": {
-                "from": "./file.ts",
-                "to": "$a/file.ts",
-              },
-            },
-          ],
+          [],
         ],
       ]),
     );
