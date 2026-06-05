@@ -10,17 +10,11 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_ast::SourceRangedForSpanned;
-use deno_ast::swc::ecma_visit::Visit;
-use deno_ast::swc::ecma_visit::VisitWith;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_graph::Position;
-use deno_graph::PositionRange;
-use deno_graph::Range;
 use deno_graph::ResolutionError;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
@@ -1023,18 +1017,18 @@ impl<'a> GraphWalker<'a> {
         }
       }
 
-      if is_root
-        && let Module::Js(module) = module
-        && module.media_type.is_declaration()
-      {
-        self.add_unresolved_dts_entrypoint_imports(module);
-      }
-
       if module.media_type().is_declaration() {
         let compiler_options_data = self
           .compiler_options_resolver
           .for_specifier(module.specifier());
         if compiler_options_data.skip_lib_check() {
+          // `skipLibCheck` suppresses diagnostics from `.d.ts` files, but when
+          // a `.d.ts` is itself a check root (an explicit entrypoint) its own
+          // unresolved imports should still surface as `TS2307`. Dependency
+          // `.d.ts` files reached transitively keep being skipped.
+          if is_root && let Module::Js(module) = module {
+            self.add_unresolved_dts_entrypoint_imports(module);
+          }
           continue;
         }
       }
@@ -1200,63 +1194,61 @@ impl<'a> GraphWalker<'a> {
     }
   }
 
+  /// Surface unresolved imports of a `.d.ts` check root as `TS2307`.
+  ///
+  /// `skipLibCheck` (and tsc's declaration handling) otherwise swallow these,
+  /// but an explicit `.d.ts` entrypoint should still report them. Reuses the
+  /// imports deno_graph already parsed during graph build (specifier + range),
+  /// so there's no need to re-parse the source. A bare specifier deno_graph
+  /// left as `Resolution::None` is still caught here via `resolve_import`.
   fn add_unresolved_dts_entrypoint_imports(
     &mut self,
     module: &'a deno_graph::JsModule,
   ) {
-    let Ok(parsed_source) = deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: module.specifier.clone(),
-      text: module.source.text.clone(),
-      media_type: match module.media_type {
-        MediaType::Dmts => MediaType::Mts,
-        MediaType::Dcts => MediaType::Cts,
-        _ => MediaType::TypeScript,
-      },
-      capture_tokens: false,
-      scope_analysis: false,
-      maybe_syntax: None,
-    }) else {
-      return;
-    };
-
-    let mut collector = DtsImportCollector::default();
-    parsed_source.program_ref().visit_with(&mut collector);
-    let text_info = parsed_source.text_info_lazy();
-    for import in collector.imports {
-      if let Some(dep) =
-        module.dependencies_prefer_fast_check().get(&import.text)
-        && (!dep.maybe_type.is_none() || !dep.maybe_code.is_none())
+    for dep in module.dependencies_prefer_fast_check().values() {
+      // A resolved code or type specifier means the import isn't missing.
+      if matches!(dep.maybe_code, deno_graph::Resolution::Ok(_))
+        || matches!(dep.maybe_type, deno_graph::Resolution::Ok(_))
       {
         continue;
       }
-      let range = Range {
-        specifier: module.specifier.clone(),
-        range: PositionRange {
-          start: position_from_source_pos(import.range.start, text_info),
-          end: position_from_source_pos(import.range.end, text_info),
-        },
-        resolution_mode: None,
-      };
-      match deno_path_util::resolve_import(&import.text, &module.specifier) {
-        Ok(specifier) => {
-          let specifier = self.graph.resolve(&specifier);
-          if self.graph.try_get(specifier).ok().flatten().is_none() {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
-                specifier.as_str(),
-                Some(&range),
-                maybe_additional_sloppy_imports_message(self.sys, specifier),
-              ));
-          }
+      for import in &dep.imports {
+        // Only surface real `import`/`export`/`import =` statements. Triple
+        // slash `/// <reference />` directives, JSDoc and `@jsxImportSource`
+        // imports are intentionally left to tsc's `skipLibCheck` handling.
+        if !matches!(
+          import.kind,
+          deno_graph::ImportKind::Es
+            | deno_graph::ImportKind::TsType
+            | deno_graph::ImportKind::Require
+        ) {
+          continue;
         }
-        Err(error) => {
-          let resolution_error =
-            ResolutionError::InvalidSpecifier { error, range };
-          if let Some(diagnostic) =
-            tsc::Diagnostic::maybe_from_resolution_error(&resolution_error)
-          {
-            self.missing_diagnostics.push(diagnostic);
+        let range = import.specifier_range.clone();
+        match deno_path_util::resolve_import(
+          &import.specifier,
+          &module.specifier,
+        ) {
+          Ok(specifier) => {
+            let specifier = self.graph.resolve(&specifier);
+            if self.graph.try_get(specifier).ok().flatten().is_none() {
+              self.missing_diagnostics.push(
+                tsc::Diagnostic::from_missing_error(
+                  specifier.as_str(),
+                  Some(&range),
+                  maybe_additional_sloppy_imports_message(self.sys, specifier),
+                ),
+              );
+            }
+          }
+          Err(error) => {
+            let resolution_error =
+              ResolutionError::InvalidSpecifier { error, range };
+            if let Some(diagnostic) =
+              tsc::Diagnostic::maybe_from_resolution_error(&resolution_error)
+            {
+              self.missing_diagnostics.push(diagnostic);
+            }
           }
         }
       }
@@ -1286,66 +1278,6 @@ impl<'a> GraphWalker<'a> {
       .ok()?;
     resolved.into_url().ok()
   }
-}
-
-#[derive(Default)]
-struct DtsImportCollector {
-  imports: Vec<DtsImport>,
-}
-
-struct DtsImport {
-  text: String,
-  range: deno_ast::SourceRange,
-}
-
-impl Visit for DtsImportCollector {
-  fn visit_import_decl(&mut self, node: &deno_ast::swc::ast::ImportDecl) {
-    self.imports.push(DtsImport {
-      text: node.src.value.to_string_lossy().to_string(),
-      range: node.src.range(),
-    });
-  }
-
-  fn visit_named_export(&mut self, node: &deno_ast::swc::ast::NamedExport) {
-    if let Some(src) = &node.src {
-      self.imports.push(DtsImport {
-        text: src.value.to_string_lossy().to_string(),
-        range: src.range(),
-      });
-    }
-  }
-
-  fn visit_export_all(&mut self, node: &deno_ast::swc::ast::ExportAll) {
-    self.imports.push(DtsImport {
-      text: node.src.value.to_string_lossy().to_string(),
-      range: node.src.range(),
-    });
-  }
-
-  fn visit_ts_import_equals_decl(
-    &mut self,
-    node: &deno_ast::swc::ast::TsImportEqualsDecl,
-  ) {
-    if let deno_ast::swc::ast::TsModuleRef::TsExternalModuleRef(module) =
-      &node.module_ref
-    {
-      self.imports.push(DtsImport {
-        text: module.expr.value.to_string_lossy().to_string(),
-        range: module.expr.range(),
-      });
-    }
-  }
-}
-
-fn position_from_source_pos(
-  pos: deno_ast::SourcePos,
-  text_info: &deno_ast::SourceTextInfo,
-) -> Position {
-  let line_and_column_index = text_info.line_and_column_index(pos);
-  Position::new(
-    line_and_column_index.line_index,
-    line_and_column_index.column_index,
-  )
 }
 
 static JSDOC_DYNAMIC_IMPORT_RE: Lazy<Regex> =
