@@ -262,7 +262,9 @@ const windowOrWorkerGlobalScope = {
   console: core.propNonEnumerable(
     new console.Console((msg, level) => core.print(msg, level > 1)),
   ),
-  crypto: core.propReadOnly(crypto.crypto),
+  // The `crypto` instance is a cppgc object created lazily (it cannot be
+  // constructed at snapshot time); `getCrypto` memoizes so this is `[SameObject]`.
+  crypto: core.propGetterOnly(crypto.getCrypto),
   Crypto: core.propNonEnumerable(crypto.Crypto),
   SubtleCrypto: core.propNonEnumerable(crypto.SubtleCrypto),
   // `fetch` is installed as a plain data descriptor whose value is a lazy

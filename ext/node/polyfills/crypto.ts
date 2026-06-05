@@ -108,11 +108,14 @@ const { isArrayBufferView } = core.loadExtScript(
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const { crypto: webcrypto } = core.loadExtScript(
+const { getCrypto } = core.loadExtScript(
   "ext:deno_crypto/00_crypto.js",
 );
 const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 
+// `crypto` is a cppgc object created lazily (it cannot be constructed at
+// snapshot time); `getCrypto()` memoizes so this is the global `[SameObject]`.
+const webcrypto = getCrypto();
 const subtle = webcrypto.subtle;
 const fipsForced = getOptionValue("--force-fips");
 

@@ -326,6 +326,16 @@ pub enum SharedError {
 }
 
 impl V8RawKeyData {
+  /// Convert this borrowed (`JsBuffer`-backed) key material into the owned
+  /// [`RawKeyData`] used by the shared crypto compute functions.
+  pub fn to_owned_raw_key_data(&self) -> RawKeyData {
+    match self {
+      V8RawKeyData::Secret(b) => RawKeyData::Secret(b.as_ref().into()),
+      V8RawKeyData::Private(b) => RawKeyData::Private(b.as_ref().into()),
+      V8RawKeyData::Public(b) => RawKeyData::Public(b.as_ref().into()),
+    }
+  }
+
   pub fn as_rsa_public_key(&self) -> Result<Cow<'_, [u8]>, SharedError> {
     match self {
       V8RawKeyData::Public(data) => Ok(Cow::Borrowed(data)),

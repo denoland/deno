@@ -2,9 +2,6 @@
 
 use aws_lc_rs::rand::SecureRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
-use deno_core::convert::Uint8Array;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
 use elliptic_curve::pkcs8::EncodePrivateKey;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
@@ -12,7 +9,6 @@ use once_cell::sync::Lazy;
 use rsa::BigUint;
 use rsa::RsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPrivateKey;
-use serde::Deserialize;
 
 use crate::shared::*;
 
@@ -50,46 +46,7 @@ static PUB_EXPONENT_1: Lazy<BigUint> =
 static PUB_EXPONENT_2: Lazy<BigUint> =
   Lazy::new(|| BigUint::from_u64(65537).unwrap());
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", tag = "algorithm")]
-pub enum GenerateKeyOptions {
-  #[serde(rename = "RSA", rename_all = "camelCase")]
-  Rsa {
-    modulus_length: u32,
-    #[serde(with = "serde_bytes")]
-    public_exponent: Vec<u8>,
-  },
-  #[serde(rename = "EC", rename_all = "camelCase")]
-  Ec { named_curve: EcNamedCurve },
-  #[serde(rename = "AES", rename_all = "camelCase")]
-  Aes { length: usize },
-  #[serde(rename = "HMAC", rename_all = "camelCase")]
-  Hmac {
-    hash: ShaHash,
-    length: Option<usize>,
-  },
-}
-
-#[op2]
-pub async fn op_crypto_generate_key(
-  #[serde] opts: GenerateKeyOptions,
-) -> Result<Uint8Array, GenerateKeyError> {
-  let fun = || match opts {
-    GenerateKeyOptions::Rsa {
-      modulus_length,
-      public_exponent,
-    } => generate_key_rsa(modulus_length, &public_exponent),
-    GenerateKeyOptions::Ec { named_curve } => generate_key_ec(named_curve),
-    GenerateKeyOptions::Aes { length } => generate_key_aes(length),
-    GenerateKeyOptions::Hmac { hash, length } => {
-      generate_key_hmac(hash, length)
-    }
-  };
-  let buf = spawn_blocking(fun).await.unwrap()?;
-  Ok(buf.into())
-}
-
-fn generate_key_rsa(
+pub fn generate_key_rsa(
   modulus_length: u32,
   public_exponent: &[u8],
 ) -> Result<Vec<u8>, GenerateKeyError> {
@@ -120,7 +77,7 @@ fn generate_key_ec_p521() -> Result<Vec<u8>, GenerateKeyError> {
   Ok(pkcs8.as_bytes().to_vec())
 }
 
-fn generate_key_ec(
+pub fn generate_key_ec(
   named_curve: EcNamedCurve,
 ) -> Result<Vec<u8>, GenerateKeyError> {
   let curve = match named_curve {
@@ -141,7 +98,7 @@ fn generate_key_ec(
   Ok(pkcs8.as_ref().to_vec())
 }
 
-fn generate_key_aes(length: usize) -> Result<Vec<u8>, GenerateKeyError> {
+pub fn generate_key_aes(length: usize) -> Result<Vec<u8>, GenerateKeyError> {
   if !length.is_multiple_of(8) || length > 256 {
     return Err(GenerateKeyError::InvalidAESKeyLength);
   }
@@ -155,7 +112,7 @@ fn generate_key_aes(length: usize) -> Result<Vec<u8>, GenerateKeyError> {
   Ok(key)
 }
 
-fn generate_key_hmac(
+pub fn generate_key_hmac(
   hash: ShaHash,
   length: Option<usize>,
 ) -> Result<Vec<u8>, GenerateKeyError> {

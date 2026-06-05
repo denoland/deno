@@ -78,62 +78,37 @@ pub fn op_crypto_verify_ed25519(
 pub const ED25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.112");
 
-#[op2(fast)]
-pub fn op_crypto_import_spki_ed25519(
-  #[buffer] key_data: &[u8],
-  #[buffer] out: &mut [u8],
-) -> bool {
-  // 2-3.
-  let pk_info = match spki::SubjectPublicKeyInfoRef::try_from(key_data) {
-    Ok(pk_info) => pk_info,
-    Err(_) => return false,
-  };
-  // 4.
-  let alg = pk_info.algorithm.oid;
-  if alg != ED25519_OID {
-    return false;
+/// Returns the 32-byte raw Ed25519 public key from SPKI DER on success.
+/// Callable from Rust (the cppgc `importKey` path).
+pub fn import_spki_ed25519(key_data: &[u8]) -> Option<Vec<u8>> {
+  let pk_info = spki::SubjectPublicKeyInfoRef::try_from(key_data).ok()?;
+  if pk_info.algorithm.oid != ED25519_OID {
+    return None;
   }
-  // 5.
   if pk_info.algorithm.parameters.is_some() {
-    return false;
+    return None;
   }
-  out.copy_from_slice(pk_info.subject_public_key.raw_bytes());
-  true
+  Some(pk_info.subject_public_key.raw_bytes().to_vec())
 }
 
-#[op2(fast)]
-pub fn op_crypto_import_pkcs8_ed25519(
-  #[buffer] key_data: &[u8],
-  #[buffer] out: &mut [u8],
-) -> bool {
-  // 2-3.
-  // This should probably use OneAsymmetricKey instead
-  let pk_info = match PrivateKeyInfo::from_der(key_data) {
-    Ok(pk_info) => pk_info,
-    Err(_) => return false,
-  };
-  // 4.
-  let alg = pk_info.algorithm.oid;
-  if alg != ED25519_OID {
-    return false;
+/// Returns the 32-byte raw Ed25519 private key from PKCS#8 DER on success.
+pub fn import_pkcs8_ed25519(key_data: &[u8]) -> Option<Vec<u8>> {
+  let pk_info = PrivateKeyInfo::from_der(key_data).ok()?;
+  if pk_info.algorithm.oid != ED25519_OID {
+    return None;
   }
-  // 5.
   if pk_info.algorithm.parameters.is_some() {
-    return false;
+    return None;
   }
-  // 6.
   // CurvePrivateKey ::= OCTET STRING
   if pk_info.private_key.len() != 34 {
-    return false;
+    return None;
   }
-  out.copy_from_slice(&pk_info.private_key[2..]);
-  true
+  Some(pk_info.private_key[2..].to_vec())
 }
 
-#[op2]
-pub fn op_crypto_export_spki_ed25519(
-  #[buffer] pubkey: &[u8],
-) -> Result<Uint8Array, Ed25519Error> {
+/// Core of [`op_crypto_export_spki_ed25519`].
+pub fn export_spki_ed25519(pubkey: &[u8]) -> Result<Vec<u8>, Ed25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierOwned {
       // id-Ed25519
@@ -142,18 +117,18 @@ pub fn op_crypto_export_spki_ed25519(
     },
     subject_public_key: BitString::from_bytes(pubkey)?,
   };
-  Ok(
-    key_info
-      .to_der()
-      .map_err(|_| Ed25519Error::FailedExport)?
-      .into(),
-  )
+  key_info.to_der().map_err(|_| Ed25519Error::FailedExport)
 }
 
 #[op2]
-pub fn op_crypto_export_pkcs8_ed25519(
-  #[buffer] pkey: &[u8],
+pub fn op_crypto_export_spki_ed25519(
+  #[buffer] pubkey: &[u8],
 ) -> Result<Uint8Array, Ed25519Error> {
+  Ok(export_spki_ed25519(pubkey)?.into())
+}
+
+/// Core of [`op_crypto_export_pkcs8_ed25519`].
+pub fn export_pkcs8_ed25519(pkey: &[u8]) -> Result<Vec<u8>, Ed25519Error> {
   use rsa::pkcs1::der::Encode;
 
   // This should probably use OneAsymmetricKey instead
@@ -169,16 +144,21 @@ pub fn op_crypto_export_pkcs8_ed25519(
 
   let mut buf = Vec::new();
   pk_info.encode_to_vec(&mut buf)?;
-  Ok(buf.into())
+  Ok(buf)
+}
+
+#[op2]
+pub fn op_crypto_export_pkcs8_ed25519(
+  #[buffer] pkey: &[u8],
+) -> Result<Uint8Array, Ed25519Error> {
+  Ok(export_pkcs8_ed25519(pkey)?.into())
 }
 
 // 'x' from Section 2 of RFC 8037
 // https://www.rfc-editor.org/rfc/rfc8037#section-2
-#[op2]
-#[string]
-pub fn op_crypto_jwk_x_ed25519(
-  #[buffer] pkey: &[u8],
-) -> Result<String, Ed25519Error> {
+//
+// Computes the base64url-encoded Ed25519 public key ('x') from a seed.
+pub fn jwk_x_ed25519(pkey: &[u8]) -> Result<String, Ed25519Error> {
   let pair = Ed25519KeyPair::from_seed_unchecked(pkey)?;
   Ok(BASE64_URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()))
 }

@@ -110,31 +110,3 @@ impl hkdf::KeyType for HkdfOutput<usize> {
     self.0
   }
 }
-
-#[derive(Serialize, Deserialize, Clone, Copy)]
-pub enum Algorithm {
-  #[serde(rename = "RSASSA-PKCS1-v1_5")]
-  RsassaPkcs1v15,
-  #[serde(rename = "RSA-PSS")]
-  RsaPss,
-  #[serde(rename = "RSA-OAEP")]
-  RsaOaep,
-  #[serde(rename = "ECDSA")]
-  Ecdsa,
-  #[serde(rename = "ECDH")]
-  Ecdh,
-  #[serde(rename = "AES-CTR")]
-  AesCtr,
-  #[serde(rename = "AES-CBC")]
-  AesCbc,
-  #[serde(rename = "AES-GCM")]
-  AesGcm,
-  #[serde(rename = "AES-KW")]
-  AesKw,
-  #[serde(rename = "HMAC")]
-  Hmac,
-  #[serde(rename = "PBKDF2")]
-  Pbkdf2,
-  #[serde(rename = "HKDF")]
-  Hkdf,
-}

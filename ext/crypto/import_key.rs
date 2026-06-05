@@ -4,7 +4,6 @@ use base64::Engine;
 use deno_core::JsBuffer;
 use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
-use deno_core::op2;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
 use rsa::pkcs1::UintRef;
@@ -159,10 +158,11 @@ pub enum ImportKeyResult {
   },
 }
 
-#[op2]
-pub fn op_crypto_import_key(
-  #[serde] opts: ImportKeyOptions,
-  #[serde] key_data: KeyData,
+/// Parses RSA/EC/AES/HMAC key material. Callable from Rust ops (e.g.
+/// `web_import_export::op_crypto_import_key_web`).
+pub fn import_key_inner(
+  opts: ImportKeyOptions,
+  key_data: KeyData,
 ) -> Result<ImportKeyResult, ImportKeyError> {
   match opts {
     ImportKeyOptions::RsassaPkcs1v15 {} => import_key_rsassa(key_data),

@@ -422,7 +422,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionNotSupportedError",
   function DOMExceptionNotSupportedError(msg) {
-    return new DOMException(msg, "NotSupported");
+    return new DOMException(msg, "NotSupportedError");
   },
 );
 core.registerErrorBuilder(
@@ -447,6 +447,18 @@ core.registerErrorBuilder(
   "DOMExceptionDataError",
   function DOMExceptionDataError(msg) {
     return new DOMException(msg, "DataError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionTypeMismatchError",
+  function DOMExceptionTypeMismatchError(msg) {
+    return new DOMException(msg, "TypeMismatchError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionInvalidAccessError",
+  function DOMExceptionInvalidAccessError(msg) {
+    return new DOMException(msg, "InvalidAccessError");
   },
 );
 core.registerErrorBuilder(

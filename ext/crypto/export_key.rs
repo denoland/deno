@@ -40,9 +40,9 @@ pub enum ExportKeyError {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportKeyOptions {
-  format: ExportKeyFormat,
+  pub format: ExportKeyFormat,
   #[serde(flatten)]
-  algorithm: ExportKeyAlgorithm,
+  pub algorithm: ExportKeyAlgorithm,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +113,15 @@ pub enum ExportKeyResult {
 pub fn op_crypto_export_key(
   #[serde] opts: ExportKeyOptions,
   #[serde] key_data: V8RawKeyData,
+) -> Result<ExportKeyResult, ExportKeyError> {
+  export_key_inner(opts, key_data)
+}
+
+/// Same as [`op_crypto_export_key`] but callable from other Rust ops (e.g.
+/// `web_import_export::op_crypto_export_key_web`).
+pub fn export_key_inner(
+  opts: ExportKeyOptions,
+  key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, ExportKeyError> {
   match opts.algorithm {
     ExportKeyAlgorithm::RsassaPkcs1v15 {}

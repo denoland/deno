@@ -98,10 +98,8 @@ pub fn op_crypto_x448_public_key(
   Ok(BASE64_URL_SAFE_NO_PAD.encode(point.0))
 }
 
-#[op2]
-pub fn op_crypto_export_spki_x448(
-  #[buffer] pubkey: &[u8],
-) -> Result<Uint8Array, X448Error> {
+/// Core of [`op_crypto_export_spki_x448`].
+pub fn export_spki_x448(pubkey: &[u8]) -> Result<Vec<u8>, X448Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierRef {
       oid: X448_OID,
@@ -109,18 +107,18 @@ pub fn op_crypto_export_spki_x448(
     },
     subject_public_key: BitString::from_bytes(pubkey)?,
   };
-  Ok(
-    key_info
-      .to_der()
-      .map_err(|_| X448Error::FailedExport)?
-      .into(),
-  )
+  key_info.to_der().map_err(|_| X448Error::FailedExport)
 }
 
 #[op2]
-pub fn op_crypto_export_pkcs8_x448(
-  #[buffer] pkey: &[u8],
+pub fn op_crypto_export_spki_x448(
+  #[buffer] pubkey: &[u8],
 ) -> Result<Uint8Array, X448Error> {
+  Ok(export_spki_x448(pubkey)?.into())
+}
+
+/// Core of [`op_crypto_export_pkcs8_x448`].
+pub fn export_pkcs8_x448(pkey: &[u8]) -> Result<Vec<u8>, X448Error> {
   use rsa::pkcs1::der::Encode;
 
   let pk_info = rsa::pkcs8::PrivateKeyInfo {
@@ -134,56 +132,40 @@ pub fn op_crypto_export_pkcs8_x448(
 
   let mut buf = Vec::new();
   pk_info.encode_to_vec(&mut buf)?;
-  Ok(buf.into())
+  Ok(buf)
 }
 
-#[op2(fast)]
-pub fn op_crypto_import_spki_x448(
-  #[buffer] key_data: &[u8],
-  #[buffer] out: &mut [u8],
-) -> bool {
-  // 2-3.
-  let pk_info = match spki::SubjectPublicKeyInfoRef::try_from(key_data) {
-    Ok(pk_info) => pk_info,
-    Err(_) => return false,
-  };
-  // 4.
-  let alg = pk_info.algorithm.oid;
-  if alg != X448_OID {
-    return false;
-  }
-  // 5.
-  if pk_info.algorithm.parameters.is_some() {
-    return false;
-  }
-  out.copy_from_slice(pk_info.subject_public_key.raw_bytes());
-  true
+#[op2]
+pub fn op_crypto_export_pkcs8_x448(
+  #[buffer] pkey: &[u8],
+) -> Result<Uint8Array, X448Error> {
+  Ok(export_pkcs8_x448(pkey)?.into())
 }
 
-#[op2(fast)]
-pub fn op_crypto_import_pkcs8_x448(
-  #[buffer] key_data: &[u8],
-  #[buffer] out: &mut [u8],
-) -> bool {
-  // 2-3.
-  let pk_info = match PrivateKeyInfo::from_der(key_data) {
-    Ok(pk_info) => pk_info,
-    Err(_) => return false,
-  };
-  // 4.
-  let alg = pk_info.algorithm.oid;
-  if alg != X448_OID {
-    return false;
+/// Extracts the raw X448 public key bytes from SPKI DER.
+pub fn import_spki_x448(key_data: &[u8]) -> Option<Vec<u8>> {
+  let pk_info = spki::SubjectPublicKeyInfoRef::try_from(key_data).ok()?;
+  if pk_info.algorithm.oid != X448_OID {
+    return None;
   }
-  // 5.
   if pk_info.algorithm.parameters.is_some() {
-    return false;
+    return None;
   }
-  // 6.
+  Some(pk_info.subject_public_key.raw_bytes().to_vec())
+}
+
+/// Extracts the raw X448 private key bytes from PKCS#8 DER.
+pub fn import_pkcs8_x448(key_data: &[u8]) -> Option<Vec<u8>> {
+  let pk_info = PrivateKeyInfo::from_der(key_data).ok()?;
+  if pk_info.algorithm.oid != X448_OID {
+    return None;
+  }
+  if pk_info.algorithm.parameters.is_some() {
+    return None;
+  }
   // CurvePrivateKey ::= OCTET STRING
   if pk_info.private_key.len() != 58 {
-    return false;
+    return None;
   }
-  out.copy_from_slice(&pk_info.private_key[2..]);
-  true
+  Some(pk_info.private_key[2..].to_vec())
 }

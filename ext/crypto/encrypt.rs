@@ -137,40 +137,50 @@ pub async fn op_crypto_encrypt(
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, EncryptError> {
   let key_data = key.data().clone();
-  let fun = move || {
-    let key: &RawKeyData = &key_data;
-    match opts.algorithm {
-      EncryptAlgorithm::RsaOaep { hash, label } => {
-        encrypt_rsa_oaep(key, hash, label, &data)
-      }
-      EncryptAlgorithm::AesCbc { iv, length } => {
-        encrypt_aes_cbc(key, length, iv, &data)
-      }
-      EncryptAlgorithm::AesGcm {
-        iv,
-        additional_data,
-        length,
-        tag_length,
-      } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
-      EncryptAlgorithm::AesOcb {
-        iv,
-        additional_data,
-        length,
-        tag_length,
-      } => encrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
-      EncryptAlgorithm::AesCtr {
-        counter,
-        ctr_length,
-        key_length,
-      } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
-      EncryptAlgorithm::ChaCha20Poly1305 {
-        nonce,
-        additional_data,
-      } => encrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
-    }
-  };
-  let buf = spawn_blocking(fun).await.unwrap()?;
+  let buf =
+    spawn_blocking(move || encrypt_compute(&key_data, opts.algorithm, &data))
+      .await
+      .unwrap()?;
   Ok(buf.into())
+}
+
+/// Synchronous encryption dispatch shared between `op_crypto_encrypt` and the
+/// `web_cipher` ops. Performs the actual crypto given the decoded key material
+/// (read out of a [`CryptoKeyHandle`]) and the normalized params.
+pub fn encrypt_compute(
+  key: &RawKeyData,
+  algorithm: EncryptAlgorithm,
+  data: &[u8],
+) -> Result<Vec<u8>, EncryptError> {
+  match algorithm {
+    EncryptAlgorithm::RsaOaep { hash, label } => {
+      encrypt_rsa_oaep(key, hash, label, data)
+    }
+    EncryptAlgorithm::AesCbc { iv, length } => {
+      encrypt_aes_cbc(key, length, iv, data)
+    }
+    EncryptAlgorithm::AesGcm {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, data),
+    EncryptAlgorithm::AesOcb {
+      iv,
+      additional_data,
+      length,
+      tag_length,
+    } => encrypt_aes_ocb(key, length, tag_length, iv, additional_data, data),
+    EncryptAlgorithm::AesCtr {
+      counter,
+      ctr_length,
+      key_length,
+    } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, data),
+    EncryptAlgorithm::ChaCha20Poly1305 {
+      nonce,
+      additional_data,
+    } => encrypt_chacha20_poly1305(key, &nonce, additional_data, data),
+  }
 }
 
 fn encrypt_rsa_oaep(

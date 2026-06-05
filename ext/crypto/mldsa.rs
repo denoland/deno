@@ -11,10 +11,8 @@ use aws_lc_rs::unstable::signature::ML_DSA_87_SIGNING;
 use aws_lc_rs::unstable::signature::PqdsaKeyPair;
 use aws_lc_rs::unstable::signature::PqdsaSigningAlgorithm;
 use aws_lc_rs::unstable::signature::PqdsaVerificationAlgorithm;
-use deno_core::ToJsBuffer;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use serde::Serialize;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
@@ -101,27 +99,11 @@ fn params(variant: u8) -> Result<MlDsaParams, MlDsaError> {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MlDsaKeys {
-  private_key: ToJsBuffer,
-  public_key: ToJsBuffer,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MlDsaImportedKeys {
-  private_key: ToJsBuffer,
-  public_key: ToJsBuffer,
-  seed: Option<ToJsBuffer>,
-}
-
-#[op2]
-#[serde]
-pub fn op_crypto_mldsa_from_seed(
+/// `(private_key, public_key)` cores for ML-DSA imports.
+pub fn mldsa_from_seed(
   variant: u8,
-  #[buffer] seed: &[u8],
-) -> Result<MlDsaKeys, MlDsaError> {
+  seed: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>), MlDsaError> {
   let p = params(variant)?;
   let key_pair = PqdsaKeyPair::from_seed(p.signing, seed)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
@@ -130,18 +112,13 @@ pub fn op_crypto_mldsa_from_seed(
     .as_raw_bytes_vec()
     .map_err(|_| MlDsaError::FailedExport)?;
   let public_key = key_pair.public_key().as_ref().to_vec();
-  Ok(MlDsaKeys {
-    private_key: private_key.into(),
-    public_key: public_key.into(),
-  })
+  Ok((private_key, public_key))
 }
 
-#[op2]
-#[serde]
-pub fn op_crypto_mldsa_from_raw_private(
+pub fn mldsa_from_raw_private(
   variant: u8,
-  #[buffer] private_key_bytes: &[u8],
-) -> Result<MlDsaKeys, MlDsaError> {
+  private_key_bytes: &[u8],
+) -> Result<(Vec<u8>, Vec<u8>), MlDsaError> {
   let p = params(variant)?;
   let key_pair =
     PqdsaKeyPair::from_raw_private_key(p.signing, private_key_bytes)
@@ -151,18 +128,17 @@ pub fn op_crypto_mldsa_from_raw_private(
     .as_raw_bytes_vec()
     .map_err(|_| MlDsaError::FailedExport)?;
   let public_key = key_pair.public_key().as_ref().to_vec();
-  Ok(MlDsaKeys {
-    private_key: private_key.into(),
-    public_key: public_key.into(),
-  })
+  Ok((private_key, public_key))
 }
 
-#[op2]
-#[serde]
-pub fn op_crypto_mldsa_from_pkcs8(
+/// `(private_key, public_key, seed)` returned by [`mldsa_from_pkcs8`].
+pub type MlDsaPkcs8Parts = (Vec<u8>, Vec<u8>, Option<Vec<u8>>);
+
+/// `(private_key, public_key, seed)` core for the PKCS#8 import.
+pub fn mldsa_from_pkcs8(
   variant: u8,
-  #[buffer] pkcs8: &[u8],
-) -> Result<MlDsaImportedKeys, MlDsaError> {
+  pkcs8: &[u8],
+) -> Result<MlDsaPkcs8Parts, MlDsaError> {
   let p = params(variant)?;
   let key_pair = PqdsaKeyPair::from_pkcs8(p.signing, pkcs8)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
@@ -171,16 +147,8 @@ pub fn op_crypto_mldsa_from_pkcs8(
     .as_raw_bytes_vec()
     .map_err(|_| MlDsaError::FailedExport)?;
   let public_key = key_pair.public_key().as_ref().to_vec();
-  // Best-effort: extract the seed from the inner OCTET STRING when the
-  // PKCS#8 uses the Case 1 (`[0] OCTET STRING { seed }`) encoding from
-  // draft-ietf-lamps-dilithium-certificates (the form aws-lc itself
-  // emits). Case 2 (expanded only) leaves seed = None.
-  let seed = extract_seed_from_pkcs8(pkcs8).map(Into::into);
-  Ok(MlDsaImportedKeys {
-    private_key: private_key.into(),
-    public_key: public_key.into(),
-    seed,
-  })
+  let seed = extract_seed_from_pkcs8(pkcs8);
+  Ok((private_key, public_key, seed))
 }
 
 /// Returns `Some(seed)` if the PKCS#8 v1 ML-DSA encoding contains a
@@ -237,11 +205,11 @@ fn parse_tag_and_length(buf: &[u8], tag: u8) -> Option<&[u8]> {
   Some(&body_start[..len])
 }
 
-#[op2]
-pub fn op_crypto_mldsa_from_spki(
+/// Core of [`op_crypto_mldsa_from_spki`]: returns the raw public key bytes.
+pub fn mldsa_from_spki(
   variant: u8,
-  #[buffer] spki: &[u8],
-) -> Result<Uint8Array, MlDsaError> {
+  spki: &[u8],
+) -> Result<Vec<u8>, MlDsaError> {
   let p = params(variant)?;
   let pk_info = spki::SubjectPublicKeyInfoRef::try_from(spki)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
@@ -255,7 +223,7 @@ pub fn op_crypto_mldsa_from_spki(
   if raw.len() != p.pub_key_len {
     return Err(MlDsaError::InvalidKeyData);
   }
-  Ok(raw.to_vec().into())
+  Ok(raw.to_vec())
 }
 
 /// PKCS#8 v1 export for ML-DSA encodes the seed-only form
@@ -264,23 +232,31 @@ pub fn op_crypto_mldsa_from_spki(
 /// implements. The seed is therefore required; a key whose seed has
 /// been discarded (e.g. one imported from a `raw-private` expanded key)
 /// cannot be re-exported as PKCS#8.
+/// Core of [`op_crypto_mldsa_export_pkcs8`].
+pub fn mldsa_export_pkcs8(
+  variant: u8,
+  seed: &[u8],
+) -> Result<Vec<u8>, MlDsaError> {
+  let p = params(variant)?;
+  let key_pair = PqdsaKeyPair::from_seed(p.signing, seed)
+    .map_err(|_| MlDsaError::InvalidKeyData)?;
+  let pkcs8 = key_pair.to_pkcs8().map_err(|_| MlDsaError::FailedExport)?;
+  Ok(pkcs8.as_ref().to_vec())
+}
+
 #[op2]
 pub fn op_crypto_mldsa_export_pkcs8(
   variant: u8,
   #[buffer] seed: &[u8],
 ) -> Result<Uint8Array, MlDsaError> {
-  let p = params(variant)?;
-  let key_pair = PqdsaKeyPair::from_seed(p.signing, seed)
-    .map_err(|_| MlDsaError::InvalidKeyData)?;
-  let pkcs8 = key_pair.to_pkcs8().map_err(|_| MlDsaError::FailedExport)?;
-  Ok(pkcs8.as_ref().to_vec().into())
+  Ok(mldsa_export_pkcs8(variant, seed)?.into())
 }
 
-#[op2]
-pub fn op_crypto_mldsa_export_spki(
+/// Core of [`op_crypto_mldsa_export_spki`].
+pub fn mldsa_export_spki(
   variant: u8,
-  #[buffer] public_key_bytes: &[u8],
-) -> Result<Uint8Array, MlDsaError> {
+  public_key_bytes: &[u8],
+) -> Result<Vec<u8>, MlDsaError> {
   let p = params(variant)?;
   if public_key_bytes.len() != p.pub_key_len {
     return Err(MlDsaError::InvalidKeyData);
@@ -292,8 +268,15 @@ pub fn op_crypto_mldsa_export_spki(
     },
     subject_public_key: BitString::from_bytes(public_key_bytes)?,
   };
-  let der = key_info.to_der().map_err(|_| MlDsaError::FailedExport)?;
-  Ok(der.into())
+  key_info.to_der().map_err(|_| MlDsaError::FailedExport)
+}
+
+#[op2]
+pub fn op_crypto_mldsa_export_spki(
+  variant: u8,
+  #[buffer] public_key_bytes: &[u8],
+) -> Result<Uint8Array, MlDsaError> {
+  Ok(mldsa_export_spki(variant, public_key_bytes)?.into())
 }
 
 #[op2]
