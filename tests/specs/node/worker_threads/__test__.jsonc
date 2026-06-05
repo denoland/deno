@@ -47,6 +47,22 @@
       "output": "message_port_unref.out",
       "exitCode": 0
     },
+    "refed_messageport_idle": {
+      // Test for https://github.com/denoland/deno/issues/23169
+      // A worker holding a refed transferable MessagePort must not be
+      // terminated on idle.
+      "args": "run --allow-read refed_messageport_idle.mjs",
+      "output": "refed_messageport_idle.out",
+      "exitCode": 0
+    },
+    "refed_messageport_holder": {
+      // Test for https://github.com/denoland/deno/issues/23169
+      // A worker kept alive purely by a refed MessagePort (no message
+      // listener) must not be terminated on idle.
+      "args": "run --allow-read refed_messageport_holder.mjs",
+      "output": "refed_messageport_holder.out",
+      "exitCode": 0
+    },
     "eval_cjs_require": {
       // Test for https://github.com/denoland/deno/issues/27181
       "args": "run --quiet eval_cjs_require.mjs",
