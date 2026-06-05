@@ -1,5 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
 use aes::cipher::StreamCipher;
@@ -22,6 +25,7 @@ use ctr::Ctr32BE;
 use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use deno_core::JsBuffer;
+use deno_core::OpState;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
@@ -36,12 +40,12 @@ use sha3::Sha3_256;
 use sha3::Sha3_384;
 use sha3::Sha3_512;
 
+use crate::key_store::get_key;
 use crate::shared::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EncryptOptions {
-  key: V8RawKeyData,
   #[serde(flatten)]
   algorithm: EncryptAlgorithm,
 }
@@ -132,45 +136,50 @@ pub enum EncryptError {
 
 #[op2]
 pub async fn op_crypto_encrypt(
+  state: Rc<RefCell<OpState>>,
+  #[smi] key_handle: u32,
   #[serde] opts: EncryptOptions,
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, EncryptError> {
-  let key = opts.key;
-  let fun = move || match opts.algorithm {
-    EncryptAlgorithm::RsaOaep { hash, label } => {
-      encrypt_rsa_oaep(key, hash, label, &data)
+  let key_data = get_key(&state.borrow(), key_handle)?;
+  let fun = move || {
+    let key: &RawKeyData = &key_data;
+    match opts.algorithm {
+      EncryptAlgorithm::RsaOaep { hash, label } => {
+        encrypt_rsa_oaep(key, hash, label, &data)
+      }
+      EncryptAlgorithm::AesCbc { iv, length } => {
+        encrypt_aes_cbc(key, length, iv, &data)
+      }
+      EncryptAlgorithm::AesGcm {
+        iv,
+        additional_data,
+        length,
+        tag_length,
+      } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
+      EncryptAlgorithm::AesOcb {
+        iv,
+        additional_data,
+        length,
+        tag_length,
+      } => encrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
+      EncryptAlgorithm::AesCtr {
+        counter,
+        ctr_length,
+        key_length,
+      } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
+      EncryptAlgorithm::ChaCha20Poly1305 {
+        nonce,
+        additional_data,
+      } => encrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
     }
-    EncryptAlgorithm::AesCbc { iv, length } => {
-      encrypt_aes_cbc(key, length, iv, &data)
-    }
-    EncryptAlgorithm::AesGcm {
-      iv,
-      additional_data,
-      length,
-      tag_length,
-    } => encrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
-    EncryptAlgorithm::AesOcb {
-      iv,
-      additional_data,
-      length,
-      tag_length,
-    } => encrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
-    EncryptAlgorithm::AesCtr {
-      counter,
-      ctr_length,
-      key_length,
-    } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
-    EncryptAlgorithm::ChaCha20Poly1305 {
-      nonce,
-      additional_data,
-    } => encrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
   };
   let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
 }
 
 fn encrypt_rsa_oaep(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   hash: ShaHash,
   label: Vec<u8>,
   data: &[u8],
@@ -225,7 +234,7 @@ fn encrypt_rsa_oaep(
 }
 
 fn encrypt_aes_cbc(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   length: usize,
   iv: Vec<u8>,
   data: &[u8],
@@ -298,7 +307,7 @@ fn encrypt_aes_gcm_general<N: ArrayLength<u8>>(
 }
 
 fn encrypt_aes_gcm(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,
@@ -339,7 +348,7 @@ fn encrypt_aes_gcm(
 }
 
 fn encrypt_aes_ocb(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,
@@ -399,7 +408,7 @@ fn encrypt_aes_ocb(
 }
 
 fn encrypt_chacha20_poly1305(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   nonce: &[u8],
   additional_data: Option<Vec<u8>>,
   data: &[u8],
@@ -450,7 +459,7 @@ where
 }
 
 fn encrypt_aes_ctr(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   key_length: usize,
   counter: &[u8],
   ctr_length: usize,

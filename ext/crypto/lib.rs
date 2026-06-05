@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::cell::RefCell;
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
@@ -63,6 +65,7 @@ mod export_key;
 mod generate_key;
 mod import_key;
 mod key;
+mod key_store;
 mod mldsa;
 mod mlkem;
 mod shared;
@@ -84,10 +87,12 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
+use crate::key_store::KeyStore;
+use crate::key_store::get_key;
 pub use crate::mldsa::MlDsaError;
 pub use crate::mlkem::MlKemError;
+pub use crate::shared::RawKeyData;
 pub use crate::shared::SharedError;
-use crate::shared::V8RawKeyData;
 pub use crate::x448::X448Error;
 pub use crate::x25519::X25519Error;
 
@@ -110,6 +115,9 @@ deno_core::extension!(deno_crypto,
     op_crypto_unwrap_key,
     op_crypto_base64url_decode,
     op_crypto_base64url_encode,
+    key_store::op_crypto_key_store_insert,
+    key_store::op_crypto_key_store_get,
+    key_store::op_crypto_key_store_remove,
     x25519::op_crypto_generate_x25519_keypair,
     x25519::op_crypto_x25519_public_key,
     x25519::op_crypto_derive_bits_x25519,
@@ -155,6 +163,7 @@ deno_core::extension!(deno_crypto,
     maybe_seed: Option<u64>,
   },
   state = |state, options| {
+    state.put(KeyStore::default());
     if let Some(seed) = options.maybe_seed {
       state.put(StdRng::seed_from_u64(seed));
     }
@@ -302,17 +311,31 @@ pub enum KeyType {
   Public,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
+/// Owned key material handed to the sign/verify/derive ops after being looked
+/// up from the Rust-side [`KeyStore`] by handle. Previously the key bytes were
+/// serialized and passed from JavaScript on every operation.
 pub struct KeyData {
   r#type: KeyType,
-  data: JsBuffer,
+  data: Box<[u8]>,
+}
+
+impl From<&RawKeyData> for KeyData {
+  fn from(raw: &RawKeyData) -> Self {
+    let (r#type, data) = match raw {
+      RawKeyData::Secret(d) => (KeyType::Secret, d),
+      RawKeyData::Private(d) => (KeyType::Private, d),
+      RawKeyData::Public(d) => (KeyType::Public, d),
+      RawKeyData::Raw(d) => (KeyType::Secret, d),
+    };
+    KeyData {
+      r#type,
+      data: data.as_ref().into(),
+    }
+  }
 }
 
 #[derive(deno_core::FromV8)]
 pub struct SignArg {
-  #[from_v8(serde)]
-  key: KeyData,
   #[from_v8(serde)]
   algorithm: Algorithm,
   salt_length: Option<u32>,
@@ -324,9 +347,12 @@ pub struct SignArg {
 
 #[op2]
 pub async fn op_crypto_sign_key(
+  state: Rc<RefCell<OpState>>,
+  #[smi] key_handle: u32,
   #[scoped] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
+  let key: KeyData = get_key(&state.borrow(), key_handle)?.as_ref().into();
   deno_core::unsync::spawn_blocking(move || {
     let data = &*zero_copy;
     let algorithm = args.algorithm;
@@ -334,7 +360,7 @@ pub async fn op_crypto_sign_key(
     let signature = match algorithm {
       Algorithm::RsassaPkcs1v15 => {
         use rsa::pkcs1v15::SigningKey;
-        let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
+        let private_key = RsaPrivateKey::from_pkcs1_der(&key.data)?;
         match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
           CryptoHash::Sha1 => {
             let signing_key = SigningKey::<Sha1>::new(private_key);
@@ -357,7 +383,7 @@ pub async fn op_crypto_sign_key(
         .to_vec()
       }
       Algorithm::RsaPss => {
-        let private_key = RsaPrivateKey::from_pkcs1_der(&args.key.data)?;
+        let private_key = RsaPrivateKey::from_pkcs1_der(&key.data)?;
 
         let salt_len = args
           .salt_length
@@ -397,7 +423,7 @@ pub async fn op_crypto_sign_key(
         match named_curve {
           CryptoNamedCurve::P256 => {
             // Decode PKCS#8 private key.
-            let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
+            let secret_key = p256::SecretKey::from_pkcs8_der(&key.data)
               .map_err(|_| CryptoError::InvalidKeyFormat)?;
             let signing_key = P256SigningKey::from(secret_key);
             let prehash = match hash {
@@ -413,7 +439,7 @@ pub async fn op_crypto_sign_key(
             signature.to_bytes().to_vec()
           }
           CryptoNamedCurve::P384 => {
-            let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
+            let secret_key = p384::SecretKey::from_pkcs8_der(&key.data)
               .map_err(|_| CryptoError::InvalidKeyFormat)?;
             let signing_key = P384SigningKey::from(secret_key);
             let prehash = match hash {
@@ -428,7 +454,7 @@ pub async fn op_crypto_sign_key(
             signature.to_bytes().to_vec()
           }
           CryptoNamedCurve::P521 => {
-            let secret_key = p521::SecretKey::from_pkcs8_der(&args.key.data)
+            let secret_key = p521::SecretKey::from_pkcs8_der(&key.data)
               .map_err(|_| CryptoError::InvalidKeyFormat)?;
             let signing_key =
               P521SigningKey::from_bytes(&secret_key.to_bytes())
@@ -461,17 +487,17 @@ pub async fn op_crypto_sign_key(
 
         match hash {
           CryptoHash::Sha3_256 => {
-            hmac_sign::<hmac::Hmac<Sha3_256>>(&args.key.data, data)?
+            hmac_sign::<hmac::Hmac<Sha3_256>>(&key.data, data)?
           }
           CryptoHash::Sha3_384 => {
-            hmac_sign::<hmac::Hmac<Sha3_384>>(&args.key.data, data)?
+            hmac_sign::<hmac::Hmac<Sha3_384>>(&key.data, data)?
           }
           CryptoHash::Sha3_512 => {
-            hmac_sign::<hmac::Hmac<Sha3_512>>(&args.key.data, data)?
+            hmac_sign::<hmac::Hmac<Sha3_512>>(&key.data, data)?
           }
           _ => {
             let hash: HmacAlgorithm = hash.into();
-            let key = HmacKey::new(hash, &args.key.data);
+            let key = HmacKey::new(hash, &key.data);
             let signature = aws_lc_rs::hmac::sign(&key, data);
             signature.as_ref().to_vec()
           }
@@ -509,8 +535,6 @@ fn hmac_verify<M: hmac::Mac + hmac::digest::KeyInit>(
 #[derive(deno_core::FromV8)]
 pub struct VerifyArg {
   #[from_v8(serde)]
-  key: KeyData,
-  #[from_v8(serde)]
   algorithm: Algorithm,
   salt_length: Option<u32>,
   #[from_v8(serde)]
@@ -522,9 +546,12 @@ pub struct VerifyArg {
 
 #[op2]
 pub async fn op_crypto_verify_key(
+  state: Rc<RefCell<OpState>>,
+  #[smi] key_handle: u32,
   #[scoped] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, CryptoError> {
+  let key: KeyData = get_key(&state.borrow(), key_handle)?.as_ref().into();
   deno_core::unsync::spawn_blocking(move || {
     let data = &*zero_copy;
     let algorithm = args.algorithm;
@@ -533,7 +560,7 @@ pub async fn op_crypto_verify_key(
       Algorithm::RsassaPkcs1v15 => {
         use rsa::pkcs1v15::Signature;
         use rsa::pkcs1v15::VerifyingKey;
-        let public_key = read_rsa_public_key(args.key)?;
+        let public_key = read_rsa_public_key(key)?;
         let signature: Signature = (&*args.signature).try_into()?;
         match args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)? {
           CryptoHash::Sha1 => {
@@ -556,7 +583,7 @@ pub async fn op_crypto_verify_key(
         }
       }
       Algorithm::RsaPss => {
-        let public_key = read_rsa_public_key(args.key)?;
+        let public_key = read_rsa_public_key(key)?;
         let signature = args.signature.as_ref();
 
         let salt_len = args
@@ -592,23 +619,23 @@ pub async fn op_crypto_verify_key(
         let hash = args.hash.ok_or_else(JsErrorBox::not_supported)?;
         match hash {
           CryptoHash::Sha3_256 => hmac_verify::<hmac::Hmac<Sha3_256>>(
-            &args.key.data,
+            &key.data,
             data,
             &args.signature,
           )?,
           CryptoHash::Sha3_384 => hmac_verify::<hmac::Hmac<Sha3_384>>(
-            &args.key.data,
+            &key.data,
             data,
             &args.signature,
           )?,
           CryptoHash::Sha3_512 => hmac_verify::<hmac::Hmac<Sha3_512>>(
-            &args.key.data,
+            &key.data,
             data,
             &args.signature,
           )?,
           _ => {
             let hash: HmacAlgorithm = hash.into();
-            let key = HmacKey::new(hash, &args.key.data);
+            let key = HmacKey::new(hash, &key.data);
             aws_lc_rs::hmac::verify(&key, data, &args.signature).is_ok()
           }
         }
@@ -619,15 +646,12 @@ pub async fn op_crypto_verify_key(
           args.named_curve.ok_or_else(JsErrorBox::not_supported)?;
         match named_curve {
           CryptoNamedCurve::P256 => {
-            let verifying_key = match args.key.r#type {
-              KeyType::Public => {
-                P256VerifyingKey::from_sec1_bytes(&args.key.data)
-                  .map_err(|_| CryptoError::InvalidKeyFormat)?
-              }
+            let verifying_key = match key.r#type {
+              KeyType::Public => P256VerifyingKey::from_sec1_bytes(&key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?,
               KeyType::Private => {
-                let secret_key =
-                  p256::SecretKey::from_pkcs8_der(&args.key.data)
-                    .map_err(|_| CryptoError::InvalidKeyFormat)?;
+                let secret_key = p256::SecretKey::from_pkcs8_der(&key.data)
+                  .map_err(|_| CryptoError::InvalidKeyFormat)?;
                 let signing_key = P256SigningKey::from(secret_key);
                 *signing_key.verifying_key()
               }
@@ -648,15 +672,12 @@ pub async fn op_crypto_verify_key(
             }
           }
           CryptoNamedCurve::P384 => {
-            let verifying_key = match args.key.r#type {
-              KeyType::Public => {
-                P384VerifyingKey::from_sec1_bytes(&args.key.data)
-                  .map_err(|_| CryptoError::InvalidKeyFormat)?
-              }
+            let verifying_key = match key.r#type {
+              KeyType::Public => P384VerifyingKey::from_sec1_bytes(&key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?,
               KeyType::Private => {
-                let secret_key =
-                  p384::SecretKey::from_pkcs8_der(&args.key.data)
-                    .map_err(|_| CryptoError::InvalidKeyFormat)?;
+                let secret_key = p384::SecretKey::from_pkcs8_der(&key.data)
+                  .map_err(|_| CryptoError::InvalidKeyFormat)?;
                 let signing_key = P384SigningKey::from(secret_key);
                 *signing_key.verifying_key()
               }
@@ -677,15 +698,12 @@ pub async fn op_crypto_verify_key(
             }
           }
           CryptoNamedCurve::P521 => {
-            let verifying_key = match args.key.r#type {
-              KeyType::Public => {
-                P521VerifyingKey::from_sec1_bytes(&args.key.data)
-                  .map_err(|_| CryptoError::InvalidKeyFormat)?
-              }
+            let verifying_key = match key.r#type {
+              KeyType::Public => P521VerifyingKey::from_sec1_bytes(&key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?,
               KeyType::Private => {
-                let secret_key =
-                  p521::SecretKey::from_pkcs8_der(&args.key.data)
-                    .map_err(|_| CryptoError::InvalidKeyFormat)?;
+                let secret_key = p521::SecretKey::from_pkcs8_der(&key.data)
+                  .map_err(|_| CryptoError::InvalidKeyFormat)?;
                 // Construct inner ecdsa signing key to get verifying key
                 let inner_signing_key =
                   ecdsa::SigningKey::<p521::NistP521>::from(secret_key);
@@ -730,16 +748,12 @@ pub async fn op_crypto_verify_key(
 #[derive(deno_core::FromV8)]
 pub struct DeriveKeyArg {
   #[from_v8(serde)]
-  key: KeyData,
-  #[from_v8(serde)]
   algorithm: Algorithm,
   #[from_v8(serde)]
   hash: Option<CryptoHash>,
   length: usize,
   iterations: Option<u32>,
   // ECDH
-  #[from_v8(serde)]
-  public_key: Option<KeyData>,
   #[from_v8(serde)]
   named_curve: Option<CryptoNamedCurve>,
   // HKDF
@@ -749,9 +763,23 @@ pub struct DeriveKeyArg {
 
 #[op2]
 pub async fn op_crypto_derive_bits(
+  state: Rc<RefCell<OpState>>,
+  #[smi] key_handle: u32,
+  // ECDH peer public key handle, or -1 when not applicable.
+  #[smi] public_key_handle: i32,
   #[scoped] args: DeriveKeyArg,
   #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<Uint8Array, CryptoError> {
+  let (key, public_key): (KeyData, Option<KeyData>) = {
+    let state = state.borrow();
+    let key = get_key(&state, key_handle)?.as_ref().into();
+    let public_key = if public_key_handle >= 0 {
+      Some(get_key(&state, public_key_handle as u32)?.as_ref().into())
+    } else {
+      None
+    };
+    (key, public_key)
+  };
   deno_core::unsync::spawn_blocking(move || {
     let algorithm = args.algorithm;
     match algorithm {
@@ -775,7 +803,7 @@ pub async fn op_crypto_derive_bits(
           args.iterations.ok_or_else(JsErrorBox::not_supported)?,
         )
         .unwrap();
-        let secret = args.key.data;
+        let secret = key.data;
         let mut out = vec![0; args.length / 8];
         pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
         Ok(out.into())
@@ -785,13 +813,12 @@ pub async fn op_crypto_derive_bits(
           .named_curve
           .ok_or_else(|| CryptoError::MissingArgumentNamedCurve)?;
 
-        let public_key = args
-          .public_key
-          .ok_or_else(|| CryptoError::MissingArgumentPublicKey)?;
+        let public_key =
+          public_key.ok_or_else(|| CryptoError::MissingArgumentPublicKey)?;
 
         match named_curve {
           CryptoNamedCurve::P256 => {
-            let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
+            let secret_key = p256::SecretKey::from_pkcs8_der(&key.data)
               .map_err(|_| CryptoError::DecodePrivateKey)?;
 
             let public_key = match public_key.r#type {
@@ -824,7 +851,7 @@ pub async fn op_crypto_derive_bits(
             Ok(shared_secret.raw_secret_bytes().to_vec().into())
           }
           CryptoNamedCurve::P384 => {
-            let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
+            let secret_key = p384::SecretKey::from_pkcs8_der(&key.data)
               .map_err(|_| CryptoError::DecodePrivateKey)?;
 
             let public_key = match public_key.r#type {
@@ -857,7 +884,7 @@ pub async fn op_crypto_derive_bits(
             Ok(shared_secret.raw_secret_bytes().to_vec().into())
           }
           CryptoNamedCurve::P521 => {
-            let secret_key = p521::SecretKey::from_pkcs8_der(&args.key.data)
+            let secret_key = p521::SecretKey::from_pkcs8_der(&key.data)
               .map_err(|_| CryptoError::DecodePrivateKey)?;
 
             let public_key = match public_key.r#type {
@@ -904,7 +931,7 @@ pub async fn op_crypto_derive_bits(
 
         let info = args.info.ok_or(CryptoError::MissingArgumentInfo)?;
         // IKM
-        let secret = args.key.data;
+        let secret = key.data;
         // L
         let length = args.length / 8;
 
@@ -1107,20 +1134,22 @@ pub async fn op_crypto_subtle_digest_xof(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WrapUnwrapKeyArg {
-  key: V8RawKeyData,
   algorithm: Algorithm,
 }
 
 #[op2]
 pub fn op_crypto_wrap_key(
+  state: &OpState,
+  #[smi] key_handle: u32,
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
   let algorithm = args.algorithm;
+  let key_data = get_key(state, key_handle)?;
 
   match algorithm {
     Algorithm::AesKw => {
-      let key = args.key.as_secret_key()?;
+      let key = key_data.as_secret_key()?;
 
       if !data.len().is_multiple_of(8) {
         return Err(CryptoError::DataInvalidSize);
@@ -1142,13 +1171,16 @@ pub fn op_crypto_wrap_key(
 
 #[op2]
 pub fn op_crypto_unwrap_key(
+  state: &OpState,
+  #[smi] key_handle: u32,
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
   let algorithm = args.algorithm;
+  let key_data = get_key(state, key_handle)?;
   match algorithm {
     Algorithm::AesKw => {
-      let key = args.key.as_secret_key()?;
+      let key = key_data.as_secret_key()?;
 
       if !data.len().is_multiple_of(8) {
         return Err(CryptoError::DataInvalidSize);
