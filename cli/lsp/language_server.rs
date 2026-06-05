@@ -88,6 +88,7 @@ use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
 use super::resolver::LspResolver;
+use super::test_code_actions::collect_test_code_actions;
 use super::testing;
 use super::text;
 use super::ts_server::TsServer;
@@ -2091,7 +2092,27 @@ impl Inner {
     };
     let mut deno_actions = Vec::new();
     let mut deno_lint_actions = Vec::new();
+    let mut deno_test_actions = Vec::new();
     let mut includes_no_cache = false;
+    if self.config.specifier_enabled_for_test(&module.specifier)
+      && let Some(Ok(parsed_source)) = &module
+        .open_data
+        .as_ref()
+        .and_then(|d| d.parsed_source.as_ref())
+      && params.context.only.as_ref().is_none_or(|only| {
+        only.iter().any(|kind| {
+          CodeActionKind::REFACTOR_REWRITE
+            .as_str()
+            .starts_with(kind.as_str())
+        })
+      })
+    {
+      deno_test_actions.extend(collect_test_code_actions(
+        document.uri(),
+        parsed_source,
+        params.range,
+      ));
+    }
     let file_diagnostics = async {
       if let Some(diagnostics_server) = &self.diagnostics_server {
         diagnostics_server.state.ts_diagnostics(document.uri())
@@ -2233,7 +2254,7 @@ impl Inner {
 
     let code_action_disabled_capable =
       self.config.code_action_disabled_capable();
-    let actions = deno_actions.into_iter().map(CodeActionOrCommand::CodeAction).chain(ts_actions).chain(deno_lint_actions.into_iter().map(CodeActionOrCommand::CodeAction)).filter(|a| code_action_disabled_capable
+    let actions = deno_actions.into_iter().map(CodeActionOrCommand::CodeAction).chain(deno_test_actions.into_iter().map(CodeActionOrCommand::CodeAction)).chain(ts_actions).chain(deno_lint_actions.into_iter().map(CodeActionOrCommand::CodeAction)).filter(|a| code_action_disabled_capable
         || matches!(a, CodeActionOrCommand::CodeAction(ca) if ca.disabled.is_none())).collect::<Vec<_>>();
     let response = if actions.is_empty() {
       None
