@@ -29,8 +29,8 @@ There is sustained, repeated demand for this across many years and many issues:
   `.dvmrc`-style project file. Closed, but the underlying need persists.
 - #18440: `deno upgrade` should cache downloaded tarballs instead of
   re-downloading the same version repeatedly. Closed.
-- #24157: installation-script and "install a specific version" friction for
-  Deno 2.0; today users install latest and then downgrade.
+- #24157: installation-script and "install a specific version" friction for Deno
+  2.0; today users install latest and then downgrade.
 - #25035: support semver ranges in `deno upgrade --version=` (e.g. `1.41`,
   `~1.41.0`) instead of forcing exact versions.
 - #25724: rustup-style version manager with per-project version requirements in
@@ -64,7 +64,7 @@ a concrete installed version.
 ## Non-goals
 
 - Managing Node.js, npm, or other runtimes (this is Deno-only).
-- Replacing OS package managers for the *initial* install of Deno itself; the
+- Replacing OS package managers for the _initial_ install of Deno itself; the
   bootstrap installer remains as-is. (We can later offer a thin `denoup`
   bootstrap, but it is out of scope for the core feature.)
 - Per-directory automatic shell hooks of the kind nvm injects into `cd`. We
@@ -103,9 +103,9 @@ Three new pieces, shared across phases:
    - exact (`2.1.4`)
    - range / wildcard (`~2.1`, `2.1.*`, `^2`) via `deno_semver`
    - channel (`stable`, `rc`, `lts`, `canary`)
-   - project requirement (from `deno.json`)
-   Resolution prefers an already-installed version that satisfies the request;
-   otherwise it consults the metadata cache; only then does it hit the network.
+   - project requirement (from `deno.json`) Resolution prefers an
+     already-installed version that satisfies the request; otherwise it consults
+     the metadata cache; only then does it hit the network.
 
 ## Phased plan
 
@@ -179,7 +179,7 @@ The most invasive piece (#25724's wrapper proposal); strictly opt-in.
 - Must be explicitly enabled (config and/or env), default off, so users who do
   not want magic dispatch never pay for it.
 - Needs careful handling of: the bootstrap problem (who installs the first
-  version), `--version`/`upgrade` running against the *wrapper* vs the *real*
+  version), `--version`/`upgrade` running against the _wrapper_ vs the _real_
   binary, shell completions, and CI environments where auto-install is
   undesirable.
 
