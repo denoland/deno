@@ -536,7 +536,8 @@ pub fn op_fetch(
         // If httpRequest’s header list contains `Range`, then append (`Accept-Encoding`, `identity`)
         request
           .headers_mut()
-          .insert(ACCEPT_ENCODING, HeaderValue::from_static("identity"));
+          .entry(ACCEPT_ENCODING)
+          .or_insert_with(|| HeaderValue::from_static("identity"));
       }
 
       let options = state.borrow::<Options>();
@@ -1219,11 +1220,23 @@ where
 }
 
 fn decompress_response(
-  resp: http::Response<Incoming>,
+  mut resp: http::Response<Incoming>,
   skip_decompression: bool,
 ) -> http::Response<ResBody> {
   if skip_decompression {
     return resp.map(box_raw_body);
+  }
+
+  // Some servers advertise a compressed empty body. A valid gzip/br stream is
+  // never zero bytes, so pass empty bodies through instead of trying to decode.
+  let is_empty = resp
+    .headers()
+    .get(CONTENT_LENGTH)
+    .and_then(|v| v.to_str().ok())
+    .and_then(|v| v.parse::<u64>().ok())
+    == Some(0);
+  if is_empty {
+    resp.headers_mut().remove(CONTENT_ENCODING);
   }
 
   match resp

@@ -252,6 +252,38 @@ async fn test_fetch_decompresses_br_response_and_preserves_accept_encoding() {
 }
 
 #[tokio::test]
+async fn test_fetch_empty_body_with_content_encoding_skips_decompression() {
+  for encoding in ["gzip", "br"] {
+    let captured_accept_encoding = Arc::new(Mutex::new(None));
+    let src_addr = create_encoded_http_server(
+      captured_accept_encoding.clone(),
+      HeaderValue::from_static(encoding),
+      b"",
+    )
+    .await;
+    let client = create_http_test_client();
+
+    let req = http::Request::builder()
+      .uri(format!("http://{}/foo", src_addr))
+      .body(crate::ReqBody::empty())
+      .unwrap();
+    let resp = client.send(req).await.unwrap();
+
+    assert_eq!(
+      captured_accept_encoding.lock().await.as_ref().unwrap(),
+      HeaderValue::from_static("gzip,br")
+    );
+    assert_eq!(resp.headers().get(CONTENT_ENCODING), None);
+    assert_eq!(
+      resp.headers().get(CONTENT_LENGTH).unwrap(),
+      HeaderValue::from_static("0")
+    );
+    let body = resp.collect().await.unwrap().to_bytes();
+    assert!(body.is_empty());
+  }
+}
+
+#[tokio::test]
 async fn test_fetch_strips_transfer_encoding_after_decompression() {
   let captured_accept_encoding = Arc::new(Mutex::new(None));
   let src_addr =

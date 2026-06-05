@@ -5986,6 +5986,82 @@ fn lsp_status_file() {
 }
 
 #[test(timeout = 300)]
+fn lsp_code_actions_deno_test_ignore_only() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file_test.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        "Deno.test(\"basic\", () => {});\n",
+        "Deno.test({ name: \"object\", fn: () => {}, ignore: true, only: false });\n",
+      ),
+    },
+  }));
+
+  let test_code_actions = |client: &mut LspClient, line| {
+    let res = client.write_request(
+      "textDocument/codeAction",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file_test.ts"
+        },
+        "range": {
+          "start": { "line": line, "character": 5 },
+          "end": { "line": line, "character": 5 },
+        },
+        "context": {
+          "diagnostics": [],
+          "only": ["refactor.rewrite"],
+        }
+      }),
+    );
+    serde_json::from_value::<Vec<lsp::CodeAction>>(res).unwrap()
+  };
+  let action_texts = |actions: Vec<lsp::CodeAction>| {
+    actions
+      .into_iter()
+      .filter_map(|action| {
+        let new_text = action
+          .edit?
+          .changes?
+          .into_values()
+          .next()?
+          .into_iter()
+          .next()?
+          .new_text;
+        Some((action.title, new_text))
+      })
+      .collect::<Vec<_>>()
+  };
+
+  assert_eq!(
+    action_texts(test_code_actions(&mut client, 0)),
+    vec![
+      (
+        "Ignore test".to_string(),
+        r#"{ name: "basic", fn: () => {}, ignore: true }"#.to_string(),
+      ),
+      (
+        "Only test".to_string(),
+        r#"{ name: "basic", fn: () => {}, only: true }"#.to_string(),
+      ),
+    ],
+  );
+  assert_eq!(
+    action_texts(test_code_actions(&mut client, 1)),
+    vec![
+      ("Unignore test".to_string(), "false".to_string()),
+      ("Only test".to_string(), "true".to_string()),
+    ],
+  );
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_code_actions_deno_cache() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12536,6 +12612,88 @@ fn lsp_diagnostics_refresh_dependents() {
   let diagnostics = client.read_diagnostics();
   assert_eq!(json!(diagnostics.all()), json!([])); // no diagnostics now
 
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/12813.
+#[test(timeout = 300)]
+fn lsp_did_change_watched_files_evicts_deleted_on_disk_doc() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  // `a.ts` will be opened in the editor; `b.ts` is only referenced through an
+  // on-disk import, so the LSP loads it into its in-memory document cache.
+  temp_dir.write("a.ts", "import { b } from \"./b.ts\";\nconsole.log(b);\n");
+  temp_dir.write("b.ts", "export const b: number = 1;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("a.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("a.ts"),
+    },
+  }));
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  // Delete `b.ts` from disk and tell the LSP about it. Without the fix, the
+  // cached document is kept and `a.ts` still sees the stale `b` export.
+  temp_dir.remove_file("b.ts");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": url_to_uri(&temp_dir.url().join("b.ts").unwrap()).unwrap(),
+      "type": 3,
+    }],
+  }));
+  client.handle_refresh_diagnostics_request();
+  let diagnostics = client.read_diagnostics();
+  let messages = diagnostics.messages_with_source("deno");
+  assert_eq!(messages.diagnostics.len(), 1, "{:?}", diagnostics.all());
+  assert_eq!(
+    messages.diagnostics[0].code,
+    Some(lsp::NumberOrString::String("no-local".to_string())),
+  );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/deno/issues/12813.
+#[test(timeout = 300)]
+fn lsp_did_change_watched_files_refreshes_changed_on_disk_doc() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("a.ts", "import { b } from \"./b.ts\";\nconsole.log(b);\n");
+  temp_dir.write("b.ts", "export const b: number = 1;\n");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("a.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("a.ts"),
+    },
+  }));
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  // Rewrite `b.ts` so the previously-cached export no longer exists. Without
+  // the fix, the LSP keeps the stale cached content.
+  temp_dir.write("b.ts", "export const notB: number = 1;\n");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": url_to_uri(&temp_dir.url().join("b.ts").unwrap()).unwrap(),
+      "type": 2,
+    }],
+  }));
+  client.handle_refresh_diagnostics_request();
+  let diagnostics = client.read_diagnostics();
+  let messages = diagnostics.messages_with_source("deno-ts");
+  assert!(
+    !messages.diagnostics.is_empty(),
+    "expected a deno-ts diagnostic for the missing export, got {:?}",
+    diagnostics.all(),
+  );
+  assert_eq!(
+    messages.diagnostics[0].code,
+    Some(lsp::NumberOrString::Number(2305))
+  );
   client.shutdown();
 }
 

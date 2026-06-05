@@ -112,6 +112,12 @@ pub struct uv_tcp_t {
   pub(crate) internal_listener: Option<tokio::net::TcpListener>,
   pub(crate) internal_listener_addr: Option<SocketAddr>,
   pub(crate) internal_nodelay: bool,
+  /// Desired SO_KEEPALIVE state `(enable, delay_secs)`. Stored so the
+  /// option can be (re)applied once the underlying socket exists — e.g.
+  /// when `uv_tcp_keepalive` is called before the connect future
+  /// resolves, the option is applied from `poll_tcp_handle` after the
+  /// stream is created. Mirrors how `internal_nodelay` is carried.
+  pub(crate) internal_keepalive: Option<(bool, c_uint)>,
   pub(crate) internal_alloc_cb: Option<uv_alloc_cb>,
   pub(crate) internal_read_cb: Option<uv_read_cb>,
   pub(crate) internal_reading: bool,
@@ -399,6 +405,7 @@ pub unsafe fn uv_tcp_init(loop_: *mut uv_loop_t, tcp: *mut uv_tcp_t) -> c_int {
     write(addr_of_mut!((*tcp).internal_listener), None);
     write(addr_of_mut!((*tcp).internal_listener_addr), None);
     write(addr_of_mut!((*tcp).internal_nodelay), false);
+    write(addr_of_mut!((*tcp).internal_keepalive), None);
     write(addr_of_mut!((*tcp).internal_alloc_cb), None);
     write(addr_of_mut!((*tcp).internal_read_cb), None);
     write(addr_of_mut!((*tcp).internal_reading), false);
@@ -883,17 +890,198 @@ pub unsafe fn uv_tcp_getsockname(
   }
 }
 
+/// Apply `SO_KEEPALIVE` (and, when enabling, the idle delay) to a raw
+/// socket descriptor. Mirrors libuv's `uv__tcp_keepalive`: toggle
+/// `SO_KEEPALIVE`, then set the per-connection idle time via the
+/// platform's TCP keepalive-idle option. Returns 0 on success or a
+/// negative uv error code.
+///
 /// ### Safety
-/// `_tcp` must be a valid pointer to a `uv_tcp_t` initialized by `uv_tcp_init`.
-#[cfg_attr(feature = "uv_compat_export", unsafe(no_mangle))]
-pub unsafe extern "C" fn uv_tcp_keepalive(
-  _tcp: *mut uv_tcp_t,
-  _enable: c_int,
+/// `fd` must be a valid, open socket descriptor.
+#[cfg(unix)]
+unsafe fn apply_keepalive_fd(
+  fd: std::os::unix::io::RawFd,
+  enable: bool,
+  delay: c_uint,
+) -> c_int {
+  // SAFETY: fd is a valid socket per the caller contract.
+  unsafe {
+    let on: c_int = if enable { 1 } else { 0 };
+    if libc::setsockopt(
+      fd,
+      libc::SOL_SOCKET,
+      libc::SO_KEEPALIVE,
+      &on as *const c_int as *const c_void,
+      std::mem::size_of::<c_int>() as libc::socklen_t,
+    ) != 0
+    {
+      return io_error_to_uv(&std::io::Error::last_os_error());
+    }
+
+    // The idle delay is only meaningful when keepalive is enabled.
+    // Linux/Android use TCP_KEEPIDLE; the BSDs/macOS use TCP_KEEPALIVE.
+    // Both take the idle time in seconds. On any other platform we leave
+    // SO_KEEPALIVE on with the system default idle time (still correct).
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    let idle_opt: Option<c_int> = Some(libc::TCP_KEEPIDLE);
+    #[cfg(any(
+      target_os = "macos",
+      target_os = "ios",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd",
+      target_os = "dragonfly"
+    ))]
+    let idle_opt: Option<c_int> = Some(libc::TCP_KEEPALIVE);
+    #[cfg(not(any(
+      target_os = "linux",
+      target_os = "android",
+      target_os = "macos",
+      target_os = "ios",
+      target_os = "freebsd",
+      target_os = "netbsd",
+      target_os = "openbsd",
+      target_os = "dragonfly"
+    )))]
+    let idle_opt: Option<c_int> = None;
+
+    if enable
+      && delay > 0
+      && let Some(idle_opt) = idle_opt
+    {
+      let secs = delay as c_int;
+      if libc::setsockopt(
+        fd,
+        libc::IPPROTO_TCP,
+        idle_opt,
+        &secs as *const c_int as *const c_void,
+        std::mem::size_of::<c_int>() as libc::socklen_t,
+      ) != 0
+      {
+        return io_error_to_uv(&std::io::Error::last_os_error());
+      }
+    }
+  }
+  0
+}
+
+/// Windows variant: toggle `SO_KEEPALIVE`. The idle interval can only be
+/// configured via `WSAIoctl(SIO_KEEPALIVE_VALS)`, which libuv uses; we
+/// keep to the on/off toggle (matching the system default idle time),
+/// which is what consumers like tedious rely on to keep tunneled
+/// connections from being reaped by intermediaries.
+///
+/// ### Safety
+/// `sock` must be a valid socket handle.
+#[cfg(windows)]
+unsafe fn apply_keepalive_socket(
+  sock: usize,
+  enable: bool,
   _delay: c_uint,
 ) -> c_int {
-  // Keepalive is a no-op: tokio's TcpStream doesn't expose SO_KEEPALIVE
-  // configuration in a cross-platform way, and nghttp2 only uses this
-  // as a best-effort hint.
+  unsafe extern "system" {
+    fn setsockopt(
+      s: usize,
+      level: c_int,
+      optname: c_int,
+      optval: *const c_void,
+      optlen: c_int,
+    ) -> c_int;
+  }
+  const SOL_SOCKET: c_int = 0xffff;
+  const SO_KEEPALIVE: c_int = 0x0008;
+  let on: c_int = if enable { 1 } else { 0 };
+  // SAFETY: sock is a valid socket per the caller contract.
+  let rc = unsafe {
+    setsockopt(
+      sock,
+      SOL_SOCKET,
+      SO_KEEPALIVE,
+      &on as *const c_int as *const c_void,
+      std::mem::size_of::<c_int>() as c_int,
+    )
+  };
+  if rc != 0 {
+    return io_error_to_uv(&std::io::Error::last_os_error());
+  }
+  0
+}
+
+/// Apply the stored keepalive option to a connected stream's socket.
+/// Called from `poll_tcp_handle` once the connect future resolves so a
+/// `uv_tcp_keepalive` issued before connect completion still takes
+/// effect. No-op when no keepalive was requested.
+///
+/// ### Safety
+/// `tcp` must be a valid pointer to an initialized `uv_tcp_t`.
+pub(crate) unsafe fn apply_pending_keepalive(tcp: *mut uv_tcp_t) {
+  // SAFETY: tcp is valid and initialized per the caller contract.
+  unsafe {
+    let Some((enable, delay)) = (*tcp).internal_keepalive else {
+      return;
+    };
+    #[cfg(unix)]
+    if let Some(ref stream) = (*tcp).internal_stream {
+      use std::os::unix::io::AsRawFd;
+      apply_keepalive_fd(stream.as_raw_fd(), enable, delay);
+    }
+    #[cfg(windows)]
+    if let Some(ref stream) = (*tcp).internal_stream {
+      use std::os::windows::io::AsRawSocket;
+      apply_keepalive_socket(stream.as_raw_socket() as usize, enable, delay);
+    }
+  }
+}
+
+/// Enable or disable TCP keepalive on the handle, applying it to the
+/// underlying socket when one already exists. Mirrors libuv's
+/// `uv_tcp_keepalive`. The requested state is also stored so it is
+/// applied if/when the socket is created later (e.g. a keepalive set
+/// while the connect is still pending). `delay` is the idle time in
+/// seconds before the first keepalive probe.
+///
+/// ### Safety
+/// `tcp` must be a valid pointer to a `uv_tcp_t` initialized by `uv_tcp_init`.
+#[cfg_attr(feature = "uv_compat_export", unsafe(no_mangle))]
+pub unsafe extern "C" fn uv_tcp_keepalive(
+  tcp: *mut uv_tcp_t,
+  enable: c_int,
+  delay: c_uint,
+) -> c_int {
+  // SAFETY: tcp is valid and initialized per the caller contract.
+  unsafe {
+    let enabled = enable != 0;
+    (*tcp).internal_keepalive = Some((enabled, delay));
+
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::AsRawFd;
+      // Prefer the live stream's fd; fall back to the pre-connect socket
+      // fd recorded by bind so an option set between bind and connect is
+      // preserved on the same descriptor (matching uv__stream_open).
+      let fd = if let Some(ref stream) = (*tcp).internal_stream {
+        Some(stream.as_raw_fd())
+      } else {
+        (*tcp).internal_fd
+      };
+      if let Some(fd) = fd {
+        return apply_keepalive_fd(fd, enabled, delay);
+      }
+    }
+    #[cfg(windows)]
+    {
+      use std::os::windows::io::AsRawSocket;
+      let sock = if let Some(ref stream) = (*tcp).internal_stream {
+        Some(stream.as_raw_socket() as usize)
+      } else {
+        (*tcp).internal_fd.map(|s| s as usize)
+      };
+      if let Some(sock) = sock {
+        return apply_keepalive_socket(sock, enabled, delay);
+      }
+    }
+  }
+  // No socket yet: state stored, will be applied on connect.
   0
 }
 
@@ -1056,6 +1244,7 @@ pub fn new_tcp() -> uv_tcp_t {
     internal_listener: None,
     internal_listener_addr: None,
     internal_nodelay: false,
+    internal_keepalive: None,
     internal_alloc_cb: None,
     internal_read_cb: None,
     internal_reading: false,
@@ -1108,6 +1297,9 @@ pub(crate) unsafe fn poll_tcp_handle(
             stream.set_nodelay(true).ok();
           }
           (*tcp_ptr).internal_stream = Some(stream);
+          // Apply a keepalive option requested before the connect
+          // resolved, now that the socket exists.
+          apply_pending_keepalive(tcp_ptr);
           0
         }
         Err(ref e) => io_error_to_uv(e),
