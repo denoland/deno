@@ -28,6 +28,8 @@ const {
   op_crypto_generate_x448_keypair,
   op_crypto_get_random_values,
   op_crypto_import_key,
+  op_crypto_key_store_get,
+  op_crypto_key_store_insert,
   op_crypto_import_pkcs8_ed25519,
   op_crypto_import_pkcs8_x25519,
   op_crypto_import_pkcs8_x448,
@@ -494,12 +496,11 @@ class CryptoKey {
       case "ML-KEM-768":
       case "ML-KEM-1024": {
         const handle = this[_handle];
-        const privateKeyBytes = WeakMapPrototypeGet(KEY_STORE, handle);
         let publicKeyBytes;
         try {
           publicKeyBytes = op_crypto_ml_kem_get_public_key(
             algorithmName,
-            privateKeyBytes,
+            handle.cppgc,
           );
         } catch (_) {
           throw new DOMException(
@@ -508,7 +509,7 @@ class CryptoKey {
           );
         }
         const pubHandle = {};
-        WeakMapPrototypeSet(KEY_STORE, pubHandle, publicKeyBytes);
+        setKeyData(pubHandle, publicKeyBytes);
         const filteredUsages = ArrayPrototypeFilter(
           this[_usages],
           (u) => u === "encapsulateKey" || u === "encapsulateBits",
@@ -578,7 +579,7 @@ function constructKey(type, extractable, usages, algorithm, handle) {
   key[_usages] = usages;
   key[_algorithm] = algorithm;
   key[_handle] = handle;
-  key[kKeyObject] = WeakMapPrototypeGet(KEY_STORE, handle);
+  key[kKeyObject] = getKeyData(handle);
   ObjectDefineProperty(key, core.hostObjectBrand, {
     __proto__: null,
     value: () => ({
@@ -587,7 +588,7 @@ function constructKey(type, extractable, usages, algorithm, handle) {
       extractable,
       usages,
       algorithm,
-      keyData: WeakMapPrototypeGet(KEY_STORE, handle),
+      keyData: getKeyData(handle),
     }),
     enumerable: false,
     configurable: false,
@@ -598,7 +599,7 @@ function constructKey(type, extractable, usages, algorithm, handle) {
 
 core.registerCloneableResource("CryptoKey", (data) => {
   const handle = {};
-  WeakMapPrototypeSet(KEY_STORE, handle, data.keyData);
+  setKeyData(handle, data.keyData);
   return constructKey(
     data.keyType,
     data.extractable,
@@ -621,9 +622,61 @@ function usageIntersection(a, b) {
   );
 }
 
-// TODO(lucacasonato): this should be moved to rust
-/** @type {WeakMap<object, object>} */
-const KEY_STORE = new SafeWeakMap();
+// The key material for every CryptoKey lives in Rust, wrapped in a V8
+// garbage-collected (cppgc) object created by `op_crypto_key_store_insert`. A
+// `handle` here is a plain object that holds that cppgc object on its `cppgc`
+// property and is shared between the CryptoKey(s) that reference the same key
+// material (e.g. the public and private key of a key pair).
+//
+// Because the cppgc object is referenced only through the handle, V8's garbage
+// collector frees the underlying Rust key material automatically once the handle
+// (and therefore every CryptoKey referencing it) is collected. No
+// `FinalizationRegistry` or manual bookkeeping is required.
+
+/**
+ * Store key material in a Rust-side cppgc object referenced by `handle.cppgc`.
+ *
+ * `value` is one of:
+ *  - a `{ type, data }` object (secret/private/public key material),
+ *  - a raw `Uint8Array`/`ArrayBuffer` of key bytes (Ed25519/X25519/X448/ML-KEM),
+ *  - a composite ML-DSA `{ seed, privateKey }` object.
+ *
+ * @param {{ cppgc?: object }} handle
+ * @param {{ type: string, data: Uint8Array } | Uint8Array | object} value
+ */
+function setKeyData(handle, value) {
+  let payload;
+  if (value.type !== undefined) {
+    payload = { kind: value.type, data: value.data };
+  } else if (ArrayBufferIsView(value) || isArrayBuffer(value)) {
+    payload = { kind: "raw", data: value };
+  } else {
+    payload = { kind: "mldsa", seed: value.seed, privateKey: value.privateKey };
+  }
+  handle.cppgc = op_crypto_key_store_insert(payload);
+}
+
+/**
+ * Read key material back, returning the same shape that was passed to
+ * {@linkcode setKeyData} (a `{ type, data }` object, a raw `Uint8Array`, or a
+ * composite `{ seed, privateKey }` object). Used for key export, structured
+ * clone and node:crypto interop, and by the ops that still take key bytes
+ * directly.
+ *
+ * @param {{ cppgc: object }} handle
+ * @returns {{ type: string, data: Uint8Array } | Uint8Array | object}
+ */
+function getKeyData(handle) {
+  const value = op_crypto_key_store_get(handle.cppgc);
+  switch (value.kind) {
+    case "raw":
+      return value.data;
+    case "mldsa":
+      return { seed: value.seed, privateKey: value.privateKey };
+    default:
+      return { type: value.kind, data: value.data };
+  }
+}
 
 /** @type {WeakMap<CryptoKey, CryptoKey>} */
 const MLDSA_PUBLIC_FROM_PRIVATE = new SafeWeakMap();
@@ -885,7 +938,6 @@ class SubtleCrypto {
     }
 
     const handle = key[_handle];
-    const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
     switch (normalizedAlgorithm.name) {
       case "RSA-OAEP": {
@@ -906,8 +958,7 @@ class SubtleCrypto {
 
         // 3-5.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const plainText = await op_crypto_decrypt({
-          key: keyData,
+        const plainText = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "RSA-OAEP",
           hash: hashAlgorithm,
           label: normalizedAlgorithm.label,
@@ -927,8 +978,7 @@ class SubtleCrypto {
           );
         }
 
-        const plainText = await op_crypto_decrypt({
-          key: keyData,
+        const plainText = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "AES-CBC",
           iv: normalizedAlgorithm.iv,
           length: key[_algorithm].length,
@@ -961,8 +1011,7 @@ class SubtleCrypto {
         }
 
         // 3.
-        const cipherText = await op_crypto_decrypt({
-          key: keyData,
+        const cipherText = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "AES-CTR",
           keyLength: key[_algorithm].length,
           counter: normalizedAlgorithm.counter,
@@ -1035,8 +1084,7 @@ class SubtleCrypto {
         }
 
         // 5-8.
-        const plaintext = await op_crypto_decrypt({
-          key: keyData,
+        const plaintext = await op_crypto_decrypt(handle.cppgc, {
           algorithm: algorithm.name,
           length: key[_algorithm].length,
           iv: normalizedAlgorithm.iv,
@@ -1073,8 +1121,7 @@ class SubtleCrypto {
           );
         }
 
-        const plaintext = await op_crypto_decrypt({
-          key: keyData,
+        const plaintext = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "ChaCha20-Poly1305",
           nonce: normalizedAlgorithm.nonce,
           additionalData: normalizedAlgorithm.additionalData || null,
@@ -1112,7 +1159,6 @@ class SubtleCrypto {
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "sign");
 
     const handle = key[_handle];
-    const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
     // 8.
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
@@ -1142,8 +1188,7 @@ class SubtleCrypto {
 
         // 2.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const signature = await op_crypto_sign_key({
-          key: keyData,
+        const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
         }, data);
@@ -1161,8 +1206,7 @@ class SubtleCrypto {
 
         // 2.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const signature = await op_crypto_sign_key({
-          key: keyData,
+        const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
           saltLength: normalizedAlgorithm.saltLength,
@@ -1186,8 +1230,7 @@ class SubtleCrypto {
           throw new DOMException("Curve not supported", "NotSupportedError");
         }
 
-        const signature = await op_crypto_sign_key({
-          key: keyData,
+        const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "ECDSA",
           hash: hashAlgorithm,
           namedCurve,
@@ -1198,8 +1241,7 @@ class SubtleCrypto {
       case "HMAC": {
         const hashAlgorithm = key[_algorithm].hash.name;
 
-        const signature = await op_crypto_sign_key({
-          key: keyData,
+        const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "HMAC",
           hash: hashAlgorithm,
         }, data);
@@ -1218,7 +1260,7 @@ class SubtleCrypto {
         // https://briansmith.org/rustdoc/src/ring/ec/curve25519/ed25519/signing.rs.html#260
         const SIGNATURE_LEN = 32 * 2; // ELEM_LEN + SCALAR_LEN
         const signature = new Uint8Array(SIGNATURE_LEN);
-        if (!op_crypto_sign_ed25519(keyData, data, signature)) {
+        if (!op_crypto_sign_ed25519(handle.cppgc, data, signature)) {
           throw new DOMException(
             "Failed to sign",
             "OperationError",
@@ -1239,7 +1281,7 @@ class SubtleCrypto {
         const context = normalizedAlgorithm.context;
         const signature = op_crypto_sign_mldsa(
           variant,
-          keyData.privateKey,
+          handle.cppgc,
           data,
           context !== undefined ? context : null,
         );
@@ -1330,7 +1372,7 @@ class SubtleCrypto {
 
     const handle = key[_handle];
     // 2.
-    const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
+    const innerKey = getKeyData(handle);
 
     const algorithmName = key[_algorithm].name;
 
@@ -1571,7 +1613,6 @@ class SubtleCrypto {
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "verify");
 
     const handle = key[_handle];
-    const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
       throw new DOMException(
@@ -1597,8 +1638,7 @@ class SubtleCrypto {
         }
 
         const hashAlgorithm = key[_algorithm].hash.name;
-        return await op_crypto_verify_key({
-          key: keyData,
+        return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
           signature,
@@ -1613,8 +1653,7 @@ class SubtleCrypto {
         }
 
         const hashAlgorithm = key[_algorithm].hash.name;
-        return await op_crypto_verify_key({
-          key: keyData,
+        return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
           signature,
@@ -1623,8 +1662,7 @@ class SubtleCrypto {
       }
       case "HMAC": {
         const hash = key[_algorithm].hash.name;
-        return await op_crypto_verify_key({
-          key: keyData,
+        return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "HMAC",
           hash,
           signature,
@@ -1641,8 +1679,7 @@ class SubtleCrypto {
         // 2.
         const hash = normalizedAlgorithm.hash.name;
         // 3-8.
-        return await op_crypto_verify_key({
-          key: keyData,
+        return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "ECDSA",
           hash,
           signature,
@@ -1658,7 +1695,7 @@ class SubtleCrypto {
           );
         }
 
-        return op_crypto_verify_ed25519(keyData, data, signature);
+        return op_crypto_verify_ed25519(handle.cppgc, data, signature);
       }
       case "ML-DSA-44":
       case "ML-DSA-65":
@@ -1673,7 +1710,7 @@ class SubtleCrypto {
         const context = normalizedAlgorithm.context;
         return op_crypto_verify_mldsa(
           variant,
-          keyData,
+          handle.cppgc,
           data,
           signature,
           context !== undefined ? context : null,
@@ -1763,12 +1800,10 @@ class SubtleCrypto {
       supportedAlgorithms["wrapKey"][normalizedAlgorithm.name] !== undefined
     ) {
       const handle = wrappingKey[_handle];
-      const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
-          const cipherText = await op_crypto_wrap_key({
-            key: keyData,
+          const cipherText = await op_crypto_wrap_key(handle.cppgc, {
             algorithm: normalizedAlgorithm.name,
           }, bytes);
 
@@ -1895,12 +1930,10 @@ class SubtleCrypto {
       supportedAlgorithms["unwrapKey"][normalizedAlgorithm.name] !== undefined
     ) {
       const handle = unwrappingKey[_handle];
-      const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
-          const plainText = await op_crypto_unwrap_key({
-            key: keyData,
+          const plainText = await op_crypto_unwrap_key(handle.cppgc, {
             algorithm: normalizedAlgorithm.name,
           }, wrappedKey);
 
@@ -2328,12 +2361,11 @@ function mlKemEncapsulate(normalizedAlgorithm, encapsulationKey) {
     case "ML-KEM-768":
     case "ML-KEM-1024": {
       const handle = encapsulationKey[_handle];
-      const publicKeyBytes = WeakMapPrototypeGet(KEY_STORE, handle);
       let result;
       try {
         result = op_crypto_ml_kem_encapsulate(
           normalizedAlgorithm.name,
-          publicKeyBytes,
+          handle.cppgc,
         );
       } catch (_) {
         throw new DOMException("Encapsulation failed", "OperationError");
@@ -2364,11 +2396,10 @@ function mlKemDecapsulate(normalizedAlgorithm, decapsulationKey, ciphertext) {
         );
       }
       const handle = decapsulationKey[_handle];
-      const privateKeyBytes = WeakMapPrototypeGet(KEY_STORE, handle);
       try {
         return op_crypto_ml_kem_decapsulate(
           normalizedAlgorithm.name,
-          privateKeyBytes,
+          handle.cppgc,
           ciphertext,
         );
       } catch (_) {
@@ -2408,7 +2439,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
         },
       );
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, {
+      setKeyData(handle, {
         type: "private",
         data: keyData,
       });
@@ -2467,7 +2498,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
         },
       );
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, {
+      setKeyData(handle, {
         type: "private",
         data: keyData,
       });
@@ -2526,7 +2557,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           algorithm: "EC",
           namedCurve,
         });
-        WeakMapPrototypeSet(KEY_STORE, handle, {
+        setKeyData(handle, {
           type: "private",
           data: keyData,
         });
@@ -2586,7 +2617,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
           algorithm: "EC",
           namedCurve,
         });
-        WeakMapPrototypeSet(KEY_STORE, handle, {
+        setKeyData(handle, {
           type: "private",
           data: keyData,
         });
@@ -2671,10 +2702,10 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       op_crypto_generate_x448_keypair(privateKeyData, publicKeyData);
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+      setKeyData(handle, privateKeyData);
 
       const publicHandle = {};
-      WeakMapPrototypeSet(KEY_STORE, publicHandle, publicKeyData);
+      setKeyData(publicHandle, publicKeyData);
 
       const algorithm = {
         name: algorithmName,
@@ -2712,10 +2743,10 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       op_crypto_generate_x25519_keypair(privateKeyData, publicKeyData);
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+      setKeyData(handle, privateKeyData);
 
       const publicHandle = {};
-      WeakMapPrototypeSet(KEY_STORE, publicHandle, publicKeyData);
+      setKeyData(publicHandle, publicKeyData);
 
       const algorithm = {
         name: algorithmName,
@@ -2760,10 +2791,10 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+      setKeyData(handle, privateKeyData);
 
       const publicHandle = {};
-      WeakMapPrototypeSet(KEY_STORE, publicHandle, publicKeyData);
+      setKeyData(publicHandle, publicKeyData);
 
       const algorithm = {
         name: algorithmName,
@@ -2806,13 +2837,13 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
         op_crypto_mldsa_from_seed(variant, seed);
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, {
+      setKeyData(handle, {
         seed,
         privateKey: privateKeyBytes,
       });
 
       const publicHandle = {};
-      WeakMapPrototypeSet(KEY_STORE, publicHandle, publicKeyBytes);
+      setKeyData(publicHandle, publicKeyBytes);
 
       const algorithm = {
         name: algorithmName,
@@ -2861,7 +2892,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
         length: 256,
       });
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, {
+      setKeyData(handle, {
         type: "secret",
         data: keyData,
       });
@@ -2906,7 +2937,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
         length,
       });
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, {
+      setKeyData(handle, {
         type: "secret",
         data: keyData,
       });
@@ -2959,10 +2990,10 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       const algorithm = { name: algorithmName };
 
       const privHandle = {};
-      WeakMapPrototypeSet(KEY_STORE, privHandle, privBytes);
+      setKeyData(privHandle, privBytes);
 
       const pubHandle = {};
-      WeakMapPrototypeSet(KEY_STORE, pubHandle, pubBytes);
+      setKeyData(pubHandle, pubBytes);
 
       const publicKey = constructKey(
         "public",
@@ -3002,7 +3033,7 @@ function importKeyX448(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+      setKeyData(handle, keyData);
 
       // 2-3.
       const algorithm = {
@@ -3030,7 +3061,7 @@ function importKeyX448(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+      setKeyData(handle, publicKeyData);
 
       const algorithm = {
         name: "X448",
@@ -3061,7 +3092,7 @@ function importKeyX448(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+      setKeyData(handle, privateKeyData);
 
       const algorithm = {
         name: "X448",
@@ -3163,7 +3194,7 @@ function importKeyX448(
         }
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+        setKeyData(handle, privateKeyData);
 
         const algorithm = {
           name: "X448",
@@ -3189,7 +3220,7 @@ function importKeyX448(
         }
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+        setKeyData(handle, publicKeyData);
 
         const algorithm = {
           name: "X448",
@@ -3232,7 +3263,7 @@ function importKeyEd25519(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+      setKeyData(handle, keyData);
 
       // 2-3.
       const algorithm = {
@@ -3265,7 +3296,7 @@ function importKeyEd25519(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+      setKeyData(handle, publicKeyData);
 
       const algorithm = {
         name: "Ed25519",
@@ -3296,7 +3327,7 @@ function importKeyEd25519(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+      setKeyData(handle, privateKeyData);
 
       const algorithm = {
         name: "Ed25519",
@@ -3406,7 +3437,7 @@ function importKeyEd25519(
         }
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+        setKeyData(handle, privateKeyData);
 
         const algorithm = {
           name: "Ed25519",
@@ -3432,7 +3463,7 @@ function importKeyEd25519(
         }
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+        setKeyData(handle, publicKeyData);
 
         const algorithm = {
           name: "Ed25519",
@@ -3470,7 +3501,7 @@ function importKeyX25519(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+      setKeyData(handle, keyData);
 
       // 2-3.
       const algorithm = {
@@ -3498,7 +3529,7 @@ function importKeyX25519(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+      setKeyData(handle, publicKeyData);
 
       const algorithm = {
         name: "X25519",
@@ -3529,7 +3560,7 @@ function importKeyX25519(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+      setKeyData(handle, privateKeyData);
 
       const algorithm = {
         name: "X25519",
@@ -3631,7 +3662,7 @@ function importKeyX25519(
         }
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
+        setKeyData(handle, privateKeyData);
 
         const algorithm = {
           name: "X25519",
@@ -3657,7 +3688,7 @@ function importKeyX25519(
         }
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
+        setKeyData(handle, publicKeyData);
 
         const algorithm = {
           name: "X25519",
@@ -3794,7 +3825,7 @@ function importKeyMlKem(
         throw new DOMException("Invalid key data", "DataError");
       }
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+      setKeyData(handle, keyData);
       return constructKey(
         "public",
         extractable,
@@ -3820,7 +3851,7 @@ function importKeyMlKem(
         throw new DOMException("Invalid key data", "DataError");
       }
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, keyData);
+      setKeyData(handle, keyData);
       return constructKey(
         "private",
         extractable,
@@ -3856,7 +3887,7 @@ function importKeyMlKem(
         );
       }
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, imported.publicKey);
+      setKeyData(handle, imported.publicKey);
       return constructKey(
         "public",
         extractable,
@@ -3884,7 +3915,7 @@ function importKeyMlKem(
         );
       }
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, imported.privateKey);
+      setKeyData(handle, imported.privateKey);
       return constructKey(
         "private",
         extractable,
@@ -3984,7 +4015,7 @@ function importKeyChaCha20Poly1305(
       }
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, {
+      setKeyData(handle, {
         type: "secret",
         data: keyData,
       });
@@ -4162,7 +4193,7 @@ function importKeyAES(
   }
 
   const handle = {};
-  WeakMapPrototypeSet(KEY_STORE, handle, {
+  setKeyData(handle, {
     type: "secret",
     data,
   });
@@ -4384,7 +4415,7 @@ function importKeyHMAC(
   }
 
   const handle = {};
-  WeakMapPrototypeSet(KEY_STORE, handle, {
+  setKeyData(handle, {
     type: "secret",
     data,
   });
@@ -4451,7 +4482,7 @@ function importKeyEC(
       }, { raw: keyData });
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+      setKeyData(handle, rawData);
 
       // 4-5.
       const algorithm = {
@@ -4492,7 +4523,7 @@ function importKeyEC(
       }, { pkcs8: keyData });
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+      setKeyData(handle, rawData);
 
       const algorithm = {
         name: normalizedAlgorithm.name,
@@ -4535,7 +4566,7 @@ function importKeyEC(
       }, { spki: keyData });
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+      setKeyData(handle, rawData);
 
       const algorithm = {
         name: normalizedAlgorithm.name,
@@ -4679,7 +4710,7 @@ function importKeyEC(
         }, { jwkPrivateEc: jwk });
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+        setKeyData(handle, rawData);
 
         const algorithm = {
           name: normalizedAlgorithm.name,
@@ -4702,7 +4733,7 @@ function importKeyEC(
         }, { jwkPublicEc: jwk });
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+        setKeyData(handle, rawData);
 
         const algorithm = {
           name: normalizedAlgorithm.name,
@@ -4737,7 +4768,7 @@ function importKeyMlDsa(
 
   const makePublicKey = (publicBytes) => {
     const handle = {};
-    WeakMapPrototypeSet(KEY_STORE, handle, publicBytes);
+    setKeyData(handle, publicBytes);
     return constructKey(
       "public",
       extractable,
@@ -4749,7 +4780,7 @@ function importKeyMlDsa(
 
   const makePrivateKey = (seed, privateBytes, publicBytes) => {
     const handle = {};
-    WeakMapPrototypeSet(KEY_STORE, handle, {
+    setKeyData(handle, {
       seed,
       privateKey: privateBytes,
     });
@@ -5130,7 +5161,7 @@ function importKeyRSA(
       );
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+      setKeyData(handle, rawData);
 
       const algorithm = {
         name: normalizedAlgorithm.name,
@@ -5175,7 +5206,7 @@ function importKeyRSA(
       );
 
       const handle = {};
-      WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+      setKeyData(handle, rawData);
 
       const algorithm = {
         name: normalizedAlgorithm.name,
@@ -5450,7 +5481,7 @@ function importKeyRSA(
         );
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+        setKeyData(handle, rawData);
 
         const algorithm = {
           name: normalizedAlgorithm.name,
@@ -5492,7 +5523,7 @@ function importKeyRSA(
         );
 
         const handle = {};
-        WeakMapPrototypeSet(KEY_STORE, handle, rawData);
+        setKeyData(handle, rawData);
 
         const algorithm = {
           name: normalizedAlgorithm.name,
@@ -5547,7 +5578,7 @@ function importKeyHKDF(
 
   // 3.
   const handle = {};
-  WeakMapPrototypeSet(KEY_STORE, handle, {
+  setKeyData(handle, {
     type: "secret",
     data: keyData,
   });
@@ -5599,7 +5630,7 @@ function importKeyPBKDF2(
 
   // 4.
   const handle = {};
-  WeakMapPrototypeSet(KEY_STORE, handle, {
+  setKeyData(handle, {
     type: "secret",
     data: keyData,
   });
@@ -6192,7 +6223,7 @@ async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
     length: normalizedAlgorithm.length,
   });
   const handle = {};
-  WeakMapPrototypeSet(KEY_STORE, handle, {
+  setKeyData(handle, {
     type: "secret",
     data: keyData,
   });
@@ -6232,12 +6263,10 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       }
 
       const handle = baseKey[_handle];
-      const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
       normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
-      const buf = await op_crypto_derive_bits({
-        key: keyData,
+      const buf = await op_crypto_derive_bits(handle.cppgc, null, {
         algorithm: "PBKDF2",
         hash: normalizedAlgorithm.hash.name,
         iterations: normalizedAlgorithm.iterations,
@@ -6281,17 +6310,17 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         )
       ) {
         const baseKeyhandle = baseKey[_handle];
-        const baseKeyData = WeakMapPrototypeGet(KEY_STORE, baseKeyhandle);
         const publicKeyhandle = publicKey[_handle];
-        const publicKeyData = WeakMapPrototypeGet(KEY_STORE, publicKeyhandle);
 
-        const buf = await op_crypto_derive_bits({
-          key: baseKeyData,
-          publicKey: publicKeyData,
-          algorithm: "ECDH",
-          namedCurve: publicKey[_algorithm].namedCurve,
-          length: length ?? 0,
-        });
+        const buf = await op_crypto_derive_bits(
+          baseKeyhandle.cppgc,
+          publicKeyhandle.cppgc,
+          {
+            algorithm: "ECDH",
+            namedCurve: publicKey[_algorithm].namedCurve,
+            length: length ?? 0,
+          },
+        );
 
         // 8.
         if (length === null) {
@@ -6316,14 +6345,12 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       }
 
       const handle = baseKey[_handle];
-      const keyDerivationKey = WeakMapPrototypeGet(KEY_STORE, handle);
 
       normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
       normalizedAlgorithm.info = copyBuffer(normalizedAlgorithm.info);
 
-      const buf = await op_crypto_derive_bits({
-        key: keyDerivationKey,
+      const buf = await op_crypto_derive_bits(handle.cppgc, null, {
         algorithm: "HKDF",
         hash: normalizedAlgorithm.hash.name,
         info: normalizedAlgorithm.info,
@@ -6353,13 +6380,14 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       // 5.
       const kHandle = baseKey[_handle];
-      const k = WeakMapPrototypeGet(KEY_STORE, kHandle);
-
       const uHandle = publicKey[_handle];
-      const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
 
       const secret = new Uint8Array(56);
-      const isIdentity = op_crypto_derive_bits_x448(k, u, secret);
+      const isIdentity = op_crypto_derive_bits_x448(
+        kHandle.cppgc,
+        uHandle.cppgc,
+        secret,
+      );
 
       // 6.
       if (isIdentity) {
@@ -6402,13 +6430,14 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       // 5.
       const kHandle = baseKey[_handle];
-      const k = WeakMapPrototypeGet(KEY_STORE, kHandle);
-
       const uHandle = publicKey[_handle];
-      const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
 
       const secret = new Uint8Array(32);
-      const isIdentity = op_crypto_derive_bits_x25519(k, u, secret);
+      const isIdentity = op_crypto_derive_bits_x25519(
+        kHandle.cppgc,
+        uHandle.cppgc,
+        secret,
+      );
 
       // 6.
       if (isIdentity) {
@@ -6437,7 +6466,6 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
 async function encrypt(normalizedAlgorithm, key, data) {
   const handle = key[_handle];
-  const keyData = WeakMapPrototypeGet(KEY_STORE, handle);
 
   switch (normalizedAlgorithm.name) {
     case "RSA-OAEP": {
@@ -6458,8 +6486,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
 
       // 3-5.
       const hashAlgorithm = key[_algorithm].hash.name;
-      const cipherText = await op_crypto_encrypt({
-        key: keyData,
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "RSA-OAEP",
         hash: hashAlgorithm,
         label: normalizedAlgorithm.label,
@@ -6480,8 +6507,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 2.
-      const cipherText = await op_crypto_encrypt({
-        key: keyData,
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-CBC",
         length: key[_algorithm].length,
         iv: normalizedAlgorithm.iv,
@@ -6514,8 +6540,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 3.
-      const cipherText = await op_crypto_encrypt({
-        key: keyData,
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-CTR",
         keyLength: key[_algorithm].length,
         counter: normalizedAlgorithm.counter,
@@ -6582,8 +6607,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
         );
       }
       // 6-7.
-      const cipherText = await op_crypto_encrypt({
-        key: keyData,
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-GCM",
         length: key[_algorithm].length,
         iv: normalizedAlgorithm.iv,
@@ -6636,8 +6660,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
         );
       }
       // 5-6.
-      const cipherText = await op_crypto_encrypt({
-        key: keyData,
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-OCB",
         length: key[_algorithm].length,
         iv: normalizedAlgorithm.iv,
@@ -6669,8 +6692,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
         );
       }
 
-      const cipherText = await op_crypto_encrypt({
-        key: keyData,
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "ChaCha20-Poly1305",
         nonce: normalizedAlgorithm.nonce,
         additionalData: normalizedAlgorithm.additionalData || null,
@@ -7351,7 +7373,7 @@ webidl.converters.MlDsaParams = webidl.createDictionaryConverter(
  */
 function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
   const handle = cryptoKey[_handle];
-  const innerKey = WeakMapPrototypeGet(KEY_STORE, handle);
+  const innerKey = getKeyData(handle);
   const type = cryptoKey[_type];
   const algorithmName = cryptoKey[_algorithm].name;
 

@@ -20,12 +20,13 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 (function () {
 "use strict";
 
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  NumberIsNaN,
+} = primordials;
 const {
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CURSOR_POS,
@@ -35,7 +36,9 @@ const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 
-const { CSI } = core.loadExtScript("ext:deno_node/internal/readline/utils.mjs");
+const { CSI } = core.loadExtScript(
+  "ext:deno_node/internal/readline/utils.mjs",
+);
 
 const {
   kClearLine,
@@ -58,8 +61,8 @@ function cursorTo(stream, x, y, callback) {
     y = undefined;
   }
 
-  if (Number.isNaN(x)) throw new ERR_INVALID_ARG_VALUE("x", x);
-  if (Number.isNaN(y)) throw new ERR_INVALID_ARG_VALUE("y", y);
+  if (NumberIsNaN(x)) throw new ERR_INVALID_ARG_VALUE("x", x);
+  if (NumberIsNaN(y)) throw new ERR_INVALID_ARG_VALUE("y", y);
 
   if (stream == null || (typeof x !== "number" && typeof y !== "number")) {
     if (typeof callback === "function") process.nextTick(callback, null);

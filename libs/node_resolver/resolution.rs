@@ -7,6 +7,8 @@ use std::io::BufReader;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use anyhow::Error as AnyError;
 use anyhow::bail;
@@ -302,7 +304,7 @@ fn browser_map_key_matches(key_path: &Path, resolved_path: &Path) -> bool {
 
 #[derive(Debug)]
 struct ResolutionConfig {
-  pub bundle_mode: bool,
+  pub bundle_mode: AtomicBool,
   pub prefer_browser_field: bool,
   pub typescript_version: Option<Version>,
 }
@@ -395,7 +397,7 @@ impl<
           }),
       }),
       resolution_config: ResolutionConfig {
-        bundle_mode: options.bundle_mode,
+        bundle_mode: AtomicBool::new(options.bundle_mode),
         prefer_browser_field: options.is_browser_platform,
         typescript_version: options.typescript_version,
       },
@@ -404,6 +406,21 @@ impl<
 
   pub fn require_conditions(&self) -> &[Cow<'static, str>] {
     self.condition_resolver.require_conditions()
+  }
+
+  /// Updates whether the resolver should treat resolutions as occurring
+  /// inside a bundler (e.g. when `moduleResolution: "bundler"` is set). When
+  /// enabled, directory imports do not error and a CommonJS-style fallback
+  /// resolution is used for extensionless files.
+  pub fn set_bundle_mode(&self, bundle_mode: bool) {
+    self
+      .resolution_config
+      .bundle_mode
+      .store(bundle_mode, Ordering::Relaxed);
+  }
+
+  fn bundle_mode(&self) -> bool {
+    self.resolution_config.bundle_mode.load(Ordering::Relaxed)
   }
 
   pub fn in_npm_package(&self, specifier: &Url) -> bool {
@@ -847,9 +864,7 @@ impl<
     let maybe_file_type = self.sys.get_file_type(Cow::Borrowed(&path));
     match maybe_file_type {
       Ok(FileType::Dir) => {
-        if resolution_mode == ResolutionMode::Import
-          && !self.resolution_config.bundle_mode
-        {
+        if resolution_mode == ResolutionMode::Import && !self.bundle_mode() {
           let suggestion = self.directory_import_suggestion(&path);
           Err(
             UnsupportedDirImportError {
@@ -895,13 +910,16 @@ impl<
       }
       _ => {
         if let Err(e) = maybe_file_type
-          && (resolution_mode == ResolutionMode::Require
-            || self.resolution_config.bundle_mode)
+          && (resolution_mode == ResolutionMode::Require || self.bundle_mode())
           && e.kind() == std::io::ErrorKind::NotFound
         {
-          let file_with_ext = with_known_extension(&path, "js");
-          if self.sys.is_file(Cow::Borrowed(&file_with_ext)) {
-            return Ok(UrlOrPath::Path(file_with_ext));
+          // Match Node's `require()` resolution order: try .js, then .node
+          // for native addons (`require('./build/Release/foo')`).
+          for ext in ["js", "node"] {
+            let file_with_ext = with_known_extension(&path, ext);
+            if self.sys.is_file(Cow::Borrowed(&file_with_ext)) {
+              return Ok(UrlOrPath::Path(file_with_ext));
+            }
           }
         }
 
@@ -2204,7 +2222,7 @@ impl<
     fn filter_empty(value: Option<&str>) -> Option<&str> {
       value.map(|v| v.trim()).filter(|v| !v.is_empty())
     }
-    if self.resolution_config.bundle_mode {
+    if self.bundle_mode() {
       let maybe_browser = if self.resolution_config.prefer_browser_field {
         filter_empty(package_json.browser.as_deref())
       } else {

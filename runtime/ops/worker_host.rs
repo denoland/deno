@@ -808,17 +808,17 @@ fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
 #[cfg(windows)]
 fn capture_current_thread_handle() -> u64 {
   // SAFETY: Returns the thread ID of the calling thread.
-  unsafe { winapi::um::processthreadsapi::GetCurrentThreadId() as u64 }
+  unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() as u64 }
 }
 
 #[cfg(windows)]
 fn get_thread_cpu_usage_by_handle(handle: u64) -> (f64, f64) {
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::minwindef::FILETIME;
-  use winapi::um::handleapi::CloseHandle;
-  use winapi::um::processthreadsapi::GetThreadTimes;
-  use winapi::um::processthreadsapi::OpenThread;
-  use winapi::um::winnt::THREAD_QUERY_INFORMATION;
+  use windows_sys::Win32::Foundation::CloseHandle;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::Foundation::FILETIME;
+  use windows_sys::Win32::System::Threading::GetThreadTimes;
+  use windows_sys::Win32::System::Threading::OpenThread;
+  use windows_sys::Win32::System::Threading::THREAD_QUERY_INFORMATION;
 
   let thread_id = handle as u32;
 

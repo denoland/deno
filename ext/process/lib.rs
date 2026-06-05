@@ -501,7 +501,7 @@ pub fn npm_process_state_tempfile(
   {
     use windows_sys::Win32::Foundation::HANDLE_FLAG_INHERIT;
     // make the handle inheritable
-    // SAFETY: winapi call, handle is valid
+    // SAFETY: Win32 call, handle is valid
     unsafe {
       windows_sys::Win32::Foundation::SetHandleInformation(
         handle as _,
@@ -1889,20 +1889,51 @@ mod deprecated {
       .map_err(|e| ProcessError::Nix(JsNixError(e)))
   }
 
+  /// Returns whether the process with the given pid is still running.
+  ///
+  /// Opens the process with `PROCESS_QUERY_LIMITED_INFORMATION` and checks its
+  /// exit code. A process that has fully exited cannot be opened (so this
+  /// returns `false`), and one that is still running reports `STILL_ACTIVE`.
+  #[cfg(not(unix))]
+  fn process_is_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::FALSE;
+    use windows_sys::Win32::System::Threading::GetExitCodeProcess;
+    use windows_sys::Win32::System::Threading::OpenProcess;
+    use windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+
+    // SAFETY: Win32 call
+    let handle =
+      unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid) };
+    if handle.is_null() {
+      return false;
+    }
+    let mut status: u32 = 0;
+    // SAFETY: Win32 call
+    let alive = unsafe {
+      GetExitCodeProcess(handle, &mut status) != FALSE && status == 259 // STILL_ACTIVE
+    };
+    // SAFETY: Win32 call
+    unsafe {
+      CloseHandle(handle);
+    }
+    alive
+  }
+
   #[cfg(not(unix))]
   pub fn kill(pid: i32, signal: &SignalArg) -> Result<(), ProcessError> {
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
 
-    use winapi::shared::minwindef::DWORD;
-    use winapi::shared::minwindef::FALSE;
-    use winapi::shared::minwindef::TRUE;
-    use winapi::shared::winerror::ERROR_INVALID_PARAMETER;
-    use winapi::um::errhandlingapi::GetLastError;
-    use winapi::um::handleapi::CloseHandle;
-    use winapi::um::processthreadsapi::OpenProcess;
-    use winapi::um::processthreadsapi::TerminateProcess;
-    use winapi::um::winnt::PROCESS_TERMINATE;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
+    use windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER;
+    use windows_sys::Win32::Foundation::FALSE;
+    use windows_sys::Win32::Foundation::GetLastError;
+    use windows_sys::Win32::Foundation::TRUE;
+    use windows_sys::Win32::System::Threading::OpenProcess;
+    use windows_sys::Win32::System::Threading::PROCESS_TERMINATE;
+    use windows_sys::Win32::System::Threading::TerminateProcess;
 
     let signo = match signal {
       SignalArg::Int(n) => *n,
@@ -1912,29 +1943,7 @@ mod deprecated {
 
     if signo == 0 {
       // Signal 0 is a health check: verify the process is still alive.
-      // SAFETY: winapi call
-      let handle = unsafe {
-        OpenProcess(
-          winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION,
-          FALSE,
-          pid as DWORD,
-        )
-      };
-      if handle.is_null() {
-        return Err(Error::from(NotFound).into());
-      }
-      let mut status: DWORD = 0;
-      // SAFETY: winapi call
-      let alive = unsafe {
-        winapi::um::processthreadsapi::GetExitCodeProcess(handle, &mut status)
-          != FALSE
-          && status == 259 // STILL_ACTIVE
-      };
-      // SAFETY: winapi call
-      unsafe {
-        CloseHandle(handle);
-      }
-      if alive {
+      if process_is_alive(pid as u32) {
         return Ok(());
       } else {
         return Err(Error::from(NotFound).into());
@@ -1957,18 +1966,27 @@ mod deprecated {
       Err(ProcessError::InvalidPid)
     } else {
       let handle =
-        // SAFETY: winapi call
-        unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as DWORD) };
+        // SAFETY: Win32 call
+        unsafe { OpenProcess(PROCESS_TERMINATE, FALSE, pid as u32) };
 
       if handle.is_null() {
-        // SAFETY: winapi call
+        // SAFETY: Win32 call
         let err = match unsafe { GetLastError() } {
           ERROR_INVALID_PARAMETER => Error::from(NotFound), // Invalid `pid`.
+          // `OpenProcess(PROCESS_TERMINATE, ...)` can fail with
+          // `ERROR_ACCESS_DENIED` in the brief window while the child is
+          // exiting (or if the pid has been reused). If the process is no
+          // longer alive, treat it as `NotFound` (mirroring the Unix `ESRCH`
+          // behavior) instead of surfacing a misleading `PermissionError`.
+          // See https://github.com/denoland/deno/issues/28882
+          ERROR_ACCESS_DENIED if !process_is_alive(pid as u32) => {
+            Error::from(NotFound)
+          }
           errno => Error::from_raw_os_error(errno as i32),
         };
         Err(err.into())
       } else {
-        // SAFETY: winapi calls
+        // SAFETY: Win32 calls
         unsafe {
           let is_terminated = TerminateProcess(handle, 1);
           CloseHandle(handle);

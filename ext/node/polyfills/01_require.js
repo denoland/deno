@@ -3242,7 +3242,6 @@ export function registerHooks(hooks) {
 }
 
 Module.registerHooks = registerHooks;
-Module.register = register;
 
 let initialized = false;
 

@@ -74,7 +74,11 @@ fn main() {
   // Execute deno with the translated arguments
   #[cfg(unix)]
   {
-    let err = exec::execvp("deno", &deno_args);
+    use std::os::unix::process::CommandExt;
+    let err = process::Command::new("deno")
+      .arg0(&deno_args[0])
+      .args(&deno_args[1..])
+      .exec();
     eprintln!("Failed to execute deno: {}", err);
     process::exit(1);
   }

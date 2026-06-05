@@ -27,6 +27,7 @@ const {
   DateNow,
   Error,
   MathMin,
+  NumberIsInteger,
   NumberIsNaN,
   AsyncGeneratorPrototype,
   Object,
@@ -956,6 +957,18 @@ function validateQueueDelay(delay: number) {
   if (NumberIsNaN(delay)) throw new TypeError("Delay cannot be NaN");
 }
 
+function validateExpireIn(expireIn: number | undefined) {
+  if (expireIn === undefined) return;
+  // Reject NaN, Infinity, fractional and negative values. A non-finite
+  // expireIn otherwise produces a garbage absolute expiry when added to the
+  // current timestamp before reaching the backend.
+  if (!NumberIsInteger(expireIn) || expireIn < 0) {
+    throw new TypeError(
+      `expireIn must be a non-negative integer: received ${expireIn}`,
+    );
+  }
+}
+
 function validateBackoffSchedule(schedule: number[]) {
   if (schedule.length > MAX_QUEUE_BACKOFF_INTERVALS) {
     throw new TypeError(
@@ -1084,6 +1097,7 @@ class Kv {
     value: unknown,
     options?: { expireIn?: number },
   ): Promise<Deno.KvCommitResult> {
+    validateExpireIn(options?.expireIn);
     let actualKey = key;
     let mutationType: "set" | "setSuffixVersionstampedKey" = "set";
 
@@ -1150,12 +1164,21 @@ class Kv {
       consistency?: Deno.KvConsistencyLevel;
     },
   ): KvListIterator {
-    if (options.limit !== undefined && options.limit <= 0) {
-      throw new Error(`Limit must be positive: received ${options.limit}`);
+    if (
+      options.limit !== undefined &&
+      (!NumberIsInteger(options.limit) || options.limit <= 0)
+    ) {
+      throw new Error(
+        `Limit must be a positive integer: received ${options.limit}`,
+      );
     }
 
     let batchSize = options.batchSize ?? (options.limit ?? 100);
-    if (batchSize <= 0) throw new Error("batchSize must be positive");
+    if (!NumberIsInteger(batchSize) || batchSize <= 0) {
+      throw new Error(
+        `batchSize must be a positive integer: received ${batchSize}`,
+      );
+    }
     if (options.batchSize === undefined && batchSize > 500) batchSize = 500;
     if (batchSize > MAX_READ_ENTRIES) {
       throw new TypeError(`Too many entries (max ${MAX_READ_ENTRIES})`);
@@ -1536,12 +1559,16 @@ class AtomicOperation {
           throw new TypeError("Invalid mutation type");
       }
 
+      const expireIn =
+        (ReflectHas(m, "expireIn") && typeof m.expireIn === "number")
+          ? m.expireIn
+          : undefined;
+      validateExpireIn(expireIn);
+
       ArrayPrototypePush(this.#mutations, {
         key,
         kind,
-        expireAt: (ReflectHas(m, "expireIn") && typeof m.expireIn === "number")
-          ? DateNow() + m.expireIn
-          : null,
+        expireAt: expireIn !== undefined ? DateNow() + expireIn : null,
       });
     }
     return this;
@@ -1596,6 +1623,7 @@ class AtomicOperation {
   }
 
   set(key: Deno.KvKey, value: unknown, options?: { expireIn?: number }): this {
+    validateExpireIn(options?.expireIn);
     let actualKey = key;
     let mutationType: "set" | "setSuffixVersionstampedKey" = "set";
 
@@ -2064,7 +2092,7 @@ async function openKv(path?: string): Promise<Kv> {
     if (!accessToken) {
       throw new Error(
         "Missing DENO_KV_ACCESS_TOKEN environment variable. " +
-          "Please set it to your access token from https://dash.deno.com/account.",
+          "Please set it to your access token from https://console.deno.com",
       );
     }
     backend = new RemoteKvBackend(resolvedPath, accessToken);

@@ -47,3 +47,12 @@ pub enum SerdeEnum {
     value: u32,
   },
 }
+
+#[derive(ToV8)]
+#[to_v8(untagged)]
+pub enum UntaggedEnum {
+  Empty,
+  Newtype(String),
+  Tuple(u32, u32),
+  Named { field: u32 },
+}

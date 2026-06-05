@@ -1,11 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
 const { core, primordials } = __bootstrap;
 const { op_node_fill_random, op_node_fill_random_async } = core.ops;
+const {
+  MathMin,
+  NumberIsNaN,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetBuffer,
+  Uint8Array,
+} = primordials;
 
 const { Buffer, kMaxLength } = core.loadExtScript(
   "ext:deno_node/internal/buffer.mjs",
@@ -23,15 +27,15 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 
 const kMaxInt32 = 2 ** 31 - 1;
-const kMaxPossibleLength = Math.min(kMaxLength, kMaxInt32);
+const kMaxPossibleLength = MathMin(kMaxLength, kMaxInt32);
 
 // Mirrors Node's lib/internal/crypto/random.js assertOffset().
 function assertOffset(offset, elementSize, length) {
   validateNumber(offset, "offset");
   offset *= elementSize;
 
-  const maxLength = Math.min(length, kMaxPossibleLength);
-  if (Number.isNaN(offset) || offset > maxLength || offset < 0) {
+  const maxLength = MathMin(length, kMaxPossibleLength);
+  if (NumberIsNaN(offset) || offset > maxLength || offset < 0) {
     throw new ERR_OUT_OF_RANGE("offset", `>= 0 && <= ${maxLength}`, offset);
   }
 
@@ -43,7 +47,7 @@ function assertSize(size, elementSize, offset, length) {
   validateNumber(size, "size");
   size *= elementSize;
 
-  if (Number.isNaN(size) || size > kMaxPossibleLength || size < 0) {
+  if (NumberIsNaN(size) || size > kMaxPossibleLength || size < 0) {
     throw new ERR_OUT_OF_RANGE(
       "size",
       `>= 0 && <= ${kMaxPossibleLength}`,
@@ -85,11 +89,14 @@ function randomFill(buf, offset, size, cb) {
     validateFunction(cb, "callback");
   }
 
+  // deno-lint-ignore prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
   offset = assertOffset(offset, elementSize, buf.byteLength);
 
   if (size === undefined) {
+    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
     size = buf.byteLength - offset;
   } else {
+    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
     size = assertSize(size, elementSize, offset, buf.byteLength);
   }
 
@@ -98,16 +105,20 @@ function randomFill(buf, offset, size, cb) {
     return;
   }
 
-  op_node_fill_random_async(size).then((randomData) => {
-    const randomBuf = Buffer.from(randomData.buffer);
+  PromisePrototypeThen(op_node_fill_random_async(size), (randomData) => {
+    const randomBuf = Buffer.from(TypedArrayPrototypeGetBuffer(randomData));
     const target = isAnyArrayBuffer(buf)
       ? new Uint8Array(buf, offset, size)
       : new Uint8Array(
+        // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
         buf.buffer,
+        // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
         buf.byteOffset + offset,
         size,
       );
-    target.set(new Uint8Array(randomBuf.buffer, 0, size));
+    target.set(
+      new Uint8Array(TypedArrayPrototypeGetBuffer(randomBuf), 0, size),
+    );
     cb(null, buf);
   });
 }
@@ -123,11 +134,14 @@ function randomFillSync(buf, offset = 0, size) {
 
   const elementSize = buf.BYTES_PER_ELEMENT || 1;
 
+  // deno-lint-ignore prefer-primordials -- buf is ArrayBuffer | ArrayBufferView (duck-typed); byteLength getter is polymorphic
   offset = assertOffset(offset, elementSize, buf.byteLength);
 
   if (size === undefined) {
+    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
     size = buf.byteLength - offset;
   } else {
+    // deno-lint-ignore prefer-primordials -- duck-typed buf byteLength getter
     size = assertSize(size, elementSize, offset, buf.byteLength);
   }
 
@@ -137,6 +151,7 @@ function randomFillSync(buf, offset = 0, size) {
 
   const bytes = isAnyArrayBuffer(buf)
     ? new Uint8Array(buf, offset, size)
+    // deno-lint-ignore prefer-primordials -- duck-typed ArrayBufferView buffer/byteOffset getters
     : new Uint8Array(buf.buffer, buf.byteOffset + offset, size);
   op_node_fill_random(bytes);
 
