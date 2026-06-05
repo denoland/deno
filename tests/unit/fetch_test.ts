@@ -2518,3 +2518,63 @@ Deno.test(
     listener.close();
   },
 );
+
+Deno.test(
+  { permissions: { net: true, run: true, read: true } },
+  // Pins the ref'd-watcher behavior: a response body that was engaged (a reader
+  // read a prefix) and then abandoned — with no further read and no
+  // cancel/releaseLock — keeps the event loop alive until the connection closes,
+  // at which point `reader.closed` settles. This mirrors Node, where an
+  // abandoned HTTP response keeps its socket ref'd until destroyed. If the
+  // underlying `op_fetch_response_closed` watcher were unref'd, the child process
+  // would go idle and exit before observing the close, so "SETTLED" would never
+  // be printed.
+  async function fetchEngagedBodyKeepsLoopAliveUntilClose() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const [hostname, port] = addr.split(":");
+    const listener = Deno.listen({ hostname, port: Number(port) });
+
+    const serverDone = (async () => {
+      try {
+        const conn = await listener.accept();
+        await conn.read(new Uint8Array(2 ** 14));
+        await conn.write(
+          new TextEncoder().encode(
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHELLO\r\n",
+          ),
+        );
+        // Give the child time to read the chunk and go fully idle (no pending
+        // read), so that only the ref'd body watcher keeps it alive, then close
+        // the connection without terminating the chunked body.
+        await delay(500);
+        conn.close();
+      } catch {
+        // The child may have exited early (the unref'd regression), closing the
+        // connection from its side; ignore the resulting errors.
+      }
+    })();
+
+    const child = `
+      const res = await fetch("http://${addr}/");
+      const reader = res.body.getReader();
+      const first = await reader.read();
+      if (new TextDecoder().decode(first.value) !== "HELLO") {
+        throw new Error("unexpected first chunk");
+      }
+      // Abandon the body: no further reads, no cancel/releaseLock.
+      reader.closed.catch(() => console.log("SETTLED"));
+    `;
+    const { code, stdout } = await new Deno.Command(Deno.execPath(), {
+      // `deno eval` runs with all permissions, so no `--allow-net` is needed.
+      args: ["eval", child],
+      stdout: "piped",
+      stderr: "null",
+    }).output();
+
+    listener.close();
+    await serverDone;
+
+    assertStringIncludes(new TextDecoder().decode(stdout), "SETTLED");
+    assertEquals(code, 0);
+  },
+);
