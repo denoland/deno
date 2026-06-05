@@ -85,8 +85,10 @@ pub enum RawKeyData {
   Private(Box<[u8]>),
   Public(Box<[u8]>),
   Raw(Box<[u8]>),
+  /// `seed` is `None` for keys imported from raw private bytes (which carry no
+  /// seed); exporting the `raw-seed` format then correctly rejects.
   MlDsaPrivate {
-    seed: Box<[u8]>,
+    seed: Option<Box<[u8]>>,
     private_key: Box<[u8]>,
   },
 }
@@ -134,7 +136,7 @@ impl From<InsertKeyData> for RawKeyData {
       KeyKind::Public => RawKeyData::Public(into_boxed(data.data)),
       KeyKind::Raw => RawKeyData::Raw(into_boxed(data.data)),
       KeyKind::MlDsa => RawKeyData::MlDsaPrivate {
-        seed: into_boxed(data.seed),
+        seed: data.seed.map(|b| b.as_ref().into()),
         private_key: into_boxed(data.private_key),
       },
     }
@@ -157,7 +159,7 @@ impl RawKeyData {
       RawKeyData::MlDsaPrivate { seed, private_key } => StoredKeyData {
         kind: "mldsa",
         data: None,
-        seed: Some(seed.as_ref().to_vec().into()),
+        seed: seed.as_ref().map(|s| s.as_ref().to_vec().into()),
         private_key: Some(private_key.as_ref().to_vec().into()),
       },
     }
