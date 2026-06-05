@@ -719,6 +719,13 @@ pub struct BundleFlags {
   pub watch: bool,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct TypesFlags {
+  /// Modules to print type declarations for (e.g. `jsr:@std/testing/bdd`).
+  /// When empty, `deno types` prints Deno's built-in runtime declarations.
+  pub specifiers: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
@@ -753,7 +760,7 @@ pub enum DenoSubcommand {
   Test(TestFlags),
   Transpile(TranspileFlags),
   Outdated(OutdatedFlags),
-  Types,
+  Types(TypesFlags),
   Upgrade(UpgradeFlags),
   Vendor,
   Why(WhyFlags),
@@ -4932,9 +4939,22 @@ fn types_subcommand() -> Command {
 
   <p(245)>deno types > lib.deno.d.ts</>
 
-The declaration file could be saved and used for typing information."
+The declaration file could be saved and used for typing information.
+
+When one or more module specifiers are given, the type declarations for
+those modules are emitted instead of the built-in runtime declarations:
+
+  <p(245)>deno types jsr:@std/testing/bdd > bdd.d.ts</>"
     ),
     UnstableArgsConfig::None,
+  )
+  .arg(
+    Arg::new("specifiers")
+      .help(
+        "Modules to print type declarations for (e.g. jsr:@std/testing/bdd)",
+      )
+      .num_args(0..)
+      .action(ArgAction::Append),
   )
 }
 
@@ -8219,8 +8239,12 @@ fn transpile_parse(
   Ok(())
 }
 
-fn types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Types;
+fn types_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let specifiers = matches
+    .remove_many::<String>("specifiers")
+    .map(|s| s.collect())
+    .unwrap_or_default();
+  flags.subcommand = DenoSubcommand::Types(TypesFlags { specifiers });
 }
 
 fn upgrade_parse(
@@ -10374,7 +10398,22 @@ mod tests {
     assert_eq!(
       r.unwrap(),
       Flags {
-        subcommand: DenoSubcommand::Types,
+        subcommand: DenoSubcommand::Types(TypesFlags::default()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn types_with_specifiers() {
+    let r =
+      flags_from_vec(svec!["deno", "types", "jsr:@std/testing/bdd", "npm:foo"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Types(TypesFlags {
+          specifiers: svec!["jsr:@std/testing/bdd", "npm:foo"],
+        }),
         ..Flags::default()
       }
     );
