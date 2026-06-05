@@ -87,6 +87,7 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
+use super::resolver::ImportMapHover;
 use super::resolver::LspResolver;
 use super::test_code_actions::collect_test_code_actions;
 use super::testing;
@@ -169,6 +170,21 @@ pub fn to_lsp_range(referrer: &deno_graph::Range) -> lsp_types::Range {
       character: referrer.range.end.character as u32,
     },
   }
+}
+
+/// Render the hover markdown describing how a specifier was resolved through an
+/// import map.
+fn import_map_hover_text(hover: &ImportMapHover) -> String {
+  let source = hover
+    .base_url
+    .path_segments()
+    .and_then(|mut s| s.next_back())
+    .filter(|s| !s.is_empty())
+    .unwrap_or_else(|| hover.base_url.as_str());
+  format!(
+    "**Import Map**: `{}` → `{}` _({})_\n",
+    hover.key, hover.value, source,
+  )
 }
 
 #[derive(Debug)]
@@ -295,6 +311,7 @@ pub struct Inner {
   /// Configuration information.
   pub config: Config,
   diagnostics_cache: OnceCellMap<Arc<Uri>, Arc<Vec<Diagnostic>>>,
+  no_slow_types_cache: diagnostics::NoSlowTypesDiagnosticsCache,
   diagnostics_server: Option<diagnostics::DiagnosticsServer>,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -596,6 +613,7 @@ impl Inner {
       compiler_options_resolver: Default::default(),
       config,
       diagnostics_cache: Default::default(),
+      no_slow_types_cache: Default::default(),
       diagnostics_server: None,
       document_modules: Default::default(),
       http_client_provider,
@@ -1932,7 +1950,7 @@ impl Inner {
     let Some(module) = self.get_primary_module(&document)? else {
       return Ok(None);
     };
-    let hover = if let Some((_, dep, range)) = module
+    let hover = if let Some((specifier_text, dep, range)) = module
       .dependency_at_position(&params.text_document_position_params.position)
     {
       let dep_module = dep.get_code().and_then(|s| {
@@ -1992,6 +2010,19 @@ impl Inner {
             .resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
         ),
         (true, true, _) => return Ok(None),
+      };
+      let value = if let Some(import_map_hover) = dep
+        .get_code()
+        .or_else(|| dep.maybe_type.maybe_specifier())
+        .and_then(|code| {
+          self
+            .resolver
+            .get_scoped_resolver(module.scope.as_deref())
+            .import_map_hover(specifier_text, code, &module.specifier)
+        }) {
+        format!("{value}\n{}", import_map_hover_text(&import_map_hover))
+      } else {
+        value
       };
       let value = if let Some(docs) = self.module_registry.get_hover(dep).await
       {
@@ -3053,6 +3084,7 @@ impl Inner {
           &self.snapshot(),
           &self.ts_server,
           &self.ambient_modules_regex_cache,
+          &self.no_slow_types_cache,
           token,
         )
         .await
@@ -3550,6 +3582,7 @@ impl Inner {
   ) {
     self.ambient_modules_regex_cache.clear();
     self.diagnostics_cache.clear();
+    self.no_slow_types_cache.clear();
     self.project_version += 1; // increment before getting the snapshot
     self.ts_server.project_changed(
       &documents,

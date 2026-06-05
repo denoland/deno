@@ -2432,12 +2432,13 @@ Deno.test(async function chaCha20Poly1305RoundTrip() {
   assertEquals(key.algorithm.name, "ChaCha20-Poly1305");
   assertEquals(key.type, "secret");
 
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  // Per https://wicg.github.io/webcrypto-modern-algos AEAD parameters use `iv`.
+  const iv = crypto.getRandomValues(new Uint8Array(12));
   const plaintext = new TextEncoder().encode("Hello, ChaCha20-Poly1305!");
   const aad = new TextEncoder().encode("authentic-aad");
 
   const ciphertext = await crypto.subtle.encrypt(
-    { name: "ChaCha20-Poly1305", nonce, additionalData: aad } as AnyAlg,
+    { name: "ChaCha20-Poly1305", iv, additionalData: aad } as AnyAlg,
     key,
     plaintext,
   );
@@ -2445,7 +2446,7 @@ Deno.test(async function chaCha20Poly1305RoundTrip() {
   assertEquals(ciphertext.byteLength, plaintext.byteLength + 16);
 
   const decrypted = await crypto.subtle.decrypt(
-    { name: "ChaCha20-Poly1305", nonce, additionalData: aad } as AnyAlg,
+    { name: "ChaCha20-Poly1305", iv, additionalData: aad } as AnyAlg,
     key,
     ciphertext,
   );
@@ -2458,11 +2459,11 @@ Deno.test(async function chaCha20Poly1305TamperDetected() {
     true,
     ["encrypt", "decrypt"],
   ) as unknown as CryptoKey;
-  const nonce = new Uint8Array(12);
+  const iv = new Uint8Array(12);
   const plaintext = new Uint8Array([1, 2, 3, 4]);
   const ciphertext = new Uint8Array(
     await crypto.subtle.encrypt(
-      { name: "ChaCha20-Poly1305", nonce } as AnyAlg,
+      { name: "ChaCha20-Poly1305", iv } as AnyAlg,
       key,
       plaintext,
     ),
@@ -2471,38 +2472,174 @@ Deno.test(async function chaCha20Poly1305TamperDetected() {
   ciphertext[ciphertext.length - 1] ^= 1;
   await assertRejects(() =>
     crypto.subtle.decrypt(
-      { name: "ChaCha20-Poly1305", nonce } as AnyAlg,
+      { name: "ChaCha20-Poly1305", iv } as AnyAlg,
       key,
       ciphertext,
     ), DOMException);
 });
 
-Deno.test(async function chaCha20Poly1305RejectsBadNonceLength() {
+Deno.test(async function chaCha20Poly1305RejectsBadIvLength() {
   const key = await crypto.subtle.generateKey(
     { name: "ChaCha20-Poly1305" } as AnyAlg,
     true,
     ["encrypt", "decrypt"],
   ) as unknown as CryptoKey;
-  const badNonce = new Uint8Array(11); // not 12
+  const badIv = new Uint8Array(11); // not 12
   await assertRejects(() =>
     crypto.subtle.encrypt(
-      { name: "ChaCha20-Poly1305", nonce: badNonce } as AnyAlg,
+      { name: "ChaCha20-Poly1305", iv: badIv } as AnyAlg,
       key,
       new Uint8Array(1),
     ), DOMException);
 });
 
-Deno.test(async function chaCha20Poly1305ImportRawKey() {
+Deno.test(async function chaCha20Poly1305ImportRawSecretKey() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
   const raw = new Uint8Array(32).fill(0x42);
-  const key = await crypto.subtle.importKey(
-    "raw",
+  const key = await subtle.importKey(
+    "raw-secret",
     raw,
-    { name: "ChaCha20-Poly1305" } as AnyAlg,
+    { name: "ChaCha20-Poly1305" },
     true,
     ["encrypt", "decrypt"],
   );
-  const exported = new Uint8Array(await crypto.subtle.exportKey("raw", key));
+  const exported = new Uint8Array(await subtle.exportKey("raw-secret", key));
   assertEquals(exported, raw);
+});
+
+Deno.test(async function chaCha20Poly1305ImportExportJwk() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const raw = new Uint8Array(32).fill(0x42);
+  const imported = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const jwk = await subtle.exportKey("jwk", imported);
+  assertEquals(jwk.kty, "oct");
+  assertEquals(jwk.alg, "C20P");
+
+  const key = await subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const exported = new Uint8Array(await subtle.exportKey("raw-secret", key));
+  assertEquals(exported, raw);
+});
+
+// deriveKey() must work for modern symmetric algorithms: its internal import
+// step uses "raw-secret", which ChaCha20-Poly1305 accepts.
+Deno.test(async function chaCha20Poly1305DeriveKey() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const baseKey = await subtle.importKey(
+    "raw",
+    new Uint8Array(16),
+    { name: "HKDF" },
+    false,
+    ["deriveKey"],
+  );
+  const derived = await subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new Uint8Array(0),
+      info: new Uint8Array(0),
+    },
+    baseKey,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  assertEquals(derived.algorithm.name, "ChaCha20-Poly1305");
+  assertEquals(derived.type, "secret");
+
+  const iv = new Uint8Array(12);
+  const ct = await subtle.encrypt(
+    { name: "ChaCha20-Poly1305", iv },
+    derived,
+    new Uint8Array([1, 2, 3]),
+  );
+  const pt = await subtle.decrypt(
+    { name: "ChaCha20-Poly1305", iv },
+    derived,
+    ct,
+  );
+  assertEquals(new Uint8Array(pt), new Uint8Array([1, 2, 3]));
+});
+
+// New symmetric algorithms only recognize "raw-secret", not the legacy "raw".
+Deno.test(async function chaCha20Poly1305RejectsRawFormat() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const raw = new Uint8Array(32).fill(0x42);
+  await assertRejects(() =>
+    subtle.importKey(
+      "raw",
+      raw,
+      { name: "ChaCha20-Poly1305" },
+      true,
+      ["encrypt", "decrypt"],
+    ), DOMException);
+
+  const key = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  await assertRejects(() => subtle.exportKey("raw", key), DOMException);
+});
+
+// For existing symmetric algorithms "raw" is an alias of "raw-secret".
+Deno.test(async function rawSecretAliasForExistingSymmetricAlgorithms() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const raw = new Uint8Array(16).fill(0x11);
+
+  // AES-GCM round-trips through both "raw" and "raw-secret".
+  const aesKey = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "AES-GCM" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  assertEquals(new Uint8Array(await subtle.exportKey("raw", aesKey)), raw);
+  assertEquals(
+    new Uint8Array(await subtle.exportKey("raw-secret", aesKey)),
+    raw,
+  );
+
+  // HMAC round-trips through both "raw" and "raw-secret".
+  const hmacKey = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "HMAC", hash: "SHA-256" },
+    true,
+    ["sign", "verify"],
+  );
+  assertEquals(
+    new Uint8Array(await subtle.exportKey("raw-secret", hmacKey)),
+    raw,
+  );
+
+  // HKDF accepts "raw-secret" as well.
+  await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "HKDF" },
+    false,
+    ["deriveBits"],
+  );
 });
 
 Deno.test(async function hmacSha3SignVerify() {

@@ -1298,10 +1298,15 @@ fn catch_dynamic_import_promise_error<'s, 'i>(
         }
         _ => v8::Exception::error(scope, message),
       };
-      let code_key = CODE.v8_string(scope).unwrap();
-      let code_value = ERR_MODULE_NOT_FOUND.v8_string(scope).unwrap();
-      let exception_obj = exception.to_object(scope).unwrap();
-      exception_obj.set(scope, code_key.into(), code_value.into());
+      // V8 module linking errors (e.g. a missing named export) are
+      // spec-defined `SyntaxError`s and must not carry a host-defined `code`.
+      // Only genuine resolution/loading failures get `ERR_MODULE_NOT_FOUND`.
+      if name.as_str() != deno_error::builtin_classes::SYNTAX_ERROR {
+        let code_key = CODE.v8_string(scope).unwrap();
+        let code_value = ERR_MODULE_NOT_FOUND.v8_string(scope).unwrap();
+        let exception_obj = exception.to_object(scope).unwrap();
+        exception_obj.set(scope, code_key.into(), code_value.into());
+      }
       scope.throw_exception(exception);
       return;
     }

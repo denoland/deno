@@ -25,6 +25,7 @@ use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
@@ -268,7 +269,7 @@ pub async fn bundle_init(
     Default::default(),
   )
   .await
-  .unwrap();
+  .context("failed to start esbuild")?;
   let client = esbuild.client().clone();
 
   tokio::spawn(async move {
@@ -668,7 +669,7 @@ impl EsbuildBundler {
       .client
       .send_build_request(self.make_build_request())
       .await
-      .unwrap()
+      .context("failed to send build request to esbuild")?
       .map_err(|e| message_to_error(&e, &self.cwd))?;
 
     Ok(response)
@@ -685,9 +686,13 @@ impl EsbuildBundler {
           .client
           .send_rebuild_request(0)
           .await
-          .unwrap()
+          .context("failed to send rebuild request to esbuild")?
           .map_err(|e| message_to_error(&e, &self.cwd))?;
-        let response = self.on_end_rx.recv().await.unwrap();
+        let response = self.on_end_rx.recv().await.ok_or_else(|| {
+          deno_core::anyhow::anyhow!(
+            "esbuild exited before the rebuild completed"
+          )
+        })?;
         Ok(response.into())
       }
     }
