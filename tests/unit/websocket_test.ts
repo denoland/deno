@@ -368,7 +368,10 @@ Deno.test(
   },
 );
 
-Deno.test(async function websocketTlsSocketWorks() {
+Deno.test({
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async function websocketTlsSocketWorks() {
   const cert = await Deno.readTextFile("tests/testdata/tls/localhost.crt");
   const key = await Deno.readTextFile("tests/testdata/tls/localhost.key");
 

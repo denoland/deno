@@ -2072,6 +2072,17 @@ Deno.test(
   },
 );
 
+Deno.test(function requestConstructorDoesNotNormalizePatchMethod() {
+  assertEquals(
+    new Request("https://example.com", { method: "patch" }).method,
+    "patch",
+  );
+  assertEquals(
+    new Request("https://example.com", { method: "PATCH" }).method,
+    "PATCH",
+  );
+});
+
 Deno.test(
   // TODO(bartlomieju): reenable this test
   // https://github.com/denoland/deno/issues/18350

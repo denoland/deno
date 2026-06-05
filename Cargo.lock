@@ -2441,6 +2441,7 @@ dependencies = [
  "bytes",
  "deno_core",
  "deno_error",
+ "deno_http_h1",
  "deno_net",
  "deno_telemetry",
  "deno_websocket",
@@ -2448,6 +2449,7 @@ dependencies = [
  "http",
  "http-body-util",
  "httparse",
+ "httpdate",
  "hyper",
  "hyper-util",
  "itertools 0.14.0",
@@ -2464,6 +2466,17 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tokio-vsock",
+]
+
+[[package]]
+name = "deno_http_h1"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "httparse",
+ "memchr",
+ "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]
