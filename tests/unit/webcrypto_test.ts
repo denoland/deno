@@ -2534,6 +2534,47 @@ Deno.test(async function chaCha20Poly1305ImportExportJwk() {
   assertEquals(exported, raw);
 });
 
+// deriveKey() must work for modern symmetric algorithms: its internal import
+// step uses "raw-secret", which ChaCha20-Poly1305 accepts.
+Deno.test(async function chaCha20Poly1305DeriveKey() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const baseKey = await subtle.importKey(
+    "raw",
+    new Uint8Array(16),
+    { name: "HKDF" },
+    false,
+    ["deriveKey"],
+  );
+  const derived = await subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new Uint8Array(0),
+      info: new Uint8Array(0),
+    },
+    baseKey,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  assertEquals(derived.algorithm.name, "ChaCha20-Poly1305");
+  assertEquals(derived.type, "secret");
+
+  const iv = new Uint8Array(12);
+  const ct = await subtle.encrypt(
+    { name: "ChaCha20-Poly1305", iv },
+    derived,
+    new Uint8Array([1, 2, 3]),
+  );
+  const pt = await subtle.decrypt(
+    { name: "ChaCha20-Poly1305", iv },
+    derived,
+    ct,
+  );
+  assertEquals(new Uint8Array(pt), new Uint8Array([1, 2, 3]));
+});
+
 // New symmetric algorithms only recognize "raw-secret", not the legacy "raw".
 Deno.test(async function chaCha20Poly1305RejectsRawFormat() {
   // deno-lint-ignore no-explicit-any

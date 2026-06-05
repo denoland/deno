@@ -280,6 +280,7 @@ const supportedAlgorithms = {
     "AES-GCM": "AesDerivedKeyParams",
     "AES-KW": "AesDerivedKeyParams",
     "HMAC": "HmacImportParams",
+    "ChaCha20-Poly1305": null,
     "HKDF": null,
     "PBKDF2": null,
   },
@@ -765,6 +766,10 @@ function getKeyLength(algorithm) {
 
       // 2.
       return length;
+    }
+    case "ChaCha20-Poly1305": {
+      // ChaCha20-Poly1305 keys are always 256 bits.
+      return 256;
     }
     case "HKDF": {
       // 1.
@@ -1565,8 +1570,11 @@ class SubtleCrypto {
     );
 
     // 15.
+    // Use "raw-secret" (the unified symmetric key format) so deriveKey works
+    // for both the existing symmetric algorithms (where "raw" is an alias) and
+    // the modern ones (e.g. ChaCha20-Poly1305) that only accept "raw-secret".
     const result = await this.importKey(
-      "raw",
+      "raw-secret",
       secret,
       normalizedDerivedKeyAlgorithmImport,
       extractable,
