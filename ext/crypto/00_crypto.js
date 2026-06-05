@@ -3716,7 +3716,13 @@ function exportKeyAES(
   switch (format) {
     // 2.
     // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    // AES-OCB is a newer (tentative) algorithm whose "raw-secret" support is
+    // tracked separately, so it is intentionally excluded from the alias here.
     case "raw-secret":
+      if (key[_algorithm].name === "AES-OCB") {
+        throw new DOMException("Not implemented", "NotSupportedError");
+      }
+      /* falls through */
     case "raw": {
       // 1.
       const data = innerKey.data;
@@ -3769,13 +3775,38 @@ function exportKeyAES(
   }
 }
 
-function exportKeyChaCha20Poly1305(format, _key, innerKey) {
+function exportKeyChaCha20Poly1305(format, key, innerKey) {
   switch (format) {
     // ChaCha20-Poly1305 is a modern symmetric algorithm and therefore only
     // recognizes "raw-secret" (not the "raw" alias).
     case "raw-secret": {
       const data = innerKey.data;
       return TypedArrayPrototypeGetBuffer(data);
+    }
+    case "jwk": {
+      // 1-2.
+      const jwk = {
+        kty: "oct",
+      };
+
+      // 3.
+      const data = op_crypto_export_key({
+        format: "jwksecret",
+        algorithm: "AES",
+      }, innerKey);
+      jwk.k = data.k;
+
+      // 4.
+      jwk.alg = "C20P";
+
+      // 5.
+      jwk.key_ops = key.usages;
+
+      // 6.
+      jwk.ext = key[_extractable];
+
+      // 7.
+      return jwk;
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
@@ -4009,6 +4040,7 @@ function importKeyChaCha20Poly1305(
     throw new DOMException("Invalid key usage", "SyntaxError");
   }
 
+  let data;
   switch (format) {
     // ChaCha20-Poly1305 is a modern symmetric algorithm and therefore only
     // recognizes "raw-secret" (not the "raw" alias).
@@ -4019,28 +4051,113 @@ function importKeyChaCha20Poly1305(
           "DataError",
         );
       }
+      data = keyData;
+      break;
+    }
+    case "jwk": {
+      const jwk = keyData;
 
-      const handle = {};
-      setKeyData(handle, {
-        type: "secret",
-        data: keyData,
-      });
+      // 2.
+      if (jwk.kty !== "oct") {
+        throw new DOMException(
+          "'kty' property of JsonWebKey must be 'oct'",
+          "DataError",
+        );
+      }
 
-      const algorithm = {
-        name: "ChaCha20-Poly1305",
-      };
+      // Section 6.4.1 of RFC7518
+      if (jwk.k === undefined) {
+        throw new DOMException(
+          "'k' property of JsonWebKey must be present",
+          "DataError",
+        );
+      }
 
-      return constructKey(
-        "secret",
-        extractable,
-        usageIntersection(keyUsages, recognisedUsages),
-        algorithm,
-        handle,
+      // 4.
+      const { rawData } = op_crypto_import_key(
+        { algorithm: "AES" },
+        { jwkSecret: jwk },
       );
+      data = rawData.data;
+
+      // 5.
+      if (TypedArrayPrototypeGetByteLength(data) !== 32) {
+        throw new DOMException(
+          "Invalid key length: ChaCha20-Poly1305 requires 256-bit key",
+          "DataError",
+        );
+      }
+
+      // 6.
+      if (jwk.alg !== undefined && jwk.alg !== "C20P") {
+        throw new DOMException(`Invalid algorithm: ${jwk.alg}`, "DataError");
+      }
+
+      // 7.
+      if (
+        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
+      ) {
+        throw new DOMException("Invalid key usage", "DataError");
+      }
+
+      // 8.
+      // Section 4.3 of RFC7517
+      if (jwk.key_ops !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            jwk.key_ops,
+            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+          ) !== undefined
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        if (
+          !ArrayPrototypeEvery(
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
+          )
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+      }
+
+      // 9.
+      if (jwk.ext === false && extractable === true) {
+        throw new DOMException(
+          "'ext' property of JsonWebKey must not be false if extractable is true",
+          "DataError",
+        );
+      }
+      break;
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
   }
+
+  const handle = {};
+  setKeyData(handle, {
+    type: "secret",
+    data,
+  });
+
+  const algorithm = {
+    name: "ChaCha20-Poly1305",
+  };
+
+  return constructKey(
+    "secret",
+    extractable,
+    usageIntersection(keyUsages, recognisedUsages),
+    algorithm,
+    handle,
+  );
 }
 
 function importKeyAES(
@@ -4068,7 +4185,13 @@ function importKeyAES(
 
   switch (format) {
     // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    // AES-OCB is a newer (tentative) algorithm whose "raw-secret" support is
+    // tracked separately, so it is intentionally excluded from the alias here.
     case "raw-secret":
+      if (algorithmName === "AES-OCB") {
+        throw new DOMException("Not implemented", "NotSupportedError");
+      }
+      /* falls through */
     case "raw": {
       // 2.
       if (

@@ -2508,6 +2508,32 @@ Deno.test(async function chaCha20Poly1305ImportRawSecretKey() {
   assertEquals(exported, raw);
 });
 
+Deno.test(async function chaCha20Poly1305ImportExportJwk() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const raw = new Uint8Array(32).fill(0x42);
+  const imported = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const jwk = await subtle.exportKey("jwk", imported);
+  assertEquals(jwk.kty, "oct");
+  assertEquals(jwk.alg, "C20P");
+
+  const key = await subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const exported = new Uint8Array(await subtle.exportKey("raw-secret", key));
+  assertEquals(exported, raw);
+});
+
 // New symmetric algorithms only recognize "raw-secret", not the legacy "raw".
 Deno.test(async function chaCha20Poly1305RejectsRawFormat() {
   // deno-lint-ignore no-explicit-any
