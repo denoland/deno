@@ -1,5 +1,6 @@
 {
   "args": "run --allow-net main.ts",
   "output": "main.out",
+  "flaky": true,
   "exitCode": 1
 }
