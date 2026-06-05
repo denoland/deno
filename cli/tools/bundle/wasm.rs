@@ -20,6 +20,12 @@ use indexmap::IndexMap;
 /// 2. inlines the Wasm bytes as base64 and compiles + instantiates them
 ///    synchronously, and
 /// 3. re-exports the instance's exports as named (and possibly default) exports.
+///
+/// Tradeoffs of keeping the bundle self-contained: compilation happens
+/// synchronously at module-eval time (which blocks the thread for that module)
+/// and the base64 inline grows the output by ~1.33x. Async compilation isn't an
+/// option here because esbuild can't consume the source-phase
+/// `import source ... from` / `import.meta.WasmInstance` form Deno uses natively.
 pub fn render_js_wasm_module(
   bytes: &[u8],
 ) -> Result<String, wasm_dep_analyzer::ParseError> {
@@ -155,6 +161,19 @@ mod test {
     0x00, 0x20, 0x01, 0x6a, 0x0b,
   ];
 
+  // A minimal Wasm module that imports `addOne` from `./dep.js` and exports
+  // `callImport`: `(module (import "./dep.js" "addOne" (func (param i32)
+  // (result i32))) (func (export "callImport") (param i32) (result i32)
+  // local.get 0 call 0))`.
+  const CALC_WASM: &[u8] = &[
+    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x60,
+    0x01, 0x7f, 0x01, 0x7f, 0x02, 0x13, 0x01, 0x08, 0x2e, 0x2f, 0x64, 0x65,
+    0x70, 0x2e, 0x6a, 0x73, 0x06, 0x61, 0x64, 0x64, 0x4f, 0x6e, 0x65, 0x00,
+    0x00, 0x03, 0x02, 0x01, 0x00, 0x07, 0x0e, 0x01, 0x0a, 0x63, 0x61, 0x6c,
+    0x6c, 0x49, 0x6d, 0x70, 0x6f, 0x72, 0x74, 0x00, 0x01, 0x0a, 0x08, 0x01,
+    0x06, 0x00, 0x20, 0x00, 0x10, 0x00, 0x0b,
+  ];
+
   #[test]
   fn renders_exports_without_imports() {
     let rendered = render_js_wasm_module(ADD_WASM).unwrap();
@@ -167,5 +186,24 @@ mod test {
     assert!(rendered.contains("__deno_wasm_instance__[\"add\"]"));
     assert!(rendered.contains("as \"add\""));
     assert!(!rendered.contains("__deno_wasm_imports__"));
+  }
+
+  #[test]
+  fn renders_imports_object_and_named_imports() {
+    let rendered = render_js_wasm_module(CALC_WASM).unwrap();
+    // The wasm import is emitted as an ES import esbuild can resolve.
+    assert!(rendered.contains(
+      "import { \"addOne\" as __deno_wasm_import_0_0__ } from \"./dep.js\";"
+    ));
+    // ...and forwarded into the imports object passed to `WebAssembly.Instance`.
+    assert!(rendered.contains("const __deno_wasm_imports__ = {"));
+    assert!(rendered.contains("\"./dep.js\": {"));
+    assert!(rendered.contains("\"addOne\": __deno_wasm_import_0_0__,"));
+    assert!(rendered.contains(
+      "new WebAssembly.Instance(new WebAssembly.Module(__deno_wasm_bytes__), __deno_wasm_imports__).exports"
+    ));
+    // The export is re-exported.
+    assert!(rendered.contains("__deno_wasm_instance__[\"callImport\"]"));
+    assert!(rendered.contains("as \"callImport\""));
   }
 }
