@@ -212,6 +212,7 @@ pub struct CompileFlags {
   pub output: Option<String>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub watch: Option<WatchFlags>,
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
@@ -777,6 +778,9 @@ impl DenoSubcommand {
         watch: Some(flags), ..
       })
       | Self::Fmt(FmtFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Compile(CompileFlags {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::Watch(flags)),
       _ => None,
@@ -2875,8 +2879,7 @@ fn clean_subcommand() -> Command {
         Arg::new("dry-run")
           .long("dry-run")
           .action(ArgAction::SetTrue)
-          .help("Show what would be removed without performing any actions")
-          .requires("except"),
+          .help("Show what would be removed without performing any actions"),
       )
       .arg(node_modules_dir_arg().requires("except"))
       .arg(node_modules_linker_arg().requires("except"))
@@ -3060,6 +3063,9 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .requires("bundle")
           .help_heading(COMPILE_HEADING),
       )
+      .arg(watch_arg(false))
+      .arg(watch_exclude_arg())
+      .arg(no_clear_screen_arg())
       .arg(executable_ext_arg())
       .arg(env_file_arg())
       .arg(
@@ -6898,7 +6904,7 @@ fn check_parse(
 fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let mut clean_flags = CleanFlags {
     except_paths: Vec::new(),
-    dry_run: false,
+    dry_run: matches.get_flag("dry-run"),
   };
   if matches.get_flag("except") {
     clean_flags.except_paths = matches
@@ -6906,7 +6912,6 @@ fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .unwrap()
       .collect::<Vec<_>>();
     flags.cached_only = true;
-    clean_flags.dry_run = matches.get_flag("dry-run");
     node_modules_and_vendor_dir_arg_parse(flags, matches);
   }
   flags.subcommand = DenoSubcommand::Clean(clean_flags);
@@ -6937,6 +6942,7 @@ fn compile_parse(
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
+  let watch = watch_arg_parse(matches)?;
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
@@ -6960,6 +6966,7 @@ fn compile_parse(
     output,
     args,
     target,
+    watch,
     no_terminal,
     icon,
     include,
@@ -13563,6 +13570,45 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          watch: None,
+          no_terminal: false,
+          icon: None,
+          include: Default::default(),
+          exclude: Default::default(),
+          eszip: false,
+          self_extracting: false,
+          bundle: false,
+          minify: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn compile_watch_with_no_clear_screen() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--watch",
+      "--no-clear-screen",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Compile(CompileFlags {
+          source_file: "main.ts".to_string(),
+          output: None,
+          args: vec![],
+          target: None,
+          watch: Some(WatchFlags {
+            hmr: false,
+            no_clear_screen: true,
+            exclude: vec![],
+          }),
           no_terminal: false,
           icon: None,
           include: Default::default(),
@@ -13592,6 +13638,7 @@ mod tests {
           output: Some(String::from("colors")),
           args: svec!["foo", "bar", "-p", "8080"],
           target: None,
+          watch: None,
           no_terminal: true,
           icon: Some(String::from("favicon.ico")),
           include: vec!["include.txt".to_string()],
@@ -16032,9 +16079,18 @@ Usage: deno lint [OPTIONS] [files]...\n"
           dry_run: true,
         },
       ),
+      (
+        svec!["--dry-run"],
+        CleanFlags {
+          except_paths: vec![],
+          dry_run: true,
+        },
+      ),
     ];
     for (input, expected) in cases {
-      let cached_only = !input.is_empty();
+      // `--except` builds a module graph of the retained paths, so it parses
+      // with `--cached-only`; other invocations (e.g. `--dry-run` alone) don't.
+      let cached_only = input.iter().any(|arg| arg == "--except");
       let mut args = svec!["deno", "clean"];
       args.extend(input);
       let r = flags_from_vec(args.clone())
@@ -16183,6 +16239,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           output: None,
           args: vec![],
           target: None,
+          watch: None,
           no_terminal: false,
           icon: None,
           include: Default::default(),
