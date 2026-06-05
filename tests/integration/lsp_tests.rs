@@ -15227,6 +15227,78 @@ fn lsp_code_actions_lint_fixes() {
 }
 
 #[test(timeout = 300)]
+fn lsp_no_slow_types_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  // a publishable JSR package - its public API is checked for slow types
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "name": "@foo/bar",
+  "version": "1.0.0",
+  "exports": "./mod.ts"
+}
+"#,
+  );
+  // `add` is missing an explicit return type, which is a slow type
+  temp_dir.write(
+    "mod.ts",
+    "export function add(a: number, b: number) {\n  return a + b;\n}\n",
+  );
+  // not part of the package's public API, so it shouldn't be checked
+  temp_dir.write(
+    "other.ts",
+    "export function sub(a: number, b: number) {\n  return a - b;\n}\n",
+  );
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("mod.ts"),
+    }
+  }));
+  let mod_diagnostics = diagnostics.all();
+  assert!(
+    mod_diagnostics.iter().any(|d| {
+      d.source.as_deref() == Some("deno-lint")
+        && d.code
+          == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
+    }),
+    "expected a no-slow-types diagnostic on the package entrypoint, got: {mod_diagnostics:#?}"
+  );
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("other.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("other.ts"),
+    }
+  }));
+  let other_diagnostics = diagnostics.all_messages();
+  let other_uri =
+    url_to_uri(&temp_dir.url().join("other.ts").unwrap()).unwrap();
+  assert!(
+    !other_diagnostics
+      .iter()
+      .filter(|m| m.uri == other_uri)
+      .flat_map(|m| m.diagnostics.iter())
+      .any(|d| {
+        d.code == Some(lsp::NumberOrString::String("no-slow-types".to_string()))
+      }),
+    "expected no no-slow-types diagnostics on a non-export module, got: {other_diagnostics:#?}"
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_lint_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
