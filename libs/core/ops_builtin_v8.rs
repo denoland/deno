@@ -197,6 +197,23 @@ pub fn op_lazy_load_esm(
   module_map_rc.lazy_load_esm_module(scope, &module_specifier)
 }
 
+/// Evict a module from the module map so the next `import()` of it recompiles
+/// and re-evaluates it (Hot Module Replacement). Dependencies are left intact,
+/// so a shared dependency keeps its singleton and the reloaded module rebinds
+/// to that same instance. Returns `true` if the specifier was found and
+/// evicted. Backs `Deno.core.reloadEsModule`.
+#[op2(fast)]
+pub fn op_reload_module_evict(
+  scope: &mut v8::PinScope,
+  #[string] specifier: String,
+) -> bool {
+  let Ok(url) = resolve_url(&specifier) else {
+    return false;
+  };
+  let module_map_rc = JsRealm::module_map_from(scope);
+  !module_map_rc.evict_for_reload(&[url]).is_empty()
+}
+
 #[op2(reentrant)]
 pub fn op_load_ext_script(
   scope: &mut v8::PinScope,

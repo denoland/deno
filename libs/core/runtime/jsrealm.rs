@@ -685,6 +685,29 @@ impl JsRealm {
     Ok(root_id)
   }
 
+  /// Reload an already-loaded ES module (HMR). The module is evicted from the
+  /// module map and re-loaded from the [`ModuleLoader`], producing a fresh
+  /// `v8::Module` whose imports resolve to the surviving (un-evicted) instances
+  /// -- so shared dependencies keep their singletons. The returned `ModuleId`
+  /// is new; the caller must evaluate it with [`JsRealm::mod_evaluate`].
+  ///
+  /// Only the named module is reloaded. Importers of the old module are not
+  /// rebound to the new instance; that is the responsibility of
+  /// `import.meta.hot` boundaries (a later layer).
+  pub(crate) async fn reload_es_module(
+    &self,
+    isolate: &mut v8::Isolate,
+    specifier: &ModuleSpecifier,
+  ) -> Result<ModuleId, CoreError> {
+    self
+      .0
+      .module_map()
+      .evict_for_reload(std::slice::from_ref(specifier));
+    self
+      .load_side_es_module_from_code(isolate, specifier.to_string(), None)
+      .await
+  }
+
   /// Load and evaluate an ES module provided the specifier and source code.
   ///
   /// The module should not have Top-Level Await (that is, it should be

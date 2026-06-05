@@ -97,6 +97,26 @@ impl<T> ModuleNameTypeMap<T> {
     }
   }
 
+  /// Remove the entry for `name`+`module_type`, returning the previous value
+  /// if present. Used by the module reload engine (HMR) to evict a module so
+  /// the next load recompiles it instead of skipping it as already-registered.
+  pub fn remove<Q>(
+    &mut self,
+    module_type: &RequestedModuleType,
+    name: &Q,
+  ) -> Option<T>
+  where
+    ModuleName: std::borrow::Borrow<Q>,
+    Q: std::cmp::Eq + std::hash::Hash + ?Sized,
+  {
+    let index = self.map_index(module_type)?;
+    let removed = self.submaps.get_mut(index)?.remove(name);
+    if removed.is_some() {
+      self.len -= 1;
+    }
+    removed
+  }
+
   /// Rather than providing an iterator, we provide a drain method. This is mainly because Rust
   /// doesn't have generators.
   pub fn drain(
@@ -402,6 +422,78 @@ impl ModuleMapData {
   pub(crate) fn get_name_by_id(&self, id: ModuleId) -> Option<String> {
     // TODO(mmastrac): Don't clone
     self.info.get(id).map(|info| info.name.as_str().to_owned())
+  }
+
+  /// Compute the set of modules that must be reloaded together with the given
+  /// `seed` modules: the seeds plus every module that transitively imports any
+  /// of them. The importer relation is the inverse of each module's
+  /// [`ModuleInfo::requests`]. Used by the HMR reload engine to evict a closure
+  /// so importers rebind to the freshly compiled dependencies.
+  ///
+  /// Note: this stops at nothing (it always climbs to the entry point). Layer 2
+  /// (`import.meta.hot`) will pass a `stop` set of accepting boundaries.
+  // Phase 2 (`import.meta.hot` boundary bubbling) infrastructure; the Phase 1
+  // imperative reload primitive evicts only the named modules.
+  #[allow(dead_code)]
+  pub(crate) fn compute_importer_closure(
+    &self,
+    seeds: &HashSet<ModuleId>,
+  ) -> HashSet<ModuleId> {
+    // Build the inverse edge list: dependency_id -> [importer_id].
+    let mut importers: HashMap<ModuleId, Vec<ModuleId>> = HashMap::new();
+    for info in &self.info {
+      for request in &info.requests {
+        if let Some(target) = self.get_id(
+          request.reference.specifier.as_str(),
+          &request.reference.requested_module_type,
+        ) {
+          importers.entry(target).or_default().push(info.id);
+        }
+      }
+    }
+
+    let mut closure: HashSet<ModuleId> = HashSet::new();
+    let mut queue: Vec<ModuleId> = seeds.iter().copied().collect();
+    while let Some(id) = queue.pop() {
+      if !closure.insert(id) {
+        continue;
+      }
+      if let Some(parents) = importers.get(&id) {
+        for &parent in parents {
+          if !closure.contains(&parent) {
+            queue.push(parent);
+          }
+        }
+      }
+    }
+    closure
+  }
+
+  /// Evict the given modules from the `by_name` lookup so the next load
+  /// recompiles them instead of skipping them as already-registered. The
+  /// `handles`/`info`/`handles_inverted` entries are left in place (tombstoned)
+  /// so existing [`ModuleId`] indices stay valid; the orphaned `v8::Module`
+  /// keeps the old instance's top-level state alive until it is dropped, but it
+  /// is no longer reachable by specifier. Eviction only ever runs at runtime,
+  /// never at snapshot time, so the snapshot length invariants are unaffected.
+  pub(crate) fn evict_modules(&mut self, ids: &HashSet<ModuleId>) {
+    // Collect owned eviction keys first to avoid borrowing `self.info` while
+    // mutating `self.by_name`/`self.handles_inverted`.
+    let evictions: Vec<(RequestedModuleType, String, v8::Global<v8::Module>)> =
+      ids
+        .iter()
+        .filter_map(|&id| {
+          let info = self.info.get(id)?;
+          let handle = self.handles.get(id)?.clone();
+          let requested_module_type =
+            RequestedModuleType::from(info.module_type.clone());
+          Some((requested_module_type, info.name.as_str().to_owned(), handle))
+        })
+        .collect();
+    for (requested_module_type, name, handle) in evictions {
+      self.by_name.remove(&requested_module_type, name.as_str());
+      self.handles_inverted.remove(&handle);
+    }
   }
 
   pub fn serialize_for_snapshotting(

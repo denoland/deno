@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::future::Future;
 use std::ops::DerefMut;
 use std::pin::Pin;
@@ -425,6 +426,34 @@ impl ModuleMap {
 
   pub(crate) fn get_data(&self) -> &RefCell<ModuleMapData> {
     &self.data
+  }
+
+  /// Evict the given specifiers from the `by_name` lookup so the next load
+  /// recompiles them instead of skipping them as already-registered. This is
+  /// the eviction step of the HMR reload engine; the caller then re-drives a
+  /// load (see [`crate::JsRuntime::reload_es_module`]). Returns the set of
+  /// evicted [`ModuleId`]s (those whose specifier was found and removed).
+  ///
+  /// Only the named specifiers are evicted (not their importer closure): the
+  /// re-driven load recompiles them while their dependencies resolve to the
+  /// surviving instances, preserving shared singletons. Rebinding importers to
+  /// the fresh instances is the job of `import.meta.hot` boundaries (a later
+  /// layer); `compute_importer_closure` exists for that.
+  pub(crate) fn evict_for_reload(
+    &self,
+    specifiers: &[ModuleSpecifier],
+  ) -> HashSet<ModuleId> {
+    let mut data = self.data.borrow_mut();
+    let mut ids = HashSet::new();
+    for specifier in specifiers {
+      if let Some(id) =
+        data.get_id(specifier.as_str(), RequestedModuleType::None)
+      {
+        ids.insert(id);
+      }
+    }
+    data.evict_modules(&ids);
+    ids
   }
 
   #[cfg(test)]

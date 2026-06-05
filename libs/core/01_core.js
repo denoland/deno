@@ -61,6 +61,7 @@
     op_get_ext_import_meta_proto,
     op_drain_pending_rejections,
     op_lazy_load_esm,
+    op_reload_module_evict,
     op_load_ext_script,
     op_set_captured_bootstrap,
     op_memory_usage,
@@ -930,6 +931,17 @@
     };
   }
 
+  // Hot Module Replacement escape hatch. Evicts the module from the module
+  // map so the following dynamic import recompiles and re-evaluates it,
+  // returning its fresh namespace. Dependencies are left intact, so shared
+  // dependencies keep their singleton state. Importers of the old instance are
+  // NOT rebound -- callers use the returned namespace (or an `import.meta.hot`
+  // boundary) to wire up the new module.
+  function reloadEsModule(specifier) {
+    op_reload_module_evict(specifier);
+    return import(specifier);
+  }
+
   const loadedScripts = { __proto__: null };
 
   // Note: the Rust side of `op_load_ext_script` (in `libs/core/modules/map.rs`)
@@ -1250,6 +1262,7 @@
     propNonEnumerableLazyLoaded,
     defineGlobalProperties,
     createLazyLoader,
+    reloadEsModule,
     loadExtScript,
     createCancelHandle: () => op_cancel_handle(),
     getAsyncContext,
