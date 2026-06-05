@@ -3427,14 +3427,19 @@ function colorEquals(color1, color2) {
 
 // `background-color` and `color` can be stored either as an already parsed
 // `[r, g, b]` array or as a raw string (a named color like "white" or a
-// hex/rgb/hsl string). Normalize both sides to `[r, g, b]` arrays before
-// comparing, otherwise raw strings get compared by character index and two
-// different colors sharing a prefix (e.g. "#FFFFFF" and "#FFAFC8", which share
-// the same red component) are wrongly treated as equal. See #21605.
+// hex/rgb/hsl string). When both sides are strings, `colorEquals` would index
+// them by character, so two different colors sharing a prefix (e.g. "#FFFFFF"
+// and "#FFAFC8", which share the same red component) are wrongly treated as
+// equal. Parse both strings to `[r, g, b]` arrays so they are compared by
+// value. Mixed cases (a string against `null` or an array) keep the original
+// comparison: an unparseable string like "inherit" parses to `null`, and
+// conflating that with an absent color would suppress the reset escape.
+// See #21605.
 function cssColorEquals(color1, color2) {
-  const c1 = typeof color1 === "string" ? parseCssColor(color1) : color1;
-  const c2 = typeof color2 === "string" ? parseCssColor(color2) : color2;
-  return colorEquals(c1, c2);
+  if (typeof color1 === "string" && typeof color2 === "string") {
+    return colorEquals(parseCssColor(color1), parseCssColor(color2));
+  }
+  return colorEquals(color1, color2);
 }
 
 function cssToAnsi(css, prevCss = null) {
