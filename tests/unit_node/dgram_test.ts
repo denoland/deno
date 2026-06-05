@@ -76,7 +76,7 @@ Deno.test("[node/dgram] addMembership accepts scoped IPv6 interface", async () =
   // Regression test for https://github.com/denoland/deno/issues/34838.
   // A scoped IPv6 interface such as "::%12" must be accepted the same way
   // Node.js accepts it (mirroring libuv's `uv_ip6_addr`): the zone id is
-  // resolved as an interface *name*, and an unknown zone resolves to the
+  // resolved to an interface index, and an unknown zone resolves to the
   // default interface (index 0) instead of failing with EINVAL.
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const socket = createSocket({ type: "udp6", ipv6Only: true });
@@ -94,10 +94,11 @@ Deno.test("[node/dgram] addMembership accepts scoped IPv6 interface", async () =
   socket.bind(0, () => {
     bound = true;
     try {
-      // "9999999" is not an interface name, so it resolves to the default
-      // interface rather than being used as a literal index (which used to
-      // throw EINVAL).
-      socket.addMembership("ff02::fb", "::%9999999");
+      // A non-numeric zone id that names no existing interface resolves to the
+      // default interface on every platform (Unix: `if_nametoindex` -> 0,
+      // Windows: `atoi` -> 0), rather than being rejected with EINVAL. On Unix
+      // this is the same code path the reporter's numeric "::%12" now takes.
+      socket.addMembership("ff02::fb", "::%nonexistent0");
       socket.close(() => resolve());
     } catch (err) {
       socket.close();
