@@ -7698,8 +7698,10 @@ function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
         ["wrapKey", "unwrapKey"],
       );
     case "ChaCha20-Poly1305":
+      // The node:crypto interop boundary uses "raw" for secret key bytes;
+      // ChaCha20-Poly1305 only recognizes the unified "raw-secret" format.
       return importKeyChaCha20Poly1305(
-        format,
+        format === "raw" ? "raw-secret" : format,
         keyData,
         extractable,
         usages,
