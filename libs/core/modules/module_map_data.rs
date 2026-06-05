@@ -424,49 +424,23 @@ impl ModuleMapData {
     self.info.get(id).map(|info| info.name.as_str().to_owned())
   }
 
-  /// Compute the set of modules that must be reloaded together with the given
-  /// `seed` modules: the seeds plus every module that transitively imports any
-  /// of them. The importer relation is the inverse of each module's
-  /// [`ModuleInfo::requests`]. Used by the HMR reload engine to evict a closure
-  /// so importers rebind to the freshly compiled dependencies.
-  ///
-  /// Note: this stops at nothing (it always climbs to the entry point). Layer 2
-  /// (`import.meta.hot`) will pass a `stop` set of accepting boundaries.
-  // Phase 2 (`import.meta.hot` boundary bubbling) infrastructure; the Phase 1
-  // imperative reload primitive evicts only the named modules.
-  #[allow(dead_code)]
-  pub(crate) fn compute_importer_closure(
-    &self,
-    seeds: &HashSet<ModuleId>,
-  ) -> HashSet<ModuleId> {
-    // Build the inverse edge list: dependency_id -> [importer_id].
-    let mut importers: HashMap<ModuleId, Vec<ModuleId>> = HashMap::new();
+  /// Return the names (resolved specifiers) of the modules that directly
+  /// import `target`. Used by the HMR runtime to walk up the importer graph to
+  /// the nearest accepting boundary.
+  pub(crate) fn direct_importers(&self, target: ModuleId) -> Vec<String> {
+    let mut importers = Vec::new();
     for info in &self.info {
-      for request in &info.requests {
-        if let Some(target) = self.get_id(
+      let imports_target = info.requests.iter().any(|request| {
+        self.get_id(
           request.reference.specifier.as_str(),
           &request.reference.requested_module_type,
-        ) {
-          importers.entry(target).or_default().push(info.id);
-        }
+        ) == Some(target)
+      });
+      if imports_target {
+        importers.push(info.name.as_str().to_owned());
       }
     }
-
-    let mut closure: HashSet<ModuleId> = HashSet::new();
-    let mut queue: Vec<ModuleId> = seeds.iter().copied().collect();
-    while let Some(id) = queue.pop() {
-      if !closure.insert(id) {
-        continue;
-      }
-      if let Some(parents) = importers.get(&id) {
-        for &parent in parents {
-          if !closure.contains(&parent) {
-            queue.push(parent);
-          }
-        }
-      }
-    }
-    closure
+    importers
   }
 
   /// Evict the given modules from the `by_name` lookup so the next load

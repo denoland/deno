@@ -3352,3 +3352,161 @@ async fn test_core_reload_es_module_js_api() {
     )
     .unwrap();
 }
+
+/// `import.meta.hot.accept()` self-accepting boundary: an HMR update re-runs the
+/// module, its `dispose` handler hands state to the reloaded instance via
+/// `hot.data`, and the accept callback receives the fresh module namespace.
+#[tokio::test]
+async fn test_import_meta_hot_self_accept_and_dispose() {
+  let mid_v1 = "globalThis.midEval = (globalThis.midEval ?? 0) + 1;\n\
+     globalThis.restored = import.meta.hot.data.saved ?? 'none';\n\
+     import.meta.hot.dispose((data) => { data.saved = 'from-v1'; });\n\
+     import.meta.hot.accept((m) => { globalThis.accepted = m.tag; });\n\
+     export const tag = 'A';\n";
+  let sources: Rc<RefCell<HashMap<String, String>>> =
+    Rc::new(RefCell::new(HashMap::new()));
+  {
+    let mut s = sources.borrow_mut();
+    s.insert("file:///mid.js".into(), mid_v1.into());
+    s.insert("file:///main.js".into(), "import './mid.js';\n".into());
+  }
+  let loader = Rc::new(ReloadableLoader {
+    sources: sources.clone(),
+  });
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  // Enable HMR before loading user code so `import.meta.hot` is attached.
+  runtime
+    .execute_script("enable_hmr", "Deno.core.enableHmr();")
+    .unwrap();
+
+  let main = ModuleSpecifier::parse("file:///main.js").unwrap();
+  let id = runtime.load_main_es_module(&main).await.unwrap();
+  let result = runtime.mod_evaluate(id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+
+  runtime
+    .execute_script(
+      "check_initial",
+      "if (globalThis.midEval !== 1) throw new Error('midEval=' + globalThis.midEval);\n\
+       if (globalThis.restored !== 'none') throw new Error('restored=' + globalThis.restored);\n\
+       if (globalThis.accepted !== undefined) throw new Error('accepted=' + globalThis.accepted);",
+    )
+    .unwrap();
+
+  // "Edit" mid.js (tag A -> B) and apply the HMR update.
+  sources
+    .borrow_mut()
+    .insert("file:///mid.js".into(), mid_v1.replace("'A'", "'B'"));
+  runtime
+    .execute_script(
+      "apply",
+      "Deno.core.applyHmrUpdate('file:///mid.js').then((ok) => {\n\
+         globalThis.hmrHandled = ok;\n\
+       });",
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+
+  runtime
+    .execute_script(
+      "check_hmr",
+      "if (globalThis.hmrHandled !== true) throw new Error('hmrHandled=' + globalThis.hmrHandled);\n\
+       if (globalThis.midEval !== 2) throw new Error('midEval=' + globalThis.midEval);\n\
+       if (globalThis.restored !== 'from-v1') throw new Error('restored=' + globalThis.restored);\n\
+       if (globalThis.accepted !== 'B') throw new Error('accepted=' + globalThis.accepted);",
+    )
+    .unwrap();
+}
+
+/// An importer that accepts a changed dependency via `accept(['./dep'], cb)` is
+/// the boundary: its callback receives the new dependency module, while the
+/// importer itself is not re-evaluated. A change with no accepting boundary up
+/// to the entry point reports "not handled" (full reload required).
+#[tokio::test]
+async fn test_import_meta_hot_dependency_accept_and_full_reload() {
+  let sources: Rc<RefCell<HashMap<String, String>>> =
+    Rc::new(RefCell::new(HashMap::new()));
+  {
+    let mut s = sources.borrow_mut();
+    s.insert(
+      "file:///dep.js".into(),
+      "globalThis.depEval = (globalThis.depEval ?? 0) + 1;\nexport const v = 1;\n".into(),
+    );
+    s.insert(
+      "file:///parent.js".into(),
+      "import { v } from './dep.js';\n\
+       globalThis.parentEval = (globalThis.parentEval ?? 0) + 1;\n\
+       globalThis.seen = v;\n\
+       import.meta.hot.accept(['./dep.js'], ({ module }) => { globalThis.newDepV = module.v; });\n"
+        .into(),
+    );
+    s.insert("file:///main.js".into(), "import './parent.js';\n".into());
+  }
+  let loader = Rc::new(ReloadableLoader {
+    sources: sources.clone(),
+  });
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script("enable_hmr", "Deno.core.enableHmr();")
+    .unwrap();
+  let main = ModuleSpecifier::parse("file:///main.js").unwrap();
+  let id = runtime.load_main_es_module(&main).await.unwrap();
+  let result = runtime.mod_evaluate(id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+
+  // Change dep.js; parent accepts it, so the update is handled and parent's
+  // callback sees the new value, without re-running parent.
+  sources.borrow_mut().insert(
+    "file:///dep.js".into(),
+    "globalThis.depEval = (globalThis.depEval ?? 0) + 1;\nexport const v = 2;\n".into(),
+  );
+  runtime
+    .execute_script(
+      "apply_dep",
+      "Deno.core.applyHmrUpdate('file:///dep.js').then((ok) => { globalThis.depHandled = ok; });",
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+
+  runtime
+    .execute_script(
+      "check_dep",
+      "if (globalThis.depHandled !== true) throw new Error('depHandled=' + globalThis.depHandled);\n\
+       if (globalThis.depEval !== 2) throw new Error('depEval=' + globalThis.depEval);\n\
+       if (globalThis.parentEval !== 1) throw new Error('parentEval=' + globalThis.parentEval);\n\
+       if (globalThis.newDepV !== 2) throw new Error('newDepV=' + globalThis.newDepV);",
+    )
+    .unwrap();
+
+  // A change to a module with no accepting boundary up to the entry point is
+  // not handled by HMR (caller must do a full reload).
+  let not_handled = runtime
+    .execute_script(
+      "apply_unaccepted",
+      "Deno.core.applyHmrUpdate('file:///parent.js')",
+    )
+    .unwrap();
+  let not_handled = runtime.resolve(not_handled);
+  let not_handled = runtime
+    .with_event_loop_promise(not_handled, Default::default())
+    .await
+    .unwrap();
+  {
+    deno_core::scope!(scope, runtime);
+    let local = v8::Local::new(scope, not_handled);
+    assert!(
+      local.is_false(),
+      "unaccepted change should report not-handled"
+    );
+  }
+}

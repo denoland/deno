@@ -88,6 +88,11 @@ pub struct ContextState {
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) wasm_instance_fn: RefCell<Option<v8::Global<v8::Function>>>,
+  /// JS factory `(specifier: string) => ImportMetaHot` used to build the
+  /// `import.meta.hot` object for user modules. `None` unless HMR is enabled
+  /// (the JS HMR runtime registers it via `op_set_create_hot_context`); when
+  /// `None`, `import.meta.hot` is not attached.
+  pub(crate) create_hot_context_fn: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) unrefed_ops: UnrefedOps,
   pub(crate) activity_traces: RuntimeActivityTraces,
   pub(crate) pending_ops: Rc<OpDriverImpl>,
@@ -176,6 +181,7 @@ impl ContextState {
       run_immediate_callbacks_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),
+      create_hot_context_fn: Default::default(),
       activity_traces: Default::default(),
       op_ctxs,
       op_method_decls,

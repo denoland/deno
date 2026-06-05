@@ -456,6 +456,21 @@ impl ModuleMap {
     ids
   }
 
+  /// Resolved specifiers of the modules that directly import `specifier`.
+  /// Backs `op_hmr_module_importers`. Returns an empty vec if `specifier` is
+  /// not a registered module.
+  pub(crate) fn direct_importers(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Vec<String> {
+    let data = self.data.borrow();
+    let Some(id) = data.get_id(specifier.as_str(), RequestedModuleType::None)
+    else {
+      return Vec::new();
+    };
+    data.direct_importers(id)
+  }
+
   #[cfg(test)]
   pub fn assert_module_map(&self, modules: &Vec<super::ModuleInfo>) {
     self.data.borrow().assert_module_map(modules);

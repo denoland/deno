@@ -34,6 +34,7 @@ v8_static_strings!(
   SET_TIMER_INFO = "__setTimerInfo",
   SET_TIMER_EXPIRY = "__setTimerExpiry",
   FILENAME = "filename",
+  HOT = "hot",
   INSTANCE = "Instance",
   MAIN = "main",
   MESSAGE = "message",
