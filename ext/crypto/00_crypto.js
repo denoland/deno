@@ -3045,6 +3045,8 @@ function importKeyX448(
   keyUsages,
 ) {
   switch (format) {
+    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
+    case "raw-public":
     case "raw": {
       // 1.
       if (keyUsages.length > 0) {
@@ -3270,6 +3272,8 @@ function importKeyEd25519(
   keyUsages,
 ) {
   switch (format) {
+    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
+    case "raw-public":
     case "raw": {
       // 1.
       if (
@@ -3513,6 +3517,8 @@ function importKeyX25519(
   keyUsages,
 ) {
   switch (format) {
+    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
+    case "raw-public":
     case "raw": {
       // 1.
       if (keyUsages.length > 0) {
@@ -4603,6 +4609,8 @@ function importKeyEC(
   const supportedUsages = SUPPORTED_KEY_USAGES[normalizedAlgorithm.name];
 
   switch (format) {
+    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
+    case "raw-public":
     case "raw": {
       // 1.
       if (
@@ -6189,6 +6197,8 @@ function exportKeyRSA(format, key, innerKey) {
 
 function exportKeyEd25519(format, key, innerKey) {
   switch (format) {
+    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
+    case "raw-public":
     case "raw": {
       // 1.
       if (key[_type] !== "public") {
@@ -6251,6 +6261,8 @@ function exportKeyEd25519(format, key, innerKey) {
 
 function exportKeyX448(format, key, innerKey) {
   switch (format) {
+    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
+    case "raw-public":
     case "raw": {
       // 1.
       if (key[_type] !== "public") {
@@ -6311,6 +6323,8 @@ function exportKeyX448(format, key, innerKey) {
 
 function exportKeyX25519(format, key, innerKey) {
   switch (format) {
+    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
+    case "raw-public":
     case "raw": {
       // 1.
       if (key[_type] !== "public") {
@@ -6372,6 +6386,8 @@ function exportKeyX25519(format, key, innerKey) {
 
 function exportKeyEC(format, key, innerKey) {
   switch (format) {
+    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
+    case "raw-public":
     case "raw": {
       // 1.
       if (key[_type] !== "public") {

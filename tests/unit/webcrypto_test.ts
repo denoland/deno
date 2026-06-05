@@ -2642,6 +2642,57 @@ Deno.test(async function rawSecretAliasForExistingSymmetricAlgorithms() {
   );
 });
 
+// For existing asymmetric algorithms "raw-public" is an alias of "raw".
+// https://wicg.github.io/webcrypto-modern-algos/#subtlecrypto-interface-keyformat
+Deno.test(async function rawPublicAliasForExistingAsymmetricAlgorithms() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+
+  // deno-lint-ignore no-explicit-any
+  const cases: [any, KeyUsage[], KeyUsage[]][] = [
+    [{ name: "ECDSA", namedCurve: "P-256" }, ["sign", "verify"], ["verify"]],
+    [{ name: "ECDH", namedCurve: "P-256" }, ["deriveBits"], []],
+    [{ name: "Ed25519" }, ["sign", "verify"], ["verify"]],
+    [{ name: "X25519" }, ["deriveBits"], []],
+    [{ name: "X448" }, ["deriveBits"], []],
+  ];
+
+  for (const [algorithm, keyUsages, publicKeyUsages] of cases) {
+    const { publicKey, privateKey } = await subtle.generateKey(
+      algorithm,
+      true,
+      keyUsages,
+    );
+
+    // "raw-public" export yields the same bytes as "raw".
+    const raw = new Uint8Array(await subtle.exportKey("raw", publicKey));
+    const rawPublic = new Uint8Array(
+      await subtle.exportKey("raw-public", publicKey),
+    );
+    assertEquals(rawPublic, raw);
+
+    // "raw-public" import round-trips back to the same key bytes.
+    const imported = await subtle.importKey(
+      "raw-public",
+      raw,
+      algorithm,
+      true,
+      publicKeyUsages,
+    );
+    assertEquals(imported.type, "public");
+    assertEquals(
+      new Uint8Array(await subtle.exportKey("raw-public", imported)),
+      raw,
+    );
+
+    // "raw-public" is only valid for public keys.
+    await assertRejects(
+      () => subtle.exportKey("raw-public", privateKey),
+      DOMException,
+    );
+  }
+});
+
 Deno.test(async function hmacSha3SignVerify() {
   for (const hash of ["SHA3-256", "SHA3-384", "SHA3-512"]) {
     const key = await crypto.subtle.generateKey(
