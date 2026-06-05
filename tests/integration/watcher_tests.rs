@@ -302,6 +302,47 @@ async fn lint_watch_without_args_test() {
   drop(t);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28437
+#[test(flaky)]
+async fn lint_watch_picks_up_new_file_test() {
+  let t = TempDir::new();
+  let badly_linted_fixed1 =
+    util::testdata_path().join("lint/watch/badly_linted_fixed1.js");
+
+  // Start with a single file present. No path args are passed, so the watcher
+  // must fall back to watching the base directory rather than the resolved
+  // file list.
+  let existing = t.path().join("existing.js");
+  badly_linted_fixed1.copy(&existing);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("lint")
+    .arg("--watch")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Lint started");
+  assert_contains!(
+    wait_contains("Checked", &mut stderr_lines).await,
+    "Checked 1 file"
+  );
+
+  // Create a new file *after* the watcher started. The watcher should notice it
+  // and include it in the next run even though it wasn't initially resolved.
+  let new_file = t.path().join("new_file.js");
+  badly_linted_fixed1.copy(&new_file);
+
+  assert_contains!(
+    wait_contains("Checked", &mut stderr_lines).await,
+    "Checked 2 files"
+  );
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn lint_all_files_on_each_change_test() {
   let t = TempDir::new();
@@ -450,6 +491,50 @@ async fn fmt_watch_without_args_test() {
   let expected = fixed.read_to_string();
   let actual = badly_formatted.read_to_string();
   assert_eq!(actual, expected);
+  check_alive_then_kill(child);
+}
+
+// Regression test for https://github.com/denoland/deno/issues/28437
+#[test(flaky)]
+async fn fmt_watch_picks_up_new_file_test() {
+  let fmt_testdata_path = util::testdata_path().join("fmt");
+  let t = TempDir::new();
+  let fixed = fmt_testdata_path.join("badly_formatted_fixed.js");
+  let badly_formatted_original = fmt_testdata_path.join("badly_formatted.mjs");
+
+  // Start with a single, already-formatted file so the initial run is clean.
+  let existing = t.path().join("existing.js");
+  fixed.copy(&existing);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("fmt")
+    .arg("--watch")
+    .arg(".")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Fmt started");
+  wait_contains("Fmt finished.", &mut stderr_lines).await;
+
+  // Create a new badly-formatted file *after* the watcher started. The watcher
+  // should notice it even though it wasn't part of the initially resolved set.
+  let new_file = t.path().join("new_file.js");
+  badly_formatted_original.copy(&new_file);
+
+  assert_contains!(
+    wait_contains("new_file.js", &mut stderr_lines).await,
+    "new_file.js"
+  );
+  wait_contains("Fmt finished.", &mut stderr_lines).await;
+
+  // The newly created file should have been formatted by the watcher.
+  let expected = fixed.read_to_string();
+  let actual = new_file.read_to_string();
+  assert_eq!(actual, expected);
+
   check_alive_then_kill(child);
 }
 
