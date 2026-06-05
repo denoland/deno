@@ -118,11 +118,15 @@ impl FromStr for Schedule {
 
 impl Schedule {
   pub fn next_after(&self, date: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    // Rare schedules such as 5th Fridays in February can have multi-decade
+    // gaps. Keep the bounded search broad enough to preserve saffron behavior.
+    const MAX_SEARCH_DAYS: i64 = 366 * 100;
+
     let mut next = date
       .with_nanosecond(0)?
       .with_second(0)?
       .checked_add_signed(Duration::minutes(1))?;
-    let end = next.checked_add_signed(Duration::days(366 * 5))?;
+    let end = next.checked_add_signed(Duration::days(MAX_SEARCH_DAYS))?;
 
     while next <= end {
       if self.contains(next) {
@@ -425,11 +429,14 @@ fn range_bits(start: u32, end: u32, field: Field) -> u64 {
   if start <= end {
     bit_range(start, end)
   } else {
+    // Saffron includes one value before the start for plain wraparound ranges.
     bit_range(start - 1, field.max()) | bit_range(field.min(), end)
   }
 }
 
 fn stepped_bits(start: u32, end: u32, step: u32, field: Field) -> u64 {
+  // Unlike plain wraparound ranges, saffron starts stepped wraparound ranges
+  // at the literal start value.
   let values = if start <= end {
     (start..=end).collect::<Vec<_>>()
   } else {
@@ -575,6 +582,8 @@ mod tests {
       ("*/15 * * * *", dt(2024, 1, 1, 0, 0), dt(2024, 1, 1, 0, 15)),
       ("0 0 29 2 *", dt(2023, 3, 1, 0, 0), dt(2024, 2, 29, 0, 0)),
       ("0 0 29 2 *", dt(2025, 3, 1, 0, 0), dt(2028, 2, 29, 0, 0)),
+      ("0 0 29 2 *", dt(2096, 3, 1, 0, 0), dt(2104, 2, 29, 0, 0)),
+      ("0 0 * 2 FRI#5", dt(2020, 1, 1, 0, 0), dt(2036, 2, 29, 0, 0)),
       (
         "0 0 * JAN MON",
         dt(2023, 12, 31, 0, 0),
