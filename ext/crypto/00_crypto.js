@@ -3947,7 +3947,18 @@ function importKeyMlKem(
       let imported;
       try {
         imported = op_crypto_ml_kem_import_pkcs8(keyData);
-      } catch (_) {
+      } catch (e) {
+        // The expanded-key-only form must be rejected with NotSupportedError;
+        // malformed DER and a `both`-form seed/expandedKey mismatch are
+        // DataError. (The op's NotSupported class maps to the DOMException
+        // name "NotSupported" in Deno; re-throw with the spec name here.)
+        if (e?.name === "NotSupported") {
+          throw new DOMException(
+            "ML-KEM 'expandedKey' PKCS#8 format is not supported; only the " +
+              "seed form is supported",
+            "NotSupportedError",
+          );
+        }
         throw new DOMException("Invalid key data", "DataError");
       }
       if (imported.variant !== algorithmName) {
@@ -3956,12 +3967,7 @@ function importKeyMlKem(
           "DataError",
         );
       }
-      return makePrivateKey(
-        imported.seed !== undefined && imported.seed !== null
-          ? imported.seed
-          : null,
-        imported.privateKey,
-      );
+      return makePrivateKey(imported.seed, imported.privateKey);
     }
     case "jwk": {
       // 1.

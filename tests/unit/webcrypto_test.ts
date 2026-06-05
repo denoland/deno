@@ -3168,3 +3168,67 @@ Deno.test(async function mlKemJwkBadPrivateUsageRejected() {
     DOMException,
   );
 });
+
+// The WICG spec requires PKCS#8 import to reject the (non-seed) expanded-key
+// form with a NotSupportedError; only the seed form is supported.
+Deno.test(async function mlKemPkcs8ExpandedFormRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["decapsulateBits"],
+  ) as CryptoKeyPair;
+  const expanded = new Uint8Array(
+    await subtleAny.exportKey("raw-private", kp.privateKey),
+  );
+
+  // Build a minimal DER tag-length-value.
+  const tlv = (tag: number, content: number[]): number[] => {
+    let len: number[];
+    if (content.length < 0x80) {
+      len = [content.length];
+    } else {
+      const bytes: number[] = [];
+      let n = content.length;
+      while (n > 0) {
+        bytes.unshift(n & 0xff);
+        n >>= 8;
+      }
+      len = [0x80 | bytes.length, ...bytes];
+    }
+    return [tag, ...len, ...content];
+  };
+  // PrivateKeyInfo with privateKey ::= expandedKey OCTET STRING.
+  const oid = [
+    0x06,
+    0x09,
+    0x60,
+    0x86,
+    0x48,
+    0x01,
+    0x65,
+    0x03,
+    0x04,
+    0x04,
+    0x01,
+  ];
+  const version = [0x02, 0x01, 0x00];
+  const alg = tlv(0x30, oid);
+  const expandedKey = tlv(0x04, Array.from(expanded)); // OCTET STRING expandedKey
+  const privateKey = tlv(0x04, expandedKey); // privateKey OCTET STRING
+  const pkcs8 = new Uint8Array(
+    tlv(0x30, [...version, ...alg, ...privateKey]),
+  );
+
+  const err = await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "pkcs8",
+        pkcs8,
+        { name: "ML-KEM-512" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+  assertEquals((err as DOMException).name, "NotSupportedError");
+});

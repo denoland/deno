@@ -10,7 +10,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use spki::der::Decode;
 use spki::der::Encode;
-use spki::der::SliceReader;
 use spki::der::TagMode;
 use spki::der::TagNumber;
 use spki::der::asn1::BitString;
@@ -38,6 +37,9 @@ pub enum MlKemError {
   #[class("DOMExceptionDataError")]
   #[error("invalid ML-KEM key data")]
   InvalidKeyData,
+  #[class("DOMExceptionNotSupportedError")]
+  #[error("unsupported ML-KEM PKCS#8 private key format")]
+  UnsupportedPkcs8Format,
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Debug)]
@@ -265,16 +267,24 @@ pub struct MlKemSpkiImport {
 
 /// Import a PKCS#8 encoded ML-KEM decapsulation key.
 ///
-/// The standard ([draft-ietf-lamps-kyber-certificates]) encoding stores the
-/// 64-byte seed in a `[0] IMPLICIT OCTET STRING`; this is the form emitted by
-/// [`op_crypto_ml_kem_export_pkcs8`] and by OpenSSL 3.5. For interoperability
-/// we also accept the legacy expanded-key form (the raw expanded bytes used as
-/// the `privateKey` content, the shape older Deno releases emitted), which
-/// carries no recoverable seed.
+/// Per the WICG Modern Algorithms spec and the
+/// `ML-KEM-PrivateKey` CHOICE of `draft-ietf-lamps-kyber-certificates`, the
+/// `privateKey` field is one of:
+///   - `seed [0] OCTET STRING (SIZE(64))` — the required form, also emitted by
+///     [`op_crypto_ml_kem_export_pkcs8`] and OpenSSL 3.5.
+///   - `both SEQUENCE { OCTET STRING seed, OCTET STRING expandedKey }` —
+///     optional; the seed must expand to exactly `expandedKey`
+///     (`DataError` on mismatch).
+///   - `expandedKey OCTET STRING` — explicitly rejected with
+///     `NotSupportedError`.
 #[op2]
 pub fn op_crypto_ml_kem_import_pkcs8(
   #[buffer] data: &[u8],
 ) -> Result<MlKemPkcs8Import, MlKemError> {
+  import_pkcs8(data)
+}
+
+fn import_pkcs8(data: &[u8]) -> Result<MlKemPkcs8Import, MlKemError> {
   let info = pkcs8::PrivateKeyInfo::from_der(data)
     .map_err(|_| MlKemError::InvalidKeyData)?;
   let variant = MlKemVariant::from_oid(&info.algorithm.oid)
@@ -283,60 +293,119 @@ pub fn op_crypto_ml_kem_import_pkcs8(
     return Err(MlKemError::InvalidKeyData);
   }
 
-  // Preferred: the standard seed encoding.
-  if let Some(seed) = decode_pkcs8_seed(data) {
-    let (private_key, public_key) = variant.expand_seed(&seed)?;
-    return Ok(MlKemPkcs8Import {
-      variant,
-      seed: Some(seed.into()),
-      private_key: private_key.into(),
-      public_key: public_key.into(),
-    });
-  }
+  let seed = match decode_pkcs8_inner(info.private_key) {
+    Some(Pkcs8Inner::Seed(seed)) => seed,
+    Some(Pkcs8Inner::Both { seed, expanded }) => {
+      // Consistency check: the seed must expand to exactly `expandedKey`.
+      let (derived, _) = variant.expand_seed(&seed)?;
+      if derived != expanded {
+        return Err(MlKemError::InvalidKeyData);
+      }
+      seed
+    }
+    // The expanded-key-only form is explicitly unsupported.
+    Some(Pkcs8Inner::Expanded) => {
+      return Err(MlKemError::UnsupportedPkcs8Format);
+    }
+    None => return Err(MlKemError::InvalidKeyData),
+  };
 
-  // Legacy: the `privateKey` content is the raw expanded decapsulation key.
-  let private_key = info.private_key;
-  if private_key.len() != variant.private_key_size() {
-    return Err(MlKemError::InvalidKeyData);
-  }
-  // Validate by constructing the DecapsulationKey.
-  kem::DecapsulationKey::new(variant.algorithm(), private_key)
-    .map_err(|_| MlKemError::InvalidKeyData)?;
-  let public_key = variant.public_from_expanded(private_key)?;
+  let (private_key, public_key) = variant.expand_seed(&seed)?;
   Ok(MlKemPkcs8Import {
     variant,
-    seed: None,
-    private_key: private_key.to_vec().into(),
+    seed: seed.into(),
+    private_key: private_key.into(),
     public_key: public_key.into(),
   })
 }
 
-/// Try to decode the standard seed-form PKCS#8, returning the 64-byte seed.
-/// The seed is stored as `privateKey ::= [0] IMPLICIT OCTET STRING (SIZE(64))`
-/// (per draft-ietf-lamps-kyber-certificates). Returns `None` when the DER is
-/// not the seed form (e.g. the legacy expanded form), so the caller can fall
-/// back.
-fn decode_pkcs8_seed(data: &[u8]) -> Option<Vec<u8>> {
-  let info = pkcs8::PrivateKeyInfo::from_der(data).ok()?;
-  let mut reader = SliceReader::new(info.private_key).ok()?;
-  let ctx = ContextSpecific::<OctetStringRef>::decode_implicit(
-    &mut reader,
-    TagNumber::N0,
-  )
-  .ok()??;
-  let seed = ctx.value.as_bytes();
-  if seed.len() != ML_KEM_SEED_SIZE {
+/// The recognised shapes of the `ML-KEM-PrivateKey` CHOICE inside a PKCS#8
+/// `privateKey` OCTET STRING.
+enum Pkcs8Inner {
+  /// `seed [0] IMPLICIT OCTET STRING (SIZE(64))`.
+  Seed(Vec<u8>),
+  /// `both SEQUENCE { OCTET STRING seed, OCTET STRING expandedKey }`.
+  Both { seed: Vec<u8>, expanded: Vec<u8> },
+  /// `expandedKey OCTET STRING`.
+  Expanded,
+}
+
+/// Classify the DER inside the PKCS#8 `privateKey` OCTET STRING. Returns `None`
+/// for anything that is not a well-formed `ML-KEM-PrivateKey` CHOICE.
+fn decode_pkcs8_inner(inner: &[u8]) -> Option<Pkcs8Inner> {
+  match inner.first()? {
+    // `[0] IMPLICIT OCTET STRING` (primitive context tag) holding the seed.
+    0x80 => {
+      let (seed, rest) = parse_tlv(inner, 0x80)?;
+      if !rest.is_empty() || seed.len() != ML_KEM_SEED_SIZE {
+        return None;
+      }
+      Some(Pkcs8Inner::Seed(seed.to_vec()))
+    }
+    // `SEQUENCE { OCTET STRING seed, OCTET STRING expandedKey }`.
+    0x30 => {
+      let (body, rest) = parse_tlv(inner, 0x30)?;
+      if !rest.is_empty() {
+        return None;
+      }
+      let (seed, after_seed) = parse_tlv(body, 0x04)?;
+      if seed.len() != ML_KEM_SEED_SIZE {
+        return None;
+      }
+      let (expanded, after_expanded) = parse_tlv(after_seed, 0x04)?;
+      if !after_expanded.is_empty() {
+        return None;
+      }
+      Some(Pkcs8Inner::Both {
+        seed: seed.to_vec(),
+        expanded: expanded.to_vec(),
+      })
+    }
+    // A bare `OCTET STRING` is the expanded-key-only form.
+    0x04 => {
+      let (_, rest) = parse_tlv(inner, 0x04)?;
+      if !rest.is_empty() {
+        return None;
+      }
+      Some(Pkcs8Inner::Expanded)
+    }
+    _ => None,
+  }
+}
+
+/// Parse a single DER tag-length-value where the first byte must equal `tag`.
+/// Returns `(value, rest)` where `rest` is the bytes following the value.
+fn parse_tlv(buf: &[u8], tag: u8) -> Option<(&[u8], &[u8])> {
+  let (first, rest) = buf.split_first()?;
+  if *first != tag {
     return None;
   }
-  Some(seed.to_vec())
+  let (len_byte, rest) = rest.split_first()?;
+  let (len, body) = if *len_byte & 0x80 == 0 {
+    (*len_byte as usize, rest)
+  } else {
+    let n = (*len_byte & 0x7f) as usize;
+    if n == 0 || n > 4 || rest.len() < n {
+      return None;
+    }
+    let (len_bytes, after) = rest.split_at(n);
+    let mut len = 0usize;
+    for b in len_bytes {
+      len = (len << 8) | (*b as usize);
+    }
+    (len, after)
+  };
+  if body.len() < len {
+    return None;
+  }
+  Some(body.split_at(len))
 }
 
 #[derive(deno_core::ToV8)]
 pub struct MlKemPkcs8Import {
   #[to_v8(serde)]
   pub variant: MlKemVariant,
-  /// `None` when imported from the legacy expanded form.
-  pub seed: Option<Uint8Array>,
+  pub seed: Uint8Array,
   pub private_key: Uint8Array,
   pub public_key: Uint8Array,
 }
@@ -458,10 +527,10 @@ mod tests {
   use super::*;
 
   // The expanded decapsulation key and encapsulation key produced by the
-  // RustCrypto `ml-kem` crate (from a seed) must be byte-compatible with the
-  // aws-lc-rs `kem` operations, since both implement the FIPS 203 encodings.
-  // This is load-bearing: generated/seed-imported keys are derived with
-  // `ml-kem` but encapsulated/decapsulated with aws-lc-rs.
+  // `fips203` crate (from a seed) must be byte-compatible with the aws-lc-rs
+  // `kem` operations, since both implement the FIPS 203 encodings. This is
+  // load-bearing: generated/seed-imported keys are derived with `fips203` but
+  // encapsulated/decapsulated with aws-lc-rs.
   #[test]
   fn seed_expansion_interops_with_aws_lc() {
     for variant in [
@@ -497,7 +566,115 @@ mod tests {
     // The OID identifies the variant and the seed round-trips.
     let info = pkcs8::PrivateKeyInfo::from_der(&der).unwrap();
     assert_eq!(MlKemVariant::from_oid(&info.algorithm.oid), Some(variant));
-    let decoded = decode_pkcs8_seed(&der).unwrap();
-    assert_eq!(decoded, seed);
+    match decode_pkcs8_inner(info.private_key).unwrap() {
+      Pkcs8Inner::Seed(decoded) => assert_eq!(decoded, seed),
+      _ => panic!("expected seed form"),
+    }
+  }
+
+  fn octet_string_der(bytes: &[u8]) -> Vec<u8> {
+    OctetStringRef::new(bytes).unwrap().to_der().unwrap()
+  }
+
+  fn der_sequence(content: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x30u8];
+    let len = content.len();
+    if len < 0x80 {
+      out.push(len as u8);
+    } else {
+      let bytes = len.to_be_bytes();
+      let start = bytes.iter().position(|&b| b != 0).unwrap();
+      let used = &bytes[start..];
+      out.push(0x80 | used.len() as u8);
+      out.extend_from_slice(used);
+    }
+    out.extend_from_slice(content);
+    out
+  }
+
+  // The `both` form must classify as Both and the seed must expand to exactly
+  // the embedded expanded key (the consistency check the importer enforces).
+  #[test]
+  fn pkcs8_both_form() {
+    let variant = MlKemVariant::MlKem512;
+    let seed = vec![5u8; ML_KEM_SEED_SIZE];
+    let (expanded, _) = variant.expand_seed(&seed).unwrap();
+
+    let mut content = octet_string_der(&seed);
+    content.extend_from_slice(&octet_string_der(&expanded));
+    let inner = der_sequence(&content);
+
+    match decode_pkcs8_inner(&inner).unwrap() {
+      Pkcs8Inner::Both {
+        seed: s,
+        expanded: e,
+      } => {
+        assert_eq!(s, seed);
+        assert_eq!(e, expanded);
+        // Consistency holds for a genuine pair.
+        assert_eq!(variant.expand_seed(&s).unwrap().0, e);
+      }
+      _ => panic!("expected both form"),
+    }
+  }
+
+  // The expanded-key-only form must be classified as Expanded so the importer
+  // can reject it with NotSupportedError.
+  #[test]
+  fn pkcs8_expanded_only_classified() {
+    let variant = MlKemVariant::MlKem512;
+    let seed = vec![9u8; ML_KEM_SEED_SIZE];
+    let (expanded, _) = variant.expand_seed(&seed).unwrap();
+    let inner = octet_string_der(&expanded);
+    assert!(matches!(
+      decode_pkcs8_inner(&inner),
+      Some(Pkcs8Inner::Expanded)
+    ));
+  }
+
+  // op_crypto_ml_kem_import_pkcs8 rejects the expanded-only form with
+  // NotSupportedError and a `both`-form mismatch with DataError.
+  #[test]
+  fn pkcs8_import_rejects_per_spec() {
+    let variant = MlKemVariant::MlKem512;
+    let seed = vec![1u8; ML_KEM_SEED_SIZE];
+    let (expanded, _) = variant.expand_seed(&seed).unwrap();
+
+    let wrap = |inner: &[u8]| -> Vec<u8> {
+      let info = pkcs8::PrivateKeyInfo {
+        algorithm: pkcs8::AlgorithmIdentifierRef {
+          oid: variant.oid(),
+          parameters: None,
+        },
+        private_key: inner,
+        public_key: None,
+      };
+      let mut buf = Vec::new();
+      info.encode_to_vec(&mut buf).unwrap();
+      buf
+    };
+
+    // expanded-only -> NotSupportedError.
+    let expanded_only = wrap(&octet_string_der(&expanded));
+    assert!(matches!(
+      import_pkcs8(&expanded_only),
+      Err(MlKemError::UnsupportedPkcs8Format),
+    ));
+
+    // both form with a tampered expanded key -> DataError.
+    let mut tampered = expanded.clone();
+    tampered[0] ^= 0xff;
+    let mut content = octet_string_der(&seed);
+    content.extend_from_slice(&octet_string_der(&tampered));
+    let both_bad = wrap(&der_sequence(&content));
+    assert!(matches!(
+      import_pkcs8(&both_bad),
+      Err(MlKemError::InvalidKeyData),
+    ));
+
+    // valid seed form -> Ok with the seed preserved.
+    let good = encode_pkcs8_seed(variant, &seed).unwrap();
+    let imported = import_pkcs8(&good).unwrap();
+    assert_eq!(imported.variant, variant);
   }
 }
