@@ -4823,11 +4823,7 @@
     "parallel/test-crypto-gcm-explicit-short-tag.js": {},
     "parallel/test-crypto-keygen-async-encrypted-private-key-der.js": {},
     "parallel/test-crypto-keygen-async-explicit-elliptic-curve-encrypted.js.js": {},
-    "parallel/test-cwd-enoent-improved-message.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
-    },
+    "parallel/test-cwd-enoent-improved-message.js": {},
     "parallel/test-cwd-enoent-preload.js": {},
     "parallel/test-cwd-enoent.js": {},
     "parallel/test-debug-process.js": {
