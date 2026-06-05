@@ -3195,7 +3195,7 @@ Deno.test(function subtleCryptoSupportsBasic() {
   assert(supports("digest", "SHA-256"));
   assert(supports("digest", "SHA3-256"));
   assert(supports("digest", "SHA3-512"));
-  assert(supports("digest", { name: "SHAKE128", length: 256 }));
+  assert(supports("digest", { name: "SHAKE128", outputLength: 256 }));
   // generateKey
   assert(supports("generateKey", {
     name: "AES-GCM",
@@ -3245,12 +3245,12 @@ Deno.test(function subtleCryptoSupportsModernAlgorithms() {
   assert(supports("digest", "SHA3-384"));
   assert(supports("digest", "SHA3-512"));
   // SHAKE / cSHAKE / TurboSHAKE digests
-  assert(supports("digest", { name: "SHAKE128", length: 256 }));
+  assert(supports("digest", { name: "SHAKE128", outputLength: 256 }));
   assert(
-    supports("digest", { name: "cSHAKE128", length: 256 }),
+    supports("digest", { name: "cSHAKE128", outputLength: 256 }),
   );
   assert(
-    supports("digest", { name: "TurboSHAKE128", length: 256 }),
+    supports("digest", { name: "TurboSHAKE128", outputLength: 256 }),
   );
 });
 
