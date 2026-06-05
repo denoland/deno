@@ -225,12 +225,12 @@ Deno.test("[node/dns] promises.lookup with falsy hostname resolves", async () =>
   for (const hostname of [undefined, null, ""]) {
     // deno-lint-ignore no-explicit-any
     const result = await lookupPromise(hostname as any);
-    assertEquals(result, { address: null, family: 4 });
+    assertEquals(result as unknown, { address: null, family: 4 });
   }
 
   // deno-lint-ignore no-explicit-any
   const result6 = await lookupPromise(undefined as any, { family: 6 });
-  assertEquals(result6, { address: null, family: 6 });
+  assertEquals(result6 as unknown, { address: null, family: 6 });
 
   // deno-lint-ignore no-explicit-any
   const resultAll = await lookupPromise(undefined as any, { all: true });
