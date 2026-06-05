@@ -13597,6 +13597,7 @@ mod tests {
           self_extracting: false,
           bundle: false,
           minify: false,
+          exclude_unused_npm: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
