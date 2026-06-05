@@ -1114,6 +1114,45 @@ fn join_paths(allowlist: &[String], d: &str) -> String {
     .join(d)
 }
 
+/// Whether `arg` looks like a permission flag (`--allow-*`/`--deny-*`, the
+/// `-A`/`-R`/`-W`/`-N`/`-E`/`-S`/`-I` short forms, or a bundle of those shorts
+/// like `-RW`). Used to warn when such a flag is mistakenly placed after the
+/// script argument, where it is silently treated as a script argument.
+fn is_permission_flag(arg: &str) -> bool {
+  const LONG_FLAGS: &[&str] = &[
+    "--allow-all",
+    "--allow-env",
+    "--deny-env",
+    "--allow-ffi",
+    "--deny-ffi",
+    "--allow-import",
+    "--deny-import",
+    "--allow-net",
+    "--deny-net",
+    "--allow-read",
+    "--deny-read",
+    "--allow-run",
+    "--deny-run",
+    "--allow-sys",
+    "--deny-sys",
+    "--allow-write",
+    "--deny-write",
+  ];
+
+  // Strip an optional `=value` suffix (e.g. `--allow-net=host`, `-N=host`).
+  let name = arg.split('=').next().unwrap_or(arg);
+  if LONG_FLAGS.contains(&name) {
+    return true;
+  }
+  // Short permission flags, optionally bundled (e.g. `-A`, `-R`, `-RW`).
+  match name.strip_prefix('-') {
+    Some(shorts) if !shorts.is_empty() && !shorts.starts_with('-') => shorts
+      .chars()
+      .all(|c| matches!(c, 'A' | 'R' | 'W' | 'N' | 'E' | 'S' | 'I')),
+    _ => false,
+  }
+}
+
 impl Flags {
   /// Return list of permission arguments that are equivalent
   /// to the ones used to create `self`.
@@ -1525,23 +1564,7 @@ impl Flags {
   }
 
   pub fn has_permission_in_argv(&self) -> bool {
-    self.argv.iter().any(|arg| {
-      arg == "--allow-all"
-        || arg.starts_with("--allow-env")
-        || arg.starts_with("--deny-env")
-        || arg.starts_with("--allow-ffi")
-        || arg.starts_with("--deny-ffi")
-        || arg.starts_with("--allow-net")
-        || arg.starts_with("--deny-net")
-        || arg.starts_with("--allow-read")
-        || arg.starts_with("--deny-read")
-        || arg.starts_with("--allow-run")
-        || arg.starts_with("--deny-run")
-        || arg.starts_with("--allow-sys")
-        || arg.starts_with("--deny-sys")
-        || arg.starts_with("--allow-write")
-        || arg.starts_with("--deny-write")
-    })
+    self.argv.iter().any(|arg| is_permission_flag(arg))
   }
 
   #[inline(always)]
@@ -9513,7 +9536,28 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "x.ts", "--deny-read"]);
     assert_eq!(r.unwrap().has_permission_in_argv(), true);
 
+    // `--allow-import` / `--deny-import` are permission flags too.
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "--allow-import"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), true);
+
+    // Short permission flags and bundles of them are detected.
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "-A"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), true);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "-RW"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), true);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "-N=example.com"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), true);
+
     let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), false);
+
+    // A bare `-` (stdin) and unrelated short flags are not permission flags.
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "-"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), false);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "--port", "-q"]);
     assert_eq!(r.unwrap().has_permission_in_argv(), false);
   }
 

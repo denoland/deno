@@ -1,4 +1,20 @@
 {
-  "args": "run 001_hello.js --allow-net",
-  "output": "permission_args.out"
+  "tests": {
+    "long_flag": {
+      "args": "run 001_hello.js --allow-net",
+      "output": "permission_args.out"
+    },
+    "short_flag": {
+      "args": "run 001_hello.js -R",
+      "output": "permission_args.out"
+    },
+    "bundled_short_flags": {
+      "args": "run 001_hello.js -RW",
+      "output": "permission_args.out"
+    },
+    "import_flag": {
+      "args": "run 001_hello.js --allow-import",
+      "output": "permission_args.out"
+    }
+  }
 }
