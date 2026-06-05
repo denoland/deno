@@ -135,6 +135,13 @@ impl CliMainWorker {
 
     log::debug!("main_module {}", self.worker.main_module());
 
+    // Enable native HMR (`import.meta.hot`) before any user module loads, so
+    // the main module and its whole graph get an `import.meta.hot` attached
+    // during instantiation. Must happen before `execute_main_module`.
+    if self.shared.create_hmr_runner.is_some() {
+      self.enable_native_hmr()?;
+    }
+
     // Run preload modules first if they were defined
     self.worker.execute_preload_modules().await?;
     self.execute_main_module().await?;
@@ -299,6 +306,17 @@ impl CliMainWorker {
       .js_runtime()
       .v8_isolate()
       .cancel_terminate_execution();
+  }
+
+  /// Turn on the native HMR runtime so `import.meta.hot` is attached to user
+  /// modules as they are instantiated. Registers the `import.meta.hot` factory
+  /// in `libs/core/01_core.js` via `Deno.core.enableHmr()`.
+  fn enable_native_hmr(&mut self) -> Result<(), CoreError> {
+    self.worker.js_runtime().execute_script(
+      "[deno:enable_hmr]",
+      "Deno[Deno.internal].core.enableHmr();",
+    )?;
+    Ok(())
   }
 
   pub fn maybe_setup_hmr_runner(&mut self) -> Option<HmrRunner> {
