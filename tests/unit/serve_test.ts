@@ -97,6 +97,44 @@ Deno.test(async function httpServerShutsDownPortBeforeResolving() {
   listener!.close();
 });
 
+// Regression test for the Request properties added in
+// https://github.com/denoland/deno/issues/27763. Server-created requests are
+// built via `fromInnerRequest` (the public `Request` constructor is bypassed),
+// so the new accessors must still report the spec defaults for a Deno.serve()
+// request without adding anything to the inner request's shape.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRequestStandardProperties() {
+    const { promise, resolve } = Promise.withResolvers<
+      Record<string, unknown>
+    >();
+    await using server = await makeServer((req) => {
+      resolve({
+        cache: req.cache,
+        credentials: req.credentials,
+        integrity: req.integrity,
+        keepalive: req.keepalive,
+        mode: req.mode,
+        referrer: req.referrer,
+        referrerPolicy: req.referrerPolicy,
+      });
+      return new Response("ok");
+    });
+    const resp = await fetch(`http://localhost:${servePort}/`);
+    await resp.text();
+    assertEquals(await promise, {
+      cache: "default",
+      credentials: "same-origin",
+      integrity: "",
+      keepalive: false,
+      mode: "cors",
+      referrer: "about:client",
+      referrerPolicy: "",
+    });
+    await server.shutdown();
+  },
+);
+
 // When shutting down abruptly, we require that all in-progress connections are aborted,
 // no new connections are allowed, and no new transactions are allowed on existing connections.
 Deno.test(
@@ -4168,6 +4206,81 @@ Deno.test(
     ac.abort();
     await server.finished;
     assert(respText === "Customized Internal Error from onError");
+  },
+);
+
+// Handler returning a Response-like object (prototype matches but no internal
+// slot — e.g. a subclass that skipped super(), or a Response from a different
+// realm/polyfill) must not crash the serve loop. This was the crash reported
+// in https://github.com/denoland/deno/issues/33893 for nitro+vite, where the
+// loop tore down with "Cannot read properties of undefined (reading 'status')"
+// inside `mapped` in `ext:deno_http/00_serve.ts`.
+function makeResponseLike(): Response {
+  const fake = Object.create(Response.prototype);
+  // Own-data properties for getters Deno.serve probes during validation,
+  // so the inherited (branded) accessors don't run.
+  Object.defineProperty(fake, "type", { value: "default" });
+  Object.defineProperty(fake, "bodyUsed", { value: false });
+  return fake as Response;
+}
+
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeCallbackReturnsResponseLike() {
+    const deferred = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(listeningDeferred.resolve),
+        signal: ac.signal,
+        onError: (error) => {
+          assert(error instanceof TypeError);
+          assert(
+            error.message.includes("must be a Response") &&
+              error.message.includes("constructor in this realm"),
+          );
+          deferred.resolve();
+          return new Response("recovered", { status: 200 });
+        },
+      },
+      () => makeResponseLike(),
+    );
+    await listeningDeferred.promise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    await deferred.promise;
+    ac.abort();
+    await server.finished;
+    assert(respText === "recovered");
+  },
+);
+
+// onError handler returning a Response-like object must also not crash the
+// serve loop — it should fall through to the default 500 instead.
+Deno.test(
+  { permissions: { net: true, run: true } },
+  async function handleServeErrorCallbackReturnsResponseLike() {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve(
+      {
+        port: servePort,
+        onListen: onListen(resolve),
+        signal: ac.signal,
+        onError: () => makeResponseLike(),
+      },
+      () => {
+        throw new Error("boom");
+      },
+    );
+    await promise;
+    const respText = await curlRequest([`http://localhost:${servePort}`]);
+    ac.abort();
+    await server.finished;
+    assert(respText === "Internal Server Error");
   },
 );
 

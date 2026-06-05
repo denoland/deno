@@ -459,7 +459,7 @@ fn apply_value_substitution(
 
       let mut end = i + 1;
       for (offset, ch) in value[i + 1..].char_indices() {
-        if ch.is_ascii_alphanumeric() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
           end = i + 1 + offset + ch.len_utf8();
         } else {
           break;
@@ -983,8 +983,25 @@ u4QuUoobAgMBAAE=
       &[
         ("KEY1", "test_user"),
         ("KEY1_1", "test_user_with_separator"),
-        ("KEY", ">test_user_1<>test_user}<>test_user{<"),
+        // an underscore is part of the variable name (matching bash and
+        // @std/dotenv), so `$KEY1_1` resolves the `KEY1_1` variable; `{` and
+        // `}` still terminate an unbraced reference
+        ("KEY", ">test_user_with_separator<>test_user}<>test_user{<"),
       ],
+    );
+  }
+
+  #[test]
+  fn test_underscore_is_part_of_unbraced_variable_name() {
+    // https://github.com/denoland/deno/issues/26581
+    let sys = sys_traits::impls::InMemorySys::default();
+    assert_parsed_eq_with_substitution(
+      &sys,
+      r#"
+      C_D=value1000
+      E=$C_D${C_D}
+      "#,
+      &[("C_D", "value1000"), ("E", "value1000value1000")],
     );
   }
 
@@ -1025,7 +1042,7 @@ u4QuUoobAgMBAAE=
       &sys,
       r#"
       KEY1=test_user
-      KEY2=$KEY1_2
+      KEY2=${KEY1}_2
       KEY=>${KEY1}<>${KEY2}<
       "#,
       &[
@@ -1045,7 +1062,9 @@ u4QuUoobAgMBAAE=
       KEY2=$KEY1_2
       KEY=>${KEY1}<>${KEY2}<
       "#,
-      &[("KEY2", "_2"), ("KEY", "><>_2<")],
+      // `KEY1_2` is the whole variable name and is undefined, so it resolves
+      // to an empty string
+      &[("KEY2", ""), ("KEY", "><><")],
     );
   }
 

@@ -586,6 +586,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     let mut missing_diagnostics = missing_diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
+        && !self.is_untagged_jsdoc_dynamic_import_diagnostic(d)
     });
     missing_diagnostics.apply_fast_check_source_maps(&self.graph);
 
@@ -674,6 +675,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     let mut response_diagnostics = response.diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
+        && !self.is_untagged_jsdoc_dynamic_import_diagnostic(d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
     let mut diagnostics = missing_diagnostics.filter(|d| {
@@ -716,6 +718,37 @@ impl DiagnosticsByFolderRealIterator<'_> {
     } else {
       true
     }
+  }
+
+  fn is_untagged_jsdoc_dynamic_import_diagnostic(
+    &self,
+    d: &tsc::Diagnostic,
+  ) -> bool {
+    if d.code != 2307 {
+      return false;
+    }
+    let Some(file_name) = &d.file_name else {
+      return false;
+    };
+    let Ok(specifier) = ModuleSpecifier::parse(file_name) else {
+      return false;
+    };
+    let Ok(Some(Module::Js(module))) = self.graph.try_get(&specifier) else {
+      return false;
+    };
+    if !matches!(
+      module.media_type,
+      MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs | MediaType::Jsx
+    ) {
+      return false;
+    }
+    let Some(start) = &d.start else {
+      return false;
+    };
+    is_untagged_jsdoc_dynamic_import_position(
+      &module.source.text,
+      deno_graph::Position::new(start.line as usize, start.character as usize),
+    )
   }
 
   fn add_jsx_runtime_types(
@@ -951,13 +984,22 @@ impl<'a> GraphWalker<'a> {
       if let Some(entry) = self.maybe_get_check_entry(module) {
         self.roots.push(entry);
       }
+      let is_js_module = matches!(
+        module.media_type(),
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Jsx
+      );
 
       let mut maybe_module_dependencies = None;
       let mut maybe_types_dependency = None;
+      let mut maybe_js_source_text = None;
       match module {
         Module::Js(module) => {
           maybe_module_dependencies =
             Some(module.dependencies_prefer_fast_check());
+          maybe_js_source_text = Some(module.source.text.as_ref());
           maybe_types_dependency = module
             .maybe_types_dependency
             .as_ref()
@@ -1012,6 +1054,9 @@ impl<'a> GraphWalker<'a> {
           if dep.is_dynamic {
             continue;
           }
+          if is_js_module && dep.maybe_code.is_none() {
+            continue;
+          }
           // only surface the code error if there's no type
           let dep_to_check_error = if dep.maybe_type.is_none() {
             &dep.maybe_code
@@ -1020,6 +1065,13 @@ impl<'a> GraphWalker<'a> {
           };
           if let deno_graph::Resolution::Err(resolution_error) =
             dep_to_check_error
+            && !(is_js_module
+              && maybe_js_source_text.is_some_and(|text| {
+                is_untagged_jsdoc_dynamic_import_range(
+                  text,
+                  resolution_error.range(),
+                )
+              }))
             && let Some(diagnostic) =
               tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
@@ -1294,6 +1346,84 @@ fn position_from_source_pos(
     line_and_column_index.line_index,
     line_and_column_index.column_index,
   )
+}
+
+static JSDOC_DYNAMIC_IMPORT_RE: Lazy<Regex> =
+  lazy_regex::lazy_regex!(r#"(?s)(?:^|[^\w$])import\s*\(\s*["'][^"']+["']"#);
+static JSDOC_TYPED_TAG_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
+  r#"@(?:augments|extends|implements|import|param|returns?|satisfies|template|typedef|type)\b"#
+);
+
+fn is_untagged_jsdoc_dynamic_import_range(
+  text: &str,
+  range: &deno_graph::Range,
+) -> bool {
+  is_untagged_jsdoc_dynamic_import_position(text, range.range.start)
+}
+
+fn is_untagged_jsdoc_dynamic_import_position(
+  text: &str,
+  position: deno_graph::Position,
+) -> bool {
+  let Some(start) = position_to_byte_index(text, position) else {
+    return false;
+  };
+  let Some(comment_start) = text[..start].rfind("/**") else {
+    return false;
+  };
+  if text[..start]
+    .rfind("*/")
+    .is_some_and(|comment_end| comment_end > comment_start)
+  {
+    return false;
+  }
+
+  let Some(open_brace) = text[..start].rfind('{') else {
+    return false;
+  };
+  if open_brace <= comment_start
+    || text[..start]
+      .rfind('}')
+      .is_some_and(|close_brace| close_brace > open_brace)
+  {
+    return false;
+  }
+  if JSDOC_TYPED_TAG_RE.is_match(&text[comment_start..open_brace]) {
+    return false;
+  }
+
+  let Some(close_brace) = text[start..].find('}').map(|i| start + i) else {
+    return false;
+  };
+  if text[start..]
+    .find("*/")
+    .is_some_and(|comment_end| start + comment_end < close_brace)
+  {
+    return false;
+  }
+
+  JSDOC_DYNAMIC_IMPORT_RE.is_match(&text[open_brace + 1..close_brace])
+}
+
+fn position_to_byte_index(
+  text: &str,
+  position: deno_graph::Position,
+) -> Option<usize> {
+  let mut line = 0;
+  let mut character = 0;
+  for (index, c) in text.char_indices() {
+    if line == position.line && character == position.character {
+      return Some(index);
+    }
+    if c == '\n' {
+      line += 1;
+      character = 0;
+    } else {
+      character += 1;
+    }
+  }
+  (line == position.line && character == position.character)
+    .then_some(text.len())
 }
 
 /// Matches the `@ts-check` pragma.

@@ -393,13 +393,6 @@ impl ReplSession {
     Ok(repl_session)
   }
 
-  pub fn set_test_reporter_factory(
-    &mut self,
-    f: Box<dyn Fn() -> Box<dyn TestReporter>>,
-  ) {
-    self.test_reporter_factory = f;
-  }
-
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
     let result = self
       .call_function_on_repl_internal_obj(

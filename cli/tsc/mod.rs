@@ -1300,6 +1300,15 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
     .collect()
   });
 
+// Names of globals that `@types/node` redeclares but that Deno already
+// declares natively (typically in `lib.deno.web.d.ts`). When the TypeScript
+// fork merges `@types/node` into the global symbol table, declarations for
+// these names are dropped so the user-visible global remains Deno's.
+//
+// This keeps `new AbortController().signal` assignable to the `AbortSignal`
+// parameters of `node:fs`, `node:timers/promises`, etc., and avoids the
+// `TS2300` / `TS2320` duplicate-identifier diagnostics reported in
+// https://github.com/denoland/deno/issues/19527.
 pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "AbortController",
   "AbortSignal",
@@ -1352,7 +1361,9 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "ReadableStreamDefaultReader",
   "ReadonlyArray",
   "Request",
+  "RequestInit",
   "Response",
+  "ResponseInit",
   "Storage",
   "SubtleCrypto",
   "TextDecoder",
@@ -1376,7 +1387,5 @@ pub static NODE_ONLY_GLOBALS: &[&str] = &[
   "crypto",
   "gc",
   "localStorage",
-  "RequestInit",
-  "ResponseInit",
   "sessionStorage",
 ];

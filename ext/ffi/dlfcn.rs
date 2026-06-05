@@ -18,7 +18,6 @@ use deno_permissions::PermissionsContainer;
 use denort_helper::DenoRtNativeAddonLoaderRc;
 use dlopen2::raw::Library;
 use serde::Deserialize;
-use serde_value::ValueDeserializer;
 
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
@@ -130,17 +129,14 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
   where
     D: serde::Deserializer<'de>,
   {
-    let value = serde_value::Value::deserialize(deserializer)?;
+    let value = serde_json::Value::deserialize(deserializer)?;
 
     // Probe a ForeignStatic and if that doesn't match, assume ForeignFunction to improve error messages
-    match ForeignStatic::deserialize(ValueDeserializer::<D::Error>::new(
-      value.clone(),
-    )) {
+    match ForeignStatic::deserialize(value.clone()) {
       Ok(res) => Ok(ForeignSymbol::ForeignStatic(res)),
-      _ => {
-        ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
-          .map(ForeignSymbol::ForeignFunction)
-      }
+      _ => ForeignFunction::deserialize(value)
+        .map(ForeignSymbol::ForeignFunction)
+        .map_err(serde::de::Error::custom),
     }
   }
 }
@@ -359,15 +355,12 @@ pub(crate) fn format_error(
     dlopen2::Error::OpeningLibraryError(e) => {
       use std::os::windows::ffi::OsStrExt;
 
-      use winapi::shared::minwindef::DWORD;
-      use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
-      use winapi::um::errhandlingapi::GetLastError;
-      use winapi::um::winbase::FORMAT_MESSAGE_ARGUMENT_ARRAY;
-      use winapi::um::winbase::FORMAT_MESSAGE_FROM_SYSTEM;
-      use winapi::um::winbase::FormatMessageW;
-      use winapi::um::winnt::LANG_SYSTEM_DEFAULT;
-      use winapi::um::winnt::MAKELANGID;
-      use winapi::um::winnt::SUBLANG_SYS_DEFAULT;
+      use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+      use windows_sys::Win32::Foundation::GetLastError;
+      use windows_sys::Win32::Globalization::LANG_SYSTEM_DEFAULT;
+      use windows_sys::Win32::System::Diagnostics::Debug::FORMAT_MESSAGE_ARGUMENT_ARRAY;
+      use windows_sys::Win32::System::Diagnostics::Debug::FORMAT_MESSAGE_FROM_SYSTEM;
+      use windows_sys::Win32::System::Diagnostics::Debug::FormatMessageW;
 
       let err_num = match e.raw_os_error() {
         Some(err_num) => err_num,
@@ -375,9 +368,8 @@ pub(crate) fn format_error(
         None => return e.to_string(),
       };
 
-      // Language ID (0x0800)
-      let lang_id =
-        MAKELANGID(LANG_SYSTEM_DEFAULT, SUBLANG_SYS_DEFAULT) as DWORD;
+      // Language ID (0x0800), i.e. MAKELANGID(LANG_NEUTRAL, SUBLANG_SYS_DEFAULT)
+      let lang_id = LANG_SYSTEM_DEFAULT as u32;
 
       let mut buf = vec![0; 500];
 
@@ -391,22 +383,22 @@ pub(crate) fn format_error(
 
       loop {
         // SAFETY:
-        // winapi call to format the error message
+        // Win32 call to format the error message
         let length = unsafe {
           FormatMessageW(
             FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ARGUMENT_ARRAY,
-            std::ptr::null_mut(),
-            err_num as DWORD,
-            lang_id as DWORD,
+            std::ptr::null(),
+            err_num as u32,
+            lang_id,
             buf.as_mut_ptr(),
-            buf.len() as DWORD,
+            buf.len() as u32,
             arguments.as_ptr() as _,
           )
         };
 
         if length == 0 {
           // SAFETY:
-          // winapi call to get the last error message
+          // Win32 call to get the last error message
           let err_num = unsafe { GetLastError() };
           if err_num == ERROR_INSUFFICIENT_BUFFER {
             buf.resize(buf.len() * 2, 0);

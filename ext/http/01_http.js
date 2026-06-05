@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -202,7 +202,17 @@ function createRespondWith(
         );
       }
 
+      // The Response prototype check above passes for Response-like objects
+      // that don't carry the internal slot (e.g. `Object.create(Response.prototype)`
+      // or a polyfilled/foreign-realm Response). Reject those here instead of
+      // crashing later on `innerResp.body`. Mirrors the Deno.serve guard
+      // added in #34416.
       const innerResp = toInnerResponse(resp);
+      if (innerResp === undefined) {
+        throw new TypeError(
+          "First argument to 'respondWith' must be a Response constructed via the Response constructor in this realm",
+        );
+      }
 
       // If response body length is known, it will be sent synchronously in a
       // single op, in other case a "response body" resource will be created and

@@ -16,6 +16,7 @@ use crate::error::exception_to_err;
 use crate::fast_string::FastString;
 use crate::module_specifier::ModuleSpecifier;
 
+mod import_graph;
 mod loaders;
 mod map;
 mod module_map_data;
@@ -33,6 +34,7 @@ pub use loaders::ModuleLoadReferrer;
 pub use loaders::ModuleLoadResponse;
 pub use loaders::ModuleLoader;
 pub use loaders::ModuleLoaderError;
+pub use loaders::ModuleResolveResponse;
 pub use loaders::NoopModuleLoader;
 pub use loaders::StaticModuleLoader;
 pub(crate) use map::ModuleMap;
@@ -538,7 +540,7 @@ impl ModuleSource {
 pub type ModuleSourceFuture =
   dyn Future<Output = Result<ModuleSource, ModuleLoaderError>>;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ResolutionKind {
   /// This kind is used in only one situation: when a module is loaded via
   /// `JsRuntime::load_main_module` and is the top-level module, ie. the one

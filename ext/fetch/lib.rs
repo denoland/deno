@@ -71,6 +71,7 @@ use http::Uri;
 use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
 use http::header::AUTHORIZATION;
+use http::header::CONTENT_ENCODING;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
 use http::header::HeaderName;
@@ -266,7 +267,7 @@ impl From<deno_fs::FsError> for FetchError {
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
 
-pub trait FetchHandler: dyn_clone::DynClone {
+pub trait FetchHandler {
   // Return the result of the fetch request consisting of a tuple of the
   // cancelable response result, the optional fetch body resource and the
   // optional cancel handle.
@@ -276,8 +277,6 @@ pub trait FetchHandler: dyn_clone::DynClone {
     url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>);
 }
-
-dyn_clone::clone_trait_object!(FetchHandler);
 
 /// A default implementation which will error for every request.
 #[derive(Clone)]
@@ -306,8 +305,9 @@ pub fn get_or_create_client_from_state(
   if let Some(client) = state.try_borrow::<Client>() {
     Ok(client.clone())
   } else {
+    let permissions = state.borrow::<PermissionsContainer>().clone();
     let options = state.borrow::<Options>();
-    let client = create_client_from_options(options)?;
+    let client = create_client_from_options(options, Some(permissions))?;
     state.put::<Client>(client.clone());
     Ok(client)
   }
@@ -315,7 +315,12 @@ pub fn get_or_create_client_from_state(
 
 pub fn create_client_from_options(
   options: &Options,
+  permissions: Option<PermissionsContainer>,
 ) -> Result<Client, HttpClientCreateError> {
+  let dns_resolver = match permissions {
+    Some(p) => options.resolver.clone().with_permissions(p),
+    None => options.resolver.clone(),
+  };
   create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
@@ -324,7 +329,7 @@ pub fn create_client_from_options(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs: vec![],
       proxy: options.proxy.clone(),
-      dns_resolver: options.resolver.clone(),
+      dns_resolver,
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -598,7 +603,6 @@ pub struct FetchResponse {
   pub headers: Vec<(ByteString, ByteString)>,
   pub url: String,
   pub response_rid: ResourceId,
-  #[to_v8(serde)]
   pub content_length: Option<u64>,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
@@ -880,6 +884,7 @@ pub fn op_fetch_custom_client(
     }
   }
 
+  let permissions = state.borrow::<PermissionsContainer>().clone();
   let options = state.borrow::<Options>();
   let ca_certs = args
     .ca_certs
@@ -895,7 +900,7 @@ pub fn op_fetch_custom_client(
         .map_err(HttpClientCreateError::RootCertStore)?,
       ca_certs,
       proxy: args.proxy,
-      dns_resolver: dns::Resolver::default(),
+      dns_resolver: dns::Resolver::default().with_permissions(permissions),
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
@@ -1024,6 +1029,7 @@ pub fn create_http_client(
       .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
     http_connector.set_local_address(Some(local_addr));
   }
+  let http_connector = dns::PermissionedHttpConnector::new(http_connector);
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
@@ -1117,13 +1123,43 @@ pub fn create_http_client(
 
   let pooled_client = builder.build(connector.clone());
   let retry_client = retry::Retry::new(FetchRetry, pooled_client);
-  let decompress = Decompression::new(retry_client).gzip(true).br(true);
 
   Ok(Client {
-    inner: decompress,
+    inner: retry_client,
     connector,
     user_agent,
   })
+}
+
+/// Function pointer type for [`strip_content_encoding_for_empty_body`], used to
+/// name the response-mapping middleware in the [`Client`] type.
+type StripEmptyEncodingFn = fn(
+  http::Response<hyper::body::Incoming>,
+) -> http::Response<hyper::body::Incoming>;
+
+/// Strips the `Content-Encoding` header from a response whose body is empty
+/// (`Content-Length: 0`).
+///
+/// Some servers (and compression middlewares) advertise `Content-Encoding:
+/// gzip` while sending an empty body. A valid gzip stream is never zero bytes,
+/// so attempting to decompress it fails with "unexpected end of file". Other
+/// clients (curl, browsers, ...) tolerate this by simply not decompressing an
+/// empty body. We do the same by removing the encoding header before the
+/// transparent decompression middleware sees the response, so the empty body
+/// passes through untouched. See denoland/deno#29281.
+fn strip_content_encoding_for_empty_body(
+  mut resp: http::Response<hyper::body::Incoming>,
+) -> http::Response<hyper::body::Incoming> {
+  let is_empty = resp
+    .headers()
+    .get(CONTENT_LENGTH)
+    .and_then(|v| v.to_str().ok())
+    .and_then(|v| v.parse::<u64>().ok())
+    == Some(0);
+  if is_empty {
+    resp.headers_mut().remove(CONTENT_ENCODING);
+  }
+  resp
 }
 
 #[op2]
@@ -1131,14 +1167,14 @@ pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
   input.into()
 }
 
+type RetryClient = retry::Retry<
+  FetchRetry,
+  hyper_util::client::legacy::Client<Connector, ReqBody>,
+>;
+
 #[derive(Clone, Debug)]
 pub struct Client {
-  inner: Decompression<
-    retry::Retry<
-      FetchRetry,
-      hyper_util::client::legacy::Client<Connector, ReqBody>,
-    >,
-  >,
+  inner: RetryClient,
   connector: Connector,
   user_agent: HeaderValue,
 }
@@ -1193,7 +1229,9 @@ impl Client {
   }
 }
 
-type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
+type Connector = proxy::ProxyConnector<
+  dns::PermissionedHttpConnector<HttpConnector<dns::Resolver>>,
+>;
 
 #[allow(
   clippy::declare_interior_mutable_const,
@@ -1302,8 +1340,16 @@ impl Client {
 
     let uri = req.uri().clone();
 
-    let resp = self
-      .inner
+    // Strip `Content-Encoding` from empty-bodied responses before the
+    // decompression middleware runs, so an empty body advertised as gzip/br
+    // is passed through instead of failing to decompress. See
+    // `strip_content_encoding_for_empty_body`.
+    let service = self.inner.map_response(
+      strip_content_encoding_for_empty_body as StripEmptyEncodingFn,
+    );
+    let decompress = Decompression::new(service).gzip(true).br(true);
+
+    let resp = decompress
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
@@ -1324,10 +1370,9 @@ impl Client {
 
     let uri = req.uri().clone();
 
-    // .into_inner() unwraps the Decompression middleware layer
+    // No decompression middleware here: the response body is returned as-is.
     let resp = self
       .inner
-      .into_inner()
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;

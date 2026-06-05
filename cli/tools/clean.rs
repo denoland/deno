@@ -54,10 +54,16 @@ pub async fn clean(
     progress_guard.set_total_size(no_of_files.try_into().unwrap());
     let mut cleaner = FsCleaner::new(Some(progress_guard));
 
-    cleaner.rm_rf(&deno_dir.root)?;
+    // On a dry run, tally up what would be removed without deleting anything;
+    // the reported output is otherwise identical to a real clean.
+    if clean_flags.dry_run {
+      cleaner.tally(&deno_dir.root)?;
+    } else {
+      cleaner.rm_rf(&deno_dir.root)?;
+    }
 
     // Drop the guard so that progress bar disappears.
-    drop(cleaner.progress_guard);
+    drop(cleaner.progress_guard.take());
 
     log::info!(
       "{} {} {}",
@@ -69,6 +75,10 @@ pub async fn clean(
         display::human_size(cleaner.bytes_removed as f64)
       ))
     );
+
+    if clean_flags.dry_run {
+      log::info!("{}", colors::yellow("Aborting due to --dry-run flag"));
+    }
   }
 
   Ok(())

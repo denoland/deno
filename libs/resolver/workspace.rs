@@ -1300,8 +1300,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         );
       }
 
-      // 2.1. Try to resolve the bare specifier to a workspace member
-      for member in &self.jsr_pkgs {
+      // 2.1. Try to resolve the bare specifier to a workspace member.
+      // Linked packages are not resolved here — using a linked package
+      // requires a `jsr:` specifier or an import map entry, otherwise the
+      // bare specifier would resolve even when no JSR or import map
+      // declaration exists.
+      for member in self.jsr_pkgs.iter().filter(|p| !p.is_link) {
         if let Some(path) = specifier.strip_prefix(&member.name)
           && (path.is_empty() || path.starts_with('/'))
         {
@@ -1653,7 +1657,17 @@ impl WorkspaceNpmLinkPackagesRc {
   pub fn from_workspace(workspace: &Workspace) -> Self {
     let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
       HashMap::new();
-    for pkg_json in workspace.link_pkg_jsons() {
+    for folder in workspace.link_folders().values() {
+      // A linked folder that also has a deno.json is a Deno/JSR link, not an
+      // npm link. Some packages ship a package.json only for other runtimes
+      // (e.g. Bun), so counting it as an npm link would wrongly require a
+      // node_modules directory.
+      if folder.deno_json.is_some() {
+        continue;
+      }
+      let Some(pkg_json) = folder.pkg_json.as_ref() else {
+        continue;
+      };
       let Some(name) = pkg_json.name.as_ref() else {
         log::warn!(
           "{} Link package ignored because package.json was missing name field.\n    at {}",
@@ -1727,6 +1741,7 @@ fn pkg_json_to_version_info(
     .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
   Ok(NpmPackageVersionInfo {
     version,
+    exports: pkg_json.exports.clone().map(serde_json::Value::Object),
     dist: None,
     bin: pkg_json
       .bin
@@ -2882,19 +2897,16 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    match resolver
+    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
+    // or an import map entry is required.
+    let err = resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap()
-    {
-      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
-      }
-      _ => unreachable!(),
-    }
+      .unwrap_err();
+    assert!(err.is_unmapped_bare_specifier());
     // matching version
     match resolver
       .resolve(
@@ -2959,19 +2971,16 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    match resolver
+    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
+    // or an import map entry is required.
+    let err = resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap()
-    {
-      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
-      }
-      _ => unreachable!(),
-    }
+      .unwrap_err();
+    assert!(err.is_unmapped_bare_specifier());
     // always resolves, no matter what version
     match resolver
       .resolve(
@@ -3259,6 +3268,7 @@ mod test {
       .unwrap(),
       NpmPackageVersionInfo {
         version: Version::parse_from_npm("1.0.0").unwrap(),
+        exports: None,
         dist: None,
         has_install_script: None,
         bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(

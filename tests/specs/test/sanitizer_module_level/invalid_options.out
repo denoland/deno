@@ -1,0 +1,4 @@
+[WILDCARD]
+sanitizer() rejects non-object arguments ... ok [WILDCARD]
+
+ok | 1 passed | 0 failed [WILDCARD]

@@ -1,13 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
 );
 const {
-  byteLowerCase,
   HTTP_TAB_OR_SPACE,
   regexMatcher,
   serializeJSValueToJSONString,
@@ -19,6 +18,7 @@ const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
 const { extractMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
 const {
+  ensureLowerNames,
   fillHeaders,
   getDecodeSplitHeader,
   guardFromHeaders,
@@ -217,16 +217,18 @@ function initializeAResponse(response, init, bodyWithType) {
     response[_response].body = body;
 
     if (contentType !== null) {
-      let hasContentType = false;
       const list = headerListFromHeaders(headers);
-      for (let i = 0; i < list.length; i++) {
-        if (byteLowerCase(list[i][0]) === "content-type") {
+      const lowerNames = ensureLowerNames(headers);
+      let hasContentType = false;
+      for (let i = 0; i < lowerNames.length; i++) {
+        if (lowerNames[i] === "content-type") {
           hasContentType = true;
           break;
         }
       }
       if (!hasContentType) {
         ArrayPrototypePush(list, ["Content-Type", contentType]);
+        ArrayPrototypePush(lowerNames, "content-type");
       }
     }
   }

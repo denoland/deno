@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 (function () {
-const { primordials } = globalThis.__bootstrap;
+const { primordials } = __bootstrap;
 const {
   SafeMap,
   ArrayPrototypeForEach,

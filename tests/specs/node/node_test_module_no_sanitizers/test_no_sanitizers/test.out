@@ -1,7 +1,11 @@
-running 1 test from ./test_no_sanitizers/test.js
+running 2 tests from ./test_no_sanitizers/test.js
 should not complain about resource and op sanitizers ...
   nested test ... ok ([WILDCARD])
 should not complain about resource and op sanitizers ... ok ([WILDCARD])
+should allow exit ...
+warning A test called Deno.exit(123) while the exit sanitizer was disabled (sanitizeExit: false). Aborting the test run.
 
-ok | 1 passed (1 step) | 0 failed ([WILDCARD])
+The following tests were pending:
+
+should allow exit => ./test_no_sanitizers/test.js:24:1
 

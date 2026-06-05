@@ -1,10 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
 "use strict";
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeForEach,
   ArrayPrototypeIndexOf,
@@ -23,14 +21,20 @@ const {
   Promise,
   PromisePrototypeThen,
   PromiseResolve,
+  PromiseWithResolvers,
   ReflectApply,
   ReflectConstruct,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeRegExp,
   String,
+  StringPrototypeMatch,
   Symbol,
   SymbolFor,
   TypeError,
+  queueMicrotask,
 } = primordials;
 
 let errorHandlersInstalled = false;
@@ -86,6 +90,10 @@ const {
   validateInteger,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
+const {
+  tapEscape,
+  tapIndent,
+} = core.loadExtScript("ext:deno_node/internal/test/reporters.ts");
 
 const methodsToCopy = [
   "deepEqual",
@@ -119,13 +127,668 @@ function getAssertObject() {
   return assertObject;
 }
 
-function run() {
-  notImplemented("test.run");
+// Lazy access to other node polyfills; loading these eagerly at module
+// init causes circular initialization issues during snapshotting.
+let _Readable = null;
+function getReadable() {
+  if (_Readable === null) {
+    _Readable = core.loadExtScript(
+      "ext:deno_node/internal/streams/readable.js",
+    ).Readable;
+  }
+  return _Readable;
+}
+let _fsWatch = null;
+function getFsWatch() {
+  if (_fsWatch === null) {
+    _fsWatch = core.loadExtScript("ext:deno_node/fs.ts").watch;
+  }
+  return _fsWatch;
+}
+const lazyProcess = core.createLazyLoader("node:process");
+
+// node:test `run()` implementation.
+//
+// Returns a `TestsStream`-compatible Readable that emits structured events
+// describing the test run lifecycle. We currently support the watch-mode
+// event stream (`test:watch:drained`, `test:watch:restarted`) which is the
+// minimum required for the Node.js `test-runner/test-run-watch-*` fixtures
+// that drive watch behavior through the programmatic API. Actual test file
+// discovery / execution remains TODO and is gated behind separate work; the
+// stream emits a single empty run cycle, then either ends (watch:false) or
+// waits for filesystem changes to trigger restarts (watch:true).
+//
+// See test-runner/test-run-watch-*.mjs in the Node compat suite for the
+// behavior this implements.
+function run(options) {
+  options = options ?? {};
+  const watch = options.watch === true;
+  const signal = options.signal;
+  let cwd = options.cwd;
+  if (cwd === undefined) {
+    cwd = lazyProcess().default.cwd();
+  }
+
+  const Readable = getReadable();
+  const stream = new Readable({
+    __proto__: null,
+    objectMode: true,
+    // We push events imperatively; the consumer just needs a no-op `_read`.
+    read() {},
+  });
+
+  let watcher = null;
+  let finished = false;
+  let pendingRestartTimer = null;
+
+  function finish() {
+    if (finished) return;
+    finished = true;
+    if (pendingRestartTimer !== null) {
+      clearTimeout(pendingRestartTimer);
+      pendingRestartTimer = null;
+    }
+    if (watcher !== null) {
+      try {
+        watcher.close();
+      } catch { /* ignore */ }
+      watcher = null;
+    }
+    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
+    stream.push(null);
+  }
+
+  function emit(type) {
+    if (finished) return;
+    const data = { __proto__: null };
+    // Node's TestsStream emits each lifecycle entry both as a data chunk
+    // (consumed via async iteration / `'data'` listeners) and as a named
+    // event so callers can attach `.on('test:watch:drained', ...)` directly.
+    // deno-lint-ignore prefer-primordials -- stream is a Node Readable, not an Array
+    stream.push({ __proto__: null, type, data });
+    stream.emit(type, data);
+  }
+
+  function drained() {
+    emit("test:watch:drained");
+  }
+
+  function scheduleRestart() {
+    if (finished) return;
+    // Debounce bursts of fs events so a single user-visible change produces
+    // exactly one restart cycle (Node's watcher coalesces likewise).
+    if (pendingRestartTimer !== null) {
+      clearTimeout(pendingRestartTimer);
+    }
+    pendingRestartTimer = setTimeout(() => {
+      pendingRestartTimer = null;
+      if (finished) return;
+      emit("test:watch:restarted");
+      drained();
+    }, 50);
+  }
+
+  if (signal) {
+    if (signal.aborted) {
+      // Resolve the initial drained on next tick to keep callers that
+      // `await once(stream, 'test:watch:drained')` working.
+      queueMicrotask(() => {
+        drained();
+        finish();
+      });
+      return stream;
+    }
+    signal.addEventListener("abort", finish, { once: true });
+  }
+
+  // Emit the initial "drained" event after the current microtask completes
+  // so that consumers attaching `.on('data')` synchronously after `run(...)`
+  // returns still observe the event.
+  queueMicrotask(() => {
+    drained();
+    if (!watch) {
+      finish();
+      return;
+    }
+    try {
+      const fsWatch = getFsWatch();
+      watcher = fsWatch(cwd, { recursive: true }, () => {
+        scheduleRestart();
+      });
+      watcher.on("error", () => {
+        finish();
+      });
+    } catch {
+      // If we can't watch (e.g. cwd doesn't exist), end the stream gracefully.
+      finish();
+    }
+  });
+
+  return stream;
 }
 
 function noop() {}
 
 const skippedSymbol = Symbol("skipped");
+
+// Detect Node.js-compatible `--test-reporter=...` selection so the polyfill
+// can emit reporter output matching Node's snapshot fixtures. Deno's CLI does
+// not consume `--test-reporter`; instead, our `child_process` polyfill (via
+// node_shim) propagates the value through NODE_OPTIONS when one Deno process
+// spawns another using Node-style flags. Reading the env var here keeps the
+// detection self-contained and avoids new Rust plumbing.
+function detectNodeTestReporter() {
+  const env = globalThis.Deno?.env;
+  if (!env) return null;
+  let value = null;
+  try {
+    value = env.get("NODE_TEST_REPORTER");
+  } catch { /* permission denied */ }
+  if (value) return value;
+  let nodeOptions = "";
+  try {
+    nodeOptions = env.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  if (!nodeOptions) return null;
+  // Match the first `--test-reporter` occurrence; support both `=value` and
+  // space-separated forms. We intentionally do not handle multiple reporters
+  // (Node lets you stack reporters with destinations); the snapshot tests use
+  // a single reporter and that is what we target.
+  const match = StringPrototypeMatch(
+    nodeOptions,
+    new SafeRegExp(/--test-reporter(?:=|\s+)(\S+)/),
+  );
+  return match ? match[1] : null;
+}
+
+// Resolve lazily: testing.ts ships inside Deno's startup snapshot, so any env
+// lookups performed at module-evaluation time observe the build environment,
+// not the running process. Memoize on the first call so we still only read the
+// env once.
+let nodeTestReporterCache;
+function getNodeTestReporter() {
+  if (nodeTestReporterCache !== undefined) return nodeTestReporterCache;
+  nodeTestReporterCache = detectNodeTestReporter();
+  return nodeTestReporterCache;
+}
+function isTapMode() {
+  return getNodeTestReporter() === "tap";
+}
+
+function getTapSuiteALS() {
+  if (tapSuiteALS !== null) return tapSuiteALS;
+  const mod = core.loadExtScript("ext:deno_node/async_hooks.ts");
+  const ALS = mod.AsyncLocalStorage;
+  tapSuiteALS = new ALS();
+  return tapSuiteALS;
+}
+
+function getTapCurrentSuite() {
+  if (tapSuiteALS !== null) {
+    const fromAls = tapSuiteALS.getStore();
+    if (fromAls !== undefined) return fromAls;
+  }
+  return tapCurrentSuiteSync;
+}
+
+// Parse `--test-skip-pattern` from NODE_OPTIONS so the TAP-mode polyfill can
+// filter tests Node-style. A bare string is interpreted as a regex source;
+// `/.../flags` is a regex literal.
+function parsePatternFlag(flag) {
+  const env = globalThis.Deno?.env;
+  if (!env) return null;
+  let nodeOptions = "";
+  try {
+    nodeOptions = env.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  if (!nodeOptions) return null;
+  const out = [];
+  const re = new SafeRegExp(`${flag}(?:=|\\s+)(\\S+)`, "g");
+  let m;
+  while ((m = RegExpPrototypeExec(re, nodeOptions)) !== null) {
+    const value = m[1];
+    let pattern;
+    const litMatch = StringPrototypeMatch(
+      value,
+      new SafeRegExp(/^\/(.*)\/([a-z]*)$/),
+    );
+    if (litMatch) {
+      try {
+        pattern = new SafeRegExp(litMatch[1], litMatch[2]);
+      } catch {
+        continue;
+      }
+    } else {
+      try {
+        pattern = new SafeRegExp(value);
+      } catch {
+        continue;
+      }
+    }
+    ArrayPrototypePush(out, pattern);
+  }
+  return out.length > 0 ? out : null;
+}
+
+let testSkipPatternCache;
+function getTestSkipPatterns() {
+  if (testSkipPatternCache !== undefined) return testSkipPatternCache;
+  testSkipPatternCache = parsePatternFlag("--test-skip-pattern");
+  return testSkipPatternCache;
+}
+
+let testOnlyFlagCache;
+function isTestOnlyFlagSet() {
+  if (testOnlyFlagCache !== undefined) return testOnlyFlagCache;
+  const env = globalThis.Deno?.env;
+  if (!env) {
+    testOnlyFlagCache = false;
+    return false;
+  }
+  let nodeOptions = "";
+  try {
+    nodeOptions = env.get("NODE_OPTIONS") || "";
+  } catch { /* permission denied */ }
+  testOnlyFlagCache = RegExpPrototypeTest(
+    new SafeRegExp(/(^|\s)--test-only(\s|=|$)/),
+    nodeOptions,
+  );
+  return testOnlyFlagCache;
+}
+
+const TEST_ONLY_WARNING =
+  "# 'only' and 'runOnly' require the --test-only command-line option.";
+
+function matchesAnyPattern(name, patterns) {
+  for (const p of new SafeArrayIterator(patterns)) {
+    if (RegExpPrototypeTest(p, name)) return true;
+  }
+  return false;
+}
+
+// Returns true if the given test/suite name should be excluded from the run.
+function shouldSkipByPattern(name) {
+  const skip = getTestSkipPatterns();
+  if (skip && matchesAnyPattern(String(name), skip)) return true;
+  return false;
+}
+
+// Top-level queue of test/suite entries collected synchronously while the
+// script body evaluates. Children of describe() blocks live under their parent
+// entry's `children` array, populated during the synchronous descend through
+// the describe body.
+const tapTopEntries = [];
+let tapRunScheduled = false;
+// AsyncLocalStorage tracking the currently-active describe() so that test()
+// and describe() calls made inside an async describe body - even after
+// `await` boundaries - still register against the surrounding suite. The
+// fallback variable handles synchronous nesting before ALS is loaded.
+let tapCurrentSuiteSync = null;
+let tapSuiteALS = null;
+const tapStats = {
+  tests: 0,
+  suites: 0,
+  pass: 0,
+  fail: 0,
+  cancelled: 0,
+  skipped: 0,
+  todo: 0,
+};
+
+function tapWrite(line) {
+  // deno-lint-ignore no-console
+  console.log(line);
+}
+
+function tapDirective(options) {
+  if (options.skip) {
+    const msg = options.skip === true ? "" : tapEscape(String(options.skip));
+    return msg ? ` # SKIP ${msg}` : " # SKIP";
+  }
+  if (options.todo) {
+    const msg = options.todo === true ? "" : tapEscape(String(options.todo));
+    return msg ? ` # TODO ${msg}` : " # TODO";
+  }
+  return "";
+}
+
+function tapYaml(depth, type) {
+  const pad = tapIndent(depth) + "  ";
+  tapWrite(`${pad}---`);
+  tapWrite(`${pad}duration_ms: 0`);
+  tapWrite(`${pad}type: '${type}'`);
+  tapWrite(`${pad}...`);
+}
+
+class TapContext {
+  #diagnostics = [];
+  #name;
+  #depth;
+  #subtestTail = PromiseResolve();
+  #subtestCount = 0;
+  #parentChildren;
+  // Per-context "warning printed" flag for the `--test-only` diagnostic.
+  // Mutated by `runTapEntry` when a child uses `only: true`.
+  onlyWarningEmitted = false;
+
+  constructor(name, depth, parentChildren) {
+    this.#name = name;
+    this.#depth = depth;
+    this.#parentChildren = parentChildren;
+  }
+
+  get name() {
+    return this.#name;
+  }
+
+  get fullName() {
+    return this.#name;
+  }
+
+  get signal() {
+    // Provide an AbortSignal so consumers that read t.signal don't crash; the
+    // minimal TAP runner does not currently honour aborts.
+    return new AbortController().signal;
+  }
+
+  get assert() {
+    return getAssertObject();
+  }
+
+  get mock() {
+    return mock;
+  }
+
+  diagnostic(message) {
+    ArrayPrototypePush(this.#diagnostics, String(message));
+  }
+
+  _drainDiagnostics() {
+    const out = this.#diagnostics;
+    this.#diagnostics = [];
+    return out;
+  }
+
+  // Subtest registration: `t.test(name, opts?, fn?)` queues a subtest that runs
+  // sequentially in the order it was registered. Concurrent calls (Promise.all)
+  // are serialized through the parent's subtest tail.
+  test(name, options, fn) {
+    const prepared = prepareOptions(name, options, fn, {});
+    this.#subtestCount++;
+    const n = this.#subtestCount;
+    const childDepth = this.#depth + 1;
+    const entry = {
+      name: prepared.name,
+      fn: prepared.fn,
+      options: prepared.options,
+      kind: "test",
+      children: [],
+      bodyPromise: null,
+      bodyError: null,
+    };
+    if (this.#parentChildren) {
+      ArrayPrototypePush(this.#parentChildren, entry);
+    }
+    // deno-lint-ignore no-this-alias
+    const parentState = this;
+    const p = PromisePrototypeThen(
+      this.#subtestTail,
+      () => runTapEntry(entry, childDepth, n, parentState),
+    );
+    this.#subtestTail = PromisePrototypeThen(p, () => {}, () => {});
+    return p;
+  }
+
+  _drainSubtests() {
+    return this.#subtestTail;
+  }
+
+  _subtestCount() {
+    return this.#subtestCount;
+  }
+}
+
+function scheduleTapRun() {
+  if (tapRunScheduled) return;
+  tapRunScheduled = true;
+  // Defer to the macrotask queue so synchronous top-level test() calls finish
+  // queueing before we start running.
+  setTimeout(() => {
+    runTapTop();
+  }, 0);
+}
+
+async function runTapTop() {
+  // Hold the event loop open while tests run so that fixtures using
+  // unref'd timers (Node's runner keeps itself alive internally) don't cause
+  // Deno to exit before subtests complete.
+  const keepAlive = setInterval(() => {}, 1 << 30);
+  try {
+    // Match Node's ordering: top-level `before()` callbacks fire before the
+    // `TAP version 13` line, so any console output they produce appears
+    // before the reporter header in the captured stream.
+    if (rootBeforeHooks.length > 0) {
+      const rootCtx = { name: "<root>", fullName: "<root>" };
+      for (const hook of new SafeArrayIterator(rootBeforeHooks)) {
+        try {
+          const r = ReflectApply(hook, null, [rootCtx]);
+          if (isThenable(r)) await r;
+        } catch {
+          /* swallow to keep parity with Node's lenient hook errors */
+        }
+      }
+    }
+    tapWrite("TAP version 13");
+    let n = 0;
+    const topState = { onlyWarningEmitted: false };
+    for (const entry of new SafeArrayIterator(tapTopEntries)) {
+      n++;
+      await runTapEntry(entry, 0, n, topState);
+    }
+    // Drain top-level `after()` hooks before printing the plan/summary so
+    // their console output appears between the last test and the `1..N` line.
+    if (rootAfterHooks.length > 0) {
+      const rootCtx = { name: "<root>", fullName: "<root>" };
+      const hooks = ArrayPrototypeSplice(
+        rootAfterHooks,
+        0,
+        rootAfterHooks.length,
+      );
+      for (const hook of new SafeArrayIterator(hooks)) {
+        try {
+          const r = ReflectApply(hook, null, [rootCtx]);
+          if (isThenable(r)) await r;
+        } catch { /* swallow */ }
+      }
+    }
+    tapWrite(`1..${n}`);
+    tapWrite(`# tests ${tapStats.tests}`);
+    tapWrite(`# suites ${tapStats.suites}`);
+    tapWrite(`# pass ${tapStats.pass}`);
+    tapWrite(`# fail ${tapStats.fail}`);
+    tapWrite(`# cancelled ${tapStats.cancelled}`);
+    tapWrite(`# skipped ${tapStats.skipped}`);
+    tapWrite(`# todo ${tapStats.todo}`);
+    tapWrite(`# duration_ms 0`);
+  } finally {
+    clearInterval(keepAlive);
+  }
+  if (tapStats.fail > 0 || tapStats.cancelled > 0) {
+    try {
+      globalThis.Deno?.exit?.(1);
+    } catch { /* exit unavailable */ }
+  }
+}
+
+// Recursively run a test or suite entry, emitting TAP output at the given
+// nesting depth. `parentState` is the runtime state of the immediate parent
+// (a TapContext for test-bodies, or a `{ onlyWarningEmitted }` object for
+// suite/root scopes); it's used to emit the `# 'only' and 'runOnly' require
+// the --test-only command-line option.` warning at most once per parent.
+async function runTapEntry(entry, depth, n, parentState) {
+  const indent = tapIndent(depth);
+  const isSuite = entry.kind === "suite";
+  tapWrite(`${indent}# Subtest: ${tapEscape(entry.name)}`);
+  const directive = tapDirective(entry.options);
+
+  let status = "ok";
+  let diagnostics = [];
+  let childCount = 0;
+
+  // Each test/suite body gets its own state object so warnings emitted
+  // because of an `only: true` child don't leak across siblings.
+  const myChildrenState = { onlyWarningEmitted: false };
+
+  if (entry.options.skip) {
+    if (isSuite) {
+      tapStats.suites++;
+    } else {
+      tapStats.skipped++;
+      tapStats.tests++;
+    }
+  } else if (entry.options.todo) {
+    // Per Node behavior, a TODO test that throws is not counted as a failure.
+    // The runner skips invoking the body to match snapshot output.
+    if (isSuite) {
+      tapStats.suites++;
+    } else {
+      tapStats.todo++;
+      tapStats.tests++;
+    }
+  } else if (isSuite) {
+    try {
+      if (entry.bodyError) throw entry.bodyError;
+      if (entry.bodyPromise) await entry.bodyPromise;
+      let childN = 0;
+      for (const child of new SafeArrayIterator(entry.children)) {
+        childN++;
+        await runTapEntry(child, depth + 1, childN, myChildrenState);
+      }
+      childCount = childN;
+    } catch (_err) {
+      status = "not ok";
+      tapStats.fail++;
+    }
+    tapStats.suites++;
+  } else {
+    // test/it body
+    const ctx = new TapContext(entry.name, depth, entry.children);
+    try {
+      const ret = ReflectApply(entry.fn, ctx, [ctx]);
+      if (isThenable(ret)) await ret;
+      // Wait for any concurrent t.test() calls (e.g. Promise.all([...])).
+      await ctx._drainSubtests();
+      childCount = ctx._subtestCount();
+      tapStats.pass++;
+    } catch (_err) {
+      status = "not ok";
+      tapStats.fail++;
+      // Even on failure, drain any in-flight subtests so their output is
+      // emitted before the parent's "not ok" line.
+      try {
+        await ctx._drainSubtests();
+      } catch { /* ignore */ }
+      childCount = ctx._subtestCount();
+    }
+    diagnostics = ctx._drainDiagnostics();
+    tapStats.tests++;
+  }
+
+  if (childCount > 0) {
+    tapWrite(`${tapIndent(depth + 1)}1..${childCount}`);
+  }
+
+  tapWrite(`${indent}${status} ${n} - ${tapEscape(entry.name)}${directive}`);
+  tapYaml(depth, isSuite ? "suite" : "test");
+  for (const d of new SafeArrayIterator(diagnostics)) {
+    tapWrite(`${indent}# ${tapEscape(d)}`);
+  }
+  // If this entry was registered with `only: true` and the `--test-only` flag
+  // wasn't supplied, Node prints a one-off warning in the parent's scope
+  // immediately after the entry's yaml/diagnostics. Emit it at the same depth
+  // and only once per parent.
+  if (
+    entry.options.only &&
+    !isTestOnlyFlagSet() &&
+    parentState &&
+    !parentState.onlyWarningEmitted
+  ) {
+    tapWrite(`${indent}${TEST_ONLY_WARNING}`);
+    parentState.onlyWarningEmitted = true;
+  }
+}
+
+function queueTapTest(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+  if (shouldSkipByPattern(prepared.name)) {
+    // Filtered out entirely: do not register or run.
+    scheduleTapRun();
+    return PromiseResolve();
+  }
+  const entry = {
+    name: prepared.name,
+    fn: prepared.fn,
+    options: prepared.options,
+    kind: "test",
+    children: [],
+    bodyPromise: null,
+    bodyError: null,
+  };
+  const parentSuite = getTapCurrentSuite();
+  if (parentSuite !== null) {
+    ArrayPrototypePush(parentSuite.children, entry);
+  } else {
+    ArrayPrototypePush(tapTopEntries, entry);
+    scheduleTapRun();
+  }
+  return PromiseResolve();
+}
+
+function queueTapSuite(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+  if (shouldSkipByPattern(prepared.name)) {
+    // Filtered out entirely: do not register, but the suite body must not
+    // run (it would otherwise add unwanted children to the parent).
+    scheduleTapRun();
+    return PromiseResolve();
+  }
+  const entry = {
+    name: prepared.name,
+    fn: prepared.fn,
+    options: prepared.options,
+    kind: "suite",
+    children: [],
+    bodyPromise: null,
+    bodyError: null,
+  };
+  const parentSuite = getTapCurrentSuite();
+  if (parentSuite !== null) {
+    ArrayPrototypePush(parentSuite.children, entry);
+  } else {
+    ArrayPrototypePush(tapTopEntries, entry);
+    scheduleTapRun();
+  }
+  // Evaluate the suite body inside an AsyncLocalStorage scope so any nested
+  // describe()/test() calls - including those scheduled after `await` inside
+  // the body - register against this suite, not the outer (or null) scope.
+  // The sync fallback handles environments without ALS available.
+  const als = getTapSuiteALS();
+  const prev = tapCurrentSuiteSync;
+  tapCurrentSuiteSync = entry;
+  try {
+    als.run(entry, () => {
+      try {
+        const ret = ReflectApply(prepared.fn, null, []);
+        if (isThenable(ret)) entry.bodyPromise = ret;
+      } catch (err) {
+        entry.bodyError = err;
+      }
+    });
+  } finally {
+    tapCurrentSuiteSync = prev;
+  }
+  return PromiseResolve();
+}
 
 function isThenable(value) {
   return value !== null && value !== undefined &&
@@ -444,7 +1107,11 @@ async function runRootAfterIfDone() {
   if (rootAfterHooks.length === 0) return;
   const rootCtx = { name: "<root>", fullName: "<root>" };
   // Snapshot and clear so we only run once even if more tests get queued.
-  const hooks = ArrayPrototypeSplice(rootAfterHooks, 0, rootAfterHooks.length);
+  const hooks = ArrayPrototypeSplice(
+    rootAfterHooks,
+    0,
+    rootAfterHooks.length,
+  );
   for (const hook of new SafeArrayIterator(hooks)) {
     try {
       await hook(rootCtx);
@@ -508,11 +1175,16 @@ class TestSuite {
 
   addSuite(name, options, fn, overrides) {
     const prepared = prepareOptions(name, options, fn, overrides);
-    const { promise, resolve } = Promise.withResolvers();
+    const { promise, resolve } = PromiseWithResolvers();
     const parentSuiteContext = this.nodeTestContext;
     ArrayPrototypePush(this.entries, {
       name: prepared.name,
-      fn: wrapSuiteFn(prepared.fn, resolve, prepared.name, parentSuiteContext),
+      fn: wrapSuiteFn(
+        prepared.fn,
+        resolve,
+        prepared.name,
+        parentSuiteContext,
+      ),
       ignore: !!prepared.options.todo || !!prepared.options.skip,
     });
     return promise;
@@ -671,6 +1343,9 @@ function prepareDenoTestForSuite(name, options, fn, overrides) {
 
 function test(name, options, fn, overrides) {
   installErrorHandlers();
+  if (isTapMode()) {
+    return queueTapTest(name, options, fn, overrides);
+  }
   if (currentSuite) {
     return currentSuite.addTest(name, options, fn, overrides);
   }
@@ -695,6 +1370,9 @@ test.expectFailure = function expectFailure(name, options, fn) {
 
 function suite(name, options, fn, overrides) {
   installErrorHandlers();
+  if (isTapMode()) {
+    return queueTapSuite(name, options, fn, overrides);
+  }
   if (currentSuite) {
     return currentSuite.addSuite(name, options, fn, overrides);
   }
@@ -718,6 +1396,18 @@ function before(fn, _options) {
   if (typeof fn !== "function") {
     throw new TypeError("before() requires a function argument");
   }
+  if (isTapMode()) {
+    const tapSuite = getTapCurrentSuite();
+    if (tapSuite !== null) {
+      ArrayPrototypePush(tapSuite.beforeAllHooks ??= [], fn);
+      return;
+    }
+    ArrayPrototypePush(rootBeforeHooks, fn);
+    // A bare top-level `before()` with no tests must still produce TAP
+    // output (`before` runs, then `TAP version 13`, then `1..0`).
+    scheduleTapRun();
+    return;
+  }
   if (currentSuite) {
     ArrayPrototypePush(currentSuite.beforeAllHooks, fn);
     return;
@@ -728,6 +1418,16 @@ function before(fn, _options) {
 function after(fn, _options) {
   if (typeof fn !== "function") {
     throw new TypeError("after() requires a function argument");
+  }
+  if (isTapMode()) {
+    const tapSuite = getTapCurrentSuite();
+    if (tapSuite !== null) {
+      ArrayPrototypePush(tapSuite.afterAllHooks ??= [], fn);
+      return;
+    }
+    ArrayPrototypePush(rootAfterHooks, fn);
+    scheduleTapRun();
+    return;
   }
   if (currentSuite) {
     ArrayPrototypePush(currentSuite.afterAllHooks, fn);
@@ -991,7 +1691,9 @@ const mock = {
       options = original;
       original = undefined;
       implementation = undefined;
-    } else if (implementation !== null && typeof implementation === "object") {
+    } else if (
+      implementation !== null && typeof implementation === "object"
+    ) {
       options = implementation;
       implementation = original;
     }
