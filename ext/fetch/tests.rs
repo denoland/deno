@@ -374,6 +374,8 @@ async fn test_fetch_send_no_decompress_preserves_raw_response() {
 }
 
 fn create_http_test_client() -> crate::Client {
+  install_default_crypto_provider();
+
   create_http_client(
     "fetch/test",
     CreateHttpClientOptions {
@@ -392,6 +394,10 @@ fn create_http_test_client() -> crate::Client {
     },
   )
   .unwrap()
+}
+
+fn install_default_crypto_provider() {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 }
 
 async fn create_encoded_http_server(
@@ -476,7 +482,7 @@ async fn create_chunked_gzip_http_server(
 }
 
 async fn create_https_server(allow_h2: bool, bind_addr: IpAddr) -> SocketAddr {
-  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+  install_default_crypto_provider();
 
   let mut tls_config = deno_tls::rustls::server::ServerConfig::builder()
     .with_no_client_auth()
