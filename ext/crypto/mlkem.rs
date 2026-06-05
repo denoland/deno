@@ -497,19 +497,6 @@ pub fn op_crypto_ml_kem_get_public_key(
   Ok(public_key.into())
 }
 
-/// Validate an ML-KEM private key has the right size for the variant and is a
-/// well-formed FIPS 203 expanded decapsulation key.
-#[op2]
-pub fn op_crypto_ml_kem_validate_private_key(
-  #[serde] variant: MlKemVariant,
-  #[buffer] private_key: &[u8],
-) -> bool {
-  if private_key.len() != variant.private_key_size() {
-    return false;
-  }
-  kem::DecapsulationKey::new(variant.algorithm(), private_key).is_ok()
-}
-
 /// Validate an ML-KEM public key has the right size for the variant.
 #[op2]
 pub fn op_crypto_ml_kem_validate_public_key(
