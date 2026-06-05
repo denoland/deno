@@ -544,6 +544,75 @@ fn lsp_import_map_diagnostics() {
 }
 
 #[test(timeout = 300)]
+fn lsp_hover_dependency_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "imports": {
+    "foo": "./lib/foo.ts",
+    "bar/": "./lib/bar/"
+  }
+}"#,
+  );
+  temp_dir.write("lib/foo.ts", "export const foo = 1;\n");
+  temp_dir.write("lib/bar/baz.ts", "export const baz = 2;\n");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.json");
+  });
+
+  let uri = url_to_uri(&temp_dir.url().join("main.ts").unwrap()).unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import \"foo\";\nimport \"bar/baz.ts\";\n"
+    }
+  }));
+  client.read_diagnostics();
+
+  // Hovering over a literal import map mapping.
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": uri },
+      "position": { "line": 0, "character": 8 }
+    }),
+  );
+  let value = res
+    .pointer("/contents/value")
+    .and_then(|v| v.as_str())
+    .unwrap();
+  assert!(
+    value.contains("**Import Map**: `foo` → `./lib/foo.ts` _(deno.json)_"),
+    "{value}"
+  );
+
+  // Hovering over a prefix ("/"-suffixed) import map mapping.
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": uri },
+      "position": { "line": 1, "character": 8 }
+    }),
+  );
+  let value = res
+    .pointer("/contents/value")
+    .and_then(|v| v.as_str())
+    .unwrap();
+  assert!(
+    value.contains("**Import Map**: `bar/` → `./lib/bar/` _(deno.json)_"),
+    "{value}"
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_import_map_remote() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3383,7 +3452,7 @@ fn lsp_hover_typescript_types_via_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n"
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n\n**Import Map**: `foo` → `http://127.0.0.1:4545/xTypeScriptTypes.js` _(deno.json)_\n"
       },
       "range": {
         "start": { "line": 0, "character": 19 },
@@ -17168,7 +17237,7 @@ fn lsp_deno_json_scopes_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./foo1.ts` _(deno.json)_\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -17198,7 +17267,7 @@ fn lsp_deno_json_scopes_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./foo2.ts` _(deno.json)_\n", temp_dir.url().join("project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -17228,7 +17297,7 @@ fn lsp_deno_json_scopes_import_map() {
     json!({
       "contents": {
         "kind": "markdown",
-        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project2/project3/foo3.ts").unwrap().as_str().trim_start_matches("file")),
+        "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./foo3.ts` _(deno.json)_\n", temp_dir.url().join("project2/project3/foo3.ts").unwrap().as_str().trim_start_matches("file")),
       },
       "range": {
         "start": { "line": 0, "character": 7 },
@@ -18473,7 +18542,7 @@ fn lsp_deno_json_workspace_import_map() {
       json!({
         "contents": {
           "kind": "markdown",
-          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
+          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./foo1.ts` _(deno.json)_\n", temp_dir.url().join("project1/foo1.ts").unwrap().as_str().trim_start_matches("file")),
         },
         "range": {
           "start": { "line": 0, "character": 7 },
@@ -18507,7 +18576,7 @@ fn lsp_deno_json_workspace_import_map() {
       json!({
         "contents": {
           "kind": "markdown",
-          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n", temp_dir.url().join("project1/project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
+          "value": format!("**Resolved Dependency**\n\n**Code**: file&#8203;{}\n\n**Import Map**: `foo` → `./project2/foo2.ts` _(deno.json)_\n", temp_dir.url().join("project1/project2/foo2.ts").unwrap().as_str().trim_start_matches("file")),
         },
         "range": {
           "start": { "line": 0, "character": 7 },
