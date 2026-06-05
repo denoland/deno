@@ -539,6 +539,37 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
           "authors to migrate it from the legacy `NODE_MODULE`/`nan` ABI.",
         ]),
       ];
+    // Captures esbuild's stock `__require` shim, which is emitted in bundles
+    // that still contain `require()` calls:
+    // ```
+    // var __require = (typeof require !== "undefined" ? require : ...)(function (x) {
+    //   if (typeof require !== "undefined") return require.apply(this, arguments);
+    //   throw Error('Dynamic require of "' + x + '" is not supported');
+    // });
+    // ```
+    // When such a bundle is published as ESM (`"type": "module"` / the `import`
+    // export condition) without esbuild's `--banner:js` createRequire shim,
+    // `require` is undefined in module scope and the bundle throws at init.
+    // Node fails the same way; the fix is to load the package through its
+    // CommonJS entrypoint. See denoland/deno#28952 (storybook).
+    } else if msg.starts_with("Dynamic require of ")
+      && msg.ends_with(" is not supported")
+    {
+      return vec![
+        FixSuggestion::info_multiline(&[
+          "This npm package ships an ESM bundle that calls `require()` but does not",
+          "include a `createRequire()` shim, so `require` is undefined when it runs",
+          "as ESM. Node.js fails with the same error.",
+        ]),
+        FixSuggestion::hint_multiline(&[
+          cstr!(
+            "Load the package through its CommonJS entrypoint with <u>node:module</>:"
+          ),
+          cstr!("<i>import { createRequire } from \"node:module\";</>"),
+          cstr!("<i>const require = createRequire(import.meta.url);</>"),
+          cstr!("<i>const pkg = require(\"the-package-name\");</>"),
+        ]),
+      ];
     } else if msg.contains("document is not defined") {
       return vec![
         FixSuggestion::info(cstr!(
@@ -603,5 +634,47 @@ mod tests {
       strip_ansi_codes(&actual),
       "\nconsole.log(\'foo\');\n        ^"
     );
+  }
+
+  fn js_error_with_message(message: &str) -> JsError {
+    JsError {
+      name: Some("Error".to_string()),
+      message: Some(message.to_string()),
+      stack: None,
+      cause: None,
+      exception_message: message.to_string(),
+      frames: vec![],
+      source_line: None,
+      source_line_frame_index: None,
+      aggregated: None,
+      additional_properties: vec![],
+    }
+  }
+
+  #[test]
+  fn test_dynamic_require_suggestion() {
+    let err =
+      js_error_with_message("Dynamic require of \"path\" is not supported");
+    let suggestions = get_suggestions_for_terminal_errors(&err);
+    assert_eq!(suggestions.len(), 2);
+    let rendered = suggestions
+      .iter()
+      .flat_map(|s| match &s.message {
+        FixSuggestionMessage::Single(m) => vec![strip_ansi_codes(m)],
+        FixSuggestionMessage::Multiline(ms) => {
+          ms.iter().map(|m| strip_ansi_codes(m)).collect()
+        }
+      })
+      .collect::<Vec<_>>()
+      .join("\n");
+    assert!(rendered.contains("createRequire"));
+    assert!(rendered.contains("node:module"));
+  }
+
+  #[test]
+  fn test_dynamic_require_suggestion_not_matched_for_unrelated() {
+    // A message that merely mentions require should not trigger the hint.
+    let err = js_error_with_message("something is not supported");
+    assert!(get_suggestions_for_terminal_errors(&err).is_empty());
   }
 }

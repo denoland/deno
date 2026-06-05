@@ -1,0 +1,12 @@
+error: Uncaught (in promise) Error: Dynamic require of "path" is not supported
+[WILDCARD]
+    at [WILDCARD]main.mjs:[WILDLINE]
+    at [WILDCARD]main.mjs:[WILDLINE]
+
+    info: This npm package ships an ESM bundle that calls `require()` but does not
+          include a `createRequire()` shim, so `require` is undefined when it runs
+          as ESM. Node.js fails with the same error.
+    hint: Load the package through its CommonJS entrypoint with node:module:
+          import { createRequire } from "node:module";
+          const require = createRequire(import.meta.url);
+          const pkg = require("the-package-name");
