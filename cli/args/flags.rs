@@ -4023,6 +4023,7 @@ Specific version requirements to update to can be specified:
           .help("Interactively select which dependencies to update")
       )
       .args(lock_args())
+      .arg(env_file_arg())
   })
 }
 
