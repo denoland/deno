@@ -19,18 +19,10 @@ const echoServer = Deno.serve(
 );
 
 const echoUrl = `http://127.0.0.1:${echoServer.addr.port}/`;
-let resolveSplitStarted: () => void;
-const splitStartedPromise = new Promise<void>((resolve) => {
-  resolveSplitStarted = resolve;
-});
-let resolveSplitForwarded: (
-  forwarded: { contentLength: string | null; body: string },
-) => void;
-const splitForwardedPromise = new Promise<
-  { contentLength: string | null; body: string }
->((resolve) => {
-  resolveSplitForwarded = resolve;
-});
+const { promise: splitStartedPromise, resolve: resolveSplitStarted } = Promise
+  .withResolvers<void>();
+const { promise: splitForwardedPromise, resolve: resolveSplitForwarded } =
+  Promise.withResolvers<{ contentLength: string | null; body: string }>();
 const proxyServer = Deno.serve(
   { hostname: "127.0.0.1", port: 0, onListen() {} },
   (req: Request) => {
