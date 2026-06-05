@@ -473,6 +473,7 @@ pub fn op_read_line_prompt(
   #[string] prompt_text: &str,
   #[string] default_value: &str,
 ) -> Result<Option<String>, JsReadlineError> {
+  let _terminal_input_guard = deno_permissions::prompter::lock_terminal_input();
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 
