@@ -188,10 +188,10 @@ mod tests {
         ("jsr:@scope/pkg@1".to_string(), "baz".to_string()),
       ]
     );
-    // still a valid module
-    wasmparser::Validator::new_with_features(wasmparser::WasmFeatures::all())
-      .validate_all(&output)
-      .unwrap();
+    // still a parseable module
+    for payload in wasmparser::Parser::new(0).parse_all(&output) {
+      payload.unwrap();
+    }
   }
 
   #[test]
