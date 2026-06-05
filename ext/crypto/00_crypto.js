@@ -145,7 +145,7 @@ const simpleAlgorithmDictionaries = {
   RsaHashedImportParams: { hash: "HashAlgorithmIdentifier" },
   EcKeyImportParams: {},
   ChaCha20Poly1305Params: {
-    nonce: "BufferSource",
+    iv: "BufferSource",
     additionalData: "BufferSource",
   },
   ShakeParams: {},
@@ -1097,15 +1097,15 @@ class SubtleCrypto {
         return TypedArrayPrototypeGetBuffer(plaintext);
       }
       case "ChaCha20-Poly1305": {
-        if (normalizedAlgorithm.nonce === undefined) {
-          throw new TypeError("nonce is required");
+        if (normalizedAlgorithm.iv === undefined) {
+          throw new TypeError("iv is required");
         }
-        normalizedAlgorithm.nonce = copyBuffer(normalizedAlgorithm.nonce);
+        normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
         if (
-          TypedArrayPrototypeGetByteLength(normalizedAlgorithm.nonce) !== 12
+          TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv) !== 12
         ) {
           throw new DOMException(
-            "ChaCha20-Poly1305 nonce must be 12 bytes",
+            "ChaCha20-Poly1305 iv must be 12 bytes",
             "OperationError",
           );
         }
@@ -1123,7 +1123,7 @@ class SubtleCrypto {
 
         const plaintext = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "ChaCha20-Poly1305",
-          nonce: normalizedAlgorithm.nonce,
+          nonce: normalizedAlgorithm.iv,
           additionalData: normalizedAlgorithm.additionalData || null,
         }, data);
 
@@ -3715,6 +3715,8 @@ function exportKeyAES(
 ) {
   switch (format) {
     // 2.
+    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    case "raw-secret":
     case "raw": {
       // 1.
       const data = innerKey.data;
@@ -3769,7 +3771,9 @@ function exportKeyAES(
 
 function exportKeyChaCha20Poly1305(format, _key, innerKey) {
   switch (format) {
-    case "raw": {
+    // ChaCha20-Poly1305 is a modern symmetric algorithm and therefore only
+    // recognizes "raw-secret" (not the "raw" alias).
+    case "raw-secret": {
       const data = innerKey.data;
       return TypedArrayPrototypeGetBuffer(data);
     }
@@ -4006,7 +4010,9 @@ function importKeyChaCha20Poly1305(
   }
 
   switch (format) {
-    case "raw": {
+    // ChaCha20-Poly1305 is a modern symmetric algorithm and therefore only
+    // recognizes "raw-secret" (not the "raw" alias).
+    case "raw-secret": {
       if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
         throw new DOMException(
           "Invalid key length: ChaCha20-Poly1305 requires 256-bit key",
@@ -4061,6 +4067,8 @@ function importKeyAES(
   let data = keyData;
 
   switch (format) {
+    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    case "raw-secret":
     case "raw": {
       // 2.
       if (
@@ -4239,6 +4247,8 @@ function importKeyHMAC(
 
   // 4. https://w3c.github.io/webcrypto/#hmac-operations
   switch (format) {
+    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    case "raw-secret":
     case "raw": {
       data = keyData;
       hash = normalizedAlgorithm.hash;
@@ -5554,7 +5564,8 @@ function importKeyHKDF(
   extractable,
   keyUsages,
 ) {
-  if (format !== "raw") {
+  // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+  if (format !== "raw" && format !== "raw-secret") {
     throw new DOMException("Format not supported", "NotSupportedError");
   }
 
@@ -5606,7 +5617,8 @@ function importKeyPBKDF2(
   keyUsages,
 ) {
   // 1.
-  if (format !== "raw") {
+  // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+  if (format !== "raw" && format !== "raw-secret") {
     throw new DOMException("Format not supported", "NotSupportedError");
   }
 
@@ -5659,6 +5671,8 @@ function exportKeyHMAC(format, key, innerKey) {
 
   switch (format) {
     // 3.
+    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+    case "raw-secret":
     case "raw": {
       const bits = innerKey.data;
       // TODO(petamoriken): Uint8Array does not have push method
@@ -6672,13 +6686,13 @@ async function encrypt(normalizedAlgorithm, key, data) {
       return TypedArrayPrototypeGetBuffer(cipherText);
     }
     case "ChaCha20-Poly1305": {
-      if (normalizedAlgorithm.nonce === undefined) {
-        throw new TypeError("nonce is required");
+      if (normalizedAlgorithm.iv === undefined) {
+        throw new TypeError("iv is required");
       }
-      normalizedAlgorithm.nonce = copyBuffer(normalizedAlgorithm.nonce);
-      if (TypedArrayPrototypeGetByteLength(normalizedAlgorithm.nonce) !== 12) {
+      normalizedAlgorithm.iv = copyBuffer(normalizedAlgorithm.iv);
+      if (TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv) !== 12) {
         throw new DOMException(
-          "ChaCha20-Poly1305 nonce must be 12 bytes",
+          "ChaCha20-Poly1305 iv must be 12 bytes",
           "OperationError",
         );
       }
@@ -6694,7 +6708,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
 
       const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "ChaCha20-Poly1305",
-        nonce: normalizedAlgorithm.nonce,
+        nonce: normalizedAlgorithm.iv,
         additionalData: normalizedAlgorithm.additionalData || null,
       }, data);
 
@@ -6807,6 +6821,10 @@ webidl.converters.KeyFormat = webidl.createEnumConverter("KeyFormat", [
   "pkcs8",
   "spki",
   "jwk",
+  // WICG modern algorithms: unified symmetric secret key format. For the
+  // existing symmetric algorithms `raw` is treated as an alias of `raw-secret`,
+  // while new algorithms (e.g. ChaCha20-Poly1305) only recognize `raw-secret`.
+  "raw-secret",
   // WICG modern algorithms (ML-KEM, ML-DSA): split raw key formats.
   "raw-public",
   "raw-private",
@@ -7285,7 +7303,7 @@ webidl.converters.EcdhKeyDeriveParams = webidl
 const dictChaCha20Poly1305Params = [
   ...new SafeArrayIterator(dictAlgorithm),
   {
-    key: "nonce",
+    key: "iv",
     converter: webidl.converters["BufferSource"],
     required: true,
   },
