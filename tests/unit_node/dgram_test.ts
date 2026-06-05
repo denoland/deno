@@ -74,16 +74,15 @@ Deno.test("[node/dgram] addMembership works", async () => {
 
 Deno.test("[node/dgram] addMembership accepts scoped IPv6 interface", async () => {
   // Regression test for https://github.com/denoland/deno/issues/34838.
-  // A scoped IPv6 interface such as "::%12" must be accepted the same way
-  // Node.js accepts it (mirroring libuv's `uv_ip6_addr`): the zone id is
-  // resolved to an interface index, and an unknown zone resolves to the
-  // default interface (index 0) instead of failing with EINVAL.
+  // A scoped IPv6 interface whose zone id names no existing interface must
+  // resolve to the default interface (index 0) — exactly like passing no
+  // interface at all — instead of being rejected with EINVAL. Node.js (via
+  // libuv's `uv_ip6_addr`) behaves the same.
   const { promise, resolve, reject } = Promise.withResolvers<void>();
   const socket = createSocket({ type: "udp6", ipv6Only: true });
   let bound = false;
   socket.on("error", (err) => {
-    // IPv6 may be unavailable in the test environment; only a failure after a
-    // successful bind indicates a real regression.
+    // IPv6 may be unavailable before binding; treat that as a skip.
     socket.close();
     if (bound) {
       reject(err);
@@ -94,11 +93,26 @@ Deno.test("[node/dgram] addMembership accepts scoped IPv6 interface", async () =
   socket.bind(0, () => {
     bound = true;
     try {
-      // A non-numeric zone id that names no existing interface resolves to the
-      // default interface on every platform (Unix: `if_nametoindex` -> 0,
-      // Windows: `atoi` -> 0), rather than being rejected with EINVAL. On Unix
-      // this is the same code path the reporter's numeric "::%12" now takes.
-      socket.addMembership("ff02::fb", "::%nonexistent0");
+      // First join without an interface to determine whether IPv6 multicast is
+      // available at all in this environment (some CI sandboxes have no
+      // multicast-capable default interface). If it fails, skip the test.
+      socket.addMembership("ff02::fb");
+    } catch {
+      socket.close(() => resolve());
+      return;
+    }
+    try {
+      // The scoped interface resolves to the same default interface as the
+      // baseline join above, so it must be accepted too. On Unix a numeric
+      // zone is resolved via `if_nametoindex` (-> 0 for non-names), which is
+      // the reporter's exact "::%12" case; on Windows a numeric zone is a
+      // literal index (`atoi`), so use a non-numeric unknown name there.
+      const scopedIface = Deno.build.os === "windows"
+        ? "::%nonexistent0"
+        : "::%9999999";
+      // Use a different multicast group so this is a fresh join rather than a
+      // duplicate of the baseline join above.
+      socket.addMembership("ff02::1:3", scopedIface);
       socket.close(() => resolve());
     } catch (err) {
       socket.close();
