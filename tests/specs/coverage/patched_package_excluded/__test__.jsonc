@@ -1,0 +1,19 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/29391
+  // Packages brought in via the "links" (formerly "patch") feature are
+  // third-party dependencies replacing a registry version, so they must not
+  // appear in the user's coverage report (matching how npm packages are
+  // excluded). Before the fix, "flag/mod.ts" from the linked "@denotest/flag"
+  // package showed up in the report; after, only the user's "main.ts" does.
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --coverage=coverage main_test.ts",
+      "output": "[WILDCARD]1 passed[WILDCARD]"
+    },
+    {
+      "args": "coverage coverage --lcov",
+      "output": "expected_lcov.out"
+    }
+  ]
+}

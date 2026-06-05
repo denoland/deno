@@ -71,6 +71,7 @@ use http::Uri;
 use http::header::ACCEPT;
 use http::header::ACCEPT_ENCODING;
 use http::header::AUTHORIZATION;
+use http::header::CONTENT_ENCODING;
 use http::header::CONTENT_LENGTH;
 use http::header::HOST;
 use http::header::HeaderName;
@@ -1122,13 +1123,43 @@ pub fn create_http_client(
 
   let pooled_client = builder.build(connector.clone());
   let retry_client = retry::Retry::new(FetchRetry, pooled_client);
-  let decompress = Decompression::new(retry_client).gzip(true).br(true);
 
   Ok(Client {
-    inner: decompress,
+    inner: retry_client,
     connector,
     user_agent,
   })
+}
+
+/// Function pointer type for [`strip_content_encoding_for_empty_body`], used to
+/// name the response-mapping middleware in the [`Client`] type.
+type StripEmptyEncodingFn = fn(
+  http::Response<hyper::body::Incoming>,
+) -> http::Response<hyper::body::Incoming>;
+
+/// Strips the `Content-Encoding` header from a response whose body is empty
+/// (`Content-Length: 0`).
+///
+/// Some servers (and compression middlewares) advertise `Content-Encoding:
+/// gzip` while sending an empty body. A valid gzip stream is never zero bytes,
+/// so attempting to decompress it fails with "unexpected end of file". Other
+/// clients (curl, browsers, ...) tolerate this by simply not decompressing an
+/// empty body. We do the same by removing the encoding header before the
+/// transparent decompression middleware sees the response, so the empty body
+/// passes through untouched. See denoland/deno#29281.
+fn strip_content_encoding_for_empty_body(
+  mut resp: http::Response<hyper::body::Incoming>,
+) -> http::Response<hyper::body::Incoming> {
+  let is_empty = resp
+    .headers()
+    .get(CONTENT_LENGTH)
+    .and_then(|v| v.to_str().ok())
+    .and_then(|v| v.parse::<u64>().ok())
+    == Some(0);
+  if is_empty {
+    resp.headers_mut().remove(CONTENT_ENCODING);
+  }
+  resp
 }
 
 #[op2]
@@ -1136,14 +1167,14 @@ pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
   input.into()
 }
 
+type RetryClient = retry::Retry<
+  FetchRetry,
+  hyper_util::client::legacy::Client<Connector, ReqBody>,
+>;
+
 #[derive(Clone, Debug)]
 pub struct Client {
-  inner: Decompression<
-    retry::Retry<
-      FetchRetry,
-      hyper_util::client::legacy::Client<Connector, ReqBody>,
-    >,
-  >,
+  inner: RetryClient,
   connector: Connector,
   user_agent: HeaderValue,
 }
@@ -1309,8 +1340,16 @@ impl Client {
 
     let uri = req.uri().clone();
 
-    let resp = self
-      .inner
+    // Strip `Content-Encoding` from empty-bodied responses before the
+    // decompression middleware runs, so an empty body advertised as gzip/br
+    // is passed through instead of failing to decompress. See
+    // `strip_content_encoding_for_empty_body`.
+    let service = self.inner.map_response(
+      strip_content_encoding_for_empty_body as StripEmptyEncodingFn,
+    );
+    let decompress = Decompression::new(service).gzip(true).br(true);
+
+    let resp = decompress
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
@@ -1331,10 +1370,9 @@ impl Client {
 
     let uri = req.uri().clone();
 
-    // .into_inner() unwraps the Decompression middleware layer
+    // No decompression middleware here: the response body is returned as-is.
     let resp = self
       .inner
-      .into_inner()
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
