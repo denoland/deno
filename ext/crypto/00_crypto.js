@@ -811,15 +811,17 @@ class SubtleCrypto {
       case "cSHAKE256":
       case "TurboSHAKE128":
       case "TurboSHAKE256": {
-        if (algorithm.length === undefined || algorithm.length === 0) {
+        if (
+          algorithm.outputLength === undefined || algorithm.outputLength === 0
+        ) {
           throw new DOMException(
-            `'length' must be a positive multiple of 8 for ${algorithm.name}`,
+            `'outputLength' must be a positive multiple of 8 for ${algorithm.name}`,
             "OperationError",
           );
         }
-        if (algorithm.length % 8 !== 0) {
+        if (algorithm.outputLength % 8 !== 0) {
           throw new DOMException(
-            `'length' must be a multiple of 8 for ${algorithm.name}`,
+            `'outputLength' must be a multiple of 8 for ${algorithm.name}`,
             "OperationError",
           );
         }
@@ -837,7 +839,7 @@ class SubtleCrypto {
         }
         const xofResult = await op_crypto_subtle_digest_xof({
           name: algorithm.name,
-          length: algorithm.length,
+          outputLength: algorithm.outputLength,
           functionName: algorithm.functionName ?? null,
           customization: algorithm.customization ?? null,
           domainSeparation: algorithm.domainSeparation ?? null,
@@ -7303,7 +7305,7 @@ webidl.converters.ChaCha20Poly1305Params = webidl.createDictionaryConverter(
 const dictShakeParams = [
   ...new SafeArrayIterator(dictAlgorithm),
   {
-    key: "length",
+    key: "outputLength",
     converter: (V, prefix, context, opts) =>
       webidl.converters["unsigned long"](V, prefix, context, {
         ...opts,

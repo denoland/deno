@@ -988,12 +988,12 @@ pub async fn op_crypto_subtle_digest(
 #[serde(rename_all = "camelCase", tag = "name")]
 pub enum SubtleDigestXof {
   #[serde(rename = "SHAKE128", rename_all = "camelCase")]
-  Shake128 { length: u32 },
+  Shake128 { output_length: u32 },
   #[serde(rename = "SHAKE256", rename_all = "camelCase")]
-  Shake256 { length: u32 },
+  Shake256 { output_length: u32 },
   #[serde(rename = "cSHAKE128", rename_all = "camelCase")]
   CShake128 {
-    length: u32,
+    output_length: u32,
     #[serde(with = "serde_bytes", default)]
     function_name: Option<Vec<u8>>,
     #[serde(with = "serde_bytes", default)]
@@ -1001,7 +1001,7 @@ pub enum SubtleDigestXof {
   },
   #[serde(rename = "cSHAKE256", rename_all = "camelCase")]
   CShake256 {
-    length: u32,
+    output_length: u32,
     #[serde(with = "serde_bytes", default)]
     function_name: Option<Vec<u8>>,
     #[serde(with = "serde_bytes", default)]
@@ -1009,12 +1009,12 @@ pub enum SubtleDigestXof {
   },
   #[serde(rename = "TurboSHAKE128", rename_all = "camelCase")]
   TurboShake128 {
-    length: u32,
+    output_length: u32,
     domain_separation: Option<u8>,
   },
   #[serde(rename = "TurboSHAKE256", rename_all = "camelCase")]
   TurboShake256 {
-    length: u32,
+    output_length: u32,
     domain_separation: Option<u8>,
   },
 }
@@ -1030,12 +1030,12 @@ pub async fn op_crypto_subtle_digest_xof(
     use sha3::digest::XofReader;
 
     let length_bits = match &algorithm {
-      SubtleDigestXof::Shake128 { length, .. }
-      | SubtleDigestXof::Shake256 { length, .. }
-      | SubtleDigestXof::CShake128 { length, .. }
-      | SubtleDigestXof::CShake256 { length, .. }
-      | SubtleDigestXof::TurboShake128 { length, .. }
-      | SubtleDigestXof::TurboShake256 { length, .. } => *length,
+      SubtleDigestXof::Shake128 { output_length, .. }
+      | SubtleDigestXof::Shake256 { output_length, .. }
+      | SubtleDigestXof::CShake128 { output_length, .. }
+      | SubtleDigestXof::CShake256 { output_length, .. }
+      | SubtleDigestXof::TurboShake128 { output_length, .. }
+      | SubtleDigestXof::TurboShake256 { output_length, .. } => *output_length,
     };
     if !length_bits.is_multiple_of(8) {
       return Err(CryptoError::InvalidKeyLength);

@@ -2526,7 +2526,7 @@ Deno.test(async function shakeDigest() {
   // (NIST test vector)
   const shake128 = new Uint8Array(
     await crypto.subtle.digest(
-      { name: "SHAKE128", length: 256 } as AnyAlg,
+      { name: "SHAKE128", outputLength: 256 } as AnyAlg,
       data,
     ),
   );
@@ -2539,7 +2539,7 @@ Deno.test(async function shakeDigest() {
   // SHAKE256 with 512 bits.
   const shake256 = new Uint8Array(
     await crypto.subtle.digest(
-      { name: "SHAKE256", length: 512 } as AnyAlg,
+      { name: "SHAKE256", outputLength: 512 } as AnyAlg,
       data,
     ),
   );
@@ -2551,7 +2551,7 @@ Deno.test(async function cshakeDigest() {
   const data = new TextEncoder().encode("hello");
   const shake = new Uint8Array(
     await crypto.subtle.digest(
-      { name: "SHAKE128", length: 128 } as AnyAlg,
+      { name: "SHAKE128", outputLength: 128 } as AnyAlg,
       data,
     ),
   );
@@ -2559,7 +2559,7 @@ Deno.test(async function cshakeDigest() {
     await crypto.subtle.digest(
       {
         name: "cSHAKE128",
-        length: 128,
+        outputLength: 128,
         functionName: new Uint8Array(0),
         customization: new Uint8Array(0),
       } as AnyAlg,
@@ -2573,7 +2573,7 @@ Deno.test(async function cshakeDigest() {
     await crypto.subtle.digest(
       {
         name: "cSHAKE128",
-        length: 128,
+        outputLength: 128,
         customization: new TextEncoder().encode("Email Signature"),
       } as AnyAlg,
       data,
@@ -2595,7 +2595,7 @@ Deno.test(async function turboShakeDigest() {
   const data = new TextEncoder().encode("hello");
   const ts128 = new Uint8Array(
     await crypto.subtle.digest(
-      { name: "TurboSHAKE128", length: 256 } as AnyAlg,
+      { name: "TurboSHAKE128", outputLength: 256 } as AnyAlg,
       data,
     ),
   );
@@ -2606,7 +2606,7 @@ Deno.test(async function turboShakeDigest() {
     await crypto.subtle.digest(
       {
         name: "TurboSHAKE128",
-        length: 256,
+        outputLength: 256,
         domainSeparation: 0x06,
       } as AnyAlg,
       data,
@@ -2621,6 +2621,38 @@ Deno.test(async function turboShakeDigest() {
     }
   }
   assert(differs);
+});
+
+Deno.test(async function shakeFamilyRequiresOutputLength() {
+  // The modern WebCrypto algorithms spec renamed the output length dictionary
+  // member from `length` to `outputLength`. Passing the legacy `length` member
+  // (with no `outputLength`) must be treated as a missing required member.
+  // https://wicg.github.io/webcrypto-modern-algos/#cshake-params
+  const data = new Uint8Array(0);
+  const names = [
+    "SHAKE128",
+    "SHAKE256",
+    "cSHAKE128",
+    "cSHAKE256",
+    "TurboSHAKE128",
+    "TurboSHAKE256",
+  ];
+  for (const name of names) {
+    await assertRejects(
+      () => crypto.subtle.digest({ name, length: 256 } as AnyAlg, data),
+      TypeError,
+      "outputLength",
+    );
+  }
+
+  // `outputLength` succeeds.
+  const out = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "cSHAKE128", outputLength: 256 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(out.length, 32);
 });
 
 // ML-KEM (FIPS 203) — post-quantum key encapsulation.
