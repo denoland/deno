@@ -7905,12 +7905,16 @@ fn lsp_code_actions_import_map_remap() {
       "imports": {
         "foo": "./foo.ts",
         "bar": "./bar.ts",
+        "postgres": "./postgres/mod.ts",
+        "postgres/": "./postgres/",
       },
     })
     .to_string(),
   );
   temp_dir.write("foo.ts", "");
   temp_dir.write("bar.ts", "");
+  temp_dir.write("postgres/mod.ts", "");
+  temp_dir.write("postgres/query/query.ts", "");
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
@@ -7921,6 +7925,8 @@ fn lsp_code_actions_import_map_remap() {
       "text": r#"
         import "./foo.ts";
         import type {} from "./bar.ts";
+        import "postgres";
+        import "postgres/query/query.ts";
       "#,
     }
   }));
