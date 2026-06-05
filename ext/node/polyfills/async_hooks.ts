@@ -60,7 +60,7 @@ class AsyncResource {
     opts: number | {
       triggerAsyncId?: number;
       requireManualDestroy?: boolean;
-    } = {},
+    } = { __proto__: null },
   ) {
     if (typeof type !== "string") {
       throw new ERR_INVALID_ARG_TYPE("type", "string", type);
