@@ -2297,6 +2297,32 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/29281
+// A server advertising `Content-Encoding: gzip` (or br) while returning an
+// empty body should not fail decompression with "unexpected end of file".
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchEmptyBodyWithContentEncoding() {
+    for (const encoding of ["gzip", "br"]) {
+      const ac = new AbortController();
+      const server = Deno.serve(
+        { port: listenPort, signal: ac.signal, onListen() {} },
+        () =>
+          new Response(new Uint8Array(), {
+            headers: { "content-encoding": encoding },
+          }),
+      );
+      try {
+        const resp = await fetch(`http://localhost:${listenPort}/`);
+        assertEquals(await resp.text(), "");
+      } finally {
+        ac.abort();
+        await server.finished;
+      }
+    }
+  },
+);
+
 Deno.test(
   {
     permissions: { net: true },

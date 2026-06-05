@@ -1,0 +1,9 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/30982
+  // Formatting an HTML file with many inline `style="..."` attributes used to
+  // take quadratic time and effectively never finish. This file is already
+  // formatted, so `fmt --check` must complete quickly and report no changes.
+  "tempDir": true,
+  "args": "fmt --check many_styles.html",
+  "output": "Checked 1 file\n"
+}

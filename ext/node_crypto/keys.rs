@@ -4156,13 +4156,48 @@ pub fn op_node_derive_public_key_from_private_key(
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum PfxValidationError {
+pub enum PfxLoadError {
   #[class(generic)]
   #[error("not enough data")]
   NotEnoughData,
   #[class(generic)]
   #[error("mac verify failure")]
   MacVerifyFailure,
+  #[class(generic)]
+  #[error("PFX contains no usable certificate")]
+  NoCert,
+  #[class(generic)]
+  #[error("PFX contains no usable private key")]
+  NoKey,
+  #[class(generic)]
+  #[error("failed to encode PFX contents: {0}")]
+  Encode(String),
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadPfxResult {
+  pub cert: String,
+  pub key: String,
+  pub ca: Vec<String>,
+}
+
+fn der_to_pem(label: &str, der: &[u8]) -> String {
+  use base64::engine::general_purpose::STANDARD;
+  let body = STANDARD.encode(der);
+  let mut out = String::with_capacity(body.len() + 64);
+  out.push_str("-----BEGIN ");
+  out.push_str(label);
+  out.push_str("-----\n");
+  for chunk in body.as_bytes().chunks(64) {
+    // SAFETY: base64 output is ASCII.
+    out.push_str(std::str::from_utf8(chunk).unwrap());
+    out.push('\n');
+  }
+  out.push_str("-----END ");
+  out.push_str(label);
+  out.push_str("-----\n");
+  out
 }
 
 // Cap on the iteration count for the PKCS#12 MAC PBKDF, since an attacker
@@ -4176,39 +4211,65 @@ pub enum PfxValidationError {
 const PFX_MAC_ITERATIONS_CAP: u64 = 600_000;
 
 #[op2]
-pub fn op_node_validate_pfx(
+#[serde]
+pub fn op_node_load_pfx(
   #[buffer] pfx: &[u8],
   #[string] passphrase: Option<String>,
-) -> Result<(), PfxValidationError> {
-  let parsed =
-    Pkcs12::parse(pfx).map_err(|_| PfxValidationError::NotEnoughData)?;
+) -> Result<LoadPfxResult, PfxLoadError> {
+  let parsed = Pkcs12::parse(pfx).map_err(|_| PfxLoadError::NotEnoughData)?;
   let password = passphrase.as_deref().unwrap_or("");
   let bmp_password = bmp_string(password);
-  // If no MAC is present, the file is considered valid.
-  let Some(mac_data) = &parsed.mac_data else {
-    return Ok(());
-  };
-  let iterations = u64::from(mac_data.iterations);
-  if iterations > PFX_MAC_ITERATIONS_CAP {
-    return Err(PfxValidationError::MacVerifyFailure);
+  // If a MAC is present, verify it. Absent MACs are accepted (matches
+  // OpenSSL/Node behaviour).
+  if let Some(mac_data) = &parsed.mac_data {
+    let iterations = u64::from(mac_data.iterations);
+    if iterations > PFX_MAC_ITERATIONS_CAP {
+      return Err(PfxLoadError::MacVerifyFailure);
+    }
+    let data = parsed
+      .auth_safe
+      .data(&bmp_password)
+      .ok_or(PfxLoadError::MacVerifyFailure)?;
+    let ok = verify_pkcs12_mac(
+      &mac_data.mac.digest_algorithm,
+      &mac_data.mac.digest,
+      &mac_data.salt,
+      iterations,
+      &data,
+      &bmp_password,
+    )
+    .ok_or(PfxLoadError::MacVerifyFailure)?;
+    if !ok {
+      return Err(PfxLoadError::MacVerifyFailure);
+    }
   }
-  let data = parsed
-    .auth_safe
-    .data(&bmp_password)
-    .ok_or(PfxValidationError::MacVerifyFailure)?;
-  let ok = verify_pkcs12_mac(
-    &mac_data.mac.digest_algorithm,
-    &mac_data.mac.digest,
-    &mac_data.salt,
-    iterations,
-    &data,
-    &bmp_password,
-  )
-  .ok_or(PfxValidationError::MacVerifyFailure)?;
-  if !ok {
-    return Err(PfxValidationError::MacVerifyFailure);
+
+  let cert_ders = parsed
+    .cert_bags(password)
+    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+  let key_ders = parsed
+    .key_bags(password)
+    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+
+  if cert_ders.is_empty() {
+    return Err(PfxLoadError::NoCert);
   }
-  Ok(())
+  if key_ders.is_empty() {
+    return Err(PfxLoadError::NoKey);
+  }
+
+  // The first cert bag is taken as the leaf; any additional bags are
+  // returned as CA/chain certificates.
+  let mut iter = cert_ders.into_iter();
+  let leaf = iter.next().unwrap();
+  let cert = der_to_pem("CERTIFICATE", &leaf);
+  let ca: Vec<String> =
+    iter.map(|der| der_to_pem("CERTIFICATE", &der)).collect();
+
+  // p12 returns PKCS#8 DER for shrouded key bags.
+  let key = der_to_pem("PRIVATE KEY", &key_ders[0]);
+
+  Ok(LoadPfxResult { cert, key, ca })
 }
 
 // Convert a UTF-8 password to the PKCS#12 BMPString form (RFC 7292

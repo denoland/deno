@@ -126,7 +126,9 @@ fn run_js_file(
   }
 }
 
-fn get_npm_process_state(npm_resolver: &CliNpmResolver) -> Option<String> {
+pub(crate) fn get_npm_process_state(
+  npm_resolver: &CliNpmResolver,
+) -> Option<String> {
   match npm_resolver {
     deno_resolver::npm::NpmResolver::Managed(managed) => {
       let linker_mode = match managed.linker_mode() {
@@ -150,7 +152,7 @@ fn get_npm_process_state(npm_resolver: &CliNpmResolver) -> Option<String> {
   }
 }
 
-fn run_bin_value(
+pub(crate) fn run_bin_value(
   factory: &CliFactory,
   flags: &Flags,
   bin_value: BinValue,
@@ -196,7 +198,7 @@ fn run_bin_value(
 
 /// Try to find a bin value from a map of bins, with fallbacks for scoped package names
 /// and single-bin packages.
-fn find_bin_value(
+pub(crate) fn find_bin_value(
   bins: &BTreeMap<String, BinValue>,
   bin_name: &str,
 ) -> Option<BinValue> {

@@ -1,0 +1,10 @@
+{
+  "name": "a",
+  "version": "0.0.0",
+  "scripts": {
+    "postinstall": "echo a"
+  },
+  "dependencies": {
+    "b": "workspace:*"
+  }
+}

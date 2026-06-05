@@ -41,7 +41,13 @@ interface Storage {
   [name: string]: any;
 }
 
-/** @category Storage */
+/** The constructor object for {@linkcode Storage}.
+ *
+ * `Storage` instances are accessed via the global `localStorage` and
+ * `sessionStorage` properties rather than constructed directly, so calling the
+ * constructor throws.
+ *
+ * @category Storage */
 declare var Storage: {
   readonly prototype: Storage;
   new (): never;

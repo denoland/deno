@@ -80,11 +80,9 @@ pub struct PerformanceScopeMark {
 
 impl Drop for PerformanceScopeMark {
   fn drop(&mut self) {
-    self
-      .performance
-      .0
-      .lock()
-      .measure(self.inner.take().unwrap());
+    if let Some(mark) = self.inner.take() {
+      self.performance.0.lock().measure(mark);
+    }
   }
 }
 

@@ -12,6 +12,11 @@ use aes_gcm::aead::generic_array::typenum::U16;
 use aes_gcm::aes::Aes128;
 use aes_gcm::aes::Aes192;
 use aes_gcm::aes::Aes256;
+use aws_lc_rs::aead::Aad;
+use aws_lc_rs::aead::CHACHA20_POLY1305;
+use aws_lc_rs::aead::LessSafeKey;
+use aws_lc_rs::aead::Nonce as AwsNonce;
+use aws_lc_rs::aead::UnboundKey;
 use ctr::Ctr32BE;
 use ctr::Ctr64BE;
 use ctr::Ctr128BE;
@@ -30,12 +35,12 @@ use sha3::Sha3_256;
 use sha3::Sha3_384;
 use sha3::Sha3_512;
 
+use crate::key_store::CryptoKeyHandle;
 use crate::shared::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecryptOptions {
-  key: V8RawKeyData,
   #[serde(flatten)]
   algorithm: DecryptAlgorithm,
 }
@@ -80,6 +85,13 @@ pub enum DecryptAlgorithm {
     length: usize,
     tag_length: usize,
   },
+  #[serde(rename = "ChaCha20-Poly1305", rename_all = "camelCase")]
+  ChaCha20Poly1305 {
+    #[serde(with = "serde_bytes")]
+    nonce: Vec<u8>,
+    #[serde(with = "serde_bytes")]
+    additional_data: Option<Vec<u8>>,
+  },
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -115,6 +127,12 @@ pub enum DecryptError {
   #[class(type)]
   #[error("iv length not equal to 12 or 16")]
   InvalidIvLength,
+  #[class(type)]
+  #[error("invalid ChaCha20-Poly1305 nonce length: expected 12 bytes")]
+  InvalidChaChaNonceLength,
+  #[class(type)]
+  #[error("invalid ChaCha20-Poly1305 key length: expected 32 bytes")]
+  InvalidChaChaKeyLength,
   #[class("DOMExceptionOperationError")]
   #[error("{0}")]
   Rsa(rsa::Error),
@@ -122,41 +140,49 @@ pub enum DecryptError {
 
 #[op2]
 pub async fn op_crypto_decrypt(
+  #[cppgc] key: &CryptoKeyHandle,
   #[serde] opts: DecryptOptions,
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, DecryptError> {
-  let key = opts.key;
-  let fun = move || match opts.algorithm {
-    DecryptAlgorithm::RsaOaep { hash, label } => {
-      decrypt_rsa_oaep(key, hash, label, &data)
+  let key_data = key.data().clone();
+  let fun = move || {
+    let key: &RawKeyData = &key_data;
+    match opts.algorithm {
+      DecryptAlgorithm::RsaOaep { hash, label } => {
+        decrypt_rsa_oaep(key, hash, label, &data)
+      }
+      DecryptAlgorithm::AesCbc { iv, length } => {
+        decrypt_aes_cbc(key, length, iv, &data)
+      }
+      DecryptAlgorithm::AesCtr {
+        counter,
+        ctr_length,
+        key_length,
+      } => decrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
+      DecryptAlgorithm::AesGcm {
+        iv,
+        additional_data,
+        length,
+        tag_length,
+      } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
+      DecryptAlgorithm::AesOcb {
+        iv,
+        additional_data,
+        length,
+        tag_length,
+      } => decrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
+      DecryptAlgorithm::ChaCha20Poly1305 {
+        nonce,
+        additional_data,
+      } => decrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
     }
-    DecryptAlgorithm::AesCbc { iv, length } => {
-      decrypt_aes_cbc(key, length, iv, &data)
-    }
-    DecryptAlgorithm::AesCtr {
-      counter,
-      ctr_length,
-      key_length,
-    } => decrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
-    DecryptAlgorithm::AesGcm {
-      iv,
-      additional_data,
-      length,
-      tag_length,
-    } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
-    DecryptAlgorithm::AesOcb {
-      iv,
-      additional_data,
-      length,
-      tag_length,
-    } => decrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
   };
   let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
 }
 
 fn decrypt_rsa_oaep(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   hash: ShaHash,
   label: Vec<u8>,
   data: &[u8],
@@ -210,7 +236,7 @@ fn decrypt_rsa_oaep(
 }
 
 fn decrypt_aes_cbc(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   length: usize,
   iv: Vec<u8>,
   data: &[u8],
@@ -327,7 +353,7 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
 }
 
 fn decrypt_aes_ctr(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   key_length: usize,
   counter: &[u8],
   ctr_length: usize,
@@ -359,7 +385,7 @@ fn decrypt_aes_ctr(
 }
 
 fn decrypt_aes_gcm(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,
@@ -407,8 +433,41 @@ fn decrypt_aes_gcm(
   Ok(plaintext)
 }
 
+fn decrypt_chacha20_poly1305(
+  key: &RawKeyData,
+  nonce: &[u8],
+  additional_data: Option<Vec<u8>>,
+  data: &[u8],
+) -> Result<Vec<u8>, DecryptError> {
+  let key_bytes = key.as_secret_key()?;
+  if key_bytes.len() != 32 {
+    return Err(DecryptError::InvalidChaChaKeyLength);
+  }
+  if nonce.len() != 12 {
+    return Err(DecryptError::InvalidChaChaNonceLength);
+  }
+  // 16-byte Poly1305 tag is appended.
+  if data.len() < 16 {
+    return Err(DecryptError::Failed);
+  }
+
+  let unbound_key = UnboundKey::new(&CHACHA20_POLY1305, key_bytes)
+    .map_err(|_| DecryptError::Failed)?;
+  let opening_key = LessSafeKey::new(unbound_key);
+  let aws_nonce = AwsNonce::try_assume_unique_for_key(nonce)
+    .map_err(|_| DecryptError::Failed)?;
+  let aad = additional_data.unwrap_or_default();
+
+  let mut in_out = data.to_vec();
+  let plaintext = opening_key
+    .open_in_place(aws_nonce, Aad::from(&aad), &mut in_out)
+    .map_err(|_| DecryptError::Failed)?;
+
+  Ok(plaintext.to_vec())
+}
+
 fn decrypt_aes_ocb(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,

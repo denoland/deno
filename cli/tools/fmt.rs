@@ -96,8 +96,11 @@ pub async fn format(
             resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
 
           for paths_with_options in &mut paths_with_options_batches {
-            let _ = watcher_communicator
-              .watch_paths(paths_with_options.paths.clone());
+            let _ = watcher_communicator.watch_paths(
+              file_watcher::watch_paths_for_file_patterns(
+                &paths_with_options.options.files,
+              ),
+            );
             let files = std::mem::take(&mut paths_with_options.paths);
             paths_with_options.paths = if let Some(paths) = &changed_paths {
               if fmt_flags.check {
@@ -748,7 +751,7 @@ fn format_embedded_html(
     language: lang_opts.clone(),
   };
   let text = markup_fmt::format_text(text, language, &options, |code, _| {
-    Ok::<_, std::convert::Infallible>(code.into())
+    Ok::<_, deno_core::anyhow::Error>(code.into())
   })?;
   Ok(Some(text.to_string()))
 }

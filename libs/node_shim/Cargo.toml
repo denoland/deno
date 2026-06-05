@@ -2,7 +2,7 @@
 
 [package]
 name = "node_shim"
-version = "0.23.0"
+version = "0.25.0"
 edition = "2024"
 license = "MIT"
 description = "A crate that maps Node.js CLI arguments into Deno arguments."
@@ -17,6 +17,3 @@ path = "main.rs"
 [dependencies]
 serde_json.workspace = true
 url.workspace = true
-
-[target.'cfg(unix)'.dependencies]
-exec = "0.3.1"

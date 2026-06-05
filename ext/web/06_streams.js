@@ -35,7 +35,6 @@ const {
   ArrayBufferPrototypeTransferToFixedLength,
   ArrayPrototypeMap,
   ArrayPrototypePush,
-  ArrayPrototypeShift,
   AsyncGeneratorPrototype,
   BigInt64Array,
   BigUint64Array,
@@ -716,7 +715,7 @@ function initializeWritableStream(stream) {
     stream[_inFlightCloseRequest] =
     stream[_pendingAbortRequest] =
       undefined;
-  stream[_writeRequests] = [];
+  stream[_writeRequests] = new Queue();
   stream[_backpressure] = false;
   stream[_isClosedPromise] = new Deferred();
 }
@@ -1397,7 +1396,7 @@ function readableByteStreamControllerError(controller, e) {
  */
 function readableByteStreamControllerClearPendingPullIntos(controller) {
   readableByteStreamControllerInvalidateBYOBRequest(controller);
-  controller[_pendingPullIntos] = [];
+  controller[_pendingPullIntos] = new Queue();
 }
 
 /**
@@ -1414,8 +1413,8 @@ function readableByteStreamControllerClose(controller) {
     controller[_closeRequested] = true;
     return;
   }
-  if (controller[_pendingPullIntos].length !== 0) {
-    const firstPendingPullInto = controller[_pendingPullIntos][0];
+  if (controller[_pendingPullIntos].size !== 0) {
+    const firstPendingPullInto = controller[_pendingPullIntos].peek();
     if (
       firstPendingPullInto.bytesFilled % firstPendingPullInto.elementSize !== 0
     ) {
@@ -1439,7 +1438,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   const stream = controller[_stream];
   if (
     controller[_closeRequested] ||
-    controller[_stream][_state] !== "readable"
+    stream[_state] !== "readable"
   ) {
     return;
   }
@@ -1469,8 +1468,8 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
     );
   }
   const transferredBuffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
-  if (controller[_pendingPullIntos].length !== 0) {
-    const firstPendingPullInto = controller[_pendingPullIntos][0];
+  if (controller[_pendingPullIntos].size !== 0) {
+    const firstPendingPullInto = controller[_pendingPullIntos].peek();
     // deno-lint-ignore prefer-primordials
     if (isDetachedBuffer(firstPendingPullInto.buffer)) {
       throw new TypeError(
@@ -1492,7 +1491,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   if (readableStreamHasDefaultReader(stream)) {
     readableByteStreamControllerProcessReadRequestsUsingQueue(controller);
     if (readableStreamGetNumReadRequests(stream) === 0) {
-      assert(controller[_pendingPullIntos].length === 0);
+      assert(controller[_pendingPullIntos].size === 0);
       readableByteStreamControllerEnqueueChunkToQueue(
         controller,
         transferredBuffer,
@@ -1501,8 +1500,8 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       );
     } else {
       assert(controller[_queue].size === 0);
-      if (controller[_pendingPullIntos].length !== 0) {
-        assert(controller[_pendingPullIntos][0].readerType === "default");
+      if (controller[_pendingPullIntos].size !== 0) {
+        assert(controller[_pendingPullIntos].peek().readerType === "default");
         readableByteStreamControllerShiftPendingPullInto(controller);
       }
       const transferredView = new Uint8Array(
@@ -1618,9 +1617,9 @@ function readableByteStreamControllerEnqueueDetachedPullIntoToQueue(
 function readableByteStreamControllerGetBYOBRequest(controller) {
   if (
     controller[_byobRequest] === null &&
-    controller[_pendingPullIntos].length !== 0
+    controller[_pendingPullIntos].size !== 0
   ) {
-    const firstDescriptor = controller[_pendingPullIntos][0];
+    const firstDescriptor = controller[_pendingPullIntos].peek();
     const view = new Uint8Array(
       // deno-lint-ignore prefer-primordials
       firstDescriptor.buffer,
@@ -1728,7 +1727,7 @@ function readableStreamAddReadRequest(stream, readRequest) {
 function readableStreamAddReadIntoRequest(stream, readRequest) {
   assert(isReadableStreamBYOBReader(stream[_reader]));
   assert(stream[_state] === "readable" || stream[_state] === "closed");
-  ArrayPrototypePush(stream[_reader][_readIntoRequests], readRequest);
+  stream[_reader][_readIntoRequests].enqueue(readRequest);
 }
 
 /**
@@ -1739,20 +1738,20 @@ function readableStreamAddReadIntoRequest(stream, readRequest) {
  */
 function readableStreamCancel(stream, reason) {
   stream[_disturbed] = true;
-  if (stream[_state] === "closed") {
+  const state = stream[_state];
+  if (state === "closed") {
     return PromiseResolve(undefined);
   }
-  if (stream[_state] === "errored") {
+  if (state === "errored") {
     return PromiseReject(stream[_storedError]);
   }
   readableStreamClose(stream);
   const reader = stream[_reader];
   if (reader !== undefined && isReadableStreamBYOBReader(reader)) {
     const readIntoRequests = reader[_readIntoRequests];
-    reader[_readIntoRequests] = [];
-    for (let i = 0; i < readIntoRequests.length; ++i) {
-      const readIntoRequest = readIntoRequests[i];
-      readIntoRequest.closeSteps(undefined);
+    reader[_readIntoRequests] = new Queue();
+    while (readIntoRequests.size !== 0) {
+      readIntoRequests.dequeue().closeSteps(undefined);
     }
   }
   /** @type {Promise<void>} */
@@ -2014,11 +2013,11 @@ function readableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(
   controller,
 ) {
   assert(!controller[_closeRequested]);
-  while (controller[_pendingPullIntos].length !== 0) {
+  while (controller[_pendingPullIntos].size !== 0) {
     if (controller[_queueTotalSize] === 0) {
       return;
     }
-    const pullIntoDescriptor = controller[_pendingPullIntos][0];
+    const pullIntoDescriptor = controller[_pendingPullIntos].peek();
     if (
       readableByteStreamControllerFillPullIntoDescriptorFromQueue(
         controller,
@@ -2161,8 +2160,8 @@ function readableByteStreamControllerPullInto(
     readerType: "byob",
   };
 
-  if (controller[_pendingPullIntos].length !== 0) {
-    ArrayPrototypePush(controller[_pendingPullIntos], pullIntoDescriptor);
+  if (controller[_pendingPullIntos].size !== 0) {
+    controller[_pendingPullIntos].enqueue(pullIntoDescriptor);
     readableStreamAddReadIntoRequest(stream, readIntoRequest);
     return;
   }
@@ -2200,7 +2199,7 @@ function readableByteStreamControllerPullInto(
       return;
     }
   }
-  ArrayPrototypePush(controller[_pendingPullIntos], pullIntoDescriptor);
+  controller[_pendingPullIntos].enqueue(pullIntoDescriptor);
   readableStreamAddReadIntoRequest(stream, readIntoRequest);
   readableByteStreamControllerCallPullIfNeeded(controller);
 }
@@ -2211,8 +2210,8 @@ function readableByteStreamControllerPullInto(
  * @returns {void}
  */
 function readableByteStreamControllerRespond(controller, bytesWritten) {
-  assert(controller[_pendingPullIntos].length !== 0);
-  const firstDescriptor = controller[_pendingPullIntos][0];
+  assert(controller[_pendingPullIntos].size !== 0);
+  const firstDescriptor = controller[_pendingPullIntos].peek();
   const state = controller[_stream][_state];
   if (state === "closed") {
     if (bytesWritten !== 0) {
@@ -2310,7 +2309,7 @@ function readableByteStreamControllerRespondInternal(
   controller,
   bytesWritten,
 ) {
-  const firstDescriptor = controller[_pendingPullIntos][0];
+  const firstDescriptor = controller[_pendingPullIntos].peek();
   // deno-lint-ignore prefer-primordials
   assert(canTransferArrayBuffer(firstDescriptor.buffer));
   readableByteStreamControllerInvalidateBYOBRequest(controller);
@@ -2404,7 +2403,7 @@ function readableByteStreamControllerCommitPullIntoDescriptor(
  * @param {ArrayBufferView} view
  */
 function readableByteStreamControllerRespondWithNewView(controller, view) {
-  assert(controller[_pendingPullIntos].length !== 0);
+  assert(controller[_pendingPullIntos].size !== 0);
 
   let buffer, byteLength, byteOffset;
   if (isTypedArray(view)) {
@@ -2422,7 +2421,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
   }
 
   assert(!isDetachedBuffer(buffer));
-  const firstDescriptor = controller[_pendingPullIntos][0];
+  const firstDescriptor = controller[_pendingPullIntos].peek();
   const state = controller[_stream][_state];
   if (state === "closed") {
     if (byteLength !== 0) {
@@ -2465,7 +2464,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
  */
 function readableByteStreamControllerShiftPendingPullInto(controller) {
   assert(controller[_byobRequest] === null);
-  return ArrayPrototypeShift(controller[_pendingPullIntos]);
+  return controller[_pendingPullIntos].dequeue();
 }
 
 /**
@@ -2580,8 +2579,8 @@ function readableByteStreamControllerFillHeadPullIntoDescriptor(
   pullIntoDescriptor,
 ) {
   assert(
-    controller[_pendingPullIntos].length === 0 ||
-      controller[_pendingPullIntos][0] === pullIntoDescriptor,
+    controller[_pendingPullIntos].size === 0 ||
+      controller[_pendingPullIntos].peek() === pullIntoDescriptor,
   );
   assert(controller[_byobRequest] === null);
   pullIntoDescriptor.bytesFilled += size;
@@ -2621,12 +2620,13 @@ function readableStreamDefaultReaderRead(reader, readRequest) {
   const stream = reader[_stream];
   assert(stream);
   stream[_disturbed] = true;
-  if (stream[_state] === "closed") {
+  const state = stream[_state];
+  if (state === "closed") {
     readRequest.closeSteps();
-  } else if (stream[_state] === "errored") {
+  } else if (state === "errored") {
     readRequest.errorSteps(stream[_storedError]);
   } else {
-    assert(stream[_state] === "readable");
+    assert(state === "readable");
     stream[_controller][_pullSteps](readRequest);
   }
 }
@@ -2679,9 +2679,9 @@ function readableStreamFulfillReadIntoRequest(stream, chunk, done) {
   assert(readableStreamHasBYOBReader(stream));
   /** @type {ReadableStreamDefaultReader<R>} */
   const reader = stream[_reader];
-  assert(reader[_readIntoRequests].length !== 0);
+  assert(reader[_readIntoRequests].size !== 0);
   /** @type {ReadIntoRequest} */
-  const readIntoRequest = ArrayPrototypeShift(reader[_readIntoRequests]);
+  const readIntoRequest = reader[_readIntoRequests].dequeue();
   if (done) {
     readIntoRequest.closeSteps(chunk);
   } else {
@@ -2715,7 +2715,7 @@ function readableStreamFulfillReadRequest(stream, chunk, done) {
  */
 function readableStreamGetNumReadIntoRequests(stream) {
   assert(readableStreamHasBYOBReader(stream) === true);
-  return stream[_reader][_readIntoRequests].length;
+  return stream[_reader][_readIntoRequests].size;
 }
 
 /**
@@ -3064,13 +3064,14 @@ function readableStreamReaderGenericCancel(reader, reason) {
 function readableStreamReaderGenericInitialize(reader, stream) {
   reader[_stream] = stream;
   stream[_reader] = reader;
-  if (stream[_state] === "readable") {
+  const state = stream[_state];
+  if (state === "readable") {
     reader[_closedPromise] = new Deferred();
-  } else if (stream[_state] === "closed") {
+  } else if (state === "closed") {
     reader[_closedPromise] = new Deferred();
     reader[_closedPromise].resolve(undefined);
   } else {
-    assert(stream[_state] === "errored");
+    assert(state === "errored");
     reader[_closedPromise] = new Deferred();
     reader[_closedPromise].reject(stream[_storedError]);
     setPromiseIsHandledToTrue(reader[_closedPromise].promise);
@@ -3111,10 +3112,9 @@ function readableStreamReaderGenericRelease(reader) {
  */
 function readableStreamBYOBReaderErrorReadIntoRequests(reader, e) {
   const readIntoRequests = reader[_readIntoRequests];
-  reader[_readIntoRequests] = [];
-  for (let i = 0; i < readIntoRequests.length; ++i) {
-    const readIntoRequest = readIntoRequests[i];
-    readIntoRequest.errorSteps(e);
+  reader[_readIntoRequests] = new Queue();
+  while (readIntoRequests.size !== 0) {
+    readIntoRequests.dequeue().errorSteps(e);
   }
 }
 
@@ -3357,7 +3357,7 @@ function readableByteStreamTee(stream) {
 
   function pullWithDefaultReader() {
     if (isReadableStreamBYOBReader(reader)) {
-      assert(reader[_readIntoRequests].length === 0);
+      assert(reader[_readIntoRequests].size === 0);
       readableStreamBYOBReaderRelease(reader);
       reader = acquireReadableStreamDefaultReader(stream);
       forwardReaderError(reader);
@@ -3403,10 +3403,10 @@ function readableByteStreamTee(stream) {
         if (!canceled2) {
           readableByteStreamControllerClose(branch2[_controller]);
         }
-        if (branch1[_controller][_pendingPullIntos].length !== 0) {
+        if (branch1[_controller][_pendingPullIntos].size !== 0) {
           readableByteStreamControllerRespond(branch1[_controller], 0);
         }
-        if (branch2[_controller][_pendingPullIntos].length !== 0) {
+        if (branch2[_controller][_pendingPullIntos].size !== 0) {
           readableByteStreamControllerRespond(branch2[_controller], 0);
         }
         if (!canceled1 || !canceled2) {
@@ -3502,7 +3502,7 @@ function readableByteStreamTee(stream) {
           }
           if (
             !otherCanceled &&
-            otherBranch[_controller][_pendingPullIntos].length !== 0
+            otherBranch[_controller][_pendingPullIntos].size !== 0
           ) {
             readableByteStreamControllerRespond(otherBranch[_controller], 0);
           }
@@ -3628,7 +3628,7 @@ function setUpReadableByteStreamController(
   controller[_pullAlgorithm] = pullAlgorithm;
   controller[_cancelAlgorithm] = cancelAlgorithm;
   controller[_autoAllocateChunkSize] = autoAllocateChunkSize;
-  controller[_pendingPullIntos] = [];
+  controller[_pendingPullIntos] = new Queue();
   stream[_controller] = controller;
   const startResult = startAlgorithm();
   const startPromise = PromiseResolve(startResult);
@@ -3839,7 +3839,7 @@ function setUpReadableStreamBYOBReader(reader, stream) {
     throw new TypeError("Cannot use a BYOB reader with a non-byte stream");
   }
   readableStreamReaderGenericInitialize(reader, stream);
-  reader[_readIntoRequests] = [];
+  reader[_readIntoRequests] = new Queue();
 }
 
 /**
@@ -4428,7 +4428,7 @@ function writableStreamAddWriteRequest(stream) {
   assert(stream[_state] === "writable");
   /** @type {Deferred<void>} */
   const deferred = new Deferred();
-  ArrayPrototypePush(stream[_writeRequests], deferred);
+  stream[_writeRequests].enqueue(deferred);
   return deferred.promise;
 }
 
@@ -4815,11 +4815,10 @@ function writableStreamFinishErroring(stream) {
   stream[_controller][_errorSteps]();
   const storedError = stream[_storedError];
   const writeRequests = stream[_writeRequests];
-  for (let i = 0; i < writeRequests.length; ++i) {
-    const writeRequest = writeRequests[i];
-    writeRequest.reject(storedError);
+  stream[_writeRequests] = new Queue();
+  while (writeRequests.size !== 0) {
+    writeRequests.dequeue().reject(storedError);
   }
-  stream[_writeRequests] = [];
   if (stream[_pendingAbortRequest] === undefined) {
     writableStreamRejectCloseAndClosedPromiseIfNeeded(stream);
     return;
@@ -4928,8 +4927,8 @@ function writableStreamMarkCloseRequestInFlight(stream) {
  */
 function writableStreamMarkFirstWriteRequestInFlight(stream) {
   assert(stream[_inFlightWriteRequest] === undefined);
-  assert(stream[_writeRequests].length);
-  const writeRequest = ArrayPrototypeShift(stream[_writeRequests]);
+  assert(stream[_writeRequests].size);
+  const writeRequest = stream[_writeRequests].dequeue();
   stream[_inFlightWriteRequest] = writeRequest;
 }
 
@@ -5562,10 +5561,32 @@ class ReadableStreamDefaultReader {
     } catch (err) {
       return PromiseReject(err);
     }
-    if (this[_stream] === undefined) {
+    const stream = this[_stream];
+    if (stream === undefined) {
       return PromiseReject(
         new TypeError("Reader has no associated stream."),
       );
+    }
+    // Sync fast path: stream is readable, controller is the default (not
+    // byte) variant, and there's already a chunk queued. Skips allocating a
+    // Deferred, a ReadRequest object literal, three closures, and avoids
+    // the chunkSteps indirection.
+    if (stream[_state] === "readable") {
+      const controller = stream[_controller];
+      if (
+        controller[_pendingPullIntos] === undefined &&
+        controller[_queue].size !== 0
+      ) {
+        stream[_disturbed] = true;
+        const chunk = dequeueValue(controller);
+        if (controller[_closeRequested] && controller[_queue].size === 0) {
+          readableStreamDefaultControllerClearAlgorithms(controller);
+          readableStreamClose(stream);
+        } else {
+          readableStreamDefaultControllerCallPullIfNeeded(controller);
+        }
+        return PromiseResolve({ value: chunk, done: false });
+      }
     }
     /** @type {Deferred<ReadableStreamReadResult<R>>} */
     const promise = new Deferred();
@@ -6081,18 +6102,20 @@ class ReadableByteStreamController {
         viewConstructor: Uint8Array,
         readerType: "default",
       };
-      ArrayPrototypePush(this[_pendingPullIntos], pullIntoDescriptor);
+      this[_pendingPullIntos].enqueue(pullIntoDescriptor);
     }
     readableStreamAddReadRequest(stream, readRequest);
     readableByteStreamControllerCallPullIfNeeded(this);
   }
 
   [_releaseSteps]() {
-    if (this[_pendingPullIntos].length !== 0) {
+    if (this[_pendingPullIntos].size !== 0) {
       /** @type {PullIntoDescriptor} */
-      const firstPendingPullInto = this[_pendingPullIntos][0];
+      const firstPendingPullInto = this[_pendingPullIntos].peek();
       firstPendingPullInto.readerType = "none";
-      this[_pendingPullIntos] = [firstPendingPullInto];
+      const newQueue = new Queue();
+      newQueue.enqueue(firstPendingPullInto);
+      this[_pendingPullIntos] = newQueue;
     }
   }
 }

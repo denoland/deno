@@ -377,6 +377,11 @@ export namespace core {
     loadFn: LazyLoader<T>,
   ): PropertyDescriptor;
 
+  function defineGlobalProperties(
+    target: object,
+    props: PropertyDescriptorMap,
+  ): void;
+
   type LazyLoader<T> = () => T;
   function createLazyLoader<T = unknown>(specifier: string): LazyLoader<T>;
 

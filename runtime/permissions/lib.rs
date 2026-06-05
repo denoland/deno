@@ -23,7 +23,7 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use fqdn::FQDN;
-use ipnetwork::IpNetwork;
+use ipnet::IpNet;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde::Deserialize;
@@ -1769,7 +1769,7 @@ pub enum Host {
   FqdnWithSubdomainWildcard(FQDN),
   Ip(IpAddr),
   Vsock(u32),
-  IpSubnet(IpNetwork),
+  IpSubnet(IpNet),
   UnixSocket(PathBuf),
 }
 
@@ -1834,7 +1834,7 @@ impl Host {
         ));
       }
       Ok(Host::Ip(normalize_ip(ip)))
-    } else if let Ok(ip_subnet) = s.parse::<IpNetwork>() {
+    } else if let Ok(ip_subnet) = s.parse::<IpNet>() {
       Ok(Host::IpSubnet(ip_subnet))
     } else {
       let lower = if s.chars().all(|c| c.is_ascii_lowercase()) {
@@ -1931,7 +1931,7 @@ impl QueryDescriptor for NetDescriptor {
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
       (Host::UnixSocket(a), Host::UnixSocket(b)) => a == b,
-      (Host::IpSubnet(a), Host::Ip(b)) => a.contains(*b),
+      (Host::IpSubnet(a), Host::Ip(b)) => a.contains(b),
       _ => false,
     }
   }
@@ -3868,7 +3868,7 @@ fn ignored_to_not_found(err: PermissionDeniedError) -> PermissionCheckError {
   #[cfg(windows)]
   fn not_found() -> std::io::Error {
     std::io::Error::from_raw_os_error(
-      winapi::shared::winerror::ERROR_FILE_NOT_FOUND as i32,
+      windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND as i32,
     )
   }
 
@@ -4555,7 +4555,7 @@ impl PermissionsContainer {
   pub fn check_net_unix_socket(
     &mut self,
     path: &Path,
-    api_name: &str,
+    api_name: Option<&str>,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
     audit_and_skip_check_if_is_permission_fully_granted!(
@@ -4564,7 +4564,7 @@ impl PermissionsContainer {
       format!("unix:{}", path.display())
     );
     let desc = NetDescriptor(Host::UnixSocket(path.to_path_buf()), None);
-    inner.net.check(&desc, Some(api_name))?;
+    inner.net.check(&desc, api_name)?;
     Ok(())
   }
 

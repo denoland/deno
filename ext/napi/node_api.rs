@@ -32,6 +32,23 @@ fn napi_module_register(module: *const NapiModule) -> napi_status {
   napi_ok
 }
 
+// Legacy `NODE_MODULE` (V8/nan) addons register themselves through this symbol
+// from a static constructor at `dlopen` time. Deno does not support the legacy
+// V8 native addon ABI (only Node-API is supported), but if this symbol is not
+// exported the addon crashes hard with a cryptic `dyld: missing symbol called`
+// abort before we ever get a chance to report a useful error. By accepting the
+// registration here we let `op_napi_open` inspect `nm_version` and surface a
+// clear, actionable error instead. See denoland/deno#26656.
+#[napi_sym]
+fn node_module_register(module: *const NapiModule) -> napi_status {
+  MODULE_TO_REGISTER.with(|cell| {
+    let mut slot = cell.borrow_mut();
+    let prev = slot.replace(module);
+    assert!(prev.is_none());
+  });
+  napi_ok
+}
+
 #[napi_sym]
 fn napi_add_env_cleanup_hook(
   env: *mut Env,
