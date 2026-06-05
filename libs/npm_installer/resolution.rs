@@ -216,11 +216,32 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
 
     self.registry_info_provider.clear_memory_cache();
 
-    if !result.unmet_peer_diagnostics.is_empty()
-      && log::log_enabled!(log::Level::Warn)
-    {
-      let root_node =
-        peer_dep_diagnostics_to_display_tree(&result.unmet_peer_diagnostics);
+    // Suppress peer dependency warnings for packages that the user has
+    // explicitly overridden in the root package.json "overrides" field. An
+    // override is an authoritative resolution directive, so a peer mismatch
+    // against an overridden version is intentional and shouldn't be reported.
+    // See https://github.com/denoland/deno/issues/32801.
+    let overrides = &self.npm_version_resolver.overrides;
+    let diagnostics: Vec<UnmetPeerDepDiagnostic> = if overrides.is_empty() {
+      result.unmet_peer_diagnostics.clone()
+    } else {
+      result
+        .unmet_peer_diagnostics
+        .iter()
+        .filter(|d| {
+          overrides
+            .get_override_for(
+              &StackString::from_str(&d.dependency.name),
+              Some(&d.resolved),
+            )
+            .is_none()
+        })
+        .cloned()
+        .collect()
+    };
+
+    if !diagnostics.is_empty() && log::log_enabled!(log::Level::Warn) {
+      let root_node = peer_dep_diagnostics_to_display_tree(&diagnostics);
       let mut text = String::new();
       _ = root_node.print(&mut text);
       log::warn!("{}", text);
