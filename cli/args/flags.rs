@@ -212,6 +212,7 @@ pub struct CompileFlags {
   pub output: Option<String>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub watch: Option<WatchFlags>,
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
@@ -764,6 +765,9 @@ impl DenoSubcommand {
       Self::Run(RunFlags {
         watch: Some(flags), ..
       })
+      | Self::Serve(ServeFlags {
+        watch: Some(flags), ..
+      })
       | Self::Test(TestFlags {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::WithPaths(flags)),
@@ -777,6 +781,9 @@ impl DenoSubcommand {
         watch: Some(flags), ..
       })
       | Self::Fmt(FmtFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Compile(CompileFlags {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::Watch(flags)),
       _ => None,
@@ -1997,8 +2004,17 @@ pub fn flags_from_vec_with_initial_cwd(
         });
 
       if let Some(arg) = pre_subcommand_arg {
-        let usage =
-          app.find_subcommand_mut(&subcommand).unwrap().render_usage();
+        // Only suggest moving the flag after the subcommand if the subcommand
+        // actually accepts it. Otherwise the "'<subcommand> <arg>' exists" tip
+        // would lie about a combination that doesn't exist (e.g. `deno -A lint`
+        // suggesting `lint --allow-all`, which `deno lint` rejects).
+        let arg_long = arg.trim_start_matches('-');
+        let (usage, subcommand_has_arg) = {
+          let sub = app.find_subcommand_mut(&subcommand).unwrap();
+          let has_arg =
+            sub.get_arguments().any(|a| a.get_long() == Some(arg_long));
+          (sub.render_usage(), has_arg)
+        };
 
         let mut err =
           clap::error::Error::new(ErrorKind::UnknownArgument).with_cmd(&app);
@@ -2007,18 +2023,21 @@ pub fn flags_from_vec_with_initial_cwd(
           clap::error::ContextValue::String(arg.clone()),
         );
 
-        let valid = app.get_styles().get_valid();
+        if subcommand_has_arg {
+          let valid = app.get_styles().get_valid();
 
-        let styled_suggestion = clap::builder::StyledStr::from(format!(
-          "'{}{subcommand} {arg}{}' exists",
-          valid.render(),
-          valid.render_reset()
-        ));
+          let styled_suggestion = clap::builder::StyledStr::from(format!(
+            "'{}{subcommand} {arg}{}' exists",
+            valid.render(),
+            valid.render_reset()
+          ));
 
-        err.insert(
-          clap::error::ContextKind::Suggested,
-          clap::error::ContextValue::StyledStrs(vec![styled_suggestion]),
-        );
+          err.insert(
+            clap::error::ContextKind::Suggested,
+            clap::error::ContextValue::StyledStrs(vec![styled_suggestion]),
+          );
+        }
+
         err.insert(
           clap::error::ContextKind::Usage,
           clap::error::ContextValue::StyledStr(usage),
@@ -2863,8 +2882,7 @@ fn clean_subcommand() -> Command {
         Arg::new("dry-run")
           .long("dry-run")
           .action(ArgAction::SetTrue)
-          .help("Show what would be removed without performing any actions")
-          .requires("except"),
+          .help("Show what would be removed without performing any actions"),
       )
       .arg(node_modules_dir_arg().requires("except"))
       .arg(node_modules_linker_arg().requires("except"))
@@ -3048,6 +3066,9 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .requires("bundle")
           .help_heading(COMPILE_HEADING),
       )
+      .arg(watch_arg(false))
+      .arg(watch_exclude_arg())
+      .arg(no_clear_screen_arg())
       .arg(executable_ext_arg())
       .arg(env_file_arg())
       .arg(
@@ -6886,7 +6907,7 @@ fn check_parse(
 fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let mut clean_flags = CleanFlags {
     except_paths: Vec::new(),
-    dry_run: false,
+    dry_run: matches.get_flag("dry-run"),
   };
   if matches.get_flag("except") {
     clean_flags.except_paths = matches
@@ -6894,7 +6915,6 @@ fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .unwrap()
       .collect::<Vec<_>>();
     flags.cached_only = true;
-    clean_flags.dry_run = matches.get_flag("dry-run");
     node_modules_and_vendor_dir_arg_parse(flags, matches);
   }
   flags.subcommand = DenoSubcommand::Clean(clean_flags);
@@ -6925,6 +6945,7 @@ fn compile_parse(
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
+  let watch = watch_arg_parse(matches)?;
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
@@ -6948,6 +6969,7 @@ fn compile_parse(
     output,
     args,
     target,
+    watch,
     no_terminal,
     icon,
     include,
@@ -13551,6 +13573,45 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          watch: None,
+          no_terminal: false,
+          icon: None,
+          include: Default::default(),
+          exclude: Default::default(),
+          eszip: false,
+          self_extracting: false,
+          bundle: false,
+          minify: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn compile_watch_with_no_clear_screen() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--watch",
+      "--no-clear-screen",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Compile(CompileFlags {
+          source_file: "main.ts".to_string(),
+          output: None,
+          args: vec![],
+          target: None,
+          watch: Some(WatchFlags {
+            hmr: false,
+            no_clear_screen: true,
+            exclude: vec![],
+          }),
           no_terminal: false,
           icon: None,
           include: Default::default(),
@@ -13580,6 +13641,7 @@ mod tests {
           output: Some(String::from("colors")),
           args: svec!["foo", "bar", "-p", "8080"],
           target: None,
+          watch: None,
           no_terminal: true,
           icon: Some(String::from("favicon.ico")),
           include: vec!["include.txt".to_string()],
@@ -15622,6 +15684,19 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
   }
 
   #[test]
+  fn flag_before_subcommand_not_supported() {
+    // `lint` does not accept `--allow-all`, so the error must not claim that
+    // `lint --allow-all` exists (see issue #27336).
+    let r = flags_from_vec(svec!["deno", "--allow-all", "lint"]);
+    assert_eq!(
+      r.unwrap_err().to_string(),
+      "error: unexpected argument '--allow-all' found
+
+Usage: deno lint [OPTIONS] [files]...\n"
+    )
+  }
+
+  #[test]
   fn allow_all_conflicts_allow_perms() {
     let flags = [
       "--allow-read",
@@ -16007,9 +16082,18 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           dry_run: true,
         },
       ),
+      (
+        svec!["--dry-run"],
+        CleanFlags {
+          except_paths: vec![],
+          dry_run: true,
+        },
+      ),
     ];
     for (input, expected) in cases {
-      let cached_only = !input.is_empty();
+      // `--except` builds a module graph of the retained paths, so it parses
+      // with `--cached-only`; other invocations (e.g. `--dry-run` alone) don't.
+      let cached_only = input.iter().any(|arg| arg == "--except");
       let mut args = svec!["deno", "clean"];
       args.extend(input);
       let r = flags_from_vec(args.clone())
@@ -16158,6 +16242,7 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
           output: None,
           args: vec![],
           target: None,
+          watch: None,
           no_terminal: false,
           icon: None,
           include: Default::default(),

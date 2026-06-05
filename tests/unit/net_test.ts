@@ -1003,22 +1003,59 @@ Deno.test(
     ignore: Deno.build.os !== "linux",
     permissions: { read: true, write: true },
   },
-  function netUnixAbstractPathShouldNotPanic() {
-    const err = assertThrows(
-      () =>
-        Deno.listen({
-          path: "\0aaa",
-          transport: "unix",
-        }),
-      Error,
-    );
-    const errorText = err.toString();
-    if (
-      !errorText.includes("paths must not contain interior null bytes") &&
-      !errorText.includes("file name contained an unexpected NUL byte")
-    ) {
-      throw new Error("Did not contain any expected message");
-    }
+  async function netUnixAbstractPathAddr() {
+    const path = `\0deno-net-test-${crypto.randomUUID()}`;
+    const listener = Deno.listen({
+      path,
+      transport: "unix",
+    });
+    assertEquals(listener.addr.path, path);
+
+    const acceptPromise = listener.accept();
+    const conn = await Deno.connect({ path, transport: "unix" });
+    assertEquals(conn.remoteAddr.path, path);
+
+    const acceptedConn = await acceptPromise;
+    assertEquals(acceptedConn.localAddr.path, path);
+
+    conn.close();
+    acceptedConn.close();
+    listener.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { read: true, write: true },
+  },
+  async function netUnixPacketAbstractPathAddr() {
+    const alicePath = `\0deno-net-test-${crypto.randomUUID()}`;
+    const alice = Deno.listenDatagram({
+      path: alicePath,
+      transport: "unixpacket",
+    });
+    assert(alice.addr.transport === "unixpacket");
+    assertEquals(alice.addr.path, alicePath);
+
+    const bobPath = `\0deno-net-test-${crypto.randomUUID()}`;
+    const bob = Deno.listenDatagram({
+      path: bobPath,
+      transport: "unixpacket",
+    });
+    assert(bob.addr.transport === "unixpacket");
+    assertEquals(bob.addr.path, bobPath);
+
+    const sent = new Uint8Array([1, 2, 3]);
+    assertEquals(await alice.send(sent, bob.addr), sent.byteLength);
+
+    const [received, remoteAddr] = await bob.receive();
+    assert(remoteAddr.transport === "unixpacket");
+    assertEquals(remoteAddr.path, alicePath);
+    assertEquals(received, sent);
+
+    alice.close();
+    bob.close();
   },
 );
 

@@ -18,7 +18,6 @@ use deno_permissions::PermissionsContainer;
 use denort_helper::DenoRtNativeAddonLoaderRc;
 use dlopen2::raw::Library;
 use serde::Deserialize;
-use serde_value::ValueDeserializer;
 
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
@@ -130,17 +129,14 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
   where
     D: serde::Deserializer<'de>,
   {
-    let value = serde_value::Value::deserialize(deserializer)?;
+    let value = serde_json::Value::deserialize(deserializer)?;
 
     // Probe a ForeignStatic and if that doesn't match, assume ForeignFunction to improve error messages
-    match ForeignStatic::deserialize(ValueDeserializer::<D::Error>::new(
-      value.clone(),
-    )) {
+    match ForeignStatic::deserialize(value.clone()) {
       Ok(res) => Ok(ForeignSymbol::ForeignStatic(res)),
-      _ => {
-        ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
-          .map(ForeignSymbol::ForeignFunction)
-      }
+      _ => ForeignFunction::deserialize(value)
+        .map(ForeignSymbol::ForeignFunction)
+        .map_err(serde::de::Error::custom),
     }
   }
 }

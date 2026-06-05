@@ -12,6 +12,8 @@ use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
+use crate::key_store::CryptoKeyHandle;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X25519Error {
   #[class("DOMExceptionOperationError")]
@@ -60,12 +62,20 @@ const MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 32]);
 
 #[op2(fast)]
 pub fn op_crypto_derive_bits_x25519(
-  #[buffer] k: &[u8],
-  #[buffer] u: &[u8],
+  #[cppgc] k: &CryptoKeyHandle,
+  #[cppgc] u: &CryptoKeyHandle,
   #[buffer] secret: &mut [u8],
 ) -> Result<bool, X25519Error> {
-  let k: [u8; 32] = k.try_into().map_err(|_| X25519Error::InvalidKeyLength)?;
-  let u: [u8; 32] = u.try_into().map_err(|_| X25519Error::InvalidKeyLength)?;
+  let k: [u8; 32] = k
+    .data()
+    .bytes()
+    .try_into()
+    .map_err(|_| X25519Error::InvalidKeyLength)?;
+  let u: [u8; 32] = u
+    .data()
+    .bytes()
+    .try_into()
+    .map_err(|_| X25519Error::InvalidKeyLength)?;
   let sh_sec = x25519_dalek::x25519(k, u);
   let point = MontgomeryPoint(sh_sec);
   if point.ct_eq(&MONTGOMERY_IDENTITY).unwrap_u8() == 1 {

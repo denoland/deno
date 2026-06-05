@@ -35,12 +35,12 @@ use sha3::Sha3_256;
 use sha3::Sha3_384;
 use sha3::Sha3_512;
 
+use crate::key_store::CryptoKeyHandle;
 use crate::shared::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecryptOptions {
-  key: V8RawKeyData,
   #[serde(flatten)]
   algorithm: DecryptAlgorithm,
 }
@@ -140,45 +140,49 @@ pub enum DecryptError {
 
 #[op2]
 pub async fn op_crypto_decrypt(
+  #[cppgc] key: &CryptoKeyHandle,
   #[serde] opts: DecryptOptions,
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, DecryptError> {
-  let key = opts.key;
-  let fun = move || match opts.algorithm {
-    DecryptAlgorithm::RsaOaep { hash, label } => {
-      decrypt_rsa_oaep(key, hash, label, &data)
+  let key_data = key.data().clone();
+  let fun = move || {
+    let key: &RawKeyData = &key_data;
+    match opts.algorithm {
+      DecryptAlgorithm::RsaOaep { hash, label } => {
+        decrypt_rsa_oaep(key, hash, label, &data)
+      }
+      DecryptAlgorithm::AesCbc { iv, length } => {
+        decrypt_aes_cbc(key, length, iv, &data)
+      }
+      DecryptAlgorithm::AesCtr {
+        counter,
+        ctr_length,
+        key_length,
+      } => decrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
+      DecryptAlgorithm::AesGcm {
+        iv,
+        additional_data,
+        length,
+        tag_length,
+      } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
+      DecryptAlgorithm::AesOcb {
+        iv,
+        additional_data,
+        length,
+        tag_length,
+      } => decrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
+      DecryptAlgorithm::ChaCha20Poly1305 {
+        nonce,
+        additional_data,
+      } => decrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
     }
-    DecryptAlgorithm::AesCbc { iv, length } => {
-      decrypt_aes_cbc(key, length, iv, &data)
-    }
-    DecryptAlgorithm::AesCtr {
-      counter,
-      ctr_length,
-      key_length,
-    } => decrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
-    DecryptAlgorithm::AesGcm {
-      iv,
-      additional_data,
-      length,
-      tag_length,
-    } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
-    DecryptAlgorithm::AesOcb {
-      iv,
-      additional_data,
-      length,
-      tag_length,
-    } => decrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
-    DecryptAlgorithm::ChaCha20Poly1305 {
-      nonce,
-      additional_data,
-    } => decrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
   };
   let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
 }
 
 fn decrypt_rsa_oaep(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   hash: ShaHash,
   label: Vec<u8>,
   data: &[u8],
@@ -232,7 +236,7 @@ fn decrypt_rsa_oaep(
 }
 
 fn decrypt_aes_cbc(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   length: usize,
   iv: Vec<u8>,
   data: &[u8],
@@ -349,7 +353,7 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
 }
 
 fn decrypt_aes_ctr(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   key_length: usize,
   counter: &[u8],
   ctr_length: usize,
@@ -381,7 +385,7 @@ fn decrypt_aes_ctr(
 }
 
 fn decrypt_aes_gcm(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,
@@ -430,7 +434,7 @@ fn decrypt_aes_gcm(
 }
 
 fn decrypt_chacha20_poly1305(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   nonce: &[u8],
   additional_data: Option<Vec<u8>>,
   data: &[u8],
@@ -463,7 +467,7 @@ fn decrypt_chacha20_poly1305(
 }
 
 fn decrypt_aes_ocb(
-  key: V8RawKeyData,
+  key: &RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,

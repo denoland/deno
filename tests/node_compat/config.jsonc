@@ -1039,7 +1039,10 @@
     "parallel/test-dns-default-order-ipv6.js": {},
     "parallel/test-dns-default-order-verbatim.js": {},
     "parallel/test-dns-get-server.js": {},
-    "parallel/test-dns-lookup.js": {},
+    "parallel/test-dns-lookup.js": {
+      "ignore": true,
+      "reason": "Fixture predates nodejs/node#39793 (Node 17): asserts that dns.lookup(false, {all:true}, cb) and the promise variant throw/reject with ERR_INVALID_ARG_VALUE, but current Node calls cb(null, []) / resolves with []. Deno matches current Node — see denoland/deno#34801."
+    },
     "parallel/test-dns-lookup-promises.js": {},
     "parallel/test-dns-lookup-promises-options-deprecated.js": {},
     "parallel/test-dns-lookupService.js": {},

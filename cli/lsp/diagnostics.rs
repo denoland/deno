@@ -35,6 +35,7 @@ use import_map::ImportMapErrorKind;
 use log::error;
 use lsp_types::Uri;
 use node_resolver::NodeResolutionKind;
+use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
@@ -67,6 +68,7 @@ pub struct DiagnosticsUpdateMessage {
 #[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
 pub enum DiagnosticSource {
   Deno,
+  Doc,
   Lint,
   Ts,
 }
@@ -75,6 +77,7 @@ impl DiagnosticSource {
   pub fn as_lsp_source(&self) -> &'static str {
     match self {
       Self::Deno => "deno",
+      Self::Doc => "deno-doc",
       Self::Lint => "deno-lint",
       Self::Ts => "deno-ts",
     }
@@ -433,18 +436,37 @@ pub fn ts_json_to_diagnostics(
     .collect()
 }
 
+/// Generates lint diagnostics for a module, caching them on the module
+/// instance. Lint diagnostics depend only on the module's own contents, so a
+/// given module instance always produces the same result and can be cached.
+///
+/// Returns `Err` if linting was cancelled, in which case nothing is cached and
+/// the result is recomputed on the next request.
 fn generate_document_lint_diagnostics(
   module: &DocumentModule,
   linter: &LspLinter,
   token: CancellationToken,
-) -> Vec<lsp::Diagnostic> {
+) -> Result<Arc<Vec<lsp::Diagnostic>>, AnyError> {
+  module
+    .lint_diagnostics
+    .get_or_try_init(|| {
+      compute_document_lint_diagnostics(module, linter, token).map(Arc::new)
+    })
+    .cloned()
+}
+
+fn compute_document_lint_diagnostics(
+  module: &DocumentModule,
+  linter: &LspLinter,
+  token: CancellationToken,
+) -> Result<Vec<lsp::Diagnostic>, AnyError> {
   if !module.is_diagnosable()
     || !linter
       .lint_config
       .files
       .matches_specifier(&module.specifier)
   {
-    return Vec::new();
+    return Ok(Vec::new());
   }
   match &module
     .open_data
@@ -452,20 +474,187 @@ fn generate_document_lint_diagnostics(
     .and_then(|d| d.parsed_source.as_ref())
   {
     Some(Ok(parsed_source)) => {
-      match analysis::get_lint_references(parsed_source, &linter.inner, token) {
-        Ok(references) => references
+      let references =
+        analysis::get_lint_references(parsed_source, &linter.inner, token)?;
+      Ok(
+        references
           .into_iter()
           .map(|r| r.to_diagnostic())
           .collect::<Vec<_>>(),
-        _ => Vec::new(),
-      }
+      )
     }
-    Some(Err(_)) => Vec::new(),
+    Some(Err(_)) => Ok(Vec::new()),
     None => {
       error!("Missing file contents for: {}", &module.specifier);
-      Vec::new()
+      Ok(Vec::new())
     }
   }
+}
+
+/// Computes an LSP range to highlight for a `deno doc --lint` diagnostic.
+///
+/// `deno_doc` only reports the byte offset of the start of the offending
+/// symbol, so highlight the identifier-like token that begins there (falling
+/// back to a single character) to produce a visible squiggle.
+fn doc_diagnostic_range(
+  module: &DocumentModule,
+  byte_index: usize,
+) -> lsp::Range {
+  let text = &*module.text;
+  let bytes = text.as_bytes();
+  let start = byte_index.min(bytes.len());
+  let mut end = start;
+  while end < bytes.len() {
+    let b = bytes[end];
+    if b.is_ascii_alphanumeric() || b == b'_' || b == b'$' {
+      end += 1;
+    } else {
+      break;
+    }
+  }
+  if end == start {
+    // Ensure a non-empty range so the diagnostic renders.
+    end = (start + 1).min(bytes.len());
+    while end < bytes.len() && !text.is_char_boundary(end) {
+      end += 1;
+    }
+  }
+  lsp::Range {
+    start: module
+      .line_index
+      .position_utf16(TextSize::from(start as u32)),
+    end: module.line_index.position_utf16(TextSize::from(end as u32)),
+  }
+}
+
+/// Generates `deno doc --lint` diagnostics for a module that is a published
+/// package's export entrypoint, caching them on the module instance. Like lint
+/// diagnostics, these are derived solely from the module's own contents, so a
+/// given module instance always produces the same result.
+///
+/// Returns `Err` if generation was cancelled, in which case nothing is cached
+/// and the result is recomputed on the next request.
+fn generate_document_doc_diagnostics(
+  module: &DocumentModule,
+  token: &CancellationToken,
+) -> Result<Arc<Vec<lsp::Diagnostic>>, AnyError> {
+  module
+    .doc_diagnostics
+    .get_or_try_init(|| {
+      compute_document_doc_diagnostics(module, token).map(Arc::new)
+    })
+    .cloned()
+}
+
+fn compute_document_doc_diagnostics(
+  module: &DocumentModule,
+  token: &CancellationToken,
+) -> Result<Vec<lsp::Diagnostic>, AnyError> {
+  if token.is_cancelled() {
+    return Err(anyhow!("cancelled"));
+  }
+  if !module.is_diagnosable() {
+    return Ok(Vec::new());
+  }
+  // Only open documents have parsed sources to lint against.
+  if !module
+    .open_data
+    .as_ref()
+    .and_then(|d| d.parsed_source.as_ref())
+    .is_some_and(|r| r.is_ok())
+  {
+    return Ok(Vec::new());
+  }
+  let analyzer = deno_graph::ast::CapturingModuleAnalyzer::default();
+  let specifier = module.specifier.as_ref().clone();
+  let loader = deno_graph::source::MemoryLoader::new(
+    vec![(
+      specifier.to_string(),
+      deno_graph::source::Source::Module {
+        specifier: specifier.to_string(),
+        content: module.text.to_string(),
+        maybe_headers: None,
+      },
+    )],
+    Vec::new(),
+  );
+  let roots = vec![specifier.clone()];
+  let mut graph =
+    deno_graph::ModuleGraph::new(deno_graph::GraphKind::TypesOnly);
+  deno_core::futures::executor::block_on(graph.build(
+    roots.clone(),
+    Vec::new(),
+    &loader,
+    deno_graph::BuildOptions {
+      is_dynamic: false,
+      skip_dynamic_deps: false,
+      passthrough_jsr_specifiers: false,
+      executor: Default::default(),
+      file_system: &deno_graph::source::NullFileSystem,
+      jsr_metadata_store: None,
+      jsr_url_provider: Default::default(),
+      jsr_version_resolver: Default::default(),
+      locker: None,
+      module_analyzer: &analyzer,
+      module_info_cacher: Default::default(),
+      npm_resolver: None,
+      reporter: None,
+      resolver: None,
+      unstable_bytes_imports: false,
+      unstable_text_imports: false,
+    },
+  ));
+  if token.is_cancelled() {
+    return Err(anyhow!("cancelled"));
+  }
+  let doc_parser = match deno_doc::DocParser::new(
+    &graph,
+    &analyzer,
+    &roots,
+    deno_doc::DocParserOptions {
+      diagnostics: true,
+      private: false,
+    },
+  ) {
+    Ok(doc_parser) => doc_parser,
+    Err(err) => {
+      lsp_warn!("Failed to create doc parser for \"{specifier}\": {err:#}");
+      return Ok(Vec::new());
+    }
+  };
+  if let Err(err) = doc_parser.parse() {
+    lsp_warn!("Failed to parse docs for \"{specifier}\": {err:#}");
+    return Ok(Vec::new());
+  }
+  let specifier_str = specifier.as_str();
+  Ok(
+    doc_parser
+      .take_diagnostics()
+      .into_iter()
+      // Only report diagnostics that point at the linted module itself. With a
+      // single-module graph cross-module references aren't resolved, so any
+      // diagnostic for another file would be spurious.
+      .filter(|diagnostic| {
+        diagnostic.location.filename.as_ref() == specifier_str
+      })
+      .map(|diagnostic| {
+        use deno_ast::diagnostics::Diagnostic;
+        lsp::Diagnostic {
+          range: doc_diagnostic_range(module, diagnostic.location.byte_index),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
+          code: Some(lsp::NumberOrString::String(
+            diagnostic.code().into_owned(),
+          )),
+          code_description: None,
+          source: Some(DiagnosticSource::Doc.as_lsp_source().to_string()),
+          message: diagnostic.message().into_owned(),
+          related_information: None,
+          tags: None,
+          data: None,
+        }
+      })
+      .collect(),
+  )
 }
 
 #[derive(Debug, Deserialize)]
@@ -1297,7 +1486,7 @@ pub async fn generate_module_diagnostics(
     let snapshot = snapshot.clone();
     let module = module.clone();
     let token = token.clone();
-    move || {
+    move || -> Arc<Vec<lsp::Diagnostic>> {
       // TODO(nayeemrmn): Support linting notebooks cells. Will require
       // stitching cells from the same notebook into one module, linting it
       // and then splitting/relocating the diagnostics to each cell.
@@ -1306,16 +1495,42 @@ pub async fn generate_module_diagnostics(
         || module.specifier.scheme() != "file"
         || snapshot.resolver.in_node_modules(&module.specifier)
       {
-        return Vec::new();
+        return Default::default();
       }
       let settings = snapshot
         .config
         .workspace_settings_for_specifier(&module.specifier);
       if !settings.lint {
-        return Vec::new();
+        return Default::default();
       }
       let linter = snapshot.linter_resolver.for_module(&module);
       generate_document_lint_diagnostics(&module, &linter, token)
+        .unwrap_or_default()
+    }
+  });
+
+  let doc_handle = tokio::task::spawn_blocking({
+    let snapshot = snapshot.clone();
+    let module = module.clone();
+    let token = token.clone();
+    move || -> Arc<Vec<lsp::Diagnostic>> {
+      if token.is_cancelled()
+        || module.notebook_uri.is_some()
+        || module.specifier.scheme() != "file"
+        || snapshot.resolver.in_node_modules(&module.specifier)
+      {
+        return Default::default();
+      }
+      let settings = snapshot
+        .config
+        .workspace_settings_for_specifier(&module.specifier);
+      if !settings.lint {
+        return Default::default();
+      }
+      if !module_is_package_export(&snapshot, &module) {
+        return Default::default();
+      }
+      generate_document_doc_diagnostics(&module, &token).unwrap_or_default()
     }
   });
 
@@ -1380,9 +1595,47 @@ pub async fn generate_module_diagnostics(
       lsp_warn!("Lint task join error: {err:#}");
     })
     .unwrap_or_default();
-  diagnostics.extend(lint_diagnostics);
+  diagnostics.extend(lint_diagnostics.iter().cloned());
+
+  let doc_diagnostics = doc_handle
+    .await
+    .inspect_err(|err| {
+      lsp_warn!("Doc lint task join error: {err:#}");
+    })
+    .unwrap_or_default();
+  diagnostics.extend(doc_diagnostics.iter().cloned());
 
   Ok(diagnostics)
+}
+
+/// Returns whether the module is an export entrypoint of a publishable
+/// (JSR) package in the workspace, i.e. a file that `deno doc --lint` and
+/// `deno publish` would check for documentation issues.
+fn module_is_package_export(
+  snapshot: &StateSnapshot,
+  module: &DocumentModule,
+) -> bool {
+  let Some(config_file) = snapshot
+    .config
+    .tree
+    .data_for_specifier(&module.specifier)
+    .and_then(|d| d.maybe_deno_json())
+  else {
+    return false;
+  };
+  if !config_file.is_package() || !config_file.should_publish() {
+    return false;
+  }
+  match config_file.resolve_export_value_urls() {
+    Ok(urls) => urls.iter().any(|url| url == module.specifier.as_ref()),
+    Err(err) => {
+      lsp_warn!(
+        "Failed to resolve export URLs for \"{}\": {err:#}",
+        config_file.specifier,
+      );
+      false
+    }
+  }
 }
 
 #[cfg(test)]
