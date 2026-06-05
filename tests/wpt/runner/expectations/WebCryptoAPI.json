@@ -6437,19 +6437,11 @@
   "getPublicKey.tentative.https.any.worker.html": true,
   "idlharness.tentative.https.any.html": {
     "expectedFailures": [
-      "SubtleCrypto interface: operation supports(DOMString, AlgorithmIdentifier, optional unsigned long?)",
-      "SubtleCrypto interface: operation supports(DOMString, AlgorithmIdentifier, AlgorithmIdentifier)",
-      "SubtleCrypto interface: calling supports(DOMString, AlgorithmIdentifier, optional unsigned long?) on crypto.subtle with too few arguments must throw TypeError",
-      "SubtleCrypto interface: calling supports(DOMString, AlgorithmIdentifier, AlgorithmIdentifier) on crypto.subtle with too few arguments must throw TypeError",
       "Window interface: attribute crypto"
     ]
   },
   "idlharness.tentative.https.any.worker.html": {
     "expectedFailures": [
-      "SubtleCrypto interface: operation supports(DOMString, AlgorithmIdentifier, optional unsigned long?)",
-      "SubtleCrypto interface: operation supports(DOMString, AlgorithmIdentifier, AlgorithmIdentifier)",
-      "SubtleCrypto interface: calling supports(DOMString, AlgorithmIdentifier, optional unsigned long?) on crypto.subtle with too few arguments must throw TypeError",
-      "SubtleCrypto interface: calling supports(DOMString, AlgorithmIdentifier, AlgorithmIdentifier) on crypto.subtle with too few arguments must throw TypeError",
       "WorkerGlobalScope interface: attribute crypto"
     ]
   },
@@ -6495,8 +6487,26 @@
     "x448.tentative.https.any.html": true,
     "x448.tentative.https.any.worker.html": true
   },
-  "supports-modern.tentative.https.any.html": false,
-  "supports-modern.tentative.https.any.worker.html": false,
-  "supports.tentative.https.any.html": false,
-  "supports.tentative.https.any.worker.html": false
+  "supports-modern.tentative.https.any.html": {
+    "expectedFailures": [
+      "supports returns false for algorithm objects with invalid parameters"
+    ]
+  },
+  "supports-modern.tentative.https.any.worker.html": {
+    "expectedFailures": [
+      "supports returns false for algorithm objects with invalid parameters"
+    ]
+  },
+  "supports.tentative.https.any.html": {
+    "expectedFailures": [
+      "supports returns false for algorithm objects with invalid parameters",
+      "deriveKey promise tests"
+    ]
+  },
+  "supports.tentative.https.any.worker.html": {
+    "expectedFailures": [
+      "supports returns false for algorithm objects with invalid parameters",
+      "deriveKey promise tests"
+    ]
+  }
 }
