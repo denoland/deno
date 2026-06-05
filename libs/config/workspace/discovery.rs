@@ -37,6 +37,7 @@ use crate::deno_json::ConfigFile;
 use crate::deno_json::ConfigFileRc;
 use crate::glob::FileCollector;
 use crate::glob::FilePatterns;
+use crate::glob::PathGlobMatch;
 use crate::glob::PathOrPattern;
 use crate::glob::PathOrPatternSet;
 use crate::glob::is_glob_pattern;
@@ -1016,16 +1017,12 @@ fn resolve_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
       &root_config_file_directory_url,
       &workspace_deno_json.dir_path(),
     )
-    .map_err(|err| WorkspaceDiscoverErrorKind::ResolveLink {
+    .map_err(|(link, err)| WorkspaceDiscoverErrorKind::ResolveLink {
       base: root_config_file_directory_url.clone(),
-      link: "<glob>".to_string(),
-      source: err,
+      link,
+      source: err.into_box(),
     })?;
-    link_dir_urls.extend(
-      pattern_link_dir_urls
-        .into_iter()
-        .map(|link_dir_url| ("<glob>".to_string(), link_dir_url)),
-    );
+    link_dir_urls.extend(pattern_link_dir_urls);
   }
 
   let mut final_config_folders = BTreeMap::new();
@@ -1070,8 +1067,8 @@ fn collect_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
   raw_links: Vec<&String>,
   root_config_file_directory_url: &Url,
   root_config_file_directory_path: &Path,
-) -> Result<Vec<Url>, ResolveWorkspaceLinkError> {
-  let patterns = raw_links
+) -> Result<Vec<(String, Url)>, (String, ResolveWorkspaceLinkErrorKind)> {
+  let pattern_entries = raw_links
     .into_iter()
     .flat_map(|raw_link| {
       ["deno.json", "deno.jsonc", "package.json"]
@@ -1087,8 +1084,14 @@ fn collect_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
         root_config_file_directory_url,
         root_config_file_directory_path,
       )
+      .map(|pattern| (raw_link.clone(), pattern))
+      .map_err(|err| (raw_link.clone(), err))
     })
     .collect::<Result<Vec<_>, _>>()?;
+  let patterns = pattern_entries
+    .iter()
+    .map(|(_, pattern)| pattern.clone())
+    .collect::<Vec<_>>();
   let config_paths = FileCollector::new(|_| true)
     .ignore_git_folder()
     .ignore_node_modules()
@@ -1102,8 +1105,21 @@ fn collect_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
     );
   let mut link_dir_urls = Vec::with_capacity(config_paths.len());
   for config_path in config_paths {
+    let raw_link = pattern_entries
+      .iter()
+      .find_map(|(raw_link, pattern)| {
+        match pattern.matches_path(&config_path) {
+          PathGlobMatch::Matched => Some(raw_link.clone()),
+          PathGlobMatch::MatchedNegated | PathGlobMatch::NotMatched => None,
+        }
+      })
+      .unwrap_or_else(|| config_path.display().to_string());
     if let Some(link_dir_path) = config_path.parent() {
-      link_dir_urls.push(url_from_directory_path(link_dir_path)?);
+      let link_dir_url =
+        url_from_directory_path(link_dir_path).map_err(|err| {
+          (raw_link.clone(), ResolveWorkspaceLinkErrorKind::from(err))
+        })?;
+      link_dir_urls.push((raw_link, link_dir_url));
     }
   }
   Ok(link_dir_urls)

@@ -3683,6 +3683,32 @@ pub mod test {
   }
 
   #[test]
+  fn test_link_glob_error_uses_originating_pattern() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("pkg/deno.json"),
+      json!({
+        "links": ["../*"]
+      }),
+    );
+    let err = workspace_at_start_dir_err(&sys, &root_dir().join("pkg"));
+    match err.into_kind() {
+      WorkspaceDiscoverErrorKind::ResolveLink { link, base, source } => {
+        assert_eq!(link, "../*");
+        assert_eq!(
+          base,
+          url_from_directory_path(&root_dir().join("pkg")).unwrap()
+        );
+        assert!(matches!(
+          source.into_kind(),
+          ResolveWorkspaceLinkErrorKind::WorkspaceMemberNotAllowed
+        ));
+      }
+      _ => unreachable!(),
+    }
+  }
+
+  #[test]
   fn test_root_member_imports_and_scopes() {
     let workspace_dir = workspace_for_root_and_member(
       json!({
