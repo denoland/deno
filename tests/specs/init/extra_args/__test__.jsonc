@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "extra_positional_is_rejected": {
+      "args": "init foo bar",
+      "output": "extra_args.out",
+      "exitCode": 1
+    },
+    "single_directory_is_accepted": {
+      "args": "init foo",
+      "output": "[WILDCARD]Project initialized[WILDCARD]",
+      "exitCode": 0
+    }
+  }
+}

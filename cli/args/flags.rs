@@ -7280,11 +7280,25 @@ fn init_parse(
 
       if !args.is_empty() {
         args.insert(0, "init".to_string());
-        let inner_matches = init_subcommand().try_get_matches_from_mut(args)?;
+        let mut inner_matches =
+          init_subcommand().try_get_matches_from_mut(args)?;
         lib = inner_matches.get_flag("lib");
         serve = inner_matches.get_flag("serve");
         empty = inner_matches.get_flag("empty");
         yes = inner_matches.get_flag("yes");
+
+        // Extra positional arguments are only meaningful for `--npm`/`--jsr`
+        // (where they are forwarded to the generator). Without those flags a
+        // single directory is expected, so reject leftover positionals rather
+        // than silently ignoring them.
+        if let Some(mut extra) = inner_matches.remove_many::<String>("args")
+          && let Some(arg) = extra.next()
+        {
+          return Err(clap::Error::raw(
+            clap::error::ErrorKind::UnknownArgument,
+            format!("unexpected argument '{arg}' found\n"),
+          ));
+        }
       }
     }
   } else if use_npm {
@@ -14487,6 +14501,13 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    // Extra positional arguments are rejected instead of being silently
+    // ignored when not using `--npm`/`--jsr`.
+    let r = flags_from_vec(svec!["deno", "init", "foo", "bar"]);
+    let err = r.unwrap_err();
+    assert_eq!(err.kind(), clap::error::ErrorKind::UnknownArgument);
+    assert!(err.to_string().contains("unexpected argument 'bar' found"));
 
     let r = flags_from_vec(svec!["deno", "init", "--lib", "--npm", "vite"]);
     assert!(r.is_err());
