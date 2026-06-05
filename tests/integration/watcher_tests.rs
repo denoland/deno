@@ -2104,6 +2104,7 @@ async fn test_watch_serve_unix_socket() {
     .arg("--watch")
     .arg("--allow-read")
     .arg("--allow-write")
+    .arg("--allow-net")
     .arg("-L")
     .arg("debug")
     .arg(&file_to_watch)
