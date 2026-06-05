@@ -554,6 +554,22 @@ impl TCPWrap {
     unsafe { uv_compat::uv_tcp_nodelay(tcp, enable as i32) }
   }
 
+  /// Enable/disable `SO_KEEPALIVE`. `delay` is the idle time in seconds
+  /// before the first keepalive probe (Node passes seconds here). Matches
+  /// Node's `TCPWrap::SetKeepAlive`, which libraries such as `tedious`
+  /// rely on to keep tunneled/long-lived connections from being reaped.
+  #[fast]
+  #[rename("setKeepAlive")]
+  fn set_keep_alive(&self, enable: bool, #[smi] delay: i32) -> i32 {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return -1;
+    }
+    let delay = delay.max(0) as u32;
+    // SAFETY: tcp is valid (null-checked above).
+    unsafe { uv_compat::uv_tcp_keepalive(tcp, enable as i32, delay) }
+  }
+
   /// Set SO_LINGER to 0 so the next close sends RST instead of FIN.
   #[fast]
   fn reset(&self) -> i32 {
