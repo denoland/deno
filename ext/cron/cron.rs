@@ -482,6 +482,8 @@ fn is_leap_year(year: i32) -> bool {
 }
 
 fn closest_weekday(year: i32, month: u32, day: u32) -> Option<u32> {
+  // Treat out-of-month `W` targets as invalid derived dates. Saffron clamps
+  // some pinned-month cases like `31W APR`, but skips them in wildcard months.
   if day == 0 || day > days_in_month(year, month) {
     return None;
   }
@@ -685,5 +687,8 @@ mod tests {
 
     let schedule = "0 0 31 FEB *".parse::<Schedule>().unwrap();
     assert_eq!(schedule.next_after(dt(2024, 1, 1, 0, 0)), None);
+
+    let schedule = "0 0 31W APR *".parse::<Schedule>().unwrap();
+    assert_eq!(schedule.next_after(dt(2021, 4, 1, 0, 0)), None);
   }
 }
