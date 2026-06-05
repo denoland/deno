@@ -531,15 +531,6 @@ pub fn op_fetch(
         }
       }
 
-      if request.headers().contains_key(RANGE) {
-        // https://fetch.spec.whatwg.org/#http-network-or-cache-fetch step 18
-        // If httpRequest’s header list contains `Range`, then append (`Accept-Encoding`, `identity`)
-        request
-          .headers_mut()
-          .entry(ACCEPT_ENCODING)
-          .or_insert_with(|| HeaderValue::from_static("identity"));
-      }
-
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
         request_builder_hook(&mut request)
