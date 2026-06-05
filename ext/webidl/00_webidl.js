@@ -998,7 +998,7 @@ function createAsyncIterableConverter(converter) {
     context = undefined,
     opts = EMPTY_OPTS,
   ) {
-    if (type(V) !== "Object") {
+    if (V === undefined || V === null) {
       throw makeException(
         TypeError,
         "can not be converted to async iterable.",
@@ -1007,12 +1007,16 @@ function createAsyncIterableConverter(converter) {
       );
     }
 
+    // Follows the GetIterator(obj, async) abstract operation: the @@asyncIterator
+    // and @@iterator methods are looked up with GetMethod semantics, which treats
+    // both `undefined` and `null` as an absent method, and which performs ToObject
+    // on `V` (so primitives such as strings are accepted).
     let isAsync = true;
     let method = V[SymbolAsyncIterator];
-    if (method === undefined) {
+    if (method === undefined || method === null) {
       method = V[SymbolIterator];
 
-      if (method === undefined) {
+      if (method === undefined || method === null) {
         throw makeException(
           TypeError,
           "is not iterable.",
