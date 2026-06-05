@@ -184,8 +184,11 @@ pub(crate) fn create_external_references(
 /// original source strings they borrow from (kept alive), and the specifiers of
 /// the externalized `lazy_loaded_js` sources (parallel to the trailing
 /// `original_sources` entries).
-pub(crate) type ExternalizedSources =
-  (Box<[v8::OneByteConst]>, Box<[FastString]>, Box<[ModuleName]>);
+pub(crate) type ExternalizedSources = (
+  Box<[v8::OneByteConst]>,
+  Box<[FastString]>,
+  Box<[ModuleName]>,
+);
 
 /// Combine the snapshotted sources (which may be empty) with the loaded sources, and ensure that
 /// each of the loaded source files passed to this function has a correct `v8::OneByteConst` backing
