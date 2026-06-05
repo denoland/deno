@@ -72,6 +72,41 @@ Deno.test("[node/dgram] addMembership works", async () => {
   await promise;
 });
 
+Deno.test("[node/dgram] addMembership accepts scoped IPv6 interface", async () => {
+  // Regression test for https://github.com/denoland/deno/issues/34838.
+  // A scoped IPv6 interface such as "::%12" must be accepted the same way
+  // Node.js accepts it (mirroring libuv's `uv_ip6_addr`): the zone id is
+  // resolved as an interface *name*, and an unknown zone resolves to the
+  // default interface (index 0) instead of failing with EINVAL.
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const socket = createSocket({ type: "udp6", ipv6Only: true });
+  let bound = false;
+  socket.on("error", (err) => {
+    // IPv6 may be unavailable in the test environment; only a failure after a
+    // successful bind indicates a real regression.
+    socket.close();
+    if (bound) {
+      reject(err);
+    } else {
+      resolve();
+    }
+  });
+  socket.bind(0, () => {
+    bound = true;
+    try {
+      // "9999999" is not an interface name, so it resolves to the default
+      // interface rather than being used as a literal index (which used to
+      // throw EINVAL).
+      socket.addMembership("ff02::fb", "::%9999999");
+      socket.close(() => resolve());
+    } catch (err) {
+      socket.close();
+      reject(err);
+    }
+  });
+  await promise;
+});
+
 Deno.test("[node/dgram] createSocket, reuseAddr option", async () => {
   const { promise, resolve } = Promise.withResolvers<string>();
   const socket0 = createSocket({ type: "udp4", reuseAddr: true });
