@@ -144,7 +144,7 @@ deno_core::extension!(deno_crypto,
     mldsa::op_crypto_mldsa_export_spki,
     mldsa::op_crypto_sign_mldsa,
     mldsa::op_crypto_verify_mldsa,
-    mlkem::op_crypto_ml_kem_generate_key,
+    mlkem::op_crypto_ml_kem_from_seed,
     mlkem::op_crypto_ml_kem_encapsulate,
     mlkem::op_crypto_ml_kem_decapsulate,
     mlkem::op_crypto_ml_kem_import_spki,
@@ -322,8 +322,8 @@ impl From<&RawKeyData> for KeyData {
       RawKeyData::Private(d) => (KeyType::Private, d),
       RawKeyData::Public(d) => (KeyType::Public, d),
       RawKeyData::Raw(d) => (KeyType::Secret, d),
-      // ML-DSA keys are never handed to the sign/verify/derive ops.
-      RawKeyData::MlDsaPrivate { .. } => unreachable!(),
+      // Composite (ML-KEM/ML-DSA) keys are never handed to these ops.
+      RawKeyData::SeededPrivate { .. } => unreachable!(),
     };
     KeyData {
       r#type,

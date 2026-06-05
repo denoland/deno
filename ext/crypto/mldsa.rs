@@ -303,7 +303,7 @@ pub fn op_crypto_sign_mldsa(
   #[buffer] data: &[u8],
   #[buffer] context: Option<&[u8]>,
 ) -> Result<Uint8Array, MlDsaError> {
-  let private_key_bytes = key.data().mldsa_private_key();
+  let private_key_bytes = key.data().expanded_private_key();
   let p = params(variant)?;
   // aws-lc-rs 1.16 does not expose a way to set the FIPS 204 §5.2 context
   // parameter for ML-DSA. The empty context is signed by default; reject
