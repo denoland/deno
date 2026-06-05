@@ -1,8 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::cell::RefCell;
 use std::num::NonZeroU32;
-use std::rc::Rc;
 
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
@@ -87,8 +85,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
-use crate::key_store::KeyStore;
-use crate::key_store::get_key;
+use crate::key_store::CryptoKeyHandle;
 pub use crate::mldsa::MlDsaError;
 pub use crate::mlkem::MlKemError;
 pub use crate::shared::RawKeyData;
@@ -117,7 +114,6 @@ deno_core::extension!(deno_crypto,
     op_crypto_base64url_encode,
     key_store::op_crypto_key_store_insert,
     key_store::op_crypto_key_store_get,
-    key_store::op_crypto_key_store_remove,
     x25519::op_crypto_generate_x25519_keypair,
     x25519::op_crypto_x25519_public_key,
     x25519::op_crypto_derive_bits_x25519,
@@ -163,7 +159,6 @@ deno_core::extension!(deno_crypto,
     maybe_seed: Option<u64>,
   },
   state = |state, options| {
-    state.put(KeyStore::default());
     if let Some(seed) = options.maybe_seed {
       state.put(StdRng::seed_from_u64(seed));
     }
@@ -326,6 +321,8 @@ impl From<&RawKeyData> for KeyData {
       RawKeyData::Private(d) => (KeyType::Private, d),
       RawKeyData::Public(d) => (KeyType::Public, d),
       RawKeyData::Raw(d) => (KeyType::Secret, d),
+      // ML-DSA keys are never handed to the sign/verify/derive ops.
+      RawKeyData::MlDsaPrivate { .. } => unreachable!(),
     };
     KeyData {
       r#type,
@@ -347,12 +344,11 @@ pub struct SignArg {
 
 #[op2]
 pub async fn op_crypto_sign_key(
-  state: Rc<RefCell<OpState>>,
-  #[smi] key_handle: u32,
+  #[cppgc] key: &CryptoKeyHandle,
   #[scoped] args: SignArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
-  let key: KeyData = get_key(&state.borrow(), key_handle)?.as_ref().into();
+  let key: KeyData = key.data().into();
   deno_core::unsync::spawn_blocking(move || {
     let data = &*zero_copy;
     let algorithm = args.algorithm;
@@ -546,12 +542,11 @@ pub struct VerifyArg {
 
 #[op2]
 pub async fn op_crypto_verify_key(
-  state: Rc<RefCell<OpState>>,
-  #[smi] key_handle: u32,
+  #[cppgc] key: &CryptoKeyHandle,
   #[scoped] args: VerifyArg,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<bool, CryptoError> {
-  let key: KeyData = get_key(&state.borrow(), key_handle)?.as_ref().into();
+  let key: KeyData = key.data().into();
   deno_core::unsync::spawn_blocking(move || {
     let data = &*zero_copy;
     let algorithm = args.algorithm;
@@ -763,23 +758,14 @@ pub struct DeriveKeyArg {
 
 #[op2]
 pub async fn op_crypto_derive_bits(
-  state: Rc<RefCell<OpState>>,
-  #[smi] key_handle: u32,
-  // ECDH peer public key handle, or -1 when not applicable.
-  #[smi] public_key_handle: i32,
+  #[cppgc] key: &CryptoKeyHandle,
+  // ECDH peer public key, if applicable.
+  #[cppgc] public_key: Option<&CryptoKeyHandle>,
   #[scoped] args: DeriveKeyArg,
   #[buffer] zero_copy: Option<JsBuffer>,
 ) -> Result<Uint8Array, CryptoError> {
-  let (key, public_key): (KeyData, Option<KeyData>) = {
-    let state = state.borrow();
-    let key = get_key(&state, key_handle)?.as_ref().into();
-    let public_key = if public_key_handle >= 0 {
-      Some(get_key(&state, public_key_handle as u32)?.as_ref().into())
-    } else {
-      None
-    };
-    (key, public_key)
-  };
+  let key: KeyData = key.data().into();
+  let public_key: Option<KeyData> = public_key.map(|k| k.data().into());
   deno_core::unsync::spawn_blocking(move || {
     let algorithm = args.algorithm;
     match algorithm {
@@ -1139,13 +1125,12 @@ pub struct WrapUnwrapKeyArg {
 
 #[op2]
 pub fn op_crypto_wrap_key(
-  state: &OpState,
-  #[smi] key_handle: u32,
+  #[cppgc] key_handle: &CryptoKeyHandle,
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
   let algorithm = args.algorithm;
-  let key_data = get_key(state, key_handle)?;
+  let key_data = key_handle.data();
 
   match algorithm {
     Algorithm::AesKw => {
@@ -1171,13 +1156,12 @@ pub fn op_crypto_wrap_key(
 
 #[op2]
 pub fn op_crypto_unwrap_key(
-  state: &OpState,
-  #[smi] key_handle: u32,
+  #[cppgc] key_handle: &CryptoKeyHandle,
   #[serde] args: WrapUnwrapKeyArg,
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
   let algorithm = args.algorithm;
-  let key_data = get_key(state, key_handle)?;
+  let key_data = key_handle.data();
   match algorithm {
     Algorithm::AesKw => {
       let key = key_data.as_secret_key()?;

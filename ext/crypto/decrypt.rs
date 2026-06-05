@@ -1,8 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::KeyIvInit;
 use aes::cipher::block_padding::Pkcs7;
@@ -25,7 +22,6 @@ use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use ctr::cipher::StreamCipher;
 use deno_core::JsBuffer;
-use deno_core::OpState;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
@@ -39,7 +35,7 @@ use sha3::Sha3_256;
 use sha3::Sha3_384;
 use sha3::Sha3_512;
 
-use crate::key_store::get_key;
+use crate::key_store::CryptoKeyHandle;
 use crate::shared::*;
 
 #[derive(Deserialize)]
@@ -144,12 +140,11 @@ pub enum DecryptError {
 
 #[op2]
 pub async fn op_crypto_decrypt(
-  state: Rc<RefCell<OpState>>,
-  #[smi] key_handle: u32,
+  #[cppgc] key: &CryptoKeyHandle,
   #[serde] opts: DecryptOptions,
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, DecryptError> {
-  let key_data = get_key(&state.borrow(), key_handle)?;
+  let key_data = key.data().clone();
   let fun = move || {
     let key: &RawKeyData = &key_data;
     match opts.algorithm {

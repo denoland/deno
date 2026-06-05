@@ -30,7 +30,6 @@ const {
   op_crypto_import_key,
   op_crypto_key_store_get,
   op_crypto_key_store_insert,
-  op_crypto_key_store_remove,
   op_crypto_import_pkcs8_ed25519,
   op_crypto_import_pkcs8_x25519,
   op_crypto_import_pkcs8_x448,
@@ -86,7 +85,6 @@ const {
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
-  SafeFinalizationRegistry,
   SafeWeakMap,
   StringFromCharCode,
   StringPrototypeCharCodeAt,
@@ -625,71 +623,60 @@ function usageIntersection(a, b) {
   );
 }
 
-// The key material for every CryptoKey lives in a Rust-side store
-// (`crate::key_store::KeyStore`), keyed by an integer handle. A `handle` here is
-// a plain object that carries the integer `id` of the corresponding Rust entry
-// and is shared between the CryptoKey(s) that reference the same key material
-// (e.g. the public and private key of a key pair).
+// The key material for every CryptoKey lives in Rust, wrapped in a V8
+// garbage-collected (cppgc) object created by `op_crypto_key_store_insert`. A
+// `handle` here is a plain object that holds that cppgc object on its `cppgc`
+// property and is shared between the CryptoKey(s) that reference the same key
+// material (e.g. the public and private key of a key pair).
 //
-// `keyStoreRegistry` removes the Rust entry once the handle object is
-// garbage-collected, mirroring the GC semantics of the previous JS `WeakMap`:
-// the entry lives exactly as long as the handle object (and therefore as long
-// as at least one CryptoKey references it).
-const keyStoreRegistry = new SafeFinalizationRegistry((id) => {
-  op_crypto_key_store_remove(id);
-});
-
-// A small number of algorithms (ML-DSA) keep composite key material - an object
-// like `{ seed, privateKey }` rather than a single byte buffer. That shape is
-// not understood by the byte-oriented Rust store, so it is kept on the JS side,
-// keyed by the same handle object. Such handles have no `id`.
-/** @type {WeakMap<object, object>} */
-const compositeKeyStore = new SafeWeakMap();
+// Because the cppgc object is referenced only through the handle, V8's garbage
+// collector frees the underlying Rust key material automatically once the handle
+// (and therefore every CryptoKey referencing it) is collected. No
+// `FinalizationRegistry` or manual bookkeeping is required.
 
 /**
- * Store key material so it can later be retrieved by handle.
+ * Store key material in a Rust-side cppgc object referenced by `handle.cppgc`.
  *
  * `value` is one of:
- *  - a `{ type, data }` object (secret/private/public key material), or
+ *  - a `{ type, data }` object (secret/private/public key material),
  *  - a raw `Uint8Array`/`ArrayBuffer` of key bytes (Ed25519/X25519/X448/ML-KEM),
+ *  - a composite ML-DSA `{ seed, privateKey }` object.
  *
- * both of which are stored in the Rust-side key store with `handle.id` recording
- * the entry id; or a composite object (ML-DSA `{ seed, privateKey }`), which is
- * kept on the JS side.
- *
- * @param {{ id?: number }} handle
+ * @param {{ cppgc?: object }} handle
  * @param {{ type: string, data: Uint8Array } | Uint8Array | object} value
  */
 function setKeyData(handle, value) {
   let payload;
   if (value.type !== undefined) {
-    payload = value;
+    payload = { kind: value.type, data: value.data };
   } else if (ArrayBufferIsView(value) || isArrayBuffer(value)) {
-    payload = { type: "raw", data: value };
+    payload = { kind: "raw", data: value };
   } else {
-    // Composite key material - not byte data, keep it on the JS side.
-    WeakMapPrototypeSet(compositeKeyStore, handle, value);
-    return;
+    payload = { kind: "mldsa", seed: value.seed, privateKey: value.privateKey };
   }
-  handle.id = op_crypto_key_store_insert(payload);
-  keyStoreRegistry.register(handle, handle.id);
+  handle.cppgc = op_crypto_key_store_insert(payload);
 }
 
 /**
  * Read key material back, returning the same shape that was passed to
  * {@linkcode setKeyData} (a `{ type, data }` object, a raw `Uint8Array`, or a
- * composite object). Used for key export, structured clone and node:crypto
- * interop, and by the ops that still take key bytes directly.
+ * composite `{ seed, privateKey }` object). Used for key export, structured
+ * clone and node:crypto interop, and by the ops that still take key bytes
+ * directly.
  *
- * @param {{ id?: number }} handle
+ * @param {{ cppgc: object }} handle
  * @returns {{ type: string, data: Uint8Array } | Uint8Array | object}
  */
 function getKeyData(handle) {
-  if (handle.id === undefined) {
-    return WeakMapPrototypeGet(compositeKeyStore, handle);
+  const value = op_crypto_key_store_get(handle.cppgc);
+  switch (value.kind) {
+    case "raw":
+      return value.data;
+    case "mldsa":
+      return { seed: value.seed, privateKey: value.privateKey };
+    default:
+      return { type: value.kind, data: value.data };
   }
-  const value = op_crypto_key_store_get(handle.id);
-  return value.type === "raw" ? value.data : value;
 }
 
 /** @type {WeakMap<CryptoKey, CryptoKey>} */
@@ -972,7 +959,7 @@ class SubtleCrypto {
 
         // 3-5.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const plainText = await op_crypto_decrypt(handle.id, {
+        const plainText = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "RSA-OAEP",
           hash: hashAlgorithm,
           label: normalizedAlgorithm.label,
@@ -992,7 +979,7 @@ class SubtleCrypto {
           );
         }
 
-        const plainText = await op_crypto_decrypt(handle.id, {
+        const plainText = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "AES-CBC",
           iv: normalizedAlgorithm.iv,
           length: key[_algorithm].length,
@@ -1025,7 +1012,7 @@ class SubtleCrypto {
         }
 
         // 3.
-        const cipherText = await op_crypto_decrypt(handle.id, {
+        const cipherText = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "AES-CTR",
           keyLength: key[_algorithm].length,
           counter: normalizedAlgorithm.counter,
@@ -1098,7 +1085,7 @@ class SubtleCrypto {
         }
 
         // 5-8.
-        const plaintext = await op_crypto_decrypt(handle.id, {
+        const plaintext = await op_crypto_decrypt(handle.cppgc, {
           algorithm: algorithm.name,
           length: key[_algorithm].length,
           iv: normalizedAlgorithm.iv,
@@ -1135,7 +1122,7 @@ class SubtleCrypto {
           );
         }
 
-        const plaintext = await op_crypto_decrypt(handle.id, {
+        const plaintext = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "ChaCha20-Poly1305",
           nonce: normalizedAlgorithm.nonce,
           additionalData: normalizedAlgorithm.additionalData || null,
@@ -1202,7 +1189,7 @@ class SubtleCrypto {
 
         // 2.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const signature = await op_crypto_sign_key(handle.id, {
+        const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
         }, data);
@@ -1220,7 +1207,7 @@ class SubtleCrypto {
 
         // 2.
         const hashAlgorithm = key[_algorithm].hash.name;
-        const signature = await op_crypto_sign_key(handle.id, {
+        const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
           saltLength: normalizedAlgorithm.saltLength,
@@ -1244,7 +1231,7 @@ class SubtleCrypto {
           throw new DOMException("Curve not supported", "NotSupportedError");
         }
 
-        const signature = await op_crypto_sign_key(handle.id, {
+        const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "ECDSA",
           hash: hashAlgorithm,
           namedCurve,
@@ -1255,7 +1242,7 @@ class SubtleCrypto {
       case "HMAC": {
         const hashAlgorithm = key[_algorithm].hash.name;
 
-        const signature = await op_crypto_sign_key(handle.id, {
+        const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "HMAC",
           hash: hashAlgorithm,
         }, data);
@@ -1654,7 +1641,7 @@ class SubtleCrypto {
         }
 
         const hashAlgorithm = key[_algorithm].hash.name;
-        return await op_crypto_verify_key(handle.id, {
+        return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
           signature,
@@ -1669,7 +1656,7 @@ class SubtleCrypto {
         }
 
         const hashAlgorithm = key[_algorithm].hash.name;
-        return await op_crypto_verify_key(handle.id, {
+        return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
           signature,
@@ -1678,7 +1665,7 @@ class SubtleCrypto {
       }
       case "HMAC": {
         const hash = key[_algorithm].hash.name;
-        return await op_crypto_verify_key(handle.id, {
+        return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "HMAC",
           hash,
           signature,
@@ -1695,7 +1682,7 @@ class SubtleCrypto {
         // 2.
         const hash = normalizedAlgorithm.hash.name;
         // 3-8.
-        return await op_crypto_verify_key(handle.id, {
+        return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "ECDSA",
           hash,
           signature,
@@ -1819,7 +1806,7 @@ class SubtleCrypto {
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
-          const cipherText = await op_crypto_wrap_key(handle.id, {
+          const cipherText = await op_crypto_wrap_key(handle.cppgc, {
             algorithm: normalizedAlgorithm.name,
           }, bytes);
 
@@ -1949,7 +1936,7 @@ class SubtleCrypto {
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
-          const plainText = await op_crypto_unwrap_key(handle.id, {
+          const plainText = await op_crypto_unwrap_key(handle.cppgc, {
             algorithm: normalizedAlgorithm.name,
           }, wrappedKey);
 
@@ -6284,7 +6271,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
-      const buf = await op_crypto_derive_bits(handle.id, -1, {
+      const buf = await op_crypto_derive_bits(handle.cppgc, null, {
         algorithm: "PBKDF2",
         hash: normalizedAlgorithm.hash.name,
         iterations: normalizedAlgorithm.iterations,
@@ -6331,8 +6318,8 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         const publicKeyhandle = publicKey[_handle];
 
         const buf = await op_crypto_derive_bits(
-          baseKeyhandle.id,
-          publicKeyhandle.id,
+          baseKeyhandle.cppgc,
+          publicKeyhandle.cppgc,
           {
             algorithm: "ECDH",
             namedCurve: publicKey[_algorithm].namedCurve,
@@ -6368,7 +6355,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       normalizedAlgorithm.info = copyBuffer(normalizedAlgorithm.info);
 
-      const buf = await op_crypto_derive_bits(handle.id, -1, {
+      const buf = await op_crypto_derive_bits(handle.cppgc, null, {
         algorithm: "HKDF",
         hash: normalizedAlgorithm.hash.name,
         info: normalizedAlgorithm.info,
@@ -6502,7 +6489,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
 
       // 3-5.
       const hashAlgorithm = key[_algorithm].hash.name;
-      const cipherText = await op_crypto_encrypt(handle.id, {
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "RSA-OAEP",
         hash: hashAlgorithm,
         label: normalizedAlgorithm.label,
@@ -6523,7 +6510,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 2.
-      const cipherText = await op_crypto_encrypt(handle.id, {
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-CBC",
         length: key[_algorithm].length,
         iv: normalizedAlgorithm.iv,
@@ -6556,7 +6543,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 3.
-      const cipherText = await op_crypto_encrypt(handle.id, {
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-CTR",
         keyLength: key[_algorithm].length,
         counter: normalizedAlgorithm.counter,
@@ -6623,7 +6610,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
         );
       }
       // 6-7.
-      const cipherText = await op_crypto_encrypt(handle.id, {
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-GCM",
         length: key[_algorithm].length,
         iv: normalizedAlgorithm.iv,
@@ -6676,7 +6663,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
         );
       }
       // 5-6.
-      const cipherText = await op_crypto_encrypt(handle.id, {
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-OCB",
         length: key[_algorithm].length,
         iv: normalizedAlgorithm.iv,
@@ -6708,7 +6695,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
         );
       }
 
-      const cipherText = await op_crypto_encrypt(handle.id, {
+      const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "ChaCha20-Poly1305",
         nonce: normalizedAlgorithm.nonce,
         additionalData: normalizedAlgorithm.additionalData || null,

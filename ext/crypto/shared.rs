@@ -67,81 +67,113 @@ pub enum RustRawKeyData {
   Public(Uint8Array),
 }
 
-/// Owned key material held by the Rust-side key store
-/// ([`crate::key_store::KeyStore`]).
+/// Owned WebCrypto key material, wrapped by a V8 garbage-collected handle
+/// ([`crate::key_store::CryptoKeyHandle`]).
 ///
 /// This mirrors [`V8RawKeyData`], but owns its bytes (rather than borrowing a
-/// `JsBuffer`) so the key material can live in Rust across op calls instead of
-/// being serialized back to JavaScript and passed to every operation.
+/// `JsBuffer`) so the key material can live in Rust - held alive by the cppgc
+/// handle that JavaScript stores on the `CryptoKey` - instead of being
+/// serialized back to JavaScript and passed to every operation.
 ///
-/// The `Raw` variant is used for key material that is stored verbatim (e.g.
-/// Ed25519/X25519/X448/ML-DSA/ML-KEM raw key bytes) and carries no `secret`/
-/// `private`/`public` tag.
-#[derive(Debug)]
+/// The `Raw` variant is key material that is stored verbatim (e.g.
+/// Ed25519/X25519/X448/ML-KEM raw key bytes) and carries no `secret`/`private`/
+/// `public` tag. `MlDsaPrivate` holds ML-DSA's composite `{ seed, private_key }`
+/// material.
+#[derive(Debug, Clone)]
 pub enum RawKeyData {
   Secret(Box<[u8]>),
   Private(Box<[u8]>),
   Public(Box<[u8]>),
   Raw(Box<[u8]>),
+  MlDsaPrivate {
+    seed: Box<[u8]>,
+    private_key: Box<[u8]>,
+  },
 }
 
-/// Wire representation used by the key store insert op. Deserialized from the
-/// `{ type, data }` shape that JavaScript already uses for key material, plus a
-/// `raw` tag for untyped key bytes.
 #[derive(Deserialize)]
-#[serde(rename_all = "lowercase", tag = "type", content = "data")]
-pub enum InsertKeyData {
-  Secret(JsBuffer),
-  Private(JsBuffer),
-  Public(JsBuffer),
-  Raw(JsBuffer),
+#[serde(rename_all = "lowercase")]
+pub enum KeyKind {
+  Secret,
+  Private,
+  Public,
+  Raw,
+  MlDsa,
+}
+
+/// Wire representation used by the key store insert op. JavaScript passes a
+/// `{ kind, data }` object (or `{ kind: "mldsa", seed, privateKey }` for ML-DSA).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsertKeyData {
+  kind: KeyKind,
+  data: Option<JsBuffer>,
+  seed: Option<JsBuffer>,
+  private_key: Option<JsBuffer>,
 }
 
 /// Wire representation used by the key store get op, returned to JavaScript for
 /// export, structured clone and node:crypto interop.
 #[derive(ToV8)]
-#[to_v8(tag = "type", content = "data")]
-pub enum StoredKeyData {
-  Secret(Uint8Array),
-  Private(Uint8Array),
-  Public(Uint8Array),
-  Raw(Uint8Array),
+pub struct StoredKeyData {
+  kind: &'static str,
+  data: Option<Uint8Array>,
+  seed: Option<Uint8Array>,
+  private_key: Option<Uint8Array>,
+}
+
+fn into_boxed(buf: Option<JsBuffer>) -> Box<[u8]> {
+  buf.map(|b| b.as_ref().into()).unwrap_or_default()
 }
 
 impl From<InsertKeyData> for RawKeyData {
   fn from(data: InsertKeyData) -> Self {
-    match data {
-      InsertKeyData::Secret(b) => RawKeyData::Secret(b.as_ref().into()),
-      InsertKeyData::Private(b) => RawKeyData::Private(b.as_ref().into()),
-      InsertKeyData::Public(b) => RawKeyData::Public(b.as_ref().into()),
-      InsertKeyData::Raw(b) => RawKeyData::Raw(b.as_ref().into()),
+    match data.kind {
+      KeyKind::Secret => RawKeyData::Secret(into_boxed(data.data)),
+      KeyKind::Private => RawKeyData::Private(into_boxed(data.data)),
+      KeyKind::Public => RawKeyData::Public(into_boxed(data.data)),
+      KeyKind::Raw => RawKeyData::Raw(into_boxed(data.data)),
+      KeyKind::MlDsa => RawKeyData::MlDsaPrivate {
+        seed: into_boxed(data.seed),
+        private_key: into_boxed(data.private_key),
+      },
     }
   }
 }
 
 impl RawKeyData {
   pub fn to_stored_key_data(&self) -> StoredKeyData {
+    let tagged = |kind, b: &[u8]| StoredKeyData {
+      kind,
+      data: Some(b.to_vec().into()),
+      seed: None,
+      private_key: None,
+    };
     match self {
-      RawKeyData::Secret(b) => {
-        StoredKeyData::Secret(b.as_ref().to_vec().into())
-      }
-      RawKeyData::Private(b) => {
-        StoredKeyData::Private(b.as_ref().to_vec().into())
-      }
-      RawKeyData::Public(b) => {
-        StoredKeyData::Public(b.as_ref().to_vec().into())
-      }
-      RawKeyData::Raw(b) => StoredKeyData::Raw(b.as_ref().to_vec().into()),
+      RawKeyData::Secret(b) => tagged("secret", b),
+      RawKeyData::Private(b) => tagged("private", b),
+      RawKeyData::Public(b) => tagged("public", b),
+      RawKeyData::Raw(b) => tagged("raw", b),
+      RawKeyData::MlDsaPrivate { seed, private_key } => StoredKeyData {
+        kind: "mldsa",
+        data: None,
+        seed: Some(seed.as_ref().to_vec().into()),
+        private_key: Some(private_key.as_ref().to_vec().into()),
+      },
     }
   }
 
   /// The raw key bytes, regardless of the secret/private/public/raw tag.
+  ///
+  /// Not valid for `MlDsaPrivate`, which is only consumed (via the get op) by
+  /// the not-yet-migrated ML-DSA ops.
   pub fn bytes(&self) -> &[u8] {
     match self {
       RawKeyData::Secret(b)
       | RawKeyData::Private(b)
       | RawKeyData::Public(b)
       | RawKeyData::Raw(b) => b,
+      RawKeyData::MlDsaPrivate { .. } => unreachable!(),
     }
   }
 
