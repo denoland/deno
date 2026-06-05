@@ -228,6 +228,7 @@ impl FsCleaner {
         }
         self.files_removed += 1;
       }
+      self.update_progress();
     }
 
     Ok(())
