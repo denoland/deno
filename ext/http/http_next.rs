@@ -1354,13 +1354,15 @@ impl Drop for RawHttpRecordCancelGuard {
 
 struct RawH1RequestBody<I> {
   conn: RawH1ConnectionCell<I>,
+  size_hint: (u64, Option<u64>),
   canceled: std::cell::Cell<bool>,
 }
 
 impl<I> RawH1RequestBody<I> {
-  fn new(conn: RawH1ConnectionCell<I>) -> Self {
+  fn new(conn: RawH1ConnectionCell<I>, length: Option<u64>) -> Self {
     Self {
       conn,
+      size_hint: length.map_or((0, None), |length| (length, Some(length))),
       canceled: std::cell::Cell::new(false),
     }
   }
@@ -1499,6 +1501,10 @@ where
         _ => deno_error::JsErrorBox::new("Http", err.to_string()),
       })
     })
+  }
+
+  fn size_hint(&self) -> (u64, Option<u64>) {
+    self.size_hint
   }
 }
 
@@ -3060,6 +3066,7 @@ struct RawParsedRequest {
   expect_continue: bool,
   has_body: bool,
   request_size: u64,
+  request_body_len: Option<u64>,
   upgrade: Option<h1::UpgradeKind>,
 }
 
@@ -3098,6 +3105,10 @@ fn raw_request_from_h1(
     request_size: match request.body {
       h1::BodyKind::ContentLength(length) => length,
       _ => 0,
+    },
+    request_body_len: match request.body {
+      h1::BodyKind::ContentLength(length) => Some(length),
+      _ => None,
     },
     upgrade: request.upgrade,
   }
@@ -4128,9 +4139,12 @@ async fn serve_http11_raw(
     if parsed.has_body || upgrade.is_some() {
       let body_conn =
         Rc::new(RefCell::new(Some(RawH1ConnectionState { conn, scratch })));
-      let request_body_resource = parsed
-        .has_body
-        .then(|| Rc::new(RawH1RequestBody::new(body_conn.clone())));
+      let request_body_resource = parsed.has_body.then(|| {
+        Rc::new(RawH1RequestBody::new(
+          body_conn.clone(),
+          parsed.request_body_len,
+        ))
+      });
       let request_body_for_cancel = request_body_resource.clone();
       let upgrade = upgrade.map(|()| {
         Rc::new(RawUpgrade {
