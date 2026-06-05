@@ -1,0 +1,16 @@
+[WILDCARD]
+running 11 tests from ./each.ts
+add(1, 1) = 2 ... ok ([WILDCARD])
+add(1, 2) = 3 ... ok ([WILDCARD])
+add(2, 1) = 3 ... ok ([WILDCARD])
+1 + 1 = 2 ... ok ([WILDCARD])
+2 + 3 = 5 ... ok ([WILDCARD])
+case #0 has x ... ok ([WILDCARD])
+case #1 has y ... ok ([WILDCARD])
+name is alpha ... ok ([WILDCARD])
+name is beta ... ok ([WILDCARD])
+with options a ... ok ([WILDCARD])
+with options b ... ok ([WILDCARD])
+
+ok | 11 passed | 0 failed ([WILDCARD])
+
