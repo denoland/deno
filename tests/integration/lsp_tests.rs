@@ -6249,6 +6249,57 @@ fn lsp_code_actions_deno_cache_jsr() {
 }
 
 #[test(timeout = 300)]
+fn lsp_cache_downloads_jsr_type_only_dependencies() {
+  fn deno_dir_contains_text(path: &std::path::Path, text: &str) -> bool {
+    let Ok(entries) = fs::read_dir(path) else {
+      return false;
+    };
+    for entry in entries.flatten() {
+      let path = entry.path();
+      if path.is_dir() {
+        if deno_dir_contains_text(&path, text) {
+          return true;
+        }
+      } else if fs::read_to_string(&path).is_ok_and(|file| file.contains(text))
+      {
+        return true;
+      }
+    }
+    false
+  }
+
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"
+      import { someFunction } from "jsr:@denotest/types-file@1";
+      console.log(someFunction());
+    "#,
+  );
+  context
+    .new_command()
+    .args("run file.ts")
+    .run()
+    .skip_output_check();
+  let type_only_source = "export interface ReturnType";
+  assert!(!deno_dir_contains_text(
+    context.deno_dir().path().as_path(),
+    type_only_source
+  ));
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  client.cache_specifier(file.url());
+  assert!(deno_dir_contains_text(
+    context.deno_dir().path().as_path(),
+    type_only_source
+  ));
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_jsr_lockfile() {
   let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
