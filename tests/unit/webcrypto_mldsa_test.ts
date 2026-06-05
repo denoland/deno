@@ -5,7 +5,6 @@ import {
   assertEquals,
   assertNotEquals,
   assertRejects,
-  assertThrows,
 } from "./test_util.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -248,10 +247,17 @@ for (const [name, pubLen, privLen, sigLen] of variants) {
       ["sign", "verify"],
     ) as CryptoKeyPair;
 
-    const derived = (privateKey as AnyKey).getPublicKey();
+    // getPublicKey lives on SubtleCrypto.prototype, not CryptoKey.prototype.
+    assertEquals(typeof (privateKey as AnyKey).getPublicKey, "undefined");
+
+    const derived = await (crypto.subtle as AnyKey).getPublicKey(
+      privateKey,
+      ["verify"],
+    );
     assert(derived);
     assertEquals(derived.type, "public");
     assertEquals(derived.algorithm.name, name);
+    assertEquals(derived.usages, ["verify"]);
 
     const rawPub = new Uint8Array(await exportKey("raw-public", publicKey));
     const rawDerived = new Uint8Array(await exportKey("raw-public", derived));
@@ -264,14 +270,20 @@ for (const [name, pubLen, privLen, sigLen] of variants) {
     );
   });
 
-  Deno.test(`webcrypto ${name} getPublicKey() throws for public keys`, async () => {
-    const { publicKey } = await crypto.subtle.generateKey(
+  Deno.test(`webcrypto ${name} getPublicKey() rejects invalid input`, async () => {
+    const { publicKey, privateKey } = await crypto.subtle.generateKey(
       { name } as AnyAlg,
       true,
       ["sign", "verify"],
     ) as CryptoKeyPair;
-    assertThrows(
-      () => (publicKey as AnyKey).getPublicKey(),
+    // Public keys are not valid input.
+    await assertRejects(
+      () => (crypto.subtle as AnyKey).getPublicKey(publicKey, ["verify"]),
+      DOMException,
+    );
+    // Invalid public-key usages for the algorithm reject with SyntaxError.
+    await assertRejects(
+      () => (crypto.subtle as AnyKey).getPublicKey(privateKey, ["sign"]),
       DOMException,
     );
   });

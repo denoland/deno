@@ -2819,10 +2819,20 @@ for (const variant of ML_KEM_VARIANTS) {
       ["encapsulateBits", "decapsulateBits"],
     ) as CryptoKeyPair;
 
-    // deno-lint-ignore no-explicit-any
-    const derivedPub = (kp.privateKey as any).getPublicKey() as CryptoKey;
+    // getPublicKey lives on SubtleCrypto.prototype, not CryptoKey.prototype.
+    assertEquals(
+      // deno-lint-ignore no-explicit-any
+      typeof (kp.privateKey as any).getPublicKey,
+      "undefined",
+    );
+
+    const derivedPub = await subtleAny.getPublicKey(
+      kp.privateKey,
+      ["encapsulateBits"],
+    ) as CryptoKey;
     assertEquals(derivedPub.type, "public");
     assertEquals(derivedPub.algorithm.name, variant.name);
+    assertEquals(derivedPub.usages, ["encapsulateBits"]);
 
     const originalPubBytes = new Uint8Array(
       await subtleAny.exportKey("raw-public", kp.publicKey),
@@ -2831,6 +2841,18 @@ for (const variant of ML_KEM_VARIANTS) {
       await subtleAny.exportKey("raw-public", derivedPub),
     );
     assertEquals(derivedPubBytes, originalPubBytes);
+
+    // Invalid public-key usages for the algorithm reject with SyntaxError.
+    await assertRejects(
+      () => subtleAny.getPublicKey(kp.privateKey, ["sign"]),
+      DOMException,
+    );
+
+    // Public keys are not valid input.
+    await assertRejects(
+      () => subtleAny.getPublicKey(kp.publicKey, ["encapsulateBits"]),
+      DOMException,
+    );
   });
 
   Deno.test(`mlKemTamperedCiphertextRejected:${variant.name}`, async () => {
@@ -2899,6 +2921,93 @@ Deno.test(async function mlKemRawSeedNotYetSupported() {
         true,
         ["decapsulateBits"],
       ),
+    DOMException,
+  );
+});
+
+// `getPublicKey` lives on SubtleCrypto.prototype and derives a public key from
+// a private key for the classical asymmetric algorithms too.
+Deno.test(async function subtleGetPublicKeyClassical() {
+  const cases = [
+    {
+      genAlg: { name: "ECDSA", namedCurve: "P-256" },
+      usages: ["sign", "verify"],
+      publicUsages: ["verify"],
+      badUsage: "encrypt",
+    },
+    {
+      genAlg: { name: "Ed25519" },
+      usages: ["sign", "verify"],
+      publicUsages: ["verify"],
+      badUsage: "encrypt",
+    },
+    {
+      genAlg: { name: "X25519" },
+      usages: ["deriveBits", "deriveKey"],
+      publicUsages: [],
+      badUsage: "deriveBits",
+    },
+    {
+      genAlg: {
+        name: "RSA-PSS",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      usages: ["sign", "verify"],
+      publicUsages: ["verify"],
+      badUsage: "encrypt",
+    },
+  ];
+
+  for (const c of cases) {
+    const kp = await subtleAny.generateKey(
+      c.genAlg,
+      true,
+      c.usages,
+    ) as CryptoKeyPair;
+
+    const derived = await subtleAny.getPublicKey(
+      kp.privateKey,
+      c.publicUsages,
+    ) as CryptoKey;
+    assertEquals(derived.type, "public");
+    assertEquals(derived.algorithm.name, c.genAlg.name);
+    assertEquals(derived.extractable, true);
+    assertEquals(derived.usages, c.publicUsages);
+
+    const originalSpki = new Uint8Array(
+      await subtleAny.exportKey("spki", kp.publicKey),
+    );
+    const derivedSpki = new Uint8Array(
+      await subtleAny.exportKey("spki", derived),
+    );
+    assertEquals(derivedSpki, originalSpki);
+
+    // Requesting an invalid public-key usage rejects with a SyntaxError.
+    await assertRejects(
+      () => subtleAny.getPublicKey(kp.privateKey, [c.badUsage]),
+      DOMException,
+    );
+
+    // A public key is not valid input (must be a private key).
+    await assertRejects(
+      () => subtleAny.getPublicKey(kp.publicKey, c.publicUsages),
+      DOMException,
+    );
+  }
+});
+
+// `getPublicKey` rejects symmetric and key-derivation algorithms with a
+// NotSupportedError.
+Deno.test(async function subtleGetPublicKeyNotSupported() {
+  const aesKey = await subtleAny.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  await assertRejects(
+    () => subtleAny.getPublicKey(aesKey, []),
     DOMException,
   );
 });
