@@ -17,7 +17,10 @@
 // Duplex wrapper around the Deno.Conn.
 
 import { core, primordials } from "ext:core/mod.js";
-import { op_http_serve_address_override } from "ext:core/ops";
+import {
+  op_http_notify_serving,
+  op_http_serve_address_override,
+} from "ext:core/ops";
 
 import { Buffer } from "node:buffer";
 import { Duplex } from "node:stream";
@@ -59,6 +62,10 @@ function peekOverride() {
 // Mark the override as consumed. Subsequent servers see no override.
 function consumeOverride() {
   addressOverrideConsumed = true;
+}
+
+function notifyAddressOverrideServing() {
+  op_http_notify_serving();
 }
 
 // Translate an override record into the argument for denoListen().
@@ -271,6 +278,7 @@ function startOverrideListener(server, override, connectionListener) {
   }
 
   server[kOverrideListener] = denoListener;
+  notifyAddressOverrideServing();
 
   (async () => {
     try {
@@ -337,4 +345,8 @@ function applyAddressOverride() {
   return { mode: "override-only", override };
 }
 
-export { applyAddressOverride, startOverrideListener };
+export {
+  applyAddressOverride,
+  notifyAddressOverrideServing,
+  startOverrideListener,
+};
