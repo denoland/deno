@@ -2492,11 +2492,218 @@ class SubtleCrypto {
     }
   }
 
+  /**
+   * Synchronous feature detection for algorithm/operation support, per the
+   * WICG "Modern Algorithms in the Web Crypto API" proposal.
+   *
+   * https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
+   *
+   * @param {string} operation
+   * @param {AlgorithmIdentifier} algorithm
+   * @param {number | AlgorithmIdentifier} [lengthOrHash]
+   * @returns {boolean}
+   */
+  static supports(operation, algorithm, lengthOrHash = undefined) {
+    const prefix = "Failed to execute 'supports' on 'SubtleCrypto'";
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    operation = webidl.converters.DOMString(operation, prefix, "Argument 1");
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
+      prefix,
+      "Argument 2",
+    );
+
+    // 1. Validate operation against the allowed set.
+    if (!ArrayPrototypeIncludes(SUPPORTS_OPERATIONS, operation)) {
+      return false;
+    }
+
+    // 2. Decide which overload was invoked.
+    let length = null;
+    let additionalAlgorithm = null;
+    if (lengthOrHash !== undefined && lengthOrHash !== null) {
+      if (typeof lengthOrHash === "number") {
+        length = lengthOrHash >>> 0;
+      } else {
+        additionalAlgorithm = lengthOrHash;
+      }
+    }
+
+    // 3. Second-overload handling -- additionalAlgorithm.
+    if (additionalAlgorithm !== null) {
+      if (
+        operation === "deriveKey" || operation === "unwrapKey" ||
+        operation === "encapsulateKey" || operation === "decapsulateKey"
+      ) {
+        if (
+          !checkSupportForAlgorithm("importKey", additionalAlgorithm, null)
+        ) {
+          return false;
+        }
+      } else if (operation === "wrapKey") {
+        if (
+          !checkSupportForAlgorithm("exportKey", additionalAlgorithm, null)
+        ) {
+          return false;
+        }
+      }
+
+      if (operation === "deriveKey") {
+        let derivedLen;
+        try {
+          const normalizedDerived = normalizeAlgorithm(
+            additionalAlgorithm,
+            "get key length",
+          );
+          derivedLen = getKeyLength(normalizedDerived);
+        } catch {
+          return false;
+        }
+        return checkSupportForAlgorithm("deriveBits", algorithm, derivedLen);
+      }
+    }
+
+    return checkSupportForAlgorithm(operation, algorithm, length);
+  }
+
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
   }
 }
 const SubtleCryptoPrototype = SubtleCrypto.prototype;
+
+const SUPPORTS_OPERATIONS = [
+  "encrypt",
+  "decrypt",
+  "sign",
+  "verify",
+  "digest",
+  "generateKey",
+  "deriveKey",
+  "deriveBits",
+  "importKey",
+  "exportKey",
+  "wrapKey",
+  "unwrapKey",
+  "encapsulateKey",
+  "encapsulateBits",
+  "decapsulateKey",
+  "decapsulateBits",
+  "getPublicKey",
+];
+
+// Asymmetric algorithms whose private keys carry enough information for
+// `SubtleCrypto.prototype.getPublicKey()` to recover the public key. Kept
+// in sync with the switch statement in that method.
+const PUBLIC_KEY_DERIVABLE_ALGORITHMS = [
+  "RSASSA-PKCS1-v1_5",
+  "RSA-PSS",
+  "RSA-OAEP",
+  "ECDSA",
+  "ECDH",
+  "Ed25519",
+  "X25519",
+  "X448",
+  "ML-KEM-512",
+  "ML-KEM-768",
+  "ML-KEM-1024",
+  "ML-DSA-44",
+  "ML-DSA-65",
+  "ML-DSA-87",
+];
+
+/**
+ * Implements the "check support for an algorithm" sub-algorithm from
+ * https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
+ *
+ * The WICG spec defines supports() as a *feature-detection* primitive: it
+ * must return true when the algorithm/operation pair is implemented, even
+ * when the caller has not supplied operation-specific parameters (e.g. an
+ * `iv` for AES-GCM). So we cannot reuse `normalizeAlgorithm` directly, which
+ * also validates parameter dictionaries -- instead we check the algorithm
+ * name against the registered-algorithm tables.
+ *
+ * @param {string} operation
+ * @param {AlgorithmIdentifier} algorithm
+ * @param {number | null} _length
+ * @returns {boolean}
+ */
+function checkSupportForAlgorithm(operation, algorithm, _length) {
+  // Extract the algorithm name from either a string or `{ name }` object.
+  let algName;
+  if (typeof algorithm === "string") {
+    algName = algorithm;
+  } else if (algorithm !== null && typeof algorithm === "object") {
+    algName = algorithm.name;
+  }
+  if (typeof algName !== "string") {
+    return false;
+  }
+
+  // Map operation aliases onto the registered-algorithm map keys.
+  let registeredOp;
+  switch (operation) {
+    case "encapsulateKey":
+    case "encapsulateBits":
+      registeredOp = "encapsulate";
+      break;
+    case "decapsulateKey":
+    case "decapsulateBits":
+      registeredOp = "decapsulate";
+      break;
+    case "deriveKey":
+      registeredOp = "deriveBits";
+      break;
+    case "exportKey":
+    case "getPublicKey":
+      registeredOp = "importKey";
+      break;
+    default:
+      registeredOp = operation;
+  }
+
+  if (isAlgorithmRegisteredFor(algName, registeredOp)) {
+    if (operation === "getPublicKey") {
+      // Additionally require an implementation hook for deriving the
+      // public key from a private one.
+      return supportsGetPublicKey(algName);
+    }
+    return true;
+  }
+
+  // wrapKey / unwrapKey fall back to encrypt / decrypt registrations.
+  if (operation === "wrapKey") {
+    return isAlgorithmRegisteredFor(algName, "encrypt");
+  }
+  if (operation === "unwrapKey") {
+    return isAlgorithmRegisteredFor(algName, "decrypt");
+  }
+
+  return false;
+}
+
+function isAlgorithmRegisteredFor(algName, registeredOp) {
+  const registered = supportedAlgorithms[registeredOp];
+  if (registered === undefined) return false;
+  const upper = StringPrototypeToUpperCase(algName);
+  for (const key in registered) {
+    if (!ObjectHasOwn(registered, key)) continue;
+    if (StringPrototypeToUpperCase(key) === upper) return true;
+  }
+  return false;
+}
+
+function supportsGetPublicKey(algName) {
+  const upper = StringPrototypeToUpperCase(algName);
+  for (let i = 0; i < PUBLIC_KEY_DERIVABLE_ALGORITHMS.length; i++) {
+    if (
+      StringPrototypeToUpperCase(PUBLIC_KEY_DERIVABLE_ALGORITHMS[i]) === upper
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 function mlKemEncapsulate(normalizedAlgorithm, encapsulationKey) {
   switch (normalizedAlgorithm.name) {

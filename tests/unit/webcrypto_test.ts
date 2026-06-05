@@ -3180,3 +3180,173 @@ Deno.test(async function subtleGetPublicKeyNotSupported() {
     DOMException,
   );
 });
+// supports() -- synchronous feature detection per
+// https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
+
+// deno-lint-ignore no-explicit-any
+const supports = (SubtleCrypto as any).supports.bind(SubtleCrypto) as (
+  op: string,
+  alg: unknown,
+  lengthOrHash?: unknown,
+) => boolean;
+
+Deno.test(function subtleCryptoSupportsBasic() {
+  // digest
+  assert(supports("digest", "SHA-256"));
+  assert(supports("digest", "SHA3-256"));
+  assert(supports("digest", "SHA3-512"));
+  assert(supports("digest", { name: "SHAKE128", length: 256 }));
+  // generateKey
+  assert(supports("generateKey", {
+    name: "AES-GCM",
+    length: 256,
+  }));
+  assert(supports("generateKey", "ChaCha20-Poly1305"));
+  assert(supports("generateKey", "Ed25519"));
+  // importKey / exportKey
+  assert(supports("importKey", "HKDF"));
+  assert(supports("exportKey", "AES-CBC"));
+  // sign / verify
+  assert(supports("sign", "Ed25519"));
+  assert(supports("verify", { name: "HMAC" }));
+});
+
+Deno.test(function subtleCryptoSupportsPqcAlgorithms() {
+  // ML-DSA
+  for (const name of ["ML-DSA-44", "ML-DSA-65", "ML-DSA-87"]) {
+    assert(supports("generateKey", name));
+    assert(supports("sign", name));
+    assert(supports("verify", name));
+    assert(supports("importKey", name));
+    assert(supports("exportKey", name));
+    assert(supports("getPublicKey", name));
+  }
+  // ML-KEM
+  for (const name of ["ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"]) {
+    assert(supports("generateKey", name));
+    assert(supports("encapsulateKey", name));
+    assert(supports("encapsulateBits", name));
+    assert(supports("decapsulateKey", name));
+    assert(supports("decapsulateBits", name));
+    assert(supports("importKey", name));
+    assert(supports("exportKey", name));
+    assert(supports("getPublicKey", name));
+  }
+});
+
+Deno.test(function subtleCryptoSupportsModernAlgorithms() {
+  // ChaCha20-Poly1305 encrypt/decrypt + generateKey + importKey
+  assert(supports("encrypt", "ChaCha20-Poly1305"));
+  assert(supports("decrypt", "ChaCha20-Poly1305"));
+  assert(supports("generateKey", "ChaCha20-Poly1305"));
+  assert(supports("importKey", "ChaCha20-Poly1305"));
+  // SHA-3 family digests
+  assert(supports("digest", "SHA3-256"));
+  assert(supports("digest", "SHA3-384"));
+  assert(supports("digest", "SHA3-512"));
+  // SHAKE / cSHAKE / TurboSHAKE digests
+  assert(supports("digest", { name: "SHAKE128", length: 256 }));
+  assert(
+    supports("digest", { name: "cSHAKE128", length: 256 }),
+  );
+  assert(
+    supports("digest", { name: "TurboSHAKE128", length: 256 }),
+  );
+});
+
+Deno.test(function subtleCryptoSupportsRejectsUnknown() {
+  // Unrecognized operation
+  assertEquals(supports("notARealOp", "SHA-256"), false);
+  // Unrecognized algorithm
+  assertEquals(supports("digest", "NOT-AN-ALG"), false);
+  assertEquals(supports("generateKey", "NOT-AN-ALG"), false);
+  // Algorithm not valid for the operation
+  assertEquals(supports("digest", "AES-CBC"), false);
+  assertEquals(supports("encrypt", "Ed25519"), false);
+  assertEquals(supports("sign", "AES-GCM"), false);
+  assertEquals(supports("encapsulateKey", "AES-CBC"), false);
+  // getPublicKey is only supported for asymmetric algorithms; symmetric and
+  // KDF algorithms (and obviously unknown algorithms) report false.
+  assertEquals(supports("getPublicKey", "AES-CBC"), false);
+  assertEquals(supports("getPublicKey", "HKDF"), false);
+  assertEquals(supports("getPublicKey", "NOT-AN-ALG"), false);
+});
+
+Deno.test(function subtleCryptoSupportsCaseInsensitive() {
+  // Algorithm name matching is case-insensitive per
+  // https://w3c.github.io/webcrypto/#dfn-normalize-an-algorithm
+  assert(supports("digest", "sha-256"));
+  assert(supports("generateKey", "ml-dsa-65"));
+  assert(supports("encapsulateBits", "ml-kem-768"));
+});
+
+Deno.test(function subtleCryptoSupportsWrapUnwrap() {
+  // AES-KW supports wrapKey/unwrapKey directly.
+  assert(supports("wrapKey", { name: "AES-KW", length: 256 }));
+  assert(
+    supports("unwrapKey", { name: "AES-KW", length: 256 }),
+  );
+  // wrapKey / unwrapKey also work via the encrypt / decrypt fallback path,
+  // e.g. for AES-GCM and RSA-OAEP.
+  assert(supports("wrapKey", { name: "AES-GCM", length: 256 }));
+  assert(
+    supports("unwrapKey", { name: "AES-GCM", length: 256 }),
+  );
+  assert(supports("wrapKey", {
+    name: "RSA-OAEP",
+    hash: "SHA-256",
+  }));
+  assert(supports("unwrapKey", {
+    name: "RSA-OAEP",
+    hash: "SHA-256",
+  }));
+});
+
+Deno.test(function subtleCryptoSupportsAdditionalAlgorithm() {
+  // deriveKey with target algorithm (the second-overload form).
+  assert(supports("deriveKey", "HKDF", {
+    name: "AES-GCM",
+    length: 256,
+  }));
+  assert(supports("deriveKey", "PBKDF2", {
+    name: "AES-CBC",
+    length: 128,
+  }));
+  // encapsulateKey with a shared-key algorithm.
+  assert(supports("encapsulateKey", "ML-KEM-768", {
+    name: "AES-GCM",
+    length: 256,
+  }));
+  // unwrapKey with target alg.
+  assert(supports(
+    "unwrapKey",
+    { name: "AES-KW", length: 256 },
+    { name: "AES-GCM", length: 256 },
+  ));
+  // Bad shared-key algorithm should fail.
+  assertEquals(
+    supports("encapsulateKey", "ML-KEM-768", "NOT-AN-ALG"),
+    false,
+  );
+  // Bad derived-key alg should fail.
+  assertEquals(
+    supports("deriveKey", "HKDF", "NOT-AN-ALG"),
+    false,
+  );
+});
+
+Deno.test(function subtleCryptoSupportsLengthOverload() {
+  // length is meaningful for deriveBits; for current impl it just doesn't
+  // reject when the algorithm + operation pair is otherwise valid.
+  assert(supports("deriveBits", "HKDF", 256));
+  assert(supports("deriveBits", "PBKDF2", 256));
+  // length on a non-derive operation is simply ignored.
+  assert(supports("digest", "SHA-256", 256));
+});
+
+Deno.test(function subtleCryptoSupportsThrowsOnMissingArgs() {
+  // deno-lint-ignore no-explicit-any
+  const s = supports as any;
+  assertThrows(() => s(), TypeError);
+  assertThrows(() => s("sign"), TypeError);
+});
