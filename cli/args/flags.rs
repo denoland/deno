@@ -59,6 +59,7 @@ pub use deno_runtime::deno_inspector_server::InspectPublishUid;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
+use deno_semver::package::PackageReq;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
@@ -542,6 +543,7 @@ pub enum XFlagsKind {
 pub struct XCommandFlags {
   pub yes: bool,
   pub command: String,
+  pub ignore_scripts: PackagesAllowedScripts,
   /// When set via `--package`/`-p`, specifies the package to install
   /// while `command` is the binary name to execute from that package.
   pub package: Option<String>,
@@ -955,15 +957,30 @@ fn minutes_duration_or_date_parser(
     .map_err(|e| clap::Error::raw(clap::error::ErrorKind::InvalidValue, e))
 }
 
-fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
+fn parse_packages_scripts_arg(
+  s: &str,
+  flag_name: &str,
+) -> Result<String, AnyError> {
   if !s.starts_with("npm:") {
     bail!(
-      "Invalid package for --allow-scripts: '{}'. An 'npm:' specifier is required",
-      s
+      "Invalid package for {}: '{}'. An 'npm:' specifier is required",
+      flag_name,
+      s,
     );
   } else {
     Ok(s.into())
   }
+}
+
+fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
+  parse_packages_scripts_arg(s, "--allow-scripts")
+}
+
+fn parse_packages_ignored_scripts(s: &str) -> Result<String, AnyError> {
+  if s.is_empty() {
+    bail!("Invalid package for --ignore-scripts: package cannot be empty");
+  }
+  Ok(s.into())
 }
 
 /// Parse --inspect-publish-uid from a comma-separated string like "stderr,http".
@@ -1061,6 +1078,7 @@ pub struct Flags {
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
+  pub deny_scripts: Vec<PackageReq>,
   pub permission_set: Option<String>,
   pub eszip: bool,
   pub node_conditions: Vec<String>,
@@ -4191,6 +4209,9 @@ fn x_subcommand() -> Command {
           .conflicts_with("install-alias"),
       )
       .arg(
+        ignore_scripts_arg().conflicts_with("install-alias"),
+      )
+      .arg(
         Arg::new("package")
           .long("package")
           .short('p')
@@ -6548,6 +6569,17 @@ fn allow_scripts_arg() -> Arg {
   <p(245)>Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)</>"))
 }
 
+fn ignore_scripts_arg() -> Arg {
+  Arg::new("ignore-scripts")
+    .long("ignore-scripts")
+    .num_args(0..)
+    .action(ArgAction::Append)
+    .require_equals(true)
+    .value_name("PACKAGE")
+    .value_parser(parse_packages_ignored_scripts)
+    .help("Do not run npm lifecycle scripts for the given packages")
+}
+
 enum UnstableArgsConfig {
   // for backwards-compatability
   None,
@@ -6654,6 +6686,48 @@ fn allow_scripts_arg_parse(
     );
   }
   Ok(())
+}
+
+fn ignore_scripts_arg_parse(
+  matches: &mut ArgMatches,
+) -> clap::error::Result<PackagesAllowedScripts> {
+  let Some(parts) = matches.remove_many::<String>("ignore-scripts") else {
+    return Ok(PackagesAllowedScripts::None);
+  };
+  if parts.len() == 0 {
+    Ok(PackagesAllowedScripts::All)
+  } else {
+    Ok(PackagesAllowedScripts::Some(
+      parts
+        .flat_map(flat_escape_split_commas)
+        .map(|result| {
+          let value = result?;
+          let value = if value.starts_with("npm:") || value.starts_with("jsr:")
+          {
+            value
+          } else {
+            format!("npm:{}", value)
+          };
+          let dep = JsrDepPackageReq::from_str_loose(&value).map_err(|e| {
+            clap::Error::raw(clap::error::ErrorKind::InvalidValue, e)
+          })?;
+          if dep.kind != PackageKind::Npm {
+            return Err(clap::Error::raw(
+              clap::error::ErrorKind::InvalidValue,
+              format!("Only npm package constraints are supported: {}", value),
+            ));
+          }
+          if dep.req.version_req.tag().is_some() {
+            return Err(clap::Error::raw(
+              clap::error::ErrorKind::InvalidValue,
+              format!("Tags are not supported in --ignore-scripts: {}", value),
+            ));
+          }
+          Ok(dep.req)
+        })
+        .collect::<Result<_, _>>()?,
+    ))
+  }
 }
 
 fn audit_parse(
@@ -8378,12 +8452,22 @@ fn x_parse(
   {
     if let Some(command) = script_arg.next() {
       let yes = matches.get_flag("yes");
+      let ignore_scripts = ignore_scripts_arg_parse(matches)?;
       let package = matches.remove_one::<String>("package");
       flags.argv.extend(script_arg);
       runtime_args_parse(flags, matches, true, true, true)?;
+      if matches!(ignore_scripts, PackagesAllowedScripts::All)
+        && !matches!(flags.allow_scripts, PackagesAllowedScripts::None)
+      {
+        return Err(clap::Error::raw(
+          clap::error::ErrorKind::ArgumentConflict,
+          "--ignore-scripts cannot be used with --allow-scripts",
+        ));
+      }
       XFlagsKind::Command(XCommandFlags {
         yes,
         command,
+        ignore_scripts,
         package,
       })
     } else {
@@ -15389,6 +15473,77 @@ mod tests {
         }
       }
     }
+  }
+
+  #[test]
+  fn x_ignore_scripts() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "x",
+      "--ignore-scripts",
+      "-y",
+      "npm:foo",
+      "--bar"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::X(XFlags {
+          kind: XFlagsKind::Command(XCommandFlags {
+            yes: true,
+            command: "npm:foo".to_string(),
+            ignore_scripts: PackagesAllowedScripts::All,
+            package: None,
+          }),
+        }),
+        argv: svec!["--bar"],
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let err = flags_from_vec(svec![
+      "deno",
+      "x",
+      "--ignore-scripts",
+      "--allow-scripts",
+      "npm:foo"
+    ])
+    .unwrap_err();
+    assert!(err.to_string().contains("cannot be used with"));
+
+    let flags = flags_from_vec(svec![
+      "deno",
+      "x",
+      "--ignore-scripts=foo,npm:bar@2",
+      "npm:foo"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::X(XFlags {
+          kind: XFlagsKind::Command(XCommandFlags {
+            yes: false,
+            command: "npm:foo".to_string(),
+            ignore_scripts: PackagesAllowedScripts::Some(vec![
+              PackageReq::from_str("foo").unwrap(),
+              PackageReq::from_str("bar@2").unwrap(),
+            ]),
+            package: None,
+          }),
+        }),
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
