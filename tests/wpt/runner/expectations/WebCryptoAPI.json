@@ -5674,8 +5674,30 @@
         "Invalid key pair: importKey(jwk(private), {name: X448}, true, [deriveKey, deriveBits, deriveKey, deriveBits])"
       ]
     },
-    "raw_format_aliases.tentative.https.any.html": false,
-    "raw_format_aliases.tentative.https.any.worker.html": false
+    "raw_format_aliases.tentative.https.any.html": {
+      "expectedFailures": [
+        "importKey/exportKey with raw-public: ECDH",
+        "importKey/exportKey with raw-public: ECDSA",
+        "importKey/exportKey with raw-public: Ed25519",
+        "importKey/exportKey with raw-public: X25519",
+        "wrapKey/unwrapKey with raw-public: ECDH",
+        "wrapKey/unwrapKey with raw-public: ECDSA",
+        "wrapKey/unwrapKey with raw-public: Ed25519",
+        "wrapKey/unwrapKey with raw-public: X25519"
+      ]
+    },
+    "raw_format_aliases.tentative.https.any.worker.html": {
+      "expectedFailures": [
+        "importKey/exportKey with raw-public: ECDH",
+        "importKey/exportKey with raw-public: ECDSA",
+        "importKey/exportKey with raw-public: Ed25519",
+        "importKey/exportKey with raw-public: X25519",
+        "wrapKey/unwrapKey with raw-public: ECDH",
+        "wrapKey/unwrapKey with raw-public: ECDSA",
+        "wrapKey/unwrapKey with raw-public: Ed25519",
+        "wrapKey/unwrapKey with raw-public: X25519"
+      ]
+    }
   },
   "randomUUID.https.any.html": true,
   "randomUUID.https.any.worker.html": true,
