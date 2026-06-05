@@ -310,6 +310,39 @@ async fn test_fetch_accept_encoding_identity_skips_decompression() {
 }
 
 #[tokio::test]
+async fn test_fetch_multi_content_encoding_preserves_raw_response() {
+  let captured_accept_encoding = Arc::new(Mutex::new(None));
+  let src_addr = create_encoded_http_server(
+    captured_accept_encoding.clone(),
+    HeaderValue::from_static("gzip, br"),
+    GZIP_HELLO_FROM_SERVER,
+  )
+  .await;
+  let client = create_http_test_client();
+
+  let req = http::Request::builder()
+    .uri(format!("http://{}/foo", src_addr))
+    .body(crate::ReqBody::empty())
+    .unwrap();
+  let resp = client.send(req).await.unwrap();
+
+  assert_eq!(
+    captured_accept_encoding.lock().await.as_ref().unwrap(),
+    HeaderValue::from_static("gzip,br")
+  );
+  assert_eq!(
+    resp.headers().get(CONTENT_ENCODING).unwrap(),
+    HeaderValue::from_static("gzip, br")
+  );
+  assert_eq!(
+    resp.headers().get(CONTENT_LENGTH).unwrap(),
+    HeaderValue::from_static("37")
+  );
+  let body = resp.collect().await.unwrap().to_bytes();
+  assert_eq!(body, GZIP_HELLO_FROM_SERVER);
+}
+
+#[tokio::test]
 async fn test_fetch_range_request_skips_decompression() {
   let captured_accept_encoding = Arc::new(Mutex::new(None));
   let src_addr = create_encoded_http_server(

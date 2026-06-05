@@ -1192,6 +1192,8 @@ where
   }
 
   fn call(&mut self, mut req: http::Request<ReqBody>) -> Self::Future {
+    // Range responses may contain compressed byte ranges that cannot be
+    // transparently decoded as a complete representation.
     let skip_decompression = req.headers().contains_key(RANGE)
       || req.headers().get(ACCEPT_ENCODING).is_some_and(|value| {
         value.as_bytes().eq_ignore_ascii_case(b"identity")
