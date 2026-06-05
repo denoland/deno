@@ -108,6 +108,7 @@ use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::completions::CompletionItemData;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::diagnostics::DenoDiagnostic;
+use crate::lsp::diagnostics::generate_import_map_diagnostics;
 use crate::lsp::diagnostics::generate_module_diagnostics;
 use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::lint::get_deno_lint_code_actions;
@@ -2082,6 +2083,54 @@ impl Inner {
       &params.text_document.uri,
       Enabled::Filter,
       Exists::Enforce,
+      Diagnosable::Ignore,
+    )?
+    else {
+      return Ok(None);
+    };
+    let url = uri_to_url(document.uri());
+    if matches!(
+      self.config.tree.watched_file_type(&url),
+      Some((_, ConfigWatchedFileType::ImportMap))
+    ) {
+      let code_action_disabled_capable =
+        self.config.code_action_disabled_capable();
+      let actions = params
+        .context
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| {
+          diagnostic.source.as_deref() == Some("deno")
+            && diagnostics::DenoDiagnostic::is_fixable(diagnostic)
+        })
+        .filter_map(|diagnostic| {
+          DenoDiagnostic::get_code_action(document.uri(), &url, diagnostic)
+            .inspect_err(|err| {
+              lsp_warn!(
+                "Error getting deno code action: {:#}\nDiagnostic: {:#?}",
+                err,
+                diagnostic
+              );
+            })
+            .ok()
+        })
+        .map(CodeActionOrCommand::CodeAction)
+        .filter(|a| {
+          code_action_disabled_capable
+            || matches!(a, CodeActionOrCommand::CodeAction(ca) if ca.disabled.is_none())
+        })
+        .collect::<Vec<_>>();
+      self.performance.measure(mark);
+      return Ok(if actions.is_empty() {
+        None
+      } else {
+        Some(actions)
+      });
+    }
+    let Some(document) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
       Diagnosable::Filter,
     )?
     else {
@@ -2919,6 +2968,33 @@ impl Inner {
         },
       ))
     };
+    let Some(document) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Ignore,
+    )?
+    else {
+      return Ok(empty_result());
+    };
+    let url = uri_to_url(document.uri());
+    if matches!(
+      self.config.tree.watched_file_type(&url),
+      Some((_, ConfigWatchedFileType::ImportMap))
+    ) && let Some(open_doc) = document.open()
+    {
+      let diagnostics =
+        generate_import_map_diagnostics(open_doc, &self.snapshot());
+      return Ok(DocumentDiagnosticReportResult::Report(
+        DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+          related_documents: None,
+          full_document_diagnostic_report: FullDocumentDiagnosticReport {
+            result_id: Some(self.project_version.to_string()),
+            items: diagnostics,
+          },
+        }),
+      ));
+    }
     let Some(document) = self.get_document(
       &params.text_document.uri,
       Enabled::Filter,

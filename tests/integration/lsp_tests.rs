@@ -427,6 +427,123 @@ fn lsp_import_map() {
 }
 
 #[test(timeout = 300)]
+fn lsp_import_map_diagnostics() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let import_map = r#"{
+  "imports": {
+    "remote": "https://deno.land/x/example/mod.ts",
+    "bad": null
+  },
+  "unexpected": true
+}"#;
+  temp_dir.write("deno.json", r#"{ "importMap": "import-map.json" }"#);
+  temp_dir.write("import-map.json", import_map);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  let uri =
+    url_to_uri(&temp_dir.url().join("import-map.json").unwrap()).unwrap();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "json",
+      "version": 1,
+      "text": import_map
+    }
+  }));
+
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
+        },
+        "severity": 1,
+        "code": "import-map-diagnostic",
+        "source": "deno",
+        "message": "Invalid address \"null\" for the specifier key \"bad\". Addresses must be strings.",
+      },
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 0 },
+        },
+        "severity": 1,
+        "code": "import-map-diagnostic",
+        "source": "deno",
+        "message": "Invalid top-level key \"unexpected\". Only \"imports\" and \"scopes\" can be present.",
+      },
+      {
+        "range": {
+          "start": { "line": 2, "character": 15 },
+          "end": { "line": 2, "character": 49 },
+        },
+        "severity": 1,
+        "code": "no-cache",
+        "source": "deno",
+        "message": "Uncached or missing remote URL: https://deno.land/x/example/mod.ts",
+        "data": {
+          "specifier": "https://deno.land/x/example/mod.ts",
+        },
+      },
+    ]),
+  );
+
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": uri },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 6, "character": 0 },
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    json!(res),
+    json!([
+      {
+        "title": "Cache \"https://deno.land/x/example/mod.ts\" and its dependencies.",
+        "kind": "quickfix",
+        "diagnostics": [
+          {
+            "range": {
+              "start": { "line": 2, "character": 15 },
+              "end": { "line": 2, "character": 49 },
+            },
+            "severity": 1,
+            "code": "no-cache",
+            "source": "deno",
+            "message": "Uncached or missing remote URL: https://deno.land/x/example/mod.ts",
+            "data": {
+              "specifier": "https://deno.land/x/example/mod.ts",
+            },
+          },
+        ],
+        "command": {
+          "title": "",
+          "command": "deno.cache",
+          "arguments": [
+            ["https://deno.land/x/example/mod.ts"],
+            temp_dir.url().join("import-map.json").unwrap(),
+          ],
+        },
+      },
+    ]),
+  );
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_import_map_remote() {
   let context = TestContextBuilder::new()
     .use_http_server()
