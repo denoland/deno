@@ -8013,6 +8013,36 @@ fn lsp_code_actions_import_map_remap() {
 }
 
 #[test(timeout = 300)]
+fn lsp_no_import_map_remap_for_relative_keys() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "imports": {
+        "./some_dir/": "./some_dir/",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write("some_dir/bar.ts", "export const bar = 'bar';");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&temp_dir.url().join("nested/file.ts").unwrap()).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"import { bar } from "../some_dir/bar.ts";
+console.log(bar);
+"#,
+    }
+  }));
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_code_actions_refactor() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
