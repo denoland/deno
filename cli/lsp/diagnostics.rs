@@ -436,18 +436,37 @@ pub fn ts_json_to_diagnostics(
     .collect()
 }
 
+/// Generates lint diagnostics for a module, caching them on the module
+/// instance. Lint diagnostics depend only on the module's own contents, so a
+/// given module instance always produces the same result and can be cached.
+///
+/// Returns `Err` if linting was cancelled, in which case nothing is cached and
+/// the result is recomputed on the next request.
 fn generate_document_lint_diagnostics(
   module: &DocumentModule,
   linter: &LspLinter,
   token: CancellationToken,
-) -> Vec<lsp::Diagnostic> {
+) -> Result<Arc<Vec<lsp::Diagnostic>>, AnyError> {
+  module
+    .lint_diagnostics
+    .get_or_try_init(|| {
+      compute_document_lint_diagnostics(module, linter, token).map(Arc::new)
+    })
+    .cloned()
+}
+
+fn compute_document_lint_diagnostics(
+  module: &DocumentModule,
+  linter: &LspLinter,
+  token: CancellationToken,
+) -> Result<Vec<lsp::Diagnostic>, AnyError> {
   if !module.is_diagnosable()
     || !linter
       .lint_config
       .files
       .matches_specifier(&module.specifier)
   {
-    return Vec::new();
+    return Ok(Vec::new());
   }
   match &module
     .open_data
@@ -455,18 +474,19 @@ fn generate_document_lint_diagnostics(
     .and_then(|d| d.parsed_source.as_ref())
   {
     Some(Ok(parsed_source)) => {
-      match analysis::get_lint_references(parsed_source, &linter.inner, token) {
-        Ok(references) => references
+      let references =
+        analysis::get_lint_references(parsed_source, &linter.inner, token)?;
+      Ok(
+        references
           .into_iter()
           .map(|r| r.to_diagnostic())
           .collect::<Vec<_>>(),
-        _ => Vec::new(),
-      }
+      )
     }
-    Some(Err(_)) => Vec::new(),
+    Some(Err(_)) => Ok(Vec::new()),
     None => {
       error!("Missing file contents for: {}", &module.specifier);
-      Vec::new()
+      Ok(Vec::new())
     }
   }
 }
@@ -508,16 +528,33 @@ fn doc_diagnostic_range(
 }
 
 /// Generates `deno doc --lint` diagnostics for a module that is a published
-/// package's export entrypoint. This surfaces missing documentation (missing
-/// JSDoc, explicit types and return types) in the editor, matching what
-/// `deno doc --lint` / `deno publish` would report for the package's public
-/// API.
+/// package's export entrypoint, caching them on the module instance. Like lint
+/// diagnostics, these are derived solely from the module's own contents, so a
+/// given module instance always produces the same result.
+///
+/// Returns `Err` if generation was cancelled, in which case nothing is cached
+/// and the result is recomputed on the next request.
 fn generate_document_doc_diagnostics(
   module: &DocumentModule,
   token: &CancellationToken,
-) -> Vec<lsp::Diagnostic> {
-  if token.is_cancelled() || !module.is_diagnosable() {
-    return Vec::new();
+) -> Result<Arc<Vec<lsp::Diagnostic>>, AnyError> {
+  module
+    .doc_diagnostics
+    .get_or_try_init(|| {
+      compute_document_doc_diagnostics(module, token).map(Arc::new)
+    })
+    .cloned()
+}
+
+fn compute_document_doc_diagnostics(
+  module: &DocumentModule,
+  token: &CancellationToken,
+) -> Result<Vec<lsp::Diagnostic>, AnyError> {
+  if token.is_cancelled() {
+    return Err(anyhow!("cancelled"));
+  }
+  if !module.is_diagnosable() {
+    return Ok(Vec::new());
   }
   // Only open documents have parsed sources to lint against.
   if !module
@@ -526,7 +563,7 @@ fn generate_document_doc_diagnostics(
     .and_then(|d| d.parsed_source.as_ref())
     .is_some_and(|r| r.is_ok())
   {
-    return Vec::new();
+    return Ok(Vec::new());
   }
   let analyzer = deno_graph::ast::CapturingModuleAnalyzer::default();
   let specifier = module.specifier.as_ref().clone();
@@ -568,7 +605,7 @@ fn generate_document_doc_diagnostics(
     },
   ));
   if token.is_cancelled() {
-    return Vec::new();
+    return Err(anyhow!("cancelled"));
   }
   let doc_parser = match deno_doc::DocParser::new(
     &graph,
@@ -582,36 +619,42 @@ fn generate_document_doc_diagnostics(
     Ok(doc_parser) => doc_parser,
     Err(err) => {
       lsp_warn!("Failed to create doc parser for \"{specifier}\": {err:#}");
-      return Vec::new();
+      return Ok(Vec::new());
     }
   };
   if let Err(err) = doc_parser.parse() {
     lsp_warn!("Failed to parse docs for \"{specifier}\": {err:#}");
-    return Vec::new();
+    return Ok(Vec::new());
   }
   let specifier_str = specifier.as_str();
-  doc_parser
-    .take_diagnostics()
-    .into_iter()
-    // Only report diagnostics that point at the linted module itself. With a
-    // single-module graph cross-module references aren't resolved, so any
-    // diagnostic for another file would be spurious.
-    .filter(|diagnostic| diagnostic.location.filename.as_ref() == specifier_str)
-    .map(|diagnostic| {
-      use deno_ast::diagnostics::Diagnostic;
-      lsp::Diagnostic {
-        range: doc_diagnostic_range(module, diagnostic.location.byte_index),
-        severity: Some(lsp::DiagnosticSeverity::WARNING),
-        code: Some(lsp::NumberOrString::String(diagnostic.code().into_owned())),
-        code_description: None,
-        source: Some(DiagnosticSource::Doc.as_lsp_source().to_string()),
-        message: diagnostic.message().into_owned(),
-        related_information: None,
-        tags: None,
-        data: None,
-      }
-    })
-    .collect()
+  Ok(
+    doc_parser
+      .take_diagnostics()
+      .into_iter()
+      // Only report diagnostics that point at the linted module itself. With a
+      // single-module graph cross-module references aren't resolved, so any
+      // diagnostic for another file would be spurious.
+      .filter(|diagnostic| {
+        diagnostic.location.filename.as_ref() == specifier_str
+      })
+      .map(|diagnostic| {
+        use deno_ast::diagnostics::Diagnostic;
+        lsp::Diagnostic {
+          range: doc_diagnostic_range(module, diagnostic.location.byte_index),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
+          code: Some(lsp::NumberOrString::String(
+            diagnostic.code().into_owned(),
+          )),
+          code_description: None,
+          source: Some(DiagnosticSource::Doc.as_lsp_source().to_string()),
+          message: diagnostic.message().into_owned(),
+          related_information: None,
+          tags: None,
+          data: None,
+        }
+      })
+      .collect(),
+  )
 }
 
 #[derive(Debug, Deserialize)]
@@ -1443,7 +1486,7 @@ pub async fn generate_module_diagnostics(
     let snapshot = snapshot.clone();
     let module = module.clone();
     let token = token.clone();
-    move || {
+    move || -> Arc<Vec<lsp::Diagnostic>> {
       // TODO(nayeemrmn): Support linting notebooks cells. Will require
       // stitching cells from the same notebook into one module, linting it
       // and then splitting/relocating the diagnostics to each cell.
@@ -1452,16 +1495,17 @@ pub async fn generate_module_diagnostics(
         || module.specifier.scheme() != "file"
         || snapshot.resolver.in_node_modules(&module.specifier)
       {
-        return Vec::new();
+        return Default::default();
       }
       let settings = snapshot
         .config
         .workspace_settings_for_specifier(&module.specifier);
       if !settings.lint {
-        return Vec::new();
+        return Default::default();
       }
       let linter = snapshot.linter_resolver.for_module(&module);
       generate_document_lint_diagnostics(&module, &linter, token)
+        .unwrap_or_default()
     }
   });
 
@@ -1469,24 +1513,24 @@ pub async fn generate_module_diagnostics(
     let snapshot = snapshot.clone();
     let module = module.clone();
     let token = token.clone();
-    move || {
+    move || -> Arc<Vec<lsp::Diagnostic>> {
       if token.is_cancelled()
         || module.notebook_uri.is_some()
         || module.specifier.scheme() != "file"
         || snapshot.resolver.in_node_modules(&module.specifier)
       {
-        return Vec::new();
+        return Default::default();
       }
       let settings = snapshot
         .config
         .workspace_settings_for_specifier(&module.specifier);
       if !settings.lint {
-        return Vec::new();
+        return Default::default();
       }
       if !module_is_package_export(&snapshot, &module) {
-        return Vec::new();
+        return Default::default();
       }
-      generate_document_doc_diagnostics(&module, &token)
+      generate_document_doc_diagnostics(&module, &token).unwrap_or_default()
     }
   });
 
@@ -1551,7 +1595,7 @@ pub async fn generate_module_diagnostics(
       lsp_warn!("Lint task join error: {err:#}");
     })
     .unwrap_or_default();
-  diagnostics.extend(lint_diagnostics);
+  diagnostics.extend(lint_diagnostics.iter().cloned());
 
   let doc_diagnostics = doc_handle
     .await
@@ -1559,7 +1603,7 @@ pub async fn generate_module_diagnostics(
       lsp_warn!("Doc lint task join error: {err:#}");
     })
     .unwrap_or_default();
-  diagnostics.extend(doc_diagnostics);
+  diagnostics.extend(doc_diagnostics.iter().cloned());
 
   Ok(diagnostics)
 }
