@@ -5,6 +5,7 @@ mod externals;
 mod html;
 mod provider;
 mod transform;
+mod wasm;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -1315,8 +1316,8 @@ pub enum BundleLoadErrorKind {
   #[error(transparent)]
   ResolveWithGraph(#[from] ResolveWithGraphError),
   #[class(generic)]
-  #[error("Wasm modules are not implemented in deno bundle.")]
-  WasmUnsupported,
+  #[error("Failed to parse Wasm module: {0}")]
+  WasmParse(String),
   #[class(generic)]
   #[error("UTF-8 conversion error")]
   Utf8(#[from] std::str::Utf8Error),
@@ -1723,6 +1724,11 @@ impl DenoPluginHandler {
       Some(RequestedModuleType::Other(_) | RequestedModuleType::None)
       | None => {}
     }
+    if media_type == MediaType::Wasm {
+      let code = wasm::render_js_wasm_module(source)
+        .map_err(|e| BundleLoadErrorKind::WasmParse(e.to_string()))?;
+      return Ok((code.into_bytes(), esbuild_client::BuiltinLoader::Js));
+    }
     if matches!(
       media_type,
       MediaType::JavaScript
@@ -1861,9 +1867,11 @@ impl DenoPluginHandler {
         deno_ast::MediaType::Json,
         esbuild_client::BuiltinLoader::Json,
       ),
-      deno_graph::Module::Wasm(_) => {
-        return Err(BundleLoadErrorKind::WasmUnsupported.into());
-      }
+      deno_graph::Module::Wasm(wasm_module) => (
+        wasm_module.specifier.clone(),
+        deno_ast::MediaType::Wasm,
+        esbuild_client::BuiltinLoader::Js,
+      ),
       deno_graph::Module::Npm(_) => {
         let req_ref =
           NpmPackageReqReference::from_specifier(specifier).unwrap();

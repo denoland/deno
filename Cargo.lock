@@ -1928,6 +1928,7 @@ dependencies = [
  "uuid",
  "walkdir",
  "wasm-encoder",
+ "wasm_dep_analyzer",
  "wasmparser",
  "windows-sys 0.59.0",
  "winres",
