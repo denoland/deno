@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use ed448_goldilocks::EdwardsScalar;
@@ -78,6 +79,24 @@ pub fn op_crypto_derive_bits_x448(
 // id-X448 OBJECT IDENTIFIER ::= { 1 3 101 111 }
 const X448_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.111");
+
+#[op2]
+#[string]
+pub fn op_crypto_x448_public_key(
+  #[buffer] private_key: &[u8],
+) -> Result<String, X448Error> {
+  use base64::Engine;
+
+  let private_key: [u8; 56] = private_key
+    .try_into()
+    .map_err(|_| X448Error::InvalidKeyLength)?;
+  // x448(pkey, 5), identical derivation to op_crypto_generate_x448_keypair.
+  let mut scalar_bytes = [0u8; 57];
+  scalar_bytes[..56].copy_from_slice(&private_key);
+  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
+  let point = &MontgomeryPoint::GENERATOR * &scalar;
+  Ok(BASE64_URL_SAFE_NO_PAD.encode(point.0))
+}
 
 #[op2]
 pub fn op_crypto_export_spki_x448(

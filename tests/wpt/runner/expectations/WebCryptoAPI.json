@@ -6433,15 +6433,12 @@
       ]
     }
   },
-  "getPublicKey.tentative.https.any.html": false,
-  "getPublicKey.tentative.https.any.worker.html": false,
+  "getPublicKey.tentative.https.any.html": true,
+  "getPublicKey.tentative.https.any.worker.html": true,
   "idlharness.tentative.https.any.html": {
     "expectedFailures": [
-      "SubtleCrypto interface: operation getPublicKey(CryptoKey, sequence<KeyUsage>)",
       "SubtleCrypto interface: operation supports(DOMString, AlgorithmIdentifier, optional unsigned long?)",
       "SubtleCrypto interface: operation supports(DOMString, AlgorithmIdentifier, AlgorithmIdentifier)",
-      "SubtleCrypto interface: crypto.subtle must inherit property \"getPublicKey(CryptoKey, sequence<KeyUsage>)\" with the proper type",
-      "SubtleCrypto interface: calling getPublicKey(CryptoKey, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: calling supports(DOMString, AlgorithmIdentifier, optional unsigned long?) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: calling supports(DOMString, AlgorithmIdentifier, AlgorithmIdentifier) on crypto.subtle with too few arguments must throw TypeError",
       "Window interface: attribute crypto"
@@ -6449,11 +6446,8 @@
   },
   "idlharness.tentative.https.any.worker.html": {
     "expectedFailures": [
-      "SubtleCrypto interface: operation getPublicKey(CryptoKey, sequence<KeyUsage>)",
       "SubtleCrypto interface: operation supports(DOMString, AlgorithmIdentifier, optional unsigned long?)",
       "SubtleCrypto interface: operation supports(DOMString, AlgorithmIdentifier, AlgorithmIdentifier)",
-      "SubtleCrypto interface: crypto.subtle must inherit property \"getPublicKey(CryptoKey, sequence<KeyUsage>)\" with the proper type",
-      "SubtleCrypto interface: calling getPublicKey(CryptoKey, sequence<KeyUsage>) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: calling supports(DOMString, AlgorithmIdentifier, optional unsigned long?) on crypto.subtle with too few arguments must throw TypeError",
       "SubtleCrypto interface: calling supports(DOMString, AlgorithmIdentifier, AlgorithmIdentifier) on crypto.subtle with too few arguments must throw TypeError",
       "WorkerGlobalScope interface: attribute crypto"
