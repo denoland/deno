@@ -123,6 +123,34 @@ pub fn make_prefixed_task_io(prefix: String) -> (TaskIo, Vec<JoinHandle<()>>) {
   )
 }
 
+/// Builds a [`TaskIo`] whose stdout/stderr are piped into the provided
+/// writers. Used by the experimental task TUI to route each task's output into
+/// its own buffer instead of straight to the terminal.
+pub fn make_task_io_with_writers(
+  mut out: Box<dyn Write + Send>,
+  mut err: Box<dyn Write + Send>,
+) -> (TaskIo, Vec<JoinHandle<()>>) {
+  let (out_r, out_w) = deno_task_shell::pipe();
+  let (err_r, err_w) = deno_task_shell::pipe();
+
+  let out_handle = tokio::task::spawn_blocking(move || {
+    let _ = out_r.pipe_to(&mut *out);
+    let _ = out.flush();
+  });
+  let err_handle = tokio::task::spawn_blocking(move || {
+    let _ = err_r.pipe_to(&mut *err);
+    let _ = err.flush();
+  });
+
+  (
+    TaskIo {
+      stdout: TaskStdio(None, out_w),
+      stderr: TaskStdio(None, err_w),
+    },
+    vec![out_handle, err_handle],
+  )
+}
+
 impl TaskStdio {
   pub fn stdout() -> Self {
     Self(None, ShellPipeWriter::stdout())

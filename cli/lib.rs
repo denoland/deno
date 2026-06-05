@@ -18,6 +18,7 @@ mod registry;
 mod resolver;
 mod standalone;
 mod task_runner;
+mod task_runner_tui;
 mod tools;
 mod tsc;
 mod type_checker;
