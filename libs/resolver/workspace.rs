@@ -1785,6 +1785,10 @@ fn pkg_json_to_version_info(
     // not worth increasing memory for showing a deprecated
     // message for linked packages
     deprecated: None,
+    // linked/workspace packages from a package.json carry no registry
+    // trust signals
+    npm_user: None,
+    approver: None,
   })
 }
 
@@ -3306,6 +3310,8 @@ mod test {
         ]),
         // we don't bother ever setting this because we don't store it in deno_package_json
         deprecated: None,
+        npm_user: None,
+        approver: None,
       }
     );
 

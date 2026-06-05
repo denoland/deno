@@ -139,6 +139,13 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
       min_release_age_days: project_rc
         .min_release_age_days
         .or(home_rc.min_release_age_days),
+      trust_policy: if project_rc.trust_policy
+        != deno_npmrc::TrustPolicyConfig::Off
+      {
+        project_rc.trust_policy
+      } else {
+        home_rc.trust_policy
+      },
     }
   }
 
@@ -239,5 +246,6 @@ pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {
     )]),
     registry_configs: Default::default(),
     min_release_age_days: None,
+    trust_policy: Default::default(),
   }
 }

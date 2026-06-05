@@ -600,6 +600,8 @@ impl Inner {
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
         overrides: Default::default(),
+        trust_policy: Default::default(),
+        locked_trust: Default::default(),
       }),
     );
     let config = Config::default();
@@ -827,6 +829,8 @@ impl Inner {
         link_packages: Default::default(),
         newest_dependency_date_options: Default::default(),
         overrides: Default::default(),
+        trust_policy: Default::default(),
+        locked_trust: Default::default(),
       }),
     );
     self.performance.measure(mark);
