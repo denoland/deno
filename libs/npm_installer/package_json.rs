@@ -6,7 +6,6 @@ use std::sync::Arc;
 use deno_config::workspace::Workspace;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
-use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
@@ -222,19 +221,18 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            PackageJsonDepValue::Workspace(workspace_version_req) => {
-              let version_req = match workspace_version_req {
-                PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
-                  version_req.clone()
-                }
-                PackageJsonDepWorkspaceReq::Tilde
-                | PackageJsonDepWorkspaceReq::Caret => {
-                  VersionReq::parse_from_npm("*").unwrap()
-                }
-              };
-              if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
-                pkg.matches_name_and_version_req(alias, &version_req)
-              }) {
+            PackageJsonDepValue::Workspace(_workspace_version_req) => {
+              // A `workspace:` dependency always resolves to the local
+              // workspace member with a matching name. The version range
+              // (`*`, `~`, `^` or an explicit version) only affects what gets
+              // written when publishing, so it must not gate resolution here.
+              // Matching on the version range would incorrectly skip members
+              // whose version is a prerelease (e.g. `0.40.0-pre`), since semver
+              // ranges don't match prereleases, and fall back to the registry.
+              if let Some(pkg) = workspace_npm_pkgs
+                .iter()
+                .find(|pkg| pkg.matches_name(alias))
+              {
                 workspace_pkg_deps.push(InstallWorkspacePkgDep::Workspace {
                   alias: alias.clone(),
                   nv: pkg.nv.clone(),

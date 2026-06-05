@@ -136,6 +136,10 @@ impl NpmPackageConfig {
       RangeSetOrTag::Tag(tag) => tag == "workspace",
     }
   }
+
+  pub fn matches_name(&self, name: &str) -> bool {
+    name == self.nv.name
+  }
 }
 
 #[derive(Clone, Debug, Default, Hash, PartialEq)]

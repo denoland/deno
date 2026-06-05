@@ -10,6 +10,7 @@ use deno_error::JsError;
 use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_maybe_sync::new_rc;
+use deno_semver::RangeSetOrTag;
 use deno_semver::Version;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
@@ -687,4 +688,30 @@ pub(crate) fn join_package_name_to_path(
     }
   }
   path.into_owned()
+}
+
+/// Like `VersionReq::matches`, but also matches prerelease versions that fall
+/// within the requirement's range bounds.
+///
+/// This is used when matching a locally installed (e.g. pnpm/npm workspace)
+/// package against a requirement. npm's default semver rules exclude
+/// prereleases from ranges like `*` or `^1.0.0` to avoid silently selecting an
+/// unstable version from the registry, but a package that is already installed
+/// in `node_modules` was put there explicitly by the user, so a member with a
+/// prerelease version (e.g. `0.40.0-pre`) should still satisfy a bare
+/// `npm:<pkg>` (`*`) requirement instead of being rejected.
+pub(crate) fn version_req_matches_including_pre(
+  version_req: &deno_semver::VersionReq,
+  version: &Version,
+) -> bool {
+  if version_req.matches(version) {
+    return true;
+  }
+  match version_req.inner() {
+    RangeSetOrTag::RangeSet(set) => {
+      !version.pre.is_empty()
+        && set.0.iter().any(|range| range.intersects_version(version))
+    }
+    RangeSetOrTag::Tag(_) => false,
+  }
 }
