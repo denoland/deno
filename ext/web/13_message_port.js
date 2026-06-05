@@ -903,7 +903,17 @@ return {
   MessagePortReceiveMessageOnPortSymbol,
   nodeWorkerThreadCloseCb,
   nodeWorkerThreadCloseCbInvoked,
-  refedMessagePortsCount,
+  // `refedMessagePortsCount` is a mutable module-level counter. Before
+  // ext/web was converted to lazy-loaded IIFE scripts (#33760), this module
+  // used real ESM `export`s, so consumers (runtime/js/99_main.js'
+  // `hasMessageEventListener()`) observed a *live binding* that tracked the
+  // counter. A plain `refedMessagePortsCount` property here would instead
+  // capture a one-time snapshot of `0`, silently breaking the worker
+  // idle-termination check for refed Node message ports (#23169). Expose it
+  // as a getter to restore the live-binding behavior.
+  get refedMessagePortsCount() {
+    return refedMessagePortsCount;
+  },
   refMessagePort,
   serializeJsMessageData,
   structuredClone,

@@ -2001,8 +2001,17 @@ pub fn flags_from_vec_with_initial_cwd(
         });
 
       if let Some(arg) = pre_subcommand_arg {
-        let usage =
-          app.find_subcommand_mut(&subcommand).unwrap().render_usage();
+        // Only suggest moving the flag after the subcommand if the subcommand
+        // actually accepts it. Otherwise the "'<subcommand> <arg>' exists" tip
+        // would lie about a combination that doesn't exist (e.g. `deno -A lint`
+        // suggesting `lint --allow-all`, which `deno lint` rejects).
+        let arg_long = arg.trim_start_matches('-');
+        let (usage, subcommand_has_arg) = {
+          let sub = app.find_subcommand_mut(&subcommand).unwrap();
+          let has_arg =
+            sub.get_arguments().any(|a| a.get_long() == Some(arg_long));
+          (sub.render_usage(), has_arg)
+        };
 
         let mut err =
           clap::error::Error::new(ErrorKind::UnknownArgument).with_cmd(&app);
@@ -2011,18 +2020,21 @@ pub fn flags_from_vec_with_initial_cwd(
           clap::error::ContextValue::String(arg.clone()),
         );
 
-        let valid = app.get_styles().get_valid();
+        if subcommand_has_arg {
+          let valid = app.get_styles().get_valid();
 
-        let styled_suggestion = clap::builder::StyledStr::from(format!(
-          "'{}{subcommand} {arg}{}' exists",
-          valid.render(),
-          valid.render_reset()
-        ));
+          let styled_suggestion = clap::builder::StyledStr::from(format!(
+            "'{}{subcommand} {arg}{}' exists",
+            valid.render(),
+            valid.render_reset()
+          ));
 
-        err.insert(
-          clap::error::ContextKind::Suggested,
-          clap::error::ContextValue::StyledStrs(vec![styled_suggestion]),
-        );
+          err.insert(
+            clap::error::ContextKind::Suggested,
+            clap::error::ContextValue::StyledStrs(vec![styled_suggestion]),
+          );
+        }
+
         err.insert(
           clap::error::ContextKind::Usage,
           clap::error::ContextValue::StyledStr(usage),
@@ -15667,6 +15679,19 @@ mod tests {
   tip: 'repl --allow-net' exists
 
 Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
+    )
+  }
+
+  #[test]
+  fn flag_before_subcommand_not_supported() {
+    // `lint` does not accept `--allow-all`, so the error must not claim that
+    // `lint --allow-all` exists (see issue #27336).
+    let r = flags_from_vec(svec!["deno", "--allow-all", "lint"]);
+    assert_eq!(
+      r.unwrap_err().to_string(),
+      "error: unexpected argument '--allow-all' found
+
+Usage: deno lint [OPTIONS] [files]...\n"
     )
   }
 

@@ -88,6 +88,7 @@ use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
 use super::resolver::LspResolver;
+use super::test_code_actions::collect_test_code_actions;
 use super::testing;
 use super::text;
 use super::ts_server::TsServer;
@@ -1616,7 +1617,36 @@ impl Inner {
       .into_iter()
       .map(|e| (uri_to_url(&e.uri), e))
       .collect::<Vec<_>>();
-    if changes.iter().any(|(specifier, _)| {
+    // Evict cached on-disk documents whose source files were changed or
+    // deleted on disk. Without this, modules importing them would see the
+    // stale content the LSP last read (issue #12813). Open documents are owned
+    // by the editor — leave them alone.
+    let mut server_doc_changes = Vec::new();
+    for (specifier, event) in &changes {
+      if specifier.scheme() != "file"
+        || specifier.path().contains("/node_modules/")
+      {
+        continue;
+      }
+      let change_kind = match event.typ {
+        FileChangeType::DELETED => ChangeKind::Closed,
+        FileChangeType::CHANGED => ChangeKind::Modified,
+        _ => continue,
+      };
+      let Some(document) = self.document_modules.documents.inspect(&event.uri)
+      else {
+        continue;
+      };
+      if document.open().is_some() {
+        continue;
+      }
+      self
+        .document_modules
+        .documents
+        .remove_server_doc(&event.uri);
+      server_doc_changes.push((document, change_kind));
+    }
+    let has_config_changes = changes.iter().any(|(specifier, _)| {
       let path = specifier.path();
       !path.contains("/node_modules/")
         && (path.ends_with("/deno.json")
@@ -1629,7 +1659,8 @@ impl Inner {
         || path.ends_with("/node_modules/.deno/.setup-cache.bin")
         || self.config.tree.is_watched_file(specifier)
         || self.compiler_options_resolver.is_watched_file(specifier)
-    }) {
+    });
+    if has_config_changes {
       let mut deno_config_changes = IndexSet::with_capacity(changes.len());
       let mut changed_deno_json = false;
       deno_config_changes.extend(changes.iter().filter_map(|(s, e)| {
@@ -1662,16 +1693,15 @@ impl Inner {
       self.refresh_compiler_options_resolver();
       self.refresh_linter_resolver();
       self.refresh_documents_config();
-      self.project_changed(
-        changes
-          .iter()
-          .filter_map(|(_, e)| {
-            let document = self.document_modules.documents.inspect(&e.uri)?;
-            Some((document, ChangeKind::Modified))
-          })
-          .collect::<Vec<_>>(),
-        ProjectScopesChange::None,
-      );
+      let mut project_changes = changes
+        .iter()
+        .filter_map(|(_, e)| {
+          let document = self.document_modules.documents.inspect(&e.uri)?;
+          Some((document, ChangeKind::Modified))
+        })
+        .collect::<Vec<_>>();
+      project_changes.extend(server_doc_changes);
+      self.project_changed(project_changes, ProjectScopesChange::None);
 
       let TsServer::Js(ts_server) = self.ts_server.as_ref();
       ts_server.cleanup_semantic_cache(self.snapshot()).await;
@@ -1710,6 +1740,20 @@ impl Inner {
           },
         );
       }
+    } else if !server_doc_changes.is_empty() {
+      // Source files changed/were deleted on disk but no config changes —
+      // bump the project version, refresh diagnostics, and clear stale TSC
+      // script caches so dependents pick up the new state.
+      self.project_changed(server_doc_changes, ProjectScopesChange::None);
+      let TsServer::Js(ts_server) = self.ts_server.as_ref();
+      ts_server.cleanup_semantic_cache(self.snapshot()).await;
+      self.send_diagnostics_update();
+      if !self.is_using_push_based_diagnostics()
+        && self.config.diagnostic_refresh_capable()
+      {
+        self.client.refresh_diagnostics();
+      }
+      self.send_testing_update();
     }
     self.performance.measure(mark);
   }
@@ -2048,7 +2092,27 @@ impl Inner {
     };
     let mut deno_actions = Vec::new();
     let mut deno_lint_actions = Vec::new();
+    let mut deno_test_actions = Vec::new();
     let mut includes_no_cache = false;
+    if self.config.specifier_enabled_for_test(&module.specifier)
+      && let Some(Ok(parsed_source)) = &module
+        .open_data
+        .as_ref()
+        .and_then(|d| d.parsed_source.as_ref())
+      && params.context.only.as_ref().is_none_or(|only| {
+        only.iter().any(|kind| {
+          CodeActionKind::REFACTOR_REWRITE
+            .as_str()
+            .starts_with(kind.as_str())
+        })
+      })
+    {
+      deno_test_actions.extend(collect_test_code_actions(
+        document.uri(),
+        parsed_source,
+        params.range,
+      ));
+    }
     let file_diagnostics = async {
       if let Some(diagnostics_server) = &self.diagnostics_server {
         diagnostics_server.state.ts_diagnostics(document.uri())
@@ -2190,7 +2254,7 @@ impl Inner {
 
     let code_action_disabled_capable =
       self.config.code_action_disabled_capable();
-    let actions = deno_actions.into_iter().map(CodeActionOrCommand::CodeAction).chain(ts_actions).chain(deno_lint_actions.into_iter().map(CodeActionOrCommand::CodeAction)).filter(|a| code_action_disabled_capable
+    let actions = deno_actions.into_iter().map(CodeActionOrCommand::CodeAction).chain(deno_test_actions.into_iter().map(CodeActionOrCommand::CodeAction)).chain(ts_actions).chain(deno_lint_actions.into_iter().map(CodeActionOrCommand::CodeAction)).filter(|a| code_action_disabled_capable
         || matches!(a, CodeActionOrCommand::CodeAction(ca) if ca.disabled.is_none())).collect::<Vec<_>>();
     let response = if actions.is_empty() {
       None
@@ -3991,13 +4055,15 @@ impl Inner {
     self.refresh_documents_config();
 
     if self.config.did_change_watched_files_capable() {
-      // we are going to watch all the JSON files in the workspace, and the
-      // notification handler will pick up any of the changes of those files we
-      // are interested in.
+      // Watch config files (so we can refresh the resolver/compiler options
+      // when they change) and source files (so we can evict cached entries
+      // when files referenced by on-disk imports change or are deleted —
+      // otherwise the LSP keeps serving stale content from its in-memory
+      // document cache, see issue #12813).
       let options = DidChangeWatchedFilesRegistrationOptions {
         watchers: vec![FileSystemWatcher {
           glob_pattern: GlobPattern::String(
-            "**/*.{json,jsonc,lock}".to_string(),
+            "**/*.{json,jsonc,lock,js,mjs,cjs,jsx,ts,mts,cts,tsx}".to_string(),
           ),
           kind: None,
         }],
