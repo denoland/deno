@@ -329,6 +329,15 @@ impl ModuleLoadPreparer {
   }
 }
 
+/// Per-specifier source overrides for Hot Module Replacement.
+///
+/// When a file changes under `--watch-hmr`, the worker reads and transpiles the
+/// new source and stores the emitted JS here keyed by the module's `file:`
+/// specifier. The loader checks this map first in [`load_code_source`], so the
+/// `import()` that `applyHmrUpdate` performs (after evicting the module)
+/// recompiles from the fresh source instead of the stale module-graph source.
+pub type HmrSourceOverrides = Arc<Mutex<HashMap<ModuleSpecifier, String>>>;
+
 struct SharedCliModuleLoaderState {
   graph_kind: GraphKind,
   lib_window: TsTypeLib,
@@ -355,6 +364,7 @@ struct SharedCliModuleLoaderState {
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
   maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
   watcher_communicator: Option<Arc<WatcherCommunicator>>,
+  hmr_source_overrides: HmrSourceOverrides,
 }
 
 struct InFlightModuleLoadsTracker {
@@ -453,8 +463,16 @@ impl CliModuleLoaderFactory {
         },
         maybe_eszip_loader,
         watcher_communicator,
+        hmr_source_overrides: Default::default(),
       }),
     }
+  }
+
+  /// The shared HMR source-override map. Hand this to the worker so it can push
+  /// freshly-transpiled source on file change; the loader reads it in
+  /// [`load_code_source`].
+  pub fn hmr_source_overrides(&self) -> HmrSourceOverrides {
+    self.shared.hmr_source_overrides.clone()
   }
 
   fn create_with_lib<TGraphContainer: ModuleGraphContainer>(
@@ -748,6 +766,23 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       Cow::Borrowed(specifier)
     };
+
+    // HMR: if a fresh source override is registered for this specifier (a file
+    // changed under --watch-hmr), recompile from it instead of the stale
+    // module-graph source.
+    if let Some(code) = self
+      .shared
+      .hmr_source_overrides
+      .lock()
+      .get(specifier.as_ref())
+      .cloned()
+    {
+      return Ok(ModuleCodeStringSource {
+        code: ModuleSourceCode::String(code.into()),
+        found_url: specifier.as_ref().clone(),
+        module_type: ModuleType::JavaScript,
+      });
+    }
 
     let graph = self.graph_container.graph();
     let deno_resolver_requested_module_type =

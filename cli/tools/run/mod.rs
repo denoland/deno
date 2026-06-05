@@ -24,8 +24,6 @@ use crate::factory::CliFactory;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
 
-pub mod hmr;
-
 pub fn check_permission_before_script(flags: &Flags) {
   if !flags.has_permission() && flags.has_permission_in_argv() {
     log::warn!(
