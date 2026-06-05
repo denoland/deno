@@ -1037,6 +1037,30 @@ fn relative_specifier(specifier: &Url, referrer: &Url) -> String {
   }
 }
 
+fn import_map_resolves_dependency_key(
+  import_map: &ImportMap,
+  dependency_key: &str,
+  resolved: &Url,
+  referrer: &Url,
+) -> bool {
+  for entry in import_map.entries_for_referrer(referrer) {
+    let Some(address) = entry.value else {
+      continue;
+    };
+    let raw_key = entry.raw_key;
+    let is_match = dependency_key == raw_key
+      || (raw_key.ends_with('/') && dependency_key.starts_with(raw_key));
+    if is_match
+      && let Ok(specifier) = import_map.resolve(dependency_key, referrer)
+      && specifier == *resolved
+      && (dependency_key == raw_key || address.as_str().ends_with('/'))
+    {
+      return true;
+    }
+  }
+  false
+}
+
 fn maybe_ambient_import_specifier(
   diagnostic: &DenoDiagnostic,
 ) -> Option<String> {
@@ -1294,6 +1318,12 @@ fn diagnose_dependency(
         &referrer_module.specifier,
       )
       && dependency_key != to
+      && !import_map_resolves_dependency_key(
+        import_map,
+        dependency_key,
+        &resolved.specifier,
+        &referrer_module.specifier,
+      )
     {
       diagnostics.push(
         DenoDiagnostic::ImportMapRemap {
