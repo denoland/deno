@@ -4,20 +4,20 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
-use deno_ast::MediaType;
-use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::swc::ast;
 use deno_ast::swc::atoms::Atom;
-use deno_ast::swc::common::DUMMY_SP;
 use deno_ast::swc::common::comments::CommentKind;
+use deno_ast::swc::common::DUMMY_SP;
+use deno_ast::swc::ecma_visit::visit_mut_pass;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitMut;
 use deno_ast::swc::ecma_visit::VisitWith as _;
-use deno_ast::swc::ecma_visit::visit_mut_pass;
 use deno_ast::swc::utils as swc_utils;
+use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned as _;
 use deno_cache_dir::file_fetcher::File;
-use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::ModuleSpecifier;
 use regex::Regex;
 
 use crate::file_fetcher::TextDecodedFile;
@@ -145,7 +145,7 @@ fn extract_files_from_source_comments(
     r"```(?P<attributes>[^\r\n]*)\r?\n(?P<body>[\S\s]*?)```"
   );
   let lines_regex =
-    lazy_regex::regex!(r"(?:\* ?(?:> ?)*)((#!+).*)|(?:\* ?(?:> ?)*)(?:\# ?)?(.*)");
+    lazy_regex::regex!(r"(?:\* ?)((#!+).*)|(?:\* ?)(?:\# ?)?(.*)");
 
   let files = comments
     .iter()
@@ -185,9 +185,6 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      let is_markdown_blockquote = block
-        .name("blockquote")
-        .is_some_and(|blockquote| !blockquote.as_str().is_empty());
       block.name("attributes")?;
 
       let maybe_attributes: Option<Vec<_>> = block
@@ -230,19 +227,49 @@ fn extract_files_from_regex_blocks(
       let body = block.name("body").unwrap();
       let text = body.as_str();
 
+      // Detect whether this code block is inside a blockquote by looking at
+      // what appears on the opening fence line before the ``` in the source.
+      // For example, a JSDoc line like `* > ```ts` has blockquote prefix `> `,
+      // while `* ```ts` has none. We capture exactly the `> ` (or `> > `, etc.)
+      // sequence so we can strip it precisely from each content line, rather
+      // than stripping any leading `> ` regardless of context.
+      let fence_start = block.get(0).unwrap().start();
+      let before_fence = &source[..fence_start];
+      let line_before_fence = before_fence
+        .rfind('\n')
+        .map(|i| &before_fence[i + 1..])
+        .unwrap_or(before_fence);
+      // Strip the leading `* ` (or `*`) comment marker from the fence line,
+      // then collect the remaining `> ` tokens as the blockquote prefix.
+      let fence_line_after_star = line_before_fence
+        .trim_start()
+        .strip_prefix('*')
+        .map(|s| s.strip_prefix(' ').unwrap_or(s))
+        .unwrap_or("");
+      let mut blockquote_prefix = String::new();
+      let mut rest = fence_line_after_star;
+      loop {
+        if let Some(r) = rest.strip_prefix("> ") {
+          blockquote_prefix.push_str("> ");
+          rest = r;
+        } else if rest == ">" || rest.starts_with(">`") {
+          // bare `>` with no space before the fence (e.g. `* >```ts`)
+          blockquote_prefix.push('>');
+          break;
+        } else {
+          break;
+        }
+      }
+
       // TODO(caspervonb) generate an inline source map
       let mut file_source = String::new();
-      for line in text.lines() {
-        let line = if is_markdown_blockquote {
-          strip_markdown_blockquote_marker(line)
-        } else {
-          line
-        };
-        let Some(line) = lines_regex.captures(line) else {
-          continue;
-        };
-        let text = line.get(1).or_else(|| line.get(3)).unwrap();
-        writeln!(file_source, "{}", text.as_str()).unwrap();
+      for line in lines_regex.captures_iter(text) {
+        let line_text = line.get(1).or_else(|| line.get(3)).unwrap();
+        let stripped = line_text
+          .as_str()
+          .strip_prefix(blockquote_prefix.as_str())
+          .unwrap_or(line_text.as_str());
+        writeln!(file_source, "{}", stripped).unwrap();
       }
 
       let file_specifier = ModuleSpecifier::parse(&format!(
@@ -272,27 +299,6 @@ fn extract_files_from_regex_blocks(
     .collect();
 
   Ok(files)
-}
-
-fn strip_markdown_blockquote_marker(line: &str) -> &str {
-  let mut spaces = 0;
-
-  for (index, ch) in line.char_indices() {
-    match ch {
-      ' ' if spaces < 3 => {
-        spaces += 1;
-      }
-      '>' => {
-        let after_marker = index + ch.len_utf8();
-        return line[after_marker..]
-          .strip_prefix([' ', '\t'])
-          .unwrap_or(&line[after_marker..]);
-      }
-      _ => break,
-    }
-  }
-
-  line
 }
 
 #[derive(Default)]
@@ -1429,6 +1435,35 @@ Deno.test("file:///main.ts$9-12.ts", async ()=>{
             media_type: MediaType::TypeScript,
           },
         ],
+      },
+      // Regression: a code block NOT inside a blockquote that contains a line
+      // starting with `> ` (e.g. inside a template literal) must preserve it.
+      Test {
+        input: Input {
+          source: r#"/**
+ * ```ts
+ * const s = `
+ * > real content
+ * `;
+ * console.log(s);
+ * ```
+ */
+export function bar() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { bar } from "file:///main.ts";
+Deno.test("file:///main.ts$2-8.ts", async ()=>{
+    const s = `
+> real content
+`;
+    console.log(s);
+});
+"#,
+          specifier: "file:///main.ts$2-8.ts",
+          media_type: MediaType::TypeScript,
+        }],
       },
     ];
 
