@@ -521,6 +521,76 @@ async fn check_watch_test() {
 }
 
 #[test(flaky)]
+async fn compile_watch_test() {
+  let t = TempDir::new();
+  let main = t.path().join("main.ts");
+  let message = t.path().join("message.ts");
+  let data = t.path().join("data.txt");
+  let exe = if cfg!(windows) {
+    t.path().join("app.exe")
+  } else {
+    t.path().join("app")
+  };
+
+  main.write(
+    r#"import { message } from "./message.ts";
+console.log(message);
+console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
+"#,
+  );
+  message.write(r#"export const message = "before";"#);
+  data.write("included before");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("compile")
+    .arg("--watch")
+    .arg("--no-clear-screen")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-read")
+    .arg("--include")
+    .arg(&data)
+    .arg("--output")
+    .arg(&exe)
+    .arg(&main)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("data.txt", &mut stderr_lines).await;
+  wait_for_watcher("message.ts", &mut stderr_lines).await;
+  wait_contains("Compile finished", &mut stderr_lines).await;
+
+  let output = std::process::Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "before");
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
+
+  message.write(r#"export const message = "after";"#);
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Compile finished", &mut stderr_lines).await;
+
+  let output = std::process::Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
+
+  data.write("included after");
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Compile finished", &mut stderr_lines).await;
+
+  let output = std::process::Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "included after");
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
 async fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
