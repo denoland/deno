@@ -707,6 +707,19 @@ function mldsaPublicKeyLen(variant) {
   }
 }
 
+function mldsaBytesEqual(a, b) {
+  const len = TypedArrayPrototypeGetByteLength(a);
+  if (len !== TypedArrayPrototypeGetByteLength(b)) {
+    return false;
+  }
+  for (let i = 0; i < len; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function getKeyLength(algorithm) {
   switch (algorithm.name) {
     case "AES-CBC":
@@ -4891,6 +4904,126 @@ function importKeyMlDsa(
       }
       return makePublicKey(pub);
     }
+    case "jwk": {
+      // 1.
+      const jwk = keyData;
+
+      // 2.
+      if (jwk.priv !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["sign"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      } else {
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(["verify"], u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+
+      // 3.
+      if (jwk.kty !== "AKP") {
+        throw new DOMException("Invalid key type", "DataError");
+      }
+
+      // 4.
+      if (jwk.alg !== algorithmName) {
+        throw new DOMException("Invalid algorithm", "DataError");
+      }
+
+      // 5.
+      if (
+        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
+      ) {
+        throw new DOMException("Invalid key usage", "DataError");
+      }
+
+      // 6.
+      if (jwk.key_ops !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            jwk.key_ops,
+            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+          ) !== undefined
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        if (
+          !ArrayPrototypeEvery(
+            jwk.key_ops,
+            (u) => ArrayPrototypeIncludes(keyUsages, u),
+          )
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+      }
+
+      // 7.
+      if (jwk.ext !== undefined && jwk.ext === false && extractable) {
+        throw new DOMException("Invalid key extractability", "DataError");
+      }
+
+      // 8.
+      if (jwk.priv !== undefined) {
+        let seed;
+        try {
+          seed = op_crypto_base64url_decode(jwk.priv);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(seed) !== 32) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        let res;
+        try {
+          res = op_crypto_mldsa_from_seed(variant, seed);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+
+        // The 'pub' field must be present and equal to the public key
+        // derived from the seed.
+        let pub;
+        try {
+          pub = op_crypto_base64url_decode(jwk.pub);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (!mldsaBytesEqual(pub, res.publicKey)) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+
+        return makePrivateKey(seed, res.privateKey, res.publicKey);
+      } else {
+        let pub;
+        try {
+          pub = op_crypto_base64url_decode(jwk.pub);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (
+          TypedArrayPrototypeGetByteLength(pub) !== mldsaPublicKeyLen(variant)
+        ) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        return makePublicKey(pub);
+      }
+    }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
   }
@@ -4964,6 +5097,30 @@ function exportKeyMlDsa(format, key, innerKey) {
       }
       const der = op_crypto_mldsa_export_spki(variant, innerKey);
       return TypedArrayPrototypeGetBuffer(der);
+    }
+    case "jwk": {
+      const jwk = {
+        kty: "AKP",
+        alg: algorithmName,
+        "key_ops": key.usages,
+        ext: key[_extractable],
+      };
+      if (key[_type] === "private") {
+        const seed = innerKey?.seed;
+        if (seed == null) {
+          throw new DOMException(
+            "JWK export requires the original ML-DSA seed; this key was " +
+              "imported without one",
+            "OperationError",
+          );
+        }
+        const publicKey = WeakMapPrototypeGet(MLDSA_PUBLIC_FROM_PRIVATE, key);
+        jwk.pub = op_crypto_base64url_encode(getKeyData(publicKey[_handle]));
+        jwk.priv = op_crypto_base64url_encode(seed);
+      } else {
+        jwk.pub = op_crypto_base64url_encode(innerKey);
+      }
+      return jwk;
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
@@ -7121,6 +7278,16 @@ const dictJsonWebKey = [
   },
   {
     key: "k",
+    converter: webidl.converters["DOMString"],
+  },
+  // AKP (Algorithm Key Pair) key type, used by ML-DSA and other modern
+  // algorithms. https://www.rfc-editor.org/rfc/rfc9964
+  {
+    key: "pub",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "priv",
     converter: webidl.converters["DOMString"],
   },
 ];
