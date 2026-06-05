@@ -2,9 +2,9 @@
 
 //! Desktop runtime for Deno (libdenort).
 //!
-//! This is a cdylib that exports the WEF C ABI (wef_runtime_init,
-//! wef_runtime_start, wef_runtime_shutdown) and boots the full Deno
-//! standalone runtime. A WEF backend (CEF, WebView, Servo) loads this
+//! This is a cdylib that exports the Laufey C ABI (laufey_runtime_init,
+//! laufey_runtime_start, laufey_runtime_shutdown) and boots the full Deno
+//! standalone runtime. A Laufey backend (CEF, WebView, Servo) loads this
 //! shared library and provides the browser/window layer.
 //!
 //! The user's code uses `Deno.serve()` or `export default { fetch }`
@@ -35,18 +35,18 @@ use deno_terminal::colors;
 use denort::desktop::DesktopApi;
 use denort::run::RunOptions;
 
-/// Compile-time check: the just-wef crate we're linking against must use the
-/// same C ABI version as the prebuilt backend we ship. If just-wef bumps
-/// `WEF_API_VERSION` without our side updating, `init_api` would reject the
+/// Compile-time check: the laufey crate we're linking against must use the
+/// same C ABI version as the prebuilt backend we ship. If laufey bumps
+/// `LAUFEY_API_VERSION` without our side updating, `init_api` would reject the
 /// backend at startup with `-2`. Catching the mismatch at `cargo build` time
 /// makes the failure mode obvious instead of "the desktop app silently won't
 /// launch".
 const _: () = assert!(
-  just_wef::WEF_API_VERSION == 25,
-  "WEF_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when just-wef bumps its API version",
+  laufey::LAUFEY_API_VERSION == 25,
+  "LAUFEY_API_VERSION mismatch: update this assert and the prebuilt backend release pin in cli/tools/desktop.rs when laufey bumps its API version",
 );
 
-/// WEF-backed implementation of [`denort::desktop::DesktopApi`].
+/// Laufey-backed implementation of [`denort::desktop::DesktopApi`].
 struct WefDesktopApi {
   event_tx: deno_runtime::ops::desktop::DesktopEventTx,
   pending_responses: deno_runtime::ops::desktop::PendingBindResponses,
@@ -54,8 +54,8 @@ struct WefDesktopApi {
   /// IDs of every window currently displayed. Shared with the HMR reload
   /// callback so it can refresh all windows, not just the initial one.
   open_windows: Arc<Mutex<HashSet<u32>>>,
-  trays: Arc<Mutex<HashMap<u32, just_wef::TrayIcon>>>,
-  notifications: Arc<Mutex<HashMap<u32, just_wef::NotificationHandle>>>,
+  trays: Arc<Mutex<HashMap<u32, laufey::TrayIcon>>>,
+  notifications: Arc<Mutex<HashMap<u32, laufey::NotificationHandle>>>,
   /// Singleton for the unified-mux DevTools window. Without this, every
   /// `openDevtools()` call would spawn another DevTools window.
   devtools_window: Mutex<Option<u32>>,
@@ -64,7 +64,7 @@ struct WefDesktopApi {
 impl WefDesktopApi {
   /// Set up all event handlers on a newly created window, wiring events
   /// into the shared event channel.
-  fn setup_window_events(&self, window: just_wef::Window) -> just_wef::Window {
+  fn setup_window_events(&self, window: laufey::Window) -> laufey::Window {
     let kb_tx = self.event_tx.clone();
     let mouse_click_tx = self.event_tx.clone();
     let mouse_move_tx = self.event_tx.clone();
@@ -83,8 +83,8 @@ impl WefDesktopApi {
           deno_runtime::ops::desktop::DesktopEvent::KeyboardEvent {
             window_id: ev.window_id,
             r#type: match ev.state {
-              just_wef::KeyState::Pressed => "keydown".to_string(),
-              just_wef::KeyState::Released => "keyup".to_string(),
+              laufey::KeyState::Pressed => "keydown".to_string(),
+              laufey::KeyState::Released => "keyup".to_string(),
             },
             key: ev.key,
             code: ev.code,
@@ -101,16 +101,16 @@ impl WefDesktopApi {
           deno_runtime::ops::desktop::DesktopEvent::MouseClick {
             window_id: ev.window_id,
             state: match ev.state {
-              just_wef::MouseButtonState::Pressed => "pressed".to_string(),
-              just_wef::MouseButtonState::Released => "released".to_string(),
+              laufey::MouseButtonState::Pressed => "pressed".to_string(),
+              laufey::MouseButtonState::Released => "released".to_string(),
             },
             button: match ev.button {
-              just_wef::MouseButton::Left => 0,
-              just_wef::MouseButton::Middle => 1,
-              just_wef::MouseButton::Right => 2,
-              just_wef::MouseButton::Back => 3,
-              just_wef::MouseButton::Forward => 4,
-              just_wef::MouseButton::Other(n) => n,
+              laufey::MouseButton::Left => 0,
+              laufey::MouseButton::Middle => 1,
+              laufey::MouseButton::Right => 2,
+              laufey::MouseButton::Back => 3,
+              laufey::MouseButton::Forward => 4,
+              laufey::MouseButton::Other(n) => n,
             },
             client_x: ev.x,
             client_y: ev.y,
@@ -142,9 +142,9 @@ impl WefDesktopApi {
             delta_x: ev.delta_x,
             delta_y: ev.delta_y,
             delta_mode: match ev.delta_mode {
-              just_wef::WheelDeltaMode::Pixel => 0,
-              just_wef::WheelDeltaMode::Line => 1,
-              just_wef::WheelDeltaMode::Page => 2,
+              laufey::WheelDeltaMode::Pixel => 0,
+              laufey::WheelDeltaMode::Line => 1,
+              laufey::WheelDeltaMode::Page => 2,
             },
             client_x: ev.x,
             client_y: ev.y,
@@ -214,12 +214,13 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     frameless: bool,
     no_activate: bool,
   ) -> u32 {
-    let window = just_wef::Window::new_with_options(
+    let window = laufey::Window::new_with_options(
       width,
       height,
-      just_wef::WindowOptions {
+      laufey::WindowOptions {
         frameless,
         no_activate,
+        transparent_titlebar: false,
       },
     );
     let window = self.setup_window_events(window);
@@ -231,7 +232,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   fn close_window(&self, window_id: u32) {
     self.closed_windows.lock().unwrap().insert(window_id);
     self.open_windows.lock().unwrap().remove(&window_id);
-    just_wef::Window::from_id(window_id).close();
+    laufey::Window::from_id(window_id).close();
   }
 
   fn is_closed(&self, window_id: u32) -> bool {
@@ -239,55 +240,55 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 
   fn set_title(&self, window_id: u32, title: &str) {
-    just_wef::Window::from_id(window_id).set_title(title);
+    laufey::Window::from_id(window_id).set_title(title);
   }
 
   fn get_window_size(&self, window_id: u32) -> (i32, i32) {
-    just_wef::Window::from_id(window_id).get_size()
+    laufey::Window::from_id(window_id).get_size()
   }
 
   fn set_window_size(&self, window_id: u32, width: i32, height: i32) {
-    just_wef::Window::from_id(window_id).set_size(width, height);
+    laufey::Window::from_id(window_id).set_size(width, height);
   }
 
   fn get_window_position(&self, window_id: u32) -> (i32, i32) {
-    just_wef::Window::from_id(window_id).get_position()
+    laufey::Window::from_id(window_id).get_position()
   }
 
   fn set_window_position(&self, window_id: u32, x: i32, y: i32) {
-    just_wef::Window::from_id(window_id).set_position(x, y);
+    laufey::Window::from_id(window_id).set_position(x, y);
   }
 
   fn is_resizable(&self, window_id: u32) -> bool {
-    just_wef::Window::from_id(window_id).get_resizable()
+    laufey::Window::from_id(window_id).get_resizable()
   }
 
   fn set_resizable(&self, window_id: u32, resizable: bool) {
-    just_wef::Window::from_id(window_id).set_resizable(resizable);
+    laufey::Window::from_id(window_id).set_resizable(resizable);
   }
 
   fn is_always_on_top(&self, window_id: u32) -> bool {
-    just_wef::Window::from_id(window_id).get_always_on_top()
+    laufey::Window::from_id(window_id).get_always_on_top()
   }
 
   fn set_always_on_top(&self, window_id: u32, always_on_top: bool) {
-    just_wef::Window::from_id(window_id).set_always_on_top(always_on_top);
+    laufey::Window::from_id(window_id).set_always_on_top(always_on_top);
   }
 
   fn is_visible(&self, window_id: u32) -> bool {
-    just_wef::Window::from_id(window_id).get_visible()
+    laufey::Window::from_id(window_id).get_visible()
   }
 
   fn show(&self, window_id: u32) {
-    just_wef::Window::from_id(window_id).show();
+    laufey::Window::from_id(window_id).show();
   }
 
   fn hide(&self, window_id: u32) {
-    just_wef::Window::from_id(window_id).hide();
+    laufey::Window::from_id(window_id).hide();
   }
 
   fn focus(&self, window_id: u32) {
-    just_wef::Window::from_id(window_id).focus();
+    laufey::Window::from_id(window_id).focus();
   }
 
   fn open_devtools(&self, window_id: u32, renderer: bool, deno: bool) {
@@ -296,7 +297,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       // repeated `openDevtools()` calls don't pile up windows.
       if let Some(id) = *self.devtools_window.lock().unwrap() {
         if !self.closed_windows.lock().unwrap().contains(&id) {
-          just_wef::Window::from_id(id).focus();
+          laufey::Window::from_id(id).focus();
           return;
         }
       }
@@ -311,7 +312,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       log::info!(
         "[desktop] openDevtools(renderer={renderer}, deno={deno}) → {url}"
       );
-      let window = just_wef::Window::new(1200, 800);
+      let window = laufey::Window::new(1200, 800);
       window.set_title("Deno Desktop DevTools");
       window.navigate(&url);
       let window = self.setup_window_events(window);
@@ -321,7 +322,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       *self.devtools_window.lock().unwrap() = Some(id);
       return;
     }
-    just_wef::Window::from_id(window_id).open_devtools();
+    laufey::Window::from_id(window_id).open_devtools();
   }
 
   fn execute_js(
@@ -338,12 +339,12 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         + 'static,
     >,
   ) {
-    just_wef::Window::from_id(window_id).execute_js(
+    laufey::Window::from_id(window_id).execute_js(
       script,
-      Some(move |result: Result<just_wef::Value, just_wef::Value>| {
+      Some(move |result: Result<laufey::Value, laufey::Value>| {
         callback(match result {
-          Ok(val) => Ok(wef_value_to_desktop_value(val)),
-          Err(err) => Err(wef_value_to_desktop_value(err)),
+          Ok(val) => Ok(laufey_value_to_desktop_value(val)),
+          Err(err) => Err(laufey_value_to_desktop_value(err)),
         });
       }),
     );
@@ -353,7 +354,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     let tx = self.event_tx.clone();
     let responses = self.pending_responses.clone();
     let name_owned = name.to_string();
-    just_wef::Window::from_id(window_id).add_binding_async(
+    laufey::Window::from_id(window_id).add_binding_async(
       name,
       move |js_call| {
         let tx = tx.clone();
@@ -361,7 +362,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         let name = name_owned.clone();
         async move {
           let args: Vec<serde_json::Value> =
-            js_call.args.iter().map(wef_value_to_json).collect();
+            js_call.args.iter().map(laufey_value_to_json).collect();
           let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
           let call_id =
             deno_runtime::ops::desktop::register_bind_call(&responses, resp_tx);
@@ -380,18 +381,18 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
                 "event channel closed".to_string()
               }
             };
-            js_call.reject(just_wef::Value::String(msg));
+            js_call.reject(laufey::Value::String(msg));
             return;
           }
           match resp_rx.await {
             Ok(Ok(result)) => {
-              js_call.resolve(json_to_wef_value(&result));
+              js_call.resolve(json_to_laufey_value(&result));
             }
             Ok(Err(error)) => {
-              js_call.reject(just_wef::Value::String(error));
+              js_call.reject(laufey::Value::String(error));
             }
             Err(_) => {
-              js_call.reject(just_wef::Value::String(
+              js_call.reject(laufey::Value::String(
                 "bind response channel dropped".to_string(),
               ));
             }
@@ -402,15 +403,15 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   }
 
   fn unbind(&self, window_id: u32, name: &str) {
-    just_wef::Window::from_id(window_id).unbind(name);
+    laufey::Window::from_id(window_id).unbind(name);
   }
 
   fn navigate(&self, window_id: u32, url: &str) {
-    just_wef::Window::from_id(window_id).navigate(url);
+    laufey::Window::from_id(window_id).navigate(url);
   }
 
   fn quit(&self) {
-    just_wef::quit();
+    laufey::quit();
   }
 
   fn set_application_menu(
@@ -420,10 +421,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   ) {
     let menu = menu
       .into_iter()
-      .map(desktop_menu_item_to_wef_menu_item)
+      .map(desktop_menu_item_to_laufey_menu_item)
       .collect::<Vec<_>>();
     let tx = self.event_tx.clone();
-    just_wef::Window::from_id(window_id).set_menu(&menu, move |id: &str| {
+    laufey::Window::from_id(window_id).set_menu(&menu, move |id: &str| {
       let _ =
         tx.try_send(deno_runtime::ops::desktop::DesktopEvent::AppMenuClick {
           window_id,
@@ -441,10 +442,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
   ) {
     let menu = menu
       .into_iter()
-      .map(desktop_menu_item_to_wef_menu_item)
+      .map(desktop_menu_item_to_laufey_menu_item)
       .collect::<Vec<_>>();
     let tx = self.event_tx.clone();
-    just_wef::Window::from_id(window_id).show_context_menu(
+    laufey::Window::from_id(window_id).show_context_menu(
       x,
       y,
       &menu,
@@ -469,18 +470,18 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     ),
     deno_error::JsErrorBox,
   > {
-    let window = just_wef::Window::from_id(window_id);
+    let window = laufey::Window::from_id(window_id);
     let handle_type = window.get_window_handle_type();
     let raw_win = window.get_window_handle();
     let raw_display = window.get_display_handle();
 
     let null_window =
-      || deno_error::JsErrorBox::generic("WEF returned a null window handle");
+      || deno_error::JsErrorBox::generic("Laufey returned a null window handle");
     let null_display =
-      || deno_error::JsErrorBox::generic("WEF returned a null display handle");
+      || deno_error::JsErrorBox::generic("Laufey returned a null display handle");
 
     match handle_type {
-      just_wef::WEF_WINDOW_HANDLE_APPKIT => {
+      laufey::LAUFEY_WINDOW_HANDLE_APPKIT => {
         use raw_window_handle::*;
         let win = RawWindowHandle::AppKit(AppKitWindowHandle::new(
           std::ptr::NonNull::new(raw_win).ok_or_else(null_window)?,
@@ -488,7 +489,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         let display = RawDisplayHandle::AppKit(AppKitDisplayHandle::new());
         Ok((win, display))
       }
-      just_wef::WEF_WINDOW_HANDLE_WIN32 => {
+      laufey::LAUFEY_WINDOW_HANDLE_WIN32 => {
         use raw_window_handle::*;
         let mut handle = Win32WindowHandle::new(
           std::num::NonZeroIsize::new(raw_win as isize)
@@ -500,7 +501,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         let display = RawDisplayHandle::Windows(WindowsDisplayHandle::new());
         Ok((win, display))
       }
-      just_wef::WEF_WINDOW_HANDLE_X11 => {
+      laufey::LAUFEY_WINDOW_HANDLE_X11 => {
         use raw_window_handle::*;
         let win = RawWindowHandle::Xlib(XlibWindowHandle::new(raw_win as _));
         let display = RawDisplayHandle::Xlib(XlibDisplayHandle::new(
@@ -509,7 +510,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         ));
         Ok((win, display))
       }
-      just_wef::WEF_WINDOW_HANDLE_WAYLAND => {
+      laufey::LAUFEY_WINDOW_HANDLE_WAYLAND => {
         use raw_window_handle::*;
         let win = RawWindowHandle::Wayland(WaylandWindowHandle::new(
           std::ptr::NonNull::new(raw_win).ok_or_else(null_window)?,
@@ -520,17 +521,17 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
         Ok((win, display))
       }
       other => Err(deno_error::JsErrorBox::generic(format!(
-        "unknown WEF window handle type: {other}",
+        "unknown Laufey window handle type: {other}",
       ))),
     }
   }
 
   fn alert(&self, title: &str, message: &str) {
-    just_wef::alert(title, message);
+    laufey::alert(title, message);
   }
 
   fn confirm(&self, title: &str, message: &str) -> bool {
-    just_wef::confirm(title, message)
+    laufey::confirm(title, message)
   }
 
   fn prompt(
@@ -539,18 +540,18 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     message: &str,
     default_value: &str,
   ) -> Option<String> {
-    just_wef::prompt(title, message, default_value)
+    laufey::prompt(title, message, default_value)
   }
 
   fn set_dock_badge(&self, text: &str) {
-    just_wef::set_dock_badge(if text.is_empty() { None } else { Some(text) });
+    laufey::set_dock_badge(if text.is_empty() { None } else { Some(text) });
   }
 
   fn bounce_dock(&self, critical: bool) {
-    just_wef::bounce_dock(if critical {
-      just_wef::DockBounceType::Critical
+    laufey::bounce_dock(if critical {
+      laufey::DockBounceType::Critical
     } else {
-      just_wef::DockBounceType::Informational
+      laufey::DockBounceType::Informational
     });
   }
 
@@ -559,10 +560,10 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       Some(menu) => {
         let menu = menu
           .into_iter()
-          .map(desktop_menu_item_to_wef_menu_item)
+          .map(desktop_menu_item_to_laufey_menu_item)
           .collect::<Vec<_>>();
         let tx = self.event_tx.clone();
-        just_wef::set_dock_menu(&menu, move |id: &str| {
+        laufey::set_dock_menu(&menu, move |id: &str| {
           let _ = tx.try_send(
             deno_runtime::ops::desktop::DesktopEvent::DockMenuClick {
               id: id.to_string(),
@@ -570,16 +571,16 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           );
         });
       }
-      None => just_wef::clear_dock_menu(),
+      None => laufey::clear_dock_menu(),
     }
   }
 
   fn set_dock_visible(&self, visible: bool) {
-    just_wef::set_dock_visible(visible);
+    laufey::set_dock_visible(visible);
   }
 
   fn create_tray(&self) -> u32 {
-    let tray = just_wef::TrayIcon::new();
+    let tray = laufey::TrayIcon::new();
     let tray_id = tray.id();
     if tray_id == 0 {
       return 0;
@@ -635,7 +636,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       Some(menu) => {
         let menu = menu
           .into_iter()
-          .map(desktop_menu_item_to_wef_menu_item)
+          .map(desktop_menu_item_to_laufey_menu_item)
           .collect::<Vec<_>>();
         let tx = self.event_tx.clone();
         tray.set_menu(&menu, move |id: &str| {
@@ -665,7 +666,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     silent: Option<bool>,
     require_interaction: Option<bool>,
   ) -> u32 {
-    let mut builder = just_wef::Notification::new(title);
+    let mut builder = laufey::Notification::new(title);
     if let Some(body) = body {
       builder = builder.body(body);
     }
@@ -682,7 +683,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       builder = builder.require_interaction(require);
     }
 
-    // The wef handler closure receives only the event; it needs the
+    // The laufey handler closure receives only the event; it needs the
     // notification id to route the event through the desktop channel.
     // We can't know the id until `on_event` returns, so we capture it
     // through a shared slot populated immediately after.
@@ -696,7 +697,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       let Some(&nid) = id_for_handler.get() else {
         return;
       };
-      use just_wef::NotificationEvent;
+      use laufey::NotificationEvent;
       let desktop_event = match event {
         NotificationEvent::Shown => {
           deno_runtime::ops::desktop::DesktopEvent::NotificationShow {
@@ -721,7 +722,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           }
         }
       };
-      let is_terminal = matches!(event, just_wef::NotificationEvent::Closed);
+      let is_terminal = matches!(event, laufey::NotificationEvent::Closed);
       let _ = tx.try_send(desktop_event);
       if is_terminal {
         notifications.lock().unwrap().remove(&nid);
@@ -758,8 +759,8 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       dyn FnOnce(deno_runtime::ops::desktop::PermissionState) + Send + 'static,
     >,
   ) {
-    just_wef::request_permission(
-      just_wef::PermissionKind::Notifications,
+    laufey::request_permission(
+      laufey::PermissionKind::Notifications,
       move |status| cb(map_permission_status(status)),
     );
   }
@@ -770,83 +771,83 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       dyn FnOnce(deno_runtime::ops::desktop::PermissionState) + Send + 'static,
     >,
   ) {
-    just_wef::query_permission(
-      just_wef::PermissionKind::Notifications,
+    laufey::query_permission(
+      laufey::PermissionKind::Notifications,
       move |status| cb(map_permission_status(status)),
     );
   }
 }
 
 fn map_permission_status(
-  status: just_wef::PermissionStatus,
+  status: laufey::PermissionStatus,
 ) -> deno_runtime::ops::desktop::PermissionState {
   use deno_runtime::ops::desktop::PermissionState;
   match status {
-    just_wef::PermissionStatus::Granted => PermissionState::Granted,
-    just_wef::PermissionStatus::Denied => PermissionState::Denied,
-    just_wef::PermissionStatus::Prompt => PermissionState::Prompt,
-    just_wef::PermissionStatus::Unsupported => PermissionState::Unsupported,
+    laufey::PermissionStatus::Granted => PermissionState::Granted,
+    laufey::PermissionStatus::Denied => PermissionState::Denied,
+    laufey::PermissionStatus::Prompt => PermissionState::Prompt,
+    laufey::PermissionStatus::Unsupported => PermissionState::Unsupported,
   }
 }
 
-fn desktop_menu_item_to_wef_menu_item(
+fn desktop_menu_item_to_laufey_menu_item(
   item: denort::desktop::MenuItem,
-) -> just_wef::MenuItem {
+) -> laufey::MenuItem {
   match item {
     denort::desktop::MenuItem::Item {
       label,
       id,
       accelerator,
       enabled,
-    } => just_wef::MenuItem::Item {
+    } => laufey::MenuItem::Item {
       label,
       id,
       accelerator,
       enabled,
     },
     denort::desktop::MenuItem::Submenu { label, items } => {
-      just_wef::MenuItem::Submenu {
+      laufey::MenuItem::Submenu {
         label,
         items: items
           .into_iter()
-          .map(desktop_menu_item_to_wef_menu_item)
+          .map(desktop_menu_item_to_laufey_menu_item)
           .collect(),
       }
     }
-    denort::desktop::MenuItem::Separator => just_wef::MenuItem::Separator,
+    denort::desktop::MenuItem::Separator => laufey::MenuItem::Separator,
     denort::desktop::MenuItem::Role { role } => {
-      just_wef::MenuItem::Role { role }
+      laufey::MenuItem::Role { role }
     }
   }
 }
 
 #[allow(dead_code)]
-fn wef_value_to_v8<'a>(
+fn laufey_value_to_v8<'a>(
   scope: &v8::PinScope<'a, '_>,
-  val: just_wef::Value,
+  val: laufey::Value,
 ) -> v8::Local<'a, v8::Value> {
   match val {
-    just_wef::Value::Null => v8::null(scope).into(),
-    just_wef::Value::Bool(bool) => v8::Boolean::new(scope, bool).into(),
-    just_wef::Value::Int(int) => v8::Integer::new(scope, int).into(),
-    just_wef::Value::Double(double) => v8::Number::new(scope, double).into(),
-    just_wef::Value::String(str) => {
+    laufey::Value::Null => v8::null(scope).into(),
+    laufey::Value::Bool(bool) => v8::Boolean::new(scope, bool).into(),
+    laufey::Value::Int(int) => v8::Integer::new(scope, int).into(),
+    laufey::Value::Double(double) => v8::Number::new(scope, double).into(),
+    laufey::Value::String(str) => {
       v8::String::new(scope, &str).unwrap().into()
     }
-    just_wef::Value::List(list) => {
+    laufey::Value::List(list) => {
       let elements = list
         .into_iter()
-        .map(|v| wef_value_to_v8(scope, v))
+        .map(|v| laufey_value_to_v8(scope, v))
         .collect::<Vec<_>>();
       v8::Array::new_with_elements(scope, &elements).into()
     }
-    just_wef::Value::Dict(dict) => {
+    laufey::Value::Dict(dict) => {
       let mut names = Vec::with_capacity(dict.len());
       let mut values = Vec::with_capacity(dict.len());
 
       for (k, v) in dict {
         names.push(v8::String::new(scope, &k).unwrap().into());
-        values.push(wef_value_to_v8(scope, v));
+        values.push(laufey_value_to_v8(scope, v));
       }
 
       let prototype = v8::null(scope).into();
@@ -855,7 +856,7 @@ fn wef_value_to_v8<'a>(
       )
       .into()
     }
-    just_wef::Value::Binary(bin) => {
+    laufey::Value::Binary(bin) => {
       let len = bin.len();
       let backing_store = v8::ArrayBuffer::new_backing_store_from_vec(bin);
       let backing_store = backing_store.make_shared();
@@ -867,37 +868,37 @@ fn wef_value_to_v8<'a>(
 }
 
 #[allow(dead_code)]
-fn v8_to_wef_value<'a>(
+fn v8_to_laufey_value<'a>(
   scope: &v8::PinScope<'a, '_>,
   val: v8::Local<'a, v8::Value>,
-) -> just_wef::Value {
+) -> laufey::Value {
   if val.is_null_or_undefined() {
-    just_wef::Value::Null
+    laufey::Value::Null
   } else if val.is_boolean() {
-    just_wef::Value::Bool(val.boolean_value(scope))
+    laufey::Value::Bool(val.boolean_value(scope))
   } else if val.is_int32() {
-    just_wef::Value::Int(val.int32_value(scope).unwrap_or(0))
+    laufey::Value::Int(val.int32_value(scope).unwrap_or(0))
   } else if val.is_number() {
-    just_wef::Value::Double(val.number_value(scope).unwrap_or(0.0))
+    laufey::Value::Double(val.number_value(scope).unwrap_or(0.0))
   } else if val.is_string() {
     let s = val.to_rust_string_lossy(scope);
-    just_wef::Value::String(s)
+    laufey::Value::String(s)
   } else if val.is_array_buffer_view() {
     let view: v8::Local<v8::ArrayBufferView> = val.try_into().unwrap();
     let len = view.byte_length();
     let mut buf = vec![0u8; len];
     view.copy_contents(&mut buf);
-    just_wef::Value::Binary(buf)
+    laufey::Value::Binary(buf)
   } else if val.is_array() {
     let arr: v8::Local<v8::Array> = val.try_into().unwrap();
     let len = arr.length();
     let mut list = Vec::with_capacity(len as usize);
     for i in 0..len {
       if let Some(elem) = arr.get_index(scope, i) {
-        list.push(v8_to_wef_value(scope, elem));
+        list.push(v8_to_laufey_value(scope, elem));
       }
     }
-    just_wef::Value::List(list)
+    laufey::Value::List(list)
   } else if val.is_object() {
     let obj: v8::Local<v8::Object> = val.try_into().unwrap();
     let mut map = std::collections::HashMap::new();
@@ -908,15 +909,15 @@ fn v8_to_wef_value<'a>(
         if let Some(key) = names.get_index(scope, i) {
           let key_str = key.to_rust_string_lossy(scope);
           if let Some(value) = obj.get(scope, key) {
-            map.insert(key_str, v8_to_wef_value(scope, value));
+            map.insert(key_str, v8_to_laufey_value(scope, value));
           }
         }
       }
     }
-    just_wef::Value::Dict(map)
+    laufey::Value::Dict(map)
   } else {
     // Fallback: coerce to string
-    just_wef::Value::String(val.to_rust_string_lossy(scope))
+    laufey::Value::String(val.to_rust_string_lossy(scope))
   }
 }
 
@@ -924,7 +925,7 @@ fn v8_to_wef_value<'a>(
 /// native addons loaded via `dlopen` (e.g. next-swc.node) can resolve
 /// NAPI function symbols from our library.
 ///
-/// By default, WEF loads this dylib without `RTLD_GLOBAL`, so its symbols
+/// By default, Laufey loads this dylib without `RTLD_GLOBAL`, so its symbols
 /// are only visible within the dylib itself. NAPI addons use
 /// `-undefined dynamic_lookup` (macOS) and expect NAPI symbols to be
 /// in the global symbol table. Re-opening ourselves with `RTLD_GLOBAL`
@@ -1084,7 +1085,7 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
   false
 }
 
-just_wef::main!(|| {
+laufey::main!(|| {
   // Apply any pending update before anything else.
   #[cfg(unix)]
   let update_rolled_back = {
@@ -1113,7 +1114,7 @@ just_wef::main!(|| {
 
   // Guard against re-entry: when a framework dev server (e.g. Next.js)
   // forks child/worker processes, they re-execute this dylib. Detect
-  // forked workers and run them headless (no WEF window).
+  // forked workers and run them headless (no Laufey window).
   //
   // A forked worker is recognized by the *combination* of:
   //   1. argv shaped like `<exe> run [flags…] script.js …` (i.e.
@@ -1126,7 +1127,7 @@ just_wef::main!(|| {
   // already had NODE_CHANNEL_FD set (e.g. running inside another forked
   // process, Jest, pnpm) would silently take the headless path and
   // never show a window. Requiring the `run` argv shape rules that out:
-  // the WEF backend never invokes us with `run` as argv[1].
+  // the Laufey backend never invokes us with `run` as argv[1].
   let args: Vec<_> = env::args_os().collect();
   let argv_run = args
     .get(1)
@@ -1199,7 +1200,7 @@ just_wef::main!(|| {
     .install_default()
     .unwrap();
 
-  just_wef::set_js_namespace("bindings");
+  laufey::set_js_namespace("bindings");
 
   // Allocate the desktop serve port and publish it via DENO_SERVE_ADDRESS
   // BEFORE the tokio runtime is built. Once the runtime spins up its
@@ -1282,7 +1283,7 @@ just_wef::main!(|| {
         // Only show native alert for non-JS errors (startup crashes).
         // JS errors are already handled by the error reporting JS listener.
         if !is_js_error {
-          just_wef::alert(
+          laufey::alert(
             "Application Error",
             error_string.trim_start_matches("error: "),
           );
@@ -1292,7 +1293,7 @@ just_wef::main!(|| {
   });
 });
 
-/// Run as a headless worker (no WEF window). Used when a framework dev
+/// Run as a headless worker (no Laufey window). Used when a framework dev
 /// server forks child processes that re-execute this dylib.
 fn run_headless_worker() {
   denort::init_logging(None, None);
@@ -1417,73 +1418,73 @@ fn extract_fork_script_path(
   None
 }
 
-/// Convert a just_wef::Value to a DesktopValue for direct V8 conversion.
-fn wef_value_to_desktop_value(
-  v: just_wef::Value,
+/// Convert a laufey::Value to a DesktopValue for direct V8 conversion.
+fn laufey_value_to_desktop_value(
+  v: laufey::Value,
 ) -> deno_runtime::ops::desktop::DesktopValue {
   use deno_runtime::ops::desktop::DesktopValue;
   match v {
-    just_wef::Value::Null => DesktopValue::Null,
-    just_wef::Value::Bool(b) => DesktopValue::Bool(b),
-    just_wef::Value::Int(i) => DesktopValue::Int(i),
-    just_wef::Value::Double(d) => DesktopValue::Double(d),
-    just_wef::Value::String(s) => DesktopValue::String(s),
-    just_wef::Value::List(l) => DesktopValue::List(
-      l.into_iter().map(wef_value_to_desktop_value).collect(),
+    laufey::Value::Null => DesktopValue::Null,
+    laufey::Value::Bool(b) => DesktopValue::Bool(b),
+    laufey::Value::Int(i) => DesktopValue::Int(i),
+    laufey::Value::Double(d) => DesktopValue::Double(d),
+    laufey::Value::String(s) => DesktopValue::String(s),
+    laufey::Value::List(l) => DesktopValue::List(
+      l.into_iter().map(laufey_value_to_desktop_value).collect(),
     ),
-    just_wef::Value::Dict(d) => DesktopValue::Dict(
+    laufey::Value::Dict(d) => DesktopValue::Dict(
       d.into_iter()
-        .map(|(k, v)| (k, wef_value_to_desktop_value(v)))
+        .map(|(k, v)| (k, laufey_value_to_desktop_value(v)))
         .collect(),
     ),
-    just_wef::Value::Binary(b) => DesktopValue::Binary(b),
+    laufey::Value::Binary(b) => DesktopValue::Binary(b),
   }
 }
 
-/// Convert a just_wef::Value to a serde_json::Value for channel transport.
-fn wef_value_to_json(v: &just_wef::Value) -> serde_json::Value {
+/// Convert a laufey::Value to a serde_json::Value for channel transport.
+fn laufey_value_to_json(v: &laufey::Value) -> serde_json::Value {
   match v {
-    just_wef::Value::Null => serde_json::Value::Null,
-    just_wef::Value::Bool(b) => serde_json::Value::Bool(*b),
-    just_wef::Value::Int(i) => serde_json::json!(*i),
-    just_wef::Value::Double(d) => serde_json::json!(*d),
-    just_wef::Value::String(s) => serde_json::Value::String(s.clone()),
-    just_wef::Value::List(l) => {
-      serde_json::Value::Array(l.iter().map(wef_value_to_json).collect())
+    laufey::Value::Null => serde_json::Value::Null,
+    laufey::Value::Bool(b) => serde_json::Value::Bool(*b),
+    laufey::Value::Int(i) => serde_json::json!(*i),
+    laufey::Value::Double(d) => serde_json::json!(*d),
+    laufey::Value::String(s) => serde_json::Value::String(s.clone()),
+    laufey::Value::List(l) => {
+      serde_json::Value::Array(l.iter().map(laufey_value_to_json).collect())
     }
-    just_wef::Value::Dict(d) => {
+    laufey::Value::Dict(d) => {
       let mut map = serde_json::Map::new();
       for (k, v) in d {
-        map.insert(k.clone(), wef_value_to_json(v));
+        map.insert(k.clone(), laufey_value_to_json(v));
       }
       serde_json::Value::Object(map)
     }
-    just_wef::Value::Binary(b) => serde_json::json!(b),
+    laufey::Value::Binary(b) => serde_json::json!(b),
   }
 }
 
-/// Convert a serde_json::Value to a just_wef::Value for the menu template.
-fn json_to_wef_value(v: &serde_json::Value) -> just_wef::Value {
+/// Convert a serde_json::Value to a laufey::Value for the menu template.
+fn json_to_laufey_value(v: &serde_json::Value) -> laufey::Value {
   match v {
-    serde_json::Value::Null => just_wef::Value::Null,
-    serde_json::Value::Bool(b) => just_wef::Value::Bool(*b),
+    serde_json::Value::Null => laufey::Value::Null,
+    serde_json::Value::Bool(b) => laufey::Value::Bool(*b),
     serde_json::Value::Number(n) => {
       if let Some(i) = n.as_i64() {
-        just_wef::Value::Int(i as i32)
+        laufey::Value::Int(i as i32)
       } else {
-        just_wef::Value::Double(n.as_f64().unwrap_or(0.0))
+        laufey::Value::Double(n.as_f64().unwrap_or(0.0))
       }
     }
-    serde_json::Value::String(s) => just_wef::Value::String(s.clone()),
+    serde_json::Value::String(s) => laufey::Value::String(s.clone()),
     serde_json::Value::Array(arr) => {
-      just_wef::Value::List(arr.iter().map(json_to_wef_value).collect())
+      laufey::Value::List(arr.iter().map(json_to_laufey_value).collect())
     }
     serde_json::Value::Object(obj) => {
       let mut map = std::collections::HashMap::new();
       for (k, v) in obj {
-        map.insert(k.clone(), json_to_wef_value(v));
+        map.insert(k.clone(), json_to_laufey_value(v));
       }
-      just_wef::Value::Dict(map)
+      laufey::Value::Dict(map)
     }
   }
 }
@@ -1515,7 +1516,7 @@ async fn run_desktop(
   }
 
   // The VFS extract + chdir for self-extracting bundles happens in
-  // `just_wef::main!` before the tokio runtime is built — chdir is
+  // `laufey::main!` before the tokio runtime is built — chdir is
   // process-wide and isn't safe to do once async tasks are running.
   let sys = if data.metadata.self_extracting.is_some() {
     denort::file_system::DenoRtSys::new_self_extracting(data.vfs.clone())
@@ -1571,7 +1572,7 @@ async fn run_desktop(
     log::debug!("[desktop] inspector server bound on {addr}");
   }
 
-  // DENO_SERVE_ADDRESS is published by `just_wef::main!` before the
+  // DENO_SERVE_ADDRESS is published by `laufey::main!` before the
   // tokio runtime is built — see the comment there for why we can't
   // do it from here. `desktop_serve_port` is the port we put into it.
 
@@ -1613,8 +1614,8 @@ async fn run_desktop(
           .copied()
           .collect();
         for id in ids {
-          just_wef::Window::from_id(id).execute_js::<fn(
-            Result<just_wef::Value, just_wef::Value>,
+          laufey::Window::from_id(id).execute_js::<fn(
+            Result<laufey::Value, laufey::Value>,
           )>("location.reload()", None);
         }
       }))
@@ -1628,7 +1629,7 @@ async fn run_desktop(
     denort::desktop::AutoUpdateState {
       dylib_path: p,
       app_version: data.metadata.app_version.clone(),
-      rolled_back: update_rolled_back, // from just_wef::main! startup check
+      rolled_back: update_rolled_back, // from laufey::main! startup check
     }
   });
   #[cfg(not(unix))]
@@ -1669,7 +1670,7 @@ async fn run_desktop(
       // observe them as `Deno.dock` "reopen" events.
       {
         let reopen_tx = event_tx.0.clone();
-        just_wef::on_dock_reopen(move |has_visible_windows| {
+        laufey::on_dock_reopen(move |has_visible_windows| {
           let _ = reopen_tx.try_send(
             deno_runtime::ops::desktop::DesktopEvent::DockReopen {
               has_visible_windows,
@@ -1703,14 +1704,14 @@ async fn run_desktop(
     is_inspecting: inspect_internal_port.is_some(),
   };
 
-  // Run the Deno runtime and WEF event loop concurrently.
+  // Run the Deno runtime and Laufey event loop concurrently.
   // We spawn the runtime first, wait for the server to be ready,
   // then navigate the webview.
   let url = format!("http://127.0.0.1:{}", desktop_serve_port);
-  eprintln!("[desktop] starting runtime and wef event loop");
+  eprintln!("[desktop] starting runtime and laufey event loop");
   let run_fut =
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
-  let wef_fut = just_wef::run();
+  let laufey_fut = laufey::run();
 
   // Wait for the server to be ready, then navigate the initial window.
   // Do a full HTTP request instead of just a TCP connect — frameworks
@@ -1775,7 +1776,7 @@ async fn run_desktop(
                 &url
               );
               let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-              just_wef::Window::from_id(id).navigate(&url);
+              laufey::Window::from_id(id).navigate(&url);
               return;
             }
           }
@@ -1785,10 +1786,10 @@ async fn run_desktop(
     }
     log::warn!("Server not ready after 15s, navigating anyway");
     let id = initial_window_id_for_navigate.load(Ordering::Acquire);
-    just_wef::Window::from_id(id).navigate(&url);
+    laufey::Window::from_id(id).navigate(&url);
   };
 
-  // Hold the JoinHandle so we can abort it when the runtime / WEF
+  // Hold the JoinHandle so we can abort it when the runtime / Laufey
   // event loop ends — otherwise the navigate poll keeps trying for up
   // to 15s after window close, writing warnings to a stderr that may
   // already be torn down.
@@ -1807,8 +1808,8 @@ async fn run_desktop(
         }
       }
     }
-    _ = wef_fut => {
-      eprintln!("[desktop] WEF event loop ended (window closed)");
+    _ = laufey_fut => {
+      eprintln!("[desktop] Laufey event loop ended (window closed)");
     }
   }
   navigate_handle.abort();
@@ -1822,12 +1823,12 @@ mod tests {
 
   use deno_runtime::ops::desktop::PermissionState;
 
-  use super::desktop_menu_item_to_wef_menu_item;
+  use super::desktop_menu_item_to_laufey_menu_item;
   use super::extract_fork_script_path;
-  use super::json_to_wef_value;
+  use super::json_to_laufey_value;
   use super::map_permission_status;
-  use super::wef_value_to_desktop_value;
-  use super::wef_value_to_json;
+  use super::laufey_value_to_desktop_value;
+  use super::laufey_value_to_json;
 
   // --- extract_fork_script_path ---
   //
@@ -1864,7 +1865,7 @@ mod tests {
   #[test]
   fn fork_argv_rejects_non_run_subcommand() {
     // Only `<exe> run …` is the worker shape. The main desktop launch
-    // never has a subcommand at argv[1] — wef passes no argv at all.
+    // never has a subcommand at argv[1] — laufey passes no argv at all.
     assert!(extract_fork_script_path(&args(&["myapp"])).is_none());
     assert!(
       extract_fork_script_path(&args(&["myapp", "task", "build"])).is_none()
@@ -1893,28 +1894,28 @@ mod tests {
 
   #[test]
   fn permission_status_maps_one_to_one() {
-    // Every wef PermissionStatus must round-trip to the matching
+    // Every laufey PermissionStatus must round-trip to the matching
     // deno PermissionState. Off-by-one swaps here would surface in JS
     // as "granted shows up as denied" — silent and very confusing.
     assert!(matches!(
-      map_permission_status(just_wef::PermissionStatus::Granted),
+      map_permission_status(laufey::PermissionStatus::Granted),
       PermissionState::Granted
     ));
     assert!(matches!(
-      map_permission_status(just_wef::PermissionStatus::Denied),
+      map_permission_status(laufey::PermissionStatus::Denied),
       PermissionState::Denied
     ));
     assert!(matches!(
-      map_permission_status(just_wef::PermissionStatus::Prompt),
+      map_permission_status(laufey::PermissionStatus::Prompt),
       PermissionState::Prompt
     ));
     assert!(matches!(
-      map_permission_status(just_wef::PermissionStatus::Unsupported),
+      map_permission_status(laufey::PermissionStatus::Unsupported),
       PermissionState::Unsupported
     ));
   }
 
-  // --- desktop_menu_item_to_wef_menu_item ---
+  // --- desktop_menu_item_to_laufey_menu_item ---
 
   #[test]
   fn menu_item_conversion_preserves_fields() {
@@ -1924,8 +1925,8 @@ mod tests {
       accelerator: Some("CmdOrCtrl+S".into()),
       enabled: true,
     };
-    match desktop_menu_item_to_wef_menu_item(item) {
-      just_wef::MenuItem::Item {
+    match desktop_menu_item_to_laufey_menu_item(item) {
+      laufey::MenuItem::Item {
         label,
         id,
         accelerator,
@@ -1957,65 +1958,65 @@ mod tests {
         },
       ],
     };
-    let converted = desktop_menu_item_to_wef_menu_item(item);
-    let just_wef::MenuItem::Submenu { items, .. } = converted else {
+    let converted = desktop_menu_item_to_laufey_menu_item(item);
+    let laufey::MenuItem::Submenu { items, .. } = converted else {
       panic!("expected Submenu");
     };
     assert_eq!(items.len(), 3);
     // First child is an Item with enabled=false preserved.
     match &items[0] {
-      just_wef::MenuItem::Item { enabled, label, .. } => {
+      laufey::MenuItem::Item { enabled, label, .. } => {
         assert_eq!(label, "Open");
         assert!(!enabled, "enabled=false must propagate through recursion");
       }
       _ => panic!("first child should be Item"),
     }
-    assert!(matches!(items[1], just_wef::MenuItem::Separator));
+    assert!(matches!(items[1], laufey::MenuItem::Separator));
     match &items[2] {
-      just_wef::MenuItem::Role { role } => assert_eq!(role, "quit"),
+      laufey::MenuItem::Role { role } => assert_eq!(role, "quit"),
       _ => panic!("third child should be Role"),
     }
   }
 
-  // --- wef_value_to_desktop_value / wef_value_to_json / json_to_wef_value ---
+  // --- laufey_value_to_desktop_value / laufey_value_to_json / json_to_laufey_value ---
 
   #[test]
-  fn wef_value_to_desktop_value_covers_every_variant() {
+  fn laufey_value_to_desktop_value_covers_every_variant() {
     use deno_runtime::ops::desktop::DesktopValue;
     assert!(matches!(
-      wef_value_to_desktop_value(just_wef::Value::Null),
+      laufey_value_to_desktop_value(laufey::Value::Null),
       DesktopValue::Null
     ));
     assert!(matches!(
-      wef_value_to_desktop_value(just_wef::Value::Bool(true)),
+      laufey_value_to_desktop_value(laufey::Value::Bool(true)),
       DesktopValue::Bool(true)
     ));
     assert!(matches!(
-      wef_value_to_desktop_value(just_wef::Value::Int(7)),
+      laufey_value_to_desktop_value(laufey::Value::Int(7)),
       DesktopValue::Int(7)
     ));
     assert!(matches!(
-      wef_value_to_desktop_value(just_wef::Value::Double(1.5)),
+      laufey_value_to_desktop_value(laufey::Value::Double(1.5)),
       DesktopValue::Double(d) if d == 1.5
     ));
-    match wef_value_to_desktop_value(just_wef::Value::String("hi".into())) {
+    match laufey_value_to_desktop_value(laufey::Value::String("hi".into())) {
       DesktopValue::String(s) => assert_eq!(s, "hi"),
       _ => panic!(),
     }
-    match wef_value_to_desktop_value(just_wef::Value::Binary(vec![1, 2, 3])) {
+    match laufey_value_to_desktop_value(laufey::Value::Binary(vec![1, 2, 3])) {
       DesktopValue::Binary(b) => assert_eq!(b, vec![1, 2, 3]),
       _ => panic!(),
     }
   }
 
   #[test]
-  fn wef_value_to_desktop_value_recurses() {
+  fn laufey_value_to_desktop_value_recurses() {
     use deno_runtime::ops::desktop::DesktopValue;
-    let v = just_wef::Value::List(vec![
-      just_wef::Value::Int(1),
-      just_wef::Value::List(vec![just_wef::Value::String("nested".into())]),
+    let v = laufey::Value::List(vec![
+      laufey::Value::Int(1),
+      laufey::Value::List(vec![laufey::Value::String("nested".into())]),
     ]);
-    let dv = wef_value_to_desktop_value(v);
+    let dv = laufey_value_to_desktop_value(v);
     let DesktopValue::List(outer) = dv else {
       panic!("outer must be List")
     };
@@ -2030,47 +2031,47 @@ mod tests {
   }
 
   #[test]
-  fn wef_value_to_json_roundtrip() {
+  fn laufey_value_to_json_roundtrip() {
     use std::collections::HashMap;
     let mut dict = HashMap::new();
-    dict.insert("name".to_string(), just_wef::Value::String("ada".into()));
-    dict.insert("count".to_string(), just_wef::Value::Int(42));
-    dict.insert("ok".to_string(), just_wef::Value::Bool(true));
-    let v = just_wef::Value::Dict(dict);
-    let j = wef_value_to_json(&v);
+    dict.insert("name".to_string(), laufey::Value::String("ada".into()));
+    dict.insert("count".to_string(), laufey::Value::Int(42));
+    dict.insert("ok".to_string(), laufey::Value::Bool(true));
+    let v = laufey::Value::Dict(dict);
+    let j = laufey_value_to_json(&v);
     assert_eq!(j["name"], "ada");
     assert_eq!(j["count"], 42);
     assert_eq!(j["ok"], true);
 
-    // Round-trip back through json_to_wef_value to confirm symmetry on
+    // Round-trip back through json_to_laufey_value to confirm symmetry on
     // the simple types.
-    let back = json_to_wef_value(&j);
-    let just_wef::Value::Dict(d) = back else {
+    let back = json_to_laufey_value(&j);
+    let laufey::Value::Dict(d) = back else {
       panic!("round-trip must yield Dict")
     };
     match d.get("name") {
-      Some(just_wef::Value::String(s)) => assert_eq!(s, "ada"),
+      Some(laufey::Value::String(s)) => assert_eq!(s, "ada"),
       _ => panic!("name must round-trip as String"),
     }
     match d.get("count") {
-      // json_to_wef_value maps integer numbers to Int via as_i64() — so
+      // json_to_laufey_value maps integer numbers to Int via as_i64() — so
       // it should land in the Int branch.
-      Some(just_wef::Value::Int(42)) => {}
-      _ => panic!("count round-trip should yield just_wef::Value::Int(42)"),
+      Some(laufey::Value::Int(42)) => {}
+      _ => panic!("count round-trip should yield laufey::Value::Int(42)"),
     }
   }
 
   #[test]
-  fn json_to_wef_value_distinguishes_int_and_double() {
+  fn json_to_laufey_value_distinguishes_int_and_double() {
     let n_int = serde_json::json!(42);
     let n_float = serde_json::json!(1.5);
     assert!(matches!(
-      json_to_wef_value(&n_int),
-      just_wef::Value::Int(42)
+      json_to_laufey_value(&n_int),
+      laufey::Value::Int(42)
     ));
     assert!(matches!(
-      json_to_wef_value(&n_float),
-      just_wef::Value::Double(d) if d == 1.5
+      json_to_laufey_value(&n_float),
+      laufey::Value::Double(d) if d == 1.5
     ));
   }
 
@@ -2209,24 +2210,24 @@ mod tests {
   }
 
   #[test]
-  fn json_to_wef_value_handles_nested_arrays_and_objects() {
+  fn json_to_laufey_value_handles_nested_arrays_and_objects() {
     let j = serde_json::json!({
       "list": [1, 2, 3],
       "nested": {"key": "value"},
       "null": null,
     });
-    let v = json_to_wef_value(&j);
-    let just_wef::Value::Dict(d) = v else {
+    let v = json_to_laufey_value(&j);
+    let laufey::Value::Dict(d) = v else {
       panic!("expected Dict")
     };
-    assert!(matches!(d.get("null"), Some(just_wef::Value::Null)));
+    assert!(matches!(d.get("null"), Some(laufey::Value::Null)));
     match d.get("list") {
-      Some(just_wef::Value::List(items)) => assert_eq!(items.len(), 3),
+      Some(laufey::Value::List(items)) => assert_eq!(items.len(), 3),
       _ => panic!("list must convert to List"),
     }
     match d.get("nested") {
-      Some(just_wef::Value::Dict(inner)) => match inner.get("key") {
-        Some(just_wef::Value::String(s)) => assert_eq!(s, "value"),
+      Some(laufey::Value::Dict(inner)) => match inner.get("key") {
+        Some(laufey::Value::String(s)) => assert_eq!(s, "value"),
         _ => panic!("nested.key must be String"),
       },
       _ => panic!("nested must convert to Dict"),

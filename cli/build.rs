@@ -261,17 +261,17 @@ fn compress_sources(out_dir: &Path) {
   }
 }
 
-/// Read the pinned `wef` capi crate version from the workspace Cargo.lock and
-/// expose it as the `WEF_VERSION` rustc env var. Desktop backend downloads are
-/// resolved against `github.com/littledivy/just-wef/releases/tag/v{WEF_VERSION}`, so
+/// Read the pinned `laufey` capi crate version from the workspace Cargo.lock and
+/// expose it as the `LAUFEY_VERSION` rustc env var. Desktop backend downloads are
+/// resolved against `github.com/littledivy/laufey/releases/tag/v{LAUFEY_VERSION}`, so
 /// tying this to Cargo.lock keeps a single source of truth.
 ///
-/// Also asserts that `cli/wef_sums.lock` (the trust anchor for those downloads)
+/// Also asserts that `cli/laufey_sums.lock` (the trust anchor for those downloads)
 /// pins the same version, failing the build if someone bumps the crate without
 /// refreshing the digests. This is a pure consistency check between two
 /// checked-in files, so it runs here rather than at runtime — a stale lock file
 /// becomes a compile error instead of a first-launch failure.
-fn emit_wef_version() {
+fn emit_laufey_version() {
   let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
   let lock_path = Path::new(&manifest_dir).join("../Cargo.lock");
   println!("cargo:rerun-if-changed={}", lock_path.display());
@@ -281,18 +281,18 @@ fn emit_wef_version() {
     Err(_) => return,
   };
 
-  let mut wef_version = None;
-  let mut in_wef = false;
+  let mut laufey_version = None;
+  let mut in_laufey = false;
   for line in lock.lines() {
-    if line == "name = \"just-wef\"" {
-      in_wef = true;
+    if line == "name = \"laufey\"" {
+      in_laufey = true;
       continue;
     }
-    if in_wef {
+    if in_laufey {
       if let Some(rest) = line.strip_prefix("version = \"")
         && let Some(version) = rest.strip_suffix('"')
       {
-        wef_version = Some(version.to_string());
+        laufey_version = Some(version.to_string());
         break;
       }
       if line.starts_with("[[package]]") {
@@ -301,19 +301,19 @@ fn emit_wef_version() {
     }
   }
 
-  let Some(wef_version) = wef_version else {
+  let Some(laufey_version) = laufey_version else {
     return;
   };
-  println!("cargo:rustc-env=WEF_VERSION={wef_version}");
+  println!("cargo:rustc-env=LAUFEY_VERSION={laufey_version}");
 
-  check_wef_pinned_sums_version(&manifest_dir, &wef_version);
+  check_laufey_pinned_sums_version(&manifest_dir, &laufey_version);
 }
 
-/// Confirm `cli/wef_sums.lock` targets `wef_version`. The lock file carries a
-/// `# version: vX.Y.Z` directive that must match the `just-wef` crate version
+/// Confirm `cli/laufey_sums.lock` targets `laufey_version`. The lock file carries a
+/// `# version: vX.Y.Z` directive that must match the `laufey` crate version
 /// the binary is built against; a mismatch means the pinned digests are stale.
-fn check_wef_pinned_sums_version(manifest_dir: &str, wef_version: &str) {
-  let sums_path = Path::new(manifest_dir).join("wef_sums.lock");
+fn check_laufey_pinned_sums_version(manifest_dir: &str, laufey_version: &str) {
+  let sums_path = Path::new(manifest_dir).join("laufey_sums.lock");
   println!("cargo:rerun-if-changed={}", sums_path.display());
 
   let sums = match std::fs::read_to_string(&sums_path) {
@@ -331,14 +331,14 @@ fn check_wef_pinned_sums_version(manifest_dir: &str, wef_version: &str) {
     let pinned = version.trim().trim_start_matches('v');
     if pinned.is_empty() {
       panic!(
-        "cli/wef_sums.lock has no pinned WEF version — populate it for \
-         v{wef_version} before building"
+        "cli/laufey_sums.lock has no pinned laufey version — populate it for \
+         v{laufey_version} before building"
       );
     }
-    if pinned != wef_version {
+    if pinned != laufey_version {
       panic!(
-        "cli/wef_sums.lock pins WEF v{pinned} but this build expects \
-         v{wef_version} — refresh the lock file from the upstream SHA256SUMS"
+        "cli/laufey_sums.lock pins Laufey v{pinned} but this build expects \
+         v{laufey_version} — refresh the lock file from the upstream SHA256SUMS"
       );
     }
     return;
@@ -437,7 +437,7 @@ fn main() {
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
 
-  emit_wef_version();
+  emit_laufey_version();
 
   #[cfg(target_os = "windows")]
   {

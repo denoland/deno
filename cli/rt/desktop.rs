@@ -513,25 +513,25 @@ pub const DESKTOP_JS: &str = r#"
   Notification.prototype.constructor = Notification;
 
   // Cache of the last status the OS reported. `Notification.permission`
-  // is a *synchronous* getter per spec, but the underlying wef call is
+  // is a *synchronous* getter per spec, but the underlying laufey call is
   // async (it's serviced on the UI thread). The cache starts at
   // "default" and updates as `requestPermission()` / permissions.query()
   // resolve. We deliberately do NOT do a startup query — that op
-  // dispatches into the wef backend's UI thread, which may not be
+  // dispatches into the laufey backend's UI thread, which may not be
   // pumping when DESKTOP_JS first runs; a hung promise there shouldn't
   // be possible to interfere with the event loop below, but the cost
   // of being defensive is also zero (apps generally read `.permission`
   // only after a user-driven request anyway).
   //
-  // Web spec maps wef's "prompt" status (no decision yet) to "default"
+  // Web spec maps laufey's "prompt" status (no decision yet) to "default"
   // for `Notification`, and "prompt" for `navigator.permissions`. The
-  // wef "unsupported" status — emitted when the backend or platform
+  // laufey "unsupported" status — emitted when the backend or platform
   // has no permission model — surfaces to JS as a thrown error from
   // requestPermission (most honest) and as "denied" from
   // permissions.query (spec doesn't have an "unsupported" state).
   let cachedNotificationPermission = "default";
 
-  function wefToNotificationPermission(s) {
+  function laufeyToNotificationPermission(s) {
     // "prompt" → "default" per the Notifications spec; "unsupported"
     // is handled by the caller (throws on requestPermission).
     switch (s) {
@@ -573,7 +573,7 @@ pub const DESKTOP_JS: &str = r#"
               "Notification.requestPermission: not supported by this platform/backend",
             );
           }
-          const perm = wefToNotificationPermission(s);
+          const perm = laufeyToNotificationPermission(s);
           cachedNotificationPermission = perm;
           return perm;
         })();
@@ -609,11 +609,11 @@ pub const DESKTOP_JS: &str = r#"
   // Spec surface: `navigator.permissions.query({name})` returns a
   // Promise<PermissionStatus> where `PermissionStatus` extends EventTarget
   // and exposes a readonly `state` plus an `onchange` slot. The desktop
-  // runtime today only routes `notifications` through wef; other names
+  // runtime today only routes `notifications` through laufey; other names
   // resolve to "denied" (Chrome's behavior for unknown / unsupported
   // names — closer to honest than "prompt" for things we can't fulfill).
   //
-  // Note: we don't fire `change` events. wef has no change-notification
+  // Note: we don't fire `change` events. laufey has no change-notification
   // channel for permissions, and the cached decision only flips when the
   // user goes through System Settings (rare, manual, not worth polling).
   class PermissionStatus extends EventTarget {
@@ -632,7 +632,7 @@ pub const DESKTOP_JS: &str = r#"
     set onchange(v) { this.#onchange = typeof v === "function" ? v : null; }
   }
 
-  function wefToPermissionsApiState(s) {
+  function laufeyToPermissionsApiState(s) {
     // Spec maps "prompt" through verbatim; "unsupported" has no spec
     // analog so we return "denied" — query() shouldn't throw, but we
     // shouldn't lie and say "granted" either.
@@ -659,9 +659,9 @@ pub const DESKTOP_JS: &str = r#"
         // result is authoritative and lets the synchronous getter report
         // a current value without us needing a second roundtrip.
         if (s !== "unsupported") {
-          cachedNotificationPermission = wefToNotificationPermission(s);
+          cachedNotificationPermission = laufeyToNotificationPermission(s);
         }
-        return new PermissionStatus(name, wefToPermissionsApiState(s));
+        return new PermissionStatus(name, laufeyToPermissionsApiState(s));
       }
       // Unknown / unrouted name. Chrome returns "denied" for descriptors
       // it doesn't recognize; mimic that rather than throwing.

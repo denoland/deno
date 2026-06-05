@@ -3674,7 +3674,7 @@ dependencies = [
  "deno_snapshots",
  "deno_terminal",
  "denort",
- "just-wef",
+ "laufey",
  "libsui",
  "log",
  "raw-window-handle",
@@ -6229,16 +6229,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "just-wef"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be9bb3d3e01719a67f2aed02476c7871f85c00fa51578719021857e2964ed261"
-dependencies = [
- "bindgen 0.72.1",
- "tokio",
-]
-
-[[package]]
 name = "k256"
 version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6321,6 +6311,16 @@ checksum = "ed9625ffda8729b85e45cf04090035ac368927b8cebc34898e7c120f52e4838b"
 dependencies = [
  "bitflags 1.3.2",
  "libc",
+]
+
+[[package]]
+name = "laufey"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e438fb817380103dd718d411d46df4e6280f49ec01ad4776e01e6cfa64162327"
+dependencies = [
+ "bindgen 0.72.1",
+ "tokio",
 ]
 
 [[package]]

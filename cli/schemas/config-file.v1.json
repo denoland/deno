@@ -183,7 +183,7 @@
         },
         "backend": {
           "type": "string",
-          "description": "WEF backend to use for the desktop app.",
+          "description": "Backend to use for the desktop app.",
           "enum": ["webview", "cef", "servo"]
         },
         "output": {

@@ -3072,30 +3072,6 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .help_heading(COMPILE_HEADING),
       )
       .arg(
-        Arg::new("desktop")
-          .long("desktop")
-          .help("Compile as a desktop application using a WEF backend for the UI layer")
-          .action(ArgAction::SetTrue)
-          .help_heading(COMPILE_HEADING),
-      )
-      .arg(
-        Arg::new("hmr")
-          .long("hmr")
-          .help("Compile and run the desktop app with Hot Module Replacement enabled")
-          .requires("desktop")
-          .action(ArgAction::SetTrue)
-          .help_heading(COMPILE_HEADING),
-      )
-      .arg(
-        Arg::new("backend")
-          .long("backend")
-          .help("WEF backend to use for the desktop app")
-          .value_parser(["webview", "cef", "servo", "raw"])
-          .default_value("webview")
-          .requires("desktop")
-          .help_heading(COMPILE_HEADING),
-      )
-      .arg(
         Arg::new("bundle")
           .long("bundle")
           .help(cstr!("<y>Experimental.</> Bundle the entrypoint with esbuild before embedding, instead of shipping the whole node_modules tree.
@@ -3122,8 +3098,8 @@ fn desktop_subcommand() -> Command {
   <p(245)>deno desktop --hmr main.tsx</>
   <p(245)>deno desktop --output MyApp.app main.tsx</>
 
-Compiles the given script into a desktop application using a WEF backend for
-the UI layer. The entrypoint can be a file or <c>.</> to auto-detect a supported
+Compiles the given script into a desktop application using a backend for the UI
+layer. The entrypoint can be a file or <c>.</> to auto-detect a supported
 framework (Next.js, Astro, etc.).
 
 <y>Read more:</> <c>https://docs.deno.com/go/desktop</>
@@ -3204,7 +3180,7 @@ framework (Next.js, Astro, etc.).
       .arg(
         Arg::new("backend")
           .long("backend")
-          .help("WEF backend to use for the desktop app")
+          .help("Backend to use for the desktop app")
           .value_parser(["webview", "cef", "servo"])
           .default_value("cef")
           .help_heading(DESKTOP_HEADING),

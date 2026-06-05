@@ -8,7 +8,7 @@ edition.workspace = true
 license.workspace = true
 publish = false
 repository.workspace = true
-description = "Provides libdenort shared library for WEF desktop apps"
+description = "Provides libdenort shared library for laufey desktop apps"
 
 [lib]
 name = "denort"
@@ -27,7 +27,7 @@ deno_runtime.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
 denort = { path = "../rt" }
-just-wef = "0.2.0"
+laufey = "0.3.1"
 libsui.workspace = true
 
 log = { workspace = true, features = ["serde"] }

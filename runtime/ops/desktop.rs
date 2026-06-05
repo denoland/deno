@@ -113,7 +113,7 @@ pub struct OpenDevtoolsOptions {
   pub deno: Option<bool>,
 }
 
-/// A single event type that flows from the WEF backend to the Deno runtime.
+/// A single event type that flows from the laufey backend to the Deno runtime.
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum DesktopEvent {
@@ -304,7 +304,7 @@ pub fn register_bind_call(
 }
 
 /// Trait for desktop window operations. Implemented by the desktop
-/// runtime (denort_desktop) to bridge to the WEF backend.
+/// runtime (denort_desktop) to bridge to the laufey backend.
 ///
 /// All per-window methods take a `window_id` identifying the target window.
 pub trait DesktopApi: Send + Sync + 'static {
@@ -363,7 +363,7 @@ pub trait DesktopApi: Send + Sync + 'static {
   /// Best-effort fetch of the OS-level window/display handles for the
   /// given window. Returning `Err` instead of panicking matters because
   /// this trait method is reachable from a v8 op handler but its
-  /// implementation is invoked across the WEF C ABI; an unwind through
+  /// implementation is invoked across the laufey C ABI; an unwind through
   /// that boundary would be UB.
   fn get_raw_window_handle(
     &self,
@@ -767,7 +767,7 @@ impl BrowserWindow {
 
     // Hoisted out of the `surface.try_get` closure so the
     // `get_raw_window_handle` failure path can bubble before we ever
-    // touch wgpu (and can't unwind across the WEF C ABI).
+    // touch wgpu (and can't unwind across the laufey C ABI).
     let (win_handle, display_handle) = api.get_raw_window_handle(window_id)?;
 
     let result = self.surface.try_get(scope, move |_| {

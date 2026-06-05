@@ -23,21 +23,21 @@ use crate::http_util::HttpClientProvider;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
-/// Version of the `wef` capi crate pinned in the workspace Cargo.lock.
+/// Version of the `laufey` capi crate pinned in the workspace Cargo.lock.
 /// Populated by `cli/build.rs` and used to resolve matching prebuilt backend
-/// binaries from `github.com/littledivy/just-wef/releases/tag/v{WEF_VERSION}`.
-const WEF_VERSION: &str = env!("WEF_VERSION");
+/// binaries from `github.com/littledivy/laufey/releases/tag/v{LAUFEY_VERSION}`.
+const LAUFEY_VERSION: &str = env!("LAUFEY_VERSION");
 
 /// Rustc target triple the deno binary was built for. Used as the default
-/// target when selecting a prebuilt wef backend archive.
-const WEF_NATIVE_TARGET: &str = env!("TARGET");
+/// target when selecting a prebuilt laufey backend archive.
+const LAUFEY_NATIVE_TARGET: &str = env!("TARGET");
 
-/// Trust anchor for WEF backend downloads: SHA-256 digests of every archive
-/// for the pinned `WEF_VERSION`. Checked into the repo so `SHA256SUMS` does
+/// Trust anchor for LAUFEY backend downloads: SHA-256 digests of every archive
+/// for the pinned `LAUFEY_VERSION`. Checked into the repo so `SHA256SUMS` does
 /// not need to be fetched (and trusted) at runtime — that file's integrity
 /// previously rested on TOFU against the GitHub releases page. See
-/// `cli/wef_sums.lock` for the format.
-const WEF_PINNED_SUMS: &str = include_str!("../wef_sums.lock");
+/// `cli/laufey_sums.lock` for the format.
+const LAUFEY_PINNED_SUMS: &str = include_str!("../laufey_sums.lock");
 
 pub async fn desktop(
   flags: Flags,
@@ -49,7 +49,7 @@ pub async fn desktop(
   let factory = CliFactory::from_flags(Arc::new(config_flags));
   let cli_options = factory.cli_options()?;
   let desktop_config = cli_options.start_dir.to_desktop_config()?.clone();
-  let wef_resolver = Arc::new(WefBackendResolver::new(&factory)?);
+  let laufey_resolver = Arc::new(LaufeyBackendResolver::new(&factory)?);
   let deno_dir_root = factory.deno_dir()?.root.clone();
 
   if let Some(output) = desktop_config.output
@@ -132,7 +132,7 @@ pub async fn desktop(
         flags.clone(),
         desktop_flags,
         cli_options,
-        &wef_resolver,
+        &laufey_resolver,
         &deno_dir_root,
       )
       .await?;
@@ -143,7 +143,7 @@ pub async fn desktop(
       flags,
       desktop_flags,
       cli_options,
-      &wef_resolver,
+      &laufey_resolver,
       &deno_dir_root,
     )
     .await
@@ -154,7 +154,7 @@ async fn compile_desktop(
   mut flags: Flags,
   mut desktop_flags: DesktopFlags,
   cli_options: &Arc<CliOptions>,
-  wef_resolver: &WefBackendResolver,
+  laufey_resolver: &LaufeyBackendResolver,
   deno_dir_root: &Path,
 ) -> Result<(), AnyError> {
   // If the user asked for a `.dmg` (macOS) installer via `--output`, strip
@@ -413,7 +413,7 @@ async fn compile_desktop(
       &detection_cwd,
       detected_framework.as_ref(),
       backend,
-      wef_resolver,
+      laufey_resolver,
       &flags,
       &desktop_flags,
     )
@@ -424,7 +424,7 @@ async fn compile_desktop(
       &output_path,
       &desktop_flags,
       cli_options,
-      wef_resolver,
+      laufey_resolver,
     )
     .await?;
 
@@ -466,8 +466,8 @@ async fn compile_desktop(
 }
 
 /// Resolve `icon` (a `.png` or `.icns` path, possibly relative to
-/// `initial_cwd`) into an absolute path suitable for `WEF_APP_ICON`, which
-/// wef passes to `-[NSImage initWithContentsOfFile:]` (both formats are
+/// `initial_cwd`) into an absolute path suitable for `LAUFEY_APP_ICON`, which
+/// laufey passes to `-[NSImage initWithContentsOfFile:]` (both formats are
 /// accepted, so no conversion is needed).
 #[cfg(target_os = "macos")]
 fn resolve_hmr_icon_path(
@@ -505,12 +505,12 @@ async fn run_desktop_hmr(
   source_dir: &Path,
   framework: Option<&super::framework::FrameworkDetection>,
   backend: &str,
-  wef_resolver: &WefBackendResolver,
+  laufey_resolver: &LaufeyBackendResolver,
   flags: &Flags,
   desktop_flags: &DesktopFlags,
 ) -> Result<(), AnyError> {
-  let wef_backend =
-    wef_resolver.find_binary(backend, WEF_NATIVE_TARGET).await?;
+  let laufey_backend =
+    laufey_resolver.find_binary(backend, LAUFEY_NATIVE_TARGET).await?;
   let dylib_abs = dylib_path
     .canonicalize()
     .unwrap_or(dylib_path.to_path_buf());
@@ -518,23 +518,23 @@ async fn run_desktop_hmr(
     .canonicalize()
     .unwrap_or(source_dir.to_path_buf());
 
-  // In HMR/inspector mode we launch the prebuilt wef.app, so a user
+  // In HMR/inspector mode we launch the prebuilt laufey.app, so a user
   // `--icon` (or framework-detected favicon) would otherwise be ignored
-  // and the Dock would show wef's own icon. We can't rely on the bundle's
+  // and the Dock would show laufey's own icon. We can't rely on the bundle's
   // `CFBundleIconFile` (the dev bundle has none) or on swapping the bundled
-  // `wef.icns` (LaunchServices caches the icon for an already-registered
-  // bundle id), so instead we pass the icon path to wef and let it call
+  // `laufey.icns` (LaunchServices caches the icon for an already-registered
+  // bundle id), so instead we pass the icon path to laufey and let it call
   // `-[NSApp setApplicationIconImage:]` at launch, which bypasses both.
   #[cfg(target_os = "macos")]
-  let wef_app_icon = desktop_flags.icon.as_ref().and_then(|icon| {
+  let laufey_app_icon = desktop_flags.icon.as_ref().and_then(|icon| {
     resolve_hmr_icon_path(icon, &source_abs)
       .map_err(|e| log::warn!("Could not apply custom icon: {e}"))
       .ok()
   });
 
-  // The prebuilt wef bundle would otherwise present itself as "wef" in the
+  // The prebuilt laufey bundle would otherwise present itself as "laufey" in the
   // menu bar, Dock and Cmd-Tab switcher. Pass a clearer name (the configured
-  // app name / project directory) so wef can override the process name at
+  // app name / project directory) so laufey can override the process name at
   // launch. `desktop_flags.output` is already resolved from `--output`,
   // deno.json `desktop.app.name`, or the project dir before we get here.
   let app_name = desktop_flags
@@ -570,18 +570,18 @@ async fn run_desktop_hmr(
     log::info!("{} desktop app under inspector", colors::green("Running"),);
   }
 
-  let mut cmd = std::process::Command::new(&wef_backend);
+  let mut cmd = std::process::Command::new(&laufey_backend);
   cmd
     .arg("--runtime")
     .arg(&dylib_abs)
-    .env("WEF_RUNTIME_PATH", &dylib_abs)
+    .env("LAUFEY_RUNTIME_PATH", &dylib_abs)
     .current_dir(&source_abs);
   #[cfg(target_os = "macos")]
-  if let Some(icon_path) = wef_app_icon.as_ref() {
-    cmd.env("WEF_APP_ICON", icon_path);
+  if let Some(icon_path) = laufey_app_icon.as_ref() {
+    cmd.env("LAUFEY_APP_ICON", icon_path);
   }
   if let Some(name) = app_name.as_ref() {
-    cmd.env("WEF_APP_NAME", name);
+    cmd.env("LAUFEY_APP_NAME", name);
   }
   // Only enable the file watcher + setScriptSource pipeline when the user
   // actually asked for HMR. `deno desktop --inspect` alone used to spin up
@@ -593,7 +593,7 @@ async fn run_desktop_hmr(
 
   // Wire up the unified DevTools multiplexer when --inspect is set.
   // The mux runs in this (parent) process and fronts both the Deno runtime
-  // inspector (in the WEF subprocess) and the CEF renderer's debug port
+  // inspector (in the LAUFEY subprocess) and the CEF renderer's debug port
   // (in CEF's child process). We allocate two internal ports here, hand
   // them to the subprocess via env vars, and bind the user-visible port
   // for DevTools to attach to.
@@ -647,7 +647,7 @@ async fn run_desktop_hmr(
       // pointed at the unified DevTools frontend instead of CEF's
       // renderer-only native window.
       .env("DENO_DESKTOP_MUX_WS", handle.listen.to_string())
-      .env("WEF_REMOTE_DEBUGGING_PORT", cef_internal.port().to_string());
+      .env("LAUFEY_REMOTE_DEBUGGING_PORT", cef_internal.port().to_string());
     if flags.inspect_brk.is_some() {
       cmd.env("DENO_DESKTOP_INSPECT_BRK", "1");
     }
@@ -660,14 +660,14 @@ async fn run_desktop_hmr(
   };
 
   // `kill_on_drop` is a safety net: if the parent panics or exits via any
-  // path that doesn't reach the explicit `wait` below, the WEF backend
+  // path that doesn't reach the explicit `wait` below, the LAUFEY backend
   // (and its CEF renderer subprocesses) get SIGKILLed on `Child` drop
   // rather than being orphaned. Normal Ctrl-C delivers SIGINT to the
   // whole process group so this rarely matters in practice; it covers
   // the abnormal-exit cases.
   //
   // On macOS we go through posix_spawn with TCC responsibility disclaimed
-  // (see `disclaim_spawn`) so the wef child is its own permission principal.
+  // (see `disclaim_spawn`) so the laufey child is its own permission principal.
   // Without this, the kernel attributes notification/location/etc requests
   // to whatever started deno (typically the terminal), which has no bundle
   // id and causes `UNUserNotificationCenter.requestAuthorization` to fail
@@ -675,12 +675,12 @@ async fn run_desktop_hmr(
   #[cfg(target_os = "macos")]
   let status = {
     let mut child = disclaim_spawn::spawn(&cmd).with_context(|| {
-      format!("Failed to launch WEF backend: {}", wef_backend.display())
+      format!("Failed to launch LAUFEY backend: {}", laufey_backend.display())
     })?;
     child
       .wait()
       .await
-      .context("Failed waiting for WEF backend")?
+      .context("Failed waiting for LAUFEY backend")?
   };
   #[cfg(not(target_os = "macos"))]
   let status = {
@@ -688,19 +688,19 @@ async fn run_desktop_hmr(
       .kill_on_drop(true)
       .spawn()
       .with_context(|| {
-        format!("Failed to launch WEF backend: {}", wef_backend.display())
+        format!("Failed to launch LAUFEY backend: {}", laufey_backend.display())
       })?;
     child
       .wait()
       .await
-      .context("Failed waiting for WEF backend")?
+      .context("Failed waiting for LAUFEY backend")?
   };
 
   // Keep the mux alive until the subprocess exits, then drop it.
   drop(mux_handle);
 
   if !status.success() {
-    bail!("WEF backend exited with status: {}", status);
+    bail!("LAUFEY backend exited with status: {}", status);
   }
   Ok(())
 }
@@ -710,7 +710,7 @@ async fn package_desktop_app(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,
-  wef_resolver: &WefBackendResolver,
+  laufey_resolver: &LaufeyBackendResolver,
 ) -> Result<PathBuf, AnyError> {
   let target = desktop_flags.target.as_deref();
   let is_darwin = match target {
@@ -727,7 +727,7 @@ async fn package_desktop_app(
       dylib_path,
       desktop_flags,
       cli_options,
-      wef_resolver,
+      laufey_resolver,
     )
     .await
   } else if is_windows {
@@ -735,11 +735,11 @@ async fn package_desktop_app(
       dylib_path,
       desktop_flags,
       cli_options,
-      wef_resolver,
+      laufey_resolver,
     )
     .await
   } else {
-    package_linux_app_dir(dylib_path, desktop_flags, cli_options, wef_resolver)
+    package_linux_app_dir(dylib_path, desktop_flags, cli_options, laufey_resolver)
       .await
   }
 }
@@ -750,7 +750,7 @@ async fn package_desktop_app(
 /// ```text
 /// AppName/
 ///   AppName.bat         (launcher)
-///   wef.exe             (WEF backend binary)
+///   laufey.exe             (LAUFEY backend binary)
 ///   libcef.dll, ...     (CEF support files, if any)
 ///   denort.dll          (compiled Deno runtime + user code)
 ///   AppIcon.ico         (optional)
@@ -759,17 +759,17 @@ async fn package_windows_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,
-  wef_resolver: &WefBackendResolver,
+  laufey_resolver: &LaufeyBackendResolver,
 ) -> Result<PathBuf, AnyError> {
   let parts = dylib_parts(dylib_path)?;
   let app_name = parts.app_name;
   let app_dir = parts.parent.join(&app_name);
 
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
-  let target = wef_target_for(desktop_flags);
-  let wef_binary = wef_resolver.find_binary(backend, target).await?;
-  let wef_dir = wef_resolver.find_binary_dir(backend, target).await?;
-  let wef_binary_name = wef_binary
+  let target = laufey_target_for(desktop_flags);
+  let laufey_binary = laufey_resolver.find_binary(backend, target).await?;
+  let laufey_dir = laufey_resolver.find_binary_dir(backend, target).await?;
+  let laufey_binary_name = laufey_binary
     .file_name()
     .unwrap()
     .to_string_lossy()
@@ -779,19 +779,19 @@ async fn package_windows_app_dir(
     std::fs::remove_dir_all(&app_dir)?;
   }
 
-  // Copy WEF backend directory (binary + CEF support files) as the shell.
-  crate::tools::compile::copy_dir_all(&wef_dir, &app_dir)?;
+  // Copy LAUFEY backend directory (binary + CEF support files) as the shell.
+  crate::tools::compile::copy_dir_all(&laufey_dir, &app_dir)?;
 
   // Drop any self-extracting runtime cache dir that tagged along.
-  let wef_exe_stem = Path::new(&wef_binary_name)
+  let laufey_exe_stem = Path::new(&laufey_binary_name)
     .file_stem()
     .map(|s| s.to_string_lossy().into_owned())
-    .unwrap_or_else(|| wef_binary_name.clone());
-  let cache_dir = app_dir.join(format!(".{}", wef_exe_stem));
+    .unwrap_or_else(|| laufey_binary_name.clone());
+  let cache_dir = app_dir.join(format!(".{}", laufey_exe_stem));
   if cache_dir.exists() {
     let _ = std::fs::remove_dir_all(&cache_dir);
   }
-  let cache_file = app_dir.join(format!(".{}.cache", wef_exe_stem));
+  let cache_file = app_dir.join(format!(".{}.cache", laufey_exe_stem));
   if cache_file.exists() {
     let _ = std::fs::remove_file(&cache_file);
   }
@@ -806,7 +806,7 @@ async fn package_windows_app_dir(
   // treats `^` `&` etc. as command separators even inside `"..."`.
   let dylib_filename_str = dylib_filename.to_string_lossy();
   validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&wef_binary_name, "WEF backend binary name")?;
+  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
   validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = app_dir.join(format!("{}.bat", app_name));
   std::fs::write(
@@ -814,8 +814,8 @@ async fn package_windows_app_dir(
     format!(
       "@echo off\r\n\
        set DIR=%~dp0\r\n\
-       \"%DIR%{wef_binary}\" --runtime \"%DIR%{dylib}\" %*\r\n",
-      wef_binary = wef_binary_name,
+       \"%DIR%{laufey_binary}\" --runtime \"%DIR%{dylib}\" %*\r\n",
+      laufey_binary = laufey_binary_name,
       dylib = dylib_filename_str,
     ),
   )?;
@@ -861,7 +861,7 @@ async fn package_windows_app_dir(
 /// ```text
 /// AppName/
 ///   AppName             (launcher shell script)
-///   wef                 (WEF backend binary)
+///   laufey                 (LAUFEY backend binary)
 ///   libcef.so, ...      (CEF support files, if any)
 ///   libdenort.so        (compiled Deno runtime + user code)
 ///   AppIcon.png         (optional)
@@ -870,7 +870,7 @@ async fn package_linux_app_dir(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,
-  wef_resolver: &WefBackendResolver,
+  laufey_resolver: &LaufeyBackendResolver,
 ) -> Result<PathBuf, AnyError> {
   let parts = dylib_parts(dylib_path)?;
   // `file_stem` on "libdenort.so" returns "libdenort" — strip the "lib" prefix
@@ -883,10 +883,10 @@ async fn package_linux_app_dir(
   let app_dir = parts.parent.join(&app_name);
 
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
-  let target = wef_target_for(desktop_flags);
-  let wef_binary = wef_resolver.find_binary(backend, target).await?;
-  let wef_dir = wef_resolver.find_binary_dir(backend, target).await?;
-  let wef_binary_name = wef_binary
+  let target = laufey_target_for(desktop_flags);
+  let laufey_binary = laufey_resolver.find_binary(backend, target).await?;
+  let laufey_dir = laufey_resolver.find_binary_dir(backend, target).await?;
+  let laufey_binary_name = laufey_binary
     .file_name()
     .unwrap()
     .to_string_lossy()
@@ -896,19 +896,19 @@ async fn package_linux_app_dir(
     std::fs::remove_dir_all(&app_dir)?;
   }
 
-  // Copy WEF backend directory (binary + CEF support files) as the shell.
-  crate::tools::compile::copy_dir_all(&wef_dir, &app_dir)?;
+  // Copy LAUFEY backend directory (binary + CEF support files) as the shell.
+  crate::tools::compile::copy_dir_all(&laufey_dir, &app_dir)?;
 
   // Drop any self-extracting runtime cache dir that tagged along.
-  let wef_exe_stem = Path::new(&wef_binary_name)
+  let laufey_exe_stem = Path::new(&laufey_binary_name)
     .file_stem()
     .map(|s| s.to_string_lossy().into_owned())
-    .unwrap_or_else(|| wef_binary_name.clone());
-  let cache_dir = app_dir.join(format!(".{}", wef_exe_stem));
+    .unwrap_or_else(|| laufey_binary_name.clone());
+  let cache_dir = app_dir.join(format!(".{}", laufey_exe_stem));
   if cache_dir.exists() {
     let _ = std::fs::remove_dir_all(&cache_dir);
   }
-  let cache_file = app_dir.join(format!(".{}.cache", wef_exe_stem));
+  let cache_file = app_dir.join(format!(".{}.cache", laufey_exe_stem));
   if cache_file.exists() {
     let _ = std::fs::remove_file(&cache_file);
   }
@@ -920,7 +920,7 @@ async fn package_linux_app_dir(
 
   // Create a shell launcher that invokes the backend with --runtime.
   // --ozone-platform=x11 forces CEF to create X11 windows (via XWayland on
-  // Wayland sessions). The Linux WEF mouse/focus/resize event monitor uses
+  // Wayland sessions). The Linux LAUFEY mouse/focus/resize event monitor uses
   // XI2 on X11 and does not support Wayland.
   // GDK_BACKEND=x11 aligns GDK with Ozone so GDK_IS_X11_DISPLAY is true.
   //
@@ -928,7 +928,7 @@ async fn package_linux_app_dir(
   // and `$(...)` even inside `"..."`.
   let dylib_filename_str = dylib_filename.to_string_lossy();
   validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&wef_binary_name, "WEF backend binary name")?;
+  validate_launcher_name(&laufey_binary_name, "LAUFEY backend binary name")?;
   validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = app_dir.join(&app_name);
   std::fs::write(
@@ -937,8 +937,8 @@ async fn package_linux_app_dir(
       "#!/bin/sh\n\
        DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
        export GDK_BACKEND=x11\n\
-       exec \"$DIR/{wef_binary}\" --ozone-platform=x11 --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      wef_binary = wef_binary_name,
+       exec \"$DIR/{laufey_binary}\" --ozone-platform=x11 --runtime \"$DIR/{dylib}\" \"$@\"\n",
+      laufey_binary = laufey_binary_name,
       dylib = dylib_filename_str,
     ),
   )?;
@@ -989,7 +989,7 @@ async fn package_linux_app_dir(
 
   // Write a `.desktop` entry alongside the launcher so a user dropping
   // the app dir into `~/.local/share/applications/` gets the right
-  // name/icon attribution on notifications and in the taskbar. wef
+  // name/icon attribution on notifications and in the taskbar. laufey
   // doesn't read this file — only the OS does — but libnotify and
   // GNOME Shell key notification attribution on the desktop file's
   // `StartupWMClass` and `Icon` fields.
@@ -1023,23 +1023,23 @@ async fn package_linux_app_dir(
   Ok(app_dir)
 }
 
-/// Environment variable pointing at a local wef checkout, used to bypass the
+/// Environment variable pointing at a local laufey checkout, used to bypass the
 /// download path during development. Build-tree subpaths under this directory
 /// are searched the same way the old sibling-checkout heuristic searched.
-const WEF_DEV_DIR_ENV: &str = "WEF_DEV_DIR";
+const LAUFEY_DEV_DIR_ENV: &str = "LAUFEY_DEV_DIR";
 
-/// Resolves WEF backend binaries and `.app` bundles, falling back to
-/// downloading prebuilt archives from the wef GitHub releases when
-/// `WEF_DEV_DIR` is not set.
-struct WefBackendResolver {
+/// Resolves LAUFEY backend binaries and `.app` bundles, falling back to
+/// downloading prebuilt archives from the laufey GitHub releases when
+/// `LAUFEY_DEV_DIR` is not set.
+struct LaufeyBackendResolver {
   http_client_provider: Arc<HttpClientProvider>,
-  /// `<deno_dir>/wef/<version>/`
+  /// `<deno_dir>/laufey/<version>/`
   cache_root: PathBuf,
 }
 
-impl WefBackendResolver {
+impl LaufeyBackendResolver {
   fn new(factory: &CliFactory) -> Result<Self, AnyError> {
-    let cache_root = factory.deno_dir()?.root.join("wef").join(WEF_VERSION);
+    let cache_root = factory.deno_dir()?.root.join("laufey").join(LAUFEY_VERSION);
     Ok(Self {
       http_client_provider: factory.http_client_provider().clone(),
       cache_root,
@@ -1051,7 +1051,7 @@ impl WefBackendResolver {
   }
 
   /// Download + verify + extract a backend archive if it isn't already in
-  /// `<deno_dir>/wef/<version>/<backend>/<target>/`.
+  /// `<deno_dir>/laufey/<version>/<backend>/<target>/`.
   async fn ensure_downloaded(
     &self,
     backend: &str,
@@ -1063,32 +1063,32 @@ impl WefBackendResolver {
       return Ok(dir);
     }
 
-    let archive = wef_archive_name(backend, target);
+    let archive = laufey_archive_name(backend, target);
     let client = self.http_client_provider.get_or_create()?;
 
     // Use the in-tree pinned digests rather than fetching SHA256SUMS from the
     // release page. The latter is unsigned, so trusting it would let anyone
-    // who can write to the wef release host swap both archive and sums
-    // together (TOFU). The lock file is reviewed in PRs when WEF_VERSION
+    // who can write to the laufey release host swap both archive and sums
+    // together (TOFU). The lock file is reviewed in PRs when LAUFEY_VERSION
     // bumps, so this is the trust anchor. That the lock file's pinned version
-    // matches WEF_VERSION is asserted at build time (see cli/build.rs).
-    let expected = parse_sha256sum(WEF_PINNED_SUMS, &archive).ok_or_else(|| {
+    // matches LAUFEY_VERSION is asserted at build time (see cli/build.rs).
+    let expected = parse_sha256sum(LAUFEY_PINNED_SUMS, &archive).ok_or_else(|| {
       deno_core::anyhow::anyhow!(
-        "no pinned SHA-256 for {archive} in cli/wef_sums.lock \
-         (regenerate when bumping WEF_VERSION to v{WEF_VERSION}; \
-         wef v{WEF_VERSION} release may not include backend '{backend}' for target '{target}')"
+        "no pinned SHA-256 for {archive} in cli/laufey_sums.lock \
+         (regenerate when bumping LAUFEY_VERSION to v{LAUFEY_VERSION}; \
+         laufey v{LAUFEY_VERSION} release may not include backend '{backend}' for target '{target}')"
       )
     })?;
 
     log::info!(
-      "{} wef {} backend for {} (v{})",
+      "{} laufey {} backend for {} (v{})",
       colors::green("Downloading"),
       backend,
       target,
-      WEF_VERSION,
+      LAUFEY_VERSION,
     );
 
-    let url = Url::parse(&wef_release_url(&archive))?;
+    let url = Url::parse(&laufey_release_url(&archive))?;
     let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
     let progress = progress_bar.update(&archive);
     // Send a real User-Agent — some CDNs (incl. parts of GitHub
@@ -1121,7 +1121,7 @@ impl WefBackendResolver {
 
     let parent = dir.parent().ok_or_else(|| {
       deno_core::anyhow::anyhow!(
-        "WEF cache dir has no parent: {}",
+        "LAUFEY cache dir has no parent: {}",
         dir.display()
       )
     })?;
@@ -1139,14 +1139,14 @@ impl WefBackendResolver {
         format!("failed to stage tempdir in {}", parent.display())
       })?;
 
-    extract_wef_archive(&archive, &data, staging.path())
+    extract_laufey_archive(&archive, &data, staging.path())
       .with_context(|| format!("failed to extract {archive}"))?;
     // Marker is written into the staging dir so it lands atomically with
     // the rest of the contents — a SIGKILL during extraction can never
     // leave a marker-without-payload state.
     std::fs::write(
       staging.path().join(".downloaded"),
-      format!("v{WEF_VERSION}\n"),
+      format!("v{LAUFEY_VERSION}\n"),
     )?;
 
     // Another process may have raced us and finished its extract while
@@ -1170,26 +1170,26 @@ impl WefBackendResolver {
         return Ok(dir);
       }
       return Err(deno_core::anyhow::anyhow!(
-        "failed to atomic-rename WEF cache to {}: {e}",
+        "failed to atomic-rename LAUFEY cache to {}: {e}",
         dir.display(),
       ));
     }
 
-    // The wef release archive linker-signs the `wef` binary with
-    // identifier=`wef` rather than the .app's CFBundleIdentifier. UN
+    // The laufey release archive linker-signs the `laufey` binary with
+    // identifier=`laufey` rather than the .app's CFBundleIdentifier. UN
     // (UNUserNotificationCenter) rejects authorization requests when
     // the running binary's signed identifier disagrees with the host
     // bundle's id (UNErrorCodeNotificationsNotAllowed, error code 1).
     // In HMR mode the user's project bundle isn't involved — we run
-    // wef.app directly — so we have to fix the cached copy itself.
-    // Re-sign every Mach-O inside the cached wef.app with the bundle
+    // laufey.app directly — so we have to fix the cached copy itself.
+    // Re-sign every Mach-O inside the cached laufey.app with the bundle
     // id so the running identity is internally consistent. No-op on
     // non-macOS targets / hosts (no `codesign(1)`).
     #[cfg(target_os = "macos")]
     if target.contains("apple-darwin") {
-      if let Err(e) = harmonize_cached_wef_identifiers(&dir, backend) {
+      if let Err(e) = harmonize_cached_laufey_identifiers(&dir, backend) {
         log::warn!(
-          "[desktop] could not re-sign cached wef backend: {e} \
+          "[desktop] could not re-sign cached laufey backend: {e} \
            (notifications may not work in HMR mode until you re-download)"
         );
       }
@@ -1198,34 +1198,34 @@ impl WefBackendResolver {
     Ok(dir)
   }
 
-  /// Locate the WEF backend binary for `backend` on `target`.
+  /// Locate the LAUFEY backend binary for `backend` on `target`.
   ///
-  /// Resolution order: `WEF_DEV_DIR` checkout → cached download →
+  /// Resolution order: `LAUFEY_DEV_DIR` checkout → cached download →
   /// fresh download.
   async fn find_binary(
     &self,
     backend: &str,
     target: &str,
   ) -> Result<PathBuf, AnyError> {
-    if let Some(dev_dir) = wef_dev_dir() {
+    if let Some(dev_dir) = laufey_dev_dir() {
       let binary =
         locate_dev_backend_binary(&dev_dir, backend).ok_or_else(|| {
           deno_core::anyhow::anyhow!(
             "could not find '{backend}' backend binary under {} (set via {})",
             dev_dir.display(),
-            WEF_DEV_DIR_ENV
+            LAUFEY_DEV_DIR_ENV
           )
         })?;
-      // Re-sign the dev wef build so its identifier matches the bundle
+      // Re-sign the dev laufey build so its identifier matches the bundle
       // id — same fix as the download path, applied every launch
-      // because a fresh `cargo build` of wef restores the linker's
-      // default `Identifier=wef`. The harmonize call is idempotent:
+      // because a fresh `cargo build` of laufey restores the linker's
+      // default `Identifier=laufey`. The harmonize call is idempotent:
       // already-correct binaries are skipped.
       #[cfg(target_os = "macos")]
-      if let Some(wef_app) = wef_app_for_binary(&binary) {
-        if let Err(e) = harmonize_wef_app_identifiers(&wef_app) {
+      if let Some(laufey_app) = laufey_app_for_binary(&binary) {
+        if let Err(e) = harmonize_laufey_app_identifiers(&laufey_app) {
           log::warn!(
-            "[desktop] could not re-sign dev wef backend: {e} \
+            "[desktop] could not re-sign dev laufey backend: {e} \
              (notifications may not work in HMR mode)"
           );
         }
@@ -1242,18 +1242,18 @@ impl WefBackendResolver {
     })
   }
 
-  /// Locate the WEF `.app` bundle for `backend` on a macOS `target`.
+  /// Locate the LAUFEY `.app` bundle for `backend` on a macOS `target`.
   async fn find_app_bundle(
     &self,
     backend: &str,
     target: &str,
   ) -> Result<PathBuf, AnyError> {
-    if let Some(dev_dir) = wef_dev_dir() {
+    if let Some(dev_dir) = laufey_dev_dir() {
       return locate_dev_app_bundle(&dev_dir, backend).ok_or_else(|| {
         deno_core::anyhow::anyhow!(
           "could not find '{backend}' .app bundle under {} (set via {})",
           dev_dir.display(),
-          WEF_DEV_DIR_ENV
+          LAUFEY_DEV_DIR_ENV
         )
       });
     }
@@ -1277,7 +1277,7 @@ impl WefBackendResolver {
     let binary = self.find_binary(backend, target).await?;
     let parent = binary.parent().ok_or_else(|| {
       deno_core::anyhow::anyhow!(
-        "WEF backend binary has no parent directory: {}",
+        "LAUFEY backend binary has no parent directory: {}",
         binary.display()
       )
     })?;
@@ -1285,7 +1285,7 @@ impl WefBackendResolver {
   }
 }
 
-fn wef_archive_name(backend: &str, target: &str) -> String {
+fn laufey_archive_name(backend: &str, target: &str) -> String {
   let ext = if target.contains("windows") {
     "zip"
   } else {
@@ -1296,12 +1296,12 @@ fn wef_archive_name(backend: &str, target: &str) -> String {
     "raw" => "winit",
     other => other,
   };
-  format!("wef-{archive_backend}-{target}.{ext}")
+  format!("laufey-{archive_backend}-{target}.{ext}")
 }
 
-fn wef_release_url(file: &str) -> String {
+fn laufey_release_url(file: &str) -> String {
   format!(
-    "https://github.com/littledivy/just-wef/releases/download/v{WEF_VERSION}/{file}"
+    "https://github.com/littledivy/laufey/releases/download/v{LAUFEY_VERSION}/{file}"
   )
 }
 
@@ -1323,7 +1323,7 @@ fn parse_sha256sum(contents: &str, file: &str) -> Option<String> {
   None
 }
 
-fn extract_wef_archive(
+fn extract_laufey_archive(
   name: &str,
   data: &[u8],
   dest: &Path,
@@ -1409,11 +1409,11 @@ fn extract_wef_archive(
       }
       // Refuse symlinks: with prior entries already extracted, a
       // symlink-then-write pair is the standard zip-slip-via-symlink
-      // escape, and WEF Windows archives have no legitimate need for
+      // escape, and LAUFEY Windows archives have no legitimate need for
       // them.
       if entry.is_symlink() {
         bail!(
-          "refusing symlink entry in wef archive: {}",
+          "refusing symlink entry in laufey archive: {}",
           rel_path.display()
         );
       }
@@ -1456,19 +1456,19 @@ fn locate_backend_binary(
   let is_macos = target.contains("apple-darwin");
   match backend {
     "cef" if is_macos => {
-      let p = dir.join("wef.app/Contents/MacOS/wef");
+      let p = dir.join("laufey.app/Contents/MacOS/laufey");
       p.exists().then_some(p)
     }
     "webview" if is_macos => {
-      let p = dir.join("wef_webview.app/Contents/MacOS/wef_webview");
+      let p = dir.join("laufey_webview.app/Contents/MacOS/laufey_webview");
       p.exists().then_some(p)
     }
     _ => {
       let stem = match backend {
-        "cef" => "wef",
-        "raw" => "wef_winit",
-        "servo" => "wef_servo",
-        _ => "wef_webview",
+        "cef" => "laufey",
+        "raw" => "laufey_winit",
+        "servo" => "laufey_servo",
+        _ => "laufey_webview",
       };
       let exe = if is_windows {
         format!("{stem}.exe")
@@ -1483,74 +1483,74 @@ fn locate_backend_binary(
 
 fn locate_app_bundle(dir: &Path, backend: &str) -> Option<PathBuf> {
   let name = match backend {
-    "cef" => "wef.app",
-    _ => "wef_webview.app",
+    "cef" => "laufey.app",
+    _ => "laufey_webview.app",
   };
   let p = dir.join(name);
   p.exists().then_some(p)
 }
 
-/// Target triple to use when selecting a wef backend archive. Honors
+/// Target triple to use when selecting a laufey backend archive. Honors
 /// `desktop_flags.target` (for cross-target packaging); otherwise defaults to
 /// the host triple this deno binary was built for.
-fn wef_target_for(desktop_flags: &DesktopFlags) -> &str {
-  desktop_flags.target.as_deref().unwrap_or(WEF_NATIVE_TARGET)
+fn laufey_target_for(desktop_flags: &DesktopFlags) -> &str {
+  desktop_flags.target.as_deref().unwrap_or(LAUFEY_NATIVE_TARGET)
 }
 
-/// Resolve `WEF_DEV_DIR` to a directory path if set and present on disk.
-fn wef_dev_dir() -> Option<PathBuf> {
-  let raw = std::env::var(WEF_DEV_DIR_ENV).ok()?;
+/// Resolve `LAUFEY_DEV_DIR` to a directory path if set and present on disk.
+fn laufey_dev_dir() -> Option<PathBuf> {
+  let raw = std::env::var(LAUFEY_DEV_DIR_ENV).ok()?;
   let p = PathBuf::from(raw);
   p.is_dir().then_some(p)
 }
 
-/// Find a built backend binary inside a wef checkout. Mirrors the well-known
-/// build-tree paths produced by wef's Makefile + Nix flakes.
-fn locate_dev_backend_binary(wef: &Path, backend: &str) -> Option<PathBuf> {
+/// Find a built backend binary inside a laufey checkout. Mirrors the well-known
+/// build-tree paths produced by laufey's Makefile + Nix flakes.
+fn locate_dev_backend_binary(laufey: &Path, backend: &str) -> Option<PathBuf> {
   let candidates: Vec<PathBuf> = match backend {
     "cef" => vec![
-      wef.join("result-cef/Applications/wef.app/Contents/MacOS/wef"),
-      wef.join("result/Applications/wef.app/Contents/MacOS/wef"),
-      wef.join("cef/build/Release/wef.app/Contents/MacOS/wef"),
-      wef.join("cef/build/wef.app/Contents/MacOS/wef"),
-      wef.join("cef/build/Release/wef"),
-      wef.join("cef/build/wef"),
+      laufey.join("result-cef/Applications/laufey.app/Contents/MacOS/laufey"),
+      laufey.join("result/Applications/laufey.app/Contents/MacOS/laufey"),
+      laufey.join("cef/build/Release/laufey.app/Contents/MacOS/laufey"),
+      laufey.join("cef/build/laufey.app/Contents/MacOS/laufey"),
+      laufey.join("cef/build/Release/laufey"),
+      laufey.join("cef/build/laufey"),
     ],
     "servo" => vec![
-      wef.join("target/release/wef_servo"),
-      wef.join("target/debug/wef_servo"),
+      laufey.join("target/release/laufey_servo"),
+      laufey.join("target/debug/laufey_servo"),
     ],
     "raw" => vec![
-      wef.join("target/release/wef_winit"),
-      wef.join("target/debug/wef_winit"),
+      laufey.join("target/release/laufey_winit"),
+      laufey.join("target/debug/laufey_winit"),
     ],
     _ => vec![
-      wef.join(
-        "result-1/Applications/wef_webview.app/Contents/MacOS/wef_webview",
+      laufey.join(
+        "result-1/Applications/laufey_webview.app/Contents/MacOS/laufey_webview",
       ),
-      wef
-        .join("result/Applications/wef_webview.app/Contents/MacOS/wef_webview"),
-      wef.join("webview/build/wef_webview.app/Contents/MacOS/wef_webview"),
-      wef.join("webview/build/wef_webview"),
+      laufey
+        .join("result/Applications/laufey_webview.app/Contents/MacOS/laufey_webview"),
+      laufey.join("webview/build/laufey_webview.app/Contents/MacOS/laufey_webview"),
+      laufey.join("webview/build/laufey_webview"),
     ],
   };
   candidates.into_iter().find(|p| p.exists())
 }
 
-/// Find a built backend `.app` bundle inside a wef checkout.
-fn locate_dev_app_bundle(wef: &Path, backend: &str) -> Option<PathBuf> {
+/// Find a built backend `.app` bundle inside a laufey checkout.
+fn locate_dev_app_bundle(laufey: &Path, backend: &str) -> Option<PathBuf> {
   let candidates: Vec<PathBuf> = match backend {
     "cef" => vec![
-      wef.join("result-cef/Applications/wef.app"),
-      wef.join("result/Applications/wef.app"),
-      wef.join("cef/build/Release/wef.app"),
-      wef.join("cef/build/wef.app"),
+      laufey.join("result-cef/Applications/laufey.app"),
+      laufey.join("result/Applications/laufey.app"),
+      laufey.join("cef/build/Release/laufey.app"),
+      laufey.join("cef/build/laufey.app"),
     ],
     "raw" | "servo" => return None,
     _ => vec![
-      wef.join("result-1/Applications/wef_webview.app"),
-      wef.join("result/Applications/wef_webview.app"),
-      wef.join("webview/build/wef_webview.app"),
+      laufey.join("result-1/Applications/laufey_webview.app"),
+      laufey.join("result/Applications/laufey_webview.app"),
+      laufey.join("webview/build/laufey_webview.app"),
     ],
   };
   candidates.into_iter().find(|p| p.exists())
@@ -1611,15 +1611,15 @@ fn validate_bundle_identifier(id: &str) -> Result<(), AnyError> {
 /// CEF's process model: when the browser process spawns a helper for a
 /// child role (gpu, renderer, plugin, …), the helper inspects its own
 /// `CFBundleIdentifier` and refuses to attach to a parent whose id
-/// doesn't match it as a prefix. wef's default helper plists ship with
-/// `com.example.wef.helper.*` — which is inconsistent with whatever id
+/// doesn't match it as a prefix. laufey's default helper plists ship with
+/// `com.example.laufey.helper.*` — which is inconsistent with whatever id
 /// we wrote into the main bundle, so we'd get a launch-time refusal
 /// (the helper exits silently and the browser hangs waiting for it).
 ///
 /// We compute the new id by extracting the "kind" suffix from the
 /// existing id (everything from the last `helper` segment onward) and
-/// concatenating it onto the main id. So `com.example.wef.helper` →
-/// `<main>.helper`, `com.example.wef.helper.gpu` → `<main>.helper.gpu`.
+/// concatenating it onto the main id. So `com.example.laufey.helper` →
+/// `<main>.helper`, `com.example.laufey.helper.gpu` → `<main>.helper.gpu`.
 fn rewrite_cef_helper_bundle_ids(
   contents_dir: &Path,
   main_bundle_id: &str,
@@ -1675,7 +1675,7 @@ fn rewrite_helper_plist_identifier(
     })?;
   // Extract the suffix from the last `helper` segment onward. Falls back
   // to a bare `helper` if the existing id doesn't contain that token
-  // (defensive — every wef helper plist has it today).
+  // (defensive — every laufey helper plist has it today).
   let suffix = existing
     .find("helper")
     .map(|i| &existing[i..])
@@ -1687,7 +1687,7 @@ fn rewrite_helper_plist_identifier(
   );
   // Write XML format for stability and human-diffability. Helper plists
   // are tiny so we don't gain anything by switching to binary plist
-  // format; XML is what wef ships and what `codesign` expects to find.
+  // format; XML is what laufey ships and what `codesign` expects to find.
   plist::to_file_xml(plist_path, &dict)
     .with_context(|| format!("failed to write {}", plist_path.display()))?;
   Ok(())
@@ -1698,9 +1698,9 @@ fn rewrite_helper_plist_identifier(
 /// nest: the outer signature's CodeDirectory hashes the inner ones, so
 /// outer-last is the only order that works).
 ///
-/// Re-uses the JIT entitlements that ship with the wef CEF bundle
+/// Re-uses the JIT entitlements that ship with the laufey CEF bundle
 /// (`Contents/Frameworks/<helper>.app/Contents/Resources/...entitlements...`
-/// or, more robustly, the per-helper entitlements wef bundles next to
+/// or, more robustly, the per-helper entitlements laufey bundles next to
 /// each helper). When entitlements aren't present we fall back to
 /// signing without them — the binary will still launch but V8 won't
 /// get JIT permission.
@@ -1725,8 +1725,8 @@ fn codesign_macos_bundle(
   );
 
   // Read the bundle id from the main Info.plist so we can override the
-  // signed identifier on `Contents/MacOS/wef`. The default identifier
-  // codesign infers from a bare Mach-O binary is `wef` (the basename),
+  // signed identifier on `Contents/MacOS/laufey`. The default identifier
+  // codesign infers from a bare Mach-O binary is `laufey` (the basename),
   // which doesn't match the .app's CFBundleIdentifier — and UN refuses
   // notification authorization when the running binary's signed id
   // doesn't match the bundle's id. Forcing `--identifier=<bundle_id>`
@@ -1758,9 +1758,9 @@ fn codesign_macos_bundle(
     }
   }
 
-  // Sign `Contents/MacOS/wef` (and the launcher shim, the dylib) with
+  // Sign `Contents/MacOS/laufey` (and the launcher shim, the dylib) with
   // the bundle's id as the signed identifier. This is what UN keys
-  // notification permission to — without it, UN sees `wef` requesting
+  // notification permission to — without it, UN sees `laufey` requesting
   // permission for `com.example.app` and rejects with
   // `UNErrorCodeNotificationsNotAllowed`.
   let macos_dir = app_bundle.join("Contents/MacOS");
@@ -1773,7 +1773,7 @@ fn codesign_macos_bundle(
       // Skip non-Mach-O files: the auto-update sentinel (`*.update-ok`),
       // staged updates (`*.update`, `*.backup`), and the POSIX shell
       // launcher (`Contents/MacOS/<app>` is a shell script that execs
-      // wef). codesign can't sign a text file and would fail the
+      // laufey). codesign can't sign a text file and would fail the
       // whole signing pass.
       if !is_macho_file(&path) {
         continue;
@@ -1783,7 +1783,7 @@ fn codesign_macos_bundle(
   }
 
   // Finally the main bundle. Use the browser-process entitlements if
-  // wef shipped them; otherwise sign with no entitlements (still
+  // laufey shipped them; otherwise sign with no entitlements (still
   // launches, just no JIT for V8 in the browser process — which doesn't
   // host V8 anyway, so this is fine).
   let browser_entitlements = locate_browser_entitlements(app_bundle);
@@ -1840,11 +1840,11 @@ fn is_macho_file(path: &Path) -> bool {
   )
 }
 
-/// Search for a per-helper entitlements plist that wef bundled with this
+/// Search for a per-helper entitlements plist that laufey bundled with this
 /// helper. Returns the path if found, `None` otherwise.
 fn locate_helper_entitlements(helper_app: &Path) -> Option<PathBuf> {
-  // wef ships these alongside the helper binaries; the exact filename
-  // pattern depends on the wef build. Probe the well-known names; fall
+  // laufey ships these alongside the helper binaries; the exact filename
+  // pattern depends on the laufey build. Probe the well-known names; fall
   // back to the generic `entitlements-helper.plist` next to Contents.
   let candidates = [
     helper_app.join("Contents/Resources/entitlements-helper.plist"),
@@ -1869,7 +1869,7 @@ fn locate_browser_entitlements(app_bundle: &Path) -> Option<PathBuf> {
 ///
 /// `--options runtime` enables the Hardened Runtime, which is required
 /// for notarization. `--force` overwrites any existing signature; the
-/// helpers come pre-signed by wef with an ad-hoc signature that we
+/// helpers come pre-signed by laufey with an ad-hoc signature that we
 /// always need to replace.
 ///
 /// Ad-hoc identity (`-`) skips `--timestamp` (no cert to anchor a
@@ -1913,46 +1913,46 @@ fn codesign_one(
   Ok(())
 }
 
-/// Re-sign the cached wef.app's binaries so the running binary's
+/// Re-sign the cached laufey.app's binaries so the running binary's
 /// identifier matches its host bundle's `CFBundleIdentifier`. Run once
-/// per fresh download; HMR mode runs wef.app directly (no per-project
-/// wrapper), so without this UN sees `Identifier=wef` /
+/// per fresh download; HMR mode runs laufey.app directly (no per-project
+/// wrapper), so without this UN sees `Identifier=laufey` /
 /// `CFBundleIdentifier=com.deno.desktop` and refuses notification
 /// authorization. Best-effort: failures here are logged but don't
 /// abort the install, since most desktop features still work without
 /// notifications.
 #[cfg(target_os = "macos")]
-fn harmonize_cached_wef_identifiers(
+fn harmonize_cached_laufey_identifiers(
   install_dir: &Path,
   backend: &str,
 ) -> Result<(), AnyError> {
-  let wef_app =
-    locate_wef_app_in_install(install_dir, backend).ok_or_else(|| {
+  let laufey_app =
+    locate_laufey_app_in_install(install_dir, backend).ok_or_else(|| {
       deno_core::anyhow::anyhow!(
-        "could not find wef.app under {} to re-sign",
+        "could not find laufey.app under {} to re-sign",
         install_dir.display()
       )
     })?;
-  harmonize_wef_app_identifiers(&wef_app)
+  harmonize_laufey_app_identifiers(&laufey_app)
 }
 
-/// Idempotently re-sign every Mach-O in `<wef.app>/Contents/MacOS/` so
+/// Idempotently re-sign every Mach-O in `<laufey.app>/Contents/MacOS/` so
 /// its code-signing identifier matches the bundle's `CFBundleIdentifier`.
 /// macOS `usernoted` rejects UN authorization with
 /// `UNErrorCodeNotificationsNotAllowed` when the running binary's
 /// signed identifier disagrees with the bundle id ("Legacy client X
 /// connecting to modern client" in the daemon log). The linker-signed
-/// default for the wef binary is `Identifier=wef`, which never matches.
+/// default for the laufey binary is `Identifier=laufey`, which never matches.
 /// Safe to call on every launch — binaries already at the correct
 /// identifier are skipped without a re-sign.
 #[cfg(target_os = "macos")]
-fn harmonize_wef_app_identifiers(wef_app: &Path) -> Result<(), AnyError> {
-  let bundle_id = read_bundle_identifier(wef_app)?;
-  let macos_dir = wef_app.join("Contents/MacOS");
+fn harmonize_laufey_app_identifiers(laufey_app: &Path) -> Result<(), AnyError> {
+  let bundle_id = read_bundle_identifier(laufey_app)?;
+  let macos_dir = laufey_app.join("Contents/MacOS");
 
-  // wef writes a `.wef/` runtime-data cache directly inside the bundle's
+  // laufey writes a `.laufey/` runtime-data cache directly inside the bundle's
   // `Contents/MacOS/` at runtime. When codesign(1) signs the main
-  // executable (`Contents/MacOS/wef`) it seals the *whole* bundle and trips
+  // executable (`Contents/MacOS/laufey`) it seals the *whole* bundle and trips
   // over that stray directory with "bundle format unrecognized", aborting
   // the re-sign — which silently breaks notification permission on every
   // launch after the first run created the cache. Park it just outside the
@@ -1997,14 +1997,14 @@ impl Drop for ParkedCacheDir {
   }
 }
 
-/// If `<macos_dir>/.wef` exists, move it just outside the `.app` bundle so
+/// If `<macos_dir>/.laufey` exists, move it just outside the `.app` bundle so
 /// codesign's bundle sealing doesn't choke on it, returning a guard that
 /// restores it on drop. Returns `None` when there's nothing to park or it
 /// can't be relocated — in which case signing proceeds as before (and may
 /// fail loudly, same as the previous behaviour).
 #[cfg(target_os = "macos")]
 fn park_bundle_cache_dir(macos_dir: &Path) -> Option<ParkedCacheDir> {
-  let cache = macos_dir.join(".wef");
+  let cache = macos_dir.join(".laufey");
   if !cache.exists() {
     return None;
   }
@@ -2013,7 +2013,7 @@ fn park_bundle_cache_dir(macos_dir: &Path) -> Option<ParkedCacheDir> {
   // parents up is the directory containing the `.app`. Staying on the same
   // volume keeps the rename atomic and cheap.
   let app_parent = macos_dir.parent()?.parent()?.parent()?;
-  let parked_at = app_parent.join(".wef-harmonize-parked");
+  let parked_at = app_parent.join(".laufey-harmonize-parked");
   // Clear any debris from a previously interrupted run.
   if parked_at.exists() {
     let _ = std::fs::remove_dir_all(&parked_at);
@@ -2049,11 +2049,11 @@ fn signed_identifier_matches(path: &Path, expected: &str) -> bool {
     .any(|id| id.trim() == expected)
 }
 
-/// Given a path to the wef Mach-O binary (`wef.app/Contents/MacOS/wef`),
+/// Given a path to the laufey Mach-O binary (`laufey.app/Contents/MacOS/laufey`),
 /// return the containing `.app` bundle. Returns `None` if the path
 /// doesn't sit inside a `.app` bundle in the expected layout.
 #[cfg(target_os = "macos")]
-fn wef_app_for_binary(binary: &Path) -> Option<PathBuf> {
+fn laufey_app_for_binary(binary: &Path) -> Option<PathBuf> {
   let app = binary.parent()?.parent()?.parent()?;
   if app.extension().and_then(|s| s.to_str()) == Some("app") {
     Some(app.to_path_buf())
@@ -2062,24 +2062,24 @@ fn wef_app_for_binary(binary: &Path) -> Option<PathBuf> {
   }
 }
 
-/// Locate the wef backend's `.app` bundle within an extracted install
-/// dir. The release layout varies by backend (`cef/Release/wef.app`,
-/// `webview/Release/wef_webview.app`, etc.) so probe the well-known
+/// Locate the laufey backend's `.app` bundle within an extracted install
+/// dir. The release layout varies by backend (`cef/Release/laufey.app`,
+/// `webview/Release/laufey_webview.app`, etc.) so probe the well-known
 /// names rather than hardcoding one.
 #[cfg(target_os = "macos")]
-fn locate_wef_app_in_install(dir: &Path, backend: &str) -> Option<PathBuf> {
+fn locate_laufey_app_in_install(dir: &Path, backend: &str) -> Option<PathBuf> {
   let candidates = match backend {
     "cef" => vec![
-      dir.join("wef.app"),
-      dir.join("Release/wef.app"),
-      dir.join("cef/Release/wef.app"),
+      dir.join("laufey.app"),
+      dir.join("Release/laufey.app"),
+      dir.join("cef/Release/laufey.app"),
     ],
     "webview" => vec![
-      dir.join("wef_webview.app"),
-      dir.join("Release/wef_webview.app"),
-      dir.join("webview/Release/wef_webview.app"),
+      dir.join("laufey_webview.app"),
+      dir.join("Release/laufey_webview.app"),
+      dir.join("webview/Release/laufey_webview.app"),
     ],
-    _ => vec![dir.join(format!("wef_{backend}.app")), dir.join("wef.app")],
+    _ => vec![dir.join(format!("laufey_{backend}.app")), dir.join("laufey.app")],
   };
   candidates.into_iter().find(|p| p.exists())
 }
@@ -2155,7 +2155,7 @@ fn dylib_parts(dylib_path: &Path) -> Result<DylibParts<'_>, AnyError> {
 ///     Info.plist
 ///     MacOS/
 ///       AppName          (launcher script)
-///       wef_webview      (WEF backend binary)
+///       laufey_webview      (LAUFEY backend binary)
 ///       libapp.dylib     (compiled Deno runtime + user code)
 ///     Resources/
 ///       AppIcon.icns     (optional)
@@ -2164,26 +2164,26 @@ async fn package_macos_app_bundle(
   dylib_path: &Path,
   desktop_flags: &DesktopFlags,
   cli_options: &CliOptions,
-  wef_resolver: &WefBackendResolver,
+  laufey_resolver: &LaufeyBackendResolver,
 ) -> Result<PathBuf, AnyError> {
   let parts = dylib_parts(dylib_path)?;
   let app_name = parts.app_name.clone();
   let app_bundle = parts.parent.join(format!("{}.app", app_name));
 
-  // Find the WEF backend .app and its main executable.
+  // Find the LAUFEY backend .app and its main executable.
   let backend = desktop_flags.backend.as_deref().unwrap_or("cef");
-  let target = wef_target_for(desktop_flags);
-  let wef_app = wef_resolver.find_app_bundle(backend, target).await?;
-  let wef_executable_name = read_plist_string(
-    &wef_app.join("Contents/Info.plist"),
+  let target = laufey_target_for(desktop_flags);
+  let laufey_app = laufey_resolver.find_app_bundle(backend, target).await?;
+  let laufey_executable_name = read_plist_string(
+    &laufey_app.join("Contents/Info.plist"),
     "CFBundleExecutable",
   )
-  .unwrap_or_else(|| "wef_webview".to_string());
-  let wef_binary = wef_app.join("Contents/MacOS").join(&wef_executable_name);
-  if !wef_binary.exists() {
+  .unwrap_or_else(|| "laufey_webview".to_string());
+  let laufey_binary = laufey_app.join("Contents/MacOS").join(&laufey_executable_name);
+  if !laufey_binary.exists() {
     bail!(
-      "WEF backend executable not found at '{}'",
-      wef_binary.display()
+      "LAUFEY backend executable not found at '{}'",
+      laufey_binary.display()
     );
   }
 
@@ -2192,8 +2192,8 @@ async fn package_macos_app_bundle(
     std::fs::remove_dir_all(&app_bundle)?;
   }
 
-  // Copy the entire WEF .app as the shell (CEF needs Frameworks/, Resources/, etc.).
-  crate::tools::compile::copy_dir_all(&wef_app, &app_bundle)?;
+  // Copy the entire LAUFEY .app as the shell (CEF needs Frameworks/, Resources/, etc.).
+  crate::tools::compile::copy_dir_all(&laufey_app, &app_bundle)?;
 
   let contents_dir = app_bundle.join("Contents");
   let macos_dir = contents_dir.join("MacOS");
@@ -2201,17 +2201,17 @@ async fn package_macos_app_bundle(
   std::fs::create_dir_all(&resources_dir)?;
 
   // The backend binary extracts its self-extracting VFS to a sibling
-  // `.<exe>` dir on first run. If the source wef.app was ever run, that dir
+  // `.<exe>` dir on first run. If the source laufey.app was ever run, that dir
   // gets copied along with it — drop any such runtime caches.
-  let wef_exe_stem = Path::new(&wef_executable_name)
+  let laufey_exe_stem = Path::new(&laufey_executable_name)
     .file_stem()
     .map(|s| s.to_string_lossy().into_owned())
-    .unwrap_or_else(|| wef_executable_name.clone());
-  let cache_dir = macos_dir.join(format!(".{}", wef_exe_stem));
+    .unwrap_or_else(|| laufey_executable_name.clone());
+  let cache_dir = macos_dir.join(format!(".{}", laufey_exe_stem));
   if cache_dir.exists() {
     let _ = std::fs::remove_dir_all(&cache_dir);
   }
-  let cache_file = macos_dir.join(format!(".{}.cache", wef_exe_stem));
+  let cache_file = macos_dir.join(format!(".{}.cache", laufey_exe_stem));
   if cache_file.exists() {
     let _ = std::fs::remove_file(&cache_file);
   }
@@ -2229,7 +2229,7 @@ async fn package_macos_app_bundle(
   // inside `"..."`.
   let dylib_filename_str = dylib_filename.to_string_lossy();
   validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&wef_executable_name, "WEF backend executable name")?;
+  validate_launcher_name(&laufey_executable_name, "LAUFEY backend executable name")?;
   validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = macos_dir.join(&app_name);
   std::fs::write(
@@ -2237,8 +2237,8 @@ async fn package_macos_app_bundle(
     format!(
       "#!/bin/sh\n\
        DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n\
-       exec \"$DIR/{wef_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
-      wef_binary = wef_executable_name,
+       exec \"$DIR/{laufey_binary}\" --runtime \"$DIR/{dylib}\" \"$@\"\n",
+      laufey_binary = laufey_executable_name,
       dylib = dylib_filename_str,
     ),
   )?;
@@ -2317,8 +2317,8 @@ async fn package_macos_app_bundle(
   // Rewrite each CEF helper's CFBundleIdentifier to be a strict suffix
   // of the main bundle id. CEF's process model requires this — the
   // browser process matches a helper's bundle id prefix against its own
-  // to verify the helper is part of the same app, and the wef defaults
-  // (`com.example.wef.helper.*`) don't share a prefix with whatever
+  // to verify the helper is part of the same app, and the laufey defaults
+  // (`com.example.laufey.helper.*`) don't share a prefix with whatever
   // identifier we just wrote into the main plist.
   rewrite_cef_helper_bundle_ids(&contents_dir, &bundle_id)?;
 
@@ -2842,7 +2842,7 @@ pub fn convert_icon_set_to_ico(
 
 /// Spawn a child with macOS TCC "responsibility" disclaimed, so the child
 /// is its own permission principal instead of inheriting attribution from
-/// the calling chain (terminal → deno → wef).
+/// the calling chain (terminal → deno → laufey).
 ///
 /// Without this, requests like `UNUserNotificationCenter.requestAuthorization`
 /// fail immediately with `UNErrorCodeNotificationsNotAllowed` because TCC
@@ -3040,17 +3040,17 @@ mod disclaim_spawn {
 mod tests {
   use super::*;
 
-  // --- wef_archive_name / wef_release_url ---
+  // --- laufey_archive_name / laufey_release_url ---
 
   #[test]
   fn archive_name_extensions() {
     assert_eq!(
-      wef_archive_name("cef", "aarch64-apple-darwin"),
-      "wef-cef-aarch64-apple-darwin.tar.gz"
+      laufey_archive_name("cef", "aarch64-apple-darwin"),
+      "laufey-cef-aarch64-apple-darwin.tar.gz"
     );
     assert_eq!(
-      wef_archive_name("webview", "x86_64-pc-windows-msvc"),
-      "wef-webview-x86_64-pc-windows-msvc.zip",
+      laufey_archive_name("webview", "x86_64-pc-windows-msvc"),
+      "laufey-webview-x86_64-pc-windows-msvc.zip",
       "windows targets must use zip, not tar.gz — the bundled 7z step assumes it"
     );
   }
@@ -3060,18 +3060,18 @@ mod tests {
     // `raw` is the public name; the GitHub releases ship under `winit`.
     // A regression here would 404 every backend download for raw users.
     assert_eq!(
-      wef_archive_name("raw", "x86_64-unknown-linux-gnu"),
-      "wef-winit-x86_64-unknown-linux-gnu.tar.gz"
+      laufey_archive_name("raw", "x86_64-unknown-linux-gnu"),
+      "laufey-winit-x86_64-unknown-linux-gnu.tar.gz"
     );
   }
 
   #[test]
   fn release_url_uses_v_prefix() {
-    let url = wef_release_url("wef-cef-aarch64-apple-darwin.tar.gz");
+    let url = laufey_release_url("laufey-cef-aarch64-apple-darwin.tar.gz");
     assert!(url.starts_with(
-      "https://github.com/littledivy/just-wef/releases/download/v"
+      "https://github.com/littledivy/laufey/releases/download/v"
     ));
-    assert!(url.ends_with("/wef-cef-aarch64-apple-darwin.tar.gz"));
+    assert!(url.ends_with("/laufey-cef-aarch64-apple-darwin.tar.gz"));
     // No spaces, no shell metachars — this string is fed to `curl` and to
     // log messages.
     assert!(!url.contains(' '));
@@ -3222,11 +3222,11 @@ def456  other.zip
 
   #[test]
   fn launcher_name_error_message_includes_kind() {
-    let err = validate_launcher_name("bad/name", "WEF backend binary name")
+    let err = validate_launcher_name("bad/name", "LAUFEY backend binary name")
       .unwrap_err()
       .to_string();
     assert!(
-      err.contains("WEF backend binary name"),
+      err.contains("LAUFEY backend binary name"),
       "error should label what was invalid; got: {err}"
     );
     assert!(
@@ -3321,10 +3321,10 @@ def456  other.zip
     assert!(icns_ostypes_for_size(999).is_empty());
   }
 
-  // --- extract_wef_archive ---
+  // --- extract_laufey_archive ---
   //
   // These tests build tar.gz fixtures in-memory and feed them through
-  // extract_wef_archive. They mirror the manual checklist items 1.33–1.37:
+  // extract_laufey_archive. They mirror the manual checklist items 1.33–1.37:
   // a malicious archive must be rejected, a normal one must extract,
   // and setuid/world-writable bits must never reach disk.
 
@@ -3387,7 +3387,7 @@ def456  other.zip
       ("greet", tar::EntryType::Regular, b"hello", 0o755),
       ("notes/readme.txt", tar::EntryType::Regular, b"docs", 0o644),
     ]);
-    extract_wef_archive("ok.tar.gz", &gz, tmp.path()).expect("extract");
+    extract_laufey_archive("ok.tar.gz", &gz, tmp.path()).expect("extract");
 
     let mut out = String::new();
     std::fs::File::open(tmp.path().join("greet"))
@@ -3403,7 +3403,7 @@ def456  other.zip
     // Hand-craft a tar block with `../escape.txt` as the name: the
     // `tar` crate's `Builder` refuses to *write* such a path (a safety
     // feature in the producer), so a unit test that goes through it
-    // wouldn't actually exercise extract_wef_archive's reader-side
+    // wouldn't actually exercise extract_laufey_archive's reader-side
     // check. We construct the 512-byte ustar header directly to get a
     // genuinely-malicious archive on the wire.
     fn ustar_block(name: &str, body: &[u8]) -> Vec<u8> {
@@ -3453,7 +3453,7 @@ def456  other.zip
     enc.finish().unwrap();
 
     let tmp = tempfile::tempdir().unwrap();
-    let err = extract_wef_archive("evil.tar.gz", &gz, tmp.path())
+    let err = extract_laufey_archive("evil.tar.gz", &gz, tmp.path())
       .expect_err("malicious `..` path must be rejected");
     let msg = err.to_string();
     assert!(
@@ -3471,7 +3471,7 @@ def456  other.zip
     // refuse: the test name documents the canonical zip-slip-via-symlink
     // pattern (entry A = symlink escape, entry B writes through it).
     let gz = make_tar_gz_symlink("foo", "../../etc/passwd");
-    let _ = extract_wef_archive("evil.tar.gz", &gz, tmp.path());
+    let _ = extract_laufey_archive("evil.tar.gz", &gz, tmp.path());
     // Tar's `unpack_in` is allowed to either error or skip the entry —
     // both behaviours mean the symlink didn't land in dest. Either is
     // acceptable; what matters is that nothing escaped.
@@ -3499,7 +3499,7 @@ def456  other.zip
       b"#!/bin/sh\necho gotcha\n",
       0o7777,
     )]);
-    extract_wef_archive("perm.tar.gz", &gz, tmp.path()).expect("extract");
+    extract_laufey_archive("perm.tar.gz", &gz, tmp.path()).expect("extract");
     let meta = std::fs::metadata(tmp.path().join("exe")).unwrap();
     let mode = meta.permissions().mode() & 0o7777;
     // We normalize execute-bit-set files to 0o755. setuid/setgid/sticky
@@ -3520,7 +3520,7 @@ def456  other.zip
     // to 0o644 (no world-writable).
     let gz =
       make_tar_gz(&[("readme.txt", tar::EntryType::Regular, b"hello", 0o666)]);
-    extract_wef_archive("doc.tar.gz", &gz, tmp.path()).expect("extract");
+    extract_laufey_archive("doc.tar.gz", &gz, tmp.path()).expect("extract");
     let mode = std::fs::metadata(tmp.path().join("readme.txt"))
       .unwrap()
       .permissions()
@@ -3536,7 +3536,7 @@ def456  other.zip
   #[test]
   fn extract_unknown_format_errors() {
     let tmp = tempfile::tempdir().unwrap();
-    let err = extract_wef_archive("evil.rar", b"PK\x03\x04", tmp.path())
+    let err = extract_laufey_archive("evil.rar", b"PK\x03\x04", tmp.path())
       .expect_err("unknown extensions must error");
     assert!(err.to_string().contains("unsupported archive format"));
   }
@@ -3570,7 +3570,7 @@ def456  other.zip
   fn rewrite_helper_plist_keeps_helper_suffix() {
     let tmp = tempfile::tempdir().unwrap();
     let p = tmp.path().join("Info.plist");
-    write_helper_plist(&p, "com.example.wef.helper");
+    write_helper_plist(&p, "com.example.laufey.helper");
     rewrite_helper_plist_identifier(&p, "com.acme.myapp").unwrap();
     assert_eq!(read_bundle_id(&p), "com.acme.myapp.helper");
   }
@@ -3582,24 +3582,24 @@ def456  other.zip
     // after `helper`; we must preserve everything from `helper` onward.
     let tmp = tempfile::tempdir().unwrap();
     let p = tmp.path().join("Info.plist");
-    write_helper_plist(&p, "com.example.wef.helper.gpu");
+    write_helper_plist(&p, "com.example.laufey.helper.gpu");
     rewrite_helper_plist_identifier(&p, "com.acme.myapp").unwrap();
     assert_eq!(read_bundle_id(&p), "com.acme.myapp.helper.gpu");
   }
 
   #[test]
   fn rewrite_helper_plist_falls_back_when_no_helper_token() {
-    // Defensive path: every wef helper plist today has `helper` in its
+    // Defensive path: every laufey helper plist today has `helper` in its
     // id, but if a hypothetical future bundle drops it we still emit
     // something reasonable.
     let tmp = tempfile::tempdir().unwrap();
     let p = tmp.path().join("Info.plist");
-    write_helper_plist(&p, "com.example.wef.misc");
+    write_helper_plist(&p, "com.example.laufey.misc");
     rewrite_helper_plist_identifier(&p, "com.acme.myapp").unwrap();
     assert_eq!(read_bundle_id(&p), "com.acme.myapp.helper");
   }
 
-  // --- extract_wef_archive ZIP path ---
+  // --- extract_laufey_archive ZIP path ---
 
   fn build_zip<
     F: FnOnce(&mut zip::ZipWriter<std::io::Cursor<&mut Vec<u8>>>),
@@ -3628,7 +3628,7 @@ def456  other.zip
       w.write_all(b"docs").unwrap();
     });
     let tmp = tempfile::tempdir().unwrap();
-    extract_wef_archive("ok.zip", &zip, tmp.path()).expect("extract");
+    extract_laufey_archive("ok.zip", &zip, tmp.path()).expect("extract");
     assert_eq!(
       std::fs::read(tmp.path().join("greet.txt")).unwrap(),
       b"hello zip"
@@ -3646,7 +3646,7 @@ def456  other.zip
       w.write_all(b"oops").unwrap();
     });
     let tmp = tempfile::tempdir().unwrap();
-    let err = extract_wef_archive("evil.zip", &zip, tmp.path())
+    let err = extract_laufey_archive("evil.zip", &zip, tmp.path())
       .expect_err("absolute path in zip must be rejected");
     let msg = err.to_string();
     assert!(
@@ -3668,7 +3668,7 @@ def456  other.zip
       w.write_all(b"oops").unwrap();
     });
     let tmp = tempfile::tempdir().unwrap();
-    let err = extract_wef_archive("evil.zip", &zip, tmp.path())
+    let err = extract_laufey_archive("evil.zip", &zip, tmp.path())
       .expect_err("parent-dir traversal in zip must be rejected");
     let msg = err.to_string();
     assert!(
@@ -3691,7 +3691,7 @@ def456  other.zip
         .unwrap();
     });
     let tmp = tempfile::tempdir().unwrap();
-    let err = extract_wef_archive("evil.zip", &zip, tmp.path())
+    let err = extract_laufey_archive("evil.zip", &zip, tmp.path())
       .expect_err("symlink in zip must be rejected");
     let msg = err.to_string();
     assert!(
@@ -3714,7 +3714,7 @@ def456  other.zip
       w.write_all(b"#!/bin/sh\necho gotcha\n").unwrap();
     });
     let tmp = tempfile::tempdir().unwrap();
-    extract_wef_archive("perm.zip", &zip, tmp.path()).expect("extract");
+    extract_laufey_archive("perm.zip", &zip, tmp.path()).expect("extract");
     let mode = std::fs::metadata(tmp.path().join("exe"))
       .unwrap()
       .permissions()
@@ -3735,7 +3735,7 @@ def456  other.zip
       w.write_all(b"hello").unwrap();
     });
     let tmp = tempfile::tempdir().unwrap();
-    extract_wef_archive("perm.zip", &zip, tmp.path()).expect("extract");
+    extract_laufey_archive("perm.zip", &zip, tmp.path()).expect("extract");
     let mode = std::fs::metadata(tmp.path().join("doc.txt"))
       .unwrap()
       .permissions()
@@ -3753,7 +3753,7 @@ def456  other.zip
       w.write_all(b"deep").unwrap();
     });
     let tmp = tempfile::tempdir().unwrap();
-    extract_wef_archive("nest.zip", &zip, tmp.path()).expect("extract");
+    extract_laufey_archive("nest.zip", &zip, tmp.path()).expect("extract");
     assert_eq!(
       std::fs::read(tmp.path().join("a/b/c/leaf.txt")).unwrap(),
       b"deep"
@@ -3845,9 +3845,9 @@ def456  other.zip
       std::fs::create_dir_all(&plist_dir).unwrap();
       write_helper_plist(&plist_dir.join("Info.plist"), id);
     };
-    make_helper_app("wef Helper", "com.example.wef.helper");
-    make_helper_app("wef Helper (GPU)", "com.example.wef.helper.gpu");
-    make_helper_app("wef Helper (Renderer)", "com.example.wef.helper.renderer");
+    make_helper_app("laufey Helper", "com.example.laufey.helper");
+    make_helper_app("laufey Helper (GPU)", "com.example.laufey.helper.gpu");
+    make_helper_app("laufey Helper (Renderer)", "com.example.laufey.helper.renderer");
     // A non-helper .app — must NOT be rewritten.
     let other = fw.join("Other.app/Contents");
     std::fs::create_dir_all(&other).unwrap();
@@ -3872,15 +3872,15 @@ def456  other.zip
 
     let fw = contents.join("Frameworks");
     assert_eq!(
-      read_bundle_id(&fw.join("wef Helper.app/Contents/Info.plist")),
+      read_bundle_id(&fw.join("laufey Helper.app/Contents/Info.plist")),
       "com.acme.myapp.helper"
     );
     assert_eq!(
-      read_bundle_id(&fw.join("wef Helper (GPU).app/Contents/Info.plist")),
+      read_bundle_id(&fw.join("laufey Helper (GPU).app/Contents/Info.plist")),
       "com.acme.myapp.helper.gpu"
     );
     assert_eq!(
-      read_bundle_id(&fw.join("wef Helper (Renderer).app/Contents/Info.plist")),
+      read_bundle_id(&fw.join("laufey Helper (Renderer).app/Contents/Info.plist")),
       "com.acme.myapp.helper.renderer"
     );
     // Other.app does not contain "Helper" → must NOT be rewritten.
@@ -3921,7 +3921,7 @@ def456  other.zip
     // returning candidate[0] which would not exist).
     let p = tmp
       .path()
-      .join("webview/build/wef_webview.app/Contents/MacOS/wef_webview");
+      .join("webview/build/laufey_webview.app/Contents/MacOS/laufey_webview");
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, b"binary").unwrap();
     let found = locate_dev_backend_binary(tmp.path(), "webview");
@@ -3939,10 +3939,10 @@ def456  other.zip
   #[test]
   fn locate_dev_backend_winit_target_paths() {
     let tmp = tempfile::tempdir().unwrap();
-    let p = tmp.path().join("target/release/wef_winit");
+    let p = tmp.path().join("target/release/laufey_winit");
     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     std::fs::write(&p, b"binary").unwrap();
-    // `raw` is the public backend name; the binary file is `wef_winit`.
+    // `raw` is the public backend name; the binary file is `laufey_winit`.
     let found = locate_dev_backend_binary(tmp.path(), "raw");
     assert_eq!(found.as_deref(), Some(p.as_path()));
   }
@@ -3961,7 +3961,7 @@ def456  other.zip
   #[test]
   fn locate_dev_app_bundle_finds_webview() {
     let tmp = tempfile::tempdir().unwrap();
-    let p = tmp.path().join("webview/build/wef_webview.app");
+    let p = tmp.path().join("webview/build/laufey_webview.app");
     std::fs::create_dir_all(&p).unwrap();
     let found = locate_dev_app_bundle(tmp.path(), "webview");
     assert_eq!(found.as_deref(), Some(p.as_path()));
