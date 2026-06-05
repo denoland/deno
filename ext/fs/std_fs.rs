@@ -1311,6 +1311,20 @@ fn open_path_with_options(
       let fallback = open_options_for_checked_path_no_backup(opts, path);
       fallback.open(path).map_err(|_| err)
     }
+    // A canonicalized path is opened with `O_NOFOLLOW` (see
+    // `open_options_for_checked_path`). If the final component is still a
+    // symlink at this point it must be a broken/dangling link: its target was
+    // removed after canonicalization resolved the parent directory, so the link
+    // survived as the path tail. `O_NOFOLLOW` reports it as `ELOOP` ("Too many
+    // levels of symbolic links"), which is misleading. Translate it to
+    // `ENOENT` so the error matches reading a nonexistent file.
+    // See https://github.com/denoland/deno/issues/29139.
+    #[cfg(unix)]
+    Err(err)
+      if path.canonicalized() && err.raw_os_error() == Some(libc::ELOOP) =>
+    {
+      Err(io::Error::from_raw_os_error(libc::ENOENT))
+    }
     Err(err) => Err(err),
   }
 }
