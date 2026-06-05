@@ -41,7 +41,7 @@ const {
   op_crypto_ml_kem_encapsulate,
   op_crypto_ml_kem_export_pkcs8,
   op_crypto_ml_kem_export_spki,
-  op_crypto_ml_kem_generate_key,
+  op_crypto_ml_kem_from_seed,
   op_crypto_ml_kem_get_public_key,
   op_crypto_ml_kem_import_pkcs8,
   op_crypto_ml_kem_import_spki,
@@ -638,8 +638,10 @@ function usageIntersection(a, b) {
  *
  * `value` is one of:
  *  - a `{ type, data }` object (secret/private/public key material),
- *  - a raw `Uint8Array`/`ArrayBuffer` of key bytes (Ed25519/X25519/X448/ML-KEM),
- *  - a composite ML-DSA `{ seed, privateKey }` object.
+ *  - a raw `Uint8Array`/`ArrayBuffer` of key bytes (Ed25519/X25519/X448 and
+ *    ML-KEM/ML-DSA public keys),
+ *  - a composite `{ seed, privateKey }` object holding the expanded private key
+ *    bytes and the seed it was derived from (ML-KEM/ML-DSA private keys).
  *
  * @param {{ cppgc?: object }} handle
  * @param {{ type: string, data: Uint8Array } | Uint8Array | object} value
@@ -651,7 +653,11 @@ function setKeyData(handle, value) {
   } else if (ArrayBufferIsView(value) || isArrayBuffer(value)) {
     payload = { kind: "raw", data: value };
   } else {
-    payload = { kind: "mldsa", seed: value.seed, privateKey: value.privateKey };
+    payload = {
+      kind: "seeded",
+      seed: value.seed,
+      privateKey: value.privateKey,
+    };
   }
   handle.cppgc = op_crypto_key_store_insert(payload);
 }
@@ -671,7 +677,7 @@ function getKeyData(handle) {
   switch (value.kind) {
     case "raw":
       return value.data;
-    case "mldsa":
+    case "seeded":
       return { seed: value.seed, privateKey: value.privateKey };
     default:
       return { type: value.kind, data: value.data };
@@ -707,7 +713,7 @@ function mldsaPublicKeyLen(variant) {
   }
 }
 
-function mldsaBytesEqual(a, b) {
+function bytesEqual(a, b) {
   const len = TypedArrayPrototypeGetByteLength(a);
   if (len !== TypedArrayPrototypeGetByteLength(b)) {
     return false;
@@ -2999,13 +3005,19 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
         }
       }
 
+      // FIPS 203 keys are derived from a 64-byte seed (d || z) so the seed can
+      // later be exported (raw-seed / jwk / pkcs8). aws-lc-rs does not expose
+      // seed-based generation, so the seed is expanded by the RustCrypto
+      // backend; the resulting bytes are FIPS 203 standard.
+      const seed = new Uint8Array(64);
+      op_crypto_get_random_values(seed);
       const { privateKey: privBytes, publicKey: pubBytes } =
-        op_crypto_ml_kem_generate_key(algorithmName);
+        op_crypto_ml_kem_from_seed(algorithmName, seed);
 
       const algorithm = { name: algorithmName };
 
       const privHandle = {};
-      setKeyData(privHandle, privBytes);
+      setKeyData(privHandle, { seed, privateKey: privBytes });
 
       const pubHandle = {};
       setKeyData(pubHandle, pubBytes);
@@ -3822,6 +3834,33 @@ function importKeyMlKem(
   const algorithmName = normalizedAlgorithm.name;
   const algorithm = { name: algorithmName };
 
+  const makePublicKey = (publicBytes) => {
+    const handle = {};
+    setKeyData(handle, publicBytes);
+    return constructKey(
+      "public",
+      extractable,
+      usageIntersection(keyUsages, ML_KEM_PUBLIC_USAGES),
+      algorithm,
+      handle,
+    );
+  };
+
+  // `seed` is the 64-byte FIPS 203 seed, or `null` for keys imported from the
+  // expanded form (which carries no recoverable seed). `privateBytes` is the
+  // expanded decapsulation key.
+  const makePrivateKey = (seed, privateBytes) => {
+    const handle = {};
+    setKeyData(handle, { seed, privateKey: privateBytes });
+    return constructKey(
+      "private",
+      extractable,
+      usageIntersection(keyUsages, ML_KEM_PRIVATE_USAGES),
+      algorithm,
+      handle,
+    );
+  };
+
   switch (format) {
     case "raw-public": {
       // Public encapsulation key.
@@ -3839,18 +3878,11 @@ function importKeyMlKem(
       ) {
         throw new DOMException("Invalid key data", "DataError");
       }
-      const handle = {};
-      setKeyData(handle, keyData);
-      return constructKey(
-        "public",
-        extractable,
-        usageIntersection(keyUsages, ML_KEM_PUBLIC_USAGES),
-        algorithm,
-        handle,
-      );
+      return makePublicKey(keyData);
     }
     case "raw-private": {
-      // Private decapsulation key in FIPS 203 expanded form.
+      // Private decapsulation key in FIPS 203 expanded form. This form carries
+      // no seed, so the key cannot later be exported as raw-seed/jwk/pkcs8.
       const expectedSize = ML_KEM_PRIVATE_SIZES[algorithmName];
       if (TypedArrayPrototypeGetByteLength(keyData) !== expectedSize) {
         throw new DOMException("Invalid key data", "DataError");
@@ -3865,23 +3897,26 @@ function importKeyMlKem(
       ) {
         throw new DOMException("Invalid key data", "DataError");
       }
-      const handle = {};
-      setKeyData(handle, keyData);
-      return constructKey(
-        "private",
-        extractable,
-        usageIntersection(keyUsages, ML_KEM_PRIVATE_USAGES),
-        algorithm,
-        handle,
-      );
+      return makePrivateKey(null, keyData);
     }
     case "raw-seed": {
-      // FIPS 203 64-byte seed format. Not yet supported by the aws-lc-rs
-      // backend; tracked as a follow-up.
-      throw new DOMException(
-        "ML-KEM 'raw-seed' format is not yet supported",
-        "NotSupportedError",
-      );
+      // FIPS 203 64-byte seed (d || z).
+      for (let i = 0; i < keyUsages.length; i++) {
+        if (!ArrayPrototypeIncludes(ML_KEM_PRIVATE_USAGES, keyUsages[i])) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+      if (TypedArrayPrototypeGetByteLength(keyData) !== 64) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      let res;
+      try {
+        res = op_crypto_ml_kem_from_seed(algorithmName, keyData);
+      } catch (_) {
+        throw new DOMException("Invalid key data", "DataError");
+      }
+      const seedCopy = TypedArrayPrototypeSlice(keyData);
+      return makePrivateKey(seedCopy, res.privateKey);
     }
     case "spki": {
       for (let i = 0; i < keyUsages.length; i++) {
@@ -3901,15 +3936,7 @@ function importKeyMlKem(
           "DataError",
         );
       }
-      const handle = {};
-      setKeyData(handle, imported.publicKey);
-      return constructKey(
-        "public",
-        extractable,
-        usageIntersection(keyUsages, ML_KEM_PUBLIC_USAGES),
-        algorithm,
-        handle,
-      );
+      return makePublicKey(imported.publicKey);
     }
     case "pkcs8": {
       for (let i = 0; i < keyUsages.length; i++) {
@@ -3929,15 +3956,136 @@ function importKeyMlKem(
           "DataError",
         );
       }
-      const handle = {};
-      setKeyData(handle, imported.privateKey);
-      return constructKey(
-        "private",
-        extractable,
-        usageIntersection(keyUsages, ML_KEM_PRIVATE_USAGES),
-        algorithm,
-        handle,
+      return makePrivateKey(
+        imported.seed !== undefined && imported.seed !== null
+          ? imported.seed
+          : null,
+        imported.privateKey,
       );
+    }
+    case "jwk": {
+      // 1.
+      const jwk = keyData;
+
+      // 2.
+      if (jwk.priv !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(ML_KEM_PRIVATE_USAGES, u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      } else {
+        if (
+          ArrayPrototypeFind(
+            keyUsages,
+            (u) => !ArrayPrototypeIncludes(ML_KEM_PUBLIC_USAGES, u),
+          ) !== undefined
+        ) {
+          throw new DOMException("Invalid key usage", "SyntaxError");
+        }
+      }
+
+      // 3.
+      if (jwk.kty !== "AKP") {
+        throw new DOMException("Invalid key type", "DataError");
+      }
+
+      // 4.
+      if (jwk.alg !== algorithmName) {
+        throw new DOMException("Invalid algorithm", "DataError");
+      }
+
+      // 5.
+      if (
+        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
+      ) {
+        throw new DOMException("Invalid key usage", "DataError");
+      }
+
+      // 6.
+      if (jwk.key_ops !== undefined) {
+        if (
+          ArrayPrototypeFind(
+            jwk.key_ops,
+            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+          ) !== undefined
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+
+        if (
+          !ArrayPrototypeEvery(
+            jwk.key_ops,
+            (u) => ArrayPrototypeIncludes(keyUsages, u),
+          )
+        ) {
+          throw new DOMException(
+            "'key_ops' property of JsonWebKey is invalid",
+            "DataError",
+          );
+        }
+      }
+
+      // 7.
+      if (jwk.ext !== undefined && jwk.ext === false && extractable) {
+        throw new DOMException("Invalid key extractability", "DataError");
+      }
+
+      // 8.
+      if (jwk.priv !== undefined) {
+        let seed;
+        try {
+          seed = op_crypto_base64url_decode(jwk.priv);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        if (TypedArrayPrototypeGetByteLength(seed) !== 64) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+        let res;
+        try {
+          res = op_crypto_ml_kem_from_seed(algorithmName, seed);
+        } catch (_) {
+          throw new DOMException("Invalid private key data", "DataError");
+        }
+
+        // The 'pub' field must be present and equal to the public key
+        // derived from the seed.
+        let pub;
+        try {
+          pub = op_crypto_base64url_decode(jwk.pub);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (!bytesEqual(pub, res.publicKey)) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+
+        return makePrivateKey(seed, res.privateKey);
+      } else {
+        let pub;
+        try {
+          pub = op_crypto_base64url_decode(jwk.pub);
+        } catch (_) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (
+          TypedArrayPrototypeGetByteLength(pub) !==
+            ML_KEM_PUBLIC_SIZES[algorithmName]
+        ) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        if (!op_crypto_ml_kem_validate_public_key(algorithmName, pub)) {
+          throw new DOMException("Invalid public key data", "DataError");
+        }
+        return makePublicKey(pub);
+      }
     }
     default:
       throw new DOMException(
@@ -3959,7 +4107,7 @@ function exportKeyMlKem(format, key, innerKey) {
           "InvalidAccessError",
         );
       }
-      return TypedArrayPrototypeGetBuffer(innerKey);
+      return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(innerKey));
     }
     case "raw-private": {
       if (type !== "private") {
@@ -3968,13 +4116,25 @@ function exportKeyMlKem(format, key, innerKey) {
           "InvalidAccessError",
         );
       }
-      return TypedArrayPrototypeGetBuffer(innerKey);
+      return TypedArrayPrototypeGetBuffer(
+        TypedArrayPrototypeSlice(innerKey.privateKey),
+      );
     }
     case "raw-seed": {
-      throw new DOMException(
-        "ML-KEM 'raw-seed' format is not yet supported",
-        "NotSupportedError",
-      );
+      if (type !== "private") {
+        throw new DOMException(
+          "'raw-seed' is only valid for private keys",
+          "InvalidAccessError",
+        );
+      }
+      const seed = innerKey?.seed;
+      if (seed == null) {
+        throw new DOMException(
+          "Seed is not available for this key",
+          "OperationError",
+        );
+      }
+      return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(seed));
     }
     case "spki": {
       if (type !== "public") {
@@ -3993,8 +4153,43 @@ function exportKeyMlKem(format, key, innerKey) {
           "InvalidAccessError",
         );
       }
-      const der = op_crypto_ml_kem_export_pkcs8(algorithmName, innerKey);
+      const seed = innerKey?.seed;
+      if (seed == null) {
+        throw new DOMException(
+          "PKCS#8 export requires the original ML-KEM seed; this key was " +
+            "imported without one",
+          "OperationError",
+        );
+      }
+      const der = op_crypto_ml_kem_export_pkcs8(algorithmName, seed);
       return TypedArrayPrototypeGetBuffer(der);
+    }
+    case "jwk": {
+      const jwk = {
+        kty: "AKP",
+        alg: algorithmName,
+        "key_ops": key.usages,
+        ext: key[_extractable],
+      };
+      if (type === "private") {
+        const seed = innerKey?.seed;
+        if (seed == null) {
+          throw new DOMException(
+            "JWK export requires the original ML-KEM seed; this key was " +
+              "imported without one",
+            "OperationError",
+          );
+        }
+        const publicKeyBytes = op_crypto_ml_kem_get_public_key(
+          algorithmName,
+          key[_handle].cppgc,
+        );
+        jwk.pub = op_crypto_base64url_encode(publicKeyBytes);
+        jwk.priv = op_crypto_base64url_encode(seed);
+      } else {
+        jwk.pub = op_crypto_base64url_encode(innerKey);
+      }
+      return jwk;
     }
     default:
       throw new DOMException(
@@ -5006,7 +5201,7 @@ function importKeyMlDsa(
         } catch (_) {
           throw new DOMException("Invalid public key data", "DataError");
         }
-        if (!mldsaBytesEqual(pub, res.publicKey)) {
+        if (!bytesEqual(pub, res.publicKey)) {
           throw new DOMException("Invalid public key data", "DataError");
         }
 

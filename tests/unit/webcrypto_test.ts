@@ -2816,6 +2816,13 @@ for (const variant of ML_KEM_VARIANTS) {
     const pkcs8 = new Uint8Array(
       await subtleAny.exportKey("pkcs8", kp.privateKey),
     );
+    // PKCS#8 must use the seed-only form (a ~86-byte DER wrapping the 64-byte
+    // seed), not the much larger expanded-key form (privLen + DER overhead)
+    // that older Deno releases emitted.
+    assert(
+      pkcs8.length < 120,
+      `${variant.name} pkcs8 should be seed-form, got ${pkcs8.length} bytes`,
+    );
 
     const reimportedPub = await subtleAny.importKey(
       "spki",
@@ -2839,6 +2846,142 @@ for (const variant of ML_KEM_VARIANTS) {
     const dec = await subtleAny.decapsulateBits(
       { name: variant.name },
       reimportedPriv,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemImportExportRawSeed:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const seed = new Uint8Array(
+      await subtleAny.exportKey("raw-seed", kp.privateKey),
+    );
+    assertEquals(seed.length, 64);
+
+    // Re-importing the seed must reproduce the same key (the embedded public
+    // key derived from it lets us encapsulate to the original key pair).
+    const reimported = await subtleAny.importKey(
+      "raw-seed",
+      seed,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+    assertEquals(reimported.algorithm.name, variant.name);
+    assertEquals(reimported.type, "private");
+
+    // The reimported key decapsulates ciphertext made for the original public.
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      reimported,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+
+    // The seed re-exports identically.
+    const seed2 = new Uint8Array(
+      await subtleAny.exportKey("raw-seed", reimported),
+    );
+    assertEquals(seed2, seed);
+  });
+
+  Deno.test(`mlKemImportExportJwk:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const privJwk = await subtleAny.exportKey("jwk", kp.privateKey);
+    assertEquals(privJwk.kty, "AKP");
+    assertEquals(privJwk.alg, variant.name);
+    assert(typeof privJwk.pub === "string");
+    assert(typeof privJwk.priv === "string");
+    assertEquals(privJwk.key_ops, ["decapsulateBits"]);
+    assertEquals(privJwk.ext, true);
+
+    const pubJwk = await subtleAny.exportKey("jwk", kp.publicKey);
+    assertEquals(pubJwk.kty, "AKP");
+    assertEquals(pubJwk.alg, variant.name);
+    assert(typeof pubJwk.pub === "string");
+    assertEquals(pubJwk.priv, undefined);
+    assertEquals(pubJwk.key_ops, ["encapsulateBits"]);
+    // The public key embedded in the private JWK matches the public JWK.
+    assertEquals(privJwk.pub, pubJwk.pub);
+
+    const reimportedPriv = await subtleAny.importKey(
+      "jwk",
+      privJwk,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+    const reimportedPub = await subtleAny.importKey(
+      "jwk",
+      pubJwk,
+      { name: variant.name },
+      true,
+      ["encapsulateBits"],
+    );
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      reimportedPub,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      reimportedPriv,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+
+    // The seed survives a JWK round-trip.
+    const privJwk2 = await subtleAny.exportKey("jwk", reimportedPriv);
+    assertEquals(privJwk2.priv, privJwk.priv);
+    assertEquals(privJwk2.pub, privJwk.pub);
+  });
+
+  Deno.test(`mlKemRawPrivateHasNoSeed:${variant.name}`, async () => {
+    // A key imported from the expanded raw-private form carries no seed, so
+    // seed-bearing exports (raw-seed / jwk / pkcs8) must reject.
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+    const expanded = new Uint8Array(
+      await subtleAny.exportKey("raw-private", kp.privateKey),
+    );
+    const noSeed = await subtleAny.importKey(
+      "raw-private",
+      expanded,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+    for (const format of ["raw-seed", "jwk", "pkcs8"]) {
+      await assertRejects(
+        () => subtleAny.exportKey(format, noSeed),
+        DOMException,
+      );
+    }
+    // It still decapsulates correctly.
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      noSeed,
       enc.ciphertext,
     );
     assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
@@ -2921,15 +3064,106 @@ Deno.test(async function mlKemAlgorithmMismatchRejected() {
   );
 });
 
-Deno.test(async function mlKemRawSeedNotYetSupported() {
+Deno.test(async function mlKemRawSeedWrongLengthRejected() {
   await assertRejects(
     () =>
       subtleAny.importKey(
         "raw-seed",
-        new Uint8Array(64),
+        new Uint8Array(32),
         { name: "ML-KEM-512" },
         true,
         ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+});
+
+Deno.test(async function mlKemJwkWrongKtyRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const jwk = await subtleAny.exportKey("jwk", kp.privateKey);
+  jwk.kty = "OKP";
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "jwk",
+        jwk,
+        { name: "ML-KEM-512" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+});
+
+Deno.test(async function mlKemJwkMismatchedPubRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const privJwk = await subtleAny.exportKey("jwk", kp.privateKey);
+  // Replace the embedded public key with a different key's public key so it
+  // no longer matches the seed.
+  const other = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const otherJwk = await subtleAny.exportKey("jwk", other.publicKey);
+  privJwk.pub = otherJwk.pub;
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "jwk",
+        privJwk,
+        { name: "ML-KEM-512" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+});
+
+Deno.test(async function mlKemJwkMismatchedAlgRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const jwk = await subtleAny.exportKey("jwk", kp.privateKey);
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "jwk",
+        jwk,
+        { name: "ML-KEM-768" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+});
+
+Deno.test(async function mlKemJwkBadPrivateUsageRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const jwk = await subtleAny.exportKey("jwk", kp.privateKey);
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "jwk",
+        jwk,
+        { name: "ML-KEM-512" },
+        true,
+        // A private (seed-bearing) JWK may only carry decapsulate usages.
+        ["encapsulateBits"],
       ),
     DOMException,
   );
