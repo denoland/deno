@@ -575,7 +575,9 @@ Deno.test(async function decompressionStreamInvalidGzipStillReported() {
 
 Deno.test(async function readableStreamFromString() {
   // Per the Streams spec, ReadableStream.from() accepts any iterable, including
-  // strings, which are iterated by code point.
+  // strings, which are iterated by code point. The TS type requires an object,
+  // so a string primitive is rejected statically even though it works at runtime.
+  // @ts-expect-error: string is iterable at runtime but the type requires an object
   const stream = ReadableStream.from("ab");
   const reader = stream.getReader();
   assertEquals(await reader.read(), { value: "a", done: false });
