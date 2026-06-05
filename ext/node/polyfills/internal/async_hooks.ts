@@ -395,6 +395,11 @@ const suppressedPromises = new SafeWeakSet();
 
 let promiseHooksInstalled = false;
 
+// TODO(@divy-work): `core.setPromiseHooks` is additive-only -- deno_core has no
+// API to remove the V8 promise hooks once installed. So disabling every
+// async_hook leaves these four callbacks resident for the rest of the process
+// lifetime. The `kTotals === 0` fast path in promiseInitHook keeps the residual
+// per-promise cost minimal until a removal API exists.
 function ensurePromiseHooks() {
   if (promiseHooksInstalled) return;
   promiseHooksInstalled = true;
@@ -435,8 +440,21 @@ function promiseInitHook(promise: any, parent: any): void {
     suppressedPromises.add(promise);
     return;
   }
+  // Fast path: no async hook is active (e.g. every hook has been disabled,
+  // but the V8 promise hooks stay installed since deno_core has no removal
+  // API -- see ensurePromiseHooks). Skip the newAsyncId()/WeakMap.set cost.
+  // This stays balanced because promiseBefore/After/ResolveHook backfill via
+  // trackPromise(promise, null) if a hook is enabled before this promise
+  // settles.
+  if (async_hook_fields[kTotals] === 0) {
+    return;
+  }
   // Always assign an async id pair (so before/after/resolve can resolve it)
   // but only fire user init() callbacks once.
+  //
+  // NOTE: emitInitNative invokes user init() callbacks synchronously. If such
+  // a callback allocates a promise, V8 re-enters this hook reentrantly. The
+  // tests enabled here don't exercise that; Node guards against it explicitly.
   const info = trackPromise(promise, parent);
 
   if (async_hook_fields[kInit] > 0) {
@@ -569,9 +587,7 @@ class AsyncHook {
     if (destroy !== undefined && typeof destroy !== "function") {
       throw new ERR_ASYNC_CALLBACK("hook.destroy");
     }
-    if (
-      promiseResolve !== undefined && typeof promiseResolve !== "function"
-    ) {
+    if (promiseResolve !== undefined && typeof promiseResolve !== "function") {
       throw new ERR_ASYNC_CALLBACK("hook.promiseResolve");
     }
 
