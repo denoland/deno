@@ -167,8 +167,8 @@ impl RawKeyData {
 
   /// The raw key bytes, regardless of the secret/private/public/raw tag.
   ///
-  /// Not valid for `MlDsaPrivate`, which is only consumed (via the get op) by
-  /// the not-yet-migrated ML-DSA ops.
+  /// Not valid for `MlDsaPrivate`; use [`Self::mldsa_private_key`] /
+  /// [`Self::mldsa_seed`] for those.
   pub fn bytes(&self) -> &[u8] {
     match self {
       RawKeyData::Secret(b)
@@ -176,6 +176,22 @@ impl RawKeyData {
       | RawKeyData::Public(b)
       | RawKeyData::Raw(b) => b,
       RawKeyData::MlDsaPrivate { .. } => unreachable!(),
+    }
+  }
+
+  /// The ML-DSA expanded private key bytes.
+  pub fn mldsa_private_key(&self) -> &[u8] {
+    match self {
+      RawKeyData::MlDsaPrivate { private_key, .. } => private_key,
+      _ => unreachable!(),
+    }
+  }
+
+  /// The ML-DSA seed, or `None` for keys imported from raw private bytes.
+  pub fn mldsa_seed(&self) -> Option<&[u8]> {
+    match self {
+      RawKeyData::MlDsaPrivate { seed, .. } => seed.as_deref(),
+      _ => None,
     }
   }
 

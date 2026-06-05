@@ -496,12 +496,11 @@ class CryptoKey {
       case "ML-KEM-768":
       case "ML-KEM-1024": {
         const handle = this[_handle];
-        const privateKeyBytes = getKeyData(handle);
         let publicKeyBytes;
         try {
           publicKeyBytes = op_crypto_ml_kem_get_public_key(
             algorithmName,
-            privateKeyBytes,
+            handle.cppgc,
           );
         } catch (_) {
           throw new DOMException(
@@ -1261,8 +1260,7 @@ class SubtleCrypto {
         // https://briansmith.org/rustdoc/src/ring/ec/curve25519/ed25519/signing.rs.html#260
         const SIGNATURE_LEN = 32 * 2; // ELEM_LEN + SCALAR_LEN
         const signature = new Uint8Array(SIGNATURE_LEN);
-        const keyData = getKeyData(handle);
-        if (!op_crypto_sign_ed25519(keyData, data, signature)) {
+        if (!op_crypto_sign_ed25519(handle.cppgc, data, signature)) {
           throw new DOMException(
             "Failed to sign",
             "OperationError",
@@ -1281,10 +1279,9 @@ class SubtleCrypto {
         }
         const variant = mldsaVariantId(normalizedAlgorithm.name);
         const context = normalizedAlgorithm.context;
-        const keyData = getKeyData(handle);
         const signature = op_crypto_sign_mldsa(
           variant,
-          keyData.privateKey,
+          handle.cppgc,
           data,
           context !== undefined ? context : null,
         );
@@ -1698,7 +1695,7 @@ class SubtleCrypto {
           );
         }
 
-        return op_crypto_verify_ed25519(getKeyData(handle), data, signature);
+        return op_crypto_verify_ed25519(handle.cppgc, data, signature);
       }
       case "ML-DSA-44":
       case "ML-DSA-65":
@@ -1713,7 +1710,7 @@ class SubtleCrypto {
         const context = normalizedAlgorithm.context;
         return op_crypto_verify_mldsa(
           variant,
-          getKeyData(handle),
+          handle.cppgc,
           data,
           signature,
           context !== undefined ? context : null,
@@ -2364,12 +2361,11 @@ function mlKemEncapsulate(normalizedAlgorithm, encapsulationKey) {
     case "ML-KEM-768":
     case "ML-KEM-1024": {
       const handle = encapsulationKey[_handle];
-      const publicKeyBytes = getKeyData(handle);
       let result;
       try {
         result = op_crypto_ml_kem_encapsulate(
           normalizedAlgorithm.name,
-          publicKeyBytes,
+          handle.cppgc,
         );
       } catch (_) {
         throw new DOMException("Encapsulation failed", "OperationError");
@@ -2400,11 +2396,10 @@ function mlKemDecapsulate(normalizedAlgorithm, decapsulationKey, ciphertext) {
         );
       }
       const handle = decapsulationKey[_handle];
-      const privateKeyBytes = getKeyData(handle);
       try {
         return op_crypto_ml_kem_decapsulate(
           normalizedAlgorithm.name,
-          privateKeyBytes,
+          handle.cppgc,
           ciphertext,
         );
       } catch (_) {
@@ -6385,13 +6380,14 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       // 5.
       const kHandle = baseKey[_handle];
-      const k = getKeyData(kHandle);
-
       const uHandle = publicKey[_handle];
-      const u = getKeyData(uHandle);
 
       const secret = new Uint8Array(56);
-      const isIdentity = op_crypto_derive_bits_x448(k, u, secret);
+      const isIdentity = op_crypto_derive_bits_x448(
+        kHandle.cppgc,
+        uHandle.cppgc,
+        secret,
+      );
 
       // 6.
       if (isIdentity) {
@@ -6434,13 +6430,14 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 
       // 5.
       const kHandle = baseKey[_handle];
-      const k = getKeyData(kHandle);
-
       const uHandle = publicKey[_handle];
-      const u = getKeyData(uHandle);
 
       const secret = new Uint8Array(32);
-      const isIdentity = op_crypto_derive_bits_x25519(k, u, secret);
+      const isIdentity = op_crypto_derive_bits_x25519(
+        kHandle.cppgc,
+        uHandle.cppgc,
+        secret,
+      );
 
       // 6.
       if (isIdentity) {
