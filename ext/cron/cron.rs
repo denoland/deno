@@ -488,8 +488,9 @@ fn closest_weekday(year: i32, month: u32, day: u32) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use chrono::TimeZone;
+
+  use super::*;
 
   fn dt(
     year: i32,
