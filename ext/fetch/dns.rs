@@ -206,9 +206,12 @@ impl Service<Uri> for PermissionedHttpConnector {
     let fut = self.inner.call(uri);
     Box::pin(async move {
       let stream = fut.await?;
-      if let Some(mut permissions) = permissions
-        && let Ok(peer) = stream.inner().peer_addr()
-      {
+      if let Some(mut permissions) = permissions {
+        // Fail closed: if we can't determine the peer we connected to, deny
+        // rather than letting the connection through unchecked.
+        let peer = stream.inner().peer_addr().map_err(|e| -> BoxError {
+          io::Error::new(io::ErrorKind::PermissionDenied, e.to_string()).into()
+        })?;
         permissions
           .check_net_resolved(&peer.ip(), port, "fetch()")
           .map_err(|e| -> BoxError {
