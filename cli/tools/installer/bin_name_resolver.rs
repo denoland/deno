@@ -205,7 +205,7 @@ impl<'a> BinNameResolver<'a> {
     &self,
     npm_ref: &NpmPackageReqReference,
   ) -> Result<Option<PackageReq>, AnyError> {
-    let Some(version_info) = self.resolve_npm_version_info(&npm_ref).await?
+    let Some(version_info) = self.resolve_npm_version_info(npm_ref).await?
     else {
       return Ok(None);
     };
