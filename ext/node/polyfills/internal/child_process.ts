@@ -813,6 +813,10 @@ class ChildProcess extends EventEmitter {
           const alreadyClosed =
             ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err2) ||
             ObjectPrototypeIsPrototypeOf(
+              Deno.errors.NotFound.prototype,
+              err2,
+            ) ||
+            ObjectPrototypeIsPrototypeOf(
               Deno.errors.PermissionDenied.prototype,
               err2,
             );
@@ -824,6 +828,10 @@ class ChildProcess extends EventEmitter {
       } else {
         const alreadyClosed =
           ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err) ||
+          ObjectPrototypeIsPrototypeOf(
+            Deno.errors.NotFound.prototype,
+            err,
+          ) ||
           ObjectPrototypeIsPrototypeOf(
             Deno.errors.PermissionDenied.prototype,
             err,

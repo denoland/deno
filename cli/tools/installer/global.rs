@@ -366,6 +366,7 @@ async fn install_global_compiled(
     output: Some(output.clone()),
     args: install_flags_global.args,
     target: None,
+    watch: None,
     no_terminal: false,
     icon: None,
     include: vec![],
@@ -374,6 +375,7 @@ async fn install_global_compiled(
     self_extracting: false,
     bundle: false,
     minify: false,
+    exclude_unused_npm: false,
   };
 
   let mut new_flags = flags.as_ref().clone();

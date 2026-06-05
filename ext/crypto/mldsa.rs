@@ -18,6 +18,8 @@ use serde::Serialize;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
+use crate::key_store::CryptoKeyHandle;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MlDsaError {
   #[class("DOMExceptionDataError")]
@@ -297,10 +299,11 @@ pub fn op_crypto_mldsa_export_spki(
 #[op2]
 pub fn op_crypto_sign_mldsa(
   variant: u8,
-  #[buffer] private_key_bytes: &[u8],
+  #[cppgc] key: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] context: Option<&[u8]>,
 ) -> Result<Uint8Array, MlDsaError> {
+  let private_key_bytes = key.data().mldsa_private_key();
   let p = params(variant)?;
   // aws-lc-rs 1.16 does not expose a way to set the FIPS 204 §5.2 context
   // parameter for ML-DSA. The empty context is signed by default; reject
@@ -321,11 +324,12 @@ pub fn op_crypto_sign_mldsa(
 #[op2]
 pub fn op_crypto_verify_mldsa(
   variant: u8,
-  #[buffer] public_key_bytes: &[u8],
+  #[cppgc] key: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] signature: &[u8],
   #[buffer] context: Option<&[u8]>,
 ) -> bool {
+  let public_key_bytes = key.data().bytes();
   let Ok(p) = params(variant) else {
     return false;
   };

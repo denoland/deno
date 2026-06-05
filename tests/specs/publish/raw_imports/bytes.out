@@ -1,9 +1,9 @@
-Check [WILDCARD]main.ts
+Check [WILDCARD]bytes_main.ts
 Checking for slow types in the public API...
-error[unstable-raw-import]: raw imports have not been stabilized
- --> [WILDLINE]main.ts:1:18
+error[unstable-raw-import]: bytes imports have not been stabilized
+ --> [WILDLINE]bytes_main.ts:1:18
   | 
-1 | import data from "./data.txt" with { type: "text" };
+1 | import data from "./data.bin" with { type: "bytes" };
   |                  ^^^^^^^^^^^^ the specifier
   | 
   = hint: for the time being, embed the data directly into a JavaScript file (ex. as encoded base64 text)

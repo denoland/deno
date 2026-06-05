@@ -11,6 +11,8 @@ use spki::der::Encode;
 use spki::der::asn1::BitString;
 use spki::der::asn1::OctetString;
 
+use crate::key_store::CryptoKeyHandle;
+
 // FIPS 203 OIDs (NIST 2.16.840.1.101.3.4.4.{1,2,3}).
 pub const ML_KEM_512_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.4.1");
@@ -135,8 +137,9 @@ pub fn op_crypto_ml_kem_generate_key(
 #[op2]
 pub fn op_crypto_ml_kem_encapsulate(
   #[serde] variant: MlKemVariant,
-  #[buffer] public_key: &[u8],
+  #[cppgc] key: &CryptoKeyHandle,
 ) -> Result<MlKemEncapsulationOutput, MlKemError> {
+  let public_key = key.data().bytes();
   let alg = variant.algorithm();
   let ek = kem::EncapsulationKey::new(alg, public_key)
     .map_err(|_| MlKemError::InvalidKeyData)?;
@@ -152,9 +155,10 @@ pub fn op_crypto_ml_kem_encapsulate(
 #[op2]
 pub fn op_crypto_ml_kem_decapsulate(
   #[serde] variant: MlKemVariant,
-  #[buffer] private_key: &[u8],
+  #[cppgc] key: &CryptoKeyHandle,
   #[buffer] ciphertext: &[u8],
 ) -> Result<Uint8Array, MlKemError> {
+  let private_key = key.data().bytes();
   let alg = variant.algorithm();
   let dk = kem::DecapsulationKey::new(alg, private_key)
     .map_err(|_| MlKemError::InvalidKeyData)?;
@@ -303,8 +307,9 @@ pub fn op_crypto_ml_kem_export_pkcs8(
 #[op2]
 pub fn op_crypto_ml_kem_get_public_key(
   #[serde] variant: MlKemVariant,
-  #[buffer] private_key: &[u8],
+  #[cppgc] key: &CryptoKeyHandle,
 ) -> Result<Uint8Array, MlKemError> {
+  let private_key = key.data().bytes();
   if private_key.len() != variant.private_key_size() {
     return Err(MlKemError::InvalidKeyData);
   }
