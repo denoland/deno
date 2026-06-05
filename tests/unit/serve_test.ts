@@ -2676,6 +2676,63 @@ createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
 });
 
 Deno.test(
+  { permissions: { net: true, read: true, write: true } },
+  async function autoResponseWithFileReadableKnownLength() {
+    const tempFile = await Deno.makeTempFile();
+    await Deno.writeTextFile(tempFile, "foo bar baz");
+    const deferred = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    try {
+      await using server = Deno.serve({
+        handler: async (request) => {
+          assertEquals(request.method, "GET");
+          const file = await Deno.open(tempFile);
+          deferred.resolve();
+          return new Response(file.readable);
+        },
+        port: servePort,
+        signal: ac.signal,
+        onListen: onListen(listeningDeferred.resolve),
+        onError: createOnErrorCb(ac),
+      });
+
+      await listeningDeferred.promise;
+      const conn = await Deno.connect({ port: servePort });
+      const encoder = new TextEncoder();
+      const body =
+        `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+      const writeResult = await conn.write(encoder.encode(body));
+      assertEquals(body.length, writeResult);
+      await deferred.promise;
+
+      const decoder = new TextDecoder();
+      let msg = "";
+      while (true) {
+        const buf = new Uint8Array(1024);
+        const readResult = await conn.read(buf);
+        if (!readResult) {
+          break;
+        }
+        msg += decoder.decode(buf.subarray(0, readResult));
+      }
+      conn.close();
+
+      assertEquals(hasHeader(msg, "Transfer-Encoding:"), false);
+      assertEquals(hasHeader(msg, "Content-Length:"), true);
+      assertEquals(getRawHeader(msg, "Content-Length"), "11");
+      assertEquals(msg.slice(msg.indexOf("\r\n\r\n") + 4), "foo bar baz");
+
+      ac.abort();
+      await server.finished;
+    } finally {
+      await Deno.remove(tempFile);
+    }
+  },
+);
+
+Deno.test(
   { permissions: { net: true } },
   async function httpServerPostWithContentLengthBody() {
     const deferred = Promise.withResolvers<void>();
