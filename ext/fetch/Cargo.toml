@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.273.0"
+version = "0.274.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -53,6 +53,10 @@ deno_web.workspace = true
 deno_webidl.workspace = true
 fast-socks5.workspace = true
 rustls.workspace = true
+
+[[bench]]
+name = "headers_methods"
+harness = false
 
 [[bench]]
 name = "body"

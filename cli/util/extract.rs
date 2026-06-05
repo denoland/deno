@@ -112,8 +112,9 @@ fn extract_files_from_fenced_blocks(
   // but it stores the latter without any capturing groups. This way, a simple
   // check can be done to see if a block is inside a comment (and skip typechecking)
   // or not by checking for the presence of capturing groups in the matches.
-  let blocks_regex =
-    lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let blocks_regex = lazy_regex::regex!(
+    r"(?m)<!--[\S\s]*?-->|^[ \t]*(?P<blockquote>(?:>[ \t]?)*)```(?P<attributes>[^\r\n]*)\r?\n(?P<body>[\S\s]*?)^[ \t]*(?:>[ \t]?)*```"
+  );
   let lines_regex = lazy_regex::regex!(r"(((#!+).*)|(?:# ?)?(.*))");
 
   extract_files_from_regex_blocks(
@@ -140,7 +141,9 @@ fn extract_files_from_source_comments(
     scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
-  let blocks_regex = lazy_regex::regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let blocks_regex = lazy_regex::regex!(
+    r"```(?P<attributes>[^\r\n]*)\r?\n(?P<body>[\S\s]*?)```"
+  );
   let lines_regex =
     lazy_regex::regex!(r"(?:\* ?)((#!+).*)|(?:\* ?)(?:\# ?)?(.*)");
 
@@ -182,10 +185,13 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      block.get(1)?;
+      let is_markdown_blockquote = block
+        .name("blockquote")
+        .is_some_and(|blockquote| !blockquote.as_str().is_empty());
+      block.name("attributes")?;
 
       let maybe_attributes: Option<Vec<_>> = block
-        .get(1)
+        .name("attributes")
         .map(|attributes| attributes.as_str().split(' ').collect());
 
       let file_media_type = if let Some(attributes) = maybe_attributes {
@@ -221,12 +227,20 @@ fn extract_files_from_regex_blocks(
 
       let line_count = block.get(0).unwrap().as_str().split('\n').count();
 
-      let body = block.get(2).unwrap();
+      let body = block.name("body").unwrap();
       let text = body.as_str();
 
       // TODO(caspervonb) generate an inline source map
       let mut file_source = String::new();
-      for line in lines_regex.captures_iter(text) {
+      for line in text.lines() {
+        let line = if is_markdown_blockquote {
+          strip_markdown_blockquote_marker(line)
+        } else {
+          line
+        };
+        let Some(line) = lines_regex.captures(line) else {
+          continue;
+        };
         let text = line.get(1).or_else(|| line.get(3)).unwrap();
         writeln!(file_source, "{}", text.as_str()).unwrap();
       }
@@ -258,6 +272,27 @@ fn extract_files_from_regex_blocks(
     .collect();
 
   Ok(files)
+}
+
+fn strip_markdown_blockquote_marker(line: &str) -> &str {
+  let mut spaces = 0;
+
+  for (index, ch) in line.char_indices() {
+    match ch {
+      ' ' if spaces < 3 => {
+        spaces += 1;
+      }
+      '>' => {
+        let after_marker = index + ch.len_utf8();
+        return line[after_marker..]
+          .strip_prefix([' ', '\t'])
+          .unwrap_or(&line[after_marker..]);
+      }
+      _ => break,
+    }
+  }
+
+  line
 }
 
 #[derive(Default)]
@@ -1167,6 +1202,30 @@ Deno.test("file:///README.md$6-12.js", async ()=>{
 "#,
           specifier: "file:///README.md$6-12.js",
           media_type: MediaType::JavaScript,
+        }],
+      },
+      // https://github.com/denoland/deno/issues/24164
+      Test {
+        input: Input {
+          source: r#"
+# Header
+
+> ```ts
+> import { assertEquals } from "@std/assert/equals";
+>
+> assertEquals(1 + 2, 3);
+> ```
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+Deno.test("file:///README.md$4-9.ts", async ()=>{
+    assertEquals(1 + 2, 3);
+});
+"#,
+          specifier: "file:///README.md$4-9.ts",
+          media_type: MediaType::TypeScript,
         }],
       },
       // https://github.com/denoland/deno/issues/26009

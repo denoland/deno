@@ -25,6 +25,7 @@ use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
@@ -268,7 +269,7 @@ pub async fn bundle_init(
     Default::default(),
   )
   .await
-  .unwrap();
+  .context("failed to start esbuild")?;
   let client = esbuild.client().clone();
 
   tokio::spawn(async move {
@@ -374,6 +375,7 @@ pub async fn bundle_for_compile(
   flags: Arc<Flags>,
   entrypoint: String,
   external: Vec<String>,
+  minify: bool,
 ) -> Result<Vec<u8>, AnyError> {
   let bundle_flags = BundleFlags {
     entrypoints: vec![entrypoint],
@@ -381,7 +383,7 @@ pub async fn bundle_for_compile(
     output_dir: None,
     external,
     format: BundleFormat::Esm,
-    minify: false,
+    minify,
     keep_names: false,
     code_splitting: false,
     inline_imports: true,
@@ -390,6 +392,23 @@ pub async fn bundle_for_compile(
     platform: BundlePlatform::Deno,
     watch: false,
   };
+
+  // Force bundle-style resolver config for the duration of bundling.
+  // Without this, module-graph creation skips deep CJS files inside
+  // `node_modules` (jiti.cjs is the canonical case) and the parent
+  // `.mjs` trips an esbuild parse error when its import target can't
+  // be loaded. This flips the same three resolver knobs `deno bundle`
+  // sets (`bundle_mode`, `node_code_translator_mode` = Disabled,
+  // `allow_json_imports` = Always) without otherwise swapping the
+  // subcommand, so the rest of compilation keeps Compile semantics.
+  // Disabling the code translator means the CJS analyzer's
+  // extensionless `.node` auto-resolution no longer runs, which is why
+  // the resolver grows a `.node` fallback (see `resolution.rs`).
+  let mut flags = flags;
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.internal.force_bundle_mode = true;
+  }
 
   let bundler = bundle_init(flags, &bundle_flags).await?;
   let response = bundler.build().await?;
@@ -650,7 +669,7 @@ impl EsbuildBundler {
       .client
       .send_build_request(self.make_build_request())
       .await
-      .unwrap()
+      .context("failed to send build request to esbuild")?
       .map_err(|e| message_to_error(&e, &self.cwd))?;
 
     Ok(response)
@@ -667,9 +686,13 @@ impl EsbuildBundler {
           .client
           .send_rebuild_request(0)
           .await
-          .unwrap()
+          .context("failed to send rebuild request to esbuild")?
           .map_err(|e| message_to_error(&e, &self.cwd))?;
-        let response = self.on_end_rx.recv().await.unwrap();
+        let response = self.on_end_rx.recv().await.ok_or_else(|| {
+          deno_core::anyhow::anyhow!(
+            "esbuild exited before the rebuild completed"
+          )
+        })?;
         Ok(response.into())
       }
     }
@@ -736,7 +759,7 @@ fn message_to_error(
 fn replace_require_shim(contents: &str, minified: bool) -> String {
   if minified {
     let re = lazy_regex::regex!(
-      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[l\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
+      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[\w+\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
     );
     re.replace(contents, |c: &regex::Captures<'_>| {
       let var_name = c.get(1).unwrap().as_str();
@@ -1142,6 +1165,12 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
       let is_external = r.starts_with("node:")
         || r.starts_with("bun:")
+        // Always externalize native addons regardless of `--external`.
+        // esbuild has no loader for `.node` files, and the user-facing
+        // `*.node` pre-resolve pattern doesn't catch paths that arrive
+        // here only after `.node`-extension auto-resolution (e.g. CJS
+        // `require('./build/Release/foo')`).
+        || r.ends_with(".node")
         || self
           .externals_matcher
           .as_ref()

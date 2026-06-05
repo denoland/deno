@@ -1657,7 +1657,17 @@ impl WorkspaceNpmLinkPackagesRc {
   pub fn from_workspace(workspace: &Workspace) -> Self {
     let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
       HashMap::new();
-    for pkg_json in workspace.link_pkg_jsons() {
+    for folder in workspace.link_folders().values() {
+      // A linked folder that also has a deno.json is a Deno/JSR link, not an
+      // npm link. Some packages ship a package.json only for other runtimes
+      // (e.g. Bun), so counting it as an npm link would wrongly require a
+      // node_modules directory.
+      if folder.deno_json.is_some() {
+        continue;
+      }
+      let Some(pkg_json) = folder.pkg_json.as_ref() else {
+        continue;
+      };
       let Some(name) = pkg_json.name.as_ref() else {
         log::warn!(
           "{} Link package ignored because package.json was missing name field.\n    at {}",
@@ -1731,6 +1741,7 @@ fn pkg_json_to_version_info(
     .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
   Ok(NpmPackageVersionInfo {
     version,
+    exports: pkg_json.exports.clone().map(serde_json::Value::Object),
     dist: None,
     bin: pkg_json
       .bin
@@ -3257,6 +3268,7 @@ mod test {
       .unwrap(),
       NpmPackageVersionInfo {
         version: Version::parse_from_npm("1.0.0").unwrap(),
+        exports: None,
         dist: None,
         has_install_script: None,
         bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(

@@ -343,6 +343,24 @@ function createLs() {
   return ls;
 }
 
+/**
+ * Prompt V8 to collect garbage and hand memory back to the OS. Triggered by
+ * `op_poll_requests` after the language server has been idle, so a long-running
+ * editor session doesn't keep sitting on the (often large) transient heap left
+ * over from the last batch of type-checking until something else forces a
+ * collection. See denoland/deno#23577.
+ *
+ * Note we deliberately don't drop the language services' semantic caches here:
+ * `cleanupSemanticCache()` discards the current program without bumping the
+ * project version, so the language service would consider itself up to date and
+ * never rebuild it, breaking the next request. It's only safe to call paired
+ * with a project change (see `$cleanupSemanticCache`). A full GC reclaims the
+ * dead allocations without touching the still-valid live program.
+ */
+function releaseMemory() {
+  ops.op_lsp_release_memory();
+}
+
 /** @param {boolean} enableDebugLogging */
 export async function serverMainLoop(enableDebugLogging) {
   ts.deno.setEnterSpan(ops.op_make_span);
@@ -358,6 +376,17 @@ export async function serverMainLoop(enableDebugLogging) {
     const request = await pollRequests();
     if (request === null) {
       break;
+    }
+    // Synthesized by `op_poll_requests` when the server has gone idle. Handled
+    // here rather than through `serverRequest()` because there's no client
+    // waiting on a response.
+    if (request[1] === "$releaseMemory") {
+      try {
+        releaseMemory();
+      } catch (err) {
+        error(`Internal error occurred during idle memory release: ${err}`);
+      }
+      continue;
     }
     try {
       serverRequest(

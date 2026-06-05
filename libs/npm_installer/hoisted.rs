@@ -22,7 +22,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
+use deno_npm::NpmPackageExtraInfo;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmPackageIdPeerDependencies;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmResolutionPackageSystemInfo;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
@@ -62,6 +66,7 @@ use crate::local::LocalNpmInstallSys;
 use crate::local::LocalNpmPackageInstallerOptions;
 use crate::local::SyncResolutionWithFsError;
 use crate::local::join_package_name;
+use crate::package_json::InstallWorkspacePkgDep;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::process_state::NpmProcessState;
 
@@ -346,7 +351,12 @@ impl<
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), SyncResolutionWithFsError> {
     let has_no_packages = snapshot.is_empty()
-      && self.npm_install_deps_provider.local_pkgs().is_empty();
+      && self.npm_install_deps_provider.local_pkgs().is_empty()
+      && !self
+        .npm_install_deps_provider
+        .workspace_pkgs()
+        .iter()
+        .any(|pkg| !pkg.scripts.is_empty());
     let deno_marker_dir = self.root_node_modules_path.join(".deno");
     if has_no_packages
       && (!self.clean_on_install
@@ -397,6 +407,8 @@ impl<
     }
 
     // 2. Clone all packages from cache into their hoisted positions
+    let workspace_lifecycle_packages =
+      self.resolve_workspace_lifecycle_packages(snapshot)?;
     let mut cache_futures = FuturesUnordered::new();
     let bin_entries = Rc::new(RefCell::new(BinEntries::new(sys)));
     let lifecycle_scripts = Rc::new(RefCell::new(LifecycleScripts::new(
@@ -419,6 +431,16 @@ impl<
       self.npm_package_extra_info_provider.clone(),
     ));
 
+    // Map a package to the workspace member directory that declares it as a
+    // direct dependency, so its lifecycle scripts run with `INIT_CWD` pointing
+    // at that member rather than the workspace root.
+    let lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>> =
+      Rc::new(crate::lifecycle_scripts::member_dep_init_cwds(
+        &self.npm_install_deps_provider,
+        snapshot,
+        self.root_node_modules_path.parent(),
+      ));
+
     // Clone top-level (hoisted) packages
     for package in layout.top_level.values() {
       let package_path = join_package_name(
@@ -430,6 +452,7 @@ impl<
         packages_with_deprecation_warnings.clone();
       let extra_info_provider = extra_info_provider.clone();
       let lifecycle_scripts = lifecycle_scripts.clone();
+      let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
       let bin_entries_to_setup = bin_entries.clone();
       let install_reporter = self.install_reporter.clone();
 
@@ -444,6 +467,7 @@ impl<
               extra_info_provider,
               bin_entries_to_setup,
               lifecycle_scripts,
+              lifecycle_script_init_cwds,
               packages_with_deprecation_warnings,
             )
             .boxed_local(),
@@ -470,6 +494,7 @@ impl<
         packages_with_deprecation_warnings.clone();
       let extra_info_provider = extra_info_provider.clone();
       let lifecycle_scripts = lifecycle_scripts.clone();
+      let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
       let bin_entries_to_setup = bin_entries.clone();
       let install_reporter = self.install_reporter.clone();
 
@@ -484,6 +509,7 @@ impl<
               extra_info_provider,
               bin_entries_to_setup,
               lifecycle_scripts,
+              lifecycle_script_init_cwds,
               packages_with_deprecation_warnings,
             )
             .boxed_local(),
@@ -523,6 +549,7 @@ impl<
     while let Some(result) = cache_futures.next().await {
       result?;
     }
+    drop(cache_futures);
 
     // 5. Set up bin entries
     {
@@ -567,6 +594,18 @@ impl<
       }
     }
 
+    for package in &workspace_lifecycle_packages {
+      lifecycle_scripts.borrow_mut().add(
+        &package.package,
+        &NpmPackageExtraInfo {
+          scripts: package.scripts.clone(),
+          ..Default::default()
+        },
+        Cow::Borrowed(&package.package_path),
+        Vec::new(),
+      );
+    }
+
     // Deprecation warnings
     {
       let packages_with_deprecation_warnings =
@@ -606,7 +645,7 @@ impl<
     }
 
     // Lifecycle scripts
-    let lifecycle_scripts = std::mem::replace(
+    let lifecycle_scripts_to_run = std::mem::replace(
       &mut *lifecycle_scripts.borrow_mut(),
       LifecycleScripts::new(
         sys.as_ref(),
@@ -616,10 +655,16 @@ impl<
         },
       ),
     );
-    lifecycle_scripts.warn_not_run_scripts()?;
+    drop(lifecycle_scripts);
+    lifecycle_scripts_to_run.warn_not_run_scripts()?;
 
-    let packages_with_scripts = lifecycle_scripts.packages_with_scripts();
+    let packages_with_scripts =
+      lifecycle_scripts_to_run.packages_with_scripts();
     if !packages_with_scripts.is_empty() {
+      let additional_packages = workspace_lifecycle_packages
+        .iter()
+        .map(|package| &package.package)
+        .collect::<Vec<_>>();
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
@@ -636,6 +681,7 @@ impl<
           on_ran_pkg_scripts: &|_pkg| Ok(()),
           snapshot,
           system_packages: &package_partitions.packages,
+          additional_packages: &additional_packages,
           packages_with_scripts,
           extra_info_provider: &extra_info_provider,
         })
@@ -647,6 +693,68 @@ impl<
     drop(pb_clear_guard);
 
     Ok(())
+  }
+
+  fn resolve_workspace_lifecycle_packages(
+    &self,
+    snapshot: &NpmResolutionSnapshot,
+  ) -> Result<Vec<WorkspaceLifecyclePackage>, JsErrorBox> {
+    let workspace_pkgs = self.npm_install_deps_provider.workspace_pkgs();
+    let workspace_pkg_ids = workspace_pkgs
+      .iter()
+      .map(|pkg| {
+        (
+          pkg.nv.clone(),
+          NpmPackageId {
+            nv: pkg.nv.clone(),
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+        )
+      })
+      .collect::<HashMap<_, _>>();
+    let mut packages = Vec::with_capacity(workspace_pkgs.len());
+    for workspace_pkg in workspace_pkgs {
+      let mut dependencies = HashMap::with_capacity(workspace_pkg.deps.len());
+      for dep in &workspace_pkg.deps {
+        match dep {
+          InstallWorkspacePkgDep::Remote { alias, req } => {
+            if let Some(id) = resolve_remote_pkg_id(snapshot, req) {
+              dependencies.insert(alias.clone(), id);
+            }
+          }
+          InstallWorkspacePkgDep::Workspace { alias, nv } => {
+            if let Some(id) = workspace_pkg_ids.get(nv) {
+              dependencies.insert(alias.clone(), id.clone());
+            }
+          }
+        }
+      }
+      let id = workspace_pkg_ids
+        .get(&workspace_pkg.nv)
+        .expect("workspace package id should exist")
+        .clone();
+      packages.push(WorkspaceLifecyclePackage {
+        package: NpmResolutionPackage {
+          id,
+          copy_index: 0,
+          system: NpmResolutionPackageSystemInfo::default(),
+          dist: None,
+          dependencies,
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(NpmPackageExtraInfo {
+            scripts: workspace_pkg.scripts.clone(),
+            ..Default::default()
+          }),
+          is_deprecated: false,
+          has_bin: false,
+          has_scripts: !workspace_pkg.scripts.is_empty(),
+        },
+        package_path: workspace_pkg.target_dir.clone(),
+        scripts: workspace_pkg.scripts.clone(),
+      });
+    }
+    Ok(packages)
   }
 
   #[allow(
@@ -662,6 +770,7 @@ impl<
     extra_info_provider: Arc<CachedNpmPackageExtraInfoProvider>,
     bin_entries_to_setup: Rc<RefCell<BinEntries<'a, impl LocalNpmInstallSys>>>,
     lifecycle_scripts: Rc<RefCell<LifecycleScripts<'a, impl FsMetadata>>>,
+    lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>>,
     packages_with_deprecation_warnings: Arc<Mutex<Vec<(PackageNv, String)>>>,
   ) -> Result<(), JsErrorBox> {
     self
@@ -732,9 +841,16 @@ impl<
     }
 
     if package.has_scripts {
-      lifecycle_scripts
-        .borrow_mut()
-        .add(package, &extra, package_path.into());
+      let init_cwds = lifecycle_script_init_cwds
+        .get(&package.id)
+        .cloned()
+        .unwrap_or_default();
+      lifecycle_scripts.borrow_mut().add(
+        package,
+        &extra,
+        package_path.into(),
+        init_cwds,
+      );
     }
 
     if package.is_deprecated
@@ -747,6 +863,23 @@ impl<
 
     drop(pb_guard);
     Ok(())
+  }
+}
+
+struct WorkspaceLifecyclePackage {
+  package: NpmResolutionPackage,
+  package_path: PathBuf,
+  scripts: HashMap<deno_semver::SmallStackString, String>,
+}
+
+fn resolve_remote_pkg_id(
+  snapshot: &NpmResolutionSnapshot,
+  req: &deno_semver::package::PackageReq,
+) -> Option<NpmPackageId> {
+  match snapshot.resolve_pkg_from_pkg_req(req) {
+    Ok(pkg) => Some(pkg.id.clone()),
+    Err(_) if req.version_req.tag().is_some() => None,
+    Err(_) => snapshot.resolve_best_package_id(&req.name, &req.version_req),
   }
 }
 
