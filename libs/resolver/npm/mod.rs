@@ -700,18 +700,52 @@ pub(crate) fn join_package_name_to_path(
 /// in `node_modules` was put there explicitly by the user, so a member with a
 /// prerelease version (e.g. `0.40.0-pre`) should still satisfy a bare
 /// `npm:<pkg>` (`*`) requirement instead of being rejected.
-pub(crate) fn version_req_matches_including_pre(
+///
+/// Unlike `VersionReq::matches`, a tag requirement never matches here (rather
+/// than panicking), since a local package has no dist-tags to compare against.
+pub fn version_req_matches_including_pre(
   version_req: &deno_semver::VersionReq,
   version: &Version,
 ) -> bool {
-  if version_req.matches(version) {
-    return true;
-  }
   match version_req.inner() {
     RangeSetOrTag::RangeSet(set) => {
-      !version.pre.is_empty()
-        && set.0.iter().any(|range| range.intersects_version(version))
+      set.satisfies(version)
+        || (!version.pre.is_empty()
+          && set.0.iter().any(|range| range.intersects_version(version)))
     }
     RangeSetOrTag::Tag(_) => false,
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use deno_semver::VersionReq;
+
+  use super::*;
+
+  #[test]
+  fn version_req_matches_including_pre_cases() {
+    fn matches(req: &str, version: &str) -> bool {
+      version_req_matches_including_pre(
+        &VersionReq::parse_from_npm(req).unwrap(),
+        &Version::parse_from_npm(version).unwrap(),
+      )
+    }
+
+    // a prerelease version satisfies a wildcard, unlike plain npm semver
+    assert!(matches("*", "0.40.0-pre"));
+    // ... and an explicit prerelease range that contains it
+    assert!(matches("^0.40.0-pre", "0.40.0-pre"));
+    // but not a range whose lower bound is above the prerelease
+    assert!(!matches("^0.40.0", "0.40.0-pre"));
+    // an exact version does not match a lower prerelease of itself
+    assert!(!matches("1.3.6", "1.3.6-beta"));
+    // a prerelease below the exclusive upper bound is included
+    assert!(matches("^1.0.0", "2.0.0-pre"));
+    // non-prerelease behaviour is unchanged
+    assert!(matches("^1.0.0", "1.5.0"));
+    assert!(!matches("^1.0.0", "2.0.0"));
+    // a tag never matches a local package (and does not panic)
+    assert!(!matches("latest", "1.0.0"));
   }
 }
