@@ -3271,7 +3271,12 @@ fn napi_new_instance<'s>(
   };
 
   v8::callback_scope!(unsafe scope, env.context());
-  let Some(value) = func.new_instance(scope, args) else {
+
+  // Native constructors are allowed to call back into JavaScript during
+  // construction. For example, zeromq's `Context` constructor calls
+  // `Object.seal(this)` while its addon is being initialized.
+  let value_opt = func.new_instance(scope, args);
+  let Some(value) = value_opt else {
     return napi_pending_exception;
   };
 

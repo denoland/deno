@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.8.0"
+version = "2.8.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -39,7 +39,7 @@ upgrade = []
 hmr = ["deno_runtime/hmr", "deno_snapshots/disable"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
-lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemetry"]
+lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemetry", "opentelemetry-otlp/grpc-tonic"]
 # Custom panic trace with `deno_panic`
 panic-trace = ["deno_panic"]
 
@@ -54,11 +54,10 @@ flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
-winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
+deno_ast = { workspace = true, features = ["cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
 deno_bundle_runtime.workspace = true
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
@@ -115,11 +114,11 @@ dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
 esbuild_client = { version = "0.7.1", features = ["serde"] }
-fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
 fluent-uri.workspace = true
+glob.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
@@ -127,15 +126,12 @@ imara-diff.workspace = true
 import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
-jupyter-protocol.workspace = true
-jupyter_runtime.workspace = true
 keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
 locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
-lol_html = "2.6.0"
 lsp-types.workspace = true
 malva.workspace = true
 markup_fmt.workspace = true
@@ -152,7 +148,6 @@ pathdiff.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
 pretty_yaml.workspace = true
-quick-junit.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 rustc-hash.workspace = true
@@ -183,17 +178,17 @@ typed-arena.workspace = true
 unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
-weak-table.workspace = true
+wasm-encoder = { version = "0.244.0", features = ["wasmparser"] }
+wasmparser = "0.244.0"
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["consoleapi", "knownfolders", "mswsock", "objbase", "processenv", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading"] }
 deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
-shell-escape = "=0.1.5"
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
 tokio-vsock.workspace = true
 

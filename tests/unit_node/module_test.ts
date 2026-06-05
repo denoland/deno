@@ -3,6 +3,9 @@
 import {
   builtinModules,
   createRequire,
+  // @ts-ignore Our internal @types/node is at v18.16.19 which predates
+  // this change.
+  findPackageJSON,
   findSourceMap,
   isBuiltin,
   Module,
@@ -11,10 +14,14 @@ import {
   // for `import.meta.filename` and `import.meta.dirname` that Deno
   // provides.
   register,
+  SourceMap,
+  stripTypeScriptTypes,
+  syncBuiltinESMExports,
 } from "node:module";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import process from "node:process";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 
 Deno.test("[node/module _preloadModules] has internal require hook", () => {
   // Check if it's there
@@ -105,9 +112,157 @@ Deno.test("[node/module findSourceMap] is a function", () => {
   assertEquals(findSourceMap("foo"), undefined);
 });
 
+Deno.test("[node/module SourceMap] is exposed as a named export", () => {
+  assertEquals(typeof SourceMap, "function");
+  // @ts-ignore Not in all supported @types/node versions.
+  assertEquals(SourceMap, Module.SourceMap);
+});
+
+// https://github.com/denoland/deno/issues/31039
+Deno.test("[node/module findPackageJSON] is exported and finds package.json", async () => {
+  const tempDir = await Deno.makeTempDir();
+  try {
+    const packageJsonPath = path.join(tempDir, "package.json");
+    const entryPath = path.join(tempDir, "src", "main.js");
+    await Deno.mkdir(path.dirname(entryPath), { recursive: true });
+    await Deno.writeTextFile(packageJsonPath, '{"name":"fixture"}');
+    await Deno.writeTextFile(entryPath, "export default 1;");
+    const realPackageJsonPath = await Deno.realPath(packageJsonPath);
+
+    assertEquals(typeof findPackageJSON, "function");
+    assertEquals(
+      findPackageJSON(pathToFileURL(entryPath).href),
+      realPackageJsonPath,
+    );
+    assertEquals(
+      findPackageJSON(
+        "./src/main.js",
+        pathToFileURL(
+          path.join(tempDir, "mod.mjs"),
+        ),
+      ),
+      realPackageJsonPath,
+    );
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("[node/module findPackageJSON] returns package root for bare package subpaths", async () => {
+  const tempDir = await Deno.makeTempDir();
+  try {
+    const packageRoot = path.join(tempDir, "node_modules", "foo");
+    const packageJsonPath = path.join(packageRoot, "package.json");
+    await Deno.mkdir(packageRoot, { recursive: true });
+    await Deno.writeTextFile(
+      packageJsonPath,
+      '{"name":"foo","exports":{".":"./index.js"}}',
+    );
+    await Deno.writeTextFile(path.join(packageRoot, "index.js"), "");
+    const realPackageJsonPath = await Deno.realPath(packageJsonPath);
+
+    assertEquals(
+      findPackageJSON(
+        "foo/not-exported",
+        pathToFileURL(
+          path.join(tempDir, "mod.mjs"),
+        ),
+      ),
+      realPackageJsonPath,
+    );
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
+Deno.test("[node/module findPackageJSON] absolute specifiers use closest package.json", async () => {
+  const tempDir = await Deno.makeTempDir();
+  try {
+    const packageRoot = path.join(tempDir, "node_modules", "foo");
+    const nestedDir = path.join(packageRoot, "lib");
+    const packageJsonPath = path.join(packageRoot, "package.json");
+    const nestedPackageJsonPath = path.join(nestedDir, "package.json");
+    const entryPath = path.join(nestedDir, "index.js");
+    await Deno.mkdir(nestedDir, { recursive: true });
+    await Deno.writeTextFile(
+      packageJsonPath,
+      '{"name":"foo","exports":"./lib/index.js"}',
+    );
+    await Deno.writeTextFile(nestedPackageJsonPath, '{"name":"nested"}');
+    await Deno.writeTextFile(entryPath, "");
+    const realPackageJsonPath = await Deno.realPath(packageJsonPath);
+    const realNestedPackageJsonPath = await Deno.realPath(
+      nestedPackageJsonPath,
+    );
+
+    assertEquals(
+      findPackageJSON("foo", pathToFileURL(path.join(tempDir, "mod.mjs"))),
+      realPackageJsonPath,
+    );
+    assertEquals(
+      findPackageJSON(pathToFileURL(entryPath).href),
+      realNestedPackageJsonPath,
+    );
+  } finally {
+    await Deno.remove(tempDir, { recursive: true });
+  }
+});
+
 // https://github.com/denoland/deno/issues/24902
 Deno.test("[node/module register] is a function", () => {
   assertEquals(register("foo"), undefined);
+});
+
+Deno.test("[node/module stripTypeScriptTypes] strips TypeScript types", () => {
+  assertEquals(
+    stripTypeScriptTypes("const a: number = 1;"),
+    "const a         = 1;",
+  );
+  assertEquals(
+    stripTypeScriptTypes("const a: number = 1;", { sourceUrl: "source.ts" }),
+    "const a         = 1;\n\n//# sourceURL=source.ts",
+  );
+});
+
+Deno.test("[node/module stripTypeScriptTypes] transforms TypeScript syntax", () => {
+  const output = stripTypeScriptTypes("enum Color { Red }\nColor.Red;", {
+    mode: "transform",
+  });
+  assert(output.includes("Color"));
+  assert(output.includes("Red"));
+});
+
+Deno.test("[node/module stripTypeScriptTypes] rejects unsupported strip-only syntax", () => {
+  const err = assertThrows(
+    () => stripTypeScriptTypes("enum Color { Red }"),
+    SyntaxError,
+  );
+  assertEquals(
+    (err as SyntaxError & { code?: string }).code,
+    "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX",
+  );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/34868.
+// We don't implement the out-of-thread `module.register()` loader (it's a
+// no-op stub), so `Module.register` must NOT be exposed as a static. Tools
+// like Playwright and tsx feature-probe `import M from "node:module";
+// M.register`; when it's present they set up an ESM loader and wait on a
+// `MessagePort` handshake that our stub never answers, hanging silently.
+// With it absent they fall back to a path that works: Playwright skips the
+// loader and tsx uses `Module.registerHooks` (which we do implement) now
+// that the emulated Node version (>= 24.11.1) clears tsx's feature gate.
+Deno.test("[node/module] Module.register is not exposed, registerHooks is", () => {
+  // @ts-ignore Not in our bundled @types/node yet.
+  assertEquals(Module.register, undefined);
+  // @ts-ignore Not in our bundled @types/node yet.
+  assertEquals(typeof Module.registerHooks, "function");
+});
+
+Deno.test("[node/module syncBuiltinESMExports] is exposed", () => {
+  assertEquals(typeof syncBuiltinESMExports, "function");
+  assertEquals(syncBuiltinESMExports(), undefined);
+  assertEquals(Module.syncBuiltinESMExports, syncBuiltinESMExports);
 });
 
 Deno.test("[node/module] overriding Module._compile is possible and Node globals work", () => {

@@ -53,6 +53,7 @@ const {
   Symbol,
   SymbolAsyncDispose,
   TypeError,
+  TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
@@ -377,6 +378,7 @@ class InnerRequest {
     const buffered = op_http_try_take_full_request_body(this.#external);
     if (buffered !== null) {
       this.#body = new InnerBody({ body: buffered, consumed: false });
+      this.#body.length = TypedArrayPrototypeGetByteLength(buffered);
       return this.#body;
     }
     this.#streamRid = op_http_read_request_body(this.#external);
@@ -556,6 +558,7 @@ function mapToCallback(context, callback, onError) {
     // 500 error.
     let innerRequest;
     let response;
+    let inner;
     try {
       innerRequest = new InnerRequest(req, context);
       const request = fromInnerRequest(innerRequest, "immutable");
@@ -571,6 +574,19 @@ function mapToCallback(context, callback, onError) {
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
         throw new TypeError(
           "Return value from serve handler must be a response or a promise resolving to a response",
+        );
+      }
+
+      // The Response prototype check above passes for Response-like objects
+      // (e.g. a subclass that skipped super(), or a Response from a different
+      // realm/polyfill). Those don't carry the internal slot we read from
+      // below, so reject them with a clear error instead of crashing the
+      // serve loop with "Cannot read properties of undefined (reading
+      // 'status')". Compute the inner response once here and reuse it below.
+      inner = toInnerResponse(response);
+      if (inner === undefined) {
+        throw new TypeError(
+          "Return value from serve handler must be a Response constructed via the Response constructor in this realm",
         );
       }
 
@@ -593,6 +609,12 @@ function mapToCallback(context, callback, onError) {
             "Return value from onError handler must be a response or a promise resolving to a response",
           );
         }
+        inner = toInnerResponse(response);
+        if (inner === undefined) {
+          throw new TypeError(
+            "Return value from onError handler must be a Response constructed via the Response constructor in this realm",
+          );
+        }
       } catch (error) {
         if (otelState.METRICS_ENABLED) {
           op_http_metric_handle_otel_error(req);
@@ -603,6 +625,7 @@ function mapToCallback(context, callback, onError) {
           error,
         );
         response = internalServerError();
+        inner = toInnerResponse(response);
       }
     }
 
@@ -616,7 +639,6 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    const inner = toInnerResponse(response);
     if (innerRequest?.[_upgraded]) {
       if (response.status !== 101) {
         internals.log(

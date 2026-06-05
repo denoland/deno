@@ -1,7 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any no-node-globals
+// deno-lint-ignore-file no-explicit-any no-node-globals
 
 import { core, primordials } from "ext:core/mod.js";
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
@@ -53,6 +52,9 @@ const {
   validateBoolean,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isDataView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 const lazyProcess = core.createLazyLoader("node:process");
 
 // Promisified wrappers must NOT be built at module body: handle.ts is loaded
@@ -80,18 +82,28 @@ const fsyncPromise = (fd: number): Promise<void> => {
 };
 
 const {
+  DataViewPrototypeGetByteLength,
   Error,
   ObjectAssign,
   ObjectPrototypeIsPrototypeOf,
   Promise,
+  PromisePrototypeCatch,
   PromisePrototypeThen,
   SafePromisePrototypeFinally,
   PromiseResolve,
   SafeArrayIterator,
   Symbol,
   SymbolAsyncDispose,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
   Uint8ArrayPrototype,
 } = primordials;
+
+function getByteLength(buffer: ArrayBufferView): number {
+  return isDataView(buffer)
+    ? DataViewPrototypeGetByteLength(buffer)
+    : TypedArrayPrototypeGetByteLength(buffer);
+}
 
 const kRefs = Symbol("kRefs");
 const kClosePromise = Symbol("kClosePromise");
@@ -183,12 +195,12 @@ export class FileHandle extends EventEmitter {
           position?: number | null;
         };
         offset = opts.offset ?? 0;
-        length = opts.length ?? buf.byteLength - offset;
+        length = opts.length ?? getByteLength(buf) - offset;
         position = opts.position ?? null;
       } else {
         // fileHandle.read(buffer, offset, length, position)
         offset = offsetOrOpt as number;
-        if (length == null) length = buf.byteLength - offset;
+        if (length == null) length = getByteLength(buf) - offset;
         if (position == null) position = null;
       }
     } else {
@@ -199,9 +211,12 @@ export class FileHandle extends EventEmitter {
         length?: number;
         position?: number | null;
       };
+      // `opts` is a plain options object; `.buffer` is a normal property,
+      // not the TypedArray `.buffer` getter.
+      // deno-lint-ignore prefer-primordials
       buf = opts.buffer ?? lazyBuffer().Buffer.alloc(16384);
       offset = opts.offset ?? 0;
-      length = opts.length ?? buf.byteLength - offset;
+      length = opts.length ?? getByteLength(buf) - offset;
       position = opts.position ?? null;
     }
     return fsCall(readPromise, "read", this, buf, offset, length, position);
@@ -404,7 +419,7 @@ export class FileHandle extends EventEmitter {
     const ondone = async () => {
       this[kUnref]();
       if (autoClose) {
-        await this.close().catch(() => {});
+        await PromisePrototypeCatch(this.close(), () => {});
       }
     };
 
@@ -416,8 +431,8 @@ export class FileHandle extends EventEmitter {
         const view = controller.byobRequest!.view! as Uint8Array;
         const { bytesRead } = await this.read(
           view,
-          view.byteOffset,
-          view.byteLength,
+          TypedArrayPrototypeGetByteOffset(view),
+          TypedArrayPrototypeGetByteLength(view),
         );
 
         if (bytesRead === 0) {

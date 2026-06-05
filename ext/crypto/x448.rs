@@ -12,6 +12,8 @@ use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
+use crate::key_store::CryptoKeyHandle;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X448Error {
   #[class("DOMExceptionOperationError")]
@@ -45,12 +47,20 @@ static MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 56]);
 
 #[op2(fast)]
 pub fn op_crypto_derive_bits_x448(
-  #[buffer] k: &[u8],
-  #[buffer] u: &[u8],
+  #[cppgc] k: &CryptoKeyHandle,
+  #[cppgc] u: &CryptoKeyHandle,
   #[buffer] secret: &mut [u8],
 ) -> Result<bool, X448Error> {
-  let k: [u8; 56] = k.try_into().map_err(|_| X448Error::InvalidKeyLength)?;
-  let u: [u8; 56] = u.try_into().map_err(|_| X448Error::InvalidKeyLength)?;
+  let k: [u8; 56] = k
+    .data()
+    .bytes()
+    .try_into()
+    .map_err(|_| X448Error::InvalidKeyLength)?;
+  let u: [u8; 56] = u
+    .data()
+    .bytes()
+    .try_into()
+    .map_err(|_| X448Error::InvalidKeyLength)?;
 
   // x448(k, u)
   let mut scalar_bytes = [0u8; 57];
@@ -152,7 +162,7 @@ pub fn op_crypto_import_pkcs8_x448(
   }
   // 6.
   // CurvePrivateKey ::= OCTET STRING
-  if pk_info.private_key.len() != 56 {
+  if pk_info.private_key.len() != 58 {
     return false;
   }
   out.copy_from_slice(&pk_info.private_key[2..]);
