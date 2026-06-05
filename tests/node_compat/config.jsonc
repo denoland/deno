@@ -256,12 +256,7 @@
       "windows": false,
       "reason": "testing private benchmark utility"
     },
-    "parallel/test-blob-createobjecturl.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "URL.createObjectURL does not throw ERR_INVALID_ARG_TYPE for non-Blob arguments"
-    },
+    "parallel/test-blob-createobjecturl.js": {},
     "parallel/test-blocklist.js": {},
     "parallel/test-btoa-atob.js": {},
     "parallel/test-buffer-alloc-unsafe-is-initialized-with-zero-fill-flag.js": {},
