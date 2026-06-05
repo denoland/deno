@@ -1344,6 +1344,15 @@ impl FileBackedVfsFile {
     self.vfs.read_file(&self.file, read_pos, buf)
   }
 
+  fn metadata(&self) -> FileBackedVfsMetadata {
+    FileBackedVfsMetadata {
+      name: self.file.name.clone(),
+      file_type: sys_traits::FileType::File,
+      len: self.file.offset.len,
+      mtime: self.file.mtime,
+    }
+  }
+
   fn read_to_end(&self) -> FsResult<Cow<'static, [u8]>> {
     let read_pos = {
       let mut pos = self.pos.borrow_mut();
@@ -1459,10 +1468,10 @@ impl deno_io::fs::File for FileBackedVfsFile {
   }
 
   fn stat_sync(self: Rc<Self>) -> FsResult<FsStat> {
-    Err(FsError::NotSupported)
+    Ok(self.metadata().as_fs_stat())
   }
   async fn stat_async(self: Rc<Self>) -> FsResult<FsStat> {
-    Err(FsError::NotSupported)
+    Ok(self.metadata().as_fs_stat())
   }
 
   fn lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
