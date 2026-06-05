@@ -432,14 +432,14 @@ async fn maybe_prompt_allow_lifecycle_scripts(
   {
     return Ok(());
   }
-  if NpmPackageReqReference::from_specifier(&bin_name_and_url.module_url)
-    .is_err()
-  {
+  let Ok(npm_ref) =
+    NpmPackageReqReference::from_specifier(&bin_name_and_url.module_url)
+  else {
     return Ok(());
-  }
+  };
 
   let Some(package_req) = bin_name_resolver
-    .resolve_npm_lifecycle_scripts_package_req(&bin_name_and_url.module_url)
+    .resolve_npm_lifecycle_scripts_package_req(&npm_ref)
     .await?
   else {
     return Ok(());

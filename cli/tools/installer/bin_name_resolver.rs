@@ -203,13 +203,15 @@ impl<'a> BinNameResolver<'a> {
 
   pub async fn resolve_npm_lifecycle_scripts_package_req(
     &self,
-    url: &Url,
+    npm_ref: &NpmPackageReqReference,
   ) -> Result<Option<PackageReq>, AnyError> {
-    let npm_ref = NpmPackageReqReference::from_specifier(url)?;
     let Some(version_info) = self.resolve_npm_version_info(&npm_ref).await?
     else {
       return Ok(None);
     };
+    // Global install prompts only for the directly installed package here.
+    // Transitive lifecycle scripts are discovered by npm install later and are
+    // not included in the generated allowScripts list.
     let has_lifecycle_scripts =
       version_info.has_install_script.unwrap_or(false)
         || version_info.scripts.contains_key("preinstall")

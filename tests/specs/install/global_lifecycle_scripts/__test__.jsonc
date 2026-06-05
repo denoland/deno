@@ -8,6 +8,20 @@
     {
       "args": "run -A assert.js",
       "output": ""
+    },
+    {
+      "if": "unix",
+      "args": "install --global --root ./bins-denied --name lifecycle-scripts-simple npm:@denotest/lifecycle-scripts-simple",
+      "output": "install_denied.out"
+    },
+    {
+      "if": "windows",
+      "args": "install --global --root ./bins-denied --name lifecycle-scripts-simple npm:@denotest/lifecycle-scripts-simple",
+      "output": "install_denied.out"
+    },
+    {
+      "args": "run -A assert_denied.js",
+      "output": ""
     }
   ]
 }
