@@ -2437,6 +2437,7 @@ Or multiple dependencies at once:
           .action(ArgAction::SetTrue),
       )
       .arg(package_json_arg())
+      .arg(env_file_arg())
   })
 }
 
@@ -2498,6 +2499,7 @@ Don't error if the audit data can't be retrieved from the registry
   .defer(|cmd| {
     cmd
       .args(lock_args())
+      .arg(env_file_arg())
       .arg(
         Arg::new("level")
           .long("level")
@@ -2565,6 +2567,7 @@ Show why a specific version is installed
   .defer(|cmd| {
     cmd
       .args(lock_args())
+      .arg(env_file_arg())
       .arg(
         Arg::new("package")
           .required(true)
@@ -2723,6 +2726,7 @@ If no output file is given, the output is written to standard output:
   .defer(|cmd| {
     compile_args(cmd)
       .arg(check_arg(false))
+      .arg(env_file_arg())
       .arg(
         Arg::new("file")
           .num_args(1..)
@@ -2949,6 +2953,7 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(allow_import_arg())
         .arg(deny_import_arg())
         .arg(v8_flags_arg())
+        .arg(env_file_arg())
         .arg(watch_arg(false))
         .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
@@ -3253,6 +3258,7 @@ Show documentation for runtime built-ins:
         .arg(no_remote_arg())
         .arg(allow_import_arg())
         .arg(deny_import_arg())
+        .arg(env_file_arg())
         .arg(
           Arg::new("json")
             .long("json")
@@ -3719,6 +3725,7 @@ The following information is shown:
       ))
       .arg(allow_import_arg())
       .arg(deny_import_arg())
+      .arg(env_file_arg())
 }
 
 fn install_subcommand() -> Command {
@@ -3897,6 +3904,7 @@ is missing or out of date with the config file.
           .action(ArgAction::SetTrue)
           .requires("prod"),
       )
+      .arg(env_file_arg())
   })
 }
 
@@ -4036,6 +4044,7 @@ Specific version requirements to update to can be specified:
           .help("Interactively select which dependencies to update")
       )
       .args(lock_args())
+      .arg(env_file_arg())
   })
 }
 
@@ -4081,6 +4090,7 @@ Specific version requirements to update to can be specified:
           .help("Interactively select which dependencies to update"),
       )
       .args(lock_args())
+      .arg(env_file_arg())
       .arg(
         Arg::new("update")
           .long("update")
@@ -5182,6 +5192,7 @@ fn publish_subcommand() -> Command {
         )
         .arg(check_arg(/* type checks by default */ true))
         .arg(no_check_arg())
+        .arg(env_file_arg())
     })
 }
 
@@ -5247,6 +5258,7 @@ fn pack_subcommand() -> Command {
           .help("Ignore files matching these patterns")
           .value_hint(ValueHint::AnyPath),
       )
+      .arg(env_file_arg())
   })
 }
 
@@ -6632,6 +6644,7 @@ fn audit_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
   let severity = matches
     .remove_one::<String>("level")
     .unwrap_or_else(|| "low".to_string());
@@ -6667,6 +6680,7 @@ fn audit_parse(
 
 fn why_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
   let package = matches.remove_one::<String>("package").unwrap();
   flags.subcommand = DenoSubcommand::Why(WhyFlags { package });
 }
@@ -6677,6 +6691,7 @@ fn add_parse(
 ) -> clap::error::Result<()> {
   allow_scripts_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
   Ok(())
 }
@@ -6781,6 +6796,7 @@ fn outdated_parse(
   });
   lock_args_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6842,6 +6858,7 @@ fn bundle_parse(
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   allow_and_deny_import_parse(flags, matches)?;
+  env_file_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     entrypoints: file.collect(),
     watch: matches.get_flag("watch"),
@@ -6901,6 +6918,7 @@ fn check_parse(
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;
+  env_file_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -7125,6 +7143,7 @@ fn doc_parse(
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
+  env_file_arg_parse(flags, matches);
 
   let source_files_val = matches.remove_many::<String>("source_file");
   let source_files = if let Some(val) = source_files_val {
@@ -7403,6 +7422,7 @@ fn info_parse(
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
+  env_file_arg_parse(flags, matches);
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.remove_one::<String>("file"),
@@ -7522,6 +7542,7 @@ fn ci_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  env_file_arg_parse(flags, matches);
   flags.frozen_lockfile = Some(true);
   flags.subcommand = DenoSubcommand::Ci(CiFlags {
     production: matches.get_flag("prod"),
@@ -8242,6 +8263,7 @@ fn publish_parse(
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
   config_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
@@ -8262,6 +8284,7 @@ fn pack_parse(
   flags.type_check_mode = TypeCheckMode::Local; // local by default
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   config_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
 
   let include = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
@@ -11641,6 +11664,76 @@ mod tests {
         code_cache_enabled: true,
         ..Flags::default()
       }
+    );
+  }
+
+  // The dependency and registry subcommands also accept --env-file so that
+  // registry credentials kept in a .env file can be loaded before the command
+  // resolves a dependency graph or talks to a registry.
+  #[test]
+  fn dep_and_registry_subcommands_env_file() {
+    // (args, expected env_file) pairs, one per supported subcommand.
+    let cases: Vec<(Vec<std::ffi::OsString>, Vec<String>)> = vec![
+      (
+        svec!["deno", "add", "--env-file", "@david/which"],
+        svec![".env"],
+      ),
+      (svec!["deno", "audit", "--env-file"], svec![".env"]),
+      (svec!["deno", "why", "--env-file", "express"], svec![".env"]),
+      (svec!["deno", "outdated", "--env-file"], svec![".env"]),
+      (svec!["deno", "update", "--env-file"], svec![".env"]),
+      (
+        svec!["deno", "bundle", "--env-file", "main.ts"],
+        svec![".env"],
+      ),
+      (
+        svec!["deno", "check", "--env-file", "main.ts"],
+        svec![".env"],
+      ),
+      (svec!["deno", "doc", "--env-file", "main.ts"], svec![".env"]),
+      (
+        svec!["deno", "info", "--env-file", "main.ts"],
+        svec![".env"],
+      ),
+      (svec!["deno", "ci", "--env-file"], svec![".env"]),
+      (svec!["deno", "publish", "--env-file"], svec![".env"]),
+      (svec!["deno", "pack", "--env-file"], svec![".env"]),
+    ];
+    for (args, expected) in cases {
+      let flags = flags_from_vec(args.clone())
+        .unwrap_or_else(|e| panic!("failed to parse {args:?}: {e}"));
+      assert_eq!(
+        flags.env_file,
+        Some(expected),
+        "unexpected env_file for {args:?}",
+      );
+    }
+  }
+
+  #[test]
+  fn dep_and_registry_subcommands_env_file_explicit_and_multiple() {
+    // An explicit path is honored.
+    let flags =
+      flags_from_vec(svec!["deno", "check", "--env-file=.prod.env", "main.ts"])
+        .unwrap();
+    assert_eq!(flags.env_file, Some(svec![".prod.env"]));
+
+    // The --env alias works the same as --env-file.
+    let flags =
+      flags_from_vec(svec!["deno", "outdated", "--env=.prod.env"]).unwrap();
+    assert_eq!(flags.env_file, Some(svec![".prod.env"]));
+
+    // Multiple --env-file flags accumulate in order.
+    let flags = flags_from_vec(svec![
+      "deno",
+      "publish",
+      "--env-file",
+      "--env-file=.prod.env"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.env_file,
+      Some(svec![".env".to_owned(), ".prod.env".to_owned()])
     );
   }
 
