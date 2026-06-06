@@ -1418,6 +1418,35 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         )?;
       }
 
+      // A Web Worker created with restricted import permissions (for example
+      // `deno: { permissions: { import: false } }`) must not be able to load
+      // remote modules through statically analyzable imports. The graph above
+      // is built with `parent_permissions` so that the parent's read access
+      // governs loading the worker's entry point and its local dependencies
+      // (the same way it does for `import()`), but the worker's own import
+      // permission still has to gate every remote module reachable from it.
+      //
+      // Re-check each remote module in the worker's graph against the worker's
+      // own permissions. Only `http(s):` specifiers are checked: that is what
+      // the import permission governs, and `jsr:` imports are already resolved
+      // to their `https://jsr.io` URLs here. `file:`/`data:`/`blob:` imports
+      // don't require import access, and `node:`/`npm:` specifiers are gated by
+      // a different mechanism, so they are skipped. Dynamic `import()` is
+      // already checked against the worker's permissions while the graph is
+      // built, so this only needs to run for statically analyzable imports.
+      if inner.is_worker && !options.is_dynamic_import {
+        let graph = graph_container.graph();
+        for module in graph.modules() {
+          let specifier = module.specifier();
+          if matches!(specifier.scheme(), "http" | "https") {
+            inner
+              .permissions
+              .check_specifier(specifier, CheckSpecifierKind::Static)
+              .map_err(JsErrorBox::from_err)?;
+          }
+        }
+      }
+
       Ok(())
     };
 
