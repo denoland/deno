@@ -73,7 +73,7 @@ impl<'a> WebIdlConverter<'a> for SubtleKey {
         WebIdlErrorKind::ConvertToConverterType("CryptoKey"),
       ));
     };
-    let key: &CryptoKey = &*key_ptr;
+    let key: &CryptoKey = &key_ptr;
 
     let algorithm_name = key.algorithm_name(scope).ok_or_else(|| {
       WebIdlError::other(
