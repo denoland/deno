@@ -282,7 +282,7 @@ impl Drop for ChildResource {
   }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpawnArgs {
   cmd: String,
@@ -336,7 +336,7 @@ enum KillSignal {
   Number(i32),
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ChildIpcSerialization {
   Json,
@@ -427,7 +427,24 @@ pub enum ProcessError {
   MissingCmd, // only for Deno.run
 }
 
-#[derive(Deserialize)]
+impl ProcessError {
+  /// Returns `true` if this error was caused by the OS rejecting the target
+  /// file as not being in an executable format (`ENOEXEC`). This happens for
+  /// e.g. shell scripts without a shebang line. POSIX `execvp`/`posix_spawnp`
+  /// fall back to running such files with `/bin/sh`; glibc's `posix_spawnp`
+  /// (used by Rust's `std::process::Command` on Linux) does not, so Deno
+  /// performs this fallback explicitly to match Node.js/libuv behavior.
+  #[cfg(unix)]
+  fn is_enoexec(&self) -> bool {
+    match self {
+      ProcessError::SpawnFailed { error, .. } => error.is_enoexec(),
+      ProcessError::Io(err) => err.raw_os_error() == Some(libc::ENOEXEC),
+      _ => false,
+    }
+  }
+}
+
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChildStdio {
   stdin: StdioOrFd,
@@ -536,6 +553,11 @@ fn create_command(
   mut args: SpawnArgs,
   api_name: &str,
   allow_cwd_inherit: bool,
+  // When `true` (Unix only), the resolved command is run as an argument to
+  // `/bin/sh` instead of being exec'd directly. Used as a fallback when a
+  // direct spawn fails with `ENOEXEC` (e.g. a shebang-less shell script), to
+  // match the POSIX `execvp` / Node.js behavior. Always `false` on Windows.
+  wrap_in_shell: bool,
 ) -> Result<CreateCommand, ProcessError> {
   let maybe_npm_process_state = if args.needs_npm_process_state {
     let provider = state.borrow::<NpmProcessStateProviderRc>();
@@ -559,7 +581,28 @@ fn create_command(
     api_name,
     allow_cwd_inherit,
   )?;
-  let mut command = Command::new(cmd);
+
+  // On Unix, optionally run the command through `/bin/sh` so that files which
+  // the kernel can't exec directly (e.g. shell scripts without a shebang) are
+  // still executed. This mirrors glibc's `execvp` (`maybe_script_execute`),
+  // which on `ENOEXEC` re-execs `/bin/sh` with argv `[sh, file, args...]` —
+  // the original argv[0] is dropped and replaced by the shell. Node.js/libuv
+  // inherit this from `execvp`; Rust's `posix_spawn` on Linux does not, so we
+  // replicate it. The user args (`args.args`, i.e. argv[1..]) are appended
+  // below; `argv0` is intentionally skipped (see below) to match libc.
+  #[cfg(unix)]
+  let mut command = if wrap_in_shell {
+    let mut command = Command::new("/bin/sh");
+    command.arg(&cmd);
+    command
+  } else {
+    Command::new(cmd)
+  };
+  #[cfg(windows)]
+  let mut command = {
+    let _ = wrap_in_shell;
+    Command::new(cmd)
+  };
 
   #[cfg(windows)]
   {
@@ -578,7 +621,11 @@ fn create_command(
 
   #[cfg(not(windows))]
   {
-    if let Some(ref argv0) = args.argv0 {
+    // `argv0` overrides the executable's own argv[0]; when wrapping in a shell
+    // it would incorrectly apply to `/bin/sh`, so skip it in that case.
+    if let Some(ref argv0) = args.argv0
+      && !wrap_in_shell
+    {
       command.arg0(argv0);
     }
     command.args(args.args);
@@ -1348,11 +1395,27 @@ fn op_spawn_child(
   #[string] api_name: String,
 ) -> Result<Child, ProcessError> {
   let detached = args.detached;
-  let (command, pipe_rid, extra_pipe_fds, handles_to_close) =
-    create_command(state, args, &api_name, /* allow_cwd_inherit */ false)?;
+  #[cfg(unix)]
+  let retry_args = args.clone();
+  let (command, pipe_rid, extra_pipe_fds, handles_to_close) = create_command(
+    state, args, &api_name, /* allow_cwd_inherit */ false,
+    /* wrap_in_shell */ false,
+  )?;
   let child = spawn_child(state, command, pipe_rid, extra_pipe_fds, detached);
   for handle in handles_to_close {
     deno_io::close_raw_handle(handle);
+  }
+  #[cfg(unix)]
+  if matches!(&child, Err(err) if err.is_enoexec()) {
+    let (command, pipe_rid, extra_pipe_fds, handles_to_close) = create_command(
+      state, retry_args, &api_name, /* allow_cwd_inherit */ false,
+      /* wrap_in_shell */ true,
+    )?;
+    let child = spawn_child(state, command, pipe_rid, extra_pipe_fds, detached);
+    for handle in handles_to_close {
+      deno_io::close_raw_handle(handle);
+    }
+    return child;
   }
   child
 }
@@ -1366,14 +1429,31 @@ fn op_node_spawn_child(
   #[string] api_name: String,
 ) -> Result<NodeChild, ProcessError> {
   let detached = args.detached;
+  #[cfg(unix)]
+  let retry_args = args.clone();
   // `child_process.spawn` in Node tolerates the parent's cwd being unlinked
   // by inheriting it, so allow cwd inheritance for Node-compat spawns.
-  let (command, pipe_rid, extra_pipe_fds, handles_to_close) =
-    create_command(state, args, &api_name, /* allow_cwd_inherit */ true)?;
+  let (command, pipe_rid, extra_pipe_fds, handles_to_close) = create_command(
+    state, args, &api_name, /* allow_cwd_inherit */ true,
+    /* wrap_in_shell */ false,
+  )?;
   let child =
     spawn_child_node(state, command, pipe_rid, extra_pipe_fds, detached);
   for handle in handles_to_close {
     deno_io::close_raw_handle(handle);
+  }
+  #[cfg(unix)]
+  if matches!(&child, Err(err) if err.is_enoexec()) {
+    let (command, pipe_rid, extra_pipe_fds, handles_to_close) = create_command(
+      state, retry_args, &api_name, /* allow_cwd_inherit */ true,
+      /* wrap_in_shell */ true,
+    )?;
+    let child =
+      spawn_child_node(state, command, pipe_rid, extra_pipe_fds, detached);
+    for handle in handles_to_close {
+      deno_io::close_raw_handle(handle);
+    }
+    return child;
   }
   child
 }
@@ -1416,11 +1496,14 @@ fn op_spawn_sync(
   let timeout = args.timeout;
   #[cfg(unix)]
   let kill_signal = args.kill_signal.clone();
+  #[cfg(unix)]
+  let retry_args = args.clone();
   let (mut command, _, _, _) = create_command(
     state,
     args,
     "Deno.Command().outputSync()",
     /* allow_cwd_inherit */ false,
+    /* wrap_in_shell */ false,
   )?;
 
   // When timeout is specified on Unix, create a new process group so we can
@@ -1430,10 +1513,35 @@ fn op_spawn_sync(
     command.process_group(0);
   }
 
-  let mut child = command.spawn().map_err(|e| ProcessError::SpawnFailed {
-    command: command.get_program().to_string_lossy().into_owned(),
-    error: Box::new(e.into()),
-  })?;
+  let mut child = match command.spawn() {
+    Ok(child) => child,
+    // A shebang-less script (or other file the kernel can't exec directly)
+    // fails with `ENOEXEC` on Linux; retry it through `/bin/sh` to match the
+    // POSIX `execvp` / Node.js behavior.
+    #[cfg(unix)]
+    Err(err) if err.raw_os_error() == Some(libc::ENOEXEC) => {
+      let (mut command, _, _, _) = create_command(
+        state,
+        retry_args,
+        "Deno.Command().outputSync()",
+        /* allow_cwd_inherit */ false,
+        /* wrap_in_shell */ true,
+      )?;
+      if timeout.is_some_and(|t| t > 0) {
+        command.process_group(0);
+      }
+      command.spawn().map_err(|e| ProcessError::SpawnFailed {
+        command: command.get_program().to_string_lossy().into_owned(),
+        error: Box::new(e.into()),
+      })?
+    }
+    Err(err) => {
+      return Err(ProcessError::SpawnFailed {
+        command: command.get_program().to_string_lossy().into_owned(),
+        error: Box::new(err.into()),
+      });
+    }
+  };
   #[cfg(unix)]
   let pid = child.id();
   #[cfg(windows)]

@@ -212,7 +212,18 @@ pub fn op_node_decode<'a>(
       if buffer.len() <= 256 && buffer.is_ascii() {
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
-        v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
+        // `v8::String::new_from_utf8` does not replace ill-formed UTF-8
+        // sequences the same way Node.js does, so decode lossily ourselves.
+        // Rust's `from_utf8_lossy` follows the WHATWG "maximal subpart"
+        // replacement (one U+FFFD per ill-formed subsequence), matching Node's
+        // `Buffer.prototype.toString('utf8')` and `string_decoder`. For valid
+        // UTF-8 it borrows the input without allocating.
+        let decoded = String::from_utf8_lossy(buffer);
+        v8::String::new_from_utf8(
+          scope,
+          decoded.as_bytes(),
+          v8::NewStringType::Normal,
+        )
       }
     }
     1 => {
