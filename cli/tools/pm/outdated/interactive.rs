@@ -26,11 +26,20 @@ pub struct PackageInfo {
 #[derive(Debug)]
 struct FormattedPackageInfo {
   dep_ids: Vec<DepId>,
-  current_version_string: Option<String>,
+  current_version_string: String,
   new_version_highlighted: String,
   formatted_name: String,
   formatted_name_len: usize,
   name: String,
+}
+
+/// Strip a leading single-version operator (`^`, `~`, or `=`) so the bare
+/// version can be parsed for highlighting and displayed consistently. Range
+/// requirements such as `>=1.2.3` are left untouched, since stripping the
+/// operator would surface a misleading bare version; they fall through to the
+/// unhighlighted display instead.
+fn strip_version_operator(version_text: &str) -> &str {
+  version_text.trim_start_matches(['^', '~', '='])
 }
 
 #[derive(Debug)]
@@ -43,11 +52,9 @@ struct State {
 impl From<PackageInfo> for FormattedPackageInfo {
   fn from(package: PackageInfo) -> Self {
     let new_version_string =
-      package.new_version.version_text().trim_start_matches('^');
-    let current_version_string = package
-      .current_version_req
-      .version_text()
-      .trim_start_matches('^');
+      strip_version_operator(package.new_version.version_text());
+    let current_version_string =
+      strip_version_operator(package.current_version_req.version_text());
 
     let new_version_highlighted = match (
       Version::parse_standard(current_version_string),
@@ -60,7 +67,7 @@ impl From<PackageInfo> for FormattedPackageInfo {
     };
     FormattedPackageInfo {
       dep_ids: vec![package.id],
-      current_version_string: Some(current_version_string.to_string()),
+      current_version_string: current_version_string.to_string(),
       new_version_highlighted,
       formatted_name: format!(
         "{}{}",
@@ -103,12 +110,7 @@ impl State {
       .unwrap_or_default();
     let current_width = packages
       .iter()
-      .map(|p| {
-        p.current_version_string
-          .as_ref()
-          .map(|s| s.len())
-          .unwrap_or_default()
-      })
+      .map(|p| p.current_version_string.len())
       .max()
       .unwrap_or_default();
 
@@ -214,10 +216,7 @@ fn render_package(
   write!(
     f,
     "{formatted_name}{name_pad} {:<current_width$} -> {}",
-    package
-      .current_version_string
-      .as_deref()
-      .unwrap_or_default(),
+    &package.current_version_string,
     &package.new_version_highlighted,
     name_pad = name_pad,
     formatted_name = package.formatted_name,
