@@ -29,6 +29,7 @@ const {
   MathMin,
   NumberIsInteger,
   NumberIsNaN,
+  NumberMAX_SAFE_INTEGER,
   AsyncGeneratorPrototype,
   Object,
   ObjectAssign,
@@ -966,6 +967,12 @@ function validateExpireIn(expireIn: number | undefined) {
     throw new TypeError(
       `expireIn must be a non-negative integer: received ${expireIn}`,
     );
+  }
+  // The absolute expiry is computed as DateNow() + expireIn before it reaches
+  // the backend. Reject values that would push it past the safe-integer range,
+  // matching the native checked arithmetic that previously guarded this.
+  if (expireIn > NumberMAX_SAFE_INTEGER - DateNow()) {
+    throw new TypeError(`expireIn is too large: ${expireIn}`);
   }
 }
 
