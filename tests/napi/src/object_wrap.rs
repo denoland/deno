@@ -86,12 +86,18 @@ impl NapiObject {
     unreachable!();
   }
 
-  #[allow(clippy::new_ret_no_self)]
+  #[allow(
+    clippy::new_ret_no_self,
+    reason = "napi constructor returns napi_value"
+  )]
   pub extern "C" fn new(env: napi_env, info: napi_callback_info) -> napi_value {
     Self::new_inner(env, info, None, None)
   }
 
-  #[allow(clippy::new_ret_no_self)]
+  #[allow(
+    clippy::new_ret_no_self,
+    reason = "napi constructor returns napi_value"
+  )]
   pub extern "C" fn new_with_finalizer(
     env: napi_env,
     info: napi_callback_info,
@@ -253,6 +259,178 @@ extern "C" fn accessor_setter(
   ptr::null_mut()
 }
 
+/// Test napi_remove_wrap: wraps an object, then removes the wrap.
+extern "C" fn test_remove_wrap(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  // Wrap the object with some native data
+  let data = Box::into_raw(Box::new(42i32)) as *mut std::ffi::c_void;
+  assert_napi_ok!(napi_wrap(
+    env,
+    args[0],
+    data,
+    None,
+    ptr::null_mut(),
+    ptr::null_mut(),
+  ));
+
+  // Remove the wrap and verify we get the same pointer back
+  let mut removed_data: *mut std::ffi::c_void = ptr::null_mut();
+  assert_napi_ok!(napi_remove_wrap(env, args[0], &mut removed_data));
+  assert_eq!(removed_data, data);
+
+  // Clean up
+  unsafe {
+    let _ = Box::from_raw(removed_data as *mut i32);
+  }
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
+  result
+}
+
+/// Raw napi_wrap: wraps a JS object with an i32 value.
+/// Used for cross-env wrap/unwrap testing.
+extern "C" fn test_raw_wrap(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
+  assert_eq!(argc, 2);
+
+  let mut value: i32 = 0;
+  assert_napi_ok!(napi_get_value_int32(env, args[1], &mut value));
+
+  let data = Box::into_raw(Box::new(value)) as *mut c_void;
+  assert_napi_ok!(napi_wrap(
+    env,
+    args[0],
+    data,
+    None,
+    ptr::null_mut(),
+    ptr::null_mut()
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_boolean(env, true, &mut result));
+  result
+}
+
+/// Raw napi_unwrap: retrieves the i32 value from a wrapped JS object.
+/// Used for cross-env wrap/unwrap testing.
+extern "C" fn test_raw_unwrap(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut data: *mut c_void = ptr::null_mut();
+  let status = unsafe { napi_unwrap(env, args[0], &mut data) };
+  if status != napi_sys::Status::napi_ok {
+    let mut result: napi_value = ptr::null_mut();
+    assert_napi_ok!(napi_get_null(env, &mut result));
+    return result;
+  }
+
+  let value = unsafe { *(data as *const i32) };
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_int32(env, value, &mut result));
+  result
+}
+
+/// Invokes `napi_new_instance` on the constructor passed as the first
+/// argument with the i32 second argument forwarded. Regression coverage
+/// for #33924: this verifies the API path still produces a properly
+/// wrapped instance on the normal codepath.
+extern "C" fn test_call_new_instance(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
+  assert_eq!(argc, 2);
+
+  let argv = [args[1]];
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_new_instance(
+    env,
+    args[0],
+    argv.len(),
+    argv.as_ptr(),
+    &mut result,
+  ));
+  result
+}
+
+extern "C" fn js_calling_constructor(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (_, _, this) = napi_get_callback_info!(env, info, 0);
+  let mut global: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_global(env, &mut global));
+
+  let mut object: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_named_property(
+    env,
+    global,
+    c"Object".as_ptr(),
+    &mut object,
+  ));
+
+  let mut seal: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_named_property(
+    env,
+    object,
+    c"seal".as_ptr(),
+    &mut seal,
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  let args = [this];
+  assert_napi_ok!(napi_call_function(
+    env,
+    global,
+    seal,
+    args.len(),
+    args.as_ptr(),
+    &mut result,
+  ));
+
+  ptr::null_mut()
+}
+
+extern "C" fn test_new_instance_constructor_can_call_js(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut constructor: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_define_class(
+    env,
+    c"JsCallingConstructor".as_ptr(),
+    usize::MAX,
+    Some(js_calling_constructor),
+    ptr::null_mut(),
+    0,
+    ptr::null(),
+    &mut constructor,
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_new_instance(
+    env,
+    constructor,
+    0,
+    ptr::null(),
+    &mut result,
+  ));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let mut static_prop = napi_new_property!(env, "factory", NapiObject::factory);
   static_prop.attributes = PropertyAttributes::static_;
@@ -332,5 +510,24 @@ pub fn init(env: napi_env, exports: napi_value) {
     exports,
     c"NapiAccessorObject".as_ptr(),
     cons,
+  ));
+
+  // Register standalone functions on exports
+  let extra_props = &[
+    napi_new_property!(env, "test_remove_wrap", test_remove_wrap),
+    napi_new_property!(env, "test_raw_wrap", test_raw_wrap),
+    napi_new_property!(env, "test_raw_unwrap", test_raw_unwrap),
+    napi_new_property!(env, "test_call_new_instance", test_call_new_instance),
+    napi_new_property!(
+      env,
+      "test_new_instance_constructor_can_call_js",
+      test_new_instance_constructor_can_call_js
+    ),
+  ];
+  assert_napi_ok!(napi_define_properties(
+    env,
+    exports,
+    extra_props.len(),
+    extra_props.as_ptr()
   ));
 }

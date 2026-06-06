@@ -43,6 +43,8 @@ mod install;
 mod jsr;
 #[path = "jupyter_tests.rs"]
 mod jupyter;
+#[path = "jupyter_client.rs"]
+mod jupyter_client;
 #[path = "lsp_tests.rs"]
 mod lsp;
 #[path = "napi_tests.rs"]
@@ -54,6 +56,8 @@ mod pm;
 #[path = "publish_tests.rs"]
 mod publish;
 
+#[path = "bump_version_tests.rs"]
+mod bump_version;
 #[path = "repl_tests.rs"]
 mod repl;
 #[path = "run_tests.rs"]
@@ -74,7 +78,7 @@ mod upgrade;
 mod watcher;
 
 pub fn main() {
-  if test_util::hash::should_skip_on_ci("integration", |hasher| {
+  let ci_hash = test_util::hash::check_ci_hash("integration", |hasher| {
     let tests = test_util::tests_path();
     hasher
       .hash_dir(tests.join("integration"))
@@ -84,11 +88,12 @@ pub fn main() {
       .hash_file(test_util::deno_exe_path())
       .hash_file(test_util::test_server_path())
       .hash_file(test_util::denort_exe_path());
-  }) {
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
     return;
   }
 
-  let _ = rustls::crypto::ring::default_provider().install_default();
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
   let mut main_category: CollectedTestCategory<&'static TestMacroCase> =
     CollectedTestCategory {
       name: module_path!().to_string(),
@@ -182,4 +187,7 @@ pub fn main() {
     },
     move |test| run_test(test, &flaky_test_tracker, Some(&parallelism)),
   );
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
+  }
 }

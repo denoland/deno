@@ -105,13 +105,11 @@ fn error_if_invalid_cache() {
   output.assert_exit_code(1);
   let out = output.combined_output();
 
-  // Expect error
+  // Expect warning about missing source and error about no covered files
   let error = util::strip_ansi_codes(out).to_string();
-  assert_contains!(error, "error: Missing transpiled source code");
-  assert_contains!(
-    error,
-    "Before generating coverage report, run `deno test --coverage` to ensure consistent state."
-  );
+  assert_contains!(error, "Missing transpiled source code for:");
+  assert_contains!(error, "was it deleted after coverage was collected?");
+  assert_contains!(error, "No covered files included in the report");
 }
 
 fn run_coverage_text(test_name: &str, extension: &str) {
@@ -557,7 +555,7 @@ fn test_html_reporter() {
   );
   assert_contains!(
     foo_ts_html,
-    "<span class='cline-any cline-yes' title='This line is covered 3 times'>x3</span>"
+    "<span class='cline-any cline-yes' title='This line is covered 2 times'>x2</span>"
   );
 
   let bar_ts_html = tempdir.join("html").join("bar.ts.html").read_to_string();
@@ -632,13 +630,13 @@ fn test_summary_reporter() {
 
     output.assert_exit_code(0);
     output.assert_matches_text(
-      "| File        | Branch % | Line % |
-| ----------- | -------- | ------ |
-| bar.ts      |      0.0 |   57.1 |
-| baz/quux.ts |      0.0 |   28.6 |
-| baz/qux.ts  |    100.0 |  100.0 |
-| foo.ts      |     50.0 |   76.9 |
-| All files   |     40.0 |   61.0 |
+      "| File        | Branch % | Function % | Line % |
+| ----------- | -------- | ---------- | ------ |
+| bar.ts      |     50.0 |      100.0 |   57.1 |
+| baz/quux.ts |     50.0 |      100.0 |   28.6 |
+| baz/qux.ts  |    100.0 |      100.0 |  100.0 |
+| foo.ts      |     75.0 |      100.0 |   76.9 |
+| All files   |     70.0 |      100.0 |   61.0 |
 ",
     );
   }
@@ -656,11 +654,11 @@ fn test_summary_reporter() {
 
     output.assert_exit_code(0);
     output.assert_matches_text(
-      "| File       | Branch % | Line % |
-| ---------- | -------- | ------ |
-| baz/qux.ts |    100.0 |  100.0 |
-| foo.ts     |     50.0 |   76.9 |
-| All files  |     66.7 |   85.0 |
+      "| File       | Branch % | Function % | Line % |
+| ---------- | -------- | ---------- | ------ |
+| baz/qux.ts |    100.0 |      100.0 |  100.0 |
+| foo.ts     |     75.0 |      100.0 |   76.9 |
+| All files  |     83.3 |      100.0 |   85.0 |
 ",
     );
   }

@@ -1,29 +1,134 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// NOTE(bartlomieju): unfortunately it appears that clippy is broken
-// and can't allow a single line ignore for `await_holding_lock`.
-#![allow(clippy::await_holding_lock)]
-
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use deno_core::OpState;
 use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
-use jupyter_protocol::InputRequest;
-use jupyter_protocol::JupyterMessage;
-use jupyter_protocol::JupyterMessageContent;
-use jupyter_protocol::StreamContent;
-use jupyter_runtime::KernelIoPubConnection;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
-use crate::tools::jupyter::server::StdinConnectionProxy;
+use crate::cdp;
 
-deno_core::extension!(deno_jupyter,
+// ------------------------------------------------------------------
+// Shared data types
+// ------------------------------------------------------------------
+
+/// An iopub message produced by the REPL thread to be published by the kernel.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct IopubMessage {
+  pub msg_type: String,
+  pub content: serde_json::Value,
+  pub metadata: serde_json::Value,
+  pub buffers: Vec<Vec<u8>>,
+}
+
+// ------------------------------------------------------------------
+// REPL request / response types (with embedded oneshot responders)
+// ------------------------------------------------------------------
+
+pub enum JupyterReplRequest {
+  Evaluate {
+    line: String,
+    resp_tx: oneshot::Sender<Option<serde_json::Value>>,
+  },
+  GetProperties {
+    object_id: String,
+    resp_tx: oneshot::Sender<Option<serde_json::Value>>,
+  },
+  GlobalLexicalScopeNames {
+    resp_tx: oneshot::Sender<serde_json::Value>,
+  },
+  CallFunctionOnArgs {
+    function_declaration: String,
+    args: Vec<cdp::RemoteObject>,
+    resp_tx: oneshot::Sender<Result<serde_json::Value, AnyError>>,
+  },
+  CallFunctionOn {
+    arg0: cdp::CallArgument,
+    arg1: cdp::CallArgument,
+    resp_tx: oneshot::Sender<Option<serde_json::Value>>,
+  },
+}
+
+// ------------------------------------------------------------------
+// State stored in op_state of the ZMQ kernel worker (main thread)
+// ------------------------------------------------------------------
+
+pub struct KernelReplSender {
+  pub tx: mpsc::UnboundedSender<JupyterReplRequest>,
+}
+
+pub struct KernelIopubReceiver {
+  pub rx: tokio::sync::Mutex<mpsc::UnboundedReceiver<IopubMessage>>,
+}
+
+pub struct KernelIsolateHandle {
+  pub handle: deno_core::v8::IsolateHandle,
+}
+
+pub struct KernelConnectionInfo {
+  pub json: String,
+}
+
+/// An input_request originated by the REPL thread (user code calling
+/// `prompt()`/`confirm()`) that the kernel thread must satisfy by sending
+/// `input_request` on the stdin channel and awaiting `input_reply`.
+pub struct PendingInputRequest {
+  pub prompt: String,
+  pub password: bool,
+  pub resp_tx: oneshot::Sender<Option<String>>,
+}
+
+pub struct KernelInputState {
+  pub rx: tokio::sync::Mutex<mpsc::UnboundedReceiver<PendingInputRequest>>,
+  // Holds the responder for the currently outstanding input_request.
+  // Set by `op_jupyter_recv_input` and consumed by
+  // `op_jupyter_send_input_reply` after the frontend replies.
+  pub pending_responder:
+    std::sync::Mutex<Option<oneshot::Sender<Option<String>>>>,
+}
+
+// ------------------------------------------------------------------
+// State stored in op_state of the REPL worker (background thread)
+// ------------------------------------------------------------------
+
+pub struct ReplIopubSender {
+  pub tx: mpsc::UnboundedSender<IopubMessage>,
+}
+
+pub struct ReplInputSender {
+  pub tx: mpsc::UnboundedSender<PendingInputRequest>,
+}
+
+// ------------------------------------------------------------------
+// Extension declarations
+// ------------------------------------------------------------------
+
+deno_core::extension!(
+  deno_jupyter_kernel,
+  ops = [
+    op_jupyter_get_connection_info,
+    op_jupyter_repl_evaluate,
+    op_jupyter_repl_get_properties,
+    op_jupyter_repl_global_lexical_scope_names,
+    op_jupyter_repl_call_function_on_args,
+    op_jupyter_repl_call_function_on,
+    op_jupyter_repl_interrupt,
+    op_jupyter_repl_cancel_interrupt,
+    op_jupyter_recv_iopub,
+    op_jupyter_recv_input,
+    op_jupyter_send_input_reply,
+    op_jupyter_deno_version,
+    op_jupyter_typescript_version,
+  ],
+);
+
+deno_core::extension!(
+  deno_jupyter_repl,
   ops = [
     op_jupyter_broadcast,
     op_jupyter_input,
@@ -31,18 +136,22 @@ deno_core::extension!(deno_jupyter,
     op_jupyter_get_buffer,
   ],
   options = {
-    sender: mpsc::UnboundedSender<StreamContent>,
+    iopub_sender: mpsc::UnboundedSender<IopubMessage>,
+    input_sender: mpsc::UnboundedSender<PendingInputRequest>,
   },
   middleware = |op| match op.name {
     "op_print" => op_print(),
     _ => op,
   },
   state = |state, options| {
-    state.put(options.sender);
+    state.put(ReplIopubSender { tx: options.iopub_sender });
+    state.put(ReplInputSender { tx: options.input_sender });
   },
 );
 
-deno_core::extension!(deno_jupyter_for_test,
+// Variant used when running tests (no middleware so stdout/stderr pass through).
+deno_core::extension!(
+  deno_jupyter_repl_for_test,
   ops = [
     op_jupyter_broadcast,
     op_jupyter_input,
@@ -50,13 +159,240 @@ deno_core::extension!(deno_jupyter_for_test,
     op_jupyter_get_buffer,
   ],
   options = {
-    sender: mpsc::UnboundedSender<StreamContent>,
+    iopub_sender: mpsc::UnboundedSender<IopubMessage>,
+    input_sender: mpsc::UnboundedSender<PendingInputRequest>,
   },
   state = |state, options| {
-    state.put(options.sender);
+    state.put(ReplIopubSender { tx: options.iopub_sender });
+    state.put(ReplInputSender { tx: options.input_sender });
   },
 );
 
+// Backward-compat alias used by cli/tools/test/mod.rs
+pub use deno_jupyter_repl_for_test as deno_jupyter_for_test;
+
+// ------------------------------------------------------------------
+// Kernel-side ops
+// ------------------------------------------------------------------
+
+#[op2]
+#[string]
+pub fn op_jupyter_get_connection_info(state: &mut OpState) -> String {
+  state.borrow::<KernelConnectionInfo>().json.clone()
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_evaluate(
+  state: Rc<RefCell<OpState>>,
+  #[string] line: String,
+) -> Result<Option<serde_json::Value>, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    let sender = s.borrow::<KernelReplSender>();
+    sender
+      .tx
+      .send(JupyterReplRequest::Evaluate { line, resp_tx })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_get_properties(
+  state: Rc<RefCell<OpState>>,
+  #[string] object_id: String,
+) -> Result<Option<serde_json::Value>, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    s.borrow::<KernelReplSender>()
+      .tx
+      .send(JupyterReplRequest::GetProperties { object_id, resp_tx })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_global_lexical_scope_names(
+  state: Rc<RefCell<OpState>>,
+) -> Result<serde_json::Value, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    s.borrow::<KernelReplSender>()
+      .tx
+      .send(JupyterReplRequest::GlobalLexicalScopeNames { resp_tx })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_call_function_on_args(
+  state: Rc<RefCell<OpState>>,
+  #[string] function_declaration: String,
+  #[serde] args: Vec<cdp::RemoteObject>,
+) -> Result<serde_json::Value, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    s.borrow::<KernelReplSender>()
+      .tx
+      .send(JupyterReplRequest::CallFunctionOnArgs {
+        function_declaration,
+        args,
+        resp_tx,
+      })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))?
+    .map(Ok)
+    .unwrap_or(Err(JsErrorBox::generic("call_function_on_args failed")))
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_repl_call_function_on(
+  state: Rc<RefCell<OpState>>,
+  #[serde] arg0: cdp::CallArgument,
+  #[serde] arg1: cdp::CallArgument,
+) -> Result<Option<serde_json::Value>, JsErrorBox> {
+  let (resp_tx, resp_rx) = oneshot::channel();
+  {
+    let s = state.borrow();
+    s.borrow::<KernelReplSender>()
+      .tx
+      .send(JupyterReplRequest::CallFunctionOn {
+        arg0,
+        arg1,
+        resp_tx,
+      })
+      .map_err(|_| JsErrorBox::generic("repl thread gone"))?;
+  }
+  resp_rx
+    .await
+    .map_err(|_| JsErrorBox::generic("repl response channel closed"))
+}
+
+#[op2(fast)]
+pub fn op_jupyter_repl_interrupt(state: &mut OpState) {
+  state
+    .borrow::<KernelIsolateHandle>()
+    .handle
+    .terminate_execution();
+}
+
+#[op2(fast)]
+pub fn op_jupyter_repl_cancel_interrupt(state: &mut OpState) {
+  state
+    .borrow::<KernelIsolateHandle>()
+    .handle
+    .cancel_terminate_execution();
+}
+
+#[op2]
+#[serde]
+pub async fn op_jupyter_recv_iopub(
+  state: Rc<RefCell<OpState>>,
+) -> Result<Option<IopubMessage>, JsErrorBox> {
+  let rx_ref = {
+    let s = state.borrow();
+    // SAFETY: We only call this from one JS async context at a time.
+    let recv = s.borrow::<KernelIopubReceiver>();
+    // We need a pointer trick since we can't hold the borrow across await.
+    recv as *const KernelIopubReceiver as usize
+  };
+  // SAFETY: The KernelIopubReceiver lives as long as op_state.
+  let rx = unsafe { &*(rx_ref as *const KernelIopubReceiver) };
+  let mut guard = rx.rx.lock().await;
+  Ok(guard.recv().await)
+}
+
+/// Awaits the next REPL-originated input_request. Returns `{ prompt, password }`
+/// or `None` when the REPL thread has been torn down. The responder for this
+/// request is parked in `op_state` for `op_jupyter_send_input_reply` to consume.
+#[op2]
+#[serde]
+pub async fn op_jupyter_recv_input(
+  state: Rc<RefCell<OpState>>,
+) -> Option<serde_json::Value> {
+  let ptr = {
+    let s = state.borrow();
+    s.borrow::<KernelInputState>() as *const KernelInputState as usize
+  };
+  // SAFETY: The KernelInputState lives as long as op_state.
+  let kernel_state = unsafe { &*(ptr as *const KernelInputState) };
+  let req = {
+    let mut rx = kernel_state.rx.lock().await;
+    rx.recv().await?
+  };
+  let prompt = req.prompt.clone();
+  let password = req.password;
+  *kernel_state.pending_responder.lock().unwrap() = Some(req.resp_tx);
+  Some(serde_json::json!({ "prompt": prompt, "password": password }))
+}
+
+/// Delivers an `input_reply` value back to the REPL-side `op_jupyter_input`
+/// caller. Pass `None`/null to abort the request (e.g. when `allow_stdin` is
+/// false or no frontend is connected to the stdin channel).
+#[op2]
+pub fn op_jupyter_send_input_reply(
+  state: &mut OpState,
+  #[string] value: Option<String>,
+) {
+  if let Some(tx) = state
+    .borrow::<KernelInputState>()
+    .pending_responder
+    .lock()
+    .unwrap()
+    .take()
+  {
+    let _ = tx.send(value);
+  }
+}
+
+#[op2]
+#[string]
+pub fn op_jupyter_deno_version(_state: &mut OpState) -> String {
+  deno_lib::version::DENO_VERSION_INFO.deno.to_string()
+}
+
+#[op2]
+#[string]
+pub fn op_jupyter_typescript_version(_state: &mut OpState) -> String {
+  deno_lib::version::DENO_VERSION_INFO.typescript.to_string()
+}
+
+// ------------------------------------------------------------------
+// REPL-side ops
+// ------------------------------------------------------------------
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum JupyterBroadcastError {
+  #[class(generic)]
+  #[error(transparent)]
+  Send(#[from] mpsc::error::SendError<IopubMessage>),
+}
+
+/// Synchronous op invoked by user code via `prompt()`/`confirm()` in a cell.
+/// Forwards the request to the kernel thread (which talks to the frontend over
+/// the stdin ZMQ channel) and blocks until a reply arrives. Returns `None`
+/// when stdin is disabled, the channel has been closed, or the frontend
+/// declines to answer.
 #[op2]
 #[string]
 pub fn op_jupyter_input(
@@ -64,125 +400,62 @@ pub fn op_jupyter_input(
   #[string] prompt: String,
   is_password: bool,
 ) -> Option<String> {
-  let (last_execution_request, stdin_connection_proxy) = {
-    (
-      state.borrow::<Arc<Mutex<Option<JupyterMessage>>>>().clone(),
-      state.borrow::<Arc<Mutex<StdinConnectionProxy>>>().clone(),
-    )
-  };
-
-  let maybe_last_request = last_execution_request.lock().clone();
-  if let Some(last_request) = maybe_last_request {
-    let JupyterMessageContent::ExecuteRequest(msg) = &last_request.content
-    else {
-      return None;
-    };
-
-    if !msg.allow_stdin {
-      return None;
-    }
-
-    let content = InputRequest {
+  let sender = state.borrow::<ReplInputSender>().tx.clone();
+  let (resp_tx, resp_rx) = oneshot::channel();
+  if sender
+    .send(PendingInputRequest {
       prompt,
       password: is_password,
-    };
-
-    let msg = JupyterMessage::new(content, Some(&last_request));
-
-    let Ok(()) = stdin_connection_proxy.lock().tx.send(msg) else {
-      return None;
-    };
-
-    // Need to spawn a separate thread here, because `blocking_recv()` can't
-    // be used from the Tokio runtime context.
-    let join_handle = std::thread::spawn(move || {
-      stdin_connection_proxy.lock().rx.blocking_recv()
-    });
-    let Ok(Some(response)) = join_handle.join() else {
-      return None;
-    };
-
-    let JupyterMessageContent::InputReply(msg) = response.content else {
-      return None;
-    };
-
-    return Some(msg.value);
+      resp_tx,
+    })
+    .is_err()
+  {
+    return None;
   }
-
-  None
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum JupyterBroadcastError {
-  #[class(inherit)]
-  #[error(transparent)]
-  SerdeJson(serde_json::Error),
-  #[class(generic)]
-  #[error(transparent)]
-  ZeroMq(AnyError),
+  // `oneshot::Receiver::blocking_recv` panics inside a tokio runtime, so park
+  // the wait on a worker thread. This matches the original zmq-based kernel.
+  std::thread::spawn(move || resp_rx.blocking_recv().ok().flatten())
+    .join()
+    .ok()
+    .flatten()
 }
 
 #[op2]
-pub async fn op_jupyter_broadcast(
-  state: Rc<RefCell<OpState>>,
+#[allow(
+  clippy::result_large_err,
+  reason = "IopubMessage is moved through the channel; boxing the error adds an allocation on the hot path."
+)]
+pub fn op_jupyter_broadcast(
+  state: &mut OpState,
   #[string] message_type: String,
   #[serde] content: serde_json::Value,
   #[serde] metadata: serde_json::Value,
   #[serde] buffers: Vec<deno_core::JsBuffer>,
 ) -> Result<(), JupyterBroadcastError> {
-  let (iopub_connection, last_execution_request) = {
-    let s = state.borrow();
-
-    (
-      s.borrow::<Arc<Mutex<KernelIoPubConnection>>>().clone(),
-      s.borrow::<Arc<Mutex<Option<JupyterMessage>>>>().clone(),
-    )
-  };
-
-  let maybe_last_request = last_execution_request.lock().clone();
-  if let Some(last_request) = maybe_last_request {
-    let content = JupyterMessageContent::from_type_and_content(
-      &message_type,
-      content.clone(),
-    )
-    .map_err(|err| {
-      log::error!(
-          "Error deserializing content from jupyter.broadcast, message_type: {}:\n\n{}\n\n{}",
-          &message_type,
-          content,
-          err
-      );
-      JupyterBroadcastError::SerdeJson(err)
-    })?;
-
-    let jupyter_message = JupyterMessage::new(content, Some(&last_request))
-      .with_metadata(metadata)
-      .with_buffers(buffers.into_iter().map(|b| b.to_vec().into()).collect());
-
-    iopub_connection
-      .lock()
-      .send(jupyter_message)
-      .await
-      .map_err(|e| JupyterBroadcastError::ZeroMq(e.into()))?;
-  }
-
+  let sender = state.borrow::<ReplIopubSender>();
+  sender.tx.send(IopubMessage {
+    msg_type: message_type,
+    content,
+    metadata,
+    buffers: buffers.into_iter().map(|b| b.to_vec()).collect(),
+  })?;
   Ok(())
 }
 
 #[op2(fast)]
 pub fn op_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
-  let sender = state.borrow_mut::<mpsc::UnboundedSender<StreamContent>>();
-
-  if is_err {
-    if let Err(err) = sender.send(StreamContent::stderr(msg)) {
-      log::error!("Failed to send stderr message: {}", err);
-    }
-    return;
-  }
-
-  if let Err(err) = sender.send(StreamContent::stdout(msg)) {
-    log::error!("Failed to send stdout message: {}", err);
-  }
+  let sender = state.borrow::<ReplIopubSender>();
+  let msg_type = if is_err {
+    "stream_stderr"
+  } else {
+    "stream_stdout"
+  };
+  let _ = sender.tx.send(IopubMessage {
+    msg_type: msg_type.into(),
+    content: serde_json::json!({ "name": if is_err { "stderr" } else { "stdout" }, "text": msg }),
+    metadata: serde_json::Value::Object(Default::default()),
+    buffers: vec![],
+  });
 }
 
 #[op2]
@@ -196,32 +469,6 @@ pub fn op_jupyter_create_png_from_texture(
   use deno_runtime::deno_webgpu::*;
   use texture::GPUTextureFormat;
 
-  // We only support the 8 bit per pixel formats with 4 channels
-  // as such a pixel has 4 bytes
-  const BYTES_PER_PIXEL: u32 = 4;
-
-  let unpadded_bytes_per_row = texture.size.width * BYTES_PER_PIXEL;
-  let padded_bytes_per_row_padding = (wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT
-    - (unpadded_bytes_per_row % wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT))
-    % wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT;
-  let padded_bytes_per_row =
-    unpadded_bytes_per_row + padded_bytes_per_row_padding;
-
-  let (buffer, maybe_err) = texture.instance.device_create_buffer(
-    texture.device_id,
-    &wgpu_types::BufferDescriptor {
-      label: None,
-      size: (padded_bytes_per_row * texture.size.height) as _,
-      usage: wgpu_types::BufferUsages::MAP_READ
-        | wgpu_types::BufferUsages::COPY_DST,
-      mapped_at_creation: false,
-    },
-    None,
-  );
-  if let Some(maybe_err) = maybe_err {
-    return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
-  }
-
   let (command_encoder, maybe_err) =
     texture.instance.device_create_command_encoder(
       texture.device_id,
@@ -232,94 +479,14 @@ pub fn op_jupyter_create_png_from_texture(
     return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
   }
 
-  texture
-    .instance
-    .command_encoder_copy_texture_to_buffer(
-      command_encoder,
-      &wgpu_types::TexelCopyTextureInfo {
-        texture: texture.id,
-        mip_level: 0,
-        origin: Default::default(),
-        aspect: Default::default(),
-      },
-      &wgpu_types::TexelCopyBufferInfo {
-        buffer,
-        layout: wgpu_types::TexelCopyBufferLayout {
-          offset: 0,
-          bytes_per_row: Some(padded_bytes_per_row),
-          rows_per_image: None,
-        },
-      },
-      &texture.size,
-    )
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
-
-  let (command_buffer, maybe_err) = texture.instance.command_encoder_finish(
+  let data = canvas::copy_texture_to_vec(
+    &texture.instance,
+    texture.device_id,
+    texture.queue_id,
     command_encoder,
-    &wgpu_types::CommandBufferDescriptor { label: None },
-    None,
-  );
-  if let Some((_, maybe_err)) = maybe_err {
-    return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
-  }
-
-  let maybe_err = texture
-    .instance
-    .queue_submit(texture.queue_id, &[command_buffer])
-    .err();
-  if let Some((_, maybe_err)) = maybe_err {
-    return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
-  }
-
-  let index = texture
-    .instance
-    .buffer_map_async(
-      buffer,
-      0,
-      None,
-      wgpu_core::resource::BufferMapOperation {
-        host: wgpu_core::device::HostMap::Read,
-        callback: None,
-      },
-    )
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
-
-  texture
-    .instance
-    .device_poll(
-      texture.device_id,
-      wgpu_types::PollType::Wait {
-        submission_index: Some(index),
-        timeout: None,
-      },
-    )
-    .unwrap();
-
-  let (slice_pointer, range_size) = texture
-    .instance
-    .buffer_get_mapped_range(buffer, 0, None)
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
-
-  let data = {
-    // SAFETY: creating a slice from pointer and length provided by wgpu and
-    // then dropping it before unmapping
-    let slice = unsafe {
-      std::slice::from_raw_parts(slice_pointer.as_ptr(), range_size as usize)
-    };
-
-    let mut unpadded =
-      Vec::with_capacity((unpadded_bytes_per_row * texture.size.height) as _);
-
-    for i in 0..texture.size.height {
-      unpadded.extend_from_slice(
-        &slice[((i * padded_bytes_per_row) as usize)
-          ..(((i + 1) * padded_bytes_per_row) as usize)]
-          [..(unpadded_bytes_per_row as usize)],
-      );
-    }
-
-    unpadded
-  };
+    texture.id,
+    &texture.size,
+  )?;
 
   let color_type = match texture.format {
     GPUTextureFormat::Rgba8unorm => ExtendedColorType::Rgba8,
@@ -344,12 +511,6 @@ pub fn op_jupyter_create_png_from_texture(
   img
     .write_image(&data, texture.size.width, texture.size.height, color_type)
     .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
-
-  texture
-    .instance
-    .buffer_unmap(buffer)
-    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
-  texture.instance.buffer_drop(buffer);
 
   Ok(deno_runtime::deno_web::forgiving_base64_encode(&out))
 }

@@ -4,13 +4,14 @@
 
 // deno-lint-ignore-file no-process-global
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypeSome,
-  Error,
+  FunctionPrototypeCall,
   ObjectEntries,
   ObjectPrototypeHasOwnProperty,
-  ObjectValues,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   RegExpPrototypeExec,
   SafeMap,
   SafeMapIterator,
@@ -24,18 +25,24 @@ const {
   StringPrototypeToLowerCase,
 } = primordials;
 
-import { ERR_INVALID_FD } from "ext:deno_node/internal/errors.ts";
-import { validateInteger } from "ext:deno_node/internal/validators.mjs";
-import { TTY } from "ext:deno_node/internal_binding/tty_wrap.ts";
-import { Socket } from "node:net";
-import * as io from "ext:deno_io/12_io.js";
-import {
+const {
+  ERR_INVALID_FD,
+  ERR_TTY_INIT_FAILED,
+  errnoException,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+import { op_tty_check_fd_permission, TTY } from "ext:core/ops";
+const { isatty } = core.loadExtScript("ext:deno_node/tty.js");
+const lazyNet = core.createLazyLoader("node:net");
+const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import { release } from "node:os";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const { release } = core.loadExtScript("ext:deno_node/os.ts");
 
 // Color depth constants
 const COLORS_2 = 1;
@@ -285,121 +292,174 @@ function removeSigwinchListener(stream) {
   }
 }
 
-export class WriteStream extends Socket {
-  constructor(fd) {
-    if (fd >> 0 !== fd || fd < 0) {
-      throw new ERR_INVALID_FD(fd);
-    }
-
-    // We only support `stdin`, `stdout` and `stderr`.
-    if (fd > 2) throw new Error("Only fd 0, 1 and 2 are supported.");
-
-    const tty = new TTY(
-      fd === 0 ? io.stdin : fd === 1 ? io.stdout : io.stderr,
-    );
-
-    super({
-      readableHighWaterMark: 0,
-      handle: tty,
-      manualStart: true,
-    });
-
-    const { columns, rows } = Deno.consoleSize();
-    this.columns = columns;
-    this.rows = rows;
-    this.isTTY = true;
+// WriteStream needs to be callable without `new` to match Node.js behavior.
+function WriteStream(fd) {
+  ensureWriteStreamPrototype();
+  if (!ObjectPrototypeIsPrototypeOf(WriteStream.prototype, this)) {
+    return new WriteStream(fd);
   }
 
-  on(event, listener) {
-    super.on(event, listener);
-    if (event === "resize" && this.listenerCount("resize") === 1) {
-      addSigwinchListener(this);
-    }
-    return this;
+  if (fd >> 0 !== fd || fd < 0) {
+    throw new ERR_INVALID_FD(fd);
   }
 
-  addListener(event, listener) {
-    return this.on(event, listener);
+  // Non-stdio fds require --allow-all
+  op_tty_check_fd_permission(fd);
+
+  const ctx = {};
+  const tty = new TTY(fd, ctx);
+  if (ctx.code !== undefined) {
+    throw new ERR_TTY_INIT_FAILED(ctx);
   }
 
-  removeListener(event, listener) {
-    super.removeListener(event, listener);
-    if (event === "resize" && this.listenerCount("resize") === 0) {
-      removeSigwinchListener(this);
-    }
-    return this;
-  }
+  FunctionPrototypeCall(lazyNet().Socket, this, {
+    readableHighWaterMark: 0,
+    handle: tty,
+    manualStart: true,
+  });
 
-  off(event, listener) {
-    return this.removeListener(event, listener);
-  }
+  // Prevents interleaved or dropped stdout/stderr output for terminals.
+  // As noted in the following reference, local TTYs tend to be quite fast and
+  // this behavior has become expected due historical functionality on OS X,
+  // even though it was originally intended to change in v1.0.2 (Libuv 1.2.1).
+  // Ref: https://github.com/nodejs/node/pull/1771#issuecomment-119351671
+  this._handle.setBlocking(true);
 
-  removeAllListeners(event) {
-    super.removeAllListeners(event);
-    if (!event || event === "resize") {
-      removeSigwinchListener(this);
-    }
-    return this;
-  }
-
-  _refreshSize() {
-    const oldCols = this.columns;
-    const oldRows = this.rows;
-    const { columns, rows } = Deno.consoleSize();
-    if (oldCols !== columns || oldRows !== rows) {
-      this.columns = columns;
-      this.rows = rows;
-      this.emit("resize");
-    }
-  }
-
-  cursorTo(x, y, callback) {
-    return cursorTo(this, x, y, callback);
-  }
-
-  moveCursor(dx, dy, callback) {
-    return moveCursor(this, dx, dy, callback);
-  }
-
-  clearLine(dir, callback) {
-    return clearLine(this, dir, callback);
-  }
-
-  clearScreenDown(callback) {
-    return clearScreenDown(this, callback);
-  }
-
-  getWindowSize() {
-    return ObjectValues(Deno.consoleSize());
-  }
-
-  /**
-   * @param {number | Record<string, string>} [count]
-   * @param {Record<string, string>} [env]
-   * @returns {boolean}
-   */
-  hasColors(count, env) {
-    if (
-      env === undefined &&
-      (count === undefined || typeof count === "object" && count !== null)
-    ) {
-      env = count;
-      count = 16;
-    } else {
-      validateInteger(count, "count", 2);
-    }
-
-    const depth = this.getColorDepth(env);
-    return count <= 2 ** depth;
-  }
-
-  /**
-   * @param {Record<string, string>} [env]
-   * @returns {1 | 4 | 8 | 24}
-   */
-  getColorDepth(env) {
-    return getColorDepth(env);
+  const winSize = [0, 0];
+  const err = tty.getWindowSize(winSize);
+  if (!err) {
+    this.columns = winSize[0];
+    this.rows = winSize[1];
   }
 }
 
-export default WriteStream;
+// `lazyNet().Socket` may be in TDZ at module-eval time when net.ts is
+// lazy-loaded JS, since this module's body can run before net_esm.ts
+// finishes evaluating. Defer the prototype hookup until the first
+// WriteStream is constructed.
+let writeStreamPrototypeReady = false;
+function ensureWriteStreamPrototype() {
+  if (writeStreamPrototypeReady) return;
+  writeStreamPrototypeReady = true;
+  const NetSocket = lazyNet().Socket;
+  ObjectSetPrototypeOf(WriteStream.prototype, NetSocket.prototype);
+  ObjectSetPrototypeOf(WriteStream, NetSocket);
+}
+
+WriteStream.prototype.isTTY = true;
+
+WriteStream.prototype.on = function on(event, listener) {
+  FunctionPrototypeCall(lazyNet().Socket.prototype.on, this, event, listener);
+  if (event === "resize" && this.listenerCount("resize") === 1) {
+    addSigwinchListener(this);
+  }
+  return this;
+};
+
+WriteStream.prototype.addListener = function addListener(event, listener) {
+  return this.on(event, listener);
+};
+
+WriteStream.prototype.removeListener = function removeListener(
+  event,
+  listener,
+) {
+  FunctionPrototypeCall(
+    lazyNet().Socket.prototype.removeListener,
+    this,
+    event,
+    listener,
+  );
+  if (event === "resize" && this.listenerCount("resize") === 0) {
+    removeSigwinchListener(this);
+  }
+  return this;
+};
+
+WriteStream.prototype.off = function off(event, listener) {
+  return this.removeListener(event, listener);
+};
+
+WriteStream.prototype.removeAllListeners = function removeAllListeners(event) {
+  FunctionPrototypeCall(
+    lazyNet().Socket.prototype.removeAllListeners,
+    this,
+    event,
+  );
+  if (!event || event === "resize") {
+    removeSigwinchListener(this);
+  }
+  return this;
+};
+
+WriteStream.prototype._refreshSize = function _refreshSize() {
+  const oldCols = this.columns;
+  const oldRows = this.rows;
+  const winSize = [0, 0];
+  const err = this._handle.getWindowSize(winSize);
+  if (err) {
+    this.emit("error", errnoException(err, "getWindowSize"));
+    return;
+  }
+  const { 0: newCols, 1: newRows } = winSize;
+  if (oldCols !== newCols || oldRows !== newRows) {
+    this.columns = newCols;
+    this.rows = newRows;
+    this.emit("resize");
+  }
+};
+
+WriteStream.prototype.cursorTo = function cursorTo_(x, y, callback) {
+  return cursorTo(this, x, y, callback);
+};
+
+WriteStream.prototype.moveCursor = function moveCursor_(dx, dy, callback) {
+  return moveCursor(this, dx, dy, callback);
+};
+
+WriteStream.prototype.clearLine = function clearLine_(dir, callback) {
+  return clearLine(this, dir, callback);
+};
+
+WriteStream.prototype.clearScreenDown = function clearScreenDown_(callback) {
+  return clearScreenDown(this, callback);
+};
+
+WriteStream.prototype.getWindowSize = function getWindowSize() {
+  return [this.columns, this.rows];
+};
+
+/**
+ * @param {number | Record<string, string>} [count]
+ * @param {Record<string, string>} [env]
+ * @returns {boolean}
+ */
+export function hasColors(count, env) {
+  if (
+    env === undefined &&
+    (count === undefined || typeof count === "object" && count !== null)
+  ) {
+    env = count;
+    count = 16;
+  } else {
+    validateInteger(count, "count", 2);
+  }
+
+  const depth = getColorDepth(env);
+  return count <= 2 ** depth;
+}
+
+WriteStream.prototype.hasColors = function hasColors_(count, env) {
+  return hasColors(count, env);
+};
+
+/**
+ * @param {Record<string, string>} [env]
+ * @returns {1 | 4 | 8 | 24}
+ */
+WriteStream.prototype.getColorDepth = function getColorDepth_(env) {
+  return getColorDepth(env);
+};
+
+export { addSigwinchListener, isatty, WriteStream };
+export default { getColorDepth, hasColors, isatty, WriteStream };

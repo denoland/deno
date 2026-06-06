@@ -76,8 +76,10 @@ fn test_snapshot_callbacks() {
       .execute_script(
         "a.js",
         r#"
-        Deno.core.setMacrotaskCallback(() => {
-          return true;
+        Deno.core.queueNextTick({
+          callback: () => {},
+          args: undefined,
+          snapshot: undefined,
         });
         Deno.core.ops.op_set_format_exception_callback(()=> {
           return null;
@@ -215,7 +217,7 @@ fn es_snapshot() {
     };
     assert_eq!(i + NO_OF_BUILTIN_MODULES, id);
 
-    #[allow(clippy::let_underscore_future)]
+    #[allow(clippy::let_underscore_future, reason = "test code")]
     let _ = runtime.mod_evaluate(id);
     futures::executor::block_on(runtime.run_event_loop(Default::default()))
       .unwrap();
@@ -238,7 +240,7 @@ fn es_snapshot() {
     }
   }
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(clippy::unnecessary_wraps, reason = "test code")]
   #[op2]
   #[string]
   fn op_test() -> Result<String, JsErrorBox> {
@@ -260,7 +262,7 @@ fn es_snapshot() {
   ))
   .unwrap();
 
-  #[allow(clippy::let_underscore_future)]
+  #[allow(clippy::let_underscore_future, reason = "test code")]
   let _ = runtime.mod_evaluate(id);
   futures::executor::block_on(runtime.run_event_loop(Default::default()))
     .unwrap();
@@ -319,7 +321,7 @@ fn es_snapshot() {
     return mod.f400() + " " + Deno.core.ops.op_test();
   })();"#;
   let val = runtime3.execute_script(".", source_code).unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "TODO: document")]
   let val = futures::executor::block_on(runtime3.resolve_value(val)).unwrap();
   {
     deno_core::scope!(scope, runtime3);
@@ -375,7 +377,7 @@ pub(crate) fn es_snapshot_without_runtime_module_loader() {
       "import('ext:module_snapshot/test.js')",
     )
     .unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "TODO: document")]
   let dyn_import_result =
     futures::executor::block_on(runtime.resolve_value(dyn_import_promise));
   assert_eq!(
@@ -391,7 +393,7 @@ pub(crate) fn es_snapshot_without_runtime_module_loader() {
       "import('ext:module_snapshot/test2.js')",
     )
     .unwrap();
-  #[allow(deprecated)]
+  #[allow(deprecated, reason = "TODO: document")]
   let dyn_import_result =
     futures::executor::block_on(runtime.resolve_value(dyn_import_promise));
   assert!(dyn_import_result.is_err());
@@ -457,6 +459,84 @@ pub fn snapshot_with_additional_extensions() {
     assert_eq!(
       serde_v8::to_utf8(global_test.to_string(scope).unwrap(), scope),
       String::from("before/after"),
+    );
+  }
+}
+
+#[test]
+fn lazy_loaded_esm_not_snapshotted_but_metadata_survives() {
+  let snapshot = {
+    deno_core::extension!(
+      test_ext,
+      lazy_loaded_esm =
+        ["custom:lazy_mod" = { source = "export const value = 'lazy';" },]
+    );
+
+    let runtime = JsRuntimeForSnapshot::new(RuntimeOptions {
+      extensions: vec![test_ext::init()],
+      ..Default::default()
+    });
+
+    runtime.snapshot()
+  };
+
+  let snapshot = Box::leak(snapshot);
+
+  // When loading from the snapshot, the lazy ESM module should NOT
+  // be in the module map (not compiled/instantiated), but the metadata
+  // should be present in known_lazy_esm.
+  deno_core::extension!(
+    test_ext,
+    lazy_loaded_esm =
+      ["custom:lazy_mod" = { source = "export const value = 'lazy';" },]
+  );
+
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(snapshot),
+    extensions: vec![test_ext::init()],
+    ..Default::default()
+  });
+
+  // Verify: module is NOT in the module map
+  {
+    let module_map = runtime.main_realm().0.module_map();
+    assert!(
+      module_map
+        .get_id("custom:lazy_mod", RequestedModuleType::None)
+        .is_none(),
+      "lazy_loaded_esm module should NOT be in the snapshot module map"
+    );
+  }
+
+  // Verify: module IS known as a lazy ESM
+  {
+    let module_map = runtime.main_realm().0.module_map();
+    assert!(
+      module_map.has_lazy_esm_source("custom:lazy_mod"),
+      "lazy_loaded_esm module should be in known_lazy_esm metadata"
+    );
+  }
+
+  // Verify: the module can be loaded on first access
+  runtime
+    .execute_script(
+      "test.js",
+      r#"
+      const mod = Deno.core.createLazyLoader("custom:lazy_mod")();
+      if (mod.value !== "lazy") throw new Error("expected 'lazy', got " + mod.value);
+      Deno.core.print("lazy ESM survived snapshot without being snapshotted\n");
+      "#,
+    )
+    .unwrap();
+
+  // After loading, the module IS in the module map
+  {
+    let module_map = runtime.main_realm().0.module_map();
+    assert!(
+      module_map
+        .get_id("custom:lazy_mod", RequestedModuleType::None)
+        .is_some(),
+      "lazy_loaded_esm module should now be in the module map after loading"
     );
   }
 }

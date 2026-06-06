@@ -17,6 +17,200 @@ impl Prime {
     let mut rng = rand::thread_rng();
     Self(rng.gen_prime(n))
   }
+
+  /// Generate a prime with optional constraints:
+  /// - `safe`: if true, generate a safe prime p where (p-1)/2 is also prime
+  /// - `add`/`rem`: generate a prime p such that p % add == rem
+  ///
+  /// When `add` is set but `rem` is not:
+  /// - If safe is false, rem defaults to 1
+  /// - If safe is true, rem defaults to 3
+  ///
+  /// This follows the same algorithm as OpenSSL's BN_generate_prime_ex():
+  /// generate random candidates in [2^(n-1), 2^n), adjust to satisfy the
+  /// add/rem constraint, then test with Miller-Rabin. For safe primes,
+  /// also verify (p-1)/2 is prime.
+  pub fn generate_with_options(
+    n: usize,
+    safe: bool,
+    add: Option<&[u8]>,
+    rem: Option<&[u8]>,
+  ) -> Result<Self, GeneratePrimeError> {
+    use num_bigint_dig::BigUint;
+
+    let add_val = add.map(BigUint::from_bytes_be);
+    let rem_val = rem.map(BigUint::from_bytes_be);
+
+    if let Some(ref add_v) = add_val {
+      // add must be < 2^size, otherwise no prime of `size` bits can satisfy
+      // the constraint.
+      let max_val = BigUint::from(1u32) << n;
+      if *add_v >= max_val {
+        return Err(GeneratePrimeError::InvalidAdd);
+      }
+
+      if let Some(ref rem_v) = rem_val {
+        // rem must be < add
+        if rem_v >= add_v {
+          return Err(GeneratePrimeError::InvalidRem);
+        }
+      }
+
+      // Check that there's room for a random prime. If add >= 2^(size-1),
+      // and there's at most one candidate value < 2^size with the right
+      // residue, it's degenerate.
+      let min_val = BigUint::from(1u32) << (n - 1);
+      // Count how many candidates exist: floor((max_val - 1 - rem) / add) - floor((min_val - 1 - rem) / add)
+      // If there's only one (or zero), we should check if it works or error.
+      let effective_rem = if let Some(ref r) = rem_val {
+        r.clone()
+      } else if safe {
+        BigUint::from(3u32)
+      } else {
+        BigUint::from(1u32)
+      };
+
+      // If only one candidate exists and size is very small, compute it directly
+      if *add_v >= min_val {
+        // At most one or two candidates in [min_val, max_val)
+        // Find the candidate: smallest x >= min_val where x % add == effective_rem
+        let mut candidate = {
+          let r = &min_val % add_v;
+          if r <= effective_rem {
+            &min_val + (&effective_rem - r)
+          } else {
+            &min_val + (add_v - &r + &effective_rem)
+          }
+        };
+
+        // Check candidates (there should be very few with add this large)
+        loop {
+          if candidate >= max_val {
+            return Err(GeneratePrimeError::OutOfRange);
+          }
+          let is_prime = is_biguint_probably_prime(&candidate, 20);
+          let safe_ok = !safe
+            || is_biguint_probably_prime(
+              &((&candidate - BigUint::from(1u32)) >> 1),
+              20,
+            );
+          if is_prime && safe_ok {
+            return Ok(Self(candidate));
+          }
+          candidate += add_v;
+        }
+      }
+    }
+
+    // General case: generate random candidates
+    let mut rng = rand::thread_rng();
+
+    if !safe && add_val.is_none() {
+      // Simple case: just generate a random prime
+      return Ok(Self(rng.gen_prime(n)));
+    }
+
+    let min_val = num_bigint_dig::BigUint::from(1u32) << (n - 1);
+    let max_val = num_bigint_dig::BigUint::from(1u32) << n;
+    let range = &max_val - &min_val;
+
+    loop {
+      // Generate a random number in [min_val, max_val)
+      let random_offset = gen_biguint_below(&mut rng, &range);
+      let mut candidate = &min_val + random_offset;
+
+      if let Some(ref add_v) = add_val {
+        let effective_rem = if let Some(ref r) = rem_val {
+          r.clone()
+        } else if safe {
+          num_bigint_dig::BigUint::from(3u32)
+        } else {
+          num_bigint_dig::BigUint::from(1u32)
+        };
+
+        // Adjust candidate so that candidate % add == effective_rem
+        let r = &candidate % add_v;
+        if r <= effective_rem {
+          candidate += &effective_rem - r;
+        } else {
+          candidate += add_v - &r + &effective_rem;
+        }
+
+        // Make sure we're still in range
+        if candidate >= max_val {
+          continue;
+        }
+        if candidate < min_val {
+          candidate += add_v;
+          if candidate >= max_val {
+            continue;
+          }
+        }
+      } else {
+        // No add constraint, but safe is true. Make candidate odd.
+        candidate |= num_bigint_dig::BigUint::from(1u32);
+      }
+
+      if !is_biguint_probably_prime(&candidate, 20) {
+        continue;
+      }
+
+      if safe {
+        let half = (&candidate - num_bigint_dig::BigUint::from(1u32)) >> 1;
+        if !is_biguint_probably_prime(&half, 20) {
+          continue;
+        }
+      }
+
+      return Ok(Self(candidate));
+    }
+  }
+}
+
+/// Generate a random BigUint in [0, bound)
+fn gen_biguint_below(
+  rng: &mut impl Rng,
+  bound: &num_bigint_dig::BigUint,
+) -> num_bigint_dig::BigUint {
+  let bits = bound.bits();
+  loop {
+    let candidate = gen_random_biguint(rng, bits);
+    if candidate < *bound {
+      return candidate;
+    }
+  }
+}
+
+/// Generate a random BigUint with up to `bits` bits
+fn gen_random_biguint(
+  rng: &mut impl Rng,
+  bits: usize,
+) -> num_bigint_dig::BigUint {
+  let byte_count = bits.div_ceil(8);
+  let mut bytes = vec![0u8; byte_count];
+  rng.fill(&mut bytes[..]);
+  // Mask off excess bits in the top byte
+  if !bits.is_multiple_of(8) {
+    bytes[0] &= (1u8 << (bits % 8)) - 1;
+  }
+  num_bigint_dig::BigUint::from_bytes_be(&bytes)
+}
+
+/// Check if a BigUint is probably prime using Miller-Rabin
+fn is_biguint_probably_prime(
+  n: &num_bigint_dig::BigUint,
+  count: usize,
+) -> bool {
+  // Convert to num_bigint::BigInt for our existing is_probably_prime
+  let bigint = BigInt::from_bytes_be(num_bigint::Sign::Plus, &n.to_bytes_be());
+  is_probably_prime(&bigint, count)
+}
+
+#[derive(Debug)]
+pub enum GeneratePrimeError {
+  InvalidAdd,
+  InvalidRem,
+  OutOfRange,
 }
 
 impl From<&[u8]> for Prime {
@@ -76,6 +270,31 @@ fn witnessexp(b: &BigInt, e: &BigInt, m: &BigInt) -> Witness {
   tmp
 }
 
+/// Minimum number of Miller-Rabin rounds to keep the false-positive
+/// probability below 2^-80, per FIPS 186-4 Appendix C.3 Table C.1.
+/// Matches the defaults OpenSSL applies inside `BN_check_prime`, which
+/// is what Node's `crypto.checkPrime` reaches when the caller leaves
+/// `checks` at its default of 0.
+fn min_miller_rabin_rounds_for_bits(bits: u64) -> usize {
+  if bits >= 3747 {
+    3
+  } else if bits >= 1345 {
+    4
+  } else if bits >= 476 {
+    5
+  } else if bits >= 400 {
+    6
+  } else if bits >= 347 {
+    7
+  } else if bits >= 308 {
+    8
+  } else if bits >= 55 {
+    27
+  } else {
+    34
+  }
+}
+
 pub(crate) fn is_probably_prime(n: &BigInt, count: usize) -> bool {
   if *n == BigInt::from(1) {
     return false;
@@ -100,8 +319,14 @@ pub(crate) fn is_probably_prime(n: &BigInt, count: usize) -> bool {
     }
   }
 
+  // Always run at least the FIPS-recommended number of Miller-Rabin
+  // rounds. Without this floor, `count == 0` would return true for any
+  // composite whose smallest prime factor exceeds the largest SMALL_PRIMES
+  // entry, since the loop below would be skipped entirely.
+  let rounds = count.max(min_miller_rabin_rounds_for_bits(n.bits()));
+
   let mut rng = rand::thread_rng();
-  for _ in 0..count {
+  for _ in 0..rounds {
     let a = rng.gen_range(BigInt::one()..n.clone());
     let we = witnessexp(&a, &(n - BigInt::one()), n);
     if we.wit != BigInt::zero() || we.pow != BigInt::one() {
@@ -305,6 +530,34 @@ mod tests {
       16
     ));
     assert!(!is_probably_prime(&BigInt::parse_bytes(b"12345678901234567890123456789012345678901234567890123456789012345678901234567890", 10).unwrap(), 16));
+  }
+
+  #[test]
+  fn detects_composite_with_factors_above_trial_division() {
+    // Two primes both strictly greater than the largest SMALL_PRIMES entry
+    // (17863); their product survives trial division, so Miller-Rabin must
+    // catch it even when the caller passes `count = 0`.
+    let p = BigInt::from(17881u32);
+    let q = BigInt::from(17891u32);
+    let composite = &p * &q;
+    assert!(!is_probably_prime(&composite, 0));
+
+    // A larger composite (two ~32-bit primes) for the same property.
+    let p = BigInt::parse_bytes(b"4294967291", 10).unwrap();
+    let q = BigInt::parse_bytes(b"4294967279", 10).unwrap();
+    let composite = &p * &q;
+    assert!(!is_probably_prime(&composite, 0));
+  }
+
+  #[test]
+  fn min_rounds_table_matches_fips_186_4() {
+    assert_eq!(min_miller_rabin_rounds_for_bits(4096), 3);
+    assert_eq!(min_miller_rabin_rounds_for_bits(2048), 4);
+    assert_eq!(min_miller_rabin_rounds_for_bits(1024), 5);
+    assert_eq!(min_miller_rabin_rounds_for_bits(512), 5);
+    assert_eq!(min_miller_rabin_rounds_for_bits(256), 27);
+    assert_eq!(min_miller_rabin_rounds_for_bits(64), 27);
+    assert_eq!(min_miller_rabin_rounds_for_bits(32), 34);
   }
 
   #[test]

@@ -8,7 +8,6 @@ use std::rc::Rc;
 
 use bytes::BytesMut;
 use deno_error::JsErrorBox;
-use futures::StreamExt;
 use serde_v8::ByteString;
 
 use crate::CancelHandle;
@@ -27,6 +26,7 @@ use crate::io::BufMutView;
 use crate::io::BufView;
 use crate::io::ResourceId;
 use crate::modules::ModuleMap;
+use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::op2;
 use crate::ops_builtin_types;
 use crate::ops_builtin_v8;
@@ -70,6 +70,7 @@ builtin_ops! {
   op_encode_binary_string,
   op_is_terminal,
   op_import_sync,
+  op_import_sync_with_source,
   ops_builtin_types::op_is_any_array_buffer,
   ops_builtin_types::op_is_arguments_object,
   ops_builtin_types::op_is_array_buffer,
@@ -100,21 +101,18 @@ builtin_ops! {
   ops_builtin_types::op_is_weak_set,
   ops_builtin_v8::op_add_main_module_handler,
   ops_builtin_v8::op_set_handled_promise_rejection_handler,
-  ops_builtin_v8::op_timer_queue,
-  ops_builtin_v8::op_timer_queue_system,
-  ops_builtin_v8::op_timer_cancel,
-  ops_builtin_v8::op_timer_ref,
-  ops_builtin_v8::op_timer_unref,
+  ops_builtin_v8::op_timer_schedule,
+  ops_builtin_v8::op_timer_track,
+  ops_builtin_v8::op_timer_untrack,
+  ops_builtin_v8::op_timer_now,
   ops_builtin_v8::op_ref_op,
   ops_builtin_v8::op_unref_op,
   ops_builtin_v8::op_lazy_load_esm,
+  ops_builtin_v8::op_load_ext_script,
+  ops_builtin_v8::op_set_captured_bootstrap,
   ops_builtin_v8::op_run_microtasks,
-  ops_builtin_v8::op_has_tick_scheduled,
-  ops_builtin_v8::op_set_has_tick_scheduled,
-  ops_builtin_v8::op_immediate_count,
-  ops_builtin_v8::op_immediate_ref_count,
-  ops_builtin_v8::op_immediate_set_has_outstanding,
-  ops_builtin_v8::op_immediate_has_ref_count,
+  ops_builtin_v8::op_drain_pending_rejections,
+  ops_builtin_v8::op_compile_function,
   ops_builtin_v8::op_eval_context,
   ops_builtin_v8::op_queue_microtask,
   ops_builtin_v8::op_encode,
@@ -137,6 +135,7 @@ builtin_ops! {
   ops_builtin_v8::op_current_user_call_site,
   ops_builtin_v8::op_set_format_exception_callback,
   ops_builtin_v8::op_event_loop_has_more_work,
+  ops_builtin_v8::op_immediate_check,
   ops_builtin_v8::op_leak_tracing_enable,
   ops_builtin_v8::op_leak_tracing_submit,
   ops_builtin_v8::op_leak_tracing_get_all,
@@ -146,7 +145,7 @@ builtin_ops! {
 
 #[op2(fast)]
 pub fn op_panic(#[string] message: String) {
-  #[allow(clippy::print_stderr)]
+  #[allow(clippy::print_stderr, reason = "intentional panic output")]
   {
     eprintln!("JS PANIC: {}", message);
   }
@@ -169,7 +168,7 @@ fn op_add(a: i32, b: i32) -> i32 {
   a + b
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2]
 pub async fn op_add_async(a: i32, b: i32) -> i32 {
   a + b
@@ -178,23 +177,23 @@ pub async fn op_add_async(a: i32, b: i32) -> i32 {
 #[op2(fast)]
 pub fn op_void_sync() {}
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2]
 pub async fn op_void_async() {}
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2]
 pub async fn op_error_async() -> Result<(), JsErrorBox> {
   Err(JsErrorBox::generic("error"))
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2(async(deferred), fast)]
 pub async fn op_error_async_deferred() -> Result<(), JsErrorBox> {
   Err(JsErrorBox::generic("error"))
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "intentially async")]
 #[op2(async(deferred), fast)]
 pub async fn op_void_async_deferred() {}
 
@@ -224,13 +223,28 @@ pub fn op_print(
   #[string] msg: &str,
   is_err: bool,
 ) -> Result<(), std::io::Error> {
-  if is_err {
-    stderr().write_all(msg.as_bytes())?;
-    stderr().flush().unwrap();
+  let mut out: Box<dyn Write> = if is_err {
+    Box::new(stderr())
   } else {
-    stdout().write_all(msg.as_bytes())?;
-    stdout().flush().unwrap();
+    Box::new(stdout())
+  };
+  // Use a manual write loop instead of write_all because the fd may be
+  // in non-blocking mode (e.g. when Node's process.stdout sets
+  // O_NONBLOCK via uv_pipe_open/uv_tty_init). write_all does not
+  // retry on WouldBlock.
+  let mut buf = msg.as_bytes();
+  while !buf.is_empty() {
+    match out.write(buf) {
+      Ok(n) => buf = &buf[n..],
+      Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+        std::thread::yield_now();
+        continue;
+      }
+      Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+      Err(e) => return Err(e),
+    }
   }
+  out.flush().unwrap();
   Ok(())
 }
 
@@ -371,7 +385,7 @@ async fn op_read_all(
   let mut buf = BufMutView::new(buffer_strategy.buffer_size());
 
   loop {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "needed for compatibility")]
     buf.maybe_grow(buffer_strategy.buffer_size()).unwrap();
 
     let (n, new_buf) = resource.clone().read_byob(buf).await?;
@@ -518,22 +532,22 @@ async fn do_load_job<'s, 'i>(
   specifier: &str,
   code: Option<String>,
 ) -> Result<ModuleId, CoreError> {
-  let mut load = ModuleMap::load_side(
-    module_map_rc.clone(),
+  let root_id = RecursiveModuleLoad::side(
     specifier.to_string(),
+    module_map_rc.clone(),
     crate::modules::SideModuleKind::Sync,
     code,
   )
+  .await?
+  .run_to_completion(|load, step| match step {
+    crate::modules::recursive_load::RegisterStep::Register {
+      request,
+      source,
+    } => load
+      .register_and_recurse(scope, request, source)
+      .map_err(|e| e.into_error(scope, false, false)),
+  })
   .await?;
-
-  while let Some(load_result) = load.next().await {
-    let (request, info) = load_result?;
-    load
-      .register_and_recurse(scope, &request, info)
-      .map_err(|e| e.into_error(scope, false, false))?;
-  }
-
-  let root_id = load.root_module_id.expect("Root module should be loaded");
 
   let module = module_map_rc
     .get_module(scope, root_id)
@@ -548,9 +562,10 @@ async fn do_load_job<'s, 'i>(
           exception_to_err(scope, exception, false, false)
         })?;
     }
-    v8::ModuleStatus::Instantiated
-    | v8::ModuleStatus::Instantiating
-    | v8::ModuleStatus::Evaluating => {
+    v8::ModuleStatus::Instantiated => {
+      // Already instantiated — caller (op_import_sync) will evaluate.
+    }
+    v8::ModuleStatus::Instantiating | v8::ModuleStatus::Evaluating => {
       return Err(
         JsErrorBox::generic(format!(
           "Cannot require() ES Module {specifier} in a cycle."
@@ -609,7 +624,10 @@ fn wrap_module<'s, 'i>(
   let global_module = v8::Global::new(scope, module);
   scope.set_slot(global_module);
 
-  #[allow(clippy::unnecessary_wraps)]
+  #[allow(
+    clippy::unnecessary_wraps,
+    reason = "required by v8 callback signature"
+  )]
   fn resolve_callback<'s>(
     context: v8::Local<'s, v8::Context>,
     specifier: v8::Local<'s, v8::String>,
@@ -659,9 +677,33 @@ fn op_import_sync<'s, 'i>(
     code,
   ))?;
 
+  // Check for re-entrant require() cycle: if this module is already on
+  // the op_import_sync call stack, it means CJS code required an ESM
+  // that (transitively) requires the same ESM back.
+  if module_map_rc
+    .import_sync_eval_stack
+    .borrow()
+    .contains(&module_id)
+  {
+    return Err(
+      JsErrorBox::generic(format!(
+        "Cannot require() ES Module {specifier} in a cycle."
+      ))
+      .into(),
+    );
+  }
+
   let module = module_map_rc
     .get_module(scope, module_id)
     .expect("Module must exist");
+
+  // A module that was evaluated asynchronously (e.g. via `await import()`)
+  // and contains top-level await cannot be loaded via `require()`. Detect
+  // this regardless of current status so retries after async load still
+  // throw ERR_REQUIRE_ASYNC_MODULE.
+  if module.is_graph_async() {
+    return Err(CoreErrorKind::TLA.into_box());
+  }
 
   match module.get_status() {
     v8::ModuleStatus::Uninstantiated
@@ -675,7 +717,13 @@ fn op_import_sync<'s, 'i>(
       );
     }
     v8::ModuleStatus::Instantiated => {
-      module_map_rc.mod_evaluate_sync(scope, module_id)?;
+      module_map_rc
+        .import_sync_eval_stack
+        .borrow_mut()
+        .push(module_id);
+      let result = module_map_rc.mod_evaluate_sync(scope, module_id);
+      module_map_rc.import_sync_eval_stack.borrow_mut().pop();
+      result?;
     }
     v8::ModuleStatus::Evaluated => {
       // OK
@@ -700,6 +748,64 @@ fn op_import_sync<'s, 'i>(
   let default = v8_static_strings::DEFAULT.v8_string(scope).unwrap();
   let es_module = v8_static_strings::ESMODULE.v8_string(scope).unwrap();
   // If the module has a default export and no __esModule export, wrap it.
+  if namespace.has_own_property(scope, default.into()) == Some(true)
+    && namespace.has_own_property(scope, es_module.into()) == Some(false)
+  {
+    let Some(module) = wrap_module(scope, module) else {
+      let exception = scope.exception().unwrap();
+      return exception_to_err_result(scope, exception, false, false)
+        .map_err(|e| CoreErrorKind::Js(e).into_box());
+    };
+    Ok(v8::Local::new(scope, module.get_module_namespace()))
+  } else {
+    Ok(v8::Local::new(scope, namespace).into())
+  }
+}
+
+/// Like `op_import_sync`, but when `code` is provided, compiles the source
+/// directly under the given specifier URL instead of going through the module
+/// loader. This ensures hook-provided source is used even if the module is
+/// already cached in the module map from a previous disk load.
+#[op2(reentrant)]
+fn op_import_sync_with_source<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  #[string] specifier: &str,
+  #[string] code: String,
+) -> Result<v8::Local<'s, v8::Value>, CoreError> {
+  let module_map_rc = JsRealm::module_map_from(scope);
+
+  let module_id = module_map_rc
+    .new_module_from_js_source(
+      scope,
+      false,
+      crate::modules::ModuleType::JavaScript,
+      crate::modules::ModuleName::from(specifier.to_string()),
+      crate::modules::ModuleCodeString::from(code),
+      false,
+      None,
+    )
+    .map_err(|e| e.into_error(scope, false, false))?;
+
+  module_map_rc
+    .instantiate_module(scope, module_id)
+    .map_err(|e| {
+      let exception = v8::Local::new(scope, e);
+      CoreErrorKind::Js(exception_to_err(scope, exception, false, false))
+        .into_box()
+    })?;
+
+  module_map_rc.mod_evaluate_sync(scope, module_id)?;
+
+  let module = module_map_rc
+    .get_module(scope, module_id)
+    .expect("Module must exist");
+
+  let namespace = module.get_module_namespace().cast::<v8::Object>();
+
+  v8::tc_scope!(let scope, scope);
+
+  let default = v8_static_strings::DEFAULT.v8_string(scope).unwrap();
+  let es_module = v8_static_strings::ESMODULE.v8_string(scope).unwrap();
   if namespace.has_own_property(scope, default.into()) == Some(true)
     && namespace.has_own_property(scope, es_module.into()) == Some(false)
   {

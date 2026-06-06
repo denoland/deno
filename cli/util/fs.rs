@@ -59,7 +59,7 @@ fn add_file_context_to_err(file_path: &Path, err: Error) -> Error {
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  #[allow(clippy::disallowed_methods)] // allow, implementation
+  #[allow(clippy::disallowed_methods, reason = "implementation")]
   Ok(deno_path_util::strip_unc_prefix(path.canonicalize()?))
 }
 
@@ -210,6 +210,25 @@ impl FsCleaner {
       } else {
         self.remove_file(entry.path(), entry.metadata().ok())?;
       }
+    }
+
+    Ok(())
+  }
+
+  /// Accumulates the file/directory counts and byte size that [`Self::rm_rf`]
+  /// would remove for `path`, without removing anything. Used for `--dry-run`.
+  pub fn tally(&mut self, path: &Path) -> Result<(), std::io::Error> {
+    for entry in walkdir::WalkDir::new(path).contents_first(true) {
+      let entry = entry.map_err(std::io::Error::other)?;
+      if entry.file_type().is_dir() {
+        self.dirs_removed += 1;
+      } else {
+        if let Ok(meta) = entry.metadata() {
+          self.bytes_removed += meta.len();
+        }
+        self.files_removed += 1;
+      }
+      self.update_progress();
     }
 
     Ok(())

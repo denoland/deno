@@ -33,6 +33,8 @@ deno_core::extension!(deno_test,
     op_test_event_step_result_ok,
     op_test_event_step_result_ignored,
     op_test_event_step_result_failed,
+    op_test_event_exit,
+    op_test_isolate_exit,
   ],
   options = {
     sender: TestEventSender,
@@ -42,6 +44,25 @@ deno_core::extension!(deno_test,
     state.put(TestContainer::default());
   },
 );
+
+/// Set by `op_test_isolate_exit` to record that the current test isolate
+/// asked to exit via `Deno.exit()` from outside any test function. The test
+/// runner reads this flag after each step to detect that the V8 termination
+/// it sees was caused by `Deno.exit()` (rather than, say, the watchdog) and
+/// can move on to the next specifier without killing the process.
+#[derive(Clone, Copy, Debug)]
+pub struct IsolateExitInfo {
+  // Kept for debug-printing / future use; the test runner currently only
+  // checks for the presence of this struct in `OpState`.
+  #[allow(dead_code, reason = "diagnostic field")]
+  pub exit_code: i32,
+}
+
+/// Holds the test isolate's `v8::IsolateHandle` so that `op_test_isolate_exit`
+/// can call `terminate_execution` on it. Stored in `OpState` by the test
+/// runner when it creates the worker.
+#[derive(Clone)]
+pub struct TestIsolateHandle(pub v8::IsolateHandle);
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
@@ -91,7 +112,7 @@ pub fn op_restore_test_permissions(
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 #[op2]
 fn op_register_test(
   state: &mut OpState,
@@ -106,6 +127,7 @@ fn op_register_test(
   #[smi] column_number: u32,
   #[buffer] ret_buf: &mut [u8],
   sanitize_only: bool,
+  #[smi] timeout_ms: u32,
 ) -> Result<(), JsErrorBox> {
   if ret_buf.len() != 4 {
     return Err(JsErrorBox::type_error(format!(
@@ -115,6 +137,11 @@ fn op_register_test(
   }
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
+  let timeout_ms = if timeout_ms == 0 {
+    None
+  } else {
+    Some(timeout_ms)
+  };
   let description = TestDescription {
     id,
     name,
@@ -129,6 +156,7 @@ fn op_register_test(
       line_number,
       column_number,
     },
+    timeout_ms,
   };
   state
     .borrow_mut::<TestContainer>()
@@ -156,7 +184,7 @@ fn op_test_get_origin(state: &mut OpState) -> String {
 
 #[op2(fast)]
 #[smi]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 fn op_register_test_step(
   state: &mut OpState,
   #[string] name: String,
@@ -234,4 +262,55 @@ fn op_test_event_step_result_failed(
       duration,
     ))
     .ok();
+}
+
+/// Called when a test calls `Deno.exit()` while the exit sanitizer is disabled
+/// (`sanitizeExit: false`). Rather than letting the process terminate
+/// immediately - which can drop buffered test output - we hand the exit code
+/// off to the reporter (running on a separate thread) so it can print a
+/// message, flush all output, and then exit the process with the given code.
+///
+/// This op does not return: once the `Exit` event has been queued, we park the
+/// worker so it doesn't keep executing user code (which would otherwise resume
+/// after `Deno.exit()` returned) while we wait for the process to be
+/// terminated.
+#[op2(fast)]
+fn op_test_event_exit(state: &mut OpState, #[smi] exit_code: i32) {
+  let sender = state.borrow_mut::<TestEventSender>();
+  // `TestEvent::Exit` requires stdio sync, so sending it first drains any
+  // pending stdout/stderr output to the reporter.
+  if sender.send(TestEvent::Exit(exit_code)).is_ok() {
+    loop {
+      std::thread::park();
+    }
+  }
+
+  // The channel is closed (the receiver has already finished), so there's
+  // nobody left to print a message or flush - just exit directly.
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "a test called Deno.exit() with the exit sanitizer disabled"
+  )]
+  std::process::exit(exit_code);
+}
+
+/// Called when user code in a test isolate calls `Deno.exit()` outside of any
+/// running test function (top-level code, an unload listener, or in async
+/// code that the test left running). Instead of terminating the deno
+/// process, we record the exit code, notify the reporter, and ask V8 to
+/// terminate the current isolate so the test runner can move on to the
+/// next specifier.
+#[op2(fast)]
+fn op_test_isolate_exit(state: &mut OpState, #[smi] exit_code: i32) {
+  let origin = state.borrow::<ModuleSpecifier>().to_string();
+  let isolate_handle = state.borrow::<TestIsolateHandle>().0.clone();
+  state.put(IsolateExitInfo { exit_code });
+  let sender = state.borrow_mut::<TestEventSender>();
+  // `IsolateExit` requires stdio sync, so sending it first drains any
+  // pending stdout/stderr output to the reporter.
+  let _ = sender.send(TestEvent::IsolateExit(origin, exit_code));
+  // Ask V8 to halt execution. After this op returns, the next bytecode
+  // boundary throws an uncatchable termination exception that propagates
+  // up through user code into the Rust test runner.
+  isolate_handle.terminate_execution();
 }

@@ -47,10 +47,50 @@ extern "C" fn test_int64(
   value
 }
 
+extern "C" fn test_double(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut ty = -1;
+  assert_napi_ok!(napi_typeof(env, args[0], &mut ty));
+  assert_eq!(ty, napi_number);
+
+  let mut double = 0.0f64;
+  assert_napi_ok!(napi_get_value_double(env, args[0], &mut double));
+
+  let mut value: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_double(env, double, &mut value));
+  value
+}
+
+extern "C" fn test_uint32(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
+  assert_eq!(argc, 1);
+
+  let mut ty = -1;
+  assert_napi_ok!(napi_typeof(env, args[0], &mut ty));
+  assert_eq!(ty, napi_number);
+
+  let mut uint32 = 0u32;
+  assert_napi_ok!(napi_get_value_uint32(env, args[0], &mut uint32));
+
+  let mut value: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_create_uint32(env, uint32, &mut value));
+  value
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_int32", test_int32),
     napi_new_property!(env, "test_int64", test_int64),
+    napi_new_property!(env, "test_double", test_double),
+    napi_new_property!(env, "test_uint32", test_uint32),
   ];
 
   assert_napi_ok!(napi_define_properties(

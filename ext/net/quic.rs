@@ -41,6 +41,7 @@ use deno_permissions::PermissionsContainer;
 use deno_tls::SocketUse;
 use deno_tls::TlsClientConfigOptions;
 use deno_tls::TlsError;
+use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
 use deno_tls::create_client_config;
@@ -123,8 +124,7 @@ pub enum QuicError {
   Other(#[from] JsErrorBox),
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(ToV8)]
 struct CloseInfo {
   close_code: u64,
   reason: String,
@@ -211,10 +211,28 @@ fn apply_server_transport_config(
   Ok(())
 }
 
+// Inputs that determine the contents of the rustls `ClientConfig` used for an
+// outgoing QUIC connection. Used as a cache key so we can reuse the same
+// `Arc<ClientConfig>` for connections to the same endpoint with the same
+// parameters. rustls 0.23.28+ requires session resumption / 0-RTT to use a
+// config whose `ServerCertVerifier` and `ResolvesClientCert` are `Arc::ptr_eq`
+// to the ones that established the original session, so reusing the same
+// `Arc<ClientConfig>` is what makes 0-RTT possible across connect calls.
+#[derive(PartialEq, Eq)]
+struct ClientConfigCacheKey {
+  ca_certs: Vec<Vec<u8>>,
+  alpn_protocols: Option<Vec<Vec<u8>>>,
+  server_certificate_hashes: Option<Vec<Vec<u8>>>,
+  unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  cert_chain_and_key: Option<TlsKey>,
+}
+
 struct EndpointResource {
   endpoint: quinn::Endpoint,
   can_listen: bool,
   session_store: Arc<dyn ClientSessionStore>,
+  client_config_cache:
+    RefCell<Option<(ClientConfigCacheKey, Arc<quinn::rustls::ClientConfig>)>>,
 }
 
 // SAFETY: we're sure `EndpointResource` can be GCed
@@ -269,6 +287,7 @@ pub(crate) fn op_quic_endpoint_create(
     endpoint,
     can_listen,
     session_store: Arc::new(ClientSessionMemoryCache::new(256)),
+    client_config_cache: RefCell::new(None),
   })
 }
 
@@ -485,8 +504,7 @@ pub(crate) fn op_quic_incoming_accept_0rtt(
   }
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 pub(crate) fn op_quic_incoming_refuse(
   #[cppgc] incoming: &IncomingResource,
 ) -> Result<(), QuicError> {
@@ -497,8 +515,7 @@ pub(crate) fn op_quic_incoming_refuse(
   Ok(())
 }
 
-#[op2]
-#[serde]
+#[op2(fast)]
 pub(crate) fn op_quic_incoming_ignore(
   #[cppgc] incoming: &IncomingResource,
 ) -> Result<(), QuicError> {
@@ -556,6 +573,14 @@ pub(crate) fn op_quic_endpoint_connect(
   let sock_addr = resolve_addr_sync(&args.addr.hostname, args.addr.port)?
     .next()
     .ok_or_else(|| QuicError::UnableToResolve)?;
+  state
+    .borrow_mut()
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(
+      &sock_addr.ip(),
+      sock_addr.port(),
+      "Deno.connectQuic()",
+    )?;
 
   let root_cert_store = state
     .borrow()
@@ -574,37 +599,81 @@ pub(crate) fn op_quic_endpoint_connect(
     .map(|s| s.into_bytes())
     .collect::<Vec<_>>();
 
-  let mut tls_config = if let Some(hashes) = args.server_certificate_hashes {
-    deno_tls::rustls::ClientConfig::builder()
-      .dangerous()
-      .with_custom_certificate_verifier(Arc::new(
-        webtransport::ServerFingerprints::new(
-          hashes
-            .into_iter()
-            .filter(|h| h.algorithm.to_lowercase() == "sha-256")
-            .map(|h| h.value.to_vec())
-            .collect(),
-        ),
-      ))
-      .with_no_client_auth()
-  } else {
-    create_client_config(TlsClientConfigOptions {
-      root_cert_store,
-      ca_certs,
-      unsafely_ignore_certificate_errors,
-      unsafely_disable_hostname_verification: false,
-      cert_chain_and_key: key_pair.take(),
-      socket_use: SocketUse::GeneralSsl,
-    })?
+  let server_certificate_hashes = args.server_certificate_hashes.map(|v| {
+    v.into_iter()
+      .filter(|h| h.algorithm.to_lowercase() == "sha-256")
+      .map(|h| h.value.to_vec())
+      .collect::<Vec<_>>()
+  });
+
+  let alpn_protocols = args.alpn_protocols.map(|v| {
+    v.into_iter()
+      .map(|s| s.into_bytes())
+      .collect::<Vec<Vec<u8>>>()
+  });
+
+  // Only cache when the client cert resolver state is something we can hold and
+  // compare for equality. A `Resolver` is opaque, so skip caching in that case.
+  let (cert_chain_and_key, cache_cert_key) = match key_pair.take() {
+    TlsKeys::Null => (TlsKeys::Null, Some(None)),
+    TlsKeys::Static(key) => (TlsKeys::Static(key.clone()), Some(Some(key))),
+    other @ TlsKeys::Resolver(_) => (other, None),
   };
 
-  if let Some(alpn_protocols) = args.alpn_protocols {
-    tls_config.alpn_protocols =
-      alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
-  }
+  let cache_key =
+    cache_cert_key.map(|cert_chain_and_key| ClientConfigCacheKey {
+      ca_certs: ca_certs.clone(),
+      alpn_protocols: alpn_protocols.clone(),
+      server_certificate_hashes: server_certificate_hashes.clone(),
+      unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
+        .clone(),
+      cert_chain_and_key,
+    });
 
-  tls_config.enable_early_data = true;
-  tls_config.resumption = Resumption::store(endpoint.session_store.clone());
+  let tls_config: Arc<quinn::rustls::ClientConfig> = {
+    let mut cache = endpoint.client_config_cache.borrow_mut();
+    match (cache.as_ref(), cache_key.as_ref()) {
+      (Some((cached_key, cached_config)), Some(new_key))
+        if cached_key == new_key =>
+      {
+        cached_config.clone()
+      }
+      _ => {
+        let mut tls_config =
+          if let Some(hashes) = server_certificate_hashes.clone() {
+            deno_tls::rustls::ClientConfig::builder()
+              .dangerous()
+              .with_custom_certificate_verifier(Arc::new(
+                webtransport::ServerFingerprints::new(hashes),
+              ))
+              .with_no_client_auth()
+          } else {
+            create_client_config(TlsClientConfigOptions {
+              root_cert_store,
+              ca_certs,
+              unsafely_ignore_certificate_errors,
+              unsafely_disable_hostname_verification: false,
+              cert_chain_and_key,
+              socket_use: SocketUse::GeneralSsl,
+            })?
+          };
+
+        if let Some(alpn_protocols) = alpn_protocols {
+          tls_config.alpn_protocols = alpn_protocols;
+        }
+
+        tls_config.enable_early_data = true;
+        tls_config.resumption =
+          Resumption::store(endpoint.session_store.clone());
+
+        let tls_config = Arc::new(tls_config);
+        if let Some(new_key) = cache_key {
+          *cache = Some((new_key, tls_config.clone()));
+        }
+        tls_config
+      }
+    }
+  };
 
   let client_config =
     QuicClientConfig::try_from(tls_config).expect("TLS13 supported");
@@ -698,7 +767,6 @@ pub(crate) fn op_quic_connection_close(
 }
 
 #[op2]
-#[serde]
 pub(crate) async fn op_quic_connection_closed(
   #[cppgc] connection: &ConnectionResource,
 ) -> Result<CloseInfo, QuicError> {

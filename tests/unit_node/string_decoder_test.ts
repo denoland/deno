@@ -39,6 +39,29 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "String decoder replaces invalid utf8 bytes the same way as Node (#34930)",
+  fn() {
+    // A lone continuation byte (0x92) in the middle of an otherwise complete
+    // buffer must be replaced with a single U+FFFD, matching Node.js. The
+    // trailing bytes are ASCII so no bytes are buffered for the next write.
+    const decoder = new StringDecoder("utf8");
+    const buffer = Buffer.from([0x47, 0x40, 0x01, 0x92, 0x01, 0x01]);
+    assertEquals(
+      decoder.write(buffer),
+      "G@\x01\ufffd\x01\x01",
+    );
+    assertEquals(decoder.end(), "");
+
+    // Buffer.prototype.toString('utf8') must produce the same replacement.
+    assertEquals(
+      buffer.toString("utf8"),
+      "G@\x01\ufffd\x01\x01",
+    );
+  },
+});
+
+Deno.test({
   name: "String decoder is encoding base64 correctly",
   fn() {
     let decoder;

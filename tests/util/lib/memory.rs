@@ -30,7 +30,6 @@ fn mem_info_impl() -> Option<MemInfo> {
   }
 
   // /proc/meminfo has more accurate MemAvailable
-  #[allow(clippy::disallowed_methods)]
   if let Ok(meminfo) = std::fs::read_to_string("/proc/meminfo") {
     for line in meminfo.lines() {
       if line.starts_with("MemTotal:")
@@ -101,15 +100,14 @@ fn mem_info_impl() -> Option<MemInfo> {
 fn mem_info_impl() -> Option<MemInfo> {
   // SAFETY: `mem_status` is properly initialized with dwLength set.
   unsafe {
-    use winapi::shared::minwindef;
-    use winapi::um::sysinfoapi;
+    use windows_sys::Win32::System::SystemInformation;
 
     let mut mem_status =
-      std::mem::MaybeUninit::<sysinfoapi::MEMORYSTATUSEX>::uninit();
+      std::mem::MaybeUninit::<SystemInformation::MEMORYSTATUSEX>::uninit();
     (*mem_status.as_mut_ptr()).dwLength =
-      std::mem::size_of::<sysinfoapi::MEMORYSTATUSEX>() as minwindef::DWORD;
+      std::mem::size_of::<SystemInformation::MEMORYSTATUSEX>() as u32;
 
-    if sysinfoapi::GlobalMemoryStatusEx(mem_status.as_mut_ptr()) != 0 {
+    if SystemInformation::GlobalMemoryStatusEx(mem_status.as_mut_ptr()) != 0 {
       let stat = mem_status.assume_init();
       Some(MemInfo {
         total: stat.ullTotalPhys,

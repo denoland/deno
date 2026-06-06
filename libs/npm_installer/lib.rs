@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_error::JsErrorBox;
 use deno_npm::NpmSystemInfo;
 use deno_npm::registry::NpmPackageInfo;
@@ -23,6 +24,7 @@ mod flag;
 mod fs;
 mod global;
 pub mod graph;
+mod hoisted;
 pub mod initializer;
 pub mod lifecycle_scripts;
 mod local;
@@ -47,6 +49,7 @@ pub use self::factory::NpmInstallerFactory;
 pub use self::factory::NpmInstallerFactoryOptions;
 pub use self::factory::NpmInstallerFactorySys;
 use self::global::GlobalNpmPackageInstaller;
+use self::hoisted::HoistedNpmPackageInstaller;
 use self::initializer::NpmResolutionInitializer;
 use self::lifecycle_scripts::LifecycleScriptsExecutor;
 use self::local::LocalNpmInstallSys;
@@ -101,9 +104,7 @@ pub trait InstallProgressReporter:
 
   fn deprecated_message(&self, message: String);
 }
-pub trait Reporter:
-  std::fmt::Debug + Send + Sync + 'static + dyn_clone::DynClone
-{
+pub trait Reporter: std::fmt::Debug + Send + Sync + Clone + 'static {
   type Guard;
   type ClearGuard;
 
@@ -151,6 +152,7 @@ pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
   pub clean_on_install: bool,
   pub maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   pub maybe_node_modules_path: Option<PathBuf>,
+  pub linker_mode: NodeModulesLinkerMode,
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
   pub system_info: NpmSystemInfo,
   pub workspace_link_packages: WorkspaceNpmLinkPackagesRc,
@@ -176,7 +178,7 @@ pub struct NpmInstaller<
 impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   NpmInstaller<TNpmCacheHttpClient, TSys>
 {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new<TReporter: Reporter>(
     install_reporter: Option<Arc<dyn InstallReporter>>,
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
@@ -197,27 +199,53 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
       match options.maybe_node_modules_path {
-        Some(node_modules_folder) => Arc::new(LocalNpmPackageInstaller::new(
-          lifecycle_scripts_executor,
-          npm_cache.clone(),
-          Arc::new(NpmPackageExtraInfoProvider::new(
+        Some(node_modules_folder) => {
+          let extra_info_provider = Arc::new(NpmPackageExtraInfoProvider::new(
             npm_registry_info_provider,
             Arc::new(sys.clone()),
             options.workspace_link_packages,
-          )),
-          npm_install_deps_provider.clone(),
-          dyn_clone::clone(reporter),
-          npm_resolution.clone(),
-          sys,
-          tarball_cache,
-          LocalNpmPackageInstallerOptions {
-            clean_on_install: options.clean_on_install,
-            lifecycle_scripts: options.lifecycle_scripts,
-            system_info: options.system_info,
-            reporter: install_reporter,
-            node_modules_folder,
-          },
-        )),
+          ));
+          match options.linker_mode {
+            NodeModulesLinkerMode::Hoisted => {
+              Arc::new(HoistedNpmPackageInstaller::new(
+                lifecycle_scripts_executor,
+                npm_cache.clone(),
+                extra_info_provider,
+                npm_install_deps_provider.clone(),
+                (*reporter).clone(),
+                npm_resolution.clone(),
+                sys,
+                tarball_cache,
+                LocalNpmPackageInstallerOptions {
+                  clean_on_install: options.clean_on_install,
+                  lifecycle_scripts: options.lifecycle_scripts,
+                  system_info: options.system_info,
+                  reporter: install_reporter,
+                  node_modules_folder,
+                },
+              ))
+            }
+            NodeModulesLinkerMode::Isolated => {
+              Arc::new(LocalNpmPackageInstaller::new(
+                lifecycle_scripts_executor,
+                npm_cache.clone(),
+                extra_info_provider,
+                npm_install_deps_provider.clone(),
+                (*reporter).clone(),
+                npm_resolution.clone(),
+                sys,
+                tarball_cache,
+                LocalNpmPackageInstallerOptions {
+                  clean_on_install: options.clean_on_install,
+                  lifecycle_scripts: options.lifecycle_scripts,
+                  system_info: options.system_info,
+                  reporter: install_reporter,
+                  node_modules_folder,
+                },
+              ))
+            }
+          }
+        }
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
           tarball_cache,
@@ -336,6 +364,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     };
 
     if uncached.is_empty() {
+      // Even when every requested package is already cached we still need to
+      // sync the node_modules directory for a full install (e.g. after
+      // `deno remove`), otherwise stale packages are left on disk. Only do this
+      // for `All` caching so the hot path of running a script (which caches a
+      // specific subset) keeps short-circuiting.
+      if matches!(caching, PackageCaching::All) {
+        return self.fs_installer.cache_packages(caching).await;
+      }
       return Ok(());
     }
     let result = self.fs_installer.cache_packages(caching).await;
@@ -381,8 +417,9 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
-        } => {
-          // only warn for this one
+        }
+        | deno_package_json::PackageJsonDepValueParseErrorKind::EmptyName => {
+          // only warn for these
           log::warn!(
             "{} {}\n    at {}",
             colors::yellow("Warning"),

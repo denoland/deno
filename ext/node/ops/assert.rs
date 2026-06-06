@@ -6,65 +6,30 @@ use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::v8_static_strings;
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-enum AssertErr {
-  #[class(type)]
-  #[error("Argument must be an object.")]
-  InvalidArg,
-}
+use deno_error::JsErrorBox;
 
 #[op2]
-pub fn op_node_get_error_source_position<'s>(
+pub fn op_node_get_first_expression<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   arg: v8::Local<v8::Value>,
-) -> Result<v8::Local<'s, v8::Value>, AssertErr> {
+) -> Result<v8::Local<'s, v8::Value>, JsErrorBox> {
   if !arg.is_object() {
-    return Err(AssertErr::InvalidArg);
-  }
-
-  v8_static_strings! {
-    SOURCE_LINE = "sourceLine",
-    LINE_NUMBER = "lineNumber",
-    START_COLUMN = "startColumn"
+    return Err(JsErrorBox::type_error("Argument must be an object"));
   }
 
   let msg = v8::Exception::create_message(scope, arg);
 
-  let source_line: v8::Local<'s, v8::String>;
+  let source_line: String;
   if let Some(inner_source_line) = msg.get_source_line(scope) {
-    source_line = inner_source_line;
-  } else {
-    return Ok(v8::undefined(scope).into());
-  }
-
-  let line_number: usize;
-  if let Some(inner_line_number) = msg.get_line_number(scope) {
-    line_number = inner_line_number;
+    source_line = inner_source_line.to_rust_string_lossy(scope);
   } else {
     return Ok(v8::undefined(scope).into());
   }
 
   let start_column = msg.get_start_column();
+  let result = get_first_expression(&source_line, start_column);
 
-  let names = &[
-    SOURCE_LINE.v8_string(scope).unwrap().into(),
-    LINE_NUMBER.v8_string(scope).unwrap().into(),
-    START_COLUMN.v8_string(scope).unwrap().into(),
-  ];
-
-  let values = &[
-    source_line.into(),
-    v8::Number::new(scope, line_number as _).into(),
-    v8::Number::new(scope, start_column as _).into(),
-  ];
-
-  let null = v8::null(scope).into();
-  let result =
-    v8::Object::with_prototype_and_properties(scope, null, names, values);
-
-  Ok(result.into())
+  Ok(v8::String::new(scope, result).unwrap().into())
 }
 
 /// Tokens that represent member access operators: `.`, `[`, `]`.
@@ -123,12 +88,7 @@ fn adjust_start_column_for_non_ascii(
 ///
 /// This mirrors Node.js's implementation
 /// https://github.com/nodejs/node/blob/70f6b58ac655234435a99d72b857dd7b316d34bf/lib/internal/errors/error_source.js#L61-L142
-#[op2(fast)]
-pub fn op_node_get_first_expression(
-  #[string] code: &str,
-  #[smi] original_start_col_index: usize,
-  #[buffer] out_buf: &mut [u32],
-) {
+fn get_first_expression(code: &str, original_start_col_index: usize) -> &str {
   let start_index =
     adjust_start_column_for_non_ascii(code, original_start_col_index);
 
@@ -238,10 +198,8 @@ pub fn op_node_get_first_expression(
   let start = first_member_access_name_token.unwrap_or(start_index);
   let end = terminating_col.unwrap_or(code.len());
   if start <= end && end <= code.len() {
-    out_buf[0] = code[..start].encode_utf16().count() as _;
-    out_buf[1] = code[..end].encode_utf16().count() as _;
+    &code[start..end]
   } else {
-    out_buf[0] = original_start_col_index as _;
-    out_buf[1] = code.encode_utf16().count() as _;
+    code
   }
 }

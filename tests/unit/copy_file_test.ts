@@ -266,3 +266,34 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  function copyFileSyncSamePathThrows() {
+    const tempDir = Deno.makeTempDirSync();
+    const filename = tempDir + "/file.txt";
+    writeFileString(filename, "Hello world!");
+    // Copying a file onto itself must not truncate it.
+    assertThrows(() => Deno.copyFileSync(filename, filename), TypeError);
+    // An equivalent-but-different path resolving to the same file too.
+    Deno.mkdirSync(tempDir + "/sub");
+    assertThrows(
+      () => Deno.copyFileSync(filename, tempDir + "/sub/../file.txt"),
+      TypeError,
+    );
+    assertEquals(readFileString(filename), "Hello world!");
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function copyFileSamePathThrows() {
+    const tempDir = Deno.makeTempDirSync();
+    const filename = tempDir + "/file.txt";
+    writeFileString(filename, "Hello world!");
+    await assertRejects(() => Deno.copyFile(filename, filename), TypeError);
+    assertEquals(readFileString(filename), "Hello world!");
+    Deno.removeSync(tempDir, { recursive: true });
+  },
+);

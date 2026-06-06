@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -59,8 +60,11 @@ pub struct FailedTypeCheckingError {
   can_skip: bool,
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct CheckError(pub Box<CheckErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum CheckError {
+pub enum CheckErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FailedTypeChecking(#[from] FailedTypeCheckingError),
@@ -79,6 +83,13 @@ pub enum CheckError {
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
+}
+
+/// Result of emitting declaration files via [`TypeChecker::emit_declarations`].
+pub struct EmitDeclarationsResult {
+  pub diagnostics: Diagnostics,
+  /// Emitted `.d.ts` files keyed by their specifier (e.g. `file:///path/to/file.d.ts`).
+  pub emitted_files: BTreeMap<String, String>,
 }
 
 /// Options for performing a check of a module graph. Note that the decision to
@@ -109,11 +120,10 @@ pub struct TypeChecker {
   sys: CliSys,
   compiler_options_resolver: Arc<CompilerOptionsResolver>,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
-  tsgo_path: Option<PathBuf>,
 }
 
 impl TypeChecker {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     caches: Arc<Caches>,
     cjs_tracker: Arc<TypeCheckingCjsTracker>,
@@ -125,7 +135,6 @@ impl TypeChecker {
     sys: CliSys,
     compiler_options_resolver: Arc<CompilerOptionsResolver>,
     code_cache: Option<Arc<crate::cache::CodeCache>>,
-    tsgo_path: Option<PathBuf>,
   ) -> Self {
     Self {
       caches,
@@ -138,15 +147,92 @@ impl TypeChecker {
       sys,
       compiler_options_resolver,
       code_cache,
-      tsgo_path,
     }
+  }
+
+  pub fn create_request_npm_state(&self) -> tsc::RequestNpmState {
+    tsc::RequestNpmState {
+      cjs_tracker: self.cjs_tracker.clone(),
+      node_resolver: self.node_resolver.clone(),
+      npm_resolver: self.npm_resolver.clone(),
+    }
+  }
+
+  /// Type-check and emit `.d.ts` declaration files for the given module graph.
+  ///
+  /// This runs the TypeScript compiler with `emitDeclarationOnly: true` and
+  /// returns the emitted `.d.ts` file contents keyed by their specifier paths.
+  pub fn emit_declarations(
+    &self,
+    graph: Arc<ModuleGraph>,
+    root_names: Vec<(ModuleSpecifier, MediaType)>,
+    lib: TsTypeLib,
+  ) -> Result<EmitDeclarationsResult, CheckError> {
+    let first_specifier = &root_names[0].0;
+    let compiler_options_data = self
+      .compiler_options_resolver
+      .for_specifier(first_specifier);
+    let base_compiler_options =
+      compiler_options_data.compiler_options_for_lib(lib)?;
+
+    // Merge declaration-specific options into the base compiler options
+    let mut config_value =
+      deno_core::serde_json::to_value(base_compiler_options.as_ref())
+        .map_err(|e| CheckErrorKind::Other(JsErrorBox::from_err(e)))?;
+    if let Some(config_obj) = config_value.as_object_mut() {
+      config_obj.insert(
+        "declaration".into(),
+        deno_core::serde_json::Value::Bool(true),
+      );
+      config_obj.insert(
+        "emitDeclarationOnly".into(),
+        deno_core::serde_json::Value::Bool(true),
+      );
+      config_obj
+        .insert("noEmit".into(), deno_core::serde_json::Value::Bool(false));
+    }
+
+    let compiler_options = Arc::new(CompilerOptions::new(config_value));
+
+    let hash_data = FastInsecureHasher::new_deno_versioned()
+      .write_hashable(&compiler_options)
+      .finish();
+
+    let jsx_import_source_config_resolver = Arc::new(
+      JsxImportSourceConfigResolver::from_compiler_options_resolver(
+        &self.compiler_options_resolver,
+      )?,
+    );
+
+    let response = tsc::exec(
+      tsc::Request {
+        config: compiler_options,
+        debug: self.cli_options.log_level() == Some(log::Level::Debug),
+        graph,
+        jsx_import_source_config_resolver,
+        hash_data,
+        maybe_npm: Some(self.create_request_npm_state()),
+        maybe_tsbuildinfo: None,
+        root_names,
+        // Declaration emit requires full type-checking regardless of
+        // the user's type_check_mode setting.
+        check_mode: TypeCheckMode::All,
+        initial_cwd: self.cli_options.initial_cwd().to_path_buf(),
+        capture_emitted_files: true,
+      },
+      None,
+    )?;
+
+    Ok(EmitDeclarationsResult {
+      diagnostics: response.diagnostics,
+      emitted_files: response.emitted_files,
+    })
   }
 
   /// Type check the module graph.
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  #[allow(clippy::result_large_err)]
   pub fn check(
     &self,
     graph: ModuleGraph,
@@ -181,7 +267,6 @@ impl TypeChecker {
   ///
   /// It is expected that it is determined if a check and/or emit is validated
   /// before the function is called.
-  #[allow(clippy::result_large_err)]
   pub fn check_diagnostics(
     &self,
     mut graph: ModuleGraph,
@@ -224,6 +309,7 @@ impl TypeChecker {
         &mut graph,
         BuildFastCheckGraphOptions {
           workspace_fast_check: deno_graph::WorkspaceFastCheckOption::Disabled,
+          fast_check_dts: false,
         },
       )?;
     }
@@ -246,7 +332,7 @@ impl TypeChecker {
         ),
         node_resolver: &self.node_resolver,
         npm_resolver: &self.npm_resolver,
-        package_json_resolver: &self.package_json_resolver,
+        _package_json_resolver: &self.package_json_resolver,
         compiler_options_resolver: &self.compiler_options_resolver,
         log_level: self.cli_options.log_level(),
         npm_check_state_hash: check_state_hash(&self.npm_resolver),
@@ -258,19 +344,17 @@ impl TypeChecker {
         options,
         seen_diagnotics: Default::default(),
         code_cache: self.code_cache.clone(),
-        tsgo_path: self.tsgo_path.clone(),
         initial_cwd: self.cli_options.initial_cwd().to_path_buf(),
         current_dir: deno_path_util::url_from_directory_path(
           self.cli_options.initial_cwd(),
         )
-        .map_err(|e| CheckError::Other(JsErrorBox::from_err(e)))?,
+        .map_err(|e| CheckErrorKind::Other(JsErrorBox::from_err(e)))?,
       }),
     ))
   }
 
   /// Groups the roots based on the compiler options, which includes the
   /// resolved CompilerOptions and resolved compilerOptions.types
-  #[allow(clippy::result_large_err)]
   fn group_roots_by_compiler_options<'a>(
     &'a self,
     graph: &ModuleGraph,
@@ -367,7 +451,10 @@ impl Iterator for DiagnosticsByFolderIterator<'_> {
   }
 }
 
-#[allow(clippy::large_enum_variant)]
+#[allow(
+  clippy::large_enum_variant,
+  reason = "large variant is used more often"
+)]
 enum DiagnosticsByFolderIteratorInner<'a> {
   Empty(Arc<ModuleGraph>),
   Real(DiagnosticsByFolderRealIterator<'a>),
@@ -380,7 +467,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   jsx_import_source_config_resolver: Arc<JsxImportSourceConfigResolver>,
   node_resolver: &'a Arc<CliNodeResolver>,
   npm_resolver: &'a CliNpmResolver,
-  package_json_resolver: &'a Arc<CliPackageJsonResolver>,
+  _package_json_resolver: &'a Arc<CliPackageJsonResolver>,
   compiler_options_resolver: &'a CompilerOptionsResolver,
   type_check_cache: TypeCheckCache,
   groups: Vec<CheckGroup<'a>>,
@@ -390,7 +477,6 @@ struct DiagnosticsByFolderRealIterator<'a> {
   seen_diagnotics: HashSet<String>,
   options: CheckOptions,
   code_cache: Option<Arc<crate::cache::CodeCache>>,
-  tsgo_path: Option<PathBuf>,
   initial_cwd: PathBuf,
   current_dir: Url,
 }
@@ -443,8 +529,6 @@ pub fn ambient_modules_to_regex_string(ambient_modules: &[String]) -> String {
 }
 
 impl DiagnosticsByFolderRealIterator<'_> {
-  #[allow(clippy::too_many_arguments)]
-  #[allow(clippy::result_large_err)]
   fn check_diagnostics_in_folder(
     &self,
     check_group: &CheckGroup,
@@ -481,6 +565,12 @@ impl DiagnosticsByFolderRealIterator<'_> {
       graph_walker.add_root(root);
     }
 
+    // Add JSX runtime types to the roots so that TS can resolve
+    // the jsx-runtime module during type checking. Without this,
+    // TS 6.0+ emits TS2875 because it validates that the JSX
+    // runtime module actually exports the JSX namespace.
+    self.add_jsx_runtime_types(&mut graph_walker, check_group);
+
     let TscRoots {
       roots: root_names,
       missing_diagnostics,
@@ -489,6 +579,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     let mut missing_diagnostics = missing_diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
+        && !self.is_untagged_jsdoc_dynamic_import_diagnostic(d)
     });
     missing_diagnostics.apply_fast_check_source_maps(&self.graph);
 
@@ -552,15 +643,14 @@ impl DiagnosticsByFolderRealIterator<'_> {
           cjs_tracker: self.cjs_tracker.clone(),
           node_resolver: self.node_resolver.clone(),
           npm_resolver: self.npm_resolver.clone(),
-          package_json_resolver: self.package_json_resolver.clone(),
         }),
         maybe_tsbuildinfo,
         root_names,
         check_mode: self.options.type_check_mode,
         initial_cwd: self.initial_cwd.clone(),
+        capture_emitted_files: false,
       },
       code_cache,
-      self.tsgo_path.as_deref(),
     )?;
 
     let ambient_modules = response.ambient_modules;
@@ -578,6 +668,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     let mut response_diagnostics = response.diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
+        && !self.is_untagged_jsdoc_dynamic_import_diagnostic(d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
     let mut diagnostics = missing_diagnostics.filter(|d| {
@@ -622,6 +713,89 @@ impl DiagnosticsByFolderRealIterator<'_> {
     }
   }
 
+  fn is_untagged_jsdoc_dynamic_import_diagnostic(
+    &self,
+    d: &tsc::Diagnostic,
+  ) -> bool {
+    if d.code != 2307 {
+      return false;
+    }
+    let Some(file_name) = &d.file_name else {
+      return false;
+    };
+    let Ok(specifier) = ModuleSpecifier::parse(file_name) else {
+      return false;
+    };
+    let Ok(Some(Module::Js(module))) = self.graph.try_get(&specifier) else {
+      return false;
+    };
+    if !matches!(
+      module.media_type,
+      MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs | MediaType::Jsx
+    ) {
+      return false;
+    }
+    let Some(start) = &d.start else {
+      return false;
+    };
+    is_untagged_jsdoc_dynamic_import_position(
+      &module.source.text,
+      deno_graph::Position::new(start.line as usize, start.character as usize),
+    )
+  }
+
+  fn add_jsx_runtime_types(
+    &self,
+    graph_walker: &mut GraphWalker,
+    check_group: &CheckGroup,
+  ) {
+    // Check each root to see if it has a jsxImportSource config.
+    // If so, resolve the jsx-runtime types and add to roots.
+    let mut seen_jsx_sources = HashSet::new();
+    for root in &check_group.roots {
+      let Some(jsx_config) =
+        self.jsx_import_source_config_resolver.for_specifier(root)
+      else {
+        continue;
+      };
+      let Some(specifier) = jsx_config.specifier() else {
+        continue;
+      };
+      if !seen_jsx_sources.insert(specifier.to_string()) {
+        continue;
+      }
+      // Construct the jsx-runtime specifier (e.g., "npm:react/jsx-runtime")
+      let jsx_runtime_specifier = format!("{specifier}/jsx-runtime");
+      let Ok(npm_ref) = deno_semver::npm::NpmPackageReqReference::from_str(
+        &jsx_runtime_specifier,
+      ) else {
+        continue;
+      };
+      // Try to resolve the package folder and then the subpath
+      let Ok(pkg_folder) = self
+        .npm_resolver
+        .resolve_pkg_folder_from_deno_module_req(npm_ref.req(), root)
+      else {
+        continue;
+      };
+      let Ok(resolved) =
+        self.node_resolver.resolve_package_subpath_from_deno_module(
+          &pkg_folder,
+          npm_ref.sub_path(),
+          Some(root),
+          node_resolver::ResolutionMode::Import,
+          node_resolver::NodeResolutionKind::Types,
+        )
+      else {
+        continue;
+      };
+      if let Ok(url) = resolved.into_url() {
+        let mt = MediaType::from_specifier(&url);
+        graph_walker.roots.push((url, mt));
+      }
+    }
+  }
+
   fn is_remote_diagnostic(&self, d: &tsc::Diagnostic) -> bool {
     let Some(file_name) = &d.file_name else {
       return false;
@@ -658,7 +832,7 @@ struct GraphWalker<'a> {
 }
 
 impl<'a> GraphWalker<'a> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     graph: &'a ModuleGraph,
     sys: &'a CliSys,
@@ -784,13 +958,22 @@ impl<'a> GraphWalker<'a> {
       if let Some(entry) = self.maybe_get_check_entry(module) {
         self.roots.push(entry);
       }
+      let is_js_module = matches!(
+        module.media_type(),
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Jsx
+      );
 
       let mut maybe_module_dependencies = None;
       let mut maybe_types_dependency = None;
+      let mut maybe_js_source_text = None;
       match module {
         Module::Js(module) => {
           maybe_module_dependencies =
             Some(module.dependencies_prefer_fast_check());
+          maybe_js_source_text = Some(module.source.text.as_ref());
           maybe_types_dependency = module
             .maybe_types_dependency
             .as_ref()
@@ -838,6 +1021,9 @@ impl<'a> GraphWalker<'a> {
           if dep.is_dynamic {
             continue;
           }
+          if is_js_module && dep.maybe_code.is_none() {
+            continue;
+          }
           // only surface the code error if there's no type
           let dep_to_check_error = if dep.maybe_type.is_none() {
             &dep.maybe_code
@@ -846,6 +1032,13 @@ impl<'a> GraphWalker<'a> {
           };
           if let deno_graph::Resolution::Err(resolution_error) =
             dep_to_check_error
+            && !(is_js_module
+              && maybe_js_source_text.is_some_and(|text| {
+                is_untagged_jsdoc_dynamic_import_range(
+                  text,
+                  resolution_error.range(),
+                )
+              }))
             && let Some(diagnostic) =
               tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
@@ -989,6 +1182,84 @@ impl<'a> GraphWalker<'a> {
       .ok()?;
     resolved.into_url().ok()
   }
+}
+
+static JSDOC_DYNAMIC_IMPORT_RE: Lazy<Regex> =
+  lazy_regex::lazy_regex!(r#"(?s)(?:^|[^\w$])import\s*\(\s*["'][^"']+["']"#);
+static JSDOC_TYPED_TAG_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
+  r#"@(?:augments|extends|implements|import|param|returns?|satisfies|template|typedef|type)\b"#
+);
+
+fn is_untagged_jsdoc_dynamic_import_range(
+  text: &str,
+  range: &deno_graph::Range,
+) -> bool {
+  is_untagged_jsdoc_dynamic_import_position(text, range.range.start)
+}
+
+fn is_untagged_jsdoc_dynamic_import_position(
+  text: &str,
+  position: deno_graph::Position,
+) -> bool {
+  let Some(start) = position_to_byte_index(text, position) else {
+    return false;
+  };
+  let Some(comment_start) = text[..start].rfind("/**") else {
+    return false;
+  };
+  if text[..start]
+    .rfind("*/")
+    .is_some_and(|comment_end| comment_end > comment_start)
+  {
+    return false;
+  }
+
+  let Some(open_brace) = text[..start].rfind('{') else {
+    return false;
+  };
+  if open_brace <= comment_start
+    || text[..start]
+      .rfind('}')
+      .is_some_and(|close_brace| close_brace > open_brace)
+  {
+    return false;
+  }
+  if JSDOC_TYPED_TAG_RE.is_match(&text[comment_start..open_brace]) {
+    return false;
+  }
+
+  let Some(close_brace) = text[start..].find('}').map(|i| start + i) else {
+    return false;
+  };
+  if text[start..]
+    .find("*/")
+    .is_some_and(|comment_end| start + comment_end < close_brace)
+  {
+    return false;
+  }
+
+  JSDOC_DYNAMIC_IMPORT_RE.is_match(&text[open_brace + 1..close_brace])
+}
+
+fn position_to_byte_index(
+  text: &str,
+  position: deno_graph::Position,
+) -> Option<usize> {
+  let mut line = 0;
+  let mut character = 0;
+  for (index, c) in text.char_indices() {
+    if line == position.line && character == position.character {
+      return Some(index);
+    }
+    if c == '\n' {
+      line += 1;
+      character = 0;
+    } else {
+      character += 1;
+    }
+  }
+  (line == position.line && character == position.character)
+    .then_some(text.len())
 }
 
 /// Matches the `@ts-check` pragma.

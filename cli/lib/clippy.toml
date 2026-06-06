@@ -35,4 +35,9 @@ disallowed-methods = [
   { path = "url::Url::to_file_path", reason = "Use deno_path_util instead" },
   { path = "url::Url::from_file_path", reason = "Use deno_path_util instead" },
   { path = "url::Url::from_directory_path", reason = "Use deno_path_util instead" },
+  { path = "std::path::absolute", reason = "File system operations should be done using DenoLibSys" },
+  { path = "std::env::var", reason = "Environment operations should be done using DenoLibSys" },
+  { path = "std::env::var_os", reason = "Environment operations should be done using DenoLibSys" },
+  { path = "std::time::SystemTime::now", reason = "System operations should be done using DenoLibSys" },
+  { path = "chrono::Utc::now", reason = "Time should be retrieved using DenoLibSys" },
 ]

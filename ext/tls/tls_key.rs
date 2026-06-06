@@ -25,12 +25,12 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::future::Either;
 use deno_core::unsync::spawn;
 use rustls::ServerConfig;
+use rustls::pki_types::CertificateDer;
+use rustls::pki_types::PrivateKeyDer;
 use rustls_tokio_stream::ServerConfigProvider;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use webpki::types::CertificateDer;
-use webpki::types::PrivateKeyDer;
 
 use crate::get_ssl_key_log;
 
@@ -240,7 +240,7 @@ impl TlsKeyResolver {
 }
 
 pub struct TlsKeyLookup {
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "complex type is necessary here")]
   resolution_rx: RefCell<
     mpsc::UnboundedReceiver<(
       String,
@@ -286,6 +286,8 @@ impl TlsKeyLookup {
 
 #[cfg(test)]
 pub mod tests {
+  #![allow(clippy::disallowed_methods, reason = "tests")]
+
   use deno_core::unsync::spawn;
 
   use super::*;

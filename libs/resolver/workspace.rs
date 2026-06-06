@@ -56,7 +56,7 @@ use crate::deno_json::CompilerOptionsModuleResolution;
 use crate::deno_json::CompilerOptionsPaths;
 use crate::deno_json::CompilerOptionsResolverRc;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 
 #[derive(Debug)]
@@ -687,7 +687,7 @@ pub fn sloppy_imports_resolve<TSys: FsMetadata>(
   .resolve(specifier, &Url::parse("unknown:").unwrap(), resolution_kind)
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type SloppyImportsResolverRc<T> =
   deno_maybe_sync::MaybeArc<SloppyImportsResolver<T>>;
 
@@ -830,7 +830,7 @@ impl fmt::Display for WorkspaceResolverDiagnostic<'_> {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type CompilerOptionsResolverCellRc =
   deno_maybe_sync::MaybeArc<RwLock<CompilerOptionsResolverRc>>;
 
@@ -845,6 +845,7 @@ pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   fs_cache_options: FsCacheOptions,
   compiler_options_resolver: CompilerOptionsResolverCellRc,
   sloppy_imports_resolver: SloppyImportsResolverRc<TSys>,
+  catalogs: IndexMap<String, IndexMap<String, String>>,
 }
 
 impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
@@ -979,13 +980,14 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       fs_cache_options: options.fs_cache_options,
       compiler_options_resolver,
       sloppy_imports_resolver,
+      catalogs: workspace.catalogs().clone(),
     })
   }
 
   /// Creates a new WorkspaceResolver from the specified import map and package.jsons.
   ///
   /// Generally, create this from a Workspace instead.
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
   pub fn new_raw(
     workspace_root: UrlRc,
     maybe_import_map: Option<ImportMap>,
@@ -995,6 +997,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     sloppy_imports_options: SloppyImportsOptions,
     fs_cache_options: FsCacheOptions,
     sys: TSys,
+    catalogs: IndexMap<String, IndexMap<String, String>>,
   ) -> Self {
     let maybe_import_map =
       maybe_import_map.map(|import_map| ImportMapWithDiagnostics {
@@ -1033,6 +1036,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       fs_cache_options,
       compiler_options_resolver,
       sloppy_imports_resolver,
+      catalogs,
     }
   }
 
@@ -1077,6 +1081,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_resolution: self.pkg_json_dep_resolution(),
       sloppy_imports_options: self.sloppy_imports_options,
       fs_cache_options: self.fs_cache_options,
+      catalogs: self.catalogs.clone(),
     }
   }
 
@@ -1139,6 +1144,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       serializable_workspace_resolver.sloppy_imports_options,
       serializable_workspace_resolver.fs_cache_options,
       sys,
+      serializable_workspace_resolver.catalogs,
     ))
   }
 
@@ -1294,8 +1300,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         );
       }
 
-      // 2.1. Try to resolve the bare specifier to a workspace member
-      for member in &self.jsr_pkgs {
+      // 2.1. Try to resolve the bare specifier to a workspace member.
+      // Linked packages are not resolved here — using a linked package
+      // requires a `jsr:` specifier or an import map entry, otherwise the
+      // bare specifier would resolve even when no JSR or import map
+      // declaration exists.
+      for member in self.jsr_pkgs.iter().filter(|p| !p.is_link) {
         if let Some(path) = specifier.strip_prefix(&member.name)
           && (path.is_empty() || path.starts_with('/'))
         {
@@ -1549,6 +1559,24 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     }
   }
 
+  pub fn catalogs(&self) -> &IndexMap<String, IndexMap<String, String>> {
+    &self.catalogs
+  }
+
+  pub fn resolve_catalog_dep(
+    &self,
+    name: &str,
+    catalog_name: &str,
+  ) -> Option<PackageReq> {
+    let catalog = self.catalogs.get(catalog_name)?;
+    let version_req_str = catalog.get(name)?;
+    let version_req = VersionReq::parse_from_npm(version_req_str).ok()?;
+    Some(PackageReq {
+      name: name.into(),
+      version_req,
+    })
+  }
+
   pub fn pkg_json_dep_resolution(&self) -> PackageJsonDepResolution {
     self.pkg_json_dep_resolution
   }
@@ -1593,6 +1621,8 @@ pub struct SerializableWorkspaceResolver<'a> {
   pub pkg_json_resolution: PackageJsonDepResolution,
   pub sloppy_imports_options: SloppyImportsOptions,
   pub fs_cache_options: FsCacheOptions,
+  #[serde(default)]
+  pub catalogs: IndexMap<String, IndexMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1617,7 +1647,7 @@ impl BaseUrl<'_> {
   }
 }
 
-#[allow(clippy::disallowed_types)] // ok, because definition
+#[allow(clippy::disallowed_types, reason = "wraps Arc directly as the Rc type")]
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceNpmLinkPackagesRc(
   pub std::sync::Arc<HashMap<PackageName, Vec<NpmPackageVersionInfo>>>,
@@ -1627,7 +1657,17 @@ impl WorkspaceNpmLinkPackagesRc {
   pub fn from_workspace(workspace: &Workspace) -> Self {
     let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
       HashMap::new();
-    for pkg_json in workspace.link_pkg_jsons() {
+    for folder in workspace.link_folders().values() {
+      // A linked folder that also has a deno.json is a Deno/JSR link, not an
+      // npm link. Some packages ship a package.json only for other runtimes
+      // (e.g. Bun), so counting it as an npm link would wrongly require a
+      // node_modules directory.
+      if folder.deno_json.is_some() {
+        continue;
+      }
+      let Some(pkg_json) = folder.pkg_json.as_ref() else {
+        continue;
+      };
       let Some(name) = pkg_json.name.as_ref() else {
         log::warn!(
           "{} Link package ignored because package.json was missing name field.\n    at {}",
@@ -1701,6 +1741,7 @@ fn pkg_json_to_version_info(
     .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
   Ok(NpmPackageVersionInfo {
     version,
+    exports: pkg_json.exports.clone().map(serde_json::Value::Object),
     dist: None,
     bin: pkg_json
       .bin
@@ -1740,6 +1781,7 @@ fn pkg_json_to_version_info(
           .collect()
       })
       .unwrap_or_default(),
+    has_install_script: None,
     // not worth increasing memory for showing a deprecated
     // message for linked packages
     deprecated: None,
@@ -1847,7 +1889,7 @@ mod test {
     }
   }
 
-  #[allow(clippy::disallowed_types)]
+  #[allow(clippy::disallowed_types, reason = "ok in tests")]
   fn setup_node_resolver<TSys: NpmResolverSys>(
     sys: &TSys,
   ) -> crate::deno_json::TsConfigNodeResolver<TSys, TestNpmPackageFolderResolver>
@@ -2855,19 +2897,16 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    match resolver
+    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
+    // or an import map entry is required.
+    let err = resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap()
-    {
-      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
-      }
-      _ => unreachable!(),
-    }
+      .unwrap_err();
+    assert!(err.is_unmapped_bare_specifier());
     // matching version
     match resolver
       .resolve(
@@ -2932,19 +2971,16 @@ mod test {
     let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
     let resolver = create_resolver(&workspace_dir);
     let root = url_from_directory_path(&root_dir()).unwrap();
-    match resolver
+    // Linked packages do not resolve via bare specifier — a `jsr:` specifier
+    // or an import map entry is required.
+    let err = resolver
       .resolve(
         "@scope/link",
         &root.join("main.ts").unwrap(),
         ResolutionKind::Execution,
       )
-      .unwrap()
-    {
-      MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
-        assert_eq!(specifier, root.join("../link/mod.ts").unwrap());
-      }
-      _ => unreachable!(),
-    }
+      .unwrap_err();
+    assert!(err.is_unmapped_bare_specifier());
     // always resolves, no matter what version
     match resolver
       .resolve(
@@ -3232,7 +3268,9 @@ mod test {
       .unwrap(),
       NpmPackageVersionInfo {
         version: Version::parse_from_npm("1.0.0").unwrap(),
+        exports: None,
         dist: None,
+        has_install_script: None,
         bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(
           "./bin.js".to_string()
         )),

@@ -23,7 +23,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "ported code from std/tokio with existing safety context"
+)]
 #![cfg(windows)]
 
 #[cfg(test)]
@@ -283,6 +286,7 @@ pub struct Command {
   extra_handles: Vec<Option<HANDLE>>,
   kill_on_drop: bool,
   verbatim_arguments: bool,
+  windows_hide: bool,
 }
 
 impl Command {
@@ -299,11 +303,17 @@ impl Command {
       extra_handles: vec![],
       kill_on_drop: false,
       verbatim_arguments: false,
+      windows_hide: false,
     }
   }
 
   pub fn verbatim_arguments(&mut self, verbatim: bool) -> &mut Self {
     self.verbatim_arguments = verbatim;
+    self
+  }
+
+  pub fn windows_hide(&mut self, hide: bool) -> &mut Self {
+    self.windows_hide = hide;
     self
   }
 
@@ -405,6 +415,9 @@ impl Command {
     }
     if self.verbatim_arguments {
       flags |= uv_process_flags::WindowsVerbatimArguments;
+    }
+    if self.windows_hide {
+      flags |= uv_process_flags::WindowsHide;
     }
 
     let (stdin, child_stdin) = match self.stdin {

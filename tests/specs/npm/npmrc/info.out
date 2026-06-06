@@ -75,13 +75,15 @@ Initialize @denotest2/basic@1.0.0
       "name": "@denotest/basic",
       "version": "1.0.0",
       "dependencies": [],
-      "registryUrl": "http://localhost:4261/"
+      "registryUrl": "http://localhost:4261/",
+      "localPath": "[WILDLINE]"
     },
     "@denotest2/basic@1.0.0": {
       "name": "@denotest2/basic",
       "version": "1.0.0",
       "dependencies": [],
-      "registryUrl": "http://localhost:4262/"
+      "registryUrl": "http://localhost:4262/",
+      "localPath": "[WILDLINE]"
     }
   }
 }

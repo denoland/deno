@@ -43,6 +43,18 @@ pub enum CjsAnalysis<'a> {
 pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
+  /// Re-exports that pin down a specific member of the inner module
+  /// (the shape `module.exports = require(X).MEMBER`). For these, only
+  /// names statically attached to that member in the inner module are
+  /// surfaced as exports of the wrapper.
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  pub member_reexports: Vec<CjsMemberReExport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CjsMemberReExport {
+  pub specifier: String,
+  pub member: String,
 }
 
 /// What parts of an ES module should be analyzed.
@@ -68,6 +80,21 @@ pub trait CjsCodeAnalyzer {
     maybe_source: Option<Cow<'a, str>>,
     esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<CjsAnalysis<'a>, JsErrorBox>;
+
+  /// For `module.exports = require(X).MEMBER` shapes, return the names
+  /// statically attached as properties of the value bound to
+  /// `exports.MEMBER` in the module at `specifier`. Used by callers to
+  /// narrow the wrapper's named exports to names the inner module
+  /// actually exposes on that specific member, rather than the entire
+  /// inner module. Returns `None` if the member's value can't be
+  /// statically resolved to such an identifier, in which case the
+  /// caller should advertise no names under the member shape.
+  async fn analyze_cjs_member_props<'a>(
+    &self,
+    specifier: &Url,
+    maybe_source: Option<Cow<'a, str>>,
+    member: &str,
+  ) -> Result<Option<Vec<String>>, JsErrorBox>;
 }
 
 pub enum ResolvedCjsAnalysis<'a> {
@@ -78,7 +105,7 @@ pub enum ResolvedCjsAnalysis<'a> {
 #[sys_traits::auto_impl]
 pub trait CjsModuleExportAnalyzerSys: NodeResolverSys {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type CjsModuleExportAnalyzerRc<
   TCjsCodeAnalyzer,
   TInNpmPackageChecker,
@@ -192,10 +219,122 @@ impl<
       }
     }
 
+    if !analysis.member_reexports.is_empty() {
+      let mut errors = Vec::new();
+      let fallback_reexports = self
+        .resolve_member_reexports(
+          entry_specifier,
+          &analysis.member_reexports,
+          &mut all_exports,
+          &mut errors,
+        )
+        .await;
+      // Members whose attached names couldn't be determined statically
+      // fall back to a wholesale re-export of the inner module.
+      if !fallback_reexports.is_empty() {
+        self
+          .analyze_reexports(
+            entry_specifier,
+            fallback_reexports,
+            &mut all_exports,
+            &mut errors,
+          )
+          .await;
+      }
+      if !errors.is_empty() {
+        errors.sort_by_cached_key(|e| e.to_string());
+        return Err(TranslateCjsToEsmError::ExportAnalysis(errors.remove(0)));
+      }
+    }
+
     Ok(ResolvedCjsAnalysis::Cjs(all_exports))
   }
 
-  #[allow(clippy::needless_lifetimes)]
+  /// For each `module.exports = require(X).MEMBER` shape recorded on
+  /// `referrer`, resolve `X`, ask the analyzer for the property
+  /// names attached to the value of `exports.MEMBER` inside `X`, and
+  /// surface those (and only those) as names on the wrapper. This is
+  /// strictly narrower than treating `X` as a wildcard re-export: only
+  /// names the inner module statically attaches to the specific member
+  /// are advertised, so unrelated names from `X` don't leak through.
+  ///
+  /// When the attached names can't be determined statically (e.g.
+  /// graphql-tag@2's UMD wraps its `exports.gql = …` / `gql.* = …`
+  /// assignments inside the factory IIFE and builds the value through a
+  /// namespace alias), the inner specifier is returned so the caller can
+  /// fall back to a wholesale re-export, matching Node's behavior for
+  /// `module.exports = require(X).Y`.
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes improve clarity"
+  )]
+  async fn resolve_member_reexports<'a>(
+    &'a self,
+    referrer: &Url,
+    member_reexports: &[CjsMemberReExport],
+    all_exports: &mut BTreeSet<String>,
+    errors: &mut Vec<JsErrorBox>,
+  ) -> Vec<String> {
+    let mut fallback_reexports = Vec::new();
+    for entry in member_reexports {
+      let result = self
+        .resolve(
+          &entry.specifier,
+          referrer,
+          &[
+            Cow::Borrowed("deno"),
+            Cow::Borrowed("node"),
+            Cow::Borrowed("require"),
+            Cow::Borrowed("module-sync"),
+            Cow::Borrowed("default"),
+          ],
+          NodeResolutionKind::Execution,
+        )
+        .and_then(|value| {
+          value
+            .map(|url_or_path| url_or_path.into_url())
+            .transpose()
+            .map_err(JsErrorBox::from_err)
+        });
+      let inner_specifier = match result {
+        Ok(Some(spec)) => spec,
+        Ok(None) => continue,
+        Err(err) => {
+          errors.push(err);
+          continue;
+        }
+      };
+      let props = match self
+        .cjs_code_analyzer
+        .analyze_cjs_member_props(&inner_specifier, None, &entry.member)
+        .await
+      {
+        Ok(Some(props)) => props,
+        // Couldn't statically narrow to the member's attached names;
+        // fall back to re-exporting the inner module wholesale.
+        Ok(None) => {
+          fallback_reexports.push(entry.specifier.clone());
+          continue;
+        }
+        Err(err) => {
+          errors.push(err);
+          continue;
+        }
+      };
+      for prop in props {
+        if prop == "default" {
+          continue;
+        }
+        all_exports.insert(prop);
+      }
+    }
+    fallback_reexports
+  }
+
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes improve clarity"
+  )]
   async fn analyze_reexports<'a>(
     &'a self,
     entry_specifier: &url::Url,
@@ -234,6 +373,7 @@ impl<
                 Cow::Borrowed("deno"),
                 Cow::Borrowed("node"),
                 Cow::Borrowed("require"),
+                Cow::Borrowed("module-sync"),
                 Cow::Borrowed("default"),
               ],
               NodeResolutionKind::Execution,
@@ -313,6 +453,27 @@ impl<
               &mut analyze_futures,
               errors,
             );
+          }
+
+          if !analysis.member_reexports.is_empty() {
+            let fallback_reexports = self
+              .resolve_member_reexports(
+                &reexport_specifier,
+                &analysis.member_reexports,
+                all_exports,
+                errors,
+              )
+              .await;
+            // Members that couldn't be narrowed statically fall back to a
+            // wholesale re-export, fed back through the same loop.
+            if !fallback_reexports.is_empty() {
+              handle_reexports(
+                reexport_specifier.clone(),
+                fallback_reexports,
+                &mut analyze_futures,
+                errors,
+              );
+            }
           }
 
           all_exports.extend(
@@ -422,7 +583,9 @@ impl<
       } else if let Some(main) =
         self.node_resolver.legacy_fallback_resolve(&package_json)
       {
-        return Ok(Some(UrlOrPath::Path(module_dir.join(main).clean())));
+        return self
+          .file_extension_probe(module_dir.join(main), referrer_path)
+          .map(|p| Some(UrlOrPath::Path(p)));
       } else {
         return Ok(Some(UrlOrPath::Path(module_dir.join("index.js").clean())));
       }
@@ -519,7 +682,7 @@ pub struct CjsAnalysisCouldNotLoadError {
 #[sys_traits::auto_impl]
 pub trait NodeCodeTranslatorSys: CjsModuleExportAnalyzerSys {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NodeCodeTranslatorRc<
   TCjsCodeAnalyzer,
   TInNpmPackageChecker,

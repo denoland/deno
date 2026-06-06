@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "default_emits_stub": {
+      "steps": [{
+        "args": "pack",
+        "output": "[WILDCARD]Could not generate types[WILDCARD]✓[WILDCARD]test-slow-types-1.0.0.tgz[WILDCARD]"
+      }]
+    },
+    "allow_slow_types_skips_fast_check": {
+      "steps": [{
+        "args": "pack --allow-slow-types",
+        "output": "[WILDCARD]✓[WILDCARD]test-slow-types-1.0.0.tgz[WILDCARD]"
+      }]
+    }
+  }
+}

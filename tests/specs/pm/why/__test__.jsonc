@@ -1,0 +1,21 @@
+{
+  "tests": {
+    "direct_dep": {
+      "args": "why express",
+      "output": "direct.out"
+    },
+    "transitive_dep": {
+      "args": "why ms",
+      "output": "transitive.out"
+    },
+    "version_filter": {
+      "args": "why ms@2.0.0",
+      "output": "version_filter.out"
+    },
+    "not_found": {
+      "args": "why nonexistent",
+      "output": "not_found.out",
+      "exitCode": 1
+    }
+  }
+}

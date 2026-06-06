@@ -11,13 +11,40 @@ use crate::factory::CliFactory;
 use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_container::CollectSpecifiersOptions;
 use crate::util::extract;
+use crate::util::file_watcher;
 
 pub async fn check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  if let Some(watch_flags) = &check_flags.watch {
+    let no_clear_screen = watch_flags.no_clear_screen;
+    file_watcher::watch_func(
+      flags,
+      file_watcher::PrintConfig::new("Check", !no_clear_screen),
+      move |flags, watcher_communicator, changed_paths| {
+        let check_flags = check_flags.clone();
+        watcher_communicator.show_path_changed(changed_paths);
+        Ok(async move {
+          let factory = CliFactory::from_flags_for_watcher(
+            flags,
+            watcher_communicator.clone(),
+          );
+          check_with_factory(&factory, check_flags).await
+        })
+      },
+    )
+    .await
+  } else {
+    let factory = CliFactory::from_flags(flags);
+    check_with_factory(&factory, check_flags).await
+  }
+}
 
+async fn check_with_factory(
+  factory: &CliFactory,
+  check_flags: CheckFlags,
+) -> Result<(), AnyError> {
   let main_graph_container = factory.main_module_graph_container().await?;
 
   let specifiers = main_graph_container.collect_specifiers(

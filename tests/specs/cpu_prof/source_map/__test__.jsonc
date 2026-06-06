@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "source_map": {
+      "steps": [
+        {
+          "args": "run --cpu-prof-dir=. main.ts",
+          "output": "Computed fibonacci(30): [WILDCARD]\n"
+        },
+        {
+          "args": "run --allow-read verify.js",
+          "output": "Source maps applied correctly: [WILDCARD] nodes reference main.ts with valid line numbers\n"
+        }
+      ]
+    }
+  }
+}

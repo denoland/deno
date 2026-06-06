@@ -16,7 +16,7 @@ use crate::ResolutionMode;
 use crate::path::UrlOrPath;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, reason = "matches Node.js error code naming")]
 pub enum NodeJsErrorCode {
   ERR_INVALID_MODULE_SPECIFIER,
   ERR_INVALID_PACKAGE_CONFIG,
@@ -75,7 +75,7 @@ pub trait NodeJsErrorCoded {
   self.code(),
   request,
   reason,
-  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
+  maybe_imported_from_msg(maybe_referrer)
 )]
 #[class(type)]
 #[property("code" = self.code())]
@@ -227,6 +227,9 @@ impl NodeJsErrorCoded for PackageSubpathFromDenoModuleResolveError {
       PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
         e.code()
       }
+      PackageSubpathFromDenoModuleResolveErrorKind::BrowserMapDisabled(_) => {
+        NodeJsErrorCode::ERR_MODULE_NOT_FOUND
+      }
     }
   }
 }
@@ -240,6 +243,9 @@ impl PackageSubpathFromDenoModuleResolveError {
       PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
         e.as_types_not_found()
       }
+      PackageSubpathFromDenoModuleResolveErrorKind::BrowserMapDisabled(_) => {
+        None
+      }
     }
   }
 
@@ -250,6 +256,9 @@ impl PackageSubpathFromDenoModuleResolveError {
       }
       PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
         e.maybe_specifier()
+      }
+      PackageSubpathFromDenoModuleResolveErrorKind::BrowserMapDisabled(_) => {
+        None
       }
     }
   }
@@ -264,6 +273,9 @@ impl PackageSubpathFromDenoModuleResolveError {
       PackageSubpathFromDenoModuleResolveErrorKind::FinalizeResolution(e) => {
         NodeResolveErrorKind::FinalizeResolution(e)
       }
+      PackageSubpathFromDenoModuleResolveErrorKind::BrowserMapDisabled(e) => {
+        NodeResolveErrorKind::BrowserMapDisabled(e)
+      }
     }
     .into_box()
   }
@@ -277,6 +289,9 @@ pub enum PackageSubpathFromDenoModuleResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FinalizeResolution(#[from] FinalizeResolutionError),
+  #[class(inherit)]
+  #[error(transparent)]
+  BrowserMapDisabled(#[from] BrowserMapDisabledError),
 }
 
 #[derive(Debug, Boxed, JsError)]
@@ -503,7 +518,7 @@ pub enum PackageExportsResolveErrorKind {
     "[{}] Could not find types for '{}'{}",
     self.code(),
     self.0.code_specifier,
-    self.0.maybe_referrer.as_ref().map(|r| format!(" imported from '{}'", r)).unwrap_or_default(),
+    maybe_imported_from_msg(&self.0.maybe_referrer),
   )]
 #[class(generic)]
 #[property("code" = self.code())]
@@ -539,7 +554,7 @@ impl NodeJsErrorCoded for PackageJsonLoadError {
   self.code(),
   name,
   package_json_path.as_ref().map(|p| format!(" in package {}", p.display())).unwrap_or_default(),
-  maybe_referrer.as_ref().map(|r| format!(" imported from '{}'", r)).unwrap_or_default(),
+  maybe_imported_from_msg(maybe_referrer),
 )]
 #[property("code" = self.code())]
 pub struct PackageImportNotDefinedError {
@@ -691,6 +706,17 @@ pub struct DataUrlReferrerError {
   pub source: url::ParseError,
 }
 
+/// A module was disabled by the importer's `package.json` `browser` map
+/// (`{"name": false}`). The bundler turns this into an empty stub; other
+/// callers treat it as a resolution failure.
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error("Module `{specifier}` is disabled by the `browser` field in `{}`.", pkg_json_path.display())]
+pub struct BrowserMapDisabledError {
+  pub specifier: String,
+  pub pkg_json_path: PathBuf,
+}
+
 #[derive(Debug, Boxed, JsError)]
 pub struct NodeResolveError(pub Box<NodeResolveErrorKind>);
 
@@ -714,7 +740,8 @@ impl NodeResolveError {
       NodeResolveErrorKind::FinalizeResolution(err) => err.maybe_specifier(),
       NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
       | NodeResolveErrorKind::DataUrlReferrer(_)
-      | NodeResolveErrorKind::RelativeJoin(_) => None,
+      | NodeResolveErrorKind::RelativeJoin(_)
+      | NodeResolveErrorKind::BrowserMapDisabled(_) => None,
     }
   }
 }
@@ -751,6 +778,9 @@ pub enum NodeResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FinalizeResolution(#[from] FinalizeResolutionError),
+  #[class(inherit)]
+  #[error(transparent)]
+  BrowserMapDisabled(#[from] BrowserMapDisabledError),
 }
 
 impl NodeResolveErrorKind {
@@ -769,6 +799,7 @@ impl NodeResolveErrorKind {
       | NodeResolveErrorKind::RelativeJoin(_)
       | NodeResolveErrorKind::PathToUrl(_)
       | NodeResolveErrorKind::UnknownBuiltInNodeModule(_)
+      | NodeResolveErrorKind::BrowserMapDisabled(_)
       | NodeResolveErrorKind::UrlToFilePath(_) => None,
     }
   }
@@ -785,6 +816,7 @@ impl NodeResolveErrorKind {
       NodeResolveErrorKind::TypesNotFound(e) => Some(e.code()),
       NodeResolveErrorKind::UnknownBuiltInNodeModule(e) => Some(e.code()),
       NodeResolveErrorKind::FinalizeResolution(e) => Some(e.code()),
+      NodeResolveErrorKind::BrowserMapDisabled(_) => None,
     }
   }
 }
@@ -870,7 +902,7 @@ impl NodeJsErrorCoded for FinalizeResolutionErrorKind {
   "[{}] Cannot find module '{}'{}{}",
   self.code(),
   specifier,
-  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
+  maybe_imported_from_msg(maybe_referrer),
   suggested_ext.as_ref().map(|m| format!("\nDid you mean to import with the \".{}\" extension?", m)).unwrap_or_default()
 )]
 #[property("code" = self.code())]
@@ -892,7 +924,7 @@ impl NodeJsErrorCoded for ModuleNotFoundError {
   "[{}] Directory import '{}' is not supported resolving ES modules{}{}",
   self.code(),
   dir_url,
-  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
+  maybe_imported_from_msg(maybe_referrer),
   suggestion.as_ref().map(|suggestion| format!("\nDid you mean to import '{suggestion}'?")).unwrap_or_default(),
 )]
 #[property("code" = self.code())]
@@ -951,7 +983,7 @@ impl std::fmt::Display for InvalidPackageTargetError {
     };
 
     if let Some(referrer) = &self.maybe_referrer {
-      write!(f, " imported from '{}'", referrer)?;
+      write_imported_from(f, referrer)?;
     }
     if rel_error {
       write!(f, "; target must start with \"./\"")?;
@@ -1012,7 +1044,7 @@ impl std::fmt::Display for PackagePathNotExportedError {
     };
 
     if let Some(referrer) = &self.maybe_referrer {
-      write!(f, " imported from '{}'", referrer)?;
+      write_imported_from(f, referrer)?;
     }
     Ok(())
   }
@@ -1086,6 +1118,22 @@ impl NodeJsErrorCoded for UnknownBuiltInNodeModuleError {
   fn code(&self) -> NodeJsErrorCode {
     NodeJsErrorCode::ERR_UNKNOWN_BUILTIN_MODULE
   }
+}
+
+fn maybe_imported_from_msg(
+  maybe_referrer: &Option<impl std::fmt::Display>,
+) -> String {
+  match maybe_referrer {
+    Some(referrer) => format!(" imported from '{referrer}'"),
+    None => String::new(),
+  }
+}
+
+fn write_imported_from(
+  f: &mut std::fmt::Formatter<'_>,
+  referrer: &impl std::fmt::Display,
+) -> std::fmt::Result {
+  write!(f, " imported from '{referrer}'")
 }
 
 #[cfg(test)]

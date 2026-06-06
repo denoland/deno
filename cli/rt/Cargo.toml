@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.7.1"
+version = "2.8.2"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -25,21 +25,23 @@ path = "integration_tests_runner.rs"
 harness = false
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime.workspace = true
+deno_core.workspace = true
 
 [dependencies]
+deno_ast = { workspace = true, features = ["cjs"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_core.workspace = true
 deno_error.workspace = true
 deno_lib.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding"] }
 deno_npm.workspace = true
+deno_npmrc.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
-deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_runtime.workspace = true
 deno_semver.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
@@ -52,7 +54,6 @@ import_map.workspace = true
 indexmap.workspace = true
 log = { workspace = true, features = ["serde"] }
 rustls.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
 thiserror.workspace = true

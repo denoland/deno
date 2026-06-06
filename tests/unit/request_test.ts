@@ -1,5 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assertEquals, assertStringIncludes } from "./test_util.ts";
+import {
+  assertEquals,
+  assertStringIncludes,
+  assertThrows,
+} from "./test_util.ts";
 
 Deno.test(async function fromInit() {
   const req = new Request("http://foo/", {
@@ -74,4 +78,105 @@ Deno.test(function requestConstructorTakeURLObjectAsParameter() {
     new Request(new URL("http://foo/")).url,
     "http://foo/",
   );
+});
+
+Deno.test(function requestDefaultProperties() {
+  const req = new Request("http://foo/");
+  assertEquals(req.cache, "default");
+  assertEquals(req.credentials, "same-origin");
+  assertEquals(req.integrity, "");
+  assertEquals(req.keepalive, false);
+  assertEquals(req.mode, "cors");
+  assertEquals(req.referrer, "about:client");
+  assertEquals(req.referrerPolicy, "");
+});
+
+Deno.test(function requestInitProperties() {
+  const req = new Request("http://foo/", {
+    cache: "no-store",
+    credentials: "include",
+    integrity: "sha256-abc",
+    keepalive: true,
+    mode: "no-cors",
+    referrer: "http://example.com/",
+    referrerPolicy: "no-referrer",
+  });
+  assertEquals(req.cache, "no-store");
+  assertEquals(req.credentials, "include");
+  assertEquals(req.integrity, "sha256-abc");
+  assertEquals(req.keepalive, true);
+  assertEquals(req.mode, "no-cors");
+  assertEquals(req.referrer, "http://example.com/");
+  assertEquals(req.referrerPolicy, "no-referrer");
+});
+
+Deno.test(function requestReferrerEmptyString() {
+  const req = new Request("http://foo/", { referrer: "" });
+  assertEquals(req.referrer, "");
+});
+
+Deno.test(function requestReferrerAboutClient() {
+  const req = new Request("http://foo/", { referrer: "about:client" });
+  assertEquals(req.referrer, "about:client");
+});
+
+Deno.test(function requestModeNavigateThrows() {
+  assertThrows(
+    () => new Request("http://foo/", { mode: "navigate" }),
+    TypeError,
+  );
+});
+
+Deno.test(function requestOnlyIfCachedRequiresSameOrigin() {
+  assertThrows(
+    () => new Request("http://foo/", { cache: "only-if-cached" }),
+    TypeError,
+  );
+  // Allowed when mode is same-origin.
+  const req = new Request("http://foo/", {
+    cache: "only-if-cached",
+    mode: "same-origin",
+  });
+  assertEquals(req.cache, "only-if-cached");
+  assertEquals(req.mode, "same-origin");
+});
+
+Deno.test(function requestPropertiesInheritedFromRequest() {
+  const original = new Request("http://foo/", {
+    cache: "no-store",
+    credentials: "include",
+    integrity: "sha256-abc",
+    keepalive: true,
+    mode: "no-cors",
+    referrer: "http://example.com/",
+    referrerPolicy: "origin",
+  });
+  const cloned = new Request(original);
+  assertEquals(cloned.cache, "no-store");
+  assertEquals(cloned.credentials, "include");
+  assertEquals(cloned.integrity, "sha256-abc");
+  assertEquals(cloned.keepalive, true);
+  assertEquals(cloned.mode, "no-cors");
+  assertEquals(cloned.referrer, "http://example.com/");
+  assertEquals(cloned.referrerPolicy, "origin");
+});
+
+Deno.test(function requestCloneCopiesAllProperties() {
+  const original = new Request("http://foo/", {
+    cache: "force-cache",
+    credentials: "omit",
+    integrity: "sha384-xyz",
+    keepalive: true,
+    mode: "cors",
+    referrer: "http://example.com/",
+    referrerPolicy: "strict-origin",
+  });
+  const cloned = original.clone();
+  assertEquals(cloned.cache, "force-cache");
+  assertEquals(cloned.credentials, "omit");
+  assertEquals(cloned.integrity, "sha384-xyz");
+  assertEquals(cloned.keepalive, true);
+  assertEquals(cloned.mode, "cors");
+  assertEquals(cloned.referrer, "http://example.com/");
+  assertEquals(cloned.referrerPolicy, "strict-origin");
 });

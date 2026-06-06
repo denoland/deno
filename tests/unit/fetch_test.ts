@@ -78,6 +78,31 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  async function fetchBadPortBlocked() {
+    // Ports on the Fetch Standard "bad ports" list must be rejected with a
+    // network error before any TCP connection is attempted.
+    // https://fetch.spec.whatwg.org/#bad-port
+    await assertRejects(
+      async () => {
+        await fetch("http://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
+    );
+    // The block applies to HTTP(S) schemes, so https bad ports are rejected
+    // before any TLS handshake too.
+    await assertRejects(
+      async () => {
+        await fetch("https://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function fetchDnsError() {
     await assertRejects(
       async () => {
@@ -1264,6 +1289,27 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/29347
+// `Deno.createHttpClient` used to scribble `caCerts` and `proxy.transport`
+// onto the caller's options object, so reusing a single options object
+// across multiple calls would either throw on the second call (the proxy
+// URL no longer matched the auto-rewritten `transport: "http"`) or leave
+// the user with surprising state.
+Deno.test(function createHttpClientDoesNotMutateOptions() {
+  const proxy = { url: "socks5h://127.0.0.1:1080" };
+  const options = { proxy };
+
+  const c1 = Deno.createHttpClient(options);
+  c1.close();
+  // The user's options must be unchanged...
+  assertEquals(options, { proxy: { url: "socks5h://127.0.0.1:1080" } });
+  assertEquals(proxy, { url: "socks5h://127.0.0.1:1080" });
+  // ...so a second call with the same options object still works.
+  const c2 = Deno.createHttpClient(options);
+  c2.close();
+  assertEquals(options, { proxy: { url: "socks5h://127.0.0.1:1080" } });
+});
+
 Deno.test(
   {
     permissions: { net: true },
@@ -2026,6 +2072,17 @@ Deno.test(
   },
 );
 
+Deno.test(function requestConstructorDoesNotNormalizePatchMethod() {
+  assertEquals(
+    new Request("https://example.com", { method: "patch" }).method,
+    "patch",
+  );
+  assertEquals(
+    new Request("https://example.com", { method: "PATCH" }).method,
+    "PATCH",
+  );
+});
+
 Deno.test(
   // TODO(bartlomieju): reenable this test
   // https://github.com/denoland/deno/issues/18350
@@ -2170,15 +2227,23 @@ Deno.test(
   { permissions: { net: true } },
   async function errorMessageIncludesUrlAndDetailsWithTcpInfo() {
     const listener = Deno.listen({ port: listenPort });
+    // Accept connections in a loop so retries also hit the same error.
+    // This is needed because connection reset is retryable.
     const server = (async () => {
-      const conn = await listener.accept();
-      listener.close();
-      // Immediately close the connection to simulate a connection error
-      conn.close();
+      while (true) {
+        let conn;
+        try {
+          conn = await listener.accept();
+        } catch {
+          break;
+        }
+        conn.close();
+      }
     })();
 
     const url = `http://localhost:${listenPort}`;
     const err = await assertRejects(() => fetch(url));
+    listener.close();
 
     assert(err instanceof TypeError, `${err}`);
     assertStringIncludes(
@@ -2198,8 +2263,8 @@ Deno.test(
 
 Deno.test("fetch async iterable", async () => {
   const iterable = (async function* () {
-    yield new Uint8Array([1, 2, 3, 4, 5]);
-    yield new Uint8Array([6, 7, 8, 9, 10]);
+  yield new Uint8Array([1, 2, 3, 4, 5]);
+  yield new Uint8Array([6, 7, 8, 9, 10]);
   })();
   const res = new Response(iterable);
   const actual = await res.bytes();
@@ -2209,8 +2274,8 @@ Deno.test("fetch async iterable", async () => {
 
 Deno.test("fetch iterable", async () => {
   const iterable = (function* () {
-    yield new Uint8Array([1, 2, 3, 4, 5]);
-    yield new Uint8Array([6, 7, 8, 9, 10]);
+  yield new Uint8Array([1, 2, 3, 4, 5]);
+  yield new Uint8Array([6, 7, 8, 9, 10]);
   })();
   const res = new Response(iterable);
   const actual = await res.bytes();
@@ -2265,6 +2330,32 @@ Deno.test(
     const resp2 = await fetch("http://localhost/not-found", { client });
     assertEquals(resp2.status, 404);
     assertEquals(await resp2.text(), "Not found");
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/29281
+// A server advertising `Content-Encoding: gzip` (or br) while returning an
+// empty body should not fail decompression with "unexpected end of file".
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchEmptyBodyWithContentEncoding() {
+    for (const encoding of ["gzip", "br"]) {
+      const ac = new AbortController();
+      const server = Deno.serve(
+        { port: listenPort, signal: ac.signal, onListen() {} },
+        () =>
+          new Response(new Uint8Array(), {
+            headers: { "content-encoding": encoding },
+          }),
+      );
+      try {
+        const resp = await fetch(`http://localhost:${listenPort}/`);
+        assertEquals(await resp.text(), "");
+      } finally {
+        ac.abort();
+        await server.finished;
+      }
+    }
   },
 );
 

@@ -13,7 +13,7 @@ pub(crate) struct ExceptionState {
   // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   dispatched_exception: Cell<Option<v8::Global<v8::Value>>>,
   dispatched_exception_is_promise: Cell<bool>,
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "complex type is necessary here")]
   pub(crate) pending_promise_rejections: RefCell<
     VecDeque<(
       v8::Global<v8::Promise>,

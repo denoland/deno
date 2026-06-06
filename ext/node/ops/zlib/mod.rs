@@ -59,7 +59,7 @@ const GZIP_HEADER_ID1: u8 = 0x1f;
 const GZIP_HEADER_ID2: u8 = 0x8b;
 
 impl ZlibInner {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: improve this")]
   fn start_write(
     &mut self,
     input: &[u8],
