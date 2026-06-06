@@ -3,6 +3,7 @@
 #![allow(clippy::disallowed_methods, reason = "file system implementation")]
 
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fs;
 use std::io;
 use std::io::ErrorKind;
@@ -11,6 +12,8 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Condvar;
+use std::sync::Mutex;
 
 use deno_core::unsync::spawn_blocking;
 use deno_io::StdFileResourceInner;
@@ -732,7 +735,86 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
 }
 
 fn cp(from: &Path, to: &Path) -> FsResult<()> {
-  fn cp_(source_meta: fs::Metadata, from: &Path, to: &Path) -> FsResult<()> {
+  struct CopyTask {
+    from: PathBuf,
+    to: PathBuf,
+  }
+
+  struct CopyQueue {
+    inner: Mutex<CopyQueueInner>,
+    cvar: Condvar,
+  }
+
+  struct CopyQueueInner {
+    tasks: VecDeque<CopyTask>,
+    active_tasks: usize,
+    error: Option<io::Error>,
+  }
+
+  impl CopyQueue {
+    fn new(tasks: Vec<CopyTask>) -> Self {
+      Self {
+        inner: Mutex::new(CopyQueueInner {
+          active_tasks: tasks.len(),
+          tasks: VecDeque::from(tasks),
+          error: None,
+        }),
+        cvar: Condvar::new(),
+      }
+    }
+
+    fn push(&self, task: CopyTask) {
+      let mut inner = self.inner.lock().unwrap();
+      if inner.error.is_some() {
+        return;
+      }
+      inner.tasks.push_back(task);
+      inner.active_tasks += 1;
+      self.cvar.notify_one();
+    }
+
+    fn pop(&self) -> Option<CopyTask> {
+      let mut inner = self.inner.lock().unwrap();
+      loop {
+        if inner.error.is_some() || inner.active_tasks == 0 {
+          return None;
+        }
+        if let Some(task) = inner.tasks.pop_front() {
+          return Some(task);
+        }
+        inner = self.cvar.wait(inner).unwrap();
+      }
+    }
+
+    fn finish(&self, result: io::Result<()>) {
+      let mut inner = self.inner.lock().unwrap();
+      if let Err(err) = result
+        && inner.error.is_none()
+      {
+        inner.error = Some(err);
+      }
+      inner.active_tasks -= 1;
+      if inner.error.is_some() || inner.active_tasks == 0 {
+        self.cvar.notify_all();
+      }
+    }
+
+    fn into_result(self) -> io::Result<()> {
+      let inner = self.inner.into_inner().unwrap();
+      if let Some(err) = inner.error {
+        Err(err)
+      } else {
+        Ok(())
+      }
+    }
+  }
+
+  fn cp_(
+    source_meta: fs::Metadata,
+    from: &Path,
+    to: &Path,
+    queue: Option<&CopyQueue>,
+  ) -> FsResult<()> {
     let ty = source_meta.file_type();
     if ty.is_dir() {
       #[allow(unused_mut, reason = "mutable on unix")]
@@ -757,55 +839,24 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         .collect::<Result<_, _>>()?;
 
       entries.shrink_to_fit();
-      let entry_count = entries.len();
-      let parallelism = std::thread::available_parallelism()
-        .map(|parallelism| parallelism.get())
-        .unwrap_or(1)
-        .min(entry_count);
-      let entries = std::sync::Mutex::new(entries.into_iter());
-
-      std::thread::scope(|scope| {
-        let mut handles = Vec::with_capacity(parallelism);
-        for _ in 0..parallelism {
-          handles.push(scope.spawn(|| -> io::Result<()> {
-            loop {
-              let Some(file_name) = entries.lock().unwrap().next() else {
-                return Ok(());
-              };
-              let from_path = from.join(&file_name);
-              let to_path = to.join(&file_name);
-              let meta = fs::symlink_metadata(&from_path).map_err(|err| {
-                io::Error::new(
-                  err.kind(),
-                  format!(
-                    "failed to copy '{}' to '{}': {:?}",
-                    from_path.display(),
-                    to_path.display(),
-                    err,
-                  ),
-                )
-              })?;
-              cp_(meta, &from_path, &to_path).map_err(|err| {
-                io::Error::new(
-                  err.kind(),
-                  format!(
-                    "failed to copy '{}' to '{}': {:?}",
-                    from_path.display(),
-                    to_path.display(),
-                    err,
-                  ),
-                )
-              })?;
-            }
-          }));
+      if let Some(queue) = queue {
+        for file_name in entries {
+          queue.push(CopyTask {
+            from: from.join(&file_name),
+            to: to.join(&file_name),
+          });
         }
-
-        for handle in handles {
-          handle.join().unwrap()?;
-        }
-
-        Ok::<_, io::Error>(())
-      })?;
+      } else {
+        cp_entries_in_parallel(
+          entries
+            .into_iter()
+            .map(|file_name| CopyTask {
+              from: from.join(&file_name),
+              to: to.join(&file_name),
+            })
+            .collect(),
+        )?;
+      }
 
       return Ok(());
     } else if ty.is_symlink() {
@@ -838,6 +889,62 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     }
 
     copy_file(from, to)
+  }
+
+  fn cp_task(task: &CopyTask, queue: &CopyQueue) -> io::Result<()> {
+    let meta = fs::symlink_metadata(&task.from).map_err(|err| {
+      io::Error::new(
+        err.kind(),
+        format!(
+          "failed to copy '{}' to '{}': {:?}",
+          task.from.display(),
+          task.to.display(),
+          err,
+        ),
+      )
+    })?;
+    cp_(meta, &task.from, &task.to, Some(queue)).map_err(|err| {
+      io::Error::new(
+        err.kind(),
+        format!(
+          "failed to copy '{}' to '{}': {:?}",
+          task.from.display(),
+          task.to.display(),
+          err,
+        ),
+      )
+    })
+  }
+
+  fn cp_entries_in_parallel(tasks: Vec<CopyTask>) -> io::Result<()> {
+    let task_count = tasks.len();
+    if task_count == 0 {
+      return Ok(());
+    }
+
+    let parallelism = std::thread::available_parallelism()
+      .map(|parallelism| parallelism.get())
+      .unwrap_or(1)
+      .min(task_count);
+    let queue = CopyQueue::new(tasks);
+
+    std::thread::scope(|scope| {
+      let mut handles = Vec::with_capacity(parallelism);
+      for _ in 0..parallelism {
+        handles.push(scope.spawn(|| {
+          while let Some(task) = queue.pop() {
+            let result = cp_task(&task, &queue);
+            queue.finish(result);
+          }
+        }));
+      }
+
+      for handle in handles {
+        handle.join().unwrap();
+      }
+    });
+
+    queue.into_result()
   }
 
   #[cfg(target_os = "macos")]
@@ -913,6 +1020,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
             "the source path is not a valid file",
           )
         })?),
+        None,
       );
     }
   }
@@ -929,7 +1037,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     );
   }
 
-  cp_(source_meta, from, to)
+  cp_(source_meta, from, to, None)
 }
 
 #[cfg(not(windows))]
