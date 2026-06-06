@@ -5,7 +5,6 @@
 #![allow(clippy::disallowed_methods, reason = "CLI tool")]
 
 use std::env;
-use std::process::Stdio;
 use std::process::{self};
 
 use node_shim::TranslateOptions;
@@ -61,7 +60,8 @@ fn main() {
 
     if let Some(idx) = entrypoint_idx {
       let entrypoint = &deno_args[idx];
-      let resolved = resolve_entrypoint(entrypoint);
+      let resolved =
+        node_shim::resolve_entrypoint(std::path::Path::new("deno"), entrypoint);
       deno_args[idx] = resolved;
     }
   }
@@ -91,35 +91,4 @@ fn main() {
       .expect("Failed to execute deno");
     process::exit(status.code().unwrap_or(1));
   }
-}
-
-fn resolve_entrypoint(entrypoint: &str) -> String {
-  let cwd = env::current_dir().unwrap();
-  // If the entrypoint is either an absolute path, or a relative path that exists,
-  // return it as is.
-  if cwd.join(entrypoint).symlink_metadata().is_ok() {
-    return entrypoint.to_string();
-  }
-
-  let url = url::Url::from_file_path(cwd.join("$file.js")).unwrap();
-
-  // Otherwise, shell out to `deno` to try to resolve the entrypoint.
-  let output = process::Command::new("deno")
-    .arg("eval")
-    .arg("--no-config")
-    .arg(include_str!("./resolve.js"))
-    .arg(url.to_string())
-    .arg(format!("./{}", entrypoint))
-    .env_clear()
-    .stdout(Stdio::piped())
-    .stderr(Stdio::inherit())
-    .output()
-    .expect("Failed to execute deno resolve script");
-  if !output.status.success() {
-    std::process::exit(output.status.code().unwrap_or(1));
-  }
-  String::from_utf8(output.stdout)
-    .expect("Failed to parse deno resolve output")
-    .trim()
-    .to_string()
 }

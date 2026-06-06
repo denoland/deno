@@ -1901,6 +1901,7 @@ dependencies = [
  "rustls",
  "rustyline",
  "rustyline-derive",
+ "same-file",
  "serde",
  "serde_json",
  "serde_repr",
@@ -1929,6 +1930,7 @@ dependencies = [
  "walkdir",
  "wasm-encoder",
  "wasmparser",
+ "which 8.0.0",
  "windows-sys 0.59.0",
  "winres",
  "zip",
@@ -4216,6 +4218,12 @@ dependencies = [
  "log",
  "regex",
 ]
+
+[[package]]
+name = "env_home"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
 
 [[package]]
 name = "env_logger"
@@ -11161,6 +11169,11 @@ name = "which"
 version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fabb953106c3c8eea8306e4393700d7657561cb43122571b172bbfb7c7ba1d"
+dependencies = [
+ "env_home",
+ "rustix 1.1.4",
+ "winsafe",
+]
 
 [[package]]
 name = "whoami"

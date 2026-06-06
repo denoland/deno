@@ -3260,6 +3260,56 @@ pub fn is_deno_subcommand(arg: &str) -> bool {
   DENO_SUBCOMMANDS.contains(&arg)
 }
 
+/// Resolve a Node-style entrypoint to a specifier that Deno's `run` subcommand
+/// understands.
+///
+/// If the entrypoint is an absolute path, or a relative path that exists on
+/// disk, it is returned unchanged. Otherwise we shell out to `deno_exe` to
+/// resolve it using Node's module resolution semantics (via `resolve.js`).
+///
+/// `deno_exe` is the path or name used to invoke deno for the resolution
+/// fallback. The standalone shim passes `"deno"` (relying on PATH); callers
+/// running inside the deno process should pass `std::env::current_exe()`.
+#[allow(
+  clippy::disallowed_methods,
+  reason = "CLI shim resolving a node entrypoint, mirrors the standalone binary"
+)]
+pub fn resolve_entrypoint(
+  deno_exe: &std::path::Path,
+  entrypoint: &str,
+) -> String {
+  use std::process::Stdio;
+
+  let cwd = std::env::current_dir().unwrap();
+  // If the entrypoint is either an absolute path, or a relative path that
+  // exists, return it as is.
+  if cwd.join(entrypoint).symlink_metadata().is_ok() {
+    return entrypoint.to_string();
+  }
+
+  let url = url::Url::from_file_path(cwd.join("$file.js")).unwrap();
+
+  // Otherwise, shell out to `deno` to try to resolve the entrypoint.
+  let output = std::process::Command::new(deno_exe)
+    .arg("eval")
+    .arg("--no-config")
+    .arg(include_str!("./resolve.js"))
+    .arg(url.to_string())
+    .arg(format!("./{}", entrypoint))
+    .env_clear()
+    .stdout(Stdio::piped())
+    .stderr(Stdio::inherit())
+    .output()
+    .expect("Failed to execute deno resolve script");
+  if !output.status.success() {
+    std::process::exit(output.status.code().unwrap_or(1));
+  }
+  String::from_utf8(output.stdout)
+    .expect("Failed to parse deno resolve output")
+    .trim()
+    .to_string()
+}
+
 /// Translate parsed Node.js CLI arguments to Deno CLI arguments.
 pub fn translate_to_deno_args(
   parsed_args: ParseResult,
