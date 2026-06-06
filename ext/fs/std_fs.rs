@@ -925,8 +925,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
 
     let parallelism = std::thread::available_parallelism()
       .map(|parallelism| parallelism.get())
-      .unwrap_or(1)
-      .min(task_count);
+      .unwrap_or(1);
     let queue = CopyQueue::new(tasks);
 
     std::thread::scope(|scope| {
