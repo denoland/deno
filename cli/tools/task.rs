@@ -682,6 +682,7 @@ impl<'a> TaskRunner<'a> {
       task_name,
       cwd: &cwd,
       command,
+      argv,
       files: &definition.files,
       env_names: &definition.env,
       env: &env_snapshot,
@@ -691,7 +692,10 @@ impl<'a> TaskRunner<'a> {
         self.output_task(
           task_name,
           package_name,
-          &format!("{} (cached, inputs unchanged)", colors::gray(command)),
+          &format!(
+            "{} (cached, inputs unchanged)",
+            colors::gray(task_runner::get_script_with_args(command, argv))
+          ),
         );
         return Ok(0);
       }

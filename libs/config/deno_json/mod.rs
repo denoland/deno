@@ -865,6 +865,11 @@ pub struct TaskDefinition {
   /// Globs identifying input files. When set, the task participates in
   /// input-based caching and is skipped on subsequent runs if none of the
   /// inputs (or the listed `env` values, or the command itself) have changed.
+  ///
+  /// Caveat: outputs are not yet tracked, so a cache hit skips the task even
+  /// if artifacts it produced were deleted in the meantime. Until output
+  /// restoration lands this is best used for tasks that are pure with respect
+  /// to their declared inputs.
   #[serde(default)]
   pub files: Vec<String>,
   /// Globs identifying output artifacts produced by the task. Recorded in the

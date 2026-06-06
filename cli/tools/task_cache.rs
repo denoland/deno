@@ -3,14 +3,28 @@
 //! Input-based caching for `deno task`.
 //!
 //! When a task declares `files`, Deno computes a fingerprint over the
-//! contents of those files, the command string, and the values of any
-//! environment variables listed in `env`. If a previous run wrote a
-//! matching fingerprint to disk, the task is skipped.
+//! contents of those files, the command string (including any arguments
+//! appended on the CLI), and the values of any environment variables
+//! listed in `env`. If a previous run wrote a matching fingerprint to
+//! disk, the task is skipped.
 //!
 //! This is the first pass: no output restoration, no dependency
 //! fingerprint propagation, no remote cache. The on-disk format is a
 //! single hex-encoded `u64` per task; that lets us evolve the schema
 //! later without migrating anything.
+//!
+//! Caveats of this first pass (see the deferred-work list on the PR):
+//!
+//! - Outputs are not tracked or restored. A hit skips execution entirely,
+//!   so if a previous run produced artifacts that were since deleted
+//!   (`dist/` removed, inputs unchanged), the task still hits and the
+//!   artifacts are *not* regenerated. Until output restoration lands,
+//!   input caching is best suited to tasks that are pure with respect to
+//!   their declared inputs.
+//! - The fingerprint is captured before the run and stored afterwards, so
+//!   a task that writes into its own `files` (formatters, codegen) changes
+//!   its inputs as a side effect and will never match on the next run. It
+//!   stays correct, just never caches.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -95,6 +109,10 @@ pub struct TaskCacheKey<'a> {
   pub task_name: &'a str,
   pub cwd: &'a Path,
   pub command: &'a str,
+  /// Arguments appended to the command on the CLI (`deno task build <argv>`).
+  /// These change what actually runs, so they must be part of the
+  /// fingerprint.
+  pub argv: &'a [String],
   pub files: &'a [String],
   pub env_names: &'a [String],
   /// Snapshot of the current environment, looked up at fingerprint time.
@@ -106,6 +124,13 @@ fn compute_fingerprint(key: &TaskCacheKey<'_>) -> Option<u64> {
   let mut hasher = FastInsecureHasher::new_deno_versioned();
   hasher.write_str("deno-task-cache-v1");
   hasher.write_str(key.command);
+  // Appended CLI args materially change what runs, so fold them into the
+  // fingerprint. Length-prefix to keep the boundaries unambiguous.
+  hasher.write_u64(key.argv.len() as u64);
+  for arg in key.argv {
+    hasher.write_str(arg);
+    hasher.write_u8(0);
+  }
 
   // Capture only the env vars the user explicitly named, in a deterministic
   // order. Missing vars hash as the empty string with a distinguishing tag.
