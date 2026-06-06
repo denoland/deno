@@ -45,12 +45,10 @@ const {
   op_crypto_ml_kem_get_public_key,
   op_crypto_ml_kem_import_pkcs8,
   op_crypto_ml_kem_import_spki,
-  op_crypto_ml_kem_validate_private_key,
   op_crypto_ml_kem_validate_public_key,
   op_crypto_mldsa_export_pkcs8,
   op_crypto_mldsa_export_spki,
   op_crypto_mldsa_from_pkcs8,
-  op_crypto_mldsa_from_raw_private,
   op_crypto_mldsa_from_seed,
   op_crypto_mldsa_from_spki,
   op_crypto_random_uuid,
@@ -149,7 +147,6 @@ const simpleAlgorithmDictionaries = {
     iv: "BufferSource",
     additionalData: "BufferSource",
   },
-  ShakeParams: {},
   CShakeParams: {
     functionName: "BufferSource",
     customization: "BufferSource",
@@ -167,8 +164,6 @@ const supportedAlgorithms = {
     "SHA3-256": null,
     "SHA3-384": null,
     "SHA3-512": null,
-    "SHAKE128": "ShakeParams",
-    "SHAKE256": "ShakeParams",
     "cSHAKE128": "CShakeParams",
     "cSHAKE256": "CShakeParams",
     "TurboSHAKE128": "TurboShakeParams",
@@ -314,6 +309,11 @@ const aesJwkAlg = {
     192: "A192KW",
     256: "A256KW",
   },
+  "AES-OCB": {
+    128: "A128OCB",
+    192: "A192OCB",
+    256: "A256OCB",
+  },
 };
 
 // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
@@ -397,11 +397,16 @@ function normalizeAlgorithm(algorithm, op) {
  */
 function copyBuffer(input) {
   if (isTypedArray(input)) {
+    const byteLength = TypedArrayPrototypeGetByteLength(
+      /** @type {Uint8Array} */ (input),
+    );
+    // A detached buffer reports length 0; a copy of its bytes is empty.
+    if (byteLength === 0) return new Uint8Array(0);
     return TypedArrayPrototypeSlice(
       new Uint8Array(
         TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (input)),
         TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (input)),
-        TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (input)),
+        byteLength,
       ),
     );
   } else if (isDataView(input)) {
@@ -414,11 +419,14 @@ function copyBuffer(input) {
     );
   }
   // ArrayBuffer
+  const byteLength = ArrayBufferPrototypeGetByteLength(input);
+  // A detached ArrayBuffer reports length 0; a copy of its bytes is empty.
+  if (byteLength === 0) return new Uint8Array(0);
   return TypedArrayPrototypeSlice(
     new Uint8Array(
       input,
       0,
-      ArrayBufferPrototypeGetByteLength(input),
+      byteLength,
     ),
   );
 }
@@ -767,28 +775,34 @@ class SubtleCrypto {
     );
     data = webidl.converters.BufferSource(data, prefix, "Argument 2");
 
-    data = copyBuffer(data);
-
+    // Normalize the algorithm before copying the data: a getter on the
+    // algorithm object may alter or detach the input buffer, and the copy
+    // must observe that (WebCrypto "get a copy of the bytes" happens after
+    // normalization). See WPT digest "...buffer during call" tests.
     algorithm = normalizeAlgorithm(algorithm, "digest");
 
+    data = copyBuffer(data);
+
     switch (algorithm.name) {
-      case "SHAKE128":
-      case "SHAKE256":
       case "cSHAKE128":
       case "cSHAKE256":
       case "TurboSHAKE128":
       case "TurboSHAKE256": {
-        if (
-          algorithm.outputLength === undefined || algorithm.outputLength === 0
-        ) {
-          throw new DOMException(
-            `'outputLength' must be a positive multiple of 8 for ${algorithm.name}`,
-            "OperationError",
-          );
-        }
         if (algorithm.outputLength % 8 !== 0) {
           throw new DOMException(
             `'outputLength' must be a multiple of 8 for ${algorithm.name}`,
+            "OperationError",
+          );
+        }
+        // cSHAKE permits a 0-bit output (empty digest); TurboSHAKE requires a
+        // positive length.
+        if (
+          algorithm.outputLength === 0 &&
+          (algorithm.name === "TurboSHAKE128" ||
+            algorithm.name === "TurboSHAKE256")
+        ) {
+          throw new DOMException(
+            `'outputLength' must be a positive multiple of 8 for ${algorithm.name}`,
             "OperationError",
           );
         }
@@ -841,11 +855,13 @@ class SubtleCrypto {
     key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
     data = webidl.converters.BufferSource(data, prefix, "Argument 3");
 
-    // 2.
-    data = copyBuffer(data);
-
+    // Normalize before copying: a getter on the algorithm object may alter or
+    // detach the data buffer, and the copy must observe that.
     // 3.
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encrypt");
+
+    // 2.
+    data = copyBuffer(data);
 
     // 8.
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
@@ -884,11 +900,13 @@ class SubtleCrypto {
     key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
     data = webidl.converters.BufferSource(data, prefix, "Argument 3");
 
-    // 2.
-    data = copyBuffer(data);
-
+    // Normalize before copying: a getter on the algorithm object may alter or
+    // detach the data buffer, and the copy must observe that.
     // 3.
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decrypt");
+
+    // 2.
+    data = copyBuffer(data);
 
     // 8.
     if (normalizedAlgorithm.name !== key[_algorithm].name) {
@@ -1030,10 +1048,23 @@ class SubtleCrypto {
             );
           }
         } else { // AES-OCB
-          if (ivLen < 1 || ivLen > 15) {
+          // The WICG spec permits a 64-, 96- or 128-bit tag for AES-OCB.
+          if (
+            !ArrayPrototypeIncludes(
+              [64, 96, 128],
+              normalizedAlgorithm.tagLength,
+            )
+          ) {
             throw new DOMException(
-              "Initialization vector length not supported",
-              "NotSupportedError",
+              `Invalid tag length: ${normalizedAlgorithm.tagLength}`,
+              "OperationError",
+            );
+          }
+          // RFC 7253 permits nonces up to 15 bytes; the backend supports 6-15.
+          if (ivLen < 6 || ivLen > 15) {
+            throw new DOMException(
+              "Invalid nonce length for AES-OCB (must be 6-15 bytes)",
+              "OperationError",
             );
           }
         }
@@ -1075,6 +1106,15 @@ class SubtleCrypto {
         ) {
           throw new DOMException(
             "ChaCha20-Poly1305 iv must be 12 bytes",
+            "OperationError",
+          );
+        }
+        if (
+          normalizedAlgorithm.tagLength !== undefined &&
+          normalizedAlgorithm.tagLength !== 128
+        ) {
+          throw new DOMException(
+            "ChaCha20-Poly1305 tagLength must be 128",
             "OperationError",
           );
         }
@@ -1121,11 +1161,13 @@ class SubtleCrypto {
     key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
     data = webidl.converters.BufferSource(data, prefix, "Argument 3");
 
-    // 1.
-    data = copyBuffer(data);
-
+    // Normalize before copying: a getter on the algorithm object may alter or
+    // detach the data buffer, and the copy must observe that.
     // 2.
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "sign");
+
+    // 1.
+    data = copyBuffer(data);
 
     const handle = key[_handle];
 
@@ -1576,13 +1618,15 @@ class SubtleCrypto {
     signature = webidl.converters.BufferSource(signature, prefix, "Argument 3");
     data = webidl.converters.BufferSource(data, prefix, "Argument 4");
 
+    // Normalize before copying: a getter on the algorithm object may alter or
+    // detach the signature/data buffers, and the copies must observe that.
+    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "verify");
+
     // 2.
     signature = copyBuffer(signature);
 
     // 3.
     data = copyBuffer(data);
-
-    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "verify");
 
     const handle = key[_handle];
 
@@ -2101,7 +2145,7 @@ class SubtleCrypto {
     );
 
     const sharedKey = await this.importKey(
-      "raw",
+      "raw-secret",
       sharedSecret,
       sharedKeyAlgorithm,
       extractable,
@@ -2252,7 +2296,7 @@ class SubtleCrypto {
     );
 
     return await this.importKey(
-      "raw",
+      "raw-secret",
       sharedSecret,
       sharedKeyAlgorithm,
       extractable,
@@ -2622,19 +2666,23 @@ const PUBLIC_KEY_DERIVABLE_ALGORITHMS = [
  * Implements the "check support for an algorithm" sub-algorithm from
  * https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
  *
- * The WICG spec defines supports() as a *feature-detection* primitive: it
- * must return true when the algorithm/operation pair is implemented, even
- * when the caller has not supplied operation-specific parameters (e.g. an
- * `iv` for AES-GCM). So we cannot reuse `normalizeAlgorithm` directly, which
- * also validates parameter dictionaries -- instead we check the algorithm
- * name against the registered-algorithm tables.
+ * The WICG spec defines supports() as a *feature-detection* primitive that
+ * runs the same steps as the real operation and returns false if they throw
+ * (for ANY reason: unknown algorithm name OR invalid/unknown parameters),
+ * true otherwise. Critically, a *missing* operation-specific parameter (e.g.
+ * an `iv` for AES-GCM in a bare `supports("encrypt", "AES-GCM")` probe) must
+ * still report true -- the spec treats an "unavailable parameter" as a
+ * success short-circuit. So we (a) check the algorithm name against the
+ * registered-algorithm tables, then (b) validate any parameters the caller
+ * *did* supply against the operation's constraints, returning false if a
+ * provided parameter is invalid.
  *
  * @param {string} operation
  * @param {AlgorithmIdentifier} algorithm
- * @param {number | null} _length
+ * @param {number | null} length
  * @returns {boolean}
  */
-function checkSupportForAlgorithm(operation, algorithm, _length) {
+function checkSupportForAlgorithm(operation, algorithm, length) {
   // Extract the algorithm name from either a string or `{ name }` object.
   let algName;
   if (typeof algorithm === "string") {
@@ -2674,18 +2722,177 @@ function checkSupportForAlgorithm(operation, algorithm, _length) {
       // public key from a private one.
       return supportsGetPublicKey(algName);
     }
-    return true;
+    // Reject any operation-specific parameters the caller supplied that the
+    // operation steps would reject (e.g. a bogus `iv`/`tagLength`/`length`,
+    // an unknown `hash`, or an unsupported `namedCurve`). Missing parameters
+    // are tolerated -- this stays a feature-detection probe.
+    return supportsParamsValid(registeredOp, algName, algorithm, length);
   }
 
   // wrapKey / unwrapKey fall back to encrypt / decrypt registrations.
   if (operation === "wrapKey") {
-    return isAlgorithmRegisteredFor(algName, "encrypt");
+    return isAlgorithmRegisteredFor(algName, "encrypt") &&
+      supportsParamsValid("encrypt", algName, algorithm, length);
   }
   if (operation === "unwrapKey") {
-    return isAlgorithmRegisteredFor(algName, "decrypt");
+    return isAlgorithmRegisteredFor(algName, "decrypt") &&
+      supportsParamsValid("decrypt", algName, algorithm, length);
   }
 
   return false;
+}
+
+// Byte length of an arbitrary BufferSource (TypedArray, DataView, or
+// ArrayBuffer). Returns null if `v` is not a BufferSource.
+function bufferSourceByteLength(v) {
+  if (isTypedArray(v)) {
+    return TypedArrayPrototypeGetByteLength(v);
+  }
+  if (isDataView(v)) {
+    return DataViewPrototypeGetByteLength(v);
+  }
+  if (isArrayBuffer(v)) {
+    return ArrayBufferPrototypeGetByteLength(v);
+  }
+  return null;
+}
+
+/**
+ * Validate the operation-specific parameters the caller supplied for an
+ * algorithm whose name is already known to be registered for `registeredOp`.
+ *
+ * This mirrors the parameter constraints enforced by the actual operation
+ * steps (and by `normalizeAlgorithm` for nested `hash` members), so that
+ * `supports()` returns false for known-name algorithms carrying invalid or
+ * unknown parameters -- while still tolerating *omitted* parameters, which
+ * keeps it a pure feature-detection probe.
+ *
+ * @param {string} registeredOp normalize/registered op key (e.g. "encrypt")
+ * @param {string} algName canonical algorithm name (as written above is fine)
+ * @param {AlgorithmIdentifier} algorithm the raw algorithm argument
+ * @param {number | null} length the `length` overload value, if any
+ * @returns {boolean}
+ */
+function supportsParamsValid(registeredOp, algName, algorithm, length) {
+  const upper = StringPrototypeToUpperCase(algName);
+
+  // The KDF bit-length constraint does not depend on the algorithm object, so
+  // it is checked regardless of whether `algorithm` was a string or a dict:
+  // HKDF / PBKDF2 require a positive, multiple-of-8 length. A null length
+  // (omitted overload) or a non-multiple value is rejected, matching the
+  // deriveBits operation steps.
+  if (
+    registeredOp === "deriveBits" && (upper === "HKDF" || upper === "PBKDF2")
+  ) {
+    if (length === null || length === 0 || length % 8 !== 0) {
+      return false;
+    }
+  }
+
+  // A bare string identifier carries no further parameters to validate.
+  if (typeof algorithm !== "object" || algorithm === null) {
+    return true;
+  }
+
+  // Any supplied `hash` must be a recognized digest algorithm. This catches
+  // e.g. { name: "HMAC", hash: "SHA-25" } and the RSA/HKDF/PBKDF2 variants.
+  if (ObjectHasOwn(algorithm, "hash") && algorithm.hash !== undefined) {
+    try {
+      normalizeAlgorithm(algorithm.hash, "digest");
+    } catch {
+      return false;
+    }
+  }
+
+  switch (registeredOp) {
+    case "encrypt":
+    case "decrypt": {
+      if (upper === "AES-CBC") {
+        if (ObjectHasOwn(algorithm, "iv")) {
+          const n = bufferSourceByteLength(algorithm.iv);
+          if (n !== null && n !== 16) return false;
+        }
+      } else if (upper === "AES-CTR") {
+        if (ObjectHasOwn(algorithm, "counter")) {
+          const n = bufferSourceByteLength(algorithm.counter);
+          if (n !== null && n !== 16) return false;
+        }
+        if (
+          ObjectHasOwn(algorithm, "length") && algorithm.length !== undefined
+        ) {
+          const l = algorithm.length;
+          if (l === 0 || l > 128) return false;
+        }
+      } else if (upper === "AES-GCM" || upper === "AES-OCB") {
+        if (ObjectHasOwn(algorithm, "iv")) {
+          const n = bufferSourceByteLength(algorithm.iv);
+          if (n !== null && !ArrayPrototypeIncludes([12, 16], n)) return false;
+        }
+        if (
+          ObjectHasOwn(algorithm, "tagLength") &&
+          algorithm.tagLength !== undefined
+        ) {
+          if (
+            !ArrayPrototypeIncludes(
+              [32, 64, 96, 104, 112, 120, 128],
+              algorithm.tagLength,
+            )
+          ) {
+            return false;
+          }
+        }
+      } else if (upper === "CHACHA20-POLY1305") {
+        if (ObjectHasOwn(algorithm, "iv")) {
+          const n = bufferSourceByteLength(algorithm.iv);
+          if (n !== null && n !== 12) return false;
+        }
+        if (
+          ObjectHasOwn(algorithm, "tagLength") &&
+          algorithm.tagLength !== undefined && algorithm.tagLength !== 128
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case "generateKey":
+    case "get key length": {
+      if (
+        upper === "AES-CBC" || upper === "AES-CTR" || upper === "AES-GCM" ||
+        upper === "AES-OCB" || upper === "AES-KW"
+      ) {
+        if (
+          ObjectHasOwn(algorithm, "length") && algorithm.length !== undefined
+        ) {
+          if (!ArrayPrototypeIncludes([128, 192, 256], algorithm.length)) {
+            return false;
+          }
+        }
+      } else if (upper === "HMAC") {
+        // An explicit length of 0 is invalid; omitting it is fine.
+        if (ObjectHasOwn(algorithm, "length") && algorithm.length === 0) {
+          return false;
+        }
+      } else if (upper === "ECDSA" || upper === "ECDH") {
+        if (
+          ObjectHasOwn(algorithm, "namedCurve") &&
+          algorithm.namedCurve !== undefined
+        ) {
+          if (
+            !ArrayPrototypeIncludes(supportedNamedCurves, algorithm.namedCurve)
+          ) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+    default:
+      // deriveBits (HKDF/PBKDF2 length) is handled above; everything else
+      // (importKey, exportKey, sign, verify, digest, encapsulate, ...) has no
+      // additional supports()-level parameter constraints to enforce here.
+      return true;
+  }
 }
 
 function isAlgorithmRegisteredFor(algName, registeredOp) {
@@ -3528,8 +3735,8 @@ function importKeyX448(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3773,8 +3980,8 @@ function importKeyEd25519(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -4000,8 +4207,8 @@ function importKeyX25519(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -4084,13 +4291,7 @@ function exportKeyAES(
   switch (format) {
     // 2.
     // For existing symmetric algorithms "raw" is an alias of "raw-secret".
-    // AES-OCB is a newer (tentative) algorithm whose "raw-secret" support is
-    // tracked separately, so it is intentionally excluded from the alias here.
     case "raw-secret":
-      if (key[_algorithm].name === "AES-OCB") {
-        throw new DOMException("Not implemented", "NotSupportedError");
-      }
-      /* falls through */
     case "raw": {
       // 1.
       const data = innerKey.data;
@@ -4181,11 +4382,6 @@ function exportKeyChaCha20Poly1305(format, key, innerKey) {
   }
 }
 
-const ML_KEM_PRIVATE_SIZES = {
-  "ML-KEM-512": 1632,
-  "ML-KEM-768": 2400,
-  "ML-KEM-1024": 3168,
-};
 const ML_KEM_PUBLIC_SIZES = {
   "ML-KEM-512": 800,
   "ML-KEM-768": 1184,
@@ -4255,25 +4451,6 @@ function importKeyMlKem(
         throw new DOMException("Invalid key data", "DataError");
       }
       return makePublicKey(keyData);
-    }
-    case "raw-private": {
-      // Private decapsulation key in FIPS 203 expanded form. This form carries
-      // no seed, so the key cannot later be exported as raw-seed/jwk/pkcs8.
-      const expectedSize = ML_KEM_PRIVATE_SIZES[algorithmName];
-      if (TypedArrayPrototypeGetByteLength(keyData) !== expectedSize) {
-        throw new DOMException("Invalid key data", "DataError");
-      }
-      for (let i = 0; i < keyUsages.length; i++) {
-        if (!ArrayPrototypeIncludes(ML_KEM_PRIVATE_USAGES, keyUsages[i])) {
-          throw new DOMException("Invalid key usage", "SyntaxError");
-        }
-      }
-      if (
-        !op_crypto_ml_kem_validate_private_key(algorithmName, keyData)
-      ) {
-        throw new DOMException("Invalid key data", "DataError");
-      }
-      return makePrivateKey(null, keyData);
     }
     case "raw-seed": {
       // FIPS 203 64-byte seed (d || z).
@@ -4403,8 +4580,8 @@ function importKeyMlKem(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -4490,17 +4667,6 @@ function exportKeyMlKem(format, key, innerKey) {
         );
       }
       return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(innerKey));
-    }
-    case "raw-private": {
-      if (type !== "private") {
-        throw new DOMException(
-          "'raw-private' is only valid for private keys",
-          "InvalidAccessError",
-        );
-      }
-      return TypedArrayPrototypeGetBuffer(
-        TypedArrayPrototypeSlice(innerKey.privateKey),
-      );
     }
     case "raw-seed": {
       if (type !== "private") {
@@ -4742,13 +4908,7 @@ function importKeyAES(
 
   switch (format) {
     // For existing symmetric algorithms "raw" is an alias of "raw-secret".
-    // AES-OCB is a newer (tentative) algorithm whose "raw-secret" support is
-    // tracked separately, so it is intentionally excluded from the alias here.
     case "raw-secret":
-      if (algorithmName === "AES-OCB") {
-        throw new DOMException("Not implemented", "NotSupportedError");
-      }
-      /* falls through */
     case "raw": {
       // 2.
       if (
@@ -5513,23 +5673,6 @@ function importKeyMlDsa(
       const seedCopy = TypedArrayPrototypeSlice(keyData);
       return makePrivateKey(seedCopy, res.privateKey, res.publicKey);
     }
-    case "raw-private": {
-      if (
-        ArrayPrototypeFind(
-          keyUsages,
-          (u) => !ArrayPrototypeIncludes(["sign"], u),
-        ) !== undefined
-      ) {
-        throw new DOMException("Invalid key usage", "SyntaxError");
-      }
-      let res;
-      try {
-        res = op_crypto_mldsa_from_raw_private(variant, keyData);
-      } catch (_) {
-        throw new DOMException("Invalid key data", "DataError");
-      }
-      return makePrivateKey(null, res.privateKey, res.publicKey);
-    }
     case "raw-public": {
       if (
         ArrayPrototypeFind(
@@ -5557,7 +5700,18 @@ function importKeyMlDsa(
       let res;
       try {
         res = op_crypto_mldsa_from_pkcs8(variant, keyData);
-      } catch (_) {
+      } catch (e) {
+        // The expanded-key-only form must be rejected with NotSupportedError;
+        // malformed DER and a `both`-form seed/expandedKey mismatch are
+        // DataError. (The op's NotSupported class maps to the DOMException
+        // name "NotSupported" in Deno; re-throw with the spec name here.)
+        if (e?.name === "NotSupported") {
+          throw new DOMException(
+            "ML-DSA 'expandedKey' PKCS#8 format is not supported; only the " +
+              "seed form is supported",
+            "NotSupportedError",
+          );
+        }
         throw new DOMException("Invalid key data", "DataError");
       }
       return makePrivateKey(
@@ -5641,8 +5795,8 @@ function importKeyMlDsa(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -5728,17 +5882,6 @@ function exportKeyMlDsa(format, key, innerKey) {
         );
       }
       return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(seed));
-    }
-    case "raw-private": {
-      if (key[_type] !== "private") {
-        throw new DOMException(
-          "Key is not a private key",
-          "InvalidAccessError",
-        );
-      }
-      return TypedArrayPrototypeGetBuffer(
-        TypedArrayPrototypeSlice(innerKey.privateKey),
-      );
     }
     case "raw-public": {
       if (key[_type] !== "public") {
@@ -6831,17 +6974,18 @@ function exportKeyX448(format, key, innerKey) {
       return TypedArrayPrototypeGetBuffer(pkcs8Der);
     }
     case "jwk": {
-      if (key[_type] === "private") {
-        throw new DOMException("Not implemented", "NotSupportedError");
-      }
-      const x = op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
         crv: "X448",
-        x,
         "key_ops": key.usages,
         ext: key[_extractable],
       };
+      if (key[_type] === "private") {
+        jwk.x = op_crypto_x448_public_key(innerKey);
+        jwk.d = op_crypto_base64url_encode(innerKey);
+      } else {
+        jwk.x = op_crypto_base64url_encode(innerKey);
+      }
       return jwk;
     }
     default:
@@ -7478,23 +7622,21 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 2.
-      // OCB supports nonce sizes from 1 to 15 bytes (recommended: 12 bytes)
+      // RFC 7253 permits nonces up to 15 bytes; the backend supports 6-15.
       const ivLen = TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv);
-      if (ivLen < 1 || ivLen > 15) {
+      if (ivLen < 6 || ivLen > 15) {
         throw new DOMException(
-          "Invalid nonce length for AES-OCB (must be 1-15 bytes)",
+          "Invalid nonce length for AES-OCB (must be 6-15 bytes)",
           "OperationError",
         );
       }
 
       // 3.
+      // The WICG spec permits a 64-, 96- or 128-bit tag for AES-OCB.
       if (normalizedAlgorithm.tagLength === undefined) {
         normalizedAlgorithm.tagLength = 128;
       } else if (
-        !ArrayPrototypeIncludes(
-          [32, 64, 96, 104, 112, 120, 128],
-          normalizedAlgorithm.tagLength,
-        )
+        !ArrayPrototypeIncludes([64, 96, 128], normalizedAlgorithm.tagLength)
       ) {
         throw new DOMException(
           `Invalid tag length: ${normalizedAlgorithm.tagLength}`,
@@ -7527,6 +7669,15 @@ async function encrypt(normalizedAlgorithm, key, data) {
       if (TypedArrayPrototypeGetByteLength(normalizedAlgorithm.iv) !== 12) {
         throw new DOMException(
           "ChaCha20-Poly1305 iv must be 12 bytes",
+          "OperationError",
+        );
+      }
+      if (
+        normalizedAlgorithm.tagLength !== undefined &&
+        normalizedAlgorithm.tagLength !== 128
+      ) {
+        throw new DOMException(
+          "ChaCha20-Poly1305 tagLength must be 128",
           "OperationError",
         );
       }
@@ -8155,6 +8306,14 @@ const dictChaCha20Poly1305Params = [
     key: "additionalData",
     converter: webidl.converters["BufferSource"],
   },
+  {
+    key: "tagLength",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["octet"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+  },
 ];
 
 webidl.converters.ChaCha20Poly1305Params = webidl.createDictionaryConverter(
@@ -8162,7 +8321,9 @@ webidl.converters.ChaCha20Poly1305Params = webidl.createDictionaryConverter(
   dictChaCha20Poly1305Params,
 );
 
-const dictShakeParams = [
+// Shared base for the XOF digest params (cSHAKE, TurboSHAKE): the required
+// `outputLength` member, in bits.
+const dictXofParams = [
   ...new SafeArrayIterator(dictAlgorithm),
   {
     key: "outputLength",
@@ -8175,13 +8336,8 @@ const dictShakeParams = [
   },
 ];
 
-webidl.converters.ShakeParams = webidl.createDictionaryConverter(
-  "ShakeParams",
-  dictShakeParams,
-);
-
 const dictCShakeParams = [
-  ...new SafeArrayIterator(dictShakeParams),
+  ...new SafeArrayIterator(dictXofParams),
   {
     key: "functionName",
     converter: webidl.converters["BufferSource"],
@@ -8198,7 +8354,7 @@ webidl.converters.CShakeParams = webidl.createDictionaryConverter(
 );
 
 const dictTurboShakeParams = [
-  ...new SafeArrayIterator(dictShakeParams),
+  ...new SafeArrayIterator(dictXofParams),
   {
     key: "domainSeparation",
     converter: (V, prefix, context, opts) =>

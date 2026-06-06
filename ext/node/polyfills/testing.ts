@@ -7,11 +7,13 @@ const {
   ArrayPrototypeForEach,
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   Error,
   ErrorPrototype,
   MapPrototypeDelete,
   MapPrototypeGet,
+  MapPrototypeHas,
   MapPrototypeSet,
   ObjectDefineProperty,
   ObjectPrototypeHasOwnProperty,
@@ -22,8 +24,10 @@ const {
   PromisePrototypeThen,
   PromiseResolve,
   PromiseWithResolvers,
+  Proxy,
   ReflectApply,
   ReflectConstruct,
+  ReflectGet,
   RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeArrayIterator,
@@ -88,7 +92,11 @@ const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const {
   validateFunction,
   validateInteger,
+  validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { ERR_INVALID_ARG_TYPE, ERR_INVALID_ARG_VALUE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+).codes;
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const {
   tapEscape,
@@ -1551,6 +1559,120 @@ class MockFunctionContext {
   }
 }
 
+class MockPropertyContext {
+  #object;
+  #propertyName;
+  #value;
+  #originalValue;
+  #descriptor;
+  #accesses = [];
+  #onceValues = new SafeMap();
+  _restored = false;
+
+  constructor(object, propertyName, hasValue, value) {
+    this.#object = object;
+    this.#propertyName = propertyName;
+    this.#descriptor = ObjectGetOwnPropertyDescriptor(object, propertyName);
+    if (!this.#descriptor) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "propertyName",
+        propertyName,
+        "is not a property of the object",
+      );
+    }
+    this.#originalValue = object[propertyName];
+    this.#value = hasValue ? value : this.#originalValue;
+
+    const { configurable, enumerable } = this.#descriptor;
+    ObjectDefineProperty(object, propertyName, {
+      __proto__: null,
+      configurable,
+      enumerable,
+      get: () => {
+        const nextValue = this.#getAccessValue(this.#value);
+        ArrayPrototypePush(this.#accesses, {
+          type: "get",
+          value: nextValue,
+          stack: new Error(),
+        });
+        return nextValue;
+      },
+      set: (v) => this.mockImplementation(v),
+    });
+  }
+
+  get accesses() {
+    return ArrayPrototypeSlice(this.#accesses, 0);
+  }
+
+  accessCount() {
+    return this.#accesses.length;
+  }
+
+  mockImplementation(value) {
+    if (!this.#descriptor.writable) {
+      throw new ERR_INVALID_ARG_VALUE(
+        "propertyName",
+        this.#propertyName,
+        "cannot be set",
+      );
+    }
+    const nextValue = this.#getAccessValue(value);
+    ArrayPrototypePush(this.#accesses, {
+      type: "set",
+      value: nextValue,
+      stack: new Error(),
+    });
+    this.#value = nextValue;
+  }
+
+  #getAccessValue(value) {
+    const accessIndex = this.#accesses.length;
+    let accessValue;
+    if (MapPrototypeHas(this.#onceValues, accessIndex)) {
+      accessValue = MapPrototypeGet(this.#onceValues, accessIndex);
+      MapPrototypeDelete(this.#onceValues, accessIndex);
+    } else {
+      accessValue = value;
+    }
+    return accessValue;
+  }
+
+  mockImplementationOnce(value, onAccess) {
+    const nextAccess = this.#accesses.length;
+    const accessIndex = onAccess ?? nextAccess;
+    validateInteger(accessIndex, "onAccess", nextAccess);
+    MapPrototypeSet(this.#onceValues, accessIndex, value);
+  }
+
+  resetAccesses() {
+    this.#accesses = [];
+  }
+
+  // Alias used by mock.reset() which iterates activeMocks calling resetCalls().
+  resetCalls() {
+    this.resetAccesses();
+  }
+
+  restore() {
+    if (!this._restored) {
+      // Reinstall the pristine original descriptor. Unlike Node we don't force
+      // a `value` field, since the original property may be an accessor (e.g.
+      // `process.platform` is a getter in Deno) and mixing `value` with
+      // `get`/`set` is an invalid descriptor.
+      ObjectDefineProperty(this.#object, this.#propertyName, {
+        __proto__: null,
+        ...this.#descriptor,
+      });
+      this._restored = true;
+    }
+    const idx = ArrayPrototypeIndexOf(activeMocks, this);
+    if (idx !== -1) {
+      ArrayPrototypeSplice(activeMocks, idx, 1);
+    }
+  }
+}
+
 function createMockFunction(original, implementation, ctx) {
   const mockFn = function (...args) {
     const newTarget = new.target;
@@ -1726,6 +1848,36 @@ const mock = {
 
   method: (object, methodName, implementation, options) => {
     return mockMethodImpl(object, methodName, implementation, options);
+  },
+
+  property: function (object, propertyName, value) {
+    validateObject(object, "object");
+    if (typeof propertyName !== "string" && typeof propertyName !== "symbol") {
+      throw new ERR_INVALID_ARG_TYPE(
+        "propertyName",
+        ["string", "symbol"],
+        propertyName,
+      );
+    }
+
+    const hasValue = arguments.length > 2;
+    const ctx = new MockPropertyContext(
+      object,
+      propertyName,
+      hasValue,
+      value,
+    );
+    ArrayPrototypePush(activeMocks, ctx);
+
+    return new Proxy(object, {
+      __proto__: null,
+      get(target, property, receiver) {
+        if (property === "mock") {
+          return ctx;
+        }
+        return ReflectGet(target, property, receiver);
+      },
+    });
   },
 
   reset: () => {

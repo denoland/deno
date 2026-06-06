@@ -116,7 +116,7 @@ pub enum DecryptError {
   #[error("invalid counter length. Currently supported 32/64/128 bits")]
   InvalidCounterLength,
   #[class(type)]
-  #[error("tag length not equal to 128")]
+  #[error("invalid tag length")]
   InvalidTagLength,
   #[class("DOMExceptionOperationError")]
   #[error("invalid key or iv")]
@@ -475,6 +475,17 @@ fn decrypt_aes_ocb(
   data: &[u8],
 ) -> Result<Vec<u8>, DecryptError> {
   use aes_gcm::aead::generic_array::GenericArray;
+  use aes_gcm::aead::generic_array::typenum::U6;
+  use aes_gcm::aead::generic_array::typenum::U7;
+  use aes_gcm::aead::generic_array::typenum::U8;
+  use aes_gcm::aead::generic_array::typenum::U9;
+  use aes_gcm::aead::generic_array::typenum::U10;
+  use aes_gcm::aead::generic_array::typenum::U11;
+  use aes_gcm::aead::generic_array::typenum::U12;
+  use aes_gcm::aead::generic_array::typenum::U13;
+  use aes_gcm::aead::generic_array::typenum::U14;
+  use aes_gcm::aead::generic_array::typenum::U15;
+  use aes_gcm::aead::generic_array::typenum::U16;
   use ocb3::Ocb3;
   use ocb3::aead::AeadInPlace as Ocb3AeadInPlace;
   use ocb3::aead::KeyInit as Ocb3KeyInit;
@@ -482,52 +493,91 @@ fn decrypt_aes_ocb(
   let key = key.as_secret_key()?;
   let additional_data = additional_data.unwrap_or_default();
 
-  // The `ocb3` crate only supports 128 bits tag length.
-  //
-  // Note that encryption won't fail, it instead truncates the tag
-  // to the specified tag length as specified in the spec.
-  if tag_length != 128 {
-    return Err(DecryptError::InvalidTagLength);
-  }
+  // The WICG spec permits a 64-, 96- or 128-bit tag for AES-OCB. Map each
+  // permitted length to its `ocb3` TagSize typenum (U8/U12/U16); anything
+  // else is an OperationError.
+  let tag_size = match tag_length {
+    64 => OcbTagSize::U8,
+    96 => OcbTagSize::U12,
+    128 => OcbTagSize::U16,
+    _ => return Err(DecryptError::InvalidTagLength),
+  };
 
-  // OCB supports nonce sizes from 1 to 15 bytes (recommended: 12 bytes)
-  if iv.is_empty() || iv.len() > 15 {
+  // RFC 7253 permits nonces up to 15 bytes; the `ocb3` crate supports 6..=15.
+  // The NonceSize is a compile-time type parameter, so dispatch the runtime
+  // length to the matching typenum. Lengths outside 6..=15 are unsupported.
+  if iv.len() < 6 || iv.len() > 15 {
     return Err(DecryptError::InvalidIvLength);
   }
 
-  let sep = data.len() - (tag_length / 8);
+  // The trailing `tag_length / 8` bytes are the detached tag. Guard against
+  // ciphertext shorter than the tag (the JS layer already rejects this, but
+  // avoid an underflowing subtraction here).
+  let tag_len = tag_length / 8;
+  if data.len() < tag_len {
+    return Err(DecryptError::Failed);
+  }
+  let sep = data.len() - tag_len;
   let tag_bytes = &data[sep..];
 
   // The actual ciphertext, called plaintext because it is reused in place.
   let mut plaintext = data[..sep].to_vec();
 
-  let nonce = GenericArray::from_slice(&iv);
-  let tag = GenericArray::from_slice(tag_bytes);
+  // The tag GenericArray length must match the `ocb3` TagSize, so build it
+  // inside the per-tag macro from `tag_bytes` (which is exactly `tag_len`).
+  macro_rules! ocb_decrypt {
+    ($aes:ty, $nonce:ty, $tag:ty) => {{
+      let cipher = Ocb3::<$aes, $nonce, $tag>::new_from_slice(key)
+        .map_err(|_| DecryptError::Failed)?;
+      let nonce = GenericArray::<u8, $nonce>::from_slice(&iv);
+      let tag = GenericArray::<u8, $tag>::from_slice(tag_bytes);
+      cipher
+        .decrypt_in_place_detached(nonce, &additional_data, &mut plaintext, tag)
+        .map_err(|_| DecryptError::Failed)?;
+    }};
+  }
+  macro_rules! ocb_decrypt_for_tag {
+    ($nonce:ty, $tag:ty) => {
+      match length {
+        128 => ocb_decrypt!(aes::Aes128, $nonce, $tag),
+        192 => ocb_decrypt!(aes::Aes192, $nonce, $tag),
+        256 => ocb_decrypt!(aes::Aes256, $nonce, $tag),
+        _ => return Err(DecryptError::InvalidLength),
+      }
+    };
+  }
+  macro_rules! ocb_decrypt_for_key {
+    ($nonce:ty) => {
+      match tag_size {
+        OcbTagSize::U8 => ocb_decrypt_for_tag!($nonce, U8),
+        OcbTagSize::U12 => ocb_decrypt_for_tag!($nonce, U12),
+        OcbTagSize::U16 => ocb_decrypt_for_tag!($nonce, U16),
+      }
+    };
+  }
 
-  match length {
-    128 => {
-      let cipher = Ocb3::<aes::Aes128>::new_from_slice(key)
-        .map_err(|_| DecryptError::Failed)?;
-      cipher
-        .decrypt_in_place_detached(nonce, &additional_data, &mut plaintext, tag)
-        .map_err(|_| DecryptError::Failed)?;
-    }
-    192 => {
-      let cipher = Ocb3::<aes::Aes192>::new_from_slice(key)
-        .map_err(|_| DecryptError::Failed)?;
-      cipher
-        .decrypt_in_place_detached(nonce, &additional_data, &mut plaintext, tag)
-        .map_err(|_| DecryptError::Failed)?;
-    }
-    256 => {
-      let cipher = Ocb3::<aes::Aes256>::new_from_slice(key)
-        .map_err(|_| DecryptError::Failed)?;
-      cipher
-        .decrypt_in_place_detached(nonce, &additional_data, &mut plaintext, tag)
-        .map_err(|_| DecryptError::Failed)?;
-    }
-    _ => return Err(DecryptError::InvalidLength),
+  match iv.len() {
+    6 => ocb_decrypt_for_key!(U6),
+    7 => ocb_decrypt_for_key!(U7),
+    8 => ocb_decrypt_for_key!(U8),
+    9 => ocb_decrypt_for_key!(U9),
+    10 => ocb_decrypt_for_key!(U10),
+    11 => ocb_decrypt_for_key!(U11),
+    12 => ocb_decrypt_for_key!(U12),
+    13 => ocb_decrypt_for_key!(U13),
+    14 => ocb_decrypt_for_key!(U14),
+    15 => ocb_decrypt_for_key!(U15),
+    _ => return Err(DecryptError::InvalidIvLength),
   }
 
   Ok(plaintext)
+}
+
+/// The AES-OCB tag sizes permitted by the WICG WebCrypto extension, mapping
+/// each WICG `tagLength` to the `ocb3` TagSize typenum used at instantiation.
+#[derive(Clone, Copy)]
+enum OcbTagSize {
+  U8,
+  U12,
+  U16,
 }

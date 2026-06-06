@@ -2026,14 +2026,26 @@ function getIpcHandleInfo(handle, options) {
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
   if (ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)) {
-    if (!ObjectPrototypeIsPrototypeOf(TCP.prototype, handle._handle)) {
+    const inner = handle._handle;
+    // Match Node's handleConversion["net.Socket"].send, which returns the
+    // socket's native handle. A socket without an underlying handle (e.g.
+    // already destroyed) yields null; Node then strips the handle and sends
+    // the message alone instead of throwing.
+    if (!inner) {
+      return null;
+    }
+    const isTcp = ObjectPrototypeIsPrototypeOf(TCP.prototype, inner);
+    const isPipe = ObjectPrototypeIsPrototypeOf(Pipe.prototype, inner);
+    if (!isTcp && !isPipe) {
       notImplemented("ChildProcess.send with non-TCP net.Socket handle");
     }
     return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
+      rawFd: rawFdFromTcpHandle(inner),
       message: {
         cmd: "NODE_HANDLE",
         type: IPC_HANDLE_NET_SOCKET,
+        // Distinguishes the wrap type the receiver should reconstruct.
+        nativeKind: isTcp ? "tcp" : "pipe",
         msg: undefined,
       },
       closeAfterSend: options.keepOpen !== true,
@@ -2046,14 +2058,26 @@ function getIpcHandleInfo(handle, options) {
   }
 
   if (ObjectPrototypeIsPrototypeOf(NetServer.prototype, handle)) {
-    if (!ObjectPrototypeIsPrototypeOf(TCP.prototype, handle._handle)) {
+    const inner = handle._handle;
+    // Match Node's handleConversion["net.Server"].send, which returns
+    // server._handle. A server that hasn't started listening (or was
+    // already closed) has a null handle; Node then strips the handle and
+    // sends the message alone instead of throwing.
+    if (!inner) {
+      return null;
+    }
+    const isTcp = ObjectPrototypeIsPrototypeOf(TCP.prototype, inner);
+    const isPipe = ObjectPrototypeIsPrototypeOf(Pipe.prototype, inner);
+    if (!isTcp && !isPipe) {
       notImplemented("ChildProcess.send with non-TCP net.Server handle");
     }
     return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
+      rawFd: rawFdFromTcpHandle(inner),
       message: {
         cmd: "NODE_HANDLE",
         type: IPC_HANDLE_NET_SERVER,
+        // Distinguishes the wrap type the receiver should reconstruct.
+        nativeKind: isTcp ? "tcp" : "pipe",
         msg: undefined,
       },
       // Match Node's handleConversion["net.Server"].postSend, which calls
@@ -2128,25 +2152,29 @@ function createIpcHandle(message, rawFd) {
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
   if (message.type === IPC_HANDLE_NET_SOCKET) {
-    const tcp = new TCP(tcpSocketType.SOCKET);
-    const err = tcp.open(rawFd);
+    const inner = message.nativeKind === "pipe"
+      ? new Pipe(socketType.SOCKET)
+      : new TCP(tcpSocketType.SOCKET);
+    const err = inner.open(rawFd);
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
     }
     try {
       return new Socket({
-        handle: tcp,
+        handle: inner,
         readable: true,
         writable: true,
       });
     } catch (err) {
-      tcp.close();
+      inner.close();
       throw err;
     }
   }
   if (message.type === IPC_HANDLE_NET_SERVER) {
-    const tcp = new TCP(tcpSocketType.SERVER);
-    const err = tcp.open(rawFd);
+    const inner = message.nativeKind === "pipe"
+      ? new Pipe(socketType.SERVER)
+      : new TCP(tcpSocketType.SERVER);
+    const err = inner.open(rawFd);
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
     }
@@ -2156,10 +2184,10 @@ function createIpcHandle(message, rawFd) {
     // detects an already-listening fd and skips the bind/listen syscalls.
     const server = new NetServer();
     try {
-      server.listen(tcp);
+      server.listen(inner);
       return server;
     } catch (err) {
-      tcp.close();
+      inner.close();
       throw err;
     }
   }
@@ -2561,7 +2589,12 @@ function setupChannel(
     let handleInfo = null;
     if (handle !== undefined) {
       handleInfo = getIpcHandleInfo(handle, options);
-      handleInfo.message.msg = message;
+      // `getIpcHandleInfo` returns null when the handle has no underlying
+      // native handle (e.g. a server that never started listening). Match
+      // Node, which strips the handle and sends the plain message instead.
+      if (handleInfo !== null) {
+        handleInfo.message.msg = message;
+      }
     }
 
     return enqueueOrDispatch(message, handleInfo, callback);
