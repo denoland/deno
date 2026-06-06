@@ -467,6 +467,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "IndexSizeError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionTypeMismatchError",
+  function DOMExceptionTypeMismatchError(msg) {
+    return new DOMException(msg, "TypeMismatchError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
