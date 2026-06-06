@@ -33,6 +33,7 @@ use crate::colors;
 
 const PROMPT: &str = "> ";
 const DISPLAY_ALL_COMPLETIONS_THRESHOLD: usize = 100;
+const MULTILINE_HISTORY_PREFIX: &str = "# deno-repl-history-json:";
 
 #[derive(Debug)]
 pub enum ReadlineError {
@@ -397,7 +398,7 @@ impl ReplEditor {
       .and_then(|history_file_path| {
         std::fs::read_to_string(history_file_path).ok()
       })
-      .map(|text| text.lines().map(ToOwned::to_owned).collect())
+      .map(|text| text.lines().map(decode_history_entry).collect::<Vec<_>>())
       .unwrap_or_default();
 
     if let Some(history_file_path) = &history_file_path {
@@ -790,11 +791,12 @@ impl ReplEditor {
   pub fn update_history(&self, entry: String) {
     self.inner.lock().history.push(entry.clone());
     if let Some(history_file_path) = &self.history_file_path {
+      let history_line = encode_history_entry(&entry);
       let result = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(history_file_path)
-        .and_then(|mut file| writeln!(file, "{entry}"));
+        .and_then(|mut file| writeln!(file, "{history_line}"));
       if let Err(e) = result {
         if self.errored_on_history_save.load(Relaxed) {
           return;
@@ -870,9 +872,33 @@ fn common_prefix(candidates: &[String]) -> Option<String> {
   Some(first[..end].to_string())
 }
 
+fn encode_history_entry(entry: &str) -> Cow<'_, str> {
+  if entry.contains(['\r', '\n']) {
+    format!(
+      "{}{}",
+      MULTILINE_HISTORY_PREFIX,
+      serde_json::to_string(entry).unwrap()
+    )
+    .into()
+  } else {
+    entry.into()
+  }
+}
+
+fn decode_history_entry(entry: &str) -> String {
+  entry
+    .strip_prefix(MULTILINE_HISTORY_PREFIX)
+    .and_then(|entry| serde_json::from_str(entry).ok())
+    .unwrap_or_else(|| entry.to_string())
+}
+
 #[cfg(test)]
 mod test {
   use super::ValidationResult;
+  use super::common_prefix;
+  use super::decode_history_entry;
+  use super::encode_history_entry;
+  use super::get_expr_from_line_at_pos;
   use super::validate;
 
   #[test]
@@ -887,5 +913,37 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
   fn validate_regex_looking_code() {
     let code = r#"/testing/;"#;
     assert!(matches!(validate(code), ValidationResult::Valid(_)));
+  }
+
+  #[test]
+  fn completion_expr_at_cursor() {
+    assert_eq!(get_expr_from_line_at_pos("console.lo", 10), "console.lo");
+    assert_eq!(
+      get_expr_from_line_at_pos("await Promise.al", 16),
+      "Promise.al"
+    );
+    assert_eq!(get_expr_from_line_at_pos("foo + bar", 9), "bar");
+  }
+
+  #[test]
+  fn completion_common_prefix() {
+    assert_eq!(
+      common_prefix(&["console".to_string(), "const".to_string()]),
+      Some("cons".to_string())
+    );
+    assert_eq!(
+      common_prefix(&["åbc".to_string(), "åbd".to_string()]),
+      Some("åb".to_string())
+    );
+  }
+
+  #[test]
+  fn history_entry_encoding_preserves_multiline_entries() {
+    assert_eq!(decode_history_entry("1 + 2"), "1 + 2");
+
+    let entry = "(\n1 + 2\n)";
+    let encoded = encode_history_entry(entry);
+    assert!(!encoded.contains('\n'));
+    assert_eq!(decode_history_entry(&encoded), entry);
   }
 }
