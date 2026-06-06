@@ -28,7 +28,6 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use discovery::ConfigFileDiscovery;
 use discovery::ConfigFolder;
-use discovery::DenoOrPkgJson;
 use discovery::discover_workspace_config_files;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
@@ -193,6 +192,15 @@ pub enum WorkspaceDiagnosticKind {
     "Invalid version requirement '{version_req}' for catalog entry '{name}'."
   )]
   InvalidCatalogVersionReq { name: String, version_req: String },
+  #[error(
+    "Publish configuration is defined in both {} and {}. Remove one of the files.",
+    deno_config_url,
+    jsr_config_url
+  )]
+  ConflictingPublishConfig {
+    deno_config_url: Url,
+    jsr_config_url: Url,
+  },
 }
 
 #[derive(Debug, Error, JsError, Clone, PartialEq, Eq)]
@@ -413,7 +421,7 @@ pub struct WorkspaceDiscoverOptions<'a> {
   /// A cache for workspaces. This is mostly only useful in the LSP where
   /// workspace discovery may occur multiple times.
   pub workspace_cache: Option<&'a dyn WorkspaceCache>,
-  pub additional_config_file_names: &'a [&'a str],
+  pub discover_jsr_config: bool,
   pub discover_pkg_json: bool,
   pub maybe_vendor_override: Option<VendorEnablement<'a>>,
 }
@@ -428,29 +436,16 @@ pub struct WorkspaceDirectoryEmptyOptions<'a> {
 #[derive(Debug, Default, Clone)]
 pub struct FolderConfigs {
   pub deno_json: Option<ConfigFileRc>,
+  pub jsr_json: Option<ConfigFileRc>,
   pub pkg_json: Option<PackageJsonRc>,
 }
 
 impl FolderConfigs {
   fn from_config_folder(config_folder: ConfigFolder) -> Self {
-    match config_folder {
-      ConfigFolder::Single(deno_or_pkg_json) => match deno_or_pkg_json {
-        DenoOrPkgJson::Deno(deno_json) => FolderConfigs {
-          deno_json: Some(deno_json),
-          pkg_json: None,
-        },
-        DenoOrPkgJson::PkgJson(pkg_json) => FolderConfigs {
-          deno_json: None,
-          pkg_json: Some(pkg_json),
-        },
-      },
-      ConfigFolder::Both {
-        deno_json,
-        pkg_json,
-      } => FolderConfigs {
-        deno_json: Some(deno_json),
-        pkg_json: Some(pkg_json),
-      },
+    FolderConfigs {
+      deno_json: config_folder.deno_json().cloned(),
+      jsr_json: config_folder.jsr_json().cloned(),
+      pkg_json: config_folder.pkg_json().cloned(),
     }
   }
 }
@@ -886,18 +881,11 @@ impl Workspace {
   pub fn jsr_packages<'a>(
     self: &'a WorkspaceRc,
   ) -> impl Iterator<Item = JsrPackageConfig> + 'a {
-    self.deno_jsons().filter_map(|c| {
-      if !c.is_package() {
-        return None;
-      }
-      Some(JsrPackageConfig {
-        member_dir: self.resolve_member_dir(&c.specifier),
-        name: c.json.name.clone()?,
-        config_file: c.clone(),
-        license: c.to_license(),
-        should_publish: c.should_publish(),
-      })
-    })
+    self
+      .config_folders
+      .keys()
+      .map(|dir_url| self.resolve_member_dir(dir_url))
+      .filter_map(|dir| dir.maybe_package_config())
   }
 
   pub fn npm_packages(self: &WorkspaceRc) -> Vec<NpmPackageConfig> {
@@ -1029,6 +1017,18 @@ impl Workspace {
               let root = self.config_folders.get(&self.root_dir_url).unwrap();
               root.pkg_json.as_ref().map(|c| (&self.root_dir_url, c))
             });
+          let maybe_jsr_json = folder
+            .jsr_json
+            .as_ref()
+            .map(|c| (member_url, c))
+            .or_else(|| {
+              let parent = parent_specifier_str(member_url.as_str())?;
+              self.resolve_jsr_json_from_str(parent)
+            })
+            .or_else(|| {
+              let root = self.config_folders.get(&self.root_dir_url).unwrap();
+              root.jsr_json.as_ref().map(|c| (&self.root_dir_url, c))
+            });
           let maybe_root_folder = self.config_folders.get(&self.root_dir_url);
           WorkspaceDirectory {
             dir_url: member_url.clone(),
@@ -1049,6 +1049,16 @@ impl Workspace {
                   None
                 } else {
                   Some(deno_json.clone())
+                }
+              }),
+            },
+            jsr_json: WorkspaceDirConfig {
+              root: maybe_root_folder.and_then(|dir| dir.jsr_json.clone()),
+              member: maybe_jsr_json.and_then(|(member_url, jsr_json)| {
+                if *member_url == self.root_dir_url {
+                  None
+                } else {
+                  Some(jsr_json.clone())
                 }
               }),
             },
@@ -1082,6 +1092,23 @@ impl Workspace {
     loop {
       let (folder_url, folder) = self.resolve_folder_str(specifier)?;
       if let Some(config) = folder.deno_json.as_ref() {
+        return Some((folder_url, config));
+      }
+      specifier = parent_specifier_str(folder_url.as_str())?;
+    }
+  }
+
+  fn resolve_jsr_json_from_str(
+    &self,
+    specifier: &str,
+  ) -> Option<(&UrlRc, &ConfigFileRc)> {
+    let mut specifier = specifier;
+    if !specifier.ends_with('/') {
+      specifier = parent_specifier_str(specifier)?;
+    }
+    loop {
+      let (folder_url, folder) = self.resolve_folder_str(specifier)?;
+      if let Some(config) = folder.jsr_json.as_ref() {
         return Some((folder_url, config));
       }
       specifier = parent_specifier_str(folder_url.as_str())?;
@@ -1354,6 +1381,21 @@ impl Workspace {
     }
 
     let mut diagnostics = Vec::new();
+    for folder in self.config_folders.values() {
+      if let (Some(deno_json), Some(jsr_json)) =
+        (folder.deno_json.as_ref(), folder.jsr_json.as_ref())
+        && deno_json.is_package()
+        && jsr_json.is_package()
+      {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: jsr_json.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::ConflictingPublishConfig {
+            deno_config_url: deno_json.specifier.clone(),
+            jsr_config_url: jsr_json.specifier.clone(),
+          },
+        });
+      }
+    }
     for (url, folder) in &self.config_folders {
       let is_root = url == &self.root_dir_url;
       if let Some(config) = &folder.deno_json {
@@ -1786,6 +1828,7 @@ pub struct WorkspaceDirectory {
   dir_url: UrlRc,
   pkg_json: WorkspaceDirConfig<PackageJson>,
   deno_json: WorkspaceDirConfig<ConfigFile>,
+  jsr_json: WorkspaceDirConfig<ConfigFile>,
   cached: CachedDirectoryValues,
 }
 
@@ -1919,6 +1962,10 @@ impl WorkspaceDirectory {
         root: None,
         member: root_folder.deno_json.clone(),
       },
+      jsr_json: WorkspaceDirConfig {
+        root: None,
+        member: root_folder.jsr_json.clone(),
+      },
       workspace,
       cached: Default::default(),
     }
@@ -2001,21 +2048,41 @@ impl WorkspaceDirectory {
       .or(self.pkg_json.root.as_ref())
   }
 
+  /// Resolves the folder's jsr.json.
+  ///
+  /// This will exclude the root jsr.json in a member.
+  pub fn maybe_jsr_json(&self) -> Option<&ConfigFileRc> {
+    self.jsr_json.member.as_ref()
+  }
+
   pub fn maybe_package_config(
     self: &WorkspaceDirectoryRc,
   ) -> Option<JsrPackageConfig> {
-    let deno_json = self.deno_json.member.as_ref()?;
-    let pkg_name = deno_json.json.name.as_ref()?;
-    if !deno_json.is_package() {
-      return None;
+    if let Some(deno_json) = self.member_deno_json()
+      && deno_json.is_package()
+      && let Some(pkg_name) = deno_json.json.name.clone()
+    {
+      return Some(JsrPackageConfig {
+        name: pkg_name,
+        config_file: deno_json.clone(),
+        member_dir: self.clone(),
+        license: deno_json.to_license(),
+        should_publish: deno_json.should_publish(),
+      });
     }
-    Some(JsrPackageConfig {
-      name: pkg_name.clone(),
-      config_file: deno_json.clone(),
-      member_dir: self.clone(),
-      license: deno_json.to_license(),
-      should_publish: deno_json.should_publish(),
-    })
+    if let Some(jsr_json) = self.maybe_jsr_json()
+      && jsr_json.is_package()
+      && let Some(pkg_name) = jsr_json.json.name.clone()
+    {
+      return Some(JsrPackageConfig {
+        name: pkg_name,
+        config_file: jsr_json.clone(),
+        member_dir: self.clone(),
+        license: jsr_json.to_license(),
+        should_publish: jsr_json.should_publish(),
+      });
+    }
+    None
   }
 
   /// Gets a list of raw compiler options that the user provided, in a vec of
@@ -3206,6 +3273,105 @@ pub mod test {
     )
     .unwrap();
     assert_eq!(workspace_dir.workspace.config_folders.len(), 3);
+  }
+
+  #[test]
+  fn test_jsr_package_config_fallback_without_deno() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("jsr.json"),
+      json!({
+        "name": "@scope/pkg",
+        "version": "1.2.3",
+        "exports": "./mod.ts"
+      }),
+    );
+    let workspace_dir = WorkspaceDirectory::discover(
+      &sys,
+      WorkspaceDiscoverStart::Paths(&[root_dir()]),
+      &WorkspaceDiscoverOptions {
+        discover_jsr_config: true,
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let package = workspace_dir
+      .maybe_package_config()
+      .expect("expected package config");
+    assert_eq!(package.name, "@scope/pkg");
+    assert!(package.config_file.specifier.path().ends_with("/jsr.json"));
+  }
+
+  #[test]
+  fn test_jsr_package_config_fallback_with_deno_not_package() {
+    let sys = InMemorySys::default();
+    // deno.json exists but is not a package (no name/version/exports)
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "fmt": {
+          "semiColons": false
+        }
+      }),
+    );
+    // jsr.json has package metadata
+    sys.fs_insert_json(
+      root_dir().join("jsr.json"),
+      json!({
+        "name": "@scope/pkg",
+        "version": "1.2.3",
+        "exports": "./mod.ts"
+      }),
+    );
+    let workspace_dir = WorkspaceDirectory::discover(
+      &sys,
+      WorkspaceDiscoverStart::Paths(&[root_dir()]),
+      &WorkspaceDiscoverOptions {
+        discover_jsr_config: true,
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let package = workspace_dir
+      .maybe_package_config()
+      .expect("expected package config");
+    assert_eq!(package.name, "@scope/pkg");
+    assert!(package.config_file.specifier.path().ends_with("/jsr.json"));
+  }
+
+  #[test]
+  fn test_conflicting_publish_configs_diagnostic() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "name": "@scope/pkg",
+        "version": "1.0.0",
+        "exports": "./mod.ts"
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("jsr.json"),
+      json!({
+        "name": "@scope/pkg",
+        "version": "1.0.0",
+        "exports": "./mod.ts"
+      }),
+    );
+    let workspace_dir = WorkspaceDirectory::discover(
+      &sys,
+      WorkspaceDiscoverStart::Paths(&[root_dir()]),
+      &WorkspaceDiscoverOptions {
+        discover_jsr_config: true,
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let diagnostics = workspace_dir.workspace.diagnostics();
+    assert!(diagnostics.iter().any(|diagnostic| matches!(
+      diagnostic.kind,
+      WorkspaceDiagnosticKind::ConflictingPublishConfig { .. }
+    )));
   }
 
   #[test]
