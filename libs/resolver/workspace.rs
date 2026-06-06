@@ -1521,7 +1521,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     match workspace_version_req {
       PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
         match version_req.inner() {
-          RangeSetOrTag::RangeSet(set) => {
+          RangeSetOrTag::RangeSet(_) => {
             match pkg_json
               .version
               .as_ref()
@@ -1529,14 +1529,14 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
             {
               Some(version) => {
                 // Match prerelease versions that fall within the range bounds
-                // too (npm's `includePrerelease`). A workspace member with a
-                // prerelease version (e.g. `0.40.0-pre`) should still resolve
-                // to the local package instead of being rejected, since it is
-                // provided explicitly rather than picked from the registry.
-                let matches = set.satisfies(&version)
-                  || (!version.pre.is_empty()
-                    && set.0.iter().any(|r| r.intersects_version(&version)));
-                if matches {
+                // too. A workspace member with a prerelease version (e.g.
+                // `0.40.0-pre`) should still resolve to the local package
+                // instead of being rejected, since it is provided explicitly
+                // rather than picked from the registry.
+                if crate::npm::version_req_matches_including_pre(
+                  version_req,
+                  &version,
+                ) {
                   Ok(pkg_json.dir_path())
                 } else {
                   Err(

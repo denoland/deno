@@ -134,7 +134,7 @@ impl NpmInstallDepsProvider {
 
             let workspace_pkg = workspace_npm_pkgs
               .iter()
-              .find(|pkg| pkg.matches_req(&pkg_req));
+              .find(|pkg| pkg.matches_req_including_pre(&pkg_req));
 
             if let Some(pkg) = workspace_pkg {
               local_pkgs.push(InstallLocalPkg {
@@ -195,7 +195,7 @@ impl NpmInstallDepsProvider {
                 continue;
               }
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
-                pkg.matches_req(pkg_req)
+                pkg.matches_req_including_pre(pkg_req)
                         // do not resolve to the current package
                         && pkg.pkg_json.path != pkg_json.path
               });
@@ -255,7 +255,7 @@ impl NpmInstallDepsProvider {
                   version_req,
                 };
                 let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
-                  pkg.matches_req(&pkg_req)
+                  pkg.matches_req_including_pre(&pkg_req)
                     && pkg.pkg_json.path != pkg_json.path
                 });
 
