@@ -993,7 +993,15 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
       if let Some(validate_import_attributes_cb) =
         &state.validate_import_attributes_cb
       {
-        (validate_import_attributes_cb)(tc_scope, &assertions);
+        // Dynamic imports don't expose a source offset, so line/column are
+        // unavailable here.
+        let context = crate::modules::ImportAttributesContext {
+          referrer: referrer_name_str.clone(),
+          specifier: specifier_str.clone(),
+          line_number: None,
+          column_number: None,
+        };
+        (validate_import_attributes_cb)(tc_scope, &assertions, &context);
       }
     }
 

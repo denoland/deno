@@ -98,7 +98,8 @@ pub fn create_validate_import_attributes_callback(
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
     move |scope: &mut v8::PinScope<'_, '_>,
-          attributes: &HashMap<String, String>| {
+          attributes: &HashMap<String, String>,
+          context: &deno_core::ImportAttributesContext| {
       let valid_attribute = |kind: &str| {
         matches!(kind, "json" | "text")
           || (enable_raw_imports.load(Ordering::Relaxed) && kind == "bytes")
@@ -116,6 +117,7 @@ pub fn create_validate_import_attributes_callback(
           continue;
         };
 
+        let msg = format!("{msg}{}", context.format_location());
         let message = v8::String::new(scope, &msg).unwrap();
         let exception = v8::Exception::type_error(scope, message);
         scope.throw_exception(exception);
