@@ -751,7 +751,11 @@ fn create_command(
           extra_pipe_fds.push(Some(fd1 as i64));
         }
         StdioOrFd::Fd(fd) => {
-          // Dup the caller's fd onto the target fd slot in the child
+          // Dup the caller's fd onto the target fd slot in the child. The
+          // trailing `true` requests that O_NONBLOCK be cleared on the dup'd
+          // fd: Deno opens piped stdio non-blocking for async reads from JS,
+          // but a child doing blocking reads on the inherited fd would
+          // otherwise fail with EAGAIN.
           fds_to_dup.push((fd, target_fd, true));
           extra_pipe_fds.push(None);
         }
@@ -775,6 +779,8 @@ fn create_command(
               }
               libc::close(src);
             }
+            // Caller-provided fds (e.g. another child's piped stdout) are
+            // non-blocking; clear it so the exec'd child can do blocking reads.
             if should_clear_nonblocking {
               clear_nonblocking(dst)?;
             }
