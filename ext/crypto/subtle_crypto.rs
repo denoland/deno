@@ -20,6 +20,11 @@ use crate::digest::BufferSource;
 use crate::digest::DigestAlgorithm;
 use crate::digest::run as run_digest;
 use crate::shared::SharedError;
+use crate::subtle_decrypt::SubtleDecryptParams;
+use crate::subtle_decrypt::run as run_decrypt;
+use crate::subtle_encrypt::SubtleEncryptParams;
+use crate::subtle_encrypt::run as run_encrypt;
+use crate::subtle_key::SubtleKey;
 
 pub struct SubtleCrypto;
 
@@ -73,6 +78,42 @@ impl SubtleCrypto {
     #[webidl] data: BufferSource,
   ) -> Result<Vec<u8>, CryptoError> {
     spawn_blocking(move || run_digest(algorithm, data.0)).await?
+  }
+
+  /// `SubtleCrypto.encrypt(algorithm, key, data)` — apply the requested
+  /// encryption algorithm to `data` using `key`. The per-algorithm
+  /// dictionary parsing (`label`, `iv`, `counter`, `length`, `tagLength`,
+  /// `additionalData`) is done by the `SubtleEncryptParams`
+  /// `WebIdlConverter`; the `SubtleKey` `WebIdlConverter` snapshots the
+  /// `CryptoKey` slots (`algorithm.name`, `algorithm.length`,
+  /// `algorithm.hash`, `usages`, `type`, and the underlying
+  /// [`crate::key_store::CryptoKeyHandle`] data) so the dispatch can run
+  /// off the v8 stack inside `spawn_blocking`.
+  #[required(3)]
+  #[arraybuffer]
+  async fn encrypt(
+    &self,
+    #[webidl] algorithm: SubtleEncryptParams,
+    #[webidl] key: SubtleKey,
+    #[webidl] data: BufferSource,
+  ) -> Result<Vec<u8>, CryptoError> {
+    spawn_blocking(move || run_encrypt(algorithm, key, data.0)).await?
+  }
+
+  /// `SubtleCrypto.decrypt(algorithm, key, data)` — inverse of
+  /// [`encrypt`](Self::encrypt). Same converter/dispatch shape; the JS
+  /// shim used to enforce that an algorithm-name/key mismatch raises
+  /// `OperationError` (whereas `encrypt` raised `InvalidAccessError`),
+  /// which [`crate::subtle_decrypt::run`] preserves.
+  #[required(3)]
+  #[arraybuffer]
+  async fn decrypt(
+    &self,
+    #[webidl] algorithm: SubtleDecryptParams,
+    #[webidl] key: SubtleKey,
+    #[webidl] data: BufferSource,
+  ) -> Result<Vec<u8>, CryptoError> {
+    spawn_blocking(move || run_decrypt(algorithm, key, data.0)).await?
   }
 }
 

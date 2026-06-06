@@ -72,6 +72,9 @@ mod mldsa;
 mod mlkem;
 mod shared;
 mod subtle_crypto;
+mod subtle_decrypt;
+mod subtle_encrypt;
+mod subtle_key;
 mod x25519;
 mod x448;
 

@@ -181,7 +181,7 @@ pub async fn op_crypto_decrypt(
   Ok(buf.into())
 }
 
-fn decrypt_rsa_oaep(
+pub(crate) fn decrypt_rsa_oaep(
   key: &RawKeyData,
   hash: ShaHash,
   label: Vec<u8>,
@@ -235,7 +235,7 @@ fn decrypt_rsa_oaep(
     .map_err(DecryptError::Rsa)
 }
 
-fn decrypt_aes_cbc(
+pub(crate) fn decrypt_aes_cbc(
   key: &RawKeyData,
   length: usize,
   iv: Vec<u8>,
@@ -352,7 +352,7 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
   Ok(())
 }
 
-fn decrypt_aes_ctr(
+pub(crate) fn decrypt_aes_ctr(
   key: &RawKeyData,
   key_length: usize,
   counter: &[u8],
@@ -384,7 +384,7 @@ fn decrypt_aes_ctr(
   }
 }
 
-fn decrypt_aes_gcm(
+pub(crate) fn decrypt_aes_gcm(
   key: &RawKeyData,
   length: usize,
   tag_length: usize,
@@ -433,7 +433,7 @@ fn decrypt_aes_gcm(
   Ok(plaintext)
 }
 
-fn decrypt_chacha20_poly1305(
+pub(crate) fn decrypt_chacha20_poly1305(
   key: &RawKeyData,
   nonce: &[u8],
   additional_data: Option<Vec<u8>>,
@@ -466,7 +466,7 @@ fn decrypt_chacha20_poly1305(
   Ok(plaintext.to_vec())
 }
 
-fn decrypt_aes_ocb(
+pub(crate) fn decrypt_aes_ocb(
   key: &RawKeyData,
   length: usize,
   tag_length: usize,

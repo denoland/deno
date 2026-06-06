@@ -176,7 +176,7 @@ pub async fn op_crypto_encrypt(
   Ok(buf.into())
 }
 
-fn encrypt_rsa_oaep(
+pub(crate) fn encrypt_rsa_oaep(
   key: &RawKeyData,
   hash: ShaHash,
   label: Vec<u8>,
@@ -231,7 +231,7 @@ fn encrypt_rsa_oaep(
   Ok(encrypted)
 }
 
-fn encrypt_aes_cbc(
+pub(crate) fn encrypt_aes_cbc(
   key: &RawKeyData,
   length: usize,
   iv: Vec<u8>,
@@ -304,7 +304,7 @@ fn encrypt_aes_gcm_general<N: ArrayLength<u8>>(
   Ok(tag)
 }
 
-fn encrypt_aes_gcm(
+pub(crate) fn encrypt_aes_gcm(
   key: &RawKeyData,
   length: usize,
   tag_length: usize,
@@ -345,7 +345,7 @@ fn encrypt_aes_gcm(
   Ok(ciphertext)
 }
 
-fn encrypt_aes_ocb(
+pub(crate) fn encrypt_aes_ocb(
   key: &RawKeyData,
   length: usize,
   tag_length: usize,
@@ -456,7 +456,7 @@ enum OcbTagSize {
   U16,
 }
 
-fn encrypt_chacha20_poly1305(
+pub(crate) fn encrypt_chacha20_poly1305(
   key: &RawKeyData,
   nonce: &[u8],
   additional_data: Option<Vec<u8>>,
@@ -507,7 +507,7 @@ where
   Ok(ciphertext)
 }
 
-fn encrypt_aes_ctr(
+pub(crate) fn encrypt_aes_ctr(
   key: &RawKeyData,
   key_length: usize,
   counter: &[u8],

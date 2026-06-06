@@ -473,6 +473,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "TypeMismatchError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionInvalidAccessError",
+  function DOMExceptionInvalidAccessError(msg) {
+    return new DOMException(msg, "InvalidAccessError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
