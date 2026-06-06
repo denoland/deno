@@ -279,6 +279,13 @@ fn value_to_byte_vec<'a>(
 /// `WebIdlConverter` matching the WebCrypto `BufferSource` union
 /// (`ArrayBufferView` or `ArrayBuffer`). Always materializes the bytes
 /// into an owned `Vec<u8>` so the data is safe to hold across `.await`.
+///
+/// Rejects `SharedArrayBuffer` and `ArrayBufferView`s whose backing buffer is
+/// a `SharedArrayBuffer`, mirroring the WebIDL `BufferSource` converter --
+/// the WebCrypto spec uses `BufferSource` without `[AllowShared]`, so the
+/// SAB-backed `subtle.digest('SHA-256', new Uint8Array(new SharedArrayBuffer))`
+/// call required by the `crypto-subtle-cross-realm` node compat test must
+/// reject with a `TypeError`.
 pub struct BufferSource(pub Vec<u8>);
 
 impl<'a> WebIdlConverter<'a> for BufferSource {
@@ -291,17 +298,36 @@ impl<'a> WebIdlConverter<'a> for BufferSource {
     context: ContextFn<'b>,
     _options: &Self::Options,
   ) -> Result<Self, WebIdlError> {
-    if v8::Local::<v8::ArrayBufferView>::try_from(value).is_ok()
-      || v8::Local::<v8::ArrayBuffer>::try_from(value).is_ok()
-    {
-      Ok(BufferSource(value_to_byte_vec(scope, value)))
-    } else {
-      Err(WebIdlError::new(
+    if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+      if let Some(ab) = view.buffer(scope) {
+        let ab_val: v8::Local<v8::Value> = ab.into();
+        if ab_val.is_shared_array_buffer() {
+          return Err(WebIdlError::other(
+            prefix,
+            context,
+            JsErrorBox::type_error(
+              "is a view on a SharedArrayBuffer, which is not allowed",
+            ),
+          ));
+        }
+      }
+      return Ok(BufferSource(value_to_byte_vec(scope, value)));
+    }
+    if value.is_shared_array_buffer() {
+      return Err(WebIdlError::other(
         prefix,
         context,
-        WebIdlErrorKind::ConvertToConverterType("BufferSource"),
-      ))
+        JsErrorBox::type_error("is not an ArrayBuffer or a view on one"),
+      ));
     }
+    if v8::Local::<v8::ArrayBuffer>::try_from(value).is_ok() {
+      return Ok(BufferSource(value_to_byte_vec(scope, value)));
+    }
+    Err(WebIdlError::new(
+      prefix,
+      context,
+      WebIdlErrorKind::ConvertToConverterType("BufferSource"),
+    ))
   }
 }
 
