@@ -1935,6 +1935,28 @@ declare namespace Deno {
      *   console.log(decoder.decode(chunk));
      * }
      * ```
+     *
+     * Note that the readable stream *takes ownership of the file*: reading the
+     * stream to completion (or cancelling it) closes the file automatically.
+     * For this reason you should not close the file yourself while the stream
+     * is still being consumed. In particular, avoid combining `file.readable`
+     * with a `using` declaration when ownership is handed off elsewhere, such
+     * as when returning it from a `Deno.serve` handler:
+     *
+     * ```ts
+     * // Wrong: `using` closes the file when the handler returns, before the
+     * // response body has finished streaming, surfacing a "Bad resource ID".
+     * Deno.serve(async (_req) => {
+     *   using file = await Deno.open("my_file.txt", { read: true });
+     *   return new Response(file.readable);
+     * });
+     *
+     * // Right: let the response body stream own and close the file.
+     * Deno.serve(async (_req) => {
+     *   const file = await Deno.open("my_file.txt", { read: true });
+     *   return new Response(file.readable);
+     * });
+     * ```
      */
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** A {@linkcode WritableStream} instance to write the contents of the
@@ -1950,6 +1972,10 @@ declare namespace Deno {
      *   await writer.write(encoder.encode(item));
      * }
      * ```
+     *
+     * Note that the writable stream *takes ownership of the file*: closing or
+     * aborting the stream closes the file automatically, so you should not
+     * close the file yourself while the stream is still in use.
      */
     readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /** Write the contents of the array buffer (`p`) to the file.

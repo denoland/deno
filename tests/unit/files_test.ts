@@ -626,6 +626,70 @@ Deno.test({ permissions: { read: true } }, async function readableStream() {
 });
 
 Deno.test(
+  {
+    permissions: { read: true },
+    sanitizeOps: true,
+    sanitizeResources: true,
+  },
+  async function readableStreamTakesOwnership() {
+    // Consuming `file.readable` to completion takes ownership of the file and
+    // closes it automatically, so the resource and op sanitizers should not
+    // report a leak even though `file` is never closed manually.
+    const filename = "tests/testdata/assets/hello.txt";
+    const file = await Deno.open(filename);
+    const chunks = await Array.fromAsync(file.readable);
+    assertEquals(chunks.length, 1);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readableStreamClosedResourceErrorMessage() {
+    // Regression test for https://github.com/denoland/deno/issues/34958 —
+    // closing the file (e.g. via a `using` declaration or an explicit
+    // `.close()`) while its `.readable` stream is still being consumed should
+    // surface an actionable error rather than a terse "Bad resource ID".
+    const filename = "tests/testdata/assets/hello.txt";
+    const file = await Deno.open(filename);
+    const reader = file.readable.getReader();
+    file.close();
+    const error = await assertRejects(
+      () => reader.read(),
+      Error,
+      "was closed before the stream finished being read from",
+    );
+    assert(error.message.includes("`.readable`"));
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writableStreamClosedResourceErrorMessage() {
+    // Regression test for https://github.com/denoland/deno/issues/34958 —
+    // the writable counterpart of the case above.
+    const tempFile = await Deno.makeTempFile();
+    try {
+      const file = await Deno.open(tempFile, { write: true });
+      const writer = file.writable.getWriter();
+      file.close();
+      // The file's writable stream buffers small writes (64 KiB), so write a
+      // chunk large enough to be flushed to the underlying resource directly.
+      // The flush errors the stream; the error surfaces on `writer.closed`.
+      await assertRejects(
+        async () => {
+          await writer.write(new Uint8Array(128 * 1024)).catch(() => {});
+          await writer.closed;
+        },
+        Error,
+        "was closed before the stream finished being written to",
+      );
+    } finally {
+      await Deno.remove(tempFile);
+    }
+  },
+);
+
+Deno.test(
   { permissions: { read: true } },
   async function readableStreamTextEncoderPipe() {
     const filename = "tests/testdata/assets/hello.txt";
