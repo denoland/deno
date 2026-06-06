@@ -26,6 +26,7 @@ const {
   RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeArrayIterator,
+  SafeMap,
   SafePromiseAll,
   SafeRegExp,
   SafeSet,
@@ -213,6 +214,8 @@ function stdioStringToArray(
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
 const kCanDisconnect = Symbol("_canDisconnect");
+const kChildStdioUsedAsInput = Symbol("childStdioUsedAsInput");
+const childStdioStreamsByFd = new SafeMap();
 let emittedShellDeprecation = false;
 
 // We only want to emit a close event for the child process when all of
@@ -233,6 +236,9 @@ function flushStdio(subprocess) {
   for (let i = 0; i < stdio.length; i++) {
     const stream = stdio[i];
     if (!stream || !stream.readable) {
+      continue;
+    }
+    if (stream[kChildStdioUsedAsInput]) {
       continue;
     }
     stream.resume();
@@ -561,6 +567,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stdout);
         this.stdout.on("close", () => {
           maybeClose(this);
         });
@@ -575,6 +582,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stderr);
         this.stderr.on("close", () => {
           maybeClose(this);
         });
@@ -601,6 +609,7 @@ class ChildProcess extends EventEmitter {
               handle: pipe,
             },
           );
+          registerChildStdioStream(this.stdio[fd]);
           this.stdio[fd]?.on("close", () => {
             maybeClose(this);
           });
@@ -917,6 +926,29 @@ function streamHandleFd(stream) {
   return -1;
 }
 
+function registerChildStdioStream(stream) {
+  const fd = streamHandleFd(stream);
+  if (fd < 0) {
+    return;
+  }
+
+  childStdioStreamsByFd.set(fd, stream);
+  stream.on("close", () => {
+    if (childStdioStreamsByFd.get(fd) === stream) {
+      childStdioStreamsByFd.delete(fd);
+    }
+  });
+}
+
+function markChildStdioUsedAsInput(fd) {
+  const stream = childStdioStreamsByFd.get(fd);
+  if (stream) {
+    stream[kChildStdioUsedAsInput] = true;
+    stream.pause();
+    stream._handle?.readStop?.();
+  }
+}
+
 function toDenoStdio(
   pipe,
 ) {
@@ -929,6 +961,9 @@ function toDenoStdio(
     // another child's stdin shares the underlying OS pipe.
     const fd = streamHandleFd(pipe);
     if (fd >= 0) {
+      pipe[kChildStdioUsedAsInput] = true;
+      pipe.pause();
+      pipe._handle?.readStop?.();
       return fd;
     }
     // For streams without a usable fd, create a pipe and set up JS-level
@@ -936,6 +971,7 @@ function toDenoStdio(
     return "piped";
   }
   if (typeof pipe === "number") {
+    markChildStdioUsedAsInput(pipe);
     return pipe;
   }
   switch (pipe) {
@@ -1366,6 +1402,11 @@ function normalizeSpawnArguments(
 }
 
 function waitForReadableToClose(readable) {
+  if (readable[kChildStdioUsedAsInput]) {
+    const closePromise = waitForStreamToClose(readable);
+    readable.destroy();
+    return closePromise;
+  }
   readable.resume(); // Ensure buffered data will be consumed.
   return waitForStreamToClose(readable);
 }
