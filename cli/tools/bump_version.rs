@@ -232,11 +232,8 @@ pub fn bump_version_command(
     cli_options.start_dir.dir_url() == workspace.root_dir_url();
   let jsr_pkg_count = workspace.jsr_packages().count();
   // An explicit --config targets a single manifest; workspace mode does not
-  // apply to it.
+  // apply to it. Clap enforces the exclusion with --workspace.
   let workspace_mode = if version_flags.config.is_some() {
-    if version_flags.workspace == Some(true) {
-      bail!("--workspace and --config are mutually exclusive");
-    }
     false
   } else {
     match version_flags.workspace {

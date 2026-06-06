@@ -5108,6 +5108,7 @@ release note is prepended to <p(245)>Releases.md</>."
           .short('c')
           .value_name("FILE")
           .value_hint(ValueHint::FilePath)
+          .conflicts_with("workspace")
           .help(cstr!(
             "Explicit path to the manifest file to bump.
   <p(245)>May point to a `deno.json`/`deno.jsonc` or a `package.json`. When

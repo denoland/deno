@@ -1,6 +1,10 @@
 {
   "tempDir": true,
   "steps": [{
+    "args": "bump-version --workspace --config package.json patch",
+    "output": "conflict.out",
+    "exitCode": 1
+  }, {
     "args": "bump-version --config package.json patch",
     "output": "patch.out"
   }, {
