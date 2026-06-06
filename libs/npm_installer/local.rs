@@ -915,13 +915,14 @@ impl<
         .map(|pkg| (&pkg.nv, pkg.target_dir.as_path()))
         .collect();
       for workspace_pkg in self.npm_install_deps_provider.workspace_pkgs() {
-        let member_node_modules = workspace_pkg.target_dir.join("node_modules");
         // The workspace root's `node_modules` is already fully set up above.
-        if member_node_modules == self.root_node_modules_path
-          || workspace_pkg.deps.is_empty()
-        {
+        // (Comparing paths here is unreliable: `root_node_modules_path` is
+        // canonicalized while `target_dir` is not, so on Windows they can
+        // differ by 8.3 short names or casing for the same directory.)
+        if workspace_pkg.is_root || workspace_pkg.deps.is_empty() {
           continue;
         }
+        let member_node_modules = workspace_pkg.target_dir.join("node_modules");
         let member_key = workspace_pkg.target_dir.to_string_lossy();
         let mut dep_cache = setup_cache.with_dep(&member_key);
         let mut created_dir = false;
