@@ -265,7 +265,9 @@ pub fn check_support_for_algorithm(
     return true;
   }
   match operation {
-    "wrapKey" => is_algorithm_registered_for(algorithm_name, Operation::Encrypt),
+    "wrapKey" => {
+      is_algorithm_registered_for(algorithm_name, Operation::Encrypt)
+    }
     "unwrapKey" => {
       is_algorithm_registered_for(algorithm_name, Operation::Decrypt)
     }
