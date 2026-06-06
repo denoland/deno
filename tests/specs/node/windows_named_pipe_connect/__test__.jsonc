@@ -1,8 +1,4 @@
 {
-  // TODO(bartlomieju): re-enable once NativePipe registers a Deno resource
-  // for HTTP use cases. Currently node:http's op_node_http_request_with_conn
-  // requires a rid from the resource table, but NativePipe bypasses it.
-  "ignore": true,
   "tests": {
     "http_over_named_pipe": {
       "if": "windows",

@@ -124,7 +124,7 @@ pub struct ContextState {
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
   /// Phase-specific state for the libuv-style event loop.
-  pub(crate) event_loop_phases: RefCell<EventLoopPhases>,
+  pub event_loop_phases: RefCell<EventLoopPhases>,
   /// Pointer to the `UvLoopInner` for the libuv compat layer.
   /// Set via [`JsRuntime::register_uv_loop`] when a `uv_loop_t` is
   /// associated with this context.
@@ -612,11 +612,16 @@ impl JsRealm {
     let root_id =
       RecursiveModuleLoad::main(specifier.to_string(), module_map_rc.clone())
         .await?
-        .run_to_completion(|load, request, source| {
+        .run_to_completion(|load, step| {
           context_scope!(scope, self, isolate);
-          load
-            .register_and_recurse(scope, request, source)
-            .map_err(|e| e.into_error(scope, false, false))
+          match step {
+            crate::modules::recursive_load::RegisterStep::Register {
+              request,
+              source,
+            } => load
+              .register_and_recurse(scope, request, source)
+              .map_err(|e| e.into_error(scope, false, false)),
+          }
         })
         .await?;
     context_scope!(scope, self, isolate);
@@ -660,11 +665,16 @@ impl JsRealm {
       None,
     )
     .await?
-    .run_to_completion(|load, request, source| {
+    .run_to_completion(|load, step| {
       context_scope!(scope, self, isolate);
-      load
-        .register_and_recurse(scope, request, source)
-        .map_err(|e| e.into_error(scope, false, false))
+      match step {
+        crate::modules::recursive_load::RegisterStep::Register {
+          request,
+          source,
+        } => load
+          .register_and_recurse(scope, request, source)
+          .map_err(|e| e.into_error(scope, false, false)),
+      }
     })
     .await?;
     context_scope!(scope, self, isolate);

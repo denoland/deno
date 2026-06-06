@@ -239,7 +239,7 @@ pub fn op_node_new_async_id(state: &mut OpState) -> f64 {
 #[repr(C)]
 pub struct AsyncWrap {
   provider: i32,
-  async_id: i64,
+  async_id: Cell<i64>,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -255,7 +255,10 @@ impl AsyncWrap {
   pub(crate) fn create(state: &mut OpState, provider: i32) -> Self {
     let async_id = next_async_id(state);
 
-    Self { provider, async_id }
+    Self {
+      provider,
+      async_id: Cell::new(async_id),
+    }
   }
 }
 
@@ -268,12 +271,17 @@ impl AsyncWrap {
 
   #[fast]
   fn get_async_id(&self) -> f64 {
-    self.async_id as f64
+    self.async_id.get() as f64
   }
 
   #[fast]
   fn get_provider_type(&self) -> i32 {
     self.provider
+  }
+
+  #[fast]
+  fn async_reset(&self, state: &mut OpState) {
+    self.async_id.set(next_async_id(state));
   }
 }
 
@@ -482,7 +490,7 @@ impl HandleWrap {
 
 fn uv_close<F>(
   scope: &mut v8::PinScope<'_, '_>,
-  op_state: Rc<RefCell<OpState>>,
+  _op_state: Rc<RefCell<OpState>>,
   this: v8::Global<v8::Object>,
   on_close: F,
 ) where
@@ -499,10 +507,26 @@ fn uv_close<F>(
     fn_.call(scope, this.into(), &[]);
   }
 
-  op_state
-    .borrow()
-    .borrow::<deno_core::V8TaskSpawner>()
-    .spawn(on_close);
+  let context = scope.get_current_context();
+  // SAFETY: The context embedder data slot contains a valid Rc<ContextState>
+  // pointer set during context initialization. We clone the Rc and forget
+  // the reconstructed one to avoid dropping the original reference.
+  let context_state = unsafe {
+    let ptr = context.get_aligned_pointer_from_embedder_data(
+      deno_core::CONTEXT_STATE_SLOT_INDEX,
+    );
+    let rc = std::rc::Rc::from_raw(ptr as *const deno_core::ContextState);
+    let cloned = rc.clone();
+    std::mem::forget(rc);
+    cloned
+  };
+  context_state
+    .event_loop_phases
+    .borrow_mut()
+    .v8_close_callbacks
+    .push_back(deno_core::event_loop::V8CloseCallback {
+      callback: Box::new(on_close),
+    });
 }
 
 #[cfg(test)]

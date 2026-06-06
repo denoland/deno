@@ -1,0 +1,4 @@
+[WILDCARD]
+timer leak allowed by per-test override ... ok [WILDCARD]
+
+ok | 1 passed | 0 failed [WILDCARD]

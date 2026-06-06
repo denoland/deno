@@ -215,6 +215,25 @@ impl FsCleaner {
     Ok(())
   }
 
+  /// Accumulates the file/directory counts and byte size that [`Self::rm_rf`]
+  /// would remove for `path`, without removing anything. Used for `--dry-run`.
+  pub fn tally(&mut self, path: &Path) -> Result<(), std::io::Error> {
+    for entry in walkdir::WalkDir::new(path).contents_first(true) {
+      let entry = entry.map_err(std::io::Error::other)?;
+      if entry.file_type().is_dir() {
+        self.dirs_removed += 1;
+      } else {
+        if let Ok(meta) = entry.metadata() {
+          self.bytes_removed += meta.len();
+        }
+        self.files_removed += 1;
+      }
+      self.update_progress();
+    }
+
+    Ok(())
+  }
+
   pub fn remove_file(
     &mut self,
     path: &Path,

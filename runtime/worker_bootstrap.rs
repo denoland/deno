@@ -109,6 +109,8 @@ pub struct BootstrapOptions {
   pub has_node_modules_dir: bool,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
+  pub node_cluster_unique_id: Option<String>,
+  pub node_cluster_sched_policy: Option<String>,
   pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub mode: WorkerExecutionMode,
   pub no_legacy_abort: bool,
@@ -148,6 +150,8 @@ impl Default for BootstrapOptions {
       has_node_modules_dir: false,
       argv0: None,
       node_debug: None,
+      node_cluster_unique_id: None,
+      node_cluster_sched_policy: None,
       node_ipc_init: None,
       mode: WorkerExecutionMode::None,
       no_legacy_abort: false,
@@ -204,6 +208,10 @@ struct BootstrapV8<'a>(
   bool,
   // auto serve
   bool,
+  // node cluster unique id (NODE_UNIQUE_ID)
+  Option<&'a str>,
+  // node cluster scheduling policy (NODE_CLUSTER_SCHED_POLICY)
+  Option<&'a str>,
 );
 
 impl BootstrapOptions {
@@ -237,6 +245,8 @@ impl BootstrapOptions {
       self.close_on_idle,
       self.is_standalone,
       self.auto_serve,
+      self.node_cluster_unique_id.as_deref(),
+      self.node_cluster_sched_policy.as_deref(),
     );
 
     bootstrap.serialize(ser).unwrap()

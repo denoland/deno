@@ -3,8 +3,8 @@
 
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   Error,
   ObjectGetOwnPropertyNames,
@@ -17,20 +17,27 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
   ReflectHas,
+  TypeError,
   TypeErrorPrototype,
 } = primordials;
 const { build, createLazyLoader } = core;
 
-import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
-import { _exiting } from "ext:deno_node/_process/exiting.ts";
-import * as fs from "ext:deno_fs/30_fs.js";
-import { ERR_INVALID_OBJECT_DEFINE_PROPERTY } from "ext:deno_node/internal/errors.ts";
+const { nextTick: _nextTick } = core.loadExtScript(
+  "ext:deno_node/_next_tick.ts",
+);
+const { _exiting } = core.loadExtScript("ext:deno_node/_process/exiting.ts");
+const fs = core.loadExtScript("ext:deno_fs/30_fs.js");
+const {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_TYPE,
+  ERR_INVALID_OBJECT_DEFINE_PROPERTY,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const loadProcess = createLazyLoader<NodeJS.Process>("node:process");
 let nodeProcess: NodeJS.Process | undefined;
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
-export function arch(): string {
+function arch(): string {
   if (build.arch == "x86_64") {
     return "x64";
   } else if (build.arch == "aarch64") {
@@ -43,13 +50,38 @@ export function arch(): string {
 }
 
 /** https://nodejs.org/api/process.html#process_process_chdir_directory */
-export const chdir = fs.chdir;
+function chdir(directory: string): void {
+  if (typeof directory !== "string") {
+    throw new ERR_INVALID_ARG_TYPE("directory", "string", directory);
+  }
+  // Node's chdir error carries `path` (the cwd before chdir), `dest` (the
+  // target), and `syscall: 'chdir'`. Snapshot the cwd before attempting the
+  // change so the error's `path` matches Node's behaviour. If the current
+  // cwd has been deleted (common in tmpdir cleanup during process exit),
+  // `fs.cwd()` itself throws -- fall back to an empty string so the wrapper
+  // still has a sensible `path`, and don't surface the cwd lookup error.
+  let fromPath = "";
+  try {
+    fromPath = fs.cwd();
+  } catch {
+    // Ignore -- chdir() below will surface a chdir-shaped error.
+  }
+  try {
+    fs.chdir(directory);
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, {
+      syscall: "chdir",
+      path: fromPath,
+      dest: directory,
+    });
+  }
+}
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
-export const cwd = fs.cwd;
+const cwd = fs.cwd;
 
 /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
-export const nextTick = _nextTick;
+const nextTick = _nextTick;
 
 /** Wrapper of Deno.env.get, which doesn't throw type error when
  * the env name has "=" or "\0" in it. */
@@ -69,7 +101,7 @@ const OBJECT_PROTO_PROP_NAMES = ObjectGetOwnPropertyNames(ObjectPrototype);
  * https://nodejs.org/api/process.html#process_process_env
  * Requires env permissions
  */
-export const env:
+const env:
   & InstanceType<ObjectConstructor>
   & Record<string | symbol, string> = new Proxy(Object(), {
     get: (target, prop) => {
@@ -100,10 +132,10 @@ export const env:
         };
       }
     },
-    set(target, prop, value) {
-      if (typeof prop === "symbol") {
-        target[prop] = value;
-        return true;
+    set(_target, prop, value) {
+      // Match Node: v8 ToString on a symbol key or value throws TypeError.
+      if (typeof prop === "symbol" || typeof value === "symbol") {
+        throw new TypeError("Cannot convert a Symbol value to a string");
       }
 
       if (typeof value !== "string") {
@@ -173,7 +205,7 @@ export const env:
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-export const version = "v24.2.0";
+const version = "v24.15.0";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -183,8 +215,8 @@ export const version = "v24.2.0";
  * it contained only output of `Deno.version`, but that led to incompability
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
-export const versions = {
-  node: "24.2.0",
+const versions = {
+  node: "24.15.0",
   uv: "1.43.0",
   zlib: "1.2.11",
   brotli: "1.0.9",
@@ -206,3 +238,14 @@ export const versions = {
   v8: "",
   typescript: "",
 };
+
+return {
+  arch,
+  chdir,
+  cwd,
+  nextTick,
+  env,
+  version,
+  versions,
+};
+})();
