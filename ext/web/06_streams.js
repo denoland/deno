@@ -5502,14 +5502,29 @@ class ReadableStream {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    const isBranded = ObjectPrototypeIsPrototypeOf(
+      ReadableStreamPrototype,
+      this,
+    );
+    const view = {
+      locked: isBranded ? this.locked : undefined,
+      state: isBranded ? this[_state] : undefined,
+      supportsBYOB: isBranded
+        ? ObjectPrototypeIsPrototypeOf(
+          ReadableByteStreamControllerPrototype,
+          this[_controller],
+        )
+        : undefined,
+    };
+    ObjectDefineProperty(view, "constructor", {
+      __proto__: null,
+      value: { name: this.constructor?.name ?? "ReadableStream" },
+    });
     return inspect(
       createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          ReadableStreamPrototype,
-          this,
-        ),
-        keys: ["locked"],
+        object: view,
+        evaluate: true,
+        keys: ["locked", "state", "supportsBYOB"],
       }),
       inspectOptions,
     );

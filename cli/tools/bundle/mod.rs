@@ -5,6 +5,7 @@ mod externals;
 mod html;
 mod provider;
 mod transform;
+mod wasm;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -25,6 +26,7 @@ use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
@@ -268,7 +270,7 @@ pub async fn bundle_init(
     Default::default(),
   )
   .await
-  .unwrap();
+  .context("failed to start esbuild")?;
   let client = esbuild.client().clone();
 
   tokio::spawn(async move {
@@ -668,7 +670,7 @@ impl EsbuildBundler {
       .client
       .send_build_request(self.make_build_request())
       .await
-      .unwrap()
+      .context("failed to send build request to esbuild")?
       .map_err(|e| message_to_error(&e, &self.cwd))?;
 
     Ok(response)
@@ -685,9 +687,13 @@ impl EsbuildBundler {
           .client
           .send_rebuild_request(0)
           .await
-          .unwrap()
+          .context("failed to send rebuild request to esbuild")?
           .map_err(|e| message_to_error(&e, &self.cwd))?;
-        let response = self.on_end_rx.recv().await.unwrap();
+        let response = self.on_end_rx.recv().await.ok_or_else(|| {
+          deno_core::anyhow::anyhow!(
+            "esbuild exited before the rebuild completed"
+          )
+        })?;
         Ok(response.into())
       }
     }
@@ -1310,8 +1316,8 @@ pub enum BundleLoadErrorKind {
   #[error(transparent)]
   ResolveWithGraph(#[from] ResolveWithGraphError),
   #[class(generic)]
-  #[error("Wasm modules are not implemented in deno bundle.")]
-  WasmUnsupported,
+  #[error("Failed to parse Wasm module: {0}")]
+  WasmParse(String),
   #[class(generic)]
   #[error("UTF-8 conversion error")]
   Utf8(#[from] std::str::Utf8Error),
@@ -1718,6 +1724,11 @@ impl DenoPluginHandler {
       Some(RequestedModuleType::Other(_) | RequestedModuleType::None)
       | None => {}
     }
+    if media_type == MediaType::Wasm {
+      let code = wasm::render_js_wasm_module(source)
+        .map_err(|e| BundleLoadErrorKind::WasmParse(e.to_string()))?;
+      return Ok((code.into_bytes(), esbuild_client::BuiltinLoader::Js));
+    }
     if matches!(
       media_type,
       MediaType::JavaScript
@@ -1856,9 +1867,11 @@ impl DenoPluginHandler {
         deno_ast::MediaType::Json,
         esbuild_client::BuiltinLoader::Json,
       ),
-      deno_graph::Module::Wasm(_) => {
-        return Err(BundleLoadErrorKind::WasmUnsupported.into());
-      }
+      deno_graph::Module::Wasm(wasm_module) => (
+        wasm_module.specifier.clone(),
+        deno_ast::MediaType::Wasm,
+        esbuild_client::BuiltinLoader::Js,
+      ),
       deno_graph::Module::Npm(_) => {
         let req_ref =
           NpmPackageReqReference::from_specifier(specifier).unwrap();

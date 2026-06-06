@@ -215,6 +215,19 @@ pub enum ResolveWorkspaceLinkErrorKind {
   #[class(type)]
   #[error("Could not find link member in '{}'.", .dir_url)]
   NotFound { dir_url: Url },
+  #[class(inherit)]
+  #[error(
+    "Failed converting link '{}' to pattern for config '{}'.",
+    link,
+    base
+  )]
+  LinkToPattern {
+    base: Url,
+    link: String,
+    #[source]
+    #[inherit]
+    source: PathOrPatternParseError,
+  },
   #[class(type)]
   #[error("Workspace member cannot be specified as a link.")]
   WorkspaceMemberNotAllowed,
@@ -224,6 +237,9 @@ pub enum ResolveWorkspaceLinkErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
   Workspace(Box<WorkspaceDiscoverError>),
@@ -3558,6 +3574,138 @@ pub mod test {
       link_folder.deno_json.as_ref().unwrap().specifier,
       url_from_file_path(&root_dir().join("../dir/deno.json")).unwrap()
     )
+  }
+
+  #[test]
+  fn test_link_glob() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("pkg/deno.json"),
+      json!({
+        "links": ["../packages/*"]
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-a/deno.json"),
+      json!({}),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-b/package.json"),
+      json!({}),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-c/deno.jsonc"),
+      json!({}),
+    );
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir().join("pkg"));
+    assert_eq!(workspace_dir.workspace.diagnostics(), vec![]);
+    let link_folders = workspace_dir
+      .workspace
+      .link_folders()
+      .iter()
+      .collect::<Vec<_>>();
+    assert_eq!(link_folders.len(), 3);
+    assert!(link_folders.iter().any(|(url, _)| {
+      ***url
+        == url_from_directory_path(&root_dir().join("packages/package-a"))
+          .unwrap()
+    }));
+    assert!(link_folders.iter().any(|(url, _)| {
+      ***url
+        == url_from_directory_path(&root_dir().join("packages/package-b"))
+          .unwrap()
+    }));
+    assert!(link_folders.iter().any(|(url, _)| {
+      ***url
+        == url_from_directory_path(&root_dir().join("packages/package-c"))
+          .unwrap()
+    }));
+  }
+
+  #[test]
+  fn test_link_glob_file_url() {
+    let sys = InMemorySys::default();
+    let mut link_url = url_from_directory_path(&root_dir().join("packages"))
+      .unwrap()
+      .to_string();
+    link_url.push('*');
+    sys.fs_insert_json(
+      root_dir().join("pkg/deno.json"),
+      json!({
+        "links": [link_url]
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-a/deno.json"),
+      json!({}),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-b/deno.json"),
+      json!({}),
+    );
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir().join("pkg"));
+    assert_eq!(workspace_dir.workspace.diagnostics(), vec![]);
+    assert_eq!(workspace_dir.workspace.link_folders().len(), 2);
+  }
+
+  #[test]
+  fn test_link_glob_negation() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("pkg/deno.json"),
+      json!({
+        "links": [
+          "../packages/*",
+          "!../packages/package-b"
+        ]
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-a/deno.json"),
+      json!({}),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-b/deno.json"),
+      json!({}),
+    );
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir().join("pkg"));
+    assert_eq!(workspace_dir.workspace.diagnostics(), vec![]);
+    let link_folders = workspace_dir
+      .workspace
+      .link_folders()
+      .iter()
+      .collect::<Vec<_>>();
+    assert_eq!(link_folders.len(), 1);
+    assert_eq!(
+      **link_folders[0].0,
+      url_from_directory_path(&root_dir().join("packages/package-a")).unwrap()
+    );
+  }
+
+  #[test]
+  fn test_link_glob_error_uses_originating_pattern() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("pkg/deno.json"),
+      json!({
+        "links": ["../*"]
+      }),
+    );
+    let err = workspace_at_start_dir_err(&sys, &root_dir().join("pkg"));
+    match err.into_kind() {
+      WorkspaceDiscoverErrorKind::ResolveLink { link, base, source } => {
+        assert_eq!(link, "../*");
+        assert_eq!(
+          base,
+          url_from_directory_path(&root_dir().join("pkg")).unwrap()
+        );
+        assert!(matches!(
+          source.into_kind(),
+          ResolveWorkspaceLinkErrorKind::WorkspaceMemberNotAllowed
+        ));
+      }
+      _ => unreachable!(),
+    }
   }
 
   #[test]

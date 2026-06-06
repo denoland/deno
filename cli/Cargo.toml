@@ -114,7 +114,6 @@ dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
 esbuild_client = { version = "0.7.1", features = ["serde"] }
-fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
@@ -180,8 +179,8 @@ unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 wasm-encoder = { version = "0.244.0", features = ["wasmparser"] }
+wasm_dep_analyzer = "0.4.0"
 wasmparser = "0.244.0"
-weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 

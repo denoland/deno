@@ -31,6 +31,7 @@ brotli.workspace = true
 bytes.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_http_h1.workspace = true
 deno_net.workspace = true
 deno_telemetry.workspace = true
 deno_websocket.workspace = true
@@ -38,6 +39,7 @@ flate2.workspace = true
 http.workspace = true
 http-body-util = { workspace = true, features = ["channel"] }
 httparse.workspace = true
+httpdate.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 itertools.workspace = true
