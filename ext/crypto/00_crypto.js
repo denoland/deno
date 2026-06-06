@@ -10,8 +10,10 @@ const {
 const {
   Crypto,
   CryptoKey,
+  SubtleCrypto,
   op_create_crypto,
   op_create_crypto_key,
+  op_create_subtle_crypto,
   op_crypto_key_handle,
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
@@ -58,7 +60,6 @@ const {
   op_crypto_mldsa_from_pkcs8,
   op_crypto_mldsa_from_seed,
   op_crypto_mldsa_from_spki,
-  op_crypto_random_uuid,
   op_crypto_sign_ed25519,
   op_crypto_sign_key,
   op_crypto_sign_mldsa,
@@ -96,14 +97,12 @@ const {
   StringPrototypeCharCodeAt,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
-  Symbol,
   SymbolFor,
   SyntaxError,
   TypeError,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
-  TypedArrayPrototypeGetSymbolToStringTag,
   TypedArrayPrototypeSlice,
   Uint8Array,
   WeakMapPrototypeGet,
@@ -531,11 +530,7 @@ function getKeyLength(algorithm) {
   );
 }
 
-class SubtleCrypto {
-  constructor() {
-    webidl.illegalConstructor();
-  }
-
+ObjectAssign(SubtleCrypto.prototype, {
   /**
    * @param {string} algorithm
    * @param {BufferSource} data
@@ -612,7 +607,7 @@ class SubtleCrypto {
     );
 
     return TypedArrayPrototypeGetBuffer(result);
-  }
+  },
 
   /**
    * @param {string} algorithm
@@ -657,7 +652,7 @@ class SubtleCrypto {
     }
 
     return await encrypt(normalizedAlgorithm, key, data);
-  }
+  },
 
   /**
    * @param {string} algorithm
@@ -918,7 +913,7 @@ class SubtleCrypto {
       default:
         throw new DOMException("Not implemented", "NotSupportedError");
     }
-  }
+  },
 
   /**
    * @param {string} algorithm
@@ -1078,7 +1073,7 @@ class SubtleCrypto {
     }
 
     throw new TypeError("Unreachable");
-  }
+  },
 
   /**
    * @param {string} format
@@ -1143,7 +1138,7 @@ class SubtleCrypto {
     }
 
     return result;
-  }
+  },
 
   /**
    * @param {string} format
@@ -1230,7 +1225,7 @@ class SubtleCrypto {
     }
 
     return result;
-  }
+  },
 
   /**
    * @param {AlgorithmIdentifier} algorithm
@@ -1269,7 +1264,7 @@ class SubtleCrypto {
     }
     // 9-10.
     return result;
-  }
+  },
 
   /**
    * @param {AlgorithmIdentifier} algorithm
@@ -1373,7 +1368,7 @@ class SubtleCrypto {
     }
     // 17.
     return result;
-  }
+  },
 
   /**
    * @param {string} algorithm
@@ -1512,7 +1507,7 @@ class SubtleCrypto {
     }
 
     throw new TypeError("Unreachable");
-  }
+  },
 
   /**
    * @param {string} algorithm
@@ -1631,7 +1626,8 @@ class SubtleCrypto {
         "NotSupportedError",
       );
     }
-  }
+  },
+
   /**
    * @param {string} format
    * @param {BufferSource} wrappedKey
@@ -1803,7 +1799,7 @@ class SubtleCrypto {
       result.algorithm,
       op_crypto_key_handle(result),
     );
-  }
+  },
 
   /**
    * @param {string} algorithm
@@ -1854,7 +1850,7 @@ class SubtleCrypto {
     }
 
     return result;
-  }
+  },
 
   /**
    * Encapsulate a fresh shared secret to the given encapsulation key and
@@ -1939,7 +1935,7 @@ class SubtleCrypto {
       ciphertext: TypedArrayPrototypeGetBuffer(ciphertext),
       sharedKey,
     };
-  }
+  },
 
   /**
    * Encapsulate a fresh shared secret to the given encapsulation key and
@@ -1996,7 +1992,7 @@ class SubtleCrypto {
       ciphertext: TypedArrayPrototypeGetBuffer(ciphertext),
       sharedKey: TypedArrayPrototypeGetBuffer(sharedSecret),
     };
-  }
+  },
 
   /**
    * Decapsulate the given ciphertext using the provided decapsulation key,
@@ -2085,7 +2081,7 @@ class SubtleCrypto {
       extractable,
       usages,
     );
-  }
+  },
 
   /**
    * Decapsulate the given ciphertext using the provided decapsulation key
@@ -2146,7 +2142,7 @@ class SubtleCrypto {
       ciphertext,
     );
     return TypedArrayPrototypeGetBuffer(sharedSecret);
-  }
+  },
 
   /**
    * Derive the public key associated with a private key, for asymmetric
@@ -2329,86 +2325,90 @@ class SubtleCrypto {
         return await this.importKey("jwk", jwk, algorithm, true, keyUsages);
       }
     }
-  }
-
-  /**
-   * Synchronous feature detection for algorithm/operation support, per the
-   * WICG "Modern Algorithms in the Web Crypto API" proposal.
-   *
-   * https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
-   *
-   * @param {string} operation
-   * @param {AlgorithmIdentifier} algorithm
-   * @param {number | AlgorithmIdentifier} [lengthOrHash]
-   * @returns {boolean}
-   */
-  static supports(operation, algorithm, lengthOrHash = undefined) {
-    const prefix = "Failed to execute 'supports' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
-    operation = webidl.converters.DOMString(operation, prefix, "Argument 1");
-    algorithm = webidl.converters.AlgorithmIdentifier(
-      algorithm,
-      prefix,
-      "Argument 2",
-    );
-
-    // 1. Validate operation against the allowed set.
-    if (!ArrayPrototypeIncludes(SUPPORTS_OPERATIONS, operation)) {
-      return false;
-    }
-
-    // 2. Decide which overload was invoked.
-    let length = null;
-    let additionalAlgorithm = null;
-    if (lengthOrHash !== undefined && lengthOrHash !== null) {
-      if (typeof lengthOrHash === "number") {
-        length = lengthOrHash >>> 0;
-      } else {
-        additionalAlgorithm = lengthOrHash;
-      }
-    }
-
-    // 3. Second-overload handling -- additionalAlgorithm.
-    if (additionalAlgorithm !== null) {
-      if (
-        operation === "deriveKey" || operation === "unwrapKey" ||
-        operation === "encapsulateKey" || operation === "decapsulateKey"
-      ) {
-        if (
-          !checkSupportForAlgorithm("importKey", additionalAlgorithm, null)
-        ) {
-          return false;
-        }
-      } else if (operation === "wrapKey") {
-        if (
-          !checkSupportForAlgorithm("exportKey", additionalAlgorithm, null)
-        ) {
-          return false;
-        }
-      }
-
-      if (operation === "deriveKey") {
-        let derivedLen;
-        try {
-          const normalizedDerived = normalizeAlgorithm(
-            additionalAlgorithm,
-            "get key length",
-          );
-          derivedLen = getKeyLength(normalizedDerived);
-        } catch {
-          return false;
-        }
-        return checkSupportForAlgorithm("deriveBits", algorithm, derivedLen);
-      }
-    }
-
-    return checkSupportForAlgorithm(operation, algorithm, length);
-  }
+  },
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
     return `${this.constructor.name} ${inspect({}, inspectOptions)}`;
+  },
+});
+
+/**
+ * Synchronous feature detection for algorithm/operation support, per the
+ * WICG "Modern Algorithms in the Web Crypto API" proposal.
+ *
+ * https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
+ *
+ * @param {string} operation
+ * @param {AlgorithmIdentifier} algorithm
+ * @param {number | AlgorithmIdentifier} [lengthOrHash]
+ * @returns {boolean}
+ */
+SubtleCrypto.supports = function supports(
+  operation,
+  algorithm,
+  lengthOrHash = undefined,
+) {
+  const prefix = "Failed to execute 'supports' on 'SubtleCrypto'";
+  webidl.requiredArguments(arguments.length, 2, prefix);
+  operation = webidl.converters.DOMString(operation, prefix, "Argument 1");
+  algorithm = webidl.converters.AlgorithmIdentifier(
+    algorithm,
+    prefix,
+    "Argument 2",
+  );
+
+  // 1. Validate operation against the allowed set.
+  if (!ArrayPrototypeIncludes(SUPPORTS_OPERATIONS, operation)) {
+    return false;
   }
-}
+
+  // 2. Decide which overload was invoked.
+  let length = null;
+  let additionalAlgorithm = null;
+  if (lengthOrHash !== undefined && lengthOrHash !== null) {
+    if (typeof lengthOrHash === "number") {
+      length = lengthOrHash >>> 0;
+    } else {
+      additionalAlgorithm = lengthOrHash;
+    }
+  }
+
+  // 3. Second-overload handling -- additionalAlgorithm.
+  if (additionalAlgorithm !== null) {
+    if (
+      operation === "deriveKey" || operation === "unwrapKey" ||
+      operation === "encapsulateKey" || operation === "decapsulateKey"
+    ) {
+      if (
+        !checkSupportForAlgorithm("importKey", additionalAlgorithm, null)
+      ) {
+        return false;
+      }
+    } else if (operation === "wrapKey") {
+      if (
+        !checkSupportForAlgorithm("exportKey", additionalAlgorithm, null)
+      ) {
+        return false;
+      }
+    }
+
+    if (operation === "deriveKey") {
+      let derivedLen;
+      try {
+        const normalizedDerived = normalizeAlgorithm(
+          additionalAlgorithm,
+          "get key length",
+        );
+        derivedLen = getKeyLength(normalizedDerived);
+      } catch {
+        return false;
+      }
+      return checkSupportForAlgorithm("deriveBits", algorithm, derivedLen);
+    }
+  }
+
+  return checkSupportForAlgorithm(operation, algorithm, length);
+};
 const SubtleCryptoPrototype = SubtleCrypto.prototype;
 
 const SUPPORTS_OPERATIONS = [
@@ -7489,7 +7489,21 @@ async function encrypt(normalizedAlgorithm, key, data) {
 }
 
 webidl.configureInterface(SubtleCrypto);
-const subtle = webidl.createBranded(SubtleCrypto);
+// The `SubtleCrypto` singleton (reachable as `globalThis.crypto.subtle`)
+// is minted lazily: `op_create_subtle_crypto` allocates a cppgc-wrapped
+// instance, and the cppgc heap isn't attached to the V8 isolate at
+// snapshot-build time. The first runtime read of `crypto.subtle` calls
+// `getSubtleSingleton`, which also stamps the `webidl.brand` symbol onto
+// the instance so the `assertBranded` checks at the top of every method
+// body pass.
+let subtleSingleton;
+function getSubtleSingleton() {
+  if (subtleSingleton === undefined) {
+    subtleSingleton = op_create_subtle_crypto();
+    subtleSingleton[webidl.brand] = webidl.brand;
+  }
+  return subtleSingleton;
+}
 
 // `Crypto` is the cppgc-wrapped Rust class imported above; `getRandomValues`,
 // `randomUUID` and the `subtle` getter are implemented natively in
@@ -7523,7 +7537,7 @@ webidl.configureInterface(Crypto);
 let cryptoSingleton;
 function getCryptoSingleton() {
   if (cryptoSingleton === undefined) {
-    cryptoSingleton = op_create_crypto(subtle);
+    cryptoSingleton = op_create_crypto(getSubtleSingleton());
   }
   return cryptoSingleton;
 }
