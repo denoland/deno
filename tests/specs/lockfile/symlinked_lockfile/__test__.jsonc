@@ -5,7 +5,6 @@
 // writes do, rather than replacing the symlink with a new regular file.
 {
   "tempDir": true,
-  "if": "unix",
   "steps": [
     {
       "args": "run -A setup.js",
