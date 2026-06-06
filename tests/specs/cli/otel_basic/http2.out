@@ -213,6 +213,122 @@
         "message": "",
         "code": 0
       }
+    },
+    {
+      "traceId": "00000000000000000000000000000003",
+      "spanId": "0000000000000005",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "server.address",
+          "value": {
+            "stringValue": "[WILDLINE]"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/error"
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "500"
+          }
+        },
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "500"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 2
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000003",
+      "spanId": "0000000000000006",
+      "traceState": "",
+      "parentSpanId": "0000000000000005",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "server.address",
+          "value": {
+            "stringValue": "[WILDLINE]"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/error"
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "500"
+          }
+        },
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "500"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 2
+      }
     }
   ],
   "logs": [],

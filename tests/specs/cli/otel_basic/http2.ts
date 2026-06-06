@@ -1,7 +1,12 @@
 import http2 from "node:http2";
 
 const server = http2.createServer((req, res) => {
-  const status = req.url === "/found" ? 200 : 404;
+  let status = 404;
+  if (req.url === "/found") {
+    status = 200;
+  } else if (req.url === "/error") {
+    status = 500;
+  }
   res.writeHead(status);
   res.end();
 });
@@ -24,6 +29,7 @@ async function request(path: string) {
 
 await request("/found");
 await request("/not-found");
+await request("/error");
 
 client.close();
 server.close();

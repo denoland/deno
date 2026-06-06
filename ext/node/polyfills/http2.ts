@@ -535,7 +535,7 @@ function setOtelServerStatus(stream, statusCode) {
   span.setAttribute("http.response.status_code", String(statusCode));
   if (statusCode >= 500) {
     span.setAttribute("error.type", String(statusCode));
-    span.setStatus({ code: 2, message: "" });
+    span.setStatus({ code: 2 });
   }
 }
 
@@ -1680,7 +1680,7 @@ function onSessionHeaders(
         span.setAttribute("http.response.status_code", String(status));
         if (status >= 400) {
           span.setAttribute("error.type", String(status));
-          span.setStatus({ code: 2, message: "" });
+          span.setStatus({ code: 2 });
         }
       }
     }
@@ -4646,7 +4646,7 @@ class ClientHttp2Session extends Http2Session {
             },
           });
         }
-      } else if (typeof headersParam === "object") {
+      } else if (!!headersParam && typeof headersParam === "object") {
         for (const propagator of otelState.PROPAGATORS) {
           propagator.inject(spanContext, headersParam, {
             set(carrier, key, value) {
@@ -4657,146 +4657,169 @@ class ClientHttp2Session extends Http2Session {
       }
     }
 
-    let headersList;
-    let headersObject;
-    let rawHeaders;
-    let scheme;
-    let authority;
-    let method;
+    // From here on, several steps (header validation/preparation, option
+    // validation, stream construction) can throw synchronously. The span was
+    // started above but is only handed off to Http2Stream._destroy once it is
+    // attached to the stream. Wrap the body so a throw before/after that
+    // hand-off ends the span instead of leaking it.
+    let stream;
+    try {
+      let headersList;
+      let headersObject;
+      let rawHeaders;
+      let scheme;
+      let authority;
+      let method;
 
-    if (ArrayIsArray(headersParam)) {
-      ({
-        rawHeaders,
-        headersList,
-        scheme,
-        authority,
-        method,
-      } = prepareRequestHeadersArray(headersParam, this));
-    } else if (!!headersParam && typeof headersParam === "object") {
-      ({
-        headersObject,
-        headersList,
-        scheme,
-        authority,
-        method,
-      } = prepareRequestHeadersObject(headersParam, this));
-    } else if (headersParam === undefined) {
-      ({
-        headersObject,
-        headersList,
-        scheme,
-        authority,
-        method,
-      } = prepareRequestHeadersObject({}, this));
-    } else {
-      throw new ERR_INVALID_ARG_TYPE(
-        "headers",
-        ["Object", "Array"],
-        headersParam,
-      );
-    }
+      if (ArrayIsArray(headersParam)) {
+        ({
+          rawHeaders,
+          headersList,
+          scheme,
+          authority,
+          method,
+        } = prepareRequestHeadersArray(headersParam, this));
+      } else if (!!headersParam && typeof headersParam === "object") {
+        ({
+          headersObject,
+          headersList,
+          scheme,
+          authority,
+          method,
+        } = prepareRequestHeadersObject(headersParam, this));
+      } else if (headersParam === undefined) {
+        ({
+          headersObject,
+          headersList,
+          scheme,
+          authority,
+          method,
+        } = prepareRequestHeadersObject({}, this));
+      } else {
+        throw new ERR_INVALID_ARG_TYPE(
+          "headers",
+          ["Object", "Array"],
+          headersParam,
+        );
+      }
 
-    assertIsObject(options, "options");
-    options = { ...options };
+      assertIsObject(options, "options");
+      options = { ...options };
 
-    setAndValidatePriorityOptions(options);
+      setAndValidatePriorityOptions(options);
 
-    if (options.endStream === undefined) {
-      // For some methods, we know that a payload is meaningless, so end the
-      // stream by default if the user has not specifically indicated a
-      // preference.
-      options.endStream = isPayloadMeaningless(method);
-    } else {
-      validateBoolean(options.endStream, "options.endStream");
-    }
+      if (options.endStream === undefined) {
+        // For some methods, we know that a payload is meaningless, so end the
+        // stream by default if the user has not specifically indicated a
+        // preference.
+        options.endStream = isPayloadMeaningless(method);
+      } else {
+        validateBoolean(options.endStream, "options.endStream");
+      }
 
-    // eslint-disable-next-line no-use-before-define
-    const stream = new ClientHttp2Stream(this, undefined, undefined, {});
-    stream[kSentHeaders] = headersObject; // N.b. Only set for object headers, not raw headers
-    stream[kRawHeaders] = rawHeaders; // N.b. Only set for raw headers, not object headers
-    stream[kOrigin] = `${scheme}://${authority}`;
-    stream[kRequestAsyncResource] = new AsyncResource("PendingRequest");
+      // eslint-disable-next-line no-use-before-define
+      stream = new ClientHttp2Stream(this, undefined, undefined, {});
+      stream[kSentHeaders] = headersObject; // N.b. Only set for object headers, not raw headers
+      stream[kRawHeaders] = rawHeaders; // N.b. Only set for raw headers, not object headers
+      stream[kOrigin] = `${scheme}://${authority}`;
+      stream[kRequestAsyncResource] = new AsyncResource("PendingRequest");
 
-    if (span) {
-      stream[kOtelSpan] = span;
-      span.setAttribute("http.request.method", method);
-      if (scheme) span.setAttribute("url.scheme", scheme);
-      if (authority) span.setAttribute("server.address", authority);
-      let path;
-      if (headersObject) {
-        path = headersObject[HTTP2_HEADER_PATH];
-      } else if (rawHeaders) {
-        for (let i = 0; i < rawHeaders.length; i += 2) {
-          if (
-            StringPrototypeToLowerCase(rawHeaders[i]) === HTTP2_HEADER_PATH
-          ) {
-            path = rawHeaders[i + 1];
-            break;
+      if (span) {
+        stream[kOtelSpan] = span;
+        span.setAttribute("http.request.method", method);
+        if (scheme) span.setAttribute("url.scheme", scheme);
+        if (authority) span.setAttribute("server.address", authority);
+        let path;
+        if (headersObject) {
+          path = headersObject[HTTP2_HEADER_PATH];
+        } else if (rawHeaders) {
+          for (let i = 0; i < rawHeaders.length; i += 2) {
+            if (
+              StringPrototypeToLowerCase(rawHeaders[i]) === HTTP2_HEADER_PATH
+            ) {
+              path = rawHeaders[i + 1];
+              break;
+            }
+          }
+        }
+        if (path !== undefined) {
+          const qIdx = StringPrototypeIndexOf(path, "?");
+          if (qIdx < 0) {
+            span.setAttribute("url.path", path);
+          } else {
+            span.setAttribute("url.path", StringPrototypeSlice(path, 0, qIdx));
+            span.setAttribute(
+              "url.query",
+              StringPrototypeSlice(path, qIdx + 1),
+            );
           }
         }
       }
-      if (path !== undefined) {
-        const qIdx = StringPrototypeIndexOf(path, "?");
-        if (qIdx < 0) {
-          span.setAttribute("url.path", path);
+
+      // Close the writable side of the stream if options.endStream is set.
+      if (options.endStream) {
+        stream.end();
+      }
+
+      if (options.waitForTrailers) {
+        stream[kState].flags |= STREAM_FLAGS_HAS_TRAILERS;
+      }
+
+      const { signal } = options;
+      if (signal) {
+        validateAbortSignal(signal, "options.signal");
+        const aborter = () => {
+          stream.destroy(new AbortError(undefined, { cause: signal.reason }));
+        };
+        if (signal.aborted) {
+          aborter();
         } else {
-          span.setAttribute("url.path", StringPrototypeSlice(path, 0, qIdx));
-          span.setAttribute("url.query", StringPrototypeSlice(path, qIdx + 1));
+          const disposable = addAbortListener(signal, aborter);
+          stream.once("close", disposable[SymbolDispose]);
         }
       }
-    }
 
-    // Close the writable side of the stream if options.endStream is set.
-    if (options.endStream) {
-      stream.end();
-    }
-
-    if (options.waitForTrailers) {
-      stream[kState].flags |= STREAM_FLAGS_HAS_TRAILERS;
-    }
-
-    const { signal } = options;
-    if (signal) {
-      validateAbortSignal(signal, "options.signal");
-      const aborter = () => {
-        stream.destroy(new AbortError(undefined, { cause: signal.reason }));
-      };
-      if (signal.aborted) {
-        aborter();
+      const onConnect = FunctionPrototypeBind(
+        requestOnConnect,
+        stream,
+        headersList,
+        options,
+      );
+      if (this.connecting) {
+        if (this[kPendingRequestCalls] !== null) {
+          ArrayPrototypePush(this[kPendingRequestCalls], onConnect);
+        } else {
+          this[kPendingRequestCalls] = [onConnect];
+          this.once("connect", () => {
+            ArrayPrototypeForEach(this[kPendingRequestCalls], (f) => f());
+            this[kPendingRequestCalls] = null;
+          });
+        }
       } else {
-        const disposable = addAbortListener(signal, aborter);
-        stream.once("close", disposable[SymbolDispose]);
+        onConnect();
       }
-    }
 
-    const onConnect = FunctionPrototypeBind(
-      requestOnConnect,
-      stream,
-      headersList,
-      options,
-    );
-    if (this.connecting) {
-      if (this[kPendingRequestCalls] !== null) {
-        ArrayPrototypePush(this[kPendingRequestCalls], onConnect);
-      } else {
-        this[kPendingRequestCalls] = [onConnect];
-        this.once("connect", () => {
-          ArrayPrototypeForEach(this[kPendingRequestCalls], (f) => f());
-          this[kPendingRequestCalls] = null;
+      if (onClientStreamCreatedChannel.hasSubscribers) {
+        onClientStreamCreatedChannel.publish({
+          stream,
+          headers: stream.sentHeaders,
         });
       }
-    } else {
-      onConnect();
-    }
 
-    if (onClientStreamCreatedChannel.hasSubscribers) {
-      onClientStreamCreatedChannel.publish({
-        stream,
-        headers: stream.sentHeaders,
-      });
+      return stream;
+    } catch (err) {
+      // End the span unless Http2Stream._destroy already did (it clears
+      // kOtelSpan after ending). Covers throws both before the stream exists
+      // and after it was attached but never destroyed.
+      if (
+        span !== undefined &&
+        (stream === undefined || stream[kOtelSpan] === span)
+      ) {
+        updateSpanFromError(span, err);
+        span.end();
+      }
+      throw err;
     }
-
-    return stream;
   }
 }
 
