@@ -38,7 +38,7 @@ const MULTILINE_HISTORY_PREFIX: &str = "# deno-repl-history-json:";
 pub enum ReadlineError {
   Interrupted,
   Eof,
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "the inner error is kept for diagnostics")]
   Io(std::io::Error),
 }
 
@@ -557,20 +557,16 @@ impl ReplEditor {
         KeyEvent {
           code: KeyCode::Left,
           ..
-        } => {
-          if cursor > 0 {
-            cursor = previous_char_boundary(&line, cursor);
-            self.redraw(&mut stdout, &line, cursor)?;
-          }
+        } if cursor > 0 => {
+          cursor = previous_char_boundary(&line, cursor);
+          self.redraw(&mut stdout, &line, cursor)?;
         }
         KeyEvent {
           code: KeyCode::Right,
           ..
-        } => {
-          if cursor < line.len() {
-            cursor = next_char_boundary(&line, cursor);
-            self.redraw(&mut stdout, &line, cursor)?;
-          }
+        } if cursor < line.len() => {
+          cursor = next_char_boundary(&line, cursor);
+          self.redraw(&mut stdout, &line, cursor)?;
         }
         KeyEvent {
           code: KeyCode::Home,
