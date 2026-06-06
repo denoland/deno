@@ -29,6 +29,7 @@ use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
+use crate::npm::PackageInfoLoadError;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct OutdatedPackage {
@@ -129,10 +130,23 @@ fn print_outdated(
 ) -> Result<(), AnyError> {
   let mut outdated = Vec::new();
   let mut seen = std::collections::BTreeSet::new();
+  // Packages whose metadata could not be fetched (e.g. unreachable or
+  // unauthorized private registries) are dropped from the table. Collect them
+  // so we can warn the user instead of skipping them silently.
+  let mut skipped: std::collections::BTreeMap<
+    (DepKind, StackString),
+    Arc<PackageInfoLoadError>,
+  > = std::collections::BTreeMap::new();
   for (dep_id, resolved, latest_versions) in
     deps.deps_with_resolved_latest_versions()
   {
     let dep = deps.get_dep(dep_id);
+
+    if let Some(error) = &latest_versions.fetch_error {
+      skipped
+        .entry((dep.kind, dep.req.name.clone()))
+        .or_insert_with(|| error.clone());
+    }
 
     let Some(resolved) = resolved else { continue };
 
@@ -171,10 +185,63 @@ fn print_outdated(
   if !outdated.is_empty() {
     outdated.sort();
     print_outdated_table(&outdated);
+  }
+
+  print_skipped_warning(&skipped);
+
+  if !outdated.is_empty() {
     print_suggestion(compatible);
   }
 
   Ok(())
+}
+
+fn print_skipped_warning(
+  skipped: &std::collections::BTreeMap<
+    (DepKind, StackString),
+    Arc<PackageInfoLoadError>,
+  >,
+) {
+  if skipped.is_empty() {
+    return;
+  }
+
+  log::warn!("");
+  log::warn!(
+    "{}",
+    color_print::cformat!(
+      "<yellow>Warning</>: Unable to check updates for {} package(s), their metadata could not be fetched (e.g. private registry auth or network issues).",
+      skipped.len(),
+    )
+  );
+
+  if log::log_enabled!(log::Level::Debug) {
+    for ((kind, name), error) in skipped {
+      log::warn!(
+        "{}",
+        color_print::cformat!(
+          "  <bold>{}:{}</> (registry: {})",
+          kind.scheme(),
+          name,
+          error.registry_url,
+        )
+      );
+      log::warn!("    Reason: {}", error.reason);
+    }
+    log::warn!(
+      "{}",
+      color_print::cformat!(
+        "<p(245)>Verify your registry credentials (.npmrc) and network connectivity.</>"
+      )
+    );
+  } else {
+    log::warn!(
+      "{}",
+      color_print::cformat!(
+        "<p(245)>Run with </><u>--log-level=debug</><p(245)> for details on which packages could not be checked.</>"
+      )
+    );
+  }
 }
 
 pub async fn outdated(

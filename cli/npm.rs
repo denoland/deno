@@ -240,10 +240,22 @@ fn decompress_gzip(compressed: Vec<u8>) -> Result<Vec<u8>, JsErrorBox> {
   Ok(decompressed)
 }
 
+/// Why fetching package metadata for a single package failed. Used to surface
+/// actionable diagnostics (e.g. in `deno outdated`) instead of silently
+/// dropping packages that live on unreachable or unauthorized registries.
+#[derive(Clone, Debug)]
+pub struct PackageInfoLoadError {
+  /// The registry URL the metadata was being fetched from.
+  pub registry_url: String,
+  /// A human readable description of what went wrong.
+  pub reason: String,
+}
+
 #[derive(Debug)]
 pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
-  info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
+  info_by_name:
+    DashMap<String, Result<Arc<NpmPackageInfo>, Arc<PackageInfoLoadError>>>,
   file_fetcher: Arc<CliFileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
   version_resolver: Arc<NpmVersionResolver>,
@@ -293,18 +305,45 @@ impl NpmFetchResolver {
   }
 
   pub async fn package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    self.package_info_with_reason(name).await.ok()
+  }
+
+  /// Like [`Self::package_info`], but preserves the reason the fetch failed
+  /// (e.g. an HTTP 401 from a private registry) so callers can surface it
+  /// instead of silently treating the package as having no available versions.
+  pub async fn package_info_with_reason(
+    &self,
+    name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, Arc<PackageInfoLoadError>> {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
-    // todo(#27198): use RegistryInfoProvider instead
-    let fetch_package_info = || async {
-      let info_url = deno_npm_cache::get_package_url(&self.npmrc, name);
-      let registry_config = self.npmrc.get_registry_config(name);
-      // TODO(bartlomieju): this should error out, not use `.ok()`.
-      let maybe_auth_header =
-        deno_npm_cache::maybe_auth_header_value_for_npm_registry(
-          registry_config,
-        )
+    let registry_url =
+      deno_npm_cache::get_package_url(&self.npmrc, name).to_string();
+    let result =
+      self
+        .fetch_package_info(name)
+        .await
+        .map(Arc::new)
+        .map_err(|reason| {
+          Arc::new(PackageInfoLoadError {
+            registry_url: registry_url.clone(),
+            reason,
+          })
+        });
+    self.info_by_name.insert(name.to_string(), result.clone());
+    result
+  }
+
+  // todo(#27198): use RegistryInfoProvider instead
+  async fn fetch_package_info(
+    &self,
+    name: &str,
+  ) -> Result<NpmPackageInfo, String> {
+    let info_url = deno_npm_cache::get_package_url(&self.npmrc, name);
+    let registry_config = self.npmrc.get_registry_config(name);
+    let maybe_auth_header =
+      deno_npm_cache::maybe_auth_header_value_for_npm_registry(registry_config)
         .map_err(AnyError::from)
         .and_then(|value| match value {
           Some(value) => Ok(Some((
@@ -313,17 +352,14 @@ impl NpmFetchResolver {
           ))),
           None => Ok(None),
         })
-        .ok()?;
-      let file = self
-        .file_fetcher
-        .fetch_bypass_permissions_with_maybe_auth(&info_url, maybe_auth_header)
-        .await
-        .ok()?;
-      serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()
-    };
-    let info = fetch_package_info().await.map(Arc::new);
-    self.info_by_name.insert(name.to_string(), info.clone());
-    info
+        .map_err(|e| format!("{e:#}"))?;
+    let file = self
+      .file_fetcher
+      .fetch_bypass_permissions_with_maybe_auth(&info_url, maybe_auth_header)
+      .await
+      .map_err(|e| format!("{e:#}"))?;
+    serde_json::from_slice::<NpmPackageInfo>(&file.source)
+      .map_err(|e| format!("failed to parse package metadata: {e}"))
   }
 
   pub fn applicable_version_infos<'a>(

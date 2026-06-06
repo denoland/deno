@@ -1,0 +1,1 @@
+[WILDCARD]Warning: Unable to check updates for 1 package(s), their metadata could not be fetched (e.g. private registry auth or network issues).[WILDCARD]npm:@acme/widget[WILDCARD]registry: http://localhost:9/@acme%2fwidget[WILDCARD]Reason:[WILDCARD]Verify your registry credentials (.npmrc) and network connectivity.[WILDCARD]
