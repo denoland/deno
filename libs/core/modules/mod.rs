@@ -40,6 +40,7 @@ pub use loaders::StaticModuleLoader;
 pub(crate) use map::ModuleMap;
 pub(crate) use map::script_origin;
 pub(crate) use map::synthetic_module_evaluation_steps;
+pub use map::wrap_lazy_ext_script;
 pub(crate) use module_map_data::ModuleMapSnapshotData;
 pub(crate) use recursive_load::SideModuleKind;
 

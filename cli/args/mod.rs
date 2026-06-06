@@ -1544,7 +1544,7 @@ impl CliOptions {
   pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
     LifecycleScriptsConfig {
       allowed: self.flags.allow_scripts.clone(),
-      denied: Default::default(),
+      denied: self.flags.deny_scripts.clone(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
       explicit_install: matches!(

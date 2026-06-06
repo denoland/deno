@@ -26,7 +26,6 @@ log.workspace = true
 memmap2.workspace = true
 num-bigint.workspace = true
 serde.workspace = true
-serde-value.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

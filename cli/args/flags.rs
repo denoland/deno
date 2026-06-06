@@ -59,6 +59,7 @@ pub use deno_runtime::deno_inspector_server::InspectPublishUid;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageKind;
+use deno_semver::package::PackageReq;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
 use deno_telemetry::OtelPropagators;
@@ -169,6 +170,11 @@ pub struct VersionFlags {
   pub release_notes: Option<String>,
   /// Don't write any files; just print what would happen.
   pub dry_run: bool,
+  /// Explicit path to the manifest file to bump. May point to a `deno.json`
+  /// (or `.jsonc`) or a `package.json`. When set, single-file mode is forced
+  /// (workspace auto-detection is bypassed). Useful when both `deno.json` and
+  /// `package.json` exist in the same directory.
+  pub config: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -212,6 +218,7 @@ pub struct CompileFlags {
   pub output: Option<String>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub watch: Option<WatchFlags>,
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
@@ -223,6 +230,11 @@ pub struct CompileFlags {
   pub bundle: bool,
   /// Minify the bundle. Only meaningful with `bundle: true`.
   pub minify: bool,
+  /// Prune the embedded managed npm snapshot to only those packages reachable
+  /// from npm specifiers in the module graph. Opt-in because non-statically
+  /// analyzable dynamic imports may not appear in the graph; pass
+  /// `--include npm:<pkg>` for any such packages.
+  pub exclude_unused_npm: bool,
 }
 
 impl CompileFlags {
@@ -536,6 +548,7 @@ pub enum XFlagsKind {
 pub struct XCommandFlags {
   pub yes: bool,
   pub command: String,
+  pub ignore_scripts: PackagesAllowedScripts,
   /// When set via `--package`/`-p`, specifies the package to install
   /// while `command` is the binary name to execute from that package.
   pub package: Option<String>,
@@ -764,6 +777,9 @@ impl DenoSubcommand {
       Self::Run(RunFlags {
         watch: Some(flags), ..
       })
+      | Self::Serve(ServeFlags {
+        watch: Some(flags), ..
+      })
       | Self::Test(TestFlags {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::WithPaths(flags)),
@@ -777,6 +793,9 @@ impl DenoSubcommand {
         watch: Some(flags), ..
       })
       | Self::Fmt(FmtFlags {
+        watch: Some(flags), ..
+      })
+      | Self::Compile(CompileFlags {
         watch: Some(flags), ..
       }) => Some(WatchFlagsRef::Watch(flags)),
       _ => None,
@@ -943,15 +962,30 @@ fn minutes_duration_or_date_parser(
     .map_err(|e| clap::Error::raw(clap::error::ErrorKind::InvalidValue, e))
 }
 
-fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
+fn parse_packages_scripts_arg(
+  s: &str,
+  flag_name: &str,
+) -> Result<String, AnyError> {
   if !s.starts_with("npm:") {
     bail!(
-      "Invalid package for --allow-scripts: '{}'. An 'npm:' specifier is required",
-      s
+      "Invalid package for {}: '{}'. An 'npm:' specifier is required",
+      flag_name,
+      s,
     );
   } else {
     Ok(s.into())
   }
+}
+
+fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
+  parse_packages_scripts_arg(s, "--allow-scripts")
+}
+
+fn parse_packages_ignored_scripts(s: &str) -> Result<String, AnyError> {
+  if s.is_empty() {
+    bail!("Invalid package for --ignore-scripts: package cannot be empty");
+  }
+  Ok(s.into())
 }
 
 /// Parse --inspect-publish-uid from a comma-separated string like "stderr,http".
@@ -1049,6 +1083,7 @@ pub struct Flags {
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
+  pub deny_scripts: Vec<PackageReq>,
   pub permission_set: Option<String>,
   pub eszip: bool,
   pub node_conditions: Vec<String>,
@@ -2430,6 +2465,7 @@ Or multiple dependencies at once:
           .action(ArgAction::SetTrue),
       )
       .arg(package_json_arg())
+      .arg(env_file_arg())
   })
 }
 
@@ -2491,6 +2527,7 @@ Don't error if the audit data can't be retrieved from the registry
   .defer(|cmd| {
     cmd
       .args(lock_args())
+      .arg(env_file_arg())
       .arg(
         Arg::new("level")
           .long("level")
@@ -2558,6 +2595,7 @@ Show why a specific version is installed
   .defer(|cmd| {
     cmd
       .args(lock_args())
+      .arg(env_file_arg())
       .arg(
         Arg::new("package")
           .required(true)
@@ -2716,6 +2754,7 @@ If no output file is given, the output is written to standard output:
   .defer(|cmd| {
     compile_args(cmd)
       .arg(check_arg(false))
+      .arg(env_file_arg())
       .arg(
         Arg::new("file")
           .num_args(1..)
@@ -2875,8 +2914,7 @@ fn clean_subcommand() -> Command {
         Arg::new("dry-run")
           .long("dry-run")
           .action(ArgAction::SetTrue)
-          .help("Show what would be removed without performing any actions")
-          .requires("except"),
+          .help("Show what would be removed without performing any actions"),
       )
       .arg(node_modules_dir_arg().requires("except"))
       .arg(node_modules_linker_arg().requires("except"))
@@ -2943,6 +2981,7 @@ Unless --reload is specified, this command will not re-download already cached d
         .arg(allow_import_arg())
         .arg(deny_import_arg())
         .arg(v8_flags_arg())
+        .arg(env_file_arg())
         .arg(watch_arg(false))
         .arg(watch_exclude_arg())
         .arg(no_clear_screen_arg())
@@ -3060,6 +3099,20 @@ On the first invocation of `deno compile`, Deno will download the relevant binar
           .requires("bundle")
           .help_heading(COMPILE_HEADING),
       )
+      .arg(
+        Arg::new("exclude-unused-npm")
+          .long("exclude-unused-npm")
+          .help(cstr!("Embed only the npm packages reachable from the module graph (managed npm; no <c>node_modules</> directory).
+  <p(245)>Without this flag the full managed npm snapshot from the lockfile / package.json is embedded.
+  Reduces binary size when the lockfile contains packages the entrypoint does not import.
+  Skips packages that are only reached through non-statically-analyzable dynamic imports;
+  pass those with <c>--include npm:<<pkg></> if needed.</>"))
+          .action(ArgAction::SetTrue)
+          .help_heading(COMPILE_HEADING),
+      )
+      .arg(watch_arg(false))
+      .arg(watch_exclude_arg())
+      .arg(no_clear_screen_arg())
       .arg(executable_ext_arg())
       .arg(env_file_arg())
       .arg(
@@ -3244,6 +3297,7 @@ Show documentation for runtime built-ins:
         .arg(no_remote_arg())
         .arg(allow_import_arg())
         .arg(deny_import_arg())
+        .arg(env_file_arg())
         .arg(
           Arg::new("json")
             .long("json")
@@ -3707,9 +3761,11 @@ The following information is shown:
           .long("json")
           .help("UNSTABLE: Outputs the information in JSON format")
           .action(ArgAction::SetTrue),
-      ))
+      )
+      .arg(min_dep_age_arg()))
       .arg(allow_import_arg())
       .arg(deny_import_arg())
+      .arg(env_file_arg())
 }
 
 fn install_subcommand() -> Command {
@@ -3888,6 +3944,7 @@ is missing or out of date with the config file.
           .action(ArgAction::SetTrue)
           .requires("prod"),
       )
+      .arg(env_file_arg())
   })
 }
 
@@ -4027,6 +4084,7 @@ Specific version requirements to update to can be specified:
           .help("Interactively select which dependencies to update")
       )
       .args(lock_args())
+      .arg(env_file_arg())
   })
 }
 
@@ -4072,6 +4130,7 @@ Specific version requirements to update to can be specified:
           .help("Interactively select which dependencies to update"),
       )
       .args(lock_args())
+      .arg(env_file_arg())
       .arg(
         Arg::new("update")
           .long("update")
@@ -4153,6 +4212,9 @@ fn x_subcommand() -> Command {
           .help("Assume confirmation for all prompts")
           .action(ArgAction::SetTrue)
           .conflicts_with("install-alias"),
+      )
+      .arg(
+        ignore_scripts_arg().conflicts_with("install-alias"),
       )
       .arg(
         Arg::new("package")
@@ -5109,6 +5171,21 @@ release note is prepended to <p(245)>Releases.md</>."
             "[conventional-commits mode] Path to the release notes file to prepend. Default: Releases.md",
           ),
       )
+      .arg(
+        Arg::new("config")
+          .long("config")
+          .short('c')
+          .value_name("FILE")
+          .value_hint(ValueHint::FilePath)
+          .conflicts_with("workspace")
+          .help(cstr!(
+            "Explicit path to the manifest file to bump.
+  <p(245)>May point to a `deno.json`/`deno.jsonc` or a `package.json`. When
+  set, single-file mode is forced (workspace auto-detection is bypassed).
+  Useful when both `deno.json` and `package.json` exist in the same
+  directory.</>"
+          )),
+      )
   })
 }
 
@@ -5173,6 +5250,7 @@ fn publish_subcommand() -> Command {
         )
         .arg(check_arg(/* type checks by default */ true))
         .arg(no_check_arg())
+        .arg(env_file_arg())
     })
 }
 
@@ -5238,6 +5316,7 @@ fn pack_subcommand() -> Command {
           .help("Ignore files matching these patterns")
           .value_hint(ValueHint::AnyPath),
       )
+      .arg(env_file_arg())
   })
 }
 
@@ -6510,6 +6589,17 @@ fn allow_scripts_arg() -> Arg {
   <p(245)>Note: Scripts will only be executed when using a node_modules directory (`--node-modules-dir`)</>"))
 }
 
+fn ignore_scripts_arg() -> Arg {
+  Arg::new("ignore-scripts")
+    .long("ignore-scripts")
+    .num_args(0..)
+    .action(ArgAction::Append)
+    .require_equals(true)
+    .value_name("PACKAGE")
+    .value_parser(parse_packages_ignored_scripts)
+    .help("Do not run npm lifecycle scripts for the given packages")
+}
+
 enum UnstableArgsConfig {
   // for backwards-compatability
   None,
@@ -6618,11 +6708,54 @@ fn allow_scripts_arg_parse(
   Ok(())
 }
 
+fn ignore_scripts_arg_parse(
+  matches: &mut ArgMatches,
+) -> clap::error::Result<PackagesAllowedScripts> {
+  let Some(parts) = matches.remove_many::<String>("ignore-scripts") else {
+    return Ok(PackagesAllowedScripts::None);
+  };
+  if parts.len() == 0 {
+    Ok(PackagesAllowedScripts::All)
+  } else {
+    Ok(PackagesAllowedScripts::Some(
+      parts
+        .flat_map(flat_escape_split_commas)
+        .map(|result| {
+          let value = result?;
+          let value = if value.starts_with("npm:") || value.starts_with("jsr:")
+          {
+            value
+          } else {
+            format!("npm:{}", value)
+          };
+          let dep = JsrDepPackageReq::from_str_loose(&value).map_err(|e| {
+            clap::Error::raw(clap::error::ErrorKind::InvalidValue, e)
+          })?;
+          if dep.kind != PackageKind::Npm {
+            return Err(clap::Error::raw(
+              clap::error::ErrorKind::InvalidValue,
+              format!("Only npm package constraints are supported: {}", value),
+            ));
+          }
+          if dep.req.version_req.tag().is_some() {
+            return Err(clap::Error::raw(
+              clap::error::ErrorKind::InvalidValue,
+              format!("Tags are not supported in --ignore-scripts: {}", value),
+            ));
+          }
+          Ok(dep.req)
+        })
+        .collect::<Result<_, _>>()?,
+    ))
+  }
+}
+
 fn audit_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   lock_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
   let severity = matches
     .remove_one::<String>("level")
     .unwrap_or_else(|| "low".to_string());
@@ -6658,6 +6791,7 @@ fn audit_parse(
 
 fn why_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
   let package = matches.remove_one::<String>("package").unwrap();
   flags.subcommand = DenoSubcommand::Why(WhyFlags { package });
 }
@@ -6668,6 +6802,7 @@ fn add_parse(
 ) -> clap::error::Result<()> {
   allow_scripts_arg_parse(flags, matches)?;
   lock_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
   Ok(())
 }
@@ -6739,6 +6874,7 @@ fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     import_map: matches.remove_one::<String>("import-map"),
     release_notes: matches.remove_one::<String>("release-notes"),
     dry_run: matches.get_flag("dry-run"),
+    config: matches.remove_one::<String>("config"),
   });
 }
 
@@ -6772,6 +6908,7 @@ fn outdated_parse(
   });
   lock_args_parse(flags, matches);
   min_dep_age_arg_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
   Ok(())
 }
 
@@ -6833,6 +6970,7 @@ fn bundle_parse(
   compile_args_without_check_parse(flags, matches)?;
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   allow_and_deny_import_parse(flags, matches)?;
+  env_file_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     entrypoints: file.collect(),
     watch: matches.get_flag("watch"),
@@ -6892,13 +7030,14 @@ fn check_parse(
   });
   flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_and_deny_import_parse(flags, matches)?;
+  env_file_arg_parse(flags, matches);
   Ok(())
 }
 
 fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let mut clean_flags = CleanFlags {
     except_paths: Vec::new(),
-    dry_run: false,
+    dry_run: matches.get_flag("dry-run"),
   };
   if matches.get_flag("except") {
     clean_flags.except_paths = matches
@@ -6906,7 +7045,6 @@ fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .unwrap()
       .collect::<Vec<_>>();
     flags.cached_only = true;
-    clean_flags.dry_run = matches.get_flag("dry-run");
     node_modules_and_vendor_dir_arg_parse(flags, matches);
   }
   flags.subcommand = DenoSubcommand::Clean(clean_flags);
@@ -6937,12 +7075,14 @@ fn compile_parse(
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
+  let watch = watch_arg_parse(matches)?;
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
   let eszip = matches.get_flag("eszip-internal-do-not-use");
   let self_extracting = matches.get_flag("self-extracting");
   let bundle = matches.get_flag("bundle");
   let minify = matches.get_flag("minify");
+  let exclude_unused_npm = matches.get_flag("exclude-unused-npm");
   let include = matches
     .remove_many::<String>("include")
     .map(|f| f.collect::<Vec<_>>())
@@ -6960,6 +7100,7 @@ fn compile_parse(
     output,
     args,
     target,
+    watch,
     no_terminal,
     icon,
     include,
@@ -6968,6 +7109,7 @@ fn compile_parse(
     self_extracting,
     bundle,
     minify,
+    exclude_unused_npm,
   });
 
   Ok(())
@@ -7115,6 +7257,7 @@ fn doc_parse(
   no_npm_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
+  env_file_arg_parse(flags, matches);
 
   let source_files_val = matches.remove_many::<String>("source_file");
   let source_files = if let Some(val) = source_files_val {
@@ -7393,6 +7536,8 @@ fn info_parse(
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
   allow_and_deny_import_parse(flags, matches)?;
+  min_dep_age_arg_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
   let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
     file: matches.remove_one::<String>("file"),
@@ -7512,6 +7657,7 @@ fn ci_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
+  env_file_arg_parse(flags, matches);
   flags.frozen_lockfile = Some(true);
   flags.subcommand = DenoSubcommand::Ci(CiFlags {
     production: matches.get_flag("prod"),
@@ -7785,9 +7931,16 @@ fn run_parse(
     Some(mut script_arg) => {
       let script = script_arg.next().unwrap();
       flags.argv.extend(script_arg);
+      let watch = watch_arg_parse_with_paths(matches)?;
+      if script == "-" && watch.is_some() {
+        return Err(clap::Error::raw(
+          clap::error::ErrorKind::ArgumentConflict,
+          "--watch and --watch-hmr cannot be used while reading from stdin.\n",
+        ));
+      }
       flags.subcommand = DenoSubcommand::Run(RunFlags {
         script,
-        watch: watch_arg_parse_with_paths(matches)?,
+        watch,
         bare,
         coverage_dir,
         print_task_list: false,
@@ -8232,6 +8385,7 @@ fn publish_parse(
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
   config_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
@@ -8252,6 +8406,7 @@ fn pack_parse(
   flags.type_check_mode = TypeCheckMode::Local; // local by default
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionOnly);
   config_args_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
 
   let include = match matches.remove_many::<String>("files") {
     Some(f) => f.collect(),
@@ -8318,12 +8473,22 @@ fn x_parse(
   {
     if let Some(command) = script_arg.next() {
       let yes = matches.get_flag("yes");
+      let ignore_scripts = ignore_scripts_arg_parse(matches)?;
       let package = matches.remove_one::<String>("package");
       flags.argv.extend(script_arg);
       runtime_args_parse(flags, matches, true, true, true)?;
+      if matches!(ignore_scripts, PackagesAllowedScripts::All)
+        && !matches!(flags.allow_scripts, PackagesAllowedScripts::None)
+      {
+        return Err(clap::Error::raw(
+          clap::error::ErrorKind::ArgumentConflict,
+          "--ignore-scripts cannot be used with --allow-scripts",
+        ));
+      }
       XFlagsKind::Command(XCommandFlags {
         yes,
         command,
+        ignore_scripts,
         package,
       })
     } else {
@@ -9330,6 +9495,24 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn run_watch_with_stdin_is_error() {
+    // `--watch` and `--watch-hmr` cannot be combined with reading from stdin,
+    // previously `--watch-hmr -` panicked and `--watch -` was silently ignored.
+    for watch_flag in ["--watch", "--watch-hmr", "--unstable-hmr"] {
+      let r = flags_from_vec(svec!["deno", "run", watch_flag, "-"]);
+      assert_eq!(
+        r.unwrap_err().kind(),
+        clap::error::ErrorKind::ArgumentConflict,
+        "expected conflict for {watch_flag}"
+      );
+    }
+
+    // a regular script with the same flags must still parse fine
+    let r = flags_from_vec(svec!["deno", "run", "--watch-hmr", "script.ts"]);
+    assert!(r.is_ok());
   }
 
   #[test]
@@ -11634,6 +11817,76 @@ mod tests {
     );
   }
 
+  // The dependency and registry subcommands also accept --env-file so that
+  // registry credentials kept in a .env file can be loaded before the command
+  // resolves a dependency graph or talks to a registry.
+  #[test]
+  fn dep_and_registry_subcommands_env_file() {
+    // (args, expected env_file) pairs, one per supported subcommand.
+    let cases: Vec<(Vec<std::ffi::OsString>, Vec<String>)> = vec![
+      (
+        svec!["deno", "add", "--env-file", "@david/which"],
+        svec![".env"],
+      ),
+      (svec!["deno", "audit", "--env-file"], svec![".env"]),
+      (svec!["deno", "why", "--env-file", "express"], svec![".env"]),
+      (svec!["deno", "outdated", "--env-file"], svec![".env"]),
+      (svec!["deno", "update", "--env-file"], svec![".env"]),
+      (
+        svec!["deno", "bundle", "--env-file", "main.ts"],
+        svec![".env"],
+      ),
+      (
+        svec!["deno", "check", "--env-file", "main.ts"],
+        svec![".env"],
+      ),
+      (svec!["deno", "doc", "--env-file", "main.ts"], svec![".env"]),
+      (
+        svec!["deno", "info", "--env-file", "main.ts"],
+        svec![".env"],
+      ),
+      (svec!["deno", "ci", "--env-file"], svec![".env"]),
+      (svec!["deno", "publish", "--env-file"], svec![".env"]),
+      (svec!["deno", "pack", "--env-file"], svec![".env"]),
+    ];
+    for (args, expected) in cases {
+      let flags = flags_from_vec(args.clone())
+        .unwrap_or_else(|e| panic!("failed to parse {args:?}: {e}"));
+      assert_eq!(
+        flags.env_file,
+        Some(expected),
+        "unexpected env_file for {args:?}",
+      );
+    }
+  }
+
+  #[test]
+  fn dep_and_registry_subcommands_env_file_explicit_and_multiple() {
+    // An explicit path is honored.
+    let flags =
+      flags_from_vec(svec!["deno", "check", "--env-file=.prod.env", "main.ts"])
+        .unwrap();
+    assert_eq!(flags.env_file, Some(svec![".prod.env"]));
+
+    // The --env alias works the same as --env-file.
+    let flags =
+      flags_from_vec(svec!["deno", "outdated", "--env=.prod.env"]).unwrap();
+    assert_eq!(flags.env_file, Some(svec![".prod.env"]));
+
+    // Multiple --env-file flags accumulate in order.
+    let flags = flags_from_vec(svec![
+      "deno",
+      "publish",
+      "--env-file",
+      "--env-file=.prod.env"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags.env_file,
+      Some(svec![".env".to_owned(), ".prod.env".to_owned()])
+    );
+  }
+
   #[test]
   fn cache_multiple() {
     let r =
@@ -13563,6 +13816,7 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          watch: None,
           no_terminal: false,
           icon: None,
           include: Default::default(),
@@ -13571,6 +13825,46 @@ mod tests {
           self_extracting: false,
           bundle: false,
           minify: false,
+          exclude_unused_npm: false,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn compile_watch_with_no_clear_screen() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "compile",
+      "--watch",
+      "--no-clear-screen",
+      "main.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Compile(CompileFlags {
+          source_file: "main.ts".to_string(),
+          output: None,
+          args: vec![],
+          target: None,
+          watch: Some(WatchFlags {
+            hmr: false,
+            no_clear_screen: true,
+            exclude: vec![],
+          }),
+          no_terminal: false,
+          icon: None,
+          include: Default::default(),
+          exclude: Default::default(),
+          eszip: false,
+          self_extracting: false,
+          bundle: false,
+          minify: false,
+          exclude_unused_npm: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -13592,6 +13886,7 @@ mod tests {
           output: Some(String::from("colors")),
           args: svec!["foo", "bar", "-p", "8080"],
           target: None,
+          watch: None,
           no_terminal: true,
           icon: Some(String::from("favicon.ico")),
           include: vec!["include.txt".to_string()],
@@ -13600,6 +13895,7 @@ mod tests {
           self_extracting: false,
           bundle: false,
           minify: false,
+          exclude_unused_npm: false,
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -15201,6 +15497,77 @@ mod tests {
   }
 
   #[test]
+  fn x_ignore_scripts() {
+    let flags = flags_from_vec(svec![
+      "deno",
+      "x",
+      "--ignore-scripts",
+      "-y",
+      "npm:foo",
+      "--bar"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::X(XFlags {
+          kind: XFlagsKind::Command(XCommandFlags {
+            yes: true,
+            command: "npm:foo".to_string(),
+            ignore_scripts: PackagesAllowedScripts::All,
+            package: None,
+          }),
+        }),
+        argv: svec!["--bar"],
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let err = flags_from_vec(svec![
+      "deno",
+      "x",
+      "--ignore-scripts",
+      "--allow-scripts",
+      "npm:foo"
+    ])
+    .unwrap_err();
+    assert!(err.to_string().contains("cannot be used with"));
+
+    let flags = flags_from_vec(svec![
+      "deno",
+      "x",
+      "--ignore-scripts=foo,npm:bar@2",
+      "npm:foo"
+    ])
+    .unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::X(XFlags {
+          kind: XFlagsKind::Command(XCommandFlags {
+            yes: false,
+            command: "npm:foo".to_string(),
+            ignore_scripts: PackagesAllowedScripts::Some(vec![
+              PackageReq::from_str("foo").unwrap(),
+              PackageReq::from_str("bar@2").unwrap(),
+            ]),
+            package: None,
+          }),
+        }),
+        permissions: PermissionFlags {
+          allow_all: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn bare_run() {
     let r = flags_from_vec(svec!["deno", "--no-config", "script.ts"]);
     assert_eq!(
@@ -16032,9 +16399,18 @@ Usage: deno lint [OPTIONS] [files]...\n"
           dry_run: true,
         },
       ),
+      (
+        svec!["--dry-run"],
+        CleanFlags {
+          except_paths: vec![],
+          dry_run: true,
+        },
+      ),
     ];
     for (input, expected) in cases {
-      let cached_only = !input.is_empty();
+      // `--except` builds a module graph of the retained paths, so it parses
+      // with `--cached-only`; other invocations (e.g. `--dry-run` alone) don't.
+      let cached_only = input.iter().any(|arg| arg == "--except");
       let mut args = svec!["deno", "clean"];
       args.extend(input);
       let r = flags_from_vec(args.clone())
@@ -16183,6 +16559,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           output: None,
           args: vec![],
           target: None,
+          watch: None,
           no_terminal: false,
           icon: None,
           include: Default::default(),
@@ -16191,6 +16568,7 @@ Usage: deno lint [OPTIONS] [files]...\n"
           self_extracting: false,
           bundle: false,
           minify: false,
+          exclude_unused_npm: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         preload: svec!["p1.js", "./p2.js"],
@@ -16729,6 +17107,48 @@ Usage: deno lint [OPTIONS] [files]...\n"
           base: Some("main".to_string()),
           import_map: Some("import_map.json".to_string()),
           release_notes: Some("Releases.md".to_string()),
+          config: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_config() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "bump-version",
+      "patch",
+      "--config",
+      "package.json",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+          config: Some("package.json".to_string()),
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "bump-version",
+      "-c",
+      "package.json",
+      "patch",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+          config: Some("package.json".to_string()),
+          ..Default::default()
         }),
         ..Flags::default()
       }

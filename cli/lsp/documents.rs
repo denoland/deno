@@ -935,6 +935,16 @@ pub struct DocumentModule {
   pub types_dependency: Option<Arc<TypesDependency>>,
   pub navigation_tree: tokio::sync::OnceCell<Arc<NavigationTree>>,
   pub semantic_tokens_full: tokio::sync::OnceCell<lsp::SemanticTokens>,
+  /// Cached lint diagnostics. These only depend on this module's own contents
+  /// (not on other files), so they can be computed once per module instance
+  /// and reused until the document changes. A new `DocumentModule` is created
+  /// whenever the document content or the lint configuration changes, which
+  /// naturally invalidates this cache.
+  pub lint_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
+  /// Cached `deno doc --lint` diagnostics. Like lint diagnostics, these are
+  /// derived solely from this module's own contents (a single-module graph),
+  /// so they're cached per module instance.
+  pub doc_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
   text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
   test_module_fut: Option<TestModuleFut>,
 }
@@ -1010,6 +1020,8 @@ impl DocumentModule {
       types_dependency,
       navigation_tree: Default::default(),
       semantic_tokens_full: Default::default(),
+      lint_diagnostics: Default::default(),
+      doc_diagnostics: Default::default(),
       text_info_cell: Default::default(),
       test_module_fut,
     }
