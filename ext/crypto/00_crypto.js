@@ -1678,7 +1678,7 @@ class SubtleCrypto {
 
     // 14-15.
     if (
-      isAlgorithmRegisteredFor("wrapKey", normalizedAlgorithm.name)
+      isAlgorithmRegisteredFor(normalizedAlgorithm.name, "wrapKey")
     ) {
       const handle = wrappingKey[_handle];
 
@@ -1699,7 +1699,7 @@ class SubtleCrypto {
         }
       }
     } else if (
-      isAlgorithmRegisteredFor("encrypt", normalizedAlgorithm.name)
+      isAlgorithmRegisteredFor(normalizedAlgorithm.name, "encrypt")
     ) {
       // must construct a new key, since keyUsages is ["wrapKey"] and not ["encrypt"]
       return await encrypt(
@@ -1808,7 +1808,7 @@ class SubtleCrypto {
     // 13.
     let key;
     if (
-      isAlgorithmRegisteredFor("unwrapKey", normalizedAlgorithm.name)
+      isAlgorithmRegisteredFor(normalizedAlgorithm.name, "unwrapKey")
     ) {
       const handle = unwrappingKey[_handle];
 
@@ -1830,7 +1830,7 @@ class SubtleCrypto {
         }
       }
     } else if (
-      isAlgorithmRegisteredFor("decrypt", normalizedAlgorithm.name)
+      isAlgorithmRegisteredFor(normalizedAlgorithm.name, "decrypt")
     ) {
       // must construct a new key, since keyUsages is ["unwrapKey"] and not ["decrypt"]
       key = await this.decrypt(
