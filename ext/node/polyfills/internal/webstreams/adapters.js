@@ -1,8 +1,12 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { core } from "ext:core/mod.js";
-import { destroy, destroyer } from "ext:deno_node/internal/streams/destroy.js";
-import finished from "ext:deno_node/internal/streams/end-of-stream.js";
+(function () {
+const { core } = __bootstrap;
+const { destroy, destroyer } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
+const finished =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
 const {
   isDestroyed,
   isReadable,
@@ -10,7 +14,9 @@ const {
   isWritable,
   isWritableEnded,
 } = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
-import { ReadableStream, WritableStream } from "node:stream/web";
+const { ReadableStream, WritableStream } = core.loadExtScript(
+  "ext:deno_node/stream/web.js",
+);
 const {
   validateBoolean,
   validateObject,
@@ -22,11 +28,12 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const {
   AbortError,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_ARG_TYPE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import process from "node:process";
-import { Buffer } from "node:buffer";
-import { Duplex, Readable, Writable } from "node:stream";
+const lazyProcess = core.createLazyLoader("node:process");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const lazyStream = core.createLazyLoader("node:stream");
 
 function isWritableStream(object) {
   return object instanceof WritableStream;
@@ -36,7 +43,7 @@ function isReadableStream(object) {
   return object instanceof ReadableStream;
 }
 
-export function newStreamReadableFromReadableStream(
+function newStreamReadableFromReadableStream(
   readableStream,
   options = kEmptyObject,
 ) {
@@ -64,7 +71,7 @@ export function newStreamReadableFromReadableStream(
   const reader = readableStream.getReader();
   let closed = false;
 
-  const readable = new Readable({
+  const readable = new (lazyStream().Readable)({
     objectMode,
     highWaterMark,
     encoding,
@@ -93,7 +100,7 @@ export function newStreamReadableFromReadableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => {
+          lazyProcess().default.nextTick(() => {
             throw error;
           });
         }
@@ -121,7 +128,7 @@ export function newStreamReadableFromReadableStream(
   return readable;
 }
 
-export function newStreamWritableFromWritableStream(
+function newStreamWritableFromWritableStream(
   writableStream,
   options = kEmptyObject,
 ) {
@@ -147,7 +154,7 @@ export function newStreamWritableFromWritableStream(
   const writer = writableStream.getWriter();
   let closed = false;
 
-  const writable = new Writable({
+  const writable = new (lazyStream().Writable)({
     highWaterMark,
     objectMode,
     decodeStrings,
@@ -164,7 +171,7 @@ export function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy.call(writable, error));
+          lazyProcess().default.nextTick(() => destroy.call(writable, error));
         }
       }
 
@@ -211,7 +218,7 @@ export function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => {
+          lazyProcess().default.nextTick(() => {
             throw error;
           });
         }
@@ -239,7 +246,7 @@ export function newStreamWritableFromWritableStream(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy.call(writable, error));
+          lazyProcess().default.nextTick(() => destroy.call(writable, error));
         }
       }
 
@@ -262,7 +269,7 @@ export function newStreamWritableFromWritableStream(
   return writable;
 }
 
-export function newStreamDuplexFromReadableWritablePair(
+function newStreamDuplexFromReadableWritablePair(
   pair,
   options = kEmptyObject,
 ) {
@@ -307,7 +314,7 @@ export function newStreamDuplexFromReadableWritablePair(
   let writableClosed = false;
   let readableClosed = false;
 
-  const duplex = new Duplex({
+  const duplex = new (lazyStream().Duplex)({
     allowHalfOpen,
     highWaterMark,
     objectMode,
@@ -326,7 +333,7 @@ export function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy(duplex, error));
+          lazyProcess().default.nextTick(() => destroy(duplex, error));
         }
       }
 
@@ -373,7 +380,7 @@ export function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => destroy(duplex, error));
+          lazyProcess().default.nextTick(() => destroy(duplex, error));
         }
       }
 
@@ -405,7 +412,7 @@ export function newStreamDuplexFromReadableWritablePair(
           // thrown we don't want those to cause an unhandled
           // rejection. Let's just escape the promise and
           // handle it separately.
-          process.nextTick(() => {
+          lazyProcess().default.nextTick(() => {
             throw error;
           });
         }
@@ -460,7 +467,7 @@ export function newStreamDuplexFromReadableWritablePair(
   return duplex;
 }
 
-export function newReadableStreamFromStreamReadable(
+function newReadableStreamFromStreamReadable(
   streamReadable,
   options = kEmptyObject,
 ) {
@@ -569,7 +576,7 @@ export function newReadableStreamFromStreamReadable(
   return new ReadableStream(underlyingSource, strategy);
 }
 
-export function newWritableStreamFromStreamWritable(streamWritable) {
+function newWritableStreamFromStreamWritable(streamWritable) {
   // Not using the internal/streams/utils isWritableNodeStream utility
   // here because it will return false if streamWritable is a Duplex
   // whose writable option is false. For a Duplex that is not writable,
@@ -675,7 +682,7 @@ export function newWritableStreamFromStreamWritable(streamWritable) {
   }, strategy);
 }
 
-export function newReadableWritablePairFromDuplex(
+function newReadableWritablePairFromDuplex(
   duplex,
   options = kEmptyObject,
 ) {
@@ -721,3 +728,13 @@ export function newReadableWritablePairFromDuplex(
 
   return { writable, readable };
 }
+
+return {
+  newReadableStreamFromStreamReadable,
+  newWritableStreamFromStreamWritable,
+  newStreamReadableFromReadableStream,
+  newStreamWritableFromWritableStream,
+  newStreamDuplexFromReadableWritablePair,
+  newReadableWritablePairFromDuplex,
+};
+})();

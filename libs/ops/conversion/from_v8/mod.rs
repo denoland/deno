@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+mod r#enum;
 mod r#struct;
 
 use proc_macro2::TokenStream;
@@ -22,7 +23,9 @@ pub fn from_v8(item: TokenStream) -> Result<TokenStream, Error> {
     Data::Struct(data) => {
       create_impl(ident, r#struct::get_body(ident_string, span, data)?)
     }
-    Data::Enum(_) => return Err(Error::new(span, "Enums are not supported")),
+    Data::Enum(data) => {
+      create_impl(ident, r#enum::get_body(ident_string, input.attrs, data)?)
+    }
     Data::Union(_) => return Err(Error::new(span, "Unions are not supported")),
   };
 
@@ -105,22 +108,14 @@ mod tests {
   #[testing_macros::fixture("conversion/from_v8/test_cases/*.rs")]
   fn test_proc_macro_sync(input: PathBuf) {
     crate::infra::run_macro_expansion_test(input, |file| {
-      file.items.into_iter().filter_map(|item| {
-        match item {
-          Item::Struct(struct_item) => {
-            if derives_from_v8(&struct_item.attrs) {
-              return Some(expand_from_v8(struct_item));
-            }
-          }
-          Item::Enum(enum_item) => {
-            if derives_from_v8(&enum_item.attrs) {
-              return Some(expand_from_v8(enum_item));
-            }
-          }
-          _ => {}
+      file.items.into_iter().filter_map(|item| match item {
+        Item::Struct(struct_item) if derives_from_v8(&struct_item.attrs) => {
+          Some(expand_from_v8(struct_item))
         }
-
-        None
+        Item::Enum(enum_item) if derives_from_v8(&enum_item.attrs) => {
+          Some(expand_from_v8(enum_item))
+        }
+        _ => None,
       })
     })
   }

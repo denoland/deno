@@ -1,4 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
+// deno-lint-ignore-file no-explicit-any
 /*
 MIT License
 
@@ -23,13 +24,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
-import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
-import { op_node_scrypt_async, op_node_scrypt_sync } from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  BigInt,
+  MathLog2,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetBuffer,
+} = primordials;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { op_node_scrypt_async, op_node_scrypt_sync } = core.ops;
 const {
   validateFunction,
   validateInt32,
@@ -40,23 +45,15 @@ const {
   ERR_CRYPTO_INVALID_SCRYPT_PARAMS,
   ERR_INCOMPATIBLE_OPTION_PAIR,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
+const { getArrayBufferOrView } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+);
 
-type Opts = Partial<{
-  N: number;
-  cost: number;
-  p: number;
-  parallelization: number;
-  r: number;
-  blockSize: number;
-  maxmem: number;
-}>;
-
-export function scryptSync(
-  password: HASH_DATA,
-  salt: HASH_DATA,
+function scryptSync(
+  password: any,
+  salt: any,
   keylen: number,
-  _opts?: Opts,
+  _opts?: any,
 ): Buffer {
   const options = check(password, salt, keylen, _opts);
   const { N, r, p, maxmem } = options;
@@ -71,27 +68,25 @@ export function scryptSync(
     password,
     salt,
     keylen,
-    Math.log2(N),
+    MathLog2(N),
     r,
     p,
     maxmem,
-    buf.buffer,
+    TypedArrayPrototypeGetBuffer(buf),
   );
 
   return buf;
 }
 
-type Callback = (err: unknown, result?: Buffer) => void;
-
-export function scrypt(
-  password: HASH_DATA,
-  salt: HASH_DATA,
+function scrypt(
+  password: any,
+  salt: any,
   keylen: number,
-  _opts: Opts | null | Callback,
-  cb?: Callback,
+  _opts: any,
+  cb?: any,
 ) {
   if (!cb) {
-    cb = _opts as Callback;
+    cb = _opts;
     _opts = null;
   }
   const options = check(password, salt, keylen, _opts);
@@ -105,19 +100,23 @@ export function scrypt(
     return;
   }
 
-  op_node_scrypt_async(
-    password,
-    salt,
-    keylen,
-    Math.log2(N),
-    r,
-    p,
-    maxmem,
-  ).then(
-    (buf: Uint8Array) => {
-      cb(null, Buffer.from(buf.buffer));
-    },
-  ).catch((err: unknown) => cb(err));
+  PromisePrototypeCatch(
+    PromisePrototypeThen(
+      op_node_scrypt_async(
+        password,
+        salt,
+        keylen,
+        MathLog2(N),
+        r,
+        p,
+        maxmem,
+      ),
+      (buf: Uint8Array) => {
+        cb(null, Buffer.from(TypedArrayPrototypeGetBuffer(buf)));
+      },
+    ),
+    (err: unknown) => cb(err),
+  );
 }
 
 const defaults = {
@@ -160,7 +159,9 @@ function check(password, salt, keylen, options) {
       validateUint32(p, "p");
     }
     if (options.parallelization !== undefined) {
-      if (hasP) throw new ERR_INCOMPATIBLE_OPTION_PAIR("p", "parallelization");
+      if (hasP) {
+        throw new ERR_INCOMPATIBLE_OPTION_PAIR("p", "parallelization");
+      }
       p = options.parallelization;
       validateUint32(p, "parallelization");
     }
@@ -177,7 +178,12 @@ function check(password, salt, keylen, options) {
   return { password, salt, keylen, N, r, p, maxmem };
 }
 
-function validateScryptParams(N: number, r: number, p: number, maxmem: number) {
+function validateScryptParams(
+  N: number,
+  r: number,
+  p: number,
+  maxmem: number,
+) {
   if (N < 2 || (N & (N - 1)) !== 0) {
     throw new ERR_CRYPTO_INVALID_SCRYPT_PARAMS();
   }
@@ -198,7 +204,12 @@ function validateScryptParams(N: number, r: number, p: number, maxmem: number) {
   }
 }
 
-export default {
+return {
   scrypt,
   scryptSync,
+  default: {
+    scrypt,
+    scryptSync,
+  },
 };
+})();

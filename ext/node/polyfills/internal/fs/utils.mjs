@@ -39,7 +39,7 @@ const {
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_FS_EISDIR,
   ERR_FS_INVALID_SYMLINK_TYPE,
@@ -59,7 +59,9 @@ const {
 const { kEmptyObject, once } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
 const {
   validateAbortSignal,
   validateBoolean,
@@ -69,15 +71,17 @@ const {
   validateObject,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import pathModule from "node:path";
+const lazyPath = core.createLazyLoader("node:path");
 const kType = Symbol("type");
 const kStats = Symbol("stats");
-const { default: assert } = core.loadExtScript(
+const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
-import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+const { lstat, lstatSync } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_lstat.ts",
+);
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
-import process from "node:process";
+const lazyProcess = core.createLazyLoader("node:process");
 const { ERR_INCOMPATIBLE_OPTION_PAIR } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -239,7 +243,7 @@ export function copyObject(source) {
   return target;
 }
 
-const bufferSep = Buffer.from(pathModule.sep);
+const bufferSep = Buffer.from(lazyPath().default.sep);
 
 function join(path, name) {
   if (
@@ -250,8 +254,10 @@ function join(path, name) {
   }
 
   if (typeof path === "string" && isUint8Array(name)) {
-    // deno-lint-ignore prefer-primordials `join` is a `node:path` function
-    const pathBuffer = Buffer.from(pathModule.join(path, pathModule.sep));
+    const pathBuffer = Buffer.from(
+      // deno-lint-ignore prefer-primordials `join` is a `node:path` function
+      lazyPath().default.join(path, lazyPath().default.sep),
+    );
     // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`
     // deno-lint-ignore prefer-primordials
     return Buffer.concat([pathBuffer, name]);
@@ -259,7 +265,7 @@ function join(path, name) {
 
   if (typeof path === "string" && typeof name === "string") {
     // deno-lint-ignore prefer-primordials `join` is a `node:path` function
-    return pathModule.join(path, name);
+    return lazyPath().default.join(path, name);
   }
 
   if (isUint8Array(path) && isUint8Array(name)) {
@@ -435,12 +441,12 @@ export function preprocessSymlinkDestination(path, type, linkPath) {
   if (type === "junction") {
     // Junctions paths need to be absolute and \\?\-prefixed.
     // A relative target is relative to the link's parent directory.
-    path = pathModule.resolve(linkPath, "..", path);
-    return pathModule.toNamespacedPath(path);
+    path = lazyPath().default.resolve(linkPath, "..", path);
+    return lazyPath().default.toNamespacedPath(path);
   }
-  if (pathModule.isAbsolute(path)) {
+  if (lazyPath().default.isAbsolute(path)) {
     // If the path is absolute, use the \\?\-prefix to enable long filenames
-    return pathModule.toNamespacedPath(path);
+    return lazyPath().default.toNamespacedPath(path);
   }
   // Windows symlinks don't tolerate forward slashes.
   return StringPrototypeReplace(path, new SafeRegExp(/\//g), "\\");
@@ -939,7 +945,7 @@ export function warnOnNonPortableTemplate(template) {
   // Template strings passed to the mkdtemp() family of functions should not
   // end with 'X' because they are handled inconsistently across platforms.
   if (nonPortableTemplateWarn && StringPrototypeEndsWith(template, "X")) {
-    process.emitWarning(
+    lazyProcess().default.emitWarning(
       "mkdtemp() templates ending with X are not portable. " +
         "For details see: https://nodejs.org/api/fs.html",
     );
@@ -1071,10 +1077,10 @@ export const validateRmOptionsSync = hideStackFrames(
   },
 );
 
-let recursiveRmdirWarned = process.noDeprecation;
+let recursiveRmdirWarned = lazyProcess().default.noDeprecation;
 export function emitRecursiveRmdirWarning() {
   if (!recursiveRmdirWarned) {
-    process.emitWarning(
+    lazyProcess().default.emitWarning(
       "In future versions of Node.js, fs.rmdir(path, { recursive: true }) " +
         "will be removed. Use fs.rm(path, { recursive: true }) instead",
       "DeprecationWarning",

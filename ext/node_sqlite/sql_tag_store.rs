@@ -596,7 +596,7 @@ impl SQLTagStore {
     Ok(iterator)
   }
 
-  #[fast]
+  #[getter]
   #[number]
   fn size(&self) -> u64 {
     self.cache.borrow().size() as u64

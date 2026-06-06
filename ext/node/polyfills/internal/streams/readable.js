@@ -1,21 +1,27 @@
 // deno-lint-ignore-file
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import process from "node:process";
-import { core, primordials } from "ext:core/mod.js";
-import EE from "node:events";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const lazyProcess = core.createLazyLoader("node:process");
+const process = lazyProcess().default;
+const { EventEmitter: EE } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   prependListener,
   Stream,
-} from "ext:deno_node/internal/streams/legacy.js";
-import { Buffer } from "node:buffer";
-import { addAbortSignal } from "ext:deno_node/internal/streams/add-abort-signal.js";
-import eos from "ext:deno_node/internal/streams/end-of-stream.js";
-import destroyImpl from "ext:deno_node/internal/streams/destroy.js";
-import {
+} = core.loadExtScript("ext:deno_node/internal/streams/legacy.js");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { addAbortSignal } = core.loadExtScript(
+  "ext:deno_node/internal/streams/add-abort-signal.js",
+);
+const eos =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
+const destroyImpl =
+  core.loadExtScript("ext:deno_node/internal/streams/destroy.js").default;
+const {
   getDefaultHighWaterMark,
   getHighWaterMark,
-} from "ext:deno_node/internal/streams/state.js";
+} = core.loadExtScript("ext:deno_node/internal/streams/state.js");
 
 const {
   kAutoDestroy,
@@ -35,10 +41,13 @@ const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { validateObject } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { StringDecoder } from "node:string_decoder";
-import from from "ext:deno_node/internal/streams/from.js";
+const { StringDecoder } = core.loadExtScript("ext:deno_node/string_decoder.ts");
+const lazyFrom = core.createLazyLoader(
+  "ext:deno_node/internal/streams/from.js",
+);
 const _mod2 = core.loadExtScript("ext:deno_node/internal/util/debuglog.ts");
-import * as _mod3 from "ext:deno_node/internal/webstreams/adapters.js";
+const webStreamsAdaptersSpecifier =
+  "ext:deno_node/internal/webstreams/adapters.js";
 
 const {
   AbortError,
@@ -1820,7 +1829,7 @@ function endWritableNT(stream) {
 }
 
 Readable.from = function (iterable, opts) {
-  return from(Readable, iterable, opts);
+  return lazyFrom().default(Readable, iterable, opts);
 };
 
 let webStreamsAdapters;
@@ -1828,7 +1837,7 @@ let webStreamsAdapters;
 // Lazy to avoid circular references
 function lazyWebStreams() {
   if (webStreamsAdapters === undefined) {
-    webStreamsAdapters = _mod3;
+    webStreamsAdapters = core.loadExtScript(webStreamsAdaptersSpecifier);
   }
   return webStreamsAdapters;
 }
@@ -1857,5 +1866,6 @@ Readable.wrap = function (src, options) {
     },
   }).wrap(src);
 };
-export default Readable;
-export { Readable };
+
+return { default: Readable, Readable };
+})();

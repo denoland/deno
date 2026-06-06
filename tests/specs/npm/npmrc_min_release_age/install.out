@@ -1,0 +1,4 @@
+Download http://localhost:4260/@denotest%2fadd
+error: Could not find npm package '@denotest/add' matching '*'.
+
+A newer matching version was found, but it was not used because it was newer than the specified minimum dependency date of [WILDLINE]

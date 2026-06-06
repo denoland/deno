@@ -9,17 +9,26 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { core, primordials } from "ext:core/mod.js";
-import { EventEmitter } from "node:events";
-import { fork as childProcessFork } from "node:child_process";
-import * as path from "node:path";
-import process from "node:process";
+(function () {
+const { core, primordials } = __bootstrap;
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const lazyChildProcess = core.createLazyLoader("node:child_process");
+const lazyPath = core.createLazyLoader("node:path");
+const lazyProcess = core.createLazyLoader("node:process");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 
-import { Worker } from "ext:deno_node/internal/cluster/worker.ts";
-import { internal, sendHelper } from "ext:deno_node/internal/cluster/utils.ts";
-import { RoundRobinHandle } from "ext:deno_node/internal/cluster/round_robin_handle.ts";
-import { SharedHandle } from "ext:deno_node/internal/cluster/shared_handle.ts";
+const { Worker } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/worker.ts",
+);
+const { internal, sendHelper } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/utils.ts",
+);
+const { RoundRobinHandle } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/round_robin_handle.ts",
+);
+const { SharedHandle } = core.loadExtScript(
+  "ext:deno_node/internal/cluster/shared_handle.ts",
+);
 
 const {
   ArrayPrototypeSlice,
@@ -31,13 +40,27 @@ const {
 const SCHED_NONE = 1;
 const SCHED_RR = 2;
 
+// Inspector port range and per-worker offset, mirroring
+// lib/internal/cluster/primary.js. When the inspector is activated, each
+// worker needs a distinct port so they don't collide on the default (9229).
+const minPort = 1024;
+const maxPort = 65535;
+// Matches the inspector activation/port flags Node looks for. Mirrors the
+// `debugArgRegex` in lib/internal/cluster/primary.js, which also matches
+// `--inspect-wait` via its `--inspect` prefix.
+const debugArgRegex = /--inspect(?:-brk|-port|-wait)?|--debug-port/;
+let debugPortOffset = 1;
+
 let initialized = false;
 
 // Initialize primary-side state and methods on the shared cluster object.
 // Mirrors lib/internal/cluster/primary.js's top-level setup.
-export function init(cluster: any) {
+function init(cluster: any) {
   if (initialized) return;
   initialized = true;
+
+  const process = lazyProcess().default;
+  const path = lazyPath();
 
   const intercom = new EventEmitter();
   const handles = new SafeMap();
@@ -112,17 +135,57 @@ export function init(cluster: any) {
 
     const execArgv = [...(cluster.settings.execArgv || [])];
 
-    return childProcessFork(cluster.settings.exec, cluster.settings.args, {
-      cwd: cluster.settings.cwd,
-      env: workerEnv,
-      serialization: cluster.settings.serialization,
-      silent: cluster.settings.silent,
-      windowsHide: cluster.settings.windowsHide,
-      execArgv,
-      stdio: cluster.settings.stdio,
-      gid: cluster.settings.gid,
-      uid: cluster.settings.uid,
-    });
+    // If the inspector is activated (via execArgv or the inherited
+    // NODE_OPTIONS), give each worker its own port so they don't all try to
+    // bind the default 9229. Node appends `--inspect-port=<port>` to execArgv
+    // and lets it combine with the NODE_OPTIONS activation flag. Deno doesn't
+    // carry `--inspect-port` as a runtime flag, so we instead append an
+    // activating `--inspect[-brk|-wait]=host:port`; an explicit CLI inspector
+    // flag takes precedence over the inherited NODE_OPTIONS one, so the worker
+    // ends up bound to the unique port.
+    const nodeOptions = (process as any).env.NODE_OPTIONS ?? "";
+    const inspectSource =
+      execArgv.find((arg: string) => debugArgRegex.test(arg)) ??
+        (debugArgRegex.test(nodeOptions) ? nodeOptions : undefined);
+    if (inspectSource !== undefined) {
+      let inspectPort;
+      if ("inspectPort" in cluster.settings) {
+        inspectPort = typeof cluster.settings.inspectPort === "function"
+          ? cluster.settings.inspectPort()
+          : cluster.settings.inspectPort;
+      } else {
+        inspectPort = (process as any).debugPort + debugPortOffset;
+        if (inspectPort > maxPort) {
+          inspectPort = inspectPort - maxPort + minPort - 1;
+        }
+        debugPortOffset++;
+      }
+      // A falsy port (e.g. 0) means "pick a free port"; leave it to the worker.
+      if (inspectPort) {
+        const flag = /--inspect-brk\b/.test(inspectSource)
+          ? "--inspect-brk"
+          : /--inspect-wait\b/.test(inspectSource)
+          ? "--inspect-wait"
+          : "--inspect";
+        execArgv.push(`${flag}=127.0.0.1:${inspectPort}`);
+      }
+    }
+
+    return lazyChildProcess().fork(
+      cluster.settings.exec,
+      cluster.settings.args,
+      {
+        cwd: cluster.settings.cwd,
+        env: workerEnv,
+        serialization: cluster.settings.serialization,
+        silent: cluster.settings.silent,
+        windowsHide: cluster.settings.windowsHide,
+        execArgv,
+        stdio: cluster.settings.stdio,
+        gid: cluster.settings.gid,
+        uid: cluster.settings.uid,
+      },
+    );
   }
 
   function removeWorker(worker: any) {
@@ -342,3 +405,6 @@ export function init(cluster: any) {
     this.process.kill(signal);
   };
 }
+
+return { init, default: init };
+})();

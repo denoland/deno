@@ -7,6 +7,16 @@
     "fallthrough": {
       "args": "run -A test_fallthrough.mjs",
       "output": "test_fallthrough.out"
+    },
+    "default_resolve": {
+      "cwd": "default_resolve",
+      "args": "run -A test.mjs",
+      "output": "default_resolve/test.out"
+    },
+    "worker": {
+      "cwd": "worker",
+      "args": "run -A main.mjs",
+      "output": "worker/main.out"
     }
   }
 }

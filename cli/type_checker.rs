@@ -15,6 +15,7 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_graph::ResolutionError;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_resolver::deno_json::CompilerOptionsData;
 use deno_resolver::deno_json::CompilerOptionsParseError;
@@ -309,6 +310,7 @@ impl TypeChecker {
         &mut graph,
         BuildFastCheckGraphOptions {
           workspace_fast_check: deno_graph::WorkspaceFastCheckOption::Disabled,
+          fast_check_dts: false,
         },
       )?;
     }
@@ -578,6 +580,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     let mut missing_diagnostics = missing_diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
+        && !self.is_untagged_jsdoc_dynamic_import_diagnostic(d)
     });
     missing_diagnostics.apply_fast_check_source_maps(&self.graph);
 
@@ -666,6 +669,7 @@ impl DiagnosticsByFolderRealIterator<'_> {
 
     let mut response_diagnostics = response.diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
+        && !self.is_untagged_jsdoc_dynamic_import_diagnostic(d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
     let mut diagnostics = missing_diagnostics.filter(|d| {
@@ -708,6 +712,37 @@ impl DiagnosticsByFolderRealIterator<'_> {
     } else {
       true
     }
+  }
+
+  fn is_untagged_jsdoc_dynamic_import_diagnostic(
+    &self,
+    d: &tsc::Diagnostic,
+  ) -> bool {
+    if d.code != 2307 {
+      return false;
+    }
+    let Some(file_name) = &d.file_name else {
+      return false;
+    };
+    let Ok(specifier) = ModuleSpecifier::parse(file_name) else {
+      return false;
+    };
+    let Ok(Some(Module::Js(module))) = self.graph.try_get(&specifier) else {
+      return false;
+    };
+    if !matches!(
+      module.media_type,
+      MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs | MediaType::Jsx
+    ) {
+      return false;
+    }
+    let Some(start) = &d.start else {
+      return false;
+    };
+    is_untagged_jsdoc_dynamic_import_position(
+      &module.source.text,
+      deno_graph::Position::new(start.line as usize, start.character as usize),
+    )
   }
 
   fn add_jsx_runtime_types(
@@ -791,10 +826,16 @@ struct GraphWalker<'a> {
   compiler_options_resolver: &'a CompilerOptionsResolver,
   maybe_hasher: Option<FastInsecureHasher>,
   seen: HashSet<&'a Url>,
-  pending: VecDeque<(&'a Url, bool)>,
+  pending: VecDeque<PendingGraphWalkSpecifier<'a>>,
   has_seen_node_builtin: bool,
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
+}
+
+struct PendingGraphWalkSpecifier<'a> {
+  specifier: &'a Url,
+  is_dynamic: bool,
+  is_root: bool,
 }
 
 impl<'a> GraphWalker<'a> {
@@ -858,7 +899,11 @@ impl<'a> GraphWalker<'a> {
           }
         },
         _ => {
-          self.pending.push_back((specifier, false));
+          self.pending.push_back(PendingGraphWalkSpecifier {
+            specifier,
+            is_dynamic: false,
+            is_root: false,
+          });
           self.resolve_pending();
         }
       }
@@ -868,7 +913,11 @@ impl<'a> GraphWalker<'a> {
   pub fn add_root(&mut self, root: &'a Url) {
     let specifier = self.graph.resolve(root);
     if self.seen.insert(specifier) {
-      self.pending.push_back((specifier, false));
+      self.pending.push_back(PendingGraphWalkSpecifier {
+        specifier,
+        is_dynamic: false,
+        is_root: true,
+      });
     }
 
     self.resolve_pending()
@@ -896,7 +945,12 @@ impl<'a> GraphWalker<'a> {
   }
 
   fn resolve_pending(&mut self) {
-    while let Some((specifier, is_dynamic)) = self.pending.pop_front() {
+    while let Some(PendingGraphWalkSpecifier {
+      specifier,
+      is_dynamic,
+      is_root,
+    }) = self.pending.pop_front()
+    {
       let module = match self.graph.try_get(specifier) {
         Ok(Some(module)) => module,
         Ok(None) => continue,
@@ -924,13 +978,22 @@ impl<'a> GraphWalker<'a> {
       if let Some(entry) = self.maybe_get_check_entry(module) {
         self.roots.push(entry);
       }
+      let is_js_module = matches!(
+        module.media_type(),
+        MediaType::JavaScript
+          | MediaType::Mjs
+          | MediaType::Cjs
+          | MediaType::Jsx
+      );
 
       let mut maybe_module_dependencies = None;
       let mut maybe_types_dependency = None;
+      let mut maybe_js_source_text = None;
       match module {
         Module::Js(module) => {
           maybe_module_dependencies =
             Some(module.dependencies_prefer_fast_check());
+          maybe_js_source_text = Some(module.source.text.as_ref());
           maybe_types_dependency = module
             .maybe_types_dependency
             .as_ref()
@@ -955,6 +1018,16 @@ impl<'a> GraphWalker<'a> {
       }
 
       if module.media_type().is_declaration() {
+        // When a `.d.ts` is itself a check root (an explicit entrypoint), its
+        // own unresolved imports should surface as `TS2307`. deno_graph records
+        // a bare specifier in a `.d.ts` as `Resolution::None`, which both the
+        // missing-import loop below and tsc (under `skipLibCheck`) ignore, so
+        // handle it explicitly here regardless of `skipLibCheck`. Dependency
+        // `.d.ts` files reached transitively are not roots and keep being
+        // skipped under `skipLibCheck`.
+        if is_root && let Module::Js(module) = module {
+          self.add_unresolved_dts_entrypoint_imports(module);
+        }
         let compiler_options_data = self
           .compiler_options_resolver
           .for_specifier(module.specifier());
@@ -978,6 +1051,9 @@ impl<'a> GraphWalker<'a> {
           if dep.is_dynamic {
             continue;
           }
+          if is_js_module && dep.maybe_code.is_none() {
+            continue;
+          }
           // only surface the code error if there's no type
           let dep_to_check_error = if dep.maybe_type.is_none() {
             &dep.maybe_code
@@ -986,6 +1062,13 @@ impl<'a> GraphWalker<'a> {
           };
           if let deno_graph::Resolution::Err(resolution_error) =
             dep_to_check_error
+            && !(is_js_module
+              && maybe_js_source_text.is_some_and(|text| {
+                is_untagged_jsdoc_dynamic_import_range(
+                  text,
+                  resolution_error.range(),
+                )
+              }))
             && let Some(diagnostic) =
               tsc::Diagnostic::maybe_from_resolution_error(resolution_error)
           {
@@ -1099,10 +1182,86 @@ impl<'a> GraphWalker<'a> {
     let specifier = self.graph.resolve(specifier);
     if is_dynamic {
       if !self.seen.contains(specifier) {
-        self.pending.push_back((specifier, true));
+        self.pending.push_back(PendingGraphWalkSpecifier {
+          specifier,
+          is_dynamic: true,
+          is_root: false,
+        });
       }
     } else if self.seen.insert(specifier) {
-      self.pending.push_back((specifier, false));
+      self.pending.push_back(PendingGraphWalkSpecifier {
+        specifier,
+        is_dynamic: false,
+        is_root: false,
+      });
+    }
+  }
+
+  /// Surface unresolved imports of a `.d.ts` check root as `TS2307`.
+  ///
+  /// An explicit `.d.ts` entrypoint should report its own unresolved imports,
+  /// but deno_graph records a bare specifier in a `.d.ts` as `Resolution::None`
+  /// (a `.ts` file records `Resolution::Err`). The missing-import loop only
+  /// turns `Resolution::Err` into diagnostics, so a `.d.ts` entrypoint's bare
+  /// imports are otherwise swallowed whether or not `skipLibCheck` is set.
+  ///
+  /// Only `Resolution::None` deps are handled here. Resolved (`Ok`) and errored
+  /// (`Err`) deps are already surfaced by the missing-import loop when
+  /// `skipLibCheck` is off, so handling them here too would double report. The
+  /// import range deno_graph already parsed is reused, so there's no need to
+  /// re-parse the source.
+  fn add_unresolved_dts_entrypoint_imports(
+    &mut self,
+    module: &'a deno_graph::JsModule,
+  ) {
+    for dep in module.dependencies_prefer_fast_check().values() {
+      // Only handle imports deno_graph left fully unresolved; a bare specifier
+      // in a `.d.ts` lands here as `None`/`None`.
+      if !matches!(dep.maybe_code, deno_graph::Resolution::None)
+        || !matches!(dep.maybe_type, deno_graph::Resolution::None)
+      {
+        continue;
+      }
+      for import in &dep.imports {
+        // Only surface real `import`/`export`/`import =` statements. Triple
+        // slash `/// <reference />` directives, JSDoc and `@jsxImportSource`
+        // imports are intentionally left to tsc's `skipLibCheck` handling.
+        if !matches!(
+          import.kind,
+          deno_graph::ImportKind::Es
+            | deno_graph::ImportKind::TsType
+            | deno_graph::ImportKind::Require
+        ) {
+          continue;
+        }
+        let range = import.specifier_range.clone();
+        match deno_path_util::resolve_import(
+          &import.specifier,
+          &module.specifier,
+        ) {
+          Ok(specifier) => {
+            let specifier = self.graph.resolve(&specifier);
+            if self.graph.try_get(specifier).ok().flatten().is_none() {
+              self.missing_diagnostics.push(
+                tsc::Diagnostic::from_missing_error(
+                  specifier.as_str(),
+                  Some(&range),
+                  maybe_additional_sloppy_imports_message(self.sys, specifier),
+                ),
+              );
+            }
+          }
+          Err(error) => {
+            let resolution_error =
+              ResolutionError::InvalidSpecifier { error, range };
+            if let Some(diagnostic) =
+              tsc::Diagnostic::maybe_from_resolution_error(&resolution_error)
+            {
+              self.missing_diagnostics.push(diagnostic);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -1129,6 +1288,84 @@ impl<'a> GraphWalker<'a> {
       .ok()?;
     resolved.into_url().ok()
   }
+}
+
+static JSDOC_DYNAMIC_IMPORT_RE: Lazy<Regex> =
+  lazy_regex::lazy_regex!(r#"(?s)(?:^|[^\w$])import\s*\(\s*["'][^"']+["']"#);
+static JSDOC_TYPED_TAG_RE: Lazy<Regex> = lazy_regex::lazy_regex!(
+  r#"@(?:augments|extends|implements|import|param|returns?|satisfies|template|typedef|type)\b"#
+);
+
+fn is_untagged_jsdoc_dynamic_import_range(
+  text: &str,
+  range: &deno_graph::Range,
+) -> bool {
+  is_untagged_jsdoc_dynamic_import_position(text, range.range.start)
+}
+
+fn is_untagged_jsdoc_dynamic_import_position(
+  text: &str,
+  position: deno_graph::Position,
+) -> bool {
+  let Some(start) = position_to_byte_index(text, position) else {
+    return false;
+  };
+  let Some(comment_start) = text[..start].rfind("/**") else {
+    return false;
+  };
+  if text[..start]
+    .rfind("*/")
+    .is_some_and(|comment_end| comment_end > comment_start)
+  {
+    return false;
+  }
+
+  let Some(open_brace) = text[..start].rfind('{') else {
+    return false;
+  };
+  if open_brace <= comment_start
+    || text[..start]
+      .rfind('}')
+      .is_some_and(|close_brace| close_brace > open_brace)
+  {
+    return false;
+  }
+  if JSDOC_TYPED_TAG_RE.is_match(&text[comment_start..open_brace]) {
+    return false;
+  }
+
+  let Some(close_brace) = text[start..].find('}').map(|i| start + i) else {
+    return false;
+  };
+  if text[start..]
+    .find("*/")
+    .is_some_and(|comment_end| start + comment_end < close_brace)
+  {
+    return false;
+  }
+
+  JSDOC_DYNAMIC_IMPORT_RE.is_match(&text[open_brace + 1..close_brace])
+}
+
+fn position_to_byte_index(
+  text: &str,
+  position: deno_graph::Position,
+) -> Option<usize> {
+  let mut line = 0;
+  let mut character = 0;
+  for (index, c) in text.char_indices() {
+    if line == position.line && character == position.character {
+      return Some(index);
+    }
+    if c == '\n' {
+      line += 1;
+      character = 0;
+    } else {
+      character += 1;
+    }
+  }
+  (line == position.line && character == position.character)
+    .then_some(text.len())
 }
 
 /// Matches the `@ts-check` pragma.

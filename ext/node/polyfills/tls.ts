@@ -1,17 +1,24 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
-import tlsCommon from "node:_tls_common";
-import tlsWrap from "node:_tls_wrap";
-import { convertALPNProtocols } from "ext:deno_node/internal/tls_common.js";
-import {
+const { getExecArgvOptionValue, getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
+const { convertALPNProtocols } = core.loadExtScript(
+  "ext:deno_node/internal/tls_common.js",
+);
+const { X509Certificate } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/x509.ts",
+);
+const {
   op_get_env_no_permission_check,
   op_get_root_certificates,
   op_node_get_ca_certificates,
   op_set_default_ca_certificates,
-} from "ext:core/ops";
+} = core.ops;
 const {
   validateOneOf,
   validateString,
@@ -33,7 +40,7 @@ const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
-  ObjectDefineProperty,
+  Error,
   ObjectKeys,
   ObjectFreeze,
   Proxy,
@@ -50,6 +57,9 @@ const {
   StringPrototypeSplit,
   StringPrototypeTrim,
   StringPrototypeToLowerCase,
+  SafeSet,
+  SetPrototypeAdd,
+  SetPrototypeHas,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
@@ -85,6 +95,7 @@ const cipherMap = {
   "__proto__": null,
   "AES128-GCM-SHA256": "TLS13_AES_128_GCM_SHA256",
   "AES256-GCM-SHA384": "TLS13_AES_256_GCM_SHA384",
+  "AES256-SHA": "TLS_RSA_WITH_AES_256_CBC_SHA",
   "ECDHE-ECDSA-AES128-GCM-SHA256": "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
   "ECDHE-ECDSA-AES256-GCM-SHA384": "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
   "ECDHE-ECDSA-CHACHA20-POLY1305":
@@ -92,12 +103,13 @@ const cipherMap = {
   "ECDHE-RSA-AES128-GCM-SHA256": "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
   "ECDHE-RSA-AES256-GCM-SHA384": "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
   "ECDHE-RSA-CHACHA20-POLY1305": "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
+  "TLS_AES_128_CCM_8_SHA256": "TLS13_AES_128_CCM_8_SHA256",
   "TLS_AES_128_GCM_SHA256": "TLS13_AES_128_GCM_SHA256",
   "TLS_AES_256_GCM_SHA384": "TLS13_AES_256_GCM_SHA384",
   "TLS_CHACHA20_POLY1305_SHA256": "TLS13_CHACHA20_POLY1305_SHA256",
 };
 
-export function getCiphers() {
+function getCiphers() {
   // TODO(bnoordhuis) Use locale-insensitive toLowerCase()
   return ArrayPrototypeMap(
     ObjectKeys(cipherMap),
@@ -170,7 +182,7 @@ function ensureLazyRootCertificates(target: string[]) {
     ObjectFreeze(target);
   }
 }
-export const rootCertificates = new Proxy([] as string[], {
+const rootCertificates = new Proxy([] as string[], {
   // @ts-ignore __proto__ is not in the types
   __proto__: null,
   get(target, prop) {
@@ -214,17 +226,107 @@ export const rootCertificates = new Proxy([] as string[], {
   },
 });
 
-export const DEFAULT_ECDH_CURVE = "auto";
-export const DEFAULT_MAX_VERSION = "TLSv1.3";
-export const DEFAULT_MIN_VERSION = "TLSv1.2";
-export const CLIENT_RENEG_LIMIT = 3;
-export const CLIENT_RENEG_WINDOW = 600;
+const DEFAULT_ECDH_CURVE = "auto";
+const CLIENT_RENEG_LIMIT = 3;
+const CLIENT_RENEG_WINDOW = 600;
 
-export class CryptoStream {}
-export class SecurePair {}
-export const Server = tlsWrap.Server;
+class CryptoStream {}
+class SecurePair {}
 
-export function setDefaultCACertificates(
+function getDefaultMaxVersion(): string {
+  if (getOptionValue("--tls-max-v1.3")) return "TLSv1.3";
+  if (getOptionValue("--tls-max-v1.2")) return "TLSv1.2";
+  return "TLSv1.3";
+}
+
+function getDefaultMinVersion(): string {
+  if (getOptionValue("--tls-min-v1.0")) return "TLSv1";
+  if (getOptionValue("--tls-min-v1.1")) return "TLSv1.1";
+  if (getOptionValue("--tls-min-v1.2")) return "TLSv1.2";
+  if (getOptionValue("--tls-min-v1.3")) return "TLSv1.3";
+  return "TLSv1.2";
+}
+
+let hasDefaultCACertificatesOverride = false;
+
+function hasStore(store: string): boolean {
+  const storesValue = op_get_env_no_permission_check("DENO_TLS_CA_STORE");
+  if (storesValue == null) {
+    return false;
+  }
+  const stores = StringPrototypeSplit(storesValue, ",");
+  for (let i = 0; i < stores.length; i++) {
+    if (StringPrototypeTrim(stores[i]) === store) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getDefaultUsesSystemCertificates(): boolean {
+  const useSystemCaExecArgvOption = getExecArgvOptionValue("--use-system-ca");
+  if (useSystemCaExecArgvOption !== undefined) {
+    return !!useSystemCaExecArgvOption;
+  }
+  const useSystemCaOption = getOptionValue("--use-system-ca");
+  if (
+    globalThis.process?.env?.NODE_USE_SYSTEM_CA === "1" ||
+    op_get_env_no_permission_check("NODE_USE_SYSTEM_CA") === "1"
+  ) {
+    return true;
+  }
+  if (useSystemCaOption === true) {
+    return true;
+  }
+  if (useSystemCaOption === false) {
+    return false;
+  }
+  if (hasStore("system")) {
+    return true;
+  }
+  return false;
+}
+
+function getDefaultUsesBundledCertificates(): boolean {
+  const storesValue = op_get_env_no_permission_check("DENO_TLS_CA_STORE");
+  if (storesValue != null) {
+    return hasStore("mozilla");
+  }
+  if (getOptionValue("--use-openssl-ca")) {
+    return false;
+  }
+  const useBundledCaOption = getOptionValue("--use-bundled-ca");
+  return useBundledCaOption !== false;
+}
+
+function makeNodeCryptoError(code: string, message: string) {
+  const err = new Error(message);
+  (err as Error & { code?: string }).code = code;
+  return err;
+}
+
+function validateDefaultCACertificates(certs: string[]) {
+  let validCount = 0;
+  for (let i = 0; i < certs.length; i++) {
+    try {
+      new X509Certificate(certs[i]);
+      validCount++;
+    } catch {
+      if (validCount === 0) {
+        throw makeNodeCryptoError(
+          "ERR_CRYPTO_OPERATION_FAILED",
+          "No valid certificates found in the provided array",
+        );
+      }
+      throw makeNodeCryptoError(
+        "ERR_OSSL_PEM_ASN1_LIB",
+        "error:0680009B:asn1 encoding routines::too long",
+      );
+    }
+  }
+}
+
+function setDefaultCACertificates(
   certs: (string | ArrayBufferView)[],
 ) {
   if (!ArrayIsArray(certs)) {
@@ -232,12 +334,14 @@ export function setDefaultCACertificates(
   }
 
   const normalized: string[] = [];
+  const seen = new SafeSet();
   for (let i = 0; i < certs.length; ++i) {
     const cert = certs[i];
+    let normalizedCert;
     if (typeof cert === "string") {
-      ArrayPrototypePush(normalized, cert);
+      normalizedCert = cert;
     } else if (isArrayBufferView(cert)) {
-      ArrayPrototypePush(normalized, arrayBufferViewToString(cert));
+      normalizedCert = arrayBufferViewToString(cert);
     } else {
       throw new ERR_INVALID_ARG_TYPE(
         `certs[${i}]`,
@@ -245,9 +349,15 @@ export function setDefaultCACertificates(
         cert,
       );
     }
+    if (!SetPrototypeHas(seen, normalizedCert)) {
+      SetPrototypeAdd(seen, normalizedCert);
+      ArrayPrototypePush(normalized, normalizedCert);
+    }
   }
 
+  validateDefaultCACertificates(normalized);
   op_set_default_ca_certificates(normalized);
+  hasDefaultCACertificatesOverride = true;
 
   // The bundled root certificates (`rootCertificates` proxy /
   // `lazyRootCertificates`) come from the webpki Mozilla bundle and don't
@@ -264,7 +374,7 @@ export function setDefaultCACertificates(
   );
 }
 
-export function getCACertificates(type: string = "default"): string[] {
+function getCACertificates(type: string = "default"): string[] {
   validateString(type, "type");
   validateOneOf(type, "type", ["default", "system", "bundled", "extra"]);
 
@@ -273,7 +383,27 @@ export function getCACertificates(type: string = "default"): string[] {
   }
 
   let certs: string[];
-  if (type === "bundled") {
+  if (type === "default" && !hasDefaultCACertificatesOverride) {
+    certs = [];
+    if (getDefaultUsesBundledCertificates()) {
+      ArrayPrototypeForEach(
+        getCACertificates("bundled"),
+        (cert) => ArrayPrototypePush(certs, cert),
+      );
+    }
+    if (getDefaultUsesSystemCertificates()) {
+      ArrayPrototypeForEach(
+        getCACertificates("system"),
+        (cert) => ArrayPrototypePush(certs, cert),
+      );
+    }
+    ArrayPrototypeForEach(
+      getCACertificates("extra"),
+      (cert) => ArrayPrototypePush(certs, cert),
+    );
+    ObjectFreeze(certs);
+    emitDefaultCertificatesDebug();
+  } else if (type === "bundled") {
     certs = rootCertificates;
   } else {
     certs = ObjectFreeze(op_node_get_ca_certificates(type)) as string[];
@@ -285,45 +415,27 @@ export function getCACertificates(type: string = "default"): string[] {
   return certs;
 }
 
-export function createSecurePair() {
+function createSecurePair() {
   notImplemented("tls.createSecurePair");
 }
 
-const defaultExport = {
+return {
   CryptoStream,
   SecurePair,
-  Server,
-  TLSSocket: tlsWrap.TLSSocket,
-  checkServerIdentity: tlsWrap.checkServerIdentity,
-  connect: tlsWrap.connect,
-  createSecureContext: tlsCommon.createSecureContext,
-  createSecurePair,
-  createServer: tlsWrap.createServer,
   convertALPNProtocols,
   getCiphers,
   getCACertificates,
   setDefaultCACertificates,
-  DEFAULT_CIPHERS: tlsWrap.DEFAULT_CIPHERS,
+  createSecurePair,
+  rootCertificates,
   DEFAULT_ECDH_CURVE,
-  DEFAULT_MAX_VERSION,
-  DEFAULT_MIN_VERSION,
+  get DEFAULT_MAX_VERSION() {
+    return getDefaultMaxVersion();
+  },
+  get DEFAULT_MIN_VERSION() {
+    return getDefaultMinVersion();
+  },
   CLIENT_RENEG_LIMIT,
   CLIENT_RENEG_WINDOW,
 };
-// Make rootCertificates non-writable so `tls.rootCertificates = X` throws
-// TypeError in strict mode (matches Node.js behavior).
-// deno-lint-ignore no-explicit-any
-ObjectDefineProperty(defaultExport as any, "rootCertificates", {
-  __proto__: null,
-  configurable: false,
-  enumerable: true,
-  get: () => rootCertificates,
-});
-export default defaultExport;
-
-export const checkServerIdentity = tlsWrap.checkServerIdentity;
-export const connect = tlsWrap.connect;
-export const createSecureContext = tlsCommon.createSecureContext;
-export const createServer = tlsWrap.createServer;
-export const DEFAULT_CIPHERS = tlsWrap.DEFAULT_CIPHERS;
-export const TLSSocket = tlsWrap.TLSSocket;
+})();

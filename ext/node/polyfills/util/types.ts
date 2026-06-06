@@ -45,4 +45,4 @@ export const {
   isWeakMap,
   isWeakSet,
 } = types;
-export default { ...types };
+export default types;

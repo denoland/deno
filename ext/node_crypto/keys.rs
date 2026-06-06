@@ -6,15 +6,21 @@ use std::cell::RefCell;
 use base64::Engine;
 use deno_core::FromV8;
 use deno_core::GarbageCollected;
+use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
+use digest::Digest;
+use digest::FixedOutputReset;
 use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
+use hmac::Hmac;
+use hmac::Mac;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
+use p12::AlgorithmIdentifier as Pkcs12AlgorithmIdentifier;
+use p12::PFX as Pkcs12;
 use pkcs8::DecodePrivateKey as _;
 use pkcs8::Document;
 use pkcs8::EncodePrivateKey as _;
@@ -848,6 +854,45 @@ fn ec_private_key_from_named_curve_and_sec1_der(
   }
 }
 
+fn normalize_pem_line_width(pem: &str) -> Cow<'_, str> {
+  let mut needs_reformat = false;
+  let mut header = "";
+  let mut footer = "";
+  let mut base64_body = String::new();
+  let mut in_body = false;
+
+  for line in pem.lines() {
+    if line.starts_with("-----BEGIN ") {
+      header = line;
+      in_body = true;
+    } else if line.starts_with("-----END ") {
+      footer = line;
+      in_body = false;
+    } else if in_body {
+      let trimmed = line.trim();
+      if trimmed.len() > 64 {
+        needs_reformat = true;
+      }
+      base64_body.push_str(trimmed);
+    }
+  }
+
+  if !needs_reformat || header.is_empty() || footer.is_empty() {
+    return Cow::Borrowed(pem);
+  }
+
+  let mut result = String::with_capacity(pem.len() + 10);
+  result.push_str(header);
+  result.push('\n');
+  for chunk in base64_body.as_bytes().chunks(64) {
+    result.push_str(std::str::from_utf8(chunk).unwrap_or(""));
+    result.push('\n');
+  }
+  result.push_str(footer);
+  result.push('\n');
+  Cow::Owned(result)
+}
+
 impl KeyObjectHandle {
   pub fn new_asymmetric_private_key_from_js(
     key: &[u8],
@@ -899,7 +944,8 @@ impl KeyObjectHandle {
               );
             }
             Err(_) => {
-              let (label, doc) = SecretDocument::from_pem(pem)
+              let normalized = normalize_pem_line_width(pem);
+              let (label, doc) = SecretDocument::from_pem(&normalized)
                 .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
               match label {
                 PrivateKeyInfo::PEM_LABEL => doc,
@@ -924,7 +970,8 @@ impl KeyObjectHandle {
         } else {
           // Skip EC PARAMETERS block if present (legacy EC key format includes both)
           let pem = skip_ec_parameters_block(pem);
-          let (label, doc) = SecretDocument::from_pem(pem)
+          let normalized = normalize_pem_line_width(pem);
+          let (label, doc) = SecretDocument::from_pem(&normalized)
             .map_err(|_| AsymmetricPrivateKeyError::InvalidPemPrivateKey)?;
 
           match label {
@@ -933,7 +980,8 @@ impl KeyObjectHandle {
             }
             PrivateKeyInfo::PEM_LABEL => doc,
             rsa::pkcs1::RsaPrivateKey::PEM_LABEL => {
-              SecretDocument::from_pkcs1_der(doc.as_bytes()).map_err(|_| {
+              let pkcs1_der = doc.as_bytes();
+              SecretDocument::from_pkcs1_der(pkcs1_der).map_err(|_| {
                 AsymmetricPrivateKeyError::InvalidPkcs1PrivateKey
               })?
             }
@@ -1016,7 +1064,8 @@ impl KeyObjectHandle {
       }
     };
 
-    let pk_info = PrivateKeyInfo::try_from(document.as_bytes())
+    let document_bytes = document.as_bytes();
+    let pk_info = PrivateKeyInfo::try_from(document_bytes)
       .map_err(|_| AsymmetricPrivateKeyError::InvalidPrivateKey)?;
 
     let alg = pk_info.algorithm.oid;
@@ -2570,33 +2619,29 @@ pub fn op_node_get_asymmetric_key_type(
   }
 }
 
-#[derive(serde::Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum AsymmetricKeyDetails {
-  #[serde(rename_all = "camelCase")]
   Rsa {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
   },
-  #[serde(rename_all = "camelCase")]
   RsaPss {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
     hash_algorithm: &'static str,
     mgf1_hash_algorithm: &'static str,
     salt_length: u32,
   },
-  #[serde(rename = "rsaPss", rename_all = "camelCase")]
+  #[to_v8(rename = "rsaPss")]
   RsaPssBasic {
     modulus_length: usize,
-    public_exponent: V8BigInt,
+    public_exponent: deno_core::convert::BigInt,
   },
-  #[serde(rename_all = "camelCase")]
   Dsa {
     modulus_length: usize,
     divisor_length: usize,
   },
-  #[serde(rename_all = "camelCase")]
   Ec {
     named_curve: &'static str,
   },
@@ -2608,7 +2653,6 @@ pub enum AsymmetricKeyDetails {
 }
 
 #[op2]
-#[serde]
 pub fn op_node_get_asymmetric_key_details(
   #[cppgc] handle: &KeyObjectHandle,
 ) -> Result<AsymmetricKeyDetails, JsErrorBox> {
@@ -2620,7 +2664,7 @@ pub fn op_node_get_asymmetric_key_details(
           BigInt::from_bytes_be(num_bigint::Sign::Plus, &key.e().to_bytes_be());
         Ok(AsymmetricKeyDetails::Rsa {
           modulus_length,
-          public_exponent: V8BigInt::from(public_exponent),
+          public_exponent: public_exponent.into(),
         })
       }
       AsymmetricPrivateKey::RsaPss(key) => {
@@ -2629,7 +2673,7 @@ pub fn op_node_get_asymmetric_key_details(
           num_bigint::Sign::Plus,
           &key.key.e().to_bytes_be(),
         );
-        let public_exponent = V8BigInt::from(public_exponent);
+        let public_exponent = public_exponent.into();
         let details = match key.details {
           Some(details) => AsymmetricKeyDetails::RsaPss {
             modulus_length,
@@ -2677,7 +2721,7 @@ pub fn op_node_get_asymmetric_key_details(
           BigInt::from_bytes_be(num_bigint::Sign::Plus, &key.e().to_bytes_be());
         Ok(AsymmetricKeyDetails::Rsa {
           modulus_length,
-          public_exponent: V8BigInt::from(public_exponent),
+          public_exponent: public_exponent.into(),
         })
       }
       AsymmetricPublicKey::RsaPss(key) => {
@@ -2686,7 +2730,7 @@ pub fn op_node_get_asymmetric_key_details(
           num_bigint::Sign::Plus,
           &key.key.e().to_bytes_be(),
         );
-        let public_exponent = V8BigInt::from(public_exponent);
+        let public_exponent = public_exponent.into();
         let details = match key.details {
           Some(details) => AsymmetricKeyDetails::RsaPss {
             modulus_length,
@@ -2961,31 +3005,117 @@ pub async fn op_node_generate_rsa_pss_key_async(
   .unwrap()
 }
 
+/// Generate DSA common components (p, q, g) for arbitrary L and N values.
+///
+/// The `dsa` crate's `KeySize` only exposes a fixed set of (L, N) variants, so
+/// for non-standard `modulusLength` / `divisorLength` combinations (e.g.
+/// `modulusLength: 2049`) we generate the parameters ourselves and construct
+/// `Components` via `Components::from_components`. The algorithm mirrors
+/// `dsa::generate::components::common`: generate prime q of N bits, then a
+/// prime p of L bits such that q divides (p - 1), then a generator g of order
+/// q using the unverifiable method (FIPS 186-4 Appendix A.2.1).
+fn dsa_generate_components<R: rand::Rng + rand::CryptoRng>(
+  rng: &mut R,
+  l: u32,
+  n: u32,
+) -> (
+  num_bigint_dig::BigUint,
+  num_bigint_dig::BigUint,
+  num_bigint_dig::BigUint,
+) {
+  use num_bigint_dig::BigUint;
+  use num_bigint_dig::RandBigInt;
+  use num_bigint_dig::RandPrime;
+  use num_bigint_dig::prime::probably_prime;
+  use num_traits::One;
+  use num_traits::Pow;
+
+  const MR_ROUNDS: usize = 64;
+  let two = || BigUint::from(2u8);
+  let bounds = |size: u32| -> (BigUint, BigUint) {
+    let lower = two().pow(size - 1);
+    let upper = two().pow(size);
+    (lower, upper)
+  };
+
+  let (p_min, p_max) = bounds(l);
+  let (q_min, q_max) = bounds(n);
+
+  let (p, q) = 'gen_pq: loop {
+    let q = rng.gen_prime(n as usize);
+    if q < q_min || q > q_max {
+      continue;
+    }
+
+    // Attempt to find a prime p which has a subgroup of the order q
+    for _ in 0..4096 {
+      let m = 'gen_m: loop {
+        let m = rng.gen_biguint(l as usize);
+        if m > p_min && m < p_max {
+          break 'gen_m m;
+        }
+      };
+      let mr = &m % (two() * &q);
+      let p = m - mr + BigUint::one();
+
+      if probably_prime(&p, MR_ROUNDS) {
+        break 'gen_pq (p, q);
+      }
+    }
+  };
+
+  // Generate g using the unverifiable method as defined by Appendix A.2.1
+  let e = (&p - BigUint::one()) / &q;
+  let mut h = BigUint::one();
+  let g = loop {
+    let g = h.modpow(&e, &p);
+    if !num_traits::One::is_one(&g) {
+      break g;
+    }
+    h += BigUint::one();
+  };
+
+  (p, q, g)
+}
+
 fn dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
 ) -> Result<KeyObjectHandlePair, JsErrorBox> {
-  let mut rng = rand::thread_rng();
   use dsa::Components;
-  use dsa::KeySize;
   use dsa::SigningKey;
 
-  let key_size = match (modulus_length, divisor_length) {
-    #[allow(
-      deprecated,
-      reason = "needed for compatibility with legacy DSA key sizes"
-    )]
-    (1024, 160) => KeySize::DSA_1024_160,
-    (2048, 224) => KeySize::DSA_2048_224,
-    (2048, 256) => KeySize::DSA_2048_256,
-    (3072, 256) => KeySize::DSA_3072_256,
-    _ => {
-      return Err(JsErrorBox::type_error(
-        "Invalid modulusLength+divisorLength combination",
-      ));
-    }
-  };
-  let components = Components::generate(&mut rng, key_size);
+  // Validate (L, N) per Node.js / OpenSSL behavior: divisor (N) must be
+  // smaller than modulus (L) and large enough to be meaningful. We deliberately
+  // accept arbitrary L and N otherwise (e.g. L=2049) to match Node's
+  // `crypto.generateKeyPair('dsa', { modulusLength, divisorLength })`.
+  if modulus_length < 2 || divisor_length < 2 {
+    return Err(JsErrorBox::type_error(
+      "Invalid modulusLength+divisorLength combination",
+    ));
+  }
+  if divisor_length >= modulus_length {
+    return Err(JsErrorBox::type_error(
+      "Invalid modulusLength+divisorLength combination",
+    ));
+  }
+  if u32::try_from(modulus_length).is_err()
+    || u32::try_from(divisor_length).is_err()
+  {
+    return Err(JsErrorBox::type_error(
+      "Invalid modulusLength+divisorLength combination",
+    ));
+  }
+
+  let mut rng = rand::thread_rng();
+  let (p, q, g) = dsa_generate_components(
+    &mut rng,
+    modulus_length as u32,
+    divisor_length as u32,
+  );
+  let components = Components::from_components(p, q, g).map_err(|_| {
+    JsErrorBox::type_error("Invalid modulusLength+divisorLength combination")
+  })?;
   let signing_key = SigningKey::generate(&mut rng, components);
   let private_key = AsymmetricPrivateKey::Dsa(signing_key);
   let public_key = private_key.to_public_key();
@@ -4023,4 +4153,445 @@ pub fn op_node_derive_public_key_from_private_key(
   Ok(KeyObjectHandle::AsymmetricPublic(
     private_key.to_public_key(),
   ))
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum PfxLoadError {
+  #[class(generic)]
+  #[error("not enough data")]
+  NotEnoughData,
+  #[class(generic)]
+  #[error("mac verify failure")]
+  MacVerifyFailure,
+  #[class(generic)]
+  #[error("PFX contains no usable certificate")]
+  NoCert,
+  #[class(generic)]
+  #[error("PFX contains no usable private key")]
+  NoKey,
+  #[class(generic)]
+  #[error("failed to encode PFX contents: {0}")]
+  Encode(String),
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadPfxResult {
+  pub cert: String,
+  pub key: String,
+  pub ca: Vec<String>,
+}
+
+fn der_to_pem(label: &str, der: &[u8]) -> String {
+  use base64::engine::general_purpose::STANDARD;
+  let body = STANDARD.encode(der);
+  let mut out = String::with_capacity(body.len() + 64);
+  out.push_str("-----BEGIN ");
+  out.push_str(label);
+  out.push_str("-----\n");
+  for chunk in body.as_bytes().chunks(64) {
+    // SAFETY: base64 output is ASCII.
+    out.push_str(std::str::from_utf8(chunk).unwrap());
+    out.push('\n');
+  }
+  out.push_str("-----END ");
+  out.push_str(label);
+  out.push_str("-----\n");
+  out
+}
+
+// Cap on the iteration count for the PKCS#12 MAC PBKDF, since an attacker
+// who controls the PFX bytes also controls this field (`mac_data.iterations`
+// is a u32, up to ~4 billion, which would tie up CPU for tens of seconds).
+// Matches the limit Mozilla NSS uses for the same KDF; well above any
+// realistic legitimate value — OpenSSL defaults to 2048 on creation, and
+// hardened producers rarely go beyond ~100k. OpenSSL itself doesn't cap
+// here, but Node trusts the caller's PFX; in Deno the PFX often comes
+// from untrusted input (e.g. server config), so capping is defensive.
+const PFX_MAC_ITERATIONS_CAP: u64 = 600_000;
+
+#[op2]
+#[serde]
+pub fn op_node_load_pfx(
+  #[buffer] pfx: &[u8],
+  #[string] passphrase: Option<String>,
+) -> Result<LoadPfxResult, PfxLoadError> {
+  let parsed = Pkcs12::parse(pfx).map_err(|_| PfxLoadError::NotEnoughData)?;
+  let password = passphrase.as_deref().unwrap_or("");
+  let bmp_password = bmp_string(password);
+  // If a MAC is present, verify it. Absent MACs are accepted (matches
+  // OpenSSL/Node behaviour).
+  if let Some(mac_data) = &parsed.mac_data {
+    let iterations = u64::from(mac_data.iterations);
+    if iterations > PFX_MAC_ITERATIONS_CAP {
+      return Err(PfxLoadError::MacVerifyFailure);
+    }
+    let data = parsed
+      .auth_safe
+      .data(&bmp_password)
+      .ok_or(PfxLoadError::MacVerifyFailure)?;
+    let ok = verify_pkcs12_mac(
+      &mac_data.mac.digest_algorithm,
+      &mac_data.mac.digest,
+      &mac_data.salt,
+      iterations,
+      &data,
+      &bmp_password,
+    )
+    .ok_or(PfxLoadError::MacVerifyFailure)?;
+    if !ok {
+      return Err(PfxLoadError::MacVerifyFailure);
+    }
+  }
+
+  let cert_ders = parsed
+    .cert_bags(password)
+    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+  let key_ders = parsed
+    .key_bags(password)
+    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+
+  if cert_ders.is_empty() {
+    return Err(PfxLoadError::NoCert);
+  }
+  if key_ders.is_empty() {
+    return Err(PfxLoadError::NoKey);
+  }
+
+  // The first cert bag is taken as the leaf; any additional bags are
+  // returned as CA/chain certificates.
+  let mut iter = cert_ders.into_iter();
+  let leaf = iter.next().unwrap();
+  let cert = der_to_pem("CERTIFICATE", &leaf);
+  let ca: Vec<String> =
+    iter.map(|der| der_to_pem("CERTIFICATE", &der)).collect();
+
+  // p12 returns PKCS#8 DER for shrouded key bags.
+  let key = der_to_pem("PRIVATE KEY", &key_ders[0]);
+
+  Ok(LoadPfxResult { cert, key, ca })
+}
+
+// Convert a UTF-8 password to the PKCS#12 BMPString form (RFC 7292
+// section B.1): each character is encoded as UTF-16BE, followed by a
+// U+0000 terminator.
+fn bmp_string(s: &str) -> Vec<u8> {
+  let utf16: Vec<u16> = s.encode_utf16().collect();
+  let mut bytes = Vec::with_capacity(utf16.len() * 2 + 2);
+  for c in utf16 {
+    bytes.extend_from_slice(&c.to_be_bytes());
+  }
+  bytes.extend_from_slice(&[0x00, 0x00]);
+  bytes
+}
+
+// PKCS#12 password-based key derivation, generic over a Digest. Implements
+// the algorithm from RFC 7292 Appendix B.2:
+//   https://www.rfc-editor.org/rfc/rfc7292#appendix-B.2
+//
+// `v` is the hash function's block size in bytes (64 for SHA-1, SHA-224,
+// SHA-256; 128 for SHA-384, SHA-512, SHA-512/224, SHA-512/256). `id` is
+// the diversifier (1 = encryption key, 2 = IV, 3 = MAC key). `size` is
+// the number of output bytes desired.
+fn pkcs12_pbkdf<D: Digest + FixedOutputReset>(
+  pass: &[u8],
+  salt: &[u8],
+  iterations: u64,
+  id: u8,
+  size: usize,
+  v: usize,
+) -> Vec<u8> {
+  // u = hash output size in bytes.
+  let u = <D as Digest>::output_size();
+  // Step 1: D = id repeated v bytes.
+  let d = vec![id; v];
+  // Steps 2 & 3: S and P are the salt / password padded to a multiple of
+  // v bytes by cyclic repetition. Empty inputs contribute an empty string.
+  let s: Vec<u8> = if salt.is_empty() {
+    Vec::new()
+  } else {
+    salt
+      .iter()
+      .cycle()
+      .take(v * salt.len().div_ceil(v))
+      .copied()
+      .collect()
+  };
+  let p: Vec<u8> = if pass.is_empty() {
+    Vec::new()
+  } else {
+    pass
+      .iter()
+      .cycle()
+      .take(v * pass.len().div_ceil(v))
+      .copied()
+      .collect()
+  };
+  // Step 4: I = S || P.
+  let mut i: Vec<u8> = Vec::with_capacity(s.len() + p.len());
+  i.extend_from_slice(&s);
+  i.extend_from_slice(&p);
+  // Step 5: c = ceil(size / u).
+  let c = size.div_ceil(u);
+  let mut out: Vec<u8> = Vec::with_capacity(c * u);
+  let mut hasher = D::new();
+  for _ in 0..c {
+    // Step 6a: Ai = H^iterations(D || I).
+    Digest::update(&mut hasher, &d);
+    Digest::update(&mut hasher, &i);
+    let mut ai = hasher.finalize_reset().to_vec();
+    for _ in 1..iterations {
+      Digest::update(&mut hasher, &ai);
+      ai = hasher.finalize_reset().to_vec();
+    }
+    // Step 7 (partial): A = A || Ai.
+    out.extend_from_slice(&ai);
+    if i.is_empty() {
+      continue;
+    }
+    // Step 6b: B = Ai repeated cyclically to v bytes.
+    let b: Vec<u8> = ai.iter().cycle().take(v).copied().collect();
+    // Step 6c: treating I as v-byte blocks, set each block to
+    // (block + B + 1) mod 2^(8v). Big-endian add with carry.
+    for chunk in i.chunks_mut(v) {
+      let mut carry: u16 = 1;
+      for j in (0..v).rev() {
+        let sum = chunk[j] as u16 + b[j] as u16 + carry;
+        chunk[j] = (sum & 0xff) as u8;
+        carry = sum >> 8;
+      }
+    }
+  }
+  // Step 8: take the first `size` bytes of A.
+  out.truncate(size);
+  out
+}
+
+fn pkcs12_hmac<D>(key: &[u8], data: &[u8]) -> Vec<u8>
+where
+  D: Digest
+    + digest::core_api::CoreProxy
+    + FixedOutputReset
+    + digest::core_api::BlockSizeUser,
+  <D as digest::core_api::CoreProxy>::Core: digest::core_api::BufferKindUser<
+      BufferKind = digest::block_buffer::Eager,
+    > + digest::core_api::FixedOutputCore
+    + digest::HashMarker
+    + Default
+    + Clone,
+  <<D as digest::core_api::CoreProxy>::Core as digest::core_api::BlockSizeUser>::BlockSize: digest::typenum::IsLess<digest::typenum::U256>,
+  digest::typenum::Le<<<D as digest::core_api::CoreProxy>::Core as digest::core_api::BlockSizeUser>::BlockSize, digest::typenum::U256>: digest::typenum::NonZero,
+{
+  let mut mac = <Hmac<D> as Mac>::new_from_slice(key).unwrap();
+  Mac::update(&mut mac, data);
+  mac.finalize().into_bytes().to_vec()
+}
+
+// OID identifiers in components.
+const OID_SHA1: &[u64] = &[1, 3, 14, 3, 2, 26];
+const OID_SHA224: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 4];
+const OID_SHA256: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 1];
+const OID_SHA384: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 2];
+const OID_SHA512: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 3];
+const OID_SHA512_224: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 5];
+const OID_SHA512_256: &[u64] = &[2, 16, 840, 1, 101, 3, 4, 2, 6];
+
+enum Pkcs12MacAlgorithm {
+  Sha1,
+  Sha224,
+  Sha256,
+  Sha384,
+  Sha512,
+  Sha512_224,
+  Sha512_256,
+}
+
+fn pkcs12_mac_algorithm(
+  algorithm: &Pkcs12AlgorithmIdentifier,
+) -> Option<Pkcs12MacAlgorithm> {
+  let oid = match algorithm {
+    Pkcs12AlgorithmIdentifier::Sha1 => return Some(Pkcs12MacAlgorithm::Sha1),
+    Pkcs12AlgorithmIdentifier::OtherAlg(other) => {
+      other.algorithm_type.components().as_slice()
+    }
+    _ => return None,
+  };
+  if oid == OID_SHA1 {
+    Some(Pkcs12MacAlgorithm::Sha1)
+  } else if oid == OID_SHA224 {
+    Some(Pkcs12MacAlgorithm::Sha224)
+  } else if oid == OID_SHA256 {
+    Some(Pkcs12MacAlgorithm::Sha256)
+  } else if oid == OID_SHA384 {
+    Some(Pkcs12MacAlgorithm::Sha384)
+  } else if oid == OID_SHA512 {
+    Some(Pkcs12MacAlgorithm::Sha512)
+  } else if oid == OID_SHA512_224 {
+    Some(Pkcs12MacAlgorithm::Sha512_224)
+  } else if oid == OID_SHA512_256 {
+    Some(Pkcs12MacAlgorithm::Sha512_256)
+  } else {
+    None
+  }
+}
+
+fn verify_pkcs12_mac(
+  algorithm: &Pkcs12AlgorithmIdentifier,
+  expected: &[u8],
+  salt: &[u8],
+  iterations: u64,
+  data: &[u8],
+  password: &[u8],
+) -> Option<bool> {
+  let mac_alg = pkcs12_mac_algorithm(algorithm)?;
+  let computed = match mac_alg {
+    Pkcs12MacAlgorithm::Sha1 => {
+      let key =
+        pkcs12_pbkdf::<sha1::Sha1>(password, salt, iterations, 3, 20, 64);
+      pkcs12_hmac::<sha1::Sha1>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha224 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha224>(password, salt, iterations, 3, 28, 64);
+      pkcs12_hmac::<sha2::Sha224>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha256 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha256>(password, salt, iterations, 3, 32, 64);
+      pkcs12_hmac::<sha2::Sha256>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha384 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha384>(password, salt, iterations, 3, 48, 128);
+      pkcs12_hmac::<sha2::Sha384>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha512 => {
+      let key =
+        pkcs12_pbkdf::<sha2::Sha512>(password, salt, iterations, 3, 64, 128);
+      pkcs12_hmac::<sha2::Sha512>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha512_224 => {
+      let key = pkcs12_pbkdf::<sha2::Sha512_224>(
+        password, salt, iterations, 3, 28, 128,
+      );
+      pkcs12_hmac::<sha2::Sha512_224>(&key, data)
+    }
+    Pkcs12MacAlgorithm::Sha512_256 => {
+      let key = pkcs12_pbkdf::<sha2::Sha512_256>(
+        password, salt, iterations, 3, 32, 128,
+      );
+      pkcs12_hmac::<sha2::Sha512_256>(&key, data)
+    }
+  };
+  use subtle::ConstantTimeEq;
+  Some(bool::from(computed.ct_eq(expected)))
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CrlValidationError {
+  #[class(generic)]
+  #[error("Failed to parse CRL")]
+  ParseFailed,
+}
+
+#[op2(fast)]
+pub fn op_node_validate_crl(
+  #[buffer] crl: &[u8],
+) -> Result<(), CrlValidationError> {
+  if crl.starts_with(b"-----") {
+    match x509_parser::pem::parse_x509_pem(crl) {
+      Ok((_, pem)) => {
+        x509_parser::parse_x509_crl(&pem.contents)
+          .map_err(|_| CrlValidationError::ParseFailed)?;
+      }
+      Err(_) => return Err(CrlValidationError::ParseFailed),
+    }
+  } else {
+    x509_parser::parse_x509_crl(crl)
+      .map_err(|_| CrlValidationError::ParseFailed)?;
+  }
+  Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // Cross-check our generic implementation of the PKCS#12 PBKDF
+  // (RFC 7292 Appendix B.2) against test vectors computed with an
+  // independent reference implementation.
+
+  // SHA-1 vector lifted from the `p12` crate's own test suite, which
+  // matches output produced by Bouncy Castle.
+  #[test]
+  fn pkcs12_pbkdf_sha1() {
+    let pass = bmp_string("");
+    assert_eq!(pass, vec![0, 0]);
+    let salt: [u8; 8] = [0x9a, 0xf4, 0x70, 0x29, 0x58, 0xa8, 0xe9, 0x5c];
+    let got = pkcs12_pbkdf::<sha1::Sha1>(&pass, &salt, 2048, 1, 24, 64);
+    let expected: [u8; 24] = [
+      0xc2, 0x29, 0x4a, 0xa6, 0xd0, 0x29, 0x30, 0xeb, 0x5c, 0xe9, 0xc3, 0x29,
+      0xec, 0xcb, 0x9a, 0xee, 0x1c, 0xb1, 0x36, 0xba, 0xea, 0x74, 0x65, 0x57,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  // SHA-256 / SHA-384 / SHA-512 vectors were generated by porting the
+  // RFC 7292 B.2 pseudocode to Python and feeding the same inputs.
+  #[test]
+  fn pkcs12_pbkdf_sha256() {
+    let pass = bmp_string("secret");
+    let salt: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+    let got = pkcs12_pbkdf::<sha2::Sha256>(&pass, &salt, 1000, 3, 32, 64);
+    let expected: [u8; 32] = [
+      0x7f, 0xe1, 0x91, 0x75, 0x7d, 0xca, 0xf1, 0xed, 0x6a, 0x29, 0x77, 0xb9,
+      0xb9, 0x15, 0x3f, 0x60, 0x82, 0xaf, 0x0b, 0xda, 0xfd, 0x09, 0x35, 0x2d,
+      0xcd, 0xaa, 0x96, 0x7f, 0x57, 0x17, 0x82, 0xb0,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  #[test]
+  fn pkcs12_pbkdf_sha384() {
+    let pass = bmp_string("secret");
+    let salt: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+    let got = pkcs12_pbkdf::<sha2::Sha384>(&pass, &salt, 1000, 3, 48, 128);
+    let expected: [u8; 48] = [
+      0x6a, 0x59, 0x71, 0x72, 0x05, 0x22, 0x76, 0x31, 0x21, 0xf4, 0x9a, 0x1d,
+      0x5c, 0x04, 0x10, 0xa1, 0xdb, 0x42, 0x0b, 0xe4, 0x96, 0x6d, 0xc5, 0x2f,
+      0x51, 0x91, 0x9d, 0x91, 0x15, 0x2d, 0x60, 0x2d, 0x31, 0x1c, 0x4c, 0xb0,
+      0x8d, 0x99, 0x83, 0xad, 0xaf, 0x68, 0xff, 0x5d, 0xdd, 0x69, 0x0b, 0x87,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  #[test]
+  fn pkcs12_pbkdf_sha512() {
+    let pass = bmp_string("secret");
+    let salt: [u8; 8] = [0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef];
+    let got = pkcs12_pbkdf::<sha2::Sha512>(&pass, &salt, 1000, 3, 64, 128);
+    let expected: [u8; 64] = [
+      0x3e, 0x5c, 0x5d, 0xb5, 0xf5, 0xe3, 0xd0, 0xc2, 0x23, 0x2e, 0xbf, 0xbb,
+      0x86, 0x08, 0x23, 0x7a, 0x2b, 0x0a, 0xf6, 0x00, 0x30, 0xe6, 0xa0, 0x08,
+      0x2a, 0xbe, 0x7c, 0x19, 0x3f, 0x52, 0x5e, 0x98, 0x97, 0x6f, 0xb2, 0xbb,
+      0x1c, 0x88, 0xc3, 0xc6, 0xf8, 0xb5, 0x64, 0x91, 0x74, 0x3f, 0xc5, 0x04,
+      0xfb, 0x3d, 0xd9, 0x10, 0xf4, 0xf9, 0x5e, 0xf6, 0x99, 0xc2, 0x48, 0x15,
+      0xf1, 0x3e, 0xc1, 0x74,
+    ];
+    assert_eq!(got, expected);
+  }
+
+  #[test]
+  fn bmp_string_basic() {
+    assert_eq!(bmp_string(""), vec![0x00, 0x00]);
+    // "Beavis" — every code unit becomes two big-endian bytes, then a
+    // U+0000 terminator.
+    assert_eq!(
+      bmp_string("Beavis"),
+      vec![
+        0x00, 0x42, 0x00, 0x65, 0x00, 0x61, 0x00, 0x76, 0x00, 0x69, 0x00, 0x73,
+        0x00, 0x00,
+      ],
+    );
+  }
 }

@@ -550,6 +550,13 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
       .node_code_translator
       .translate_cjs_to_esm(specifier, Some(Cow::Borrowed(js_source.as_ref())))
       .await?;
+    // Apply load-time security mitigations for known React Server Components
+    // CVEs to the translated source. Opt in via `DENO_PATCH_REACT_CVE`.
+    let text = if crate::is_react_cve_patch_enabled(&self.sys) {
+      crate::patch_react_cves(specifier.as_str(), text)
+    } else {
+      text
+    };
     // at this point, we no longer need the parsed source in memory, so free it
     self.parsed_source_cache.free(specifier);
     Ok(match text {

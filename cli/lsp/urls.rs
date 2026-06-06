@@ -188,6 +188,18 @@ pub fn uri_is_file_like(uri: &Uri) -> bool {
     || scheme.as_str().eq_ignore_ascii_case("vscode-userdata")
 }
 
+/// Whether the URI refers to an in-memory editor document that isn't backed by
+/// a file on disk yet: untitled files and unsaved (untitled) notebook cells.
+/// These convert to a `file:` URL at the filesystem root via [`uri_to_url`], so
+/// they match no workspace scope and need to be associated with the workspace
+/// root instead.
+pub fn uri_is_in_memory(uri: &Uri) -> bool {
+  let scheme = uri.scheme();
+  scheme.as_str().eq_ignore_ascii_case("untitled")
+    || scheme.as_str().eq_ignore_ascii_case("vscode-notebook-cell")
+    || scheme.as_str().eq_ignore_ascii_case("deno-notebook-cell")
+}
+
 fn normalize_url(url: Url) -> Url {
   let Ok(path) = url_to_file_path(&url) else {
     return url;

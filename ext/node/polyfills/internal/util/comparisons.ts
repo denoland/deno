@@ -2,14 +2,15 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
-import { core, primordials } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
+(function () {
+const { core, primordials } = __bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,
   SKIP_SYMBOLS,
 } = core.loadExtScript("ext:deno_node/internal_binding/util.ts");
-import assert from "node:assert";
+const lazyAssert = core.createLazyLoader("node:assert");
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
@@ -36,7 +37,7 @@ const { kKeyObject } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
 const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { isURL } from "ext:deno_node/internal/url.ts";
+const lazyUrl = () => core.loadExtScript("ext:deno_node/internal/url.ts");
 
 const {
   Array,
@@ -241,7 +242,7 @@ function isEqualBoxedPrimitive(val1: unknown, val2: unknown) {
       SymbolPrototypeValueOf(val1) === SymbolPrototypeValueOf(val2);
   }
   /* c8 ignore next */
-  assert.fail(`Unknown boxed type ${val1}`);
+  lazyAssert().fail(`Unknown boxed type ${val1}`);
 }
 
 function isEnumerableOrIdentical(
@@ -458,8 +459,8 @@ function objectComparisonStart(
     isError(val2)
   ) {
     return false;
-  } else if (isURL(val1)) {
-    if (!isURL(val2) || val1.href !== val2.href) {
+  } else if (lazyUrl().isURL(val1)) {
+    if (!lazyUrl().isURL(val2) || val1.href !== val2.href) {
       return false;
     }
   } else if (isKeyObject(val1)) {
@@ -1324,11 +1325,11 @@ let detectCycles = function (
   }
 };
 
-export function isDeepEqual(val1: unknown, val2: unknown): boolean {
+function isDeepEqual(val1: unknown, val2: unknown): boolean {
   return detectCycles(val1, val2, kLoose);
 }
 
-export function isDeepStrictEqual(
+function isDeepStrictEqual(
   val1: unknown,
   val2: unknown,
   skipPrototype?: boolean,
@@ -1339,6 +1340,13 @@ export function isDeepStrictEqual(
   return detectCycles(val1, val2, kStrict);
 }
 
-export function isPartialStrictEqual(val1: unknown, val2: unknown): boolean {
+function isPartialStrictEqual(val1: unknown, val2: unknown): boolean {
   return detectCycles(val1, val2, kPartial);
 }
+
+return {
+  isDeepEqual,
+  isDeepStrictEqual,
+  isPartialStrictEqual,
+};
+})();

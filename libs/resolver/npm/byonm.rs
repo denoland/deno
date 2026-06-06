@@ -170,17 +170,21 @@ impl<TSys: ByonmNpmResolverSys> ByonmNpmResolver<TSys> {
         // dep is ^1.3.5, req is @1.3.6) but the physically installed
         // version might not satisfy it (e.g., 1.3.5 is installed).
         // In that case, fall through to the .deno/ search.
-        let version_matches = self
-          .pkg_json_resolver
-          .load_package_json(&resolved.join("package.json"))
-          .ok()
-          .flatten()
-          .and_then(|pkg| {
-            let version =
-              Version::parse_from_npm(pkg.version.as_ref()?).ok()?;
-            Some(req.version_req.matches(&version))
-          })
-          .unwrap_or(true);
+        //
+        // When the req is a tag (e.g. `latest`), we can't compare against
+        // a parsed version, so trust the alias resolution.
+        let version_matches = req.version_req.tag().is_some()
+          || self
+            .pkg_json_resolver
+            .load_package_json(&resolved.join("package.json"))
+            .ok()
+            .flatten()
+            .and_then(|pkg| {
+              let version =
+                Version::parse_from_npm(pkg.version.as_ref()?).ok()?;
+              Some(req.version_req.matches(&version))
+            })
+            .unwrap_or(true);
         if version_matches {
           return Ok(resolved);
         }

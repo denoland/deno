@@ -1,0 +1,4 @@
+{
+  "args": "run main.mjs",
+  "output": "main.out"
+}

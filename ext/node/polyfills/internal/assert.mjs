@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { ERR_INTERNAL_ASSERTION } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -17,7 +17,5 @@ function fail(message) {
 
 assert.fail = fail;
 
-return {
-  default: assert,
-};
+return assert;
 })();

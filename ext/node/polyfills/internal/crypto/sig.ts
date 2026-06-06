@@ -1,16 +1,36 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file no-explicit-any
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 
 const {
+  ArrayBufferIsView,
+  ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
+  ArrayPrototypeIncludes,
+  Error,
+  FunctionPrototypeApply,
+  FunctionPrototypeCall,
+  MathMin,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  ReflectHas,
+  StringFromCharCode,
+  StringPrototypeIncludes,
+  StringPrototypeToLowerCase,
   SymbolSpecies,
+  TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  Uint8Array,
+  Uint8ArrayPrototype,
 } = primordials;
 
-import {
+const {
   op_node_create_private_key,
   op_node_create_public_key,
   op_node_derive_public_key_from_private_key,
@@ -22,31 +42,27 @@ import {
   op_node_verify,
   op_node_verify_ed25519,
   op_node_verify_ed448,
-} from "ext:core/ops";
+} = core.ops;
 
 const {
   validateFunction,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { Buffer } from "node:buffer";
-import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
-import Writable from "node:_stream_writable";
-import type {
-  BinaryLike,
-  BinaryToTextEncoding,
-  Encoding,
-  PrivateKeyInput,
-  PublicKeyInput,
-} from "ext:deno_node/internal/crypto/types.ts";
-import {
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+
+const lazyWritable = core.createLazyLoader("node:_stream_writable");
+
+const {
   kConsumePrivate,
   kConsumePublic,
   KeyObject,
   prepareAsymmetricKey,
   PrivateKeyObject,
   PublicKeyObject,
-} from "ext:deno_node/internal/crypto/keys.ts";
-import { createHash } from "ext:deno_node/internal/crypto/hash.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+const { createHash } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/hash.ts",
+);
 const {
   ERR_CRYPTO_SIGN_KEY_REQUIRED,
   ERR_INVALID_ARG_TYPE,
@@ -54,25 +70,6 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const FastBuffer = Buffer[SymbolSpecies];
-
-export type DSAEncoding = "der" | "ieee-p1363";
-
-export interface SigningOptions {
-  padding?: number | undefined;
-  saltLength?: number | undefined;
-  dsaEncoding?: DSAEncoding | undefined;
-}
-
-export interface SignPrivateKeyInput extends PrivateKeyInput, SigningOptions {}
-
-export interface SignKeyObjectInput extends SigningOptions {
-  key: KeyObject;
-}
-export interface VerifyPublicKeyInput extends PublicKeyInput, SigningOptions {}
-
-export interface VerifyKeyObjectInput extends SigningOptions {
-  key: KeyObject;
-}
 
 function getPadding(options) {
   return getIntOption("padding", options);
@@ -111,38 +108,49 @@ function getIntOption(name, options) {
 const PRIVATE_KEY_TYPES = ["pkcs8", "sec1"];
 
 function isPrivateKeyType(type: string | undefined): boolean {
-  return type !== undefined && PRIVATE_KEY_TYPES.includes(type);
+  return type !== undefined &&
+    ArrayPrototypeIncludes(PRIVATE_KEY_TYPES, type);
 }
 
 function isPrivateKeyPem(data: ArrayBuffer | ArrayBufferView): boolean {
-  const bytes = data instanceof ArrayBuffer
-    ? new Uint8Array(data, 0, Math.min(data.byteLength, 100))
+  const bytes = ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)
+    ? new Uint8Array(
+      data as ArrayBuffer,
+      0,
+      MathMin(ArrayBufferPrototypeGetByteLength(data as ArrayBuffer), 100),
+    )
     : new Uint8Array(
-      (data as ArrayBufferView).buffer,
-      (data as ArrayBufferView).byteOffset,
-      Math.min((data as ArrayBufferView).byteLength, 100),
+      TypedArrayPrototypeGetBuffer(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteOffset(data as ArrayBufferView),
+      MathMin(TypedArrayPrototypeGetByteLength(data as ArrayBufferView), 100),
     );
-  const prefix = String.fromCharCode(...bytes);
-  return prefix.includes("PRIVATE KEY");
+  const prefix = FunctionPrototypeApply(StringFromCharCode, null, bytes);
+  return StringPrototypeIncludes(prefix, "PRIVATE KEY");
 }
 
-export type KeyLike = string | Buffer | KeyObject;
+let Writable;
+function getWritable() {
+  if (!Writable) Writable = lazyWritable().default;
+  return Writable;
+}
 
-export class SignImpl extends Writable {
-  hash: Hash;
+class SignImpl {
+  hash: any;
   #digestType: string;
 
-  constructor(algorithm: string, _options?: WritableOptions) {
+  constructor(algorithm: string, _options?: any) {
     validateString(algorithm, "algorithm");
 
-    super({
+    ensureSignProtoSetup();
+    const W = getWritable();
+    FunctionPrototypeCall(W, this, {
       write(chunk, enc, callback) {
         this.update(chunk, enc);
         callback();
       },
     });
 
-    algorithm = algorithm.toLowerCase();
+    algorithm = StringPrototypeToLowerCase(algorithm);
 
     this.#digestType = algorithm;
     try {
@@ -153,9 +161,8 @@ export class SignImpl extends Writable {
   }
 
   sign(
-    // deno-lint-ignore no-explicit-any
     privateKey: any,
-    encoding?: BinaryToTextEncoding,
+    encoding?: any,
   ): Buffer | string {
     if (!privateKey) {
       throw new ERR_CRYPTO_SIGN_KEY_REQUIRED();
@@ -173,7 +180,7 @@ export class SignImpl extends Writable {
     const dsaSigEnc = getDSASignatureEncoding(privateKey);
 
     let handle;
-    if ("handle" in res) {
+    if (ReflectHas(res, "handle")) {
       handle = res.handle;
     } else {
       try {
@@ -189,47 +196,76 @@ export class SignImpl extends Writable {
         throw err;
       }
     }
-    const ret = Buffer.from(op_node_sign(
-      handle,
-      this.hash.digest(),
-      this.#digestType,
-      pssSaltLength,
-      rsaPadding,
-      dsaSigEnc,
-    ));
+    let ret;
+    try {
+      ret = Buffer.from(op_node_sign(
+        handle,
+        this.hash.digest(),
+        this.#digestType,
+        pssSaltLength,
+        rsaPadding,
+        dsaSigEnc,
+      ));
+    } catch (err) {
+      // Decorate RSA sign errors with OpenSSL-compatible properties.
+      if (
+        err && typeof err === "object" &&
+        ReflectHas(err, "message") && typeof err.message === "string" &&
+        StringPrototypeIncludes(err.message, "rsa routines") &&
+        !ReflectHas(err, "library")
+      ) {
+        (err as Record<string, unknown>).library = "rsa routines";
+      }
+      throw err;
+    }
+    // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) is not a primordial
     return encoding && encoding !== "buffer" ? ret.toString(encoding) : ret;
   }
 
   update(
-    data: BinaryLike | string,
-    encoding?: Encoding,
+    data: any,
+    encoding?: any,
   ): this {
     this.hash.update(data, encoding);
     return this;
   }
 }
 
-export function Sign(algorithm: string, options?: WritableOptions) {
+function Sign(algorithm: string, options?: any) {
   return new SignImpl(algorithm, options);
+}
+
+// Defer prototype setup
+let _signProtoSetup = false;
+function ensureSignProtoSetup() {
+  if (_signProtoSetup) return;
+  _signProtoSetup = true;
+  const W = getWritable();
+  ObjectSetPrototypeOf(SignImpl.prototype, W.prototype);
+  ObjectSetPrototypeOf(SignImpl, W);
+  ObjectSetPrototypeOf(VerifyImpl.prototype, W.prototype);
+  ObjectSetPrototypeOf(VerifyImpl, W);
 }
 
 Sign.prototype = SignImpl.prototype;
 
-export class VerifyImpl extends Writable {
-  hash: Hash;
+class VerifyImpl {
+  hash: any;
   #digestType: string;
 
-  constructor(algorithm: string, _options?: WritableOptions) {
+  constructor(algorithm: string, _options?: any) {
     validateString(algorithm, "algorithm");
 
-    super({
+    ensureSignProtoSetup();
+    const W = getWritable();
+    FunctionPrototypeCall(W, this, {
       write(chunk, enc, callback) {
         this.update(chunk, enc);
         callback();
       },
     });
 
-    algorithm = algorithm.toLowerCase();
+    algorithm = StringPrototypeToLowerCase(algorithm);
 
     this.#digestType = algorithm;
     try {
@@ -239,20 +275,19 @@ export class VerifyImpl extends Writable {
     }
   }
 
-  update(data: BinaryLike, encoding?: string): this {
+  update(data: any, encoding?: string): this {
     this.hash.update(data, encoding);
     return this;
   }
 
   verify(
-    // deno-lint-ignore no-explicit-any
     publicKey: any,
-    signature: BinaryLike,
-    encoding?: BinaryToTextEncoding,
+    signature: any,
+    encoding?: any,
   ): boolean {
     if (
       typeof signature !== "string" &&
-      !ArrayBuffer.isView(signature)
+      !ArrayBufferIsView(signature)
     ) {
       throw new ERR_INVALID_ARG_TYPE(
         "signature",
@@ -272,7 +307,7 @@ export class VerifyImpl extends Writable {
     const dsaSigEnc = getDSASignatureEncoding(publicKey);
 
     let handle;
-    if ("handle" in res) {
+    if (ReflectHas(res, "handle")) {
       handle = res.handle;
     } else if (
       isPrivateKeyType(res.type) ||
@@ -305,16 +340,16 @@ export class VerifyImpl extends Writable {
   }
 }
 
-export function Verify(algorithm: string, options?: WritableOptions) {
+function Verify(algorithm: string, options?: any) {
   return new VerifyImpl(algorithm, options);
 }
 
 Verify.prototype = VerifyImpl.prototype;
 
-export function signOneShot(
+function signOneShot(
   algorithm: string | null | undefined,
   data: ArrayBufferView,
-  key: KeyLike | SignKeyObjectInput | SignPrivateKeyInput,
+  key: any,
   callback?: (error: Error | null, data: Buffer) => void,
 ): Buffer | void {
   if (algorithm != null) {
@@ -325,7 +360,7 @@ export function signOneShot(
     validateFunction(callback, "callback");
   }
 
-  if (!ArrayBuffer.isView(data) && typeof data !== "string") {
+  if (!ArrayBufferIsView(data) && typeof data !== "string") {
     throw new ERR_INVALID_ARG_TYPE(
       "data",
       ["Buffer", "TypedArray", "DataView"],
@@ -338,23 +373,27 @@ export function signOneShot(
   }
 
   // Validate dsaEncoding early so it takes precedence over key errors
-  if (typeof key === "object" && key !== null && !(key instanceof KeyObject)) {
+  if (
+    typeof key === "object" && key !== null &&
+    !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
+  ) {
     getDSASignatureEncoding(key);
   }
 
   // Normalize ArrayBufferView data to Uint8Array for Rust ops
-  const dataBytes = ArrayBuffer.isView(data) && !(data instanceof Uint8Array)
+  const dataBytes = ArrayBufferIsView(data) &&
+      !(ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data))
     ? new Uint8Array(
-      (data as ArrayBufferView).buffer,
-      (data as ArrayBufferView).byteOffset,
-      (data as ArrayBufferView).byteLength,
+      TypedArrayPrototypeGetBuffer(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteOffset(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteLength(data as ArrayBufferView),
     )
     : data as ArrayBufferView | string;
 
   try {
     const res = prepareAsymmetricKey(key, kConsumePrivate);
     let handle;
-    if ("handle" in res) {
+    if (ReflectHas(res, "handle")) {
       handle = res.handle;
     } else {
       handle = op_node_create_private_key(
@@ -375,11 +414,14 @@ export function signOneShot(
       op_node_sign_ed25519(handle, dataBytes, result);
     } else if (keyType === "ed448") {
       const keyOpts = typeof key === "object" && key !== null &&
-          !(key instanceof KeyObject)
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
         ? key as Record<string, unknown>
         : null;
       const ctx = keyOpts?.context;
-      if (ctx instanceof Uint8Array && ctx.length > 0) {
+      if (
+        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, ctx) &&
+        ctx.length > 0
+      ) {
         throw new TypeError("Context parameter is unsupported");
       }
       result = new FastBuffer(114);
@@ -401,7 +443,8 @@ export function signOneShot(
       }
       // Preserve padding/saltLength options from the original key
       const privateKeyObject = new PrivateKeyObject(handle);
-      const signKey = typeof key === "object" && !(key instanceof KeyObject)
+      const signKey = typeof key === "object" &&
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
         ? { ...key, key: privateKeyObject }
         : privateKeyObject;
       result = Sign(digest).update(dataBytes)
@@ -422,11 +465,11 @@ export function signOneShot(
   }
 }
 
-export function verifyOneShot(
+function verifyOneShot(
   algorithm: string | null | undefined,
-  data: BinaryLike,
-  key: KeyLike | VerifyKeyObjectInput | VerifyPublicKeyInput,
-  signature: BinaryLike,
+  data: any,
+  key: any,
+  signature: any,
   callback?: (error: Error | null, result: boolean) => void,
 ): boolean | void {
   if (algorithm != null) {
@@ -437,7 +480,7 @@ export function verifyOneShot(
     validateFunction(callback, "callback");
   }
 
-  if (!ArrayBuffer.isView(data) && typeof data !== "string") {
+  if (!ArrayBufferIsView(data) && typeof data !== "string") {
     throw new ERR_INVALID_ARG_TYPE(
       "data",
       ["Buffer", "TypedArray", "DataView"],
@@ -445,7 +488,7 @@ export function verifyOneShot(
     );
   }
 
-  if (!ArrayBuffer.isView(signature) && typeof signature !== "string") {
+  if (!ArrayBufferIsView(signature) && typeof signature !== "string") {
     throw new ERR_INVALID_ARG_TYPE(
       "signature",
       ["Buffer", "TypedArray", "DataView"],
@@ -458,18 +501,19 @@ export function verifyOneShot(
   }
 
   // Normalize ArrayBufferView data to Uint8Array for Rust ops
-  const dataBytes = ArrayBuffer.isView(data) && !(data instanceof Uint8Array)
+  const dataBytes = ArrayBufferIsView(data) &&
+      !(ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data))
     ? new Uint8Array(
-      (data as ArrayBufferView).buffer,
-      (data as ArrayBufferView).byteOffset,
-      (data as ArrayBufferView).byteLength,
+      TypedArrayPrototypeGetBuffer(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteOffset(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteLength(data as ArrayBufferView),
     )
     : data as ArrayBufferView | string;
 
   try {
     const res = prepareAsymmetricKey(key, kConsumePublic);
     let handle;
-    if ("handle" in res) {
+    if (ReflectHas(res, "handle")) {
       handle = res.handle;
     } else if (
       isPrivateKeyType(res.type) ||
@@ -500,22 +544,26 @@ export function verifyOneShot(
       result = op_node_verify_ed25519(handle, dataBytes, signature);
     } else if (keyType === "ed448") {
       const keyOpts = typeof key === "object" && key !== null &&
-          !(key instanceof KeyObject)
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
         ? key as Record<string, unknown>
         : null;
       const ctx = keyOpts?.context;
-      if (ctx instanceof Uint8Array && ctx.length > 0) {
+      if (
+        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, ctx) &&
+        ctx.length > 0
+      ) {
         throw new TypeError("Context parameter is unsupported");
       }
       result = op_node_verify_ed448(handle, dataBytes, signature);
-    } else if (keyType === "x25519" || keyType === "x448" || keyType === "dh") {
+    } else if (
+      keyType === "x25519" || keyType === "x448" || keyType === "dh"
+    ) {
       throw new TypeError(
         "operation not supported for this keytype",
       );
     } else {
       let digest = algorithm;
       if (digest == null) {
-        // RSA-PSS keys encode their hash algorithm in the key parameters
         if (keyType === "rsa-pss") {
           const details = op_node_get_asymmetric_key_details(handle);
           if (details.hashAlgorithm) {
@@ -528,7 +576,8 @@ export function verifyOneShot(
       }
       // Preserve padding/saltLength options from the original key
       const publicKeyObject = new PublicKeyObject(handle);
-      const verifyKey = typeof key === "object" && !(key instanceof KeyObject)
+      const verifyKey = typeof key === "object" &&
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
         ? { ...key, key: publicKeyObject }
         : publicKeyObject;
       result = Verify(digest).update(dataBytes)
@@ -549,9 +598,18 @@ export function verifyOneShot(
   }
 }
 
-export default {
+return {
   signOneShot,
   verifyOneShot,
   Sign,
   Verify,
+  SignImpl,
+  VerifyImpl,
+  default: {
+    signOneShot,
+    verifyOneShot,
+    Sign,
+    Verify,
+  },
 };
+})();
