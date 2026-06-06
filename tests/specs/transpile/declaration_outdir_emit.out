@@ -1,0 +1,7 @@
+[WILDCARD]deno transpile is experimental and subject to changes
+Emit [WILDCARD]dist[WILDCARD]main.js
+Emit [WILDCARD]dist[WILDCARD]helpers.js
+[UNORDERED_START]
+Emit [WILDLINE]main.d.ts
+Emit [WILDLINE]helpers.d.ts
+[UNORDERED_END]

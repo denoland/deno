@@ -1,6 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { core, primordials } from "ext:core/mod.js";
-import { serializePermissions } from "ext:runtime/10_permissions.js";
+const { serializePermissions } = core.loadExtScript(
+  "ext:runtime/10_permissions.js",
+);
 const ops = core.ops;
 const {
   StringPrototypeReplaceAll,

@@ -235,6 +235,12 @@ impl PipeWrap {
       None => std::ptr::null_mut(),
     }
   }
+
+  /// Get the underlying uv_stream_t pointer. Used by TLSWrap to attach
+  /// to the pipe stream for encrypted I/O.
+  pub fn stream_ptr(&self) -> *mut uv_compat::uv_stream_t {
+    self.base.stream_ptr()
+  }
 }
 
 // -- ops --
@@ -278,6 +284,33 @@ impl PipeWrap {
   }
 
   #[fast]
+  fn fd_for_ipc(&self) -> i32 {
+    #[cfg(unix)]
+    {
+      let pipe = self.pipe_ptr();
+      if pipe.is_null() {
+        return -1;
+      }
+      // SAFETY: pipe is valid (null-checked above).
+      unsafe { uv_compat::uv_pipe_fd_for_ipc(pipe) }
+    }
+    // Windows IPC handle passing doesn't use SCM_RIGHTS-style fd transfer.
+    #[cfg(not(unix))]
+    -1
+  }
+
+  #[fast]
+  fn socket_type_for_ipc(&self) -> i32 {
+    // Match the PipeType constructor enum: 0 = Socket (client), 1 = Server.
+    // Receivers use this to decide whether to call uv_pipe_open as a client
+    // stream or a listening socket.
+    match self.pipe_type.get() {
+      PipeType::Server => 1,
+      _ => 0,
+    }
+  }
+
+  #[fast]
   fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
     // Check FdTable for duplicate fds. Stdio fds (0-2) are pre-registered
     // as TableOwned; for those, open is allowed (no-op check). Non-stdio
@@ -292,8 +325,18 @@ impl PipeWrap {
     if pipe.is_null() {
       return uv_compat::UV_EBADF;
     }
-    // SAFETY: pipe is valid (null-checked above).
-    let ret = unsafe { uv_compat::uv_pipe_open(pipe, fd) };
+    // A wrap constructed with `new Pipe(SERVER)` opens the fd as a listening
+    // socket. Like the TCP split (see TCPWrap::open), the listener path must
+    // not pre-register an AsyncFd, or uv_pipe_listen's reactor registration
+    // would fail with EEXIST. This is hit when a unix-socket net.Server is
+    // transferred over IPC (ChildProcess.send).
+    let ret = if self.pipe_type.get() == PipeType::Server {
+      // SAFETY: pipe is valid (null-checked above).
+      unsafe { uv_compat::uv_pipe_open_listener(pipe, fd) }
+    } else {
+      // SAFETY: pipe is valid (null-checked above).
+      unsafe { uv_compat::uv_pipe_open(pipe, fd) }
+    };
     if ret == 0 {
       // Register as UvOwned - the native handle owns the fd.
       state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
@@ -414,6 +457,11 @@ impl PipeWrap {
       }
       // SAFETY: pipe is valid (null-checked above).
       if let Some(path) = unsafe { &*pipe }.bind_path() {
+        // Abstract sockets (path starts with \0) have no filesystem
+        // entry, so chmod is a no-op.
+        if path.as_bytes().first().is_some_and(|&b| b == 0) {
+          return 0;
+        }
         let c_path = match std::ffi::CString::new(path) {
           Ok(p) => p,
           Err(_) => return uv_compat::UV_EINVAL,
@@ -458,10 +506,47 @@ impl PipeWrap {
         }
       }
     }
+    // On Windows, the CRT fd created by `open_osfhandle` in the spawn
+    // path is owned by `PipeWrap` (registered as `UvOwned` by `open`).
+    // `uv_pipe_open` duplicates the underlying OS handle so the pipe's
+    // tokio wrapper / `internal_handle` has its own copy that
+    // `close_pipe` will close. We must release the CRT fd slot too,
+    // otherwise the per-process CRT fd table fills up and
+    // `open_osfhandle` starts returning EMFILE after enough spawns.
+    //
+    // Order matters: close the libuv pipe first so `close_pipe` runs
+    // synchronously and releases the duplicated handle before
+    // `libc::close(fd)` closes the original. The two handle values are
+    // distinct, so even if Windows recycles one between closes there
+    // is no double-close affecting an unrelated handle.
+    #[cfg(windows)]
+    let crt_fd = {
+      let fd = self.base.get_fd();
+      if fd >= 0 {
+        op_state
+          .borrow_mut()
+          .borrow_mut::<deno_io::FdTable>()
+          .remove(fd);
+      }
+      fd
+    };
     self.base.clear_js_handle();
-    self
+    let result = self
       .base
       .handle_wrap()
-      .close_handle(op_state, this, scope, cb)
+      .close_handle(op_state, this, scope, cb);
+    #[cfg(windows)]
+    if crt_fd >= 0 {
+      self.base.set_fd(-1);
+      // SAFETY: crt_fd is a valid CRT fd registered with the FdTable
+      // by `open()`. `close_pipe` already closed the duplicated OS
+      // handle this pipe owns; the original handle held by the CRT
+      // fd is closed here, freeing both the OS handle and the CRT fd
+      // slot.
+      unsafe {
+        libc::close(crt_fd);
+      }
+    }
+    result
   }
 }

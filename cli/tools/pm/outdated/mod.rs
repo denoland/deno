@@ -426,11 +426,22 @@ async fn update(
   }
 
   if !to_update.is_empty() {
-    for pkg in &to_update {
-      deps.update_dep(pkg.dep_id, pkg.new_version_req.clone());
-    }
+    let lockfile_only = cache_options.lockfile_only;
+    if lockfile_only {
+      // `--lockfile-only`: don't touch deno.json/package.json. Instead,
+      // remove the existing lockfile entries for the deps so the
+      // following install re-resolves them to the latest version within
+      // their existing ranges.
+      deps.invalidate_lockfile_for_update(
+        to_update.iter().map(|pkg| pkg.dep_id),
+      )?;
+    } else {
+      for pkg in &to_update {
+        deps.update_dep(pkg.dep_id, pkg.new_version_req.clone());
+      }
 
-    deps.commit_changes()?;
+      deps.commit_changes()?;
+    }
 
     let factory = super::npm_install_after_modification(
       flags.clone(),
@@ -450,12 +461,29 @@ async fn update(
     let mut deps = deps.reloaded_after_modification(args);
     deps.resolve_current_versions().await?;
     for pkg in &to_update {
-      if deps.resolved_version(pkg.dep_id).is_some() {
-        updated_to_versions.insert((
-          pkg.package_name.clone(),
-          pkg.current_version_req.clone(),
-          pkg.new_version_req.clone(),
-        ));
+      if let Some(new_resolved) = deps.resolved_version(pkg.dep_id) {
+        if lockfile_only {
+          // For lockfile-only, only report deps whose resolved version
+          // actually changed in the lockfile.
+          if pkg.current_version.as_ref() == Some(new_resolved) {
+            continue;
+          }
+          updated_to_versions.insert((
+            pkg.package_name.clone(),
+            pkg
+              .current_version
+              .as_ref()
+              .map(|nv| nv.version.to_string())
+              .unwrap_or_else(|| "(unresolved)".to_string()),
+            new_resolved.version.to_string(),
+          ));
+        } else {
+          updated_to_versions.insert((
+            pkg.package_name.clone(),
+            pkg.current_version_req.to_string(),
+            pkg.new_version_req.to_string(),
+          ));
+        }
       } else {
         log::warn!(
           "Failed to resolve version for new version requirement: {} -> {}",
@@ -484,20 +512,16 @@ async fn update(
       .unwrap_or(0);
     let max_old = updated_to_versions
       .iter()
-      .map(|(_, maybe_current, _)| maybe_current.to_string().len())
+      .map(|(_, maybe_current, _)| maybe_current.len())
       .max()
       .unwrap_or(0);
     let max_new = updated_to_versions
       .iter()
-      .map(|(_, _, new_version)| new_version.to_string().len())
+      .map(|(_, _, new_version)| new_version.len())
       .max()
       .unwrap_or(0);
 
-    for (package_name, current_version_req, new_version_req) in
-      updated_to_versions
-    {
-      let current_version = current_version_req.to_string();
-
+    for (package_name, current_version, new_version) in updated_to_versions {
       log::info!(
         " - {}{}{} {}{} -> {}{}",
         colors::gray(package_name[0..4].to_string()),
@@ -505,8 +529,14 @@ async fn update(
         " ".repeat(max_name - package_name.len()),
         " ".repeat(max_old - current_version.len()),
         colors::gray(&current_version),
-        " ".repeat(max_new - new_version_req.to_string().len()),
-        colors::green(&new_version_req),
+        " ".repeat(max_new - new_version.len()),
+        colors::green(&new_version),
+      );
+    }
+    if lockfile_only && update_to_latest {
+      let note = deno_terminal::colors::intense_blue("note");
+      log::info!(
+        "{note}: --lockfile-only updates only within existing version requirements.\n      Drop --lockfile-only to update deno.json/package.json requirements.",
       );
     }
   } else {

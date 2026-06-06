@@ -17,6 +17,10 @@ pub struct GeneratorState {
   pub scope: Ident,
   /// The `v8::FunctionCallbackInfo` used to pass args into the slow function.
   pub info: Ident,
+  /// The fused `v8::FunctionCallbackInfoParts` snapshot read once at the
+  /// start of a slow callback. Subsequent scope/retval/args helpers reuse
+  /// this instead of re-reading the same values from V8 individually.
+  pub parts: Ident,
   /// The `v8::FunctionCallbackArguments` used to pass args into the slow function.
   pub fn_args: Ident,
   /// The `OpCtx` used for various information required for some ops.
@@ -45,6 +49,11 @@ pub struct GeneratorState {
   pub needs_args: bool,
   pub needs_retval: bool,
   pub needs_scope: bool,
+  /// Set whenever a helper that relies on `FunctionCallbackInfoParts`
+  /// (scope/retval/args) is emitted. Drives the single `info.get_parts()`
+  /// shim at the top of the slow callback so each helper avoids a separate
+  /// FFI call.
+  pub needs_parts: bool,
   pub needs_fast_isolate: bool,
   pub needs_isolate: bool,
   pub needs_opstate: bool,

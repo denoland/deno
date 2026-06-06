@@ -136,6 +136,22 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, write: true } },
+  async function watchFsCloseIsIdempotent() {
+    const testDir = await makeTempDir();
+    const watcher = Deno.watchFs(testDir);
+    const iterator = watcher[Symbol.asyncIterator]();
+
+    watcher.close();
+    watcher.close();
+
+    assertEquals(await iterator.next(), { value: undefined, done: true });
+    assertEquals(await iterator.return!(), { value: undefined, done: true });
+    assertEquals(await iterator.next(), { value: undefined, done: true });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
   async function watchFsExplicitResourceManagement() {
     let res;
     {
@@ -207,6 +223,125 @@ Deno.test(
         assert(event.paths[0].includes("real.txt"));
         break;
       }
+    }
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/32000
+// Watching a relative path like "./" must produce event paths free of
+// embedded "./" segments. Previously notify joined "./" with the relative
+// portion of each event, so callers got `<cwd>/./sub/file` instead of
+// `<cwd>/sub/file`.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsRelativePathNoCurDirSegment() {
+    const testDir = await makeTempDir();
+    const subDir = testDir + "/sub";
+    Deno.mkdirSync(subDir);
+    await delay(100);
+
+    const originalCwd = Deno.cwd();
+    Deno.chdir(testDir);
+    try {
+      using watcher = Deno.watchFs("./");
+
+      const target = subDir + "/file.txt";
+      const writePromise = (async () => {
+        await delay(50);
+        Deno.writeFileSync(target, new Uint8Array([1, 2, 3]));
+      })();
+
+      for await (const event of watcher) {
+        for (const path of event.paths) {
+          const sep = Deno.build.os === "windows" ? "\\" : "/";
+          assert(
+            !path.includes(`${sep}.${sep}`),
+            `event path should not contain "${sep}.${sep}": ${path}`,
+          );
+          assert(
+            !path.endsWith(`${sep}.`),
+            `event path should not end with "${sep}.": ${path}`,
+          );
+        }
+        if (event.paths.some((p) => p.endsWith("file.txt"))) {
+          break;
+        }
+      }
+      await writePromise;
+    } finally {
+      Deno.chdir(originalCwd);
+    }
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/27742
+// Closing a `Deno.FsWatcher` and creating a new one for the same path must
+// not produce duplicate events on the new watcher. Before the fix, the
+// shared `RecommendedWatcher` never had paths unwatched on close, so on
+// Windows each closed-then-recreated watcher left behind another
+// `ReadDirectoryChangesW` registration, causing N-fold duplicate events.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function watchFsCloseAndRecreateNoDuplicates() {
+    const testDir = await makeTempDir();
+
+    async function openClose() {
+      const w = Deno.watchFs(testDir);
+      const closer = setTimeout(() => w.close(), 100);
+      for await (const _ of w) {
+        // drain
+      }
+      clearTimeout(closer);
+    }
+
+    // Open and close three watchers in sequence.
+    await openClose();
+    await openClose();
+    await openClose();
+
+    // Now open a fourth watcher and trigger a single fs event. We must
+    // only see events for that single change reach us once per real event.
+    using watcher = Deno.watchFs(testDir);
+
+    const target = testDir + "/probe.txt";
+    const writePromise = (async () => {
+      // Give the watcher a moment to settle before producing the event.
+      await delay(100);
+      Deno.writeFileSync(target, new Uint8Array([1, 2, 3]));
+    })();
+
+    // Collect events for a brief window after the write. Any event we
+    // observe must match a real change to probe.txt; we then count how
+    // many times each (kind, path) tuple appears. Filesystems legitimately
+    // emit at most a couple of events for a single write (`create` plus
+    // an optional `modify`), so seeing the same tuple 3+ times means the
+    // bug is still present.
+    const seen = new Map<string, number>();
+    const collectPromise = (async () => {
+      const start = Date.now();
+      for await (const event of watcher) {
+        if (event.paths.some((p) => p.endsWith("probe.txt"))) {
+          const key = `${event.kind}:${event.paths.join(",")}`;
+          seen.set(key, (seen.get(key) ?? 0) + 1);
+        }
+        if (Date.now() - start > 500) break;
+      }
+    })();
+
+    await writePromise;
+    // Wait long enough to receive any duplicates the buggy implementation
+    // would emit.
+    await delay(600);
+    watcher.close();
+    await collectPromise;
+
+    for (const [key, count] of seen) {
+      assert(
+        count <= 2,
+        `event "${key}" was emitted ${count} times; expected at most 2 ` +
+          `(create + optional modify). This indicates a leaked watch from ` +
+          `a previously-closed Deno.FsWatcher.`,
+      );
     }
   },
 );

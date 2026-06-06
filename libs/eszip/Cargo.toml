@@ -2,7 +2,7 @@
 
 [package]
 name = "eszip"
-version = "0.123.0"
+version = "0.128.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -29,7 +29,6 @@ default = ["sha256"]
 [dependencies]
 anyhow = "1"
 async-trait = "0.1.68"
-base64 = "0.21.0"
 deno_ast = { workspace = true, features = ["transpiling"] }
 deno_error = "0.7.0"
 deno_graph = { workspace = true, default-features = false, features = ["swc"] }

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.259.0"
+version = "0.264.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ path = "lib.rs"
 aes.workspace = true
 aes-gcm.workspace = true
 aes-kw = { workspace = true, features = ["alloc"] }
-aws-lc-rs.workspace = true
+aws-lc-rs = { workspace = true, features = ["unstable"] }
 base64.workspace = true
 cbc.workspace = true
 const-oid.workspace = true
@@ -25,10 +25,11 @@ ctr.workspace = true
 curve25519-dalek.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
-deno_web.workspace = true
 ecdsa.workspace = true
 ed448-goldilocks = { workspace = true }
 elliptic-curve = { workspace = true, features = ["std", "pem", "arithmetic"] }
+fips203 = { workspace = true, features = ["ml-kem-512", "ml-kem-768", "ml-kem-1024"] }
+hmac.workspace = true
 num-traits.workspace = true
 ocb3.workspace = true
 once_cell.workspace = true

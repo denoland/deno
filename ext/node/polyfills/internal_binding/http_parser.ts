@@ -22,13 +22,15 @@
 
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { HTTPParser as NativeHTTPParser } from "ext:core/ops";
-import { Buffer } from "node:buffer";
-import { AsyncResource } from "node:async_hooks";
+(function () {
+const { core } = __bootstrap;
+const { HTTPParser: NativeHTTPParser } = core.ops;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { AsyncResource } = core.loadExtScript("ext:deno_node/async_hooks.ts");
 
 // Method names indexed by llhttp method enum values.
 // Order must match llhttp_method_t in llhttp.h.
-export const methods = [
+const methods = [
   "DELETE",
   "GET",
   "HEAD",
@@ -66,7 +68,7 @@ export const methods = [
   "QUERY",
 ];
 
-export const allMethods = [
+const allMethods = [
   "DELETE",
   "GET",
   "HEAD",
@@ -135,7 +137,7 @@ const kOnTimeout = 6;
  * The native parser reads these during execute() and calls them
  * synchronously from the C callbacks.
  */
-export function HTTPParser(this: any, type?: number) {
+function HTTPParser(this: any, type?: number) {
   // Create the native cppgc parser
   this._native = new NativeHTTPParser();
 
@@ -152,6 +154,9 @@ HTTPParser.prototype.initialize = function (
   maxHeaderSize?: number,
   lenientFlags?: number,
 ) {
+  // Default to the global maxHeaderSize (16384) when not specified,
+  // matching Node.js behavior where 0 means "use the default".
+  const effectiveMaxHeaderSize = maxHeaderSize || 16384;
   // Store the async resource so execute() can run callbacks in the
   // correct async context (preserves AsyncLocalStorage through the
   // native parser, emulating Node's MakeCallback behavior).
@@ -162,7 +167,7 @@ HTTPParser.prototype.initialize = function (
   }
   this._native.initialize(
     type,
-    maxHeaderSize ?? 0,
+    effectiveMaxHeaderSize,
     lenientFlags ?? 0,
   );
 };
@@ -223,6 +228,27 @@ HTTPParser.prototype.execute = function (
     const err = this.__lastException;
     this.__lastException = undefined;
     throw err;
+  }
+
+  // On parser error, create an Error object with code/reason/bytesParsed
+  // matching Node.js behavior (node_http_parser.cc returns an Error object).
+  if (result < 0) {
+    const err: any = new Error("Parse Error");
+    if (this._native.hasHeaderOverflow()) {
+      err.code = "HPE_HEADER_OVERFLOW";
+      err.reason = "Header overflow";
+      err.message = "Parse Error: Header overflow";
+    } else {
+      const code = this._native.getLastErrorCode();
+      const reason = this._native.getLastErrorReason();
+      err.code = code && code !== "HPE_OK" ? code : "HPE_ERROR";
+      err.reason = reason || "Parse Error";
+      if (reason) {
+        err.message = `Parse Error: ${reason}`;
+      }
+    }
+    err.bytesParsed = this._native.getLastBytesParsed();
+    return err;
   }
 
   return result;
@@ -288,3 +314,6 @@ HTTPParser.kLenientOptionalCRLFAfterChunk = 128;
 HTTPParser.kLenientOptionalCRBeforeLF = 256;
 HTTPParser.kLenientSpacesAfterChunkSize = 512;
 HTTPParser.kLenientAll = 1023;
+
+return { methods, allMethods, HTTPParser };
+})();

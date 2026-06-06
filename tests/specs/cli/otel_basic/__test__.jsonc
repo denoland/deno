@@ -128,6 +128,40 @@
     "http_serve_error_with_otel": {
       "args": "run -A main.ts http_serve_error_with_otel.ts",
       "output": "http_serve_error_with_otel.out"
+    },
+    "basic_grpc": {
+      "args": "run -A -q main.ts basic.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+      },
+      "output": "basic.out"
+    },
+    "metric_grpc": {
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
+      "args": "run -A -q main.ts metric.ts",
+      "output": "metric.out"
+    },
+    "events_grpc": {
+      "args": "run -A -q main.ts events.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+      },
+      "output": "events.out"
+    },
+    "grpc_trailers": {
+      "args": "run -A -q grpc_trailer_main.ts events.ts",
+      "output": "events.out"
+    },
+    "grpc_trailers_error": {
+      "args": "run -A -q grpc_trailer_main.ts events.ts",
+      "envs": {
+        "GRPC_TRAILER_STATUS": "14",
+        "GRPC_TRAILER_MESSAGE": "UNAVAILABLE"
+      },
+      "output": "grpc_trailers_error.out"
     }
   }
 }

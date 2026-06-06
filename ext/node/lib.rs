@@ -10,6 +10,7 @@
 use std::borrow::Cow;
 use std::env;
 use std::path::Path;
+use std::path::PathBuf;
 
 use deno_core::FastString;
 use deno_core::OpState;
@@ -29,7 +30,6 @@ use node_resolver::errors::PackageJsonLoadError;
 
 extern crate libz_sys as zlib;
 
-mod global;
 pub mod ops;
 
 use deno_dotenv::parse_env_content_hook;
@@ -43,10 +43,6 @@ pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
-
-pub use crate::global::GlobalsStorage;
-use crate::global::global_object_middleware;
-use crate::global::global_template_middleware;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -71,8 +67,28 @@ pub trait NodeRequireLoader {
   fn is_maybe_cjs(&self, specifier: &Url)
   -> Result<bool, PackageJsonLoadError>;
 
+  /// Get if a module loaded via `require()` should first be compiled as CJS.
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError>;
+
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
+  }
+
+  /// Attempts to resolve an npm package by bare specifier from the global
+  /// cache when there is no usable referrer context (e.g. a `require` call
+  /// made from a file outside of the global cache directory while running
+  /// in `--no-node-modules-dir` mode). Returns the package folder for the
+  /// top-level dependency matching `package_name`, or `None` if it can't be
+  /// resolved or if the runtime is configured to use a local
+  /// `node_modules` directory.
+  fn resolve_package_folder_from_name(
+    &self,
+    _package_name: &str,
+  ) -> Option<PathBuf> {
+    None
   }
 }
 
@@ -118,8 +134,11 @@ fn op_node_load_env_file(
   #[string] path: &str,
 ) -> Result<(), DotEnvLoadErr> {
   let fs = state.borrow::<deno_fs::FileSystemRc>().clone();
-  let path = state
-    .borrow::<PermissionsContainer>()
+  let permissions = state.borrow::<PermissionsContainer>().clone();
+  permissions
+    .check_env_all()
+    .map_err(DotEnvLoadErr::Permission)?;
+  let path = permissions
     .check_open(
       Cow::Borrowed(Path::new(path)),
       OpenAccessKind::ReadNoFollow,
@@ -174,6 +193,11 @@ deno_core::extension!(deno_node,
   ops = [
     ops::assert::op_node_get_first_expression,
 
+    ops::module_hooks::op_module_hooks_register,
+    ops::module_hooks::op_module_hooks_poll_load,
+    ops::module_hooks::op_module_hooks_respond_load,
+    ops::module_hooks::op_module_default_resolve,
+
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
 
@@ -190,7 +214,7 @@ deno_core::extension!(deno_node,
     ops::buffer::op_node_buffer_compare,
     ops::buffer::op_node_buffer_compare_offset,
     ops::constant::op_node_fs_constants,
-    ops::buffer::op_node_decode_utf8,
+    ops::buffer::op_node_decode,
     ops::dns::op_node_getaddrinfo,
     ops::dns::op_node_getnameinfo,
     ops::fs::op_node_fs_exists_sync,
@@ -241,11 +265,13 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_cp_validate_and_prepare,
     ops::winerror::op_node_sys_to_uv_error,
     ops::v8::op_v8_cached_data_version_tag,
+    ops::v8::op_v8_set_flags_from_string,
     ops::v8::op_v8_get_heap_statistics,
     ops::v8::op_v8_number_of_heap_spaces,
     ops::v8::op_v8_update_heap_space_statistics,
     ops::v8::op_v8_get_heap_code_statistics,
     ops::v8::op_v8_take_heap_snapshot,
+    ops::v8::op_v8_query_objects_count,
     ops::v8::op_v8_get_wire_format_version,
     ops::v8::op_v8_new_deserializer,
     ops::v8::op_v8_new_serializer,
@@ -265,6 +291,9 @@ deno_core::extension!(deno_node,
     ops::v8::op_v8_write_uint32,
     ops::v8::op_v8_write_uint64,
     ops::v8::op_v8_write_value,
+    ops::v8::op_v8_gc_profiler_new,
+    ops::v8::op_v8_gc_profiler_start,
+    ops::v8::op_v8_gc_profiler_stop,
     ops::vm::op_vm_create_script,
     ops::vm::op_vm_create_context,
     ops::vm::op_vm_create_context_without_contextify,
@@ -273,6 +302,18 @@ deno_core::extension!(deno_node,
     ops::vm::op_vm_compile_function,
     ops::vm::op_vm_script_get_source_map_url,
     ops::vm::op_vm_script_create_cached_data,
+    ops::vm::op_vm_dynamic_import_callback_register,
+    ops::vm::op_vm_module_create_source_text_module,
+    ops::vm::op_vm_module_create_synthetic_module,
+    ops::vm::op_vm_module_set_synthetic_export,
+    ops::vm::op_vm_module_link,
+    ops::vm::op_vm_module_instantiate,
+    ops::vm::op_vm_module_evaluate,
+    ops::vm::op_vm_module_get_status,
+    ops::vm::op_vm_module_get_namespace,
+    ops::vm::op_vm_module_get_exception,
+    ops::vm::op_vm_module_get_module_requests,
+    ops::vm::op_vm_module_get_identifier,
     ops::idna::op_node_idna_domain_to_ascii,
     ops::idna::op_node_idna_domain_to_unicode,
     ops::idna::op_node_idna_punycode_to_ascii,
@@ -282,8 +323,13 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
-    ops::http2::op_http2_constants,
     ops::http2::op_http2_callbacks,
+    // Keep the HTTP/2 error-string op wired so `internal/test/binding`
+    // can mirror Node's `internalBinding('http2').nghttp2ErrorString()`
+    // in node_compat tests; the JS side also exposes `respond` /
+    // `pushPromise` shims on `Http2Stream` so tests can monkey-patch the
+    // prototype to inject NGHTTP2 error codes.
+    ops::http2::op_http2_error_string,
     ops::http2::op_http2_http_state,
     ops::os::op_node_os_get_priority,
     ops::os::op_node_os_set_priority,
@@ -295,6 +341,7 @@ deno_core::extension!(deno_node,
     ops::os::op_homedir,
     op_node_build_os,
     op_node_load_env_file,
+    ops::module::op_node_strip_typescript_types,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<TSys>,
@@ -311,7 +358,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_stat<TSys>,
     ops::require::op_require_path_resolve,
     ops::require::op_require_path_basename,
-    ops::require::op_require_read_file,
+    ops::require::op_require_read_file<TSys>,
     ops::require::op_require_as_file_path,
     ops::require::op_require_resolve_exports<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_read_package_scope<TSys>,
@@ -326,6 +373,7 @@ deno_core::extension!(deno_node,
     ops::worker_threads::op_worker_threads_filename<TSys>,
     ops::worker_threads::op_worker_get_resource_limits,
     ops::ipc::op_node_child_ipc_pipe,
+    ops::ipc::op_node_has_child_ipc_pipe,
     ops::ipc::op_node_ipc_write_json,
     ops::ipc::op_node_ipc_read_json,
     ops::ipc::op_node_ipc_read_advanced,
@@ -344,6 +392,7 @@ deno_core::extension!(deno_node,
     ops::node_cli_parser::op_node_translate_cli_args,
     ops::shell::op_node_parse_shell_args,
     ops::tls::op_get_root_certificates,
+    ops::tls::op_node_get_ca_certificates<TSys>,
     ops::tls::op_set_default_ca_certificates,
     ops::tls::op_tls_peer_certificate,
     ops::tls::op_tls_canonicalize_ipv4_address,
@@ -354,10 +403,12 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_url,
     ops::inspector::op_inspector_wait,
     ops::inspector::op_inspector_connect,
+    ops::inspector::op_node_repl_inspector_connect,
     ops::inspector::op_inspector_dispatch,
     ops::inspector::op_inspector_disconnect,
     ops::inspector::op_inspector_emit_protocol_event,
     ops::inspector::op_inspector_enabled,
+    ops::inspector::op_inspector_port,
     ops::udp::op_node_udp_bind,
     ops::udp::op_node_udp_join_multi_v4,
     ops::udp::op_node_udp_leave_multi_v4,
@@ -372,13 +423,17 @@ deno_core::extension!(deno_node,
     ops::udp::op_node_udp_leave_source_specific,
     ops::udp::op_node_udp_send,
     ops::udp::op_node_udp_recv,
+    ops::udp::op_node_udp_fd_for_ipc,
+    ops::udp::op_node_udp_open,
     ops::stream_wrap::op_stream_base_register_state,
     ops::tty_wrap::op_tty_check_fd_permission,
   ],
   objects = [
     ops::perf_hooks::EldHistogram,
+    ops::perf_hooks::BaseHistogram,
     ops::handle_wrap::AsyncWrap,
     ops::handle_wrap::HandleWrap,
+    ops::wasi::WasiContext,
     ops::stream_wrap::LibUvStreamWrap,
     ops::tty_wrap::TTY,
     ops::zlib::BrotliDecoder,
@@ -393,51 +448,186 @@ deno_core::extension!(deno_node,
     ops::http2::Http2Session,
     ops::http2::Http2Stream,
   ],
-  esm_entry_point = "ext:deno_node/02_init.js",
+  esm_entry_point = "node:module",
   esm = [
     dir "polyfills",
-    "00_globals.js",
-    "02_init.js",
-    "_events.mjs",
-    "internal/fs/promises.ts",
-    "_fs/_fs_common.ts",
-    "_fs/_fs_constants.ts",
+    "internal_binding/mod.ts",
+    "node:module" = "01_require.js",
+    "node:process" = "process.ts",
+  ],
+  lazy_loaded_esm = [
+    dir "polyfills",
+    // Previously eager. Combined with the lazy stdio refactor in
+    // process.ts (process.stdout/stderr/stdin are accessor properties),
+    // these modules only load when a script actually touches stdio or
+    // requires node:stream/net/tty directly.
+    "node:stream" = "stream.ts",
+    "node:stream/promises" = "stream/promises.js",
+    "node:net" = "net_esm.ts",
+    "node:tty" = "tty_esm.ts",
+    "internal/streams/compose.js",
+    "internal/streams/duplexpair.js",
+    "internal/streams/lazy_transform.js",
+    "internal/streams/operators.js",
+    "internal/streams/pipeline.js",
+    "node:repl" = "repl.ts",
     "_fs/_fs_copy.ts",
-    "_fs/_fs_cp.ts",
-    "_fs/cp/cp.ts",
-    "_fs/cp/cp_sync.ts",
     "_fs/_fs_dir.ts",
     "_fs/_fs_exists.ts",
-    "_fs/_fs_fstat.ts",
     "_fs/_fs_glob.ts",
-    "_fs/_fs_lstat.ts",
     "_fs/_fs_lutimes.ts",
     "_fs/_fs_read.ts",
     "_fs/_fs_readdir.ts",
+    "_process/streams.mjs",
+    "internal/fs/promises.ts",
+    "internal/fs/stat_utils.ts",
+    "internal/event_target.mjs",
+    "internal/fs/streams.mjs",
+    "internal/fs/utils.mjs",
+    "internal/fs/handle.ts",
+    "internal/http/address_override.js",
+    "internal/repl.ts",
+    "_readline.mjs",
+    "internal/streams/duplexify.js",
+    "internal/streams/fast-utf8-stream.js",
+    "internal/streams/from.js",
+    "internal/tty.js",
+    "readline/promises.ts",
+    "node:readline/promises" = "readline/promises.ts",
+    "deps/minimatch.js",
+    "node:_http_agent" = "_http_agent.js",
+    "node:_http_client" = "_http_client.js",
+    "node:_http_common" = "_http_common.js",
+    "node:_http_incoming" = "_http_incoming.js",
+    "node:_http_outgoing" = "_http_outgoing.ts",
+    "node:_http_proxy" = "_http_proxy.js",
+    "node:_http_server" = "_http_server.js",
+    "node:path" = "path.ts",
+    "node:path/posix" = "path/posix.ts",
+    "node:path/win32" = "path/win32.ts",
+    "node:buffer" = "buffer.ts",
+    "node:assert/strict" = "assert/strict.ts",
+    "node:async_hooks" = "async_hooks_esm.ts",
+    "node:diagnostics_channel" = "diagnostics_channel_esm.js",
+    "node:events" = "events_esm.ts",
+    "node:domain" = "domain_esm.ts",
+    "node:perf_hooks" = "perf_hooks_esm.js",
+    "node:punycode" = "punycode_esm.ts",
+    "node:querystring" = "querystring_esm.js",
+    "node:sys" = "sys_esm.js",
+    "node:trace_events" = "trace_events_esm.ts",
+    "node:util/types" = "util/types.ts",
+    "node:vm" = "vm_esm.js",
+    "node:wasi" = "wasi_esm.ts",
+    "node:sqlite" = "sqlite_esm.ts",
+    "node:os" = "os_esm.ts",
+    "node:stream/consumers" = "stream/consumers_esm.js",
+    "node:stream/web" = "stream/web_esm.js",
+    "node:string_decoder" = "string_decoder_esm.ts",
+    "node:test" = "testing_esm.ts",
+    "node:test/reporters" = "test/reporters_esm.ts",
+    "node:cluster" = "cluster_esm.ts",
+    "node:console" = "console_esm.ts",
+    "node:constants" = "constants_esm.ts",
+    "node:crypto" = "crypto_esm.ts",
+    "node:dgram" = "dgram_esm.ts",
+    "node:dns" = "dns_esm.ts",
+    "node:dns/promises" = "dns/promises_esm.ts",
+    "node:timers" = "timers_esm.ts",
+    "node:timers/promises" = "timers/promises_esm.ts",
+    "node:tls" = "tls_esm.ts",
+    "node:v8" = "v8_esm.ts",
+    "node:child_process" = "child_process_esm.ts",
+    "node:fs" = "fs_esm.ts",
+    "node:fs/promises" = "fs/promises_esm.ts",
+    "node:http" = "http_esm.ts",
+    "node:http2" = "http2_esm.ts",
+    "node:https" = "https_esm.ts",
+    "node:inspector" = "inspector_esm.js",
+    "node:inspector/promises" = "inspector/promises_esm.js",
+    "node:_stream_duplex" = "internal/streams/duplex_esm.js",
+    "node:_stream_passthrough" = "internal/streams/passthrough_esm.js",
+    "node:_stream_readable" = "internal/streams/readable_esm.js",
+    "node:_stream_transform" = "internal/streams/transform_esm.js",
+    "node:_stream_writable" = "internal/streams/writable_esm.js",
+    "node:_tls_common" = "_tls_common_esm.ts",
+    "node:_tls_wrap" = "_tls_wrap_esm.js",
+    "node:assert" = "assert_esm.ts",
+    "node:readline" = "readline.ts",
+  ],
+  lazy_loaded_js = [
+    dir "polyfills",
+    "cluster.ts",
+    "console.ts",
+    "constants.ts",
+    "crypto.ts",
+    "dgram.ts",
+    "dns.ts",
+    "dns/promises.ts",
+    "timers.ts",
+    "timers/promises.ts",
+    "tls.ts",
+    "tty.js",
+    "url.ts",
+    "v8.ts",
+    "worker_threads.ts",
+    "zlib.js",
+    "child_process.ts",
+    "fs.ts",
+    "fs/promises.ts",
+    "net.ts",
+    "_tls_common.ts",
+    "_tls_wrap.js",
+    "http.ts",
+    "http2.ts",
+    "https.ts",
+    "inspector.js",
+    "inspector_network_bridge.js",
+    "inspector/promises.js",
+    "_repl_preview.js",
+    "internal/streams/duplex.js",
+    "internal/streams/passthrough.js",
+    "internal/streams/readable.js",
+    "internal/streams/transform.js",
+    "internal/streams/writable.js",
+    "internal/validators.mjs",
+    "internal/normalize_encoding.ts",
+    "internal/error_codes.ts",
+    "internal/hide_stack_frames.ts",
+    "internal/util/types.ts",
+    "internal/crypto/_keys.ts",
+    "internal/crypto/constants.ts",
+    "internal_binding/types.ts",
+    "_util/os.ts",
+    "_utils.ts",
+    "internal/primordials.mjs",
+    "internal_binding/constants.ts",
+    "internal_binding/_libuv_winerror.ts",
+    "internal_binding/uv.ts",
+    "internal/util/inspect.mjs",
+    "internal/errors.ts",
+    "internal/errors/error_source.ts",
+    "internal/util.mjs",
+    "_fs/_fs_constants.ts",
     "_next_tick.ts",
     "_process/exiting.ts",
     "_process/process.ts",
-    "_process/streams.mjs",
-    "_readline.mjs",
     "_util/_util_callbackify.js",
-    "_util/async.ts",
-    "_util/os.ts",
-    "_utils.ts",
     "_zlib_binding.mjs",
-    "internal_binding/_libuv_winerror.ts",
     "internal_binding/_listen.ts",
     "internal_binding/_node.ts",
-    "internal_binding/_timingSafeEqual.ts",
     "internal_binding/_utils.ts",
     "internal_binding/ares.ts",
     "internal_binding/async_wrap.ts",
-    "internal_binding/buffer.ts",
+    "internal_binding/block_list.ts",
+    "internal_binding/_timingSafeEqual.ts",
     "internal_binding/cares_wrap.ts",
-    "internal_binding/constants.ts",
     "internal_binding/crypto.ts",
-    "internal_binding/handle_wrap.ts",
+    "internal_binding/buffer.ts",
     "internal_binding/http_parser.ts",
-    "internal_binding/mod.ts",
+    "internal_binding/handle_wrap.ts",
+    "internal_binding/http2.ts",
+    "internal_binding/inspector.js",
     "internal_binding/node_file.ts",
     "internal_binding/node_options.ts",
     "internal_binding/pipe_wrap.ts",
@@ -447,10 +637,8 @@ deno_core::extension!(deno_node,
     "internal_binding/tcp_wrap.ts",
     "internal_binding/tls_wrap.ts",
     "internal_binding/tty_wrap.ts",
-    "internal_binding/types.ts",
     "internal_binding/udp_wrap.ts",
     "internal_binding/util.ts",
-    "internal_binding/uv.ts",
     "internal/assert/assertion_error.js",
     "internal/assert/calltracker.js",
     "internal/assert/myers_diff.js",
@@ -459,17 +647,13 @@ deno_core::extension!(deno_node,
     "internal/async_hooks.ts",
     "internal/blocklist.mjs",
     "internal/buffer.mjs",
-    "internal/child_process.ts",
     "internal/cli_table.ts",
-    "internal/console/constructor.mjs",
     "internal/constants.ts",
-    "internal/crypto/_keys.ts",
     "internal/crypto/_randomBytes.ts",
     "internal/crypto/_randomFill.mjs",
     "internal/crypto/_randomInt.ts",
     "internal/crypto/certificate.ts",
     "internal/crypto/cipher.ts",
-    "internal/crypto/constants.ts",
     "internal/crypto/diffiehellman.ts",
     "internal/crypto/hash.ts",
     "internal/crypto/hkdf.ts",
@@ -481,31 +665,33 @@ deno_core::extension!(deno_node,
     "internal/crypto/sig.ts",
     "internal/crypto/util.ts",
     "internal/crypto/x509.ts",
+    "internal/child_process.ts",
+    "internal/cluster/child.ts",
+    "internal/cluster/linkedlist.ts",
+    "internal/cluster/primary.ts",
+    "internal/cluster/round_robin_handle.ts",
+    "internal/cluster/shared_handle.ts",
+    "internal/cluster/utils.ts",
+    "internal/cluster/worker.ts",
+    "internal/console/constructor.mjs",
+    "internal/deps/undici/undici.js",
     "internal/dgram.ts",
     "internal/dns/promises.ts",
     "internal/dns/utils.ts",
     "internal/dtrace.ts",
-    "internal/error_codes.ts",
-    "internal/errors.ts",
-    "internal/errors/error_source.ts",
-    "internal/event_target.mjs",
     "internal/events/abort_listener.mjs",
-    "internal/fs/stat_utils.ts",
-    "internal/fs/streams.mjs",
     "internal/fs/sync_write_stream.js",
-    "internal/fs/utils.mjs",
-    "internal/fs/handle.ts",
-    "internal/hide_stack_frames.ts",
     "internal/http.ts",
-    "internal/http2/util.ts",
     "internal/http2/compat.js",
-    "internal/idna.ts",
+    "internal/http2/constants.ts",
+    "internal/http2/core.ts",
+    "internal/http2/util.ts",
     "internal/js_stream_socket.js",
+    "internal/idna.ts",
     "internal/mime.ts",
-    "internal/net.ts",
-    "internal/normalize_encoding.ts",
     "internal/options.ts",
-    "internal/primordials.mjs",
+    "internal/priority_queue.ts",
+    "internal/process/active_resources.ts",
     "internal/process/per_thread.mjs",
     "internal/process/report.ts",
     "internal/process/warning.ts",
@@ -516,117 +702,68 @@ deno_core::extension!(deno_node,
     "internal/readline/promises.mjs",
     "internal/readline/symbols.mjs",
     "internal/readline/utils.mjs",
+    "internal/socketaddress.js",
     "internal/stream_base_commons.ts",
     "internal/streams/add-abort-signal.js",
-    "internal/streams/compose.js",
-    "internal/streams/destroy.js",
-    "internal/streams/duplexify.js",
-    "internal/streams/duplexpair.js",
-    "internal/streams/end-of-stream.js",
-    "internal/streams/from.js",
-    "internal/streams/lazy_transform.js",
-    "internal/streams/legacy.js",
-    "internal/streams/operators.js",
-    "internal/streams/pipeline.js",
-    "internal/streams/state.js",
     "internal/streams/utils.js",
     "internal/test/binding.ts",
-    "internal/tls_common.js",
+    "internal/test/reporters.ts",
     "internal/timers.mjs",
-    "internal/tty.js",
     "internal/url.ts",
-    "internal/util.mjs",
     "internal/util/colors.ts",
-    "internal/util/comparisons.ts",
     "internal/util/debuglog.ts",
-    "internal/util/inspect.mjs",
     "internal/util/parse_args/parse_args.js",
     "internal/util/parse_args/utils.js",
-    "internal/util/types.ts",
-    "internal/validators.mjs",
     "internal/webstreams/adapters.js",
+    "internal/webstreams/readablestream.js",
+    "internal/webstreams/util.js",
+    "internal/worker/js_transferable.js",
+    "internal/net.ts",
+    "internal/tls_common.js",
+    "internal/util/comparisons.ts",
     "path/_constants.ts",
     "path/_interface.ts",
     "path/_util.ts",
+    "path/common.ts",
+    "path/separator.ts",
+    "assert.ts",
+    "util.ts",
+    "_events.mjs",
+    "internal/streams/state.js",
+    "internal/streams/legacy.js",
+    "internal/streams/destroy.js",
+    "internal/streams/end-of-stream.js",
+    "async_hooks.ts",
+    "diagnostics_channel.js",
+    "domain.ts",
+    "perf_hooks.js",
+    "punycode.ts",
+    "querystring.js",
+    "trace_events.ts",
+    "vm.js",
+    "wasi.ts",
+    "sqlite.ts",
+    "os.ts",
+    "stream/consumers.js",
+    "stream/web.js",
+    "string_decoder.ts",
+    "testing.ts",
+    "test/reporters.ts",
+    "_fs/_fs_common.ts",
+    "_fs/_fs_cp.ts",
+    "_fs/_fs_fstat.ts",
+    "_fs/_fs_lstat.ts",
+    "_fs/cp/cp.ts",
+    "_fs/cp/cp_sync.ts",
     "path/_posix.ts",
     "path/_win32.ts",
-    "path/common.ts",
     "path/mod.ts",
-    "path/separator.ts",
-    "readline/promises.ts",
-    "node:_http_agent" = "_http_agent.js",
-    "node:_http_client" = "_http_client.js",
-    "node:_http_common" = "_http_common.js",
-    "node:_http_incoming" = "_http_incoming.js",
-    "node:_http_outgoing" = "_http_outgoing.ts",
-    "node:_http_server" = "_http_server.js",
-    "node:_stream_duplex" = "internal/streams/duplex.js",
-    "node:_stream_passthrough" = "internal/streams/passthrough.js",
-    "node:_stream_readable" = "internal/streams/readable.js",
-    "node:_stream_transform" = "internal/streams/transform.js",
-    "node:_stream_writable" = "internal/streams/writable.js",
-    "node:_tls_common" = "_tls_common.ts",
-    "node:_tls_wrap" = "_tls_wrap.js",
-    "node:assert" = "assert.ts",
-    "node:assert/strict" = "assert/strict.ts",
-    "node:async_hooks" = "async_hooks.ts",
-    "node:buffer" = "buffer.ts",
-    "node:child_process" = "child_process.ts",
-    "node:cluster" = "cluster.ts",
-    "node:console" = "console.ts",
-    "node:constants" = "constants.ts",
-    "node:crypto" = "crypto.ts",
-    "node:dgram" = "dgram.ts",
-    "node:diagnostics_channel" = "diagnostics_channel.js",
-    "node:dns" = "dns.ts",
-    "node:dns/promises" = "dns/promises.ts",
-    "node:domain" = "domain.ts",
-    "node:events" = "events.ts",
-    "node:fs" = "fs.ts",
-    "node:fs/promises" = "fs/promises.ts",
-    "node:http" = "http.ts",
-    "node:http2" = "http2.ts",
-    "node:https" = "https.ts",
-    "node:inspector" = "inspector.js",
-    "node:inspector/promises" = "inspector/promises.js",
-    "node:module" = "01_require.js",
-    "node:net" = "net.ts",
-    "node:os" = "os.ts",
-    "node:path" = "path.ts",
-    "node:path/posix" = "path/posix.ts",
-    "node:path/win32" = "path/win32.ts",
-    "node:perf_hooks" = "perf_hooks.js",
-    "node:process" = "process.ts",
-    "node:punycode" = "punycode.ts",
-    "node:querystring" = "querystring.js",
-    "node:readline" = "readline.ts",
-    "node:readline/promises" = "readline/promises.ts",
-    "node:repl" = "repl.ts",
-    "node:sqlite" = "sqlite.ts",
-    "node:stream" = "stream.ts",
-    "node:stream/consumers" = "stream/consumers.js",
-    "node:stream/promises" = "stream/promises.js",
-    "node:stream/web" = "stream/web.js",
-    "node:string_decoder" = "string_decoder.ts",
-    "node:sys" = "sys.ts",
-    "node:test" = "testing.ts",
-    "node:timers" = "timers.ts",
-    "node:timers/promises" = "timers/promises.ts",
-    "node:tls" = "tls.ts",
-    "node:trace_events" = "trace_events.ts",
-    "node:tty" = "tty.js",
-    "node:url" = "url.ts",
-    "node:util" = "util.ts",
-    "node:util/types" = "util/types.ts",
-    "node:v8" = "v8.ts",
-    "node:vm" = "vm.js",
-    "node:wasi" = "wasi.ts",
-    "node:worker_threads" = "worker_threads.ts",
-    "node:zlib" = "zlib.js",
   ],
-  lazy_loaded_esm = [
-    dir "polyfills",
-    "deps/minimatch.js",
+  synthetic_esm = [
+    "node:url" = "ext:deno_node/url.ts",
+    "node:util" = "ext:deno_node/util.ts",
+    "node:worker_threads" = "ext:deno_node/worker_threads.ts",
+    "node:zlib" = "ext:deno_node/zlib.js",
   ],
   options = {
     maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,
@@ -634,6 +771,7 @@ deno_core::extension!(deno_node,
   },
   state = |state, options| {
     state.put(options.fs.clone());
+    state.put(ops::module_hooks::LoaderHookRegistry::default());
 
     if let Some(init) = &options.maybe_init {
       state.put(init.sys.clone());
@@ -642,9 +780,25 @@ deno_core::extension!(deno_node,
       state.put(init.pkg_json_resolver.clone());
     }
 
+    // Always seed `NodeTlsState` so the shared client session cache is
+    // available for TLS resumption from the very first `tls.connect()`.
+    // Without this, every connection built its ClientConfig with an empty
+    // per-config session cache and `isSessionReused()` always returned false.
+    state.put(crate::ops::tls::NodeTlsState {
+      custom_ca_certs: None,
+      client_session_store: std::sync::Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
+      client_session_store_insecure: std::sync::Arc::new(
+        deno_tls::rustls::client::ClientSessionMemoryCache::new(256),
+      ),
+      server_ticketer: None,
+      cached_default_verifier: None,
+      cached_insecure_verifier: None,
+      cached_no_client_auth: None,
+      cached_insecure_no_client_auth: None,
+    });
   },
-  global_template_middleware = global_template_middleware,
-  global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::Extension| {
     let external_references = [
       vm::QUERY_MAP_FN.with(|query| {
@@ -719,41 +873,6 @@ deno_core::extension!(deno_node,
         }
       }),
 
-      global::GETTER_MAP_FN.with(|getter| {
-        ExternalReference {
-          named_getter: *getter,
-        }
-      }),
-      global::SETTER_MAP_FN.with(|setter| {
-        ExternalReference {
-          named_setter: *setter,
-        }
-      }),
-      global::QUERY_MAP_FN.with(|query| {
-        ExternalReference {
-          named_query: *query,
-        }
-      }),
-      global::DELETER_MAP_FN.with(|deleter| {
-        ExternalReference {
-          named_deleter: *deleter,
-        }
-      }),
-      global::ENUMERATOR_MAP_FN.with(|enumerator| {
-        ExternalReference {
-          enumerator: *enumerator,
-        }
-      }),
-      global::DEFINER_MAP_FN.with(|definer| {
-        ExternalReference {
-          named_definer: *definer,
-        }
-      }),
-      global::DESCRIPTOR_MAP_FN.with(|descriptor| {
-        ExternalReference {
-          named_getter: *descriptor,
-        }
-      }),
     ];
 
     ext.external_references.to_mut().extend(external_references);
@@ -762,7 +881,10 @@ deno_core::extension!(deno_node,
 
 #[sys_traits::auto_impl]
 pub trait ExtNodeSys:
-  node_resolver::NodeResolverSys + sys_traits::EnvCurrentDir + Clone
+  node_resolver::NodeResolverSys
+  + sys_traits::EnvCurrentDir
+  + sys_traits::EnvVar
+  + Clone
 {
 }
 
@@ -786,4 +908,31 @@ pub fn create_host_defined_options<'s>(
   let value = v8::Boolean::new(scope, true);
   host_defined_options.set(scope, 0, value.into());
   host_defined_options.into()
+}
+
+/// Build host-defined options that mark a script as having been compiled
+/// by `node:vm` (e.g. via `vm.Script`, `vm.runInThisContext`,
+/// `vm.compileFunction`, `vm.SourceTextModule`) without an
+/// `importModuleDynamically` callback. When V8 invokes the dynamic-import
+/// host callback for such a script, the runtime rejects the import with
+/// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`, matching Node.js. Without
+/// this marker, sandboxed `vm` code could escape via `import()`.
+pub fn create_vm_dynamic_import_missing_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Data> {
+  deno_core::create_host_defined_options_with_kind(
+    scope,
+    deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING,
+  )
+}
+
+pub fn create_vm_dynamic_import_callback_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback_id: u32,
+) -> v8::Local<'s, v8::Data> {
+  deno_core::create_host_defined_options_with_kind_and_key(
+    scope,
+    deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_CALLBACK,
+    callback_id,
+  )
 }

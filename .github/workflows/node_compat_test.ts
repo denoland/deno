@@ -10,21 +10,38 @@ import {
 
 const isMainBranch = conditions.isBranch("main");
 
+const shardCount = 3;
 const matrix = defineMatrix({
   include: [
     { os: "linux", runner: "ubuntu-latest" },
     { os: "windows", runner: "windows-latest" },
     { os: "darwin", runner: "macos-latest" },
-  ],
+  ].flatMap((entry) =>
+    Array.from({ length: shardCount }, (_, i) => ({
+      ...entry,
+      shard_index: i.toString(),
+      shard_total: shardCount.toString(),
+      shard_label: `(${i + 1}/${shardCount})`,
+    }))
+  ),
 });
 
 const checkout = step({
   name: "Checkout",
   uses: "actions/checkout@v6",
-  with: { submodules: true },
+  with: { submodules: false },
 });
 
-const setupRust = step.dependsOn(checkout)({
+// The node compat tests only need the node_test suite submodule; avoid
+// cloning the other (much larger) submodules like WPT, which has caused
+// flaky failures on Windows runners.
+const cloneNodeCompatSuite = step.dependsOn(checkout)({
+  name: "Clone node_compat suite submodule",
+  run:
+    "git submodule update --init --recursive --depth=1 -- ./tests/node_compat/runner/suite",
+});
+
+const setupRust = step.dependsOn(cloneNodeCompatSuite)({
   name: "Setup Rust",
   uses: "dsherret/rust-toolchain-file@v1",
 });
@@ -64,6 +81,8 @@ const runTests = step.dependsOn(setupGcloud)({
   name: "Run tests",
   env: {
     CARGO_ENCODED_RUSTFLAGS: "",
+    CI_SHARD_INDEX: matrix.shard_index,
+    CI_SHARD_TOTAL: matrix.shard_total,
   },
   run: "deno task --cwd tests/node_compat/runner test --report",
 });
@@ -83,7 +102,7 @@ const uploadReport = step.dependsOn(gzipReport)({
     AWS_DEFAULT_REGION: "${{vars.S3_REGION }}",
   },
   run:
-    "aws s3 cp tests/node_compat/report.json.gz s3://dl-deno-land/node-compat-test/$(date +%F)/report-${{matrix.os}}.json.gz",
+    "aws s3 cp tests/node_compat/report.json.gz s3://dl-deno-land/node-compat-test/$(date +%F)/report-${{matrix.os}}-${{matrix.shard_index}}.json.gz",
 });
 
 const testJob = job("test", {
@@ -93,6 +112,7 @@ const testJob = job("test", {
   },
   steps: [
     checkout,
+    cloneNodeCompatSuite,
     setupRust,
     setupDeno,
     installPython,
@@ -107,10 +127,18 @@ const testJob = job("test", {
 const summaryCheckout = step({
   name: "Checkout",
   uses: "actions/checkout@v6",
-  with: { submodules: true },
+  with: { submodules: false },
 });
 
-const summarySetupDeno = step.dependsOn(summaryCheckout)({
+// The summary job's scripts resolve `@std/*` imports through the repo
+// import map, which points at the `tests/util/std` submodule. The other
+// submodules (WPT, etc.) are not needed.
+const summaryCloneStd = step.dependsOn(summaryCheckout)({
+  name: "Clone std submodule",
+  run: "git submodule update --init --recursive --depth=1 -- ./tests/util/std",
+});
+
+const summarySetupDeno = step.dependsOn(summaryCloneStd)({
   name: "Setup Deno",
   uses: "denoland/setup-deno@v2",
 });
@@ -173,7 +201,7 @@ const postSlack = step.dependsOn(uploadMonthSummary)({
 const workflow = createWorkflow({
   name: "node_compat_test",
   on: {
-    schedule: [{ cron: "0 10 * * 1-5" }],
+    schedule: [{ cron: "0 10 * * *" }],
     workflow_dispatch: {},
   },
   jobs: [

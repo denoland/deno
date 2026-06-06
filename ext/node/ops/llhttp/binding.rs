@@ -60,6 +60,12 @@ struct Inner {
   current_header_field: Vec<u8>,
   current_header_value: Vec<u8>,
   in_header_value: bool,
+  /// Set to true when a partial batch of headers was flushed to JS via
+  /// kOnHeaders during parsing (when total exceeded MAX_HEADER_PAIRS).
+  /// When false at `on_headers_complete` with accumulated headers, we
+  /// can skip the flush and pass the headers array directly to
+  /// parserOnHeadersComplete — matching node's fast path.
+  headers_flushed: bool,
 
   url: Vec<u8>,
   status_message: Vec<u8>,
@@ -72,7 +78,17 @@ struct Inner {
 
   max_header_size: u32,
   header_nread: u32,
+  header_overflow: bool,
   initialized: bool,
+
+  /// Bytes consumed up to (but not including) the parse error position
+  /// from the most recent execute() call. Set to 0 on success, valid
+  /// only after execute() returns -1.
+  last_bytes_parsed: u32,
+  /// llhttp errno from the most recent execute() / finish() call.
+  /// Used to surface specific error codes (e.g. HPE_INVALID_TRANSFER_ENCODING)
+  /// to JS instead of the generic HPE_ERROR.
+  last_errno: i32,
 
   /// The stream being consumed (for parser.consume optimization).
   /// When set, the parser reads directly from the stream handle
@@ -119,6 +135,7 @@ impl HTTPParser {
         current_header_field: Vec::new(),
         current_header_value: Vec::new(),
         in_header_value: false,
+        headers_flushed: false,
         url: Vec::new(),
         status_message: Vec::new(),
         current_buffer_data: std::ptr::null(),
@@ -127,7 +144,10 @@ impl HTTPParser {
         pending_pause: false,
         max_header_size: 0,
         header_nread: 0,
+        header_overflow: false,
         initialized: false,
+        last_bytes_parsed: 0,
+        last_errno: 0,
         consumed_stream: None,
         consume_callbacks: None,
         consume_isolate: v8::UnsafeRawIsolatePtr::null(),
@@ -205,11 +225,15 @@ impl Inner {
     self.current_header_field.clear();
     self.current_header_value.clear();
     self.in_header_value = false;
+    self.headers_flushed = false;
     self.url.clear();
     self.status_message.clear();
     self.got_exception = false;
     self.pending_pause = false;
     self.header_nread = 0;
+    self.last_bytes_parsed = 0;
+    self.last_errno = sys::HPE_OK;
+    self.header_overflow = false;
     self.initialized = true;
   }
 
@@ -220,7 +244,7 @@ impl Inner {
     values: &[Vec<u8>],
   ) -> v8::Local<'a, v8::Array> {
     let len = fields.len() * 2;
-    let arr = v8::Array::new(scope, len as i32);
+    let mut elements: Vec<v8::Local<v8::Value>> = Vec::with_capacity(len);
     for (i, (field, value)) in fields.iter().zip(values.iter()).enumerate() {
       let f =
         v8::String::new_from_one_byte(scope, field, v8::NewStringType::Normal)
@@ -228,10 +252,11 @@ impl Inner {
       let v =
         v8::String::new_from_one_byte(scope, value, v8::NewStringType::Normal)
           .unwrap_or_else(|| v8::String::empty(scope));
-      arr.set_index(scope, (i * 2) as u32, f.into());
-      arr.set_index(scope, (i * 2 + 1) as u32, v.into());
+      debug_assert_eq!(elements.len(), i * 2);
+      elements.push(f.into());
+      elements.push(v.into());
     }
-    arr
+    v8::Array::new_with_elements(scope, &elements)
   }
 }
 
@@ -266,6 +291,17 @@ unsafe fn get_ctx<'a>(parser: *mut sys::llhttp_t) -> &'a mut ExecuteContext {
   unsafe { &mut *((*parser).data as *mut ExecuteContext) }
 }
 
+/// Check if header size exceeds the configured maximum.
+/// Returns -1 (HPE_USER) if overflow, 0 if ok.
+/// Matches Node.js's TrackHeader() behavior in node_http_parser.cc.
+fn check_header_overflow(inner: &mut Inner) -> c_int {
+  if inner.max_header_size > 0 && inner.header_nread >= inner.max_header_size {
+    inner.header_overflow = true;
+    return -1;
+  }
+  0
+}
+
 // ---- llhttp C callbacks ----
 
 unsafe extern "C" fn on_message_begin(parser: *mut sys::llhttp_t) -> c_int {
@@ -278,7 +314,9 @@ unsafe extern "C" fn on_message_begin(parser: *mut sys::llhttp_t) -> c_int {
   inner.current_header_field.clear();
   inner.current_header_value.clear();
   inner.in_header_value = false;
+  inner.headers_flushed = false;
   inner.header_nread = 0;
+  inner.header_overflow = false;
 
   let (scope, cb_obj) = unsafe { ctx.scope_and_callbacks() };
   let cb = cb_obj.get_index(scope, K_ON_MESSAGE_BEGIN);
@@ -311,7 +349,7 @@ unsafe extern "C" fn on_url(
   let data = unsafe { std::slice::from_raw_parts(at as *const u8, length) };
   inner.url.extend_from_slice(data);
   inner.header_nread += length as u32;
-  0
+  check_header_overflow(inner)
 }
 
 unsafe extern "C" fn on_status(
@@ -324,7 +362,7 @@ unsafe extern "C" fn on_status(
   let data = unsafe { std::slice::from_raw_parts(at as *const u8, length) };
   inner.status_message.extend_from_slice(data);
   inner.header_nread += length as u32;
-  0
+  check_header_overflow(inner)
 }
 
 unsafe extern "C" fn on_header_field(
@@ -340,7 +378,7 @@ unsafe extern "C" fn on_header_field(
   }
   inner.current_header_field.extend_from_slice(data);
   inner.header_nread += length as u32;
-  0
+  check_header_overflow(inner)
 }
 
 unsafe extern "C" fn on_header_value(
@@ -354,7 +392,7 @@ unsafe extern "C" fn on_header_value(
   inner.in_header_value = true;
   inner.current_header_value.extend_from_slice(data);
   inner.header_nread += length as u32;
-  0
+  check_header_overflow(inner)
 }
 
 unsafe extern "C" fn on_header_value_complete(
@@ -364,23 +402,13 @@ unsafe extern "C" fn on_header_value_complete(
   let inner = unsafe { &mut *ctx.inner };
   let field = std::mem::take(&mut inner.current_header_field);
   let mut value = std::mem::take(&mut inner.current_header_value);
-  // Strip leading/trailing OWS (spaces and tabs) from header values,
-  // matching Node.js's HTTP parser behavior (RFC 9110 §5.5).
-  let trimmed = {
-    let bytes = value.as_slice();
-    let start = bytes
-      .iter()
-      .position(|&b| b != b' ' && b != b'\t')
-      .unwrap_or(bytes.len());
-    let end = bytes
-      .iter()
-      .rposition(|&b| b != b' ' && b != b'\t')
-      .map_or(start, |p| p + 1);
-    start..end
-  };
-  if trimmed.start > 0 || trimmed.end < value.len() {
-    value = value[trimmed].to_vec();
-  }
+  // Strip trailing OWS (spaces and tabs) in place, matching Node.js's
+  // HTTP parser behavior. llhttp has already skipped leading OWS.
+  let trimmed_len = value
+    .iter()
+    .rposition(|&b| b != b' ' && b != b'\t')
+    .map_or(0, |p| p + 1);
+  value.truncate(trimmed_len);
   inner.header_fields.push(field);
   inner.header_values.push(value);
   inner.in_header_value = false;
@@ -407,6 +435,7 @@ unsafe extern "C" fn on_header_value_complete(
     inner.header_fields.clear();
     inner.header_values.clear();
     inner.url.clear();
+    inner.headers_flushed = true;
   }
   0
 }
@@ -424,14 +453,13 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     return 0;
   };
 
-  // Flush any remaining headers via kOnHeaders first, matching Node.js
-  // behavior.  This ensures all headers end up in parser._headers so
-  // parserOnHeadersComplete reads them via the `if (headers === undefined)`
-  // path.  Without this, when the total header count exceeds
-  // MAX_HEADER_PAIRS the first batch (sent via kOnHeaders during parsing)
-  // would be lost because kOnHeadersComplete would receive only the
-  // leftover headers and skip parser._headers.
-  if !inner.header_fields.is_empty() {
+  // Fast path: when no prior kOnHeaders flush occurred, pass accumulated
+  // headers (possibly empty) + url directly to parserOnHeadersComplete.
+  // Slow path: a prior kOnHeaders flush happened; flush any remaining
+  // headers via kOnHeaders so JS reads the full list from
+  // parser._headers / parser._url, then pass undefined to the callback.
+  let on_fast_path = !inner.headers_flushed;
+  if !on_fast_path && !inner.header_fields.is_empty() {
     let flush_headers = Inner::create_headers_array(
       scope,
       &inner.header_fields,
@@ -462,24 +490,44 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     v8::Integer::new(scope, unsafe { (*parser).http_major } as i32);
   let version_minor =
     v8::Integer::new(scope, unsafe { (*parser).http_minor } as i32);
-  // All headers have been flushed via kOnHeaders above, so always pass
-  // undefined here.  parserOnHeadersComplete will read from parser._headers.
-  let headers: v8::Local<v8::Value> = v8::undefined(scope).into();
   let is_request = unsafe { (*parser).type_ } == sys::HTTP_REQUEST as u8;
   let undef = v8::undefined(scope);
 
-  // For requests: method and url are set, statusCode/statusMessage are undefined
-  // For responses: statusCode/statusMessage are set, method/url are undefined
+  // Fast path: pass headers + url directly so parserOnHeadersComplete
+  // uses them instead of reading from parser._headers/_url.
+  // Slow path: pass undefined, JS reads from parser._headers/_url
+  // which were populated by the flush above.
+  let (headers, url): (v8::Local<v8::Value>, v8::Local<v8::Value>) =
+    if on_fast_path {
+      let headers_arr = Inner::create_headers_array(
+        scope,
+        &inner.header_fields,
+        &inner.header_values,
+      );
+      let url_val: v8::Local<v8::Value> = if is_request {
+        v8::String::new_from_one_byte(
+          scope,
+          &inner.url,
+          v8::NewStringType::Normal,
+        )
+        .unwrap_or_else(|| v8::String::empty(scope))
+        .into()
+      } else {
+        undef.into()
+      };
+      (headers_arr.into(), url_val)
+    } else {
+      (undef.into(), undef.into())
+    };
+
+  // For requests: method is set, statusCode/statusMessage are undefined
+  // For responses: statusCode/statusMessage are set, method is undefined
   let method: v8::Local<v8::Value> = if is_request {
     v8::Integer::new_from_unsigned(scope, unsafe { (*parser).method } as u32)
       .into()
   } else {
     undef.into()
   };
-  // URL was also flushed via kOnHeaders above (just like headers),
-  // so always pass undefined.  parserOnHeadersComplete will read
-  // from parser._url.
-  let url: v8::Local<v8::Value> = undef.into();
   let status_code: v8::Local<v8::Value> = if !is_request {
     v8::Integer::new(scope, unsafe { (*parser).status_code } as i32).into()
   } else {
@@ -633,6 +681,45 @@ unsafe extern "C" fn on_message_complete(parser: *mut sys::llhttp_t) -> c_int {
   0
 }
 
+/// Shape matches the error that `HTTPParser.prototype.execute` builds in
+/// JS for the non-consume path (see `http_parser.ts`), so both paths
+/// deliver the same object to `onParserExecuteCommon` in `_http_server.js`.
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum ParseError {
+  #[class(generic)]
+  #[error("Parse Error: Header overflow")]
+  #[property("code" = "HPE_HEADER_OVERFLOW")]
+  #[property("reason" = "Header overflow")]
+  #[property("bytesParsed" = self.bytes_parsed())]
+  HeaderOverflow { bytes_parsed: i32 },
+  // Surface the HTTP/2 client preface detection (24 bytes of
+  // `PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n`) as the same `HPE_PAUSED_H2_UPGRADE`
+  // error Node.js raises so the consume-path server's clientError listener
+  // sees the upstream-shape error instead of a generic parse error.
+  #[class(generic)]
+  #[error("Parse Error: Pause on PRI/Upgrade")]
+  #[property("code" = "HPE_PAUSED_H2_UPGRADE")]
+  #[property("reason" = "Pause on PRI/Upgrade")]
+  #[property("bytesParsed" = self.bytes_parsed())]
+  PausedH2Upgrade { bytes_parsed: i32 },
+  #[class(generic)]
+  #[error("Parse Error")]
+  #[property("code" = "HPE_ERROR")]
+  #[property("reason" = "Parse Error")]
+  #[property("bytesParsed" = self.bytes_parsed())]
+  Generic { bytes_parsed: i32 },
+}
+
+impl ParseError {
+  fn bytes_parsed(&self) -> i32 {
+    match self {
+      ParseError::HeaderOverflow { bytes_parsed } => *bytes_parsed,
+      ParseError::PausedH2Upgrade { bytes_parsed } => *bytes_parsed,
+      ParseError::Generic { bytes_parsed } => *bytes_parsed,
+    }
+  }
+}
+
 // ---- ReadInterceptor callback for consume() ----
 
 /// Called by the stream's read callback when data arrives.
@@ -663,10 +750,21 @@ unsafe fn consume_read_callback(
   let context = v8::Local::new(handle_scope, context);
   let scope = &mut v8::ContextScope::new(handle_scope, context);
 
-  if nread <= 0 {
-    // EOF or error - invoke kOnExecute callback with the nread value.
-    // Use TryCatch to absorb exceptions from socket lifecycle errors
-    // (hang up, reset, etc.) which are expected during connection close.
+  if nread == 0 {
+    // Empty reads (EAGAIN/WouldBlock via libuv's alloc+nread=0 idiom)
+    // have special meaning to the HTTP parser and must be skipped
+    // here — matches Node.js's node_http_parser.cc:OnStreamRead line
+    // 827 ("Ignore, empty reads have special meaning"). This happens
+    // once per request under tokio: we call read_cb(nread=0) so the
+    // alloc buffer is freed, but the kOnExecute JS call must not
+    // fire for them, otherwise every request pays a spurious v8 scope
+    // + function-call round trip.
+    return;
+  }
+  if nread < 0 {
+    // EOF or error: invoke kOnExecute with the nread sentinel so the
+    // JS side can tear down the connection. TryCatch absorbs any
+    // exception thrown while the socket is in a half-closed state.
     let cb_obj = v8::Local::new(scope, &callbacks_global);
     if let Some(cb) = cb_obj.get_index(scope, K_ON_EXECUTE)
       && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
@@ -674,7 +772,6 @@ unsafe fn consume_read_callback(
       v8::tc_scope!(tc, scope);
       let nread_val = v8::Integer::new(tc, nread as i32);
       let _ = func.call(tc, cb_obj.into(), &[nread_val.into()]);
-      // Absorb any exception - EOF errors are normal lifecycle events
       if tc.has_caught() {
         tc.reset();
       }
@@ -691,10 +788,14 @@ unsafe fn consume_read_callback(
   inner.current_buffer_len = data.len();
   inner.got_exception = false;
 
-  let callbacks_local = v8::Local::new(scope, &callbacks_global);
-  // SAFETY: ContextScope and PinScope both deref to HandleScope.
-  // The ExecuteContext only accesses the scope via HandleScope methods.
-  let scope_ptr = scope as *mut v8::ContextScope<v8::HandleScope> as *mut ();
+  // `scope` here is `&mut ContextScope<HandleScope>`. Casting its
+  // pointer directly to `*mut PinScope` is UB because `ContextScope`
+  // is a wrapper struct with a different layout. Coerce to
+  // `&mut PinScope` via `Deref` before the cast so the ExecuteContext
+  // sees a real PinScope pointer.
+  let pin_scope: &mut v8::PinScope = scope;
+  let scope_ptr = pin_scope as *mut v8::PinScope as *mut ();
+  let callbacks_local = v8::Local::new(pin_scope, &callbacks_global);
   let callbacks_static: v8::Local<'static, v8::Object> =
     unsafe { std::mem::transmute(callbacks_local) };
 
@@ -704,6 +805,8 @@ unsafe fn consume_read_callback(
     callbacks: callbacks_static,
   };
 
+  // Save+restore for re-entrant execute() calls — see HTTPParser::execute.
+  let saved_data = inner.parser.data;
   inner.parser.data = &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
   let err = unsafe {
@@ -714,7 +817,7 @@ unsafe fn consume_read_callback(
     )
   };
 
-  inner.parser.data = std::ptr::null_mut();
+  inner.parser.data = saved_data;
   inner.current_buffer_data = std::ptr::null();
   inner.current_buffer_len = 0;
 
@@ -731,6 +834,8 @@ unsafe fn consume_read_callback(
       }
     }
   }
+  inner.last_bytes_parsed = nread_result.max(0) as u32;
+  inner.last_errno = err as i32;
 
   if inner.pending_pause {
     inner.pending_pause = false;
@@ -739,19 +844,67 @@ unsafe fn consume_read_callback(
     }
   }
 
-  // Invoke kOnExecute with the result (bytes parsed or error)
+  // Invoke kOnExecute with the result. Parse success => number of
+  // bytes consumed; parse error => `Error` object with the same
+  // shape the JS wrapper (`http_parser.ts` .execute override)
+  // builds for the non-consume path, so onParserExecuteCommon's
+  // `ret instanceof Error` branch fires and the connection is
+  // torn down cleanly. Without this, parse errors on the consume
+  // fast path (e.g. HTTP chunked-smuggling) silently drop the
+  // protocol error and leave the connection wedged.
   let cb_obj = v8::Local::new(scope, &callbacks_global);
   if let Some(cb) = cb_obj.get_index(scope, K_ON_EXECUTE)
     && let Ok(func) = v8::Local::<v8::Function>::try_from(cb)
   {
-    let result_val = if inner.got_exception
-      || (inner.parser.upgrade == 0 && err != sys::HPE_OK)
-    {
-      v8::Integer::new(scope, -1)
+    let is_error =
+      inner.got_exception || (inner.parser.upgrade == 0 && err != sys::HPE_OK);
+    let result_val: v8::Local<v8::Value> = if is_error {
+      let bytes_parsed = nread_result.max(0);
+      let parse_err = if inner.header_overflow {
+        ParseError::HeaderOverflow { bytes_parsed }
+      } else if err == sys::HPE_PAUSED_H2_UPGRADE {
+        ParseError::PausedH2Upgrade { bytes_parsed }
+      } else {
+        ParseError::Generic { bytes_parsed }
+      };
+      deno_core::error::to_v8_error(scope, &parse_err)
     } else {
-      v8::Integer::new(scope, nread_result)
+      v8::Integer::new(scope, nread_result).into()
     };
-    let _ = func.call(scope, cb_obj.into(), &[result_val.into()]);
+    // When the parser signals upgrade/CONNECT, the JS
+    // `onParserExecuteCommon` upgrade branch computes
+    // `bodyHead = d.slice(bytesParsed)`. Parse errors also need the raw
+    // packet so JS can recover llhttp errors collapsed to HPE_ERROR. In the
+    // non-consume path `d` is the buffer JS passed into `parser.execute(d)`;
+    // here we don't have that — pass the current read buffer as a Uint8Array.
+    // For ordinary non-upgrade requests we leave the 2nd arg off to avoid the
+    // per-request allocation of a JS view.
+    if is_error || inner.parser.upgrade != 0 {
+      let byte_len = data.len();
+      let ab = v8::ArrayBuffer::new(scope, byte_len);
+      if byte_len > 0 {
+        let backing = ab.get_backing_store();
+        if let Some(backing_data) = backing.data() {
+          // SAFETY: ab is freshly created; we own exclusive access to the backing store
+          // for this synchronous copy. backing_data is non-null per the Option guard.
+          unsafe {
+            std::ptr::copy_nonoverlapping(
+              data.as_ptr(),
+              backing_data.as_ptr() as *mut u8,
+              byte_len,
+            );
+          }
+        }
+      }
+      let u8a =
+        v8::Uint8Array::new(scope, ab, 0, byte_len).unwrap_or_else(|| {
+          v8::Uint8Array::new(scope, v8::ArrayBuffer::new(scope, 0), 0, 0)
+            .unwrap()
+        });
+      let _ = func.call(scope, cb_obj.into(), &[result_val, u8a.into()]);
+    } else {
+      let _ = func.call(scope, cb_obj.into(), &[result_val]);
+    }
   }
 }
 
@@ -811,6 +964,12 @@ impl HTTPParser {
       callbacks: callbacks_static,
     };
 
+    // Save and restore parser.data to support re-entrant execute() calls.
+    // If a JS callback (e.g. the 'information' event handler for 100 Continue)
+    // triggers another execute() call, the inner execute must restore the outer
+    // context pointer so subsequent callbacks from the outer llhttp_execute
+    // still have a valid ExecuteContext.
+    let saved_data = inner.parser.data;
     inner.parser.data =
       &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
@@ -822,7 +981,7 @@ impl HTTPParser {
       )
     };
 
-    inner.parser.data = std::ptr::null_mut();
+    inner.parser.data = saved_data;
     inner.current_buffer_data = std::ptr::null();
     inner.current_buffer_len = 0;
 
@@ -840,6 +999,8 @@ impl HTTPParser {
         }
       }
     }
+    inner.last_bytes_parsed = nread as u32;
+    inner.last_errno = err as i32;
 
     if inner.pending_pause {
       inner.pending_pause = false;
@@ -884,12 +1045,14 @@ impl HTTPParser {
       callbacks: callbacks_static,
     };
 
+    // Save+restore for re-entrant execute() calls — see HTTPParser::execute.
+    let saved_data = inner.parser.data;
     inner.parser.data =
       &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
     let err = unsafe { sys::llhttp_finish(&mut inner.parser) };
 
-    inner.parser.data = std::ptr::null_mut();
+    inner.parser.data = saved_data;
 
     if err != sys::HPE_OK { -1 } else { 0 }
   }
@@ -923,6 +1086,47 @@ impl HTTPParser {
   #[fast]
   fn remove(&self) {}
 
+  /// Check if the last parse error was caused by header overflow.
+  #[fast]
+  fn has_header_overflow(&self) -> bool {
+    self.inner().header_overflow
+  }
+
+  /// Bytes consumed before the parse error. Set by the most recent
+  /// execute() call; only meaningful when execute() returned -1.
+  #[fast]
+  fn get_last_bytes_parsed(&self) -> u32 {
+    self.inner().last_bytes_parsed
+  }
+
+  /// llhttp errno name (e.g. "HPE_INVALID_TRANSFER_ENCODING") for the
+  /// most recent execute() / finish() call. Returns "HPE_OK" when no
+  /// error is recorded.
+  #[string]
+  fn get_last_error_code(&self) -> String {
+    let errno = self.inner().last_errno;
+    let name_ptr = unsafe { sys::llhttp_errno_name(errno) };
+    if name_ptr.is_null() {
+      return String::from("HPE_ERROR");
+    }
+    let cstr = unsafe { CStr::from_ptr(name_ptr) };
+    cstr.to_string_lossy().into_owned()
+  }
+
+  /// Human-readable reason for the most recent parse error
+  /// (e.g. "Transfer-Encoding can't be present with Content-Length").
+  /// Returns the empty string if no reason is set.
+  #[string]
+  fn get_last_error_reason(&self) -> String {
+    let inner = self.inner();
+    let reason_ptr = unsafe { sys::llhttp_get_error_reason(&inner.parser) };
+    if reason_ptr.is_null() {
+      return String::new();
+    }
+    let cstr = unsafe { CStr::from_ptr(reason_ptr) };
+    cstr.to_string_lossy().into_owned()
+  }
+
   /// Get the current buffer being parsed (for error reporting).
   #[buffer]
   fn get_current_buffer(&self) -> Box<[u8]> {
@@ -953,9 +1157,14 @@ impl HTTPParser {
   ) {
     let inner = self.inner();
 
-    // Try to get the LibUvStreamWrap from the handle
+    // Try to get the LibUvStreamWrap from the handle. Use the
+    // base-object variant so TCPWrap / TLSWrap / PipeWrap (which all
+    // inherit from LibUvStreamWrap via `#[cppgc_inherits_from]`) are
+    // matched — `try_unwrap_cppgc_object` would require the concrete
+    // type to be exactly `LibUvStreamWrap` and silently return `None`
+    // for any subclass, disabling the consume fast path.
     let handle_value: v8::Local<v8::Value> = handle.into();
-    let Some(stream_wrap) = deno_core::cppgc::try_unwrap_cppgc_object::<
+    let Some(stream_wrap) = deno_core::cppgc::try_unwrap_cppgc_base_object::<
       LibUvStreamWrap,
     >(scope, handle_value) else {
       return;

@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayPrototypePop,
   ArrayPrototypePush,
@@ -29,16 +29,20 @@ const {
   SafeArrayIterator,
   RegExpPrototypeTest,
   SafeRegExp,
+  StringFromCharCode,
   StringPrototypeCharCodeAt,
   Symbol,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
   Uint8Array,
 } = primordials;
 import { setImmediate } from "node:timers";
-import {
+const {
   allMethods,
   HTTPParser,
   methods,
-} from "ext:deno_node/internal_binding/http_parser.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/http_parser.ts");
 import { IncomingMessage, readStart, readStop } from "node:_http_incoming";
 
 const kIncomingMessage = Symbol("IncomingMessage");
@@ -129,7 +133,9 @@ function parserOnHeadersComplete(
   const ParserIncomingMessage = (socket?.server?.[kIncomingMessage]) ||
     IncomingMessage;
 
-  const incoming = parser.incoming = new ParserIncomingMessage(socket);
+  const incoming = parser.incoming = new ParserIncomingMessage(socket, {
+    highWaterMark: socket?.server?.highWaterMark,
+  });
   incoming.httpVersionMajor = versionMajor;
   incoming.httpVersionMinor = versionMinor;
   incoming.httpVersion = versionMajor === 1 && versionMinor === 1
@@ -302,13 +308,69 @@ function cleanParser(parser) {
   parser.onIncoming = null;
   parser.joinDuplicateHeaders = null;
   parser._asyncResource = null;
+  parser._lastRawPacket = null;
 }
+
+// The Rust binding collapses every llhttp errno into the generic HPE_ERROR;
+// Node.js surfaces the specific code (e.g. HPE_INVALID_TRANSFER_ENCODING)
+// straight from llhttp. Recover the smuggling-relevant case in JS by checking
+// whether the raw packet combined Content-Length with Transfer-Encoding:
+// chunked, a combination RFC 9112 forbids precisely because it enables request
+// smuggling.
+const contentLengthHeaderRegex = new SafeRegExp(
+  "^content-length[ \\t]*:",
+  "im",
+);
+const transferEncodingChunkedRegex = new SafeRegExp(
+  "^transfer-encoding[ \\t]*:[^\\r\\n]*\\bchunked\\b",
+  "im",
+);
 
 function prepareError(err, parser, rawPacket) {
   err.rawPacket = rawPacket || parser.getCurrentBuffer();
+  if (
+    err.code === "HPE_ERROR" && err.rawPacket &&
+    TypedArrayPrototypeGetByteLength(err.rawPacket) > 0
+  ) {
+    const headers = headerSegmentLatin1(err.rawPacket);
+    if (
+      RegExpPrototypeTest(contentLengthHeaderRegex, headers) &&
+      RegExpPrototypeTest(transferEncodingChunkedRegex, headers)
+    ) {
+      err.code = "HPE_INVALID_TRANSFER_ENCODING";
+      err.reason = "Transfer-Encoding can't be present with Content-Length";
+    }
+  }
   if (typeof err.reason === "string") {
     err.message = `Parse Error: ${err.reason}`;
   }
+}
+
+// Decode the header section (everything before the first CRLF CRLF) of a
+// raw HTTP packet as a latin1 string. Returns the full packet decoded if no
+// header terminator is present. Operates on Uint8Array or Buffer.
+function headerSegmentLatin1(rawPacket) {
+  const view = new Uint8Array(
+    TypedArrayPrototypeGetBuffer(rawPacket),
+    TypedArrayPrototypeGetByteOffset(rawPacket),
+    TypedArrayPrototypeGetByteLength(rawPacket),
+  );
+  const len = view.length;
+  let end = len;
+  for (let i = 0; i + 3 < len; i++) {
+    if (
+      view[i] === 0x0d && view[i + 1] === 0x0a &&
+      view[i + 2] === 0x0d && view[i + 3] === 0x0a
+    ) {
+      end = i;
+      break;
+    }
+  }
+  let out = "";
+  for (let i = 0; i < end; i++) {
+    out += StringFromCharCode(view[i]);
+  }
+  return out;
 }
 
 function isLenient() {
