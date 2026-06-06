@@ -1962,6 +1962,16 @@ function markCwd(ctx, line, workingDirectory) {
   return tempLine;
 }
 
+
+function safeIsNodeBuiltin(moduleName) {
+  try {
+    nodeModule ??= lazyLoadModule();
+  } catch { 
+    return false
+  }
+  return nodeModule.isBuiltin(moduleName);
+}
+
 function pathToFileUrlHref(filepath) {
   nodeUrl ??= lazyLoadUrl();
   return nodeUrl.pathToFileURL(filepath).href;
@@ -2057,7 +2067,6 @@ function formatError(err, constructor, tag, ctx, keys) {
       // Highlight userland code and node modules.
       const workingDirectory = safeGetCWD();
       let esmWorkingDirectory;
-      nodeModule ??= lazyLoadModule();
       for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
         if (
@@ -2068,7 +2077,7 @@ function formatError(err, constructor, tag, ctx, keys) {
         }
         const core = RegExpPrototypeExec(coreModuleRegExp, line);
         if (
-          (core !== null && nodeModule.isBuiltin(core[1])) ||
+          (core !== null && safeIsNodeBuiltin(core[1])) ||
           RegExpPrototypeExec(extModuleRegExp, line) !== null
         ) {
           newStack += `\n${ctx.stylize(line, "undefined")}`;
