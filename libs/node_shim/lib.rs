@@ -3148,6 +3148,14 @@ pub struct TranslateOptions {
   /// resolution differs from Node's for some specifiers (e.g. self-referential
   /// packages) and emitting there would regress node_compat coverage.
   pub emit_preload_modules: bool,
+  /// Additionally emit `--unstable-sloppy-imports` and `--unstable-unsafe-proto`
+  /// on top of [`Self::add_unstable_flags`]. Only enabled for the `deno
+  /// task`/lifecycle-script shell path, where the hand-rolled `NodeCommand`
+  /// parser historically passed these two flags for every `node <script>`
+  /// invocation; preserving them here keeps lifecycle scripts that rely on
+  /// sloppy imports or `__proto__` from regressing. Not enabled for
+  /// `child_process`, which never passed them.
+  pub add_task_unstable_flags: bool,
 }
 
 impl TranslateOptions {
@@ -3159,6 +3167,7 @@ impl TranslateOptions {
       add_standalone_config: true,
       wrap_eval_code: false,
       emit_preload_modules: false,
+      add_task_unstable_flags: false,
     }
   }
 
@@ -3170,6 +3179,7 @@ impl TranslateOptions {
       add_standalone_config: false,
       wrap_eval_code: true,
       emit_preload_modules: false,
+      add_task_unstable_flags: false,
     }
   }
 
@@ -3183,13 +3193,16 @@ impl TranslateOptions {
       add_standalone_config: false,
       wrap_eval_code: false,
       emit_preload_modules: false,
+      add_task_unstable_flags: false,
     }
   }
 
   /// Options for the `deno task`/npm-lifecycle-script `node` shim
   /// (`cli::task_runner::NodeCommand`). Same as [`Self::for_shell_command`] but
   /// emits `--require`/`--import` preloads, since a task that runs
-  /// `node --require ./x.cjs main.cjs` expects the preload to actually run.
+  /// `node --require ./x.cjs main.cjs` expects the preload to actually run, and
+  /// emits the extra `--unstable-sloppy-imports`/`--unstable-unsafe-proto` flags
+  /// the previous hand-rolled `NodeCommand` always passed.
   /// Kept distinct from `for_shell_command` (used by `child_process` exec-style
   /// spawning) so emission doesn't change `child_process`'s long-standing
   /// behavior of dropping preloads it can't resolve like Node (e.g.
@@ -3197,6 +3210,7 @@ impl TranslateOptions {
   pub fn for_task_command() -> Self {
     Self {
       emit_preload_modules: true,
+      add_task_unstable_flags: true,
       ..Self::for_shell_command()
     }
   }
@@ -3380,6 +3394,10 @@ pub fn translate_to_deno_args(
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
     }
+    if options.add_task_unstable_flags {
+      deno_args.push("--unstable-sloppy-imports".to_string());
+      deno_args.push("--unstable-unsafe-proto".to_string());
+    }
     if options.add_standalone_config {
       deno_args.push("--node-modules-dir=manual".to_string());
       deno_args.push("--no-config".to_string());
@@ -3463,6 +3481,10 @@ pub fn translate_to_deno_args(
       deno_args.push("--unstable-bare-node-builtins".to_string());
       deno_args.push("--unstable-detect-cjs".to_string());
     }
+    if options.add_task_unstable_flags {
+      deno_args.push("--unstable-sloppy-imports".to_string());
+      deno_args.push("--unstable-unsafe-proto".to_string());
+    }
     if options.add_standalone_config {
       deno_args.push("--node-modules-dir=manual".to_string());
       deno_args.push("--no-config".to_string());
@@ -3509,6 +3531,10 @@ pub fn translate_to_deno_args(
     deno_args.push("--unstable-node-globals".to_string());
     deno_args.push("--unstable-bare-node-builtins".to_string());
     deno_args.push("--unstable-detect-cjs".to_string());
+  }
+  if options.add_task_unstable_flags {
+    deno_args.push("--unstable-sloppy-imports".to_string());
+    deno_args.push("--unstable-unsafe-proto".to_string());
   }
   if options.add_standalone_config {
     deno_args.push("--node-modules-dir=manual".to_string());
@@ -4924,6 +4950,8 @@ mod tests {
         "--unstable-node-globals",
         "--unstable-bare-node-builtins",
         "--unstable-detect-cjs",
+        "--unstable-sloppy-imports",
+        "--unstable-unsafe-proto",
         "--require",
         "./a.cjs",
         "--require",
@@ -4933,6 +4961,47 @@ mod tests {
         "script.js"
       ]
     );
+  }
+
+  #[test]
+  fn test_task_command_emits_legacy_unstable_flags() {
+    // The `deno task`/lifecycle-script path historically passed
+    // `--unstable-sloppy-imports` and `--unstable-unsafe-proto` for every
+    // `node <script>` invocation (the old hand-rolled `NodeCommand`). The
+    // `node_shim` translation must keep emitting them for that path so scripts
+    // relying on sloppy imports or `__proto__` don't regress — but the
+    // `child_process` / shell paths must NOT, matching their prior behavior.
+    let parsed = parse_args(svec!["script.js"]).unwrap();
+    let task =
+      translate_to_deno_args(parsed, &TranslateOptions::for_task_command());
+    assert!(
+      task
+        .deno_args
+        .contains(&"--unstable-sloppy-imports".to_string())
+    );
+    assert!(
+      task
+        .deno_args
+        .contains(&"--unstable-unsafe-proto".to_string())
+    );
+
+    for options in [
+      TranslateOptions::for_child_process(),
+      TranslateOptions::for_shell_command(),
+    ] {
+      let parsed = parse_args(svec!["script.js"]).unwrap();
+      let result = translate_to_deno_args(parsed, &options);
+      assert!(
+        !result
+          .deno_args
+          .contains(&"--unstable-sloppy-imports".to_string())
+      );
+      assert!(
+        !result
+          .deno_args
+          .contains(&"--unstable-unsafe-proto".to_string())
+      );
+    }
   }
 
   #[test]
