@@ -14,8 +14,6 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
-use crossterm::terminal::disable_raw_mode;
-use crossterm::terminal::enable_raw_mode;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::BinOpToken;
 use deno_ast::swc::parser::token::Token;
@@ -30,6 +28,7 @@ use unicode_width::UnicodeWidthStr;
 use super::channel::EditorSyncMessageSender;
 use crate::cdp;
 use crate::colors;
+use crate::util::console::RawMode;
 
 const PROMPT: &str = "> ";
 const DISPLAY_ALL_COMPLETIONS_THRESHOLD: usize = 100;
@@ -424,7 +423,7 @@ impl ReplEditor {
       return self.read_line_without_tty();
     }
 
-    let _raw_mode = RawModeGuard::new()?;
+    let _raw_mode = RawMode::enable()?;
     let mut stdout = std::io::stdout();
     let mut line = String::new();
     let mut cursor = 0;
@@ -814,21 +813,6 @@ impl ReplEditor {
 
   pub fn set_should_exit_on_interrupt(&self, yes: bool) {
     self.should_exit_on_interrupt.store(yes, Relaxed);
-  }
-}
-
-struct RawModeGuard;
-
-impl RawModeGuard {
-  fn new() -> Result<Self, std::io::Error> {
-    enable_raw_mode()?;
-    Ok(Self)
-  }
-}
-
-impl Drop for RawModeGuard {
-  fn drop(&mut self) {
-    let _ = disable_raw_mode();
   }
 }
 
