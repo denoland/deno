@@ -961,6 +961,25 @@ const RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
 
 const _readAll = Symbol("[[readAll]]");
 const _original = Symbol("[[original]]");
+
+/**
+ * If the error thrown while reading from / writing to a resource-backed stream
+ * is a terse "Bad resource ID" error, replace it with a clearer message
+ * explaining that the stream's underlying resource was closed or consumed.
+ *
+ * @param {unknown} e The error thrown by the underlying read/write op.
+ * @returns {unknown} The (possibly annotated) error to surface to the stream.
+ */
+function annotateResourceStreamError(e) {
+  if (
+    ObjectPrototypeIsPrototypeOf(core.BadResourcePrototype, e) &&
+    e.message === "Bad resource ID"
+  ) {
+    e.message = "The stream's underlying resource was closed or consumed";
+  }
+  return e;
+}
+
 /**
  * Create a new ReadableStream object that is backed by a resource that
  * implements reading operations. This object contains enough metadata to
@@ -1009,10 +1028,11 @@ function readableStreamForRid(rid, autoClose = true, cfn, onError) {
           controller.byobRequest.respond(bytesRead);
         }
       } catch (e) {
+        const error = annotateResourceStreamError(e);
         if (onError) {
-          onError(controller, e);
+          onError(controller, error);
         } else {
-          controller.error(e);
+          controller.error(error);
         }
         tryClose();
       }
@@ -1068,7 +1088,7 @@ function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
           controller.byobRequest.respond(bytesRead);
         }
       } catch (e) {
-        controller.error(e);
+        controller.error(annotateResourceStreamError(e));
         core.tryClose(rid);
       }
     },
@@ -1252,7 +1272,7 @@ function writableStreamForRid(rid, autoClose = true, cfn, options) {
           await core.writeAll(rid, chunk);
         }
       } catch (e) {
-        controller.error(e);
+        controller.error(annotateResourceStreamError(e));
         tryClose();
       }
     },
