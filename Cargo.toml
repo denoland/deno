@@ -281,6 +281,7 @@ rustls-webpki = "0.102"
 rustyline = { version = "=17.0.0", features = ["custom-bindings"] }
 rustyline-derive = "=0.11.1"
 same-file = "1.0.6"
+saphyr = { version = "=0.0.6", default-features = false }
 scopeguard = "1.2.0"
 semver = "=1.0.25"
 serde = { version = "1.0.149", features = ["derive"] }

@@ -1463,6 +1463,12 @@ fn new_workspace_factory_options(
         DenoSubcommand::Install(InstallFlags::Global(..))
           | DenoSubcommand::Uninstall(_)
       ),
+    // Seed deno.lock from package-lock.json only when the user is explicitly
+    // setting up dependencies via `deno install` (local form).
+    import_npm_lockfile: matches!(
+      flags.subcommand,
+      DenoSubcommand::Install(InstallFlags::Local(..))
+    ),
     frozen_lockfile: flags.frozen_lockfile,
     lock_arg: flags.lock.as_ref().map(|l| initial_cwd.join(l)),
     lockfile_skip_write: flags.internal.lockfile_skip_write,

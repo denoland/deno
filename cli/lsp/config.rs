@@ -1472,6 +1472,7 @@ impl ConfigData {
         node_modules_linker: None,
         no_lock: false,
         no_npm: false,
+        import_npm_lockfile: false,
         npm_process_state: None,
         root_node_modules_dir_override: None,
         vendor: None,
