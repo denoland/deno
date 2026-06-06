@@ -7527,7 +7527,18 @@ ObjectDefineProperty(CryptoPrototype, SymbolFor("Deno.privateCustomInspect"), {
 });
 webidl.configureInterface(Crypto);
 
-const crypto = op_create_crypto(subtle);
+// The `Crypto` singleton is created lazily because `op_create_crypto` mints
+// a cppgc-wrapped instance, and the cppgc heap is not attached to the V8
+// isolate at snapshot-build time. The webgpu extension uses the same pattern
+// (`initGPU`/`navigator.gpu` getter) so that the cppgc allocation happens
+// the first time `globalThis.crypto` is read at runtime.
+let cryptoSingleton;
+function getCryptoSingleton() {
+  if (cryptoSingleton === undefined) {
+    cryptoSingleton = op_create_crypto(subtle);
+  }
+  return cryptoSingleton;
+}
 
 webidl.converters.AlgorithmIdentifier = (V, prefix, context, opts) => {
   // Union for (object or DOMString)
@@ -8353,7 +8364,9 @@ function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
 
 return {
   Crypto,
-  crypto,
+  get crypto() {
+    return getCryptoSingleton();
+  },
   CryptoKey,
   cryptoKeyExportNodeKeyMaterial,
   importCryptoKeySync,
