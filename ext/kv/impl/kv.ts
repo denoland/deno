@@ -958,22 +958,34 @@ function validateQueueDelay(delay: number) {
   if (NumberIsNaN(delay)) throw new TypeError("Delay cannot be NaN");
 }
 
-function validateExpireIn(expireIn: number | undefined) {
+// Reject NaN, Infinity, fractional and negative values. A non-finite expireIn
+// otherwise produces a garbage absolute expiry when added to the current
+// timestamp before reaching the backend. The native layer rejected these before
+// the write was queued, so the atomic builder checks this synchronously too.
+function validateExpireInIsInteger(expireIn: number | undefined) {
   if (expireIn === undefined) return;
-  // Reject NaN, Infinity, fractional and negative values. A non-finite
-  // expireIn otherwise produces a garbage absolute expiry when added to the
-  // current timestamp before reaching the backend.
   if (!NumberIsInteger(expireIn) || expireIn < 0) {
     throw new TypeError(
       `expireIn must be a non-negative integer: received ${expireIn}`,
     );
   }
-  // The absolute expiry is computed as DateNow() + expireIn before it reaches
-  // the backend. Reject values that would push it past the safe-integer range,
-  // matching the native checked arithmetic that previously guarded this.
+}
+
+// The absolute expiry is computed as DateNow() + expireIn before it reaches the
+// backend. Reject values that would push it past the safe-integer range,
+// matching the native checked arithmetic that previously guarded this. The
+// native layer performed this at commit time, so the atomic builder defers it to
+// commit() (surfacing as a rejected promise) rather than throwing synchronously.
+function validateExpireInNotTooLarge(expireIn: number | undefined) {
+  if (expireIn === undefined) return;
   if (expireIn > NumberMAX_SAFE_INTEGER - DateNow()) {
     throw new TypeError(`expireIn is too large: ${expireIn}`);
   }
+}
+
+function validateExpireIn(expireIn: number | undefined) {
+  validateExpireInIsInteger(expireIn);
+  validateExpireInNotTooLarge(expireIn);
 }
 
 function validateBackoffSchedule(schedule: number[]) {
@@ -1463,6 +1475,9 @@ class AtomicOperation {
   #checks: { key: Uint8Array; versionstamp: string | null }[] = [];
   #mutations: SqliteMutation[] = [];
   #enqueues: SqliteEnqueue[] = [];
+  // Integer expireIn values whose absolute-expiry overflow check is deferred to
+  // commit() so it surfaces as a rejected promise (matching the native layer).
+  #expireInsToCheck: number[] = [];
   // Display data for custom inspect (stores original user-facing values)
   #displayChecks: { key: Deno.KvKey; versionstamp: string | null }[] = [];
   #displayMutations: {
@@ -1570,7 +1585,10 @@ class AtomicOperation {
         (ReflectHas(m, "expireIn") && typeof m.expireIn === "number")
           ? m.expireIn
           : undefined;
-      validateExpireIn(expireIn);
+      validateExpireInIsInteger(expireIn);
+      if (expireIn !== undefined) {
+        ArrayPrototypePush(this.#expireInsToCheck, expireIn);
+      }
 
       ArrayPrototypePush(this.#mutations, {
         key,
@@ -1630,7 +1648,10 @@ class AtomicOperation {
   }
 
   set(key: Deno.KvKey, value: unknown, options?: { expireIn?: number }): this {
-    validateExpireIn(options?.expireIn);
+    validateExpireInIsInteger(options?.expireIn);
+    if (options?.expireIn !== undefined) {
+      ArrayPrototypePush(this.#expireInsToCheck, options.expireIn);
+    }
     let actualKey = key;
     let mutationType: "set" | "setSuffixVersionstampedKey" = "set";
 
@@ -1792,6 +1813,12 @@ class AtomicOperation {
   }
 
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
+    // Deferred from `.set()`/`.mutate()` so a too-large expireIn surfaces as a
+    // rejected commit (matching the native overflow check) rather than throwing
+    // synchronously from the builder method.
+    for (let i = 0; i < this.#expireInsToCheck.length; i++) {
+      validateExpireInNotTooLarge(this.#expireInsToCheck[i]);
+    }
     if (this.#checks.length > MAX_CHECKS) {
       throw new TypeError(`Too many checks (max ${MAX_CHECKS})`);
     }
