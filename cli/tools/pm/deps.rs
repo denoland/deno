@@ -483,6 +483,8 @@ fn add_deps_from_catalogs(
       name: name.into(),
       version_req,
     };
+    // Catalog entries are keyed by the package name itself, so there is no
+    // separate alias.
     if !filter.should_include(None, &req, DepKind::Npm) {
       return;
     }
