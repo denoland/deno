@@ -1927,7 +1927,6 @@ dependencies = [
  "unicode-width 0.1.13",
  "uuid",
  "walkdir",
- "wasm-encoder",
  "wasm_dep_analyzer",
  "wasmparser",
  "windows-sys 0.59.0",
