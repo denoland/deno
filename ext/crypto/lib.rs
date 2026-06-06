@@ -268,6 +268,9 @@ pub enum CryptoError {
   #[class("DOMExceptionTypeMismatchError")]
   #[error("The provided value is not an integer-type TypedArray")]
   TypedArrayNotInteger,
+  #[class("DOMExceptionNotSupportedError")]
+  #[error("Algorithm '{0}' is not supported")]
+  UnsupportedDigestAlgorithm(String),
   #[class(inherit)]
   #[error(transparent)]
   Other(

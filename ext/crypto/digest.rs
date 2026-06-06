@@ -22,6 +22,13 @@ use crate::key::CryptoHash;
 /// The `WebIdlConverter` for `AlgorithmIdentifier`-restricted-to-digest,
 /// canonicalized into the variant the dispatch code needs. Mirrors what
 /// `normalizeAlgorithm(algorithm, "digest")` produced in JS.
+///
+/// Unrecognized algorithm names are kept as [`DigestAlgorithm::Unknown`] so
+/// the dispatch in [`run`] can throw the WebCrypto-spec-mandated
+/// `NotSupportedError` `DOMException` (not the WebIDL `TypeError` that a
+/// converter-level error would produce). The WPT `digest.https.any.html`
+/// "AES-GCM/RSA-OAEP/PBKDF2/AES-KW with empty/short/medium/long" subtests
+/// hardcode that error name.
 pub enum DigestAlgorithm {
   Sha(CryptoHash),
   /// cSHAKE / TurboSHAKE — variable-length output with extra dictionary
@@ -30,6 +37,10 @@ pub enum DigestAlgorithm {
   /// outputLength, domainSeparation range) is deferred until [`run`] so
   /// the `WebIdlError` path stays clean.
   Xof(SubtleDigestXof),
+  /// Algorithm identifier whose `name` resolved (it was a string or had a
+  /// `.name` DOMString) but isn't in the digest registry. Holds the input
+  /// spelling so the eventual `NotSupportedError` carries it.
+  Unknown(String),
 }
 
 impl<'a> WebIdlConverter<'a> for DigestAlgorithm {
@@ -47,22 +58,21 @@ impl<'a> WebIdlConverter<'a> for DigestAlgorithm {
     //    carrying a `.name` field. The original dictionary (if any) is
     //    kept around so the XOF arms can pluck `outputLength`,
     //    `functionName`, `customization` and `domainSeparation` off it.
+    //
+    //    A missing `name` member -> `TypeError` (WebIDL required-member
+    //    semantics), exercised by the WPT `digest({}, ...)` "empty
+    //    algorithm object" subtest.
     let (name_str, maybe_obj) =
       extract_name_and_obj(scope, value, prefix.clone(), context.borrowed())?;
 
     // 2. Canonical (case-insensitive) name lookup -- the WebCrypto
     //    registry treats algorithm identifiers as case-insensitive but
-    //    every other call site relies on the canonical spelling.
-    let canonical = canonical_digest_name(&name_str).ok_or_else(|| {
-      WebIdlError::other(
-        prefix.clone(),
-        context.borrowed(),
-        JsErrorBox::new(
-          "NotSupportedError",
-          format!("Algorithm '{name_str}' is not supported"),
-        ),
-      )
-    })?;
+    //    every other call site relies on the canonical spelling. If the
+    //    name isn't in the digest registry, defer the `NotSupportedError`
+    //    to [`run`] so the right error class is thrown.
+    let Some(canonical) = canonical_digest_name(&name_str) else {
+      return Ok(Self::Unknown(name_str));
+    };
 
     // 3. Build the dispatch variant. SHA / SHA3 do not consult the dict;
     //    XOF variants pull their extra parameters out.
@@ -133,6 +143,16 @@ fn extract_name_and_obj<'a, 'b>(
     let name_val = obj
       .get(scope, name_key.into())
       .unwrap_or_else(|| v8::undefined(scope).into());
+    // WebIDL `Algorithm` dictionary requires `name` -- WPT
+    // `digest({}, ...)` "empty algorithm object" checks the resulting
+    // error name is `TypeError`, not `NotSupportedError`.
+    if name_val.is_undefined() {
+      return Err(WebIdlError::other(
+        prefix,
+        context,
+        JsErrorBox::type_error("required member 'name' is undefined"),
+      ));
+    }
     let s = name_val
       .to_string(scope)
       .ok_or_else(|| {
@@ -351,6 +371,9 @@ pub fn run(
       Ok(digest::digest(hash.into(), &data).as_ref().to_vec())
     }
     DigestAlgorithm::Xof(xof) => run_xof(xof, &data),
+    DigestAlgorithm::Unknown(name) => {
+      Err(CryptoError::UnsupportedDigestAlgorithm(name))
+    }
   }
 }
 

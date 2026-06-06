@@ -422,7 +422,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionNotSupportedError",
   function DOMExceptionNotSupportedError(msg) {
-    return new DOMException(msg, "NotSupported");
+    return new DOMException(msg, "NotSupportedError");
   },
 );
 core.registerErrorBuilder(
