@@ -8,6 +8,8 @@ const {
   isDataView,
 } = core;
 const {
+  Crypto,
+  op_create_crypto,
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
   op_crypto_get_key_length,
@@ -7501,57 +7503,15 @@ async function encrypt(normalizedAlgorithm, key, data) {
 webidl.configureInterface(SubtleCrypto);
 const subtle = webidl.createBranded(SubtleCrypto);
 
-class Crypto {
-  constructor() {
-    webidl.illegalConstructor();
-  }
-
-  getRandomValues(typedArray) {
-    webidl.assertBranded(this, CryptoPrototype);
-    const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
-    webidl.requiredArguments(arguments.length, 1, prefix);
-    // Fast path for Uint8Array
-    const tag = TypedArrayPrototypeGetSymbolToStringTag(typedArray);
-    if (tag === "Uint8Array") {
-      op_crypto_get_random_values(typedArray);
-      return typedArray;
-    }
-    switch (tag) {
-      case "Int8Array":
-      case "Uint8ClampedArray":
-      case "Int16Array":
-      case "Uint16Array":
-      case "Int32Array":
-      case "Uint32Array":
-      case "BigInt64Array":
-      case "BigUint64Array":
-        break;
-      default:
-        throw new DOMException(
-          "The provided value is not an integer-type TypedArray",
-          "TypeMismatchError",
-        );
-    }
-    const ui8 = new Uint8Array(
-      TypedArrayPrototypeGetBuffer(typedArray),
-      TypedArrayPrototypeGetByteOffset(typedArray),
-      TypedArrayPrototypeGetByteLength(typedArray),
-    );
-    op_crypto_get_random_values(ui8);
-    return typedArray;
-  }
-
-  randomUUID() {
-    webidl.assertBranded(this, CryptoPrototype);
-    return op_crypto_random_uuid();
-  }
-
-  get subtle() {
-    webidl.assertBranded(this, CryptoPrototype);
-    return subtle;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+// `Crypto` is the cppgc-wrapped Rust class imported above; `getRandomValues`,
+// `randomUUID` and the `subtle` getter are implemented natively in
+// `crypto.rs`. Here we only decorate the prototype with the inspector hook
+// and the WebIDL `Symbol.toStringTag` machinery, then mint the singleton
+// via `op_create_crypto`.
+const CryptoPrototype = Crypto.prototype;
+ObjectDefineProperty(CryptoPrototype, SymbolFor("Deno.privateCustomInspect"), {
+  __proto__: null,
+  value: function (inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
         object: this,
@@ -7560,13 +7520,14 @@ class Crypto {
       }),
       inspectOptions,
     );
-  }
-}
-
+  },
+  enumerable: false,
+  configurable: true,
+  writable: true,
+});
 webidl.configureInterface(Crypto);
-const CryptoPrototype = Crypto.prototype;
 
-const crypto = webidl.createBranded(Crypto);
+const crypto = op_create_crypto(subtle);
 
 webidl.converters.AlgorithmIdentifier = (V, prefix, context, opts) => {
   // Union for (object or DOMString)

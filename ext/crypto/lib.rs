@@ -100,6 +100,8 @@ pub use crate::x25519::X25519Error;
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
   ops = [
+    crypto::op_create_crypto,
+    subtle_crypto::op_create_subtle_crypto,
     op_crypto_get_random_values,
     op_crypto_generate_key,
     op_crypto_sign_key,
@@ -260,6 +262,9 @@ pub enum CryptoError {
     "The ArrayBufferView's byte length ({0}) exceeds the number of bytes of entropy available via this API (65536)"
   )]
   ArrayBufferViewLengthExceeded(usize),
+  #[class("DOMExceptionTypeMismatchError")]
+  #[error("The provided value is not an integer-type TypedArray")]
+  TypedArrayNotInteger,
   #[class(inherit)]
   #[error(transparent)]
   Other(
@@ -1184,7 +1189,7 @@ pub fn op_crypto_unwrap_key(
 
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
 
-fn fast_uuid_v4(bytes: &mut [u8; 16]) -> String {
+pub(crate) fn fast_uuid_v4(bytes: &mut [u8; 16]) -> String {
   // Set UUID version to 4 and variant to 1.
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;

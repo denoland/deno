@@ -3,27 +3,38 @@
 //! WebCrypto top-level `Crypto` interface as a cppgc-wrapped Rust object.
 //!
 //! Registered on the extension via `objects = [Crypto]` so the class
-//! identity lives in Rust. The class is stateless on the Rust side for the
-//! first migration step -- the `subtle`, `getRandomValues` and `randomUUID`
-//! IDL members are still defined on the prototype from JS, where they
-//! delegate to the existing `op_crypto_*` ops in `lib.rs`.
+//! identity lives in Rust. `getRandomValues`, `randomUUID` and the `subtle`
+//! getter are implemented natively as `#[op2] impl` members; the JS shim
+//! only constructs the singleton via [`op_create_crypto`].
 
 use std::ffi::CStr;
 
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
+use rand::Rng;
+use rand::rngs::StdRng;
+use rand::thread_rng;
 
+use crate::CryptoError;
+use crate::fast_uuid_v4;
 use crate::shared::SharedError;
 
-pub struct Crypto;
+pub struct Crypto {
+  /// The single `SubtleCrypto` instance returned by the `subtle` getter.
+  /// Stored as a `v8::Global` so the getter returns the same identity
+  /// across calls, as required by Web IDL.
+  subtle: v8::Global<v8::Value>,
+}
 
 impl WebIdlInterfaceConverter for Crypto {
   const NAME: &'static str = "Crypto";
 }
 
-// SAFETY: zero-sized payload.
+// SAFETY: the `subtle` field is a `v8::Global` whose backing object is owned
+// by V8 itself; no Rust-side roots that need cppgc tracing.
 unsafe impl GarbageCollected for Crypto {
   fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
 
@@ -39,5 +50,89 @@ impl Crypto {
   #[cppgc]
   fn constructor(_: bool) -> Result<Crypto, SharedError> {
     Err(SharedError::IllegalConstructor)
+  }
+
+  #[getter]
+  fn subtle<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> v8::Local<'s, v8::Value> {
+    v8::Local::new(scope, &self.subtle)
+  }
+
+  /// `Crypto.getRandomValues(typedArray)` — fills `typedArray` with
+  /// cryptographically strong random bytes and returns it unchanged.
+  /// Rejects non-integer typed-array kinds with `TypeMismatchError` and
+  /// inputs longer than 65536 bytes with `QuotaExceededError`, per spec.
+  fn get_random_values<'s>(
+    &self,
+    state: &mut OpState,
+    scope: &mut v8::PinScope<'s, '_>,
+    typed_array: v8::Local<'s, v8::Value>,
+  ) -> Result<v8::Local<'s, v8::Value>, CryptoError> {
+    let view = v8::Local::<v8::ArrayBufferView>::try_from(typed_array)
+      .map_err(|_| CryptoError::TypedArrayNotInteger)?;
+    if !(view.is_int8_array()
+      || view.is_uint8_array()
+      || view.is_uint8_clamped_array()
+      || view.is_int16_array()
+      || view.is_uint16_array()
+      || view.is_int32_array()
+      || view.is_uint32_array()
+      || view.is_big_int64_array()
+      || view.is_big_uint64_array())
+    {
+      return Err(CryptoError::TypedArrayNotInteger);
+    }
+
+    let byte_len = view.byte_length();
+    if byte_len > 65536 {
+      return Err(CryptoError::ArrayBufferViewLengthExceeded(byte_len));
+    }
+    if byte_len > 0 {
+      let byte_offset = view.byte_offset();
+      let ab = view.buffer(scope).unwrap();
+      // SAFETY: byte_offset + byte_len are within the backing store per V8.
+      let bytes = unsafe {
+        let ptr = (ab.data().unwrap().as_ptr() as *mut u8).add(byte_offset);
+        std::slice::from_raw_parts_mut(ptr, byte_len)
+      };
+
+      let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
+      if let Some(seeded_rng) = maybe_seeded_rng {
+        seeded_rng.fill(bytes);
+      } else {
+        let mut rng = thread_rng();
+        rng.fill(bytes);
+      }
+    }
+    Ok(typed_array)
+  }
+
+  #[string]
+  fn random_uuid(&self, state: &mut OpState) -> String {
+    let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
+    let mut bytes = [0u8; 16];
+    if let Some(seeded_rng) = maybe_seeded_rng {
+      seeded_rng.fill(&mut bytes);
+    } else {
+      let mut rng = thread_rng();
+      rng.fill(&mut bytes);
+    }
+    fast_uuid_v4(&mut bytes)
+  }
+}
+
+/// Mint the singleton `Crypto` instance for `globalThis.crypto`. The JS shim
+/// passes the already-constructed `SubtleCrypto` cppgc object so that the
+/// `subtle` getter returns the same identity every call.
+#[op2]
+#[cppgc]
+pub fn op_create_crypto(
+  scope: &mut v8::PinScope<'_, '_>,
+  subtle: v8::Local<v8::Value>,
+) -> Crypto {
+  Crypto {
+    subtle: v8::Global::new(scope, subtle),
   }
 }

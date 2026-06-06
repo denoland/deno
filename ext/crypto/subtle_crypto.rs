@@ -3,11 +3,8 @@
 //! WebCrypto `SubtleCrypto` as a cppgc-wrapped Rust object.
 //!
 //! Registered on the extension via `objects = [SubtleCrypto]` so the class
-//! identity lives in Rust. The static `supports(operation, algorithm)`
-//! feature-detection entry point has been ported here from
-//! `00_crypto.js`; the other WebCrypto methods are still defined on the
-//! prototype from JS while the per-algorithm dispatch is being lifted to
-//! Rust in follow-up sessions.
+//! identity lives in Rust. The singleton instance reachable as
+//! `globalThis.crypto.subtle` is minted by [`op_create_subtle_crypto`].
 
 use std::ffi::CStr;
 
@@ -56,4 +53,12 @@ impl SubtleCrypto {
   ) -> bool {
     check_support_for_algorithm(operation, algorithm_name)
   }
+}
+
+/// Mint the singleton `SubtleCrypto` instance reachable as
+/// `globalThis.crypto.subtle`.
+#[op2]
+#[cppgc]
+pub fn op_create_subtle_crypto() -> SubtleCrypto {
+  SubtleCrypto
 }
