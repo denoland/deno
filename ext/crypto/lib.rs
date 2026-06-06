@@ -56,6 +56,9 @@ use sha3::Sha3_512;
 use signature::hazmat::PrehashSigner;
 use signature::hazmat::PrehashVerifier; // Re-export rand
 
+mod algorithm;
+mod crypto;
+mod crypto_key;
 mod decrypt;
 mod ed25519;
 mod encrypt;
@@ -67,6 +70,7 @@ mod key_store;
 mod mldsa;
 mod mlkem;
 mod shared;
+mod subtle_crypto;
 mod x25519;
 mod x448;
 
@@ -112,6 +116,8 @@ deno_core::extension!(deno_crypto,
     op_crypto_unwrap_key,
     op_crypto_base64url_decode,
     op_crypto_base64url_encode,
+    algorithm::op_crypto_check_support_for_algorithm,
+    algorithm::op_crypto_get_registered_algorithm,
     key_store::op_crypto_key_store_insert,
     key_store::op_crypto_key_store_get,
     x25519::op_crypto_generate_x25519_keypair,
@@ -152,6 +158,11 @@ deno_core::extension!(deno_crypto,
     mlkem::op_crypto_ml_kem_export_pkcs8,
     mlkem::op_crypto_ml_kem_get_public_key,
     mlkem::op_crypto_ml_kem_validate_public_key,
+  ],
+  objects = [
+    crypto::Crypto,
+    subtle_crypto::SubtleCrypto,
+    crypto_key::CryptoKey,
   ],
   lazy_loaded_js = [ "00_crypto.js" ],
   options = {

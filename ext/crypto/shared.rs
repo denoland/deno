@@ -323,6 +323,12 @@ pub enum SharedError {
   #[class(type)]
   #[error("invalid crypto key handle")]
   InvalidKeyHandle,
+  #[class(type)]
+  #[error("Illegal constructor")]
+  IllegalConstructor,
+  #[class(type)]
+  #[error("invalid CryptoKey type")]
+  InvalidKeyType,
 }
 
 impl V8RawKeyData {

@@ -10,6 +10,8 @@ const {
 const {
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
+  op_crypto_check_support_for_algorithm,
+  op_crypto_get_registered_algorithm,
   op_crypto_decrypt,
   op_crypto_derive_bits,
   op_crypto_derive_bits_x25519,
@@ -155,138 +157,10 @@ const simpleAlgorithmDictionaries = {
   MlDsaParams: { context: "BufferSource" },
 };
 
-const supportedAlgorithms = {
-  "digest": {
-    "SHA-1": null,
-    "SHA-256": null,
-    "SHA-384": null,
-    "SHA-512": null,
-    "SHA3-256": null,
-    "SHA3-384": null,
-    "SHA3-512": null,
-    "cSHAKE128": "CShakeParams",
-    "cSHAKE256": "CShakeParams",
-    "TurboSHAKE128": "TurboShakeParams",
-    "TurboSHAKE256": "TurboShakeParams",
-  },
-  "generateKey": {
-    "RSASSA-PKCS1-v1_5": "RsaHashedKeyGenParams",
-    "RSA-PSS": "RsaHashedKeyGenParams",
-    "RSA-OAEP": "RsaHashedKeyGenParams",
-    "ECDSA": "EcKeyGenParams",
-    "ECDH": "EcKeyGenParams",
-    "AES-CTR": "AesKeyGenParams",
-    "AES-CBC": "AesKeyGenParams",
-    "AES-GCM": "AesKeyGenParams",
-    "AES-OCB": "AesKeyGenParams",
-    "AES-KW": "AesKeyGenParams",
-    "HMAC": "HmacKeyGenParams",
-    "ChaCha20-Poly1305": null,
-    "X25519": null,
-    "X448": null,
-    "Ed25519": null,
-    "ML-KEM-512": null,
-    "ML-KEM-768": null,
-    "ML-KEM-1024": null,
-    "ML-DSA-44": null,
-    "ML-DSA-65": null,
-    "ML-DSA-87": null,
-  },
-  "sign": {
-    "RSASSA-PKCS1-v1_5": null,
-    "RSA-PSS": "RsaPssParams",
-    "ECDSA": "EcdsaParams",
-    "HMAC": null,
-    "Ed25519": null,
-    "ML-DSA-44": "MlDsaParams",
-    "ML-DSA-65": "MlDsaParams",
-    "ML-DSA-87": "MlDsaParams",
-  },
-  "verify": {
-    "RSASSA-PKCS1-v1_5": null,
-    "RSA-PSS": "RsaPssParams",
-    "ECDSA": "EcdsaParams",
-    "HMAC": null,
-    "Ed25519": null,
-    "ML-DSA-44": "MlDsaParams",
-    "ML-DSA-65": "MlDsaParams",
-    "ML-DSA-87": "MlDsaParams",
-  },
-  "importKey": {
-    "RSASSA-PKCS1-v1_5": "RsaHashedImportParams",
-    "RSA-PSS": "RsaHashedImportParams",
-    "RSA-OAEP": "RsaHashedImportParams",
-    "ECDSA": "EcKeyImportParams",
-    "ECDH": "EcKeyImportParams",
-    "HMAC": "HmacImportParams",
-    "HKDF": null,
-    "PBKDF2": null,
-    "AES-CTR": null,
-    "AES-CBC": null,
-    "AES-GCM": null,
-    "AES-OCB": null,
-    "AES-KW": null,
-    "ChaCha20-Poly1305": null,
-    "Ed25519": null,
-    "X25519": null,
-    "X448": null,
-    "ML-KEM-512": null,
-    "ML-KEM-768": null,
-    "ML-KEM-1024": null,
-    "ML-DSA-44": null,
-    "ML-DSA-65": null,
-    "ML-DSA-87": null,
-  },
-  "encapsulate": {
-    "ML-KEM-512": null,
-    "ML-KEM-768": null,
-    "ML-KEM-1024": null,
-  },
-  "decapsulate": {
-    "ML-KEM-512": null,
-    "ML-KEM-768": null,
-    "ML-KEM-1024": null,
-  },
-  "deriveBits": {
-    "HKDF": "HkdfParams",
-    "PBKDF2": "Pbkdf2Params",
-    "ECDH": "EcdhKeyDeriveParams",
-    "X25519": "EcdhKeyDeriveParams",
-    "X448": "EcdhKeyDeriveParams",
-  },
-  "encrypt": {
-    "RSA-OAEP": "RsaOaepParams",
-    "AES-CBC": "AesCbcParams",
-    "AES-GCM": "AesGcmParams",
-    "AES-OCB": "AesGcmParams",
-    "AES-CTR": "AesCtrParams",
-    "ChaCha20-Poly1305": "ChaCha20Poly1305Params",
-  },
-  "decrypt": {
-    "RSA-OAEP": "RsaOaepParams",
-    "AES-CBC": "AesCbcParams",
-    "AES-GCM": "AesGcmParams",
-    "AES-OCB": "AesGcmParams",
-    "AES-CTR": "AesCtrParams",
-    "ChaCha20-Poly1305": "ChaCha20Poly1305Params",
-  },
-  "get key length": {
-    "AES-CBC": "AesDerivedKeyParams",
-    "AES-CTR": "AesDerivedKeyParams",
-    "AES-GCM": "AesDerivedKeyParams",
-    "AES-KW": "AesDerivedKeyParams",
-    "HMAC": "HmacImportParams",
-    "ChaCha20-Poly1305": null,
-    "HKDF": null,
-    "PBKDF2": null,
-  },
-  "wrapKey": {
-    "AES-KW": null,
-  },
-  "unwrapKey": {
-    "AES-KW": null,
-  },
-};
+// The algorithm registry that this used to hold lives in Rust now
+// (see ext/crypto/algorithm.rs). The registered (algorithm, dict-type)
+// lookup is performed via op_crypto_get_registered_algorithm, which keeps
+// the table out of the V8 startup snapshot.
 
 const aesJwkAlg = {
   "AES-CTR": {
@@ -323,36 +197,27 @@ function normalizeAlgorithm(algorithm, op) {
     return normalizeAlgorithm({ name: algorithm }, op);
   }
 
-  // 1.
-  const registeredAlgorithms = supportedAlgorithms[op];
   // 2. 3.
   const initialAlg = webidl.converters.Algorithm(
     algorithm,
     "Failed to normalize algorithm",
     "passed algorithm",
   );
-  // 4.
-  let algName = initialAlg.name;
 
-  // 5.
-  let desiredType = undefined;
-  for (const key in registeredAlgorithms) {
-    if (!ObjectHasOwn(registeredAlgorithms, key)) {
-      continue;
-    }
-    if (
-      StringPrototypeToUpperCase(key) === StringPrototypeToUpperCase(algName)
-    ) {
-      algName = key;
-      desiredType = registeredAlgorithms[key];
-    }
-  }
-  if (desiredType === undefined) {
+  // 1. + 4. + 5. Look up the (algorithm, dict-type) pair in the registered
+  // table (kept in Rust -- see ext/crypto/algorithm.rs). The returned `name`
+  // is the canonical casing matching the registered key; `dict` is the
+  // dictionary type name to coerce the input into, or null when the
+  // algorithm registers no operation-specific parameters.
+  const registered = op_crypto_get_registered_algorithm(op, initialAlg.name);
+  if (registered.name === "") {
     throw new DOMException(
       "Unrecognized algorithm name",
       "NotSupportedError",
     );
   }
+  const algName = registered.name;
+  const desiredType = registered.dict;
 
   // Fast path everything below if the registered dictionary is "None".
   if (desiredType === null) {
@@ -1813,7 +1678,7 @@ class SubtleCrypto {
 
     // 14-15.
     if (
-      supportedAlgorithms["wrapKey"][normalizedAlgorithm.name] !== undefined
+      isAlgorithmRegisteredFor("wrapKey", normalizedAlgorithm.name)
     ) {
       const handle = wrappingKey[_handle];
 
@@ -1834,7 +1699,7 @@ class SubtleCrypto {
         }
       }
     } else if (
-      supportedAlgorithms["encrypt"][normalizedAlgorithm.name] !== undefined
+      isAlgorithmRegisteredFor("encrypt", normalizedAlgorithm.name)
     ) {
       // must construct a new key, since keyUsages is ["wrapKey"] and not ["encrypt"]
       return await encrypt(
@@ -1943,7 +1808,7 @@ class SubtleCrypto {
     // 13.
     let key;
     if (
-      supportedAlgorithms["unwrapKey"][normalizedAlgorithm.name] !== undefined
+      isAlgorithmRegisteredFor("unwrapKey", normalizedAlgorithm.name)
     ) {
       const handle = unwrappingKey[_handle];
 
@@ -1965,7 +1830,7 @@ class SubtleCrypto {
         }
       }
     } else if (
-      supportedAlgorithms["decrypt"][normalizedAlgorithm.name] !== undefined
+      isAlgorithmRegisteredFor("decrypt", normalizedAlgorithm.name)
     ) {
       // must construct a new key, since keyUsages is ["unwrapKey"] and not ["decrypt"]
       key = await this.decrypt(
@@ -2896,14 +2761,7 @@ function supportsParamsValid(registeredOp, algName, algorithm, length) {
 }
 
 function isAlgorithmRegisteredFor(algName, registeredOp) {
-  const registered = supportedAlgorithms[registeredOp];
-  if (registered === undefined) return false;
-  const upper = StringPrototypeToUpperCase(algName);
-  for (const key in registered) {
-    if (!ObjectHasOwn(registered, key)) continue;
-    if (StringPrototypeToUpperCase(key) === upper) return true;
-  }
-  return false;
+  return op_crypto_get_registered_algorithm(registeredOp, algName).name !== "";
 }
 
 function supportsGetPublicKey(algName) {
