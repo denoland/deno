@@ -105,6 +105,7 @@ class SqliteRustBackend {
     responseStatus,
     responseStatusText,
     stream,
+    length,
   ) {
     let rid = null;
     if (stream) {
@@ -112,7 +113,7 @@ class SqliteRustBackend {
       if (resourceBacking) {
         rid = resourceBacking.rid;
       } else {
-        rid = resourceForReadableStream(stream);
+        rid = resourceForReadableStream(stream, length);
       }
     }
     await op_cache_put({
@@ -225,6 +226,7 @@ class LscBackend {
     _responseStatus,
     _responseStatusText,
     bodyStream,
+    _length,
   ) {
     const cacheName = MapPrototypeGet(this.#id2name, cacheId);
     if (cacheName === undefined) {
@@ -587,6 +589,7 @@ class Cache {
       innerResponse.status,
       innerResponse.statusMessage,
       stream || null,
+      innerResponse.body?.length,
     );
   }
 
