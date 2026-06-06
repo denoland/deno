@@ -946,7 +946,12 @@ impl AddRmPackageReq {
           entry_text
         )) {
           Ok(req_ref) => req_ref.into_inner().req,
-          Err(_) => PackageReq::from_str_loose(entry_text)?,
+          // If loose parsing also fails the input is genuinely malformed, so
+          // surface the original strict error, which carries the more helpful
+          // diagnostic (e.g. the "did you mean" subpath suggestion).
+          Err(err) => {
+            PackageReq::from_str_loose(entry_text).map_err(|_| err)?
+          }
         };
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
@@ -959,7 +964,12 @@ impl AddRmPackageReq {
           entry_text
         )) {
           Ok(req_ref) => req_ref.into_inner().req,
-          Err(_) => PackageReq::from_str_loose(entry_text)?,
+          // If loose parsing also fails the input is genuinely malformed, so
+          // surface the original strict error, which carries the more helpful
+          // diagnostic (e.g. the "did you mean" subpath suggestion).
+          Err(err) => {
+            PackageReq::from_str_loose(entry_text).map_err(|_| err)?
+          }
         };
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
