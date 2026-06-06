@@ -102,6 +102,8 @@ deno_core::extension!(deno_crypto,
   ops = [
     crypto::op_create_crypto,
     subtle_crypto::op_create_subtle_crypto,
+    crypto_key::op_create_crypto_key,
+    crypto_key::op_crypto_key_handle,
     op_crypto_get_random_values,
     op_crypto_generate_key,
     op_crypto_sign_key,

@@ -9,7 +9,10 @@ const {
 } = core;
 const {
   Crypto,
+  CryptoKey,
   op_create_crypto,
+  op_create_crypto_key,
+  op_crypto_key_handle,
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
   op_crypto_get_key_length,
@@ -298,75 +301,37 @@ function copyBuffer(input) {
   );
 }
 
-const _handle = Symbol("[[handle]]");
-const _algorithm = Symbol("[[algorithm]]");
-const _extractable = Symbol("[[extractable]]");
-const _usages = Symbol("[[usages]]");
-const _type = Symbol("[[type]]");
-
-class CryptoKey {
-  /** @type {string} */
-  [_type];
-  /** @type {boolean} */
-  [_extractable];
-  /** @type {object} */
-  [_algorithm];
-  /** @type {string[]} */
-  [_usages];
-  /** @type {object} */
-  [_handle];
-  /** @type {object} */
-  [kKeyObject];
-
-  constructor() {
-    webidl.illegalConstructor();
-  }
-
-  /** @returns {string} */
-  get type() {
-    webidl.assertBranded(this, CryptoKeyPrototype);
-    return this[_type];
-  }
-
-  /** @returns {boolean} */
-  get extractable() {
-    webidl.assertBranded(this, CryptoKeyPrototype);
-    return this[_extractable];
-  }
-
-  /** @returns {string[]} */
-  get usages() {
-    webidl.assertBranded(this, CryptoKeyPrototype);
-    // TODO(lucacasonato): return a SameObject copy
-    return this[_usages];
-  }
-
-  /** @returns {object} */
-  get algorithm() {
-    webidl.assertBranded(this, CryptoKeyPrototype);
-    // TODO(lucacasonato): return a SameObject copy
-    return this[_algorithm];
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, this),
-        keys: [
-          "type",
-          "extractable",
-          "algorithm",
-          "usages",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-webidl.configureInterface(CryptoKey);
+// `CryptoKey` is the cppgc-wrapped Rust class imported above; the `type`,
+// `extractable`, `usages` and `algorithm` getters and the underlying state
+// all live in Rust (`ext/crypto/crypto_key.rs`). The JS shim only attaches
+// the `Deno.privateCustomInspect` symbol to the prototype.
 const CryptoKeyPrototype = CryptoKey.prototype;
+ObjectDefineProperty(
+  CryptoKeyPrototype,
+  SymbolFor("Deno.privateCustomInspect"),
+  {
+    __proto__: null,
+    value: function (inspect, inspectOptions) {
+      return inspect(
+        createFilteredInspectProxy({
+          object: this,
+          evaluate: ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, this),
+          keys: [
+            "type",
+            "extractable",
+            "algorithm",
+            "usages",
+          ],
+        }),
+        inspectOptions,
+      );
+    },
+    enumerable: false,
+    configurable: true,
+    writable: true,
+  },
+);
+webidl.configureInterface(CryptoKey);
 
 /**
  * @param {string} type
@@ -377,12 +342,21 @@ const CryptoKeyPrototype = CryptoKey.prototype;
  * @returns
  */
 function constructKey(type, extractable, usages, algorithm, handle) {
-  const key = webidl.createBranded(CryptoKey);
-  key[_type] = type;
-  key[_extractable] = extractable;
-  key[_usages] = usages;
-  key[_algorithm] = algorithm;
-  key[_handle] = handle;
+  const key = op_create_crypto_key(
+    type,
+    extractable,
+    usages,
+    algorithm,
+    handle,
+  );
+  // The webidl `CryptoKey` converter (used by every `SubtleCrypto` method
+  // that takes a key) checks `V[webidl.brand] === webidl.brand`; cppgc
+  // instances don't carry the brand by default, so stamp it on after the
+  // Rust-side constructor returns.
+  key[webidl.brand] = webidl.brand;
+  // `kKeyObject` is the symbol that `node:crypto` reads when interop-ing a
+  // WebCrypto `CryptoKey` into a Node `KeyObject`; attach the same key data
+  // shape onto the cppgc instance so existing callers see no change.
   key[kKeyObject] = getKeyData(handle);
   ObjectDefineProperty(key, core.hostObjectBrand, {
     __proto__: null,
@@ -667,7 +641,7 @@ class SubtleCrypto {
     data = copyBuffer(data);
 
     // 8.
-    if (normalizedAlgorithm.name !== key[_algorithm].name) {
+    if (normalizedAlgorithm.name !== key.algorithm.name) {
       throw new DOMException(
         `Encryption algorithm '${normalizedAlgorithm.name}' does not match key algorithm`,
         "InvalidAccessError",
@@ -675,7 +649,7 @@ class SubtleCrypto {
     }
 
     // 9.
-    if (!ArrayPrototypeIncludes(key[_usages], "encrypt")) {
+    if (!ArrayPrototypeIncludes(key.usages, "encrypt")) {
       throw new DOMException(
         "The requested operation is not valid for the provided key",
         "InvalidAccessError",
@@ -712,7 +686,7 @@ class SubtleCrypto {
     data = copyBuffer(data);
 
     // 8.
-    if (normalizedAlgorithm.name !== key[_algorithm].name) {
+    if (normalizedAlgorithm.name !== key.algorithm.name) {
       throw new DOMException(
         `Decryption algorithm "${normalizedAlgorithm.name}" does not match key algorithm`,
         "OperationError",
@@ -720,19 +694,19 @@ class SubtleCrypto {
     }
 
     // 9.
-    if (!ArrayPrototypeIncludes(key[_usages], "decrypt")) {
+    if (!ArrayPrototypeIncludes(key.usages, "decrypt")) {
       throw new DOMException(
         "The requested operation is not valid for the provided key",
         "InvalidAccessError",
       );
     }
 
-    const handle = key[_handle];
+    const handle = op_crypto_key_handle(key);
 
     switch (normalizedAlgorithm.name) {
       case "RSA-OAEP": {
         // 1.
-        if (key[_type] !== "private") {
+        if (key.type !== "private") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
@@ -747,7 +721,7 @@ class SubtleCrypto {
         }
 
         // 3-5.
-        const hashAlgorithm = key[_algorithm].hash.name;
+        const hashAlgorithm = key.algorithm.hash.name;
         const plainText = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "RSA-OAEP",
           hash: hashAlgorithm,
@@ -771,7 +745,7 @@ class SubtleCrypto {
         const plainText = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "AES-CBC",
           iv: normalizedAlgorithm.iv,
-          length: key[_algorithm].length,
+          length: key.algorithm.length,
         }, data);
 
         // 6.
@@ -803,7 +777,7 @@ class SubtleCrypto {
         // 3.
         const cipherText = await op_crypto_decrypt(handle.cppgc, {
           algorithm: "AES-CTR",
-          keyLength: key[_algorithm].length,
+          keyLength: key.algorithm.length,
           counter: normalizedAlgorithm.counter,
           ctrLength: normalizedAlgorithm.length,
         }, data);
@@ -889,7 +863,7 @@ class SubtleCrypto {
         // 5-8.
         const plaintext = await op_crypto_decrypt(handle.cppgc, {
           algorithm: algorithm.name,
-          length: key[_algorithm].length,
+          length: key.algorithm.length,
           iv: normalizedAlgorithm.iv,
           additionalData: normalizedAlgorithm.additionalData ||
             null,
@@ -972,10 +946,10 @@ class SubtleCrypto {
     // 1.
     data = copyBuffer(data);
 
-    const handle = key[_handle];
+    const handle = op_crypto_key_handle(key);
 
     // 8.
-    if (normalizedAlgorithm.name !== key[_algorithm].name) {
+    if (normalizedAlgorithm.name !== key.algorithm.name) {
       throw new DOMException(
         "Signing algorithm does not match key algorithm",
         "InvalidAccessError",
@@ -983,7 +957,7 @@ class SubtleCrypto {
     }
 
     // 9.
-    if (!ArrayPrototypeIncludes(key[_usages], "sign")) {
+    if (!ArrayPrototypeIncludes(key.usages, "sign")) {
       throw new DOMException(
         "The requested operation is not valid for the provided key",
         "InvalidAccessError",
@@ -993,7 +967,7 @@ class SubtleCrypto {
     switch (normalizedAlgorithm.name) {
       case "RSASSA-PKCS1-v1_5": {
         // 1.
-        if (key[_type] !== "private") {
+        if (key.type !== "private") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
@@ -1001,7 +975,7 @@ class SubtleCrypto {
         }
 
         // 2.
-        const hashAlgorithm = key[_algorithm].hash.name;
+        const hashAlgorithm = key.algorithm.hash.name;
         const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
@@ -1011,7 +985,7 @@ class SubtleCrypto {
       }
       case "RSA-PSS": {
         // 1.
-        if (key[_type] !== "private") {
+        if (key.type !== "private") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
@@ -1019,7 +993,7 @@ class SubtleCrypto {
         }
 
         // 2.
-        const hashAlgorithm = key[_algorithm].hash.name;
+        const hashAlgorithm = key.algorithm.hash.name;
         const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
@@ -1030,7 +1004,7 @@ class SubtleCrypto {
       }
       case "ECDSA": {
         // 1.
-        if (key[_type] !== "private") {
+        if (key.type !== "private") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
@@ -1039,7 +1013,7 @@ class SubtleCrypto {
 
         // 2.
         const hashAlgorithm = normalizedAlgorithm.hash.name;
-        const namedCurve = key[_algorithm].namedCurve;
+        const namedCurve = key.algorithm.namedCurve;
         if (!ArrayPrototypeIncludes(supportedNamedCurves, namedCurve)) {
           throw new DOMException("Curve not supported", "NotSupportedError");
         }
@@ -1053,7 +1027,7 @@ class SubtleCrypto {
         return TypedArrayPrototypeGetBuffer(signature);
       }
       case "HMAC": {
-        const hashAlgorithm = key[_algorithm].hash.name;
+        const hashAlgorithm = key.algorithm.hash.name;
 
         const signature = await op_crypto_sign_key(handle.cppgc, {
           algorithm: "HMAC",
@@ -1064,7 +1038,7 @@ class SubtleCrypto {
       }
       case "Ed25519": {
         // 1.
-        if (key[_type] !== "private") {
+        if (key.type !== "private") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
@@ -1085,7 +1059,7 @@ class SubtleCrypto {
       case "ML-DSA-44":
       case "ML-DSA-65":
       case "ML-DSA-87": {
-        if (key[_type] !== "private") {
+        if (key.type !== "private") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
@@ -1162,7 +1136,7 @@ class SubtleCrypto {
 
     // 9.
     if (
-      ArrayPrototypeIncludes(["private", "secret"], result[_type]) &&
+      ArrayPrototypeIncludes(["private", "secret"], result.type) &&
       keyUsages.length == 0
     ) {
       throw new SyntaxError("Invalid key usage");
@@ -1184,11 +1158,11 @@ class SubtleCrypto {
     format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
     key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
 
-    const handle = key[_handle];
+    const handle = op_crypto_key_handle(key);
     // 2.
     const innerKey = getKeyData(handle);
 
-    const algorithmName = key[_algorithm].name;
+    const algorithmName = key.algorithm.name;
 
     let result;
 
@@ -1283,11 +1257,11 @@ class SubtleCrypto {
     // 4-6.
     const result = await deriveBits(normalizedAlgorithm, baseKey, length);
     // 7.
-    if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
+    if (normalizedAlgorithm.name !== baseKey.algorithm.name) {
       throw new DOMException("Invalid algorithm name", "InvalidAccessError");
     }
     // 8.
-    if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveBits")) {
+    if (!ArrayPrototypeIncludes(baseKey.usages, "deriveBits")) {
       throw new DOMException(
         "'baseKey' usages does not contain 'deriveBits'",
         "InvalidAccessError",
@@ -1353,7 +1327,7 @@ class SubtleCrypto {
     // 8-10.
 
     // 11.
-    if (normalizedAlgorithm.name !== baseKey[_algorithm].name) {
+    if (normalizedAlgorithm.name !== baseKey.algorithm.name) {
       throw new DOMException(
         `Invalid algorithm name: ${normalizedAlgorithm.name}`,
         "InvalidAccessError",
@@ -1361,7 +1335,7 @@ class SubtleCrypto {
     }
 
     // 12.
-    if (!ArrayPrototypeIncludes(baseKey[_usages], "deriveKey")) {
+    if (!ArrayPrototypeIncludes(baseKey.usages, "deriveKey")) {
       throw new DOMException(
         "'baseKey' usages does not contain 'deriveKey'",
         "InvalidAccessError",
@@ -1392,7 +1366,7 @@ class SubtleCrypto {
 
     // 16.
     if (
-      ArrayPrototypeIncludes(["private", "secret"], result[_type]) &&
+      ArrayPrototypeIncludes(["private", "secret"], result.type) &&
       keyUsages.length == 0
     ) {
       throw new SyntaxError("Invalid key usage");
@@ -1431,16 +1405,16 @@ class SubtleCrypto {
     // 3.
     data = copyBuffer(data);
 
-    const handle = key[_handle];
+    const handle = op_crypto_key_handle(key);
 
-    if (normalizedAlgorithm.name !== key[_algorithm].name) {
+    if (normalizedAlgorithm.name !== key.algorithm.name) {
       throw new DOMException(
         "Verifying algorithm does not match key algorithm",
         "InvalidAccessError",
       );
     }
 
-    if (!ArrayPrototypeIncludes(key[_usages], "verify")) {
+    if (!ArrayPrototypeIncludes(key.usages, "verify")) {
       throw new DOMException(
         "The requested operation is not valid for the provided key",
         "InvalidAccessError",
@@ -1449,14 +1423,14 @@ class SubtleCrypto {
 
     switch (normalizedAlgorithm.name) {
       case "RSASSA-PKCS1-v1_5": {
-        if (key[_type] !== "public") {
+        if (key.type !== "public") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
           );
         }
 
-        const hashAlgorithm = key[_algorithm].hash.name;
+        const hashAlgorithm = key.algorithm.hash.name;
         return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "RSASSA-PKCS1-v1_5",
           hash: hashAlgorithm,
@@ -1464,14 +1438,14 @@ class SubtleCrypto {
         }, data);
       }
       case "RSA-PSS": {
-        if (key[_type] !== "public") {
+        if (key.type !== "public") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
           );
         }
 
-        const hashAlgorithm = key[_algorithm].hash.name;
+        const hashAlgorithm = key.algorithm.hash.name;
         return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "RSA-PSS",
           hash: hashAlgorithm,
@@ -1480,7 +1454,7 @@ class SubtleCrypto {
         }, data);
       }
       case "HMAC": {
-        const hash = key[_algorithm].hash.name;
+        const hash = key.algorithm.hash.name;
         return await op_crypto_verify_key(handle.cppgc, {
           algorithm: "HMAC",
           hash,
@@ -1489,7 +1463,7 @@ class SubtleCrypto {
       }
       case "ECDSA": {
         // 1.
-        if (key[_type] !== "public") {
+        if (key.type !== "public") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
@@ -1502,12 +1476,12 @@ class SubtleCrypto {
           algorithm: "ECDSA",
           hash,
           signature,
-          namedCurve: key[_algorithm].namedCurve,
+          namedCurve: key.algorithm.namedCurve,
         }, data);
       }
       case "Ed25519": {
         // 1.
-        if (key[_type] !== "public") {
+        if (key.type !== "public") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
@@ -1519,7 +1493,7 @@ class SubtleCrypto {
       case "ML-DSA-44":
       case "ML-DSA-65":
       case "ML-DSA-87": {
-        if (key[_type] !== "public") {
+        if (key.type !== "public") {
           throw new DOMException(
             "Key type not supported",
             "InvalidAccessError",
@@ -1574,7 +1548,7 @@ class SubtleCrypto {
     }
 
     // 8.
-    if (normalizedAlgorithm.name !== wrappingKey[_algorithm].name) {
+    if (normalizedAlgorithm.name !== wrappingKey.algorithm.name) {
       throw new DOMException(
         "Wrapping algorithm does not match key algorithm",
         "InvalidAccessError",
@@ -1582,7 +1556,7 @@ class SubtleCrypto {
     }
 
     // 9.
-    if (!ArrayPrototypeIncludes(wrappingKey[_usages], "wrapKey")) {
+    if (!ArrayPrototypeIncludes(wrappingKey.usages, "wrapKey")) {
       throw new DOMException(
         "The requested operation is not valid for the provided key",
         "InvalidAccessError",
@@ -1591,7 +1565,7 @@ class SubtleCrypto {
 
     // 10. NotSupportedError will be thrown in step 12.
     // 11.
-    if (key[_extractable] === false) {
+    if (key.extractable === false) {
       throw new DOMException(
         "Key is not extractable",
         "InvalidAccessError",
@@ -1618,7 +1592,7 @@ class SubtleCrypto {
     if (
       isAlgorithmRegisteredFor(normalizedAlgorithm.name, "wrapKey")
     ) {
-      const handle = wrappingKey[_handle];
+      const handle = op_crypto_key_handle(wrappingKey);
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
@@ -1643,11 +1617,11 @@ class SubtleCrypto {
       return await encrypt(
         normalizedAlgorithm,
         constructKey(
-          wrappingKey[_type],
-          wrappingKey[_extractable],
+          wrappingKey.type,
+          wrappingKey.extractable,
           ["encrypt"],
-          wrappingKey[_algorithm],
-          wrappingKey[_handle],
+          wrappingKey.algorithm,
+          op_crypto_key_handle(wrappingKey),
         ),
         bytes,
       );
@@ -1728,7 +1702,7 @@ class SubtleCrypto {
     );
 
     // 11.
-    if (normalizedAlgorithm.name !== unwrappingKey[_algorithm].name) {
+    if (normalizedAlgorithm.name !== unwrappingKey.algorithm.name) {
       throw new DOMException(
         "Unwrapping algorithm does not match key algorithm",
         "InvalidAccessError",
@@ -1736,7 +1710,7 @@ class SubtleCrypto {
     }
 
     // 12.
-    if (!ArrayPrototypeIncludes(unwrappingKey[_usages], "unwrapKey")) {
+    if (!ArrayPrototypeIncludes(unwrappingKey.usages, "unwrapKey")) {
       throw new DOMException(
         "The requested operation is not valid for the provided key",
         "InvalidAccessError",
@@ -1748,7 +1722,7 @@ class SubtleCrypto {
     if (
       isAlgorithmRegisteredFor(normalizedAlgorithm.name, "unwrapKey")
     ) {
-      const handle = unwrappingKey[_handle];
+      const handle = op_crypto_key_handle(unwrappingKey);
 
       switch (normalizedAlgorithm.name) {
         case "AES-KW": {
@@ -1774,11 +1748,11 @@ class SubtleCrypto {
       key = await this.decrypt(
         normalizedAlgorithm,
         constructKey(
-          unwrappingKey[_type],
-          unwrappingKey[_extractable],
+          unwrappingKey.type,
+          unwrappingKey.extractable,
           ["decrypt"],
-          unwrappingKey[_algorithm],
-          unwrappingKey[_handle],
+          unwrappingKey.algorithm,
+          op_crypto_key_handle(unwrappingKey),
         ),
         wrappedKey,
       );
@@ -1812,17 +1786,23 @@ class SubtleCrypto {
     );
     // 16.
     if (
-      (result[_type] == "secret" || result[_type] == "private") &&
+      (result.type == "secret" || result.type == "private") &&
       keyUsages.length == 0
     ) {
       throw new SyntaxError("Invalid key type");
     }
-    // 17.
-    result[_extractable] = extractable;
-    // 18.
-    result[_usages] = usageIntersection(keyUsages, recognisedUsages);
-    // 19.
-    return result;
+    // 17, 18, 19. Build a fresh `CryptoKey` reusing the imported key
+    // material so the public `extractable`/`usages` getters reflect the
+    // unwrapKey arguments (the getters on the Rust cppgc class are
+    // read-only, so we can't mutate slots in place the way the old
+    // JS-class implementation did).
+    return constructKey(
+      result.type,
+      extractable,
+      usageIntersection(keyUsages, recognisedUsages),
+      result.algorithm,
+      op_crypto_key_handle(result),
+    );
   }
 
   /**
@@ -1861,14 +1841,14 @@ class SubtleCrypto {
     );
 
     if (ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, result)) {
-      const type = result[_type];
+      const type = result.type;
       if ((type === "secret" || type === "private") && usages.length === 0) {
         throw new DOMException("Invalid key usage", "SyntaxError");
       }
     } else if (
       ObjectPrototypeIsPrototypeOf(CryptoKeyPrototype, result.privateKey)
     ) {
-      if (result.privateKey[_usages].length === 0) {
+      if (result.privateKey.usages.length === 0) {
         throw new DOMException("Invalid key usage", "SyntaxError");
       }
     }
@@ -1923,19 +1903,19 @@ class SubtleCrypto {
 
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encapsulate");
 
-    if (encapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+    if (encapsulationKey.algorithm.name !== normalizedAlgorithm.name) {
       throw new DOMException(
         "Encapsulation key algorithm does not match",
         "InvalidAccessError",
       );
     }
-    if (encapsulationKey[_type] !== "public") {
+    if (encapsulationKey.type !== "public") {
       throw new DOMException(
         "Encapsulation key must be a public key",
         "InvalidAccessError",
       );
     }
-    if (!ArrayPrototypeIncludes(encapsulationKey[_usages], "encapsulateKey")) {
+    if (!ArrayPrototypeIncludes(encapsulationKey.usages, "encapsulateKey")) {
       throw new DOMException(
         "Encapsulation key usages must include 'encapsulateKey'",
         "InvalidAccessError",
@@ -1989,19 +1969,19 @@ class SubtleCrypto {
 
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encapsulate");
 
-    if (encapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+    if (encapsulationKey.algorithm.name !== normalizedAlgorithm.name) {
       throw new DOMException(
         "Encapsulation key algorithm does not match",
         "InvalidAccessError",
       );
     }
-    if (encapsulationKey[_type] !== "public") {
+    if (encapsulationKey.type !== "public") {
       throw new DOMException(
         "Encapsulation key must be a public key",
         "InvalidAccessError",
       );
     }
-    if (!ArrayPrototypeIncludes(encapsulationKey[_usages], "encapsulateBits")) {
+    if (!ArrayPrototypeIncludes(encapsulationKey.usages, "encapsulateBits")) {
       throw new DOMException(
         "Encapsulation key usages must include 'encapsulateBits'",
         "InvalidAccessError",
@@ -2073,19 +2053,19 @@ class SubtleCrypto {
 
     ciphertext = copyBuffer(ciphertext);
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decapsulate");
-    if (decapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+    if (decapsulationKey.algorithm.name !== normalizedAlgorithm.name) {
       throw new DOMException(
         "Decapsulation key algorithm does not match",
         "InvalidAccessError",
       );
     }
-    if (decapsulationKey[_type] !== "private") {
+    if (decapsulationKey.type !== "private") {
       throw new DOMException(
         "Decapsulation key must be a private key",
         "InvalidAccessError",
       );
     }
-    if (!ArrayPrototypeIncludes(decapsulationKey[_usages], "decapsulateKey")) {
+    if (!ArrayPrototypeIncludes(decapsulationKey.usages, "decapsulateKey")) {
       throw new DOMException(
         "Decapsulation key usages must include 'decapsulateKey'",
         "InvalidAccessError",
@@ -2141,19 +2121,19 @@ class SubtleCrypto {
 
     ciphertext = copyBuffer(ciphertext);
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decapsulate");
-    if (decapsulationKey[_algorithm].name !== normalizedAlgorithm.name) {
+    if (decapsulationKey.algorithm.name !== normalizedAlgorithm.name) {
       throw new DOMException(
         "Decapsulation key algorithm does not match",
         "InvalidAccessError",
       );
     }
-    if (decapsulationKey[_type] !== "private") {
+    if (decapsulationKey.type !== "private") {
       throw new DOMException(
         "Decapsulation key must be a private key",
         "InvalidAccessError",
       );
     }
-    if (!ArrayPrototypeIncludes(decapsulationKey[_usages], "decapsulateBits")) {
+    if (!ArrayPrototypeIncludes(decapsulationKey.usages, "decapsulateBits")) {
       throw new DOMException(
         "Decapsulation key usages must include 'decapsulateBits'",
         "InvalidAccessError",
@@ -2190,7 +2170,7 @@ class SubtleCrypto {
       "Argument 2",
     );
 
-    const algorithm = key[_algorithm];
+    const algorithm = key.algorithm;
     const algorithmName = algorithm.name;
 
     // 1. Algorithms that cannot derive a public key reject with a
@@ -2219,7 +2199,7 @@ class SubtleCrypto {
     }
 
     // 2. The public key can only be derived from a private key.
-    if (key[_type] !== "private") {
+    if (key.type !== "private") {
       throw new DOMException(
         "Public keys can only be derived from private keys",
         "InvalidAccessError",
@@ -2239,7 +2219,7 @@ class SubtleCrypto {
         try {
           publicKeyBytes = op_crypto_ml_kem_get_public_key(
             algorithmName,
-            key[_handle].cppgc,
+            op_crypto_key_handle(key).cppgc,
           );
         } catch (_) {
           throw new DOMException(
@@ -2275,7 +2255,7 @@ class SubtleCrypto {
           true,
           keyUsages,
           { name: algorithmName },
-          pub[_handle],
+          op_crypto_key_handle(pub),
         );
       }
       case "RSASSA-PKCS1-v1_5":
@@ -2286,7 +2266,7 @@ class SubtleCrypto {
           spki = op_crypto_export_key({
             algorithm: algorithmName,
             format: "spki",
-          }, getKeyData(key[_handle]));
+          }, getKeyData(op_crypto_key_handle(key)));
         } catch (_) {
           throw new DOMException(
             "Failed to derive public key",
@@ -2303,7 +2283,7 @@ class SubtleCrypto {
             algorithm: algorithmName,
             namedCurve: algorithm.namedCurve,
             format: "spki",
-          }, getKeyData(key[_handle]));
+          }, getKeyData(op_crypto_key_handle(key)));
         } catch (_) {
           throw new DOMException(
             "Failed to derive public key",
@@ -2319,13 +2299,19 @@ class SubtleCrypto {
         try {
           switch (algorithmName) {
             case "Ed25519":
-              x = op_crypto_jwk_x_ed25519(getKeyData(key[_handle]));
+              x = op_crypto_jwk_x_ed25519(
+                getKeyData(op_crypto_key_handle(key)),
+              );
               break;
             case "X25519":
-              x = op_crypto_x25519_public_key(getKeyData(key[_handle]));
+              x = op_crypto_x25519_public_key(
+                getKeyData(op_crypto_key_handle(key)),
+              );
               break;
             default: // X448
-              x = op_crypto_x448_public_key(getKeyData(key[_handle]));
+              x = op_crypto_x448_public_key(
+                getKeyData(op_crypto_key_handle(key)),
+              );
               break;
           }
         } catch (_) {
@@ -2719,7 +2705,7 @@ function mlKemEncapsulate(normalizedAlgorithm, encapsulationKey) {
     case "ML-KEM-512":
     case "ML-KEM-768":
     case "ML-KEM-1024": {
-      const handle = encapsulationKey[_handle];
+      const handle = op_crypto_key_handle(encapsulationKey);
       let result;
       try {
         result = op_crypto_ml_kem_encapsulate(
@@ -2754,7 +2740,7 @@ function mlKemDecapsulate(normalizedAlgorithm, decapsulationKey, ciphertext) {
           "OperationError",
         );
       }
-      const handle = decapsulationKey[_handle];
+      const handle = op_crypto_key_handle(decapsulationKey);
       try {
         return op_crypto_ml_kem_decapsulate(
           normalizedAlgorithm.name,
@@ -4108,7 +4094,7 @@ function exportKeyAES(
       ObjectAssign(jwk, data);
 
       // 4.
-      const algorithm = key[_algorithm];
+      const algorithm = key.algorithm;
       switch (algorithm.length) {
         case 128:
           jwk.alg = aesJwkAlg[algorithm.name][128];
@@ -4130,7 +4116,7 @@ function exportKeyAES(
       jwk.key_ops = key.usages;
 
       // 6.
-      jwk.ext = key[_extractable];
+      jwk.ext = key.extractable;
 
       // 7.
       return jwk;
@@ -4168,7 +4154,7 @@ function exportKeyChaCha20Poly1305(format, key, innerKey) {
       jwk.key_ops = key.usages;
 
       // 6.
-      jwk.ext = key[_extractable];
+      jwk.ext = key.extractable;
 
       // 7.
       return jwk;
@@ -4451,8 +4437,8 @@ function importKeyMlKem(
 }
 
 function exportKeyMlKem(format, key, innerKey) {
-  const algorithmName = key[_algorithm].name;
-  const type = key[_type];
+  const algorithmName = key.algorithm.name;
+  const type = key.type;
 
   switch (format) {
     case "raw-public": {
@@ -4513,7 +4499,7 @@ function exportKeyMlKem(format, key, innerKey) {
         kty: "AKP",
         alg: algorithmName,
         "key_ops": key.usages,
-        ext: key[_extractable],
+        ext: key.extractable,
       };
       if (type === "private") {
         const seed = innerKey?.seed;
@@ -4526,7 +4512,7 @@ function exportKeyMlKem(format, key, innerKey) {
         }
         const publicKeyBytes = op_crypto_ml_kem_get_public_key(
           algorithmName,
-          key[_handle].cppgc,
+          op_crypto_key_handle(key).cppgc,
         );
         jwk.pub = op_crypto_base64url_encode(publicKeyBytes);
         jwk.priv = op_crypto_base64url_encode(seed);
@@ -5659,12 +5645,12 @@ function importKeyMlDsa(
 }
 
 function exportKeyMlDsa(format, key, innerKey) {
-  const algorithmName = key[_algorithm].name;
+  const algorithmName = key.algorithm.name;
   const variant = mldsaVariantId(algorithmName);
 
   switch (format) {
     case "raw-seed": {
-      if (key[_type] !== "private") {
+      if (key.type !== "private") {
         throw new DOMException(
           "Key is not a private key",
           "InvalidAccessError",
@@ -5680,7 +5666,7 @@ function exportKeyMlDsa(format, key, innerKey) {
       return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(seed));
     }
     case "raw-public": {
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -5689,7 +5675,7 @@ function exportKeyMlDsa(format, key, innerKey) {
       return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(innerKey));
     }
     case "pkcs8": {
-      if (key[_type] !== "private") {
+      if (key.type !== "private") {
         throw new DOMException(
           "Key is not a private key",
           "InvalidAccessError",
@@ -5707,7 +5693,7 @@ function exportKeyMlDsa(format, key, innerKey) {
       return TypedArrayPrototypeGetBuffer(der);
     }
     case "spki": {
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -5721,9 +5707,9 @@ function exportKeyMlDsa(format, key, innerKey) {
         kty: "AKP",
         alg: algorithmName,
         "key_ops": key.usages,
-        ext: key[_extractable],
+        ext: key.extractable,
       };
-      if (key[_type] === "private") {
+      if (key.type === "private") {
         const seed = innerKey?.seed;
         if (seed == null) {
           throw new DOMException(
@@ -5733,7 +5719,9 @@ function exportKeyMlDsa(format, key, innerKey) {
           );
         }
         const publicKey = WeakMapPrototypeGet(MLDSA_PUBLIC_FROM_PRIVATE, key);
-        jwk.pub = op_crypto_base64url_encode(getKeyData(publicKey[_handle]));
+        jwk.pub = op_crypto_base64url_encode(
+          getKeyData(op_crypto_key_handle(publicKey)),
+        );
         jwk.priv = op_crypto_base64url_encode(seed);
       } else {
         jwk.pub = op_crypto_base64url_encode(innerKey);
@@ -6456,12 +6444,12 @@ function exportKeyHMAC(format, key, innerKey) {
       // 3.
       const data = op_crypto_export_key({
         format: "jwksecret",
-        algorithm: key[_algorithm].name,
+        algorithm: key.algorithm.name,
       }, innerKey);
       jwk.k = data.k;
 
       // 4.
-      const algorithm = key[_algorithm];
+      const algorithm = key.algorithm;
       // 5.
       const hash = algorithm.hash;
       // 6.
@@ -6496,7 +6484,7 @@ function exportKeyHMAC(format, key, innerKey) {
       // 7.
       jwk.key_ops = key.usages;
       // 8.
-      jwk.ext = key[_extractable];
+      jwk.ext = key.extractable;
       // 9.
       return jwk;
     }
@@ -6509,7 +6497,7 @@ function exportKeyRSA(format, key, innerKey) {
   switch (format) {
     case "pkcs8": {
       // 1.
-      if (key[_type] !== "private") {
+      if (key.type !== "private") {
         throw new DOMException(
           "Key is not a private key",
           "InvalidAccessError",
@@ -6518,7 +6506,7 @@ function exportKeyRSA(format, key, innerKey) {
 
       // 2.
       const data = op_crypto_export_key({
-        algorithm: key[_algorithm].name,
+        algorithm: key.algorithm.name,
         format: "pkcs8",
       }, innerKey);
 
@@ -6527,7 +6515,7 @@ function exportKeyRSA(format, key, innerKey) {
     }
     case "spki": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6536,7 +6524,7 @@ function exportKeyRSA(format, key, innerKey) {
 
       // 2.
       const data = op_crypto_export_key({
-        algorithm: key[_algorithm].name,
+        algorithm: key.algorithm.name,
         format: "spki",
       }, innerKey);
 
@@ -6550,10 +6538,10 @@ function exportKeyRSA(format, key, innerKey) {
       };
 
       // 3.
-      const hash = key[_algorithm].hash.name;
+      const hash = key.algorithm.hash.name;
 
       // 4.
-      if (key[_algorithm].name === "RSASSA-PKCS1-v1_5") {
+      if (key.algorithm.name === "RSASSA-PKCS1-v1_5") {
         switch (hash) {
           case "SHA-1":
             jwk.alg = "RS1";
@@ -6582,7 +6570,7 @@ function exportKeyRSA(format, key, innerKey) {
               "NotSupportedError",
             );
         }
-      } else if (key[_algorithm].name === "RSA-PSS") {
+      } else if (key.algorithm.name === "RSA-PSS") {
         switch (hash) {
           case "SHA-1":
             jwk.alg = "PS1";
@@ -6644,8 +6632,8 @@ function exportKeyRSA(format, key, innerKey) {
 
       // 5-6.
       const data = op_crypto_export_key({
-        format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
-        algorithm: key[_algorithm].name,
+        format: key.type === "private" ? "jwkprivate" : "jwkpublic",
+        algorithm: key.algorithm.name,
       }, innerKey);
       ObjectAssign(jwk, data);
 
@@ -6653,7 +6641,7 @@ function exportKeyRSA(format, key, innerKey) {
       jwk.key_ops = key.usages;
 
       // 8.
-      jwk.ext = key[_extractable];
+      jwk.ext = key.extractable;
 
       return jwk;
     }
@@ -6668,7 +6656,7 @@ function exportKeyEd25519(format, key, innerKey) {
     case "raw-public":
     case "raw": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6680,7 +6668,7 @@ function exportKeyEd25519(format, key, innerKey) {
     }
     case "spki": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6692,7 +6680,7 @@ function exportKeyEd25519(format, key, innerKey) {
     }
     case "pkcs8": {
       // 1.
-      if (key[_type] !== "private") {
+      if (key.type !== "private") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6706,7 +6694,7 @@ function exportKeyEd25519(format, key, innerKey) {
       return TypedArrayPrototypeGetBuffer(pkcs8Der);
     }
     case "jwk": {
-      const x = key[_type] === "private"
+      const x = key.type === "private"
         ? op_crypto_jwk_x_ed25519(innerKey)
         : op_crypto_base64url_encode(innerKey);
       const jwk = {
@@ -6714,9 +6702,9 @@ function exportKeyEd25519(format, key, innerKey) {
         crv: "Ed25519",
         x,
         "key_ops": key.usages,
-        ext: key[_extractable],
+        ext: key.extractable,
       };
-      if (key[_type] === "private") {
+      if (key.type === "private") {
         jwk.d = op_crypto_base64url_encode(innerKey);
       }
       return jwk;
@@ -6732,7 +6720,7 @@ function exportKeyX448(format, key, innerKey) {
     case "raw-public":
     case "raw": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6744,7 +6732,7 @@ function exportKeyX448(format, key, innerKey) {
     }
     case "spki": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6756,7 +6744,7 @@ function exportKeyX448(format, key, innerKey) {
     }
     case "pkcs8": {
       // 1.
-      if (key[_type] !== "private") {
+      if (key.type !== "private") {
         throw new DOMException(
           "Key is not a private key",
           "InvalidAccessError",
@@ -6774,9 +6762,9 @@ function exportKeyX448(format, key, innerKey) {
         kty: "OKP",
         crv: "X448",
         "key_ops": key.usages,
-        ext: key[_extractable],
+        ext: key.extractable,
       };
-      if (key[_type] === "private") {
+      if (key.type === "private") {
         jwk.x = op_crypto_x448_public_key(innerKey);
         jwk.d = op_crypto_base64url_encode(innerKey);
       } else {
@@ -6795,7 +6783,7 @@ function exportKeyX25519(format, key, innerKey) {
     case "raw-public":
     case "raw": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6807,7 +6795,7 @@ function exportKeyX25519(format, key, innerKey) {
     }
     case "spki": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6819,7 +6807,7 @@ function exportKeyX25519(format, key, innerKey) {
     }
     case "pkcs8": {
       // 1.
-      if (key[_type] !== "private") {
+      if (key.type !== "private") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6837,9 +6825,9 @@ function exportKeyX25519(format, key, innerKey) {
         kty: "OKP",
         crv: "X25519",
         "key_ops": key.usages,
-        ext: key[_extractable],
+        ext: key.extractable,
       };
-      if (key[_type] === "private") {
+      if (key.type === "private") {
         jwk.x = op_crypto_x25519_public_key(innerKey);
         jwk.d = op_crypto_base64url_encode(innerKey);
       } else {
@@ -6858,7 +6846,7 @@ function exportKeyEC(format, key, innerKey) {
     case "raw-public":
     case "raw": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6867,8 +6855,8 @@ function exportKeyEC(format, key, innerKey) {
 
       // 2.
       const data = op_crypto_export_key({
-        algorithm: key[_algorithm].name,
-        namedCurve: key[_algorithm].namedCurve,
+        algorithm: key.algorithm.name,
+        namedCurve: key.algorithm.namedCurve,
         format: "raw",
       }, innerKey);
 
@@ -6876,7 +6864,7 @@ function exportKeyEC(format, key, innerKey) {
     }
     case "pkcs8": {
       // 1.
-      if (key[_type] !== "private") {
+      if (key.type !== "private") {
         throw new DOMException(
           "Key is not a private key",
           "InvalidAccessError",
@@ -6885,8 +6873,8 @@ function exportKeyEC(format, key, innerKey) {
 
       // 2.
       const data = op_crypto_export_key({
-        algorithm: key[_algorithm].name,
-        namedCurve: key[_algorithm].namedCurve,
+        algorithm: key.algorithm.name,
+        namedCurve: key.algorithm.namedCurve,
         format: "pkcs8",
       }, innerKey);
 
@@ -6894,7 +6882,7 @@ function exportKeyEC(format, key, innerKey) {
     }
     case "spki": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key is not a public key",
           "InvalidAccessError",
@@ -6903,27 +6891,27 @@ function exportKeyEC(format, key, innerKey) {
 
       // 2.
       const data = op_crypto_export_key({
-        algorithm: key[_algorithm].name,
-        namedCurve: key[_algorithm].namedCurve,
+        algorithm: key.algorithm.name,
+        namedCurve: key.algorithm.namedCurve,
         format: "spki",
       }, innerKey);
 
       return TypedArrayPrototypeGetBuffer(data);
     }
     case "jwk": {
-      if (key[_algorithm].name == "ECDSA") {
+      if (key.algorithm.name == "ECDSA") {
         // 1-2.
         const jwk = {
           kty: "EC",
         };
 
         // 3.1
-        jwk.crv = key[_algorithm].namedCurve;
+        jwk.crv = key.algorithm.namedCurve;
 
         // Missing from spec
         let algNamedCurve;
 
-        switch (key[_algorithm].namedCurve) {
+        switch (key.algorithm.namedCurve) {
           case "P-256": {
             algNamedCurve = "ES256";
             break;
@@ -6947,9 +6935,9 @@ function exportKeyEC(format, key, innerKey) {
 
         // 3.2 - 3.4.
         const data = op_crypto_export_key({
-          format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
-          algorithm: key[_algorithm].name,
-          namedCurve: key[_algorithm].namedCurve,
+          format: key.type === "private" ? "jwkprivate" : "jwkpublic",
+          algorithm: key.algorithm.name,
+          namedCurve: key.algorithm.namedCurve,
         }, innerKey);
         ObjectAssign(jwk, data);
 
@@ -6957,7 +6945,7 @@ function exportKeyEC(format, key, innerKey) {
         jwk.key_ops = key.usages;
 
         // 5.
-        jwk.ext = key[_extractable];
+        jwk.ext = key.extractable;
 
         return jwk;
       } else { // ECDH
@@ -6970,13 +6958,13 @@ function exportKeyEC(format, key, innerKey) {
         jwk.alg = "ECDH";
 
         // 3.1
-        jwk.crv = key[_algorithm].namedCurve;
+        jwk.crv = key.algorithm.namedCurve;
 
         // 3.2 - 3.4
         const data = op_crypto_export_key({
-          format: key[_type] === "private" ? "jwkprivate" : "jwkpublic",
-          algorithm: key[_algorithm].name,
-          namedCurve: key[_algorithm].namedCurve,
+          format: key.type === "private" ? "jwkprivate" : "jwkpublic",
+          algorithm: key.algorithm.name,
+          namedCurve: key.algorithm.namedCurve,
         }, innerKey);
         ObjectAssign(jwk, data);
 
@@ -6984,7 +6972,7 @@ function exportKeyEC(format, key, innerKey) {
         jwk.key_ops = key.usages;
 
         // 5.
-        jwk.ext = key[_extractable];
+        jwk.ext = key.extractable;
 
         return jwk;
       }
@@ -7050,7 +7038,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         );
       }
 
-      const handle = baseKey[_handle];
+      const handle = op_crypto_key_handle(baseKey);
 
       normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
@@ -7065,17 +7053,17 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
     }
     case "ECDH": {
       // 1.
-      if (baseKey[_type] !== "private") {
+      if (baseKey.type !== "private") {
         throw new DOMException("Invalid key type", "InvalidAccessError");
       }
       // 2.
       const publicKey = normalizedAlgorithm.public;
       // 3.
-      if (publicKey[_type] !== "public") {
+      if (publicKey.type !== "public") {
         throw new DOMException("Invalid key type", "InvalidAccessError");
       }
       // 4.
-      if (publicKey[_algorithm].name !== baseKey[_algorithm].name) {
+      if (publicKey.algorithm.name !== baseKey.algorithm.name) {
         throw new DOMException(
           "Algorithm mismatch",
           "InvalidAccessError",
@@ -7083,7 +7071,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       }
       // 5.
       if (
-        publicKey[_algorithm].namedCurve !== baseKey[_algorithm].namedCurve
+        publicKey.algorithm.namedCurve !== baseKey.algorithm.namedCurve
       ) {
         throw new DOMException(
           "'namedCurve' mismatch",
@@ -7094,18 +7082,18 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       if (
         ArrayPrototypeIncludes(
           supportedNamedCurves,
-          publicKey[_algorithm].namedCurve,
+          publicKey.algorithm.namedCurve,
         )
       ) {
-        const baseKeyhandle = baseKey[_handle];
-        const publicKeyhandle = publicKey[_handle];
+        const baseKeyhandle = op_crypto_key_handle(baseKey);
+        const publicKeyhandle = op_crypto_key_handle(publicKey);
 
         const buf = await op_crypto_derive_bits(
           baseKeyhandle.cppgc,
           publicKeyhandle.cppgc,
           {
             algorithm: "ECDH",
-            namedCurve: publicKey[_algorithm].namedCurve,
+            namedCurve: publicKey.algorithm.namedCurve,
             length: length ?? 0,
           },
         );
@@ -7132,7 +7120,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
         throw new DOMException("Invalid length", "OperationError");
       }
 
-      const handle = baseKey[_handle];
+      const handle = op_crypto_key_handle(baseKey);
 
       normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
 
@@ -7149,17 +7137,17 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
     }
     case "X448": {
       // 1.
-      if (baseKey[_type] !== "private") {
+      if (baseKey.type !== "private") {
         throw new DOMException("Invalid key type", "InvalidAccessError");
       }
       // 2.
       const publicKey = normalizedAlgorithm.public;
       // 3.
-      if (publicKey[_type] !== "public") {
+      if (publicKey.type !== "public") {
         throw new DOMException("Invalid key type", "InvalidAccessError");
       }
       // 4.
-      if (publicKey[_algorithm].name !== baseKey[_algorithm].name) {
+      if (publicKey.algorithm.name !== baseKey.algorithm.name) {
         throw new DOMException(
           "Algorithm mismatch",
           "InvalidAccessError",
@@ -7167,8 +7155,8 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       }
 
       // 5.
-      const kHandle = baseKey[_handle];
-      const uHandle = publicKey[_handle];
+      const kHandle = op_crypto_key_handle(baseKey);
+      const uHandle = op_crypto_key_handle(publicKey);
 
       const secret = new Uint8Array(56);
       const isIdentity = op_crypto_derive_bits_x448(
@@ -7199,17 +7187,17 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
     }
     case "X25519": {
       // 1.
-      if (baseKey[_type] !== "private") {
+      if (baseKey.type !== "private") {
         throw new DOMException("Invalid key type", "InvalidAccessError");
       }
       // 2.
       const publicKey = normalizedAlgorithm.public;
       // 3.
-      if (publicKey[_type] !== "public") {
+      if (publicKey.type !== "public") {
         throw new DOMException("Invalid key type", "InvalidAccessError");
       }
       // 4.
-      if (publicKey[_algorithm].name !== baseKey[_algorithm].name) {
+      if (publicKey.algorithm.name !== baseKey.algorithm.name) {
         throw new DOMException(
           "Algorithm mismatch",
           "InvalidAccessError",
@@ -7217,8 +7205,8 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       }
 
       // 5.
-      const kHandle = baseKey[_handle];
-      const uHandle = publicKey[_handle];
+      const kHandle = op_crypto_key_handle(baseKey);
+      const uHandle = op_crypto_key_handle(publicKey);
 
       const secret = new Uint8Array(32);
       const isIdentity = op_crypto_derive_bits_x25519(
@@ -7253,12 +7241,12 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
 }
 
 async function encrypt(normalizedAlgorithm, key, data) {
-  const handle = key[_handle];
+  const handle = op_crypto_key_handle(key);
 
   switch (normalizedAlgorithm.name) {
     case "RSA-OAEP": {
       // 1.
-      if (key[_type] !== "public") {
+      if (key.type !== "public") {
         throw new DOMException(
           "Key type not supported",
           "InvalidAccessError",
@@ -7273,7 +7261,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       }
 
       // 3-5.
-      const hashAlgorithm = key[_algorithm].hash.name;
+      const hashAlgorithm = key.algorithm.hash.name;
       const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "RSA-OAEP",
         hash: hashAlgorithm,
@@ -7297,7 +7285,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       // 2.
       const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-CBC",
-        length: key[_algorithm].length,
+        length: key.algorithm.length,
         iv: normalizedAlgorithm.iv,
       }, data);
 
@@ -7330,7 +7318,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       // 3.
       const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-CTR",
-        keyLength: key[_algorithm].length,
+        keyLength: key.algorithm.length,
         counter: normalizedAlgorithm.counter,
         ctrLength: normalizedAlgorithm.length,
       }, data);
@@ -7397,7 +7385,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       // 6-7.
       const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-GCM",
-        length: key[_algorithm].length,
+        length: key.algorithm.length,
         iv: normalizedAlgorithm.iv,
         additionalData: normalizedAlgorithm.additionalData || null,
         tagLength: normalizedAlgorithm.tagLength,
@@ -7448,7 +7436,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       // 5-6.
       const cipherText = await op_crypto_encrypt(handle.cppgc, {
         algorithm: "AES-OCB",
-        length: key[_algorithm].length,
+        length: key.algorithm.length,
         iv: normalizedAlgorithm.iv,
         additionalData: normalizedAlgorithm.additionalData || null,
         tagLength: normalizedAlgorithm.tagLength,
@@ -8156,10 +8144,10 @@ webidl.converters.MlDsaParams = webidl.createDictionaryConverter(
  * Returns { type, data } where data is DER bytes (spki/pkcs8) or raw bytes (secret).
  */
 function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
-  const handle = cryptoKey[_handle];
+  const handle = op_crypto_key_handle(cryptoKey);
   const innerKey = getKeyData(handle);
-  const type = cryptoKey[_type];
-  const algorithmName = cryptoKey[_algorithm].name;
+  const type = cryptoKey.type;
+  const algorithmName = cryptoKey.algorithm.name;
 
   if (type === "secret") {
     return { type: "secret", data: innerKey.data };
@@ -8180,7 +8168,7 @@ function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
       case "ECDSA":
         data = op_crypto_export_key({
           algorithm: algorithmName,
-          namedCurve: cryptoKey[_algorithm].namedCurve,
+          namedCurve: cryptoKey.algorithm.namedCurve,
           format: "spki",
         }, innerKey);
         break;
@@ -8222,7 +8210,7 @@ function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
     case "ECDSA":
       data = op_crypto_export_key({
         algorithm: algorithmName,
-        namedCurve: cryptoKey[_algorithm].namedCurve,
+        namedCurve: cryptoKey.algorithm.namedCurve,
         format: "pkcs8",
       }, innerKey);
       break;

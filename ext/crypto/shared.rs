@@ -325,6 +325,7 @@ pub enum SharedError {
   InvalidKeyHandle,
   #[class(type)]
   #[error("Illegal constructor")]
+  #[property("code" = "ERR_ILLEGAL_CONSTRUCTOR")]
   IllegalConstructor,
   #[class(type)]
   #[error("invalid CryptoKey type")]
