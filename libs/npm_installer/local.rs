@@ -899,6 +899,75 @@ impl<
       }
     }
 
+    // 11. Create a `node_modules` directory inside each workspace member and
+    // symlink that member's direct dependencies into it. This mirrors how npm
+    // and pnpm lay out workspaces so that native Node.js tooling (for example
+    // `svelte-check`, `astro`, or `eslint` plugins) run from within a member
+    // resolves the member's dependencies and sibling workspace members the same
+    // way it would in a Node.js project. Without this, members share only the
+    // workspace root's `node_modules`, which both hides missing dependencies
+    // (shadow dependencies) and breaks tools that expect a local `node_modules`.
+    {
+      let workspace_member_dirs: HashMap<&PackageNv, &Path> = self
+        .npm_install_deps_provider
+        .workspace_pkgs()
+        .iter()
+        .map(|pkg| (&pkg.nv, pkg.target_dir.as_path()))
+        .collect();
+      for workspace_pkg in self.npm_install_deps_provider.workspace_pkgs() {
+        let member_node_modules = workspace_pkg.target_dir.join("node_modules");
+        // The workspace root's `node_modules` is already fully set up above.
+        if member_node_modules == self.root_node_modules_path
+          || workspace_pkg.deps.is_empty()
+        {
+          continue;
+        }
+        let member_key = workspace_pkg.target_dir.to_string_lossy();
+        let mut dep_cache = setup_cache.with_dep(&member_key);
+        let mut created_dir = false;
+        for dep in &workspace_pkg.deps {
+          let (alias, target_path, cache_target) = match dep {
+            InstallWorkspacePkgDep::Remote { alias, req } => {
+              let Some(id) = resolve_remote_pkg_id(snapshot, req) else {
+                continue;
+              };
+              let package = snapshot.package_from_id(&id).unwrap();
+              let target_folder_name = get_package_folder_id_folder_name(
+                &package.get_package_cache_folder_id(),
+              );
+              let local_registry_package_path = join_package_name(
+                Cow::Owned(
+                  deno_local_registry_dir
+                    .join(&target_folder_name)
+                    .join("node_modules"),
+                ),
+                &package.id.nv.name,
+              );
+              (alias, local_registry_package_path, target_folder_name)
+            }
+            InstallWorkspacePkgDep::Workspace { alias, nv } => {
+              let Some(target_dir) = workspace_member_dirs.get(nv) else {
+                continue;
+              };
+              (alias, target_dir.to_path_buf(), nv.to_string())
+            }
+          };
+          if !dep_cache.insert(alias, &cache_target) {
+            continue;
+          }
+          if !created_dir {
+            sys.fs_create_dir_all(&member_node_modules)?;
+            created_dir = true;
+          }
+          symlink_package_dir(
+            sys.as_ref(),
+            &target_path,
+            &member_node_modules.join(alias.as_str()),
+          )?;
+        }
+      }
+    }
+
     for package in &workspace_lifecycle_packages {
       sys.fs_create_dir_all(local_node_modules_package_folder(
         &deno_local_registry_dir,
