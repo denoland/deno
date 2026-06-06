@@ -120,6 +120,9 @@ deno_core::extension!(deno_web,
     console::op_preview_entries,
     broadcast_channel::op_broadcast_subscribe,
     broadcast_channel::op_broadcast_unsubscribe,
+    broadcast_channel::op_broadcast_serialize,
+    broadcast_channel::op_broadcast_deserialize,
+    broadcast_channel::op_broadcast_free,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
   ],
@@ -175,6 +178,7 @@ deno_core::extension!(deno_web,
     state.put(StartTime::default());
     state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
+    state.put(broadcast_channel::BroadcastSabStash::default());
   }
 );
 

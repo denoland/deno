@@ -71,7 +71,7 @@ fn visit_fn(
 
 /// Parse a param of a test function for the test context binding, or any
 /// destructuring of a `steps` method from the test context.
-fn parse_test_context_param(
+pub(crate) fn parse_test_context_param(
   param: Option<&ast::Pat>,
 ) -> Option<(Option<String>, Option<String>)> {
   let mut maybe_test_context = None;

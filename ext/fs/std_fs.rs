@@ -623,7 +623,7 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
     {
       use std::os::windows::prelude::MetadataExt;
 
-      use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
+      use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY;
       if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
         fs::remove_dir(path)
       } else {
@@ -638,6 +638,27 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
 }
 
 fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
+  // Guard against copying a file onto itself. Otherwise the destination is
+  // opened with truncation (or unlinked) before the source is read, which
+  // silently empties the file. Match `cp` behavior and error instead.
+  //
+  // `same_file::is_same_file` compares the file identity (device + inode on
+  // Unix, file index + volume serial via the open handle on Windows) using a
+  // single stat per path, rather than fully canonicalizing both paths which
+  // would `lstat`/`readlink` every component twice. It still catches
+  // equivalent paths such as `./`, `..`, symlinks and hard links, and returns
+  // `Err` (treated as "not the same file") in the common case where the
+  // destination does not yet exist.
+  if same_file::is_same_file(from, to).unwrap_or(false) {
+    return Err(
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "Source and destination paths refer to the same file",
+      )
+      .into(),
+    );
+  }
+
   #[cfg(target_os = "macos")]
   {
     use std::ffi::CString;
@@ -903,14 +924,7 @@ fn stat(path: &Path) -> FsResult<FsStat> {
 
 #[cfg(windows)]
 fn stat(path: &Path) -> FsResult<FsStat> {
-  use std::os::windows::fs::OpenOptionsExt;
-
-  use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
-
-  let mut opts = fs::OpenOptions::new();
-  opts.access_mode(0); // no read or write
-  opts.custom_flags(FILE_FLAG_BACKUP_SEMANTICS);
-  let file = opts.open(path)?;
+  let file = open_for_stat_windows(path, false)?;
   let metadata = file.metadata()?;
   let mut fsstat = FsStat::from_std(metadata);
   deno_io::stat_extra(&file, &mut fsstat)?;
@@ -925,20 +939,51 @@ fn lstat(path: &Path) -> FsResult<FsStat> {
 
 #[cfg(windows)]
 fn lstat(path: &Path) -> FsResult<FsStat> {
-  use std::os::windows::fs::OpenOptionsExt;
-
-  use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
-  use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
-
-  let mut opts = fs::OpenOptions::new();
-  opts.access_mode(0); // no read or write
-  opts.custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT);
-  let file = opts.open(path)?;
+  let file = open_for_stat_windows(path, true)?;
   let metadata = file.metadata()?;
   let mut fsstat = FsStat::from_std(metadata);
   deno_io::stat_extra(&file, &mut fsstat)?;
   Ok(fsstat)
 }
+
+// Some Windows file system drivers (notably ImDisk-backed memory disks)
+// reject `FILE_FLAG_BACKUP_SEMANTICS` for regular files and return
+// `ERROR_INVALID_FUNCTION` (1). Deno passes that flag so `CreateFile` can
+// open directories; on those drivers we transparently retry without it.
+// See https://github.com/denoland/deno/issues/26257.
+#[cfg(windows)]
+fn open_for_stat_windows(
+  path: &Path,
+  do_not_follow_symlink: bool,
+) -> io::Result<fs::File> {
+  use std::os::windows::fs::OpenOptionsExt;
+
+  use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+  use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
+
+  let reparse_flag = if do_not_follow_symlink {
+    FILE_FLAG_OPEN_REPARSE_POINT
+  } else {
+    0
+  };
+
+  let mut opts = fs::OpenOptions::new();
+  opts.access_mode(0); // no read or write
+  opts.custom_flags(FILE_FLAG_BACKUP_SEMANTICS | reparse_flag);
+  match opts.open(path) {
+    Ok(file) => Ok(file),
+    Err(err) if err.raw_os_error() == Some(ERROR_INVALID_FUNCTION) => {
+      let mut fallback = fs::OpenOptions::new();
+      fallback.access_mode(0);
+      fallback.custom_flags(reparse_flag);
+      fallback.open(path).map_err(|_| err)
+    }
+    Err(err) => Err(err),
+  }
+}
+
+#[cfg(windows)]
+const ERROR_INVALID_FUNCTION: i32 = 1;
 
 fn statfs(path: &Path, bigint: bool) -> FsResult<FsStatFs> {
   #[cfg(unix)]
@@ -1221,39 +1266,80 @@ pub fn open_with_checked_path(
   // if needed, then opening for read only.
   if opts.create && !opts.write && !opts.append {
     if !path.exists() {
-      let create_opts = open_options_for_checked_path(
-        OpenOptions {
-          read: false,
-          write: true,
-          create: true,
-          truncate: false,
-          append: false,
-          create_new: opts.create_new,
-          custom_flags: None,
-          mode: opts.mode,
-        },
-        path,
-      );
-      // Create and immediately close the file
-      drop(create_opts.open(path)?);
-    }
-    let read_opts = open_options_for_checked_path(
-      OpenOptions {
-        read: true,
-        write: false,
-        create: false,
+      let create_opts = OpenOptions {
+        read: false,
+        write: true,
+        create: true,
         truncate: false,
         append: false,
-        create_new: false,
-        custom_flags: opts.custom_flags,
-        mode: None,
-      },
-      path,
-    );
-    return Ok(read_opts.open(path)?);
+        create_new: opts.create_new,
+        custom_flags: None,
+        mode: opts.mode,
+      };
+      // Create and immediately close the file
+      drop(open_path_with_options(create_opts, path)?);
+    }
+    let read_opts = OpenOptions {
+      read: true,
+      write: false,
+      create: false,
+      truncate: false,
+      append: false,
+      create_new: false,
+      custom_flags: opts.custom_flags,
+      mode: None,
+    };
+    return Ok(open_path_with_options(read_opts, path)?);
   }
+  Ok(open_path_with_options(opts, path)?)
+}
+
+// Open the path using the configured options. On Windows we set
+// `FILE_FLAG_BACKUP_SEMANTICS` so directories can be opened, but a few
+// filesystem drivers (notably ImDisk-backed memory disks) reject that flag
+// for regular files and return `ERROR_INVALID_FUNCTION` (1). Retry without
+// the flag in that case so reads/writes succeed on those volumes.
+// See https://github.com/denoland/deno/issues/26257.
+fn open_path_with_options(
+  opts: OpenOptions,
+  path: &CheckedPath,
+) -> io::Result<fs::File> {
   let std_opts = open_options_for_checked_path(opts, path);
-  Ok(std_opts.open(path)?)
+  match std_opts.open(path) {
+    Ok(file) => Ok(file),
+    #[cfg(windows)]
+    Err(err) if err.raw_os_error() == Some(ERROR_INVALID_FUNCTION) => {
+      let fallback = open_options_for_checked_path_no_backup(opts, path);
+      fallback.open(path).map_err(|_| err)
+    }
+    // A canonicalized path is opened with `O_NOFOLLOW` (see
+    // `open_options_for_checked_path`). If the final component is still a
+    // symlink at this point it must be a broken/dangling link: its target was
+    // removed after canonicalization resolved the parent directory, so the link
+    // survived as the path tail. `O_NOFOLLOW` reports it as `ELOOP` ("Too many
+    // levels of symbolic links"), which is misleading. Translate it to
+    // `ENOENT` so the error matches reading a nonexistent file.
+    // See https://github.com/denoland/deno/issues/29139.
+    #[cfg(unix)]
+    Err(err)
+      if path.canonicalized() && err.raw_os_error() == Some(libc::ELOOP) =>
+    {
+      Err(io::Error::from_raw_os_error(libc::ENOENT))
+    }
+    Err(err) => Err(err),
+  }
+}
+
+#[cfg(windows)]
+fn open_options_for_checked_path_no_backup(
+  options: OpenOptions,
+  _path: &CheckedPath,
+) -> fs::OpenOptions {
+  // Same as open_options_for_checked_path but without
+  // FILE_FLAG_BACKUP_SEMANTICS so drivers that reject it can still open
+  // regular files. Cannot open directories without the flag, but for the
+  // drivers in question that's acceptable.
+  open_options(options)
 }
 
 #[inline(always)]
@@ -1267,7 +1353,9 @@ pub fn open_options_for_checked_path(
     _ = path; // not used on windows
     // allow opening directories
     use std::os::windows::fs::OpenOptionsExt;
-    opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    opts.custom_flags(
+      windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS,
+    );
   }
 
   #[cfg(unix)]

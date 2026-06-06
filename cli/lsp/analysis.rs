@@ -250,6 +250,23 @@ pub fn import_map_lookup(
     specifier,
     referrer,
     ReferrerInAddressSkip::SkipAll,
+    RelativeKeySkip::Keep,
+  )
+}
+
+/// Like `import_map_lookup`, but only returns specifiers that are useful as
+/// import-map remap diagnostic suggestions.
+pub fn import_map_lookup_for_diagnostic(
+  import_map: &ImportMap,
+  specifier: &Url,
+  referrer: &Url,
+) -> Option<String> {
+  import_map_lookup_inner(
+    import_map,
+    specifier,
+    referrer,
+    ReferrerInAddressSkip::SkipAll,
+    RelativeKeySkip::Skip,
   )
 }
 
@@ -266,14 +283,26 @@ enum ReferrerInAddressSkip {
   SkipPassthrough,
 }
 
+#[derive(Clone, Copy)]
+enum RelativeKeySkip {
+  Keep,
+  Skip,
+}
+
 fn import_map_lookup_inner(
   import_map: &ImportMap,
   specifier: &Url,
   referrer: &Url,
   skip_mode: ReferrerInAddressSkip,
+  relative_key_skip: RelativeKeySkip,
 ) -> Option<String> {
   let specifier_str = specifier.as_str();
   for entry in import_map.entries_for_referrer(referrer) {
+    if matches!(relative_key_skip, RelativeKeySkip::Skip)
+      && (entry.raw_key.starts_with("./") || entry.raw_key.starts_with("../"))
+    {
+      continue;
+    }
     if let Some(address) = entry.value {
       let address_str = address.as_str();
       if referrer.as_str().starts_with(address_str) {
@@ -524,6 +553,7 @@ impl<'a> TsResponseImportMapper<'a> {
         specifier,
         referrer,
         ReferrerInAddressSkip::SkipPassthrough,
+        RelativeKeySkip::Keep,
       )
     {
       return Some(result);

@@ -3272,26 +3272,10 @@ fn napi_new_instance<'s>(
 
   v8::callback_scope!(unsafe scope, env.context());
 
-  // Block JavaScript execution for the duration of construction. napi-rs's
-  // class-agnostic `___CALL_FROM_FACTORY` thread-local is set across this
-  // call by `napi::bindgen_prelude::new_instance`; if V8 were to dispatch
-  // any user JavaScript between here and the constructor returning (e.g. a
-  // pumped task that runs a plugin hook that does `new SomeOtherClass()`),
-  // that nested constructor proxy would inherit the factory flag, return
-  // null without wrapping, and leak an unwrapped instance into JS — the
-  // signature of #33924. For the napi-rs factory pattern, the constructor
-  // proxy itself returns null without running any user code, so blocking JS
-  // here is safe; any other path that *would* legitimately call back into
-  // JavaScript here was already racing with the factory flag and would
-  // have misbehaved.
-  let value_opt = {
-    v8::disallow_javascript_execution_scope!(
-      djses,
-      scope,
-      v8::OnFailure::ThrowOnFailure
-    );
-    func.new_instance(djses, args)
-  };
+  // Native constructors are allowed to call back into JavaScript during
+  // construction. For example, zeromq's `Context` constructor calls
+  // `Object.seal(this)` while its addon is being initialized.
+  let value_opt = func.new_instance(scope, args);
   let Some(value) = value_opt else {
     return napi_pending_exception;
   };

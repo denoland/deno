@@ -3,11 +3,48 @@
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = __bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayBufferIsView,
+  ArrayPrototypeFindIndex,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  Error,
+  ObjectEntries,
+  ObjectKeys,
+  ObjectPrototype,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  PromisePrototypeThen,
+  PromiseWithResolvers,
+  ReflectHas,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
+  SafeArrayIterator,
+  SafeMap,
+  SafePromiseAll,
+  SafeRegExp,
+  SafeSet,
+  String,
+  StringPrototypeEndsWith,
+  StringPrototypeIndexOf,
+  StringPrototypeMatch,
+  StringPrototypeReplace,
+  StringPrototypeSubstring,
+  StringPrototypeTrimStart,
+  Symbol,
+  SymbolDispose,
+  TypeErrorPrototype,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+} = primordials;
+const { isTypedArray } = core;
 const {
   op_node_in_npm_package,
   op_node_ipc_buffer_constructor,
@@ -55,12 +92,16 @@ const {
   ERR_UNKNOWN_SIGNAL,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-const { FastBuffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { FastBuffer } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
 const {
   ERR_IPC_DISCONNECTED,
   errnoException,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { codeMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
 const {
   validateBoolean,
   validateInt32,
@@ -68,7 +109,9 @@ const {
   validateOneOf,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { kEmptyObject } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
 const lazyFsUtils = core.createLazyLoader(
   "ext:deno_node/internal/fs/utils.mjs",
 );
@@ -101,14 +144,34 @@ const {
   nodeSpawnSyncChild,
 } = core.loadExtScript("ext:deno_process/40_process.js");
 
+// Precompiled regular expressions (captured as SafeRegExp so the prototype
+// can't be tampered with at runtime).
+const cmdExeRe = new SafeRegExp("^(?:.*\\\\)?cmd(?:\\.exe)?$", "i");
+const winSpecialCharsRe = new SafeRegExp('[\\s"\\\\&|<>^!()]');
+const winEscapeQuotesRe = new SafeRegExp('(\\\\*)"', "g");
+const winTrailingBackslashRe = new SafeRegExp("(\\\\+)$");
+const posixSpecialCharsRe = new SafeRegExp("[^a-zA-Z0-9_./-]");
+const singleQuoteRe = new SafeRegExp("'", "g");
+const winQuoteCharsRe = new SafeRegExp('[\\s"&|<>^]');
+const shellVarRefRe = new SafeRegExp("\\$\\{[^}]+\\}|\\$[A-Za-z_]");
+const unsafeInDoubleQuotesRe = new SafeRegExp("`|\\$\\(|\\\\");
+const posixMetacharsRe = new SafeRegExp("[();&|<>`!\\n\\r\\s\"'\\\\$]");
+const doubleQuoteRe = new SafeRegExp('"', "g");
+const pipePrefixRe = new SafeRegExp("^\\s*\\|\\s*");
+const shellVarMatchRe = new SafeRegExp(
+  '^(?:"\\$\\{([^}]+)\\}"|"\\$([A-Za-z_][A-Za-z0-9_]*)"|\\$\\{([^}]+)\\}|\\$([A-Za-z_][A-Za-z0-9_]*))',
+);
+
 function mapValues(
   record,
   transformer,
 ) {
   const ret = {};
-  const entries = Object.entries(record);
+  const entries = ObjectEntries(record);
 
-  for (const [key, value] of entries) {
+  for (const entry of new SafeArrayIterator(entries)) {
+    const key = entry[0];
+    const value = entry[1];
     if (typeof value === "undefined") {
       continue;
     }
@@ -134,16 +197,16 @@ function stdioStringToArray(
     case "ignore":
     case "overlapped":
     case "pipe":
-      options.push(stdio, stdio, stdio);
+      ArrayPrototypePush(options, stdio, stdio, stdio);
       break;
     case "inherit":
-      options.push(stdio, stdio, stdio);
+      ArrayPrototypePush(options, stdio, stdio, stdio);
       break;
     default:
       throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
   }
 
-  if (channel) options.push(channel);
+  if (channel) ArrayPrototypePush(options, channel);
 
   return options;
 }
@@ -151,6 +214,8 @@ function stdioStringToArray(
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
 const kCanDisconnect = Symbol("_canDisconnect");
+const kChildStdioUsedAsInput = Symbol("childStdioUsedAsInput");
+const childStdioStreamsByFd = new SafeMap();
 let emittedShellDeprecation = false;
 
 // We only want to emit a close event for the child process when all of
@@ -171,6 +236,9 @@ function flushStdio(subprocess) {
   for (let i = 0; i < stdio.length; i++) {
     const stream = stdio[i];
     if (!stream || !stream.readable) {
+      continue;
+    }
+    if (stream[kChildStdioUsedAsInput]) {
       continue;
     }
     stream.resume();
@@ -235,7 +303,7 @@ class ChildProcess extends EventEmitter {
   disconnect;
 
   #process;
-  #spawned = Promise.withResolvers();
+  #spawned = PromiseWithResolvers();
   [kClosesNeeded] = 1;
   [kClosesReceived] = 0;
   [kCanDisconnect] = false;
@@ -312,22 +380,30 @@ class ChildProcess extends EventEmitter {
     // Convert envPairs array to env object
     const env = {};
     if (envPairs) {
-      for (const pair of envPairs) {
-        const idx = pair.indexOf("=");
+      for (const pair of new SafeArrayIterator(envPairs)) {
+        const idx = StringPrototypeIndexOf(pair, "=");
         if (idx !== -1) {
-          env[pair.substring(0, idx)] = pair.substring(idx + 1);
+          env[StringPrototypeSubstring(pair, 0, idx)] =
+            StringPrototypeSubstring(
+              pair,
+              idx + 1,
+            );
         }
       }
     }
 
     const serialization = options.serialization || "json";
     const normalizedStdio = normalizeStdioOption(stdio);
-    const [
-      stdin = "pipe",
-      stdout = "pipe",
-      stderr = "pipe",
-      ...extraStdio
-    ] = normalizedStdio;
+    const stdin = normalizedStdio[0] === undefined
+      ? "pipe"
+      : normalizedStdio[0];
+    const stdout = normalizedStdio[1] === undefined
+      ? "pipe"
+      : normalizedStdio[1];
+    const stderr = normalizedStdio[2] === undefined
+      ? "pipe"
+      : normalizedStdio[2];
+    const extraStdio = ArrayPrototypeSlice(normalizedStdio, 3);
 
     const { Stream } = lazyStream();
     const { Socket } = lazyNet();
@@ -336,17 +412,23 @@ class ChildProcess extends EventEmitter {
     // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
     // before slicing so we can pass it via kArgv0 for OS-level argv[0].
     const argv0 = args.length > 0 ? args[0] : command;
-    const [cmd, cmdArgs, includeNpmProcessState] = buildCommand(
+    const builtCommand = buildCommand(
       command,
-      args.slice(1),
+      ArrayPrototypeSlice(args, 1),
       env,
     );
+    const cmd = builtCommand[0];
+    const cmdArgs = builtCommand[1];
+    const includeNpmProcessState = builtCommand[2];
 
     this.spawnfile = cmd;
-    this.spawnargs = [cmd, ...cmdArgs];
+    this.spawnargs = [cmd, ...new SafeArrayIterator(cmdArgs)];
 
-    const ipc = normalizedStdio.indexOf("ipc");
-    if (ipc !== -1 && normalizedStdio.indexOf("ipc", ipc + 1) !== -1) {
+    const ipc = ArrayPrototypeIndexOf(normalizedStdio, "ipc");
+    if (
+      ipc !== -1 &&
+      ArrayPrototypeIndexOf(normalizedStdio, "ipc", ipc + 1) !== -1
+    ) {
       throw new ERR_IPC_ONE_PIPE();
     }
 
@@ -359,15 +441,19 @@ class ChildProcess extends EventEmitter {
         // IPC fd is handled separately in Rust via the kIpc option.
         // Push a placeholder so the array indices stay aligned with
         // fd numbers, but don't double-push.
-        extraStdioNormalized.push("null");
+        ArrayPrototypePush(extraStdioNormalized, "null");
         continue;
       }
-      extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
+      ArrayPrototypePush(extraStdioNormalized, toDenoStdio(extraStdio[i]));
     }
 
     // Windows does not support uid/gid options - throw ENOTSUP synchronously.
     if (isWindows && (uid != null || gid != null)) {
-      throw _createSpawnError("ENOTSUP", command, args.slice(1));
+      throw _createSpawnError(
+        "ENOTSUP",
+        command,
+        ArrayPrototypeSlice(args, 1),
+      );
     }
 
     try {
@@ -403,7 +489,7 @@ class ChildProcess extends EventEmitter {
         });
       }
 
-      if (stdin instanceof Stream) {
+      if (ObjectPrototypeIsPrototypeOf(Stream.prototype, stdin)) {
         if (streamHandleFd(stdin) >= 0) {
           // The fd was passed directly to the child via dup(). The child
           // reads/writes the shared pipe at the OS level. The parent's
@@ -426,7 +512,7 @@ class ChildProcess extends EventEmitter {
           this.stdin = stdinSocket;
         }
       }
-      if (stdout instanceof Stream) {
+      if (ObjectPrototypeIsPrototypeOf(Stream.prototype, stdout)) {
         if (streamHandleFd(stdout) >= 0) {
           // fd passed directly - see stdin comment above.
         } else if (this.#process.stdoutFd != null) {
@@ -450,7 +536,7 @@ class ChildProcess extends EventEmitter {
           });
         }
       }
-      if (stderr instanceof Stream) {
+      if (ObjectPrototypeIsPrototypeOf(Stream.prototype, stderr)) {
         if (streamHandleFd(stderr) >= 0) {
           // fd passed directly - see stdin comment above.
         } else if (this.#process.stderrFd != null) {
@@ -481,6 +567,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stdout);
         this.stdout.on("close", () => {
           maybeClose(this);
         });
@@ -495,6 +582,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stderr);
         this.stderr.on("close", () => {
           maybeClose(this);
         });
@@ -521,6 +609,7 @@ class ChildProcess extends EventEmitter {
               handle: pipe,
             },
           );
+          registerChildStdioStream(this.stdio[fd]);
           this.stdio[fd]?.on("close", () => {
             maybeClose(this);
           });
@@ -577,7 +666,7 @@ class ChildProcess extends EventEmitter {
         } else {
           this.exitCode = status.code;
         }
-        this.#spawned.promise.then(async () => {
+        PromisePrototypeThen(this.#spawned.promise, async () => {
           // The 'exit' and 'close' events must be emitted after the 'spawn' event.
           this.emit("exit", this.exitCode, this.signalCode);
           await this.#_waitForChildStreamsToClose();
@@ -595,10 +684,19 @@ class ChildProcess extends EventEmitter {
     } catch (err) {
       const { Readable, Writable } = lazyStream();
       let e = err;
-      if (e instanceof Deno.errors.NotFound) {
+      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
         // args.slice(1) to exclude argv0 (prepended by normalizeSpawnArguments)
-        e = _createSpawnError("ENOENT", command, args.slice(1));
-      } else if (e instanceof Deno.errors.PermissionDenied) {
+        e = _createSpawnError(
+          "ENOENT",
+          command,
+          ArrayPrototypeSlice(args, 1),
+        );
+      } else if (
+        ObjectPrototypeIsPrototypeOf(
+          Deno.errors.PermissionDenied.prototype,
+          e,
+        )
+      ) {
         // Node distinguishes two failure modes that Deno collapses into
         // PermissionDenied:
         //   * setuid/setgid refused by the kernel -> EPERM, thrown sync,
@@ -612,7 +710,7 @@ class ChildProcess extends EventEmitter {
             const epermErr = _createSpawnError(
               "EPERM",
               command,
-              args.slice(1),
+              ArrayPrototypeSlice(args, 1),
             );
             childProcessSpawnChannel.error.publish({
               process: this,
@@ -620,9 +718,17 @@ class ChildProcess extends EventEmitter {
             });
             throw epermErr;
           }
-          throw _createSpawnError("EPERM", command, args.slice(1));
+          throw _createSpawnError(
+            "EPERM",
+            command,
+            ArrayPrototypeSlice(args, 1),
+          );
         }
-        e = _createSpawnError("EACCES", command, args.slice(1));
+        e = _createSpawnError(
+          "EACCES",
+          command,
+          ArrayPrototypeSlice(args, 1),
+        );
       }
 
       // Publish 'child_process.spawn'.error for the non-rethrow cases (ENOENT
@@ -713,16 +819,32 @@ class ChildProcess extends EventEmitter {
           this.#process.kill("SIGKILL");
           signalName = "SIGKILL";
         } catch (err2) {
-          const alreadyClosed = err2 instanceof TypeError ||
-            err2 instanceof Deno.errors.PermissionDenied;
+          const alreadyClosed =
+            ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err2) ||
+            ObjectPrototypeIsPrototypeOf(
+              Deno.errors.NotFound.prototype,
+              err2,
+            ) ||
+            ObjectPrototypeIsPrototypeOf(
+              Deno.errors.PermissionDenied.prototype,
+              err2,
+            );
           if (!alreadyClosed) {
             throw err2;
           }
           return false;
         }
       } else {
-        const alreadyClosed = err instanceof TypeError ||
-          err instanceof Deno.errors.PermissionDenied;
+        const alreadyClosed =
+          ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err) ||
+          ObjectPrototypeIsPrototypeOf(
+            Deno.errors.NotFound.prototype,
+            err,
+          ) ||
+          ObjectPrototypeIsPrototypeOf(
+            Deno.errors.PermissionDenied.prototype,
+            err,
+          );
         if (!alreadyClosed) {
           throw err;
         }
@@ -741,7 +863,7 @@ class ChildProcess extends EventEmitter {
     return true;
   }
 
-  [Symbol.dispose]() {
+  [SymbolDispose]() {
     if (!this.killed) {
       this.kill();
     }
@@ -763,21 +885,23 @@ class ChildProcess extends EventEmitter {
     if (this.stdin && !this.stdin.destroyed && this.stdin !== process.stdin) {
       assert(this.stdin);
       this.stdin.destroy();
-      promises.push(waitForStreamToClose(this.stdin));
+      ArrayPrototypePush(promises, waitForStreamToClose(this.stdin));
     }
     // Only readable streams need to be closed
     if (
-      this.stdout && !this.stdout.destroyed && this.stdout instanceof Readable
+      this.stdout && !this.stdout.destroyed &&
+      ObjectPrototypeIsPrototypeOf(Readable.prototype, this.stdout)
     ) {
-      promises.push(waitForReadableToClose(this.stdout));
+      ArrayPrototypePush(promises, waitForReadableToClose(this.stdout));
     }
     // Only readable streams need to be closed
     if (
-      this.stderr && !this.stderr.destroyed && this.stderr instanceof Readable
+      this.stderr && !this.stderr.destroyed &&
+      ObjectPrototypeIsPrototypeOf(Readable.prototype, this.stderr)
     ) {
-      promises.push(waitForReadableToClose(this.stderr));
+      ArrayPrototypePush(promises, waitForReadableToClose(this.stderr));
     }
-    await Promise.all(promises);
+    await SafePromiseAll(promises);
   }
 
   #_handleError(err) {
@@ -802,11 +926,34 @@ function streamHandleFd(stream) {
   return -1;
 }
 
+function registerChildStdioStream(stream) {
+  const fd = streamHandleFd(stream);
+  if (fd < 0) {
+    return;
+  }
+
+  childStdioStreamsByFd.set(fd, stream);
+  stream.on("close", () => {
+    if (childStdioStreamsByFd.get(fd) === stream) {
+      childStdioStreamsByFd.delete(fd);
+    }
+  });
+}
+
+function markChildStdioUsedAsInput(fd) {
+  const stream = childStdioStreamsByFd.get(fd);
+  if (stream) {
+    stream[kChildStdioUsedAsInput] = true;
+    stream.pause();
+    stream._handle?.readStop?.();
+  }
+}
+
 function toDenoStdio(
   pipe,
 ) {
   const { Stream } = lazyStream();
-  if (pipe instanceof Stream) {
+  if (ObjectPrototypeIsPrototypeOf(Stream.prototype, pipe)) {
     // If the stream has an underlying handle with a valid fd (e.g. a Socket
     // backed by a PipeWrap), pass that fd directly to the child process.
     // The Rust side will dup() it so both parent and child share the pipe.
@@ -814,6 +961,9 @@ function toDenoStdio(
     // another child's stdin shares the underlying OS pipe.
     const fd = streamHandleFd(pipe);
     if (fd >= 0) {
+      pipe[kChildStdioUsedAsInput] = true;
+      pipe.pause();
+      pipe._handle?.readStop?.();
       return fd;
     }
     // For streams without a usable fd, create a pipe and set up JS-level
@@ -821,6 +971,7 @@ function toDenoStdio(
     return "piped";
   }
   if (typeof pipe === "number") {
+    markChildStdioUsedAsInput(pipe);
     return pipe;
   }
   switch (pipe) {
@@ -843,7 +994,7 @@ function toDenoStdio(
 function toDenoSignal(signal) {
   const nodeSignals = os.signals;
   if (typeof signal === "number") {
-    for (const name of keys(nodeSignals)) {
+    for (const name of new SafeArrayIterator(keys(nodeSignals))) {
       if (nodeSignals[name] === signal) {
         return name;
       }
@@ -851,19 +1002,19 @@ function toDenoSignal(signal) {
     throw new ERR_UNKNOWN_SIGNAL(String(signal));
   }
 
-  if (signal in nodeSignals) {
+  if (ReflectHas(nodeSignals, signal)) {
     return signal;
   }
   // On Windows, os.signals only lists native signals. Accept any
   // POSIX signal name so the caller can remap it to SIGTERM.
-  if (isWindows && signal.startsWith("SIG")) {
+  if (isWindows && StringPrototypeStartsWith(signal, "SIG")) {
     return signal;
   }
   throw new ERR_UNKNOWN_SIGNAL(signal);
 }
 
 function keys(object) {
-  return Object.keys(object);
+  return ObjectKeys(object);
 }
 
 function copyProcessEnvToEnv(
@@ -887,7 +1038,7 @@ function normalizeStdioOption(
     "pipe",
   ],
 ) {
-  if (Array.isArray(stdio)) {
+  if (ArrayIsArray(stdio)) {
     // `[0, 1, 2]` is equivalent to `"inherit"`
     if (
       stdio.length === 3 &&
@@ -924,7 +1075,9 @@ function normalizeStdioOption(
       case "ignore":
         return ["ignore", "ignore", "ignore"];
       default:
-        notImplemented(`normalizeStdioOption stdio=${typeof stdio} (${stdio})`);
+        notImplemented(
+          `normalizeStdioOption stdio=${typeof stdio} (${stdio})`,
+        );
     }
   }
 }
@@ -946,7 +1099,7 @@ function getValidStdio(
 
   // If stdio is a string, validate it
   if (typeof stdio === "string") {
-    if (!validStdioStrings.includes(stdio)) {
+    if (!ArrayPrototypeIncludes(validStdioStrings, stdio)) {
       throw new ERR_INVALID_ARG_VALUE("stdio", stdio);
     }
     // Convert string to array
@@ -972,17 +1125,17 @@ function getValidStdio(
       }
       ipc = i;
       ipcFd = i;
-      result.push({ type: "ipc" });
+      ArrayPrototypePush(result, { type: "ipc" });
     } else if (value === "ignore" || value === null) {
-      result.push({ type: "ignore" });
+      ArrayPrototypePush(result, { type: "ignore" });
     } else if (value === "pipe" || value === undefined) {
-      result.push({ type: "pipe" });
+      ArrayPrototypePush(result, { type: "pipe" });
     } else if (value === "inherit") {
-      result.push({ type: "inherit" });
+      ArrayPrototypePush(result, { type: "inherit" });
     } else if (value === "overlapped") {
-      result.push({ type: "overlapped" });
+      ArrayPrototypePush(result, { type: "overlapped" });
     } else if (typeof value === "number") {
-      result.push({ type: "fd", fd: value });
+      ArrayPrototypePush(result, { type: "fd", fd: value });
     } else if (typeof value === "string") {
       // Invalid string value
       throw new ERR_INVALID_SYNC_FORK_INPUT(value);
@@ -991,10 +1144,10 @@ function getValidStdio(
       if (
         value.fd !== undefined && typeof value.fd === "number"
       ) {
-        result.push({ type: "fd", fd: value.fd });
-      } else if (value instanceof Stream) {
+        ArrayPrototypePush(result, { type: "fd", fd: value.fd });
+      } else if (ObjectPrototypeIsPrototypeOf(Stream.prototype, value)) {
         // Valid Stream object but without fd
-        result.push({ type: "pipe" });
+        ArrayPrototypePush(result, { type: "pipe" });
       } else {
         // Invalid object
         throw new ERR_INVALID_ARG_VALUE("stdio", value);
@@ -1073,7 +1226,9 @@ function normalizeSpawnArguments(
   }
 
   // Validate detached, if present.
+  // deno-lint-ignore prefer-primordials
   if (options.detached != null) {
+    // deno-lint-ignore prefer-primordials
     validateBoolean(options.detached, "options.detached");
   }
 
@@ -1144,7 +1299,10 @@ function normalizeSpawnArguments(
         );
         emittedShellDeprecation = true;
       }
-      const escapedParts = [escapeShellArg(file), ...args.map(escapeShellArg)];
+      const escapedParts = [
+        escapeShellArg(file),
+        ...new SafeArrayIterator(ArrayPrototypeMap(args, escapeShellArg)),
+      ];
       command = ArrayPrototypeJoin(escapedParts, " ");
     } else {
       command = file;
@@ -1160,7 +1318,7 @@ function normalizeSpawnArguments(
         file = Deno.env.get("comspec") || "cmd.exe";
       }
       // '/d /s /c' is used only for cmd.exe.
-      if (/^(?:.*\\)?cmd(?:\.exe)?$/i.exec(file) !== null) {
+      if (RegExpPrototypeExec(cmdExeRe, file) !== null) {
         args = ["/d", "/s", "/c", `"${command}"`];
         windowsVerbatimArguments = true;
       } else {
@@ -1202,8 +1360,7 @@ function normalizeSpawnArguments(
   if (process.platform === "win32") {
     // On Windows env keys are case insensitive. Filter out duplicates,
     // keeping only the first one (in lexicographic order)
-    /** TODO: implement SafeSet and makeSafe */
-    const sawKey = new Set();
+    const sawKey = new SafeSet();
     envKeys = ArrayPrototypeFilter(
       ArrayPrototypeSort(envKeys),
       (key) => {
@@ -1217,7 +1374,7 @@ function normalizeSpawnArguments(
     );
   }
 
-  for (const key of envKeys) {
+  for (const key of new SafeArrayIterator(envKeys)) {
     const value = env[key];
     if (value !== undefined) {
       // Check for null bytes in env keys and values
@@ -1233,6 +1390,7 @@ function normalizeSpawnArguments(
     ...options,
     args,
     cwd,
+    // deno-lint-ignore prefer-primordials
     detached: !!options.detached,
     env,
     envPairs,
@@ -1244,12 +1402,17 @@ function normalizeSpawnArguments(
 }
 
 function waitForReadableToClose(readable) {
+  if (readable[kChildStdioUsedAsInput]) {
+    const closePromise = waitForStreamToClose(readable);
+    readable.destroy();
+    return closePromise;
+  }
   readable.resume(); // Ensure buffered data will be consumed.
   return waitForStreamToClose(readable);
 }
 
 function waitForStreamToClose(stream) {
-  const deferred = Promise.withResolvers();
+  const deferred = PromiseWithResolvers();
   const cleanup = () => {
     stream.removeListener("close", onClose);
     stream.removeListener("error", onError);
@@ -1284,13 +1447,13 @@ function escapeShellArg(arg) {
     // Must include cmd.exe metacharacters: &|<>^!()
     // Note: % is not included because cmd.exe expands %VAR% even inside
     // double quotes and there is no reliable escape for it outside batch files.
-    if (!/[\s"\\&|<>^!()]/.test(arg)) {
+    if (!RegExpPrototypeTest(winSpecialCharsRe, arg)) {
       return arg;
     }
     // Escape backslashes before quotes, then escape quotes
-    let escaped = arg.replace(/(\\*)"/g, '$1$1\\"');
+    let escaped = StringPrototypeReplace(arg, winEscapeQuotesRe, '$1$1\\"');
     // Escape trailing backslashes
-    escaped = escaped.replace(/(\\+)$/, "$1$1");
+    escaped = StringPrototypeReplace(escaped, winTrailingBackslashRe, "$1$1");
     return `"${escaped}"`;
   } else {
     // Unix: use single quotes, escape embedded single quotes
@@ -1299,12 +1462,12 @@ function escapeShellArg(arg) {
       return "''";
     }
     // If no special characters, return as-is
-    if (!/[^a-zA-Z0-9_./-]/.test(arg)) {
+    if (!RegExpPrototypeTest(posixSpecialCharsRe, arg)) {
       return arg;
     }
     // Wrap in single quotes and escape any embedded single quotes
     // Single quotes are escaped by ending the string, adding an escaped quote, and starting a new string
-    return "'" + arg.replace(/'/g, "'\\''") + "'";
+    return "'" + StringPrototypeReplace(arg, singleQuoteRe, "'\\''") + "'";
   }
 }
 
@@ -1328,21 +1491,19 @@ function transformDenoShellCommand(
   let denoPathLength = 0;
   let shellVarPrefix = "";
 
-  if (command.startsWith(quotedDenoPath)) {
+  if (StringPrototypeStartsWith(command, quotedDenoPath)) {
     startsWithDeno = true;
     denoPathLength = quotedDenoPath.length;
-  } else if (command.startsWith(singleQuotedDenoPath)) {
+  } else if (StringPrototypeStartsWith(command, singleQuotedDenoPath)) {
     startsWithDeno = true;
     denoPathLength = singleQuotedDenoPath.length;
-  } else if (command.startsWith(denoPath)) {
+  } else if (StringPrototypeStartsWith(command, denoPath)) {
     startsWithDeno = true;
     denoPathLength = denoPath.length;
   } else if (env) {
     // Check for shell variable that references the Deno path
     // Pattern: "${VARNAME}", "$VARNAME", ${VARNAME}, or $VARNAME at start of command
-    const shellVarMatch = command.match(
-      /^(?:"\$\{([^}]+)\}"|\"\$([A-Za-z_][A-Za-z0-9_]*)\"|\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*))/,
-    );
+    const shellVarMatch = StringPrototypeMatch(command, shellVarMatchRe);
     if (shellVarMatch) {
       const varName = shellVarMatch[1] || shellVarMatch[2] ||
         shellVarMatch[3] || shellVarMatch[4];
@@ -1360,7 +1521,9 @@ function transformDenoShellCommand(
   }
 
   // Extract the rest of the command after the Deno path
-  const rest = command.slice(denoPathLength).trimStart();
+  const rest = StringPrototypeTrimStart(
+    StringPrototypeSlice(command, denoPathLength),
+  );
 
   if (rest.length === 0) {
     return command;
@@ -1378,32 +1541,46 @@ function transformDenoShellCommand(
     // Shell-quote translated args that contain metacharacters so they are
     // safe to embed in a shell command string.
     const quotedArgs = isWindows
-      ? result.denoArgs.map((a) => {
+      ? ArrayPrototypeMap(result.denoArgs, (a) => {
         // Windows cmd.exe: use double quotes for args with spaces or
         // special chars. Backslash is a path separator, not an escape.
-        if (/[\s"&|<>^]/.test(a)) {
-          let escaped = a.replace(/(\\*)"/g, '$1$1\\"');
-          escaped = escaped.replace(/(\\+)$/, "$1$1");
+        if (RegExpPrototypeTest(winQuoteCharsRe, a)) {
+          let escaped = StringPrototypeReplace(
+            a,
+            winEscapeQuotesRe,
+            '$1$1\\"',
+          );
+          escaped = StringPrototypeReplace(
+            escaped,
+            winTrailingBackslashRe,
+            "$1$1",
+          );
           return `"${escaped}"`;
         }
         return a;
       })
-      : result.denoArgs.map((a) => {
+      : ArrayPrototypeMap(result.denoArgs, (a) => {
         // POSIX shell quoting for translated args.
-        const hasShellVarRef = /\$\{[^}]+\}|\$[A-Za-z_]/.test(a);
-        const unsafeInDoubleQuotes = /`|\$\(|\\/.test(a);
-        const hasShellMetachars = /[();&|<>`!\n\r\s"'\\$]/.test(a);
+        const hasShellVarRef = RegExpPrototypeTest(shellVarRefRe, a);
+        const unsafeInDoubleQuotes = RegExpPrototypeTest(
+          unsafeInDoubleQuotesRe,
+          a,
+        );
+        const hasShellMetachars = RegExpPrototypeTest(posixMetacharsRe, a);
 
         if (hasShellMetachars) {
           if (hasShellVarRef && !unsafeInDoubleQuotes) {
-            return '"' + a.replace(/"/g, '\\"') + '"';
+            return '"' + StringPrototypeReplace(a, doubleQuoteRe, '\\"') +
+              '"';
           }
-          return "'" + a.replace(/'/g, "'\\''") + "'";
+          return "'" + StringPrototypeReplace(a, singleQuoteRe, "'\\''") +
+            "'";
         }
         return a;
       });
-    const prefix = shellVarPrefix || command.slice(0, denoPathLength);
-    let transformed = prefix + " " + quotedArgs.join(" ");
+    const prefix = shellVarPrefix ||
+      StringPrototypeSlice(command, 0, denoPathLength);
+    let transformed = prefix + " " + ArrayPrototypeJoin(quotedArgs, " ");
     if (shellSuffix) {
       transformed += " " + shellSuffix;
     }
@@ -1411,16 +1588,19 @@ function transformDenoShellCommand(
     // If the shell suffix starts with a pipe, the command after the pipe
     // may also be a Deno invocation that needs transformation.
     if (env) {
-      const pipeMatch = shellSuffix.match(/^\s*\|\s*/);
+      const pipeMatch = StringPrototypeMatch(shellSuffix, pipePrefixRe);
       if (pipeMatch) {
-        const afterPipe = shellSuffix.slice(pipeMatch[0].length);
+        const afterPipe = StringPrototypeSlice(
+          shellSuffix,
+          pipeMatch[0].length,
+        );
         const transformedAfter = transformDenoShellCommand(
           afterPipe,
           env,
           isCmdExe,
         );
         if (transformedAfter !== afterPipe) {
-          transformed = prefix + " " + quotedArgs.join(" ") +
+          transformed = prefix + " " + ArrayPrototypeJoin(quotedArgs, " ") +
             " | " + transformedAfter;
         }
       }
@@ -1445,7 +1625,7 @@ function findFirstNonFlagArg(args) {
       return i + 1 < args.length ? args[i + 1] : null;
     }
     // If it doesn't start with '-', it's a positional argument
-    if (!arg.startsWith("-")) {
+    if (!StringPrototypeStartsWith(arg, "-")) {
       return arg;
     }
     // Skip known flags that take a value
@@ -1477,7 +1657,7 @@ function buildCommand(
   let includeNpmProcessState = false;
   if (file === Deno.execPath() && !Deno.build.standalone) {
     // Ensure all args are strings (Node allows numbers in args array)
-    args = args.map((arg) => String(arg));
+    args = ArrayPrototypeMap(args, (arg) => String(arg));
 
     // Find script path to check if it's in an npm package
     const firstNonFlagArg = findFirstNonFlagArg(args);
@@ -1487,11 +1667,16 @@ function buildCommand(
 
     // Use the Rust parser to translate Node.js args to Deno args
     // The parser handles Deno-style args (e.g., "run -A script.js") by passing them through unchanged
+    if (ArrayPrototypeIncludes(args, "--use-env-proxy")) {
+      env.NODE_USE_ENV_PROXY = "1";
+    } else if (ArrayPrototypeIncludes(args, "--no-use-env-proxy")) {
+      env.NODE_USE_ENV_PROXY = "0";
+    }
     const result = op_node_translate_cli_args(args, scriptInNpmPackage, true);
     args = result.denoArgs;
     includeNpmProcessState = result.needsNpmProcessState;
     if (result.caStores?.length) {
-      env.DENO_TLS_CA_STORE = result.caStores.join(",");
+      env.DENO_TLS_CA_STORE = ArrayPrototypeJoin(result.caStores, ",");
     }
     if (result.useOpensslCa) {
       env.DENO_NODE_USE_OPENSSL_CA = "1";
@@ -1504,7 +1689,7 @@ function buildCommand(
 
     // Update NODE_OPTIONS if needed
     if (result.nodeOptions.length > 0) {
-      const options = result.nodeOptions.join(" ");
+      const options = ArrayPrototypeJoin(result.nodeOptions, " ");
       if (env.NODE_OPTIONS) {
         env.NODE_OPTIONS += " " + options;
       } else {
@@ -1523,7 +1708,7 @@ function buildCommand(
   ) {
     const transformed = transformDenoShellCommand(args[1], env, false);
     if (transformed !== args[1]) {
-      args = args.slice();
+      args = ArrayPrototypeSlice(args);
       args[1] = transformed;
     }
   }
@@ -1536,13 +1721,14 @@ function buildCommand(
   ) {
     let cmdStr = args[3];
     // Remove wrapping quotes added by normalizeSpawnArguments
-    const hasWrappingQuotes = cmdStr.startsWith('"') && cmdStr.endsWith('"');
+    const hasWrappingQuotes = StringPrototypeStartsWith(cmdStr, '"') &&
+      StringPrototypeEndsWith(cmdStr, '"');
     if (hasWrappingQuotes) {
-      cmdStr = cmdStr.slice(1, -1);
+      cmdStr = StringPrototypeSlice(cmdStr, 1, -1);
     }
     const transformed = transformDenoShellCommand(cmdStr, env, true);
     if (transformed !== cmdStr) {
-      args = args.slice();
+      args = ArrayPrototypeSlice(args);
       args[3] = hasWrappingQuotes ? `"${transformed}"` : transformed;
     }
   }
@@ -1555,13 +1741,21 @@ function buildCommand(
   // intermediary closes stdio then calls deno directly via subprocess.call.
   if (file !== Deno.execPath()) {
     const denoPath = Deno.execPath();
-    const denoArgIndex = args.findIndex((arg) => arg === denoPath);
+    const denoArgIndex = ArrayPrototypeFindIndex(
+      args,
+      (arg) => arg === denoPath,
+    );
     if (denoArgIndex !== -1) {
-      const argsForDeno = args.slice(denoArgIndex + 1);
+      const argsForDeno = ArrayPrototypeSlice(args, denoArgIndex + 1);
       if (argsForDeno.length > 0) {
         try {
           const result = op_node_translate_cli_args(argsForDeno, false, true);
-          args = [...args.slice(0, denoArgIndex + 1), ...result.denoArgs];
+          args = [
+            ...new SafeArrayIterator(
+              ArrayPrototypeSlice(args, 0, denoArgIndex + 1),
+            ),
+            ...new SafeArrayIterator(result.denoArgs),
+          ];
         } catch {
           // If translation fails (unknown flags), leave args unchanged
         }
@@ -1574,14 +1768,14 @@ function buildCommand(
 
 function restorePrototype(obj) {
   if (obj === null || typeof obj !== "object") return;
-  if (Array.isArray(obj)) {
+  if (ArrayIsArray(obj)) {
     for (let i = 0; i < obj.length; i++) {
       restorePrototype(obj[i]);
     }
     return;
   }
-  Object.setPrototypeOf(obj, Object.prototype);
-  for (const key of Object.keys(obj)) {
+  ObjectSetPrototypeOf(obj, ObjectPrototype);
+  for (const key of new SafeArrayIterator(ObjectKeys(obj))) {
     restorePrototype(obj[key]);
   }
 }
@@ -1592,7 +1786,9 @@ function _resolveKillSignalName(
 ) {
   if (typeof killSignal === "string") return killSignal;
   if (typeof killSignal === "number") {
-    for (const [name, num] of Object.entries(os.signals)) {
+    for (const entry of new SafeArrayIterator(ObjectEntries(os.signals))) {
+      const name = entry[0];
+      const num = entry[1];
       if (num === killSignal) return name;
     }
     return String(killSignal);
@@ -1623,8 +1819,21 @@ function normalizeInput(input) {
   if (typeof input === "string") {
     return Buffer.from(input);
   }
-  if (ArrayBuffer.isView(input)) {
-    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  if (ArrayBufferIsView(input)) {
+    if (isTypedArray(input)) {
+      return Buffer.from(
+        TypedArrayPrototypeGetBuffer(input),
+        TypedArrayPrototypeGetByteOffset(input),
+        TypedArrayPrototypeGetByteLength(input),
+      );
+    }
+    // ArrayBuffer.isView() is true only for TypedArrays and DataViews, so the
+    // DataView branch is the only remaining possibility here.
+    return Buffer.from(
+      DataViewPrototypeGetBuffer(input),
+      DataViewPrototypeGetByteOffset(input),
+      DataViewPrototypeGetByteLength(input),
+    );
   }
   throw new ERR_INVALID_ARG_TYPE("input", [
     "string",
@@ -1653,12 +1862,15 @@ function spawnSync(
   } = options;
   let command = options.file || "";
   let args = options.args || [];
-  const [
-    stdin_ = "pipe",
-    stdout_ = "pipe",
-    stderr_ = "pipe",
-    ...extraStdio_
-  ] = normalizeStdioOption(stdio);
+  const normalizedStdio = normalizeStdioOption(stdio);
+  const stdin_ = normalizedStdio[0] === undefined ? "pipe" : normalizedStdio[0];
+  const stdout_ = normalizedStdio[1] === undefined
+    ? "pipe"
+    : normalizedStdio[1];
+  const stderr_ = normalizedStdio[2] === undefined
+    ? "pipe"
+    : normalizedStdio[2];
+  const extraStdio_ = ArrayPrototypeSlice(normalizedStdio, 3);
 
   const extraStdioNormalized = [];
   for (let i = 0; i < extraStdio_.length; i++) {
@@ -1666,12 +1878,12 @@ function spawnSync(
     const fd = i + 3; // extra stdio starts at FD 3
     // null/undefined means "don't pass this fd"
     if (val == null) {
-      extraStdioNormalized.push("null");
+      ArrayPrototypePush(extraStdioNormalized, "null");
     } else if (val === "inherit") {
       // "inherit" for extra FDs means pass the parent's FD at this index
-      extraStdioNormalized.push(fd);
+      ArrayPrototypePush(extraStdioNormalized, fd);
     } else {
-      extraStdioNormalized.push(toDenoStdio(val));
+      ArrayPrototypePush(extraStdioNormalized, toDenoStdio(val));
     }
   }
 
@@ -1679,19 +1891,25 @@ function spawnSync(
   // args[0] is argv0 (prepended by normalizeSpawnArguments). Capture it
   // before slicing so we can pass it via kArgv0 for OS-level argv[0].
   const argv0 = args && args.length > 0 ? args[0] : command;
-  const argsToProcess = args && args.length > 0 ? args.slice(1) : [];
-  [command, args, includeNpmProcessState] = buildCommand(
+  const argsToProcess = args && args.length > 0
+    ? ArrayPrototypeSlice(args, 1)
+    : [];
+  const builtCommand = buildCommand(
     command,
     argsToProcess,
     env,
   );
+  command = builtCommand[0];
+  args = builtCommand[1];
+  includeNpmProcessState = builtCommand[2];
   const input_ = normalizeInput(input);
 
   const result = {};
   try {
     const output = nodeSpawnSyncChild({
-      args: [command, ...args],
+      args: [command, ...new SafeArrayIterator(args)],
       cwd,
+      // deno-lint-ignore prefer-primordials
       env: mapValues(env, (value) => value.toString()),
       argv0: argv0 !== command ? argv0 : undefined,
       stdout: toDenoStdio(stdout_),
@@ -1726,7 +1944,9 @@ function spawnSync(
     }
 
     if (encoding && encoding !== "buffer") {
+      // deno-lint-ignore prefer-primordials
       stdout = stdout && stdout.toString(encoding);
+      // deno-lint-ignore prefer-primordials
       stderr = stderr && stderr.toString(encoding);
     }
 
@@ -1742,7 +1962,7 @@ function spawnSync(
     result.stderr = stderr;
     result.output = [output.signal, stdout, stderr];
   } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
+    if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)) {
       result.error = _createSpawnError("ENOENT", command, args, true);
     }
   }
@@ -1846,15 +2066,27 @@ function getIpcHandleInfo(handle, options) {
   const { Socket } = lazyNet();
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
-  if (handle instanceof Socket) {
-    if (!(handle._handle instanceof TCP)) {
+  if (ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)) {
+    const inner = handle._handle;
+    // Match Node's handleConversion["net.Socket"].send, which returns the
+    // socket's native handle. A socket without an underlying handle (e.g.
+    // already destroyed) yields null; Node then strips the handle and sends
+    // the message alone instead of throwing.
+    if (!inner) {
+      return null;
+    }
+    const isTcp = ObjectPrototypeIsPrototypeOf(TCP.prototype, inner);
+    const isPipe = ObjectPrototypeIsPrototypeOf(Pipe.prototype, inner);
+    if (!isTcp && !isPipe) {
       notImplemented("ChildProcess.send with non-TCP net.Socket handle");
     }
     return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
+      rawFd: rawFdFromTcpHandle(inner),
       message: {
         cmd: "NODE_HANDLE",
         type: IPC_HANDLE_NET_SOCKET,
+        // Distinguishes the wrap type the receiver should reconstruct.
+        nativeKind: isTcp ? "tcp" : "pipe",
         msg: undefined,
       },
       closeAfterSend: options.keepOpen !== true,
@@ -1866,15 +2098,27 @@ function getIpcHandleInfo(handle, options) {
     };
   }
 
-  if (handle instanceof NetServer) {
-    if (!(handle._handle instanceof TCP)) {
+  if (ObjectPrototypeIsPrototypeOf(NetServer.prototype, handle)) {
+    const inner = handle._handle;
+    // Match Node's handleConversion["net.Server"].send, which returns
+    // server._handle. A server that hasn't started listening (or was
+    // already closed) has a null handle; Node then strips the handle and
+    // sends the message alone instead of throwing.
+    if (!inner) {
+      return null;
+    }
+    const isTcp = ObjectPrototypeIsPrototypeOf(TCP.prototype, inner);
+    const isPipe = ObjectPrototypeIsPrototypeOf(Pipe.prototype, inner);
+    if (!isTcp && !isPipe) {
       notImplemented("ChildProcess.send with non-TCP net.Server handle");
     }
     return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
+      rawFd: rawFdFromTcpHandle(inner),
       message: {
         cmd: "NODE_HANDLE",
         type: IPC_HANDLE_NET_SERVER,
+        // Distinguishes the wrap type the receiver should reconstruct.
+        nativeKind: isTcp ? "tcp" : "pipe",
         msg: undefined,
       },
       // Match Node's handleConversion["net.Server"].postSend, which calls
@@ -1885,7 +2129,10 @@ function getIpcHandleInfo(handle, options) {
       },
     };
   }
-  if (handle instanceof TCP || handle instanceof Pipe) {
+  if (
+    ObjectPrototypeIsPrototypeOf(TCP.prototype, handle) ||
+    ObjectPrototypeIsPrototypeOf(Pipe.prototype, handle)
+  ) {
     return {
       rawFd: rawFdFromTcpHandle(handle),
       message: {
@@ -1894,7 +2141,9 @@ function getIpcHandleInfo(handle, options) {
         // 0 = SOCKET, 1 = SERVER. Same encoding for TCP and Pipe.
         socketType: handle.socketTypeForIpc(),
         // Distinguishes the wrap type the receiver should reconstruct.
-        nativeKind: handle instanceof TCP ? "tcp" : "pipe",
+        nativeKind: ObjectPrototypeIsPrototypeOf(TCP.prototype, handle)
+          ? "tcp"
+          : "pipe",
         msg: undefined,
       },
       // Match Node's handleConversion["net.Native"]: it has no postSend hook,
@@ -1909,7 +2158,7 @@ function getIpcHandleInfo(handle, options) {
     };
   }
 
-  if (handle instanceof DgramSocket) {
+  if (ObjectPrototypeIsPrototypeOf(DgramSocket.prototype, handle)) {
     const udpHandle = handle[lazyDgramInternal().kStateSymbol]?.handle;
     if (!udpHandle || typeof udpHandle.fdForIpc !== "function") {
       throw new ERR_INVALID_HANDLE_TYPE();
@@ -1944,25 +2193,29 @@ function createIpcHandle(message, rawFd) {
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
   if (message.type === IPC_HANDLE_NET_SOCKET) {
-    const tcp = new TCP(tcpSocketType.SOCKET);
-    const err = tcp.open(rawFd);
+    const inner = message.nativeKind === "pipe"
+      ? new Pipe(socketType.SOCKET)
+      : new TCP(tcpSocketType.SOCKET);
+    const err = inner.open(rawFd);
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
     }
     try {
       return new Socket({
-        handle: tcp,
+        handle: inner,
         readable: true,
         writable: true,
       });
     } catch (err) {
-      tcp.close();
+      inner.close();
       throw err;
     }
   }
   if (message.type === IPC_HANDLE_NET_SERVER) {
-    const tcp = new TCP(tcpSocketType.SERVER);
-    const err = tcp.open(rawFd);
+    const inner = message.nativeKind === "pipe"
+      ? new Pipe(socketType.SERVER)
+      : new TCP(tcpSocketType.SERVER);
+    const err = inner.open(rawFd);
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
     }
@@ -1972,10 +2225,10 @@ function createIpcHandle(message, rawFd) {
     // detects an already-listening fd and skips the bind/listen syscalls.
     const server = new NetServer();
     try {
-      server.listen(tcp);
+      server.listen(inner);
       return server;
     } catch (err) {
-      tcp.close();
+      inner.close();
       throw err;
     }
   }
@@ -2015,6 +2268,7 @@ function createIpcHandle(message, rawFd) {
     // socket.bind(handle).  The `bind(udpHandle)` path in dgram.ts calls
     // replaceHandle + startListening, making the socket immediately usable.
     const socket = new DgramSocket(message.dgramType);
+    // deno-lint-ignore prefer-primordials
     socket.bind(udp);
     return socket;
   }
@@ -2063,7 +2317,8 @@ function setupChannel(
   function sendHandleAck() {
     const queueOk = [true];
     control.refCounted();
-    writeFn(ipc, { cmd: "NODE_HANDLE_ACK" }, NO_RAW_FD, queueOk).then(
+    PromisePrototypeThen(
+      writeFn(ipc, { cmd: "NODE_HANDLE_ACK" }, NO_RAW_FD, queueOk),
       () => control.unrefCounted(),
       () => control.unrefCounted(),
     );
@@ -2079,7 +2334,7 @@ function setupChannel(
     const queue = handleQueue;
     handleQueue = null;
     if (queue) {
-      for (const item of queue) {
+      for (const item of new SafeArrayIterator(queue)) {
         enqueueOrDispatch(item.message, item.handleInfo, item.callback);
       }
     }
@@ -2104,7 +2359,7 @@ function setupChannel(
     const queue = handleQueue;
     handleQueue = null;
     if (queue) {
-      for (const item of queue) {
+      for (const item of new SafeArrayIterator(queue)) {
         if (item.handleInfo && item.handleInfo.closeAfterSend) {
           item.handleInfo.close();
         }
@@ -2144,8 +2399,9 @@ function setupChannel(
     const writePromise = handleInfo
       ? writeFn(ipc, handleInfo.message, handleInfo.rawFd, queueOk)
       : writeFn(ipc, message, NO_RAW_FD, queueOk);
-    writePromise
-      .then(() => {
+    PromisePrototypeThen(
+      writePromise,
+      () => {
         control.unrefCounted();
         if (handleInfo) {
           // Hold the handle until NODE_HANDLE_ACK arrives; closing now
@@ -2156,7 +2412,8 @@ function setupChannel(
         if (callback) {
           nextTick(callback, null);
         }
-      }, (err) => {
+      },
+      (err) => {
         control.unrefCounted();
         if (handleInfo) {
           // Write failed: the receiver won't ACK, so close the handle now
@@ -2167,7 +2424,7 @@ function setupChannel(
           const queue = handleQueue;
           handleQueue = null;
           if (queue) {
-            for (const item of queue) {
+            for (const item of new SafeArrayIterator(queue)) {
               enqueueOrDispatch(
                 item.message,
                 item.handleInfo,
@@ -2176,7 +2433,9 @@ function setupChannel(
             }
           }
         }
-        if (err instanceof Deno.errors.Interrupted) {
+        if (
+          ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err)
+        ) {
           // Channel closed on us mid-write.
         } else {
           // Match Node: errors raised from a failed IPC send carry
@@ -2192,7 +2451,8 @@ function setupChannel(
             nextTick(() => target.emit("error", err));
           }
         }
-      });
+      },
+    );
     return queueOk[0];
   }
 
@@ -2207,7 +2467,9 @@ function setupChannel(
         // there will always be a pending read promise,
         // but it shouldn't keep the event loop from exiting
         core.unrefOpPromise(prom);
-        const [msg, rawFd] = await prom;
+        const read = await prom;
+        const msg = read[0];
+        const rawFd = read[1];
         if (isInternal(msg)) {
           const cmd = internalCmdName(msg);
           if (cmd === "CLOSE") {
@@ -2242,8 +2504,11 @@ function setupChannel(
       }
     } catch (err) {
       if (
-        err instanceof Deno.errors.Interrupted ||
-        err instanceof Deno.errors.BadResource
+        ObjectPrototypeIsPrototypeOf(
+          Deno.errors.Interrupted.prototype,
+          err,
+        ) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err)
       ) {
         // Channel torn down from under us; release any handles awaiting an
         // ACK that will now never arrive so they don't keep us alive.
@@ -2284,7 +2549,11 @@ function setupChannel(
       if (!target.channel || !target.listenerCount("message")) {
         return;
       }
-      for (const pending of target.channel[kPendingMessages]) {
+      for (
+        const pending of new SafeArrayIterator(
+          target.channel[kPendingMessages],
+        )
+      ) {
         target.emit("message", pending[0], pending[1]);
       }
       target.channel[kPendingMessages] = [];
@@ -2327,11 +2596,11 @@ function setupChannel(
     // Reject only non-falsy values that aren't a recognized handle type.
     if (handle) {
       if (
-        !(handle instanceof Socket) &&
-        !(handle instanceof NetServer) &&
-        !(handle instanceof DgramSocket) &&
-        !(handle instanceof TCP) &&
-        !(handle instanceof Pipe)
+        !ObjectPrototypeIsPrototypeOf(Socket.prototype, handle) &&
+        !ObjectPrototypeIsPrototypeOf(NetServer.prototype, handle) &&
+        !ObjectPrototypeIsPrototypeOf(DgramSocket.prototype, handle) &&
+        !ObjectPrototypeIsPrototypeOf(TCP.prototype, handle) &&
+        !ObjectPrototypeIsPrototypeOf(Pipe.prototype, handle)
       ) {
         throw new ERR_INVALID_HANDLE_TYPE();
       }
@@ -2361,7 +2630,12 @@ function setupChannel(
     let handleInfo = null;
     if (handle !== undefined) {
       handleInfo = getIpcHandleInfo(handle, options);
-      handleInfo.message.msg = message;
+      // `getIpcHandleInfo` returns null when the handle has no underlying
+      // native handle (e.g. a server that never started listening). Match
+      // Node, which strips the handle and sends the plain message instead.
+      if (handleInfo !== null) {
+        handleInfo.message.msg = message;
+      }
     }
 
     return enqueueOrDispatch(message, handleInfo, callback);
