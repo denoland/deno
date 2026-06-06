@@ -1935,6 +1935,11 @@ declare namespace Deno {
      *   console.log(decoder.decode(chunk));
      * }
      * ```
+     *
+     * Note that the readable stream *takes ownership of the file*: reading the
+     * stream to completion (or cancelling it) closes the file automatically, so
+     * you should not close the file yourself while the stream is still being
+     * consumed.
      */
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** A {@linkcode WritableStream} instance to write the contents of the
@@ -1950,6 +1955,10 @@ declare namespace Deno {
      *   await writer.write(encoder.encode(item));
      * }
      * ```
+     *
+     * Note that the writable stream *takes ownership of the file*: closing or
+     * aborting the stream closes the file automatically, so you should not
+     * close the file yourself while the stream is still in use.
      */
     readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /** Write the contents of the array buffer (`p`) to the file.
