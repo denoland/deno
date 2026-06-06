@@ -1027,7 +1027,7 @@ Deno.test(
 Deno.test(
   {
     ignore: Deno.build.os !== "linux",
-    permissions: { read: true, write: true },
+    permissions: { read: true, write: true, net: true },
   },
   async function netUnixPacketAbstractPathAddr() {
     const alicePath = `\0deno-net-test-${crypto.randomUUID()}`;
