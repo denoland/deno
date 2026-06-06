@@ -24,12 +24,12 @@ mod channel;
 mod editor;
 mod session;
 
-use channel::ReplSyncMessage;
-use channel::ReplSyncMessageHandler;
-use channel::ReplSyncResponse;
-use channel::repl_sync_channel;
+use channel::EditorSyncMessage;
+use channel::EditorSyncMessageHandler;
+use channel::EditorSyncResponse;
+use channel::editor_channel;
 use editor::EditorHelper;
-use editor::ReadLineError;
+use editor::ReadlineError;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
@@ -39,7 +39,7 @@ use super::test::create_single_test_event_channel;
 struct Repl {
   session: ReplSession,
   editor: ReplEditor,
-  message_handler: ReplSyncMessageHandler,
+  message_handler: EditorSyncMessageHandler,
 }
 
 #[allow(clippy::print_stdout, reason = "repl")]
@@ -70,7 +70,7 @@ impl Repl {
 
           println!("{}", output);
         }
-        Err(ReadLineError::Interrupted) => {
+        Err(ReadlineError::Interrupted) => {
           if self.editor.should_exit_on_interrupt() {
             break;
           }
@@ -78,7 +78,7 @@ impl Repl {
           println!("press ctrl+c again to exit");
           continue;
         }
-        Err(ReadLineError::Eof) => {
+        Err(ReadlineError::Eof) => {
           break;
         }
         Err(err) => {
@@ -95,9 +95,9 @@ impl Repl {
 #[allow(clippy::print_stdout, reason = "repl")]
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
-  message_handler: &mut ReplSyncMessageHandler,
+  message_handler: &mut EditorSyncMessageHandler,
   editor: ReplEditor,
-) -> Result<String, ReadLineError> {
+) -> Result<String, ReadlineError> {
   let mut line_fut = spawn_blocking(move || editor.readline());
   let mut poll_worker = true;
   let notifications_rc = repl_session.notifications.clone();
@@ -110,11 +110,11 @@ async fn read_line_and_poll(
       }
       result = message_handler.recv() => {
         match result {
-          Some(ReplSyncMessage::PostMessage { method, params }) => {
+          Some(EditorSyncMessage::PostMessage { method, params }) => {
             let result = repl_session
               .post_message_with_event_loop(&method, params)
               .await;
-            message_handler.send(ReplSyncResponse::PostMessage(result)).unwrap();
+            message_handler.send(EditorSyncResponse::PostMessage(result)).unwrap();
           },
           None => {}, // channel closed
         }
@@ -199,11 +199,11 @@ pub async fn run(
     return run_json(session).await;
   }
 
-  let repl_sync_channel = repl_sync_channel();
+  let editor_channel = editor_channel();
 
   let helper = EditorHelper {
     context_id: session.context_id,
-    sync_sender: repl_sync_channel.0,
+    sync_sender: editor_channel.0,
   };
 
   let history_file_path = factory
@@ -215,7 +215,7 @@ pub async fn run(
   let mut repl = Repl {
     session,
     editor,
-    message_handler: repl_sync_channel.1,
+    message_handler: editor_channel.1,
   };
 
   if let Some(eval_files) = repl_flags.eval_files {

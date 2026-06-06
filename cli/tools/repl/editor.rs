@@ -1,19 +1,21 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::io::BufRead;
+use std::io::IsTerminal;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 
-use crossterm::cursor;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
 use crossterm::event::KeyModifiers;
-use crossterm::terminal;
+use crossterm::terminal::disable_raw_mode;
+use crossterm::terminal::enable_raw_mode;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::BinOpToken;
 use deno_ast::swc::parser::token::Token;
@@ -23,21 +25,27 @@ use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use thiserror::Error;
+use unicode_width::UnicodeWidthStr;
 
-use super::channel::ReplSyncMessageSender;
+use super::channel::EditorSyncMessageSender;
 use crate::cdp;
 use crate::colors;
-use crate::util::console::RawMode;
 
-#[derive(Debug, Error)]
-pub enum ReadLineError {
-  #[error("interrupted")]
+const PROMPT: &str = "> ";
+const DISPLAY_ALL_COMPLETIONS_THRESHOLD: usize = 100;
+
+#[derive(Debug)]
+pub enum ReadlineError {
   Interrupted,
-  #[error("EOF")]
   Eof,
-  #[error(transparent)]
-  Io(#[from] std::io::Error),
+  #[allow(dead_code)]
+  Io(std::io::Error),
+}
+
+impl From<std::io::Error> for ReadlineError {
+  fn from(err: std::io::Error) -> Self {
+    Self::Io(err)
+  }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -51,7 +59,7 @@ enum ValidationResult {
 // tab completion.
 pub struct EditorHelper {
   pub context_id: u64,
-  pub sync_sender: ReplSyncMessageSender,
+  pub sync_sender: EditorSyncMessageSender,
 }
 
 impl EditorHelper {
@@ -162,23 +170,7 @@ impl EditorHelper {
       Some(evaluate_response)
     }
   }
-}
 
-fn is_word_boundary(c: char) -> bool {
-  if matches!(c, '.' | '_' | '$') {
-    false
-  } else {
-    char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
-  }
-}
-
-fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
-  let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
-  let word = &line[start..cursor_pos];
-  word.strip_prefix(is_word_boundary).unwrap_or(word)
-}
-
-impl EditorHelper {
   fn complete(&self, line: &str, pos: usize) -> (usize, Vec<String>) {
     let expr = get_expr_from_line_at_pos(line, pos);
 
@@ -238,39 +230,33 @@ impl EditorHelper {
                 colors::yellow(&line[range]).to_string()
               }
               Word::Keyword(_) => colors::cyan(&line[range]).to_string(),
-              Word::Ident(ident) => {
-                match ident.as_ref() {
-                  "undefined" => colors::gray(&line[range]).to_string(),
-                  "Infinity" | "NaN" => {
-                    colors::yellow(&line[range]).to_string()
-                  }
-                  "async" | "of" => colors::cyan(&line[range]).to_string(),
-                  _ => {
-                    let next = lexed_items.peek().map(|item| &item.inner);
-                    if matches!(
+              Word::Ident(ident) => match ident.as_ref() {
+                "undefined" => colors::gray(&line[range]).to_string(),
+                "Infinity" | "NaN" => colors::yellow(&line[range]).to_string(),
+                "async" | "of" => colors::cyan(&line[range]).to_string(),
+                _ => {
+                  let next = lexed_items.peek().map(|item| &item.inner);
+                  if matches!(
+                    next,
+                    Some(deno_ast::TokenOrComment::Token(Token::LParen))
+                  ) {
+                    // We're looking for something that looks like a function
+                    // We use a simple heuristic: 'ident' followed by 'LParen'
+                    colors::intense_blue(&line[range]).to_string()
+                  } else if ident.as_ref() == "from"
+                    && matches!(
                       next,
-                      Some(deno_ast::TokenOrComment::Token(Token::LParen))
-                    ) {
-                      // We're looking for something that looks like a function
-                      // We use a simple heuristic: 'ident' followed by 'LParen'
-                      colors::intense_blue(&line[range]).to_string()
-                    } else if ident.as_ref() == "from"
-                      && matches!(
-                        next,
-                        Some(deno_ast::TokenOrComment::Token(
-                          Token::Str { .. }
-                        ))
-                      )
-                    {
-                      // When ident 'from' is followed by a string literal, highlight it
-                      // E.g. "export * from 'something'" or "import a from 'something'"
-                      colors::cyan(&line[range]).to_string()
-                    } else {
-                      line[range].to_string()
-                    }
+                      Some(deno_ast::TokenOrComment::Token(Token::Str { .. }))
+                    )
+                  {
+                    // When ident 'from' is followed by a string literal, highlight it
+                    // E.g. "export * from 'something'" or "import a from 'something'"
+                    colors::cyan(&line[range]).to_string()
+                  } else {
+                    line[range].to_string()
                   }
                 }
-              }
+              },
             },
             _ => line[range].to_string(),
           },
@@ -283,6 +269,20 @@ impl EditorHelper {
 
     out_line.into()
   }
+}
+
+fn is_word_boundary(c: char) -> bool {
+  if matches!(c, '.' | '_' | '$') {
+    false
+  } else {
+    char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+  }
+}
+
+fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
+  let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
+  let word = &line[start..cursor_pos];
+  word.strip_prefix(is_word_boundary).unwrap_or(word)
 }
 
 fn validate(input: &str) -> ValidationResult {
@@ -366,10 +366,22 @@ fn validate(input: &str) -> ValidationResult {
   }
 }
 
+#[derive(Default)]
+struct CompletionState {
+  line: String,
+  cursor: usize,
+  start: usize,
+  candidates: Vec<String>,
+}
+
+struct EditorState {
+  helper: EditorHelper,
+  history: Vec<String>,
+}
+
 #[derive(Clone)]
 pub struct ReplEditor {
-  helper: Arc<EditorHelper>,
-  history: Arc<Mutex<Vec<String>>>,
+  inner: Arc<Mutex<EditorState>>,
   history_file_path: Option<PathBuf>,
   errored_on_history_save: Arc<AtomicBool>,
   should_exit_on_interrupt: Arc<AtomicBool>,
@@ -380,14 +392,13 @@ impl ReplEditor {
     helper: EditorHelper,
     history_file_path: Option<PathBuf>,
   ) -> Result<Self, AnyError> {
-    let should_exit_on_interrupt = Arc::new(AtomicBool::new(false));
-    let history = if let Some(history_file_path) = &history_file_path {
-      std::fs::read_to_string(history_file_path)
-        .map(|text| text.lines().map(ToOwned::to_owned).collect())
-        .unwrap_or_default()
-    } else {
-      Vec::new()
-    };
+    let history = history_file_path
+      .as_ref()
+      .and_then(|history_file_path| {
+        std::fs::read_to_string(history_file_path).ok()
+      })
+      .map(|text| text.lines().map(ToOwned::to_owned).collect())
+      .unwrap_or_default();
 
     if let Some(history_file_path) = &history_file_path {
       let history_file_dir = history_file_path.parent().unwrap();
@@ -400,45 +411,397 @@ impl ReplEditor {
     }
 
     Ok(ReplEditor {
-      helper: Arc::new(helper),
-      history: Arc::new(Mutex::new(history)),
+      inner: Arc::new(Mutex::new(EditorState { helper, history })),
       history_file_path,
       errored_on_history_save: Arc::new(AtomicBool::new(false)),
-      should_exit_on_interrupt,
+      should_exit_on_interrupt: Arc::new(AtomicBool::new(false)),
     })
   }
 
-  pub fn readline(&self) -> Result<String, ReadLineError> {
-    LineEditor::new(
-      &self.helper,
-      &self.history.lock(),
-      &self.should_exit_on_interrupt,
-    )
-    .readline()
+  pub fn readline(&self) -> Result<String, ReadlineError> {
+    if !std::io::stdin().is_terminal() {
+      return self.read_line_without_tty();
+    }
+
+    let _raw_mode = RawModeGuard::new()?;
+    let mut stdout = std::io::stdout();
+    let mut line = String::new();
+    let mut cursor = 0;
+    let mut history_index = None;
+    let mut completion_state = CompletionState::default();
+    let mut pending_completion_confirmation: Option<Vec<String>> = None;
+
+    write!(stdout, "{PROMPT}")?;
+    stdout.flush()?;
+
+    loop {
+      let event = crossterm::event::read()?;
+      let Event::Key(key_event) = event else {
+        continue;
+      };
+      if key_event.kind == KeyEventKind::Release {
+        continue;
+      }
+
+      if let Some(candidates) = pending_completion_confirmation.take() {
+        match key_event.code {
+          KeyCode::Char('y') | KeyCode::Char('Y') => {
+            write!(stdout, "y")?;
+            self.write_completions(&mut stdout, &candidates)?;
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          _ => {
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+        }
+        stdout.flush()?;
+        continue;
+      }
+
+      match key_event {
+        KeyEvent {
+          code: KeyCode::Char('c'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        } => {
+          writeln!(stdout)?;
+          stdout.flush()?;
+          return Err(ReadlineError::Interrupted);
+        }
+        KeyEvent {
+          code: KeyCode::Char('d'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        } if line.is_empty() => {
+          writeln!(stdout)?;
+          stdout.flush()?;
+          return Err(ReadlineError::Eof);
+        }
+        KeyEvent {
+          code: KeyCode::Char('s'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        } => {
+          insert_str(&mut line, &mut cursor, "\n");
+          writeln!(stdout)?;
+          stdout.flush()?;
+        }
+        KeyEvent {
+          code: KeyCode::Char('r'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        } => {
+          self.should_exit_on_interrupt.store(false, Relaxed);
+        }
+        KeyEvent {
+          code: KeyCode::Char('\n' | '\r'),
+          ..
+        }
+        | KeyEvent {
+          code: KeyCode::Char('j' | 'm'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        }
+        | KeyEvent {
+          code: KeyCode::Enter,
+          ..
+        } => match validate(&line) {
+          ValidationResult::Incomplete => {
+            insert_str(&mut line, &mut cursor, "\n");
+            writeln!(stdout)?;
+            stdout.flush()?;
+          }
+          _ => {
+            writeln!(stdout)?;
+            stdout.flush()?;
+            return Ok(line);
+          }
+        },
+        KeyEvent {
+          code: KeyCode::Tab, ..
+        } => {
+          self.handle_tab(
+            &mut stdout,
+            &mut line,
+            &mut cursor,
+            &mut completion_state,
+            &mut pending_completion_confirmation,
+          )?;
+          history_index = None;
+        }
+        KeyEvent {
+          code: KeyCode::Backspace,
+          ..
+        } => {
+          if cursor > 0 {
+            let previous = previous_char_boundary(&line, cursor);
+            line.replace_range(previous..cursor, "");
+            cursor = previous;
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          history_index = None;
+          completion_state = CompletionState::default();
+        }
+        KeyEvent {
+          code: KeyCode::Delete,
+          ..
+        } => {
+          if cursor < line.len() {
+            let next = next_char_boundary(&line, cursor);
+            line.replace_range(cursor..next, "");
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          history_index = None;
+          completion_state = CompletionState::default();
+        }
+        KeyEvent {
+          code: KeyCode::Left,
+          ..
+        } => {
+          if cursor > 0 {
+            cursor = previous_char_boundary(&line, cursor);
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+        }
+        KeyEvent {
+          code: KeyCode::Right,
+          ..
+        } => {
+          if cursor < line.len() {
+            cursor = next_char_boundary(&line, cursor);
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+        }
+        KeyEvent {
+          code: KeyCode::Home,
+          ..
+        } => {
+          cursor = 0;
+          self.redraw(&mut stdout, &line, cursor)?;
+        }
+        KeyEvent {
+          code: KeyCode::End, ..
+        } => {
+          cursor = line.len();
+          self.redraw(&mut stdout, &line, cursor)?;
+        }
+        KeyEvent {
+          code: KeyCode::Up, ..
+        } => {
+          let history = &self.inner.lock().history;
+          if !history.is_empty() {
+            let next_index = history_index
+              .map(|index: usize| index.saturating_sub(1))
+              .unwrap_or_else(|| history.len() - 1);
+            history_index = Some(next_index);
+            line = history[next_index].clone();
+            cursor = line.len();
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          completion_state = CompletionState::default();
+        }
+        KeyEvent {
+          code: KeyCode::Down,
+          ..
+        } => {
+          if let Some(index) = history_index {
+            let history = &self.inner.lock().history;
+            if index + 1 < history.len() {
+              let next_index = index + 1;
+              history_index = Some(next_index);
+              line = history[next_index].clone();
+            } else {
+              history_index = None;
+              line.clear();
+            }
+            cursor = line.len();
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          completion_state = CompletionState::default();
+        }
+        KeyEvent {
+          code: KeyCode::Char(ch),
+          modifiers,
+          ..
+        } if modifiers.is_empty() || modifiers == KeyModifiers::SHIFT => {
+          insert_str(&mut line, &mut cursor, &ch.to_string());
+          if line.contains('\n') {
+            write!(stdout, "{ch}")?;
+          } else {
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          history_index = None;
+          completion_state = CompletionState::default();
+        }
+        _ => {}
+      }
+
+      stdout.flush()?;
+    }
+  }
+
+  fn read_line_without_tty(&self) -> Result<String, ReadlineError> {
+    let mut stdin = std::io::stdin().lock();
+    let mut line = String::new();
+
+    loop {
+      let mut current_line = String::new();
+      if stdin.read_line(&mut current_line)? == 0 {
+        if line.is_empty() {
+          return Err(ReadlineError::Eof);
+        } else {
+          return Ok(line);
+        }
+      }
+
+      let current_line = current_line.trim_end_matches(['\r', '\n']);
+      if !line.is_empty() {
+        line.push('\n');
+      }
+      line.push_str(current_line);
+
+      if validate(&line) != ValidationResult::Incomplete {
+        return Ok(line);
+      }
+    }
+  }
+
+  fn handle_tab(
+    &self,
+    stdout: &mut std::io::Stdout,
+    line: &mut String,
+    cursor: &mut usize,
+    completion_state: &mut CompletionState,
+    pending_completion_confirmation: &mut Option<Vec<String>>,
+  ) -> Result<(), ReadlineError> {
+    if line.is_empty()
+      || line[..*cursor]
+        .chars()
+        .next_back()
+        .filter(|c| c.is_whitespace())
+        .is_some()
+    {
+      if cfg!(target_os = "windows") {
+        insert_str(line, cursor, "    ");
+      } else {
+        insert_str(line, cursor, "\t");
+      }
+      if line.contains('\n') {
+        if cfg!(target_os = "windows") {
+          write!(stdout, "    ")?;
+        } else {
+          write!(stdout, "\t")?;
+        }
+      } else {
+        self.redraw(stdout, line, *cursor)?;
+      }
+      *completion_state = CompletionState::default();
+      return Ok(());
+    }
+
+    let (start, mut candidates) =
+      self.inner.lock().helper.complete(line, *cursor);
+    candidates.sort();
+    candidates.dedup();
+    if candidates.is_empty() {
+      *completion_state = CompletionState::default();
+      return Ok(());
+    }
+
+    if candidates.len() == 1 {
+      line.replace_range(start..*cursor, &candidates[0]);
+      *cursor = start + candidates[0].len();
+      self.redraw(stdout, line, *cursor)?;
+      *completion_state = CompletionState::default();
+      return Ok(());
+    }
+
+    let repeated_tab = completion_state.line == *line
+      && completion_state.cursor == *cursor
+      && completion_state.start == start
+      && completion_state.candidates == candidates;
+
+    if !repeated_tab
+      && let Some(prefix) = common_prefix(&candidates)
+      && prefix.len() > *cursor - start
+    {
+      line.replace_range(start..*cursor, &prefix);
+      *cursor = start + prefix.len();
+      self.redraw(stdout, line, *cursor)?;
+      *completion_state = CompletionState::default();
+      return Ok(());
+    }
+
+    *completion_state = CompletionState {
+      line: line.clone(),
+      cursor: *cursor,
+      start,
+      candidates: candidates.clone(),
+    };
+
+    if repeated_tab {
+      if candidates.len() > DISPLAY_ALL_COMPLETIONS_THRESHOLD {
+        write!(
+          stdout,
+          "\r\nDisplay all {} possibilities? (y or n)",
+          candidates.len()
+        )?;
+        *pending_completion_confirmation = Some(candidates);
+      } else {
+        self.write_completions(stdout, &candidates)?;
+        self.redraw(stdout, line, *cursor)?;
+      }
+    }
+
+    Ok(())
+  }
+
+  fn write_completions(
+    &self,
+    stdout: &mut std::io::Stdout,
+    candidates: &[String],
+  ) -> Result<(), ReadlineError> {
+    writeln!(stdout)?;
+    for candidate in candidates {
+      writeln!(stdout, "{candidate}")?;
+    }
+    Ok(())
+  }
+
+  fn redraw(
+    &self,
+    stdout: &mut std::io::Stdout,
+    line: &str,
+    cursor: usize,
+  ) -> Result<(), ReadlineError> {
+    if line.contains('\n') {
+      return Ok(());
+    }
+
+    let highlighted = self.inner.lock().helper.highlight(line);
+    write!(stdout, "\r\x1b[2K{PROMPT}{highlighted}")?;
+    let suffix_width = UnicodeWidthStr::width(&line[cursor..]);
+    if suffix_width > 0 {
+      write!(stdout, "\x1b[{suffix_width}D")?;
+    }
+    Ok(())
   }
 
   pub fn update_history(&self, entry: String) {
-    if entry.is_empty() {
-      return;
-    }
-
-    self.history.lock().push(entry.clone());
+    self.inner.lock().history.push(entry.clone());
     if let Some(history_file_path) = &self.history_file_path {
-      match std::fs::OpenOptions::new()
+      let result = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(history_file_path)
-        .and_then(|mut file| writeln!(file, "{entry}"))
-      {
-        Ok(_) => {}
-        Err(e) => {
-          if self.errored_on_history_save.load(Relaxed) {
-            return;
-          }
-
-          self.errored_on_history_save.store(true, Relaxed);
-          log::warn!("Unable to save history file: {}", e);
+        .and_then(|mut file| writeln!(file, "{entry}"));
+      if let Err(e) = result {
+        if self.errored_on_history_save.load(Relaxed) {
+          return;
         }
+
+        self.errored_on_history_save.store(true, Relaxed);
+        log::warn!("Unable to save history file: {}", e);
       }
     }
   }
@@ -452,260 +815,59 @@ impl ReplEditor {
   }
 }
 
-struct LineEditor<'a> {
-  helper: &'a EditorHelper,
-  history: &'a [String],
-  should_exit_on_interrupt: &'a AtomicBool,
-  line: String,
-  cursor: usize,
-  rendered_cursor_line: usize,
-  history_index: Option<usize>,
-}
+struct RawModeGuard;
 
-impl<'a> LineEditor<'a> {
-  fn new(
-    helper: &'a EditorHelper,
-    history: &'a [String],
-    should_exit_on_interrupt: &'a AtomicBool,
-  ) -> Self {
-    Self {
-      helper,
-      history,
-      should_exit_on_interrupt,
-      line: String::new(),
-      cursor: 0,
-      rendered_cursor_line: 0,
-      history_index: None,
-    }
-  }
-
-  fn readline(mut self) -> Result<String, ReadLineError> {
-    let mut raw_mode = Some(RawMode::enable()?);
-    let mut stdout = std::io::stdout();
-    write!(stdout, "> ")?;
-    stdout.flush()?;
-
-    loop {
-      let Event::Key(KeyEvent {
-        code,
-        modifiers,
-        kind: KeyEventKind::Press,
-        ..
-      }) = crossterm::event::read()?
-      else {
-        continue;
-      };
-
-      match (code, modifiers) {
-        (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-          drop(raw_mode.take());
-          writeln!(stdout)?;
-          return Err(ReadLineError::Interrupted);
-        }
-        (KeyCode::Char('d'), KeyModifiers::CONTROL) if self.line.is_empty() => {
-          drop(raw_mode.take());
-          writeln!(stdout)?;
-          return Err(ReadLineError::Eof);
-        }
-        (KeyCode::Char('s'), KeyModifiers::CONTROL) => self.insert_char('\n'),
-        (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
-          self.should_exit_on_interrupt.store(false, Relaxed);
-        }
-        (KeyCode::Enter, _) => match validate(&self.line) {
-          ValidationResult::Incomplete => self.insert_char('\n'),
-          ValidationResult::Invalid(message) => {
-            drop(raw_mode.take());
-            writeln!(stdout)?;
-            if let Some(message) = message {
-              writeln!(stdout, "{message}")?;
-            }
-            raw_mode = Some(RawMode::enable()?);
-            break;
-          }
-          ValidationResult::Valid(_) => break,
-        },
-        (KeyCode::Backspace, _) => self.backspace(),
-        (KeyCode::Delete, _) => self.delete(),
-        (KeyCode::Left, _) => self.move_prev(),
-        (KeyCode::Right, _) => self.move_next(),
-        (KeyCode::Home, _) => self.cursor = 0,
-        (KeyCode::End, _) => self.cursor = self.line.len(),
-        (KeyCode::Up, _) => self.history_prev(),
-        (KeyCode::Down, _) => self.history_next(),
-        (KeyCode::Tab, _) => self.complete(&mut stdout, &mut raw_mode)?,
-        (KeyCode::Char(ch), _) => self.insert_char(ch),
-        _ => {}
-      }
-
-      self.redraw(&mut stdout)?;
-    }
-
-    drop(raw_mode.take());
-    writeln!(stdout)?;
-    Ok(self.line)
-  }
-
-  fn insert_char(&mut self, ch: char) {
-    self.line.insert(self.cursor, ch);
-    self.cursor += ch.len_utf8();
-  }
-
-  fn backspace(&mut self) {
-    if let Some((idx, _)) = self.line[..self.cursor].char_indices().next_back()
-    {
-      self.line.drain(idx..self.cursor);
-      self.cursor = idx;
-    }
-  }
-
-  fn delete(&mut self) {
-    if self.cursor < self.line.len() {
-      let next = self.line[self.cursor..]
-        .char_indices()
-        .nth(1)
-        .map(|(idx, _)| self.cursor + idx)
-        .unwrap_or(self.line.len());
-      self.line.drain(self.cursor..next);
-    }
-  }
-
-  fn move_prev(&mut self) {
-    if let Some((idx, _)) = self.line[..self.cursor].char_indices().next_back()
-    {
-      self.cursor = idx;
-    }
-  }
-
-  fn move_next(&mut self) {
-    if self.cursor < self.line.len() {
-      self.cursor = self.line[self.cursor..]
-        .char_indices()
-        .nth(1)
-        .map(|(idx, _)| self.cursor + idx)
-        .unwrap_or(self.line.len());
-    }
-  }
-
-  fn history_prev(&mut self) {
-    if self.history.is_empty() {
-      return;
-    }
-    let idx = self
-      .history_index
-      .map(|idx| idx.saturating_sub(1))
-      .unwrap_or(self.history.len() - 1);
-    self.history_index = Some(idx);
-    self.line = self.history[idx].clone();
-    self.cursor = self.line.len();
-  }
-
-  fn history_next(&mut self) {
-    let Some(idx) = self.history_index else {
-      return;
-    };
-    if idx + 1 < self.history.len() {
-      self.history_index = Some(idx + 1);
-      self.line = self.history[idx + 1].clone();
-    } else {
-      self.history_index = None;
-      self.line.clear();
-    }
-    self.cursor = self.line.len();
-  }
-
-  fn complete(
-    &mut self,
-    stdout: &mut std::io::Stdout,
-    raw_mode: &mut Option<RawMode>,
-  ) -> Result<(), ReadLineError> {
-    if self.line.is_empty()
-      || self.line[..self.cursor]
-        .chars()
-        .next_back()
-        .is_some_and(|c| c.is_whitespace())
-    {
-      if cfg!(target_os = "windows") {
-        for _ in 0..4 {
-          self.insert_char(' ');
-        }
-      } else {
-        self.insert_char('\t');
-      }
-      return Ok(());
-    }
-
-    let (start, candidates) = self.helper.complete(&self.line, self.cursor);
-    if candidates.is_empty() {
-      return Ok(());
-    }
-
-    let current = &self.line[start..self.cursor];
-    let completion = common_completion(current, &candidates);
-    if completion.len() > current.len() {
-      self.line.replace_range(start..self.cursor, &completion);
-      self.cursor = start + completion.len();
-    } else {
-      drop(raw_mode.take());
-      writeln!(stdout)?;
-      for candidate in candidates {
-        writeln!(stdout, "{candidate}")?;
-      }
-      *raw_mode = Some(RawMode::enable()?);
-    }
-    Ok(())
-  }
-
-  fn redraw(
-    &mut self,
-    stdout: &mut std::io::Stdout,
-  ) -> Result<(), ReadLineError> {
-    let before_cursor = &self.line[..self.cursor];
-    let cursor_col = visible_width_after_last_newline(before_cursor) + 2;
-    let lines_before_cursor = before_cursor.matches('\n').count();
-    let lines_after_cursor = self.line[self.cursor..].matches('\n').count();
-    if self.rendered_cursor_line > 0 {
-      crossterm::execute!(
-        stdout,
-        cursor::MoveUp(self.rendered_cursor_line as u16)
-      )?;
-    }
-    crossterm::execute!(
-      stdout,
-      cursor::MoveToColumn(0),
-      terminal::Clear(terminal::ClearType::FromCursorDown),
-    )?;
-    write!(stdout, "> {}", self.helper.highlight(&self.line))?;
-    if lines_after_cursor > 0 {
-      crossterm::execute!(stdout, cursor::MoveUp(lines_after_cursor as u16))?;
-    }
-    crossterm::execute!(stdout, cursor::MoveToColumn(cursor_col as u16))?;
-    self.rendered_cursor_line = lines_before_cursor;
-    stdout.flush()?;
-    Ok(())
+impl RawModeGuard {
+  fn new() -> Result<Self, std::io::Error> {
+    enable_raw_mode()?;
+    Ok(Self)
   }
 }
 
-fn common_completion(current: &str, candidates: &[String]) -> String {
-  let Some(first) = candidates.first() else {
-    return current.to_string();
-  };
+impl Drop for RawModeGuard {
+  fn drop(&mut self) {
+    let _ = disable_raw_mode();
+  }
+}
+
+fn insert_str(line: &mut String, cursor: &mut usize, value: &str) {
+  line.insert_str(*cursor, value);
+  *cursor += value.len();
+}
+
+fn previous_char_boundary(line: &str, cursor: usize) -> usize {
+  line[..cursor]
+    .char_indices()
+    .next_back()
+    .map(|(index, _)| index)
+    .unwrap_or(0)
+}
+
+fn next_char_boundary(line: &str, cursor: usize) -> usize {
+  line[cursor..]
+    .char_indices()
+    .nth(1)
+    .map(|(index, _)| cursor + index)
+    .unwrap_or(line.len())
+}
+
+fn common_prefix(candidates: &[String]) -> Option<String> {
+  let first = candidates.first()?;
   let mut end = first.len();
-  while !first.is_char_boundary(end) {
-    end -= 1;
-  }
-  for candidate in candidates.iter().skip(1) {
-    while end > 0 && !candidate.starts_with(&first[..end]) {
-      end -= 1;
-      while !first.is_char_boundary(end) {
-        end -= 1;
+
+  for candidate in &candidates[1..] {
+    while !candidate.is_char_boundary(end)
+      || !first[..end].is_char_boundary(end)
+      || !candidate.starts_with(&first[..end])
+    {
+      end = previous_char_boundary(first, end);
+      if end == 0 {
+        return Some(String::new());
       }
     }
   }
-  first[..end].to_string()
-}
 
-fn visible_width_after_last_newline(text: &str) -> usize {
-  text.rsplit('\n').next().unwrap_or(text).chars().count()
+  Some(first[..end].to_string())
 }
 
 #[cfg(test)]
