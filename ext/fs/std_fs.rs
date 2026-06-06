@@ -733,9 +733,6 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
 
 fn cp(from: &Path, to: &Path) -> FsResult<()> {
   fn cp_(source_meta: fs::Metadata, from: &Path, to: &Path) -> FsResult<()> {
-    use rayon::prelude::IntoParallelIterator;
-    use rayon::prelude::ParallelIterator;
-
     let ty = source_meta.file_type();
     if ty.is_dir() {
       #[allow(unused_mut, reason = "mutable on unix")]
@@ -760,35 +757,32 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         .collect::<Result<_, _>>()?;
 
       entries.shrink_to_fit();
-      entries
-        .into_par_iter()
-        .map(|file_name| {
-          let from_path = from.join(&file_name);
-          let to_path = to.join(&file_name);
-          let meta = fs::symlink_metadata(&from_path).map_err(|err| {
-            io::Error::new(
-              err.kind(),
-              format!(
-                "failed to copy '{}' to '{}': {:?}",
-                from_path.display(),
-                to_path.display(),
-                err,
-              ),
-            )
-          })?;
-          cp_(meta, &from_path, &to_path).map_err(|err| {
-            io::Error::new(
-              err.kind(),
-              format!(
-                "failed to copy '{}' to '{}': {:?}",
-                from_path.display(),
-                to_path.display(),
-                err,
-              ),
-            )
-          })
+      entries.into_iter().try_for_each(|file_name| {
+        let from_path = from.join(&file_name);
+        let to_path = to.join(&file_name);
+        let meta = fs::symlink_metadata(&from_path).map_err(|err| {
+          io::Error::new(
+            err.kind(),
+            format!(
+              "failed to copy '{}' to '{}': {:?}",
+              from_path.display(),
+              to_path.display(),
+              err,
+            ),
+          )
+        })?;
+        cp_(meta, &from_path, &to_path).map_err(|err| {
+          io::Error::new(
+            err.kind(),
+            format!(
+              "failed to copy '{}' to '{}': {:?}",
+              from_path.display(),
+              to_path.display(),
+              err,
+            ),
+          )
         })
-        .collect::<Result<Vec<_>, _>>()?;
+      })?;
 
       return Ok(());
     } else if ty.is_symlink() {
