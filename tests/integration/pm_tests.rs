@@ -186,6 +186,49 @@ fn add_npm() {
   }));
 }
 
+#[test]
+fn add_npm_latest_minimum_dependency_age_downgrades() {
+  let context = pm_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join("deno.json").write_json(&json!({
+    "minimumDependencyAge": "2025-01-01T00:00:00.000Z",
+  }));
+
+  let output = context
+    .new_command()
+    .args("add npm:@denotest/min-release-age-latest@latest")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add npm:@denotest/min-release-age-latest@1.0.0");
+  temp_dir.join("deno.json").assert_matches_json(json!({
+    "minimumDependencyAge": "2025-01-01T00:00:00.000Z",
+    "imports": {
+      "@denotest/min-release-age-latest": "npm:@denotest/min-release-age-latest@^1.0.0"
+    }
+  }));
+}
+
+#[test]
+fn add_npm_latest_npmrc_min_release_age_downgrades() {
+  let context = pm_context_builder().build();
+  let temp_dir = context.temp_dir().path();
+  temp_dir.join(".npmrc").write("min-release-age=1");
+
+  let output = context
+    .new_command()
+    .args("add npm:@denotest/min-release-age-latest@latest")
+    .run();
+  output.assert_exit_code(0);
+  let output = output.combined_output();
+  assert_contains!(output, "Add npm:@denotest/min-release-age-latest@1.0.0");
+  temp_dir.join("deno.json").assert_matches_json(json!({
+    "imports": {
+      "@denotest/min-release-age-latest": "npm:@denotest/min-release-age-latest@^1.0.0"
+    }
+  }));
+}
+
 fn pm_context_builder() -> TestContextBuilder {
   TestContextBuilder::new()
     .use_http_server()

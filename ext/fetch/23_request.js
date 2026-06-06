@@ -6,8 +6,13 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
+  FunctionPrototypeCall,
+  JSONParse,
+  ObjectDefineProperty,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  PromiseReject,
+  PromiseResolve,
   RegExpPrototypeExec,
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
@@ -36,6 +41,7 @@ const {
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
+  headersFromHeaderListLazyTarget,
 } = core.loadExtScript("ext:deno_fetch/20_headers.js");
 const { HttpClientPrototype } = core.loadExtScript(
   "ext:deno_fetch/22_http_client.js",
@@ -55,6 +61,7 @@ const _request = Symbol("request");
 const _headers = Symbol("headers");
 const _getHeaders = Symbol("get headers");
 const _headersCache = Symbol("headers cache");
+const _headersGuard = Symbol("headers guard");
 const _signal = Symbol("signal");
 const _signalCache = Symbol("signalCache");
 const _mimeType = Symbol("mime type");
@@ -77,13 +84,26 @@ function processUrlList(urlList, urlListProcessed) {
 }
 
 /**
+ * Fields named `*Mode`, `mode`, `referrer*`, `integrity`, and `keepalive` are
+ * only set on the inner object when the constructor's init bag customized
+ * them away from the spec default. Leaving them off the object literal keeps
+ * the V8 hidden class for `Deno.serve()`-created requests unchanged. The
+ * getters substitute the spec defaults when a field is missing.
+ *
  * @typedef InnerRequest
  * @property {() => string} method
  * @property {() => string} url
  * @property {() => string} currentUrl
  * @property {() => [string, string][]} headerList
  * @property {null | typeof __window.bootstrap.fetchBody.InnerBody} body
+ * @property {undefined | "default" | "no-store" | "reload" | "no-cache" | "force-cache" | "only-if-cached"} [cacheMode]
+ * @property {undefined | "omit" | "same-origin" | "include"} [credentialsMode]
+ * @property {undefined | string} [integrity]
+ * @property {undefined | boolean} [keepalive]
+ * @property {undefined | "same-origin" | "no-cors" | "cors" | "navigate"} [mode]
  * @property {"follow" | "error" | "manual"} redirectMode
+ * @property {undefined | string} [referrer] "client", "no-referrer", or a serialized URL
+ * @property {undefined | "" | "no-referrer" | "no-referrer-when-downgrade" | "same-origin" | "origin" | "strict-origin" | "origin-when-cross-origin" | "strict-origin-when-cross-origin" | "unsafe-url"} [referrerPolicy]
  * @property {number} redirectCount
  * @property {(() => string)[]} urlList
  * @property {string[]} urlListProcessed
@@ -178,7 +198,7 @@ function cloneInnerRequest(request, skipBody = false) {
     body = request.body.clone();
   }
 
-  return {
+  const cloned = {
     method: request.method,
     headerList,
     body,
@@ -210,6 +230,18 @@ function cloneInnerRequest(request, skipBody = false) {
       return this.urlListProcessed[currentIndex];
     },
   };
+  if (request.cacheMode !== undefined) cloned.cacheMode = request.cacheMode;
+  if (request.credentialsMode !== undefined) {
+    cloned.credentialsMode = request.credentialsMode;
+  }
+  if (request.integrity !== undefined) cloned.integrity = request.integrity;
+  if (request.keepalive !== undefined) cloned.keepalive = request.keepalive;
+  if (request.mode !== undefined) cloned.mode = request.mode;
+  if (request.referrer !== undefined) cloned.referrer = request.referrer;
+  if (request.referrerPolicy !== undefined) {
+    cloned.referrerPolicy = request.referrerPolicy;
+  }
+  return cloned;
 }
 
 // method => normalized method
@@ -261,11 +293,26 @@ class Request {
   /** @type {Headers} */
   [_headersCache];
   [_getHeaders];
+  [_headersGuard];
+  [_signalCache];
+  [_url];
+  [_method];
 
   /** @type {Headers} */
   get [_headers]() {
     if (this[_headersCache] === undefined) {
-      this[_headersCache] = this[_getHeaders]();
+      const getHeaders = this[_getHeaders];
+      if (getHeaders !== undefined && getHeaders !== null) {
+        this[_headersCache] = getHeaders();
+      } else {
+        const inner = this[_request];
+        const guard = this[_headersGuard];
+        if (typeof inner.header !== "function") {
+          this[_headersCache] = headersFromHeaderList(inner.headerList, guard);
+        } else {
+          this[_headersCache] = headersFromHeaderListLazyTarget(inner, guard);
+        }
+      }
     }
     return this[_headersCache];
   }
@@ -365,9 +412,77 @@ class Request {
 
     // 12. is folded into the else statement of step 6 above.
 
+    // 17. referrer
+    if (init.referrer !== undefined) {
+      const referrer = init.referrer;
+      if (referrer === "") {
+        request.referrer = "no-referrer";
+      } else {
+        let parsedReferrer;
+        try {
+          parsedReferrer = new URL(referrer, baseURL);
+        } catch (err) {
+          throw new TypeError(`Referrer "${referrer}" is not a valid URL.`, {
+            cause: err,
+          });
+        }
+        if (
+          (parsedReferrer.protocol === "about:" &&
+            parsedReferrer.pathname === "client")
+        ) {
+          request.referrer = "client";
+        } else {
+          request.referrer = parsedReferrer.href;
+        }
+      }
+    }
+
+    // 18. referrerPolicy
+    if (init.referrerPolicy !== undefined) {
+      request.referrerPolicy = init.referrerPolicy;
+    }
+
+    // 19. mode
+    if (init.mode !== undefined) {
+      if (init.mode === "navigate") {
+        throw new TypeError("Request mode 'navigate' is not allowed");
+      }
+      request.mode = init.mode;
+    }
+
+    // 20. credentials
+    if (init.credentials !== undefined) {
+      request.credentialsMode = init.credentials;
+    }
+
+    // 21. cache
+    if (init.cache !== undefined) {
+      request.cacheMode = init.cache;
+    }
+
+    // If request's cache mode is "only-if-cached" and request's mode is not
+    // "same-origin", then throw a TypeError.
+    if (
+      request.cacheMode === "only-if-cached" && request.mode !== "same-origin"
+    ) {
+      throw new TypeError(
+        'Request cache mode "only-if-cached" can only be used with same-origin mode',
+      );
+    }
+
     // 22.
     if (init.redirect !== undefined) {
       request.redirectMode = init.redirect;
+    }
+
+    // 23. integrity
+    if (init.integrity !== undefined) {
+      request.integrity = init.integrity;
+    }
+
+    // 24. keepalive
+    if (init.keepalive !== undefined) {
+      request.keepalive = init.keepalive;
     }
 
     // 25.
@@ -498,6 +613,48 @@ class Request {
     return this[_request].redirectMode;
   }
 
+  get cache() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].cacheMode ?? "default";
+  }
+
+  get credentials() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].credentialsMode ?? "same-origin";
+  }
+
+  get integrity() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].integrity ?? "";
+  }
+
+  get keepalive() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].keepalive ?? false;
+  }
+
+  get mode() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].mode ?? "cors";
+  }
+
+  get referrer() {
+    webidl.assertBranded(this, RequestPrototype);
+    const referrer = this[_request].referrer;
+    if (referrer === undefined || referrer === "client") {
+      return "about:client";
+    }
+    if (referrer === "no-referrer") {
+      return "";
+    }
+    return referrer;
+  }
+
+  get referrerPolicy() {
+    webidl.assertBranded(this, RequestPrototype);
+    return this[_request].referrerPolicy ?? "";
+  }
+
   get signal() {
     webidl.assertBranded(this, RequestPrototype);
     return this[_signal];
@@ -520,11 +677,8 @@ class Request {
     const request = new Request(_brand);
     request[_request] = clonedReq;
     request[_signalCache] = clonedSignal;
-    request[_getHeaders] = () =>
-      headersFromHeaderList(
-        clonedReq.headerList,
-        guardFromHeaders(this[_headers]),
-      );
+    headerListFromHeaders(this[_headers]);
+    request[_headersGuard] = guardFromHeaders(this[_headers]);
     return request;
   }
 
@@ -550,6 +704,25 @@ webidl.configureInterface(Request);
 const RequestPrototype = Request.prototype;
 markNotSerializable(RequestPrototype);
 mixinBody(RequestPrototype, _body, _mimeType);
+const requestJson = RequestPrototype.json;
+ObjectDefineProperty(RequestPrototype, "json", {
+  __proto__: null,
+  value: function json() {
+    try {
+      webidl.assertBranded(this, RequestPrototype);
+      const text = this[_request].consumeTextBody?.();
+      if (text !== null && text !== undefined) {
+        return PromiseResolve(JSONParse(text));
+      }
+    } catch (error) {
+      return PromiseReject(error);
+    }
+    return FunctionPrototypeCall(requestJson, this);
+  },
+  writable: true,
+  configurable: true,
+  enumerable: true,
+});
 
 webidl.converters["Request"] = webidl.createInterfaceConverter(
   "Request",
@@ -573,6 +746,48 @@ webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
     "manual",
   ],
 );
+webidl.converters["RequestCache"] = webidl.createEnumConverter(
+  "RequestCache",
+  [
+    "default",
+    "no-store",
+    "reload",
+    "no-cache",
+    "force-cache",
+    "only-if-cached",
+  ],
+);
+webidl.converters["RequestCredentials"] = webidl.createEnumConverter(
+  "RequestCredentials",
+  [
+    "omit",
+    "same-origin",
+    "include",
+  ],
+);
+webidl.converters["RequestMode"] = webidl.createEnumConverter(
+  "RequestMode",
+  [
+    "navigate",
+    "same-origin",
+    "no-cors",
+    "cors",
+  ],
+);
+webidl.converters["ReferrerPolicy"] = webidl.createEnumConverter(
+  "ReferrerPolicy",
+  [
+    "",
+    "no-referrer",
+    "no-referrer-when-downgrade",
+    "same-origin",
+    "origin",
+    "strict-origin",
+    "origin-when-cross-origin",
+    "strict-origin-when-cross-origin",
+    "unsafe-url",
+  ],
+);
 webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
   "RequestInit",
   [
@@ -584,7 +799,14 @@ webidl.converters["RequestInit"] = webidl.createDictionaryConverter(
         webidl.converters["BodyInit_DOMString"],
       ),
     },
+    { key: "referrer", converter: webidl.converters["USVString"] },
+    { key: "referrerPolicy", converter: webidl.converters["ReferrerPolicy"] },
+    { key: "mode", converter: webidl.converters["RequestMode"] },
+    { key: "credentials", converter: webidl.converters["RequestCredentials"] },
+    { key: "cache", converter: webidl.converters["RequestCache"] },
     { key: "redirect", converter: webidl.converters["RequestRedirect"] },
+    { key: "integrity", converter: webidl.converters["DOMString"] },
+    { key: "keepalive", converter: webidl.converters["boolean"] },
     {
       key: "signal",
       converter: webidl.createNullableConverter(
@@ -603,6 +825,16 @@ function toInnerRequest(request) {
   return request[_request];
 }
 
+function requestHeadersExposed(request) {
+  return request?.[_headersCache] !== undefined;
+}
+
+function cacheRequestHeaders(request) {
+  if (request?.[_headersCache] !== undefined) {
+    headerListFromHeaders(request[_headersCache]);
+  }
+}
+
 /**
  * @param {InnerRequest} inner
  * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
@@ -611,7 +843,7 @@ function toInnerRequest(request) {
 function fromInnerRequest(inner, guard) {
   const request = new Request(_brand);
   request[_request] = inner;
-  request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
+  request[_headersGuard] = guard;
   return request;
 }
 
@@ -636,11 +868,13 @@ internals.getCachedAbortSignal = getCachedAbortSignal;
 
 return {
   abortRequest,
+  cacheRequestHeaders,
   fromInnerRequest,
   newInnerRequest,
   processUrlList,
   Request,
   RequestPrototype,
+  requestHeadersExposed,
   toInnerRequest,
 };
 })();

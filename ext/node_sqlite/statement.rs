@@ -632,6 +632,7 @@ impl StatementSync {
   // changes.
   //
   // Optionally, parameters can be bound to the prepared statement.
+  #[reentrant]
   fn run(
     &self,
     scope: &mut v8::PinScope<'_, '_>,
@@ -660,6 +661,7 @@ impl StatementSync {
   //
   // If the prepared statement does not return any results, this method returns an empty array.
   // Optionally, parameters can be bound to the prepared statement.
+  #[reentrant]
   fn all<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
@@ -679,6 +681,7 @@ impl StatementSync {
     Ok(arr)
   }
 
+  #[reentrant]
   fn iterate<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,

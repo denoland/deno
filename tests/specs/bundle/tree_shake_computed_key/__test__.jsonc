@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "tree_shake_computed_key": {
+      "steps": [
+        {
+          "args": "bundle --output=out.js main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run --allow-read --no-config check.ts",
+          "output": "ok\n"
+        }
+      ]
+    }
+  }
+}

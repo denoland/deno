@@ -641,6 +641,27 @@ async fn main_server(
       );
       Ok(res)
     }
+    // Mimics Skypack's `?dts` query param: a 302 redirect to a versioned
+    // path that ends in .d.ts with non-ASCII-safe path characters.
+    // Regression test for https://github.com/denoland/deno/issues/15189.
+    (_, "/skypack/swagger-client") if req.uri().query() == Some("dts") => {
+      Ok(redirect_resp(
+        "/skypack/-/swagger-client@v3.18.5/dist=es2019,mode=types/index.d.ts",
+      ))
+    }
+    (
+      _,
+      "/skypack/-/swagger-client@v3.18.5/dist=es2019,mode=types/index.d.ts",
+    ) => {
+      let mut res = Response::new(string_body(
+        "export const swagger: { version: 'v3.18.5' };\n",
+      ));
+      res.headers_mut().insert(
+        "content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/run/type_directives_redirect.js") => {
       let mut res = Response::new(string_body("export const foo = 'foo';"));
       res.headers_mut().insert(

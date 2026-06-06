@@ -67,6 +67,7 @@ mod provenance;
 mod publish_order;
 mod tar;
 mod unfurl;
+mod wasm;
 
 use auth::AuthMethod;
 use auth::get_auth_method;
@@ -1030,11 +1031,27 @@ async fn publish_package(
       package.scope, package.package, package.version
     ))?;
 
-    let resp = http_client.get(meta_url)?.send().await?;
+    let resp = http_client
+      .get(meta_url.clone())?
+      .send()
+      .await
+      .with_context(|| {
+        format!("Failed to fetch package manifest from {meta_url}")
+      })?;
+    let status = resp.status();
     let meta_bytes = resp.collect().await?.to_bytes();
 
     if std::env::var("DISABLE_JSR_MANIFEST_VERIFICATION_FOR_TESTING").is_err() {
-      verify_version_manifest(&meta_bytes, &package)?;
+      if !status.is_success() {
+        bail!(
+          "Failed to fetch package manifest from {meta_url}: status {status}\n\n{}",
+          response_body_snippet(&meta_bytes),
+        );
+      }
+
+      verify_version_manifest(&meta_bytes, &package).with_context(|| {
+        format!("Failed to verify package manifest from {meta_url}")
+      })?;
     }
 
     let subject = provenance::Subject {
@@ -1186,11 +1203,35 @@ struct VersionManifest {
   exports: HashMap<String, String>,
 }
 
+/// Returns a truncated, lossy UTF-8 rendering of a response body for use in
+/// error messages, so that a non-JSON response (e.g. an HTML error page) is
+/// diagnosable instead of surfacing as an opaque deserialization error.
+fn response_body_snippet(bytes: &[u8]) -> String {
+  const MAX_LEN: usize = 512;
+  let text = String::from_utf8_lossy(bytes);
+  let text = text.trim();
+  if text.len() > MAX_LEN {
+    let mut end = MAX_LEN;
+    while !text.is_char_boundary(end) {
+      end -= 1;
+    }
+    format!("{}... (truncated)", &text[..end])
+  } else {
+    text.to_string()
+  }
+}
+
 fn verify_version_manifest(
   meta_bytes: &[u8],
   package: &PreparedPublishPackage,
 ) -> Result<(), AnyError> {
-  let manifest = serde_json::from_slice::<VersionManifest>(meta_bytes)?;
+  let manifest = serde_json::from_slice::<VersionManifest>(meta_bytes)
+    .with_context(|| {
+      format!(
+        "Failed to parse package manifest as JSON. Response body:\n\n{}",
+        response_body_snippet(meta_bytes),
+      )
+    })?;
   // Check that nothing was removed from the manifest.
   if manifest.manifest.len() != package.tarball.files.len() {
     bail!(

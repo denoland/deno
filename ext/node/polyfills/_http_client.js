@@ -22,21 +22,37 @@
 
 // Ported from Node.js lib/_http_client.js
 
-// deno-lint-ignore-file prefer-primordials no-this-alias no-inner-declarations
+// deno-lint-ignore-file no-this-alias no-inner-declarations
 
 import { core, internals, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
+  ArrayPrototypeSplice,
   Boolean,
   DateNow,
-  Error,
+  ErrorPrototype,
+  FunctionPrototypeCall,
   NumberIsFinite,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   ReflectApply,
+  SafeArrayIterator,
+  SafeRegExp,
   String,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
+  StringPrototypeTrim,
   Symbol,
 } = primordials;
 
@@ -60,6 +76,7 @@ import {
   parseUniqueHeadersOption,
 } from "node:_http_outgoing";
 import httpAgent from "node:_http_agent";
+import httpProxy from "node:_http_proxy";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { urlToHttpOptions } = core.loadExtScript(
   "ext:deno_node/internal/url.ts",
@@ -106,13 +123,16 @@ const {
   SPAN_KEY,
 } = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 
-const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
+const INVALID_PATH_REGEX = new SafeRegExp(/[^\u0021-\u00ff]/);
 const kError = Symbol("kError");
 const kPath = Symbol("kPath");
 const kOtelSpan = Symbol("kOtelSpan");
 const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
 const kRetryOptions = Symbol("kRetryOptions");
+const kProxy = Symbol("kProxy");
+const kProxyTargetHost = Symbol("kProxyTargetHost");
+const kProxyTargetPort = Symbol("kProxyTargetPort");
 const kInspectorRequestId = Symbol("kInspectorRequestId");
 const kInspectorNetwork = Symbol("kInspectorNetwork");
 const kInspectorUrl = Symbol("kInspectorUrl");
@@ -190,7 +210,7 @@ function joinResponseHeadersForCdp(rawHeaders) {
   for (let i = 0; i < rawHeaders.length; i += 2) {
     const rawName = rawHeaders[i];
     const value = String(rawHeaders[i + 1]);
-    const lower = String(rawName).toLowerCase();
+    const lower = StringPrototypeToLowerCase(String(rawName));
     let separator;
     if (lower === "cookie") {
       separator = "; ";
@@ -212,28 +232,34 @@ function parseContentTypeFromRawHeaders(rawHeaders) {
   let raw = null;
   if (rawHeaders) {
     for (let i = 0; i < rawHeaders.length; i += 2) {
-      if (String(rawHeaders[i]).toLowerCase() === "content-type") {
+      if (
+        StringPrototypeToLowerCase(String(rawHeaders[i])) === "content-type"
+      ) {
         raw = String(rawHeaders[i + 1]);
         break;
       }
     }
   }
   if (raw === null) return { mimeType: "", charset: "" };
-  const semi = raw.indexOf(";");
-  const mimeType = semi === -1 ? raw.trim() : raw.slice(0, semi).trim();
+  const semi = StringPrototypeIndexOf(raw, ";");
+  const mimeType = semi === -1
+    ? StringPrototypeTrim(raw)
+    : StringPrototypeTrim(StringPrototypeSlice(raw, 0, semi));
   let charset = "";
   if (semi !== -1) {
-    const rest = raw.slice(semi + 1);
-    const parts = rest.split(";");
+    const rest = StringPrototypeSlice(raw, semi + 1);
+    const parts = StringPrototypeSplit(rest, ";");
     for (let i = 0; i < parts.length; i++) {
-      const p = parts[i].trim();
-      if (p.toLowerCase().startsWith("charset=")) {
-        charset = p.slice(8).trim();
+      const p = StringPrototypeTrim(parts[i]);
+      if (
+        StringPrototypeStartsWith(StringPrototypeToLowerCase(p), "charset=")
+      ) {
+        charset = StringPrototypeTrim(StringPrototypeSlice(p, 8));
         if (
           charset.length >= 2 && charset[0] === '"' &&
           charset[charset.length - 1] === '"'
         ) {
-          charset = charset.slice(1, charset.length - 1);
+          charset = StringPrototypeSlice(charset, 1, charset.length - 1);
         }
         break;
       }
@@ -244,7 +270,10 @@ function parseContentTypeFromRawHeaders(rawHeaders) {
 
 function buildInspectorRequestUrl(protocol, host, port, path) {
   let hostPart = host || "localhost";
-  if (hostPart.indexOf(":") !== -1 && hostPart.charCodeAt(0) !== 91 /* '[' */) {
+  if (
+    StringPrototypeIndexOf(hostPart, ":") !== -1 &&
+    StringPrototypeCharCodeAt(hostPart, 0) !== 91 /* '[' */
+  ) {
     hostPart = `[${hostPart}]`;
   }
   const proto = protocol || "http:";
@@ -324,7 +353,9 @@ function inspectorEmitResponseReceived(req, res) {
       let len;
       if (typeof chunk === "string") {
         len = chunk.length;
+        // deno-lint-ignore prefer-primordials
       } else if (chunk.byteLength !== undefined) {
+        // deno-lint-ignore prefer-primordials
         len = chunk.byteLength;
       } else {
         len = 0;
@@ -340,7 +371,7 @@ function inspectorEmitResponseReceived(req, res) {
         });
       }
     }
-    return origPush.call(this, chunk, encoding);
+    return FunctionPrototypeCall(origPush, this, chunk, encoding);
   };
 }
 
@@ -399,11 +430,11 @@ function emitErrorEvent(request, error) {
 }
 
 function isURL(input) {
-  return input instanceof URL;
+  return ObjectPrototypeIsPrototypeOf(URL.prototype, input);
 }
 
 function ClientRequest(input, options, cb) {
-  OutgoingMessage.call(this);
+  FunctionPrototypeCall(OutgoingMessage, this);
 
   if (typeof input === "string") {
     const urlStr = input;
@@ -477,6 +508,32 @@ function ClientRequest(input, options, cb) {
     validateHost(options.hostname, "hostname") ||
     validateHost(options.host, "host") || "localhost";
 
+  // Proxy detection: if an env-derived proxy applies to this request,
+  // either rewrite to absolute URL (http target) or set up a CONNECT tunnel
+  // via a custom createConnection (https target). The agent's socket pool
+  // is keyed by target host:port so users can look it up the same way as
+  // a direct connection - the proxy is a transport detail tracked under
+  // _proxy on the options.
+  const proxyConfig = httpProxy.resolveAgentProxyConfig(this.agent);
+  const proxyEntry = httpProxy.selectProxy(
+    proxyConfig,
+    protocol,
+    host,
+    port,
+  );
+  if (proxyEntry) {
+    this[kProxy] = proxyEntry;
+    this[kProxyTargetHost] = host;
+    this[kProxyTargetPort] = port;
+    optsWithoutSignal._proxy = proxyEntry;
+    optsWithoutSignal._proxyTargetHost = host;
+    optsWithoutSignal._proxyTargetPort = port;
+    optsWithoutSignal._proxyProtocol = protocol;
+    optsWithoutSignal._proxyUseProxyConnection =
+      !(this.agent && this.agent.__proxyConfig !== undefined) ||
+      this.agent?.keepAlive === true;
+  }
+
   const setHost = options.setHost !== undefined
     ? Boolean(options.setHost)
     : options.setDefaultHeaders !== false;
@@ -507,7 +564,7 @@ function ClientRequest(input, options, cb) {
     if (!checkIsHttpToken(method)) {
       throw new ERR_INVALID_HTTP_TOKEN("Method", method);
     }
-    method = this.method = method.toUpperCase();
+    method = this.method = StringPrototypeToUpperCase(method);
   } else {
     method = this.method = "GET";
   }
@@ -533,6 +590,20 @@ function ClientRequest(input, options, cb) {
   this.joinDuplicateHeaders = options.joinDuplicateHeaders;
 
   this[kPath] = options.path || "/";
+
+  // For HTTP via HTTP proxy, rewrite path to an absolute URL so the proxy
+  // knows where to forward the request.
+  if (this[kProxy] && protocol === "http:") {
+    const t = this[kProxyTargetHost];
+    const formattedHost = t && StringPrototypeIndexOf(t, ":") !== -1 &&
+        StringPrototypeCharCodeAt(t, 0) !== 91
+      ? `[${t}]`
+      : t;
+    this[kPath] = `http://${formattedHost}:${this[kProxyTargetPort]}${
+      options.path || "/"
+    }`;
+  }
+
   if (cb) {
     this.once("response", cb);
   }
@@ -585,11 +656,11 @@ function ClientRequest(input, options, cb) {
     if (host && !this.getHeader("host") && setHost) {
       let hostHeader = host;
 
-      const posColon = hostHeader.indexOf(":");
+      const posColon = StringPrototypeIndexOf(hostHeader, ":");
       if (
         posColon !== -1 &&
-        hostHeader.includes(":", posColon + 1) &&
-        hostHeader.charCodeAt(0) !== 91 /* '[' */
+        StringPrototypeIncludes(hostHeader, ":", posColon + 1) &&
+        StringPrototypeCharCodeAt(hostHeader, 0) !== 91 /* '[' */
       ) {
         hostHeader = `[${hostHeader}]`;
       }
@@ -603,8 +674,24 @@ function ClientRequest(input, options, cb) {
     if (options.auth && !this.getHeader("Authorization")) {
       this.setHeader(
         "Authorization",
+        // deno-lint-ignore prefer-primordials
         "Basic " + Buffer.from(options.auth).toString("base64"),
       );
+    }
+
+    if (this[kProxy] && protocol === "http:") {
+      // Mirror what _storeHeader will pick for Connection: when shouldKeepAlive
+      // is true, both Connection and Proxy-Connection are "keep-alive"; when
+      // false, both are "close". Matches Node's wire format on the proxy hop.
+      if (!this.getHeader("proxy-connection")) {
+        this.setHeader(
+          "Proxy-Connection",
+          this.shouldKeepAlive ? "keep-alive" : "close",
+        );
+      }
+      if (this[kProxy].auth && !this.getHeader("proxy-authorization")) {
+        this.setHeader("Proxy-Authorization", this[kProxy].auth);
+      }
     }
 
     if (this.getHeader("expect")) {
@@ -698,7 +785,7 @@ ObjectDefineProperty(ClientRequest.prototype, "path", {
 });
 
 ClientRequest.prototype._finish = function _finish() {
-  OutgoingMessage.prototype._finish.call(this);
+  FunctionPrototypeCall(OutgoingMessage.prototype._finish, this);
   if (onClientRequestStartChannel.hasSubscribers) {
     onClientRequestStartChannel.publish({
       request: this,
@@ -719,7 +806,9 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
     // Build a context with this span for propagation injection,
     // without entering it into the async context
     const spanContext = ContextManager.active().setValue(SPAN_KEY, span);
-    for (const propagator of otelState.PROPAGATORS) {
+    for (
+      const propagator of new SafeArrayIterator(otelState.PROPAGATORS)
+    ) {
       propagator.inject(spanContext, this, {
         set(carrier, key, value) {
           carrier.setHeader(key, value);
@@ -736,9 +825,12 @@ ClientRequest.prototype._implicitHeader = function _implicitHeader() {
       const parsedUrl = new URL(fullUrl);
       span.setAttribute("http.request.method", this.method);
       span.setAttribute("url.full", parsedUrl.href);
-      span.setAttribute("url.scheme", parsedUrl.protocol.slice(0, -1));
+      span.setAttribute(
+        "url.scheme",
+        StringPrototypeSlice(parsedUrl.protocol, 0, -1),
+      );
       span.setAttribute("url.path", parsedUrl.pathname);
-      span.setAttribute("url.query", parsedUrl.search.slice(1));
+      span.setAttribute("url.query", StringPrototypeSlice(parsedUrl.search, 1));
     } catch {
       span.setAttribute("http.request.method", this.method);
       span.setAttribute("url.full", fullUrl);
@@ -824,8 +916,8 @@ function maybeRetryRequest(req, socket) {
   const name = agent.getName(retryOpts);
   const sockets = agent.sockets[name];
   if (sockets) {
-    const idx = sockets.indexOf(socket);
-    if (idx !== -1) sockets.splice(idx, 1);
+    const idx = ArrayPrototypeIndexOf(sockets, socket);
+    if (idx !== -1) ArrayPrototypeSplice(sockets, idx, 1);
     if (!sockets.length) delete agent.sockets[name];
   }
 
@@ -840,6 +932,11 @@ function maybeRetryRequest(req, socket) {
   req._headerSent = false;
   req.destroyed = false;
   req._closed = false;
+  // The first attempt set reusedSocket on the stale socket. The retry runs
+  // through addRequest again, which will call agent.reuseSocket() if it
+  // happens to land on another pooled free socket. Otherwise the request
+  // goes to a brand-new connection and the flag must stay false.
+  req.reusedSocket = false;
 
   // Restore output data saved before the first flush attempt
   if (req[kRetryData]) {
@@ -885,6 +982,7 @@ function socketCloseListener() {
     req._closed = true;
     req.emit("close");
     if (!res.aborted && res.readable) {
+      // deno-lint-ignore prefer-primordials
       res.push(null);
     }
   } else {
@@ -963,7 +1061,7 @@ function socketOnData(d) {
   assert(parser && parser.socket === socket);
 
   const ret = parser.execute(d);
-  if (ret instanceof Error) {
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, ret)) {
     prepareError(ret, parser, d);
     freeParser(parser, req, socket);
     socket.removeListener("data", socketOnData);
@@ -987,6 +1085,7 @@ function socketOnData(d) {
     parser.finish();
     freeParser(parser, req, socket);
 
+    // deno-lint-ignore prefer-primordials
     const bodyHead = d.slice(bytesParsed, d.length);
 
     const eventName = req.method === "CONNECT" ? "connect" : "upgrade";
@@ -1324,7 +1423,7 @@ function onSocketNT(req, socket, err) {
     // Save output data before flushing so it can be replayed on retry
     // if this reused keepalive socket turns out to be stale.
     if (req.reusedSocket && req.outputData.length > 0) {
-      req[kRetryData] = req.outputData.map((item) => ({
+      req[kRetryData] = ArrayPrototypeMap(req.outputData, (item) => ({
         data: item.data,
         encoding: item.encoding,
         callback: item.callback,
