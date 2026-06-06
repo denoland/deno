@@ -1,17 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// @ts-check
-/// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../url/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_url.d.ts" />
-/// <reference path="../web/internal.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
-/// <reference path="./internal.d.ts" />
-/// <reference path="../web/06_streams_types.d.ts" />
-/// <reference path="../../cli/tsc/dts/lib.deno_fetch.d.ts" />
-/// <reference lib="esnext" />
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   BadResourcePrototype,
   isAnyArrayBuffer,
@@ -28,6 +18,7 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafeWeakMap,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
@@ -35,22 +26,24 @@ const {
   TypedArrayPrototypeSlice,
   TypeError,
   Uint8Array,
+  WeakMapPrototypeGet,
+  WeakMapPrototypeSet,
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import {
+const {
   parseUrlEncoded,
   URLSearchParamsPrototype,
-} from "ext:deno_web/00_url.js";
-import {
+} = core.loadExtScript("ext:deno_web/00_url.js");
+const {
   formDataFromEntries,
   FormDataPrototype,
   formDataToBlob,
   parseFormData,
-} from "ext:deno_fetch/21_formdata.js";
-import * as mimesniff from "ext:deno_web/01_mimesniff.js";
-import { BlobPrototype } from "ext:deno_web/09_file.js";
-import {
+} = core.loadExtScript("ext:deno_fetch/21_formdata.js");
+const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const { BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const {
   createProxy,
   errorReadableStream,
   isReadableStreamDisturbed,
@@ -60,7 +53,10 @@ import {
   ReadableStreamPrototype,
   readableStreamTee,
   readableStreamThrowIfErrored,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+
+/** @type {WeakMap<ReadableStream<Uint8Array>, number>} */
+const staticBodyLength = new SafeWeakMap();
 
 /**
  * @param {Uint8Array | string} chunk
@@ -106,12 +102,17 @@ class InnerBody {
         readableStreamDisturb(this.streamOrStatic);
         readableStreamClose(this.streamOrStatic);
       } else {
-        this.streamOrStatic = new ReadableStream({
+        const length = this.length;
+        const stream = new ReadableStream({
           start(controller) {
             controller.enqueue(chunkToU8(body));
             controller.close();
           },
         });
+        if (length !== null) {
+          WeakMapPrototypeSet(staticBodyLength, stream, length);
+        }
+        this.streamOrStatic = stream;
       }
     }
     return this.streamOrStatic;
@@ -482,6 +483,7 @@ function extractBody(object) {
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
     stream = object;
+    length = WeakMapPrototypeGet(staticBodyLength, object) ?? null;
     if (object.locked || isReadableStreamDisturbed(object)) {
       throw new TypeError("ReadableStream is locked or disturbed");
     }
@@ -541,6 +543,11 @@ webidl.converters["async iterable<Uint8Array>"] = webidl
   .createAsyncIterableConverter(webidl.converters.Uint8Array);
 
 webidl.converters["BodyInit_DOMString"] = (V, prefix, context, opts) => {
+  // Fast path: a plain string is by far the most common shape for Response
+  // body and `fetch(url, { body: "..." })`. Skip the union-of-types prototype
+  // chain checks and the trailing DOMString conversion (which itself just
+  // returns strings as-is).
+  if (typeof V === "string") return V;
   // Union for (ReadableStream or Blob or ArrayBufferView or ArrayBuffer or FormData or URLSearchParams or USVString)
   if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, V)) {
     return webidl.converters["ReadableStream"](V, prefix, context, opts);
@@ -576,4 +583,5 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
   webidl.converters["BodyInit_DOMString"],
 );
 
-export { extractBody, InnerBody, mixinBody, packageData };
+return { extractBody, InnerBody, mixinBody, packageData };
+})();

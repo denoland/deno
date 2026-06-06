@@ -1,0 +1,10 @@
+[UNORDERED_START]
+server: ws open
+client: ws open
+[UNORDERED_END]
+server: received hello
+client: received echo: hello
+[UNORDERED_START]
+client: ws closed
+server: ws closed
+[UNORDERED_END]

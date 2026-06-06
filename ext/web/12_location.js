@@ -2,7 +2,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   Error,
   ObjectDefineProperties,
@@ -15,7 +16,7 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-import { URL } from "ext:deno_web/00_url.js";
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 const locationConstructorKey = Symbol("locationConstructorKey");
@@ -431,7 +432,7 @@ const workerLocationDescriptor = {
   enumerable: true,
 };
 
-export {
+return {
   getLocationHref,
   locationConstructorDescriptor,
   locationDescriptor,
@@ -439,3 +440,4 @@ export {
   workerLocationConstructorDescriptor,
   workerLocationDescriptor,
 };
+})();

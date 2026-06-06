@@ -368,8 +368,46 @@ impl TCPWrap {
         let mut nonblocking: u32 = 1;
         ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
       }
+      // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
+      // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
+      // libuv layer doesn't autodetect — it uses the wrap's intent to
+      // decide how to register the fd, then `listen()` on a listening fd
+      // is a no-op at the kernel level.
+      #[cfg(unix)]
+      if self.socket_type.get() == SocketType::Server {
+        return uv_compat::uv_tcp_open_listener(tcp, fd);
+      }
       uv_compat::uv_tcp_open(tcp, fd)
     }
+  }
+
+  #[fast]
+  fn socket_type_for_ipc(&self) -> i32 {
+    // Match Node's `net.Native` IPC handle type: the receiver needs to know
+    // whether to reopen the fd as a connected stream (`uv_tcp_open`) or as a
+    // listening socket (`uv_tcp_open_listener`). 0 = SOCKET, 1 = SERVER, to
+    // mirror the constructor argument.
+    match self.socket_type.get() {
+      SocketType::Server => 1,
+      SocketType::Socket => 0,
+    }
+  }
+
+  #[fast]
+  fn fd_for_ipc(&self) -> i32 {
+    #[cfg(unix)]
+    {
+      let tcp = self.tcp_ptr();
+      if tcp.is_null() {
+        return -1;
+      }
+      // SAFETY: tcp is valid (null-checked above).
+      unsafe { uv_compat::uv_tcp_fd_for_ipc(tcp) }
+    }
+    // Windows IPC handle passing doesn't use SCM_RIGHTS-style fd transfer;
+    // returning -1 surfaces "not supported" to the JS handle-passing path.
+    #[cfg(not(unix))]
+    -1
   }
 
   #[fast]
@@ -483,6 +521,29 @@ impl TCPWrap {
     }
   }
 
+  /// Take the underlying TCP stream from this handle and place it in the
+  /// resource table as a `TcpStreamResource`. This detaches the stream
+  /// from libuv. Returns the resource ID of the stream, which can then
+  /// be passed to ext/http ops (e.g. for WebSocket upgrade).
+  fn take_stream(
+    &self,
+    state: &mut OpState,
+  ) -> Result<ResourceId, deno_error::JsErrorBox> {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return Err(deno_error::JsErrorBox::generic("TCP handle is closed"));
+    }
+    // SAFETY: tcp is valid (null-checked above)
+    let tcp_stream = unsafe { (*tcp).take_stream() }.ok_or_else(|| {
+      deno_error::JsErrorBox::generic(
+        "TCP handle has no active stream - already taken or not connected",
+      )
+    })?;
+    let (read_half, write_half) = tcp_stream.into_split();
+    let resource = TcpStreamResource::new((read_half, write_half));
+    Ok(state.resource_table.add(resource))
+  }
+
   #[fast]
   fn set_no_delay(&self, enable: bool) -> i32 {
     let tcp = self.tcp_ptr();
@@ -491,6 +552,22 @@ impl TCPWrap {
     }
     // SAFETY: tcp is valid (null-checked above).
     unsafe { uv_compat::uv_tcp_nodelay(tcp, enable as i32) }
+  }
+
+  /// Enable/disable `SO_KEEPALIVE`. `delay` is the idle time in seconds
+  /// before the first keepalive probe (Node passes seconds here). Matches
+  /// Node's `TCPWrap::SetKeepAlive`, which libraries such as `tedious`
+  /// rely on to keep tunneled/long-lived connections from being reaped.
+  #[fast]
+  #[rename("setKeepAlive")]
+  fn set_keep_alive(&self, enable: bool, #[smi] delay: i32) -> i32 {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return -1;
+    }
+    let delay = delay.max(0) as u32;
+    // SAFETY: tcp is valid (null-checked above).
+    unsafe { uv_compat::uv_tcp_keepalive(tcp, enable as i32, delay) }
   }
 
   /// Set SO_LINGER to 0 so the next close sends RST instead of FIN.
@@ -543,6 +620,17 @@ impl TCPWrap {
       },
       Err(_) => return Ok(-1),
     };
+
+    // Post-resolution deny check: verify the resolved IP is not denied.
+    // This prevents numeric hostname aliases (e.g. 2130706433, 0x7f000001)
+    // from bypassing --deny-net rules that target the resolved IP.
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &socket_addr.ip(),
+        socket_addr.port(),
+        "node:net.connect()",
+      )?;
 
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
@@ -604,6 +692,15 @@ impl TCPWrap {
       },
       Err(_) => return Ok(-1),
     };
+
+    // Post-resolution deny check for connect6 as well.
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &socket_addr.ip(),
+        socket_addr.port(),
+        "node:net.connect()",
+      )?;
 
     let tcp = self.tcp_ptr();
     if tcp.is_null() {

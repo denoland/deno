@@ -578,6 +578,28 @@ pub struct DatabaseSync {
   location: String,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
   authorizer_data: Rc<RefCell<Option<*mut AuthorizerData>>>,
+  // Non-zero while a user-defined callback is on the stack; close() refuses
+  // to free the connection in that state to avoid a SQLite VDBE use-after-free.
+  callback_depth: Rc<Cell<usize>>,
+}
+
+struct CallbackDepthGuard {
+  depth: Rc<Cell<usize>>,
+}
+
+impl CallbackDepthGuard {
+  fn new(depth: &Rc<Cell<usize>>) -> Self {
+    depth.set(depth.get().saturating_add(1));
+    Self {
+      depth: Rc::clone(depth),
+    }
+  }
+}
+
+impl Drop for CallbackDepthGuard {
+  fn drop(&mut self) {
+    self.depth.set(self.depth.get().saturating_sub(1));
+  }
 }
 
 // SAFETY: we're sure this can be GCed
@@ -834,6 +856,7 @@ impl DatabaseSync {
       options,
       ignore_next_sqlite_error: Rc::new(Cell::new(false)),
       authorizer_data: Rc::new(RefCell::new(None)),
+      callback_depth: Rc::new(Cell::new(0)),
     })
   }
 
@@ -879,6 +902,12 @@ impl DatabaseSync {
   fn close(&self) -> Result<(), SqliteError> {
     if self.conn.borrow().is_none() {
       return Err(SqliteError::AlreadyClosed);
+    }
+
+    // Refuse to close while a user-defined callback is on the SQLite stack —
+    // freeing the in-flight statement would be a VDBE use-after-free.
+    if self.callback_depth.get() > 0 {
+      return Err(SqliteError::ActiveCallback);
     }
 
     // Finalize all prepared statements
@@ -1213,6 +1242,7 @@ impl DatabaseSync {
       context,
       use_big_int_arguments,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+      callback_depth: Rc::clone(&self.callback_depth),
     });
     let data_ptr = Box::into_raw(data);
 
@@ -1384,6 +1414,9 @@ impl DatabaseSync {
     // SAFETY: lifetime of the connection is guaranteed by reference
     // counting.
     let raw_handle = unsafe { db.handle() };
+
+    // Block close() while filter/onConflict callbacks may be on the stack.
+    let _apply_depth_guard = CallbackDepthGuard::new(&self.callback_depth);
 
     // SAFETY: `changeset` points to a valid memory location and its
     // length is correct. `ctx` is stack allocated and its lifetime is
@@ -1659,6 +1692,7 @@ impl DatabaseSync {
       callback: callback_global,
       context: context_global,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+      callback_depth: Rc::clone(&self.callback_depth),
     });
     let data_ptr = Box::into_raw(data);
 
@@ -1787,6 +1821,7 @@ impl DatabaseSync {
       inverse_fn,
       final_fn,
       ignore_next_sqlite_error: Rc::clone(&self.ignore_next_sqlite_error),
+      callback_depth: Rc::clone(&self.callback_depth),
     });
 
     let custom_aggregate_ptr = Box::into_raw(custom_aggregate);
@@ -1866,6 +1901,223 @@ impl DatabaseSync {
       v8::Global::new(scope, db_object),
     ))
   }
+
+  // Serializes the contents of the database into a Uint8Array. The database
+  // can be either an in-memory database or a database opened from a file.
+  //
+  // This method is a wrapper around `sqlite3_serialize()`.
+  #[validate(is_open)]
+  fn serialize<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    db_name_value: v8::Local<'a, v8::Value>,
+  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
+    let db = self.conn.borrow();
+    let conn = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    let db_name = if db_name_value.is_undefined() {
+      "main".to_string()
+    } else {
+      let Ok(s) = v8::Local::<v8::String>::try_from(db_name_value) else {
+        return Err(SqliteError::Validation(
+          validators::Error::InvalidArgType(
+            "The \"dbName\" argument must be a string.".into(),
+          ),
+        ));
+      };
+      s.to_rust_string_lossy(scope)
+    };
+
+    let name_cstring = CString::new(db_name)?;
+
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { conn.handle() };
+
+    let mut size: libsqlite3_sys::sqlite3_int64 = 0;
+    // SAFETY: `raw_handle` is a valid sqlite3 pointer; `name_cstring` is a
+    // valid C string for the lifetime of this call; `size` is a valid out
+    // pointer.
+    let data = unsafe {
+      libsqlite3_sys::sqlite3_serialize(
+        raw_handle,
+        name_cstring.as_ptr(),
+        &mut size,
+        0,
+      )
+    };
+
+    if data.is_null() {
+      return Err(SqliteError::SqliteSysError {
+        message: "unable to serialize database".to_string(),
+        errstr: "unable to serialize database".to_string(),
+        errcode: libsqlite3_sys::SQLITE_ERROR as _,
+      });
+    }
+
+    let len = size as usize;
+    // SAFETY: `data` points to `len` bytes owned by SQLite and is valid for
+    // reads of that length.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len) }.to_vec();
+    // SAFETY: `data` was allocated by `sqlite3_serialize` and must be freed
+    // with `sqlite3_free`.
+    unsafe {
+      libsqlite3_sys::sqlite3_free(data as *mut c_void);
+    }
+
+    let backing =
+      v8::ArrayBuffer::new_backing_store_from_vec(bytes).make_shared();
+    let ab = v8::ArrayBuffer::with_backing_store(scope, &backing);
+    let view = v8::Uint8Array::new(scope, ab, 0, len).unwrap();
+    Ok(view.into())
+  }
+
+  // Deserializes the given buffer into the database. Replaces the contents
+  // of the named database (default `"main"`) with the contents of the
+  // serialized buffer.
+  //
+  // This method is a wrapper around `sqlite3_deserialize()`.
+  #[fast]
+  #[validate(is_open)]
+  #[undefined]
+  fn deserialize<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    buffer_value: v8::Local<'a, v8::Value>,
+    options_value: v8::Local<'a, v8::Value>,
+  ) -> Result<(), SqliteError> {
+    if !buffer_value.is_array_buffer_view() {
+      return Err(SqliteError::Validation(validators::Error::InvalidArgType(
+        "The \"serialized\" argument must be a TypedArray or a DataView."
+          .into(),
+      )));
+    }
+
+    let mut db_name = "main".to_string();
+    let mut read_only = false;
+
+    if !options_value.is_undefined() {
+      let Ok(options_obj) = v8::Local::<v8::Object>::try_from(options_value)
+      else {
+        return Err(SqliteError::Validation(
+          validators::Error::InvalidArgType(
+            "The \"options\" argument must be an object.".into(),
+          ),
+        ));
+      };
+
+      v8_static_strings! {
+        DB_NAME_STRING = "dbName",
+        READ_ONLY_STRING = "readOnly",
+      }
+
+      let db_name_string = DB_NAME_STRING.v8_string(scope).unwrap();
+      if let Some(name_val) = options_obj.get(scope, db_name_string.into())
+        && !name_val.is_undefined()
+      {
+        let Ok(name_str) = v8::Local::<v8::String>::try_from(name_val) else {
+          return Err(SqliteError::Validation(
+            validators::Error::InvalidArgType(
+              "The \"options.dbName\" argument must be a string.".into(),
+            ),
+          ));
+        };
+        db_name = name_str.to_rust_string_lossy(scope);
+      }
+
+      let read_only_string = READ_ONLY_STRING.v8_string(scope).unwrap();
+      if let Some(read_only_val) =
+        options_obj.get(scope, read_only_string.into())
+        && !read_only_val.is_undefined()
+      {
+        let Ok(b) = v8::Local::<v8::Boolean>::try_from(read_only_val) else {
+          return Err(SqliteError::Validation(
+            validators::Error::InvalidArgType(
+              "The \"options.readOnly\" argument must be a boolean.".into(),
+            ),
+          ));
+        };
+        read_only = b.is_true();
+      }
+    }
+
+    let view: v8::Local<v8::ArrayBufferView> = buffer_value.try_into().unwrap();
+    let byte_length = view.byte_length();
+    let name_cstring = CString::new(db_name)?;
+
+    // Per Node's contract, existing prepared statements are finalized before
+    // deserialization is attempted, even if the operation subsequently fails.
+    for stmt in self.statements.borrow_mut().drain(..) {
+      if let Some(ptr) = stmt.get() {
+        // SAFETY: `ptr` is a valid statement handle.
+        unsafe {
+          libsqlite3_sys::sqlite3_finalize(ptr);
+        }
+        stmt.set(None);
+      }
+    }
+
+    let db = self.conn.borrow();
+    let conn = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+    // SAFETY: lifetime of the connection is guaranteed by reference counting.
+    let raw_handle = unsafe { conn.handle() };
+
+    // Allocate memory owned by SQLite, copy the input bytes in, and hand
+    // ownership over via the FREEONCLOSE flag so SQLite frees it when the
+    // database is closed or another deserialize replaces it.
+    // sqlite3_malloc64(0) is allowed to return null; only treat null as an
+    // error when we actually need a non-empty allocation.
+    // SAFETY: ffi call with no preconditions other than a valid size.
+    let buf = unsafe {
+      libsqlite3_sys::sqlite3_malloc64(byte_length.max(1) as u64) as *mut u8
+    };
+    if buf.is_null() {
+      return Err(SqliteError::SqliteSysError {
+        message: "out of memory".to_string(),
+        errstr: "out of memory".to_string(),
+        errcode: libsqlite3_sys::SQLITE_NOMEM as _,
+      });
+    }
+
+    if byte_length > 0 {
+      let data = view.data() as *const u8;
+      // SAFETY: `data` points to `byte_length` bytes; `buf` is a freshly
+      // allocated buffer with the same capacity; the two regions do not
+      // overlap.
+      unsafe {
+        std::ptr::copy_nonoverlapping(data, buf, byte_length);
+      }
+    }
+
+    let mut flags: u32 = libsqlite3_sys::SQLITE_DESERIALIZE_FREEONCLOSE;
+    if read_only {
+      flags |= libsqlite3_sys::SQLITE_DESERIALIZE_READONLY;
+    } else {
+      flags |= libsqlite3_sys::SQLITE_DESERIALIZE_RESIZEABLE;
+    }
+
+    // SAFETY: `raw_handle` is a valid sqlite3 pointer; `name_cstring` is a
+    // valid C string for the lifetime of this call; `buf` was allocated by
+    // SQLite and ownership transfers via FREEONCLOSE.
+    let r = unsafe {
+      libsqlite3_sys::sqlite3_deserialize(
+        raw_handle,
+        name_cstring.as_ptr(),
+        buf,
+        byte_length as i64,
+        byte_length as i64,
+        flags,
+      )
+    };
+
+    if r != libsqlite3_sys::SQLITE_OK {
+      // sqlite3_deserialize frees `buf` itself on failure when FREEONCLOSE
+      // is set.
+      check_error_code(r, raw_handle)?;
+      check_error_code2(r)?;
+    }
+
+    Ok(())
+  }
 }
 
 #[repr(C)]
@@ -1883,6 +2135,7 @@ struct CustomAggregate {
   inverse_fn: Option<NonNull<v8::Function>>,
   final_fn: Option<NonNull<v8::Function>>,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  callback_depth: Rc<Cell<usize>>,
 }
 
 enum AggregateStepKind {
@@ -1957,6 +2210,8 @@ unsafe fn custom_aggregate_step_base(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2061,6 +2316,8 @@ unsafe fn custom_aggregate_value_base(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2169,24 +2426,12 @@ unsafe extern "C" fn custom_aggregate_xvalue(
 
 unsafe extern "C" fn custom_aggregate_xdestroy(data: *mut c_void) {
   // SAFETY: `data` is a valid pointer to CustomAggregate.
-  // The v8 handles are properly dropped here.
+  // We intentionally do not re-enter V8 here. SQLite may invoke this
+  // destructor while the isolate is already tearing down, so creating a
+  // callback scope can panic. The raw V8 handles are allowed to leak in that
+  // case, matching the custom function destroy path.
   unsafe {
-    let data = Box::from_raw(data as *mut CustomAggregate);
-    let context_local: v8::Local<v8::Context> =
-      std::mem::transmute(data.context.as_ptr());
-
-    v8::callback_scope!(unsafe cb_scope, context_local);
-    v8::scope!(scope, cb_scope);
-
-    let _ = v8::Global::from_raw(scope, data.context);
-    let _ = v8::Global::from_raw(scope, data.start);
-    let _ = v8::Global::from_raw(scope, data.step_fn);
-    if let Some(inverse_ptr) = data.inverse_fn {
-      let _ = v8::Global::from_raw(scope, inverse_ptr);
-    }
-    if let Some(final_ptr) = data.final_fn {
-      let _ = v8::Global::from_raw(scope, final_ptr);
-    }
+    let _ = Box::from_raw(data as *mut CustomAggregate);
   }
 }
 
@@ -2201,12 +2446,14 @@ struct CustomFunctionData {
   context: NonNull<v8::Context>,
   use_big_int_arguments: bool,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  callback_depth: Rc<Cell<usize>>,
 }
 
 struct AuthorizerData {
   callback: NonNull<v8::Function>,
   context: NonNull<v8::Context>,
   ignore_next_sqlite_error: Rc<Cell<bool>>,
+  callback_depth: Rc<Cell<usize>>,
 }
 
 unsafe extern "C" fn custom_function_handler(
@@ -2227,6 +2474,8 @@ unsafe extern "C" fn custom_function_handler(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 
@@ -2480,6 +2729,8 @@ unsafe extern "C" fn authorizer_callback(
     }
 
     let data = &*data_ptr;
+    // Block close() from freeing the in-flight statement under the VDBE.
+    let _depth_guard = CallbackDepthGuard::new(&data.callback_depth);
     let context_local: v8::Local<v8::Context> =
       std::mem::transmute(data.context.as_ptr());
 

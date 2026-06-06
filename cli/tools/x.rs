@@ -126,20 +126,33 @@ fn run_js_file(
   }
 }
 
-fn get_npm_process_state(npm_resolver: &CliNpmResolver) -> Option<String> {
+pub(crate) fn get_npm_process_state(
+  npm_resolver: &CliNpmResolver,
+) -> Option<String> {
   match npm_resolver {
-    deno_resolver::npm::NpmResolver::Managed(managed) => Some(
-      deno_npm_installer::process_state::NpmProcessState::new_managed(
-        managed.resolution().serialized_valid_snapshot(),
-        managed.root_node_modules_path(),
+    deno_resolver::npm::NpmResolver::Managed(managed) => {
+      let linker_mode = match managed.linker_mode() {
+        deno_config::deno_json::NodeModulesLinkerMode::Hoisted => {
+          deno_npm_installer::process_state::NpmProcessStateLinkerMode::Hoisted
+        }
+        deno_config::deno_json::NodeModulesLinkerMode::Isolated => {
+          deno_npm_installer::process_state::NpmProcessStateLinkerMode::Isolated
+        }
+      };
+      Some(
+        deno_npm_installer::process_state::NpmProcessState::new_managed(
+          managed.resolution().serialized_valid_snapshot(),
+          managed.root_node_modules_path(),
+          linker_mode,
+        )
+        .as_serialized(),
       )
-      .as_serialized(),
-    ),
+    }
     deno_resolver::npm::NpmResolver::Byonm(_) => None,
   }
 }
 
-fn run_bin_value(
+pub(crate) fn run_bin_value(
   factory: &CliFactory,
   flags: &Flags,
   bin_value: BinValue,
@@ -185,7 +198,7 @@ fn run_bin_value(
 
 /// Try to find a bin value from a map of bins, with fallbacks for scoped package names
 /// and single-bin packages.
-fn find_bin_value(
+pub(crate) fn find_bin_value(
   bins: &BTreeMap<String, BinValue>,
   bin_name: &str,
 ) -> Option<BinValue> {
@@ -464,6 +477,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         &flags,
         reload,
         command_flags.yes,
+        &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
       )
       .await?;
@@ -538,6 +552,7 @@ pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
         &flags,
         reload,
         command_flags.yes,
+        &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
       )
       .await?;
@@ -578,9 +593,14 @@ async fn autoinstall_package(
   old_flags: &Flags,
   reload: bool,
   yes: bool,
+  ignore_scripts: &PackagesAllowedScripts,
   deno_dir: &Path,
 ) -> Result<(Arc<Flags>, CliFactory), AnyError> {
-  fn make_new_flags(old_flags: &Flags, temp_dir: &Path) -> Arc<Flags> {
+  fn make_new_flags(
+    old_flags: &Flags,
+    temp_dir: &Path,
+    ignore_scripts: &PackagesAllowedScripts,
+  ) -> Arc<Flags> {
     let mut new_flags = (*old_flags).clone();
     new_flags.node_modules_dir =
       Some(deno_config::deno_json::NodeModulesDirMode::Auto);
@@ -589,7 +609,23 @@ async fn autoinstall_package(
     new_flags.config_flag = crate::args::ConfigFlag::Path(
       temp_dir.join("deno.json").to_string_lossy().into_owned(),
     );
-    new_flags.allow_scripts = PackagesAllowedScripts::All;
+    match ignore_scripts {
+      PackagesAllowedScripts::All => {
+        new_flags.allow_scripts = PackagesAllowedScripts::None;
+        new_flags.deny_scripts.clear();
+      }
+      PackagesAllowedScripts::Some(package_reqs) => {
+        if matches!(old_flags.allow_scripts, PackagesAllowedScripts::None) {
+          new_flags.allow_scripts = PackagesAllowedScripts::All;
+        }
+        new_flags.deny_scripts = package_reqs.clone();
+      }
+      PackagesAllowedScripts::None => {
+        if matches!(old_flags.allow_scripts, PackagesAllowedScripts::None) {
+          new_flags.allow_scripts = PackagesAllowedScripts::All;
+        }
+      }
+    };
 
     log::debug!("new_flags: {:?}", new_flags);
 
@@ -602,7 +638,7 @@ async fn autoinstall_package(
     deno_dir,
   )?;
 
-  let new_flags = make_new_flags(old_flags, temp_dir.path());
+  let new_flags = make_new_flags(old_flags, temp_dir.path(), ignore_scripts);
   let new_factory = CliFactory::from_flags(new_flags.clone());
 
   match temp_dir {

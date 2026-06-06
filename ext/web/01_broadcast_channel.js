@@ -2,13 +2,17 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  op_broadcast_deserialize,
+  op_broadcast_free,
   op_broadcast_recv,
   op_broadcast_send,
+  op_broadcast_serialize,
   op_broadcast_subscribe,
   op_broadcast_unsubscribe,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
@@ -20,13 +24,15 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import {
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const {
   defineEventHandler,
   EventTarget,
   setIsTrusted,
   setTarget,
-} from "ext:deno_web/02_event.js";
+} = core.loadExtScript("ext:deno_web/02_event.js");
 const { defer } = core.loadExtScript("ext:deno_web/02_timers.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
@@ -53,15 +59,18 @@ async function recv() {
       break;
     }
 
-    const { 0: name, 1: data } = message;
-    dispatch(null, name, new Uint8Array(data));
+    const { 0: name, 1: data, 2: sabId } = message;
+    dispatch(null, name, new Uint8Array(data), sabId);
+    // The SharedArrayBuffer backing stores (if any) have been deserialized for
+    // every local channel above; release the stash entry.
+    if (sabId !== 0) op_broadcast_free(sabId);
   }
 
   core.close(rid);
   rid = null;
 }
 
-function dispatch(source, name, data) {
+function dispatch(source, name, data, sabId) {
   for (let i = 0; i < channels.length; ++i) {
     const channel = channels[i];
 
@@ -69,10 +78,22 @@ function dispatch(source, name, data) {
     if (channel[_name] !== name) continue;
     if (channel[_closed]) continue;
 
+    // Deserialize eagerly (synchronously) while the out-of-band
+    // SharedArrayBuffer backing stores referenced by `sabId` are still
+    // available; only the event dispatch is deferred. A single broadcast
+    // message can be delivered to many receivers, so each gets its own
+    // deserialized copy.
+    // TODO(bnoordhuis) Cache immutables.
+    const messageData = op_broadcast_deserialize(
+      data,
+      sabId,
+      core.getCloneableDeserializers(),
+    );
+
     const go = () => {
       if (channel[_closed]) return;
       const event = new MessageEvent("message", {
-        data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
+        data: messageData,
         origin: "http://127.0.0.1",
       });
       setIsTrusted(event, true);
@@ -127,17 +148,23 @@ class BroadcastChannel extends EventTarget {
       throw new DOMException("Uncloneable value", "DataCloneError");
     }
 
-    const data = core.serialize(message);
+    // Serialize the message, carrying any SharedArrayBuffer backing stores
+    // out-of-band (referenced by `sabId`) so the message can be deserialized by
+    // an arbitrary number of receivers. `sabId` is 0 when there are none.
+    const { 0: data, 1: sabId } = op_broadcast_serialize(message, null);
 
     // Send to other listeners in this VM.
-    dispatch(this, this[_name], new Uint8Array(data));
+    dispatch(this, this[_name], data, sabId);
 
-    // Send to listeners in other VMs.
-    defer(() => {
-      if (!this[_closed]) {
-        op_broadcast_send(rid, this[_name], data);
-      }
-    });
+    // Send to listeners in other VMs. This must happen before returning from
+    // postMessage(), otherwise close() immediately after postMessage() can
+    // cancel the deferred send before other workers observe the message.
+    op_broadcast_send(rid, this[_name], data, sabId);
+
+    // In-VM dispatch deserialized eagerly and op_broadcast_send moved a clone
+    // of the backing stores into the cross-VM message, so the sender's stash
+    // entry is no longer needed.
+    if (sabId !== 0) op_broadcast_free(sabId);
   }
 
   [refBroadcastChannel](ref) {
@@ -197,4 +224,5 @@ defineEventHandler(BroadcastChannel.prototype, "message");
 defineEventHandler(BroadcastChannel.prototype, "messageerror");
 const BroadcastChannelPrototype = BroadcastChannel.prototype;
 
-export { BroadcastChannel, refBroadcastChannel };
+return { BroadcastChannel, refBroadcastChannel };
+})();

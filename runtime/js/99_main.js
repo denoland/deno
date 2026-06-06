@@ -3,7 +3,7 @@
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import * as internalConsole from "ext:deno_web/01_console.js";
+const internalConsole = core.loadExtScript("ext:deno_web/01_console.js");
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
@@ -37,6 +37,7 @@ const {
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
@@ -52,29 +53,41 @@ const {
 const {
   isNativeError,
 } = core;
-import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
-import * as event from "ext:deno_web/02_event.js";
-import * as location from "ext:deno_web/12_location.js";
-import * as version from "ext:runtime/01_version.ts";
-import * as os from "ext:deno_os/30_os.js";
-import {
+// Deno.serve (00_serve.ts) chains through 23_request/23_response/22_body
+// into the 208 KB web-streams polyfill. Only loaded if `deno serve` / a
+// declarative server export is actually used.
+let _serveMod;
+const lazyServeMod = () =>
+  _serveMod ??
+    (_serveMod = core.loadExtScript("ext:deno_http/00_serve.ts"));
+const event = core.loadExtScript("ext:deno_web/02_event.js");
+const location = core.loadExtScript("ext:deno_web/12_location.js");
+const version = core.loadExtScript("ext:runtime/01_version.ts");
+const os = core.loadExtScript("ext:deno_os/30_os.js");
+const {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   inspectArgs,
   quoteString,
   setNoColorFns,
-} from "ext:deno_web/01_console.js";
-import * as performance from "ext:deno_web/15_performance.js";
-import * as url from "ext:deno_web/00_url.js";
-import * as fetch from "ext:deno_fetch/26_fetch.js";
-import * as messagePort from "ext:deno_web/13_message_port.js";
+} = core.loadExtScript("ext:deno_web/01_console.js");
+const performance = core.loadExtScript("ext:deno_web/15_performance.js");
+const url = core.loadExtScript("ext:deno_web/00_url.js");
+// 26_fetch pulls 22_body -> 06_streams (208 KB). The only thing 99_main
+// needs from it at bootstrap is the wasm-streaming callback registration -
+// wrap that so the actual module loads on first WebAssembly streaming use.
+let _fetchMod;
+const lazyFetchMod = () =>
+  _fetchMod ??
+    (_fetchMod = core.loadExtScript("ext:deno_fetch/26_fetch.js"));
+const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 import {
   denoNs,
   denoNsUnstableById,
   unstableIds,
 } from "ext:runtime/90_deno_ns.js";
-import { errors } from "ext:runtime/01_errors.js";
+const { errors } = core.loadExtScript("ext:runtime/01_errors.js");
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
   DOMException,
@@ -91,8 +104,10 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolMetadata } from "ext:deno_web/00_infra.js";
-import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { bootstrap: bootstrapOtel } = core.loadExtScript(
+  "ext:deno_telemetry/telemetry.ts",
+);
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -134,6 +149,17 @@ op_get_ext_import_meta_proto().log = function internalLog(levelStr, ...args) {
     getConsoleInspectOptions(getStderrNoColor()),
   );
   op_internal_log(this.url, level, message);
+};
+
+// Equivalent of import.meta.log for use in lazy-loaded (IIFE) scripts that
+// lack access to import.meta.
+internals.log = function internalLog(levelStr, ...args) {
+  const level = LOG_LEVELS[levelStr];
+  const message = inspectArgs(
+    args,
+    getConsoleInspectOptions(getStderrNoColor()),
+  );
+  op_internal_log("ext:runtime", level, message);
 };
 
 let windowIsClosing = false;
@@ -435,6 +461,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "SyntaxError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionIndexSizeError",
+  function DOMExceptionIndexSizeError(msg) {
+    return new DOMException(msg, "IndexSizeError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
@@ -442,7 +474,10 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+  core.setWasmStreamingCallback(function wasmStreamingCallback(source, rid) {
+    const handleWasmStreaming = lazyFetchMod().handleWasmStreaming;
+    return handleWasmStreaming(source, rid);
+  });
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
   version.setVersions(
@@ -519,7 +554,7 @@ function dispatchUnloadEvent() {
 
 let hasBootstrapped = false;
 // Set up global properties shared by main and worker runtime.
-ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+core.defineGlobalProperties(globalThis, windowOrWorkerGlobalScope);
 
 // Set up global properties shared by main and worker runtime that are exposed
 // by unstable features if those are enabled.
@@ -535,7 +570,7 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
     const featureId = featureIds[i];
     if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
       const props = unstableForWindowOrWorkerGlobalScope[featureId];
-      ObjectDefineProperties(globalThis, { ...props });
+      core.defineGlobalProperties(globalThis, { ...props });
     }
   }
 }
@@ -549,11 +584,25 @@ const NOT_IMPORTED_OPS = [
   "op_register_bench",
   "op_bench_get_origin",
 
-  // Related to `Deno.jupyter` API
+  // Related to `Deno.jupyter` REPL API
   "op_jupyter_broadcast",
   "op_jupyter_input",
   "op_jupyter_create_png_from_texture",
   "op_jupyter_get_buffer",
+  // Related to the Jupyter ZMQ kernel worker
+  "op_jupyter_get_connection_info",
+  "op_jupyter_repl_evaluate",
+  "op_jupyter_repl_get_properties",
+  "op_jupyter_repl_global_lexical_scope_names",
+  "op_jupyter_repl_call_function_on_args",
+  "op_jupyter_repl_call_function_on",
+  "op_jupyter_repl_interrupt",
+  "op_jupyter_repl_cancel_interrupt",
+  "op_jupyter_recv_iopub",
+  "op_jupyter_recv_input",
+  "op_jupyter_send_input_reply",
+  "op_jupyter_deno_version",
+  "op_jupyter_typescript_version",
   // Used in jupyter API
   "op_base64_encode",
 
@@ -577,6 +626,8 @@ const NOT_IMPORTED_OPS = [
   "op_register_test_hook",
   "op_register_test",
   "op_test_get_origin",
+  "op_test_event_exit",
+  "op_test_isolate_exit",
   "op_pledge_test_permissions",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
@@ -605,23 +656,30 @@ function removeImportedOps() {
 // methods should be left there.
 ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
-const finalDenoNs = {
-  internal: internalSymbol,
-  [internalSymbol]: internals,
-  ...denoNs,
-  // Deno.test, Deno.bench, Deno.lint are noops here, but kept for compatibility; so
-  // that they don't cause errors when used outside of `deno test`/`deno bench`/`deno lint`
-  // contexts.
-  test: () => {},
-  bench: () => {},
-  lint: {
-    runPlugin: () => {
-      throw new Error(
-        "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
-      );
+// Build finalDenoNs without spreading denoNs: spread invokes every getter,
+// including the lazy ones (Deno.serve / Deno.run / etc.) that intentionally
+// avoid loading 06_streams / 22_body / 40_process at snapshot time. Use
+// ObjectDefineProperties + getOwnPropertyDescriptors to preserve the lazy
+// descriptors.
+const finalDenoNs = ObjectDefineProperties(
+  {
+    internal: internalSymbol,
+    [internalSymbol]: internals,
+    // Deno.test, Deno.bench, Deno.lint are noops here, but kept for
+    // compatibility; so that they don't cause errors when used outside of
+    // `deno test`/`deno bench`/`deno lint` contexts.
+    test: () => {},
+    bench: () => {},
+    lint: {
+      runPlugin: () => {
+        throw new Error(
+          "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+        );
+      },
     },
   },
-};
+  ObjectGetOwnPropertyDescriptors(denoNs),
+);
 
 ObjectDefineProperties(finalDenoNs, {
   pid: core.propGetterOnly(opPid),
@@ -717,7 +775,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       core.addMainModuleHandler((main) => {
         if (ObjectHasOwn(main, "default")) {
           try {
-            serve = registerDeclarativeServer(main.default);
+            serve = lazyServeMod().registerDeclarativeServer(main.default);
           } catch (e) {
             if (mode === executionModes.serve || autoServe) {
               throw e;
@@ -769,7 +827,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
@@ -837,7 +900,13 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      const unstable = denoNsUnstableById[id];
+      if (unstable) {
+        ObjectDefineProperties(
+          finalDenoNs,
+          ObjectGetOwnPropertyDescriptors(unstable),
+        );
+      }
     }
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
@@ -900,7 +969,12 @@ function bootstrapWorkerRuntime(
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
@@ -954,7 +1028,13 @@ function bootstrapWorkerRuntime(
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      const unstable = denoNsUnstableById[id];
+      if (unstable) {
+        ObjectDefineProperties(
+          finalDenoNs,
+          ObjectGetOwnPropertyDescriptors(unstable),
+        );
+      }
     }
 
     // Not available in workers
@@ -1031,4 +1111,9 @@ bootstrapWorkerRuntime(
   undefined,
   true,
 );
-nodeBootstrap({ warmup: true });
+// Skip warmup. The warmup branch creates placeholder stdin/stdout/stderr
+// streams that the runtime bootstrap (__bootstrapNodeProcess(warmup=false))
+// then unconditionally overwrites with fresh TTYWriteStream instances, so
+// the only observable effect of warmup was pulling node:stream and friends
+// into the snapshot via createWritableStdioStream/initStdin.
+// nodeBootstrap({ warmup: true });

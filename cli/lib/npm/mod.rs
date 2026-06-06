@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use deno_npm_installer::process_state::NpmProcessState;
 use deno_npm_installer::process_state::NpmProcessStateKind;
+use deno_npm_installer::process_state::NpmProcessStateLinkerMode;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_resolver::npm::NpmResolver;
@@ -38,9 +39,14 @@ impl<TSys: DenoLibSys> NpmProcessStateProvider
   for ManagedNpmProcessStateProvider<TSys>
 {
   fn get_npm_process_state(&self) -> String {
+    let linker_mode = match self.0.linker_mode().as_str() {
+      "hoisted" => NpmProcessStateLinkerMode::Hoisted,
+      _ => NpmProcessStateLinkerMode::Isolated,
+    };
     NpmProcessState::new_managed(
       self.0.resolution().serialized_valid_snapshot(),
       self.0.root_node_modules_path(),
+      linker_mode,
     )
     .as_serialized()
   }
@@ -61,6 +67,7 @@ impl<TSys: DenoLibSys> NpmProcessStateProvider
         .0
         .root_node_modules_path()
         .map(|p| p.to_string_lossy().into_owned()),
+      linker_mode: NpmProcessStateLinkerMode::default(),
     }
     .as_serialized()
   }

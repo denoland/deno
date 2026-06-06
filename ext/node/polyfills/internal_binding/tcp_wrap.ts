@@ -31,26 +31,25 @@
 // This module adds thin JS wrappers for listen (to create client handles on
 // accept) and for re-exporting types.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { TCPWrap } from "ext:core/ops";
-import {
-  AsyncWrap,
-  providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
+(function () {
+const { core, primordials } = __bootstrap;
+const { TCPWrap } = core.ops;
+const { AsyncWrap, providerType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
+);
+const { FunctionPrototypeCall } = primordials;
 
 // Mark TCPWrap as a StreamBase handle, matching Node's StreamBase::AddMethods.
 // This allows parser.consume(socket._handle) to detect it as consumable.
 TCPWrap.prototype.isStreamBase = true;
 
 /** The type of TCP socket. */
-export enum socketType {
+enum socketType {
   SOCKET,
   SERVER,
 }
 
-export class TCPConnectWrap extends AsyncWrap {
+class TCPConnectWrap extends AsyncWrap {
   oncomplete!: (
     status: number,
     handle: unknown,
@@ -68,7 +67,7 @@ export class TCPConnectWrap extends AsyncWrap {
   }
 }
 
-export enum constants {
+enum constants {
   SOCKET = socketType.SOCKET,
   SERVER = socketType.SERVER,
   UV_TCP_IPV6ONLY,
@@ -84,12 +83,17 @@ export enum constants {
  * TODO: Move this logic into Rust by making the connection callback
  * allocate a CppGC TCPWrap directly, removing the need for this JS shim.
  */
-export function setupListenWrap(serverHandle: InstanceType<typeof TCPWrap>) {
+function setupListenWrap(serverHandle: InstanceType<typeof TCPWrap>) {
   const userOnConnection = serverHandle.onconnection;
   serverHandle.onconnection = function (status: number) {
     if (status !== 0) {
       if (userOnConnection) {
-        userOnConnection.call(serverHandle, status, undefined);
+        FunctionPrototypeCall(
+          userOnConnection,
+          serverHandle,
+          status,
+          undefined,
+        );
       }
       return;
     }
@@ -99,23 +103,37 @@ export function setupListenWrap(serverHandle: InstanceType<typeof TCPWrap>) {
     const acceptErr = serverHandle.accept(clientHandle);
     if (acceptErr !== 0) {
       if (userOnConnection) {
-        userOnConnection.call(serverHandle, acceptErr, undefined);
+        FunctionPrototypeCall(
+          userOnConnection,
+          serverHandle,
+          acceptErr,
+          undefined,
+        );
       }
       return;
     }
 
     if (userOnConnection) {
-      userOnConnection.call(serverHandle, 0, clientHandle);
+      FunctionPrototypeCall(userOnConnection, serverHandle, 0, clientHandle);
     }
   };
 }
 
 // Re-export the Rust TCPWrap as TCP.
-export { TCPWrap as TCP };
 
-export default {
+const _defaultExport = {
   TCPConnectWrap,
   constants,
   TCP: TCPWrap,
   setupListenWrap,
 };
+
+return {
+  TCP: TCPWrap,
+  setupListenWrap,
+  TCPConnectWrap,
+  socketType,
+  constants,
+  default: _defaultExport,
+};
+})();

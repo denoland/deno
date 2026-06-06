@@ -1379,6 +1379,23 @@ Deno.test(function consoleCssToAnsi() {
     cssToAnsiEsc({ ...DEFAULT_CSS, color: [203, 204, 205] }),
     "_[38;2;203;204;205m",
   );
+  // Regression test for https://github.com/denoland/deno/issues/21605: two hex
+  // colors sharing the same red component must not be treated as equal, so the
+  // new background color is still emitted.
+  assertEquals(
+    cssToAnsiEsc(
+      { ...DEFAULT_CSS, backgroundColor: "#FFAFC8" },
+      { ...DEFAULT_CSS, backgroundColor: "#FFFFFF" },
+    ),
+    "_[48;2;255;175;200m",
+  );
+  assertEquals(
+    cssToAnsiEsc(
+      { ...DEFAULT_CSS, color: "#FFAFC8" },
+      { ...DEFAULT_CSS, color: "#FFFFFF" },
+    ),
+    "_[38;2;255;175;200m",
+  );
   assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontWeight: "bold" }), "_[1m");
   assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "italic" }), "_[3m");
   assertEquals(
@@ -1618,6 +1635,84 @@ Deno.test(function consoleGroupWarn() {
 `,
     );
   });
+});
+
+// Regression test for https://github.com/denoland/deno/issues/30176.
+// When the V8 inspector wraps `console`, every method routes through both the
+// inspector binding and Deno's printer. `console.group("label")` must call the
+// wrapped `log` so DevTools receives a paired `log("label")` next to the
+// `startGroup("label")` event — without it, DevTools renders an empty group
+// container and the visible nesting drifts out of alignment with the CLI.
+Deno.test(function consoleGroupForwardsLabelToWrappedLog() {
+  const out = new StringBuffer();
+  const csl = new Console(
+    (x: string, _level: number, printsNewLine: boolean) => {
+      out.add(x + (printsNewLine ? "\n" : ""));
+    },
+  );
+
+  type V8Call = { method: string; args: unknown[] };
+  const v8Calls: V8Call[] = [];
+  const record = (method: string) => (...args: unknown[]) =>
+    v8Calls.push({ method, args });
+  const v8Console = {
+    log: record("log"),
+    info: record("info"),
+    warn: record("warn"),
+    error: record("error"),
+    debug: record("debug"),
+    dir: record("dir"),
+    group: record("group"),
+    groupCollapsed: record("groupCollapsed"),
+    groupEnd: record("groupEnd"),
+    trace: record("trace"),
+    count: record("count"),
+    countReset: record("countReset"),
+    table: record("table"),
+    time: record("time"),
+    timeEnd: record("timeEnd"),
+    timeLog: record("timeLog"),
+    assert: record("assert"),
+    clear: record("clear"),
+  };
+
+  // Replicate the wrap that core.wrapConsole performs at inspector bootstrap.
+  // We can't call core.wrapConsole directly here because it resolves
+  // `Deno.core.callConsole` from the live global, which is hidden by the
+  // time test code runs.
+  // @ts-ignore: Deno[Deno.internal] allowed
+  const { callConsole } = Deno[Deno.internal].core;
+  for (const key of Object.keys(v8Console)) {
+    // deno-lint-ignore no-explicit-any
+    const target = csl as any;
+    if (Object.hasOwn(target, key)) {
+      // deno-lint-ignore no-explicit-any
+      target[key] = (callConsole as any).bind(
+        target,
+        // deno-lint-ignore no-explicit-any
+        (v8Console as any)[key],
+        target[key],
+      );
+    }
+  }
+
+  csl.group("test1");
+  csl.group("test2");
+  csl.groupEnd();
+  csl.groupEnd();
+
+  // The inspector must see startGroup AND log for each label so DevTools can
+  // render the group title inside the group container.
+  assertEquals(v8Calls, [
+    { method: "group", args: ["test1"] },
+    { method: "log", args: ["test1"] },
+    { method: "group", args: ["test2"] },
+    { method: "log", args: ["test2"] },
+    { method: "groupEnd", args: [] },
+    { method: "groupEnd", args: [] },
+  ]);
+  // CLI indentation is preserved.
+  assertEquals(out.toString(), "test1\n  test2\n");
 });
 
 // console.table test
@@ -2303,6 +2398,9 @@ Deno.test(function inspectProxy() {
     )),
     `{ key: "value" }`,
   );
+  // When `showProxy` is false (the default), `Deno.inspect` mirrors Node.js
+  // and inspects the proxy target directly without invoking any traps. The
+  // handler below is ignored entirely; the empty target prints as `{}`.
   assertEquals(
     stripAnsiCode(Deno.inspect(
       new Proxy({}, {
@@ -2325,7 +2423,34 @@ Deno.test(function inspectProxy() {
         },
       }),
     )),
-    `{ prop1: 5, prop2: 5 }`,
+    `{}`,
+  );
+
+  // Issue: https://github.com/denoland/deno/issues/26355
+  // A proxy whose `ownKeys` trap violates the invariant (returns a
+  // non-Object) must not throw — Node.js returns the target's inspection.
+  assertEquals(
+    stripAnsiCode(Deno.inspect(
+      // deno-lint-ignore no-explicit-any
+      new Proxy({ x: 1 }, { ownKeys: (() => undefined) as any }),
+    )),
+    `{ x: 1 }`,
+  );
+
+  // Issue: https://github.com/denoland/deno/issues/24980
+  // A proxy whose `getOwnPropertyDescriptor` trap throws used to surface
+  // as `AssertionError: Assertion failed` from inside the console
+  // formatter. With proxy unwrapping in default mode, the target is
+  // inspected directly and the trap is never invoked.
+  assertEquals(
+    stripAnsiCode(Deno.inspect(
+      new Proxy({ x: 10 }, {
+        getOwnPropertyDescriptor: () => {
+          throw new Error("oops");
+        },
+      }),
+    )),
+    `{ x: 10 }`,
   );
   assertEquals(
     stripAnsiCode(Deno.inspect(
@@ -2674,4 +2799,38 @@ Deno.test(function inspectEscapeSequencesFalse() {
     Deno.inspect("foo\nbar", { escapeSequences: false }),
     '"foo\nbar"',
   );
+});
+
+Deno.test(function inspectProxyDoesNotTriggerGetTrap() {
+  // Regression test for https://github.com/denoland/deno/issues/33719
+  // Proxies that return functions for any property access (e.g. grammy API
+  // client) should not have their get/has traps triggered for custom inspect
+  // symbols during inspection.
+  const accessed: PropertyKey[] = [];
+  const proxy = new Proxy({}, {
+    has(_target, prop) {
+      accessed.push(prop);
+      return false;
+    },
+    get(_target, prop) {
+      accessed.push(prop);
+      return () => {};
+    },
+  });
+
+  accessed.length = 0;
+  Deno.inspect(proxy);
+
+  const inspectSymbols = [
+    Symbol.for("nodejs.util.inspect.custom"),
+    Symbol.for("Deno.customInspect"),
+    Symbol.for("Deno.privateCustomInspect"),
+  ];
+  for (const sym of inspectSymbols) {
+    assertEquals(
+      accessed.filter((p) => p === sym).length,
+      0,
+      `Deno.inspect should not trigger proxy traps for ${String(sym)}`,
+    );
+  }
 });

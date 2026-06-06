@@ -1,7 +1,9 @@
-{ func: [Function: func] }
-[Module: null prototype] {
-  default: { func: [Function: func] },
-  func: [Function: func],
-  "module.exports": { func: [Function: func] }
-}
-5
+TS1540 [ERROR]: A 'namespace' declaration should not be declared using the 'module' keyword. Please use the 'namespace' keyword instead.
+declare module ThisModule {
+               ~~~~~~~~~~
+    at file:///[WILDLINE]/index.d.ts:1:16
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

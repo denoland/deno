@@ -777,6 +777,9 @@ export function filterMapDiagnostic(diagnostic) {
   if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
     return false;
   }
+  if (isJSDocDynamicImportDiagnostic(diagnostic)) {
+    return false;
+  }
   // surface not found diagnostics inside npm packages
   // because we don't analyze it with deno_graph
   if (
@@ -790,6 +793,27 @@ export function filterMapDiagnostic(diagnostic) {
   if (isClassicScript) {
     // Top-level-await, standard and loops.
     if (diagnostic.code == 1375 || diagnostic.code == 1431) {
+      return false;
+    }
+    // Notebook cells are analyzed as classic scripts so that top-level
+    // declarations are shared between cells. As a side effect, declaring a
+    // top-level binding whose name matches an ambient global from the default
+    // libraries (e.g. `const name = ...` shadowing `declare var name` in
+    // `lib.deno.window.d.ts`) is reported as a redeclaration, even though it's
+    // valid in a notebook. Suppress these when the conflicting declaration
+    // lives in a default library.
+    // See https://github.com/denoland/deno/issues/22628.
+    if (
+      // 2300: Duplicate identifier.
+      // 2403: Subsequent variable declarations must have the same type.
+      // 2451: Cannot redeclare block-scoped variable.
+      (diagnostic.code === 2300 || diagnostic.code === 2403 ||
+        diagnostic.code === 2451) &&
+      diagnostic.relatedInformation?.some((related) =>
+        related.file?.isDeclarationFile &&
+        related.file?.fileName?.startsWith(ASSETS_URL_PREFIX)
+      )
+    ) {
       return false;
     }
   }
@@ -808,6 +832,53 @@ export function filterMapDiagnostic(diagnostic) {
   }
 
   return true;
+}
+
+/** @param {ts.Diagnostic} diagnostic */
+function isJSDocDynamicImportDiagnostic(diagnostic) {
+  if (
+    // TS2307: Cannot find module '{0}' or its corresponding type declarations.
+    diagnostic.code !== 2307 || diagnostic.file == null ||
+    diagnostic.start == null
+  ) {
+    return false;
+  }
+
+  const text = diagnostic.file.text;
+  const commentStart = text.lastIndexOf("/**", diagnostic.start);
+  if (commentStart === -1) {
+    return false;
+  }
+  const commentEndBeforeDiagnostic = text.lastIndexOf(
+    "*/",
+    diagnostic.start,
+  );
+  if (commentEndBeforeDiagnostic > commentStart) {
+    return false;
+  }
+
+  const openBrace = text.lastIndexOf("{", diagnostic.start);
+  const closeBraceBeforeDiagnostic = text.lastIndexOf("}", diagnostic.start);
+  if (openBrace <= commentStart || closeBraceBeforeDiagnostic > openBrace) {
+    return false;
+  }
+
+  if (
+    /@(?:augments|extends|implements|import|param|returns?|satisfies|template|typedef|type)\b/
+      .test(text.slice(commentStart, openBrace))
+  ) {
+    return false;
+  }
+
+  const closeBrace = text.indexOf("}", diagnostic.start);
+  const commentEnd = text.indexOf("*/", diagnostic.start);
+  if (closeBrace === -1 || commentEnd !== -1 && commentEnd < closeBrace) {
+    return false;
+  }
+
+  return /(?:^|[^\w$])import\s*\(\s*["'][^"']+["']/.test(
+    text.slice(openBrace + 1, closeBrace),
+  );
 }
 
 // list of globals that should be kept in Node's globalThis

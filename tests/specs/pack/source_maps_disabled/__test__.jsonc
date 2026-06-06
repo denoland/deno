@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "no_source_maps": {
+      "steps": [{
+        "args": "pack --allow-dirty --no-source-maps",
+        "output": "[WILDCARD]"
+      }, {
+        "args": [
+          "eval",
+          "const tarPath = './test-no-source-maps-1.0.0.tgz'; const file = await Deno.open(tarPath); const decoder = new DecompressionStream('gzip'); const decompressed = file.readable.pipeThrough(decoder); const reader = decompressed.getReader(); const chunks = []; while (true) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); } const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0); const tarData = new Uint8Array(totalLength); let offset = 0; for (const chunk of chunks) { tarData.set(chunk, offset); offset += chunk.length; } const hasSourceMapComment = new TextDecoder().decode(tarData).includes('sourceMappingURL'); console.log('Has source map:', hasSourceMapComment);"
+        ],
+        "output": "Has source map: false\n"
+      }]
+    }
+  }
+}
