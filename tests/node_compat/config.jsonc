@@ -4947,8 +4947,8 @@
     "parallel/test-http-client-timeout-on-connect.js": {},
     "parallel/test-http-client-with-create-connection.js": {},
     "parallel/test-http-keep-alive-empty-line.mjs": {
-      "windows": false,
-      "reason": "error: Uncaught Error: read ECONNRESET"
+      "ignore": true,
+      "reason": "keepAliveTimeout via socket.setTimeout doesn't fire on a consumed HTTP socket; test previously passed by accident because ConnectionsList headersTimeout incorrectly fired (fixed in #34356)"
     },
     "parallel/test-http-localaddress.js": {},
     "parallel/test-http-parser-timeout-reset.js": {},
