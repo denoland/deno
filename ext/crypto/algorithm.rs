@@ -326,3 +326,65 @@ pub fn op_crypto_get_registered_algorithm(
 // AlgorithmIdentifier (string-or-dict) coercion is still performed in JS by
 // `webidl.converters.AlgorithmIdentifier`. Once `normalizeAlgorithm` itself
 // is lifted onto the Rust side that conversion will move here too.
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum GetKeyLengthError {
+  #[class("DOMExceptionOperationError")]
+  #[error("Length must be 128, 192, or 256: received {0}")]
+  AesInvalidLength(u32),
+  #[class("DOMExceptionNotSupportedError")]
+  #[error("Unrecognized hash algorithm: {0}")]
+  HmacUnknownHash(String),
+  #[class(type)]
+  #[error("Invalid length: {0}")]
+  HmacInvalidLength(u32),
+  #[class(type)]
+  #[error("Unreachable")]
+  Unreachable,
+}
+
+/// "Get key length" sub-algorithm per
+/// https://www.w3.org/TR/WebCryptoAPI/#dfn-aes-keygen-get-key-length etc.
+/// Used by `SubtleCrypto.deriveKey()` and the `supports()` `deriveKey`
+/// two-overload paperwork. The JS shim still does
+/// `normalizeAlgorithm(algorithm, "get key length")` and then passes the
+/// normalized `name`, optional `length` and optional `hash.name` here.
+///
+/// Returns the bit length, or `Option<u32>::None` for KDFs (`HKDF`,
+/// `PBKDF2`) whose output length depends on the caller.
+#[op2]
+pub fn op_crypto_get_key_length(
+  #[string] name: &str,
+  length: Option<u32>,
+  #[string] hash_name: Option<String>,
+) -> Result<Option<u32>, GetKeyLengthError> {
+  match name {
+    "AES-CBC" | "AES-CTR" | "AES-GCM" | "AES-OCB" | "AES-KW" => {
+      let l = length.unwrap_or(0);
+      if l != 128 && l != 192 && l != 256 {
+        return Err(GetKeyLengthError::AesInvalidLength(l));
+      }
+      Ok(Some(l))
+    }
+    "HMAC" => {
+      if let Some(l) = length {
+        if l == 0 {
+          Err(GetKeyLengthError::HmacInvalidLength(l))
+        } else {
+          Ok(Some(l))
+        }
+      } else {
+        let hash = hash_name.unwrap_or_default();
+        let block = match hash.as_str() {
+          "SHA-1" | "SHA-256" | "SHA3-256" => 512,
+          "SHA-384" | "SHA-512" | "SHA3-384" | "SHA3-512" => 1024,
+          _ => return Err(GetKeyLengthError::HmacUnknownHash(hash)),
+        };
+        Ok(Some(block))
+      }
+    }
+    "ChaCha20-Poly1305" => Ok(Some(256)),
+    "HKDF" | "PBKDF2" => Ok(None),
+    _ => Err(GetKeyLengthError::Unreachable),
+  }
+}

@@ -10,7 +10,7 @@ const {
 const {
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
-  op_crypto_check_support_for_algorithm,
+  op_crypto_get_key_length,
   op_crypto_get_registered_algorithm,
   op_crypto_decrypt,
   op_crypto_derive_bits,
@@ -543,80 +543,16 @@ function bytesEqual(a, b) {
   return true;
 }
 
+// `getKeyLength` lives in Rust now -- see ext/crypto/algorithm.rs. The Rust
+// op throws the same DOMException / TypeError shapes the JS impl did
+// (OperationError for AES length, NotSupportedError for unknown HMAC hash,
+// TypeError for HMAC length=0 / unreachable algorithm).
 function getKeyLength(algorithm) {
-  switch (algorithm.name) {
-    case "AES-CBC":
-    case "AES-CTR":
-    case "AES-GCM":
-    case "AES-OCB":
-    case "AES-KW": {
-      // 1.
-      if (!ArrayPrototypeIncludes([128, 192, 256], algorithm.length)) {
-        throw new DOMException(
-          `Length must be 128, 192, or 256: received ${algorithm.length}`,
-          "OperationError",
-        );
-      }
-
-      // 2.
-      return algorithm.length;
-    }
-    case "HMAC": {
-      // 1.
-      let length;
-      if (algorithm.length === undefined) {
-        switch (algorithm.hash.name) {
-          case "SHA-1":
-            length = 512;
-            break;
-          case "SHA-256":
-            length = 512;
-            break;
-          case "SHA-384":
-            length = 1024;
-            break;
-          case "SHA-512":
-            length = 1024;
-            break;
-          case "SHA3-256":
-            length = 512;
-            break;
-          case "SHA3-384":
-            length = 1024;
-            break;
-          case "SHA3-512":
-            length = 1024;
-            break;
-          default:
-            throw new DOMException(
-              `Unrecognized hash algorithm: ${algorithm.hash.name}`,
-              "NotSupportedError",
-            );
-        }
-      } else if (algorithm.length !== 0) {
-        length = algorithm.length;
-      } else {
-        throw new TypeError(`Invalid length: ${algorithm.length}`);
-      }
-
-      // 2.
-      return length;
-    }
-    case "ChaCha20-Poly1305": {
-      // ChaCha20-Poly1305 keys are always 256 bits.
-      return 256;
-    }
-    case "HKDF": {
-      // 1.
-      return null;
-    }
-    case "PBKDF2": {
-      // 1.
-      return null;
-    }
-    default:
-      throw new TypeError("Unreachable");
-  }
+  return op_crypto_get_key_length(
+    algorithm.name,
+    algorithm.length ?? null,
+    algorithm.hash?.name ?? null,
+  );
 }
 
 class SubtleCrypto {
