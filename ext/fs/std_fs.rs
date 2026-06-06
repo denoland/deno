@@ -757,31 +757,54 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         .collect::<Result<_, _>>()?;
 
       entries.shrink_to_fit();
-      entries.into_iter().try_for_each(|file_name| {
-        let from_path = from.join(&file_name);
-        let to_path = to.join(&file_name);
-        let meta = fs::symlink_metadata(&from_path).map_err(|err| {
-          io::Error::new(
-            err.kind(),
-            format!(
-              "failed to copy '{}' to '{}': {:?}",
-              from_path.display(),
-              to_path.display(),
-              err,
-            ),
-          )
-        })?;
-        cp_(meta, &from_path, &to_path).map_err(|err| {
-          io::Error::new(
-            err.kind(),
-            format!(
-              "failed to copy '{}' to '{}': {:?}",
-              from_path.display(),
-              to_path.display(),
-              err,
-            ),
-          )
-        })
+      let entry_count = entries.len();
+      let parallelism = std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get())
+        .unwrap_or(1)
+        .min(entry_count);
+      let entries = std::sync::Mutex::new(entries.into_iter());
+
+      std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(parallelism);
+        for _ in 0..parallelism {
+          handles.push(scope.spawn(|| -> io::Result<()> {
+            loop {
+              let Some(file_name) = entries.lock().unwrap().next() else {
+                return Ok(());
+              };
+              let from_path = from.join(&file_name);
+              let to_path = to.join(&file_name);
+              let meta = fs::symlink_metadata(&from_path).map_err(|err| {
+                io::Error::new(
+                  err.kind(),
+                  format!(
+                    "failed to copy '{}' to '{}': {:?}",
+                    from_path.display(),
+                    to_path.display(),
+                    err,
+                  ),
+                )
+              })?;
+              cp_(meta, &from_path, &to_path).map_err(|err| {
+                io::Error::new(
+                  err.kind(),
+                  format!(
+                    "failed to copy '{}' to '{}': {:?}",
+                    from_path.display(),
+                    to_path.display(),
+                    err,
+                  ),
+                )
+              })?;
+            }
+          }));
+        }
+
+        for handle in handles {
+          handle.join().unwrap()?;
+        }
+
+        Ok::<_, io::Error>(())
       })?;
 
       return Ok(());
