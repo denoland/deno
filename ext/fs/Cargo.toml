@@ -29,6 +29,7 @@ filetime.workspace = true
 libc.workspace = true
 rand.workspace = true
 rayon.workspace = true
+same-file.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 
