@@ -58,6 +58,7 @@ function createWorker(
   name,
   workerType,
   closeOnIdle,
+  allowCachedImport,
 ) {
   return op_create_worker({
     hasSourceCode,
@@ -67,6 +68,7 @@ function createWorker(
     specifier,
     workerType,
     closeOnIdle,
+    allowCachedImport,
   });
 }
 
@@ -157,6 +159,7 @@ class Worker extends EventTarget {
       this.#name,
       workerType,
       false,
+      deno?.allowCachedImport === true,
     );
     this.#id = id;
     this.#pollControl();

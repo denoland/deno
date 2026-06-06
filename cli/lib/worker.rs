@@ -73,6 +73,7 @@ pub trait ModuleLoaderFactory: Send + Sync {
 
   fn create_for_worker(
     &self,
+    allow_cached_import: bool,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult;
@@ -345,6 +346,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         node_require_loader,
         hook_registry,
       } = shared.module_loader_factory.create_for_worker(
+        args.allow_cached_import,
         args.parent_permissions.clone(),
         args.permissions.clone(),
       );

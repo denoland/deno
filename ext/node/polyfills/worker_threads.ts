@@ -525,6 +525,7 @@ class NodeWorker extends EventEmitter {
         workerType: "node",
         closeOnIdle: true,
         resourceLimits: resourceLimits_,
+        allowCachedImport: false,
       },
       serializedWorkerMetadata,
     );

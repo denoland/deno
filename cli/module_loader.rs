@@ -462,6 +462,7 @@ impl CliModuleLoaderFactory {
     graph_container: TGraphContainer,
     lib: TsTypeLib,
     is_worker: bool,
+    allow_cached_import: bool,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
@@ -471,6 +472,7 @@ impl CliModuleLoaderFactory {
       Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
         lib,
         is_worker,
+        allow_cached_import,
         parent_permissions,
         permissions,
         graph_container: graph_container.clone(),
@@ -524,6 +526,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       (*self.shared.main_module_graph_container).clone(),
       self.shared.lib_window,
       /* is worker */ false,
+      /* allow cached import */ false,
       root_permissions.clone(),
       root_permissions,
     )
@@ -531,6 +534,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
 
   fn create_for_worker(
     &self,
+    allow_cached_import: bool,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
@@ -541,6 +545,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       ))),
       self.shared.lib_worker,
       /* is worker */ true,
+      allow_cached_import,
       parent_permissions,
       permissions,
     )
@@ -556,6 +561,12 @@ struct ModuleCodeStringSource {
 struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   lib: TsTypeLib,
   is_worker: bool,
+  /// When set on a Web Worker, statically analyzable remote imports the worker
+  /// lacks import permission for are still allowed as long as the module is
+  /// already present in the parent's (main) module graph, i.e. a dependency the
+  /// parent already loaded. Corresponds to the `allowCachedImport` worker
+  /// option.
+  allow_cached_import: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
   /// permissions for Web Worker.
@@ -1436,13 +1447,25 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       // built, so this only needs to run for statically analyzable imports.
       if inner.is_worker && !options.is_dynamic_import {
         let graph = graph_container.graph();
+        // With `allowCachedImport`, a remote module the worker can't import
+        // itself is still permitted if it is already present in the parent's
+        // module graph (a dependency the parent already loaded).
+        let parent_graph = inner
+          .allow_cached_import
+          .then(|| inner.shared.main_module_graph_container.graph());
         for module in graph.modules() {
           let specifier = module.specifier();
-          if matches!(specifier.scheme(), "http" | "https") {
-            inner
+          if matches!(specifier.scheme(), "http" | "https")
+            && let Err(err) = inner
               .permissions
               .check_specifier(specifier, CheckSpecifierKind::Static)
-              .map_err(JsErrorBox::from_err)?;
+          {
+            let cached_by_parent = parent_graph
+              .as_ref()
+              .is_some_and(|graph| graph.get(specifier).is_some());
+            if !cached_by_parent {
+              return Err(JsErrorBox::from_err(err));
+            }
           }
         }
       }
