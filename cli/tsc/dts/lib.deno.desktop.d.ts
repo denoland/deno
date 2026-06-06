@@ -317,6 +317,7 @@ declare namespace Deno {
      *
      * @default {false} */
     noActivate?: boolean;
+    transparentTitlebar?: boolean;
   }
 
   interface BrowserWindowObject {

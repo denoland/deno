@@ -213,6 +213,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     height: i32,
     frameless: bool,
     no_activate: bool,
+    transparent_titlebar: bool,
   ) -> u32 {
     let window = laufey::Window::new_with_options(
       width,
@@ -220,7 +221,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
       laufey::WindowOptions {
         frameless,
         no_activate,
-        transparent_titlebar: false,
+        transparent_titlebar,
       },
     );
     let window = self.setup_window_events(window);
@@ -1680,7 +1681,7 @@ async fn run_desktop(
       }
 
       // Create the initial window and wire up event handlers.
-      let window_id = api.create_window(800, 600, false, false);
+      let window_id = api.create_window(800, 600, false, false, false);
       initial_window_id.store(window_id, Ordering::Release);
 
       denort::desktop::init_desktop_state(

@@ -321,6 +321,7 @@ pub trait DesktopApi: Send + Sync + 'static {
     height: i32,
     frameless: bool,
     no_activate: bool,
+    transparent_titlebar: bool,
   ) -> u32;
   /// Close a specific window.
   fn close_window(&self, window_id: u32);
@@ -547,7 +548,11 @@ impl BrowserWindow {
           .as_ref()
           .and_then(|o| o.no_activate)
           .unwrap_or(false);
-        api.create_window(width, height, frameless, no_activate)
+        let transparent_titlebar = options
+          .as_ref()
+          .and_then(|o| o.transparent_titlebar)
+          .unwrap_or(false);
+        api.create_window(width, height, frameless, no_activate, transparent_titlebar)
       });
 
     if let Some(options) = &options {
@@ -817,6 +822,7 @@ struct BrowserWindowOptions {
   always_on_top: Option<bool>,
   frameless: Option<bool>,
   no_activate: Option<bool>,
+  transparent_titlebar: Option<bool>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
