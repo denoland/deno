@@ -584,7 +584,12 @@ fn create_command(
 
   // On Unix, optionally run the command through `/bin/sh` so that files which
   // the kernel can't exec directly (e.g. shell scripts without a shebang) are
-  // still executed, matching POSIX `execvp`/`posix_spawnp` shell fallback.
+  // still executed. This mirrors glibc's `execvp` (`maybe_script_execute`),
+  // which on `ENOEXEC` re-execs `/bin/sh` with argv `[sh, file, args...]` —
+  // the original argv[0] is dropped and replaced by the shell. Node.js/libuv
+  // inherit this from `execvp`; Rust's `posix_spawn` on Linux does not, so we
+  // replicate it. The user args (`args.args`, i.e. argv[1..]) are appended
+  // below; `argv0` is intentionally skipped (see below) to match libc.
   #[cfg(unix)]
   let mut command = if wrap_in_shell {
     let mut command = Command::new("/bin/sh");
