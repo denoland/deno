@@ -781,7 +781,7 @@ var __require = __deno_internal_createRequire(import.meta.url);
 }
 
 // Force esbuild's CommonJS-to-ESM interop helper (`__toESM`) into "node mode"
-// for the Deno platform.
+// for every platform.
 //
 // esbuild emits a node-mode interop call (`__toESM(require_x(), 1)`) only when
 // it can tell the importing module is *explicitly* ESM (a `.mjs`/`.mts` file or
@@ -793,10 +793,12 @@ var __require = __deno_internal_createRequire(import.meta.url);
 //
 // For packages whose ESM wrapper default-imports a CJS entry that sets
 // `module.exports.__esModule = true` (e.g. tslib's `modules/index.js`), that
-// means `import_x.default` ends up undefined and module init throws. Deno's own
-// runtime always uses node-style interop here, so the bundle should too. We
-// rewrite the helper's `<isNodeMode> || !mod || !mod.__esModule` condition to
-// always pick the node-mode branch. See denoland/deno#34524.
+// means `import_x.default` ends up undefined and module init throws. This is a
+// property of how the source module resolves its default import (Node interop
+// semantics, which is what such packages are authored against), not of the
+// runtime target, so it applies regardless of `--platform`. We rewrite the
+// helper's `<isNodeMode> || !mod || !mod.__esModule` condition to always pick
+// the node-mode branch. See denoland/deno#34524 and denoland/deno#34837.
 //
 // The variable names differ between minified and non-minified output, but the
 // `.__esModule` access and surrounding shape are stable, so a single regex
@@ -2173,11 +2175,15 @@ pub fn maybe_process_contents(
   let is_js = is_js(path) || path.ends_with("<stdout>");
   if is_js {
     let string = str::from_utf8(&file.contents)?;
+    // The `createRequire` shim is Deno-specific (it injects an import from
+    // `node:module`), so it is only applied for the Deno platform. The CJS
+    // interop fix-up below is platform-independent and always runs.
     let string = if should_replace_require_shim {
-      force_node_cjs_interop(&replace_require_shim(string, minified))
+      replace_require_shim(string, minified)
     } else {
       string.to_string()
     };
+    let string = force_node_cjs_interop(&string);
     Ok(ProcessedContents {
       contents: Some(string.into_bytes()),
       is_js,
