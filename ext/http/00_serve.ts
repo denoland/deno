@@ -1660,7 +1660,8 @@ function serveHttpOn(context, addr) {
     }
   })();
 
-  op_http_notify_serving();
+  // 1 = "deno-serve"; must match `serving_server_kind()` in lib.rs.
+  op_http_notify_serving(1);
 
   return {
     addr,
