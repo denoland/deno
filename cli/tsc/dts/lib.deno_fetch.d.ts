@@ -150,6 +150,8 @@ type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 /** @category Fetch */
 type RequestRedirect = "error" | "follow" | "manual";
 /** @category Fetch */
+type RequestPriority = "auto" | "high" | "low";
+/** @category Fetch */
 type ReferrerPolicy =
   | ""
   | "no-referrer"
@@ -231,6 +233,11 @@ interface RequestInit {
    * restricted to same-origin URLs. Sets request's mode.
    */
   mode?: RequestMode;
+  /**
+   * A string indicating the relative priority of the request. Sets request's
+   * priority.
+   */
+  priority?: RequestPriority;
   /**
    * A string indicating whether request follows redirects, results in an error
    * upon encountering a redirect, or returns the redirect (in an opaque
