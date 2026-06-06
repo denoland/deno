@@ -1394,6 +1394,9 @@ fn looks_like_bare_specifier(specifier: &str) -> bool {
     && !specifier.starts_with('.')
     && !specifier.starts_with('/')
     && !specifier.starts_with('#')
+    // Load-bearing on Windows: `Url::parse("C:/foo")` succeeds (scheme `c`), so
+    // a drive-letter absolute path is correctly treated as not bare here. Don't
+    // "simplify" this away or Windows absolute paths regress into the fallback.
     && Url::parse(specifier).is_err()
 }
 

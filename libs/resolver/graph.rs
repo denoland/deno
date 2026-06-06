@@ -414,6 +414,13 @@ impl<
   /// back to the snapshot by package name, matching Node/Bun's "find it in a
   /// reachable node_modules" behavior.
   ///
+  /// Known limitation: the specifier carries no version constraint, so this
+  /// resolves `name@*`. If the build's snapshot holds more than one version
+  /// of the package, the snapshot picks one by name alone, which may not be
+  /// the version the referrer's own `node_modules` tree would select. Node
+  /// and Bun resolve to the nearest reachable version; this does not. For the
+  /// common single-version case the result is identical.
+  ///
   /// Returns `None` when npm resolution isn't managed or the package isn't
   /// present in the snapshot.
   pub fn resolve_bare_specifier_in_npm_snapshot(
@@ -423,24 +430,19 @@ impl<
     resolution_mode: node_resolver::ResolutionMode,
     resolution_kind: node_resolver::NodeResolutionKind,
   ) -> Option<Url> {
-    let node_and_npm_resolver = self.resolver.node_and_npm_resolver.as_ref()?;
-    let managed_resolver = node_and_npm_resolver.npm_resolver.as_managed()?;
     let req_ref =
       NpmPackageReqReference::from_str(&format!("npm:{raw_specifier}")).ok()?;
-    let package_folder = managed_resolver
-      .resolve_pkg_folder_from_deno_module_req(req_ref.req())
-      .ok()?;
-    node_and_npm_resolver
-      .node_resolver
-      .resolve_package_subpath_from_deno_module(
-        &package_folder,
-        req_ref.sub_path(),
+    // Bail unless npm resolution is managed; `resolve_managed_npm_req_ref`
+    // unwraps these and would otherwise panic.
+    let node_and_npm_resolver = self.resolver.node_and_npm_resolver.as_ref()?;
+    node_and_npm_resolver.npm_resolver.as_managed()?;
+    self
+      .resolve_managed_npm_req_ref(
+        &req_ref,
         maybe_referrer,
         resolution_mode,
         resolution_kind,
       )
-      .ok()?
-      .into_url()
       .ok()
   }
 
