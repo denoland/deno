@@ -64,6 +64,27 @@ use ipc::IpcRefTracker;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
+#[cfg(unix)]
+fn clear_nonblocking(fd: i32) -> std::io::Result<()> {
+  // SAFETY: fcntl is called with a valid file descriptor supplied by the
+  // caller. The command variants used here do not require pointer arguments.
+  let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+  if flags < 0 {
+    return Err(std::io::Error::last_os_error());
+  }
+
+  if flags & libc::O_NONBLOCK == 0 {
+    return Ok(());
+  }
+
+  // SAFETY: same as above; F_SETFL accepts the updated descriptor flags.
+  if unsafe { libc::fcntl(fd, libc::F_SETFL, flags & !libc::O_NONBLOCK) } < 0 {
+    return Err(std::io::Error::last_os_error());
+  }
+
+  Ok(())
+}
+
 /// Read CRT errno and map it to a Win32 error code for std::io::Error.
 ///
 /// CRT functions like `open_osfhandle` report failures via errno, NOT
@@ -157,15 +178,16 @@ impl StdioOrFd {
       StdioOrFd::Fd(fd) => {
         #[cfg(unix)]
         {
-          // Safety: we dup the fd so the original remains open for the caller
+          // SAFETY: we dup the fd so the original remains open for the caller.
           let new_fd = unsafe { libc::dup(*fd) };
           if new_fd < 0 {
             return Err(ProcessError::Io(std::io::Error::last_os_error()));
           }
-          // Safety: new_fd is a valid, freshly duplicated file descriptor
-          Ok(unsafe {
-            StdStdio::from(std::os::unix::io::OwnedFd::from_raw_fd(new_fd))
-          })
+          // SAFETY: new_fd is a valid, freshly duplicated file descriptor.
+          let owned_fd =
+            unsafe { std::os::unix::io::OwnedFd::from_raw_fd(new_fd) };
+          clear_nonblocking(new_fd).map_err(ProcessError::Io)?;
+          Ok(StdStdio::from(owned_fd))
         }
         #[cfg(windows)]
         {
@@ -687,7 +709,7 @@ fn create_command(
       && ipc >= 0
     {
       let (ipc_fd1, ipc_fd2) = deno_io::bi_pipe_pair_raw()?;
-      fds_to_dup.push((ipc_fd2, ipc));
+      fds_to_dup.push((ipc_fd2, ipc, false));
       fds_to_close.push(ipc_fd2);
       /* One end returned to parent process (this) */
       let pipe_rid = match args.serialization {
@@ -724,13 +746,13 @@ fn create_command(
       match stdio {
         StdioOrFd::Stdio(Stdio::Piped) => {
           let (fd1, fd2) = deno_io::bi_pipe_pair_raw()?;
-          fds_to_dup.push((fd2, target_fd));
+          fds_to_dup.push((fd2, target_fd, false));
           fds_to_close.push(fd2);
           extra_pipe_fds.push(Some(fd1 as i64));
         }
         StdioOrFd::Fd(fd) => {
           // Dup the caller's fd onto the target fd slot in the child
-          fds_to_dup.push((fd, target_fd));
+          fds_to_dup.push((fd, target_fd, true));
           extra_pipe_fds.push(None);
         }
         _ => {
@@ -745,14 +767,21 @@ fn create_command(
         if detached {
           libc::setsid();
         }
-        for &(src, dst) in &fds_to_dup {
+        for &(src, dst, should_clear_nonblocking) in &fds_to_dup {
           if src >= 0 && dst >= 0 {
             if src != dst {
-              libc::dup2(src, dst);
+              if libc::dup2(src, dst) < 0 {
+                return Err(std::io::Error::last_os_error());
+              }
               libc::close(src);
             }
+            if should_clear_nonblocking {
+              clear_nonblocking(dst)?;
+            }
             // Clear CLOEXEC so the fd survives exec.
-            libc::fcntl(dst, libc::F_SETFD, 0);
+            if libc::fcntl(dst, libc::F_SETFD, 0) < 0 {
+              return Err(std::io::Error::last_os_error());
+            }
           }
         }
         libc::setgroups(0, std::ptr::null());
