@@ -653,12 +653,11 @@ Deno.test(
     const file = await Deno.open(filename);
     const reader = file.readable.getReader();
     file.close();
-    const error = await assertRejects(
+    await assertRejects(
       () => reader.read(),
       Error,
-      "was closed before the stream finished being read from",
+      "The stream's underlying resource was closed or consumed",
     );
-    assert(error.message.includes("`.readable`"));
   },
 );
 
@@ -681,7 +680,7 @@ Deno.test(
           await writer.closed;
         },
         Error,
-        "was closed before the stream finished being written to",
+        "The stream's underlying resource was closed or consumed",
       );
     } finally {
       await Deno.remove(tempFile);

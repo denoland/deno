@@ -964,34 +964,18 @@ const _original = Symbol("[[original]]");
 
 /**
  * If the error thrown while reading from / writing to a resource-backed stream
- * is a "Bad resource ID" error (i.e. the underlying resource was closed before
- * the stream finished), replace the terse message with an actionable one.
- *
- * A common cause is closing a `Deno.FsFile` (or another resource) - for example
- * via a `using` declaration going out of scope or an explicit `.close()` -
- * while its `.readable`/`.writable` stream is still being consumed. Consuming
- * the stream already takes ownership of the resource and closes it when done,
- * so it should not be closed manually as well.
+ * is a terse "Bad resource ID" error, replace it with a clearer message
+ * explaining that the stream's underlying resource was closed or consumed.
  *
  * @param {unknown} e The error thrown by the underlying read/write op.
- * @param {number} rid The resource ID backing the stream.
- * @param {"readable" | "writable"} kind Which stream member is involved.
  * @returns {unknown} The (possibly annotated) error to surface to the stream.
  */
-function annotateResourceStreamError(e, rid, kind) {
+function annotateResourceStreamError(e) {
   if (
     ObjectPrototypeIsPrototypeOf(core.BadResourcePrototype, e) &&
     e.message === "Bad resource ID"
   ) {
-    const verb = kind === "writable" ? "written to" : "read from";
-    e.message =
-      `The ${kind} stream's underlying resource (rid ${rid}) was closed ` +
-      `before the stream finished being ${verb}. This usually means the ` +
-      `resource (such as a file opened with \`Deno.open()\`) was closed - for ` +
-      `example by a \`using\` declaration going out of scope or an explicit ` +
-      `\`.close()\` - while its \`.${kind}\` stream was still being consumed. ` +
-      `Consuming the stream takes ownership of the resource and closes it ` +
-      `automatically, so it must not be closed manually as well.`;
+    e.message = "The stream's underlying resource was closed or consumed";
   }
   return e;
 }
@@ -1044,7 +1028,7 @@ function readableStreamForRid(rid, autoClose = true, cfn, onError) {
           controller.byobRequest.respond(bytesRead);
         }
       } catch (e) {
-        const error = annotateResourceStreamError(e, rid, "readable");
+        const error = annotateResourceStreamError(e);
         if (onError) {
           onError(controller, error);
         } else {
@@ -1104,7 +1088,7 @@ function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
           controller.byobRequest.respond(bytesRead);
         }
       } catch (e) {
-        controller.error(annotateResourceStreamError(e, rid, "readable"));
+        controller.error(annotateResourceStreamError(e));
         core.tryClose(rid);
       }
     },
@@ -1288,7 +1272,7 @@ function writableStreamForRid(rid, autoClose = true, cfn, options) {
           await core.writeAll(rid, chunk);
         }
       } catch (e) {
-        controller.error(annotateResourceStreamError(e, rid, "writable"));
+        controller.error(annotateResourceStreamError(e));
         tryClose();
       }
     },
