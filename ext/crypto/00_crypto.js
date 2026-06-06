@@ -4209,9 +4209,9 @@ function importKeyMlKem(
       } catch (e) {
         // The expanded-key-only form must be rejected with NotSupportedError;
         // malformed DER and a `both`-form seed/expandedKey mismatch are
-        // DataError. (The op's NotSupported class maps to the DOMException
-        // name "NotSupported" in Deno; re-throw with the spec name here.)
-        if (e?.name === "NotSupported") {
+        // DataError. The op throws a `DOMExceptionNotSupportedError` (spec
+        // name `NotSupportedError`); re-throw with a friendlier message.
+        if (e?.name === "NotSupportedError") {
           throw new DOMException(
             "ML-KEM 'expandedKey' PKCS#8 format is not supported; only the " +
               "seed form is supported",
@@ -5409,9 +5409,9 @@ function importKeyMlDsa(
       } catch (e) {
         // The expanded-key-only form must be rejected with NotSupportedError;
         // malformed DER and a `both`-form seed/expandedKey mismatch are
-        // DataError. (The op's NotSupported class maps to the DOMException
-        // name "NotSupported" in Deno; re-throw with the spec name here.)
-        if (e?.name === "NotSupported") {
+        // DataError. The op throws a `DOMExceptionNotSupportedError` (spec
+        // name `NotSupportedError`); re-throw with a friendlier message.
+        if (e?.name === "NotSupportedError") {
           throw new DOMException(
             "ML-DSA 'expandedKey' PKCS#8 format is not supported; only the " +
               "seed form is supported",
