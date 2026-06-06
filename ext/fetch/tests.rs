@@ -9,6 +9,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::SeqCst;
 
 use bytes::Bytes;
+use deno_tls::rustls::pki_types::PrivateKeyDer;
 use fast_socks5::server::Config as Socks5Config;
 use fast_socks5::server::Socks5Socket;
 use http::header::ACCEPT_ENCODING;
@@ -589,7 +590,7 @@ async fn create_https_server(allow_h2: bool, bind_addr: IpAddr) -> SocketAddr {
     .with_no_client_auth()
     .with_single_cert(
       vec![EXAMPLE_CRT.into()],
-      webpki::types::PrivateKeyDer::try_from(EXAMPLE_KEY).unwrap(),
+      PrivateKeyDer::try_from(EXAMPLE_KEY).unwrap(),
     )
     .unwrap();
   if allow_h2 {
@@ -662,7 +663,7 @@ async fn create_https_proxy(src_addr: SocketAddr) -> SocketAddr {
     .with_no_client_auth()
     .with_single_cert(
       vec![EXAMPLE_CRT.into()],
-      webpki::types::PrivateKeyDer::try_from(EXAMPLE_KEY).unwrap(),
+      PrivateKeyDer::try_from(EXAMPLE_KEY).unwrap(),
     )
     .unwrap();
   // Set ALPN, to check our proxy connector. But we shouldn't receive anything.
