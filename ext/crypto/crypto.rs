@@ -64,6 +64,7 @@ impl Crypto {
   /// cryptographically strong random bytes and returns it unchanged.
   /// Rejects non-integer typed-array kinds with `TypeMismatchError` and
   /// inputs longer than 65536 bytes with `QuotaExceededError`, per spec.
+  #[required(1)]
   fn get_random_values<'s>(
     &self,
     state: &mut OpState,
