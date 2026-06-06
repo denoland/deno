@@ -42,6 +42,22 @@ function getCompilationSettings(settingsOrHost) {
   return /** @type {ts.CompilerOptions} */ (settingsOrHost);
 }
 
+/**
+ * Assigns `moduleName` on a source file so that tsc displays the original
+ * module specifier (e.g. in `typeof import("...")`) for non-file URL
+ * specifiers like `https://...`. For `file://` specifiers we leave it
+ * unset so tsc keeps its usual relative-path computation and so internal
+ * details like the `/$node_modules/` rewrite don't leak into hovers.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @param {string} fileName
+ */
+function setSourceFileModuleNameForDisplay(sourceFile, fileName) {
+  if (!fileName.startsWith("file:")) {
+    sourceFile.moduleName = fileName;
+  }
+}
+
 // We need to use a custom document registry in order to provide source files
 // with an impliedNodeFormat to the ts language service
 
@@ -105,6 +121,12 @@ const documentRegistry = {
       if (scriptSnapshot.isClassicScript) {
         sourceFile.externalModuleIndicator = undefined;
       }
+      // Preserve the original module specifier so that `typeof import(...)`
+      // displays the URL exactly as the user wrote it, including extensions.
+      // Without this, tsc's `getSpecifierForModuleSymbol` recomputes the
+      // specifier via `getModuleSpecifiers`, which strips `.ts` from URL
+      // imports like `https://example.com/mod.ts`. See denoland/deno#16058.
+      setSourceFileModuleNameForDisplay(sourceFile, fileName);
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     const sourceRefCount = SOURCE_REF_COUNTS.get(fileName) ?? 0;
@@ -170,6 +192,7 @@ const documentRegistry = {
       if (scriptSnapshot.isClassicScript) {
         sourceFile.externalModuleIndicator = undefined;
       }
+      setSourceFileModuleNameForDisplay(sourceFile, fileName);
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     return sourceFile;
@@ -320,6 +343,24 @@ function createLs() {
   return ls;
 }
 
+/**
+ * Prompt V8 to collect garbage and hand memory back to the OS. Triggered by
+ * `op_poll_requests` after the language server has been idle, so a long-running
+ * editor session doesn't keep sitting on the (often large) transient heap left
+ * over from the last batch of type-checking until something else forces a
+ * collection. See denoland/deno#23577.
+ *
+ * Note we deliberately don't drop the language services' semantic caches here:
+ * `cleanupSemanticCache()` discards the current program without bumping the
+ * project version, so the language service would consider itself up to date and
+ * never rebuild it, breaking the next request. It's only safe to call paired
+ * with a project change (see `$cleanupSemanticCache`). A full GC reclaims the
+ * dead allocations without touching the still-valid live program.
+ */
+function releaseMemory() {
+  ops.op_lsp_release_memory();
+}
+
 /** @param {boolean} enableDebugLogging */
 export async function serverMainLoop(enableDebugLogging) {
   ts.deno.setEnterSpan(ops.op_make_span);
@@ -335,6 +376,17 @@ export async function serverMainLoop(enableDebugLogging) {
     const request = await pollRequests();
     if (request === null) {
       break;
+    }
+    // Synthesized by `op_poll_requests` when the server has gone idle. Handled
+    // here rather than through `serverRequest()` because there's no client
+    // waiting on a response.
+    if (request[1] === "$releaseMemory") {
+      try {
+        releaseMemory();
+      } catch (err) {
+        error(`Internal error occurred during idle memory release: ${err}`);
+      }
+      continue;
     }
     try {
       serverRequest(

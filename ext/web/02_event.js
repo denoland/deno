@@ -23,6 +23,7 @@ const {
   MapPrototypeSet,
   ObjectCreate,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
   ObjectPrototype,
@@ -1311,7 +1312,9 @@ class MessageEvent extends Event {
     this.data = eventInitDict?.data ?? null;
     const ports = eventInitDict?.ports;
     if (ports == null) {
-      this.ports = [];
+      // `ports` is a FrozenArray<MessagePort> per the HTML spec, so the
+      // exposed array must be read-only.
+      this.ports = ObjectFreeze([]);
     } else {
       // MessageEvent ports: iterable validation + per-element MessagePort
       // type check. Matches the messages Node asserts on so the
@@ -1348,7 +1351,8 @@ class MessageEvent extends Event {
         }
         arr[i++] = p;
       }
-      this.ports = arr;
+      // `ports` is a FrozenArray<MessagePort> per the HTML spec.
+      this.ports = ObjectFreeze(arr);
     }
     // origin and lastEventId are USVString per spec, so coerce to string
     // (Node's test passes numbers and expects string coercion).

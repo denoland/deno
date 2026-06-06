@@ -653,6 +653,15 @@ impl CliFactory {
             | DenoSubcommand::X { .. }
             | DenoSubcommand::BumpVersion { .. } => false,
           },
+          dedup_lockfile_peer_variants: matches!(
+            cli_options.sub_command(),
+            DenoSubcommand::Add { .. }
+              | DenoSubcommand::ApproveScripts { .. }
+              | DenoSubcommand::Remove { .. }
+              | DenoSubcommand::Cache { .. }
+              | DenoSubcommand::Ci { .. }
+              | DenoSubcommand::Install(InstallFlags::Local(_, _)),
+          ),
           cache_setting: NpmCacheSetting::from_cache_setting(
             &cli_options.cache_setting(),
           ),
@@ -1341,7 +1350,7 @@ impl CliFactory {
             bundle_mode: matches!(
               self.flags.subcommand,
               DenoSubcommand::Bundle(_)
-            ),
+            ) || self.flags.internal.force_bundle_mode,
             is_browser_platform: matches!(
               self.flags.subcommand,
               DenoSubcommand::Bundle(BundleFlags {
@@ -1350,11 +1359,17 @@ impl CliFactory {
               })
             ),
           },
-          node_code_translator_mode: match options.sub_command() {
-            DenoSubcommand::Bundle(_) => {
-              node_resolver::analyze::NodeCodeTranslatorMode::Disabled
-            }
-            _ => node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader,
+          node_code_translator_mode: if matches!(
+            options.sub_command(),
+            DenoSubcommand::Bundle(_)
+          ) || self
+            .flags
+            .internal
+            .force_bundle_mode
+          {
+            node_resolver::analyze::NodeCodeTranslatorMode::Disabled
+          } else {
+            node_resolver::analyze::NodeCodeTranslatorMode::ModuleLoader
           },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           npm_system_info: self.flags.subcommand.npm_system_info(),
@@ -1387,7 +1402,8 @@ impl CliFactory {
           allow_json_imports: if matches!(
             self.flags.subcommand,
             DenoSubcommand::Bundle(_)
-          ) {
+          ) || self.flags.internal.force_bundle_mode
+          {
             deno_resolver::loader::AllowJsonImports::Always
           } else {
             deno_resolver::loader::AllowJsonImports::WithAttribute

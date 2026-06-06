@@ -1,14 +1,33 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 
 (function () {
 const { core, primordials } = __bootstrap;
 
 const {
+  ArrayBufferIsView,
+  ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
+  ArrayPrototypeIncludes,
+  Error,
+  FunctionPrototypeApply,
+  FunctionPrototypeCall,
+  MathMin,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  ReflectHas,
+  StringFromCharCode,
+  StringPrototypeIncludes,
+  StringPrototypeToLowerCase,
   SymbolSpecies,
+  TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  Uint8Array,
+  Uint8ArrayPrototype,
 } = primordials;
 
 const {
@@ -89,19 +108,24 @@ function getIntOption(name, options) {
 const PRIVATE_KEY_TYPES = ["pkcs8", "sec1"];
 
 function isPrivateKeyType(type: string | undefined): boolean {
-  return type !== undefined && PRIVATE_KEY_TYPES.includes(type);
+  return type !== undefined &&
+    ArrayPrototypeIncludes(PRIVATE_KEY_TYPES, type);
 }
 
 function isPrivateKeyPem(data: ArrayBuffer | ArrayBufferView): boolean {
-  const bytes = data instanceof ArrayBuffer
-    ? new Uint8Array(data, 0, Math.min(data.byteLength, 100))
+  const bytes = ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)
+    ? new Uint8Array(
+      data as ArrayBuffer,
+      0,
+      MathMin(ArrayBufferPrototypeGetByteLength(data as ArrayBuffer), 100),
+    )
     : new Uint8Array(
-      (data as ArrayBufferView).buffer,
-      (data as ArrayBufferView).byteOffset,
-      Math.min((data as ArrayBufferView).byteLength, 100),
+      TypedArrayPrototypeGetBuffer(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteOffset(data as ArrayBufferView),
+      MathMin(TypedArrayPrototypeGetByteLength(data as ArrayBufferView), 100),
     );
-  const prefix = String.fromCharCode(...bytes);
-  return prefix.includes("PRIVATE KEY");
+  const prefix = FunctionPrototypeApply(StringFromCharCode, null, bytes);
+  return StringPrototypeIncludes(prefix, "PRIVATE KEY");
 }
 
 let Writable;
@@ -119,14 +143,14 @@ class SignImpl {
 
     ensureSignProtoSetup();
     const W = getWritable();
-    W.call(this, {
+    FunctionPrototypeCall(W, this, {
       write(chunk, enc, callback) {
         this.update(chunk, enc);
         callback();
       },
     });
 
-    algorithm = algorithm.toLowerCase();
+    algorithm = StringPrototypeToLowerCase(algorithm);
 
     this.#digestType = algorithm;
     try {
@@ -156,7 +180,7 @@ class SignImpl {
     const dsaSigEnc = getDSASignatureEncoding(privateKey);
 
     let handle;
-    if ("handle" in res) {
+    if (ReflectHas(res, "handle")) {
       handle = res.handle;
     } else {
       try {
@@ -186,14 +210,15 @@ class SignImpl {
       // Decorate RSA sign errors with OpenSSL-compatible properties.
       if (
         err && typeof err === "object" &&
-        "message" in err && typeof err.message === "string" &&
-        err.message.includes("rsa routines") &&
-        !("library" in err)
+        ReflectHas(err, "message") && typeof err.message === "string" &&
+        StringPrototypeIncludes(err.message, "rsa routines") &&
+        !ReflectHas(err, "library")
       ) {
         (err as Record<string, unknown>).library = "rsa routines";
       }
       throw err;
     }
+    // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding) is not a primordial
     return encoding && encoding !== "buffer" ? ret.toString(encoding) : ret;
   }
 
@@ -216,10 +241,10 @@ function ensureSignProtoSetup() {
   if (_signProtoSetup) return;
   _signProtoSetup = true;
   const W = getWritable();
-  Object.setPrototypeOf(SignImpl.prototype, W.prototype);
-  Object.setPrototypeOf(SignImpl, W);
-  Object.setPrototypeOf(VerifyImpl.prototype, W.prototype);
-  Object.setPrototypeOf(VerifyImpl, W);
+  ObjectSetPrototypeOf(SignImpl.prototype, W.prototype);
+  ObjectSetPrototypeOf(SignImpl, W);
+  ObjectSetPrototypeOf(VerifyImpl.prototype, W.prototype);
+  ObjectSetPrototypeOf(VerifyImpl, W);
 }
 
 Sign.prototype = SignImpl.prototype;
@@ -233,14 +258,14 @@ class VerifyImpl {
 
     ensureSignProtoSetup();
     const W = getWritable();
-    W.call(this, {
+    FunctionPrototypeCall(W, this, {
       write(chunk, enc, callback) {
         this.update(chunk, enc);
         callback();
       },
     });
 
-    algorithm = algorithm.toLowerCase();
+    algorithm = StringPrototypeToLowerCase(algorithm);
 
     this.#digestType = algorithm;
     try {
@@ -262,7 +287,7 @@ class VerifyImpl {
   ): boolean {
     if (
       typeof signature !== "string" &&
-      !ArrayBuffer.isView(signature)
+      !ArrayBufferIsView(signature)
     ) {
       throw new ERR_INVALID_ARG_TYPE(
         "signature",
@@ -282,7 +307,7 @@ class VerifyImpl {
     const dsaSigEnc = getDSASignatureEncoding(publicKey);
 
     let handle;
-    if ("handle" in res) {
+    if (ReflectHas(res, "handle")) {
       handle = res.handle;
     } else if (
       isPrivateKeyType(res.type) ||
@@ -335,7 +360,7 @@ function signOneShot(
     validateFunction(callback, "callback");
   }
 
-  if (!ArrayBuffer.isView(data) && typeof data !== "string") {
+  if (!ArrayBufferIsView(data) && typeof data !== "string") {
     throw new ERR_INVALID_ARG_TYPE(
       "data",
       ["Buffer", "TypedArray", "DataView"],
@@ -348,23 +373,27 @@ function signOneShot(
   }
 
   // Validate dsaEncoding early so it takes precedence over key errors
-  if (typeof key === "object" && key !== null && !(key instanceof KeyObject)) {
+  if (
+    typeof key === "object" && key !== null &&
+    !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
+  ) {
     getDSASignatureEncoding(key);
   }
 
   // Normalize ArrayBufferView data to Uint8Array for Rust ops
-  const dataBytes = ArrayBuffer.isView(data) && !(data instanceof Uint8Array)
+  const dataBytes = ArrayBufferIsView(data) &&
+      !(ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data))
     ? new Uint8Array(
-      (data as ArrayBufferView).buffer,
-      (data as ArrayBufferView).byteOffset,
-      (data as ArrayBufferView).byteLength,
+      TypedArrayPrototypeGetBuffer(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteOffset(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteLength(data as ArrayBufferView),
     )
     : data as ArrayBufferView | string;
 
   try {
     const res = prepareAsymmetricKey(key, kConsumePrivate);
     let handle;
-    if ("handle" in res) {
+    if (ReflectHas(res, "handle")) {
       handle = res.handle;
     } else {
       handle = op_node_create_private_key(
@@ -385,11 +414,14 @@ function signOneShot(
       op_node_sign_ed25519(handle, dataBytes, result);
     } else if (keyType === "ed448") {
       const keyOpts = typeof key === "object" && key !== null &&
-          !(key instanceof KeyObject)
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
         ? key as Record<string, unknown>
         : null;
       const ctx = keyOpts?.context;
-      if (ctx instanceof Uint8Array && ctx.length > 0) {
+      if (
+        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, ctx) &&
+        ctx.length > 0
+      ) {
         throw new TypeError("Context parameter is unsupported");
       }
       result = new FastBuffer(114);
@@ -411,7 +443,8 @@ function signOneShot(
       }
       // Preserve padding/saltLength options from the original key
       const privateKeyObject = new PrivateKeyObject(handle);
-      const signKey = typeof key === "object" && !(key instanceof KeyObject)
+      const signKey = typeof key === "object" &&
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
         ? { ...key, key: privateKeyObject }
         : privateKeyObject;
       result = Sign(digest).update(dataBytes)
@@ -447,7 +480,7 @@ function verifyOneShot(
     validateFunction(callback, "callback");
   }
 
-  if (!ArrayBuffer.isView(data) && typeof data !== "string") {
+  if (!ArrayBufferIsView(data) && typeof data !== "string") {
     throw new ERR_INVALID_ARG_TYPE(
       "data",
       ["Buffer", "TypedArray", "DataView"],
@@ -455,7 +488,7 @@ function verifyOneShot(
     );
   }
 
-  if (!ArrayBuffer.isView(signature) && typeof signature !== "string") {
+  if (!ArrayBufferIsView(signature) && typeof signature !== "string") {
     throw new ERR_INVALID_ARG_TYPE(
       "signature",
       ["Buffer", "TypedArray", "DataView"],
@@ -468,18 +501,19 @@ function verifyOneShot(
   }
 
   // Normalize ArrayBufferView data to Uint8Array for Rust ops
-  const dataBytes = ArrayBuffer.isView(data) && !(data instanceof Uint8Array)
+  const dataBytes = ArrayBufferIsView(data) &&
+      !(ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, data))
     ? new Uint8Array(
-      (data as ArrayBufferView).buffer,
-      (data as ArrayBufferView).byteOffset,
-      (data as ArrayBufferView).byteLength,
+      TypedArrayPrototypeGetBuffer(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteOffset(data as ArrayBufferView),
+      TypedArrayPrototypeGetByteLength(data as ArrayBufferView),
     )
     : data as ArrayBufferView | string;
 
   try {
     const res = prepareAsymmetricKey(key, kConsumePublic);
     let handle;
-    if ("handle" in res) {
+    if (ReflectHas(res, "handle")) {
       handle = res.handle;
     } else if (
       isPrivateKeyType(res.type) ||
@@ -510,15 +544,20 @@ function verifyOneShot(
       result = op_node_verify_ed25519(handle, dataBytes, signature);
     } else if (keyType === "ed448") {
       const keyOpts = typeof key === "object" && key !== null &&
-          !(key instanceof KeyObject)
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
         ? key as Record<string, unknown>
         : null;
       const ctx = keyOpts?.context;
-      if (ctx instanceof Uint8Array && ctx.length > 0) {
+      if (
+        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, ctx) &&
+        ctx.length > 0
+      ) {
         throw new TypeError("Context parameter is unsupported");
       }
       result = op_node_verify_ed448(handle, dataBytes, signature);
-    } else if (keyType === "x25519" || keyType === "x448" || keyType === "dh") {
+    } else if (
+      keyType === "x25519" || keyType === "x448" || keyType === "dh"
+    ) {
       throw new TypeError(
         "operation not supported for this keytype",
       );
@@ -537,7 +576,8 @@ function verifyOneShot(
       }
       // Preserve padding/saltLength options from the original key
       const publicKeyObject = new PublicKeyObject(handle);
-      const verifyKey = typeof key === "object" && !(key instanceof KeyObject)
+      const verifyKey = typeof key === "object" &&
+          !(ObjectPrototypeIsPrototypeOf(KeyObject.prototype, key))
         ? { ...key, key: publicKeyObject }
         : publicKeyObject;
       result = Verify(digest).update(dataBytes)

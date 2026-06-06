@@ -96,6 +96,9 @@ pub enum PackageJsonDepValueParseErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   JsrRequiresScope(#[from] JsrDepPackageParseError),
+  #[class(type)]
+  #[error("Package name must not be empty")]
+  EmptyName,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -185,6 +188,9 @@ impl PackageJsonDepValue {
       name: StackString,
       version_req: &str,
     ) -> Result<PackageJsonDepValue, PackageJsonDepValueParseError> {
+      if name.is_empty() {
+        return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
+      }
       match VersionReq::parse_from_npm(version_req) {
         Ok(version_req) => {
           Ok(PackageJsonDepValue::Req(PackageReq { name, version_req }))
@@ -193,6 +199,10 @@ impl PackageJsonDepValue {
           Err(PackageJsonDepValueParseErrorKind::VersionReq(err).into_box())
         }
       }
+    }
+
+    if key.is_empty() {
+      return Err(PackageJsonDepValueParseErrorKind::EmptyName.into_box());
     }
 
     if let Some((scheme, value)) = value.split_once(':') {
@@ -876,6 +886,28 @@ mod test {
         ),
       ])
     );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_empty_name() {
+    let mut package_json =
+      PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
+        .unwrap();
+    package_json.dependencies = Some(IndexMap::from([
+      ("".to_string(), ".".to_string()),
+      ("npm-empty".to_string(), "npm:".to_string()),
+      ("ok".to_string(), "^1".to_string()),
+    ]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert_eq!(
+      map.get("").unwrap().as_ref().unwrap_err(),
+      &PackageJsonDepValueParseErrorKind::EmptyName,
+    );
+    assert_eq!(
+      map.get("npm-empty").unwrap().as_ref().unwrap_err(),
+      &PackageJsonDepValueParseErrorKind::EmptyName,
+    );
+    assert!(map.get("ok").unwrap().is_ok());
   }
 
   #[test]

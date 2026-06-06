@@ -2577,6 +2577,29 @@ fn broken_stdout_repl() {
   assert_not_contains!(stderr, "panic");
 }
 
+// Regression test for https://github.com/denoland/deno/issues/16308 — when
+// `println!` panics on a broken stdout pipe (e.g. `deno | cls` on Windows),
+// the panic hook should exit cleanly instead of printing the bug-report banner.
+#[test]
+fn broken_stdout_no_panic_banner() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("info")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap();
+  assert_not_contains!(stderr, "Deno has panicked");
+  assert_not_contains!(stderr, "panicked at");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn websocketstream_ping() {
   let _g = util::http_server();
@@ -3577,6 +3600,27 @@ fn readline_multi_prompt_pty() {
       console.expect("Q2?");
       console.write_line("world");
       console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/17047.
+// Verifies that permission prompts wait for an active user-space stdin prompt
+// instead of racing it and consuming the user's answer.
+#[test]
+fn readline_permission_prompt_interleaving_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_permission_prompt_interleaving.ts"])
+    .with_pty(|mut console| {
+      console.expect("Project?");
+      console.write_line("demo");
+      console.expect("ANSWER:demo");
+      console.expect("Deno requests read access to");
+      console.expect("Allow?");
+      console.human_delay();
+      console.write_line_raw("n");
+      console.expect("Denied read access to");
+      console.expect("READ_ERROR:NotCapable");
     });
 }
 

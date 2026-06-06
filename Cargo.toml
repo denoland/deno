@@ -43,6 +43,7 @@ members = [
   "libs/dcore",
   "libs/dotenv",
   "libs/eszip",
+  "libs/http_h1",
   "libs/inspector_server",
   "libs/lockfile",
   "libs/maybe_sync",
@@ -98,7 +99,7 @@ deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
 deno_path_util = "=0.6.4"
 deno_semver = "=0.10.0"
-deno_task_shell = "=0.32.0"
+deno_task_shell = "=0.33.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
@@ -110,64 +111,65 @@ denokv_remote = "0.13.0"
 denokv_sqlite = { default-features = false, version = "0.13.0" }
 
 # exts
-deno_bundle_runtime = { version = "0.36.0", path = "./ext/bundle" }
-deno_cache = { version = "0.182.0", path = "./ext/cache" }
-deno_canvas = { version = "0.111.0", path = "./ext/canvas" }
-deno_cron = { version = "0.129.0", path = "./ext/cron" }
-deno_crypto = { version = "0.263.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.273.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.236.0", path = "./ext/ffi" }
-deno_fs = { version = "0.159.0", path = "./ext/fs" }
-deno_http = { version = "0.247.0", path = "./ext/http" }
-deno_image = { version = "0.25.0", path = "./ext/image" }
-deno_io = { version = "0.159.0", path = "./ext/io" }
-deno_kv = { version = "0.157.0", path = "./ext/kv" }
-deno_napi = { version = "0.180.0", path = "./ext/napi" }
-deno_net = { version = "0.241.0", path = "./ext/net" }
-deno_node = { version = "0.187.0", path = "./ext/node" }
-deno_node_crypto = { version = "0.19.0", path = "./ext/node_crypto" }
-deno_node_sqlite = { version = "0.19.0", path = "./ext/node_sqlite" }
-deno_os = { version = "0.66.0", path = "./ext/os" }
-deno_process = { version = "0.64.0", path = "./ext/process" }
-deno_signals = { version = "0.40.0", path = "./ext/signals" }
-deno_telemetry = { version = "0.71.0", path = "./ext/telemetry" }
-deno_tls = { version = "0.236.0", path = "./ext/tls" }
-deno_web = { version = "0.280.0", path = "./ext/web" }
-deno_webgpu = { version = "0.216.0", path = "./ext/webgpu" }
-deno_webidl = { version = "0.249.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.254.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.244.0", path = "./ext/webstorage" }
-denort_helper = { version = "0.47.0", path = "./ext/rt_helper" }
+deno_bundle_runtime = { version = "0.37.0", path = "./ext/bundle" }
+deno_cache = { version = "0.183.0", path = "./ext/cache" }
+deno_canvas = { version = "0.112.0", path = "./ext/canvas" }
+deno_cron = { version = "0.130.0", path = "./ext/cron" }
+deno_crypto = { version = "0.264.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.274.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.237.0", path = "./ext/ffi" }
+deno_fs = { version = "0.160.0", path = "./ext/fs" }
+deno_http = { version = "0.248.0", path = "./ext/http" }
+deno_image = { version = "0.26.0", path = "./ext/image" }
+deno_io = { version = "0.160.0", path = "./ext/io" }
+deno_kv = { version = "0.158.0", path = "./ext/kv" }
+deno_napi = { version = "0.181.0", path = "./ext/napi" }
+deno_net = { version = "0.242.0", path = "./ext/net" }
+deno_node = { version = "0.188.0", path = "./ext/node" }
+deno_node_crypto = { version = "0.20.0", path = "./ext/node_crypto" }
+deno_node_sqlite = { version = "0.20.0", path = "./ext/node_sqlite" }
+deno_os = { version = "0.67.0", path = "./ext/os" }
+deno_process = { version = "0.65.0", path = "./ext/process" }
+deno_signals = { version = "0.41.0", path = "./ext/signals" }
+deno_telemetry = { version = "0.72.0", path = "./ext/telemetry" }
+deno_tls = { version = "0.237.0", path = "./ext/tls" }
+deno_web = { version = "0.281.0", path = "./ext/web" }
+deno_webgpu = { version = "0.217.0", path = "./ext/webgpu" }
+deno_webidl = { version = "0.250.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.255.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.245.0", path = "./ext/webstorage" }
+denort_helper = { version = "0.48.0", path = "./ext/rt_helper" }
 
 # workspace libraries
-deno_bench_util = { version = "0.243.0", path = "./tests/bench_util" }
-deno_cache_dir = { version = "0.41.0", path = "./libs/cache_dir" }
-deno_config = { version = "0.99.0", features = ["workspace"], path = "./libs/config" }
-deno_core = { version = "0.402.0", path = "./libs/core" }
+deno_bench_util = { version = "0.244.0", path = "./tests/bench_util" }
+deno_cache_dir = { version = "0.42.0", path = "./libs/cache_dir" }
+deno_config = { version = "0.100.0", features = ["workspace"], path = "./libs/config" }
+deno_core = { version = "0.403.0", path = "./libs/core" }
 deno_core_testing = { path = "./libs/core_testing" }
-deno_crypto_provider = { version = "0.43.0", path = "./libs/crypto" }
-deno_dotenv = { version = "0.18.0", path = "./libs/dotenv" }
-deno_features = { version = "0.46.0", path = "./runtime/features" }
-deno_inspector_server = { version = "0.23.0", path = "./libs/inspector_server" }
-deno_lib = { version = "0.67.0", path = "./cli/lib" }
-deno_lockfile = { version = "0.51.0", path = "./libs/lockfile" }
-deno_maybe_sync = { version = "0.36.0", path = "./libs/maybe_sync" }
-deno_npm = { version = "0.61.0", path = "./libs/npm" }
-deno_npm_cache = { version = "0.68.0", path = "./libs/npm_cache" }
-deno_npm_installer = { version = "0.44.0", path = "./libs/npm_installer" }
-deno_npmrc = { version = "0.10.0", path = "./libs/npmrc" }
-deno_ops = { version = "0.278.0", path = "./libs/ops" }
-deno_package_json = { version = "0.51.0", default-features = false, path = "./libs/package_json" }
-deno_permissions = { version = "0.108.0", path = "./runtime/permissions" }
-deno_resolver = { version = "0.80.0", path = "./libs/resolver" }
-deno_runtime = { version = "0.257.0", path = "./runtime" }
-deno_snapshots = { version = "0.64.0", path = "./cli/snapshot" }
-deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.44.0" }
-eszip = { version = "0.127.0", path = "./libs/eszip" }
-napi_sym = { version = "0.179.0", path = "./ext/napi/sym" }
-node_resolver = { version = "0.87.0", path = "./libs/node_resolver" }
-node_shim = { version = "0.24.0", path = "libs/node_shim" }
-serde_v8 = { version = "0.311.0", path = "./libs/serde_v8" }
+deno_crypto_provider = { version = "0.44.0", path = "./libs/crypto" }
+deno_dotenv = { version = "0.19.0", path = "./libs/dotenv" }
+deno_features = { version = "0.47.0", path = "./runtime/features" }
+deno_http_h1 = { version = "0.1.0", path = "./libs/http_h1" }
+deno_inspector_server = { version = "0.24.0", path = "./libs/inspector_server" }
+deno_lib = { version = "0.68.0", path = "./cli/lib" }
+deno_lockfile = { version = "0.52.0", path = "./libs/lockfile" }
+deno_maybe_sync = { version = "0.37.0", path = "./libs/maybe_sync" }
+deno_npm = { version = "0.62.0", path = "./libs/npm" }
+deno_npm_cache = { version = "0.69.0", path = "./libs/npm_cache" }
+deno_npm_installer = { version = "0.45.0", path = "./libs/npm_installer" }
+deno_npmrc = { version = "0.11.0", path = "./libs/npmrc" }
+deno_ops = { version = "0.279.0", path = "./libs/ops" }
+deno_package_json = { version = "0.52.0", default-features = false, path = "./libs/package_json" }
+deno_permissions = { version = "0.109.0", path = "./runtime/permissions" }
+deno_resolver = { version = "0.81.0", path = "./libs/resolver" }
+deno_runtime = { version = "0.258.0", path = "./runtime" }
+deno_snapshots = { version = "0.65.0", path = "./cli/snapshot" }
+deno_subprocess_windows = { path = "./runtime/subprocess_windows", version = "0.45.0" }
+eszip = { version = "0.128.0", path = "./libs/eszip" }
+napi_sym = { version = "0.180.0", path = "./ext/napi/sym" }
+node_resolver = { version = "0.88.0", path = "./libs/node_resolver" }
+node_shim = { version = "0.25.0", path = "libs/node_shim" }
+serde_v8 = { version = "0.312.0", path = "./libs/serde_v8" }
 test_macro = { path = "./tests/util/test_macro" }
 test_util = { path = "./tests/util/lib" }
 
@@ -224,23 +226,19 @@ hickory-server = "0.25.2"
 http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
-http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
+httpdate = "1.0.3"
 hyper = { version = "1.6.0", features = ["full"] }
 hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "aws-lc-rs"] }
 hyper-util = { version = "0.1.17", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
-hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 idna = "1.0.3"
 ignore = "0.4"
 import_map = { version = "0.25.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
 inventory = "0.3.21"
 ipnet = "2.3"
-ipnetwork = "0.20.0"
 itertools = "0.14"
 jsonc-parser = { version = "0.32.1", features = ["serde"] }
-jupyter-protocol = "=1.2.1"
-jupyter_runtime = { package = "runtimelib", version = "=1.3.0", default-features = false, features = ["tokio-runtime", "aws-lc-rs"] }
 lazy-regex = "3"
 libc = "0.2.168"
 libdeflater = "1.25.2"
@@ -251,7 +249,7 @@ memchr = "2.7.4"
 mime = "0.3.16"
 monch = "=0.6.0"
 netif = "0.1.6"
-notify = "=6.1.1"
+notify = "8.2.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
@@ -279,15 +277,13 @@ rusqlite = { version = "0.37.0", features = ["unlock_notify", "bundled", "sessio
 rustls = { version = "=0.23.40", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.8.0"
-rustls-webpki = "0.102"
+rustls-webpki = "0.103"
 rustyline = { version = "=17.0.0", features = ["custom-bindings"] }
 rustyline-derive = "=0.11.1"
-saffron = "=0.1.0"
 same-file = "1.0.6"
 scopeguard = "1.2.0"
 semver = "=1.0.25"
 serde = { version = "1.0.149", features = ["derive"] }
-serde-value = "0.7"
 serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.19"
@@ -301,7 +297,7 @@ static_assertions = "1"
 strum = { version = "0.27.1", features = ["derive"] }
 strum_macros = "0.27.1"
 sys_traits = "0.1.28"
-tar = "=0.4.45"
+tar = "=0.4.46"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
 testing_macros = "1.0.0"
@@ -310,10 +306,9 @@ tokio = { version = "1.47.1", features = ["full"] }
 tokio-eld = "0.3"
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
 tokio-rustls = { version = "0.26.0", default-features = false, features = ["aws_lc_rs", "tls12"] }
-tokio-socks = "0.5.1"
+tokio-socks = "0.5.3"
 tokio-util = "0.7.16"
 tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }
-tower-http = { version = "0.6.1", features = ["decompression-br", "decompression-gzip"] }
 tower-lsp = { package = "deno_tower_lsp", version = "=0.5.0", features = ["proposed"] }
 tower-service = "0.3.2"
 tracing = "0.1"
@@ -325,19 +320,18 @@ url = { version = "2.5", features = ["serde", "expose_internals"] }
 urlpattern = "=0.4.2"
 uuid = { version = "1.3.0", features = ["v4"] }
 walkdir = "=2.5.0"
-weak-table = "0.3.2"
 web-transport-proto = "0.2.7"
 webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"
 which = { version = "8.0.0", default-features = false }
 yoke = { version = "0.7.4", features = ["derive"] }
-zeromq = { version = "=0.5.0", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
+zeromq = "0.6"
 zip = { version = "2.4.1", default-features = false, features = ["flate2"] }
 
 opentelemetry = "0.27.0"
 opentelemetry-http = "0.27.0"
-opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "http-json", "populate-logs-event-name"] }
-opentelemetry-proto = { version = "0.27.0", features = ["gen-tonic-messages", "trace", "logs", "metrics"] }
+opentelemetry-otlp = { version = "0.27.0", default-features = false, features = ["logs", "metrics", "trace", "http-proto", "http-json", "internal-logs", "populate-logs-event-name"] }
+opentelemetry-proto = { version = "0.27.0", default-features = false, features = ["gen-tonic-messages", "trace", "logs", "metrics"] }
 opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
 opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio", "trace"] }
 
@@ -358,12 +352,12 @@ dprint-plugin-json = "=0.21.3"
 dprint-plugin-jupyter = "=0.2.2"
 dprint-plugin-markdown = "=0.20.0"
 dprint-plugin-typescript = "=0.96.1"
-env_logger = "=0.11.6"
-fancy-regex = "=0.14.0"
+env_logger = { version = "=0.11.6", default-features = false, features = ["regex"] }
 imara-diff = "=0.2.0"
 libsui = "0.12.6"
 malva = "=0.15.2"
-markup_fmt = "=0.27.0"
+markup_fmt = "=0.27.3"
+object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }
 open = "5.0.1"
 pathdiff = "0.2.1"
 pretty_yaml = "=0.5.0"
@@ -394,6 +388,7 @@ ecdsa = "0.16.9"
 ed25519-dalek = "2.1.1"
 ed448-goldilocks = "0.14.0-pre.10"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
+fips203 = "0.4.3"
 hkdf = "0.12.3"
 hmac = "0.12.1"
 k256 = { version = "0.13.1", features = ["ecdh", "jwk", "pem"] }
@@ -434,9 +429,6 @@ napi_sys = { version = "0.1.0", path = "./libs/napi_sys" }
 
 # geometry
 cssparser = "0.36.0"
-# NOTE: Due to a bug in Cargo's optional dependencies, an unused dependency on "glam" is being included in Cargo.lock
-# https://github.com/rust-lang/cargo/issues/10801
-nalgebra = { version = "0.34.1", default-features = false, features = ["std"] }
 
 # webgpu
 raw-window-handle = "0.6.0"
@@ -454,7 +446,6 @@ tokio-vsock = "0.7"
 # windows deps
 junction = "=1.2.0"
 win32job = "=2.0.3"
-winapi = "=0.3.9"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel", "Win32_System_Threading", "Win32_UI", "Win32_UI_Shell"] }
 winres = "=0.1.12"
 
@@ -528,6 +519,8 @@ opt-level = 3
 [profile.release.package.deno_ffi]
 opt-level = 3
 [profile.release.package.deno_http]
+opt-level = 3
+[profile.release.package.deno_http_h1]
 opt-level = 3
 [profile.release.package.deno_napi]
 opt-level = 3

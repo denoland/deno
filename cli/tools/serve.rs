@@ -189,7 +189,14 @@ async fn serve_with_watch(
           watcher_communicator.clone(),
         );
         let cli_options = factory.cli_options()?;
-        let main_module = cli_options.resolve_main_module()?;
+        let workspace_resolver = factory.workspace_resolver().await?.clone();
+        let node_resolver = factory.node_resolver().await?.clone();
+        let main_module = cli_options.resolve_main_module_with_resolver(
+          Some(&WorkspaceMainModuleResolver::new(
+            workspace_resolver,
+            node_resolver,
+          )),
+        )?;
 
         maybe_npm_install(&factory).await?;
 

@@ -802,6 +802,28 @@ Deno.test({
 });
 
 Deno.test({
+  name: "[node/buffer] utf8Slice handles buffer detach during index coercion",
+  fn() {
+    // deno-lint-ignore no-explicit-any
+    const buf: any = Buffer.alloc(1024);
+    const arrayBuffer = buf.buffer;
+    const start = {
+      valueOf() {
+        structuredClone(arrayBuffer, { transfer: [arrayBuffer] });
+        return 0;
+      },
+    };
+
+    assertThrows(
+      () => buf.utf8Slice(start, 10),
+      RangeError,
+      "Index out of range",
+    );
+    assertEquals(arrayBuffer.byteLength, 0);
+  },
+});
+
+Deno.test({
   name: "[node/buffer] hexSlice returns correct string",
   fn() {
     // deno-lint-ignore no-explicit-any
@@ -837,6 +859,17 @@ Deno.test({
     const url = URL.createObjectURL(blob);
     URL.revokeObjectURL(url);
     assertEquals(resolveObjectURL(url), undefined);
+  },
+});
+
+Deno.test({
+  name: "[node/buffer] indexOf and includes work correctly",
+  fn() {
+    const buf = Buffer.from("Hello World");
+    assertEquals(buf.indexOf("World"), 6);
+    assertEquals(buf.indexOf("World", 0, "utf8"), 6);
+    assertEquals(buf.includes("Hello"), true);
+    assertEquals(buf.indexOf(Buffer.from("World")), 6);
   },
 });
 
