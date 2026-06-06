@@ -1879,11 +1879,36 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   flags_from_vec_with_initial_cwd(args, None)
 }
 
+/// Strip a single trailing carriage return from an argument.
+///
+/// When a script with CRLF line endings starts with a shebang like
+/// `#!/usr/bin/env -S deno run --allow-net`, the kernel passes the trailing
+/// `\r` as part of the final argument (e.g. `--allow-net\r`), which then
+/// fails clap parsing with a confusing "isn't valid in this context" error.
+/// Trimming a trailing CR here makes such scripts run as the author intended.
+fn strip_trailing_cr(arg: OsString) -> OsString {
+  let bytes = arg.as_encoded_bytes();
+  if bytes.ends_with(b"\r") {
+    let stripped = bytes[..bytes.len() - 1].to_vec();
+    // SAFETY: `\r` is the single ASCII byte 0x0D; removing an ASCII byte from
+    // the end of a valid OS-string byte sequence (UTF-8 on Unix, WTF-8 on
+    // Windows) cannot split a multi-byte code point and keeps the encoding
+    // valid.
+    unsafe { OsString::from_encoded_bytes_unchecked(stripped) }
+  } else {
+    arg
+  }
+}
+
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
+  // Strip a trailing `\r` from each argument so that a shebang in a script
+  // saved with CRLF line endings (e.g. `#!/usr/bin/env -S deno run -A\r`)
+  // doesn't poison the final shebang argument with a stray carriage return.
+  let args: Vec<OsString> = args.into_iter().map(strip_trailing_cr).collect();
   let args = if !args.is_empty()
     && (args[0].as_encoded_bytes().ends_with(b"dx")
       || args[0].as_encoded_bytes().ends_with(b"denox")
@@ -9102,6 +9127,30 @@ mod tests {
     let r2 = flags_from_vec(svec!["deno", "run", "--log-level", "debug", "--quiet", "script.ts"]);
     let flags2 = r2.unwrap();
     assert_eq!(flags2, flags);
+  }
+
+  #[test]
+  fn crlf_shebang_arg() {
+    // A script saved with CRLF line endings whose first line is
+    // `#!/usr/bin/env -S deno run --allow-net` is invoked by the kernel as
+    // roughly `deno run --allow-net\r script.ts`. The stray `\r` on the last
+    // shebang token must not break flag parsing.
+    let r = flags_from_vec(svec!["deno", "run", "--allow-net\r", "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string()
+        )),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          ..PermissionFlags::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
