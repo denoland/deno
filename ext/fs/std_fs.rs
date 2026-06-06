@@ -623,7 +623,7 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
     {
       use std::os::windows::prelude::MetadataExt;
 
-      use winapi::um::winnt::FILE_ATTRIBUTE_DIRECTORY;
+      use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY;
       if metadata.file_attributes() & FILE_ATTRIBUTE_DIRECTORY != 0 {
         fs::remove_dir(path)
       } else {
@@ -638,6 +638,27 @@ fn remove(path: &Path, recursive: bool) -> FsResult<()> {
 }
 
 fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
+  // Guard against copying a file onto itself. Otherwise the destination is
+  // opened with truncation (or unlinked) before the source is read, which
+  // silently empties the file. Match `cp` behavior and error instead.
+  //
+  // `same_file::is_same_file` compares the file identity (device + inode on
+  // Unix, file index + volume serial via the open handle on Windows) using a
+  // single stat per path, rather than fully canonicalizing both paths which
+  // would `lstat`/`readlink` every component twice. It still catches
+  // equivalent paths such as `./`, `..`, symlinks and hard links, and returns
+  // `Err` (treated as "not the same file") in the common case where the
+  // destination does not yet exist.
+  if same_file::is_same_file(from, to).unwrap_or(false) {
+    return Err(
+      io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "Source and destination paths refer to the same file",
+      )
+      .into(),
+    );
+  }
+
   #[cfg(target_os = "macos")]
   {
     use std::ffi::CString;
@@ -937,8 +958,8 @@ fn open_for_stat_windows(
 ) -> io::Result<fs::File> {
   use std::os::windows::fs::OpenOptionsExt;
 
-  use winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS;
-  use winapi::um::winbase::FILE_FLAG_OPEN_REPARSE_POINT;
+  use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+  use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
 
   let reparse_flag = if do_not_follow_symlink {
     FILE_FLAG_OPEN_REPARSE_POINT
@@ -1291,6 +1312,20 @@ fn open_path_with_options(
       let fallback = open_options_for_checked_path_no_backup(opts, path);
       fallback.open(path).map_err(|_| err)
     }
+    // A canonicalized path is opened with `O_NOFOLLOW` (see
+    // `open_options_for_checked_path`). If the final component is still a
+    // symlink at this point it must be a broken/dangling link: its target was
+    // removed after canonicalization resolved the parent directory, so the link
+    // survived as the path tail. `O_NOFOLLOW` reports it as `ELOOP` ("Too many
+    // levels of symbolic links"), which is misleading. Translate it to
+    // `ENOENT` so the error matches reading a nonexistent file.
+    // See https://github.com/denoland/deno/issues/29139.
+    #[cfg(unix)]
+    Err(err)
+      if path.canonicalized() && err.raw_os_error() == Some(libc::ELOOP) =>
+    {
+      Err(io::Error::from_raw_os_error(libc::ENOENT))
+    }
     Err(err) => Err(err),
   }
 }
@@ -1318,7 +1353,9 @@ pub fn open_options_for_checked_path(
     _ = path; // not used on windows
     // allow opening directories
     use std::os::windows::fs::OpenOptionsExt;
-    opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
+    opts.custom_flags(
+      windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS,
+    );
   }
 
   #[cfg(unix)]

@@ -7,6 +7,7 @@ use std::thread;
 
 use console_static_text::ansi::strip_ansi_codes;
 use deno_ast::MediaType;
+use deno_ast::diagnostics::Diagnostic as _;
 use deno_core::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -21,7 +22,9 @@ use deno_error::JsErrorClass;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_graph::fast_check::FastCheckDiagnostic;
 use deno_graph::source::ResolveError;
+use deno_lib::args::CaData;
 use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_resolver::graph::enhanced_resolution_error_message;
 use deno_resolver::workspace::sloppy_imports_resolve;
@@ -31,18 +34,21 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
+use import_map::ImportMapDiagnostic;
 use import_map::ImportMapErrorKind;
 use log::error;
 use lsp_types::Uri;
 use node_resolver::NodeResolutionKind;
+use text_size::TextSize;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 use tower_lsp::lsp_types as lsp;
 
 use super::analysis;
-use super::analysis::import_map_lookup;
+use super::analysis::import_map_lookup_for_diagnostic;
 use super::client::Client;
+use super::config::ConfigWatchedFileType;
 use super::documents::Document;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
@@ -50,12 +56,19 @@ use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::ts_server::TsServer;
+use crate::args::Flags;
+use crate::args::InternalFlags;
+use crate::args::PermissionFlags;
+use crate::args::TypeCheckMode;
+use crate::factory::CliFactory;
+use crate::graph_util::CreatePublishGraphOptions;
 use crate::lsp::documents::OpenDocument;
 use crate::lsp::language_server::OnceCellMap;
 use crate::lsp::lint::LspLinter;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::urls::uri_to_url;
 use crate::sys::CliSys;
+use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::type_checker::ambient_modules_to_regex_string;
 use crate::util::path::to_percent_decoded_str;
 
@@ -67,6 +80,7 @@ pub struct DiagnosticsUpdateMessage {
 #[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
 pub enum DiagnosticSource {
   Deno,
+  Doc,
   Lint,
   Ts,
 }
@@ -75,11 +89,22 @@ impl DiagnosticSource {
   pub fn as_lsp_source(&self) -> &'static str {
     match self {
       Self::Deno => "deno",
+      Self::Doc => "deno-doc",
       Self::Lint => "deno-lint",
       Self::Ts => "deno-ts",
     }
   }
 }
+
+/// No-slow-types (fast check) diagnostics are computed for an entire
+/// publishable JSR package at once and can land on any module within it, so
+/// they're cached per package scope and then distributed to the individual
+/// documents they belong to. The inner map is keyed by the specifier of the
+/// module each diagnostic points at.
+pub type NoSlowTypesDiagnosticsCache = OnceCellMap<
+  Arc<ModuleSpecifier>,
+  Arc<HashMap<ModuleSpecifier, Vec<lsp::Diagnostic>>>,
+>;
 
 fn should_send_diagnostic_batch_notifications() -> bool {
   deno_lib::args::has_flag_env_var(
@@ -236,6 +261,11 @@ impl DiagnosticsServer {
             if should_send_batch_notifications {
               client.send_diagnostic_batch_start_notification();
             }
+            // Computed lazily and shared across all documents of a package so
+            // the (potentially expensive) graph build only happens once per
+            // package scope per diagnostics run.
+            let no_slow_types_cache =
+              Arc::new(NoSlowTypesDiagnosticsCache::default());
             let open_docs =
               snapshot.document_modules.documents.open_docs().cloned();
             deno_core::futures::stream::iter(open_docs.map(|document| {
@@ -243,6 +273,7 @@ impl DiagnosticsServer {
               let ts_server = ts_server.clone();
               let ambient_modules_regex_cache =
                 ambient_modules_regex_cache.clone();
+              let no_slow_types_cache = no_slow_types_cache.clone();
               let token = token.clone();
               AbortOnDropHandle::new(tokio::task::spawn(async move {
                 let diagnostics = generate_document_diagnostics(
@@ -250,6 +281,7 @@ impl DiagnosticsServer {
                   &snapshot,
                   &ts_server,
                   &ambient_modules_regex_cache,
+                  &no_slow_types_cache,
                   &token,
                 )
                 .await
@@ -433,18 +465,37 @@ pub fn ts_json_to_diagnostics(
     .collect()
 }
 
+/// Generates lint diagnostics for a module, caching them on the module
+/// instance. Lint diagnostics depend only on the module's own contents, so a
+/// given module instance always produces the same result and can be cached.
+///
+/// Returns `Err` if linting was cancelled, in which case nothing is cached and
+/// the result is recomputed on the next request.
 fn generate_document_lint_diagnostics(
   module: &DocumentModule,
   linter: &LspLinter,
   token: CancellationToken,
-) -> Vec<lsp::Diagnostic> {
+) -> Result<Arc<Vec<lsp::Diagnostic>>, AnyError> {
+  module
+    .lint_diagnostics
+    .get_or_try_init(|| {
+      compute_document_lint_diagnostics(module, linter, token).map(Arc::new)
+    })
+    .cloned()
+}
+
+fn compute_document_lint_diagnostics(
+  module: &DocumentModule,
+  linter: &LspLinter,
+  token: CancellationToken,
+) -> Result<Vec<lsp::Diagnostic>, AnyError> {
   if !module.is_diagnosable()
     || !linter
       .lint_config
       .files
       .matches_specifier(&module.specifier)
   {
-    return Vec::new();
+    return Ok(Vec::new());
   }
   match &module
     .open_data
@@ -452,20 +503,187 @@ fn generate_document_lint_diagnostics(
     .and_then(|d| d.parsed_source.as_ref())
   {
     Some(Ok(parsed_source)) => {
-      match analysis::get_lint_references(parsed_source, &linter.inner, token) {
-        Ok(references) => references
+      let references =
+        analysis::get_lint_references(parsed_source, &linter.inner, token)?;
+      Ok(
+        references
           .into_iter()
           .map(|r| r.to_diagnostic())
           .collect::<Vec<_>>(),
-        _ => Vec::new(),
-      }
+      )
     }
-    Some(Err(_)) => Vec::new(),
+    Some(Err(_)) => Ok(Vec::new()),
     None => {
       error!("Missing file contents for: {}", &module.specifier);
-      Vec::new()
+      Ok(Vec::new())
     }
   }
+}
+
+/// Computes an LSP range to highlight for a `deno doc --lint` diagnostic.
+///
+/// `deno_doc` only reports the byte offset of the start of the offending
+/// symbol, so highlight the identifier-like token that begins there (falling
+/// back to a single character) to produce a visible squiggle.
+fn doc_diagnostic_range(
+  module: &DocumentModule,
+  byte_index: usize,
+) -> lsp::Range {
+  let text = &*module.text;
+  let bytes = text.as_bytes();
+  let start = byte_index.min(bytes.len());
+  let mut end = start;
+  while end < bytes.len() {
+    let b = bytes[end];
+    if b.is_ascii_alphanumeric() || b == b'_' || b == b'$' {
+      end += 1;
+    } else {
+      break;
+    }
+  }
+  if end == start {
+    // Ensure a non-empty range so the diagnostic renders.
+    end = (start + 1).min(bytes.len());
+    while end < bytes.len() && !text.is_char_boundary(end) {
+      end += 1;
+    }
+  }
+  lsp::Range {
+    start: module
+      .line_index
+      .position_utf16(TextSize::from(start as u32)),
+    end: module.line_index.position_utf16(TextSize::from(end as u32)),
+  }
+}
+
+/// Generates `deno doc --lint` diagnostics for a module that is a published
+/// package's export entrypoint, caching them on the module instance. Like lint
+/// diagnostics, these are derived solely from the module's own contents, so a
+/// given module instance always produces the same result.
+///
+/// Returns `Err` if generation was cancelled, in which case nothing is cached
+/// and the result is recomputed on the next request.
+fn generate_document_doc_diagnostics(
+  module: &DocumentModule,
+  token: &CancellationToken,
+) -> Result<Arc<Vec<lsp::Diagnostic>>, AnyError> {
+  module
+    .doc_diagnostics
+    .get_or_try_init(|| {
+      compute_document_doc_diagnostics(module, token).map(Arc::new)
+    })
+    .cloned()
+}
+
+fn compute_document_doc_diagnostics(
+  module: &DocumentModule,
+  token: &CancellationToken,
+) -> Result<Vec<lsp::Diagnostic>, AnyError> {
+  if token.is_cancelled() {
+    return Err(anyhow!("cancelled"));
+  }
+  if !module.is_diagnosable() {
+    return Ok(Vec::new());
+  }
+  // Only open documents have parsed sources to lint against.
+  if !module
+    .open_data
+    .as_ref()
+    .and_then(|d| d.parsed_source.as_ref())
+    .is_some_and(|r| r.is_ok())
+  {
+    return Ok(Vec::new());
+  }
+  let analyzer = deno_graph::ast::CapturingModuleAnalyzer::default();
+  let specifier = module.specifier.as_ref().clone();
+  let loader = deno_graph::source::MemoryLoader::new(
+    vec![(
+      specifier.to_string(),
+      deno_graph::source::Source::Module {
+        specifier: specifier.to_string(),
+        content: module.text.to_string(),
+        maybe_headers: None,
+      },
+    )],
+    Vec::new(),
+  );
+  let roots = vec![specifier.clone()];
+  let mut graph =
+    deno_graph::ModuleGraph::new(deno_graph::GraphKind::TypesOnly);
+  deno_core::futures::executor::block_on(graph.build(
+    roots.clone(),
+    Vec::new(),
+    &loader,
+    deno_graph::BuildOptions {
+      is_dynamic: false,
+      skip_dynamic_deps: false,
+      passthrough_jsr_specifiers: false,
+      executor: Default::default(),
+      file_system: &deno_graph::source::NullFileSystem,
+      jsr_metadata_store: None,
+      jsr_url_provider: Default::default(),
+      jsr_version_resolver: Default::default(),
+      locker: None,
+      module_analyzer: &analyzer,
+      module_info_cacher: Default::default(),
+      npm_resolver: None,
+      reporter: None,
+      resolver: None,
+      unstable_bytes_imports: false,
+      unstable_text_imports: false,
+    },
+  ));
+  if token.is_cancelled() {
+    return Err(anyhow!("cancelled"));
+  }
+  let doc_parser = match deno_doc::DocParser::new(
+    &graph,
+    &analyzer,
+    &roots,
+    deno_doc::DocParserOptions {
+      diagnostics: true,
+      private: false,
+    },
+  ) {
+    Ok(doc_parser) => doc_parser,
+    Err(err) => {
+      lsp_warn!("Failed to create doc parser for \"{specifier}\": {err:#}");
+      return Ok(Vec::new());
+    }
+  };
+  if let Err(err) = doc_parser.parse() {
+    lsp_warn!("Failed to parse docs for \"{specifier}\": {err:#}");
+    return Ok(Vec::new());
+  }
+  let specifier_str = specifier.as_str();
+  Ok(
+    doc_parser
+      .take_diagnostics()
+      .into_iter()
+      // Only report diagnostics that point at the linted module itself. With a
+      // single-module graph cross-module references aren't resolved, so any
+      // diagnostic for another file would be spurious.
+      .filter(|diagnostic| {
+        diagnostic.location.filename.as_ref() == specifier_str
+      })
+      .map(|diagnostic| {
+        use deno_ast::diagnostics::Diagnostic;
+        lsp::Diagnostic {
+          range: doc_diagnostic_range(module, diagnostic.location.byte_index),
+          severity: Some(lsp::DiagnosticSeverity::WARNING),
+          code: Some(lsp::NumberOrString::String(
+            diagnostic.code().into_owned(),
+          )),
+          code_description: None,
+          source: Some(DiagnosticSource::Doc.as_lsp_source().to_string()),
+          message: diagnostic.message().into_owned(),
+          related_information: None,
+          tags: None,
+          data: None,
+        }
+      })
+      .collect(),
+  )
 }
 
 #[derive(Debug, Deserialize)]
@@ -505,6 +723,8 @@ pub enum DenoDiagnostic {
   /// A `x-deno-warning` is associated with the specifier and should be displayed
   /// as a warning to the user.
   DenoWarn(String),
+  /// The import map file has invalid JSON or invalid import map entries.
+  ImportMapDiagnostic(String),
   /// An informational diagnostic that indicates an existing specifier can be
   /// remapped to an import map import specifier.
   ImportMapRemap { from: String, to: String },
@@ -534,6 +754,7 @@ impl DenoDiagnostic {
   fn code(&self) -> &str {
     match self {
       Self::DenoWarn(_) => "deno-warn",
+      Self::ImportMapDiagnostic(_) => "import-map-diagnostic",
       Self::ImportMapRemap { .. } => "import-map-remap",
       Self::InvalidAttributeType(_) => "invalid-attribute-type",
       Self::NoAttributeType => "no-attribute-type",
@@ -779,6 +1000,7 @@ impl DenoDiagnostic {
 
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
+      Self::ImportMapDiagnostic(message) => (lsp::DiagnosticSeverity::ERROR, message.to_string(), None),
       Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
       Self::InvalidAttributeType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an attribute type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
@@ -840,6 +1062,30 @@ fn relative_specifier(specifier: &Url, referrer: &Url) -> String {
     }
     None => specifier.to_string(),
   }
+}
+
+fn import_map_resolves_dependency_key(
+  import_map: &ImportMap,
+  dependency_key: &str,
+  resolved: &Url,
+  referrer: &Url,
+) -> bool {
+  for entry in import_map.entries_for_referrer(referrer) {
+    let Some(address) = entry.value else {
+      continue;
+    };
+    let raw_key = entry.raw_key;
+    let is_match = dependency_key == raw_key
+      || (raw_key.ends_with('/') && dependency_key.starts_with(raw_key));
+    if is_match
+      && let Ok(specifier) = import_map.resolve(dependency_key, referrer)
+      && specifier == *resolved
+      && (dependency_key == raw_key || address.as_str().ends_with('/'))
+    {
+      return true;
+    }
+  }
+  false
 }
 
 fn maybe_ambient_import_specifier(
@@ -1093,12 +1339,18 @@ fn diagnose_dependency(
       .ok()
       .or_else(|| dependency.maybe_type.ok());
     if let Some(resolved) = resolved
-      && let Some(to) = import_map_lookup(
+      && let Some(to) = import_map_lookup_for_diagnostic(
         import_map,
         &resolved.specifier,
         &referrer_module.specifier,
       )
       && dependency_key != to
+      && !import_map_resolves_dependency_key(
+        import_map,
+        dependency_key,
+        &resolved.specifier,
+        &referrer_module.specifier,
+      )
     {
       diagnostics.push(
         DenoDiagnostic::ImportMapRemap {
@@ -1194,6 +1446,151 @@ fn diagnose_dependency(
   }
 }
 
+fn import_map_diagnostic_range(
+  document: &OpenDocument,
+  text: &str,
+  maybe_text: Option<&str>,
+) -> lsp::Range {
+  if let Some(text_to_find) = maybe_text
+    && let Some(index) = text.find(text_to_find)
+  {
+    let start = TextSize::from(index as u32);
+    let end = TextSize::from((index + text_to_find.len()) as u32);
+    return lsp::Range {
+      start: document.line_index.position_utf16(start),
+      end: document.line_index.position_utf16(end),
+    };
+  }
+  lsp::Range::default()
+}
+
+fn json_error_range(err: &serde_json::Error) -> lsp::Range {
+  let line = err.line().saturating_sub(1) as u32;
+  let character = err.column().saturating_sub(1) as u32;
+  lsp::Range {
+    start: lsp::Position { line, character },
+    end: lsp::Position { line, character },
+  }
+}
+
+fn import_map_parse_diagnostic_to_lsp(
+  diagnostic: &ImportMapDiagnostic,
+) -> lsp::Diagnostic {
+  DenoDiagnostic::ImportMapDiagnostic(diagnostic.to_string())
+    .to_lsp_diagnostic(&lsp::Range::default())
+}
+
+fn diagnose_import_map_entry_value(
+  diagnostics: &mut Vec<lsp::Diagnostic>,
+  document: &OpenDocument,
+  text: &str,
+  scope: &ModuleSpecifier,
+  snapshot: &StateSnapshot,
+  raw_value: Option<&str>,
+  value: Option<&ModuleSpecifier>,
+) {
+  let Some(value) = value else {
+    return;
+  };
+  let diagnostic = match value.scheme() {
+    "http" | "https" => {
+      let http_cache = snapshot.cache.for_specifier(Some(scope));
+      if http_cache.contains(value) {
+        return;
+      }
+      DenoDiagnostic::NoCache(value.clone())
+    }
+    "jsr" => {
+      let Ok(pkg_ref) = JsrPackageReqReference::from_specifier(value) else {
+        return;
+      };
+      let scoped_resolver = snapshot.resolver.get_scoped_resolver(Some(scope));
+      if scoped_resolver.jsr_to_resource_url(&pkg_ref).is_some() {
+        return;
+      }
+      let req = pkg_ref.into_inner().req;
+      DenoDiagnostic::NotInstalledJsr(req, value.clone())
+    }
+    "npm" => {
+      let Ok(pkg_ref) = NpmPackageReqReference::from_specifier(value) else {
+        return;
+      };
+      let req = pkg_ref.req().clone();
+      let scoped_resolver = snapshot.resolver.get_scoped_resolver(Some(scope));
+      if scoped_resolver
+        .as_maybe_managed_npm_resolver()
+        .is_some_and(|npm_resolver| npm_resolver.is_pkg_req_folder_cached(&req))
+      {
+        return;
+      }
+      DenoDiagnostic::NotInstalledNpm(req, value.clone())
+    }
+    _ => return,
+  };
+  let range = import_map_diagnostic_range(document, text, raw_value);
+  diagnostics.push(diagnostic.to_lsp_diagnostic(&range));
+}
+
+pub(crate) fn generate_import_map_diagnostics(
+  document: &Arc<OpenDocument>,
+  snapshot: &StateSnapshot,
+) -> Vec<lsp::Diagnostic> {
+  let specifier = uri_to_url(&document.uri);
+  let Some((scope, ConfigWatchedFileType::ImportMap)) =
+    snapshot.config.tree.watched_file_type(&specifier)
+  else {
+    return Vec::new();
+  };
+  let text = document.text.as_ref();
+  let parse_result = import_map::parse_from_json(specifier.clone(), text);
+  match parse_result {
+    Ok(import_map) => {
+      let mut diagnostics = import_map
+        .diagnostics
+        .iter()
+        .map(import_map_parse_diagnostic_to_lsp)
+        .collect::<Vec<_>>();
+      for entry in import_map.import_map.imports().entries() {
+        diagnose_import_map_entry_value(
+          &mut diagnostics,
+          document,
+          text,
+          scope,
+          snapshot,
+          entry.raw_value,
+          entry.value,
+        );
+      }
+      for scope_entry in import_map.import_map.scopes() {
+        for entry in scope_entry.imports.entries() {
+          diagnose_import_map_entry_value(
+            &mut diagnostics,
+            document,
+            text,
+            scope,
+            snapshot,
+            entry.raw_value,
+            entry.value,
+          );
+        }
+      }
+      diagnostics
+    }
+    Err(err) => match err.as_kind() {
+      ImportMapErrorKind::JsonParse(err) => vec![
+        DenoDiagnostic::ImportMapDiagnostic(format!(
+          "Unable to parse import map JSON: {err}"
+        ))
+        .to_lsp_diagnostic(&json_error_range(err)),
+      ],
+      _ => vec![
+        DenoDiagnostic::ImportMapDiagnostic(err.to_string())
+          .to_lsp_diagnostic(&lsp::Range::default()),
+      ],
+    },
+  }
+}
+
 async fn publish_document_diagnostics(
   document: &Arc<OpenDocument>,
   diagnostics: Vec<lsp::Diagnostic>,
@@ -1219,10 +1616,13 @@ async fn generate_document_diagnostics(
     (CompilerOptionsKey, Option<Arc<Uri>>),
     Option<regex::Regex>,
   >,
+  no_slow_types_cache: &NoSlowTypesDiagnosticsCache,
   token: &CancellationToken,
 ) -> Result<Vec<lsp::Diagnostic>, AnyError> {
+  let mut import_map_diagnostics =
+    generate_import_map_diagnostics(document, snapshot);
   if !document.is_diagnosable() {
-    return Ok(Vec::new());
+    return Ok(import_map_diagnostics);
   }
   let document_ = Document::Open(document.clone());
   let module = match snapshot.document_modules.primary_module(&document_) {
@@ -1254,9 +1654,14 @@ async fn generate_document_diagnostics(
     snapshot,
     ts_server,
     ambient_modules_regex_cache,
+    no_slow_types_cache,
     token,
   )
   .await
+  .map(|mut diagnostics| {
+    import_map_diagnostics.append(&mut diagnostics);
+    import_map_diagnostics
+  })
 }
 
 pub async fn generate_module_diagnostics(
@@ -1267,6 +1672,7 @@ pub async fn generate_module_diagnostics(
     (CompilerOptionsKey, Option<Arc<Uri>>),
     Option<regex::Regex>,
   >,
+  no_slow_types_cache: &NoSlowTypesDiagnosticsCache,
   token: &CancellationToken,
 ) -> Result<Vec<lsp::Diagnostic>, AnyError> {
   let deps_handle = tokio::task::spawn_blocking({
@@ -1297,7 +1703,7 @@ pub async fn generate_module_diagnostics(
     let snapshot = snapshot.clone();
     let module = module.clone();
     let token = token.clone();
-    move || {
+    move || -> Arc<Vec<lsp::Diagnostic>> {
       // TODO(nayeemrmn): Support linting notebooks cells. Will require
       // stitching cells from the same notebook into one module, linting it
       // and then splitting/relocating the diagnostics to each cell.
@@ -1306,16 +1712,42 @@ pub async fn generate_module_diagnostics(
         || module.specifier.scheme() != "file"
         || snapshot.resolver.in_node_modules(&module.specifier)
       {
-        return Vec::new();
+        return Default::default();
       }
       let settings = snapshot
         .config
         .workspace_settings_for_specifier(&module.specifier);
       if !settings.lint {
-        return Vec::new();
+        return Default::default();
       }
       let linter = snapshot.linter_resolver.for_module(&module);
       generate_document_lint_diagnostics(&module, &linter, token)
+        .unwrap_or_default()
+    }
+  });
+
+  let doc_handle = tokio::task::spawn_blocking({
+    let snapshot = snapshot.clone();
+    let module = module.clone();
+    let token = token.clone();
+    move || -> Arc<Vec<lsp::Diagnostic>> {
+      if token.is_cancelled()
+        || module.notebook_uri.is_some()
+        || module.specifier.scheme() != "file"
+        || snapshot.resolver.in_node_modules(&module.specifier)
+      {
+        return Default::default();
+      }
+      let settings = snapshot
+        .config
+        .workspace_settings_for_specifier(&module.specifier);
+      if !settings.lint {
+        return Default::default();
+      }
+      if !module_is_package_export(&snapshot, &module) {
+        return Default::default();
+      }
+      generate_document_doc_diagnostics(&module, &token).unwrap_or_default()
     }
   });
 
@@ -1380,9 +1812,218 @@ pub async fn generate_module_diagnostics(
       lsp_warn!("Lint task join error: {err:#}");
     })
     .unwrap_or_default();
-  diagnostics.extend(lint_diagnostics);
+  diagnostics.extend(lint_diagnostics.iter().cloned());
+
+  let doc_diagnostics = doc_handle
+    .await
+    .inspect_err(|err| {
+      lsp_warn!("Doc lint task join error: {err:#}");
+    })
+    .unwrap_or_default();
+  diagnostics.extend(doc_diagnostics.iter().cloned());
+
+  diagnostics.extend(
+    generate_no_slow_types_diagnostics(module, snapshot, no_slow_types_cache)
+      .await,
+  );
 
   Ok(diagnostics)
+}
+
+/// Returns the `no-slow-types` (fast check) diagnostics that land on `module`.
+///
+/// These diagnostics are reported by `deno publish` / `deno lint` for
+/// publishable JSR packages and require a fully built fast check module graph
+/// of the whole package. Because a single slow type can produce diagnostics on
+/// any module reachable from a package's exports, the graph is built once per
+/// package scope (cached in `no_slow_types_cache`) and the resulting
+/// diagnostics are distributed to the document they point at.
+async fn generate_no_slow_types_diagnostics(
+  module: &Arc<DocumentModule>,
+  snapshot: &Arc<StateSnapshot>,
+  no_slow_types_cache: &NoSlowTypesDiagnosticsCache,
+) -> Vec<lsp::Diagnostic> {
+  if module.specifier.scheme() != "file"
+    || module.notebook_uri.is_some()
+    || snapshot.resolver.in_node_modules(&module.specifier)
+  {
+    return Vec::new();
+  }
+  let settings = snapshot
+    .config
+    .workspace_settings_for_specifier(&module.specifier);
+  if !settings.lint {
+    return Vec::new();
+  }
+  let Some(config_data) =
+    snapshot.config.tree.data_for_specifier(&module.specifier)
+  else {
+    return Vec::new();
+  };
+  // Only publishable JSR packages have a public API to check for slow types.
+  if config_data.member_dir.jsr_packages_for_publish().is_empty() {
+    return Vec::new();
+  }
+  let scope = config_data.scope.clone();
+  let cell = no_slow_types_cache
+    .entry(scope.clone())
+    .or_default()
+    .clone();
+  let diagnostics_by_specifier = cell
+    .get_or_init(|| {
+      let snapshot = snapshot.clone();
+      async move {
+        Arc::new(
+          tokio::task::spawn_blocking(move || {
+            collect_scope_no_slow_types_diagnostics(&snapshot, &scope)
+          })
+          .await
+          .inspect_err(|err| {
+            lsp_warn!("No-slow-types diagnostics task join error: {err:#}");
+          })
+          .unwrap_or_default(),
+        )
+      }
+    })
+    .await;
+  diagnostics_by_specifier
+    .get(&module.specifier)
+    .cloned()
+    .unwrap_or_default()
+}
+
+/// Builds the fast check graph for the publishable packages within `scope` and
+/// collects the resulting `no-slow-types` diagnostics, grouped by the specifier
+/// of the module each one points at. Runs on a blocking thread since building
+/// the graph involves I/O and uses `!Send` types internally.
+fn collect_scope_no_slow_types_diagnostics(
+  snapshot: &Arc<StateSnapshot>,
+  scope: &ModuleSpecifier,
+) -> HashMap<ModuleSpecifier, Vec<lsp::Diagnostic>> {
+  let result = (|| -> Result<_, AnyError> {
+    let Some(config_data) = snapshot.config.tree.data_for_specifier(scope)
+    else {
+      return Ok(HashMap::new());
+    };
+    let packages = config_data.member_dir.jsr_packages_for_publish();
+    if packages.is_empty() {
+      return Ok(HashMap::new());
+    }
+    let workspace_settings =
+      snapshot.config.workspace_settings_for_specifier(scope);
+    let mut factory = CliFactory::from_flags(Arc::new(Flags {
+      internal: InternalFlags {
+        cache_path: Some(snapshot.cache.deno_dir().root.clone()),
+        lockfile_skip_write: true,
+        ..Default::default()
+      },
+      ca_stores: workspace_settings.certificate_stores.clone(),
+      ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
+      unsafely_ignore_certificate_errors: workspace_settings
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      type_check_mode: TypeCheckMode::None,
+      permissions: PermissionFlags {
+        // allow remote import permissions in the lsp for now
+        allow_import: Some(vec![]),
+        ..Default::default()
+      },
+      ..Default::default()
+    }));
+    factory.set_initial_cwd(config_data.member_dir.dir_path());
+    factory.set_workspace_dir(config_data.member_dir.clone());
+
+    let runtime = create_basic_runtime();
+    let local_set = tokio::task::LocalSet::new();
+    local_set.block_on(&runtime, async move {
+      let module_graph_creator = factory.module_graph_creator().await?;
+      let graph = module_graph_creator
+        .create_publish_graph(CreatePublishGraphOptions {
+          packages: &packages,
+          build_fast_check_graph: true,
+          validate_graph: false,
+        })
+        .await?;
+      let mut diagnostics_by_specifier: HashMap<
+        ModuleSpecifier,
+        Vec<lsp::Diagnostic>,
+      > = HashMap::new();
+      for package in &packages {
+        let export_urls = package.config_file.resolve_export_value_urls()?;
+        for diagnostic in collect_no_slow_type_diagnostics(&graph, &export_urls)
+        {
+          if let Some(lsp_diagnostic) =
+            no_slow_types_diagnostic_to_lsp(&diagnostic)
+          {
+            diagnostics_by_specifier
+              .entry(diagnostic.specifier().clone())
+              .or_default()
+              .push(lsp_diagnostic);
+          }
+        }
+      }
+      Ok(diagnostics_by_specifier)
+    })
+  })();
+  result.unwrap_or_else(|err: AnyError| {
+    lsp_warn!("Failed to generate no-slow-types diagnostics: {err:#}");
+    HashMap::new()
+  })
+}
+
+fn no_slow_types_diagnostic_to_lsp(
+  diagnostic: &FastCheckDiagnostic,
+) -> Option<lsp::Diagnostic> {
+  let range = diagnostic.range()?;
+  let mut message = diagnostic.message().to_string();
+  if let Some(hint) = diagnostic.hint() {
+    message.push_str("\n\n");
+    message.push_str(&hint);
+  }
+  Some(lsp::Diagnostic {
+    range: analysis::source_range_to_lsp_range(&range.range, &range.text_info),
+    severity: Some(lsp::DiagnosticSeverity::WARNING),
+    code: Some(lsp::NumberOrString::String("no-slow-types".to_string())),
+    code_description: diagnostic
+      .docs_url()
+      .and_then(|url| Uri::from_str(&url).ok())
+      .map(|href| lsp::CodeDescription { href }),
+    source: Some(DiagnosticSource::Lint.as_lsp_source().to_string()),
+    message,
+    related_information: None,
+    tags: None,
+    data: None,
+  })
+}
+
+/// Returns whether the module is an export entrypoint of a publishable
+/// (JSR) package in the workspace, i.e. a file that `deno doc --lint` and
+/// `deno publish` would check for documentation issues.
+fn module_is_package_export(
+  snapshot: &StateSnapshot,
+  module: &DocumentModule,
+) -> bool {
+  let Some(config_file) = snapshot
+    .config
+    .tree
+    .data_for_specifier(&module.specifier)
+    .and_then(|d| d.maybe_deno_json())
+  else {
+    return false;
+  };
+  if !config_file.is_package() || !config_file.should_publish() {
+    return false;
+  }
+  match config_file.resolve_export_value_urls() {
+    Ok(urls) => urls.iter().any(|url| url == module.specifier.as_ref()),
+    Err(err) => {
+      lsp_warn!(
+        "Failed to resolve export URLs for \"{}\": {err:#}",
+        config_file.specifier,
+      );
+      false
+    }
+  }
 }
 
 #[cfg(test)]
@@ -1504,6 +2145,126 @@ mod tests {
       .collect::<Vec<_>>()
   }
 
+  fn generate_all_import_map_diagnostics(
+    snapshot: &StateSnapshot,
+  ) -> Vec<(Uri, Vec<lsp::Diagnostic>)> {
+    snapshot
+      .document_modules
+      .documents
+      .open_docs()
+      .map(|doc| {
+        (
+          doc.uri.as_ref().clone(),
+          generate_import_map_diagnostics(doc, snapshot),
+        )
+      })
+      .collect::<Vec<_>>()
+  }
+
+  #[tokio::test]
+  async fn test_import_map_document_diagnostics() {
+    let (temp_dir, snapshot) = setup(
+      &[(
+        "import-map.json",
+        r#"{
+  "imports": {
+    "remote": "https://deno.land/x/example/mod.ts",
+    "bad": null
+  },
+  "unexpected": true
+}"#,
+        1,
+        LanguageId::Json,
+      )],
+      Some((
+        "deno.json",
+        r#"{
+        "importMap": "./import-map.json"
+      }"#,
+      )),
+    )
+    .await;
+    let actual = generate_all_import_map_diagnostics(&snapshot);
+    assert_eq!(
+      json!(actual),
+      json!([
+        [
+          url_to_uri(&temp_dir.url().join("import-map.json").unwrap()).unwrap(),
+          [
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "severity": 1,
+              "code": "import-map-diagnostic",
+              "source": "deno",
+              "message": "Invalid address \"null\" for the specifier key \"bad\". Addresses must be strings.",
+            },
+            {
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 },
+              },
+              "severity": 1,
+              "code": "import-map-diagnostic",
+              "source": "deno",
+              "message": "Invalid top-level key \"unexpected\". Only \"imports\" and \"scopes\" can be present.",
+            },
+            {
+              "range": {
+                "start": { "line": 2, "character": 15 },
+                "end": { "line": 2, "character": 49 },
+              },
+              "severity": 1,
+              "code": "no-cache",
+              "source": "deno",
+              "message": "Uncached or missing remote URL: https://deno.land/x/example/mod.ts",
+              "data": {
+                "specifier": "https://deno.land/x/example/mod.ts",
+              },
+            },
+          ],
+        ],
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn test_import_map_document_json_parse_diagnostic() {
+    let (temp_dir, snapshot) = setup(
+      &[("import-map.json", r#"{ "imports": "#, 1, LanguageId::Json)],
+      Some((
+        "deno.json",
+        r#"{
+        "importMap": "./import-map.json"
+      }"#,
+      )),
+    )
+    .await;
+    let actual = generate_all_import_map_diagnostics(&snapshot);
+    assert_eq!(
+      json!(actual),
+      json!([
+        [
+          url_to_uri(&temp_dir.url().join("import-map.json").unwrap()).unwrap(),
+          [
+            {
+              "range": {
+                "start": { "line": 0, "character": 12 },
+                "end": { "line": 0, "character": 12 },
+              },
+              "severity": 1,
+              "code": "import-map-diagnostic",
+              "source": "deno",
+              "message": "Unable to parse import map JSON: EOF while parsing a value at line 1 column 13",
+            },
+          ],
+        ],
+      ]),
+    );
+  }
+
   #[tokio::test]
   async fn test_deno_diagnostics_with_import_map() {
     let (temp_dir, snapshot) = setup(
@@ -1532,6 +2293,7 @@ mod tests {
         r#"{
         "imports": {
           "/~/std/": "../std/",
+          "a/": "../a/",
           "$@/": "./",
           "$a/": "../a/"
         }

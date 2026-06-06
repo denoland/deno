@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;
@@ -44,8 +45,6 @@ use node_resolver::ResolutionMode;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
-use weak_table::PtrWeakKeyHashMap;
-use weak_table::WeakValueHashMap;
 
 use super::cache::LspCache;
 use super::cache::calculate_fs_version_at_path;
@@ -61,6 +60,7 @@ use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
 use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
+use super::urls::uri_is_in_memory;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
@@ -935,6 +935,16 @@ pub struct DocumentModule {
   pub types_dependency: Option<Arc<TypesDependency>>,
   pub navigation_tree: tokio::sync::OnceCell<Arc<NavigationTree>>,
   pub semantic_tokens_full: tokio::sync::OnceCell<lsp::SemanticTokens>,
+  /// Cached lint diagnostics. These only depend on this module's own contents
+  /// (not on other files), so they can be computed once per module instance
+  /// and reused until the document changes. A new `DocumentModule` is created
+  /// whenever the document content or the lint configuration changes, which
+  /// naturally invalidates this cache.
+  pub lint_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
+  /// Cached `deno doc --lint` diagnostics. Like lint diagnostics, these are
+  /// derived solely from this module's own contents (a single-module graph),
+  /// so they're cached per module instance.
+  pub doc_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
   text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
   test_module_fut: Option<TestModuleFut>,
 }
@@ -1010,6 +1020,8 @@ impl DocumentModule {
       types_dependency,
       navigation_tree: Default::default(),
       semantic_tokens_full: Default::default(),
+      lint_diagnostics: Default::default(),
+      doc_diagnostics: Default::default(),
       text_info_cell: Default::default(),
       test_module_fut,
     }
@@ -1056,18 +1068,113 @@ impl DocumentModule {
 
 type DepInfoByScope = BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>;
 
+struct WeakKeyDocumentMap<T> {
+  entries: HashMap<usize, (Weak<T>, Arc<DocumentModule>)>,
+}
+
+impl<T> Default for WeakKeyDocumentMap<T> {
+  fn default() -> Self {
+    Self {
+      entries: Default::default(),
+    }
+  }
+}
+
+impl<T> fmt::Debug for WeakKeyDocumentMap<T> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("WeakKeyDocumentMap")
+      .field("len", &self.entries.len())
+      .finish()
+  }
+}
+
+impl<T> WeakKeyDocumentMap<T> {
+  fn get(&self, document: &Arc<T>) -> Option<Arc<DocumentModule>> {
+    let (document_weak, module) = self.entries.get(&Self::key(document))?;
+    let document_strong = document_weak.upgrade()?;
+    Arc::ptr_eq(&document_strong, document).then(|| module.clone())
+  }
+
+  fn values(&self) -> impl Iterator<Item = Arc<DocumentModule>> + '_ {
+    self.entries.values().filter_map(|(document, module)| {
+      document.upgrade().map(|_| module.clone())
+    })
+  }
+
+  fn insert(
+    &mut self,
+    document: Arc<T>,
+    module: Arc<DocumentModule>,
+  ) -> Option<Arc<DocumentModule>> {
+    self.remove_expired();
+    self
+      .entries
+      .insert(Self::key(&document), (Arc::downgrade(&document), module))
+      .map(|(_, module)| module)
+  }
+
+  fn remove_expired(&mut self) {
+    self
+      .entries
+      .retain(|_, (document, _)| document.strong_count() > 0);
+  }
+
+  fn key(document: &Arc<T>) -> usize {
+    Arc::as_ptr(document) as usize
+  }
+}
+
+#[derive(Default)]
+struct WeakValueDocumentMap {
+  entries: HashMap<Arc<Url>, Weak<DocumentModule>>,
+}
+
+impl fmt::Debug for WeakValueDocumentMap {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("WeakValueDocumentMap")
+      .field("len", &self.entries.len())
+      .finish()
+  }
+}
+
+impl WeakValueDocumentMap {
+  fn contains_key(&self, specifier: &Url) -> bool {
+    self
+      .entries
+      .get(specifier)
+      .and_then(|module| module.upgrade())
+      .is_some()
+  }
+
+  fn insert(
+    &mut self,
+    specifier: Arc<Url>,
+    module: Arc<DocumentModule>,
+  ) -> Option<Arc<DocumentModule>> {
+    self.remove_expired();
+    self
+      .entries
+      .insert(specifier, Arc::downgrade(&module))
+      .and_then(|module| module.upgrade())
+  }
+
+  fn remove_expired(&mut self) {
+    self.entries.retain(|_, module| module.strong_count() > 0);
+  }
+}
+
 #[derive(Debug, Default)]
 struct WeakDocumentModuleMap {
-  open: RwLock<PtrWeakKeyHashMap<Weak<OpenDocument>, Arc<DocumentModule>>>,
-  server: RwLock<PtrWeakKeyHashMap<Weak<ServerDocument>, Arc<DocumentModule>>>,
-  by_specifier: RwLock<WeakValueHashMap<Arc<Url>, Weak<DocumentModule>>>,
+  open: RwLock<WeakKeyDocumentMap<OpenDocument>>,
+  server: RwLock<WeakKeyDocumentMap<ServerDocument>>,
+  by_specifier: RwLock<WeakValueDocumentMap>,
 }
 
 impl WeakDocumentModuleMap {
   fn get(&self, document: &Document) -> Option<Arc<DocumentModule>> {
     match document {
-      Document::Open(d) => self.open.read().get(d).cloned(),
-      Document::Server(d) => self.server.read().get(d).cloned(),
+      Document::Open(d) => self.open.read().get(d),
+      Document::Server(d) => self.server.read().get(d),
     }
   }
 
@@ -1080,8 +1187,7 @@ impl WeakDocumentModuleMap {
       .open
       .read()
       .values()
-      .cloned()
-      .chain(self.server.read().values().cloned())
+      .chain(self.server.read().values())
       .collect()
   }
 
@@ -1531,7 +1637,18 @@ impl DocumentModules {
   pub fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
     let url = uri_to_url(uri);
     if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
-      let scope = self.config.tree.scope_for_specifier(&url);
+      let mut scope = self.config.tree.scope_for_specifier(&url);
+      // In-memory documents (untitled files and unsaved notebook cells) convert
+      // to a `file:` URL at the filesystem root, which matches no workspace
+      // scope. Associate them with the workspace root so its config (import
+      // map, compiler options) applies — matching the behavior once the
+      // document is saved into the workspace. See denoland/deno#22628.
+      if scope.is_none()
+        && uri_is_in_memory(uri)
+        && let Some(root_url) = self.config.root_url()
+      {
+        scope = self.config.tree.scope_for_specifier(root_url);
+      }
       return Some(scope);
     }
     None

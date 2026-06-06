@@ -6,8 +6,13 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
+  FunctionPrototypeCall,
+  JSONParse,
+  ObjectDefineProperty,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  PromiseReject,
+  PromiseResolve,
   RegExpPrototypeExec,
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
@@ -36,6 +41,7 @@ const {
   guardFromHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
+  headersFromHeaderListLazyTarget,
 } = core.loadExtScript("ext:deno_fetch/20_headers.js");
 const { HttpClientPrototype } = core.loadExtScript(
   "ext:deno_fetch/22_http_client.js",
@@ -55,6 +61,7 @@ const _request = Symbol("request");
 const _headers = Symbol("headers");
 const _getHeaders = Symbol("get headers");
 const _headersCache = Symbol("headers cache");
+const _headersGuard = Symbol("headers guard");
 const _signal = Symbol("signal");
 const _signalCache = Symbol("signalCache");
 const _mimeType = Symbol("mime type");
@@ -288,11 +295,26 @@ class Request {
   /** @type {Headers} */
   [_headersCache];
   [_getHeaders];
+  [_headersGuard];
+  [_signalCache];
+  [_url];
+  [_method];
 
   /** @type {Headers} */
   get [_headers]() {
     if (this[_headersCache] === undefined) {
-      this[_headersCache] = this[_getHeaders]();
+      const getHeaders = this[_getHeaders];
+      if (getHeaders !== undefined && getHeaders !== null) {
+        this[_headersCache] = getHeaders();
+      } else {
+        const inner = this[_request];
+        const guard = this[_headersGuard];
+        if (typeof inner.header !== "function") {
+          this[_headersCache] = headersFromHeaderList(inner.headerList, guard);
+        } else {
+          this[_headersCache] = headersFromHeaderListLazyTarget(inner, guard);
+        }
+      }
     }
     return this[_headersCache];
   }
@@ -667,11 +689,8 @@ class Request {
     const request = new Request(_brand);
     request[_request] = clonedReq;
     request[_signalCache] = clonedSignal;
-    request[_getHeaders] = () =>
-      headersFromHeaderList(
-        clonedReq.headerList,
-        guardFromHeaders(this[_headers]),
-      );
+    headerListFromHeaders(this[_headers]);
+    request[_headersGuard] = guardFromHeaders(this[_headers]);
     return request;
   }
 
@@ -697,6 +716,25 @@ webidl.configureInterface(Request);
 const RequestPrototype = Request.prototype;
 markNotSerializable(RequestPrototype);
 mixinBody(RequestPrototype, _body, _mimeType);
+const requestJson = RequestPrototype.json;
+ObjectDefineProperty(RequestPrototype, "json", {
+  __proto__: null,
+  value: function json() {
+    try {
+      webidl.assertBranded(this, RequestPrototype);
+      const text = this[_request].consumeTextBody?.();
+      if (text !== null && text !== undefined) {
+        return PromiseResolve(JSONParse(text));
+      }
+    } catch (error) {
+      return PromiseReject(error);
+    }
+    return FunctionPrototypeCall(requestJson, this);
+  },
+  writable: true,
+  configurable: true,
+  enumerable: true,
+});
 
 webidl.converters["Request"] = webidl.createInterfaceConverter(
   "Request",
@@ -808,6 +846,16 @@ function toInnerRequest(request) {
   return request[_request];
 }
 
+function requestHeadersExposed(request) {
+  return request?.[_headersCache] !== undefined;
+}
+
+function cacheRequestHeaders(request) {
+  if (request?.[_headersCache] !== undefined) {
+    headerListFromHeaders(request[_headersCache]);
+  }
+}
+
 /**
  * @param {InnerRequest} inner
  * @param {"request" | "immutable" | "request-no-cors" | "response" | "none"} guard
@@ -816,7 +864,7 @@ function toInnerRequest(request) {
 function fromInnerRequest(inner, guard) {
   const request = new Request(_brand);
   request[_request] = inner;
-  request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
+  request[_headersGuard] = guard;
   return request;
 }
 
@@ -841,11 +889,13 @@ internals.getCachedAbortSignal = getCachedAbortSignal;
 
 return {
   abortRequest,
+  cacheRequestHeaders,
   fromInnerRequest,
   newInnerRequest,
   processUrlList,
   Request,
   RequestPrototype,
+  requestHeadersExposed,
   toInnerRequest,
 };
 })();

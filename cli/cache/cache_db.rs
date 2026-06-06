@@ -4,6 +4,7 @@ use std::io::IsTerminal;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -440,6 +441,25 @@ fn open_connection(
     }
   }
 
+  // If the failure is just transient lock contention (another process is
+  // currently operating on the database — for example recovering a WAL-mode
+  // database, which surfaces as SQLITE_BUSY_RECOVERY / error code 261), the
+  // file is not corrupt. Wait for the other process to finish by retrying with
+  // exponential backoff instead of deleting it.
+  // See https://github.com/denoland/deno/issues/27283.
+  if is_lock_contention_error(&err) {
+    match retry_open_with_backoff(path, &open_connection_and_init) {
+      Ok(conn) => return Ok(ConnectionState::Connected(conn)),
+      Err(err) => {
+        // Still locked after exhausting retries. Don't delete the file — it
+        // belongs to another process and is not corrupt — just degrade
+        // gracefully to the configured failure mode.
+        log_failure_mode(path, std::io::stderr().is_terminal(), config);
+        return handle_failure_mode(config, err, open_connection_and_init);
+      }
+    }
+  }
+
   // There are rare times in the tests when we can't initialize a cache DB the first time, but it succeeds the second time, so
   // we don't log these at a debug level.
   log::trace!(
@@ -475,6 +495,68 @@ fn open_connection(
 
   log_failure_mode(path, is_tty, config);
   handle_failure_mode(config, err, open_connection_and_init)
+}
+
+/// Returns whether the error is transient lock contention that just means
+/// another process is currently operating on the database (e.g. recovering a
+/// WAL-mode database file, which surfaces as `SQLITE_BUSY_RECOVERY`). The
+/// underlying file is not corrupt and the operation should be retried rather
+/// than the file deleted.
+fn is_lock_contention_error(err: &rusqlite::Error) -> bool {
+  matches!(
+    err,
+    rusqlite::Error::SqliteFailure(ffi_err, _)
+      if matches!(
+        ffi_err.code,
+        rusqlite::ErrorCode::DatabaseBusy
+          | rusqlite::ErrorCode::DatabaseLocked
+      )
+  )
+}
+
+/// Maximum number of times to retry opening a database that is busy because
+/// another process is operating on it.
+const LOCK_CONTENTION_RETRIES: u32 = 7;
+/// Base delay used for the first retry; doubles on each subsequent retry up to
+/// [`LOCK_CONTENTION_MAX_DELAY`]. The default schedule waits ~1.3s in total.
+const LOCK_CONTENTION_BASE_DELAY: Duration = Duration::from_millis(10);
+const LOCK_CONTENTION_MAX_DELAY: Duration = Duration::from_millis(1000);
+
+/// Retry opening the database with exponential backoff while it remains locked
+/// by another process. Returns the last error if the contention does not clear
+/// within [`LOCK_CONTENTION_RETRIES`] attempts, or immediately if a different
+/// (non-contention) error is encountered.
+fn retry_open_with_backoff(
+  path: &Path,
+  open_connection_and_init: impl Fn(
+    Option<&Path>,
+  ) -> Result<Connection, rusqlite::Error>,
+) -> Result<Connection, rusqlite::Error> {
+  let mut delay = LOCK_CONTENTION_BASE_DELAY;
+  let mut last_err = None;
+  for attempt in 1..=LOCK_CONTENTION_RETRIES {
+    log::debug!(
+      "Cache database '{}' is locked by another process, retrying in {}ms (attempt {}/{}).",
+      path.to_string_lossy(),
+      delay.as_millis(),
+      attempt,
+      LOCK_CONTENTION_RETRIES,
+    );
+    std::thread::sleep(delay);
+    match open_connection_and_init(Some(path)) {
+      Ok(conn) => return Ok(conn),
+      Err(err) => {
+        // If the error changed to something other than lock contention, stop
+        // retrying and surface it to the regular recovery path.
+        if !is_lock_contention_error(&err) {
+          return Err(err);
+        }
+        last_err = Some(err);
+      }
+    }
+    delay = (delay * 2).min(LOCK_CONTENTION_MAX_DELAY);
+  }
+  Err(last_err.unwrap_or(rusqlite::Error::SqliteSingleThreadedMode))
 }
 
 fn log_failure_mode(path: &Path, is_tty: bool, config: &CacheDBConfiguration) {
@@ -595,6 +677,57 @@ mod tests {
     })
     .unwrap();
     assert!(matches!(state, ConnectionState::Connected(_)));
+  }
+
+  #[tokio::test]
+  async fn lock_contention_retries_then_succeeds() {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    let temp_dir = TempDir::new();
+    let path = temp_dir.path().join("data").to_path_buf();
+    let attempts = AtomicUsize::new(0);
+    let state = open_connection(&TEST_DB, Some(path.as_path()), |maybe_path| {
+      let n = attempts.fetch_add(1, Ordering::SeqCst);
+      if n < 2 {
+        // SQLITE_BUSY_RECOVERY (261): another process is recovering the WAL db.
+        Err(rusqlite::Error::SqliteFailure(
+          rusqlite::ffi::Error::new(261),
+          Some("recovering".to_string()),
+        ))
+      } else {
+        Connection::open(maybe_path.unwrap())
+      }
+    })
+    .unwrap();
+    assert!(matches!(state, ConnectionState::Connected(_)));
+    // The first open plus at least two retries should have happened.
+    assert!(attempts.load(Ordering::SeqCst) >= 3);
+    // The file must not have been deleted — it was never corrupt.
+    assert!(path.exists());
+  }
+
+  #[tokio::test]
+  async fn lock_contention_does_not_delete_on_giving_up() {
+    let temp_dir = TempDir::new();
+    let path = temp_dir.path().join("data").to_path_buf();
+    // Create a sentinel file so we can assert it is not deleted.
+    std::fs::write(&path, b"not a real db").unwrap();
+    let state = open_connection(&TEST_DB, Some(path.as_path()), |maybe_path| {
+      match maybe_path {
+        // Always busy: simulate a database that never finishes recovering.
+        Some(_) => Err(rusqlite::Error::SqliteFailure(
+          rusqlite::ffi::Error::new(261),
+          Some("recovering".to_string()),
+        )),
+        None => Ok(Connection::open_in_memory().unwrap()),
+      }
+    })
+    .unwrap();
+    // Falls back to the in-memory failure mode rather than erroring.
+    assert!(matches!(state, ConnectionState::Connected(_)));
+    // Crucially, the on-disk file owned by another process is preserved.
+    assert!(path.exists());
   }
 
   #[tokio::test]

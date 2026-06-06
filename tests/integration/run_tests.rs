@@ -3603,6 +3603,27 @@ fn readline_multi_prompt_pty() {
     });
 }
 
+// Regression test for https://github.com/denoland/deno/issues/17047.
+// Verifies that permission prompts wait for an active user-space stdin prompt
+// instead of racing it and consuming the user's answer.
+#[test]
+fn readline_permission_prompt_interleaving_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_permission_prompt_interleaving.ts"])
+    .with_pty(|mut console| {
+      console.expect("Project?");
+      console.write_line("demo");
+      console.expect("ANSWER:demo");
+      console.expect("Deno requests read access to");
+      console.expect("Allow?");
+      console.human_delay();
+      console.write_line_raw("n");
+      console.expect("Denied read access to");
+      console.expect("READ_ERROR:NotCapable");
+    });
+}
+
 // Regression test for https://github.com/denoland/deno/issues/32997
 // Verifies that toggling raw mode between consecutive prompts (like
 // vite create, @clack/prompts) properly restores console mode so

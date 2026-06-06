@@ -5,6 +5,7 @@ mod externals;
 mod html;
 mod provider;
 mod transform;
+mod wasm;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -25,6 +26,7 @@ use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
@@ -268,7 +270,7 @@ pub async fn bundle_init(
     Default::default(),
   )
   .await
-  .unwrap();
+  .context("failed to start esbuild")?;
   let client = esbuild.client().clone();
 
   tokio::spawn(async move {
@@ -374,6 +376,7 @@ pub async fn bundle_for_compile(
   flags: Arc<Flags>,
   entrypoint: String,
   external: Vec<String>,
+  minify: bool,
 ) -> Result<Vec<u8>, AnyError> {
   let bundle_flags = BundleFlags {
     entrypoints: vec![entrypoint],
@@ -381,7 +384,7 @@ pub async fn bundle_for_compile(
     output_dir: None,
     external,
     format: BundleFormat::Esm,
-    minify: false,
+    minify,
     keep_names: false,
     code_splitting: false,
     inline_imports: true,
@@ -667,7 +670,7 @@ impl EsbuildBundler {
       .client
       .send_build_request(self.make_build_request())
       .await
-      .unwrap()
+      .context("failed to send build request to esbuild")?
       .map_err(|e| message_to_error(&e, &self.cwd))?;
 
     Ok(response)
@@ -684,9 +687,13 @@ impl EsbuildBundler {
           .client
           .send_rebuild_request(0)
           .await
-          .unwrap()
+          .context("failed to send rebuild request to esbuild")?
           .map_err(|e| message_to_error(&e, &self.cwd))?;
-        let response = self.on_end_rx.recv().await.unwrap();
+        let response = self.on_end_rx.recv().await.ok_or_else(|| {
+          deno_core::anyhow::anyhow!(
+            "esbuild exited before the rebuild completed"
+          )
+        })?;
         Ok(response.into())
       }
     }
@@ -753,7 +760,7 @@ fn message_to_error(
 fn replace_require_shim(contents: &str, minified: bool) -> String {
   if minified {
     let re = lazy_regex::regex!(
-      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[l\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
+      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[\w+\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
     );
     re.replace(contents, |c: &regex::Captures<'_>| {
       let var_name = c.get(1).unwrap().as_str();
@@ -774,7 +781,7 @@ var __require = __deno_internal_createRequire(import.meta.url);
 }
 
 // Force esbuild's CommonJS-to-ESM interop helper (`__toESM`) into "node mode"
-// for the Deno platform.
+// for every platform.
 //
 // esbuild emits a node-mode interop call (`__toESM(require_x(), 1)`) only when
 // it can tell the importing module is *explicitly* ESM (a `.mjs`/`.mts` file or
@@ -786,10 +793,12 @@ var __require = __deno_internal_createRequire(import.meta.url);
 //
 // For packages whose ESM wrapper default-imports a CJS entry that sets
 // `module.exports.__esModule = true` (e.g. tslib's `modules/index.js`), that
-// means `import_x.default` ends up undefined and module init throws. Deno's own
-// runtime always uses node-style interop here, so the bundle should too. We
-// rewrite the helper's `<isNodeMode> || !mod || !mod.__esModule` condition to
-// always pick the node-mode branch. See denoland/deno#34524.
+// means `import_x.default` ends up undefined and module init throws. This is a
+// property of how the source module resolves its default import (Node interop
+// semantics, which is what such packages are authored against), not of the
+// runtime target, so it applies regardless of `--platform`. We rewrite the
+// helper's `<isNodeMode> || !mod || !mod.__esModule` condition to always pick
+// the node-mode branch. See denoland/deno#34524 and denoland/deno#34837.
 //
 // The variable names differ between minified and non-minified output, but the
 // `.__esModule` access and surrounding shape are stable, so a single regex
@@ -1309,8 +1318,8 @@ pub enum BundleLoadErrorKind {
   #[error(transparent)]
   ResolveWithGraph(#[from] ResolveWithGraphError),
   #[class(generic)]
-  #[error("Wasm modules are not implemented in deno bundle.")]
-  WasmUnsupported,
+  #[error("Failed to parse Wasm module: {0}")]
+  WasmParse(String),
   #[class(generic)]
   #[error("UTF-8 conversion error")]
   Utf8(#[from] std::str::Utf8Error),
@@ -1717,6 +1726,11 @@ impl DenoPluginHandler {
       Some(RequestedModuleType::Other(_) | RequestedModuleType::None)
       | None => {}
     }
+    if media_type == MediaType::Wasm {
+      let code = wasm::render_js_wasm_module(source)
+        .map_err(|e| BundleLoadErrorKind::WasmParse(e.to_string()))?;
+      return Ok((code.into_bytes(), esbuild_client::BuiltinLoader::Js));
+    }
     if matches!(
       media_type,
       MediaType::JavaScript
@@ -1855,9 +1869,11 @@ impl DenoPluginHandler {
         deno_ast::MediaType::Json,
         esbuild_client::BuiltinLoader::Json,
       ),
-      deno_graph::Module::Wasm(_) => {
-        return Err(BundleLoadErrorKind::WasmUnsupported.into());
-      }
+      deno_graph::Module::Wasm(wasm_module) => (
+        wasm_module.specifier.clone(),
+        deno_ast::MediaType::Wasm,
+        esbuild_client::BuiltinLoader::Js,
+      ),
       deno_graph::Module::Npm(_) => {
         let req_ref =
           NpmPackageReqReference::from_specifier(specifier).unwrap();
@@ -2159,11 +2175,15 @@ pub fn maybe_process_contents(
   let is_js = is_js(path) || path.ends_with("<stdout>");
   if is_js {
     let string = str::from_utf8(&file.contents)?;
+    // The `createRequire` shim is Deno-specific (it injects an import from
+    // `node:module`), so it is only applied for the Deno platform. The CJS
+    // interop fix-up below is platform-independent and always runs.
     let string = if should_replace_require_shim {
-      force_node_cjs_interop(&replace_require_shim(string, minified))
+      replace_require_shim(string, minified)
     } else {
       string.to_string()
     };
+    let string = force_node_cjs_interop(&string);
     Ok(ProcessedContents {
       contents: Some(string.into_bytes()),
       is_js,
