@@ -1018,17 +1018,20 @@ impl<'a> GraphWalker<'a> {
       }
 
       if module.media_type().is_declaration() {
+        // When a `.d.ts` is itself a check root (an explicit entrypoint), its
+        // own unresolved imports should surface as `TS2307`. deno_graph records
+        // a bare specifier in a `.d.ts` as `Resolution::None`, which both the
+        // missing-import loop below and tsc (under `skipLibCheck`) ignore, so
+        // handle it explicitly here regardless of `skipLibCheck`. Dependency
+        // `.d.ts` files reached transitively are not roots and keep being
+        // skipped under `skipLibCheck`.
+        if is_root && let Module::Js(module) = module {
+          self.add_unresolved_dts_entrypoint_imports(module);
+        }
         let compiler_options_data = self
           .compiler_options_resolver
           .for_specifier(module.specifier());
         if compiler_options_data.skip_lib_check() {
-          // `skipLibCheck` suppresses diagnostics from `.d.ts` files, but when
-          // a `.d.ts` is itself a check root (an explicit entrypoint) its own
-          // unresolved imports should still surface as `TS2307`. Dependency
-          // `.d.ts` files reached transitively keep being skipped.
-          if is_root && let Module::Js(module) = module {
-            self.add_unresolved_dts_entrypoint_imports(module);
-          }
           continue;
         }
       }
@@ -1196,19 +1199,26 @@ impl<'a> GraphWalker<'a> {
 
   /// Surface unresolved imports of a `.d.ts` check root as `TS2307`.
   ///
-  /// `skipLibCheck` (and tsc's declaration handling) otherwise swallow these,
-  /// but an explicit `.d.ts` entrypoint should still report them. Reuses the
-  /// imports deno_graph already parsed during graph build (specifier + range),
-  /// so there's no need to re-parse the source. A bare specifier deno_graph
-  /// left as `Resolution::None` is still caught here via `resolve_import`.
+  /// An explicit `.d.ts` entrypoint should report its own unresolved imports,
+  /// but deno_graph records a bare specifier in a `.d.ts` as `Resolution::None`
+  /// (a `.ts` file records `Resolution::Err`). The missing-import loop only
+  /// turns `Resolution::Err` into diagnostics, so a `.d.ts` entrypoint's bare
+  /// imports are otherwise swallowed whether or not `skipLibCheck` is set.
+  ///
+  /// Only `Resolution::None` deps are handled here. Resolved (`Ok`) and errored
+  /// (`Err`) deps are already surfaced by the missing-import loop when
+  /// `skipLibCheck` is off, so handling them here too would double report. The
+  /// import range deno_graph already parsed is reused, so there's no need to
+  /// re-parse the source.
   fn add_unresolved_dts_entrypoint_imports(
     &mut self,
     module: &'a deno_graph::JsModule,
   ) {
     for dep in module.dependencies_prefer_fast_check().values() {
-      // A resolved code or type specifier means the import isn't missing.
-      if matches!(dep.maybe_code, deno_graph::Resolution::Ok(_))
-        || matches!(dep.maybe_type, deno_graph::Resolution::Ok(_))
+      // Only handle imports deno_graph left fully unresolved; a bare specifier
+      // in a `.d.ts` lands here as `None`/`None`.
+      if !matches!(dep.maybe_code, deno_graph::Resolution::None)
+        || !matches!(dep.maybe_type, deno_graph::Resolution::None)
       {
         continue;
       }

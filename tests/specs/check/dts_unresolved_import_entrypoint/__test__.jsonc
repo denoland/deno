@@ -5,6 +5,18 @@
       "output": "entrypoint.out",
       "exitCode": 1
     },
+    // The unresolved import must surface for a `.d.ts` entrypoint whether or
+    // not `skipLibCheck` is set (the issue was reported with it off).
+    "entrypoint_skip_lib_check_false": {
+      "args": "check --quiet --config skip_lib_check_false.json foo.d.ts",
+      "output": "entrypoint.out",
+      "exitCode": 1
+    },
+    "entrypoint_default_config": {
+      "args": "check --quiet --no-config foo.d.ts",
+      "output": "entrypoint.out",
+      "exitCode": 1
+    },
     "skip_lib_check_dependency": {
       "args": "check --quiet --config deno.json main.ts",
       "output": ""
