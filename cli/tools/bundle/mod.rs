@@ -1386,6 +1386,17 @@ fn browser_map_disabled_specifier(error: &BundleError) -> Option<String> {
   Some(disabled.specifier.clone())
 }
 
+/// Whether a specifier looks like a bare (npm/node-style) specifier, i.e. not
+/// a relative path, absolute path, package-internal `#` import, or a URL with a
+/// scheme (`file:`, `data:`, `node:`, `npm:`, `jsr:`, `http(s):`, ...).
+fn looks_like_bare_specifier(specifier: &str) -> bool {
+  !specifier.is_empty()
+    && !specifier.starts_with('.')
+    && !specifier.starts_with('/')
+    && !specifier.starts_with('#')
+    && Url::parse(specifier).is_err()
+}
+
 fn maybe_ignorable_resolution_error(
   error: &ResolveWithGraphError,
 ) -> Option<String> {
@@ -1515,6 +1526,26 @@ impl DenoPluginHandler {
       Ok(specifier) => Ok(Some(file_path_or_url(specifier)?)),
       Err(e) => {
         log::debug!("{}: {:?}", deno_terminal::colors::red("error"), e);
+        // The graph may record an unmapped-bare-specifier error for a referrer
+        // pulled in from outside the entrypoint's package scope (e.g. a source
+        // file reached via a `new Worker(new URL(...))` reference next to a
+        // `dist/`-rooted entrypoint). The package is still in the build's npm
+        // snapshot, so resolve it by name the way Node/Bun do before giving up.
+        if looks_like_bare_specifier(path)
+          && let Some(url) = resolver.resolve_bare_specifier_in_npm_snapshot(
+            path,
+            Some(&referrer),
+            import_kind_to_resolution_mode(kind),
+            NodeResolutionKind::Execution,
+          )
+        {
+          log::debug!(
+            "{}: resolved {} via npm snapshot fallback",
+            deno_terminal::colors::cyan("op_bundle_resolve"),
+            path
+          );
+          return Ok(Some(file_path_or_url(url)?));
+        }
         if let Some(specifier) = maybe_ignorable_resolution_error(&e) {
           log::debug!(
             "{}: resolution failed, but maybe ignorable",

@@ -401,6 +401,49 @@ impl<
     )
   }
 
+  /// Best-effort resolution of a bare specifier against the managed npm
+  /// snapshot, regardless of whether the referrer's `package.json` declares
+  /// it.
+  ///
+  /// `deno compile --bundle` follows `new Worker(new URL(...))` and similar
+  /// references into modules that can live outside the entrypoint's package
+  /// scope (e.g. a worker authored in a sibling source tree, pulled in
+  /// alongside a `dist/`-rooted entrypoint). A bare npm import from such a
+  /// referrer can fail to map even though the package is installed and
+  /// resolves fine elsewhere in the same build. This lets the bundler fall
+  /// back to the snapshot by package name, matching Node/Bun's "find it in a
+  /// reachable node_modules" behavior.
+  ///
+  /// Returns `None` when npm resolution isn't managed or the package isn't
+  /// present in the snapshot.
+  pub fn resolve_bare_specifier_in_npm_snapshot(
+    &self,
+    raw_specifier: &str,
+    maybe_referrer: Option<&Url>,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Option<Url> {
+    let node_and_npm_resolver = self.resolver.node_and_npm_resolver.as_ref()?;
+    let managed_resolver = node_and_npm_resolver.npm_resolver.as_managed()?;
+    let req_ref =
+      NpmPackageReqReference::from_str(&format!("npm:{raw_specifier}")).ok()?;
+    let package_folder = managed_resolver
+      .resolve_pkg_folder_from_deno_module_req(req_ref.req())
+      .ok()?;
+    node_and_npm_resolver
+      .node_resolver
+      .resolve_package_subpath_from_deno_module(
+        &package_folder,
+        req_ref.sub_path(),
+        maybe_referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .ok()?
+      .into_url()
+      .ok()
+  }
+
   pub fn resolve(
     &self,
     raw_specifier: &str,
