@@ -594,6 +594,63 @@ impl<
       }
     }
 
+    // 7. Create a `node_modules` directory inside each workspace member and
+    // symlink that member's direct dependencies into it. This mirrors how npm
+    // and pnpm lay out workspaces so that native Node.js tooling run from
+    // within a member resolves the member's dependencies and sibling workspace
+    // members. Each dependency is linked to its actual location in the hoisted
+    // layout (a top-level package, or a nested one in case of conflicts).
+    {
+      let workspace_member_dirs: HashMap<&PackageNv, &Path> = self
+        .npm_install_deps_provider
+        .workspace_pkgs()
+        .iter()
+        .map(|pkg| (&pkg.nv, pkg.target_dir.as_path()))
+        .collect();
+      for workspace_pkg in self.npm_install_deps_provider.workspace_pkgs() {
+        let member_node_modules = workspace_pkg.target_dir.join("node_modules");
+        // The workspace root's `node_modules` is already fully set up above.
+        if member_node_modules == self.root_node_modules_path
+          || workspace_pkg.deps.is_empty()
+        {
+          continue;
+        }
+        let mut created_dir = false;
+        for dep in &workspace_pkg.deps {
+          let (alias, target_path) = match dep {
+            InstallWorkspacePkgDep::Remote { alias, req } => {
+              let Some(id) = resolve_remote_pkg_id(snapshot, req) else {
+                continue;
+              };
+              let Some(target_path) = hoisted_package_path(
+                &layout,
+                &self.root_node_modules_path,
+                &id.nv,
+              ) else {
+                continue;
+              };
+              (alias, target_path)
+            }
+            InstallWorkspacePkgDep::Workspace { alias, nv } => {
+              let Some(target_dir) = workspace_member_dirs.get(nv) else {
+                continue;
+              };
+              (alias, target_dir.to_path_buf())
+            }
+          };
+          if !created_dir {
+            sys.fs_create_dir_all(&member_node_modules)?;
+            created_dir = true;
+          }
+          crate::local::symlink_package_dir(
+            sys.as_ref(),
+            &target_path,
+            &member_node_modules.join(alias.as_str()),
+          )?;
+        }
+      }
+    }
+
     for package in &workspace_lifecycle_packages {
       lifecycle_scripts.borrow_mut().add(
         &package.package,
@@ -870,6 +927,38 @@ struct WorkspaceLifecyclePackage {
   package: NpmResolutionPackage,
   package_path: PathBuf,
   scripts: HashMap<deno_semver::SmallStackString, String>,
+}
+
+/// Resolves the on-disk location of a package version in the hoisted layout,
+/// either as a top-level package or a nested one. Returns `None` if the version
+/// isn't placed anywhere (for example a conflicting version that no package
+/// depends on).
+fn hoisted_package_path(
+  layout: &HoistedLayout,
+  root_node_modules_path: &Path,
+  nv: &PackageNv,
+) -> Option<PathBuf> {
+  if let Some(top) = layout.top_level.get(&nv.name)
+    && top.id.nv == *nv
+  {
+    return Some(join_package_name(
+      Cow::Borrowed(root_node_modules_path),
+      &nv.name,
+    ));
+  }
+  for nested in &layout.nested {
+    if nested.dep.id.nv == *nv {
+      return Some(join_package_name(
+        Cow::Owned(
+          root_node_modules_path
+            .join(&nested.parent_path)
+            .join("node_modules"),
+        ),
+        &nv.name,
+      ));
+    }
+  }
+  None
 }
 
 fn resolve_remote_pkg_id(
