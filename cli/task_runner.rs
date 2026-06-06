@@ -465,37 +465,23 @@ impl ShellCommand for NodeCommand {
           .write_line(&format!("error launching 'node': {err}"));
         return Box::pin(std::future::ready(ExecuteResult::from_exit_code(1)));
       }
-      // Re-parse as `node [--require <m>]... [--import <m>]... <tempfile>
-      // <args>` so node_shim produces the script run flags
-      // (`deno run -A --unstable-...`) rather than `deno eval`, while preserving
-      // any `--require`/`--import` preloads passed alongside `-e`/`-p`.
-      let env = &parsed.options.per_isolate.per_env;
-      let mut run_args = Vec::with_capacity(
-        (env.preload_cjs_modules.len() + env.preload_esm_modules.len()) * 2
-          + 1
-          + eval_argv.len(),
-      );
-      for module in &env.preload_cjs_modules {
-        run_args.push("--require".to_string());
-        run_args.push(module.clone());
-      }
-      for module in &env.preload_esm_modules {
-        run_args.push("--import".to_string());
-        run_args.push(module.clone());
-      }
-      run_args.push(temp_path.to_string_lossy().into_owned());
-      run_args.extend(eval_argv);
-      match node_shim::parse_args(run_args) {
-        Ok(reparsed) => parsed = reparsed,
-        Err(_) => {
-          let _ = std::fs::remove_file(&temp_path);
-          return ExecutableCommand::new(
-            "node".to_string(),
-            PathBuf::from("node"),
-          )
-          .execute(context);
-        }
-      }
+      // Turn the parsed `node -e`/`-p` invocation into the equivalent
+      // `node <tempfile> <args>` *in place* so node_shim produces script run
+      // flags (`deno run -A --unstable-...`) rather than `deno eval`. Mutating
+      // the existing parse (instead of reparsing a reconstructed arg list)
+      // preserves every other flag from the original command — V8 flags,
+      // `--conditions`, `--no-warnings` and other NODE_OPTIONS passthroughs, and
+      // the `--require`/`--import` preloads — which a from-scratch reparse of
+      // just the preloads + temp file would silently drop. We only clear the
+      // eval markers and point the script path at the temp file.
+      let env = &mut parsed.options.per_isolate.per_env;
+      env.has_eval_string = false;
+      env.eval_string = String::new();
+      env.print_eval = false;
+      let mut remaining_args = Vec::with_capacity(1 + eval_argv.len());
+      remaining_args.push(temp_path.to_string_lossy().into_owned());
+      remaining_args.extend(eval_argv);
+      parsed.remaining_args = remaining_args;
       Some(temp_path)
     } else {
       None
