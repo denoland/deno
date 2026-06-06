@@ -115,7 +115,10 @@ impl CryptoKey {
   }
 }
 
-#[allow(dead_code, reason = "wired up incrementally as each SubtleCrypto method moves into Rust")]
+#[allow(
+  dead_code,
+  reason = "wired up incrementally as each SubtleCrypto method moves into Rust"
+)]
 impl CryptoKey {
   pub fn key_type(&self) -> CryptoKeyType {
     self.key_type

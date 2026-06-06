@@ -96,8 +96,13 @@ impl<'a> WebIdlConverter<'a> for SubtleDecryptParams {
       "AES-CBC" => {
         let obj =
           maybe_obj.ok_or_else(|| missing_dict(prefix.clone(), &context))?;
-        let iv =
-          read_required_buffer_source(scope, obj, "iv", prefix.clone(), &context)?;
+        let iv = read_required_buffer_source(
+          scope,
+          obj,
+          "iv",
+          prefix.clone(),
+          &context,
+        )?;
         Ok(Self::AesCbc { iv })
       }
       "AES-CTR" => {
@@ -117,8 +122,13 @@ impl<'a> WebIdlConverter<'a> for SubtleDecryptParams {
       "AES-GCM" => {
         let obj =
           maybe_obj.ok_or_else(|| missing_dict(prefix.clone(), &context))?;
-        let iv =
-          read_required_buffer_source(scope, obj, "iv", prefix.clone(), &context)?;
+        let iv = read_required_buffer_source(
+          scope,
+          obj,
+          "iv",
+          prefix.clone(),
+          &context,
+        )?;
         let additional_data =
           read_optional_buffer_source(scope, obj, "additionalData");
         let tag_length = read_optional_u32(scope, obj, "tagLength");
@@ -131,8 +141,13 @@ impl<'a> WebIdlConverter<'a> for SubtleDecryptParams {
       "AES-OCB" => {
         let obj =
           maybe_obj.ok_or_else(|| missing_dict(prefix.clone(), &context))?;
-        let iv =
-          read_required_buffer_source(scope, obj, "iv", prefix.clone(), &context)?;
+        let iv = read_required_buffer_source(
+          scope,
+          obj,
+          "iv",
+          prefix.clone(),
+          &context,
+        )?;
         let additional_data =
           read_optional_buffer_source(scope, obj, "additionalData");
         let tag_length = read_optional_u32(scope, obj, "tagLength");
@@ -316,9 +331,7 @@ fn read_required_u32<'a, 'b>(
     WebIdlError::other(
       prefix,
       context.borrowed(),
-      JsErrorBox::type_error(format!(
-        "'{field}' must be convertible to u32"
-      )),
+      JsErrorBox::type_error(format!("'{field}' must be convertible to u32")),
     )
   })
 }
@@ -365,8 +378,13 @@ pub fn run(
       let hash = key.algorithm_hash.ok_or_else(|| {
         op_error("RSA-OAEP key is missing 'hash'".to_string())
       })?;
-      decrypt::decrypt_rsa_oaep(&key.raw, hash, label.unwrap_or_default(), &data)
-        .map_err(decrypt_error_to_crypto)
+      decrypt::decrypt_rsa_oaep(
+        &key.raw,
+        hash,
+        label.unwrap_or_default(),
+        &data,
+      )
+      .map_err(decrypt_error_to_crypto)
     }
     SubtleDecryptParams::AesCbc { iv } => {
       if iv.len() != 16 {
@@ -492,20 +510,15 @@ pub fn run(
       if data.len() < 16 {
         return Err(op_error("The provided data is too small".to_string()));
       }
-      decrypt::decrypt_chacha20_poly1305(
-        &key.raw,
-        &iv,
-        additional_data,
-        &data,
-      )
-      .map_err(decrypt_error_to_crypto)
+      decrypt::decrypt_chacha20_poly1305(&key.raw, &iv, additional_data, &data)
+        .map_err(decrypt_error_to_crypto)
     }
-    SubtleDecryptParams::Unknown(name) => Err(CryptoError::Other(
-      JsErrorBox::new(
+    SubtleDecryptParams::Unknown(name) => {
+      Err(CryptoError::Other(JsErrorBox::new(
         "DOMExceptionNotSupportedError",
         format!("Algorithm '{name}' is not supported"),
-      ),
-    )),
+      )))
+    }
   }
 }
 

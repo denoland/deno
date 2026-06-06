@@ -82,12 +82,8 @@ impl<'a> WebIdlConverter<'a> for SubtleEncryptParams {
     context: ContextFn<'b>,
     _options: &Self::Options,
   ) -> Result<Self, WebIdlError> {
-    let (name_str, maybe_obj) = extract_name_and_obj(
-      scope,
-      value,
-      prefix.clone(),
-      context.borrowed(),
-    )?;
+    let (name_str, maybe_obj) =
+      extract_name_and_obj(scope, value, prefix.clone(), context.borrowed())?;
     let Some(canonical) = canonical_encrypt_name(&name_str) else {
       return Ok(Self::Unknown(name_str));
     };
@@ -119,13 +115,8 @@ impl<'a> WebIdlConverter<'a> for SubtleEncryptParams {
           prefix.clone(),
           &context,
         )?;
-        let length = read_required_u32(
-          scope,
-          obj,
-          "length",
-          prefix.clone(),
-          &context,
-        )?;
+        let length =
+          read_required_u32(scope, obj, "length", prefix.clone(), &context)?;
         Ok(Self::AesCtr { counter, length })
       }
       "AES-GCM" => {
@@ -395,9 +386,7 @@ fn read_required_u32<'a, 'b>(
     WebIdlError::other(
       prefix,
       context.borrowed(),
-      JsErrorBox::type_error(format!(
-        "'{field}' must be convertible to u32"
-      )),
+      JsErrorBox::type_error(format!("'{field}' must be convertible to u32")),
     )
   })
 }
@@ -443,8 +432,13 @@ pub fn run(
       let hash = key.algorithm_hash.ok_or_else(|| {
         op_error("RSA-OAEP key is missing 'hash'".to_string())
       })?;
-      encrypt::encrypt_rsa_oaep(&key.raw, hash, label.unwrap_or_default(), &data)
-        .map_err(encrypt_error_to_crypto)
+      encrypt::encrypt_rsa_oaep(
+        &key.raw,
+        hash,
+        label.unwrap_or_default(),
+        &data,
+      )
+      .map_err(encrypt_error_to_crypto)
     }
     SubtleEncryptParams::AesCbc { iv } => {
       if iv.len() != 16 {
@@ -569,20 +563,15 @@ pub fn run(
           "ChaCha20-Poly1305 tagLength must be 128".to_string(),
         ));
       }
-      encrypt::encrypt_chacha20_poly1305(
-        &key.raw,
-        &iv,
-        additional_data,
-        &data,
-      )
-      .map_err(encrypt_error_to_crypto)
+      encrypt::encrypt_chacha20_poly1305(&key.raw, &iv, additional_data, &data)
+        .map_err(encrypt_error_to_crypto)
     }
-    SubtleEncryptParams::Unknown(name) => Err(CryptoError::Other(
-      JsErrorBox::new(
+    SubtleEncryptParams::Unknown(name) => {
+      Err(CryptoError::Other(JsErrorBox::new(
         "DOMExceptionNotSupportedError",
         format!("Algorithm '{name}' is not supported"),
-      ),
-    )),
+      )))
+    }
   }
 }
 
