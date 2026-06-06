@@ -1933,6 +1933,74 @@ mod test {
   }
 
   #[test]
+  fn collapse_redundant_segments_ignores_non_file_schemes() {
+    // The scheme guard must win even when the path itself contains a `//`, so
+    // non-file specifiers are returned completely untouched.
+    for url in [
+      "https://example.com//a//b.js",
+      "http://deno.land/x//mod.ts",
+      "data:text/plain,//hello",
+    ] {
+      let mut specifier = Url::parse(url).unwrap();
+      let original = specifier.clone();
+      collapse_redundant_file_specifier_segments(&mut specifier);
+      assert_eq!(specifier, original, "{url} should be left unchanged");
+    }
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn collapse_redundant_segments_file() {
+    fn collapse(url: &str) -> String {
+      let mut specifier = Url::parse(url).unwrap();
+      collapse_redundant_file_specifier_segments(&mut specifier);
+      specifier.to_string()
+    }
+
+    // The empty segment produced by `.//a.js` (the regression in #23821) is
+    // collapsed so cyclic imports dedupe instead of growing a slash per cycle.
+    assert_eq!(collapse("file:///dir//a.js"), "file:///dir/a.js");
+    // Multiple runs of redundant separators are all collapsed.
+    assert_eq!(collapse("file:///a////b//c.js"), "file:///a/b/c.js");
+    // A `.` segment next to the redundant slash is collapsed too.
+    assert_eq!(collapse("file:///a/.//b.js"), "file:///a/b.js");
+    // An already-normalized specifier is returned byte-for-byte unchanged.
+    assert_eq!(collapse("file:///a/b.js"), "file:///a/b.js");
+    // Note: there is intentionally no `..` case here. The `Url` type always
+    // resolves `.`/`..` dot segments when a specifier is constructed, so the
+    // only redundancy that can reach this helper is empty (`//`) segments;
+    // `Path::components()` never resolves `..`, so the collapse stays
+    // symlink-safe regardless.
+    // Query and fragment survive the path round-trip.
+    assert_eq!(
+      collapse("file:///a//b.js?foo=1#bar"),
+      "file:///a/b.js?foo=1#bar"
+    );
+    // Percent-encoded characters survive the decode/re-encode round-trip.
+    assert_eq!(collapse("file:///a//b%20c.js"), "file:///a/b%20c.js");
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn collapse_redundant_segments_file_windows() {
+    fn collapse(url: &str) -> String {
+      let mut specifier = Url::parse(url).unwrap();
+      collapse_redundant_file_specifier_segments(&mut specifier);
+      specifier.to_string()
+    }
+
+    // The drive-letter prefix is preserved while redundant separators after it
+    // are collapsed.
+    assert_eq!(collapse("file:///C:/dir//a.js"), "file:///C:/dir/a.js");
+    assert_eq!(collapse("file:///C:/a////b//c.js"), "file:///C:/a/b/c.js");
+    assert_eq!(collapse("file:///C:/a/b.js"), "file:///C:/a/b.js");
+    assert_eq!(
+      collapse("file:///C:/a//b.js?foo=1#bar"),
+      "file:///C:/a/b.js?foo=1#bar"
+    );
+  }
+
+  #[test]
   fn pkg_json_resolution() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
