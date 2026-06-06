@@ -3195,7 +3195,6 @@ dependencies = [
  "node_resolver",
  "notify",
  "once_cell",
- "rustyline",
  "same-file",
  "serde",
  "sys_traits",
