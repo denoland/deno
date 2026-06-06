@@ -280,7 +280,6 @@ rustls-tokio-stream = "=0.8.0"
 rustls-webpki = "0.102"
 rustyline = { version = "=17.0.0", features = ["custom-bindings"] }
 rustyline-derive = "=0.11.1"
-saffron = "=0.1.0"
 same-file = "1.0.6"
 scopeguard = "1.2.0"
 semver = "=1.0.25"
@@ -310,7 +309,6 @@ tokio-rustls = { version = "0.26.0", default-features = false, features = ["aws_
 tokio-socks = "0.5.3"
 tokio-util = "0.7.16"
 tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }
-tower-http = { version = "0.6.1", features = ["decompression-br", "decompression-gzip"] }
 tower-lsp = { package = "deno_tower_lsp", version = "=0.5.0", features = ["proposed"] }
 tower-service = "0.3.2"
 tracing = "0.1"

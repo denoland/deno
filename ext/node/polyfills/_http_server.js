@@ -111,6 +111,7 @@ const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
   );
 import {
   applyAddressOverride,
+  notifyAddressOverrideServing,
   startOverrideListener,
 } from "ext:deno_node/internal/http/address_override.js";
 const {
@@ -1446,6 +1447,7 @@ Server.prototype.listen = function listen(...args) {
       }
       const rewritten = [{ host: applied.host, port: applied.port }];
       if (cb) ArrayPrototypePush(rewritten, cb);
+      this.once("listening", notifyAddressOverrideServing);
       return FunctionPrototypeApply(
         net.Server.prototype.listen,
         this,
