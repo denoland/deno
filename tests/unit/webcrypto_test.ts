@@ -2693,6 +2693,62 @@ Deno.test(async function rawPublicAliasForExistingAsymmetricAlgorithms() {
   }
 });
 
+// X448 private keys must be exportable to JWK (kty=OKP, crv=X448, x + d),
+// mirroring X25519. Regression test for the previously-missing private export.
+Deno.test(async function x448JwkExportImportRoundtrip() {
+  const { publicKey, privateKey } = await crypto.subtle.generateKey(
+    { name: "X448" },
+    true,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  // Public JWK export: only x.
+  const pubJwk = await crypto.subtle.exportKey("jwk", publicKey);
+  assertEquals(pubJwk.kty, "OKP");
+  assertEquals(pubJwk.crv, "X448");
+  assert(typeof pubJwk.x === "string" && pubJwk.x.length > 0);
+  assertEquals(pubJwk.d, undefined);
+
+  // Private JWK export: both x (derived public) and d (private scalar).
+  const privJwk = await crypto.subtle.exportKey("jwk", privateKey);
+  assertEquals(privJwk.kty, "OKP");
+  assertEquals(privJwk.crv, "X448");
+  assert(typeof privJwk.x === "string" && privJwk.x.length > 0);
+  assert(typeof privJwk.d === "string" && privJwk.d.length > 0);
+  // The exported public component matches the standalone public key export.
+  assertEquals(privJwk.x, pubJwk.x);
+
+  // Re-import the private JWK and confirm a stable round-trip.
+  const reimported = await crypto.subtle.importKey(
+    "jwk",
+    privJwk,
+    { name: "X448" },
+    true,
+    ["deriveBits"],
+  );
+  assertEquals(reimported.type, "private");
+  const privJwk2 = await crypto.subtle.exportKey("jwk", reimported);
+  assertEquals(privJwk2.d, privJwk.d);
+  assertEquals(privJwk2.x, privJwk.x);
+
+  // Derived bits are identical whether using the original or re-imported key.
+  const bits1 = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: "X448", public: publicKey },
+      privateKey,
+      224,
+    ),
+  );
+  const bits2 = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: "X448", public: publicKey },
+      reimported,
+      224,
+    ),
+  );
+  assertEquals(bits1, bits2);
+});
+
 Deno.test(async function hmacSha3SignVerify() {
   for (const hash of ["SHA3-256", "SHA3-384", "SHA3-512"]) {
     const key = await crypto.subtle.generateKey(
@@ -2707,42 +2763,12 @@ Deno.test(async function hmacSha3SignVerify() {
   }
 });
 
-Deno.test(async function shakeDigest() {
-  const data = new Uint8Array(0);
-  // SHAKE128 of empty produces, for 256 bits:
-  // 7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26
-  // (NIST test vector)
-  const shake128 = new Uint8Array(
-    await crypto.subtle.digest(
-      { name: "SHAKE128", outputLength: 256 } as AnyAlg,
-      data,
-    ),
-  );
-  assertEquals(shake128.length, 32);
-  assertEquals(
-    [...shake128].map((b) => b.toString(16).padStart(2, "0")).join(""),
-    "7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26",
-  );
-
-  // SHAKE256 with 512 bits.
-  const shake256 = new Uint8Array(
-    await crypto.subtle.digest(
-      { name: "SHAKE256", outputLength: 512 } as AnyAlg,
-      data,
-    ),
-  );
-  assertEquals(shake256.length, 64);
-});
-
 Deno.test(async function cshakeDigest() {
   // cSHAKE with empty function name and empty customization equals SHAKE.
+  // The spec defines no standalone SHAKE algorithm; SHAKE is reachable only
+  // as cSHAKE with empty N and S. Reference vector is SHAKE128("hello", 128).
   const data = new TextEncoder().encode("hello");
-  const shake = new Uint8Array(
-    await crypto.subtle.digest(
-      { name: "SHAKE128", outputLength: 128 } as AnyAlg,
-      data,
-    ),
-  );
+  const shake = "8eb4b6a932f280335ee1a279f8c208a3";
   const cshake = new Uint8Array(
     await crypto.subtle.digest(
       {
@@ -2754,7 +2780,10 @@ Deno.test(async function cshakeDigest() {
       data,
     ),
   );
-  assertEquals(shake, cshake);
+  assertEquals(
+    [...cshake].map((b) => b.toString(16).padStart(2, "0")).join(""),
+    shake,
+  );
 
   // Non-empty customization changes the output.
   const customized = new Uint8Array(
@@ -2768,15 +2797,11 @@ Deno.test(async function cshakeDigest() {
     ),
   );
   assert(customized.length === 16);
-  // Must differ from plain SHAKE.
-  let differs = false;
-  for (let i = 0; i < shake.length; i++) {
-    if (shake[i] !== customized[i]) {
-      differs = true;
-      break;
-    }
-  }
-  assert(differs);
+  // Must differ from plain SHAKE (cSHAKE with empty customization).
+  const customizedHex = [...customized].map((b) =>
+    b.toString(16).padStart(2, "0")
+  ).join("");
+  assert(customizedHex !== shake);
 });
 
 Deno.test(async function turboShakeDigest() {
@@ -2818,8 +2843,6 @@ Deno.test(async function shakeFamilyRequiresOutputLength() {
   // https://wicg.github.io/webcrypto-modern-algos/#cshake-params
   const data = new Uint8Array(0);
   const names = [
-    "SHAKE128",
-    "SHAKE256",
     "cSHAKE128",
     "cSHAKE256",
     "TurboSHAKE128",
@@ -2952,40 +2975,6 @@ for (const variant of ML_KEM_VARIANTS) {
     const dec = await subtleAny.decapsulateBits(
       { name: variant.name },
       kp.privateKey,
-      enc.ciphertext,
-    );
-    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
-  });
-
-  Deno.test(`mlKemImportExportRawPrivate:${variant.name}`, async () => {
-    const kp = await subtleAny.generateKey(
-      { name: variant.name },
-      true,
-      ["encapsulateBits", "decapsulateBits"],
-    ) as CryptoKeyPair;
-
-    const exported = new Uint8Array(
-      await subtleAny.exportKey("raw-private", kp.privateKey),
-    );
-    assertEquals(exported.length, variant.privLen);
-
-    const reimported = await subtleAny.importKey(
-      "raw-private",
-      exported,
-      { name: variant.name },
-      true,
-      ["decapsulateBits"],
-    );
-    assertEquals(reimported.algorithm.name, variant.name);
-    assertEquals(reimported.type, "private");
-
-    const enc = await subtleAny.encapsulateBits(
-      { name: variant.name },
-      kp.publicKey,
-    );
-    const dec = await subtleAny.decapsulateBits(
-      { name: variant.name },
-      reimported,
       enc.ciphertext,
     );
     assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
@@ -3138,41 +3127,28 @@ for (const variant of ML_KEM_VARIANTS) {
     assertEquals(privJwk2.pub, privJwk.pub);
   });
 
-  Deno.test(`mlKemRawPrivateHasNoSeed:${variant.name}`, async () => {
-    // A key imported from the expanded raw-private form carries no seed, so
-    // seed-bearing exports (raw-seed / jwk / pkcs8) must reject.
+  Deno.test(`mlKemRawPrivateNotSupported:${variant.name}`, async () => {
+    // raw-private is not a spec format for ML-KEM (only raw-seed/pkcs8/jwk).
     const kp = await subtleAny.generateKey(
       { name: variant.name },
       true,
       ["encapsulateBits", "decapsulateBits"],
     ) as CryptoKeyPair;
-    const expanded = new Uint8Array(
-      await subtleAny.exportKey("raw-private", kp.privateKey),
+    await assertRejects(
+      () => subtleAny.exportKey("raw-private", kp.privateKey),
+      DOMException,
     );
-    const noSeed = await subtleAny.importKey(
-      "raw-private",
-      expanded,
-      { name: variant.name },
-      true,
-      ["decapsulateBits"],
+    await assertRejects(
+      () =>
+        subtleAny.importKey(
+          "raw-private",
+          new Uint8Array(variant.privLen),
+          { name: variant.name },
+          true,
+          ["decapsulateBits"],
+        ),
+      DOMException,
     );
-    for (const format of ["raw-seed", "jwk", "pkcs8"]) {
-      await assertRejects(
-        () => subtleAny.exportKey(format, noSeed),
-        DOMException,
-      );
-    }
-    // It still decapsulates correctly.
-    const enc = await subtleAny.encapsulateBits(
-      { name: variant.name },
-      kp.publicKey,
-    );
-    const dec = await subtleAny.decapsulateBits(
-      { name: variant.name },
-      noSeed,
-      enc.ciphertext,
-    );
-    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
   });
 
   Deno.test(`mlKemGetPublicKey:${variant.name}`, async () => {
@@ -3382,14 +3358,10 @@ Deno.test(async function mlKemJwkBadPrivateUsageRejected() {
 // The WICG spec requires PKCS#8 import to reject the (non-seed) expanded-key
 // form with a NotSupportedError; only the seed form is supported.
 Deno.test(async function mlKemPkcs8ExpandedFormRejected() {
-  const kp = await subtleAny.generateKey(
-    { name: "ML-KEM-512" },
-    true,
-    ["decapsulateBits"],
-  ) as CryptoKeyPair;
-  const expanded = new Uint8Array(
-    await subtleAny.exportKey("raw-private", kp.privateKey),
-  );
+  // The importer classifies a bare OCTET STRING privateKey as the expanded
+  // form by its DER shape, before inspecting the contents, so arbitrary bytes
+  // of the right size suffice. 1632 = ML-KEM-512 expanded private key size.
+  const expanded = new Uint8Array(1632);
 
   // Build a minimal DER tag-length-value.
   const tlv = (tag: number, content: number[]): number[] => {
@@ -3544,7 +3516,7 @@ Deno.test(function subtleCryptoSupportsBasic() {
   assert(supports("digest", "SHA-256"));
   assert(supports("digest", "SHA3-256"));
   assert(supports("digest", "SHA3-512"));
-  assert(supports("digest", { name: "SHAKE128", outputLength: 256 }));
+  assert(supports("digest", { name: "cSHAKE128", outputLength: 256 }));
   // generateKey
   assert(supports("generateKey", {
     name: "AES-GCM",
@@ -3593,8 +3565,7 @@ Deno.test(function subtleCryptoSupportsModernAlgorithms() {
   assert(supports("digest", "SHA3-256"));
   assert(supports("digest", "SHA3-384"));
   assert(supports("digest", "SHA3-512"));
-  // SHAKE / cSHAKE / TurboSHAKE digests
-  assert(supports("digest", { name: "SHAKE128", outputLength: 256 }));
+  // cSHAKE / TurboSHAKE XOF digests
   assert(
     supports("digest", { name: "cSHAKE128", outputLength: 256 }),
   );

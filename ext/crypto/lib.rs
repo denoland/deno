@@ -137,7 +137,6 @@ deno_core::extension!(deno_crypto,
     ed25519::op_crypto_export_pkcs8_ed25519,
     ed25519::op_crypto_jwk_x_ed25519,
     mldsa::op_crypto_mldsa_from_seed,
-    mldsa::op_crypto_mldsa_from_raw_private,
     mldsa::op_crypto_mldsa_from_pkcs8,
     mldsa::op_crypto_mldsa_from_spki,
     mldsa::op_crypto_mldsa_export_pkcs8,
@@ -152,7 +151,6 @@ deno_core::extension!(deno_crypto,
     mlkem::op_crypto_ml_kem_export_spki,
     mlkem::op_crypto_ml_kem_export_pkcs8,
     mlkem::op_crypto_ml_kem_get_public_key,
-    mlkem::op_crypto_ml_kem_validate_private_key,
     mlkem::op_crypto_ml_kem_validate_public_key,
   ],
   lazy_loaded_js = [ "00_crypto.js" ],
@@ -242,6 +240,9 @@ pub enum CryptoError {
   #[class("DOMExceptionOperationError")]
   #[error("decryption error - integrity check failed")]
   DecryptionError,
+  #[class("DOMExceptionOperationError")]
+  #[error("Invalid XOF parameters")]
+  InvalidXofParameters,
   #[class("DOMExceptionQuotaExceededError")]
   #[error(
     "The ArrayBufferView's byte length ({0}) exceeds the number of bytes of entropy available via this API (65536)"
@@ -988,10 +989,6 @@ pub async fn op_crypto_subtle_digest(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", tag = "name")]
 pub enum SubtleDigestXof {
-  #[serde(rename = "SHAKE128", rename_all = "camelCase")]
-  Shake128 { output_length: u32 },
-  #[serde(rename = "SHAKE256", rename_all = "camelCase")]
-  Shake256 { output_length: u32 },
   #[serde(rename = "cSHAKE128", rename_all = "camelCase")]
   CShake128 {
     output_length: u32,
@@ -1031,30 +1028,18 @@ pub async fn op_crypto_subtle_digest_xof(
     use sha3::digest::XofReader;
 
     let length_bits = match &algorithm {
-      SubtleDigestXof::Shake128 { output_length, .. }
-      | SubtleDigestXof::Shake256 { output_length, .. }
-      | SubtleDigestXof::CShake128 { output_length, .. }
+      SubtleDigestXof::CShake128 { output_length, .. }
       | SubtleDigestXof::CShake256 { output_length, .. }
       | SubtleDigestXof::TurboShake128 { output_length, .. }
       | SubtleDigestXof::TurboShake256 { output_length, .. } => *output_length,
     };
     if !length_bits.is_multiple_of(8) {
-      return Err(CryptoError::InvalidKeyLength);
+      return Err(CryptoError::InvalidXofParameters);
     }
     let out_len = (length_bits / 8) as usize;
     let mut out = vec![0u8; out_len];
 
     match algorithm {
-      SubtleDigestXof::Shake128 { .. } => {
-        let mut h = sha3::Shake128::default();
-        h.update(&data);
-        h.finalize_xof().read(&mut out);
-      }
-      SubtleDigestXof::Shake256 { .. } => {
-        let mut h = sha3::Shake256::default();
-        h.update(&data);
-        h.finalize_xof().read(&mut out);
-      }
       SubtleDigestXof::CShake128 {
         function_name,
         customization,
@@ -1089,7 +1074,7 @@ pub async fn op_crypto_subtle_digest_xof(
         use sha3::digest::core_api::CoreWrapper;
         let d = domain_separation.unwrap_or(0x1F);
         if !(0x01..=0x7F).contains(&d) {
-          return Err(CryptoError::UnsupportedAlgorithm);
+          return Err(CryptoError::InvalidXofParameters);
         }
         let core = sha3::TurboShake128Core::new(d);
         let mut h: sha3::TurboShake128 = CoreWrapper::from_core(core);
@@ -1102,7 +1087,7 @@ pub async fn op_crypto_subtle_digest_xof(
         use sha3::digest::core_api::CoreWrapper;
         let d = domain_separation.unwrap_or(0x1F);
         if !(0x01..=0x7F).contains(&d) {
-          return Err(CryptoError::UnsupportedAlgorithm);
+          return Err(CryptoError::InvalidXofParameters);
         }
         let core = sha3::TurboShake256Core::new(d);
         let mut h: sha3::TurboShake256 = CoreWrapper::from_core(core);
