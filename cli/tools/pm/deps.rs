@@ -63,6 +63,17 @@ pub enum ImportMapKind {
 pub enum DepLocation {
   DenoJson(ConfigFileRc, KeyPath, ImportMapKind),
   PackageJson(PackageJsonRc, KeyPath),
+  /// A `catalog`/`catalogs` entry defined in the workspace root config
+  /// (deno.json or package.json). Unlike the other locations the value is a
+  /// bare version requirement (e.g. `^1.0.0`) rather than a full specifier.
+  /// `key_paths` lists candidate paths to the entry; the first one that
+  /// resolves is updated (package.json may declare catalogs at the top level
+  /// or nested under `workspaces`).
+  Catalog {
+    path: PathBuf,
+    kind: super::ConfigKind,
+    key_paths: Vec<KeyPath>,
+  },
 }
 
 impl DepLocation {
@@ -79,12 +90,14 @@ impl DepLocation {
         ImportMapKind::Outline(path) => Cow::Borrowed(path.as_path()),
       },
       DepLocation::PackageJson(arc, _) => Cow::Borrowed(arc.path.as_ref()),
+      DepLocation::Catalog { path, .. } => Cow::Borrowed(path.as_path()),
     }
   }
   fn config_kind(&self) -> super::ConfigKind {
     match self {
       DepLocation::DenoJson(_, _, _) => super::ConfigKind::DenoJson,
       DepLocation::PackageJson(_, _) => super::ConfigKind::PackageJson,
+      DepLocation::Catalog { kind, .. } => *kind,
     }
   }
 }
@@ -121,6 +134,16 @@ impl std::fmt::Debug for DepLocation {
         let mut debug = f.debug_tuple("PackageJson");
         debug.field(&DebugAdapter(arc)).field(key_path).finish()
       }
+      DepLocation::Catalog {
+        path,
+        kind,
+        key_paths,
+      } => f
+        .debug_struct("Catalog")
+        .field("path", path)
+        .field("kind", kind)
+        .field("key_paths", key_paths)
+        .finish(),
     }
   }
 }
@@ -403,6 +426,119 @@ fn add_deps_from_package_json(
   );
 }
 
+/// Collects dependencies declared in the workspace root `catalog`/`catalogs`
+/// (referenced from members via the `catalog:` protocol). These live in a
+/// single place in the root config, so they are gathered once here rather than
+/// per member reference.
+fn add_deps_from_catalogs(
+  workspace: &Workspace,
+  mut filter: impl DepFilter,
+  deps: &mut Vec<Dep>,
+) {
+  // Mirror `Workspace`'s own resolution: a root package.json catalog takes
+  // precedence over deno.json, and if it's present deno.json catalogs are
+  // ignored entirely.
+  let pkg_json = workspace.root_pkg_json().filter(|pj| {
+    pj.catalog.as_ref().is_some_and(|c| !c.is_empty())
+      || pj.catalogs.as_ref().is_some_and(|c| !c.is_empty())
+  });
+
+  let (path, kind, catalog, catalogs, nested) = if let Some(pj) = pkg_json {
+    (
+      pj.path.clone(),
+      super::ConfigKind::PackageJson,
+      pj.catalog.as_ref(),
+      pj.catalogs.as_ref(),
+      // package.json may declare catalogs nested under `workspaces`.
+      true,
+    )
+  } else if let Some(dj) = workspace.root_deno_json() {
+    let Ok(path) = dj.specifier.to_file_path() else {
+      return;
+    };
+    (
+      path,
+      super::ConfigKind::DenoJson,
+      dj.catalog(),
+      dj.catalogs(),
+      false,
+    )
+  } else {
+    return;
+  };
+
+  let mut add_entry = |name: &str,
+                       version_req_str: &str,
+                       key_paths: Vec<KeyPath>| {
+    let version_req = match VersionReq::parse_from_npm(version_req_str) {
+      Ok(version_req) => version_req,
+      Err(err) => {
+        log::warn!(
+          "failed to parse catalog version requirement \"{version_req_str}\" for \"{name}\": {err}"
+        );
+        return;
+      }
+    };
+    let req = PackageReq {
+      name: name.into(),
+      version_req,
+    };
+    if !filter.should_include(None, &req, DepKind::Npm) {
+      return;
+    }
+    let id = DepId(deps.len());
+    deps.push(Dep {
+      id,
+      kind: DepKind::Npm,
+      location: DepLocation::Catalog {
+        path: path.clone(),
+        kind,
+        key_paths,
+      },
+      req,
+      alias: None,
+    });
+  };
+
+  if let Some(catalog) = catalog {
+    for (name, version_req) in catalog {
+      let mut key_paths = vec![KeyPath::from_parts([
+        KeyPart::String("catalog".into()),
+        KeyPart::String(name.as_str().into()),
+      ])];
+      if nested {
+        key_paths.push(KeyPath::from_parts([
+          KeyPart::String("workspaces".into()),
+          KeyPart::String("catalog".into()),
+          KeyPart::String(name.as_str().into()),
+        ]));
+      }
+      add_entry(name, version_req, key_paths);
+    }
+  }
+
+  if let Some(catalogs) = catalogs {
+    for (catalog_name, entries) in catalogs {
+      for (name, version_req) in entries {
+        let mut key_paths = vec![KeyPath::from_parts([
+          KeyPart::String("catalogs".into()),
+          KeyPart::String(catalog_name.as_str().into()),
+          KeyPart::String(name.as_str().into()),
+        ])];
+        if nested {
+          key_paths.push(KeyPath::from_parts([
+            KeyPart::String("workspaces".into()),
+            KeyPart::String("catalogs".into()),
+            KeyPart::String(catalog_name.as_str().into()),
+            KeyPart::String(name.as_str().into()),
+          ]));
+        }
+        add_entry(name, version_req, key_paths);
+      }
+    }
+  }
+}
+
 fn deps_from_workspace(
   workspace: &Arc<Workspace>,
   dep_filter: impl DepFilter,
@@ -414,6 +550,7 @@ fn deps_from_workspace(
   for package_json in workspace.package_jsons() {
     add_deps_from_package_json(package_json, dep_filter, &mut deps);
   }
+  add_deps_from_catalogs(workspace, dep_filter, &mut deps);
 
   Ok(deps)
 }
@@ -545,6 +682,11 @@ impl DepManager {
     }
     if let Some(package_json) = workspace_dir.member_pkg_json() {
       add_deps_from_package_json(package_json, dep_filter, &mut deps);
+    }
+    // Catalogs are a workspace-root concept, so only include them when running
+    // in the root directory (the recursive path handles them via the workspace).
+    if workspace_dir.dir_path() == workspace_dir.workspace.root_dir_path() {
+      add_deps_from_catalogs(&workspace_dir.workspace, dep_filter, &mut deps);
     }
 
     Ok(Self::with_deps_args(deps, args))
@@ -972,6 +1114,21 @@ impl DepManager {
               };
               property
                 .set_value(jsonc_parser::cst::CstInputValue::String(new_value));
+            }
+            DepLocation::Catalog {
+              path, key_paths, ..
+            } => {
+              let updater =
+                get_or_create_updater(&mut config_updaters, &dep.location)?;
+              if !updater
+                .update_catalog_entry(key_paths, &version_req.to_string())
+              {
+                log::warn!(
+                  "failed to find catalog entry for \"{}\" in {}",
+                  dep.req.name,
+                  path.display()
+                );
+              }
             }
           }
         }
