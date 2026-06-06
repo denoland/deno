@@ -85,8 +85,9 @@ impl PublishOrderGraph {
 /// `current_name`, returning the cycle in dependency order (e.g.
 /// `["a", "b", "c", "a"]` for `a -> b -> c -> a`).
 ///
-/// This is inefficient, but that's ok because it's simple and will only ever
-/// happen when there's an error.
+/// This runs on every publish (via `ensure_no_cycles`), including the common
+/// no-cycle case. It is inefficient, but that's ok because it's simple and the
+/// graphs involved are small.
 fn identify_cycle(
   current_name: &str,
   mut visited: HashSet<String>,
