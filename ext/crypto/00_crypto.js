@@ -1234,7 +1234,7 @@ ObjectAssign(SubtleCrypto.prototype, {
       isAlgorithmRegisteredFor(normalizedAlgorithm.name, "encrypt")
     ) {
       // must construct a new key, since keyUsages is ["wrapKey"] and not ["encrypt"]
-      return await encrypt(
+      return await this.encrypt(
         normalizedAlgorithm,
         constructKey(
           wrappingKey.type,
@@ -6864,7 +6864,6 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       throw new DOMException("Not implemented", "NotSupportedError");
   }
 }
-
 
 webidl.configureInterface(SubtleCrypto);
 // The `SubtleCrypto` singleton (reachable as `globalThis.crypto.subtle`)
