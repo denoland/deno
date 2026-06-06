@@ -321,32 +321,21 @@ fn strip_markdown_blockquote_marker(line: &str) -> &str {
   line
 }
 
-/// The runtime permissions that can be expressed in a `Deno.test`
-/// `PermissionOptionsObject`.
-const PERMISSION_NAMES: &[&str] =
-  &["env", "ffi", "import", "net", "read", "run", "sys", "write"];
-
-/// Returns `true` if `token` is a recognized `--allow-*` permission flag (or
-/// the `-A` / `--allow-all` shorthand).
-fn is_allow_permission_flag(token: &str) -> bool {
-  if token == "-A" || token == "--allow-all" {
-    return true;
-  }
-  if let Some(rest) = token.strip_prefix("--allow-") {
-    let name = rest.split('=').next().unwrap_or(rest);
-    return PERMISSION_NAMES.contains(&name);
-  }
-  false
-}
-
 /// Parses a shebang line like `#!/usr/bin/env -S deno run --allow-read` and
 /// returns the permission flags it requests so that they can be forwarded to
 /// the generated `Deno.test` call.
 ///
-/// Returns `None` when the shebang does not invoke `deno`, so that an
-/// unrelated interpreter does not silently revoke the test's permissions. A
-/// `deno` shebang with no permission flags yields an empty [`PermissionFlags`],
-/// which results in the test running with no permissions.
+/// The flags are parsed by reconstructing the argv that `deno` would receive
+/// when the OS executes the shebang (everything from the `deno` token onwards,
+/// plus the script path the OS appends) and handing it to the regular CLI flag
+/// parser. This reuses `deno`'s own flag handling rather than reimplementing
+/// it.
+///
+/// Returns `None` when the shebang does not invoke `deno` (so an unrelated
+/// interpreter does not silently revoke the test's permissions) or when the
+/// reconstructed command does not parse. A `deno` shebang with no permission
+/// flags yields an empty [`PermissionFlags`], which results in the test running
+/// with no permissions.
 fn parse_shebang_permissions(shebang: &str) -> Option<PermissionFlags> {
   let line = shebang.trim_start().strip_prefix("#!")?;
   let tokens = line.split_whitespace().collect::<Vec<_>>();
@@ -360,17 +349,12 @@ fn parse_shebang_permissions(shebang: &str) -> Option<PermissionFlags> {
       == Some("deno")
   })?;
 
-  // Anything after `deno <subcommand>` are the flags we care about. We only
-  // forward recognized permission flags so that other flags present in the
-  // shebang don't cause the flag parser to error.
-  let permission_flags = tokens[deno_index + 1..]
-    .iter()
-    .filter(|token| is_allow_permission_flag(token))
-    .map(|token| OsString::from(*token));
-
-  let mut args = vec![OsString::from("deno"), OsString::from("run")];
-  args.extend(permission_flags);
-  // `deno run` requires a script argument.
+  // Reconstruct the argv `deno` is invoked with: the `deno` token, every
+  // argument that follows it, and the script path that the OS appends when it
+  // runs the shebang. Parsing the whole command (rather than cherry-picking
+  // flags) lets the CLI parser own all of the flag semantics.
+  let mut args = vec![OsString::from("deno")];
+  args.extend(tokens[deno_index + 1..].iter().map(OsString::from));
   args.push(OsString::from("./__doctest_shebang__.ts"));
 
   flags_from_vec(args).ok().map(|flags| flags.permissions)
@@ -1560,6 +1544,35 @@ Deno.test("file:///main.ts$3-8.ts", async ()=>{
 /**
  * ```ts
  * #!/usr/bin/env -S deno run --allow-read
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", {
+    permissions: {
+        read: "inherit"
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Non-permission flags in the shebang are parsed by the CLI flag parser
+      // and simply ignored; only the permissions are forwarded.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --no-check --allow-read
  * foo();
  * ```
  */
