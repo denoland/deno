@@ -87,7 +87,6 @@ Deno.test(function requestDefaultProperties() {
   assertEquals(req.integrity, "");
   assertEquals(req.keepalive, false);
   assertEquals(req.mode, "cors");
-  assertEquals(req.priority, "auto");
   assertEquals(req.referrer, "about:client");
   assertEquals(req.referrerPolicy, "");
 });
@@ -108,7 +107,6 @@ Deno.test(function requestInitProperties() {
   assertEquals(req.integrity, "sha256-abc");
   assertEquals(req.keepalive, true);
   assertEquals(req.mode, "no-cors");
-  assertEquals(req.priority, "high");
   assertEquals(req.referrer, "http://example.com/");
   assertEquals(req.referrerPolicy, "no-referrer");
 });
@@ -168,7 +166,6 @@ Deno.test(function requestPropertiesInheritedFromRequest() {
   assertEquals(cloned.integrity, "sha256-abc");
   assertEquals(cloned.keepalive, true);
   assertEquals(cloned.mode, "no-cors");
-  assertEquals(cloned.priority, "low");
   assertEquals(cloned.referrer, "http://example.com/");
   assertEquals(cloned.referrerPolicy, "origin");
 });
@@ -190,7 +187,6 @@ Deno.test(function requestCloneCopiesAllProperties() {
   assertEquals(cloned.integrity, "sha384-xyz");
   assertEquals(cloned.keepalive, true);
   assertEquals(cloned.mode, "cors");
-  assertEquals(cloned.priority, "high");
   assertEquals(cloned.referrer, "http://example.com/");
   assertEquals(cloned.referrerPolicy, "strict-origin");
 });

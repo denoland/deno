@@ -645,11 +645,6 @@ class Request {
     return this[_request].mode ?? "cors";
   }
 
-  get priority() {
-    webidl.assertBranded(this, RequestPrototype);
-    return this[_request].priority ?? "auto";
-  }
-
   get referrer() {
     webidl.assertBranded(this, RequestPrototype);
     const referrer = this[_request].referrer;
