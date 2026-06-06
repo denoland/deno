@@ -5,7 +5,7 @@ use std::num::NonZeroU32;
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
 use aes_kw::KekAes256;
-use aws_lc_rs::digest;
+use aws_lc_rs::digest as awslc_digest;
 use aws_lc_rs::hkdf;
 use aws_lc_rs::hmac::Algorithm as HmacAlgorithm;
 use aws_lc_rs::hmac::Key as HmacKey;
@@ -60,6 +60,7 @@ mod algorithm;
 mod crypto;
 mod crypto_key;
 mod decrypt;
+mod digest;
 mod ed25519;
 mod encrypt;
 mod export_key;
@@ -995,7 +996,7 @@ pub async fn op_crypto_subtle_digest(
   #[buffer] data: JsBuffer,
 ) -> Result<Uint8Array, CryptoError> {
   let output = spawn_blocking(move || {
-    digest::digest(algorithm.into(), &data)
+    awslc_digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()
       .into()

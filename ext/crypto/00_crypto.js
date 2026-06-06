@@ -63,8 +63,6 @@ const {
   op_crypto_sign_ed25519,
   op_crypto_sign_key,
   op_crypto_sign_mldsa,
-  op_crypto_subtle_digest,
-  op_crypto_subtle_digest_xof,
   op_crypto_unwrap_key,
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
@@ -530,85 +528,11 @@ function getKeyLength(algorithm) {
   );
 }
 
+// `SubtleCrypto.prototype.digest` is implemented natively on the cppgc
+// impl block in `ext/crypto/subtle_crypto.rs`; see `digest.rs` for the
+// `DigestAlgorithm` / `BufferSource` converters and the dispatch.
+
 ObjectAssign(SubtleCrypto.prototype, {
-  /**
-   * @param {string} algorithm
-   * @param {BufferSource} data
-   * @returns {Promise<ArrayBuffer>}
-   */
-  async digest(algorithm, data) {
-    webidl.assertBranded(this, SubtleCryptoPrototype);
-    const prefix = "Failed to execute 'digest' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
-    algorithm = webidl.converters.AlgorithmIdentifier(
-      algorithm,
-      prefix,
-      "Argument 1",
-    );
-    data = webidl.converters.BufferSource(data, prefix, "Argument 2");
-
-    // Normalize the algorithm before copying the data: a getter on the
-    // algorithm object may alter or detach the input buffer, and the copy
-    // must observe that (WebCrypto "get a copy of the bytes" happens after
-    // normalization). See WPT digest "...buffer during call" tests.
-    algorithm = normalizeAlgorithm(algorithm, "digest");
-
-    data = copyBuffer(data);
-
-    switch (algorithm.name) {
-      case "cSHAKE128":
-      case "cSHAKE256":
-      case "TurboSHAKE128":
-      case "TurboSHAKE256": {
-        if (algorithm.outputLength % 8 !== 0) {
-          throw new DOMException(
-            `'outputLength' must be a multiple of 8 for ${algorithm.name}`,
-            "OperationError",
-          );
-        }
-        // cSHAKE permits a 0-bit output (empty digest); TurboSHAKE requires a
-        // positive length.
-        if (
-          algorithm.outputLength === 0 &&
-          (algorithm.name === "TurboSHAKE128" ||
-            algorithm.name === "TurboSHAKE256")
-        ) {
-          throw new DOMException(
-            `'outputLength' must be a positive multiple of 8 for ${algorithm.name}`,
-            "OperationError",
-          );
-        }
-        if (
-          (algorithm.name === "TurboSHAKE128" ||
-            algorithm.name === "TurboSHAKE256") &&
-          algorithm.domainSeparation !== undefined &&
-          (algorithm.domainSeparation < 0x01 ||
-            algorithm.domainSeparation > 0x7F)
-        ) {
-          throw new DOMException(
-            "'domainSeparation' must be in [0x01, 0x7F]",
-            "OperationError",
-          );
-        }
-        const xofResult = await op_crypto_subtle_digest_xof({
-          name: algorithm.name,
-          outputLength: algorithm.outputLength,
-          functionName: algorithm.functionName ?? null,
-          customization: algorithm.customization ?? null,
-          domainSeparation: algorithm.domainSeparation ?? null,
-        }, data);
-        return TypedArrayPrototypeGetBuffer(xofResult);
-      }
-    }
-
-    const result = await op_crypto_subtle_digest(
-      algorithm.name,
-      data,
-    );
-
-    return TypedArrayPrototypeGetBuffer(result);
-  },
-
   /**
    * @param {string} algorithm
    * @param {CryptoKey} key

@@ -10,10 +10,15 @@ use std::ffi::CStr;
 
 use deno_core::GarbageCollected;
 use deno_core::op2;
+use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
 
+use crate::CryptoError;
 use crate::algorithm::check_support_for_algorithm;
+use crate::digest::BufferSource;
+use crate::digest::DigestAlgorithm;
+use crate::digest::run as run_digest;
 use crate::shared::SharedError;
 
 pub struct SubtleCrypto;
@@ -52,6 +57,22 @@ impl SubtleCrypto {
     #[string] algorithm_name: &str,
   ) -> bool {
     check_support_for_algorithm(operation, algorithm_name)
+  }
+
+  /// `SubtleCrypto.digest(algorithm, data)` — compute a one-shot
+  /// cryptographic hash. The `WebIdlConverter` for `DigestAlgorithm`
+  /// performs the `AlgorithmIdentifier` coercion + canonical name lookup
+  /// that the JS body used to do via `normalizeAlgorithm`, and
+  /// `BufferSource` copies the input bytes upfront so we satisfy the
+  /// spec "get a copy of the bytes" before any async work.
+  #[required(2)]
+  #[arraybuffer]
+  async fn digest(
+    &self,
+    #[webidl] algorithm: DigestAlgorithm,
+    #[webidl] data: BufferSource,
+  ) -> Result<Vec<u8>, CryptoError> {
+    spawn_blocking(move || run_digest(algorithm, data.0)).await?
   }
 }
 
