@@ -632,6 +632,7 @@ impl CliFactory {
             | DenoSubcommand::Fmt { .. }
             | DenoSubcommand::Init { .. }
             | DenoSubcommand::Info { .. }
+            | DenoSubcommand::List { .. }
             | DenoSubcommand::JSONReference { .. }
             | DenoSubcommand::Jupyter { .. }
             | DenoSubcommand::Lsp
@@ -1452,6 +1453,7 @@ fn new_workspace_factory_options(
         | DenoSubcommand::Clean(_)
         | DenoSubcommand::Init(_)
         | DenoSubcommand::Install(_)
+        | DenoSubcommand::List(_)
         | DenoSubcommand::Outdated(_)
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Uninstall(_)
