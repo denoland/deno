@@ -23,7 +23,7 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use fqdn::FQDN;
-use ipnetwork::IpNetwork;
+use ipnet::IpNet;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde::Deserialize;
@@ -1769,7 +1769,7 @@ pub enum Host {
   FqdnWithSubdomainWildcard(FQDN),
   Ip(IpAddr),
   Vsock(u32),
-  IpSubnet(IpNetwork),
+  IpSubnet(IpNet),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1833,7 +1833,7 @@ impl Host {
         ));
       }
       Ok(Host::Ip(normalize_ip(ip)))
-    } else if let Ok(ip_subnet) = s.parse::<IpNetwork>() {
+    } else if let Ok(ip_subnet) = s.parse::<IpNet>() {
       Ok(Host::IpSubnet(ip_subnet))
     } else {
       let lower = if s.chars().all(|c| c.is_ascii_lowercase()) {
@@ -1929,7 +1929,7 @@ impl QueryDescriptor for NetDescriptor {
       ) => a == b,
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
-      (Host::IpSubnet(a), Host::Ip(b)) => a.contains(*b),
+      (Host::IpSubnet(a), Host::Ip(b)) => a.contains(b),
       _ => false,
     }
   }
@@ -2825,6 +2825,25 @@ pub struct SpecialFilePathQueryDescriptor<'a> {
 }
 
 impl<'a> SpecialFilePathQueryDescriptor<'a> {
+  /// Construct from a `PathQueryDescriptor` without resolving symlinks.
+  ///
+  /// Used by no-follow access modes (lstat, readlink, readdir, etc.) where
+  /// canonicalizing would change semantics by resolving the final path
+  /// component. The /proc, /dev, /sys prefix guard in `check_special_file`
+  /// still applies — it just uses the un-resolved path.
+  pub fn from_path_query_no_canonicalize(
+    path: PathQueryDescriptor<'a>,
+  ) -> Self {
+    let PathQueryDescriptor {
+      path, requested, ..
+    } = path;
+    Self {
+      path,
+      requested,
+      canonicalized: false,
+    }
+  }
+
   pub fn parse(
     sys: &impl sys_traits::FsCanonicalize,
     path: PathQueryDescriptor<'a>,
@@ -2882,7 +2901,7 @@ impl SysDescriptor {
       "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
-      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setuid" => {
+      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setuid" | "ca" => {
         Ok(Self(kind))
       }
 
@@ -3225,10 +3244,10 @@ impl UnaryPermission<NetDescriptor> {
     for item in self.descriptors.iter() {
       match item {
         UnaryPermissionDesc::FlagDenied(v)
-        | UnaryPermissionDesc::FlagIgnored(v) => {
-          if desc.matches_deny(v) {
-            return Err(denied());
-          }
+        | UnaryPermissionDesc::FlagIgnored(v)
+          if desc.matches_deny(v) =>
+        {
+          return Err(denied());
         }
         _ => {}
       }
@@ -3853,7 +3872,7 @@ fn ignored_to_not_found(err: PermissionDeniedError) -> PermissionCheckError {
   #[cfg(windows)]
   fn not_found() -> std::io::Error {
     std::io::Error::from_raw_os_error(
-      winapi::shared::winerror::ERROR_FILE_NOT_FOUND as i32,
+      windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND as i32,
     )
   }
 
@@ -4148,18 +4167,16 @@ impl PermissionsContainer {
       }
     };
 
-    if access_kind.is_no_follow() {
-      Ok(CheckedPath {
-        path: PathWithRequested {
-          path: path.path,
-          requested: path.requested.map(Cow::Owned),
-        },
-        canonicalized: false,
-      })
+    let special_path = if access_kind.is_no_follow() {
+      // Don't canonicalize: lstat/readlink/readdir need to operate on the
+      // un-resolved path. The /proc, /dev, /sys prefix guard inside
+      // `check_special_file` still fires when the caller-supplied path is
+      // itself a kernel-magic location (e.g. `/proc/self/root/...`).
+      SpecialFilePathQueryDescriptor::from_path_query_no_canonicalize(path)
     } else {
-      let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-      self.check_special_file(path, access_kind, api_name)
-    }
+      self.descriptor_parser.parse_special_file_descriptor(path)?
+    };
+    self.check_special_file(special_path, access_kind, api_name)
   }
 
   #[inline(always)]

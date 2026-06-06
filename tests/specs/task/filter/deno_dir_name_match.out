@@ -1,0 +1,2 @@
+Task dev (@scope/totally-different-foo) echo 'foo-dir ran'
+foo-dir ran

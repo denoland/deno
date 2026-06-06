@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   FunctionPrototypeBind,
   ObjectCreate,
@@ -11,32 +12,36 @@ const {
   SafeArrayIterator,
   SafePromisePrototypeFinally,
 } = primordials;
-import {
+const {
   getActiveTimer,
   Immediate,
   kDestroy,
   Timeout,
-} from "ext:deno_node/internal/timers.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/timers.mjs");
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
   validateNumber,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { kEmptyObject, promisify } from "ext:deno_node/internal/util.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { kEmptyObject, promisify } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const {
   AbortError,
   ERR_ILLEGAL_CONSTRUCTOR,
-} from "ext:deno_node/internal/errors.ts";
-import { kResistStopPropagation } from "ext:deno_node/internal/event_target.mjs";
-import type { Abortable } from "node:events";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const lazyEventTarget = core.createLazyLoader(
+  "ext:deno_node/internal/event_target.mjs",
+);
 
-interface TimerOptions extends Abortable {
+interface TimerOptions {
+  signal?: AbortSignal | undefined;
   ref?: boolean | undefined;
 }
 
-export function setTimeout(
+function setTimeout(
   callback: (...args: unknown[]) => void,
   timeout?: number,
   ...args: unknown[]
@@ -99,7 +104,7 @@ function setTimeoutPromise<T = void>(
 
     signal.addEventListener("abort", oncancel, {
       __proto__: null,
-      [kResistStopPropagation]: true,
+      [lazyEventTarget().kResistStopPropagation]: true,
     });
   }
 
@@ -124,14 +129,14 @@ ObjectDefineProperty(setTimeout, promisify.custom, {
   },
 });
 
-export function clearTimeout(timeout?: Timeout | number) {
+function clearTimeout(timeout?: Timeout | number) {
   if (timeout == null) {
     return;
   }
   const id = +timeout;
   getActiveTimer(id)?.[kDestroy]();
 }
-export function setInterval(
+function setInterval(
   callback: (...args: unknown[]) => void,
   timeout?: number,
   ...args: unknown[]
@@ -139,14 +144,14 @@ export function setInterval(
   validateFunction(callback, "callback");
   return new Timeout(callback, timeout, args, true, true);
 }
-export function clearInterval(timeout?: Timeout | number | string) {
+function clearInterval(timeout?: Timeout | number | string) {
   if (timeout == null) {
     return;
   }
   const id = +timeout;
   getActiveTimer(id)?.[kDestroy]();
 }
-export function setImmediate(
+function setImmediate(
   cb: (...args: unknown[]) => void,
   ...args: unknown[]
 ): Timeout {
@@ -195,7 +200,7 @@ function setImmediatePromise<T = void>(
 
     signal.addEventListener("abort", oncancel, {
       __proto__: null,
-      [kResistStopPropagation]: true,
+      [lazyEventTarget().kResistStopPropagation]: true,
     });
   }
 
@@ -220,7 +225,7 @@ ObjectDefineProperty(setImmediate, promisify.custom, {
   },
 });
 
-export function clearImmediate(immediate: Immediate) {
+function clearImmediate(immediate: Immediate) {
   if (!immediate?._onImmediate || immediate._destroyed) {
     return;
   }
@@ -290,6 +295,7 @@ async function* setIntervalAsync(
         yield value;
       }
     }
+    throw new AbortError(undefined, { cause: signal?.reason });
   } catch (error) {
     if (signal?.aborted) {
       throw new AbortError(undefined, { cause: signal?.reason });
@@ -305,7 +311,7 @@ async function* setIntervalAsync(
   }
 }
 
-export const promises = {
+const promises = {
   setTimeout: setTimeoutPromise,
   setImmediate: setImmediatePromise,
   setInterval: setIntervalAsync,
@@ -329,7 +335,7 @@ class Scheduler {
 const scheduler = ObjectCreate(Scheduler.prototype);
 promises.scheduler = scheduler;
 
-export default {
+return {
   setTimeout,
   clearTimeout,
   setInterval,
@@ -338,3 +344,4 @@ export default {
   clearImmediate,
   promises,
 };
+})();

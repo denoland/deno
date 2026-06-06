@@ -3,13 +3,34 @@
 //
 // Ported from Node.js lib/internal/js_stream_socket.js
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  Array,
+  FunctionPrototypeCall,
+  MapPrototypeGet,
+  Symbol,
+  SymbolFor,
+} = primordials;
 
-import { Socket } from "node:net";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { codeMap, UV_ECANCELED } from "ext:deno_node/internal_binding/uv.ts";
-import { setImmediate } from "node:timers";
+const lazyNet = core.createLazyLoader("node:net");
+const lazyTimers = core.createLazyLoader("node:timers");
+
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { codeMap, UV_ECANCELED } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
+const {
+  kArrayBufferOffset,
+  kBytesWritten,
+  kLastWriteWasAsync,
+  kReadBytesOrError,
+  streamBaseState,
+} = core.loadExtScript("ext:deno_node/internal_binding/stream_wrap.ts");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { ERR_STREAM_WRAP } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
 const kCurrentWriteRequest = Symbol("kCurrentWriteRequest");
 const kCurrentShutdownRequest = Symbol("kCurrentShutdownRequest");
@@ -19,7 +40,7 @@ const kPendingClose = Symbol("kPendingClose");
 // Mark JS stream handles so TLSWrap can detect them.
 // Use Symbol.for so tls_wrap.ts can access it without importing
 // (avoids circular dependency).
-const kJSStreamHandle = Symbol.for("kJSStreamHandle");
+const kJSStreamHandle = SymbolFor("kJSStreamHandle");
 
 function isClosing() {
   return this[kOwner].isClosing();
@@ -31,7 +52,7 @@ function onreadstop() {
   return this[kOwner].readStop();
 }
 
-const kOwner = Symbol.for("kJSStreamOwner");
+const kOwner = SymbolFor("kJSStreamOwner");
 
 /* This class serves as a wrapper for when the Rust TLS layer wants access
  * to a standard JS stream. For example, TLS or HTTP2 do not operate on
@@ -45,7 +66,7 @@ const kOwner = Symbol.for("kJSStreamOwner");
  * composability, we need a way to create "fake" net.Socket instances that
  * call back into a "real" JavaScript stream. JSStreamSocket is exactly this.
  */
-class JSStreamSocket extends Socket {
+class JSStreamSocket extends lazyNet().Socket {
   constructor(stream) {
     // Create a lightweight handle object that mimics what Node's
     // JSStream C++ binding provides. TLSWrap detects kJSStreamHandle
@@ -67,9 +88,80 @@ class JSStreamSocket extends Socket {
       readStop() {
         return handle[kOwner].readStop();
       },
-      // These are set by TLSWrap after attachJsStream()
-      readBuffer: null,
-      emitEOF: null,
+      // Write methods - delegate to owner.doWrite which writes to the
+      // underlying stream and triggers req.oncomplete via finishWrite.
+      writeBuffer(req, data) {
+        // deno-lint-ignore prefer-primordials
+        const len = data.byteLength ?? data.length ?? 0;
+        streamBaseState[kBytesWritten] = len;
+        streamBaseState[kLastWriteWasAsync] = 1;
+        return handle[kOwner].doWrite(req, [data]);
+      },
+      writev(req, chunks, allBuffers) {
+        let bufs;
+        let total = 0;
+        if (allBuffers) {
+          bufs = chunks;
+          for (let i = 0; i < bufs.length; i++) {
+            // deno-lint-ignore prefer-primordials
+            total += bufs[i].byteLength ?? bufs[i].length ?? 0;
+          }
+        } else {
+          bufs = new Array(chunks.length >> 1);
+          for (let i = 0; i < chunks.length; i += 2) {
+            const chunk = chunks[i];
+            const enc = chunks[i + 1];
+            const buf = typeof chunk === "string"
+              ? Buffer.from(chunk, enc)
+              : chunk;
+            bufs[i >> 1] = buf;
+            // deno-lint-ignore prefer-primordials
+            total += buf.byteLength ?? buf.length ?? 0;
+          }
+        }
+        streamBaseState[kBytesWritten] = total;
+        streamBaseState[kLastWriteWasAsync] = 1;
+        return handle[kOwner].doWrite(req, bufs);
+      },
+      writeAsciiString(req, data) {
+        return this.writeBuffer(req, Buffer.from(data, "ascii"));
+      },
+      writeUtf8String(req, data) {
+        return this.writeBuffer(req, Buffer.from(data, "utf8"));
+      },
+      writeLatin1String(req, data) {
+        return this.writeBuffer(req, Buffer.from(data, "latin1"));
+      },
+      writeUcs2String(req, data) {
+        return this.writeBuffer(req, Buffer.from(data, "utf16le"));
+      },
+      shutdown(req) {
+        return handle[kOwner].doShutdown(req);
+      },
+      // Default read path: forward bytes from the underlying Duplex into
+      // the wrapping Socket's readable side via the standard onread
+      // callback (set by net._initSocketHandle).
+      // TLSWrap.attachJsStream() overrides these to route data through
+      // the TLS engine instead.
+      readBuffer(chunk) {
+        if (!handle.onread) return;
+        // deno-lint-ignore prefer-primordials
+        const len = chunk.byteLength ?? chunk.length ?? 0;
+        if (len === 0) return;
+        // deno-lint-ignore prefer-primordials
+        streamBaseState[kArrayBufferOffset] = chunk.byteOffset ?? 0;
+        streamBaseState[kReadBytesOrError] = len;
+        FunctionPrototypeCall(handle.onread, handle, chunk, len);
+      },
+      emitEOF() {
+        if (!handle.onread) return;
+        FunctionPrototypeCall(
+          handle.onread,
+          handle,
+          null,
+          MapPrototypeGet(codeMap, "EOF"),
+        );
+      },
       reading: false,
     };
 
@@ -83,7 +175,7 @@ class JSStreamSocket extends Socket {
         // Make sure that no further `data` events will happen.
         stream.pause();
         stream.removeListener("data", ondata);
-        this.emit("error", new Error("Stream is not in binary mode"));
+        this.emit("error", new ERR_STREAM_WRAP());
         return;
       }
 
@@ -152,13 +244,13 @@ class JSStreamSocket extends Socket {
     return 0;
   }
 
-  finishShutdown(_handle, _errCode) {
-    if (this[kCurrentShutdownRequest] === null) return;
+  finishShutdown(_handle, errCode) {
+    const req = this[kCurrentShutdownRequest];
+    if (req === null) return;
     this[kCurrentShutdownRequest] = null;
-    // TODO(@bartlomieju): In Node.js this calls handle.finishShutdown(errCode)
-    // to invoke the C++ write completion callback. For now TLSWrap handles
-    // shutdown completion internally. If JS-stream writes hang, this may
-    // need to notify TLSWrap explicitly.
+    if (typeof req.oncomplete === "function") {
+      req.oncomplete(errCode | 0);
+    }
   }
 
   doWrite(req, bufs) {
@@ -189,10 +281,11 @@ class JSStreamSocket extends Socket {
 
       let errCode = 0;
       if (err) {
-        errCode = codeMap.get(err.code) || codeMap.get("EPIPE");
+        errCode = MapPrototypeGet(codeMap, err.code) ||
+          MapPrototypeGet(codeMap, "EPIPE");
       }
 
-      setImmediate(() => {
+      lazyTimers().setImmediate(() => {
         self.finishWrite(handle, errCode);
       });
     }
@@ -200,18 +293,18 @@ class JSStreamSocket extends Socket {
     return 0;
   }
 
-  // TODO(@bartlomieju): In Node.js this calls handle.finishWrite(errCode)
-  // to notify C++ of write completion. Currently we just track request state.
-  // The tls_jsstreamsocket_close test covers the close path, but complex
-  // write patterns over JSStreamSocket may need explicit TLSWrap notification.
-  finishWrite(_handle, _errCode) {
-    if (this[kCurrentWriteRequest] === null) return;
+  finishWrite(_handle, errCode) {
+    const req = this[kCurrentWriteRequest];
+    if (req === null) return;
     this[kCurrentWriteRequest] = null;
+    if (typeof req.oncomplete === "function") {
+      req.oncomplete(errCode | 0);
+    }
 
     if (this[kPendingShutdownRequest]) {
-      const req = this[kPendingShutdownRequest];
+      const sreq = this[kPendingShutdownRequest];
       this[kPendingShutdownRequest] = null;
-      this.doShutdown(req);
+      this.doShutdown(sreq);
     }
   }
 
@@ -221,7 +314,7 @@ class JSStreamSocket extends Socket {
 
     this.stream.destroy();
 
-    setImmediate(() => {
+    lazyTimers().setImmediate(() => {
       this.finishWrite(handle, UV_ECANCELED);
       this.finishShutdown(handle, UV_ECANCELED);
       this[kPendingClose] = false;
@@ -230,5 +323,11 @@ class JSStreamSocket extends Socket {
   }
 }
 
-export { JSStreamSocket, kJSStreamHandle, kOwner };
-export default JSStreamSocket;
+// Node's lib/internal/js_stream_socket exports the class as the module
+// itself, with `StreamWrap` as a self-reference so destructuring works:
+//   const StreamWrap = require('internal/js_stream_socket');
+//   const { StreamWrap } = require('internal/js_stream_socket');
+JSStreamSocket.StreamWrap = JSStreamSocket;
+
+return { JSStreamSocket, kJSStreamHandle, kOwner, default: JSStreamSocket };
+})();

@@ -1,35 +1,47 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  Error,
+  ErrorPrototype,
+  MathMin,
+  NumberIsNaN,
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 
-import { Buffer, kMaxLength } from "node:buffer";
-import {
+const { Buffer, kMaxLength } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
+const {
   emitAfter,
   emitBefore,
   emitDestroy,
   emitInit,
   executionAsyncId,
   newAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
+const {
   validateFunction,
   validateNumber,
-} from "ext:deno_node/internal/validators.mjs";
-import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
-import process from "node:process";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { ERR_OUT_OF_RANGE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 
-export const MAX_RANDOM_VALUES = 65536;
+const lazyProcess = core.createLazyLoader("node:process");
+
+const MAX_RANDOM_VALUES = 65536;
 const kMaxInt32 = 2 ** 31 - 1;
-const kMaxPossibleLength = Math.min(kMaxLength, kMaxInt32);
-export const MAX_SIZE = kMaxPossibleLength;
+const kMaxPossibleLength = MathMin(kMaxLength, kMaxInt32);
+const MAX_SIZE = kMaxPossibleLength;
 
 // Mirrors Node's lib/internal/crypto/random.js assertSize() with
 // elementSize = 1, offset = 0, length = Infinity.
 function assertSize(size: number): number {
   validateNumber(size, "size");
 
-  if (Number.isNaN(size) || size > kMaxPossibleLength || size < 0) {
+  if (NumberIsNaN(size) || size > kMaxPossibleLength || size < 0) {
     throw new ERR_OUT_OF_RANGE(
       "size",
       `>= 0 && <= ${kMaxPossibleLength}`,
@@ -45,8 +57,13 @@ function generateRandomBytes(size: number) {
 
   //Work around for getRandomValues max generation
   if (size > MAX_RANDOM_VALUES) {
-    for (let generated = 0; generated < size; generated += MAX_RANDOM_VALUES) {
+    for (
+      let generated = 0;
+      generated < size;
+      generated += MAX_RANDOM_VALUES
+    ) {
       globalThis.crypto.getRandomValues(
+        // deno-lint-ignore prefer-primordials -- Buffer.prototype.slice (Node Buffer method, not TypedArray slice)
         bytes.slice(generated, generated + MAX_RANDOM_VALUES),
       );
     }
@@ -60,12 +77,7 @@ function generateRandomBytes(size: number) {
 /**
  * @param size Buffer length, must be equal or greater than zero
  */
-export default function randomBytes(size: number): Buffer;
-export default function randomBytes(
-  size: number,
-  cb?: (err: Error | null, buf?: Buffer) => void,
-): void;
-export default function randomBytes(
+function randomBytes(
   size: number,
   cb?: (err: Error | null, buf?: Buffer) => void,
 ): Buffer | void {
@@ -78,7 +90,7 @@ export default function randomBytes(
     try {
       bytes = generateRandomBytes(size);
     } catch (e) {
-      if (e instanceof Error) {
+      if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)) {
         err = e;
       } else {
         err = new Error("[non-error thrown]");
@@ -91,6 +103,7 @@ export default function randomBytes(
     const resource = {};
     emitInit(asyncId, "RANDOMBYTESREQUEST", triggerAsyncId, resource);
 
+    const process = lazyProcess().default;
     process.nextTick(() => {
       emitBefore(asyncId);
       try {
@@ -115,3 +128,6 @@ export default function randomBytes(
     return generateRandomBytes(size);
   }
 }
+
+return { default: randomBytes, randomBytes, MAX_RANDOM_VALUES, MAX_SIZE };
+})();

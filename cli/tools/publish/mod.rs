@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -34,7 +33,6 @@ use http_body_util::BodyExt;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
-use tokio::process::Command;
 
 use self::diagnostics::PublishDiagnostic;
 use self::diagnostics::PublishDiagnosticsCollector;
@@ -57,6 +55,7 @@ use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
 use crate::util::display::human_size;
+use crate::util::git::check_if_git_repo_dirty;
 
 mod auth;
 
@@ -68,6 +67,7 @@ mod provenance;
 mod publish_order;
 mod tar;
 mod unfurl;
+mod wasm;
 
 use auth::AuthMethod;
 use auth::get_auth_method;
@@ -1145,11 +1145,8 @@ fn collect_excluded_module_diagnostics(
         if !deno_path_util::is_relative_specifier(specifier_text) {
           continue;
         }
-        let resolutions = dep
-          .maybe_code
-          .ok()
-          .into_iter()
-          .chain(dep.maybe_type.ok().into_iter());
+        let resolutions =
+          dep.maybe_code.ok().into_iter().chain(dep.maybe_type.ok());
         let mut maybe_res = resolutions.filter_map(|r| {
           let pkg = all_jsr_packages.get_for_specifier(&r.specifier)?;
           if pkg.member_dir.dir_url().as_ref() != root_dir {
@@ -1244,39 +1241,6 @@ fn verify_version_manifest(
   }
 
   Ok(())
-}
-
-async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
-  let bin_name = if cfg!(windows) { "git.exe" } else { "git" };
-
-  //  Check if git exists
-  let git_exists = Command::new(bin_name)
-    .arg("--version")
-    .stderr(Stdio::null())
-    .stdout(Stdio::null())
-    .status()
-    .await
-    .is_ok_and(|status| status.success());
-
-  if !git_exists {
-    return None; // Git is not installed
-  }
-
-  // Check if there are uncommitted changes
-  let output = Command::new(bin_name)
-    .current_dir(cwd)
-    .args(["status", "--porcelain"])
-    .output()
-    .await
-    .expect("Failed to execute command");
-
-  let output_str = String::from_utf8_lossy(&output.stdout);
-  let text = output_str.trim();
-  if text.is_empty() {
-    None
-  } else {
-    Some(text.to_string())
-  }
 }
 
 static SUPPORTED_LICENSE_FILE_NAMES: [&str; 12] = [

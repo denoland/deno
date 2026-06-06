@@ -96,7 +96,7 @@ deno_core::extension!(
     ops::signal::op_signal_unbind,
     ops::signal::op_signal_poll,
   ],
-  esm = ["30_os.js", "40_signals.js"],
+  lazy_loaded_js = ["30_os.js", "40_signals.js"],
   options = {
     exit_code: Option<ExitCode>,
   },
@@ -355,7 +355,6 @@ fn op_exit(state: &mut OpState) {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_loadavg(
   state: &mut OpState,
 ) -> Result<(f64, f64, f64), PermissionCheckError> {
@@ -435,7 +434,6 @@ impl From<netif::Interface> for NetworkInterface {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<sys_info::MemInfo>, PermissionCheckError> {
@@ -526,13 +524,13 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 
 #[cfg(windows)]
 fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::minwindef::FILETIME;
-  use winapi::shared::minwindef::TRUE;
-  use winapi::um::minwinbase::SYSTEMTIME;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::processthreadsapi::GetProcessTimes;
-  use winapi::um::timezoneapi::FileTimeToSystemTime;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::Foundation::FILETIME;
+  use windows_sys::Win32::Foundation::SYSTEMTIME;
+  use windows_sys::Win32::Foundation::TRUE;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+  use windows_sys::Win32::System::Threading::GetProcessTimes;
+  use windows_sys::Win32::System::Time::FileTimeToSystemTime;
 
   fn convert_system_time(system_time: SYSTEMTIME) -> std::time::Duration {
     std::time::Duration::from_secs(
@@ -547,7 +545,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   let mut kernel_time = std::mem::MaybeUninit::<FILETIME>::uninit();
   let mut user_time = std::mem::MaybeUninit::<FILETIME>::uninit();
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   let ret = unsafe {
     GetProcessTimes(
       GetCurrentProcess(),
@@ -748,13 +746,12 @@ fn rss() -> u64 {
 
 #[cfg(windows)]
 fn rss() -> u64 {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::psapi::GetProcessMemoryInfo;
-  use winapi::um::psapi::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::System::ProcessStatus::GetProcessMemoryInfo;
+  use windows_sys::Win32::System::ProcessStatus::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   unsafe {
     // this handle is a constant—no need to close it
     let current_process = GetCurrentProcess();
@@ -763,7 +760,7 @@ fn rss() -> u64 {
     if GetProcessMemoryInfo(
       current_process,
       &mut pmc,
-      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
+      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
     ) != FALSE
     {
       pmc.WorkingSetSize as u64

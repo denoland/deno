@@ -564,14 +564,9 @@ pub async fn run_benchmarks_with_watch(
           cli_options.resolve_bench_options_for_members(&bench_flags)?;
         let watch_paths = members_with_bench_options
           .iter()
-          .filter_map(|(_, bench_options)| {
-            bench_options
-              .files
-              .include
-              .as_ref()
-              .map(|set| set.base_paths())
+          .flat_map(|(_, bench_options)| {
+            file_watcher::watch_paths_for_file_patterns(&bench_options.files)
           })
-          .flatten()
           .collect::<Vec<_>>();
         let _ = watcher_communicator.watch_paths(watch_paths);
         let collected_bench_modules = members_with_bench_options
