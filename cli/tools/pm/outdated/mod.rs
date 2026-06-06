@@ -406,10 +406,7 @@ async fn update(
           let dep = deps.get_dep(to_update.dep_id);
           interactive::PackageInfo {
             id: to_update.dep_id,
-            current_version: to_update
-              .current_version
-              .as_ref()
-              .map(|nv| nv.version.clone()),
+            current_version_req: to_update.current_version_req.clone(),
             name: dep.alias_or_name().into(),
             kind: dep.kind,
             new_version: to_update.new_version_req.clone(),
