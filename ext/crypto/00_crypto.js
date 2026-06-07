@@ -4941,12 +4941,10 @@ async function importKeyInner(
         keyUsages,
       );
     }
-    case "HKDF": {
-      return importKeyHKDF(format, keyData, extractable, keyUsages);
-    }
-    case "PBKDF2": {
-      return importKeyPBKDF2(format, keyData, extractable, keyUsages);
-    }
+    case "HKDF":
+      return importKeyKdf("HKDF", format, keyData, extractable, keyUsages);
+    case "PBKDF2":
+      return importKeyKdf("PBKDF2", format, keyData, extractable, keyUsages);
     case "AES-CTR":
     case "AES-CBC":
     case "AES-GCM":
@@ -5478,18 +5476,14 @@ function importKeyRSA(
   }
 }
 
-function importKeyHKDF(
-  format,
-  keyData,
-  extractable,
-  keyUsages,
-) {
-  // For existing symmetric algorithms "raw" is an alias of "raw-secret".
+// HKDF and PBKDF2 share an identical import shape (raw/raw-secret bytes,
+// non-extractable secret key for deriveKey/deriveBits); fold both into one
+// helper keyed by the canonical algorithm name.
+function importKeyKdf(name, format, keyData, extractable, keyUsages) {
+  // "raw" is an alias of "raw-secret" for symmetric algorithms.
   if (format !== "raw" && format !== "raw-secret") {
     throw new DOMException("Format not supported", "NotSupportedError");
   }
-
-  // 1.
   if (
     ArrayPrototypeFind(
       keyUsages,
@@ -5498,89 +5492,18 @@ function importKeyHKDF(
   ) {
     throw new DOMException("Invalid key usage", "SyntaxError");
   }
-
-  // 2.
   if (extractable !== false) {
-    throw new DOMException(
-      "Key must not be extractable",
-      "SyntaxError",
-    );
+    throw new DOMException("Key must not be extractable", "SyntaxError");
   }
-
-  // 3.
   const handle = {};
-  setKeyData(handle, {
-    type: "secret",
-    data: keyData,
-  });
-
-  // 4-8.
-  const algorithm = {
-    name: "HKDF",
-  };
-  const key = constructKey(
+  setKeyData(handle, { type: "secret", data: keyData });
+  return constructKey(
     "secret",
     false,
     usageIntersection(keyUsages, recognisedUsages),
-    algorithm,
+    { name },
     handle,
   );
-
-  // 9.
-  return key;
-}
-
-function importKeyPBKDF2(
-  format,
-  keyData,
-  extractable,
-  keyUsages,
-) {
-  // 1.
-  // For existing symmetric algorithms "raw" is an alias of "raw-secret".
-  if (format !== "raw" && format !== "raw-secret") {
-    throw new DOMException("Format not supported", "NotSupportedError");
-  }
-
-  // 2.
-  if (
-    ArrayPrototypeFind(
-      keyUsages,
-      (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
-    ) !== undefined
-  ) {
-    throw new DOMException("Invalid key usage", "SyntaxError");
-  }
-
-  // 3.
-  if (extractable !== false) {
-    throw new DOMException(
-      "Key must not be extractable",
-      "SyntaxError",
-    );
-  }
-
-  // 4.
-  const handle = {};
-  setKeyData(handle, {
-    type: "secret",
-    data: keyData,
-  });
-
-  // 5-9.
-  const algorithm = {
-    name: "PBKDF2",
-  };
-  const key = constructKey(
-    "secret",
-    false,
-    usageIntersection(keyUsages, recognisedUsages),
-    algorithm,
-    handle,
-  );
-
-  // 10.
-  return key;
 }
 
 function exportKeyHMAC(format, key, innerKey) {
@@ -7012,9 +6935,9 @@ function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
         usages,
       );
     case "HKDF":
-      return importKeyHKDF(format, keyData, extractable, usages);
+      return importKeyKdf("HKDF", format, keyData, extractable, usages);
     case "PBKDF2":
-      return importKeyPBKDF2(format, keyData, extractable, usages);
+      return importKeyKdf("PBKDF2", format, keyData, extractable, usages);
     case "AES-CTR":
     case "AES-CBC":
     case "AES-GCM":
