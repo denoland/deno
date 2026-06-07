@@ -2533,62 +2533,99 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
   }
 }
 
-// X25519 and X448 share an identical import shape -- only the per-curve
-// key size, the per-curve SPKI/PKCS8 import ops, and the JWK `crv` name
-// differ; centralize the curve table here and route both importKey paths
-// through `importKeyXcurve`.
-const X_CURVE_IMPORT_OPS = {
+// Ed25519, X25519, and X448 all share an identical RFC 8037 OKP import
+// shape (`raw`/`raw-public`/`spki`/`pkcs8`/`jwk`); only the per-curve key
+// size, the per-curve SPKI/PKCS8 import ops, the JWK `crv` name, and the
+// per-curve usage subset (verify/sign for Ed25519, deriveKey/deriveBits
+// for the X-curves, and "sig"/"enc" for `jwk.use`) differ. The single
+// `importKeyOkp` helper takes both kinds via this table.
+const OKP_IMPORT_INFO = {
+  Ed25519: {
+    spki: op_crypto_import_spki_ed25519,
+    pkcs8: op_crypto_import_pkcs8_ed25519,
+    keyLen: 32,
+    pubUsages: ["verify"],
+    privUsages: ["sign"],
+    jwkUse: "sig",
+  },
   X448: {
     spki: op_crypto_import_spki_x448,
     pkcs8: op_crypto_import_pkcs8_x448,
     keyLen: 56,
+    pubUsages: [],
+    privUsages: ["deriveKey", "deriveBits"],
+    jwkUse: "enc",
   },
   X25519: {
     spki: op_crypto_import_spki_x25519,
     pkcs8: op_crypto_import_pkcs8_x25519,
     keyLen: 32,
+    pubUsages: [],
+    privUsages: ["deriveKey", "deriveBits"],
+    jwkUse: "enc",
   },
 };
-function importKeyXcurve(name, format, keyData, extractable, keyUsages) {
-  const ops = X_CURVE_IMPORT_OPS[name];
+function importKeyOkp(name, format, keyData, extractable, keyUsages) {
+  const info = OKP_IMPORT_INFO[name];
   const algorithm = { name };
+  const checkPubUsages = () => {
+    if (
+      ArrayPrototypeFind(
+        keyUsages,
+        (u) => !ArrayPrototypeIncludes(info.pubUsages, u),
+      ) !== undefined
+    ) {
+      throw new DOMException("Invalid key usage", "SyntaxError");
+    }
+  };
+  const checkPrivUsages = () => {
+    if (
+      ArrayPrototypeFind(
+        keyUsages,
+        (u) => !ArrayPrototypeIncludes(info.privUsages, u),
+      ) !== undefined
+    ) {
+      throw new DOMException("Invalid key usage", "SyntaxError");
+    }
+  };
   switch (format) {
     // "raw-public" is an alias of "raw" for existing asymmetric public keys.
     case "raw-public":
     case "raw": {
-      if (keyUsages.length > 0) {
-        throw new DOMException("Invalid key usage", "SyntaxError");
-      }
-      if (TypedArrayPrototypeGetByteLength(keyData) !== ops.keyLen) {
+      checkPubUsages();
+      if (TypedArrayPrototypeGetByteLength(keyData) !== info.keyLen) {
         throw new DOMException("Invalid key data", "DataError");
       }
       const handle = {};
       setKeyData(handle, keyData);
-      return constructKey("public", extractable, [], algorithm, handle);
+      return constructKey(
+        "public",
+        extractable,
+        usageIntersection(keyUsages, recognisedUsages),
+        algorithm,
+        handle,
+      );
     }
     case "spki": {
-      if (keyUsages.length > 0) {
-        throw new DOMException("Invalid key usage", "SyntaxError");
-      }
-      const publicKeyData = new Uint8Array(ops.keyLen);
-      if (!ops.spki(keyData, publicKeyData)) {
+      checkPubUsages();
+      const publicKeyData = new Uint8Array(info.keyLen);
+      if (!info.spki(keyData, publicKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
       const handle = {};
       setKeyData(handle, publicKeyData);
-      return constructKey("public", extractable, [], algorithm, handle);
+      return constructKey(
+        "public",
+        extractable,
+        usageIntersection(keyUsages, recognisedUsages),
+        algorithm,
+        handle,
+      );
     }
     case "pkcs8": {
-      if (
-        ArrayPrototypeFind(
-          keyUsages,
-          (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
-        ) !== undefined
-      ) {
-        throw new DOMException("Invalid key usage", "SyntaxError");
-      }
-      const privateKeyData = new Uint8Array(ops.keyLen);
-      if (!ops.pkcs8(keyData, privateKeyData)) {
+      checkPrivUsages();
+      const privateKeyData = new Uint8Array(info.keyLen);
+      if (!info.pkcs8(keyData, privateKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
       const handle = {};
@@ -2604,17 +2641,10 @@ function importKeyXcurve(name, format, keyData, extractable, keyUsages) {
     case "jwk": {
       // https://www.rfc-editor.org/rfc/rfc8037#section-2
       const jwk = keyData;
-      if (
-        jwk.d !== undefined &&
-        ArrayPrototypeFind(
-          keyUsages,
-          (u) => !ArrayPrototypeIncludes(["deriveKey", "deriveBits"], u),
-        ) !== undefined
-      ) {
-        throw new DOMException("Invalid key usage", "SyntaxError");
-      }
-      if (jwk.d === undefined && keyUsages.length > 0) {
-        throw new DOMException("Invalid key usage", "SyntaxError");
+      if (jwk.d !== undefined) {
+        checkPrivUsages();
+      } else if (keyUsages.length > 0) {
+        checkPubUsages();
       }
       if (jwk.kty !== "OKP") {
         throw new DOMException("Invalid key type", "DataError");
@@ -2623,7 +2653,8 @@ function importKeyXcurve(name, format, keyData, extractable, keyUsages) {
         throw new DOMException("Invalid curve", "DataError");
       }
       if (
-        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
+        keyUsages.length > 0 && jwk.use !== undefined &&
+        jwk.use !== info.jwkUse
       ) {
         throw new DOMException("Invalid key use", "DataError");
       }
@@ -2655,7 +2686,7 @@ function importKeyXcurve(name, format, keyData, extractable, keyUsages) {
           throw new DOMException("Invalid private key data", "DataError");
         }
         if (
-          TypedArrayPrototypeGetByteLength(privateKeyData) !== ops.keyLen
+          TypedArrayPrototypeGetByteLength(privateKeyData) !== info.keyLen
         ) {
           throw new DOMException("Invalid private key data", "DataError");
         }
@@ -2664,7 +2695,7 @@ function importKeyXcurve(name, format, keyData, extractable, keyUsages) {
         return constructKey(
           "private",
           extractable,
-          usageIntersection(keyUsages, ["deriveKey", "deriveBits"]),
+          usageIntersection(keyUsages, recognisedUsages),
           algorithm,
           handle,
         );
@@ -2675,51 +2706,11 @@ function importKeyXcurve(name, format, keyData, extractable, keyUsages) {
       } catch (_) {
         throw new DOMException("Invalid public key data", "DataError");
       }
-      if (TypedArrayPrototypeGetByteLength(publicKeyData) !== ops.keyLen) {
+      if (TypedArrayPrototypeGetByteLength(publicKeyData) !== info.keyLen) {
         throw new DOMException("Invalid public key data", "DataError");
       }
       const handle = {};
       setKeyData(handle, publicKeyData);
-      return constructKey("public", extractable, [], algorithm, handle);
-    }
-    default:
-      throw new DOMException("Not implemented", "NotSupportedError");
-  }
-}
-
-function importKeyEd25519(
-  format,
-  keyData,
-  extractable,
-  keyUsages,
-) {
-  switch (format) {
-    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
-    case "raw-public":
-    case "raw": {
-      // 1.
-      if (
-        ArrayPrototypeFind(
-          keyUsages,
-          (u) => !ArrayPrototypeIncludes(["verify"], u),
-        ) !== undefined
-      ) {
-        throw new DOMException("Invalid key usage", "SyntaxError");
-      }
-
-      if (TypedArrayPrototypeGetByteLength(keyData) !== 32) {
-        throw new DOMException("Invalid key data", "DataError");
-      }
-
-      const handle = {};
-      setKeyData(handle, keyData);
-
-      // 2-3.
-      const algorithm = {
-        name: "Ed25519",
-      };
-
-      // 4-6.
       return constructKey(
         "public",
         extractable,
@@ -2727,205 +2718,6 @@ function importKeyEd25519(
         algorithm,
         handle,
       );
-    }
-    case "spki": {
-      // 1.
-      if (
-        ArrayPrototypeFind(
-          keyUsages,
-          (u) => !ArrayPrototypeIncludes(["verify"], u),
-        ) !== undefined
-      ) {
-        throw new DOMException("Invalid key usage", "SyntaxError");
-      }
-
-      const publicKeyData = new Uint8Array(32);
-      if (!op_crypto_import_spki_ed25519(keyData, publicKeyData)) {
-        throw new DOMException("Invalid key data", "DataError");
-      }
-
-      const handle = {};
-      setKeyData(handle, publicKeyData);
-
-      const algorithm = {
-        name: "Ed25519",
-      };
-
-      return constructKey(
-        "public",
-        extractable,
-        usageIntersection(keyUsages, recognisedUsages),
-        algorithm,
-        handle,
-      );
-    }
-    case "pkcs8": {
-      // 1.
-      if (
-        ArrayPrototypeFind(
-          keyUsages,
-          (u) => !ArrayPrototypeIncludes(["sign"], u),
-        ) !== undefined
-      ) {
-        throw new DOMException("Invalid key usage", "SyntaxError");
-      }
-
-      const privateKeyData = new Uint8Array(32);
-      if (!op_crypto_import_pkcs8_ed25519(keyData, privateKeyData)) {
-        throw new DOMException("Invalid key data", "DataError");
-      }
-
-      const handle = {};
-      setKeyData(handle, privateKeyData);
-
-      const algorithm = {
-        name: "Ed25519",
-      };
-
-      return constructKey(
-        "private",
-        extractable,
-        usageIntersection(keyUsages, recognisedUsages),
-        algorithm,
-        handle,
-      );
-    }
-    case "jwk": {
-      // 1.
-      const jwk = keyData;
-
-      // 2.
-      if (jwk.d !== undefined) {
-        if (
-          ArrayPrototypeFind(
-            keyUsages,
-            (u) =>
-              !ArrayPrototypeIncludes(
-                ["sign"],
-                u,
-              ),
-          ) !== undefined
-        ) {
-          throw new DOMException("Invalid key usage", "SyntaxError");
-        }
-      } else {
-        if (
-          ArrayPrototypeFind(
-            keyUsages,
-            (u) =>
-              !ArrayPrototypeIncludes(
-                ["verify"],
-                u,
-              ),
-          ) !== undefined
-        ) {
-          throw new DOMException("Invalid key usage", "SyntaxError");
-        }
-      }
-
-      // 3.
-      if (jwk.kty !== "OKP") {
-        throw new DOMException("Invalid key type", "DataError");
-      }
-
-      // 4.
-      if (jwk.crv !== "Ed25519") {
-        throw new DOMException("Invalid curve", "DataError");
-      }
-
-      // 5.
-      if (
-        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
-      ) {
-        throw new DOMException("Invalid key usage", "DataError");
-      }
-
-      // 6.
-      if (jwk.key_ops !== undefined) {
-        if (
-          ArrayPrototypeFind(
-            jwk.key_ops,
-            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-          ) !== undefined
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-
-        if (
-          !ArrayPrototypeEvery(
-            keyUsages,
-            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
-          )
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-      }
-
-      // 7.
-      if (jwk.ext !== undefined && jwk.ext === false && extractable) {
-        throw new DOMException("Invalid key extractability", "DataError");
-      }
-
-      // 8.
-      if (jwk.d !== undefined) {
-        // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        let privateKeyData;
-        try {
-          privateKeyData = op_crypto_base64url_decode(jwk.d);
-        } catch (_) {
-          throw new DOMException("Invalid private key data", "DataError");
-        }
-        if (TypedArrayPrototypeGetByteLength(privateKeyData) !== 32) {
-          throw new DOMException("Invalid private key data", "DataError");
-        }
-
-        const handle = {};
-        setKeyData(handle, privateKeyData);
-
-        const algorithm = {
-          name: "Ed25519",
-        };
-
-        return constructKey(
-          "private",
-          extractable,
-          usageIntersection(keyUsages, recognisedUsages),
-          algorithm,
-          handle,
-        );
-      } else {
-        // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        let publicKeyData;
-        try {
-          publicKeyData = op_crypto_base64url_decode(jwk.x);
-        } catch (_) {
-          throw new DOMException("Invalid public key data", "DataError");
-        }
-        if (TypedArrayPrototypeGetByteLength(publicKeyData) !== 32) {
-          throw new DOMException("Invalid public key data", "DataError");
-        }
-
-        const handle = {};
-        setKeyData(handle, publicKeyData);
-
-        const algorithm = {
-          name: "Ed25519",
-        };
-
-        return constructKey(
-          "public",
-          extractable,
-          usageIntersection(keyUsages, recognisedUsages),
-          algorithm,
-          handle,
-        );
-      }
     }
     default:
       throw new DOMException("Not implemented", "NotSupportedError");
@@ -4677,17 +4469,11 @@ async function importKeyInner(
       );
     }
     case "X448":
-      return importKeyXcurve("X448", format, keyData, extractable, keyUsages);
+      return importKeyOkp("X448", format, keyData, extractable, keyUsages);
     case "X25519":
-      return importKeyXcurve("X25519", format, keyData, extractable, keyUsages);
-    case "Ed25519": {
-      return importKeyEd25519(
-        format,
-        keyData,
-        extractable,
-        keyUsages,
-      );
-    }
+      return importKeyOkp("X25519", format, keyData, extractable, keyUsages);
+    case "Ed25519":
+      return importKeyOkp("Ed25519", format, keyData, extractable, keyUsages);
     case "ML-KEM-512":
     case "ML-KEM-768":
     case "ML-KEM-1024": {
@@ -6608,11 +6394,11 @@ function importCryptoKeySync(format, keyData, algorithm, extractable, usages) {
         usages,
       );
     case "X448":
-      return importKeyXcurve("X448", format, keyData, extractable, usages);
+      return importKeyOkp("X448", format, keyData, extractable, usages);
     case "X25519":
-      return importKeyXcurve("X25519", format, keyData, extractable, usages);
+      return importKeyOkp("X25519", format, keyData, extractable, usages);
     case "Ed25519":
-      return importKeyEd25519(format, keyData, extractable, usages);
+      return importKeyOkp("Ed25519", format, keyData, extractable, usages);
     case "ML-DSA-44":
     case "ML-DSA-65":
     case "ML-DSA-87":
