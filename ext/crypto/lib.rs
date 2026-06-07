@@ -799,7 +799,12 @@ pub(crate) fn verify_key_sync(
 /// Synchronous body of the old `op_crypto_derive_bits`; called directly
 /// from [`crate::subtle_derive_bits::run`] inside `spawn_blocking`. The
 /// `salt` is `Some` for PBKDF2 / HKDF and `None` for ECDH.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "internal sync dispatch lifted out of op_crypto_derive_bits; \
+  the per-algorithm DeriveKeyArg fields are unpacked rather than \
+  reintroduced as a struct just for this lint"
+)]
 pub(crate) fn derive_bits_sync(
   key: KeyData,
   public_key: Option<KeyData>,

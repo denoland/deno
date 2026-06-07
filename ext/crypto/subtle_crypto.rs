@@ -171,7 +171,7 @@ impl SubtleCrypto {
     &self,
     #[webidl] algorithm: SubtleDeriveBitsParams,
     #[webidl] base_key: SubtleKey,
-    length: Option<u32>,
+    length: Option<f64>,
   ) -> Result<Vec<u8>, CryptoError> {
     if !base_key.has_usage("deriveBits") {
       return Err(CryptoError::Other(deno_error::JsErrorBox::new(
@@ -194,7 +194,7 @@ impl SubtleCrypto {
     &self,
     #[webidl] algorithm: SubtleDeriveBitsParams,
     #[webidl] base_key: SubtleKey,
-    length: Option<u32>,
+    length: Option<f64>,
   ) -> Result<Vec<u8>, CryptoError> {
     spawn_blocking(move || run_derive_bits(algorithm, base_key, length)).await?
   }

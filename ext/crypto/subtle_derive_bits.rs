@@ -288,7 +288,7 @@ const SUPPORTED_NAMED_CURVES: &[&str] = &["P-256", "P-384", "P-521"];
 pub fn run(
   params: SubtleDeriveBitsParams,
   key: SubtleKey,
-  length: Option<u32>,
+  length: Option<f64>,
 ) -> Result<Vec<u8>, CryptoError> {
   // Spec step 7 (algorithm name match on baseKey). The `deriveBits`
   // usage check is the caller's responsibility -- the cppgc method
@@ -300,6 +300,7 @@ pub fn run(
     return Err(invalid_access("Invalid algorithm name".to_string()));
   }
 
+  let length_u32 = length.map(|l| l as u32);
   match params {
     SubtleDeriveBitsParams::Pbkdf2 {
       hash,
@@ -307,7 +308,7 @@ pub fn run(
       iterations,
     } => {
       let length =
-        length.ok_or_else(|| op_error("Invalid length".to_string()))?;
+        length_u32.ok_or_else(|| op_error("Invalid length".to_string()))?;
       if length == 0 || length % 8 != 0 {
         return Err(op_error("Invalid length".to_string()));
       }
@@ -329,7 +330,7 @@ pub fn run(
     }
     SubtleDeriveBitsParams::Hkdf { hash, salt, info } => {
       let length =
-        length.ok_or_else(|| op_error("Invalid length".to_string()))?;
+        length_u32.ok_or_else(|| op_error("Invalid length".to_string()))?;
       if length == 0 || length % 8 != 0 {
         return Err(op_error("Invalid length".to_string()));
       }
@@ -375,13 +376,13 @@ pub fn run(
         Some(public_data),
         Algorithm::Ecdh,
         None,
-        length.unwrap_or(0) as usize,
+        length_u32.unwrap_or(0) as usize,
         None,
         Some(named_curve),
         None,
         None,
       )?;
-      truncate_to_length(bits, length)
+      truncate_to_length(bits, length_u32)
     }
     SubtleDeriveBitsParams::X25519 { public } => {
       if key.key_type != CryptoKeyType::Private {
@@ -400,7 +401,7 @@ pub fn run(
       if is_identity {
         return Err(op_error("Invalid key".to_string()));
       }
-      truncate_to_length(secret.to_vec(), length)
+      truncate_to_length(secret.to_vec(), length_u32)
     }
     SubtleDeriveBitsParams::X448 { public } => {
       if key.key_type != CryptoKeyType::Private {
@@ -419,7 +420,7 @@ pub fn run(
       if is_identity {
         return Err(op_error("Invalid key".to_string()));
       }
-      truncate_to_length(secret.to_vec(), length)
+      truncate_to_length(secret.to_vec(), length_u32)
     }
     SubtleDeriveBitsParams::Unknown(name) => Err(not_supported(format!(
       "Algorithm '{name}' is not supported"
