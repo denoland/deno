@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  // Regression test for https://github.com/denoland/deno/issues/31924.
+  // `@denotest3/gitlab-pkg` lives on a registry (port 4263) that only serves
+  // metadata to npm-aware clients (those sending the npm `Accept` header) and
+  // otherwise redirects to the public registry which 404s. `deno outdated` must
+  // send the npm `Accept` header, the same way `deno install` does, so the
+  // package shows up in the update check instead of being silently dropped.
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "outdated",
+      "output": "outdated.out"
+    }
+  ]
+}
