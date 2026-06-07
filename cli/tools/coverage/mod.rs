@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::path::Path;
@@ -9,6 +10,10 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
+use deno_ast::SourceRangedForSpanned as _;
+use deno_ast::swc::ast;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPattern;
@@ -71,6 +76,10 @@ pub struct CoverageReport {
   found_lines: Vec<(usize, i64)>,
   output: Option<PathBuf>,
 }
+
+/// A file's media type, original source, the source actually executed at
+/// runtime (transpiled for TS), and its source map.
+type LoadedSource = (MediaType, String, String, Option<Vec<u8>>);
 
 struct GenerateCoverageReportOptions<'a> {
   script_module_specifier: Url,
@@ -540,16 +549,39 @@ fn collect_coverages(
   Ok(coverages)
 }
 
+/// Walks the file system for source files matching the `--include` globs that
+/// did not produce a coverage record (i.e. were never loaded during the run).
+/// These are reported as 0% covered.
+fn collect_uncovered_files(
+  include_patterns: &FilePatterns,
+  cli_options: &CliOptions,
+  covered_specifiers: &HashSet<ModuleSpecifier>,
+) -> Vec<ModuleSpecifier> {
+  let paths = FileCollector::new(|e| {
+    matches!(
+      e.path.extension().and_then(|ext| ext.to_str()),
+      Some("ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs")
+    )
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
+  .collect_file_patterns(&CliSys::default(), include_patterns);
+
+  paths
+    .into_iter()
+    .filter_map(|path| Url::from_file_path(&path).ok())
+    .filter(|url| !covered_specifiers.contains(url))
+    .collect()
+}
+
 fn filter_coverages(
   coverages: Vec<cdp::ScriptCoverage>,
-  include: Vec<String>,
+  include_patterns: Option<&FilePatterns>,
   exclude: Vec<String>,
   in_npm_pkg_checker: &DenoInNpmPackageChecker,
   link_dir_urls: &[String],
 ) -> Vec<cdp::ScriptCoverage> {
-  let include: Vec<Regex> =
-    include.iter().map(|e| Regex::new(e).unwrap()).collect();
-
   let exclude: Vec<Regex> =
     exclude.iter().map(|e| Regex::new(e).unwrap()).collect();
 
@@ -580,12 +612,202 @@ fn filter_coverages(
           .map(|url| in_npm_pkg_checker.in_npm_package(&url))
           .unwrap_or(false);
 
-      let is_included = include.iter().any(|p| p.is_match(&e.url));
+      // When `--include` globs are provided, keep only files matching them.
+      // Otherwise preserve the historical default of reporting file: urls
+      // (remote modules were excluded by the old `^file:` default include).
+      let is_included = match include_patterns {
+        Some(patterns) => Url::parse(&e.url)
+          .ok()
+          .map(|url| patterns.matches_specifier(&url))
+          .unwrap_or(false),
+        None => e.url.starts_with("file:"),
+      };
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
 
-      (include.is_empty() || is_included) && !is_excluded && !is_internal
+      is_included && !is_excluded && !is_internal
     })
     .collect::<Vec<cdp::ScriptCoverage>>()
+}
+
+/// Builds a coverage report for a source file that was never loaded during the
+/// run. Line coverage is produced by running an empty V8 coverage through the
+/// normal pipeline (so every executable line is reported as missed, reusing the
+/// same comment/blank-line and source-map handling as covered files), while
+/// functions and branches are counted from the source AST and marked uncovered.
+fn synthesize_uncovered_report(
+  module_specifier: &ModuleSpecifier,
+  media_type: MediaType,
+  original_source: &str,
+  runtime_source: String,
+  maybe_source_map: &Option<Vec<u8>>,
+  output: &Option<PathBuf>,
+) -> Result<Option<CoverageReport>, AnyError> {
+  let empty_coverage = cdp::ScriptCoverage {
+    script_id: String::new(),
+    url: module_specifier.to_string(),
+    functions: Vec::new(),
+  };
+  let mut coverage_report =
+    generate_coverage_report(GenerateCoverageReportOptions {
+      script_module_specifier: module_specifier.clone(),
+      script_media_type: media_type,
+      script_coverage: &empty_coverage,
+      script_original_source: original_source.to_string(),
+      script_runtime_source: runtime_source,
+      maybe_source_map,
+      output,
+    })?;
+
+  // Nothing executable (all comments/blank, or a coverage-ignore-file
+  // directive): skip the file entirely, matching the covered path.
+  if coverage_report.found_lines.is_empty() {
+    return Ok(None);
+  }
+
+  // V8 produced no function/branch data because the file was never loaded, so
+  // recover them from the AST and mark everything uncovered. A parse failure
+  // just leaves them empty (line coverage is still reported).
+  if let Ok(parsed) = deno_ast::parse_program(deno_ast::ParseParams {
+    specifier: module_specifier.clone(),
+    text: original_source.into(),
+    media_type,
+    capture_tokens: false,
+    scope_analysis: false,
+    maybe_syntax: None,
+  }) {
+    let mut collector = UncoveredCollector {
+      text_info: parsed.text_info_lazy(),
+      named_functions: Vec::new(),
+      branches: Vec::new(),
+      block_number: 0,
+    };
+    parsed.program_ref().visit_with(&mut collector);
+    coverage_report.named_functions = collector.named_functions;
+    coverage_report.branches = collector.branches;
+  }
+
+  Ok(Some(coverage_report))
+}
+
+fn prop_name_string(key: &ast::PropName) -> Option<String> {
+  match key {
+    ast::PropName::Ident(i) => Some(i.sym.to_string()),
+    ast::PropName::Str(s) => Some(s.value.to_atom_lossy().to_string()),
+    ast::PropName::Num(n) => Some(n.value.to_string()),
+    ast::PropName::BigInt(b) => Some(b.value.to_string()),
+    ast::PropName::Computed(_) => None,
+  }
+}
+
+/// Collects named functions and branch points from a source AST, marking them
+/// all uncovered. Used to give a never-loaded file accurate Function % and
+/// Branch % denominators (the percentages are 0% regardless of the exact
+/// counts, since nothing executed).
+struct UncoveredCollector<'a> {
+  text_info: &'a deno_ast::SourceTextInfo,
+  named_functions: Vec<FunctionCoverageItem>,
+  branches: Vec<BranchCoverageItem>,
+  block_number: usize,
+}
+
+impl UncoveredCollector<'_> {
+  fn add_function(&mut self, name: String, pos: deno_ast::SourcePos) {
+    self.named_functions.push(FunctionCoverageItem {
+      name,
+      line_index: self.text_info.line_index(pos),
+      execution_count: 0,
+    });
+  }
+
+  fn add_branch(&mut self, pos: deno_ast::SourcePos, arms: usize) {
+    let line_index = self.text_info.line_index(pos);
+    let block_number = self.block_number;
+    self.block_number += 1;
+    for branch_number in 0..arms {
+      self.branches.push(BranchCoverageItem {
+        line_index,
+        block_number,
+        branch_number,
+        taken: Some(0),
+        is_hit: false,
+      });
+    }
+  }
+}
+
+impl Visit for UncoveredCollector<'_> {
+  fn visit_fn_decl(&mut self, n: &ast::FnDecl) {
+    self.add_function(n.ident.sym.to_string(), n.ident.start());
+    n.visit_children_with(self);
+  }
+
+  fn visit_class_method(&mut self, n: &ast::ClassMethod) {
+    if let Some(name) = prop_name_string(&n.key) {
+      self.add_function(name, n.key.start());
+    }
+    n.visit_children_with(self);
+  }
+
+  fn visit_method_prop(&mut self, n: &ast::MethodProp) {
+    if let Some(name) = prop_name_string(&n.key) {
+      self.add_function(name, n.key.start());
+    }
+    n.visit_children_with(self);
+  }
+
+  fn visit_getter_prop(&mut self, n: &ast::GetterProp) {
+    if let Some(name) = prop_name_string(&n.key) {
+      self.add_function(name, n.key.start());
+    }
+    n.visit_children_with(self);
+  }
+
+  fn visit_setter_prop(&mut self, n: &ast::SetterProp) {
+    if let Some(name) = prop_name_string(&n.key) {
+      self.add_function(name, n.key.start());
+    }
+    n.visit_children_with(self);
+  }
+
+  fn visit_var_declarator(&mut self, n: &ast::VarDeclarator) {
+    // `const foo = () => {}` / `const foo = function () {}` are reported by V8
+    // under the inferred name `foo`.
+    if let (ast::Pat::Ident(ident), Some(init)) = (&n.name, n.init.as_deref())
+      && matches!(init, ast::Expr::Arrow(_) | ast::Expr::Fn(_))
+    {
+      self.add_function(ident.id.sym.to_string(), ident.id.start());
+    }
+    n.visit_children_with(self);
+  }
+
+  fn visit_if_stmt(&mut self, n: &ast::IfStmt) {
+    self.add_branch(n.start(), 2);
+    n.visit_children_with(self);
+  }
+
+  fn visit_cond_expr(&mut self, n: &ast::CondExpr) {
+    self.add_branch(n.start(), 2);
+    n.visit_children_with(self);
+  }
+
+  fn visit_bin_expr(&mut self, n: &ast::BinExpr) {
+    if matches!(
+      n.op,
+      ast::BinaryOp::LogicalAnd
+        | ast::BinaryOp::LogicalOr
+        | ast::BinaryOp::NullishCoalescing
+    ) {
+      self.add_branch(n.start(), 2);
+    }
+    n.visit_children_with(self);
+  }
+
+  fn visit_switch_stmt(&mut self, n: &ast::SwitchStmt) {
+    if !n.cases.is_empty() {
+      self.add_branch(n.start(), n.cases.len());
+    }
+    n.visit_children_with(self);
+  }
 }
 
 pub fn cover_files(
@@ -608,15 +830,16 @@ pub fn cover_files(
   let emitter = factory.emitter()?;
   let cjs_tracker = factory.cjs_tracker()?;
 
+  let initial_cwd = cli_options.initial_cwd();
   // Use the first include path as the default output path.
-  let coverage_root = cli_options.initial_cwd().join(&files_include[0]);
+  let coverage_root = initial_cwd.join(&files_include[0]);
   let script_coverages = collect_coverages(
     cli_options,
     FileFlags {
       include: files_include,
-      ignore: files_ignore,
+      ignore: files_ignore.clone(),
     },
-    cli_options.initial_cwd(),
+    initial_cwd,
   )?;
   if script_coverages.is_empty() {
     return Err(anyhow!("No coverage files found"));
@@ -627,10 +850,32 @@ pub fn cover_files(
     .keys()
     .map(|url| url.as_str().to_string())
     .collect::<Vec<_>>();
+
+  // When `--include` globs are provided they select the set of source files to
+  // report (matched against file paths), and any matching file that was never
+  // loaded during the run is reported as 0% covered. When omitted, only files
+  // loaded during the run are reported.
+  let include_patterns = if include.is_empty() {
+    None
+  } else {
+    Some(FilePatterns {
+      base: initial_cwd.to_path_buf(),
+      include: Some(PathOrPatternSet::from_include_relative_path_or_patterns(
+        initial_cwd,
+        &include,
+      )?),
+      exclude: PathOrPatternSet::from_exclude_relative_path_or_patterns(
+        initial_cwd,
+        &files_ignore,
+      )
+      .context("Invalid ignore pattern.")?,
+    })
+  };
+
   let script_coverages = filter_coverages(
     script_coverages,
-    include,
-    exclude,
+    include_patterns.as_ref(),
+    exclude.clone(),
     in_npm_pkg_checker,
     &link_dir_urls,
   );
@@ -666,29 +911,23 @@ pub fn cover_files(
     )
   };
 
-  let mut file_reports = Vec::with_capacity(script_coverages.len());
-
-  for script_coverage in script_coverages {
-    let module_specifier = deno_path_util::resolve_url_or_path(
-      &script_coverage.url,
-      cli_options.initial_cwd(),
-    )?;
-
-    let maybe_file_result =
-      file_fetcher.get_cached_source_or_local(&module_specifier);
-    let file = match maybe_file_result {
+  // Loads a file's original source plus the source actually executed at
+  // runtime (transpiled for TS) and its source map. Returns `None` when the
+  // file can't be loaded so the caller can skip it.
+  let load_file =
+    |module_specifier: &ModuleSpecifier| -> Result<Option<LoadedSource>, AnyError> {
+    let file = match file_fetcher.get_cached_source_or_local(module_specifier) {
       Ok(Some(file)) => TextDecodedFile::decode(file)?,
       Ok(None) => {
-        log::warn!("{}", get_message(&module_specifier),);
-        continue;
+        log::warn!("{}", get_message(module_specifier));
+        return Ok(None);
       }
       Err(err) => {
-        log::warn!("{}: {}", get_message(&module_specifier), err,);
-        continue;
+        log::warn!("{}: {}", get_message(module_specifier), err);
+        return Ok(None);
       }
     };
-
-    let original_source = file.source.clone();
+    let original_source = file.source.to_string();
     // Check if file was transpiled
     let transpiled_code = match file.media_type {
       MediaType::JavaScript
@@ -712,40 +951,59 @@ pub fn cover_files(
         let module_kind = ModuleKind::from_is_cjs(
           cjs_tracker.is_maybe_cjs(&file.specifier, file.media_type)?,
         );
+        // Transpile on demand: a never-loaded file (synthesized as uncovered)
+        // has no cached emit, so we can't rely on the emit cache here.
         Some(
-          match emitter.maybe_cached_emit(
-            &file.specifier,
-            module_kind,
-            &file.source,
-          )? {
-            Some(code) => code,
-            None => {
-              log::warn!(
-                "Missing transpiled source code for: \"{}\" (was it deleted after coverage was collected?). Skipping.",
-                file.specifier,
-              );
-              continue;
-            }
-          },
+          emitter
+            .maybe_emit_source_sync(
+              &file.specifier,
+              file.media_type,
+              module_kind,
+              &file.source,
+            )?
+            .to_string(),
         )
       }
       MediaType::SourceMap => {
         unreachable!()
       }
     };
-    let runtime_code: String = match transpiled_code {
+    let runtime_code = match transpiled_code {
       Some(code) => code,
-      None => original_source.to_string(),
+      None => original_source.clone(),
+    };
+    let source_map = source_map_from_code(runtime_code.as_bytes());
+    Ok(Some((
+      file.media_type,
+      original_source,
+      runtime_code,
+      source_map,
+    )))
+  };
+
+  let mut file_reports = Vec::with_capacity(script_coverages.len());
+  // Resolved specifiers of files that produced a coverage record, so that
+  // synthesized uncovered entries don't duplicate a file that was loaded.
+  let mut covered_specifiers: HashSet<ModuleSpecifier> = HashSet::new();
+
+  for script_coverage in script_coverages {
+    let module_specifier =
+      deno_path_util::resolve_url_or_path(&script_coverage.url, initial_cwd)?;
+    covered_specifiers.insert(module_specifier.clone());
+
+    let Some((media_type, original_source, runtime_code, source_map)) =
+      load_file(&module_specifier)?
+    else {
+      continue;
     };
 
-    let source_map = source_map_from_code(runtime_code.as_bytes());
     let coverage_report =
       generate_coverage_report(GenerateCoverageReportOptions {
         script_module_specifier: module_specifier.clone(),
-        script_media_type: file.media_type,
+        script_media_type: media_type,
         script_coverage: &script_coverage,
-        script_original_source: original_source.to_string(),
-        script_runtime_source: runtime_code.as_str().to_owned(),
+        script_original_source: original_source.clone(),
+        script_runtime_source: runtime_code,
         maybe_source_map: &source_map,
         output: &out_mode,
       })
@@ -756,7 +1014,52 @@ pub fn cover_files(
       })?;
 
     if !coverage_report.found_lines.is_empty() {
-      file_reports.push((coverage_report, original_source.to_string()));
+      file_reports.push((coverage_report, original_source));
+    }
+  }
+
+  // Synthesize 0% entries for source files matching `--include` that were
+  // never loaded during the run (and so produced no V8 coverage record).
+  if let Some(include_patterns) = include_patterns.as_ref() {
+    let uncovered = collect_uncovered_files(
+      include_patterns,
+      cli_options,
+      &covered_specifiers,
+    );
+    // Reuse the regular filtering so excluded/test/npm files are dropped.
+    let uncovered = filter_coverages(
+      uncovered
+        .into_iter()
+        .map(|url| cdp::ScriptCoverage {
+          script_id: String::new(),
+          url: url.into(),
+          functions: Vec::new(),
+        })
+        .collect(),
+      Some(include_patterns),
+      exclude,
+      in_npm_pkg_checker,
+      &link_dir_urls,
+    );
+
+    for stub in uncovered {
+      let module_specifier =
+        deno_path_util::resolve_url_or_path(&stub.url, initial_cwd)?;
+      let Some((media_type, original_source, runtime_code, source_map)) =
+        load_file(&module_specifier)?
+      else {
+        continue;
+      };
+      if let Some(coverage_report) = synthesize_uncovered_report(
+        &module_specifier,
+        media_type,
+        &original_source,
+        runtime_code,
+        &source_map,
+        &out_mode,
+      )? {
+        file_reports.push((coverage_report, original_source));
+      }
     }
   }
 

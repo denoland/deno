@@ -1,0 +1,29 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --coverage=cov add_test.ts",
+      "output": "test.out",
+      "exitCode": 0
+    },
+    {
+      // Without --include only loaded files are reported; sub.ts is absent.
+      "args": "coverage ./cov",
+      "output": "no_include.out",
+      "exitCode": 0
+    },
+    {
+      // With an --include glob, sub.ts is reported at 0% even though it was
+      // never loaded by the test run.
+      "args": "coverage ./cov --include=*.ts",
+      "output": "include.out",
+      "exitCode": 0
+    },
+    {
+      // The lcov output carries the synthesized 0% records for sub.ts.
+      "args": "coverage ./cov --include=*.ts --lcov",
+      "output": "include_lcov.out",
+      "exitCode": 0
+    }
+  ]
+}
