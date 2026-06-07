@@ -3138,6 +3138,14 @@ impl JsRuntime {
     let realm = JsRealm::clone(&self.inner.main_realm);
     let module_map_rc = realm.0.module_map();
 
+    // Only pump the V8 event loop alongside the load when the loader resolves
+    // modules through asynchronous JavaScript (e.g. Node
+    // `module.registerHooks()` load hooks). For ordinary loads pumping is
+    // unnecessary and would run unrelated event-loop work mid-load, so the
+    // load is driven on its own instead.
+    let pump_event_loop =
+      module_map_rc.loader.borrow().pump_event_loop_during_load();
+
     if let Some(code) = code {
       jsrealm::context_scope!(scope, &realm, self.v8_isolate());
       module_map_rc
@@ -3166,13 +3174,17 @@ impl JsRuntime {
     };
 
     loop {
-      // Drive the recursive load AND the V8 event loop concurrently. Pumping
-      // the event loop is what lets JavaScript-side module hooks
+      // Drive the recursive load, optionally pumping the V8 event loop
+      // concurrently. Pumping is what lets JavaScript-side module hooks
       // (`module.registerHooks()`) respond to load requests issued by the
-      // recursive load via the async hook bridge.
+      // recursive load via the async hook bridge; for ordinary loads it is
+      // skipped so unrelated event-loop work doesn't run mid-load.
       let next_step = poll_fn(|cx| {
         if let Poll::Ready(t) = load.poll_next_unpin(cx) {
           return Poll::Ready(Ok::<_, CoreError>(t));
+        }
+        if !pump_event_loop {
+          return Poll::Pending;
         }
         match self.poll_event_loop(cx, PollEventLoopOptions::default()) {
           Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),

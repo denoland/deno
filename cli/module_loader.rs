@@ -1130,6 +1130,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     self.0.inner_resolve(specifier, referrer, kind, false)
   }
 
+  fn pump_event_loop_during_load(&self) -> bool {
+    // Load hooks respond through the async bridge, so the event loop must be
+    // pumped during the recursive load or the load deadlocks.
+    self.0.hook_registry.load_active.get()
+  }
+
   fn import_meta_resolve(
     &self,
     specifier: &str,
