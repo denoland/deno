@@ -396,7 +396,13 @@ function usageIntersection(a, b) {
 // Validates `kty`, `alg`, `use` (per family: "enc" for ML-KEM, "sig" for
 // ML-DSA), `key_ops` subset+coverage, and ext/extractable. The
 // algorithm-specific seed/pub decoding stays in the per-family helper.
-function validateJwkAkp(jwk, algorithmName, expectedUse, keyUsages, extractable) {
+function validateJwkAkp(
+  jwk,
+  algorithmName,
+  expectedUse,
+  keyUsages,
+  extractable,
+) {
   if (jwk.kty !== "AKP") {
     throw new DOMException("Invalid key type", "DataError");
   }
@@ -411,9 +417,9 @@ function validateJwkAkp(jwk, algorithmName, expectedUse, keyUsages, extractable)
   if (jwk.key_ops !== undefined) {
     if (
       ArrayPrototypeFind(
-        jwk.key_ops,
-        (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-      ) !== undefined ||
+          jwk.key_ops,
+          (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+        ) !== undefined ||
       !ArrayPrototypeEvery(
         keyUsages,
         (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
@@ -432,8 +438,9 @@ function validateJwkAkp(jwk, algorithmName, expectedUse, keyUsages, extractable)
 
 // Common JWK validation that every kty=oct importKey path shares -- kty,
 // k presence, `use` against the algorithm family's expected value ("enc"
-// for symmetric encryption, "sig" for HMAC), `key_ops` ⊆ recognisedUsages
-// and `keyUsages` ⊆ jwk.key_ops, and the ext/extractable invariant.
+// for symmetric encryption, "sig" for HMAC), `key_ops` is a subset of
+// recognisedUsages, `keyUsages` is a subset of `jwk.key_ops`, and the
+// ext/extractable invariant.
 // Per-algorithm helpers continue to own the algorithm-specific
 // `jwk.alg` and length checks.
 function validateJwkOct(jwk, expectedUse, keyUsages, extractable) {
@@ -460,9 +467,9 @@ function validateJwkOct(jwk, expectedUse, keyUsages, extractable) {
   if (jwk.key_ops !== undefined) {
     if (
       ArrayPrototypeFind(
-        jwk.key_ops,
-        (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-      ) !== undefined ||
+          jwk.key_ops,
+          (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+        ) !== undefined ||
       !ArrayPrototypeEvery(
         keyUsages,
         (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
@@ -1612,87 +1619,10 @@ ObjectAssign(SubtleCrypto.prototype, {
   },
 });
 
-/**
- * Synchronous feature detection for algorithm/operation support, per the
- * WICG "Modern Algorithms in the Web Crypto API" proposal.
- *
- * https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
- *
- * @param {string} operation
- * @param {AlgorithmIdentifier} algorithm
- * @param {number | AlgorithmIdentifier} [lengthOrHash]
- * @returns {boolean}
- */
-SubtleCrypto.supports = function supports(
-  operation,
-  algorithm,
-  lengthOrHash = undefined,
-) {
-  const prefix = "Failed to execute 'supports' on 'SubtleCrypto'";
-  webidl.requiredArguments(arguments.length, 2, prefix);
-  operation = webidl.converters.DOMString(operation, prefix, "Argument 1");
-  algorithm = webidl.converters.AlgorithmIdentifier(
-    algorithm,
-    prefix,
-    "Argument 2",
-  );
-
-  // 1. Validate operation against the allowed set.
-  if (!ArrayPrototypeIncludes(SUPPORTS_OPERATIONS, operation)) {
-    return false;
-  }
-
-  // 2. Decide which overload was invoked.
-  let length = null;
-  let additionalAlgorithm = null;
-  if (lengthOrHash !== undefined && lengthOrHash !== null) {
-    if (typeof lengthOrHash === "number") {
-      length = lengthOrHash >>> 0;
-    } else {
-      additionalAlgorithm = lengthOrHash;
-    }
-  }
-
-  // 3. Second-overload handling -- additionalAlgorithm.
-  if (additionalAlgorithm !== null) {
-    if (
-      operation === "deriveKey" || operation === "unwrapKey" ||
-      operation === "encapsulateKey" || operation === "decapsulateKey"
-    ) {
-      if (
-        !checkSupportForAlgorithm("importKey", additionalAlgorithm, null)
-      ) {
-        return false;
-      }
-    } else if (operation === "wrapKey") {
-      if (
-        !checkSupportForAlgorithm("exportKey", additionalAlgorithm, null)
-      ) {
-        return false;
-      }
-    }
-
-    if (operation === "deriveKey") {
-      let derivedLen;
-      try {
-        const normalizedDerived = normalizeAlgorithm(
-          additionalAlgorithm,
-          "get key length",
-        );
-        derivedLen = op_crypto_get_key_length(
-          normalizedDerived.name,
-          normalizedDerived.length ?? null,
-          normalizedDerived.hash?.name ?? null,
-        );
-      } catch {
-        return false;
-      }
-      return checkSupportForAlgorithm("deriveBits", algorithm, derivedLen);
-    }
-  }
-
-  return checkSupportForAlgorithm(operation, algorithm, length);
-};
+// `SubtleCrypto.supports(operation, algorithm, lengthOrHash?)` is now
+// implemented natively as a cppgc static method on `SubtleCrypto`; see
+// `subtle_crypto.rs` for the body and `algorithm.rs` for the registry it
+// consults.
 const SubtleCryptoPrototype = SubtleCrypto.prototype;
 
 // `SubtleCrypto.prototype.deriveBits` is now a cppgc method declared with
@@ -1727,293 +1657,16 @@ ObjectDefineProperty(SubtleCryptoPrototype, "deriveBits", {
   configurable: true,
 });
 
-const SUPPORTS_OPERATIONS = [
-  "encrypt",
-  "decrypt",
-  "sign",
-  "verify",
-  "digest",
-  "generateKey",
-  "deriveKey",
-  "deriveBits",
-  "importKey",
-  "exportKey",
-  "wrapKey",
-  "unwrapKey",
-  "encapsulateKey",
-  "encapsulateBits",
-  "decapsulateKey",
-  "decapsulateBits",
-  "getPublicKey",
-];
-
-// Asymmetric algorithms whose private keys carry enough information for
-// `SubtleCrypto.prototype.getPublicKey()` to recover the public key. Kept
-// in sync with the switch statement in that method.
-const PUBLIC_KEY_DERIVABLE_ALGORITHMS = [
-  "RSASSA-PKCS1-v1_5",
-  "RSA-PSS",
-  "RSA-OAEP",
-  "ECDSA",
-  "ECDH",
-  "Ed25519",
-  "X25519",
-  "X448",
-  "ML-KEM-512",
-  "ML-KEM-768",
-  "ML-KEM-1024",
-  "ML-DSA-44",
-  "ML-DSA-65",
-  "ML-DSA-87",
-];
-
-/**
- * Implements the "check support for an algorithm" sub-algorithm from
- * https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
- *
- * The WICG spec defines supports() as a *feature-detection* primitive that
- * runs the same steps as the real operation and returns false if they throw
- * (for ANY reason: unknown algorithm name OR invalid/unknown parameters),
- * true otherwise. Critically, a *missing* operation-specific parameter (e.g.
- * an `iv` for AES-GCM in a bare `supports("encrypt", "AES-GCM")` probe) must
- * still report true -- the spec treats an "unavailable parameter" as a
- * success short-circuit. So we (a) check the algorithm name against the
- * registered-algorithm tables, then (b) validate any parameters the caller
- * *did* supply against the operation's constraints, returning false if a
- * provided parameter is invalid.
- *
- * @param {string} operation
- * @param {AlgorithmIdentifier} algorithm
- * @param {number | null} length
- * @returns {boolean}
- */
-function checkSupportForAlgorithm(operation, algorithm, length) {
-  // Extract the algorithm name from either a string or `{ name }` object.
-  let algName;
-  if (typeof algorithm === "string") {
-    algName = algorithm;
-  } else if (algorithm !== null && typeof algorithm === "object") {
-    algName = algorithm.name;
-  }
-  if (typeof algName !== "string") {
-    return false;
-  }
-
-  // Map operation aliases onto the registered-algorithm map keys.
-  let registeredOp;
-  switch (operation) {
-    case "encapsulateKey":
-    case "encapsulateBits":
-      registeredOp = "encapsulate";
-      break;
-    case "decapsulateKey":
-    case "decapsulateBits":
-      registeredOp = "decapsulate";
-      break;
-    case "deriveKey":
-      registeredOp = "deriveBits";
-      break;
-    case "exportKey":
-    case "getPublicKey":
-      registeredOp = "importKey";
-      break;
-    default:
-      registeredOp = operation;
-  }
-
-  if (isAlgorithmRegisteredFor(algName, registeredOp)) {
-    if (operation === "getPublicKey") {
-      // Additionally require an implementation hook for deriving the
-      // public key from a private one.
-      return supportsGetPublicKey(algName);
-    }
-    // Reject any operation-specific parameters the caller supplied that the
-    // operation steps would reject (e.g. a bogus `iv`/`tagLength`/`length`,
-    // an unknown `hash`, or an unsupported `namedCurve`). Missing parameters
-    // are tolerated -- this stays a feature-detection probe.
-    return supportsParamsValid(registeredOp, algName, algorithm, length);
-  }
-
-  // wrapKey / unwrapKey fall back to encrypt / decrypt registrations.
-  if (operation === "wrapKey") {
-    return isAlgorithmRegisteredFor(algName, "encrypt") &&
-      supportsParamsValid("encrypt", algName, algorithm, length);
-  }
-  if (operation === "unwrapKey") {
-    return isAlgorithmRegisteredFor(algName, "decrypt") &&
-      supportsParamsValid("decrypt", algName, algorithm, length);
-  }
-
-  return false;
-}
-
-// Byte length of an arbitrary BufferSource (TypedArray, DataView, or
-// ArrayBuffer). Returns null if `v` is not a BufferSource.
-function bufferSourceByteLength(v) {
-  if (isTypedArray(v)) {
-    return TypedArrayPrototypeGetByteLength(v);
-  }
-  if (isDataView(v)) {
-    return DataViewPrototypeGetByteLength(v);
-  }
-  if (isArrayBuffer(v)) {
-    return ArrayBufferPrototypeGetByteLength(v);
-  }
-  return null;
-}
-
-/**
- * Validate the operation-specific parameters the caller supplied for an
- * algorithm whose name is already known to be registered for `registeredOp`.
- *
- * This mirrors the parameter constraints enforced by the actual operation
- * steps (and by `normalizeAlgorithm` for nested `hash` members), so that
- * `supports()` returns false for known-name algorithms carrying invalid or
- * unknown parameters -- while still tolerating *omitted* parameters, which
- * keeps it a pure feature-detection probe.
- *
- * @param {string} registeredOp normalize/registered op key (e.g. "encrypt")
- * @param {string} algName canonical algorithm name (as written above is fine)
- * @param {AlgorithmIdentifier} algorithm the raw algorithm argument
- * @param {number | null} length the `length` overload value, if any
- * @returns {boolean}
- */
-function supportsParamsValid(registeredOp, algName, algorithm, length) {
-  const upper = StringPrototypeToUpperCase(algName);
-
-  // The KDF bit-length constraint does not depend on the algorithm object, so
-  // it is checked regardless of whether `algorithm` was a string or a dict:
-  // HKDF / PBKDF2 require a positive, multiple-of-8 length. A null length
-  // (omitted overload) or a non-multiple value is rejected, matching the
-  // deriveBits operation steps.
-  if (
-    registeredOp === "deriveBits" && (upper === "HKDF" || upper === "PBKDF2")
-  ) {
-    if (length === null || length === 0 || length % 8 !== 0) {
-      return false;
-    }
-  }
-
-  // A bare string identifier carries no further parameters to validate.
-  if (typeof algorithm !== "object" || algorithm === null) {
-    return true;
-  }
-
-  // Any supplied `hash` must be a recognized digest algorithm. This catches
-  // e.g. { name: "HMAC", hash: "SHA-25" } and the RSA/HKDF/PBKDF2 variants.
-  if (ObjectHasOwn(algorithm, "hash") && algorithm.hash !== undefined) {
-    try {
-      normalizeAlgorithm(algorithm.hash, "digest");
-    } catch {
-      return false;
-    }
-  }
-
-  switch (registeredOp) {
-    case "encrypt":
-    case "decrypt": {
-      if (upper === "AES-CBC") {
-        if (ObjectHasOwn(algorithm, "iv")) {
-          const n = bufferSourceByteLength(algorithm.iv);
-          if (n !== null && n !== 16) return false;
-        }
-      } else if (upper === "AES-CTR") {
-        if (ObjectHasOwn(algorithm, "counter")) {
-          const n = bufferSourceByteLength(algorithm.counter);
-          if (n !== null && n !== 16) return false;
-        }
-        if (
-          ObjectHasOwn(algorithm, "length") && algorithm.length !== undefined
-        ) {
-          const l = algorithm.length;
-          if (l === 0 || l > 128) return false;
-        }
-      } else if (upper === "AES-GCM" || upper === "AES-OCB") {
-        if (ObjectHasOwn(algorithm, "iv")) {
-          const n = bufferSourceByteLength(algorithm.iv);
-          if (n !== null && !ArrayPrototypeIncludes([12, 16], n)) return false;
-        }
-        if (
-          ObjectHasOwn(algorithm, "tagLength") &&
-          algorithm.tagLength !== undefined
-        ) {
-          if (
-            !ArrayPrototypeIncludes(
-              [32, 64, 96, 104, 112, 120, 128],
-              algorithm.tagLength,
-            )
-          ) {
-            return false;
-          }
-        }
-      } else if (upper === "CHACHA20-POLY1305") {
-        if (ObjectHasOwn(algorithm, "iv")) {
-          const n = bufferSourceByteLength(algorithm.iv);
-          if (n !== null && n !== 12) return false;
-        }
-        if (
-          ObjectHasOwn(algorithm, "tagLength") &&
-          algorithm.tagLength !== undefined && algorithm.tagLength !== 128
-        ) {
-          return false;
-        }
-      }
-      return true;
-    }
-    case "generateKey":
-    case "get key length": {
-      if (
-        upper === "AES-CBC" || upper === "AES-CTR" || upper === "AES-GCM" ||
-        upper === "AES-OCB" || upper === "AES-KW"
-      ) {
-        if (
-          ObjectHasOwn(algorithm, "length") && algorithm.length !== undefined
-        ) {
-          if (!ArrayPrototypeIncludes([128, 192, 256], algorithm.length)) {
-            return false;
-          }
-        }
-      } else if (upper === "HMAC") {
-        // An explicit length of 0 is invalid; omitting it is fine.
-        if (ObjectHasOwn(algorithm, "length") && algorithm.length === 0) {
-          return false;
-        }
-      } else if (upper === "ECDSA" || upper === "ECDH") {
-        if (
-          ObjectHasOwn(algorithm, "namedCurve") &&
-          algorithm.namedCurve !== undefined
-        ) {
-          if (
-            !ArrayPrototypeIncludes(supportedNamedCurves, algorithm.namedCurve)
-          ) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-    default:
-      // deriveBits (HKDF/PBKDF2 length) is handled above; everything else
-      // (importKey, exportKey, sign, verify, digest, encapsulate, ...) has no
-      // additional supports()-level parameter constraints to enforce here.
-      return true;
-  }
-}
+// `SUPPORTS_OPERATIONS`, `PUBLIC_KEY_DERIVABLE_ALGORITHMS`, and the
+// `checkSupportForAlgorithm` / `supportsParamsValid` /
+// `supportsGetPublicKey` helpers used to live here as the body of
+// `SubtleCrypto.supports()`. They are now implemented in Rust on the
+// `SubtleCrypto` cppgc static method (see
+// `subtle_crypto.rs::supports_inner`); the registry of operation->algorithm
+// pairs lives in `algorithm.rs`.
 
 function isAlgorithmRegisteredFor(algName, registeredOp) {
   return op_crypto_get_registered_algorithm(registeredOp, algName).name !== "";
-}
-
-function supportsGetPublicKey(algName) {
-  const upper = StringPrototypeToUpperCase(algName);
-  for (let i = 0; i < PUBLIC_KEY_DERIVABLE_ALGORITHMS.length; i++) {
-    if (
-      StringPrototypeToUpperCase(PUBLIC_KEY_DERIVABLE_ALGORITHMS[i]) === upper
-    ) {
-      return true;
-    }
-  }
-  return false;
 }
 
 async function generateKey(normalizedAlgorithm, extractable, usages) {
@@ -2751,9 +2404,9 @@ function importKeyOkp(name, format, keyData, extractable, keyUsages) {
       if (jwk.key_ops !== undefined) {
         if (
           ArrayPrototypeFind(
-            jwk.key_ops,
-            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-          ) !== undefined ||
+              jwk.key_ops,
+              (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+            ) !== undefined ||
           !ArrayPrototypeEvery(
             keyUsages,
             (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
@@ -2814,7 +2467,7 @@ function importKeyOkp(name, format, keyData, extractable, keyUsages) {
   }
 }
 
-// Map of HMAC hash name -> JWK `alg` value per RFC 7518 §3.
+// Map of HMAC hash name -> JWK `alg` value per RFC 7518 section 3.
 const HMAC_JWK_ALG = {
   "SHA-1": "HS1",
   "SHA-256": "HS256",
@@ -3861,7 +3514,8 @@ function importKeyMlDsa(
 // `exportKeyAkp(family, ...)`.
 const AKP_EXPORT_FAMILY = {
   "ML-KEM": {
-    exportSpki: (name, innerKey) => op_crypto_ml_kem_export_spki(name, innerKey),
+    exportSpki: (name, innerKey) =>
+      op_crypto_ml_kem_export_spki(name, innerKey),
     exportPkcs8: (name, seed) => op_crypto_ml_kem_export_pkcs8(name, seed),
     privJwkPub: (key) =>
       op_crypto_ml_kem_get_public_key(

@@ -16,6 +16,8 @@ use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::CryptoError;
 use crate::algorithm::check_support_for_algorithm;
+use crate::algorithm::compute_key_length;
+use crate::algorithm::registered_algorithm;
 use crate::digest::BufferSource;
 use crate::digest::DigestAlgorithm;
 use crate::digest::run as run_digest;
@@ -30,6 +32,7 @@ use crate::subtle_encapsulate::run_decapsulate_bits;
 use crate::subtle_encapsulate::run_encapsulate_bits;
 use crate::subtle_encrypt::SubtleEncryptParams;
 use crate::subtle_encrypt::run as run_encrypt;
+use crate::subtle_encrypt::v8_str;
 use crate::subtle_key::SubtleKey;
 use crate::subtle_sign::SubtleSignParams;
 use crate::subtle_sign::run as run_sign;
@@ -61,17 +64,23 @@ impl SubtleCrypto {
   }
 
   /// `SubtleCrypto.supports(operation, algorithm, lengthOrHash?)` from the
-  /// WICG modern-algos spec. The single-argument-name case is handled here
-  /// in Rust; the two-argument-name overload (where `lengthOrHash` is an
-  /// `AlgorithmIdentifier`) is still dispatched from the JS shim, which
-  /// owns the `deriveKey` / `wrapKey` paperwork it requires.
+  /// WICG modern-algos spec. Both overloads are implemented here in Rust:
+  /// the third argument is sniffed as either a numeric `length` (ignored,
+  /// per spec) or as an additional `AlgorithmIdentifier`. The
+  /// `deriveKey` / `unwrapKey` / `wrapKey` / `encapsulateKey` /
+  /// `decapsulateKey` paperwork that the spec layers on the second
+  /// overload runs in this method body without re-entering JS.
   #[fast]
+  #[required(2)]
   #[static_method]
-  fn supports(
-    #[string] operation: &str,
-    #[string] algorithm_name: &str,
+  fn supports<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    #[string] operation: String,
+    algorithm: v8::Local<'s, v8::Value>,
+    length_or_hash: Option<v8::Local<'s, v8::Value>>,
   ) -> bool {
-    check_support_for_algorithm(operation, algorithm_name)
+    supports_inner(scope, &operation, algorithm, length_or_hash)
+      .unwrap_or(false)
   }
 
   /// `SubtleCrypto.digest(algorithm, data)` — compute a one-shot
@@ -242,4 +251,372 @@ impl SubtleCrypto {
 #[cppgc]
 pub fn op_create_subtle_crypto() -> SubtleCrypto {
   SubtleCrypto
+}
+
+/// Body of `SubtleCrypto.supports()` — kept out of the macro `impl` block so
+/// `?` short-circuits can use plain `Option`. Returns `None` on any
+/// recoverable input/extract failure, which the caller turns into the
+/// `false` the spec mandates.
+fn supports_inner<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  operation: &str,
+  algorithm: v8::Local<'s, v8::Value>,
+  length_or_hash: Option<v8::Local<'s, v8::Value>>,
+) -> Option<bool> {
+  // 1. The primary AlgorithmIdentifier — string-or-{name: string} per the
+  // WebIDL converter the JS shim used to apply before calling op_supports.
+  let (algorithm_name, algorithm_obj) = extract_alg_name(scope, algorithm)?;
+
+  // 2. Decide which overload was invoked. `lengthOrHash` is `number |
+  // AlgorithmIdentifier`; a `null` / `undefined` is the 1-arg overload, and
+  // any non-numeric, non-null value is the 2-arg AlgorithmIdentifier.
+  let mut length: Option<u32> = None;
+  let mut additional_algorithm: Option<v8::Local<'s, v8::Value>> = None;
+  if let Some(v) = length_or_hash
+    && !v.is_undefined()
+    && !v.is_null()
+  {
+    if v.is_number() {
+      // Per the JS shim, coerce with `>>> 0`. Use `uint32_value` so a NaN /
+      // negative double folds to a value the rest of the dispatch can ignore.
+      length = v.uint32_value(scope);
+    } else {
+      additional_algorithm = Some(v);
+    }
+  }
+
+  // 3. Second-overload paperwork — extra registry checks on the additional
+  // AlgorithmIdentifier and, for `deriveKey`, a `get key length` lookup.
+  if let Some(additional) = additional_algorithm {
+    let (additional_name, additional_obj) =
+      extract_alg_name(scope, additional)?;
+    let additional_check_op = match operation {
+      "deriveKey" | "unwrapKey" | "encapsulateKey" | "decapsulateKey" => {
+        Some("importKey")
+      }
+      "wrapKey" => Some("exportKey"),
+      _ => None,
+    };
+    if let Some(check_op) = additional_check_op
+      && !check_support_for_algorithm(check_op, &additional_name)
+    {
+      return Some(false);
+    }
+
+    if operation == "deriveKey" {
+      let registered = registered_algorithm("get key length", &additional_name);
+      let Some((canonical_name, _)) = registered else {
+        return Some(false);
+      };
+      let dict_length =
+        additional_obj.and_then(|obj| read_u32_member(scope, obj, b"length"));
+      let dict_hash_name = additional_obj
+        .and_then(|obj| read_hash_name_member(scope, obj))
+        .unwrap_or_default();
+      let derived_len = match compute_key_length(
+        canonical_name,
+        dict_length,
+        Some(dict_hash_name.as_str()),
+      ) {
+        Ok(len) => len,
+        Err(_) => return Some(false),
+      };
+      return Some(supports_check(
+        scope,
+        "deriveBits",
+        &algorithm_name,
+        algorithm_obj,
+        derived_len,
+      ));
+    }
+  }
+
+  Some(supports_check(
+    scope,
+    operation,
+    &algorithm_name,
+    algorithm_obj,
+    length,
+  ))
+}
+
+/// `check support for an algorithm` from the WICG modern-algos spec --
+/// the registry membership test plus the parameter-shape validation that
+/// rejects bogus members like `AES-GCM` `tagLength: 17` or `HKDF`
+/// `length: 7`.
+fn supports_check<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  operation: &str,
+  algorithm_name: &str,
+  algorithm_obj: Option<v8::Local<'s, v8::Object>>,
+  length: Option<u32>,
+) -> bool {
+  if !check_support_for_algorithm(operation, algorithm_name) {
+    return false;
+  }
+  let registered_op = match operation {
+    "encapsulateKey" | "encapsulateBits" => "encapsulate",
+    "decapsulateKey" | "decapsulateBits" => "decapsulate",
+    "deriveKey" => "deriveBits",
+    "exportKey" | "getPublicKey" => "importKey",
+    "wrapKey" => {
+      if registered_algorithm("wrapKey", algorithm_name).is_some() {
+        "wrapKey"
+      } else {
+        "encrypt"
+      }
+    }
+    "unwrapKey" => {
+      if registered_algorithm("unwrapKey", algorithm_name).is_some() {
+        "unwrapKey"
+      } else {
+        "decrypt"
+      }
+    }
+    other => other,
+  };
+  supports_params_valid(
+    scope,
+    registered_op,
+    algorithm_name,
+    algorithm_obj,
+    length,
+  )
+}
+
+/// Per-operation parameter validation, mirroring the JS-side
+/// `supportsParamsValid` helper. Missing parameters are tolerated -- this
+/// is a feature-detection probe -- but any explicitly supplied member that
+/// the operation steps would reject (e.g. a bogus `iv` / `tagLength` /
+/// `length` / `namedCurve`, or an unknown `hash`) makes the probe return
+/// `false`.
+fn supports_params_valid<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  registered_op: &str,
+  algorithm_name: &str,
+  algorithm_obj: Option<v8::Local<'s, v8::Object>>,
+  length: Option<u32>,
+) -> bool {
+  let upper = algorithm_name.to_ascii_uppercase();
+
+  // HKDF / PBKDF2 length constraint applies regardless of whether the
+  // algorithm argument was a string or a dictionary.
+  if registered_op == "deriveBits" && (upper == "HKDF" || upper == "PBKDF2") {
+    let Some(l) = length else { return false };
+    if l == 0 || !l.is_multiple_of(8) {
+      return false;
+    }
+  }
+
+  // A bare string identifier carries no further parameters to validate.
+  let Some(obj) = algorithm_obj else {
+    return true;
+  };
+
+  // Any supplied `hash` must be a recognized digest algorithm.
+  if let Some(hash_name) = read_optional_hash_name(scope, obj)
+    && registered_algorithm("digest", &hash_name).is_none()
+  {
+    return false;
+  }
+
+  match registered_op {
+    "encrypt" | "decrypt" => match upper.as_str() {
+      "AES-CBC" => {
+        if let Some(n) = read_buffer_source_byte_length(scope, obj, b"iv")
+          && n != 16
+        {
+          return false;
+        }
+        true
+      }
+      "AES-CTR" => {
+        if let Some(n) = read_buffer_source_byte_length(scope, obj, b"counter")
+          && n != 16
+        {
+          return false;
+        }
+        if let Some(l) = read_u32_member(scope, obj, b"length")
+          && (l == 0 || l > 128)
+        {
+          return false;
+        }
+        true
+      }
+      "AES-GCM" | "AES-OCB" => {
+        if let Some(n) = read_buffer_source_byte_length(scope, obj, b"iv")
+          && n != 12
+          && n != 16
+        {
+          return false;
+        }
+        if let Some(l) = read_u32_member(scope, obj, b"tagLength")
+          && !matches!(l, 32 | 64 | 96 | 104 | 112 | 120 | 128)
+        {
+          return false;
+        }
+        true
+      }
+      "CHACHA20-POLY1305" => {
+        if let Some(n) = read_buffer_source_byte_length(scope, obj, b"iv")
+          && n != 12
+        {
+          return false;
+        }
+        if let Some(l) = read_u32_member(scope, obj, b"tagLength")
+          && l != 128
+        {
+          return false;
+        }
+        true
+      }
+      _ => true,
+    },
+    "generateKey" | "get key length" => match upper.as_str() {
+      "AES-CBC" | "AES-CTR" | "AES-GCM" | "AES-OCB" | "AES-KW" => {
+        if let Some(l) = read_u32_member(scope, obj, b"length")
+          && !matches!(l, 128 | 192 | 256)
+        {
+          return false;
+        }
+        true
+      }
+      "HMAC" => {
+        if let Some(0) = read_u32_member(scope, obj, b"length") {
+          return false;
+        }
+        true
+      }
+      "ECDSA" | "ECDH" => {
+        if let Some(curve) = read_string_member(scope, obj, b"namedCurve")
+          && !matches!(curve.as_str(), "P-256" | "P-384" | "P-521")
+        {
+          return false;
+        }
+        true
+      }
+      _ => true,
+    },
+    _ => true,
+  }
+}
+
+fn read_buffer_source_byte_length<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  field: &[u8],
+) -> Option<usize> {
+  let key = v8::String::new_from_one_byte(
+    scope,
+    field,
+    v8::NewStringType::Internalized,
+  )?;
+  let val = obj.get(scope, key.into())?;
+  if val.is_undefined() || val.is_null() {
+    return None;
+  }
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(val) {
+    return Some(view.byte_length());
+  }
+  if let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(val) {
+    return Some(ab.byte_length());
+  }
+  None
+}
+
+fn read_string_member<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  field: &[u8],
+) -> Option<String> {
+  let key = v8::String::new_from_one_byte(
+    scope,
+    field,
+    v8::NewStringType::Internalized,
+  )?;
+  let val = obj.get(scope, key.into())?;
+  if val.is_undefined() || val.is_null() {
+    return None;
+  }
+  Some(val.to_string(scope)?.to_rust_string_lossy(scope))
+}
+
+fn read_optional_hash_name<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+) -> Option<String> {
+  let key = v8_str(scope, "hash");
+  // Mirror `ObjectHasOwn(algorithm, "hash") && algorithm.hash !== undefined`
+  // - we need to differentiate "absent" (skip) from "present but invalid"
+  // (signal via Some("__not_a_valid_hash_sentinel__"))? No: the JS code does
+  // `normalizeAlgorithm(algorithm.hash, "digest")` which throws for non-
+  // string-or-{name} inputs and for unknown names; the caller treats throw
+  // as `false`. So we replicate by returning a string name (or `__invalid__`
+  // sentinel) when present, `None` when absent.
+  if !obj.has_own_property(scope, key.into())? {
+    return None;
+  }
+  let val = obj.get(scope, key.into())?;
+  if val.is_undefined() {
+    return None;
+  }
+  if val.is_string() {
+    return Some(val.to_rust_string_lossy(scope));
+  }
+  let inner = v8::Local::<v8::Object>::try_from(val).ok()?;
+  let name_key = v8_str(scope, "name");
+  let name_val = inner.get(scope, name_key.into())?;
+  Some(name_val.to_string(scope)?.to_rust_string_lossy(scope))
+}
+
+fn extract_alg_name<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: v8::Local<'s, v8::Value>,
+) -> Option<(String, Option<v8::Local<'s, v8::Object>>)> {
+  if value.is_string() {
+    return Some((value.to_rust_string_lossy(scope), None));
+  }
+  let obj = v8::Local::<v8::Object>::try_from(value).ok()?;
+  let name_key = v8_str(scope, "name");
+  let name_val = obj.get(scope, name_key.into())?;
+  if name_val.is_undefined() {
+    return None;
+  }
+  let s = name_val.to_string(scope)?.to_rust_string_lossy(scope);
+  Some((s, Some(obj)))
+}
+
+fn read_u32_member<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  field: &[u8],
+) -> Option<u32> {
+  let key = v8::String::new_from_one_byte(
+    scope,
+    field,
+    v8::NewStringType::Internalized,
+  )?;
+  let val = obj.get(scope, key.into())?;
+  if val.is_undefined() || val.is_null() {
+    return None;
+  }
+  val.uint32_value(scope)
+}
+
+fn read_hash_name_member<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+) -> Option<String> {
+  let key = v8_str(scope, "hash");
+  let val = obj.get(scope, key.into())?;
+  if val.is_undefined() || val.is_null() {
+    return None;
+  }
+  if val.is_string() {
+    return Some(val.to_rust_string_lossy(scope));
+  }
+  let hash_obj = v8::Local::<v8::Object>::try_from(val).ok()?;
+  let name_key = v8_str(scope, "name");
+  let name_val = hash_obj.get(scope, name_key.into())?;
+  Some(name_val.to_string(scope)?.to_rust_string_lossy(scope))
 }

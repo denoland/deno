@@ -345,18 +345,16 @@ pub enum GetKeyLengthError {
 
 /// "Get key length" sub-algorithm per
 /// https://www.w3.org/TR/WebCryptoAPI/#dfn-aes-keygen-get-key-length etc.
-/// Used by `SubtleCrypto.deriveKey()` and the `supports()` `deriveKey`
-/// two-overload paperwork. The JS shim still does
-/// `normalizeAlgorithm(algorithm, "get key length")` and then passes the
-/// normalized `name`, optional `length` and optional `hash.name` here.
+/// Pure Rust core shared between [`op_crypto_get_key_length`] (still called
+/// from the JS shim) and the `supports()` 2-arg overload implemented on the
+/// `SubtleCrypto` cppgc impl block.
 ///
 /// Returns the bit length, or `Option<u32>::None` for KDFs (`HKDF`,
 /// `PBKDF2`) whose output length depends on the caller.
-#[op2]
-pub fn op_crypto_get_key_length(
-  #[string] name: &str,
+pub fn compute_key_length(
+  name: &str,
   length: Option<u32>,
-  #[string] hash_name: Option<String>,
+  hash_name: Option<&str>,
 ) -> Result<Option<u32>, GetKeyLengthError> {
   match name {
     "AES-CBC" | "AES-CTR" | "AES-GCM" | "AES-OCB" | "AES-KW" => {
@@ -375,10 +373,12 @@ pub fn op_crypto_get_key_length(
         }
       } else {
         let hash = hash_name.unwrap_or_default();
-        let block = match hash.as_str() {
+        let block = match hash {
           "SHA-1" | "SHA-256" | "SHA3-256" => 512,
           "SHA-384" | "SHA-512" | "SHA3-384" | "SHA3-512" => 1024,
-          _ => return Err(GetKeyLengthError::HmacUnknownHash(hash)),
+          _ => {
+            return Err(GetKeyLengthError::HmacUnknownHash(hash.to_string()));
+          }
         };
         Ok(Some(block))
       }
@@ -387,4 +387,29 @@ pub fn op_crypto_get_key_length(
     "HKDF" | "PBKDF2" => Ok(None),
     _ => Err(GetKeyLengthError::Unreachable),
   }
+}
+
+#[op2]
+pub fn op_crypto_get_key_length(
+  #[string] name: &str,
+  length: Option<u32>,
+  #[string] hash_name: Option<String>,
+) -> Result<Option<u32>, GetKeyLengthError> {
+  compute_key_length(name, length, hash_name.as_deref())
+}
+
+/// Lookup the registered (canonical name, dictionary type) for an operation
+/// slot. Pure-Rust mirror of the JS shim's `op_crypto_get_registered_algorithm`
+/// call sequence inside `normalizeAlgorithm`; used by the `supports()` 2-arg
+/// overload to resolve a `lengthOrHash` AlgorithmIdentifier in Rust.
+pub fn registered_algorithm(
+  operation: &str,
+  algorithm_name: &str,
+) -> Option<(&'static str, Option<&'static str>)> {
+  let op = Operation::from_name(operation)?;
+  op.registered().iter().find_map(|(name, dict)| {
+    name
+      .eq_ignore_ascii_case(algorithm_name)
+      .then_some((*name, *dict))
+  })
 }
