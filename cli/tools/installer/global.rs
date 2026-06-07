@@ -580,6 +580,11 @@ async fn setup_config_dir(
 /// at the member directory so the installed binary resolves them exactly as it
 /// would when invoked from the original workspace. See
 /// https://github.com/denoland/deno/issues/32057.
+///
+/// Only `deno.json` members (those with a `name` and `exports`) are flattened,
+/// since they are the ones resolved through the import map. `package.json`
+/// members resolve via `node_modules`, which is unaffected by stripping the
+/// `workspace` field, so they don't need an entry here.
 fn workspace_member_import_entries(
   workspace: &deno_config::workspace::Workspace,
 ) -> Vec<(String, String)> {
