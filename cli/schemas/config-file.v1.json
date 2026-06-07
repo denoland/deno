@@ -743,7 +743,7 @@
         },
         "singleBodyPosition": {
           "description": "The position of the body in single body blocks in JavaScript and TypeScript.",
-          "default": "sameLine",
+          "default": "maintain",
           "enum": [
             "maintain",
             "sameLine",
