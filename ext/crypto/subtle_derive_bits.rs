@@ -353,6 +353,15 @@ pub fn run(
   key: SubtleKey,
   length: Option<f64>,
 ) -> Result<Vec<u8>, CryptoError> {
+  // Spec step 1: `normalizeAlgorithm` rejects unknown algorithm names with
+  // `NotSupportedError` BEFORE the algorithm/key match. Match the spec order
+  // so a stray Kelvin-sign `"H<U+212A>DF"` (or any other unregistered name)
+  // produces `NotSupportedError`, not `InvalidAccessError`.
+  if let SubtleDeriveBitsParams::Unknown(name) = &params {
+    return Err(not_supported(format!(
+      "Algorithm '{name}' is not supported"
+    )));
+  }
   // Spec step 7 (algorithm name match on baseKey). The `deriveBits`
   // usage check is the caller's responsibility -- the cppgc method
   // body enforces it for the external `SubtleCrypto.deriveBits` path,
@@ -493,9 +502,9 @@ pub fn run(
       }
       truncate_to_length(secret.to_vec(), length_u32)
     }
-    SubtleDeriveBitsParams::Unknown(name) => Err(not_supported(format!(
-      "Algorithm '{name}' is not supported"
-    ))),
+    // `Unknown` is rejected with `NotSupportedError` above before we even
+    // check the key-algorithm match (matches the spec normalize step).
+    SubtleDeriveBitsParams::Unknown(_) => unreachable!(),
   }
 }
 

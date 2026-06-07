@@ -1604,6 +1604,31 @@ SubtleCrypto.supports = function supports(
 };
 const SubtleCryptoPrototype = SubtleCrypto.prototype;
 
+// `SubtleCrypto.prototype.deriveBits` is now a cppgc method declared with
+// three formal params (`algorithm`, `baseKey`, `length`). The op2 macro
+// has no way to declare an *optional* param while keeping the macro-level
+// minimum-arg check, so we cannot use `#[required(2)]` (it would also cap
+// the `Function.length` slot to 2 and route through `async_op_2`, which
+// silently drops the third user argument before it reaches Rust -- see
+// `setUpAsyncStub` in `libs/core/00_infra.js`). The spec (and WebIDL idl
+// harness) requires `Function.length === 2` for
+// `deriveBits(AlgorithmIdentifier, CryptoKey, optional unsigned long?)`,
+// so wrap the cppgc method in a small forwarder whose declared params
+// give it `length === 2` (the `length` default doesn't count) and
+// explicitly pass all three args through.
+{
+  const cppgcDeriveBits = SubtleCryptoPrototype.deriveBits;
+  function deriveBits(algorithm, baseKey, length = undefined) {
+    return cppgcDeriveBits.call(this, algorithm, baseKey, length);
+  }
+  ObjectDefineProperty(SubtleCryptoPrototype, "deriveBits", {
+    value: deriveBits,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
 const SUPPORTS_OPERATIONS = [
   "encrypt",
   "decrypt",

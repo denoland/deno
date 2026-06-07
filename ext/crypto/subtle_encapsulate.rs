@@ -14,7 +14,7 @@
 use std::borrow::Cow;
 
 use aws_lc_rs::kem;
-use deno_core::convert::Uint8Array;
+use deno_core::ToV8;
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::WebIdlConverter;
@@ -60,10 +60,58 @@ fn canonical_name(name: &str) -> Option<&'static str> {
 
 /// Output of `SubtleCrypto.encapsulateBits()` — the ML-KEM ciphertext and
 /// the encapsulated shared secret, both as `ArrayBuffer`.
-#[derive(deno_core::ToV8)]
+///
+/// Hand-rolled `ToV8` instead of `#[derive(ToV8)]` so the returned value is
+/// a plain `Object` (default prototype, satisfies `instanceof Object` in
+/// WPT) and the `ciphertext` / `sharedKey` slots are `ArrayBuffer`
+/// instances (the modern-algos spec mandates `ArrayBuffer`, and the WPT
+/// asserts `instanceof ArrayBuffer`). The macro-generated path would
+/// produce a null-prototype object holding `Uint8Array` values, which
+/// fails both checks.
 pub struct EncapsulateBitsOutput {
-  pub ciphertext: Uint8Array,
-  pub shared_key: Uint8Array,
+  pub ciphertext: Vec<u8>,
+  pub shared_key: Vec<u8>,
+}
+
+impl<'a> ToV8<'a> for EncapsulateBitsOutput {
+  type Error = JsErrorBox;
+
+  fn to_v8(
+    self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    let ciphertext = bytes_to_array_buffer(scope, self.ciphertext);
+    let shared_key = bytes_to_array_buffer(scope, self.shared_key);
+    let obj = v8::Object::new(scope);
+    let key = v8::String::new_from_one_byte(
+      scope,
+      b"ciphertext",
+      v8::NewStringType::Internalized,
+    )
+    .ok_or_else(|| JsErrorBox::type_error("ciphertext key"))?;
+    obj.set(scope, key.into(), ciphertext.into());
+    let key = v8::String::new_from_one_byte(
+      scope,
+      b"sharedKey",
+      v8::NewStringType::Internalized,
+    )
+    .ok_or_else(|| JsErrorBox::type_error("sharedKey key"))?;
+    obj.set(scope, key.into(), shared_key.into());
+    Ok(obj.into())
+  }
+}
+
+fn bytes_to_array_buffer<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  bytes: Vec<u8>,
+) -> v8::Local<'s, v8::ArrayBuffer> {
+  if bytes.is_empty() {
+    return v8::ArrayBuffer::new(scope, 0);
+  }
+  let backing =
+    v8::ArrayBuffer::new_backing_store_from_bytes(bytes.into_boxed_slice());
+  let backing_shared = backing.make_shared();
+  v8::ArrayBuffer::with_backing_store(scope, &backing_shared)
 }
 
 pub fn run_encapsulate_bits(
@@ -102,8 +150,8 @@ pub fn run_encapsulate_bits(
     .encapsulate()
     .map_err(|_| op_error("Encapsulation failed".into()))?;
   Ok(EncapsulateBitsOutput {
-    ciphertext: ciphertext.as_ref().to_vec().into(),
-    shared_key: shared_secret.as_ref().to_vec().into(),
+    ciphertext: ciphertext.as_ref().to_vec(),
+    shared_key: shared_secret.as_ref().to_vec(),
   })
 }
 
