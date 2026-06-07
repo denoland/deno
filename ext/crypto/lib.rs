@@ -74,6 +74,7 @@ mod shared;
 mod subtle_crypto;
 mod subtle_decrypt;
 mod subtle_derive_bits;
+mod subtle_encapsulate;
 mod subtle_encrypt;
 mod subtle_key;
 mod subtle_sign;

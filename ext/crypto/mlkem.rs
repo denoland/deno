@@ -53,7 +53,7 @@ pub enum MlKemVariant {
 }
 
 impl MlKemVariant {
-  fn algorithm(self) -> &'static kem::Algorithm<kem::AlgorithmId> {
+  pub fn algorithm(self) -> &'static kem::Algorithm<kem::AlgorithmId> {
     match self {
       MlKemVariant::MlKem512 => &kem::ML_KEM_512,
       MlKemVariant::MlKem768 => &kem::ML_KEM_768,
@@ -93,6 +93,14 @@ impl MlKemVariant {
     match self {
       MlKemVariant::MlKem512 => 800,
       MlKemVariant::MlKem768 => 1184,
+      MlKemVariant::MlKem1024 => 1568,
+    }
+  }
+
+  pub fn ciphertext_size(self) -> usize {
+    match self {
+      MlKemVariant::MlKem512 => 768,
+      MlKemVariant::MlKem768 => 1088,
       MlKemVariant::MlKem1024 => 1568,
     }
   }

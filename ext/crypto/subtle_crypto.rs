@@ -24,6 +24,10 @@ use crate::subtle_decrypt::SubtleDecryptParams;
 use crate::subtle_decrypt::run as run_decrypt;
 use crate::subtle_derive_bits::SubtleDeriveBitsParams;
 use crate::subtle_derive_bits::run as run_derive_bits;
+use crate::subtle_encapsulate::EncapsulateBitsOutput;
+use crate::subtle_encapsulate::SubtleEncapsulateParams;
+use crate::subtle_encapsulate::run_decapsulate_bits;
+use crate::subtle_encapsulate::run_encapsulate_bits;
 use crate::subtle_encrypt::SubtleEncryptParams;
 use crate::subtle_encrypt::run as run_encrypt;
 use crate::subtle_key::SubtleKey;
@@ -195,6 +199,40 @@ impl SubtleCrypto {
     length: Option<f64>,
   ) -> Result<Vec<u8>, CryptoError> {
     spawn_blocking(move || run_derive_bits(algorithm, base_key, length)).await?
+  }
+
+  /// `SubtleCrypto.encapsulateBits(algorithm, encapsulationKey)` from the
+  /// WICG modern-algos spec -- ML-KEM-only. Returns a dict with the KEM
+  /// `ciphertext` and the raw `sharedKey` bytes as `ArrayBuffer`s.
+  ///
+  /// https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-encapsulateBits
+  #[rename("encapsulateBits")]
+  async fn encapsulate_bits(
+    &self,
+    #[webidl] algorithm: SubtleEncapsulateParams,
+    #[webidl] encapsulation_key: SubtleKey,
+  ) -> Result<EncapsulateBitsOutput, CryptoError> {
+    spawn_blocking(move || run_encapsulate_bits(algorithm, encapsulation_key))
+      .await?
+  }
+
+  /// `SubtleCrypto.decapsulateBits(algorithm, decapsulationKey, ciphertext)`
+  /// from the WICG modern-algos spec -- ML-KEM-only. Returns the raw
+  /// shared-secret bytes recovered from the KEM ciphertext.
+  ///
+  /// https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-decapsulateBits
+  #[arraybuffer]
+  #[rename("decapsulateBits")]
+  async fn decapsulate_bits(
+    &self,
+    #[webidl] algorithm: SubtleEncapsulateParams,
+    #[webidl] decapsulation_key: SubtleKey,
+    #[webidl] ciphertext: BufferSource,
+  ) -> Result<Vec<u8>, CryptoError> {
+    spawn_blocking(move || {
+      run_decapsulate_bits(algorithm, decapsulation_key, ciphertext.0)
+    })
+    .await?
   }
 }
 

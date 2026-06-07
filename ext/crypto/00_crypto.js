@@ -1229,63 +1229,6 @@ ObjectAssign(SubtleCrypto.prototype, {
   },
 
   /**
-   * Encapsulate a fresh shared secret to the given encapsulation key and
-   * return the raw shared secret bytes.
-   *
-   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-encapsulateBits
-   *
-   * @param {AlgorithmIdentifier} algorithm
-   * @param {CryptoKey} encapsulationKey
-   * @returns {Promise<{ciphertext: ArrayBuffer, sharedKey: ArrayBuffer}>}
-   */
-  // deno-lint-ignore require-await
-  async encapsulateBits(algorithm, encapsulationKey) {
-    webidl.assertBranded(this, SubtleCryptoPrototype);
-    const prefix = "Failed to execute 'encapsulateBits' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
-    algorithm = webidl.converters.AlgorithmIdentifier(
-      algorithm,
-      prefix,
-      "Argument 1",
-    );
-    encapsulationKey = webidl.converters.CryptoKey(
-      encapsulationKey,
-      prefix,
-      "Argument 2",
-    );
-
-    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "encapsulate");
-
-    if (encapsulationKey.algorithm.name !== normalizedAlgorithm.name) {
-      throw new DOMException(
-        "Encapsulation key algorithm does not match",
-        "InvalidAccessError",
-      );
-    }
-    if (encapsulationKey.type !== "public") {
-      throw new DOMException(
-        "Encapsulation key must be a public key",
-        "InvalidAccessError",
-      );
-    }
-    if (!ArrayPrototypeIncludes(encapsulationKey.usages, "encapsulateBits")) {
-      throw new DOMException(
-        "Encapsulation key usages must include 'encapsulateBits'",
-        "InvalidAccessError",
-      );
-    }
-
-    const { ciphertext, sharedSecret } = mlKemEncapsulate(
-      normalizedAlgorithm,
-      encapsulationKey,
-    );
-    return {
-      ciphertext: TypedArrayPrototypeGetBuffer(ciphertext),
-      sharedKey: TypedArrayPrototypeGetBuffer(sharedSecret),
-    };
-  },
-
-  /**
    * Decapsulate the given ciphertext using the provided decapsulation key,
    * importing the resulting shared secret as a CryptoKey under
    * `sharedKeyAlgorithm`.
@@ -1372,67 +1315,6 @@ ObjectAssign(SubtleCrypto.prototype, {
       extractable,
       usages,
     );
-  },
-
-  /**
-   * Decapsulate the given ciphertext using the provided decapsulation key
-   * and return the raw shared secret bytes.
-   *
-   * https://wicg.github.io/webcrypto-modern-algos/#SubtleCrypto-method-decapsulateBits
-   *
-   * @param {AlgorithmIdentifier} algorithm
-   * @param {CryptoKey} decapsulationKey
-   * @param {BufferSource} ciphertext
-   * @returns {Promise<ArrayBuffer>}
-   */
-  // deno-lint-ignore require-await
-  async decapsulateBits(algorithm, decapsulationKey, ciphertext) {
-    webidl.assertBranded(this, SubtleCryptoPrototype);
-    const prefix = "Failed to execute 'decapsulateBits' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, prefix);
-    algorithm = webidl.converters.AlgorithmIdentifier(
-      algorithm,
-      prefix,
-      "Argument 1",
-    );
-    decapsulationKey = webidl.converters.CryptoKey(
-      decapsulationKey,
-      prefix,
-      "Argument 2",
-    );
-    ciphertext = webidl.converters.BufferSource(
-      ciphertext,
-      prefix,
-      "Argument 3",
-    );
-
-    ciphertext = copyBuffer(ciphertext);
-    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "decapsulate");
-    if (decapsulationKey.algorithm.name !== normalizedAlgorithm.name) {
-      throw new DOMException(
-        "Decapsulation key algorithm does not match",
-        "InvalidAccessError",
-      );
-    }
-    if (decapsulationKey.type !== "private") {
-      throw new DOMException(
-        "Decapsulation key must be a private key",
-        "InvalidAccessError",
-      );
-    }
-    if (!ArrayPrototypeIncludes(decapsulationKey.usages, "decapsulateBits")) {
-      throw new DOMException(
-        "Decapsulation key usages must include 'decapsulateBits'",
-        "InvalidAccessError",
-      );
-    }
-
-    const sharedSecret = mlKemDecapsulate(
-      normalizedAlgorithm,
-      decapsulationKey,
-      ciphertext,
-    );
-    return TypedArrayPrototypeGetBuffer(sharedSecret);
   },
 
   /**
