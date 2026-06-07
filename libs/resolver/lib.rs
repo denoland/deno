@@ -431,10 +431,10 @@ impl<
               .map_err(|e| {
                 DenoResolveErrorKind::PackageJsonDepValueUrlParse(e).into_box()
               }),
-              PackageJsonDepValue::Workspace(version_req) => self
+              PackageJsonDepValue::Workspace { name, version_req } => self
                 .workspace_resolver
                 .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-                  alias,
+                  name.as_deref().unwrap_or(alias),
                   version_req,
                 )
                 .map_err(|e| {

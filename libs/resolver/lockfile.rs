@@ -310,7 +310,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
-          PackageJsonDepValue::Workspace(_) => None,
+          PackageJsonDepValue::Workspace { .. } => None,
           PackageJsonDepValue::Catalog(catalog_name) => {
             let catalog = catalogs.get(catalog_name.as_str())?;
             let version_req_str = catalog.get(alias.as_str())?;
@@ -426,7 +426,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_)
+                    | PackageJsonDepValue::Workspace { .. }
                     | PackageJsonDepValue::Catalog(_) => None,
                   })
                   .collect()

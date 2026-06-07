@@ -68,13 +68,30 @@ pub struct PackageJsonDepValueParseWithLocationError {
 /// `deno run` resolver error (`VersionNotSatisfied`).
 #[derive(Debug, Error, Clone)]
 #[error(
-  "Failed to install '{alias}': found package.json in workspace, but version '{version}' didn't satisfy constraint '{version_req}'\n    at {location}"
+  "Failed to install '{alias}'{}: found package.json in workspace, but version '{version}' didn't satisfy constraint '{version_req}'\n    at {location}",
+  self.member_suffix()
 )]
 pub struct WorkspaceMemberVersionNotSatisfiedError {
   pub location: Url,
+  /// The dependency key the member is imported under.
   pub alias: StackString,
+  /// The resolved workspace member name. Differs from `alias` for pnpm-style
+  /// `workspace:<name>@<range>` aliases.
+  pub member_name: StackString,
   pub version_req: VersionReq,
   pub version: Version,
+}
+
+impl WorkspaceMemberVersionNotSatisfiedError {
+  /// When the member is imported under a different name (an alias), append the
+  /// resolved member name so the offending entry is easy to locate.
+  fn member_suffix(&self) -> String {
+    if self.member_name == self.alias {
+      String::new()
+    } else {
+      format!(" (workspace member '{}')", self.member_name)
+    }
+  }
 }
 
 /// An error surfaced while reconciling a package.json's dependencies against
@@ -252,26 +269,31 @@ impl NpmInstallDepsProvider {
                 });
               }
             }
-            PackageJsonDepValue::Workspace(workspace_version_req) => {
+            PackageJsonDepValue::Workspace { name, version_req } => {
               // A `workspace:` dependency resolves to the local workspace
-              // member with a matching name. `workspace:*`, `workspace:~` and
-              // `workspace:^` are placeholders that match the member regardless
-              // of its version (the range only affects what gets written when
-              // publishing). An explicit `workspace:<range>` must be satisfied
-              // by the member's version though; like pnpm, a mismatch is a hard
-              // error rather than silently linking the member or falling back
-              // to the registry. Prerelease versions within the range bounds
-              // match too, since the member is provided explicitly (#30155).
+              // member with a matching name. The member is looked up by its
+              // own package name, which for pnpm-style aliases
+              // (`workspace:<name>@<range>`) differs from the dependency key
+              // that's used as the import alias. `workspace:*`, `workspace:~`
+              // and `workspace:^` are placeholders that match the member
+              // regardless of its version (the range only affects what gets
+              // written when publishing). An explicit `workspace:<range>` must
+              // be satisfied by the member's version though; like pnpm, a
+              // mismatch is a hard error rather than silently linking the
+              // member or falling back to the registry. Prerelease versions
+              // within the range bounds match too, since the member is provided
+              // explicitly (#30155).
+              let target_name = name.as_deref().unwrap_or(alias);
               if let Some(pkg) = workspace_npm_pkgs
                 .iter()
-                .find(|pkg| pkg.matches_name(alias))
+                .find(|pkg| pkg.matches_name(target_name))
               {
-                let satisfied = match workspace_version_req {
+                let satisfied = match version_req {
                   PackageJsonDepWorkspaceReq::Tilde
                   | PackageJsonDepWorkspaceReq::Caret => true,
                   PackageJsonDepWorkspaceReq::VersionReq(version_req) => pkg
                     .matches_name_and_version_req_including_pre(
-                      alias,
+                      target_name,
                       version_req,
                     ),
                 };
@@ -286,12 +308,13 @@ impl NpmInstallDepsProvider {
                   });
                 } else if let PackageJsonDepWorkspaceReq::VersionReq(
                   version_req,
-                ) = workspace_version_req
+                ) = version_req
                 {
                   workspace_member_version_errors.push(
                     WorkspaceMemberVersionNotSatisfiedError {
                       location: pkg_json.specifier(),
                       alias: alias.clone(),
+                      member_name: target_name.into(),
                       version_req: version_req.clone(),
                       version: pkg.nv.version.clone(),
                     },
