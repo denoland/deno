@@ -349,8 +349,7 @@ async fn run_with_watch(
 /// be treated as CommonJS. Returns `true` only when the code parses as a script
 /// (no `import`/`export` declarations) *and* contains CJS-specific patterns like
 /// `require()`. Code with ESM syntax — or no module hints at all — is ESM,
-/// preserving the longstanding `deno eval` default. Shared with
-/// `task_runner::NodeCommand` so a `node -e` temp file picks the same extension.
+/// preserving the longstanding `deno eval` default.
 pub fn eval_source_is_cjs(source_code: &str) -> bool {
   let specifier = deno_core::url::Url::parse("file:///eval.js").unwrap();
   let is_script = deno_ast::parse_program(deno_ast::ParseParams {

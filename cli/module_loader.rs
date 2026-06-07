@@ -1267,7 +1267,13 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
-    if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
+    // Synthetic modules such as `deno eval`'s `$deno$eval.*` can live under an
+    // npm package cwd during lifecycle scripts. They need graph preparation so
+    // the module loader can read them from `MemoryFiles` instead of trying to
+    // load them as physical npm package files.
+    if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier)
+      && self.0.shared.memory_files.get(specifier).is_none()
+    {
       self.0.shared.has_js_execution_started_flag.raise();
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
