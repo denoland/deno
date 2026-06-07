@@ -12,6 +12,10 @@ let resolveIdleSocketClosed: () => void;
 idleSocketClosed = new Promise((r) => (resolveIdleSocketClosed = r));
 
 const BODY = '{"test":true}';
+const DELAYED_BODY = "chunk-one/chunk-two";
+const DELAYED_BODY_FIRST_CHUNK = "chunk-one/";
+
+let destroyedDirectWriteAttempt = false;
 
 const server = net.createServer((socket) => {
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -28,10 +32,23 @@ const server = net.createServer((socket) => {
     if (headerEnd === -1) return;
 
     const headers = buffer.substring(0, headerEnd);
+    const requestLine = headers.split("\r\n", 1)[0];
+    const path = requestLine.split(" ")[1];
     const clMatch = headers.match(/content-length:\s*(\d+)/i);
     const contentLength = clMatch ? parseInt(clMatch[1]) : 0;
     const bodyStart = headerEnd + 4;
     const body = buffer.substring(bodyStart, bodyStart + contentLength);
+
+    if (
+      path === "/direct-write-retry" &&
+      !destroyedDirectWriteAttempt &&
+      body.includes(DELAYED_BODY_FIRST_CHUNK) &&
+      body.length < contentLength
+    ) {
+      destroyedDirectWriteAttempt = true;
+      socket.destroy();
+      return;
+    }
 
     if (body.length < contentLength) return;
 
@@ -58,6 +75,17 @@ const agent = new http.Agent({
   keepAlive: true,
   maxSockets: 1,
 });
+
+async function waitForFreeSocket() {
+  const deadline = Date.now() + 1000;
+  while (Date.now() < deadline) {
+    for (const sockets of Object.values(agent.freeSockets)) {
+      if (sockets.length > 0) return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("timed out waiting for free socket");
+}
 
 function postStreaming(port: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -92,6 +120,47 @@ function postStreaming(port: number): Promise<string> {
   });
 }
 
+async function* delayedBodyChunks() {
+  yield Buffer.from(DELAYED_BODY_FIRST_CHUNK);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  yield Buffer.from(DELAYED_BODY.slice(DELAYED_BODY_FIRST_CHUNK.length));
+}
+
+function postDelayedStreaming(port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("timeout")), 5000);
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/direct-write-retry",
+        method: "POST",
+        agent,
+        headers: { "Content-Length": String(DELAYED_BODY.length) },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (c: Buffer) => (data += c));
+        res.on("end", () => {
+          clearTimeout(timeout);
+          resolve(data);
+        });
+      },
+    );
+    req.on("error", (e: Error) => {
+      clearTimeout(timeout);
+      reject(e);
+    });
+    req.flushHeaders();
+
+    const bodyStream = Readable.from(delayedBodyChunks());
+    pipeline(bodyStream, req).catch((e: Error) => {
+      clearTimeout(timeout);
+      reject(e);
+    });
+  });
+}
+
 server.listen(0, async () => {
   const port = (server.address() as net.AddressInfo).port;
   try {
@@ -109,6 +178,14 @@ server.listen(0, async () => {
     // Second request on stale socket - should retry with body intact
     const second = await postStreaming(port);
     console.log("Request 2: OK", second);
+
+    await waitForFreeSocket();
+
+    // Third request writes body chunks directly to a reused socket. The server
+    // drops that socket after the first chunk, so retry must replay both the
+    // header write and the direct body write.
+    const third = await postDelayedStreaming(port);
+    console.log("Request 3: OK", third);
 
     console.log("PASS");
   } catch (e) {

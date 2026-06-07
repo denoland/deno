@@ -29,6 +29,7 @@ const {
   ArrayIsArray,
   ArrayPrototypeIndexOf,
   ArrayPrototypeMap,
+  ArrayPrototypePush,
   ArrayPrototypeSplice,
   Boolean,
   DateNow,
@@ -889,6 +890,7 @@ function maybeRetryRequest(req, socket) {
 
   req._retrying = true;
   const agent = req.agent;
+  const retryHeader = req._header;
 
   // Clean up parser on the old socket
   const parser = socket.parser;
@@ -942,6 +944,8 @@ function maybeRetryRequest(req, socket) {
   if (req[kRetryData]) {
     req.outputData = req[kRetryData];
     req[kRetryData] = null;
+    req._header = retryHeader;
+    req._headerSent = true;
   }
 
   // Re-queue through agent to get a fresh socket
@@ -1497,6 +1501,20 @@ ClientRequest.prototype.setSocketKeepAlive = function setSocketKeepAlive(
 
 ClientRequest.prototype.clearTimeout = function clearTimeout(cb) {
   this.setTimeout(0, cb);
+};
+
+ClientRequest.prototype._recordRetryData = function _recordRetryData(
+  data,
+  encoding,
+  callback,
+) {
+  if (!this.reusedSocket || this.res || !this.agent || this._retrying) {
+    return;
+  }
+  if (this[kRetryData] === null || this[kRetryData] === undefined) {
+    this[kRetryData] = [];
+  }
+  ArrayPrototypePush(this[kRetryData], { data, encoding, callback });
 };
 
 export { ClientRequest };
