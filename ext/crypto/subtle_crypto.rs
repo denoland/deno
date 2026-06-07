@@ -166,7 +166,6 @@ impl SubtleCrypto {
   /// [`crate::subtle_derive_bits::run`].
   #[arraybuffer]
   #[rename("deriveBits")]
-  #[required(2)]
   async fn derive_bits(
     &self,
     #[webidl] algorithm: SubtleDeriveBitsParams,
@@ -189,7 +188,6 @@ impl SubtleCrypto {
   /// this method.
   #[arraybuffer]
   #[rename("__deriveBitsInternal")]
-  #[required(2)]
   async fn derive_bits_internal(
     &self,
     #[webidl] algorithm: SubtleDeriveBitsParams,
