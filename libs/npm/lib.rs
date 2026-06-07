@@ -20,6 +20,7 @@ use deno_semver::Version;
 use deno_semver::package::PackageNv;
 use registry::NpmPackageVersionBinEntry;
 use registry::NpmPackageVersionDistInfo;
+use registry::NpmTrustLevel;
 use resolution::SerializedNpmResolutionSnapshotPackage;
 use serde::Deserialize;
 use serde::Serialize;
@@ -330,6 +331,11 @@ pub struct NpmResolutionPackage {
   /// it means the package was a workspace linked package and
   /// the local copy should be used instead.
   pub dist: Option<NpmPackageVersionDistInfo>,
+  /// The publishing-trust level derived from the registry metadata at
+  /// resolution time. Persisted to the lockfile so the `no-downgrade` trust
+  /// policy has a baseline to compare future resolutions against.
+  #[serde(default, skip_serializing_if = "NpmTrustLevel::is_default")]
+  pub trust: NpmTrustLevel,
   /// Key is what the package refers to the other package as,
   /// which could be different from the package name.
   pub dependencies: HashMap<StackString, NpmPackageId>,
@@ -387,6 +393,7 @@ impl NpmResolutionPackage {
       optional_peer_dependencies: self.optional_peer_dependencies.clone(),
       optional_dependencies: self.optional_dependencies.clone(),
       dist: self.dist.clone(),
+      trust: self.trust,
       extra: self.extra.clone(),
       is_deprecated: self.is_deprecated,
       has_bin: self.has_bin,

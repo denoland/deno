@@ -51,6 +51,8 @@ struct SerializedNpmPkg<'a> {
   bin: bool,
   #[serde(skip_serializing_if = "Option::is_none")]
   tarball: Option<&'a str>,
+  #[serde(skip_serializing_if = "crate::is_zero_u8")]
+  trust: u8,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -292,6 +294,7 @@ pub fn print_v5_content(content: &LockfileContent) -> String {
             deprecated: value.deprecated,
             scripts: value.scripts,
             bin: value.bin,
+            trust: value.trust,
           },
         )
       })

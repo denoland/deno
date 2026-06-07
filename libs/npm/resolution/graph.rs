@@ -871,6 +871,7 @@ impl Graph {
           os: version_info.os.clone(),
         },
         dist: version_info.dist.clone(),
+        trust: version_info.trust_level(),
         optional_dependencies: version_info
           .optional_dependencies
           .keys()
@@ -6516,11 +6517,13 @@ mod test {
           optional_peer_dependencies: Default::default(),
           optional_dependencies: HashSet::new(),
           extra: None,
+          trust: Default::default(),
           is_deprecated: false,
           dist: Some(crate::registry::NpmPackageVersionDistInfo {
             tarball: "https://example.com/package-0@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6552,11 +6555,13 @@ mod test {
           optional_peer_dependencies: Default::default(),
           optional_dependencies: HashSet::new(),
           extra: None,
+          trust: Default::default(),
           is_deprecated: false,
           dist: Some(crate::registry::NpmPackageVersionDistInfo {
             tarball: "https://example.com/package-a@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -6569,11 +6574,13 @@ mod test {
           optional_peer_dependencies: Default::default(),
           optional_dependencies: HashSet::new(),
           extra: None,
+          trust: Default::default(),
           is_deprecated: false,
           dist: Some(crate::registry::NpmPackageVersionDistInfo {
             tarball: "https://example.com/package-b@1.0.0.tgz".to_string(),
             shasum: None,
             integrity: None,
+            attestations: None,
           }),
           has_bin: false,
           has_scripts: false,
@@ -7895,6 +7902,8 @@ mod test {
       link_packages: link_packages.clone(),
       newest_dependency_date_options: options.newest_dependency_date,
       overrides: Arc::new(options.overrides),
+      trust_policy: Default::default(),
+      locked_trust: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,
@@ -8156,6 +8165,8 @@ mod test {
       link_packages: Default::default(),
       newest_dependency_date_options: Default::default(),
       overrides: Default::default(),
+      trust_policy: Default::default(),
+      locked_trust: Default::default(),
     };
     let mut resolver = GraphDependencyResolver::new(
       &mut graph,

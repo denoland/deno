@@ -561,6 +561,12 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
       .map(|c| c.as_ref())
   }
 
+  /// Returns the lockfile if it has already been initialized via
+  /// [`Self::maybe_lockfile`]. Does not perform discovery.
+  pub fn maybe_lockfile_sync(&self) -> Option<&LockfileLockRc<TSys>> {
+    self.lockfile.get().and_then(|c| c.as_ref())
+  }
+
   pub fn npm_cache_dir(
     &self,
   ) -> Result<&NpmCacheDirRc, NpmCacheDirCreateError> {
@@ -1157,6 +1163,25 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       let workspace = &self.workspace_factory.workspace_directory()?.workspace;
       let overrides = npm_overrides_from_workspace(workspace);
 
+      // the `trust-policy` npmrc setting and, for `no-downgrade`, the trust
+      // levels recorded in the lockfile used as the comparison baseline
+      let trust_policy = match self.workspace_factory.npmrc()?.trust_policy {
+        deno_npmrc::TrustPolicyConfig::NoDowngrade => {
+          deno_npm::resolution::NpmTrustPolicy::NoDowngrade
+        }
+        deno_npmrc::TrustPolicyConfig::Off => {
+          deno_npm::resolution::NpmTrustPolicy::Off
+        }
+      };
+      let locked_trust = if matches!(
+        trust_policy,
+        deno_npm::resolution::NpmTrustPolicy::NoDowngrade
+      ) {
+        locked_trust_from_lockfile(self.workspace_factory.maybe_lockfile_sync())
+      } else {
+        Default::default()
+      };
+
       Ok(new_rc(NpmVersionResolver {
         newest_dependency_date_options:
           deno_npm::resolution::NewestDependencyDateOptions {
@@ -1182,6 +1207,12 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
           reason = "Arc needed for shared overrides"
         )]
         overrides: std::sync::Arc::new(overrides),
+        trust_policy,
+        #[allow(
+          clippy::disallowed_types,
+          reason = "Arc needed for shared baseline"
+        )]
+        locked_trust: std::sync::Arc::new(locked_trust),
       }))
     })
   }
@@ -1343,4 +1374,36 @@ pub fn npm_overrides_from_workspace(
       NpmOverrides::default()
     }
   }
+}
+
+/// Builds the per-package trust baseline for the `no-downgrade` policy from
+/// the lockfile: the highest trust level recorded for each package name.
+fn locked_trust_from_lockfile<TSys: crate::lockfile::LockfileSys>(
+  lockfile: Option<&LockfileLockRc<TSys>>,
+) -> std::collections::HashMap<
+  deno_semver::package::PackageName,
+  deno_npm::registry::NpmTrustLevel,
+> {
+  use deno_npm::registry::NpmTrustLevel;
+
+  let mut map = std::collections::HashMap::new();
+  let Some(lockfile) = lockfile else {
+    return map;
+  };
+  let lock = lockfile.lock();
+  for (key, pkg) in &lock.content.packages.npm {
+    let Ok(id) = deno_npm::NpmPackageId::from_serialized(key) else {
+      continue;
+    };
+    let level = NpmTrustLevel(pkg.trust);
+    map
+      .entry(id.nv.name.clone())
+      .and_modify(|existing: &mut NpmTrustLevel| {
+        if level > *existing {
+          *existing = level;
+        }
+      })
+      .or_insert(level);
+  }
+  map
 }

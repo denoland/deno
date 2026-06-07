@@ -60,6 +60,18 @@ impl RegistryConfig {
   }
 }
 
+/// `trust-policy` value. Controls whether a resolved npm version may have a
+/// weaker publishing-trust level than a previously locked version.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum TrustPolicyConfig {
+  /// Trust level is ignored during resolution (the default).
+  #[default]
+  Off,
+  /// Refuse to resolve a version whose trust level is lower than the
+  /// previously locked version of the same package.
+  NoDowngrade,
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NpmRc {
   pub registry: Option<String>,
@@ -68,6 +80,8 @@ pub struct NpmRc {
   /// `min-release-age` value in days. See
   /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
   pub min_release_age_days: Option<u64>,
+  /// `trust-policy` value (`off` or `no-downgrade`).
+  pub trust_policy: TrustPolicyConfig,
 }
 
 impl NpmRc {
@@ -80,6 +94,7 @@ impl NpmRc {
     let mut scope_registries: HashMap<String, String> = HashMap::new();
     let mut registry_configs: HashMap<String, RegistryConfig> = HashMap::new();
     let mut min_release_age_days: Option<u64> = None;
+    let mut trust_policy = TrustPolicyConfig::default();
 
     for kv_or_section in kv_or_sections {
       match kv_or_section {
@@ -146,6 +161,16 @@ impl NpmRc {
                 }
                 _ => {}
               }
+            } else if key == "trust-policy"
+              && let Value::String(text) = &kv.value
+            {
+              let value = expand_vars(text, sys);
+              trust_policy = match value.trim() {
+                "no-downgrade" => TrustPolicyConfig::NoDowngrade,
+                // unknown/`off` values fall back to off (npm is lenient about
+                // unknown config values)
+                _ => TrustPolicyConfig::Off,
+              };
             }
           }
         }
@@ -163,6 +188,7 @@ impl NpmRc {
         .map(|(k, v)| (k, Arc::new(v)))
         .collect(),
       min_release_age_days,
+      trust_policy,
     })
   }
 
@@ -199,6 +225,7 @@ impl NpmRc {
       scopes,
       registry_configs: self.registry_configs.clone(),
       min_release_age_days: self.min_release_age_days,
+      trust_policy: self.trust_policy,
     })
   }
 
@@ -273,6 +300,8 @@ pub struct ResolvedNpmRc {
   /// `min-release-age` value in days. See
   /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
   pub min_release_age_days: Option<u64>,
+  /// `trust-policy` value (`off` or `no-downgrade`).
+  pub trust_policy: TrustPolicyConfig,
 }
 
 impl ResolvedNpmRc {
@@ -563,6 +592,7 @@ registry=https://registry.npmjs.org/
           ),
         ]),
         min_release_age_days: None,
+        trust_policy: Default::default(),
       }
     );
 
@@ -625,6 +655,7 @@ registry=https://registry.npmjs.org/
         ]),
         registry_configs: npm_rc.registry_configs.clone(),
         min_release_age_days: None,
+        trust_policy: Default::default(),
       }
     );
 
@@ -801,6 +832,7 @@ registry=${VAR_FOUND}
           })
         ),]),
         min_release_age_days: None,
+        trust_policy: Default::default(),
       }
     )
   }
@@ -851,6 +883,26 @@ registry=${VAR_FOUND}
     sys.env_set_var("MIN_AGE", "7");
     let npm_rc = NpmRc::parse(&sys, "min-release-age=${MIN_AGE}").unwrap();
     assert_eq!(npm_rc.min_release_age_days, Some(7));
+  }
+
+  #[test]
+  fn test_parse_trust_policy() {
+    let sys = InMemorySys::default();
+
+    // default is off
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::Off);
+
+    let npm_rc = NpmRc::parse(&sys, "trust-policy=no-downgrade").unwrap();
+    assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::NoDowngrade);
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(resolved.trust_policy, TrustPolicyConfig::NoDowngrade);
+
+    // unknown values fall back to off
+    let npm_rc = NpmRc::parse(&sys, "trust-policy=bogus").unwrap();
+    assert_eq!(npm_rc.trust_policy, TrustPolicyConfig::Off);
   }
 
   #[test]

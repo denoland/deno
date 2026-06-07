@@ -83,6 +83,7 @@ struct LockfileNpmGraphPackage {
   deprecated: bool,
   scripts: bool,
   bin: bool,
+  trust: u8,
 }
 
 impl LockfileNpmGraphPackage {
@@ -193,6 +194,7 @@ impl LockfilePackageGraph {
           deprecated: package.deprecated,
           scripts: package.scripts,
           bin: package.bin,
+          trust: package.trust,
           optional_peers: package
             .optional_peers
             .iter()
@@ -375,6 +377,7 @@ impl LockfilePackageGraph {
               deprecated: package.deprecated,
               scripts: package.scripts,
               bin: package.bin,
+              trust: package.trust,
               optional_peers: package
                 .optional_peers
                 .into_iter()

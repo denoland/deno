@@ -246,9 +246,55 @@ pub struct NpmPackageVersionInfo {
   #[serde(default, skip_serializing_if = "Option::is_none")]
   #[serde(deserialize_with = "deserializers::string")]
   pub deprecated: Option<String>,
+  /// The `_npmUser` field from the full packument. Identifies who published
+  /// the version and, when published via trusted publishing (OIDC), carries
+  /// a `trustedPublisher` object. Only present in the full packument.
+  #[serde(
+    default,
+    rename = "_npmUser",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub npm_user: Option<NpmUser>,
+  /// The `approver` field marks a version that went through npm staged
+  /// publishing: a maintainer approved it with a live 2FA challenge before it
+  /// became installable. This is the strongest publishing-trust signal.
+  /// See https://docs.npmjs.com/staged-publishing/
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub approver: Option<Value>,
 }
 
 impl NpmPackageVersionInfo {
+  /// The publishing-trust level of this version, derived from registry
+  /// metadata signals (`approver`, `_npmUser.trustedPublisher`, and
+  /// `dist.attestations.provenance`). Used by the `no-downgrade` trust policy.
+  ///
+  /// Staged publishes (`approver`) rank above trusted publishing and
+  /// provenance, mirroring pnpm 11.5's ranking.
+  pub fn trust_level(&self) -> NpmTrustLevel {
+    if self.approver.is_some() {
+      return NpmTrustLevel::STAGED;
+    }
+    let mut rank = 0u8;
+    let has_provenance = self
+      .dist
+      .as_ref()
+      .and_then(|d| d.attestations.as_ref())
+      .map(|a| a.provenance.is_some())
+      .unwrap_or(false);
+    if has_provenance {
+      rank += 1;
+    }
+    let has_trusted_publisher = self
+      .npm_user
+      .as_ref()
+      .map(|u| u.trusted_publisher.is_some())
+      .unwrap_or(false);
+    if has_trusted_publisher {
+      rank += 2;
+    }
+    NpmTrustLevel(rank)
+  }
+
   /// Helper for getting the bundle dependencies.
   ///
   /// Unfortunately due to limitations in serde, it's not
@@ -445,6 +491,69 @@ pub struct NpmPackageVersionDistInfo {
   pub(crate) shasum: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub(crate) integrity: Option<String>,
+  /// Cryptographic attestations for this version (provenance, publish).
+  /// Only present in the full packument.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub attestations: Option<NpmAttestations>,
+}
+
+/// The `_npmUser` object from the full packument.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NpmUser {
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub name: Option<String>,
+  /// Present when the version was published via npm trusted publishing
+  /// (OIDC). Its contents identify the CI provider and workflow.
+  #[serde(
+    default,
+    rename = "trustedPublisher",
+    skip_serializing_if = "Option::is_none"
+  )]
+  pub trusted_publisher: Option<Value>,
+}
+
+/// The `dist.attestations` object from the full packument.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NpmAttestations {
+  /// SLSA provenance attestation linking the package to the source commit and
+  /// build. Present when the version was published with `--provenance`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub provenance: Option<Value>,
+}
+
+/// The publishing-trust level of a package version, derived from registry
+/// metadata. Higher is more trusted. The `no-downgrade` trust policy refuses
+/// to resolve a version whose trust level is lower than a previously locked
+/// version of the same package.
+#[derive(
+  Debug,
+  Default,
+  Clone,
+  Copy,
+  PartialEq,
+  Eq,
+  PartialOrd,
+  Ord,
+  Hash,
+  Serialize,
+  Deserialize,
+)]
+pub struct NpmTrustLevel(pub u8);
+
+impl NpmTrustLevel {
+  /// A plain token publish with no extra signals (the default / unknown).
+  pub const PLAIN: NpmTrustLevel = NpmTrustLevel(0);
+  /// A staged publish approved by a human maintainer via a 2FA challenge.
+  /// Ranks above trusted publishing and provenance.
+  pub const STAGED: NpmTrustLevel = NpmTrustLevel(4);
+
+  pub fn rank(self) -> u8 {
+    self.0
+  }
+
+  pub fn is_default(&self) -> bool {
+    self.0 == 0
+  }
 }
 
 impl NpmPackageVersionDistInfo {
@@ -1108,10 +1217,51 @@ mod test {
           tarball: "value".to_string(),
           shasum: None,
           integrity: None,
+          attestations: None,
         }),
         ..Default::default()
       }
     );
+  }
+
+  #[test]
+  fn trust_level_ranking() {
+    fn trust_of(json: &str) -> NpmTrustLevel {
+      let info: NpmPackageVersionInfo = serde_json::from_str(json).unwrap();
+      info.trust_level()
+    }
+
+    // plain token publish: no signals
+    let plain = trust_of(r#"{ "version": "1.0.0" }"#);
+    assert_eq!(plain, NpmTrustLevel::PLAIN);
+
+    // provenance attestation only
+    let provenance = trust_of(
+      r#"{ "version": "1.0.0", "dist": { "tarball": "t", "attestations": { "provenance": { "predicateType": "x" } } } }"#,
+    );
+
+    // trusted publishing (OIDC) only
+    let trusted = trust_of(
+      r#"{ "version": "1.0.0", "_npmUser": { "name": "ci", "trustedPublisher": { "id": "github" } } }"#,
+    );
+
+    // both provenance and trusted publishing
+    let both = trust_of(
+      r#"{ "version": "1.0.0", "_npmUser": { "trustedPublisher": { "id": "github" } }, "dist": { "tarball": "t", "attestations": { "provenance": {} } } }"#,
+    );
+
+    // staged publish (human-approved via 2FA)
+    let staged = trust_of(
+      r#"{ "version": "1.0.0", "approver": { "name": "maintainer" } }"#,
+    );
+    assert_eq!(staged, NpmTrustLevel::STAGED);
+
+    // staged must rank above everything else, and every signal beats plain.
+    assert!(plain < provenance);
+    assert!(plain < trusted);
+    assert!(provenance < both);
+    assert!(trusted < both);
+    assert!(both < staged);
   }
 
   #[test]
@@ -1148,6 +1298,7 @@ mod test {
           tarball: "value".to_string(),
           shasum: Some("test".to_string()),
           integrity: None,
+          attestations: None,
         }),
         dependencies: HashMap::new(),
         deprecated: Some("aa".to_string()),
@@ -1185,6 +1336,7 @@ mod test {
             tarball: "value".to_string(),
             shasum: Some("test".to_string()),
             integrity: None,
+            attestations: None,
           }),
           dependencies: HashMap::new(),
           deprecated: None,
@@ -1564,6 +1716,8 @@ mod test {
       scripts: Default::default(),
       has_install_script: Default::default(),
       deprecated: Default::default(),
+      npm_user: Default::default(),
+      approver: Default::default(),
     };
     let text = serde_json::to_string(&data).unwrap();
     assert_eq!(text, r#"{"version":"1.0.0"}"#);
@@ -1575,6 +1729,7 @@ mod test {
       tarball: "test".to_string(),
       shasum: None,
       integrity: None,
+      attestations: None,
     };
     let text = serde_json::to_string(&data).unwrap();
     assert_eq!(text, r#"{"tarball":"test"}"#);
