@@ -22,23 +22,27 @@ const {
   ERR_OUT_OF_RANGE,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import { deprecate } from "node:util";
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 const {
   validateFunction,
   validateInteger,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.js";
-import * as fs from "node:fs";
-import { Buffer } from "node:buffer";
+const { errorOrDestroy } = core.loadExtScript(
+  "ext:deno_node/internal/streams/destroy.js",
+);
+const lazyFs = core.createLazyLoader("node:fs");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 import {
   copyObject,
   getOptions,
   getValidatedFd,
   validatePath,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { finished, Readable, Writable } from "node:stream";
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const lazyStream = core.createLazyLoader("node:stream");
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 import { FileHandle, kRef, kUnref } from "ext:deno_node/internal/fs/handle.ts";
 
 const kIoDone = Symbol("kIoDone");
@@ -150,7 +154,7 @@ function importFd(stream, options) {
     // that the descriptor won't get closed, or worse, replaced with
     // another one
     // https://github.com/nodejs/node/issues/35862
-    stream[kFs] = options.fs || fs;
+    stream[kFs] = options.fs || lazyFs();
     return options.fd;
   } else if (
     typeof options.fd === "object" &&
@@ -192,7 +196,7 @@ export function ReadStream(path, options) {
 
   if (options.fd == null) {
     this.fd = null;
-    this[kFs] = options.fs || fs;
+    this[kFs] = options.fs || lazyFs();
     validateFunction(this[kFs].open, "options.fs.open");
 
     // Path will be ignored when fd is specified, so it can be falsy
@@ -239,11 +243,11 @@ export function ReadStream(path, options) {
     }
   }
 
-  ReflectApply(Readable, this, [options]);
+  ReflectApply(lazyStream().Readable, this, [options]);
 }
 
-ObjectSetPrototypeOf(ReadStream.prototype, Readable.prototype);
-ObjectSetPrototypeOf(ReadStream, Readable);
+ObjectSetPrototypeOf(ReadStream.prototype, lazyStream().Readable.prototype);
+ObjectSetPrototypeOf(ReadStream, lazyStream().Readable);
 
 ObjectDefineProperty(ReadStream.prototype, "autoClose", {
   __proto__: null,
@@ -357,7 +361,7 @@ ReadStream.prototype._destroy = function (err, cb) {
 };
 
 ReadStream.prototype.close = function (cb) {
-  if (typeof cb === "function") finished(this, cb);
+  if (typeof cb === "function") lazyStream().finished(this, cb);
   this.destroy();
 };
 
@@ -381,7 +385,7 @@ export function WriteStream(path, options) {
 
   if (options.fd == null) {
     this.fd = null;
-    this[kFs] = options.fs || fs;
+    this[kFs] = options.fs || lazyFs();
     validateFunction(this[kFs].open, "options.fs.open");
 
     // Path will be ignored when fd is specified, so it can be falsy
@@ -437,15 +441,15 @@ export function WriteStream(path, options) {
     this.pos = this.start;
   }
 
-  ReflectApply(Writable, this, [options]);
+  ReflectApply(lazyStream().Writable, this, [options]);
 
   if (options.encoding) {
     this.setDefaultEncoding(options.encoding);
   }
 }
 
-ObjectSetPrototypeOf(WriteStream.prototype, Writable.prototype);
-ObjectSetPrototypeOf(WriteStream, Writable);
+ObjectSetPrototypeOf(WriteStream.prototype, lazyStream().Writable.prototype);
+ObjectSetPrototypeOf(WriteStream, lazyStream().Writable);
 
 ObjectDefineProperty(WriteStream.prototype, "autoClose", {
   __proto__: null,

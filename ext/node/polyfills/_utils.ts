@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   Error,
   PromisePrototypeThen,
@@ -20,7 +19,9 @@ const { TextDecoder, TextEncoder } = core.loadExtScript(
 );
 const { errorMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
-const { ERR_NOT_IMPLEMENTED } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { ERR_NOT_IMPLEMENTED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
 const { validateNumber } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -173,6 +174,13 @@ function getSystemErrorMessage(code: number): string | undefined {
   return errorMap.get(code)?.[1];
 }
 
+/**
+ * Returns the map of all system error codes available from the Node.js API.
+ */
+function getSystemErrorMap(): Map<number, [string, string]> {
+  return errorMap;
+}
+
 return {
   notImplemented,
   warnNotImplemented,
@@ -184,7 +192,8 @@ return {
   validateIntegerRange,
   once,
   makeMethodsEnumerable,
-  getSystemErrorName,
+  getSystemErrorMap,
   getSystemErrorMessage,
+  getSystemErrorName,
 };
-})()
+})();

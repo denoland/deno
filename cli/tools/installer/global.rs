@@ -48,7 +48,6 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
-use crate::npm::NpmFetchResolver;
 use crate::util::env::resolve_cwd;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
@@ -80,17 +79,6 @@ pub async fn install_global(
 
   let npmrc = factory.npmrc()?;
 
-  let deps_file_fetcher = create_deps_file_fetcher(log::Level::Trace);
-  let jsr_resolver = Arc::new(JsrFetchResolver::new(
-    deps_file_fetcher.clone(),
-    factory.jsr_version_resolver()?.clone(),
-  ));
-  let npm_resolver = Arc::new(NpmFetchResolver::new(
-    deps_file_fetcher,
-    npmrc.clone(),
-    factory.npm_version_resolver()?.clone(),
-  ));
-
   if matches!(flags.config_flag, ConfigFlag::Discover)
     && cli_options.workspace().deno_jsons().next().is_some()
   {
@@ -105,10 +93,31 @@ pub async fn install_global(
       .await;
   }
 
-  for (i, module_url) in install_flags_global.module_urls.iter().enumerate() {
-    let entry_text = module_url;
-    if !cli_options.initial_cwd().join(entry_text).exists() {
-      // provide a helpful error message for users migrating from Deno < 3.0
+  // When an explicit config is supplied, capture its workspace members so they
+  // can be flattened into the copied config's import map. The `workspace` field
+  // itself is dropped from the copy (it can't be discovered from the install
+  // dir), which would otherwise break resolution of member packages.
+  let workspace_member_imports =
+    if matches!(flags.config_flag, ConfigFlag::Path(_)) {
+      workspace_member_import_entries(cli_options.workspace())
+    } else {
+      Vec::new()
+    };
+
+  // Validate every entry and default unprefixed bare package names to the npm
+  // registry (matching `deno add` and local `deno install`) before installing
+  // anything, so an error on entry N doesn't leave entries < N installed.
+  let module_urls: Vec<String> = install_flags_global
+    .module_urls
+    .iter()
+    .enumerate()
+    .map(|(i, module_url)| -> Result<String, AnyError> {
+      let entry_text = module_url;
+      if cli_options.initial_cwd().join(entry_text).exists() {
+        return Ok(module_url.clone());
+      }
+      // Migration error for users coming from Deno < 3.0 who passed script
+      // args without `--`.
       if i == 1
         && install_flags_global.args.is_empty()
         && Url::parse(entry_text).is_err()
@@ -121,39 +130,18 @@ pub async fn install_global(
           entry_text,
           &install_flags_global.module_urls[0],
           install_flags_global.module_urls[1..].join(" "),
-        )
+        );
       }
-      // check for package requirement missing prefix
       if let Ok(Err(package_req)) =
         crate::tools::pm::AddRmPackageReq::parse(entry_text, None)
       {
-        if package_req.name.starts_with("@")
-          && jsr_resolver
-            .req_to_nv(&package_req)
-            .await
-            .ok()
-            .flatten()
-            .is_some()
-        {
-          bail!(
-            "{entry_text} is missing a prefix. Did you mean `{}`?",
-            crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
-          );
-        } else if npm_resolver
-          .req_to_nv(&package_req)
-          .await
-          .ok()
-          .flatten()
-          .is_some()
-        {
-          bail!(
-            "{entry_text} is missing a prefix. Did you mean `{}`?",
-            crate::colors::yellow(format!("deno install -g npm:{package_req}"))
-          );
-        }
+        return Ok(format!("npm:{package_req}"));
       }
-    }
+      Ok(module_url.clone())
+    })
+    .collect::<Result<_, _>>()?;
 
+  for module_url in &module_urls {
     let (name_and_url, extra_bin_entries) = BinaryNameAndUrl::resolve(
       &factory.bin_name_resolver()?,
       cli_options.initial_cwd(),
@@ -185,6 +173,8 @@ pub async fn install_global(
       &flags,
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
+      install_flags_global.force,
+      &workspace_member_imports,
     )
     .await?;
 
@@ -388,12 +378,16 @@ async fn install_global_compiled(
     output: Some(output.clone()),
     args: install_flags_global.args,
     target: None,
+    watch: None,
     no_terminal: false,
     icon: None,
     include: vec![],
     exclude: vec![],
     eszip: false,
     self_extracting: false,
+    bundle: false,
+    minify: false,
+    exclude_unused_npm: false,
   };
 
   let mut new_flags = flags.as_ref().clone();
@@ -421,6 +415,8 @@ async fn setup_config_dir(
   flags: &Flags,
   installation_dir: &Path,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
+  force: bool,
+  workspace_member_imports: &[(String, String)],
 ) -> Result<(), AnyError> {
   fn resolve_implicit_node_modules_dir(
     flags: &Flags,
@@ -443,12 +439,28 @@ async fn setup_config_dir(
   fs::create_dir_all(&dir)
     .with_context(|| format!("failed creating '{}'", dir.display()))?;
 
-  let config_text = if let ConfigFlag::Path(config_path) = &flags.config_flag {
-    fs::read_to_string(config_path)
-      .with_context(|| format!("error reading {config_path}"))?
-  } else {
-    "{}\n".to_string()
-  };
+  // When --force is specified, the user is explicitly asking for a fresh
+  // install. Remove the stale auto-generated lockfile so dependency resolution
+  // isn't constrained to previously pinned versions.
+  if force {
+    let lockfile_path = dir.join("deno.lock");
+    if lockfile_path.exists() {
+      fs::remove_file(&lockfile_path).with_context(|| {
+        format!("failed removing '{}'", lockfile_path.display())
+      })?;
+    }
+  }
+
+  let (config_text, original_config_url) =
+    if let ConfigFlag::Path(config_path) = &flags.config_flag {
+      let text = fs::read_to_string(config_path)
+        .with_context(|| format!("error reading {config_path}"))?;
+      let cwd = resolve_cwd(flags.initial_cwd.as_deref())?;
+      let url = resolve_url_or_path(config_path, &cwd)?;
+      (text, Some(url))
+    } else {
+      ("{}\n".to_string(), None)
+    };
   let config =
     jsonc_parser::cst::CstRootNode::parse(&config_text, &Default::default())?;
   let config_obj = config.object_value_or_set();
@@ -470,6 +482,28 @@ async fn setup_config_dir(
       "{} \"workspace\" field in the specified config file will be ignored.",
       crate::colors::yellow("Warning"),
     );
+  }
+  // The copied config lives at `<installation_dir>/.<name>/deno.json`, so any
+  // relative `./` / `../` paths in `imports` / `scopes` would resolve against
+  // that new location instead of the original config dir, breaking module
+  // resolution at runtime. Rewrite them to absolute `file://` URLs anchored to
+  // the original config so the installed binary keeps importing the same
+  // modules it would have when invoked directly.
+  if let Some(original_config_url) = &original_config_url {
+    rewrite_relative_import_map_paths(&config_obj, original_config_url);
+  }
+  // Flatten workspace members into the import map. The `workspace` field is
+  // stripped below to stop discovery, which would otherwise break resolution of
+  // bare specifiers that point at member packages. Existing import map entries
+  // win, matching the runtime precedence of the import map over workspace
+  // members.
+  if !workspace_member_imports.is_empty() {
+    let imports = config_obj.object_value_or_set("imports");
+    for (specifier, target) in workspace_member_imports {
+      if imports.get(specifier).is_none() {
+        imports.append(specifier, CstInputValue::String(target.clone()));
+      }
+    }
   }
   config_obj.append("workspace", CstInputValue::Array(Vec::new())); // stop workspace discovery
   if config_obj.get("nodeModulesDir").is_none()
@@ -534,14 +568,206 @@ async fn setup_config_dir(
   Ok(())
 }
 
+/// Builds import map entries for each workspace member package so the copied
+/// config keeps resolving `@scope/member` specifiers after the `workspace`
+/// field is stripped.
+///
+/// `deno install -g -c deno.json` copies the workspace root config into a
+/// per-binary directory and removes the `workspace` field to stop workspace
+/// discovery. Without this, bare specifiers that point at workspace members
+/// (e.g. `import { x } from "@scope/member"`) can no longer be resolved. Each
+/// member's exports are flattened into absolute `file://` specifiers anchored
+/// at the member directory so the installed binary resolves them exactly as it
+/// would when invoked from the original workspace. See
+/// https://github.com/denoland/deno/issues/32057.
+///
+/// Only `deno.json` members (those with a `name` and `exports`) are flattened,
+/// since they are the ones resolved through the import map. `package.json`
+/// members resolve via `node_modules`, which is unaffected by stripping the
+/// `workspace` field, so they don't need an entry here.
+fn workspace_member_import_entries(
+  workspace: &deno_config::workspace::Workspace,
+) -> Vec<(String, String)> {
+  let mut entries = Vec::new();
+  for pkg in workspace.resolver_jsr_pkgs() {
+    for (export_key, sub_path) in &pkg.exports {
+      // "." -> "@scope/name", "./sub" -> "@scope/name/sub"
+      let specifier = format!(
+        "{}{}",
+        pkg.name,
+        export_key.strip_prefix('.').unwrap_or(export_key)
+      );
+      if let Ok(target) = pkg.base.join(sub_path) {
+        entries.push((specifier, target.to_string()));
+      }
+    }
+  }
+  entries
+}
+
+/// Rewrites `./` and `../` paths inside `imports` and `scopes` to absolute
+/// `file://` URLs anchored to the original config file's location.
+///
+/// `deno install -g -c deno.json` copies the supplied config into a per-binary
+/// directory. Relative specifiers / scope prefixes get resolved relative to
+/// that new directory by `deno_config`, so without rewriting them they end up
+/// pointing at non-existent paths under the install dir. See
+/// https://github.com/denoland/deno/issues/20390.
+fn rewrite_relative_import_map_paths(
+  config_obj: &jsonc_parser::cst::CstObject,
+  original_config_url: &Url,
+) {
+  fn rewrite_to_absolute(value: &str, base: &Url) -> Option<String> {
+    if value.starts_with("./") || value.starts_with("../") {
+      base.join(value).ok().map(|u| u.to_string())
+    } else {
+      None
+    }
+  }
+
+  fn rewrite_string_key(name: &jsonc_parser::cst::ObjectPropName, base: &Url) {
+    if let jsonc_parser::cst::ObjectPropName::String(key_lit) = name
+      && let Ok(current_key) = key_lit.decoded_value()
+      && let Some(new_key) = rewrite_to_absolute(&current_key, base)
+    {
+      key_lit.set_raw_value(format!(
+        "\"{}\"",
+        new_key.replace('\\', "\\\\").replace('"', "\\\"")
+      ));
+    }
+  }
+
+  fn rewrite_specifier_map(map_obj: &jsonc_parser::cst::CstObject, base: &Url) {
+    for prop in map_obj.properties() {
+      // Rewrite the key if it's a `./` / `../` path. `normalize_specifier_key`
+      // joins URL-like keys with the base URL, so keys would also drift to the
+      // install dir without rewriting.
+      if let Some(name) = prop.name() {
+        rewrite_string_key(&name, base);
+      }
+      let Some(value_node) = prop.value() else {
+        continue;
+      };
+      let Some(string_lit) = value_node.as_string_lit() else {
+        continue;
+      };
+      let Ok(current) = string_lit.decoded_value() else {
+        continue;
+      };
+      if let Some(rewritten) = rewrite_to_absolute(&current, base) {
+        prop.set_value(jsonc_parser::cst::CstInputValue::String(rewritten));
+      }
+    }
+  }
+
+  if let Some(prop) = config_obj.get("imports")
+    && let Some(obj) = prop.object_value()
+  {
+    rewrite_specifier_map(&obj, original_config_url);
+  }
+
+  if let Some(prop) = config_obj.get("scopes")
+    && let Some(scopes_obj) = prop.object_value()
+  {
+    for scope_prop in scopes_obj.properties() {
+      // Rewrite the scope prefix key if it's a relative path. Scope prefixes
+      // are joined with the config base URL via `Url::join` in
+      // `import_map::parse_scopes_map_json`, so after copying the config the
+      // same prefix would resolve against the install dir.
+      if let Some(name) = scope_prop.name() {
+        rewrite_string_key(&name, original_config_url);
+      }
+      // Recurse into the per-scope imports object.
+      if let Some(inner_obj) = scope_prop.object_value() {
+        rewrite_specifier_map(&inner_obj, original_config_url);
+      }
+    }
+  }
+}
+
+/// After packages are installed (including postinstall scripts), check if the
+/// npm bin entry resolves to a native binary on disk. Returns the absolute path
+/// to the binary if so. This handles packages like `@anthropic-ai/claude-code`
+/// that ship platform-specific native binaries via optional dependencies and a
+/// postinstall script that copies the binary into the bin entry path.
+fn resolve_native_binary_path(
+  bin_name_and_url: &BinaryNameAndUrl,
+  installation_dir: &Path,
+) -> Option<PathBuf> {
+  let npm_ref =
+    NpmPackageReqReference::from_specifier(&bin_name_and_url.module_url)
+      .ok()?;
+  let pkg_name = &npm_ref.req().name;
+  let node_modules_pkg_dir = installation_dir
+    .join(format!(".{}", bin_name_and_url.config_dir_name()))
+    .join("node_modules")
+    .join(pkg_name.as_str());
+
+  let sys = crate::sys::CliSys::default();
+  let bin_path = if let Some(sub_path) = npm_ref.sub_path() {
+    // Extra bin entries encode the script path as the sub_path.
+    node_modules_pkg_dir.join(sub_path)
+  } else {
+    // Primary entry: resolve the bin script via package.json.
+    let pkg_json = deno_package_json::PackageJson::load_from_path(
+      &sys,
+      None,
+      &node_modules_pkg_dir.join("package.json"),
+    )
+    .ok()
+    .flatten()?;
+    let bins = pkg_json.resolve_bins().ok()?;
+    let deno_package_json::PackageJsonBins::Bins(bins) = bins else {
+      return None;
+    };
+    // For a string bin field, `resolve_bins` keys the entry by the
+    // package's default bin name, which may not match `--name` overrides.
+    // Fall back to the sole entry when there's only one bin.
+    bins
+      .get(&bin_name_and_url.name)
+      .or_else(|| {
+        if bins.len() == 1 {
+          bins.values().next()
+        } else {
+          None
+        }
+      })?
+      .clone()
+  };
+
+  // Only treat the bin entry as a native binary if its magic bytes match
+  // ELF/Mach-O/PE. `node_resolver::read_bin_value` returns `Executable` for
+  // any file whose first line isn't a recognized npx-style shebang (e.g.
+  // `#!/usr/bin/env deno` scripts) — which would incorrectly cause us to
+  // generate an `exec`-the-file shim instead of a `deno run` shim. On
+  // Windows there is no shebang interpretation, so that breaks installs of
+  // ordinary npm packages whose bin scripts use a non-Node shebang.
+  use std::io::Read;
+  let mut file = std::fs::File::open(&bin_path).ok()?;
+  let mut buf = [0u8; 4];
+  if file.read(&mut buf).ok()? < 4 {
+    return None;
+  }
+  if node_resolver::is_binary(&buf) {
+    Some(bin_path)
+  } else {
+    None
+  }
+}
+
 fn create_install_shim(
   bin_name_and_url: &BinaryNameAndUrl,
   cwd: &Path,
   flags: &Flags,
   install_flags_global: &InstallFlagsGlobal,
 ) -> Result<(), AnyError> {
-  let shim_data =
+  let mut shim_data =
     resolve_shim_data(bin_name_and_url, cwd, flags, install_flags_global)?;
+
+  // Check if the bin entry is a native binary (e.g. Node SEA or platform-specific
+  // binary installed via postinstall). If so, the shim should exec it directly.
+  shim_data.native_binary_path =
+    resolve_native_binary_path(bin_name_and_url, &shim_data.installation_dir);
 
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
@@ -698,6 +924,7 @@ fn resolve_shim_data(
     installation_dir,
     file_path,
     args: executable_args,
+    native_binary_path: None,
   })
 }
 
@@ -813,6 +1040,9 @@ struct ShimData {
   installation_dir: PathBuf,
   file_path: PathBuf,
   args: Vec<String>,
+  /// If set, the bin entry is a native binary and the shim should exec it
+  /// directly instead of wrapping with `deno run`.
+  native_binary_path: Option<PathBuf>,
 }
 
 #[cfg(windows)]
@@ -821,48 +1051,76 @@ struct ShimData {
 /// A second compatible with git bash / MINGW64
 /// Generate batch script to satisfy that.
 fn generate_executable_file(shim_data: &ShimData) -> Result<(), AnyError> {
-  let args: Vec<String> =
-    shim_data.args.iter().map(|c| format!("\"{c}\"")).collect();
-  let template = format!(
-    "% generated by deno install %\n@deno {} %*\n",
-    args
-      .iter()
-      .map(|arg| arg.replace('%', "%%"))
-      .collect::<Vec<_>>()
-      .join(" ")
-  );
-  let mut file = File::create(&shim_data.file_path)?;
-  file.write_all(template.as_bytes())?;
+  if let Some(native_path) = &shim_data.native_binary_path {
+    // Native binary: exec it directly
+    let native_display = native_path.display();
+    let template =
+      format!("% generated by deno install %\n@\"{native_display}\" %*\n",);
+    let mut file = File::create(&shim_data.file_path)?;
+    file.write_all(template.as_bytes())?;
 
-  // write file for bash
-  // create filepath without extensions
-  let template = format!(
-    r#"#!/bin/sh
+    let template = format!(
+      r#"#!/bin/sh
+# generated by deno install
+exec "{native_display}" "$@"
+"#,
+    );
+    let mut file = File::create(shim_data.file_path.with_extension(""))?;
+    file.write_all(template.as_bytes())?;
+  } else {
+    let args: Vec<String> =
+      shim_data.args.iter().map(|c| format!("\"{c}\"")).collect();
+    let template = format!(
+      "% generated by deno install %\n@deno {} %*\n",
+      args
+        .iter()
+        .map(|arg| arg.replace('%', "%%"))
+        .collect::<Vec<_>>()
+        .join(" ")
+    );
+    let mut file = File::create(&shim_data.file_path)?;
+    file.write_all(template.as_bytes())?;
+
+    // write file for bash
+    // create filepath without extensions
+    let template = format!(
+      r#"#!/bin/sh
 # generated by deno install
 deno {} "$@"
 "#,
-    args.join(" "),
-  );
-  let mut file = File::create(shim_data.file_path.with_extension(""))?;
-  file.write_all(template.as_bytes())?;
+      args.join(" "),
+    );
+    let mut file = File::create(shim_data.file_path.with_extension(""))?;
+    file.write_all(template.as_bytes())?;
+  }
   Ok(())
 }
 
 #[cfg(not(windows))]
 fn generate_executable_file(shim_data: &ShimData) -> Result<(), AnyError> {
-  use shell_escape::escape;
-  let args: Vec<String> = shim_data
-    .args
-    .iter()
-    .map(|c| escape(c.into()).into_owned())
-    .collect();
-  let template = format!(
-    r#"#!/bin/sh
+  let template = if let Some(native_path) = &shim_data.native_binary_path {
+    let path_str = posix_shell_escape(&native_path.to_string_lossy());
+    format!(
+      r#"#!/bin/sh
+# generated by deno install
+exec {} "$@"
+"#,
+      path_str,
+    )
+  } else {
+    let args: Vec<String> = shim_data
+      .args
+      .iter()
+      .map(|arg| posix_shell_escape(arg))
+      .collect();
+    format!(
+      r#"#!/bin/sh
 # generated by deno install
 exec deno {} "$@"
 "#,
-    args.join(" "),
-  );
+      args.join(" "),
+    )
+  };
   let mut file = File::create(&shim_data.file_path)?;
   file.write_all(template.as_bytes())?;
   let _metadata = fs::metadata(&shim_data.file_path)?;
@@ -870,6 +1128,44 @@ exec deno {} "$@"
   permissions.set_mode(0o755);
   fs::set_permissions(&shim_data.file_path, permissions)?;
   Ok(())
+}
+
+#[cfg(not(windows))]
+fn posix_shell_escape(arg: &str) -> String {
+  if !arg.is_empty()
+    && arg.chars().all(|ch| {
+      matches!(
+        ch,
+        'a'..='z'
+          | 'A'..='Z'
+          | '0'..='9'
+          | '-'
+          | '_'
+          | '='
+          | '/'
+          | ','
+          | '.'
+          | '+'
+      )
+    })
+  {
+    return arg.to_string();
+  }
+
+  let mut escaped = String::with_capacity(arg.len() + 2);
+  escaped.push('\'');
+  for ch in arg.chars() {
+    match ch {
+      '\'' | '!' => {
+        escaped.push_str("'\\");
+        escaped.push(ch);
+        escaped.push('\'');
+      }
+      _ => escaped.push(ch),
+    }
+  }
+  escaped.push('\'');
+  escaped
 }
 
 fn get_installer_bin_dir(
@@ -1112,6 +1408,8 @@ mod tests {
       flags,
       &installation_dir,
       None,
+      install_flags_global.force,
+      &[],
     )
     .await
     .unwrap();
@@ -1690,6 +1988,54 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn install_force_regenerates_lockfile() {
+    let temp_dir = TempDir::new();
+    let bin_dir = temp_dir.path().join("bin");
+    std::fs::create_dir(&bin_dir).unwrap();
+
+    // initial install creates the config dir
+    create_install_shim(
+      &Flags::default(),
+      InstallFlagsGlobal {
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_string()),
+        force: false,
+        compile: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    // simulate a stale auto-generated lockfile from a prior install
+    let config_dir = bin_dir.join(".echo_test");
+    let lockfile_path = config_dir.join("deno.lock");
+    let stale_lockfile =
+      r#"{"version":"5","specifiers":{"npm:cowsay@*":"1.0.0"}}"#;
+    fs::write(&lockfile_path, stale_lockfile).unwrap();
+    assert!(lockfile_path.exists());
+
+    // reinstall with --force; stale lockfile should be removed
+    create_install_shim(
+      &Flags::default(),
+      InstallFlagsGlobal {
+        module_urls: vec!["http://localhost:4545/echo.ts".to_string()],
+        args: vec![],
+        name: Some("echo_test".to_string()),
+        root: Some(temp_dir.path().to_string()),
+        force: true,
+        compile: false,
+      },
+    )
+    .await
+    .unwrap();
+
+    let post_force_content = fs::read_to_string(&lockfile_path).ok();
+    assert_ne!(post_force_content.as_deref(), Some(stale_lockfile));
+  }
+
+  #[tokio::test]
   async fn install_with_config() {
     let temp_dir = TempDir::new();
     let bin_dir = temp_dir.path().join("bin");
@@ -2005,6 +2351,7 @@ mod tests {
       },
       scopes,
       registry_configs: Default::default(),
+      min_release_age_days: None,
     })
   }
 
@@ -2118,5 +2465,229 @@ mod tests {
       Some("https://registry.npmjs.org.evil.com/evil/-/evil-1.0.0.tgz"),
     )]);
     assert!(super::validate_npm_tarball_urls(&content, &npmrc).is_err());
+  }
+
+  #[test]
+  fn native_binary_shim_for_npm_package() {
+    // Set up a temp directory mimicking the global install layout:
+    //   <root>/bin/.<name>/node_modules/<pkg>/package.json
+    //   <root>/bin/.<name>/node_modules/<pkg>/bin/tool.exe  (Mach-O magic)
+    let temp_dir = TempDir::new();
+    let bin_dir = temp_dir.path().join("bin").to_path_buf();
+    let config_dir = bin_dir.join(".mytool");
+    let pkg_dir = config_dir.join("node_modules").join("mytool");
+    let bin_sub = pkg_dir.join("bin");
+    std::fs::create_dir_all(&bin_sub).unwrap();
+
+    // Write a package.json with a bin entry pointing to a binary
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      r#"{"name": "mytool", "bin": {"mytool": "bin/tool.exe"}}"#,
+    )
+    .unwrap();
+
+    // Write a fake Mach-O 64-bit binary (magic bytes: 0xcffaedfe in LE = 0xfeedfacf)
+    let mut macho_bytes = vec![0xcf, 0xfa, 0xed, 0xfe];
+    macho_bytes.extend_from_slice(&[0u8; 100]); // pad
+    std::fs::write(bin_sub.join("tool.exe"), &macho_bytes).unwrap();
+
+    // Write the config dir's deno.json so the directory exists as expected
+    std::fs::write(config_dir.join("deno.json"), "{}").unwrap();
+
+    let bin_name_and_url = BinaryNameAndUrl {
+      name: "mytool".to_string(),
+      module_url: Url::parse("npm:mytool@1.0.0").unwrap(),
+      config_name: None,
+    };
+
+    let result = super::resolve_native_binary_path(&bin_name_and_url, &bin_dir);
+    assert!(result.is_some(), "should detect Mach-O binary");
+    assert!(
+      result.unwrap().ends_with("bin/tool.exe"),
+      "should return path to the binary"
+    );
+  }
+
+  #[test]
+  fn native_binary_not_detected_for_js_file() {
+    let temp_dir = TempDir::new();
+    let bin_dir = temp_dir.path().join("bin").to_path_buf();
+    let config_dir = bin_dir.join(".mytool");
+    let pkg_dir = config_dir.join("node_modules").join("mytool");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      r#"{"name": "mytool", "bin": {"mytool": "cli.js"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+      pkg_dir.join("cli.js"),
+      "#!/usr/bin/env node\nconsole.log('hello');",
+    )
+    .unwrap();
+
+    let bin_name_and_url = BinaryNameAndUrl {
+      name: "mytool".to_string(),
+      module_url: Url::parse("npm:mytool@1.0.0").unwrap(),
+      config_name: None,
+    };
+
+    let result = super::resolve_native_binary_path(&bin_name_and_url, &bin_dir);
+    assert!(
+      result.is_none(),
+      "should not detect JS file as native binary"
+    );
+  }
+
+  #[test]
+  fn native_binary_not_detected_for_non_node_shebang_js() {
+    // Regression: a JS bin script with a non-Node shebang (e.g.
+    // `#!/usr/bin/env deno`) was being misclassified as a native binary,
+    // which broke `deno install -g` on Windows since the generated shim
+    // execed the .js file directly instead of running `deno run`.
+    let temp_dir = TempDir::new();
+    let bin_dir = temp_dir.path().join("bin").to_path_buf();
+    let config_dir = bin_dir.join(".mytool");
+    let pkg_dir = config_dir.join("node_modules").join("mytool");
+    std::fs::create_dir_all(&pkg_dir).unwrap();
+
+    std::fs::write(
+      pkg_dir.join("package.json"),
+      r#"{"name": "mytool", "bin": {"mytool": "./main.js"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+      pkg_dir.join("main.js"),
+      "#!/usr/bin/env deno\nconsole.log('hello');",
+    )
+    .unwrap();
+
+    let bin_name_and_url = BinaryNameAndUrl {
+      name: "mytool".to_string(),
+      module_url: Url::parse("npm:mytool@1.0.0").unwrap(),
+      config_name: None,
+    };
+
+    let result = super::resolve_native_binary_path(&bin_name_and_url, &bin_dir);
+    assert!(
+      result.is_none(),
+      "JS file with non-Node shebang must not be classified as native binary"
+    );
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn posix_shell_escape_matches_shim_needs() {
+    assert_eq!(
+      super::posix_shell_escape("/install/dir/.mytool/bin/tool.exe"),
+      "/install/dir/.mytool/bin/tool.exe"
+    );
+    assert_eq!(super::posix_shell_escape("two words"), "'two words'");
+    assert_eq!(super::posix_shell_escape("it's"), "'it'\\''s'");
+    assert_eq!(
+      super::posix_shell_escape("$(echo hi);&|<>*?[]"),
+      "'$(echo hi);&|<>*?[]'"
+    );
+    assert_eq!(super::posix_shell_escape("%PATH%/100%"), "'%PATH%/100%'");
+    assert_eq!(super::posix_shell_escape(""), "''");
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn generate_shim_quotes_shell_sensitive_args() {
+    let temp_dir = TempDir::new();
+    let file_path = temp_dir.path().join("mytool").to_path_buf();
+    let shim_data = ShimData {
+      installation_dir: temp_dir.path().to_path_buf(),
+      file_path: file_path.clone(),
+      args: vec![
+        "run".to_string(),
+        "--config".to_string(),
+        "path with spaces/deno.json".to_string(),
+        "https://example.com/it's.ts".to_string(),
+        "$(echo hi);&|<>*?[]".to_string(),
+        "%PATH%/100%".to_string(),
+        "".to_string(),
+      ],
+      native_binary_path: None,
+    };
+    super::generate_executable_file(&shim_data).unwrap();
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert!(
+      content.contains(
+        "exec deno run --config 'path with spaces/deno.json' \
+         'https://example.com/it'\\''s.ts' '$(echo hi);&|<>*?[]' \
+         '%PATH%/100%' '' \"$@\""
+      ),
+      "shim should quote shell-sensitive args, got: {content}"
+    );
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn generate_shim_for_normal_native_binary_path_stays_plain() {
+    let temp_dir = TempDir::new();
+    let file_path = temp_dir.path().join("mytool").to_path_buf();
+    let shim_data = ShimData {
+      installation_dir: temp_dir.path().to_path_buf(),
+      file_path: file_path.clone(),
+      args: vec!["run".to_string(), "npm:mytool".to_string()],
+      native_binary_path: Some(PathBuf::from(
+        "/install/dir/.mytool/node_modules/mytool/bin/tool.exe",
+      )),
+    };
+    super::generate_executable_file(&shim_data).unwrap();
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert!(
+      content
+        .contains("exec /install/dir/.mytool/node_modules/mytool/bin/tool.exe"),
+      "normal native binary paths should not need quotes, got: {content}"
+    );
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn generate_shim_for_native_binary() {
+    let temp_dir = TempDir::new();
+    let file_path = temp_dir.path().join("mytool").to_path_buf();
+    let shim_data = ShimData {
+      installation_dir: temp_dir.path().to_path_buf(),
+      file_path: file_path.clone(),
+      args: vec!["run".to_string(), "npm:mytool".to_string()],
+      native_binary_path: Some(PathBuf::from(
+        "/install/dir/.mytool/node_modules/mytool/bin/tool.exe",
+      )),
+    };
+    super::generate_executable_file(&shim_data).unwrap();
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert!(
+      content
+        .contains("exec /install/dir/.mytool/node_modules/mytool/bin/tool.exe"),
+      "shim should exec native binary directly, got: {content}"
+    );
+    assert!(
+      !content.contains("exec deno"),
+      "shim should not exec deno, got: {content}"
+    );
+  }
+
+  #[cfg(not(windows))]
+  #[test]
+  fn generate_shim_for_js_module() {
+    let temp_dir = TempDir::new();
+    let file_path = temp_dir.path().join("mytool").to_path_buf();
+    let shim_data = ShimData {
+      installation_dir: temp_dir.path().to_path_buf(),
+      file_path: file_path.clone(),
+      args: vec!["run".to_string(), "npm:mytool".to_string()],
+      native_binary_path: None,
+    };
+    super::generate_executable_file(&shim_data).unwrap();
+    let content = fs::read_to_string(&file_path).unwrap();
+    assert!(
+      content.contains("exec deno run"),
+      "shim should use deno run, got: {content}"
+    );
   }
 }

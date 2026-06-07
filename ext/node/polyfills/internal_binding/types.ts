@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 //
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 //
@@ -23,7 +22,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 
 const {
   // isExternal,
@@ -85,4 +84,4 @@ return {
   isWeakMap,
   isWeakSet,
 };
-})()
+})();

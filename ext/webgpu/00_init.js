@@ -1,10 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 
 const loadWebGPU = core.createLazyLoader("ext:deno_webgpu/01_webgpu.js");
 
 return { loadWebGPU };
-})()
+})();

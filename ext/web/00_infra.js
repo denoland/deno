@@ -6,9 +6,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-// deno-fmt-ignore-file
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_base64_decode,
   op_base64_decode_into,
@@ -503,4 +502,4 @@ return {
   serializeJSValueToJSONString,
   SymbolMetadata,
 };
-})()
+})();

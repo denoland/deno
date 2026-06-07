@@ -164,6 +164,12 @@ pub enum CoreErrorKind {
   PendingPromiseResolution,
   #[class(generic)]
   #[error(
+    "Module evaluation is still pending after multiple event loop iterations, \
+     but no stalled top-level await was found. This is a bug in Deno."
+  )]
+  ModuleEvaluationDeadlock,
+  #[class(generic)]
+  #[error(
     "Cannot evaluate dynamically imported module, because JavaScript execution has been terminated"
   )]
   EvaluateDynamicImportedModule,

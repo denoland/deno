@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 //
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 //
@@ -23,8 +22,10 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
-const bindingTypes = core.loadExtScript("ext:deno_node/internal_binding/types.ts");
+const { core, primordials } = __bootstrap;
+const bindingTypes = core.loadExtScript(
+  "ext:deno_node/internal_binding/types.ts",
+);
 const cryptoKeys = core.loadExtScript("ext:deno_node/internal/crypto/_keys.ts");
 const {
   ArrayBufferIsView,
@@ -174,4 +175,4 @@ return {
   isWeakMap,
   isWeakSet,
 };
-})()
+})();

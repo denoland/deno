@@ -1,5 +1,4 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 // deno-lint-ignore-file prefer-primordials
 
@@ -21,17 +20,13 @@ const ObjectHasOwn = Object.hasOwn;
 const RegExpPrototypeTest = (that, ...args) => that.test(...args);
 const RegExpPrototypeExec = RegExp.prototype.exec;
 const StringFromCharCode = String.fromCharCode;
-const StringPrototypeCharCodeAt = (that, ...args) =>
-  that.charCodeAt(...args);
-const StringPrototypeEndsWith = (that, ...args) =>
-  that.endsWith(...args);
-const StringPrototypeIncludes = (that, ...args) =>
-  that.includes(...args);
+const StringPrototypeCharCodeAt = (that, ...args) => that.charCodeAt(...args);
+const StringPrototypeEndsWith = (that, ...args) => that.endsWith(...args);
+const StringPrototypeIncludes = (that, ...args) => that.includes(...args);
 const StringPrototypeReplace = (that, ...args) => that.replace(...args);
 const StringPrototypeSlice = (that, ...args) => that.slice(...args);
 const StringPrototypeSplit = (that, ...args) => that.split(...args);
-const StringPrototypeStartsWith = (that, ...args) =>
-  that.startsWith(...args);
+const StringPrototypeStartsWith = (that, ...args) => that.startsWith(...args);
 const StringPrototypeToUpperCase = (that) => that.toUpperCase();
 
 return {
@@ -61,4 +56,4 @@ return {
   StringPrototypeStartsWith,
   StringPrototypeToUpperCase,
 };
-})()
+})();

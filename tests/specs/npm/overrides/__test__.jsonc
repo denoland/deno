@@ -24,6 +24,11 @@
       // tests that catalog: references in overrides resolve correctly
       "args": "run --node-modules-dir=auto catalog_override/main.ts",
       "output": "[WILDCARD]2\n"
+    },
+    "catalog_override_workspaces_object": {
+      // tests catalog: in overrides when catalog is inside workspaces object
+      "args": "run --node-modules-dir=auto catalog_override_workspaces_object/main.ts",
+      "output": "[WILDCARD]2\n"
     }
   }
 }

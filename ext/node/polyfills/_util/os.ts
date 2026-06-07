@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { op_node_build_os } = core.ops;
 
 type OSType =
@@ -21,4 +20,4 @@ const isLinux = osType === "linux" || osType === "android";
 const isMacOS = osType === "darwin";
 
 return { osType, isAndroid, isWindows, isLinux, isMacOS };
-})()
+})();

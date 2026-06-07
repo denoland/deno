@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   BadResourcePrototype,
   InterruptedPrototype,
@@ -61,12 +60,13 @@ const {
   Uint8Array,
 } = primordials;
 
-const {
-  readableStreamForRidUnrefable,
-  readableStreamForRidUnrefableRef,
-  readableStreamForRidUnrefableUnref,
-  writableStreamForRid,
-} = core.loadExtScript("ext:deno_web/06_streams.js");
+// All four helpers below are only used inside Conn class methods. Defer
+// loading the 208 KB `06_streams.js` polyfill until first stream access.
+let _streamsImpl;
+function lazyStreams() {
+  return _streamsImpl ??
+    (_streamsImpl = core.loadExtScript("ext:deno_web/06_streams.js"));
+}
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 
 async function write(rid, data) {
@@ -166,9 +166,9 @@ class Conn {
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRidUnrefable(this.#rid);
+      this.#readable = lazyStreams().readableStreamForRidUnrefable(this.#rid);
       if (this.#unref) {
-        readableStreamForRidUnrefableUnref(this.#readable);
+        lazyStreams().readableStreamForRidUnrefableUnref(this.#readable);
       }
     }
     return this.#readable;
@@ -176,7 +176,7 @@ class Conn {
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.#rid);
+      this.#writable = lazyStreams().writableStreamForRid(this.#rid);
     }
     return this.#writable;
   }
@@ -184,7 +184,7 @@ class Conn {
   ref() {
     this.#unref = false;
     if (this.#readable) {
-      readableStreamForRidUnrefableRef(this.#readable);
+      lazyStreams().readableStreamForRidUnrefableRef(this.#readable);
     }
 
     SetPrototypeForEach(
@@ -196,7 +196,7 @@ class Conn {
   unref() {
     this.#unref = true;
     if (this.#readable) {
-      readableStreamForRidUnrefableUnref(this.#readable);
+      lazyStreams().readableStreamForRidUnrefableUnref(this.#readable);
     }
     SetPrototypeForEach(
       this.#pendingReadPromises,
@@ -761,4 +761,4 @@ return {
   validatePort,
   VsockConn,
 };
-})()
+})();

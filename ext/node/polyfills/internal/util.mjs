@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { normalizeEncoding } = core.loadExtScript(
   "ext:deno_node/internal/normalize_encoding.ts",
 );
@@ -10,8 +9,12 @@ const {
   ObjectCreate,
   StringPrototypeToUpperCase,
 } = core.loadExtScript("ext:deno_node/internal/primordials.mjs");
-const { ERR_UNKNOWN_SIGNAL } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const { os } = core.loadExtScript("ext:deno_node/internal_binding/constants.ts");
+const { ERR_UNKNOWN_SIGNAL } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { os } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -311,4 +314,4 @@ return {
     sleep,
   },
 };
-})()
+})();

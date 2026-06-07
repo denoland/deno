@@ -609,6 +609,10 @@ struct SerializedTestConfig {
   #[serde(rename = "files")]
   pub deprecated_files: serde_json::Value,
   pub permissions: Option<PermissionNameOrObject>,
+  #[serde(rename = "sanitizeOps")]
+  pub sanitize_ops: Option<bool>,
+  #[serde(rename = "sanitizeResources")]
+  pub sanitize_resources: Option<bool>,
 }
 
 impl SerializedTestConfig {
@@ -638,6 +642,8 @@ impl SerializedTestConfig {
         }
         None => None,
       },
+      sanitize_ops: self.sanitize_ops,
+      sanitize_resources: self.sanitize_resources,
     })
   }
 }
@@ -646,6 +652,8 @@ impl SerializedTestConfig {
 pub struct TestConfig {
   pub files: FilePatterns,
   pub permissions: Option<Box<PermissionsObjectWithBase>>,
+  pub sanitize_ops: Option<bool>,
+  pub sanitize_resources: Option<bool>,
 }
 
 impl TestConfig {
@@ -653,6 +661,8 @@ impl TestConfig {
     Self {
       files: FilePatterns::new_with_base(base),
       permissions: None,
+      sanitize_ops: None,
+      sanitize_resources: None,
     }
   }
 }
@@ -970,6 +980,14 @@ pub struct NodeModulesDirParseError {
   pub source: serde_json::Error,
 }
 
+#[derive(Debug, Error, JsError)]
+#[class(type)]
+#[error("Unsupported \"nodeModulesLinker\" value.")]
+pub struct NodeModulesLinkerParseError {
+  #[source]
+  pub source: serde_json::Error,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NewestDependencyDate {
   Enabled(chrono::DateTime<chrono::Utc>),
@@ -989,7 +1007,8 @@ impl NewestDependencyDate {
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RawMinimumDependencyAgeConfig {
-  pub age: serde_json::Value,
+  #[serde(default)]
+  pub age: Option<serde_json::Value>,
   #[serde(default)]
   pub exclude: Vec<String>,
 }
@@ -1094,6 +1113,62 @@ impl NodeModulesDirMode {
   }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum NodeModulesLinkerMode {
+  #[default]
+  Isolated,
+  Hoisted,
+}
+
+impl<'de> Deserialize<'de> for NodeModulesLinkerMode {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct NodeModulesLinkerModeVisitor;
+
+    impl Visitor<'_> for NodeModulesLinkerModeVisitor {
+      type Value = NodeModulesLinkerMode;
+
+      fn expecting(
+        &self,
+        formatter: &mut std::fmt::Formatter,
+      ) -> std::fmt::Result {
+        formatter.write_str(r#""isolated" or "hoisted""#)
+      }
+
+      fn visit_str<E>(self, value: &str) -> Result<NodeModulesLinkerMode, E>
+      where
+        E: de::Error,
+      {
+        match value {
+          "isolated" => Ok(NodeModulesLinkerMode::Isolated),
+          "hoisted" => Ok(NodeModulesLinkerMode::Hoisted),
+          _ => Err(de::Error::invalid_value(Unexpected::Str(value), &self)),
+        }
+      }
+    }
+
+    deserializer.deserialize_str(NodeModulesLinkerModeVisitor)
+  }
+}
+
+impl std::fmt::Display for NodeModulesLinkerMode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.as_str())
+  }
+}
+
+impl NodeModulesLinkerMode {
+  pub fn as_str(self) -> &'static str {
+    match self {
+      NodeModulesLinkerMode::Isolated => "isolated",
+      NodeModulesLinkerMode::Hoisted => "hoisted",
+    }
+  }
+}
+
 /// `deploy` config representation for serde
 ///
 /// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
@@ -1148,6 +1223,7 @@ pub struct ConfigFileJson {
   pub exclude: Option<Value>,
   pub minimum_dependency_age: Option<Value>,
   pub node_modules_dir: Option<Value>,
+  pub node_modules_linker: Option<Value>,
   pub vendor: Option<bool>,
   pub license: Option<Value>,
   pub permissions: Option<Value>,
@@ -1948,6 +2024,8 @@ impl ConfigFile {
       None => Ok(TestConfig {
         files: self.to_exclude_files_config()?,
         permissions: None,
+        sanitize_ops: None,
+        sanitize_resources: None,
       }),
     }
   }
@@ -2240,7 +2318,10 @@ impl ConfigFile {
             serde_json::from_value(v.clone())
               .map_err(MinimumDependencyAgeParseError::UnsupportedObject)?;
           Ok(MinimumDependencyAgeConfig {
-            age: parse_date(&obj.age, sys)?,
+            age: match &obj.age {
+              Some(age) => parse_date(age, sys)?,
+              None => None,
+            },
             exclude: obj.exclude,
           })
         }
@@ -2746,6 +2827,74 @@ mod tests {
     let config_specifier = Url::parse("file:///deno/tsconfig.json").unwrap();
     // Emit error: config file JSON "<config_path>" should be an object
     assert!(ConfigFile::new(config_text, config_specifier,).is_err());
+  }
+
+  #[test]
+  fn test_minimum_dependency_age_config() {
+    use chrono::TimeZone;
+
+    struct TestEnv;
+
+    impl sys_traits::SystemTimeNow for TestEnv {
+      fn sys_time_now(&self) -> std::time::SystemTime {
+        let datetime =
+          chrono::Utc.with_ymd_and_hms(2025, 6, 1, 0, 0, 0).unwrap();
+        std::time::SystemTime::from(datetime)
+      }
+    }
+
+    fn parse(json: &str) -> MinimumDependencyAgeConfig {
+      let specifier = Url::parse("file:///deno/deno.json").unwrap();
+      let config_file = ConfigFile::new(json, specifier).unwrap();
+      config_file
+        .to_minimum_dependency_age_config(&TestEnv)
+        .unwrap()
+    }
+
+    // Object with only "exclude" (no "age") should be accepted. The age
+    // can be supplied via the --minimum-dependency-age flag.
+    let config =
+      parse(r#"{ "minimumDependencyAge": { "exclude": ["npm:chalk"] } }"#);
+    assert!(config.age.is_none());
+    assert_eq!(config.exclude, vec!["npm:chalk".to_string()]);
+
+    // Empty object should also be accepted.
+    let config = parse(r#"{ "minimumDependencyAge": {} }"#);
+    assert!(config.age.is_none());
+    assert!(config.exclude.is_empty());
+
+    // Explicit null for "age" is also accepted.
+    let config =
+      parse(r#"{ "minimumDependencyAge": { "age": null, "exclude": [] } }"#);
+    assert!(config.age.is_none());
+    assert!(config.exclude.is_empty());
+
+    // Object with "age" still works.
+    let config = parse(
+      r#"{ "minimumDependencyAge": { "age": 120, "exclude": ["npm:chalk"] } }"#,
+    );
+    assert!(config.age.is_some());
+    assert_eq!(config.exclude, vec!["npm:chalk".to_string()]);
+
+    // Bare value still works.
+    let config = parse(r#"{ "minimumDependencyAge": 120 }"#);
+    assert!(config.age.is_some());
+    assert!(config.exclude.is_empty());
+
+    // Unknown field still errors.
+    let specifier = Url::parse("file:///deno/deno.json").unwrap();
+    let config_file = ConfigFile::new(
+      r#"{ "minimumDependencyAge": { "unknown": 1 } }"#,
+      specifier,
+    )
+    .unwrap();
+    let err = config_file
+      .to_minimum_dependency_age_config(&TestEnv)
+      .unwrap_err();
+    assert!(matches!(
+      err,
+      MinimumDependencyAgeParseError::UnsupportedObject(_)
+    ));
   }
 
   #[test]

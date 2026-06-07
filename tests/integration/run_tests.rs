@@ -437,7 +437,7 @@ fn permissions_trace() {
       test_util::assertions::assert_wildcard_match(&text, concat!(
       "┏ ⚠️  Deno requests sys access to \"hostname\".\r\n",
       "┠─ Requested by `Deno.hostname()` API.\r\n",
-      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:45:10)\r\n",
+      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:[WILDLINE]:[WILDLINE])\r\n",
       "┃  ├─ foo (file://[WILDCARD]/run/permissions_trace.ts:2:8)\r\n",
       "┃  ├─ bar (file://[WILDCARD]/run/permissions_trace.ts:6:3)\r\n",
       "┃  └─ file://[WILDCARD]/run/permissions_trace.ts:9:1\r\n",
@@ -1676,6 +1676,14 @@ mod permissions {
         console.expect("What is Windows EOL? ");
         console.write_line("windows");
         console.expect("Your answer is \"windows\"");
+        console.expect("Type some unicode: ");
+        console.write_line_raw("Hello! ążć 🦕");
+        console.expect("Your unicode answer is \"Hello! ążć 🦕\"");
+        // \u{ą} = 0xC4 0x85, \u{ż} = 0xC5 0xBC, \u{ć} = 0xC4 0x87,
+        // \u{1F995} = 0xF0 0x9F 0xA6 0x95 (🦕)
+        console.expect(
+          "bytes=72,101,108,108,111,33,32,196,133,197,188,196,135,32,240,159,166,149",
+        );
         console.expect("Hi [Enter] ");
         console.write_line("");
         console.expect("Alert [Enter] ");
@@ -2569,6 +2577,29 @@ fn broken_stdout_repl() {
   assert_not_contains!(stderr, "panic");
 }
 
+// Regression test for https://github.com/denoland/deno/issues/16308 — when
+// `println!` panics on a broken stdout pipe (e.g. `deno | cls` on Windows),
+// the panic hook should exit cleanly instead of printing the bug-report banner.
+#[test]
+fn broken_stdout_no_panic_banner() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("info")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap();
+  assert_not_contains!(stderr, "Deno has panicked");
+  assert_not_contains!(stderr, "panicked at");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn websocketstream_ping() {
   let _g = util::http_server();
@@ -3286,6 +3317,17 @@ fn node_process_stdin_unref_with_pty() {
 }
 
 #[test]
+fn stdin_readable_cancel_with_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/stdin_readable_cancel.ts"])
+    .with_pty(|mut console| {
+      console.expect("CANCELLED");
+      console.expect("DONE");
+    });
+}
+
+#[test]
 async fn listen_tls_alpn() {
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
@@ -3569,6 +3611,27 @@ fn readline_multi_prompt_pty() {
       console.expect("Q2?");
       console.write_line("world");
       console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/17047.
+// Verifies that permission prompts wait for an active user-space stdin prompt
+// instead of racing it and consuming the user's answer.
+#[test]
+fn readline_permission_prompt_interleaving_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_permission_prompt_interleaving.ts"])
+    .with_pty(|mut console| {
+      console.expect("Project?");
+      console.write_line("demo");
+      console.expect("ANSWER:demo");
+      console.expect("Deno requests read access to");
+      console.expect("Allow?");
+      console.human_delay();
+      console.write_line_raw("n");
+      console.expect("Denied read access to");
+      console.expect("READ_ERROR:NotCapable");
     });
 }
 

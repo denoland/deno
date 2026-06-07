@@ -20,14 +20,18 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import dns from "node:dns";
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
+(function () {
+const { core, primordials } = __bootstrap;
+const lazyDns = core.createLazyLoader("node:dns");
 const { ERR_SOCKET_BAD_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-import { UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { core, primordials } from "ext:core/mod.js";
+const { UDP } = core.loadExtScript(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
 const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const {
   isInt32,
@@ -35,15 +39,15 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { FunctionPrototypeBind, MapPrototypeGet, Symbol } = primordials;
 
-export type SocketType = "udp4" | "udp6";
+type SocketType = "udp4" | "udp6";
 
-export const kStateSymbol: unique symbol = Symbol("kStateSymbol");
+const kStateSymbol: unique symbol = Symbol("kStateSymbol");
 
 function lookup4(
-  lookup: typeof dns.lookup,
+  lookup: (...args: unknown[]) => void,
   address: string,
   callback: (
-    err: ErrnoException | null,
+    err: unknown,
     address: string,
     family: number,
   ) => void,
@@ -52,10 +56,10 @@ function lookup4(
 }
 
 function lookup6(
-  lookup: typeof dns.lookup,
+  lookup: (...args: unknown[]) => void,
   address: string,
   callback: (
-    err: ErrnoException | null,
+    err: unknown,
     address: string,
     family: number,
   ) => void,
@@ -63,12 +67,12 @@ function lookup6(
   return lookup(address || "::1", 6, callback);
 }
 
-export function newHandle(
+function newHandle(
   type: SocketType,
-  lookup?: typeof dns.lookup,
-): UDP {
+  lookup?: (...args: unknown[]) => void,
+): InstanceType<typeof UDP> {
   if (lookup === undefined) {
-    lookup = dns.lookup;
+    lookup = lazyDns().default.lookup;
   } else {
     validateFunction(lookup, "lookup");
   }
@@ -95,7 +99,7 @@ export function newHandle(
   throw new ERR_SOCKET_BAD_TYPE();
 }
 
-export function _createSocketHandle(
+function _createSocketHandle(
   address: string,
   port: number,
   addressType: SocketType,
@@ -127,8 +131,14 @@ export function _createSocketHandle(
   return handle;
 }
 
-export default {
+return {
+  default: {
+    kStateSymbol,
+    newHandle,
+    _createSocketHandle,
+  },
   kStateSymbol,
   newHandle,
   _createSocketHandle,
 };
+})();

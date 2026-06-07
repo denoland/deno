@@ -20,12 +20,13 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+(function () {
 "use strict";
 
-import { core } from "ext:core/mod.js";
+const { core, primordials } = __bootstrap;
+const {
+  NumberIsNaN,
+} = primordials;
 const {
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CURSOR_POS,
@@ -35,7 +36,9 @@ const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
 
-import { CSI } from "ext:deno_node/internal/readline/utils.mjs";
+const { CSI } = core.loadExtScript(
+  "ext:deno_node/internal/readline/utils.mjs",
+);
 
 const {
   kClearLine,
@@ -48,7 +51,7 @@ const {
  * moves the cursor to the x and y coordinate on the given stream
  */
 
-export function cursorTo(stream, x, y, callback) {
+function cursorTo(stream, x, y, callback) {
   if (callback !== undefined) {
     validateFunction(callback, "callback");
   }
@@ -58,8 +61,8 @@ export function cursorTo(stream, x, y, callback) {
     y = undefined;
   }
 
-  if (Number.isNaN(x)) throw new ERR_INVALID_ARG_VALUE("x", x);
-  if (Number.isNaN(y)) throw new ERR_INVALID_ARG_VALUE("y", y);
+  if (NumberIsNaN(x)) throw new ERR_INVALID_ARG_VALUE("x", x);
+  if (NumberIsNaN(y)) throw new ERR_INVALID_ARG_VALUE("y", y);
 
   if (stream == null || (typeof x !== "number" && typeof y !== "number")) {
     if (typeof callback === "function") process.nextTick(callback, null);
@@ -76,7 +79,7 @@ export function cursorTo(stream, x, y, callback) {
  * moves the cursor relative to its current location
  */
 
-export function moveCursor(stream, dx, dy, callback) {
+function moveCursor(stream, dx, dy, callback) {
   if (callback !== undefined) {
     validateFunction(callback, "callback");
   }
@@ -110,7 +113,7 @@ export function moveCursor(stream, dx, dy, callback) {
  *    0 for the entire line
  */
 
-export function clearLine(stream, dir, callback) {
+function clearLine(stream, dir, callback) {
   if (callback !== undefined) {
     validateFunction(callback, "callback");
   }
@@ -132,7 +135,7 @@ export function clearLine(stream, dir, callback) {
  * clears the screen from the current position of the cursor down
  */
 
-export function clearScreenDown(stream, callback) {
+function clearScreenDown(stream, callback) {
   if (callback !== undefined) {
     validateFunction(callback, "callback");
   }
@@ -144,3 +147,11 @@ export function clearScreenDown(stream, callback) {
 
   return stream.write(kClearScreenDown, callback);
 }
+
+return {
+  cursorTo,
+  moveCursor,
+  clearLine,
+  clearScreenDown,
+};
+})();

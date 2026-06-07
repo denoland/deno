@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const { internalRidSymbol } = core;
 const {
   op_net_accept_tls,
@@ -25,7 +24,9 @@ const {
   SymbolFor,
 } = primordials;
 
-const { Conn, Listener, validatePort } = core.loadExtScript("ext:deno_net/01_net.js");
+const { Conn, Listener, validatePort } = core.loadExtScript(
+  "ext:deno_net/01_net.js",
+);
 
 const _getPeerCertificate = Symbol("getPeerCertificate");
 
@@ -267,4 +268,4 @@ return {
   TlsConn,
   TlsListener,
 };
-})()
+})();

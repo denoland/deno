@@ -6,9 +6,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-// deno-fmt-ignore-file
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   isArrayBuffer,
   isDataView,
@@ -18,7 +17,10 @@ const {
 const {
   ArrayBufferIsView,
   ArrayPrototypeForEach,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
+  ArrayPrototypeSlice,
   ArrayPrototypeSort,
   ArrayIteratorPrototype,
   BigInt,
@@ -49,6 +51,7 @@ const {
   ObjectCreate,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectFreeze,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetOwnPropertyDescriptors,
   ObjectGetPrototypeOf,
@@ -91,6 +94,12 @@ const {
   Uint8Array,
   Uint8ClampedArray,
 } = primordials;
+
+// Shared empty options object used as the default for `opts` parameters in
+// converter functions, so callers that omit `opts` (the common case) don't
+// allocate a fresh `{ __proto__: null }` on every call. Converters only read
+// from `opts` -- never mutate -- so a shared frozen object is safe.
+const EMPTY_OPTS = ObjectFreeze({ __proto__: null });
 
 function makeException(ErrorType, message, prefix, context) {
   return new ErrorType(
@@ -401,18 +410,17 @@ converters["unrestricted double?"] = createNullableConverter(
   converters["unrestricted double"],
 );
 
-converters.DOMString = function (V, prefix, context, opts) {
+converters.DOMString = function (V, _prefix, _context, opts) {
   if (typeof V === "string") {
     return V;
   } else if (V === null && opts && opts.treatNullAsEmptyString) {
     return "";
   } else if (typeof V === "symbol") {
-    throw makeException(
-      TypeError,
-      "is a symbol, which cannot be converted to a string",
-      prefix,
-      context,
-    );
+    // V8's `String(sym)` returns the symbol description rather than throwing,
+    // so we throw explicitly to match Node and other WHATWG-conformant
+    // runtimes, which use V8's native "Cannot convert a Symbol value to a
+    // string" message (raised by ToPrimitive on Symbols).
+    throw new TypeError("Cannot convert a Symbol value to a string");
   }
 
   return String(V);
@@ -479,7 +487,7 @@ converters.ArrayBuffer = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!isArrayBuffer(V)) {
     if (opts.allowShared && !isSharedArrayBuffer(V)) {
@@ -505,7 +513,7 @@ converters.DataView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!isDataView(V)) {
     throw makeException(
@@ -554,7 +562,7 @@ ArrayPrototypeForEach(
       V,
       prefix = undefined,
       context = undefined,
-      opts = { __proto__: null },
+      opts = EMPTY_OPTS,
     ) => {
       if (TypedArrayPrototypeGetSymbolToStringTag(V) !== name) {
         throw makeException(
@@ -587,7 +595,7 @@ converters.ArrayBufferView = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (!ArrayBufferIsView(V)) {
     throw makeException(
@@ -619,7 +627,7 @@ converters.BufferSource = (
   V,
   prefix = undefined,
   context = undefined,
-  opts = { __proto__: null },
+  opts = EMPTY_OPTS,
 ) => {
   if (ArrayBufferIsView(V)) {
     let buffer;
@@ -711,8 +719,31 @@ converters["sequence<DOMString>"] = createSequenceConverter(
   converters.DOMString,
 );
 
-function requiredArguments(length, required, prefix) {
+function requiredArguments(length, required, prefix, argNames) {
   if (length < required) {
+    if (argNames !== undefined) {
+      // Node-compatible error: ERR_MISSING_ARGS with a message that names the
+      // required arguments, e.g. `The "name" and "value" arguments must be
+      // specified`.
+      let formatted;
+      const n = argNames.length;
+      if (n === 1) {
+        formatted = `"${argNames[0]}"`;
+      } else if (n === 2) {
+        formatted = `"${argNames[0]}" and "${argNames[1]}"`;
+      } else {
+        let joined = "";
+        for (let i = 0; i < n - 1; i++) {
+          joined += `"${argNames[i]}", `;
+        }
+        formatted = `${joined}and "${argNames[n - 1]}"`;
+      }
+      const err = new TypeError(
+        `The ${formatted} argument${n === 1 ? "" : "s"} must be specified`,
+      );
+      err.code = "ERR_MISSING_ARGS";
+      throw err;
+    }
     const errMsg = `${prefix ? prefix + ": " : ""}${required} argument${
       required === 1 ? "" : "s"
     } required, but only ${length} present`;
@@ -865,7 +896,7 @@ function createEnumConverter(name, values) {
     V,
     prefix = undefined,
     _context = undefined,
-    _opts = { __proto__: null },
+    _opts = EMPTY_OPTS,
   ) {
     const S = String(V);
 
@@ -886,7 +917,7 @@ function createNullableConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) => {
     // FIXME: If Type(V) is not Object, and the conversion to an IDL value is
     // being performed due to V being assigned to an attribute whose type is a
@@ -905,7 +936,7 @@ function createSequenceConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) {
     if (type(V) !== "Object") {
       throw makeException(
@@ -965,7 +996,7 @@ function createAsyncIterableConverter(converter) {
     V,
     prefix = undefined,
     context = undefined,
-    opts = { __proto__: null },
+    opts = EMPTY_OPTS,
   ) {
     if (type(V) !== "Object") {
       throw makeException(
@@ -1161,11 +1192,14 @@ function createBranded(Type) {
   return t;
 }
 
-function assertBranded(self, prototype) {
+function assertBranded(self, prototype, interfaceName) {
   if (
     !ObjectPrototypeIsPrototypeOf(prototype, self) || self[brand] !== brand
   ) {
-    const err = new TypeError("Illegal invocation");
+    const message = interfaceName === undefined
+      ? "Illegal invocation"
+      : `Value of "this" must be of type ${interfaceName}`;
+    const err = new TypeError(message);
     err.code = "ERR_INVALID_THIS";
     throw err;
   }
@@ -1202,11 +1236,13 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
   });
   define(iteratorPrototype, {
     next() {
-      const internal = this && this[_iteratorInternal];
+      const internal = this == null ? undefined : this[_iteratorInternal];
       if (!internal) {
-        throw new TypeError(
-          `next() called on a value that is not a ${name} iterator object`,
+        const err = new TypeError(
+          `Value of "this" must be of type ${name}Iterator`,
         );
+        err.code = "ERR_INVALID_THIS";
+        throw err;
       }
       const { target, kind, index } = internal;
       const values = target[dataSymbol];
@@ -1230,6 +1266,30 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
       }
       return { value: result, done: false };
     },
+    // Node-compatible inspector output (e.g. `URLSearchParams Iterator { 'a',
+    // 'b' }`). Picked up by Deno's `util.inspect` via the privateCustomInspect
+    // path so `node:util.inspect` returns the same shape.
+    [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+      const internal = this == null ? undefined : this[_iteratorInternal];
+      const label = `${name} Iterator`;
+      if (!internal) return `${label} {}`;
+      const { target, kind, index } = internal;
+      const values = target[dataSymbol];
+      const remaining = ArrayPrototypeSlice(values, index);
+      const items = ArrayPrototypeMap(remaining, (pair) => {
+        if (kind === "key") return inspect(pair[keyKey], inspectOptions);
+        if (kind === "value") return inspect(pair[valueKey], inspectOptions);
+        return inspect([pair[keyKey], pair[valueKey]], inspectOptions);
+      });
+      if (items.length === 0) return `${label} {  }`;
+      const inlined = ArrayPrototypeJoin(items, ", ");
+      const breakLength = inspectOptions?.breakLength;
+      const oneLine = `${label} { ${inlined} }`;
+      if (typeof breakLength === "number" && oneLine.length > breakLength) {
+        return `${label} {\n  ${ArrayPrototypeJoin(items, ",\n  ")} }`;
+      }
+      return oneLine;
+    },
   });
   function createDefaultIterator(target, kind) {
     const iterator = ObjectCreate(iteratorPrototype);
@@ -1241,61 +1301,82 @@ function mixinPairIterable(name, prototype, dataSymbol, keyKey, valueKey) {
     return iterator;
   }
 
-  function entries() {
-    assertBranded(this, prototype.prototype);
-    return createDefaultIterator(this, "key+value");
-  }
+  // Use object method shorthand so that the resulting functions have no own
+  // `prototype` property, matching Node's URLSearchParams.prototype methods
+  // (Node uses class methods which behave the same way). Regular function
+  // declarations would expose a `prototype` property which causes
+  // `Object.hasOwn(value, "prototype")` checks in Node tests to fail.
+  const methods = {
+    entries() {
+      assertBranded(this, prototype.prototype, name);
+      return createDefaultIterator(this, "key+value");
+    },
+    keys() {
+      assertBranded(this, prototype.prototype, name);
+      return createDefaultIterator(this, "key");
+    },
+    values() {
+      assertBranded(this, prototype.prototype, name);
+      return createDefaultIterator(this, "value");
+    },
+    forEach(idlCallback, thisArg = undefined) {
+      assertBranded(this, prototype.prototype, name);
+      // Match Node: a missing/non-function callback throws
+      // `TypeError [ERR_INVALID_ARG_TYPE]` rather than a generic
+      // `ERR_MISSING_ARGS` / "Function failed to convert" error.
+      if (typeof idlCallback !== "function") {
+        const err = new TypeError(
+          `The "callback" argument must be of type function. Received ${
+            idlCallback === null
+              ? "null"
+              : idlCallback === undefined
+              ? "undefined"
+              : typeof idlCallback
+          }`,
+        );
+        err.code = "ERR_INVALID_ARG_TYPE";
+        throw err;
+      }
+      // Bind explicitly to `thisArg` (undefined by default). WebIDL forEach
+      // should pass through the caller-provided `this`, not default to
+      // `globalThis`, and Node's test suite asserts the callback's `this`
+      // is `undefined` when no `thisArg` is given.
+      idlCallback = FunctionPrototypeBind(idlCallback, thisArg);
+      const pairs = this[dataSymbol];
+      for (let i = 0; i < pairs.length; i++) {
+        const entry = pairs[i];
+        idlCallback(entry[valueKey], entry[keyKey], this);
+      }
+    },
+  };
 
   const properties = {
     entries: {
-      value: entries,
+      value: methods.entries,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     [SymbolIterator]: {
-      value: entries,
+      value: methods.entries,
       writable: true,
       enumerable: false,
       configurable: true,
     },
     keys: {
-      value: function keys() {
-        assertBranded(this, prototype.prototype);
-        return createDefaultIterator(this, "key");
-      },
+      value: methods.keys,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     values: {
-      value: function values() {
-        assertBranded(this, prototype.prototype);
-        return createDefaultIterator(this, "value");
-      },
+      value: methods.values,
       writable: true,
       enumerable: true,
       configurable: true,
     },
     forEach: {
-      value: function forEach(idlCallback, thisArg = undefined) {
-        assertBranded(this, prototype.prototype);
-        const prefix = `Failed to execute 'forEach' on '${name}'`;
-        requiredArguments(arguments.length, 1, { prefix });
-        idlCallback = converters["Function"](idlCallback, {
-          prefix,
-          context: "Argument 1",
-        });
-        idlCallback = FunctionPrototypeBind(
-          idlCallback,
-          thisArg ?? globalThis,
-        );
-        const pairs = this[dataSymbol];
-        for (let i = 0; i < pairs.length; i++) {
-          const entry = pairs[i];
-          idlCallback(entry[valueKey], entry[keyKey], this);
-        }
-      },
+      value: methods.forEach,
       writable: true,
       enumerable: true,
       configurable: true,
@@ -1472,4 +1553,4 @@ return {
   setlikeObjectWrap,
   type,
 };
-})()
+})();

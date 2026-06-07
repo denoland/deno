@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { primordials } = globalThis.__bootstrap;
+const { primordials } = __bootstrap;
 const { StringPrototypeToLowerCase } = primordials;
 
 // https://github.com/nodejs/node/blob/a73b575304722a3682fbec3a5fb13b39c5791342/lib/internal/util.js#L252
@@ -78,4 +77,4 @@ function slowCases(enc) {
 }
 
 return { normalizeEncoding };
-})()
+})();

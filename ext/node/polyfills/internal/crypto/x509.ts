@@ -1,11 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file no-explicit-any
 
-import { core } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypePush,
+  Date,
+  ObjectAssign,
+  ObjectFreeze,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeIncludes,
+} = primordials;
+const {
   op_node_x509_ca,
   op_node_x509_check_email,
   op_node_x509_check_host,
@@ -31,16 +39,16 @@ import {
   op_node_x509_to_legacy_object,
   op_node_x509_to_string,
   op_node_x509_verify,
-} from "ext:core/ops";
+} = core.ops;
 
-import {
+const {
   KeyObject,
   PublicKeyObject,
-} from "ext:deno_node/internal/crypto/keys.ts";
+} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
 const { kHandle } = core.loadExtScript(
   "ext:deno_node/internal/crypto/constants.ts",
 );
-import { Buffer } from "node:buffer";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -53,41 +61,12 @@ const {
   validateObject,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
-import { inspect } from "node:util";
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 const { customInspectSymbol: kInspect } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
 );
-import type { InspectOptions } from "node:util";
 
-// deno-lint-ignore no-explicit-any
-export type PeerCertificate = any;
-
-export interface X509CheckOptions {
-  /**
-   * @default 'always'
-   */
-  subject: "always" | "never";
-  /**
-   * @default true
-   */
-  wildcards: boolean;
-  /**
-   * @default true
-   */
-  partialWildcards: boolean;
-  /**
-   * @default false
-   */
-  multiLabelWildcards: boolean;
-  /**
-   * @default false
-   */
-  singleLabelSubdomains: boolean;
-}
-
-// deno-lint-ignore no-explicit-any
-const kEmptyObject = Object.freeze({ __proto__: null } as any);
+const kEmptyObject = ObjectFreeze({ __proto__: null } as any);
 
 function getFlags(options = kEmptyObject): number {
   validateObject(options, "options");
@@ -116,9 +95,6 @@ function getFlags(options = kEmptyObject): number {
     default:
       throw new ERR_INVALID_ARG_VALUE("options.subject", subject);
   }
-  // Flags are parsed for validation but not currently used
-  // as the underlying implementation doesn't use OpenSSL's
-  // X509_check_* functions.
   if (!wildcards) flags |= 0x4;
   if (!partialWildcards) flags |= 0x8;
   if (multiLabelWildcards) flags |= 0x10;
@@ -126,10 +102,10 @@ function getFlags(options = kEmptyObject): number {
   return flags;
 }
 
-export class X509Certificate {
+class X509Certificate {
   #handle: number;
 
-  constructor(buffer: BinaryLike) {
+  constructor(buffer: any) {
     if (typeof buffer === "string") {
       buffer = Buffer.from(buffer);
     }
@@ -151,7 +127,7 @@ export class X509Certificate {
     });
   }
 
-  [kInspect](depth: number, options: InspectOptions) {
+  [kInspect](depth: number, options: any) {
     if (depth < 0) {
       return this;
     }
@@ -186,10 +162,10 @@ export class X509Certificate {
 
   checkEmail(
     email: string,
-    options?: Pick<X509CheckOptions, "subject">,
+    options?: any,
   ): string | undefined {
     validateString(email, "email");
-    if (email.includes("\0")) {
+    if (StringPrototypeIncludes(email, "\0")) {
       throw new ERR_INVALID_ARG_VALUE("email", email);
     }
     getFlags(options);
@@ -198,9 +174,9 @@ export class X509Certificate {
     }
   }
 
-  checkHost(name: string, options?: X509CheckOptions): string | undefined {
+  checkHost(name: string, options?: any): string | undefined {
     validateString(name, "name");
-    if (name.includes("\0")) {
+    if (StringPrototypeIncludes(name, "\0")) {
       throw new ERR_INVALID_ARG_VALUE("name", name);
     }
     getFlags(options);
@@ -216,7 +192,7 @@ export class X509Certificate {
   }
 
   checkIssued(otherCert: X509Certificate): boolean {
-    if (!(otherCert instanceof X509Certificate)) {
+    if (!ObjectPrototypeIsPrototypeOf(X509Certificate.prototype, otherCert)) {
       throw new ERR_INVALID_ARG_TYPE(
         "otherCert",
         "X509Certificate",
@@ -227,7 +203,7 @@ export class X509Certificate {
   }
 
   checkPrivateKey(privateKey: KeyObject): boolean {
-    if (!(privateKey instanceof KeyObject)) {
+    if (!ObjectPrototypeIsPrototypeOf(KeyObject.prototype, privateKey)) {
       throw new ERR_INVALID_ARG_TYPE(
         "privateKey",
         "KeyObject",
@@ -239,7 +215,6 @@ export class X509Certificate {
     }
     return op_node_x509_check_private_key(
       this.#handle,
-      // deno-lint-ignore no-explicit-any
       (privateKey as any)[kHandle],
     );
   }
@@ -272,15 +247,15 @@ export class X509Certificate {
     const flags = op_node_x509_key_usage(this.#handle);
     if (flags === 0) return undefined;
     const result: string[] = [];
-    if (flags & 0x01) result.push("DigitalSignature");
-    if (flags >> 1 & 0x01) result.push("NonRepudiation");
-    if (flags >> 2 & 0x01) result.push("KeyEncipherment");
-    if (flags >> 3 & 0x01) result.push("DataEncipherment");
-    if (flags >> 4 & 0x01) result.push("KeyAgreement");
-    if (flags >> 5 & 0x01) result.push("KeyCertSign");
-    if (flags >> 6 & 0x01) result.push("CRLSign");
-    if (flags >> 7 & 0x01) result.push("EncipherOnly");
-    if (flags >> 8 & 0x01) result.push("DecipherOnly");
+    if (flags & 0x01) ArrayPrototypePush(result, "DigitalSignature");
+    if (flags >> 1 & 0x01) ArrayPrototypePush(result, "NonRepudiation");
+    if (flags >> 2 & 0x01) ArrayPrototypePush(result, "KeyEncipherment");
+    if (flags >> 3 & 0x01) ArrayPrototypePush(result, "DataEncipherment");
+    if (flags >> 4 & 0x01) ArrayPrototypePush(result, "KeyAgreement");
+    if (flags >> 5 & 0x01) ArrayPrototypePush(result, "KeyCertSign");
+    if (flags >> 6 & 0x01) ArrayPrototypePush(result, "CRLSign");
+    if (flags >> 7 & 0x01) ArrayPrototypePush(result, "EncipherOnly");
+    if (flags >> 8 & 0x01) ArrayPrototypePush(result, "DecipherOnly");
     return result;
   }
 
@@ -298,7 +273,8 @@ export class X509Certificate {
   }
 
   get signatureAlgorithm(): string | undefined {
-    return op_node_x509_get_signature_algorithm_name(this.#handle) ?? undefined;
+    return op_node_x509_get_signature_algorithm_name(this.#handle) ??
+      undefined;
   }
 
   get signatureAlgorithmOid(): string {
@@ -314,22 +290,23 @@ export class X509Certificate {
   }
 
   toJSON(): string {
+    // deno-lint-ignore prefer-primordials
     return this.toString();
   }
 
-  toLegacyObject(): PeerCertificate {
+  toLegacyObject(): any {
     const obj = op_node_x509_to_legacy_object(this.#handle);
     if (obj.raw) {
       obj.raw = Buffer.from(obj.raw);
     }
     if (obj.subject) {
-      obj.subject = Object.assign({ __proto__: null }, obj.subject);
+      obj.subject = ObjectAssign({ __proto__: null }, obj.subject);
     }
     if (obj.issuer) {
-      obj.issuer = Object.assign({ __proto__: null }, obj.issuer);
+      obj.issuer = ObjectAssign({ __proto__: null }, obj.issuer);
     }
     if (obj.infoAccess) {
-      obj.infoAccess = Object.assign({ __proto__: null }, obj.infoAccess);
+      obj.infoAccess = ObjectAssign({ __proto__: null }, obj.infoAccess);
     }
     return obj;
   }
@@ -355,7 +332,7 @@ export class X509Certificate {
   }
 
   verify(publicKey: KeyObject): boolean {
-    if (!(publicKey instanceof KeyObject)) {
+    if (!ObjectPrototypeIsPrototypeOf(KeyObject.prototype, publicKey)) {
       throw new ERR_INVALID_ARG_TYPE(
         "publicKey",
         "KeyObject",
@@ -367,14 +344,13 @@ export class X509Certificate {
     }
     return op_node_x509_verify(
       this.#handle,
-      // deno-lint-ignore no-explicit-any
       (publicKey as any)[kHandle],
     );
   }
 }
 
 function isX509Certificate(value: unknown): value is X509Certificate {
-  return value instanceof X509Certificate;
+  return ObjectPrototypeIsPrototypeOf(X509Certificate.prototype, value);
 }
 
 core.registerCloneableResource(
@@ -382,7 +358,12 @@ core.registerCloneableResource(
   (data: { data: ArrayBuffer }) => new X509Certificate(Buffer.from(data.data)),
 );
 
-export default {
+return {
   X509Certificate,
   isX509Certificate,
+  default: {
+    X509Certificate,
+    isX509Certificate,
+  },
 };
+})();

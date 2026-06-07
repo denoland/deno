@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   op_cache_delete,
   op_cache_match,
@@ -340,6 +339,5 @@ function cacheStorage() {
   return cacheStorageStorage;
 }
 
-
 return { Cache, CacheStorage, cacheStorage };
-})()
+})();

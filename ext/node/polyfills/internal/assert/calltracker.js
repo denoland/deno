@@ -1,9 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-// deno-lint-ignore-file prefer-primordials
-
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
@@ -13,7 +12,9 @@ const {
   Proxy,
   ReflectApply,
   SafeSet,
+  SafeSetIterator,
   SafeWeakMap,
+  SetPrototypeForEach,
 } = primordials;
 
 const { codes } = core.loadExtScript("ext:deno_node/internal/errors.ts");
@@ -21,7 +22,9 @@ const {
   ERR_INVALID_ARG_VALUE,
   ERR_UNAVAILABLE_DURING_EXIT,
 } = codes;
-import { AssertionError } from "ext:deno_node/internal/assert/assertion_error.js";
+const { AssertionError } = core.loadExtScript(
+  "ext:deno_node/internal/assert/assertion_error.js",
+);
 const { validateUint32 } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
@@ -92,7 +95,7 @@ class CallTracker {
 
   reset(tracked) {
     if (tracked === undefined) {
-      this.#callChecks.forEach((check) => check.reset());
+      SetPrototypeForEach(this.#callChecks, (check) => check.reset());
       return;
     }
 
@@ -137,7 +140,7 @@ class CallTracker {
 
   report() {
     const errors = [];
-    for (const context of this.#callChecks) {
+    for (const context of new SafeSetIterator(this.#callChecks)) {
       const message = context.report();
       if (message !== undefined) {
         ArrayPrototypePush(errors, message);
@@ -161,4 +164,7 @@ class CallTracker {
   }
 }
 
-export { CallTracker };
+return {
+  CallTracker,
+};
+})();

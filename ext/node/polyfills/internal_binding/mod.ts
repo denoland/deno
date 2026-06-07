@@ -1,38 +1,78 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
-import * as asyncWrap from "ext:deno_node/internal_binding/async_wrap.ts";
-import * as buffer from "ext:deno_node/internal_binding/buffer.ts";
-import caresWrap from "ext:deno_node/internal_binding/cares_wrap.ts";
+import { core, primordials } from "ext:core/mod.js";
+const {
+  Error,
+  MathFloor,
+  ObjectDefineProperty,
+  ObjectKeys,
+  SafeArrayIterator,
+  StringPrototypeStartsWith,
+} = primordials;
+const asyncWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
+);
+const { default: blockList } = core.loadExtScript(
+  "ext:deno_node/internal_binding/block_list.ts",
+);
+const buffer = core.loadExtScript(
+  "ext:deno_node/internal_binding/buffer.ts",
+);
+const { default: caresWrap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/cares_wrap.ts",
+);
 const constants = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
-import * as crypto from "ext:deno_node/internal_binding/crypto.ts";
-import * as pipeWrap from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import * as streamWrap from "ext:deno_node/internal_binding/stream_wrap.ts";
-import * as stringDecoder from "ext:deno_node/internal_binding/string_decoder.ts";
-import * as symbols from "ext:deno_node/internal_binding/symbols.ts";
-import * as tcpWrap from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import * as ttyWrap from "ext:deno_node/internal_binding/tty_wrap.ts";
+const crypto = core.loadExtScript(
+  "ext:deno_node/internal_binding/crypto.ts",
+);
+const pipeWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/pipe_wrap.ts",
+);
+const streamWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/stream_wrap.ts",
+);
+const stringDecoder = core.loadExtScript(
+  "ext:deno_node/internal_binding/string_decoder.ts",
+);
+const symbols = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
+const tcpWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/tcp_wrap.ts",
+);
+const ttyWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/tty_wrap.ts",
+);
 const types = core.loadExtScript("ext:deno_node/internal_binding/types.ts");
-import * as udpWrap from "ext:deno_node/internal_binding/udp_wrap.ts";
-import * as util from "ext:deno_node/internal_binding/util.ts";
+const udpWrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
+const util = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
 const uvNamespace = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
-import * as httpParser from "ext:deno_node/internal_binding/http_parser.ts";
-import * as http2Binding from "ext:deno_node/internal_binding/http2.ts";
+const httpParser = core.loadExtScript(
+  "ext:deno_node/internal_binding/http_parser.ts",
+);
+const http2Binding = core.loadExtScript(
+  "ext:deno_node/internal_binding/http2.ts",
+);
+const inspectorBinding = core.loadExtScript(
+  "ext:deno_node/internal_binding/inspector.js",
+);
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap
 // `errname` with a deprecation warning when --pending-deprecation is set).
 // Match Node's C++ binding: UV_* error code constants are read-only and
 // non-deletable. See `Initialize` in `src/uv.cc`.
 const uv: Record<string, unknown> = {};
-for (const key of Object.keys(uvNamespace)) {
+for (const key of new SafeArrayIterator(ObjectKeys(uvNamespace))) {
   const value = (uvNamespace as Record<string, unknown>)[key];
-  if (key.startsWith("UV_")) {
-    Object.defineProperty(uv, key, {
+  if (StringPrototypeStartsWith(key, "UV_")) {
+    ObjectDefineProperty(uv, key, {
+      __proto__: null,
       value,
       writable: false,
       enumerable: true,
@@ -45,6 +85,7 @@ for (const key of Object.keys(uvNamespace)) {
 
 const modules = {
   "async_wrap": asyncWrap,
+  "block_list": blockList,
   buffer,
   "cares_wrap": caresWrap,
   config: {},
@@ -60,7 +101,7 @@ const modules = {
   "http_parser": httpParser,
   "http2": http2Binding,
   icu: {},
-  inspector: {},
+  inspector: inspectorBinding,
   "js_stream": {},
   messaging: {},
   "module_wrap": {},
@@ -86,7 +127,7 @@ const modules = {
   "tcp_wrap": tcpWrap,
   timers: {
     getLibuvNow() {
-      return Math.floor(performance.now());
+      return MathFloor(performance.now());
     },
   },
   "tls_wrap": {},

@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-// deno-fmt-ignore-file
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   BadResourcePrototype,
   isAnyArrayBuffer,
@@ -19,6 +18,7 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafeWeakMap,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
@@ -26,6 +26,8 @@ const {
   TypedArrayPrototypeSlice,
   TypeError,
   Uint8Array,
+  WeakMapPrototypeGet,
+  WeakMapPrototypeSet,
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
@@ -52,6 +54,9 @@ const {
   readableStreamTee,
   readableStreamThrowIfErrored,
 } = core.loadExtScript("ext:deno_web/06_streams.js");
+
+/** @type {WeakMap<ReadableStream<Uint8Array>, number>} */
+const staticBodyLength = new SafeWeakMap();
 
 /**
  * @param {Uint8Array | string} chunk
@@ -97,12 +102,17 @@ class InnerBody {
         readableStreamDisturb(this.streamOrStatic);
         readableStreamClose(this.streamOrStatic);
       } else {
-        this.streamOrStatic = new ReadableStream({
+        const length = this.length;
+        const stream = new ReadableStream({
           start(controller) {
             controller.enqueue(chunkToU8(body));
             controller.close();
           },
         });
+        if (length !== null) {
+          WeakMapPrototypeSet(staticBodyLength, stream, length);
+        }
+        this.streamOrStatic = stream;
       }
     }
     return this.streamOrStatic;
@@ -473,6 +483,7 @@ function extractBody(object) {
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {
     stream = object;
+    length = WeakMapPrototypeGet(staticBodyLength, object) ?? null;
     if (object.locked || isReadableStreamDisturbed(object)) {
       throw new TypeError("ReadableStream is locked or disturbed");
     }
@@ -573,4 +584,4 @@ webidl.converters["BodyInit_DOMString?"] = webidl.createNullableConverter(
 );
 
 return { extractBody, InnerBody, mixinBody, packageData };
-})()
+})();

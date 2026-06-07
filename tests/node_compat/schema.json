@@ -67,6 +67,12 @@
         "linux": {
           "$ref": "#/definitions/platformExpectation"
         },
+        "linuxAarch64": {
+          "$ref": "#/definitions/platformExpectation"
+        },
+        "linuxX86_64": {
+          "$ref": "#/definitions/platformExpectation"
+        },
         "reason": {
           "type": "string",
           "description": "Explanation for why the test is disabled or has special configuration."
@@ -83,6 +89,11 @@
           "type": "object",
           "description": "Per-test environment variables, layered on top of the runner's defaults. Use sparingly — only for tests where one Node fixture needs a config the rest of the suite must not have.",
           "additionalProperties": { "type": "string" }
+        },
+        "extraDenoArgs": {
+          "type": "array",
+          "description": "Extra deno run/test CLI flags for this test only. Use sparingly — typically for security knobs like --unsafely-ignore-certificate-errors that one specific test requires.",
+          "items": { "type": "string" }
         }
       },
       "additionalProperties": false

@@ -382,6 +382,18 @@ impl TCPWrap {
   }
 
   #[fast]
+  fn socket_type_for_ipc(&self) -> i32 {
+    // Match Node's `net.Native` IPC handle type: the receiver needs to know
+    // whether to reopen the fd as a connected stream (`uv_tcp_open`) or as a
+    // listening socket (`uv_tcp_open_listener`). 0 = SOCKET, 1 = SERVER, to
+    // mirror the constructor argument.
+    match self.socket_type.get() {
+      SocketType::Server => 1,
+      SocketType::Socket => 0,
+    }
+  }
+
+  #[fast]
   fn fd_for_ipc(&self) -> i32 {
     #[cfg(unix)]
     {
@@ -542,6 +554,22 @@ impl TCPWrap {
     unsafe { uv_compat::uv_tcp_nodelay(tcp, enable as i32) }
   }
 
+  /// Enable/disable `SO_KEEPALIVE`. `delay` is the idle time in seconds
+  /// before the first keepalive probe (Node passes seconds here). Matches
+  /// Node's `TCPWrap::SetKeepAlive`, which libraries such as `tedious`
+  /// rely on to keep tunneled/long-lived connections from being reaped.
+  #[fast]
+  #[rename("setKeepAlive")]
+  fn set_keep_alive(&self, enable: bool, #[smi] delay: i32) -> i32 {
+    let tcp = self.tcp_ptr();
+    if tcp.is_null() {
+      return -1;
+    }
+    let delay = delay.max(0) as u32;
+    // SAFETY: tcp is valid (null-checked above).
+    unsafe { uv_compat::uv_tcp_keepalive(tcp, enable as i32, delay) }
+  }
+
   /// Set SO_LINGER to 0 so the next close sends RST instead of FIN.
   #[fast]
   fn reset(&self) -> i32 {
@@ -592,6 +620,17 @@ impl TCPWrap {
       },
       Err(_) => return Ok(-1),
     };
+
+    // Post-resolution deny check: verify the resolved IP is not denied.
+    // This prevents numeric hostname aliases (e.g. 2130706433, 0x7f000001)
+    // from bypassing --deny-net rules that target the resolved IP.
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &socket_addr.ip(),
+        socket_addr.port(),
+        "node:net.connect()",
+      )?;
 
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
@@ -653,6 +692,15 @@ impl TCPWrap {
       },
       Err(_) => return Ok(-1),
     };
+
+    // Post-resolution deny check for connect6 as well.
+    state
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &socket_addr.ip(),
+        socket_addr.port(),
+        "node:net.connect()",
+      )?;
 
     let tcp = self.tcp_ptr();
     if tcp.is_null() {

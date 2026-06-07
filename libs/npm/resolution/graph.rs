@@ -1042,7 +1042,7 @@ impl Graph {
       .keys()
       .copied()
       .collect::<Vec<_>>();
-    node_ids.sort_by(|a, b| a.0.cmp(&b.0));
+    node_ids.sort_by_key(|a| a.0);
     for node_id in node_ids {
       Self::output_node_with_ids(&self.nodes, &pkg_ids, node_id, true);
     }
@@ -6789,6 +6789,50 @@ mod test {
   }
 
   #[tokio::test]
+  async fn link_package_prerelease_as_root() {
+    // A link package with a prerelease version should be selected for a bare
+    // `*` requirement, even though the registry also publishes a stable
+    // version that a `*` range would normally prefer (npm semver excludes
+    // prereleases). The explicitly linked local package wins.
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("my-local-pkg", "0.1.4");
+
+    let link_packages = HashMap::from([(
+      PackageName::from_static("my-local-pkg"),
+      vec![NpmPackageVersionInfo {
+        version: Version::parse_from_npm("0.40.0-pre").unwrap(),
+        ..Default::default()
+      }],
+    )]);
+
+    let (packages, package_reqs) = run_resolver_with_options_and_get_output(
+      api,
+      RunResolverOptions {
+        reqs: vec!["my-local-pkg@*"],
+        link_packages: Some(&link_packages),
+        ..Default::default()
+      },
+    )
+    .await;
+
+    assert_eq!(
+      packages,
+      vec![TestNpmResolutionPackage {
+        pkg_id: "my-local-pkg@0.40.0-pre".to_string(),
+        copy_index: 0,
+        dependencies: Default::default(),
+      }]
+    );
+    assert_eq!(
+      package_reqs,
+      vec![(
+        "my-local-pkg".to_string(),
+        "my-local-pkg@0.40.0-pre".to_string()
+      )]
+    );
+  }
+
+  #[tokio::test]
   async fn link_package_tag() {
     let api = TestNpmRegistryApi::default();
     api.ensure_package_version("package-a", "1.0.0");
@@ -7793,7 +7837,7 @@ mod test {
         )
       })
       .collect::<Vec<_>>();
-    package_reqs.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
+    package_reqs.sort_by_key(|a| a.0.to_string());
 
     let packages = packages
       .into_iter()

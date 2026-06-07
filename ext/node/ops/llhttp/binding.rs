@@ -244,7 +244,7 @@ impl Inner {
     values: &[Vec<u8>],
   ) -> v8::Local<'a, v8::Array> {
     let len = fields.len() * 2;
-    let arr = v8::Array::new(scope, len as i32);
+    let mut elements: Vec<v8::Local<v8::Value>> = Vec::with_capacity(len);
     for (i, (field, value)) in fields.iter().zip(values.iter()).enumerate() {
       let f =
         v8::String::new_from_one_byte(scope, field, v8::NewStringType::Normal)
@@ -252,10 +252,11 @@ impl Inner {
       let v =
         v8::String::new_from_one_byte(scope, value, v8::NewStringType::Normal)
           .unwrap_or_else(|| v8::String::empty(scope));
-      arr.set_index(scope, (i * 2) as u32, f.into());
-      arr.set_index(scope, (i * 2 + 1) as u32, v.into());
+      debug_assert_eq!(elements.len(), i * 2);
+      elements.push(f.into());
+      elements.push(v.into());
     }
-    arr
+    v8::Array::new_with_elements(scope, &elements)
   }
 }
 
@@ -401,23 +402,13 @@ unsafe extern "C" fn on_header_value_complete(
   let inner = unsafe { &mut *ctx.inner };
   let field = std::mem::take(&mut inner.current_header_field);
   let mut value = std::mem::take(&mut inner.current_header_value);
-  // Strip leading/trailing OWS (spaces and tabs) from header values,
-  // matching Node.js's HTTP parser behavior (RFC 9110 §5.5).
-  let trimmed = {
-    let bytes = value.as_slice();
-    let start = bytes
-      .iter()
-      .position(|&b| b != b' ' && b != b'\t')
-      .unwrap_or(bytes.len());
-    let end = bytes
-      .iter()
-      .rposition(|&b| b != b' ' && b != b'\t')
-      .map_or(start, |p| p + 1);
-    start..end
-  };
-  if trimmed.start > 0 || trimmed.end < value.len() {
-    value = value[trimmed].to_vec();
-  }
+  // Strip trailing OWS (spaces and tabs) in place, matching Node.js's
+  // HTTP parser behavior. llhttp has already skipped leading OWS.
+  let trimmed_len = value
+    .iter()
+    .rposition(|&b| b != b' ' && b != b'\t')
+    .map_or(0, |p| p + 1);
+  value.truncate(trimmed_len);
   inner.header_fields.push(field);
   inner.header_values.push(value);
   inner.in_header_value = false;
@@ -462,16 +453,13 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
     return 0;
   };
 
-  // Fast path: when no prior kOnHeaders flush occurred (all headers
-  // fit in the current parser.execute batch and total stayed under
-  // MAX_HEADER_PAIRS), pass the accumulated headers directly to
-  // parserOnHeadersComplete as the 3rd/5th args, skipping the
-  // kOnHeaders flush JS call. Slow path (below) handles the
-  // chunked-across-packets or >MAX_HEADER_PAIRS case by flushing
-  // leftover headers via kOnHeaders so JS reads the full list
-  // from parser._headers / parser._url.
-  let skip_flush = !inner.headers_flushed && !inner.header_fields.is_empty();
-  if !skip_flush && !inner.header_fields.is_empty() {
+  // Fast path: when no prior kOnHeaders flush occurred, pass accumulated
+  // headers (possibly empty) + url directly to parserOnHeadersComplete.
+  // Slow path: a prior kOnHeaders flush happened; flush any remaining
+  // headers via kOnHeaders so JS reads the full list from
+  // parser._headers / parser._url, then pass undefined to the callback.
+  let on_fast_path = !inner.headers_flushed;
+  if !on_fast_path && !inner.header_fields.is_empty() {
     let flush_headers = Inner::create_headers_array(
       scope,
       &inner.header_fields,
@@ -510,7 +498,7 @@ unsafe extern "C" fn on_headers_complete(parser: *mut sys::llhttp_t) -> c_int {
   // Slow path: pass undefined, JS reads from parser._headers/_url
   // which were populated by the flush above.
   let (headers, url): (v8::Local<v8::Value>, v8::Local<v8::Value>) =
-    if skip_flush {
+    if on_fast_path {
       let headers_arr = Inner::create_headers_array(
         scope,
         &inner.header_fields,
@@ -817,6 +805,8 @@ unsafe fn consume_read_callback(
     callbacks: callbacks_static,
   };
 
+  // Save+restore for re-entrant execute() calls — see HTTPParser::execute.
+  let saved_data = inner.parser.data;
   inner.parser.data = &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
   let err = unsafe {
@@ -827,7 +817,7 @@ unsafe fn consume_read_callback(
     )
   };
 
-  inner.parser.data = std::ptr::null_mut();
+  inner.parser.data = saved_data;
   inner.current_buffer_data = std::ptr::null();
   inner.current_buffer_len = 0;
 
@@ -883,13 +873,13 @@ unsafe fn consume_read_callback(
     };
     // When the parser signals upgrade/CONNECT, the JS
     // `onParserExecuteCommon` upgrade branch computes
-    // `bodyHead = d.slice(bytesParsed)`. In the non-consume path `d`
-    // is the buffer JS passed into `parser.execute(d)`; here we
-    // don't have that — pass the current read buffer as a Uint8Array
-    // second argument so the JS side can slice it. For non-upgrade
-    // requests we leave the 2nd arg off (avoids the per-request
-    // allocation of a JS view).
-    if !is_error && inner.parser.upgrade != 0 {
+    // `bodyHead = d.slice(bytesParsed)`. Parse errors also need the raw
+    // packet so JS can recover llhttp errors collapsed to HPE_ERROR. In the
+    // non-consume path `d` is the buffer JS passed into `parser.execute(d)`;
+    // here we don't have that — pass the current read buffer as a Uint8Array.
+    // For ordinary non-upgrade requests we leave the 2nd arg off to avoid the
+    // per-request allocation of a JS view.
+    if is_error || inner.parser.upgrade != 0 {
       let byte_len = data.len();
       let ab = v8::ArrayBuffer::new(scope, byte_len);
       if byte_len > 0 {
@@ -974,6 +964,12 @@ impl HTTPParser {
       callbacks: callbacks_static,
     };
 
+    // Save and restore parser.data to support re-entrant execute() calls.
+    // If a JS callback (e.g. the 'information' event handler for 100 Continue)
+    // triggers another execute() call, the inner execute must restore the outer
+    // context pointer so subsequent callbacks from the outer llhttp_execute
+    // still have a valid ExecuteContext.
+    let saved_data = inner.parser.data;
     inner.parser.data =
       &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
@@ -985,7 +981,7 @@ impl HTTPParser {
       )
     };
 
-    inner.parser.data = std::ptr::null_mut();
+    inner.parser.data = saved_data;
     inner.current_buffer_data = std::ptr::null();
     inner.current_buffer_len = 0;
 
@@ -1049,12 +1045,14 @@ impl HTTPParser {
       callbacks: callbacks_static,
     };
 
+    // Save+restore for re-entrant execute() calls — see HTTPParser::execute.
+    let saved_data = inner.parser.data;
     inner.parser.data =
       &mut ctx as *mut ExecuteContext as *mut std::ffi::c_void;
 
     let err = unsafe { sys::llhttp_finish(&mut inner.parser) };
 
-    inner.parser.data = std::ptr::null_mut();
+    inner.parser.data = saved_data;
 
     if err != sys::HPE_OK { -1 } else { 0 }
   }

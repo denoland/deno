@@ -10,9 +10,8 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-// deno-fmt-ignore-file
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_encode_binary_string } = core.ops;
 const {
   ArrayPrototypePush,
@@ -36,10 +35,18 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { createFilteredInspectProxy } = core.loadExtScript("ext:deno_web/01_console.js");
-const { forgivingBase64Encode } = core.loadExtScript("ext:deno_web/00_infra.js");
-const { EventTarget, ProgressEvent } = core.loadExtScript("ext:deno_web/02_event.js");
-const { decode, TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { forgivingBase64Encode } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
+const { EventTarget, ProgressEvent } = core.loadExtScript(
+  "ext:deno_web/02_event.js",
+);
+const { decode, TextDecoder } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
 const { parseMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
@@ -514,4 +521,4 @@ function makeWrappedHandler(handler) {
 }
 
 return { FileReader };
-})()
+})();

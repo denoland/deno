@@ -1,30 +1,29 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
+const { Array } = primordials;
 
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-import { _exiting } from "ext:deno_node/_process/exiting.ts";
-import {
+const { _exiting } = core.loadExtScript("ext:deno_node/_process/exiting.ts");
+const {
   emitAfter,
   emitBefore,
   emitDestroy,
   emitInit,
   executionAsyncId,
-  newAsyncId as nextAsyncId,
-} from "ext:deno_node/internal/async_hooks.ts";
+  newAsyncId: nextAsyncId,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 
 const {
   getAsyncContext,
 } = core;
 
 let nextTickEnabled = false;
-export function enableNextTick() {
+function enableNextTick() {
   nextTickEnabled = true;
 
   // TODO(bartlomieju): ideally this should not be needed
@@ -35,18 +34,18 @@ export function enableNextTick() {
 }
 
 // Re-export from core for consumers (e.g. timers.mjs)
-export const processTicksAndRejections = core.processTicksAndRejections;
-export const runNextTicks = core.runNextTicks;
+const processTicksAndRejections = core.processTicksAndRejections;
+const runNextTicks = core.runNextTicks;
 
 // `nextTick()` will not enqueue any callback when the process is about to
 // exit since the callback would not have a chance to be executed.
-export function nextTick(this: unknown, callback: () => void): void;
-export function nextTick<T extends Array<unknown>>(
+function nextTick(this: unknown, callback: () => void): void;
+function nextTick<T extends Array<unknown>>(
   this: unknown,
   callback: (...args: T) => void,
   ...args: T
 ): void;
-export function nextTick<T extends Array<unknown>>(
+function nextTick<T extends Array<unknown>>(
   this: unknown,
   callback: (...args: T) => void,
   ...args: T
@@ -99,3 +98,11 @@ export function nextTick<T extends Array<unknown>>(
   }
   core.queueNextTick(tickObject);
 }
+
+return {
+  enableNextTick,
+  nextTick,
+  processTicksAndRejections,
+  runNextTicks,
+};
+})();

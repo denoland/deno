@@ -6,9 +6,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-// deno-fmt-ignore-file
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeIncludes,
   MapPrototypeGet,
@@ -450,4 +449,4 @@ return {
   serializeMimeType,
   sniffImage,
 };
-})()
+})();
