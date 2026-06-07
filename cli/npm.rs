@@ -318,8 +318,7 @@ impl NpmFetchResolver {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
-    let registry_url =
-      deno_npm_cache::get_package_url(&self.npmrc, name).to_string();
+    let registry_url = self.npmrc.get_registry_url(name).to_string();
     let result =
       self
         .fetch_package_info(name)

@@ -31,6 +31,13 @@ use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 use crate::npm::PackageInfoLoadError;
 
+/// Packages whose metadata could not be fetched (e.g. unreachable or
+/// unauthorized private registries) are dropped from the update check. They are
+/// collected here, keyed and deduplicated by `(kind, name)`, so we can warn the
+/// user instead of skipping them silently.
+type SkippedPackages =
+  std::collections::BTreeMap<(DepKind, StackString), Arc<PackageInfoLoadError>>;
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct OutdatedPackage {
   kind: DepKind,
@@ -130,23 +137,13 @@ fn print_outdated(
 ) -> Result<(), AnyError> {
   let mut outdated = Vec::new();
   let mut seen = std::collections::BTreeSet::new();
-  // Packages whose metadata could not be fetched (e.g. unreachable or
-  // unauthorized private registries) are dropped from the table. Collect them
-  // so we can warn the user instead of skipping them silently.
-  let mut skipped: std::collections::BTreeMap<
-    (DepKind, StackString),
-    Arc<PackageInfoLoadError>,
-  > = std::collections::BTreeMap::new();
+  let mut skipped = SkippedPackages::new();
   for (dep_id, resolved, latest_versions) in
     deps.deps_with_resolved_latest_versions()
   {
     let dep = deps.get_dep(dep_id);
 
-    if let Some(error) = &latest_versions.fetch_error {
-      skipped
-        .entry((dep.kind, dep.req.name.clone()))
-        .or_insert_with(|| error.clone());
-    }
+    collect_skipped(&mut skipped, dep.kind, &dep.req.name, &latest_versions);
 
     let Some(resolved) = resolved else { continue };
 
@@ -196,12 +193,22 @@ fn print_outdated(
   Ok(())
 }
 
-fn print_skipped_warning(
-  skipped: &std::collections::BTreeMap<
-    (DepKind, StackString),
-    Arc<PackageInfoLoadError>,
-  >,
+/// Records a package whose metadata fetch failed, deduplicating by
+/// `(kind, name)` and keeping the first reason seen.
+fn collect_skipped(
+  skipped: &mut SkippedPackages,
+  kind: DepKind,
+  name: &StackString,
+  latest_versions: &PackageLatestVersion,
 ) {
+  if let Some(error) = &latest_versions.fetch_error {
+    skipped
+      .entry((kind, name.clone()))
+      .or_insert_with(|| error.clone());
+  }
+}
+
+fn print_skipped_warning(skipped: &SkippedPackages) {
   if skipped.is_empty() {
     return;
   }
@@ -434,6 +441,7 @@ async fn update(
   let mut to_update = Vec::new();
 
   let mut can_update_to_latest = false;
+  let mut skipped = SkippedPackages::new();
 
   for (dep_id, resolved, latest_versions) in deps
     .deps_with_resolved_latest_versions()
@@ -441,6 +449,7 @@ async fn update(
     .collect::<Vec<_>>()
   {
     let dep = deps.get_dep(dep_id);
+    collect_skipped(&mut skipped, dep.kind, &dep.req.name, &latest_versions);
     let new_version_req = choose_new_version_req(
       dep,
       resolved.as_ref(),
@@ -621,6 +630,8 @@ async fn update(
       log::info!("All {maybe_matching}dependencies are up to date.");
     }
   }
+
+  print_skipped_warning(&skipped);
 
   Ok(())
 }
