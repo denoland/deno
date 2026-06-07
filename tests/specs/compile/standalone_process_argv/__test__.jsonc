@@ -1,0 +1,31 @@
+{
+  "tempDir": true,
+  "tests": {
+    "argv_no_temp_path": {
+      "steps": [
+        {
+          "if": "unix",
+          "args": "compile -A --output main main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "unix",
+          "commandName": "./main",
+          "args": ["--foo", "bar"],
+          "output": "main.out"
+        },
+        {
+          "if": "windows",
+          "args": "compile -A --output main.exe main.ts",
+          "output": "[WILDCARD]"
+        },
+        {
+          "if": "windows",
+          "commandName": "./main.exe",
+          "args": ["--foo", "bar"],
+          "output": "main.out"
+        }
+      ]
+    }
+  }
+}

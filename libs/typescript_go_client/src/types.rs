@@ -100,6 +100,13 @@ impl<T> From<String> for Handle<T> {
 
 #[derive(serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdateSnapshotResponse {
+  pub snapshot: Handle<()>,
+  pub projects: Vec<Project>,
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Project {
   pub id: Handle<Self>,
   pub config_file_name: String,

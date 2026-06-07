@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -20,17 +21,20 @@ const {
   RegExpPrototypeTest,
 } = primordials;
 
-import { codes } from "ext:deno_node/internal/error_codes.ts";
-import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { hideStackFrames } = core.loadExtScript(
+  "ext:deno_node/internal/hide_stack_frames.ts",
+);
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
 /**
  * @param {number} value
  * @returns {boolean}
  */
 function isInt32(value) {
-  return value === (value | 0);
+  return typeof value === "number" && value === (value | 0);
 }
 
 /**
@@ -231,7 +235,10 @@ const validateOneOf = hideStackFrames((value, name, oneOf) => {
   }
 });
 
-export function validateEncoding(data, encoding) {
+function validateEncoding(data, encoding) {
+  const { normalizeEncoding } = core.loadExtScript(
+    "ext:deno_node/internal/normalize_encoding.ts",
+  );
   const normalizedEncoding = normalizeEncoding(encoding);
   const length = data.length;
 
@@ -395,7 +402,79 @@ const checkRangesOrGetDefault = hideStackFrames(
   },
 );
 
-export default {
+const linkValueRegExp = new SafeRegExp("^(?:<[^>]*>)(?:\\s*;\\s*[^;]*)*$");
+
+const validateLinkHeaderFormat = hideStackFrames((value, name) => {
+  if (
+    typeof value === "undefined" ||
+    !RegExpPrototypeTest(linkValueRegExp, value)
+  ) {
+    throw new codes.ERR_INVALID_ARG_VALUE(
+      name,
+      value,
+      'must be an array or string of format "</styles.css>; rel=preload; as=style"',
+    );
+  }
+});
+
+const validateLinkHeaderValue = hideStackFrames((hints) => {
+  if (typeof hints === "string") {
+    validateLinkHeaderFormat(hints, "hints");
+    return hints;
+  } else if (ArrayIsArray(hints)) {
+    const hintsLength = hints.length;
+    let result = "";
+
+    if (hintsLength === 0) {
+      return result;
+    }
+
+    for (let i = 0; i < hintsLength; i++) {
+      const link = hints[i];
+      validateLinkHeaderFormat(link, "hints");
+      result += link;
+
+      if (i !== hintsLength - 1) {
+        result += ", ";
+      }
+    }
+
+    return result;
+  }
+
+  throw new codes.ERR_INVALID_ARG_VALUE(
+    "hints",
+    hints,
+    'must be an array or string of format "</styles.css>; rel=preload; as=style"',
+  );
+});
+
+return {
+  default: {
+    isInt32,
+    isUint32,
+    parseFileMode,
+    validateAbortSignal,
+    validateArray,
+    validateBoolean,
+    validateBooleanArray,
+    validateBuffer,
+    validateFunction,
+    validateInt32,
+    validateInteger,
+    validateNumber,
+    validateObject,
+    validateOneOf,
+    validatePort,
+    validateString,
+    validateStringArray,
+    validateUint32,
+    validateUnion,
+    validateFiniteNumber,
+    validateLinkHeaderValue,
+    checkRangesOrGetDefault,
+  },
+  checkRangesOrGetDefault,
   isInt32,
   isUint32,
   parseFileMode,
@@ -404,34 +483,12 @@ export default {
   validateBoolean,
   validateBooleanArray,
   validateBuffer,
-  validateFunction,
-  validateInt32,
-  validateInteger,
-  validateNumber,
-  validateObject,
-  validateOneOf,
-  validatePort,
-  validateString,
-  validateStringArray,
-  validateUint32,
-  validateUnion,
-  validateFiniteNumber,
-  checkRangesOrGetDefault,
-};
-export {
-  checkRangesOrGetDefault,
-  isInt32,
-  isUint32,
-  parseFileMode,
-  validateAbortSignal,
-  validateArray,
-  validateBoolean,
-  validateBooleanArray,
-  validateBuffer,
+  validateEncoding,
   validateFiniteNumber,
   validateFunction,
   validateInt32,
   validateInteger,
+  validateLinkHeaderValue,
   validateNumber,
   validateObject,
   validateOneOf,
@@ -441,3 +498,4 @@ export {
   validateUint32,
   validateUnion,
 };
+})();

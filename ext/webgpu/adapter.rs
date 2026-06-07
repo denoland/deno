@@ -1,6 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "deterministic ordering not needed for GPU feature sets"
+)]
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -118,7 +121,10 @@ impl GPUAdapter {
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
     let features = self.instance.adapter_features(self.id);
     let supported_features = features_to_feature_names(features);
-    #[allow(clippy::disallowed_types)]
+    #[allow(
+      clippy::disallowed_types,
+      reason = "deterministic ordering not needed for GPU feature sets"
+    )]
     let required_features = descriptor
       .required_features
       .iter()
@@ -400,7 +406,10 @@ unsafe impl GarbageCollected for GPUSupportedFeatures {
 }
 
 impl GPUSupportedFeatures {
-  #[allow(clippy::disallowed_types)]
+  #[allow(
+    clippy::disallowed_types,
+    reason = "deterministic ordering not needed for GPU feature sets"
+  )]
   pub fn new(
     scope: &mut v8::PinScope<'_, '_>,
     features: HashSet<GPUFeatureName>,

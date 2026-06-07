@@ -185,7 +185,7 @@ type MapRawFn<C> = for<'a, 'i> fn(
   value: TypeErased<MAX_RESULT_SIZE>,
 ) -> UnmappedResult<'a, 'i, C>;
 
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "complex type is necessary here")]
 pub struct OpValue<C: OpMappingContext> {
   value: TypeErased<MAX_RESULT_SIZE>,
   rv_map: *const fn(),

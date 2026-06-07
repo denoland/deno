@@ -1,0 +1,6 @@
+{
+  "workspace": ["./packages/a"],
+  "catalog": {
+    "some-other-package": "^1.0.0"
+  }
+}

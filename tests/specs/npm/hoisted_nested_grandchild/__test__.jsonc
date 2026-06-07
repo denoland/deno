@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "nested_parent_gets_correctly_nested_grandchild": {
+      // Root directly requires different-nested-dep-child@2.0.0 (hoists
+      // to top level) and hoisted-nested-grandchild-chain@1.0.0 (hoists
+      // to top level). hoisted-nested-grandchild-parent transitively
+      // pulls hoisted-nested-grandchild-chain@2.0.0, which must nest
+      // under the parent. That nested chain@2.0.0 requires
+      // different-nested-dep-child@1.0.0 — it must nest under the
+      // *nested* chain@2.0.0, NOT under the top-level chain@1.0.0
+      // (which would shadow the top-level child@2.0.0). Regression
+      // test for the bug reported on PR #34470.
+      "steps": [{
+        "args": "install",
+        "output": "[WILDCARD]"
+      }, {
+        "args": "run --allow-read main.ts",
+        "output": "top child: 2.0.0\ntop chain: 1.0.0\nnested chain: 2.0.0\nnested grandchild: 1.0.0\nwrong placement exists: false\n"
+      }]
+    }
+  }
+}

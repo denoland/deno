@@ -31,7 +31,7 @@ Deno.test("napi external finalizer", function () {
 
 Deno.test("napi external buffer", function () {
   let buf = objectWrap.test_external_buffer();
-  assertEquals(buf, new Buffer([1, 2, 3]));
+  assertEquals(buf, Buffer.from([1, 2, 3]));
   buf = null;
 });
 
@@ -57,4 +57,25 @@ Deno.test("napi object wrap userland owned", function () {
   obj = null;
   // force finalize callback to get called
   globalThis.gc();
+});
+
+Deno.test("napi remove_wrap", function () {
+  const obj = {};
+  const result = objectWrap.test_remove_wrap(obj);
+  assertEquals(result, true);
+});
+
+// Regression test for #33924: `napi_new_instance` must produce a
+// properly wrapped instance.
+Deno.test("napi new_instance via napi_new_instance", function () {
+  const obj = objectWrap.test_call_new_instance(objectWrap.NapiObject, 7);
+  assert(obj instanceof objectWrap.NapiObject);
+  assertEquals(obj.get_value(), 7);
+  obj.increment();
+  assertEquals(obj.get_value(), 8);
+});
+
+Deno.test("napi new_instance allows JS in native constructor", function () {
+  const obj = objectWrap.test_new_instance_constructor_can_call_js();
+  assert(Object.isSealed(obj));
 });

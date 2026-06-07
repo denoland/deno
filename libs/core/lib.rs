@@ -5,7 +5,10 @@
 #![deny(clippy::unused_async)]
 #![deny(clippy::unnecessary_wraps)]
 // TODO(bartlomieju): add safety comments to unsafe blocks and remove this allow
-#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(
+  clippy::undocumented_unsafe_blocks,
+  reason = "TODO: add safety comments"
+)]
 
 pub mod arena;
 mod async_cancel;
@@ -38,7 +41,7 @@ mod tasks;
 #[allow(
   non_camel_case_types,
   non_upper_case_globals,
-  clippy::missing_safety_doc
+  reason = "generated bindings match external API naming"
 )]
 pub mod uv_compat;
 mod web_timeout;
@@ -90,6 +93,7 @@ pub use crate::convert::FromV8;
 pub use crate::convert::FromV8Scopeless;
 pub use crate::convert::ToV8;
 pub use crate::cppgc::GarbageCollected;
+pub use crate::error::exception_to_err;
 pub use crate::extensions::AccessorType;
 pub use crate::extensions::Extension;
 pub use crate::extensions::ExtensionArguments;
@@ -133,6 +137,7 @@ pub use crate::module_specifier::resolve_url;
 pub use crate::modules::CustomModuleEvaluationKind;
 pub use crate::modules::ExtCodeCache;
 pub use crate::modules::FsModuleLoader;
+pub use crate::modules::ImportAttributesContext;
 pub use crate::modules::ModuleCodeBytes;
 pub use crate::modules::ModuleCodeString;
 pub use crate::modules::ModuleId;
@@ -141,6 +146,7 @@ pub use crate::modules::ModuleLoadReferrer;
 pub use crate::modules::ModuleLoadResponse;
 pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleName;
+pub use crate::modules::ModuleResolveResponse;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceCode;
 pub use crate::modules::ModuleSourceFuture;
@@ -151,6 +157,7 @@ pub use crate::modules::ResolutionKind;
 pub use crate::modules::SourceCodeCacheInfo;
 pub use crate::modules::StaticModuleLoader;
 pub use crate::modules::ValidateImportAttributesCb;
+pub use crate::modules::wrap_lazy_ext_script;
 pub use crate::ops::ExternalOpsTracker;
 pub use crate::ops::OpId;
 pub use crate::ops::OpMetadata;
@@ -162,6 +169,8 @@ pub use crate::ops_builtin::op_print;
 pub use crate::ops_builtin::op_resources;
 pub use crate::ops_builtin::op_void_async;
 pub use crate::ops_builtin::op_void_sync;
+pub use crate::ops_builtin_v8::deserialize_broadcast;
+pub use crate::ops_builtin_v8::serialize_broadcast;
 pub use crate::ops_metrics::OpMetricsEvent;
 pub use crate::ops_metrics::OpMetricsFactoryFn;
 pub use crate::ops_metrics::OpMetricsFn;
@@ -180,8 +189,18 @@ pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
+pub use crate::runtime::host_defined_options::HOST_DEFINED_OPTIONS_KEY_INDEX;
+pub use crate::runtime::host_defined_options::HOST_DEFINED_OPTIONS_KIND_INDEX;
+pub use crate::runtime::host_defined_options::create_host_defined_options_with_kind;
+pub use crate::runtime::host_defined_options::create_host_defined_options_with_kind_and_key;
+pub use crate::runtime::host_defined_options::host_defined_options_kind;
+pub use crate::runtime::host_defined_options::read_host_defined_options_key;
+pub use crate::runtime::host_defined_options::read_host_defined_options_kind;
+pub use crate::runtime::host_defined_options::register_vm_dynamic_import_callback;
 pub use crate::runtime::stats;
+pub use crate::source_map::SourceMapApplication;
 pub use crate::source_map::SourceMapData;
+pub use crate::source_map::SourceMapper;
 pub use crate::tasks::V8CrossThreadTaskSpawner;
 pub use crate::tasks::V8TaskSpawner;
 
@@ -221,9 +240,7 @@ pub mod _ops {
 pub mod snapshot {
   pub use crate::runtime::CreateSnapshotOptions;
   pub use crate::runtime::CreateSnapshotOutput;
-  pub use crate::runtime::FilterFn;
   pub use crate::runtime::create_snapshot;
-  pub use crate::runtime::get_js_files;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be
@@ -274,7 +291,10 @@ mod tests {
       .stdout(Stdio::null())
       .status()
     {
-      #[allow(clippy::print_stderr)]
+      #[allow(
+        clippy::print_stderr,
+        reason = "intentional test diagnostic output"
+      )]
       {
         eprintln!("Ignoring test because we couldn't find deno: {e:?}");
       }

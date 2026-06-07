@@ -1,232 +1,145 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import {
-  type CallbackWithError,
-  isFd,
-  makeCallback,
-  maybeCallback,
-  type WriteFileOptions,
-} from "ext:deno_node/_fs/_fs_common.ts";
+// deno-lint-ignore-file no-explicit-any
+
+import { core } from "ext:core/mod.js";
+import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
-import {
-  denoErrorToNodeError,
-  ERR_INVALID_ARG_TYPE,
-  uvException,
-} from "ext:deno_node/internal/errors.ts";
-import { normalizeEncoding, promisify } from "ext:deno_node/internal/util.mjs";
-import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
+const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
-import { cpPromise } from "ext:deno_node/_fs/_fs_cp.ts";
-import { lstatPromise } from "ext:deno_node/_fs/_fs_lstat.ts";
+const { cpPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
-import { readFilePromise } from "ext:deno_node/_fs/_fs_readFile.ts";
-import { readlinkPromise } from "ext:deno_node/_fs/_fs_readlink.ts";
-import { realpathPromise } from "ext:deno_node/_fs/_fs_realpath.ts";
-import { statPromise } from "ext:deno_node/_fs/_fs_stat.ts";
-import { statfsPromise } from "ext:deno_node/_fs/_fs_statfs.ts";
-import { symlinkPromise } from "ext:deno_node/_fs/_fs_symlink.ts";
-import { truncatePromise } from "ext:deno_node/_fs/_fs_truncate.ts";
-import { utimesPromise } from "ext:deno_node/_fs/_fs_utimes.ts";
-import { watchPromise } from "ext:deno_node/_fs/_fs_watch.ts";
-import {
-  writeFile,
-  writeFilePromise,
-} from "ext:deno_node/_fs/_fs_writeFile.ts";
+const { lstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
+const lazyFs = core.createLazyLoader("node:fs");
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
-import {
-  copyObject,
-  emitRecursiveRmdirWarning,
-  getOptions,
-  getValidatedPath,
-  getValidatedPathToString,
-  getValidMode,
-  kMaxUserId,
-  type RmOptions,
-  stringToFlags,
-  validateRmdirOptions,
-  validateRmOptions,
-  warnOnNonPortableTemplate,
-} from "ext:deno_node/internal/fs/utils.mjs";
-import {
-  parseFileMode,
-  validateBoolean,
-  validateFunction,
-  validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
-import { Buffer } from "node:buffer";
+import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
+import type { Buffer } from "node:buffer";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { resolve, toNamespacedPath } from "node:path";
-import { isWindows } from "ext:deno_node/_util/os.ts";
-import type { Encoding } from "node:crypto";
 import { primordials } from "ext:core/mod.js";
-import {
-  op_node_lchmod,
-  op_node_lchown,
-  op_node_mkdtemp,
-  op_node_open,
-  op_node_rmdir,
-} from "ext:core/ops";
-import { isMacOS } from "ext:deno_node/_util/os.ts";
-import {
-  ERR_FS_RMDIR_ENOTDIR,
-  ERR_METHOD_NOT_IMPLEMENTED,
-} from "ext:deno_node/internal/errors.ts";
+const { parseFileMode } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+import { op_node_lchmod } from "ext:core/ops";
+const { isMacOS } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const { ERR_METHOD_NOT_IMPLEMENTED, aggregateTwoErrors } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const lazyPath = core.createLazyLoader("node:path");
+const lazyProcess = core.createLazyLoader("node:process");
 
 const {
-  Error,
   ObjectPrototypeIsPrototypeOf,
   Promise,
-  PromisePrototypeThen,
   PromiseReject,
-  StringPrototypeToString,
+  SafeArrayIterator,
+  SymbolAsyncDispose,
 } = primordials;
+
+// Promisified fs.X wrappers MUST NOT be built at module body. handle.ts /
+// internal/fs/promises.ts are loaded during the initial `fs.promises`
+// access, and calling `lazyFs()` here re-enters `node:fs`'s evaluating body
+// (its `export const promises = mod.promises` line re-triggers `get
+// promises` on fs.ts, whose lazyInternalPromises() then hits a TDZ on the
+// in-flight `default` binding). Build wrappers lazily on first call.
+const _promisifyCache: Record<string, any> = { __proto__: null } as any;
+// `arity` is the max positional arg count the underlying fs callback method
+// accepts (excluding the callback). Extra args are dropped so idiomatic
+// patterns like `paths.map(fs.promises.unlink)` -- which Array#map invokes as
+// `unlink(elem, index, array)` -- don't trip the promisify wrapper's appended
+// callback (the wrapper would otherwise call `fs.unlink(path, index, array,
+// cb)` and `fs.unlink` reads the second positional as the callback). Node's
+// own `fs.promises.*` wrappers don't go through `util.promisify` and so don't
+// have this issue.
+function lazyPromisifyFs(name: string, arity: number): any {
+  return (...args: any[]) => {
+    let fn = _promisifyCache[name];
+    if (fn === undefined) {
+      fn = promisify((lazyFs() as any)[name]);
+      _promisifyCache[name] = fn;
+    }
+    if (args.length > arity) args.length = arity;
+    return fn(...new SafeArrayIterator(args));
+  };
+}
+
+// Mirrors Node's lib/internal/fs/promises.js handleFdClose(): run the file op,
+// then close the FileHandle. Looks up `fh.close` lazily so tests that
+// monkey-patch the prototype/instance close still take effect.
+//   op ok, close ok       -> resolve(result)
+//   op ok, close throws   -> throw closeError
+//   op throws, close ok   -> throw opError
+//   op throws, close throws -> throw AggregateError([opError, closeError])
+async function handleFdClose<T>(
+  fileOpPromise: Promise<T>,
+  closeFunc: () => Promise<void>,
+): Promise<T> {
+  let result: T;
+  let opError: unknown;
+  let opFailed = false;
+  try {
+    result = await fileOpPromise;
+  } catch (err) {
+    opError = err;
+    opFailed = true;
+  }
+  try {
+    await closeFunc();
+  } catch (closeError) {
+    if (opFailed) {
+      // Mirrors Node's aggregateTwoErrors(): preserves opError.code on the
+      // AggregateError so callers asserting err.code see the op's code.
+      throw aggregateTwoErrors(closeError, opError);
+    }
+    throw closeError;
+  }
+  if (opFailed) {
+    throw opError;
+  }
+  return result!;
+}
 
 // -- access --
 
-function access(
-  path: string | Buffer | URL,
-  mode: number | CallbackWithError,
-  callback?: CallbackWithError,
-) {
-  if (typeof mode === "function") {
-    callback = mode;
-    mode = fsConstants.F_OK;
-  }
-
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-  mode = getValidMode(mode, "access");
-  const cb = makeCallback(callback);
-
-  // deno-lint-ignore prefer-primordials
-  Deno.lstat(path).then(
-    (info) => {
-      if (info.mode === null) {
-        cb(null);
-        return;
-      }
-      let m = +mode || 0;
-      let fileMode = +info.mode || 0;
-
-      if (Deno.build.os === "windows") {
-        m &= ~fsConstants.X_OK;
-      } else if (info.uid === Deno.uid()) {
-        fileMode >>= 6;
-      }
-
-      if ((m & fileMode) === m) {
-        cb(null);
-      } else {
-        // deno-lint-ignore no-explicit-any
-        const e: any = new Error(`EACCES: permission denied, access '${path}'`);
-        e.path = path;
-        e.syscall = "access";
-        e.errno = codeMap.get("EACCES");
-        e.code = "EACCES";
-        cb(e);
-      }
-    },
-    (err) => {
-      // deno-lint-ignore prefer-primordials
-      if (err instanceof Deno.errors.NotFound) {
-        // deno-lint-ignore no-explicit-any
-        const e: any = new Error(
-          `ENOENT: no such file or directory, access '${path}'`,
-        );
-        e.path = path;
-        e.syscall = "access";
-        e.errno = codeMap.get("ENOENT");
-        e.code = "ENOENT";
-        cb(e);
-      } else {
-        cb(err);
-      }
-    },
-  );
-}
-
-const accessPromise = promisify(access) as (
+const accessPromise = lazyPromisifyFs("access", 2) as (
   path: string | Buffer | URL,
   mode?: number,
 ) => Promise<void>;
 
 // -- appendFile --
 
-function appendFile(
-  path: string | number | URL,
-  data: string | Uint8Array,
-  options: Encodings | WriteFileOptions | CallbackWithError,
-  callback?: CallbackWithError,
-) {
-  callback = maybeCallback(callback || options);
-  options = getOptions(options, { encoding: "utf8", mode: 0o666, flag: "a" });
-
-  // Don't make changes directly on options object
-  options = copyObject(options);
-
-  // Force append behavior when using a supplied file descriptor
-  if (!options.flag || isFd(path)) {
-    options.flag = "a";
-  }
-
-  writeFile(path, data, options, callback);
-}
-
-const appendFilePromise = promisify(appendFile) as (
-  path: string | number | URL,
+// Delegates to writeFilePromise with an "a" flag, mirroring Node's
+// lib/internal/fs/promises.js appendFile(). Per Node semantics, when given a
+// FileHandle the existing flag stays in effect.
+function appendFilePromise(
+  path: string | number | URL | FileHandle,
   data: string | Uint8Array,
   options?: Encodings | WriteFileOptions,
-) => Promise<void>;
+): Promise<void> {
+  let opts: WriteFileOptions;
+  if (typeof options === "string") {
+    opts = { encoding: options };
+  } else if (options == null || typeof options !== "object") {
+    opts = {};
+  } else {
+    opts = { ...options };
+  }
+  opts.flag = opts.flag || "a";
+  return writeFilePromise(path, data, opts);
+}
 
 // -- chmod --
 
-function chmod(
-  path: string | Buffer | URL,
-  mode: string | number,
-  callback: CallbackWithError,
-) {
-  path = getValidatedPathToString(path);
-  mode = parseFileMode(mode, "mode");
-
-  PromisePrototypeThen(
-    Deno.chmod(path, mode),
-    () => callback(null),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, { syscall: "chmod", path })),
-  );
-}
-
-const chmodPromise = promisify(chmod) as (
+const chmodPromise = lazyPromisifyFs("chmod", 2) as (
   path: string | Buffer | URL,
   mode: string | number,
 ) => Promise<void>;
 
 // -- chown --
 
-function chown(
-  path: string | Buffer | URL,
-  uid: number,
-  gid: number,
-  callback: CallbackWithError,
-) {
-  callback = makeCallback(callback);
-  // deno-lint-ignore prefer-primordials
-  path = getValidatedPath(path).toString();
-  validateInteger(uid, "uid", -1, kMaxUserId);
-  validateInteger(gid, "gid", -1, kMaxUserId);
-
-  // deno-lint-ignore prefer-primordials
-  Deno.chown(path, uid, gid).then(
-    () => callback(null),
-    callback,
-  );
-}
-
-const chownPromise = promisify(chown) as (
+const chownPromise = lazyPromisifyFs("chown", 3) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
@@ -237,98 +150,28 @@ const lchmodPromise: (
   mode: number,
 ) => Promise<void> = !isMacOS
   ? () => PromiseReject(new ERR_METHOD_NOT_IMPLEMENTED("lchmod()"))
-  : (path: string | Buffer | URL, mode: number) => {
+  : async (path: string | Buffer | URL, mode: number) => {
     path = getValidatedPathToString(path);
     mode = parseFileMode(mode, "mode");
-    return op_node_lchmod(path, mode);
+    return await op_node_lchmod(path, mode);
   };
 
-function lchown(
-  path: string | Buffer | URL,
-  uid: number,
-  gid: number,
-  callback: CallbackWithError,
-) {
-  callback = makeCallback(callback);
-  path = getValidatedPathToString(path);
-  validateInteger(uid, "uid", -1, kMaxUserId);
-  validateInteger(gid, "gid", -1, kMaxUserId);
-
-  PromisePrototypeThen(
-    op_node_lchown(path, uid, gid),
-    () => callback(null),
-    callback,
-  );
-}
-
-function link(
-  existingPath: string | Buffer | URL,
-  newPath: string | Buffer | URL,
-  callback: CallbackWithError,
-) {
-  existingPath = getValidatedPathToString(existingPath);
-  newPath = getValidatedPathToString(newPath);
-
-  PromisePrototypeThen(
-    Deno.link(existingPath, newPath),
-    () => callback(null),
-    callback,
-  );
-}
-
-const lchownPromise = promisify(lchown) as (
+const lchownPromise = lazyPromisifyFs("lchown", 3) as (
   path: string | Buffer | URL,
   uid: number,
   gid: number,
 ) => Promise<void>;
 
-const linkPromise = promisify(link) as (
+const linkPromise = lazyPromisifyFs("link", 2) as (
   existingPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
 
-function unlink(
-  path: string | Buffer | URL,
-  callback: (err?: Error) => void,
-): void {
-  path = getValidatedPathToString(path);
-
-  PromisePrototypeThen(
-    Deno.remove(path),
-    () => callback(),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, { syscall: "unlink", path })),
-  );
-}
-
-const unlinkPromise = promisify(unlink) as (
+const unlinkPromise = lazyPromisifyFs("unlink", 1) as (
   path: string | Buffer | URL,
 ) => Promise<void>;
 
-// -- rename --
-
-function rename(
-  oldPath: string | Buffer | URL,
-  newPath: string | Buffer | URL,
-  callback: (err?: Error) => void,
-) {
-  oldPath = getValidatedPathToString(oldPath, "oldPath");
-  newPath = getValidatedPathToString(newPath, "newPath");
-  validateFunction(callback, "callback");
-
-  PromisePrototypeThen(
-    Deno.rename(oldPath, newPath),
-    () => callback(),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, {
-        syscall: "rename",
-        path: oldPath,
-        dest: newPath,
-      })),
-  );
-}
-
-const renamePromise = promisify(rename) as (
+const renamePromise = lazyPromisifyFs("rename", 2) as (
   oldPath: string | Buffer | URL,
   newPath: string | Buffer | URL,
 ) => Promise<void>;
@@ -342,50 +185,7 @@ type rmOptions = {
   retryDelay?: number;
 };
 
-type rmCallback = (err: Error | null) => void;
-
-function rm(
-  path: string | URL,
-  optionsOrCallback: rmOptions | rmCallback,
-  maybeCallback?: rmCallback,
-) {
-  const callback = typeof optionsOrCallback === "function"
-    ? optionsOrCallback
-    : maybeCallback;
-  const options = typeof optionsOrCallback === "object"
-    ? optionsOrCallback
-    : undefined;
-
-  if (!callback) throw new Error("No callback function supplied");
-
-  validateRmOptions(
-    path,
-    options,
-    false,
-    (err: Error | null, options: rmOptions) => {
-      if (err) {
-        return callback(err);
-      }
-
-      PromisePrototypeThen(
-        Deno.remove(path, { recursive: options?.recursive }),
-        () => callback(null),
-        (err) => {
-          if (
-            options?.force &&
-            ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, err)
-          ) {
-            return callback(null);
-          }
-
-          callback(denoErrorToNodeError(err, { syscall: "rm" }));
-        },
-      );
-    },
-  );
-}
-
-const rmPromise = promisify(rm) as (
+const rmPromise = lazyPromisifyFs("rm", 2) as (
   path: string | URL,
   options?: rmOptions,
 ) => Promise<void>;
@@ -398,272 +198,57 @@ type rmdirOptions = {
   retryDelay?: number;
 };
 
-type rmdirCallback = (err?: Error) => void;
-
-const rmdirRecursive =
-  (path: string, callback: rmdirCallback) =>
-  (err: Error | false | null, options?: RmOptions) => {
-    if (err === false) {
-      return callback(new ERR_FS_RMDIR_ENOTDIR(path));
-    }
-    if (err) {
-      return callback(err);
-    }
-
-    PromisePrototypeThen(
-      Deno.remove(path, { recursive: options?.recursive }),
-      (_) => callback(),
-      (err: Error) =>
-        callback(
-          denoErrorToNodeError(err, { syscall: "rmdir", path }),
-        ),
-    );
-  };
-
-function rmdir(
-  path: string | Buffer | URL,
-  options: rmdirOptions | rmdirCallback | undefined,
-  callback?: rmdirCallback,
-) {
-  if (typeof options === "function") {
-    callback = options;
-    options = undefined;
-  }
-  validateFunction(callback, "cb");
-  path = getValidatedPathToString(path);
-
-  if (options?.recursive) {
-    emitRecursiveRmdirWarning();
-    validateRmOptions(
-      path,
-      { ...options, force: false },
-      true,
-      rmdirRecursive(path, callback),
-    );
-  } else {
-    validateRmdirOptions(options);
-    PromisePrototypeThen(
-      op_node_rmdir(path),
-      (_) => callback(),
-      (err: Error) =>
-        callback(
-          denoErrorToNodeError(err, { syscall: "rmdir", path }),
-        ),
-    );
-  }
-}
-
-const rmdirPromise = promisify(rmdir) as (
+const rmdirPromise = lazyPromisifyFs("rmdir", 2) as (
   path: string | Buffer | URL,
   options?: rmdirOptions,
 ) => Promise<void>;
-
-// -- mkdir --
-
-type MkdirCallback =
-  | ((err: Error | null, path?: string) => void)
-  | CallbackWithError;
-
-function fixMkdirError(
-  err: Error,
-  path: string,
-): Error {
-  const nodeErr = denoErrorToNodeError(err, { syscall: "mkdir", path });
-  if (!isWindows) return nodeErr;
-  if ((nodeErr as NodeJS.ErrnoException).code !== "EEXIST") return nodeErr;
-  let cursor = resolve(path, "..");
-  while (true) {
-    try {
-      const stat = Deno.statSync(cursor);
-      if (!stat.isDirectory) {
-        return uvException({
-          errno: codeMap.get("ENOTDIR")!,
-          syscall: "mkdir",
-          path,
-        });
-      }
-      break;
-    } catch {
-      const parent = resolve(cursor, "..");
-      if (parent === cursor) break;
-      cursor = parent;
-    }
-  }
-  return nodeErr;
-}
-
-function findFirstNonExistent(path: string): string | undefined {
-  let cursor = resolve(path);
-  while (true) {
-    try {
-      Deno.statSync(cursor);
-      return undefined;
-    } catch {
-      const parent = resolve(cursor, "..");
-      if (parent === cursor) {
-        return toNamespacedPath(cursor);
-      }
-      try {
-        Deno.statSync(parent);
-        return toNamespacedPath(cursor);
-      } catch {
-        cursor = parent;
-      }
-    }
-  }
-}
 
 type MkdirOptions =
   | { recursive?: boolean; mode?: number | undefined }
   | number
   | boolean;
 
-function mkdir(
-  path: string | URL,
-  options?: MkdirOptions | MkdirCallback,
-  callback?: MkdirCallback,
-) {
-  path = getValidatedPath(path) as string;
-
-  let mode = 0o777;
-  let recursive = false;
-
-  if (typeof options == "function") {
-    callback = options;
-  } else if (typeof options === "number") {
-    mode = parseFileMode(options, "mode");
-  } else if (typeof options === "boolean") {
-    recursive = options;
-  } else if (options) {
-    if (options.recursive !== undefined) recursive = options.recursive;
-    if (options.mode !== undefined) {
-      mode = parseFileMode(options.mode, "options.mode");
-    }
-  }
-  validateBoolean(recursive, "options.recursive");
-
-  let firstNonExistent: string | undefined;
-  try {
-    firstNonExistent = recursive ? findFirstNonExistent(path) : undefined;
-  } catch (err) {
-    if (typeof callback === "function") {
-      callback(
-        denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
-      );
-    }
-    return;
-  }
-
-  PromisePrototypeThen(
-    Deno.mkdir(path, { recursive, mode }),
-    () => {
-      if (typeof callback === "function") {
-        callback(null, firstNonExistent);
-      }
-    },
-    (err: Error) => {
-      if (typeof callback === "function") {
-        callback(
-          recursive
-            ? fixMkdirError(err as Error, path as string)
-            : denoErrorToNodeError(err as Error, { syscall: "mkdir", path }),
-        );
-      }
-    },
-  );
-}
-
-const mkdirPromise = promisify(mkdir) as (
+const mkdirPromise = lazyPromisifyFs("mkdir", 2) as (
   path: string | URL,
   options?: MkdirOptions,
 ) => Promise<string | undefined>;
 
-// -- mkdtemp --
-
-type MkdtempCallback = (
-  err: Error | null,
-  directory?: string,
-) => void;
-type MkdtempBufferCallback = (
-  err: Error | null,
-  directory?: Buffer<ArrayBufferLike>,
-) => void;
-
-function mkdtemp(
-  prefix: string | Buffer | Uint8Array | URL,
-  options: { encoding: string } | string | MkdtempCallback | undefined,
-  callback?: MkdtempCallback | MkdtempBufferCallback,
-) {
-  if (typeof options === "function") {
-    callback = options;
-    options = undefined;
-  }
-  callback = makeCallback(callback);
-  const encoding = parseMkdtempEncoding(options);
-  prefix = getValidatedPathToString(prefix, "prefix");
-
-  warnOnNonPortableTemplate(prefix);
-
-  PromisePrototypeThen(
-    op_node_mkdtemp(prefix),
-    (path: string) => callback(null, decodeMkdtemp(path, encoding)),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, {
-        syscall: "mkdtemp",
-        path: `${prefix}XXXXXX`,
-      })),
-  );
-}
-
-const mkdtempPromise = promisify(mkdtemp) as (
+const mkdtempPromise = lazyPromisifyFs("mkdtemp", 2) as (
   prefix: string | Buffer | Uint8Array | URL,
   options?: { encoding: string } | string,
 ) => Promise<string>;
 
-function decodeMkdtemp(str: string, encoding: Encoding): string;
-function decodeMkdtemp(
-  str: string,
-  encoding: "buffer",
-): Buffer<ArrayBufferLike>;
-function decodeMkdtemp(
-  str: string,
-  encoding: Encoding | "buffer",
-): string | Buffer<ArrayBufferLike> {
-  if (encoding === "utf8") return str;
-  const buffer = Buffer.from(str);
-  if (encoding === "buffer") return buffer;
-  // deno-lint-ignore prefer-primordials
-  return buffer.toString(encoding);
+// Mirrors Node's lib/internal/fs/promises.js mkdtempDisposable(): create the
+// temp dir, then return an object with .path, .remove(), and Symbol.asyncDispose
+// that recursively removes the directory. Capture cwd at creation time so a
+// later process.chdir() doesn't break removal.
+async function mkdtempDisposablePromise(
+  prefix: string | Buffer | Uint8Array | URL,
+  options?: { encoding: string } | string,
+) {
+  const cwd = lazyProcess().default.cwd();
+  const path = await mkdtempPromise(prefix, options);
+  const fullPath = lazyPath().resolve(cwd, path);
+  // `force: true` makes the second remove() a no-op when the dir is already
+  // gone (Node's rimraf-based implementation treats ENOENT as success); other
+  // errors (EACCES, EPERM, ...) still propagate.
+  const remove = async () => {
+    await rmPromise(fullPath, {
+      force: true,
+      maxRetries: 0,
+      recursive: true,
+      retryDelay: 0,
+    });
+  };
+  return {
+    __proto__: null,
+    path,
+    remove,
+    async [SymbolAsyncDispose]() {
+      await remove();
+    },
+  };
 }
-
-function parseMkdtempEncoding(
-  options: string | { encoding?: string } | undefined,
-): Encoding | "buffer" {
-  let encoding: string | undefined;
-
-  if (typeof options === "undefined" || options === null) {
-    encoding = "utf8";
-  } else if (typeof options === "string") {
-    encoding = options;
-  } else if (typeof options === "object") {
-    encoding = options.encoding ?? "utf8";
-  } else {
-    throw new ERR_INVALID_ARG_TYPE("options", ["string", "Object"], options);
-  }
-
-  if (encoding === "buffer") {
-    return encoding;
-  }
-
-  const parsedEncoding = normalizeEncoding(encoding);
-  if (!parsedEncoding) {
-    throw new ERR_INVALID_ARG_TYPE("encoding", encoding, "is invalid encoding");
-  }
-
-  return parsedEncoding;
-}
-
-// -- open --
 
 type OpenFlags =
   | "a"
@@ -683,110 +268,175 @@ type OpenFlags =
   | number
   | string;
 
-type OpenCallback = (err: Error | null, fd?: number) => void;
-
-function open(
-  path: string | Buffer | URL,
-  flags: OpenCallback | OpenFlags,
-  mode?: OpenCallback | number,
-  callback?: OpenCallback,
-) {
-  path = getValidatedPathToString(path);
-  if (arguments.length < 3) {
-    // deno-lint-ignore no-explicit-any
-    callback = flags as any;
-    flags = "r";
-    mode = 0o666;
-  } else if (typeof mode === "function") {
-    callback = mode;
-    mode = 0o666;
-  } else {
-    mode = parseFileMode(mode, "mode", 0o666);
-  }
-  flags = stringToFlags(flags);
-  callback = makeCallback(callback);
-
-  PromisePrototypeThen(
-    op_node_open(path, flags, mode),
-    (rid: number) => callback(null, rid),
-    (err: Error) =>
-      callback(denoErrorToNodeError(err, { syscall: "open", path })),
-  );
-}
-
 function openPromise(
   path: string | Buffer | URL,
   flags: OpenFlags = "r",
   mode = 0o666,
 ): Promise<FileHandle> {
   return new Promise((resolve, reject) => {
-    open(path, flags, mode, (err, fd) => {
+    lazyFs().open(path, flags, mode, (err, fd) => {
       if (err) reject(err);
       else resolve(new FileHandle(fd as number));
     });
   });
 }
 
-// -- opendir --
-
 type OpendirOptions = {
   encoding?: string;
   bufferSize?: number;
 };
-type OpendirCallback = (err?: Error | null, dir?: Dir) => void;
 
-function _opendirValidateFunction(
-  callback: unknown,
-): asserts callback is OpendirCallback {
-  validateFunction(callback, "callback");
-}
-
-function _opendirGetPathString(
-  path: string | Buffer | URL,
-): string {
-  if (Buffer.isBuffer(path)) {
-    // deno-lint-ignore prefer-primordials
-    return path.toString();
-  }
-
-  return StringPrototypeToString(path);
-}
-
-function opendir(
-  path: string | Buffer | URL,
-  options: OpendirOptions | OpendirCallback,
-  callback?: OpendirCallback,
-) {
-  callback = typeof options === "function" ? options : callback;
-  _opendirValidateFunction(callback);
-
-  path = _opendirGetPathString(getValidatedPath(path));
-
-  let err, dir;
-  try {
-    const { bufferSize } = getOptions(options, {
-      encoding: "utf8",
-      bufferSize: 32,
-    });
-    validateInteger(bufferSize, "options.bufferSize", 1, 4294967295);
-
-    Deno.readDirSync(path);
-
-    dir = new Dir(path);
-  } catch (error) {
-    err = denoErrorToNodeError(error as Error, { syscall: "opendir" });
-  }
-  if (err) {
-    callback(err);
-  } else {
-    callback(null, dir);
-  }
-}
-
-const opendirPromise = promisify(opendir) as (
+const opendirPromise = lazyPromisifyFs("opendir", 2) as (
   path: string | Buffer | URL,
   options?: OpendirOptions,
 ) => Promise<Dir>;
+
+// -- symlink --
+
+const symlinkPromise = lazyPromisifyFs("symlink", 3) as (
+  target: string | Buffer | URL,
+  path: string | Buffer | URL,
+  type?: string,
+) => Promise<void>;
+
+// -- truncate --
+
+// Mirrors Node's lib/internal/fs/promises.js truncate(): open the path as a
+// FileHandle, delegate to its truncate method, then close via handleFdClose
+// so callers that monkey-patch FileHandle still observe the fd access and
+// AggregateError-on-double-failure semantics that Node tests rely on.
+async function truncatePromise(
+  path: string | URL,
+  len?: number,
+): Promise<void> {
+  const fh = await openPromise(path, "r+");
+  return handleFdClose(fh.truncate(len), () => fh.close());
+}
+
+// -- utimes --
+
+const utimesPromise = lazyPromisifyFs("utimes", 3) as (
+  path: string | URL,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+) => Promise<void>;
+
+// -- writeFile --
+
+// Low-level callback writeFile, used when we already have an fd/FileHandle
+// (i.e. avoid recursing back through writeFilePromise via FileHandle.writeFile).
+const rawWriteFilePromise = lazyPromisifyFs("writeFile", 3) as (
+  pathOrRid: string | number | URL | FileHandle,
+  data:
+    | string
+    | DataView
+    | NodeJS.TypedArray
+    | AsyncIterable<NodeJS.TypedArray | string>,
+  options?: Encodings | WriteFileOptions,
+) => Promise<void>;
+
+// Mirrors Node's lib/internal/fs/promises.js writeFile(): when given a path,
+// open a FileHandle and delegate via handleFdClose so the close error
+// semantics are observable; when given an fd/FileHandle, write directly.
+function writeFilePromise(
+  pathOrRid: string | number | URL | FileHandle,
+  data:
+    | string
+    | DataView
+    | NodeJS.TypedArray
+    | AsyncIterable<NodeJS.TypedArray | string>,
+  options?: Encodings | WriteFileOptions,
+): Promise<void> {
+  if (
+    typeof pathOrRid === "number" ||
+    ObjectPrototypeIsPrototypeOf(FileHandle.prototype, pathOrRid)
+  ) {
+    return rawWriteFilePromise(pathOrRid, data, options);
+  }
+  const opts: WriteFileOptions = typeof options === "string"
+    ? { encoding: options }
+    : (options ?? {});
+  const flag = opts.flag ?? "w";
+  const mode = opts.mode ?? 0o666;
+  return (async () => {
+    // Match the existing path-based behavior: surface the same `DOMException`
+    // that `signal.throwIfAborted()` produces (the fd-based fallback would
+    // throw Deno's `AbortError` instead). Inside the async IIFE so the throw
+    // becomes a promise rejection, not a sync throw.
+    if (opts.signal?.aborted) opts.signal.throwIfAborted();
+    const fh = await openPromise(
+      pathOrRid as string | Buffer | URL,
+      flag,
+      mode,
+    );
+    return handleFdClose(fh.writeFile(data, opts), () => fh.close());
+  })();
+}
+
+// -- realpath --
+
+const realpathPromise = lazyPromisifyFs("realpath", 2) as (
+  path: string | Buffer,
+  options?: string | { encoding?: string },
+) => Promise<string | Buffer>;
+
+// -- stat --
+
+const statPromise = lazyPromisifyFs("stat", 2) as (
+  path: string | Buffer | URL,
+  options?: { bigint?: boolean },
+) => Promise<unknown>;
+
+// -- statfs --
+
+const statfsPromise = lazyPromisifyFs("statfs", 2) as (
+  path: string | Buffer | URL,
+  options?: { bigint?: boolean },
+) => Promise<unknown>;
+
+// -- readFile / readlink --
+
+// Low-level callback readFile, used when we already have an fd/FileHandle
+// (i.e. avoid recursing back through readFilePromise via FileHandle.readFile).
+const rawReadFilePromise = lazyPromisifyFs("readFile", 2);
+
+// Mirrors Node's lib/internal/fs/promises.js readFile(): when given a path,
+// open a FileHandle and delegate via handleFdClose so the close error
+// semantics are observable; when given an fd/FileHandle, read directly.
+function readFilePromise(
+  path: string | number | URL | FileHandle,
+  options?: Encodings | {
+    encoding?: Encodings;
+    flag?: string;
+    signal?: AbortSignal;
+  },
+): Promise<string | Buffer> {
+  if (
+    typeof path === "number" ||
+    ObjectPrototypeIsPrototypeOf(FileHandle.prototype, path)
+  ) {
+    return rawReadFilePromise(path, options);
+  }
+  const opts: { encoding?: Encodings; flag?: string; signal?: AbortSignal } =
+    typeof options === "string" ? { encoding: options } : (options ?? {});
+  const flag = opts.flag ?? "r";
+  return (async () => {
+    // Match the existing path-based behavior: surface the same `DOMException`
+    // that `signal.throwIfAborted()` produces (the fd-based fallback would
+    // throw Deno's `AbortError` instead). Inside the async IIFE so the throw
+    // becomes a promise rejection, not a sync throw.
+    if (opts.signal?.aborted) opts.signal.throwIfAborted();
+    const fh = await openPromise(path as string | Buffer | URL, flag);
+    return handleFdClose(fh.readFile(opts), () => fh.close()) as Promise<
+      string | Buffer
+    >;
+  })();
+}
+
+const readlinkPromise = lazyPromisifyFs("readlink", 2) as (
+  path: string | Buffer | URL,
+  opt?: { encoding?: string | null },
+) => Promise<string | Uint8Array>;
 
 // -- promises object --
 
@@ -819,12 +469,15 @@ const promises = {
   lutimes: lutimesPromise,
   realpath: realpathPromise,
   mkdtemp: mkdtempPromise,
+  mkdtempDisposable: mkdtempDisposablePromise,
   writeFile: writeFilePromise,
   appendFile: appendFilePromise,
   readFile: readFilePromise,
-  watch: watchPromise,
+  watch:
+    ((...args: any[]) =>
+      (lazyFs() as any).watchPromise(...new SafeArrayIterator(args))) as any,
 };
 
 export default promises;
 
-export { mkdirPromise, opendirPromise };
+export { constants, FileHandle, mkdirPromise, opendirPromise };

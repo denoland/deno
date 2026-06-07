@@ -35,13 +35,13 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::NpmInstallerFactory;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
+use deno_npmrc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_package_json::PackageJsonCacheResult;
 use deno_path_util::url_to_file_path;
@@ -848,37 +848,34 @@ impl Settings {
   pub fn path_enabled(&self, path: &Path) -> Option<bool> {
     let (settings, mut folder_uri) = self.get_for_path(path);
     folder_uri = folder_uri.or(self.first_folder.as_ref());
-    let mut disable_paths = vec![];
-    let mut enable_paths = None;
-    if let Some(folder_uri) = folder_uri
+    let enabled = if let Some(folder_uri) = folder_uri
       && let Ok(folder_path) = url_to_file_path(folder_uri)
     {
-      disable_paths = settings
-        .disable_paths
-        .iter()
-        .map(|p| folder_path.join(p))
-        .collect::<Vec<_>>();
-      enable_paths = settings.enable_paths.as_ref().map(|enable_paths| {
-        enable_paths
-          .iter()
-          .map(|p| folder_path.join(p))
-          .collect::<Vec<_>>()
-      });
-    }
-
-    if disable_paths.iter().any(|p| path.starts_with(p)) {
-      Some(false)
-    } else if let Some(enable_paths) = &enable_paths {
-      for enable_path in enable_paths {
-        // Also enable if the checked path is a dir containing an enabled path.
-        if path.starts_with(enable_path) || enable_path.starts_with(path) {
-          return Some(true);
-        }
-      }
-      Some(false)
+      path_enabled_for_settings(settings, &folder_path, path)
     } else {
       settings.enable
+    };
+    if enabled != Some(false) {
+      return enabled;
     }
+
+    // If the path is an ancestor of a separately enabled workspace folder, it
+    // must remain enabled so the workspace walk can reach that folder.
+    for (folder_uri, settings) in &self.by_workspace_folder {
+      let Some(settings) = settings else {
+        continue;
+      };
+      let Ok(folder_path) = url_to_file_path(folder_uri) else {
+        continue;
+      };
+      if !folder_path.starts_with(path) {
+        continue;
+      }
+      if path_enabled_for_settings(settings, &folder_path, path) == Some(true) {
+        return Some(true);
+      }
+    }
+    enabled
   }
 
   /// Returns `None` if the value should be deferred to the presence of a
@@ -946,6 +943,32 @@ impl Settings {
     }
     hasher.write_hashable(&self.first_folder);
     hasher.finish()
+  }
+}
+
+fn path_enabled_for_settings(
+  settings: &WorkspaceSettings,
+  folder_path: &Path,
+  path: &Path,
+) -> Option<bool> {
+  let disable_paths = settings
+    .disable_paths
+    .iter()
+    .map(|p| folder_path.join(p))
+    .collect::<Vec<_>>();
+  if disable_paths.iter().any(|p| path.starts_with(p)) {
+    return Some(false);
+  }
+  if let Some(enable_paths) = &settings.enable_paths {
+    for enable_path in enable_paths.iter().map(|p| folder_path.join(p)) {
+      // Also enable if the checked path is a dir containing an enabled path.
+      if path.starts_with(&enable_path) || enable_path.starts_with(path) {
+        return Some(true);
+      }
+    }
+    Some(false)
+  } else {
+    settings.enable
   }
 }
 
@@ -1259,7 +1282,7 @@ pub struct ConfigData {
 }
 
 impl ConfigData {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   async fn load(
     specified_config: Option<&Path>,
     scope: &Arc<Url>,
@@ -1292,7 +1315,10 @@ impl ConfigData {
             deno_json_cache: Some(deno_json_cache),
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
-            discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
+            discover_pkg_json: !has_flag_env_var(
+              &CliSys::default(),
+              "DENO_NO_PACKAGE_JSON",
+            ),
             maybe_vendor_override: None,
           },
         )
@@ -1443,6 +1469,7 @@ impl ConfigData {
           &member_dir.workspace,
           byonm,
         )),
+        node_modules_linker: None,
         no_lock: false,
         no_npm: false,
         npm_process_state: None,
@@ -1491,9 +1518,12 @@ impl ConfigData {
       None,
       NpmInstallerFactoryOptions {
         clean_on_install: false,
+        dedup_lockfile_peer_variants: false,
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
+        production: false,
+        skip_types: false,
         resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
       },
     );
@@ -1738,16 +1768,16 @@ impl ConfigTree {
   pub fn config_files(&self) -> Vec<&Arc<ConfigFile>> {
     self
       .scopes
-      .iter()
-      .filter_map(|(_, d)| d.maybe_deno_json())
+      .values()
+      .filter_map(|d| d.maybe_deno_json())
       .collect()
   }
 
   pub fn package_jsons(&self) -> Vec<&Arc<PackageJson>> {
     self
       .scopes
-      .iter()
-      .filter_map(|(_, d)| d.maybe_pkg_json())
+      .values()
+      .filter_map(|d| d.maybe_pkg_json())
       .collect()
   }
 
@@ -2350,6 +2380,71 @@ mod tests {
       vec![],
     );
     assert!(!config.specifier_enabled(&root_uri.join("mod.ts").unwrap()));
+  }
+
+  #[test]
+  fn config_path_enabled_for_nested_workspace_folder() {
+    let root_uri = root_dir();
+    let shared_uri = root_uri.join("shared/").unwrap();
+    let backend_uri = root_uri.join("apps/backend/").unwrap();
+    let web_uri = root_uri.join("apps/web/").unwrap();
+    let mut config = Config::new_with_roots(vec![
+      shared_uri.clone(),
+      backend_uri.clone(),
+      web_uri.clone(),
+      root_uri.clone(),
+    ]);
+    config.set_workspace_settings(
+      WorkspaceSettings {
+        enable: Some(false),
+        ..Default::default()
+      },
+      vec![
+        (
+          Arc::new(shared_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(backend_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(web_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(root_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+      ],
+    );
+
+    assert!(
+      config.settings.path_enabled(
+        &url_to_file_path(&root_uri.join("apps/").unwrap()).unwrap()
+      ) == Some(true)
+    );
+    assert!(
+      config.specifier_enabled(&backend_uri.join("src/main.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled(&root_uri.join("apps/web/main.ts").unwrap())
+    );
+    assert!(!config.specifier_enabled(
+      &root_uri.join("shared/ts/core/src/index.ts").unwrap()
+    ));
   }
 
   #[tokio::test]

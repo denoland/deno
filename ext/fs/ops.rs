@@ -18,6 +18,7 @@ use deno_core::FastString;
 use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
 use deno_core::error::ResourceError;
 use deno_core::op2;
@@ -33,7 +34,6 @@ use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
-use serde::Serialize;
 
 use crate::OpenOptions;
 use crate::interface::FileSystemRc;
@@ -93,6 +93,9 @@ impl From<FsError> for FsOpsError {
         FsOpsErrorKind::Other(JsErrorBox::not_supported())
       }
       FsError::PermissionCheck(err) => FsOpsErrorKind::Permission(err),
+      FsError::JoinError(err) => {
+        FsOpsErrorKind::Other(JsErrorBox::from_err(err))
+      }
     }
     .into_box()
   }
@@ -613,7 +616,6 @@ pub fn op_fs_stat_sync(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_fs_stat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -657,7 +659,6 @@ pub fn op_fs_lstat_sync(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub async fn op_fs_lstat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1342,7 +1343,7 @@ fn make_temp_check_async<'a>(
 /// files.
 fn validate_temporary_filename_component(
   component: &str,
-  #[allow(unused_variables)] suffix: bool,
+  _suffix: bool,
 ) -> Result<(), FsOpsError> {
   // Ban ASCII and Unicode control characters: these will often fail
   if let Some(c) = component.matches(|c: char| c.is_control()).next() {
@@ -1369,7 +1370,7 @@ fn validate_temporary_filename_component(
 
   // This check is only for Windows
   #[cfg(windows)]
-  if suffix && component.ends_with(|c: char| ". ".contains(c)) {
+  if _suffix && component.ends_with(|c: char| ". ".contains(c)) {
     return Err(FsOpsErrorKind::InvalidTrailingCharacter.into_box());
   }
 
@@ -1389,11 +1390,8 @@ fn tmp_name(
 
   // If we use a 32-bit number, we only need ~70k temp files before we have a 50%
   // chance of collision. By bumping this up to 64-bits, we require ~5 billion
-  // before hitting a 50% chance. We also base32-encode this value so the entire
-  // thing is 1) case insensitive and 2) slightly shorter than the equivalent hex
-  // value.
+  // before hitting a 50% chance.
   let unique = rng.r#gen::<u64>();
-  base32::encode(base32::Alphabet::Crockford, &unique.to_le_bytes());
   let path = dir.join(format!("{prefix}{unique:08x}{suffix}"));
 
   Ok(path)
@@ -1428,7 +1426,7 @@ pub fn op_fs_write_file_sync(
 }
 
 #[op2(stack_trace)]
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 pub async fn op_fs_write_file_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1732,7 +1730,6 @@ pub fn op_fs_file_stat_sync(
 }
 
 #[op2]
-#[serde]
 pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -2025,7 +2022,7 @@ macro_rules! create_struct_writer {
           let value = self.$field as u64;
           buf[offset] = value as u32;
           buf[offset + 1] = (value >> 32) as u32;
-          #[allow(unused_assignments)]
+          #[allow(unused_assignments, reason = "last assignment is unused")]
           {
             offset += 2;
           }
@@ -2033,8 +2030,7 @@ macro_rules! create_struct_writer {
       }
     }
 
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
+    #[derive(ToV8)]
     pub struct $name {
       $($field: $type),*
     }
