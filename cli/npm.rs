@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -17,8 +18,6 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmResolutionPackage;
-use deno_npm::npm_rc::RegistryConfig;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfosIterator;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -34,6 +33,8 @@ use deno_npm_installer::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use deno_npm_installer::lifecycle_scripts::PackageWithScript;
 use deno_npm_installer::lifecycle_scripts::compute_lifecycle_script_layers;
 use deno_npm_installer::lifecycle_scripts::is_broken_default_install_script;
+use deno_npmrc::RegistryConfig;
+use deno_npmrc::ResolvedNpmRc;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::deno_io::FromRawIoHandle;
@@ -239,10 +240,22 @@ fn decompress_gzip(compressed: Vec<u8>) -> Result<Vec<u8>, JsErrorBox> {
   Ok(decompressed)
 }
 
+/// Why fetching package metadata for a single package failed. Used to surface
+/// actionable diagnostics (e.g. in `deno outdated`) instead of silently
+/// dropping packages that live on unreachable or unauthorized registries.
+#[derive(Clone, Debug)]
+pub struct PackageInfoLoadError {
+  /// The registry URL the metadata was being fetched from.
+  pub registry_url: String,
+  /// A human readable description of what went wrong.
+  pub reason: String,
+}
+
 #[derive(Debug)]
 pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
-  info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
+  info_by_name:
+    DashMap<String, Result<Arc<NpmPackageInfo>, Arc<PackageInfoLoadError>>>,
   file_fetcher: Arc<CliFileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
   version_resolver: Arc<NpmVersionResolver>,
@@ -292,18 +305,44 @@ impl NpmFetchResolver {
   }
 
   pub async fn package_info(&self, name: &str) -> Option<Arc<NpmPackageInfo>> {
+    self.package_info_with_reason(name).await.ok()
+  }
+
+  /// Like [`Self::package_info`], but preserves the reason the fetch failed
+  /// (e.g. an HTTP 401 from a private registry) so callers can surface it
+  /// instead of silently treating the package as having no available versions.
+  pub async fn package_info_with_reason(
+    &self,
+    name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, Arc<PackageInfoLoadError>> {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
-    // todo(#27198): use RegistryInfoProvider instead
-    let fetch_package_info = || async {
-      let info_url = deno_npm_cache::get_package_url(&self.npmrc, name);
-      let registry_config = self.npmrc.get_registry_config(name);
-      // TODO(bartlomieju): this should error out, not use `.ok()`.
-      let maybe_auth_header =
-        deno_npm_cache::maybe_auth_header_value_for_npm_registry(
-          registry_config,
-        )
+    let registry_url = self.npmrc.get_registry_url(name).to_string();
+    let result =
+      self
+        .fetch_package_info(name)
+        .await
+        .map(Arc::new)
+        .map_err(|reason| {
+          Arc::new(PackageInfoLoadError {
+            registry_url: registry_url.clone(),
+            reason,
+          })
+        });
+    self.info_by_name.insert(name.to_string(), result.clone());
+    result
+  }
+
+  // todo(#27198): use RegistryInfoProvider instead
+  async fn fetch_package_info(
+    &self,
+    name: &str,
+  ) -> Result<NpmPackageInfo, String> {
+    let info_url = deno_npm_cache::get_package_url(&self.npmrc, name);
+    let registry_config = self.npmrc.get_registry_config(name);
+    let maybe_auth_header =
+      deno_npm_cache::maybe_auth_header_value_for_npm_registry(registry_config)
         .map_err(AnyError::from)
         .and_then(|value| match value {
           Some(value) => Ok(Some((
@@ -312,17 +351,14 @@ impl NpmFetchResolver {
           ))),
           None => Ok(None),
         })
-        .ok()?;
-      let file = self
-        .file_fetcher
-        .fetch_bypass_permissions_with_maybe_auth(&info_url, maybe_auth_header)
-        .await
-        .ok()?;
-      serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()
-    };
-    let info = fetch_package_info().await.map(Arc::new);
-    self.info_by_name.insert(name.to_string(), info.clone());
-    info
+        .map_err(|e| format!("{e:#}"))?;
+    let file = self
+      .file_fetcher
+      .fetch_bypass_permissions_with_maybe_auth(&info_url, maybe_auth_header)
+      .await
+      .map_err(|e| format!("{e:#}"))?;
+    serde_json::from_slice::<NpmPackageInfo>(&file.source)
+      .map_err(|e| format!("failed to parse package metadata: {e}"))
   }
 
   pub fn applicable_version_infos<'a>(
@@ -416,6 +452,7 @@ impl LifecycleScriptsExecutor for DenoTaskLifeCycleScriptsExecutor {
     let layers = compute_lifecycle_script_layers(
       options.packages_with_scripts,
       options.snapshot,
+      options.additional_packages,
     );
 
     for layer in &layers {
@@ -511,7 +548,17 @@ impl DenoTaskLifeCycleScriptsExecutor {
       package,
       scripts,
       package_folder,
+      init_cwds,
     } = pkg;
+    // Run the scripts once per workspace member that depends on this package,
+    // with `INIT_CWD` pointing at that member, so workspace-aware scripts (e.g.
+    // `@sveltejs/kit`'s `postinstall`) operate on each member. When no member
+    // declares the package directly, run once with the global init cwd.
+    let init_cwds: Vec<&Path> = if init_cwds.is_empty() {
+      vec![options.init_cwd]
+    } else {
+      init_cwds.iter().map(|p| p.as_path()).collect()
+    };
 
     // each concurrent package gets its own temp file to avoid fd races
     let temp_file_fd = deno_runtime::deno_process::npm_process_state_tempfile(
@@ -536,70 +583,76 @@ impl DenoTaskLifeCycleScriptsExecutor {
         base_custom_commands.clone(),
         package,
         options.snapshot,
+        options.additional_packages,
       )
       .await;
 
     let mut failed = None;
-    for script_name in ["preinstall", "install", "postinstall"] {
-      if let Some(script) = scripts.get(script_name) {
-        if script_name == "install"
-          && is_broken_default_install_script(sys, script, package_folder)
-        {
-          continue;
-        }
-        let _guard = self.progress_bar.update_with_prompt(
-          ProgressMessagePrompt::Initialize,
-          &format!("{}: running '{script_name}' script", package.id.nv),
-        );
-        let crate::task_runner::TaskResult {
-          exit_code,
-          stderr,
-          stdout,
-        } = crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
-          task_name: script_name,
-          script,
-          cwd: package_folder.clone(),
-          env_vars: env_vars.clone(),
-          custom_commands: custom_commands.clone(),
-          init_cwd: options.init_cwd,
-          argv: &[],
-          root_node_modules_dir: Some(options.root_node_modules_dir_path),
-          stdio: Some(crate::task_runner::TaskIo {
-            stderr: TaskStdio::piped(),
-            stdout: TaskStdio::piped(),
-          }),
-          kill_signal: kill_signal.clone(),
-        })
-        .await
-        .map_err(DenoTaskLifecycleScriptsError::Task)?;
-        let stdout = stdout.unwrap();
-        let stderr = stderr.unwrap();
-        if exit_code != 0 {
-          log::warn!(
-            "error: script '{}' in '{}' failed with exit code {}{}{}",
-            script_name,
-            package.id.nv,
-            exit_code,
-            if !stdout.trim_ascii().is_empty() {
-              format!(
-                "\nstdout:\n{}\n",
-                String::from_utf8_lossy(&stdout).trim()
-              )
-            } else {
-              String::new()
-            },
-            if !stderr.trim_ascii().is_empty() {
-              format!(
-                "\nstderr:\n{}\n",
-                String::from_utf8_lossy(&stderr).trim()
-              )
-            } else {
-              String::new()
-            },
+    'cwds: for init_cwd in init_cwds {
+      for script_name in ["preinstall", "install", "postinstall"] {
+        if let Some(script) = scripts.get(script_name) {
+          if script_name == "install"
+            && is_broken_default_install_script(sys, script, package_folder)
+          {
+            continue;
+          }
+          let _guard = self.progress_bar.update_with_prompt(
+            ProgressMessagePrompt::Initialize,
+            &format!("{}: running '{script_name}' script", package.id.nv),
           );
-          failed = Some(&package.id.nv);
-          // assume if earlier script fails, later ones will fail too
-          break;
+          let crate::task_runner::TaskResult {
+            exit_code,
+            stderr,
+            stdout,
+          } =
+            crate::task_runner::run_task(crate::task_runner::RunTaskOptions {
+              task_name: script_name,
+              script,
+              cwd: package_folder.clone(),
+              env_vars: env_vars.clone(),
+              custom_commands: custom_commands.clone(),
+              init_cwd,
+              argv: &[],
+              node_modules_bin_dirs: &[options
+                .root_node_modules_dir_path
+                .join(".bin")],
+              stdio: Some(crate::task_runner::TaskIo {
+                stderr: TaskStdio::piped(),
+                stdout: TaskStdio::piped(),
+              }),
+              kill_signal: kill_signal.clone(),
+            })
+            .await
+            .map_err(DenoTaskLifecycleScriptsError::Task)?;
+          let stdout = stdout.unwrap();
+          let stderr = stderr.unwrap();
+          if exit_code != 0 {
+            log::warn!(
+              "error: script '{}' in '{}' failed with exit code {}{}{}",
+              script_name,
+              package.id.nv,
+              exit_code,
+              if !stdout.trim_ascii().is_empty() {
+                format!(
+                  "\nstdout:\n{}\n",
+                  String::from_utf8_lossy(&stdout).trim()
+                )
+              } else {
+                String::new()
+              },
+              if !stderr.trim_ascii().is_empty() {
+                format!(
+                  "\nstderr:\n{}\n",
+                  String::from_utf8_lossy(&stderr).trim()
+                )
+              } else {
+                String::new()
+              },
+            );
+            failed = Some(&package.id.nv);
+            // assume if earlier script fails, later ones will fail too
+            break 'cwds;
+          }
         }
       }
     }
@@ -711,6 +764,7 @@ impl DenoTaskLifeCycleScriptsExecutor {
     baseline: crate::task_runner::TaskCustomCommands,
     package: &NpmResolutionPackage,
     snapshot: &NpmResolutionSnapshot,
+    additional_packages: &[&NpmResolutionPackage],
   ) -> crate::task_runner::TaskCustomCommands {
     let sys = CliSys::default();
     let mut bin_entries = BinEntries::new(sys.with_paths_in_errors());
@@ -721,7 +775,12 @@ impl DenoTaskLifeCycleScriptsExecutor {
         baseline,
         snapshot,
         package.dependencies.iter().filter_map(|(name, id)| {
-          let dep = snapshot.package_from_id(id).unwrap();
+          let dep = snapshot.package_from_id(id).or_else(|| {
+            additional_packages
+              .iter()
+              .find(|package| package.id == *id)
+              .copied()
+          })?;
           // Skip optional dependencies that don't match the current system
           if package.optional_dependencies.contains(name)
             && !dep.system.matches_system(&self.system_info)

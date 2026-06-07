@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "user_import_and_transitive": {
+      "args": "why @std/crypto",
+      "output": "overlap.out"
+    }
+  }
+}

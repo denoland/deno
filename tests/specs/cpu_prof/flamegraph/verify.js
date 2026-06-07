@@ -24,4 +24,12 @@ if (!content.includes("function init(evt)")) {
   console.log("Missing interactive JavaScript");
   Deno.exit(1);
 }
+if (!content.includes('height="100%"')) {
+  console.log("SVG should use full viewport height");
+  Deno.exit(1);
+}
+if (!content.includes("fg:content_height=")) {
+  console.log("Missing content height data attribute");
+  Deno.exit(1);
+}
 console.log("Valid flamegraph");

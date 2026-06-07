@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "tests": {
+    "pack_dry_run": {
+      "steps": [{
+        "args": "pack --dry-run",
+        "output": "dry_run.out"
+      }]
+    }
+  }
+}

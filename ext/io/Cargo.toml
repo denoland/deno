@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_io"
-version = "0.149.0"
+version = "0.160.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,7 +20,6 @@ deno_error.workspace = true
 deno_permissions.workspace = true
 filetime.workspace = true
 log.workspace = true
-once_cell.workspace = true
 pin-project.workspace = true
 tokio.workspace = true
 uuid.workspace = true
@@ -33,9 +32,8 @@ libc.workspace = true
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["winbase", "processenv", "errhandlingapi", "handleapi"] }
 rand.workspace = true
 parking_lot.workspace = true
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = ["Win32_System_Console"] }
 deno_subprocess_windows.workspace = true
 libc.workspace = true

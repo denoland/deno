@@ -187,7 +187,10 @@ interface URLSearchParams {
   readonly size: number;
 }
 
-/** @category URL */
+/** The constructor object for {@linkcode URLSearchParams}, used to create a new
+ * `URLSearchParams` object for parsing and building URL query strings.
+ *
+ * @category URL */
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   /**

@@ -462,6 +462,14 @@ pub async fn op_net_connect_tls(
     .await?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut()
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(
+      &connect_addr.ip(),
+      connect_addr.port(),
+      "Deno.connectTls()",
+    )?;
   let tcp_stream = TcpStream::connect(connect_addr).await?;
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -528,6 +536,13 @@ pub fn op_net_listen_tls(
   let bind_addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(
+      &bind_addr.ip(),
+      bind_addr.port(),
+      "Deno.listenTls()",
+    )?;
 
   let tcp_listener = if args.load_balanced {
     TcpListener::bind_load_balanced(bind_addr, args.tcp_backlog)

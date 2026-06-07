@@ -2,10 +2,10 @@ function nonAnalyzablePath() {
   return "./data.txt";
 }
 
-const typeText = "text";
+const typeBytes = "bytes";
 const { default: data } = await import(nonAnalyzablePath(), {
   with: {
-    type: typeText,
+    type: typeBytes,
   },
 });
 

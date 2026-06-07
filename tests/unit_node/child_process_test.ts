@@ -659,6 +659,43 @@ Deno.test({
 
 Deno.test({
   name:
+    "[node/child_process spawn] AbortSignal aborts the child and emits AbortError",
+  async fn() {
+    const ac = new AbortController();
+    const cp = spawn(
+      Deno.execPath(),
+      ["eval", "setInterval(() => {}, 1000)"],
+      { signal: ac.signal },
+    );
+    const error = withTimeout<Error>();
+    const exit = withTimeout<void>();
+    cp.on("error", (err) => error.resolve(err));
+    cp.on("exit", () => exit.resolve());
+    cp.on("spawn", () => ac.abort());
+    const err = await error.promise;
+    assertEquals(err.name, "AbortError");
+    await exit.promise;
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process] kill() on an exited process returns false and does not throw",
+  async fn() {
+    // Regression for https://github.com/denoland/deno/issues/28882 — killing
+    // a process that has already exited must not surface a spurious error
+    // (PermissionError on Windows / ESRCH on Unix), it should just return
+    // false like Node.js does.
+    const cp = spawn(Deno.execPath(), ["eval", "Deno.exit(0)"]);
+    const exit = withTimeout<void>();
+    cp.on("exit", () => exit.resolve());
+    await exit.promise;
+    assertEquals(cp.kill("SIGTERM"), false);
+  },
+});
+
+Deno.test({
+  name:
     "[node/child_process spawn] child inherits Deno.env when options.env is not provided",
   async fn() {
     const deferred = withTimeout<string>();
@@ -1343,4 +1380,54 @@ Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
   } finally {
     await Deno.remove(script);
   }
+});
+
+Deno.test(function spawnSyncShellMetacharactersEscaped() {
+  // Shell metacharacters in args should be escaped, not interpreted.
+  // On Unix, & would launch a background process; on Windows, it
+  // would chain a second command. Either way echo should print
+  // the literal string.
+  const ret = spawnSync(
+    Deno.execPath(),
+    ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e"],
+    { shell: true, encoding: "utf-8" },
+  );
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.trim(), "a&b|c<d>e");
+});
+
+Deno.test(function spawnSyncReturnsPid() {
+  const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
+  assertEquals(ret.status, 0);
+  assertEquals(typeof ret.pid, "number");
+  assert(ret.pid > 0);
+});
+
+Deno.test({
+  name: "spawnWithNumericFdInStdioArray",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
+    try {
+      const fd = fs.openSync(tmpFile, "w");
+      const child = spawn("/bin/sh", [
+        "-c",
+        "echo hello from child >&3",
+      ], {
+        stdio: ["ignore", "pipe", "pipe", fd],
+      });
+      const { promise, resolve } = Promise.withResolvers<number>();
+      child.on("close", (code: number) => {
+        resolve(code);
+      });
+      const code = await promise;
+      fs.closeSync(fd);
+      assertEquals(code, 0);
+      const content = Deno.readTextFileSync(tmpFile);
+      assertEquals(content, "hello from child\n");
+    } finally {
+      Deno.removeSync(tmpFile);
+    }
+  },
 });

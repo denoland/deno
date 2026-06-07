@@ -29,6 +29,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -49,6 +50,7 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::npm::PackageInfoLoadError;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
 
@@ -380,7 +382,8 @@ fn add_deps_from_package_json(
             alias,
           })
         }
-        deno_package_json::PackageJsonDepValue::Workspace(_) => continue,
+        deno_package_json::PackageJsonDepValue::Workspace(_)
+        | deno_package_json::PackageJsonDepValue::Catalog(_) => continue,
       }
     }
   }
@@ -451,6 +454,10 @@ where
 pub struct PackageLatestVersion {
   pub semver_compatible: Option<PackageNv>,
   pub latest: Option<PackageNv>,
+  /// Set when fetching the package's metadata failed (e.g. an unreachable or
+  /// unauthorized private registry). The package is dropped from the outdated
+  /// table, so this is used to warn the user instead of skipping silently.
+  pub fetch_error: Option<Arc<PackageInfoLoadError>>,
 }
 
 pub struct DepManager {
@@ -737,9 +744,13 @@ impl DepManager {
               .await
               .ok()
               .flatten();
-            let info =
-              self.npm_fetch_resolver.package_info(&semver_req.name).await;
-            let latest = info
+            let info_result = self
+              .npm_fetch_resolver
+              .package_info_with_reason(&semver_req.name)
+              .await;
+            let fetch_error = info_result.as_ref().err().cloned();
+            let latest = info_result
+              .ok()
               .and_then(|info| {
                 let version_resolver =
                   self.npm_version_resolver.get_for_package(&info);
@@ -759,28 +770,17 @@ impl DepManager {
                   return Some(latest_tag.clone());
                 }
 
-                let lower_bound = &semver_compatible.as_ref()?.version;
-                let latest_matches_newest_dep_date =
-                  version_resolver.matches_newest_dependency_date(latest_tag);
-                if latest_matches_newest_dep_date && latest_tag >= lower_bound {
+                // Use the `latest` dist-tag directly, matching npm/pnpm/bun
+                // behavior. Computing the max across all versions is incorrect
+                // when packages publish pre-release versions with commit hashes
+                // (e.g., 1.0.0-beta.9-commit.d91dfb5) because semver considers
+                // alphanumeric pre-release identifiers higher than numeric ones,
+                // so beta.9-commit.hash > beta.32.
+                // Ref: https://github.com/denoland/deno/issues/29647
+                if version_resolver.matches_newest_dependency_date(latest_tag) {
                   Some(latest_tag.clone())
                 } else {
-                  latest_version(
-                    if latest_matches_newest_dep_date {
-                      Some(latest_tag)
-                    } else {
-                      None
-                    },
-                    version_resolver.applicable_version_infos().filter_map(
-                      |version_info| {
-                        if version_info.deprecated.is_none() {
-                          Some(&version_info.version)
-                        } else {
-                          None
-                        }
-                      },
-                    ),
-                  )
+                  None
                 }
               })
               .map(|version| PackageNv {
@@ -790,6 +790,7 @@ impl DepManager {
             PackageLatestVersion {
               latest,
               semver_compatible,
+              fetch_error,
             }
           }
           .boxed_local(),
@@ -804,27 +805,38 @@ impl DepManager {
               .await
               .ok()
               .flatten();
-            let info =
-              self.jsr_fetch_resolver.package_info(&semver_req.name).await;
-            let latest = info
+            let info_result = self
+              .jsr_fetch_resolver
+              .package_info_with_reason(&semver_req.name)
+              .await;
+            let fetch_error = info_result.as_ref().err().cloned();
+            let latest = info_result
+              .ok()
               .and_then(|info| {
                 let version_resolver = self
                   .jsr_fetch_resolver
                   .version_resolver_for_package(&semver_req.name, &info);
                 let lower_bound = &semver_compatible.as_ref()?.version;
-                latest_version(
-                  Some(lower_bound),
-                  info.versions.iter().filter_map(|(version, version_info)| {
-                    if !version_info.yanked
-                      && version_resolver
-                        .matches_newest_dependency_date(version_info)
-                    {
-                      Some(version)
-                    } else {
-                      None
+                {
+                  let mut best: Option<&Version> = Some(lower_bound);
+                  for version in info.versions.iter().filter_map(
+                    |(version, version_info)| {
+                      if !version_info.yanked
+                        && version_resolver
+                          .matches_newest_dependency_date(version_info)
+                      {
+                        Some(version)
+                      } else {
+                        None
+                      }
+                    },
+                  ) {
+                    if best.is_none_or(|b| version > b) {
+                      best = Some(version);
                     }
-                  }),
-                )
+                  }
+                  best.cloned()
+                }
               })
               .map(|version| PackageNv {
                 name: semver_req.name.clone(),
@@ -833,6 +845,7 @@ impl DepManager {
             PackageLatestVersion {
               latest,
               semver_compatible,
+              fetch_error,
             }
           }
           .boxed_local(),
@@ -876,6 +889,10 @@ impl DepManager {
 
   pub fn get_dep(&self, id: DepId) -> &Dep {
     &self.deps[id.0]
+  }
+
+  pub fn deps_with_ids(&self) -> impl Iterator<Item = (DepId, &Dep)> {
+    self.deps.iter().enumerate().map(|(i, dep)| (DepId(i), dep))
   }
 
   pub fn update_dep(&mut self, dep_id: DepId, new_version_req: VersionReq) {
@@ -982,6 +999,35 @@ impl DepManager {
 
     Ok(())
   }
+
+  /// Removes the lockfile specifier entries for the given dependencies and
+  /// writes the lockfile to disk. The next install will re-resolve the
+  /// missing entries to the latest version that matches each dependency's
+  /// existing version requirement, bumping the lockfile within ranges
+  /// without modifying `deno.json`/`package.json`.
+  pub fn invalidate_lockfile_for_update(
+    &self,
+    dep_ids: impl IntoIterator<Item = DepId>,
+  ) -> Result<(), AnyError> {
+    let Some(lockfile_lock) = &self.lockfile else {
+      return Ok(());
+    };
+    {
+      let mut lockfile = lockfile_lock.lock();
+      for dep_id in dep_ids {
+        let dep = &self.deps[dep_id.0];
+        let req = match dep.kind {
+          DepKind::Npm => JsrDepPackageReq::npm(dep.req.clone()),
+          DepKind::Jsr => JsrDepPackageReq::jsr(dep.req.clone()),
+        };
+        if lockfile.content.packages.specifiers.remove(&req).is_some() {
+          lockfile.has_content_changed = true;
+        }
+      }
+    }
+    lockfile_lock.write_if_changed()?;
+    Ok(())
+  }
 }
 
 fn get_or_create_updater<'a>(
@@ -1029,19 +1075,4 @@ fn parse_req_reference(
     DepKind::Npm => NpmPackageReqReference::from_str(input)?.into_inner(),
     DepKind::Jsr => JsrPackageReqReference::from_str(input)?.into_inner(),
   })
-}
-
-fn latest_version<'a>(
-  start: Option<&Version>,
-  versions: impl IntoIterator<Item = &'a Version>,
-) -> Option<Version> {
-  let mut best = start;
-  for version in versions {
-    match best {
-      Some(best_version) if version > best_version => best = Some(version),
-      None => best = Some(version),
-      _ => {}
-    }
-  }
-  best.cloned()
 }

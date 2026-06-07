@@ -28,7 +28,7 @@ function init(evt) {
       toggle_invert();
     });
   }
-  orig_height = parseFloat(svg.attributes.height.value);
+  orig_height = parseFloat(frames.getAttribute("fg:content_height"));
   // Fluid: fill viewport width and height
   svg.removeAttribute("width");
   update_for_resize = function () {

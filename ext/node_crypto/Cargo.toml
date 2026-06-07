@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node_crypto"
-version = "0.9.0"
+version = "0.20.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ path = "lib.rs"
 aead-gcm-stream.workspace = true
 aes.workspace = true
 aws-lc-rs.workspace = true
+aws-lc-sys.workspace = true
 base64.workspace = true
 blake2.workspace = true
 cbc.workspace = true
@@ -36,6 +37,7 @@ ed448-goldilocks = { workspace = true }
 elliptic-curve.workspace = true
 faster-hex.workspace = true
 hkdf.workspace = true
+hmac.workspace = true
 k256.workspace = true
 md-5 = { workspace = true, features = ["oid"] }
 md4.workspace = true
@@ -43,6 +45,7 @@ num-bigint.workspace = true
 num-bigint-dig.workspace = true
 num-integer.workspace = true
 num-traits.workspace = true
+p12.workspace = true
 p224.workspace = true
 p256.workspace = true
 p384.workspace = true
@@ -52,13 +55,11 @@ pkcs8 = { workspace = true, features = ["std", "pkcs5", "encryption"] }
 rand.workspace = true
 ripemd = { workspace = true, features = ["oid"] }
 rsa.workspace = true
-scrypt.workspace = true
 sec1.workspace = true
 serde.workspace = true
 sha1.workspace = true
 sha2.workspace = true
 sha3 = { workspace = true, features = ["oid"] }
-signature.workspace = true
 sm3.workspace = true
 spki.workspace = true
 subtle.workspace = true

@@ -121,7 +121,7 @@ pub(crate) fn generate_flamegraph_svg(
   svg.push_str(&format!(
     r##"<?xml version="1.0" standalone="no"?>
 <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-<svg version="1.1" width="100%" height="{image_height}" onload="init(evt)" viewBox="0 0 {image_width} {image_height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/nicholasgasior/gofern" style="min-height:100vh">
+<svg version="1.1" width="100%" height="100%" onload="init(evt)" viewBox="0 0 {image_width} {image_height}" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:fg="http://github.com/nicholasgasior/gofern" style="min-height:100vh">
 <defs>
   <linearGradient id="background" y1="0" y2="1">
     <stop stop-color="#eeeeee" offset="5%"/>
@@ -162,7 +162,7 @@ pub(crate) fn generate_flamegraph_svg(
 <label style="font-family:Verdana,sans-serif;font-size:12px;cursor:pointer"><input type="checkbox" id="invert_cb" style="cursor:pointer"/> Invert</label>
 </body>
 </foreignObject>
-<g id="frames" total_samples="{total_samples}" width="{frames_width}" fg:max_depth="{max_depth}" fg:frame_height="{frame_height}" fg:y_pad_top="{y_pad_top}">
+<g id="frames" total_samples="{total_samples}" width="{frames_width}" fg:max_depth="{max_depth}" fg:frame_height="{frame_height}" fg:y_pad_top="{y_pad_top}" fg:content_height="{image_height}">
 "##,
     flamegraph_js = FLAMEGRAPH_JS,
     details_y = image_height - y_pad_bottom + 21,

@@ -457,6 +457,145 @@ Deno.test("[node/sqlite] Database backup", async () => {
   Deno.removeSync(`${tempDir}/backup.db`);
 });
 
+Deno.test("[node/sqlite] DatabaseSync.serialize/deserialize round-trip", () => {
+  using src = new DatabaseSync(":memory:");
+  src.exec("CREATE TABLE t(id INTEGER PRIMARY KEY, name TEXT)");
+  const insert = src.prepare("INSERT INTO t (id, name) VALUES (?, ?)");
+  insert.run(1, "a");
+  insert.run(2, "b");
+  insert.run(3, "c");
+
+  const buf = src.serialize();
+  assert(buf instanceof Uint8Array);
+  assert(buf.length > 0);
+
+  using dst = new DatabaseSync(":memory:");
+  dst.deserialize(buf);
+  const rows = dst.prepare("SELECT id, name FROM t ORDER BY id").all();
+  assertEquals(rows, [
+    { id: 1, name: "a", __proto__: null },
+    { id: 2, name: "b", __proto__: null },
+    { id: 3, name: "c", __proto__: null },
+  ]);
+
+  // deserialize is writable by default
+  dst.exec("INSERT INTO t (id, name) VALUES (4, 'd')");
+  assertEquals(
+    dst.prepare("SELECT name FROM t WHERE id = 4").get(),
+    { name: "d", __proto__: null },
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.serialize with file-backed db", () => {
+  const dbPath = `${tempDir}/serialize_file.db`;
+  using src = new DatabaseSync(dbPath);
+  src.exec("CREATE TABLE t(value TEXT)");
+  src.prepare("INSERT INTO t VALUES (?)").run("hello");
+
+  const buf = src.serialize();
+  assert(buf instanceof Uint8Array);
+  assert(buf.length > 0);
+  // SQLite database files start with "SQLite format 3\0"
+  assertEquals(buf[0], 0x53);
+  assertEquals(buf[1], 0x51);
+  assertEquals(buf[2], 0x4c);
+
+  using dst = new DatabaseSync(":memory:");
+  dst.deserialize(buf);
+  assertEquals(
+    dst.prepare("SELECT value FROM t").get(),
+    { value: "hello", __proto__: null },
+  );
+
+  src.close();
+  Deno.removeSync(dbPath);
+});
+
+Deno.test("[node/sqlite] DatabaseSync.deserialize readOnly option", () => {
+  using src = new DatabaseSync(":memory:");
+  src.exec("CREATE TABLE t(value TEXT)");
+  src.prepare("INSERT INTO t VALUES (?)").run("read-only");
+  const buf = src.serialize();
+
+  using dst = new DatabaseSync(":memory:");
+  // @ts-ignore `readOnly` may not be in @types/node yet
+  dst.deserialize(buf, { readOnly: true });
+  assertEquals(
+    dst.prepare("SELECT value FROM t").get(),
+    { value: "read-only", __proto__: null },
+  );
+
+  assertThrows(
+    () => dst.exec("INSERT INTO t VALUES ('nope')"),
+    Error,
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.deserialize accepts Buffer", () => {
+  using src = new DatabaseSync(":memory:");
+  src.exec("CREATE TABLE t(value INTEGER)");
+  src.prepare("INSERT INTO t VALUES (?)").run(42);
+  const buf = Buffer.from(src.serialize());
+
+  using dst = new DatabaseSync(":memory:");
+  dst.deserialize(buf);
+  assertEquals(
+    dst.prepare("SELECT value FROM t").get(),
+    { value: 42, __proto__: null },
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.serialize/deserialize input validation", () => {
+  using db = new DatabaseSync(":memory:");
+
+  nodeAssert.throws(
+    // @ts-expect-error testing invalid input
+    () => db.serialize(123),
+    { code: "ERR_INVALID_ARG_TYPE" },
+  );
+
+  nodeAssert.throws(
+    // @ts-expect-error testing invalid input
+    () => db.deserialize("not a buffer"),
+    { code: "ERR_INVALID_ARG_TYPE" },
+  );
+
+  nodeAssert.throws(
+    // @ts-expect-error testing invalid input
+    () => db.deserialize(new Uint8Array([1, 2, 3]), 42),
+    { code: "ERR_INVALID_ARG_TYPE" },
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.serialize/deserialize after close", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE t(x INTEGER)");
+  db.close();
+
+  assertThrows(
+    () => db.serialize(),
+    Error,
+    "database is not open",
+  );
+
+  assertThrows(
+    () => db.deserialize(new Uint8Array(0)),
+    Error,
+    "database is not open",
+  );
+});
+
+Deno.test("[node/sqlite] DatabaseSync.deserialize corrupt header surfaces error on use", () => {
+  using db = new DatabaseSync(":memory:");
+  // sqlite3_deserialize accepts arbitrary bytes; the corruption only
+  // surfaces when the deserialized database is actually queried.
+  db.deserialize(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]));
+  assertThrows(
+    () => db.exec("CREATE TABLE t(x INTEGER)"),
+    Error,
+  );
+});
+
 Deno.test("[node/sqlite] calling StatementSync and Session methods after connection has closed", () => {
   const errMessage = "statement has been finalized";
   const errMessageClosed = "database is not open";
@@ -1202,29 +1341,29 @@ Deno.test("TagStore capacity, size, and clear", () => {
   db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
   sql.clear();
   assertStrictEquals(sql.capacity, 10);
-  assertStrictEquals(sql.size(), 0);
+  assertStrictEquals(sql.size, 0);
 
   assertStrictEquals(
     sql.run`INSERT INTO foo (text) VALUES (${"one"})`.changes,
     1,
   );
-  assertStrictEquals(sql.size(), 1);
+  assertStrictEquals(sql.size, 1);
 
   assert(sql.get`SELECT * FROM foo WHERE text = ${"one"}`);
-  assertStrictEquals(sql.size(), 2);
+  assertStrictEquals(sql.size, 2);
 
   // Using the same template string shouldn't increase the size
   assertStrictEquals(
     sql.get`SELECT * FROM foo WHERE text = ${"two"}`,
     undefined,
   );
-  assertStrictEquals(sql.size(), 2);
+  assertStrictEquals(sql.size, 2);
 
   assertStrictEquals(sql.all`SELECT * FROM foo`.length, 1);
-  assertStrictEquals(sql.size(), 3);
+  assertStrictEquals(sql.size, 3);
 
   sql.clear();
-  assertStrictEquals(sql.size(), 0);
+  assertStrictEquals(sql.size, 0);
   assertStrictEquals(sql.capacity, 10);
 });
 
@@ -1236,3 +1375,135 @@ Deno.test("sql.db returns the associated DatabaseSync instance", () => {
   sql.clear();
   assertStrictEquals(sql.db, db);
 });
+
+Deno.test("createTagStore throws error if database is not open", () => {
+  const db = new DatabaseSync(":memory:", { open: false });
+
+  assertThrows(
+    () => {
+      // @ts-expect-error createTagStore is a valid method
+      db.createTagStore(10);
+    },
+    Error,
+    "database is not open",
+  );
+});
+
+Deno.test("createTagStore: sql error messages are descriptive", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore(10);
+  db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY, text TEXT)");
+  sql.clear();
+  assertStrictEquals(
+    sql.run`INSERT INTO foo (text) VALUES (${"test"})`.changes,
+    1,
+  );
+
+  assertThrows(
+    () => sql.get`SELECT nonexistent_column FROM foo`,
+    Error,
+    "no such column",
+  );
+
+  assertThrows(
+    () => sql.get`SELECT * FROM nonexistent_table`,
+    Error,
+    "no such table",
+  );
+});
+
+Deno.test("createTagStore uses default capacity when not specified", () => {
+  using db = new DatabaseSync(":memory:");
+  // @ts-expect-error createTagStore is a valid method
+  const sql = db.createTagStore();
+  assertStrictEquals(sql.capacity, 1000);
+});
+
+// Regression test for denoland/orchid#330: closing the database from inside a
+// user-defined aggregate step callback used to free the in-flight statement
+// and connection while SQLite was still executing on the VDBE stack — a
+// native use-after-free. The close call must now throw instead of crashing,
+// and the connection must remain usable after the failed close.
+Deno.test(
+  "[node/sqlite] DatabaseSync.close from aggregate step throws instead of crashing",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE t(x); INSERT INTO t VALUES (1),(2),(3),(4),(5)");
+
+    const closeErrors: unknown[] = [];
+    db.aggregate("sum_with_close", {
+      start: 0,
+      step(acc, x) {
+        try {
+          db.close();
+        } catch (e) {
+          closeErrors.push(e);
+        }
+        return (acc as number) + (x as number);
+      },
+    });
+
+    // The SELECT runs to completion because the in-step error was caught,
+    // and the aggregate accumulates normally — no crash.
+    const result = db.prepare("SELECT sum_with_close(x) AS s FROM t").get() as {
+      s: number;
+    };
+    assertStrictEquals(result.s, 15);
+
+    nodeAssert.ok(
+      closeErrors.length > 0,
+      "expected db.close() inside step to throw at least once",
+    );
+    for (const err of closeErrors) {
+      nodeAssert.ok(err instanceof Error);
+      assertStrictEquals(
+        (err as { code?: string }).code,
+        "ERR_INVALID_STATE",
+      );
+    }
+
+    // Connection must still be usable after the refused close.
+    assertStrictEquals(db.isOpen, true);
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.close from scalar function throws instead of corrupting state",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE t(x); INSERT INTO t VALUES (1),(2),(3)");
+
+    const closeErrors: unknown[] = [];
+    db.function("touch", (x) => {
+      try {
+        db.close();
+      } catch (e) {
+        closeErrors.push(e);
+      }
+      return x;
+    });
+
+    const rows = db.prepare("SELECT touch(x) AS v FROM t ORDER BY x").all();
+    assertEquals(rows, [
+      { v: 1, __proto__: null },
+      { v: 2, __proto__: null },
+      { v: 3, __proto__: null },
+    ]);
+
+    nodeAssert.ok(
+      closeErrors.length > 0,
+      "expected db.close() inside scalar callback to throw",
+    );
+    for (const err of closeErrors) {
+      assertStrictEquals(
+        (err as { code?: string }).code,
+        "ERR_INVALID_STATE",
+      );
+    }
+
+    assertStrictEquals(db.isOpen, true);
+    db.close();
+  },
+);

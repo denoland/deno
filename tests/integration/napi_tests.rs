@@ -34,36 +34,40 @@ fn napi_build() {
   // cc module.c -undefined dynamic_lookup -shared -Wl,-no_fixup_chains -dynamic -o module.dylib
   #[cfg(not(target_os = "windows"))]
   {
-    let out = if cfg!(target_os = "macos") {
-      "module.dylib"
+    let suffix = if cfg!(target_os = "macos") {
+      "dylib"
     } else {
-      "module.so"
+      "so"
     };
 
-    let mut cc = Command::new("cc");
-    cc.current_dir(napi_tests_path());
+    for src in ["module.c", "module_legacy.c"] {
+      let out = format!("{}.{}", src.strip_suffix(".c").unwrap(), suffix);
 
-    #[cfg(not(target_os = "macos"))]
-    let c_module = cc.arg("module.c").arg("-shared").arg("-o").arg(out);
+      let mut cc = Command::new("cc");
+      cc.current_dir(napi_tests_path());
 
-    #[cfg(target_os = "macos")]
-    let c_module = {
-      cc.arg("module.c")
-        .arg("-undefined")
-        .arg("dynamic_lookup")
-        .arg("-shared")
-        .arg("-Wl,-no_fixup_chains")
-        .arg("-dynamic")
-        .arg("-o")
-        .arg(out)
-    };
-    let c_module_output = c_module.output().unwrap();
-    assert!(
-      c_module_output.status.success(),
-      "cc failed:\nstdout: {}\nstderr: {}",
-      String::from_utf8_lossy(&c_module_output.stdout),
-      String::from_utf8_lossy(&c_module_output.stderr)
-    );
+      #[cfg(not(target_os = "macos"))]
+      let c_module = cc.arg(src).arg("-shared").arg("-o").arg(&out);
+
+      #[cfg(target_os = "macos")]
+      let c_module = {
+        cc.arg(src)
+          .arg("-undefined")
+          .arg("dynamic_lookup")
+          .arg("-shared")
+          .arg("-Wl,-no_fixup_chains")
+          .arg("-dynamic")
+          .arg("-o")
+          .arg(&out)
+      };
+      let c_module_output = c_module.output().unwrap();
+      assert!(
+        c_module_output.status.success(),
+        "cc failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&c_module_output.stdout),
+        String::from_utf8_lossy(&c_module_output.stderr)
+      );
+    }
   }
 }
 
@@ -77,6 +81,7 @@ fn napi_tests() {
     .env("RUST_BACKTRACE", "1")
     .arg("test")
     .arg("--allow-read")
+    .arg("--allow-write")
     .arg("--allow-env")
     .arg("--allow-ffi")
     .arg("--allow-run")
@@ -133,5 +138,70 @@ fn napi_wrap_leak_pointers_finalizer_on_shutdown() {
     stdout.contains("pointers released on shutdown"),
     "Expected wrap finalizer to run at shutdown, got stdout: {}",
     stdout
+  );
+}
+
+/// Test napi_fatal_error: calling it should abort the process and log the
+/// error message to stderr.
+#[test_util::test]
+fn napi_fatal_error() {
+  napi_build();
+
+  let output = deno_cmd()
+    .current_dir(napi_tests_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("fatal_error.js")
+    .envs(env_vars_for_npm_tests())
+    .output()
+    .unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+  // Process should have been killed (abort signal)
+  assert!(
+    !output.status.success(),
+    "Expected process to abort, but it exited successfully"
+  );
+  assert!(
+    stderr.contains("NODE API FATAL ERROR"),
+    "Expected fatal error message in stderr, got: {}",
+    stderr
+  );
+}
+
+/// Test napi_fatal_exception: calling it should trigger the uncaught
+/// exception handler and exit with a non-zero code.
+#[test_util::test]
+fn napi_fatal_exception() {
+  napi_build();
+
+  let output = deno_cmd()
+    .current_dir(napi_tests_path())
+    .arg("run")
+    .arg("--allow-read")
+    .arg("--allow-env")
+    .arg("--allow-ffi")
+    .arg("--config")
+    .arg(deno_config_path())
+    .arg("--no-lock")
+    .arg("fatal_exception.js")
+    .envs(env_vars_for_npm_tests())
+    .output()
+    .unwrap();
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
+  assert!(
+    !output.status.success(),
+    "Expected process to exit with error, but it succeeded"
+  );
+  assert!(
+    stderr.contains("fatal exception test"),
+    "Expected error message in stderr, got: {}",
+    stderr
   );
 }

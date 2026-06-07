@@ -36,7 +36,6 @@ pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
-pub use consts::tsgo_prebuilt_path;
 pub use fs::PathRef;
 pub use fs::TempDir;
 #[cfg(feature = "lsp")]

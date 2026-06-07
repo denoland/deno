@@ -11,6 +11,14 @@ rustflags = [
   "link-arg=/STACK:4194304",
 ]
 
+[target.'cfg(all(windows, not(debug_assertions)))']
+rustflags = [
+  "-C",
+  # /OPT:ICF folds identical functions (MSVC equivalent of lld's --icf). rustc already
+  # enables /OPT:REF,ICF for optimized builds; set explicitly to mirror the unix ICF win.
+  "link-arg=/OPT:ICF",
+]
+
 [target.x86_64-apple-darwin]
 rustflags = [
   "-C",
@@ -20,7 +28,8 @@ rustflags = [
 [target.aarch64-apple-darwin]
 rustflags = [
   "-C",
-  "link-args=-fuse-ld=lld -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  # --icf=safe folds identical (address-insignificant) functions; ~6MB (~10%) idle RSS win, measured on release.
+  "link-args=-fuse-ld=lld -Wl,--icf=safe -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
 ]
 
 [target.'cfg(all())']

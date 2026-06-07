@@ -156,15 +156,16 @@ for (
   });
 
   Deno.test({
-    name: `generate ec key ${namedCurve} paramEncoding=explicit fails`,
+    name: `generate ec key ${namedCurve} paramEncoding=explicit`,
     fn() {
-      assertThrows(() => {
-        // @ts-ignore: @types/node is broken?
-        generateKeyPairSync("ec", {
-          namedCurve,
-          paramEncoding: "explicit",
-        });
+      // @ts-ignore: @types/node is broken?
+      const { publicKey, privateKey } = generateKeyPairSync("ec", {
+        namedCurve,
+        paramEncoding: "explicit",
       });
+
+      assertEquals(publicKey.type, "public");
+      assertEquals(privateKey.type, "private");
     },
   });
 }
@@ -714,7 +715,7 @@ Deno.test("generateKeyPair promisify", async () => {
   });
 
   assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
-  assert(privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+  assert(privateKey.startsWith("-----BEGIN ENCRYPTED PRIVATE KEY-----"));
 });
 
 Deno.test("RSA export private JWK", function () {
@@ -1226,4 +1227,95 @@ Deno.test("EC private key SEC1 round-trip for all curves", () => {
       `sign/verify failed for ${namedCurve}`,
     );
   }
+});
+
+// --- CryptoKey input tests ---
+
+const rsaCryptoKeyPair = await crypto.subtle.generateKey(
+  {
+    name: "RSASSA-PKCS1-v1_5",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+    hash: "SHA-256",
+  },
+  true,
+  ["sign", "verify"],
+);
+
+const ecCryptoKeyPair = await crypto.subtle.generateKey(
+  { name: "ECDSA", namedCurve: "P-256" },
+  true,
+  ["sign", "verify"],
+);
+
+const hmacCryptoKey = await crypto.subtle.generateKey(
+  { name: "HMAC", hash: "SHA-256", length: 256 },
+  true,
+  ["sign", "verify"],
+);
+
+Deno.test("createPublicKey from RSA CryptoKey (public)", function () {
+  const key = createPublicKey(rsaCryptoKeyPair.publicKey as any);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "rsa");
+});
+
+Deno.test("createPublicKey from RSA CryptoKey (private derives public)", function () {
+  const key = createPublicKey(rsaCryptoKeyPair.privateKey as any);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "rsa");
+});
+
+Deno.test("createPrivateKey from RSA CryptoKey direct", function () {
+  const key = createPrivateKey(rsaCryptoKeyPair.privateKey as any);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "rsa");
+});
+
+Deno.test("createPrivateKey from RSA CryptoKey via { key }", function () {
+  const key = createPrivateKey({ key: rsaCryptoKeyPair.privateKey as any });
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "rsa");
+});
+
+Deno.test("createPublicKey from RSA CryptoKey round-trips to PEM", function () {
+  const key = createPublicKey(rsaCryptoKeyPair.publicKey as any);
+  const pem = key.export({ type: "spki", format: "pem" }) as string;
+  assert(pem.startsWith("-----BEGIN PUBLIC KEY-----"));
+  assert(pem.trimEnd().endsWith("-----END PUBLIC KEY-----"));
+});
+
+Deno.test("createPublicKey from EC P-256 CryptoKey", function () {
+  const key = createPublicKey(ecCryptoKeyPair.publicKey as any);
+  assertEquals(key.type, "public");
+  assertEquals(key.asymmetricKeyType, "ec");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "prime256v1");
+});
+
+Deno.test("createPrivateKey from EC P-256 CryptoKey", function () {
+  const key = createPrivateKey(ecCryptoKeyPair.privateKey as any);
+  assertEquals(key.type, "private");
+  assertEquals(key.asymmetricKeyType, "ec");
+  assertEquals(key.asymmetricKeyDetails?.namedCurve, "prime256v1");
+});
+
+Deno.test("createSecretKey from HMAC CryptoKey", function () {
+  const key = createSecretKey(hmacCryptoKey as any);
+  assertEquals(key.type, "secret");
+  assertEquals(key.symmetricKeySize, 32);
+});
+
+Deno.test("createSecretKey rejects asymmetric CryptoKey", function () {
+  assertThrows(
+    () => createSecretKey(rsaCryptoKeyPair.publicKey as any),
+    TypeError,
+    "secret",
+  );
+});
+
+Deno.test("createPrivateKey rejects public CryptoKey", function () {
+  assertThrows(
+    () => createPrivateKey(rsaCryptoKeyPair.publicKey as any),
+    TypeError,
+  );
 });
