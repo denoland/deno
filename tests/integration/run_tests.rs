@@ -1648,6 +1648,19 @@ mod permissions {
       });
   }
 
+  #[test]
+  fn prompt_esc_cancel_pty() {
+    TestContext::default()
+      .new_command()
+      .args_vec(["run", "--quiet", "run/prompt_esc_cancel.ts"])
+      .with_pty(|mut console| {
+        console.expect("Cancel me default");
+        console.write_raw("\x1b"); // Esc
+        console.expect("answer=null");
+        console.expect("after prompt");
+      });
+  }
+
   #[test(flaky)]
   fn _066_prompt() {
     TestContext::default()
