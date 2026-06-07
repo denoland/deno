@@ -114,9 +114,10 @@ Deno.test(
       Deno.UnsafePointer.of(new Uint8Array(sab)),
     );
     assertEquals(baseAddress, uint8Address);
-    // An empty buffer has no backing memory, so it resolves to the null pointer,
-    // matching the behavior of an empty `ArrayBuffer`.
+    // An empty buffer resolves to the null pointer, matching the behavior of
+    // an empty `ArrayBuffer`.
     assertEquals(Deno.UnsafePointer.of(new SharedArrayBuffer(0)), null);
+    assertEquals(Deno.UnsafePointer.of(new ArrayBuffer(0)), null);
   },
 );
 

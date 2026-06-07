@@ -388,6 +388,33 @@ assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(ext
 assertNotEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) === null");
 assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), null, "Deno.UnsafePointer.of(externalOneBuffer) === null");
 
+// ==== SharedArrayBuffer TESTS ====
+// `SharedArrayBuffer`-backed buffers go through the same `buffer` marshalling
+// path as `ArrayBuffer`-backed ones when passed to a real symbol.
+const sabBuffer = new Uint8Array(new SharedArrayBuffer(8));
+assertEquals(isNullBuffer(sabBuffer), false, "isNullBuffer(sabBuffer) !== false");
+assertEquals(
+  isNullBufferDeopt(sabBuffer),
+  false,
+  "isNullBufferDeopt(sabBuffer) !== false",
+);
+assertNotEquals(
+  Deno.UnsafePointer.of(sabBuffer),
+  null,
+  "Deno.UnsafePointer.of(sabBuffer) === null",
+);
+// A bare `SharedArrayBuffer` is also accepted by `UnsafePointer.of`.
+assertNotEquals(
+  Deno.UnsafePointer.of(new SharedArrayBuffer(8)),
+  null,
+  "Deno.UnsafePointer.of(new SharedArrayBuffer(8)) === null",
+);
+assertEquals(
+  Deno.UnsafePointer.of(new SharedArrayBuffer(0)),
+  null,
+  "Deno.UnsafePointer.of(new SharedArrayBuffer(0)) !== null",
+);
+
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
   parameters: ["u32", "u32"],
