@@ -1,5 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![allow(clippy::disallowed_methods, reason = "build script")]
+
 use std::env;
 use std::fs;
 use std::path::PathBuf;

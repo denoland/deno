@@ -31,13 +31,16 @@ impl FetchHandler for FsFetchHandler {
     url: &Url,
   ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let cancel_handle = CancelHandle::new_rc();
-    let Ok(path) = url.to_file_path() else {
-      return (
-        async move { Err(super::FetchError::NetworkError) }
-          .or_cancel(&cancel_handle)
-          .boxed_local(),
-        Some(cancel_handle),
-      );
+    let path = match deno_path_util::url_to_file_path(url) {
+      Ok(path) => path,
+      Err(err) => {
+        return (
+          async move { Err(super::FetchError::UrlToFilePath(err)) }
+            .or_cancel(&cancel_handle)
+            .boxed_local(),
+          Some(cancel_handle),
+        );
+      }
     };
     let fs = state.borrow::<FileSystemRc>().clone();
     let path = state

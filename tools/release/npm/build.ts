@@ -164,6 +164,10 @@ if (args.publish || args["publish-only"]) {
       continue;
     }
     const pkgDir = scopeDir.join(pkgName);
+    // ensure the binary is executable in the tarball
+    if (pkg.os !== "win32") {
+      await $`chmod +x ${pkgDir.join("deno")}`;
+    }
     await $`cd ${pkgDir} && npm publish --provenance --access public`;
   }
 

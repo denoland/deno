@@ -15,8 +15,18 @@
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.broadcast_channel" />
+/// <reference lib="node" />
 
-/** @category Wasm */
+/** The `WebAssembly` JavaScript object acts as the namespace for all
+ * [WebAssembly](https://developer.mozilla.org/en-US/docs/WebAssembly)-related
+ * functionality. Unlike most global objects, it is not a constructor; it groups
+ * the functions used to compile and instantiate WebAssembly modules together
+ * with the classes (`Module`, `Instance`, `Memory`, `Table`, `Global`) and
+ * error types used to work with them.
+ *
+ * [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WebAssembly)
+ *
+ * @category Wasm */
 declare namespace WebAssembly {
   /**
    * The `WebAssembly.CompileError` object indicates an error during WebAssembly decoding or validation.
@@ -186,7 +196,10 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface GlobalDescriptor {
+    /** Whether the global variable can be modified after creation. Defaults to
+     * `false`. */
     mutable?: boolean;
+    /** The data type of the global variable. */
     value: ValueType;
   }
 
@@ -196,8 +209,14 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface MemoryDescriptor {
+    /** The initial size of the memory, in units of WebAssembly pages (64KB
+     * each). */
     initial: number;
+    /** The maximum size the memory is allowed to grow to, in units of
+     * WebAssembly pages. */
     maximum?: number;
+    /** Whether the memory is shared between agents (backed by a
+     * `SharedArrayBuffer`). Defaults to `false`. */
     shared?: boolean;
   }
 
@@ -207,7 +226,9 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface ModuleExportDescriptor {
+    /** The kind of entity being exported. */
     kind: ImportExportKind;
+    /** The name under which the entity is exported. */
     name: string;
   }
 
@@ -217,8 +238,11 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface ModuleImportDescriptor {
+    /** The kind of entity being imported. */
     kind: ImportExportKind;
+    /** The name of the module the entity is imported from. */
     module: string;
+    /** The name of the imported entity within its module. */
     name: string;
   }
 
@@ -228,8 +252,11 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface TableDescriptor {
+    /** The type of value stored in the table. */
     element: TableKind;
+    /** The initial number of elements in the table. */
     initial: number;
+    /** The maximum number of elements the table is allowed to grow to. */
     maximum?: number;
   }
 
@@ -238,7 +265,7 @@ declare namespace WebAssembly {
    * @category Wasm
    */
   export interface WebAssemblyInstantiatedSource {
-    /* A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
+    /** A `WebAssembly.Instance` object that contains all the exported WebAssembly functions. */
     instance: Instance;
 
     /**
@@ -248,21 +275,39 @@ declare namespace WebAssembly {
     module: Module;
   }
 
-  /** @category Wasm */
+  /** The kind of entity referenced by a module import or export descriptor.
+   *
+   * @category Wasm */
   export type ImportExportKind = "function" | "global" | "memory" | "table";
-  /** @category Wasm */
+  /** The type of value stored in a `WebAssembly.Table`.
+   *
+   * @category Wasm */
   export type TableKind = "anyfunc";
-  /** @category Wasm */
+  /** The data type of a WebAssembly value, used to describe globals.
+   *
+   * @category Wasm */
   export type ValueType = "f32" | "f64" | "i32" | "i64";
-  /** @category Wasm */
+  /** A value that can be exported from a WebAssembly module instance.
+   *
+   * @category Wasm */
   export type ExportValue = Function | Global | Memory | Table;
-  /** @category Wasm */
+  /** The set of values exported by a WebAssembly module instance, keyed by
+   * export name.
+   *
+   * @category Wasm */
   export type Exports = Record<string, ExportValue>;
-  /** @category Wasm */
+  /** A value that can be supplied to a WebAssembly module as an import.
+   *
+   * @category Wasm */
   export type ImportValue = ExportValue | number;
-  /** @category Wasm */
+  /** The set of values imported from a single module, keyed by import name.
+   *
+   * @category Wasm */
   export type ModuleImports = Record<string, ImportValue>;
-  /** @category Wasm */
+  /** The import object supplied when instantiating a WebAssembly module,
+   * grouping imported values by module name.
+   *
+   * @category Wasm */
   export type Imports = Record<string, ModuleImports>;
 
   /**
@@ -352,61 +397,6 @@ declare namespace WebAssembly {
   export function validate(bytes: BufferSource): boolean;
 }
 
-/** Sets a timer which executes a function once after the delay (in milliseconds) elapses. Returns
- * an id which may be used to cancel the timeout.
- *
- * ```ts
- * setTimeout(() => { console.log('hello'); }, 500);
- * ```
- *
- * @category Platform
- */
-declare function setTimeout(
-  cb: string | ((...args: any[]) => void),
-  delay?: number,
-  ...args: any[]
-): number;
-
-/** Repeatedly calls a function , with a fixed time delay between each call.
- *
- * ```ts
- * // Outputs 'hello' to the console every 500ms
- * setInterval(() => { console.log('hello'); }, 500);
- * ```
- *
- * @category Platform
- */
-declare function setInterval(
-  cb: string | ((...args: any[]) => void),
-  delay?: number,
-  ...args: any[]
-): number;
-
-/** Cancels a timed, repeating action which was previously started by a call
- * to `setInterval()`
- *
- * ```ts
- * const id = setInterval(() => {console.log('hello');}, 500);
- * // ...
- * clearInterval(id);
- * ```
- *
- * @category Platform
- */
-declare function clearInterval(id?: number): void;
-
-/** Cancels a scheduled action initiated by `setTimeout()`
- *
- * ```ts
- * const id = setTimeout(() => {console.log('hello');}, 500);
- * // ...
- * clearTimeout(id);
- * ```
- *
- * @category Platform
- */
-declare function clearTimeout(id?: number): void;
-
 /** @category Platform */
 interface VoidFunction {
   (): void;
@@ -439,23 +429,6 @@ declare function queueMicrotask(func: VoidFunction): void;
  */
 declare function dispatchEvent(event: Event): boolean;
 
-/** @category Platform */
-interface DOMStringList {
-  /** Returns the number of strings in strings. */
-  readonly length: number;
-  /** Returns true if strings contains string, and false otherwise. */
-  contains(string: string): boolean;
-  /** Returns the string with index index from strings. */
-  item(index: number): string | null;
-  [index: number]: string;
-}
-
-/** @category Platform */
-type BufferSource = ArrayBufferView<ArrayBuffer> | ArrayBuffer;
-
-/** @category Platform */
-type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
-
 /**
  * A global console object that provides methods for logging, debugging, and error reporting.
  * The console object provides access to the browser's or runtime's debugging console functionality.
@@ -475,6 +448,23 @@ type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
  */
 declare var console: Console;
 
+/** @category Platform */
+interface DOMStringList {
+  /** Returns the number of strings in strings. */
+  readonly length: number;
+  /** Returns true if strings contains string, and false otherwise. */
+  contains(string: string): boolean;
+  /** Returns the string with index index from strings. */
+  item(index: number): string | null;
+  [index: number]: string;
+}
+
+/** @category Platform */
+type BufferSource = ArrayBufferView<ArrayBuffer> | ArrayBuffer;
+
+/** @category Platform */
+type AllowSharedBufferSource = ArrayBufferView | ArrayBufferLike;
+
 /** @category Events */
 interface ErrorEventInit extends EventInit {
   message?: string;
@@ -493,7 +483,11 @@ interface ErrorEvent extends Event {
   readonly error: any;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode ErrorEvent}, used to construct an
+ * event describing an uncaught error, such as the one dispatched on the global
+ * scope as `error`.
+ *
+ * @category Events */
 declare var ErrorEvent: {
   readonly prototype: ErrorEvent;
   new (type: string, eventInitDict?: ErrorEventInit): ErrorEvent;
@@ -511,7 +505,11 @@ interface PromiseRejectionEvent extends Event {
   readonly reason: any;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode PromiseRejectionEvent}, used to
+ * construct the event dispatched on the global scope as `unhandledrejection`
+ * and `rejectionhandled` when a promise is rejected without a handler.
+ *
+ * @category Events */
 declare var PromiseRejectionEvent: {
   readonly prototype: PromiseRejectionEvent;
   new (
@@ -791,13 +789,22 @@ interface Performance extends EventTarget {
   toJSON(): any;
 }
 
-/** @category Performance */
+/** The constructor object for {@linkcode Performance}.
+ *
+ * The `Performance` instance is accessed via the global {@linkcode performance}
+ * property rather than constructed directly, so calling the constructor throws.
+ *
+ * @category Performance */
 declare var Performance: {
   readonly prototype: Performance;
   new (): never;
 };
 
-/** @category Performance */
+/** The global {@linkcode Performance} instance, providing access to
+ * high-resolution timing via `performance.now()` and the user-timing marks and
+ * measures APIs.
+ *
+ * @category Performance */
 declare var performance: Performance;
 
 /** @category Performance */
@@ -912,7 +919,11 @@ interface CustomEvent<T = any> extends Event {
   readonly detail: T;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode CustomEvent}, used to construct an
+ * event that can carry arbitrary application-defined data via its `detail`
+ * property.
+ *
+ * @category Events */
 declare var CustomEvent: {
   readonly prototype: CustomEvent;
   new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
@@ -938,3 +949,40 @@ declare function fetch(
   input: RequestInfo | URL,
   init?: RequestInit & { client?: Deno.HttpClient },
 ): Promise<Response>;
+
+/** @category Platform */
+interface Math {
+  /**
+   * Returns the sum of the given values using a more precise algorithm than a
+   * naive `+`-based reduction, avoiding the floating-point rounding errors
+   * that accumulate when summing many numbers.
+   *
+   * [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/sumPrecise)
+   */
+  sumPrecise(values: Iterable<number>): number;
+}
+
+/** The `Intl` namespace groups the
+ * [ECMAScript Internationalization API](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl)
+ * constructors and functions.
+ *
+ * This declaration augments the standard `Intl` namespace with members that are
+ * not yet part of the bundled TypeScript library definitions.
+ *
+ * @category Intl */
+declare namespace Intl {
+  /** Augments the standard {@linkcode Intl.Locale} interface with members not
+   * yet present in the bundled TypeScript library definitions.
+   *
+   * @category Intl */
+  export interface Locale {
+    /**
+     * Returns the variant subtags of the locale as a single string, with
+     * subtags separated by `-`. Returns `undefined` if the locale has no
+     * variant subtags.
+     *
+     * [MDN Reference](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Locale/variants)
+     */
+    readonly variants: string | undefined;
+  }
+}

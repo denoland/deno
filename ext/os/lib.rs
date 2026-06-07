@@ -43,8 +43,31 @@ impl ExitCode {
 
 pub fn exit(code: i32) -> ! {
   deno_signals::run_exit();
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "exit is the intended behavior"
+  )]
   std::process::exit(code);
+}
+
+/// Callbacks to run before the process exits via `Deno.exit()`.
+///
+/// Used to flush CPU profiling data and coverage data that would otherwise
+/// be lost when `Deno.exit()` calls `std::process::exit()` directly,
+/// bypassing normal cleanup in the worker's run loop.
+#[derive(Default)]
+pub struct OpExitCallbacks(Vec<Box<dyn FnMut()>>);
+
+impl OpExitCallbacks {
+  pub fn push(&mut self, cb: Box<dyn FnMut()>) {
+    self.0.push(cb);
+  }
+
+  fn run(&mut self) {
+    for cb in self.0.iter_mut() {
+      cb();
+    }
+  }
 }
 
 deno_core::extension!(
@@ -73,7 +96,7 @@ deno_core::extension!(
     ops::signal::op_signal_unbind,
     ops::signal::op_signal_poll,
   ],
-  esm = ["30_os.js", "40_signals.js"],
+  lazy_loaded_js = ["30_os.js", "40_signals.js"],
   options = {
     exit_code: Option<ExitCode>,
   },
@@ -168,7 +191,10 @@ fn op_set_env(
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
 
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "env::set_var is unsafe since Rust 1.66"
+  )]
   unsafe {
     env::set_var(key, value)
   };
@@ -197,10 +223,16 @@ fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
   fn map_kv(kv: (OsString, OsString)) -> Option<(String, String)> {
-    kv.0
-      .into_string()
-      .ok()
-      .and_then(|key| kv.1.into_string().ok().map(|value| (key, value)))
+    let key = kv.0.into_string().ok()?;
+    // Skip keys that `Deno.env.get`/`set`/`delete` would reject, so that
+    // enumeration stays consistent with the rest of the API. On Windows,
+    // cmd.exe exposes hidden per-drive cwd variables such as `=C:` which
+    // contain `=` and are not meant to be surfaced to users.
+    if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+      return None;
+    }
+    let value = kv.1.into_string().ok()?;
+    Some((key, value))
   }
 
   let permissions_container = state.borrow::<PermissionsContainer>();
@@ -292,7 +324,10 @@ fn op_delete_env(
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
 
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "env::remove_var is unsafe since Rust 1.66"
+  )]
   unsafe {
     env::remove_var(key)
   };
@@ -317,13 +352,15 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
+  if let Some(cbs) = state.try_borrow_mut::<OpExitCallbacks>() {
+    cbs.run();
+  }
   if let Some(exit_code) = state.try_borrow::<ExitCode>() {
     exit(exit_code.get())
   }
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_loadavg(
   state: &mut OpState,
 ) -> Result<(f64, f64, f64), PermissionCheckError> {
@@ -403,7 +440,6 @@ impl From<netif::Interface> for NetworkInterface {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<sys_info::MemInfo>, PermissionCheckError> {
@@ -421,7 +457,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(clippy::undocumented_unsafe_blocks, reason = "libc call")]
   unsafe {
     Ok(Some(libc::getgid()))
   }
@@ -445,7 +481,7 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(clippy::undocumented_unsafe_blocks, reason = "libc call")]
   unsafe {
     Ok(Some(libc::getuid()))
   }
@@ -494,13 +530,13 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 
 #[cfg(windows)]
 fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::minwindef::FILETIME;
-  use winapi::shared::minwindef::TRUE;
-  use winapi::um::minwinbase::SYSTEMTIME;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::processthreadsapi::GetProcessTimes;
-  use winapi::um::timezoneapi::FileTimeToSystemTime;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::Foundation::FILETIME;
+  use windows_sys::Win32::Foundation::SYSTEMTIME;
+  use windows_sys::Win32::Foundation::TRUE;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+  use windows_sys::Win32::System::Threading::GetProcessTimes;
+  use windows_sys::Win32::System::Time::FileTimeToSystemTime;
 
   fn convert_system_time(system_time: SYSTEMTIME) -> std::time::Duration {
     std::time::Duration::from_secs(
@@ -515,7 +551,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   let mut kernel_time = std::mem::MaybeUninit::<FILETIME>::uninit();
   let mut user_time = std::mem::MaybeUninit::<FILETIME>::uninit();
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   let ret = unsafe {
     GetProcessTimes(
       GetCurrentProcess(),
@@ -614,7 +650,10 @@ fn rss() -> u64 {
     (out, idx)
   }
 
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "reading /proc/self requires direct fs access"
+  )]
   let statm_content = if let Ok(c) = std::fs::read_to_string("/proc/self/statm")
   {
     c
@@ -713,13 +752,12 @@ fn rss() -> u64 {
 
 #[cfg(windows)]
 fn rss() -> u64 {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::psapi::GetProcessMemoryInfo;
-  use winapi::um::psapi::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::System::ProcessStatus::GetProcessMemoryInfo;
+  use windows_sys::Win32::System::ProcessStatus::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   unsafe {
     // this handle is a constant—no need to close it
     let current_process = GetCurrentProcess();
@@ -728,7 +766,7 @@ fn rss() -> u64 {
     if GetProcessMemoryInfo(
       current_process,
       &mut pmc,
-      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
+      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
     ) != FALSE
     {
       pmc.WorkingSetSize as u64

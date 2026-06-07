@@ -7,7 +7,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   Error,
   ErrorPrototype,
@@ -19,12 +20,24 @@ const {
   ObjectSetPrototypeOf,
   ReflectConstruct,
   ReflectHas,
+  RangeError,
   Symbol,
   SymbolFor,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "./01_console.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+
+// Lazy-load createFilteredInspectProxy from console to avoid
+// circular dependency at load time. Only needed for custom inspect.
+let _createFilteredInspectProxy;
+function getCreateFilteredInspectProxy() {
+  if (!_createFilteredInspectProxy) {
+    _createFilteredInspectProxy = core.loadExtScript(
+      "ext:deno_web/01_console.js",
+    ).createFilteredInspectProxy;
+  }
+  return _createFilteredInspectProxy;
+}
 
 const _name = Symbol("name");
 const _message = Symbol("message");
@@ -137,6 +150,18 @@ class DOMException {
     error[_name] = name;
     error[_code] = code;
     error[webidl.brand] = webidl.brand;
+    ObjectDefineProperty(error, core.hostObjectBrand, {
+      __proto__: null,
+      value: () => ({
+        type: "DOMException",
+        message,
+        name,
+        stack: error.stack,
+      }),
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
 
     return error;
   }
@@ -164,7 +189,7 @@ class DOMException {
       }
     }
     return inspect(
-      createFilteredInspectProxy({
+      getCreateFilteredInspectProxy()({
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(DOMExceptionPrototype, this),
         keys: [
@@ -217,4 +242,87 @@ for (let i = 0; i < entries.length; ++i) {
   ObjectDefineProperty(DOMException.prototype, key, desc);
 }
 
-export { DOMException, DOMExceptionPrototype };
+core.registerCloneableResource("DOMException", (data) => {
+  const ex = new DOMException(data.message, data.name);
+  if (data.stack !== undefined) {
+    ObjectDefineProperty(ex, "stack", {
+      __proto__: null,
+      value: data.stack,
+      configurable: true,
+      writable: true,
+      enumerable: false,
+    });
+  }
+  return ex;
+});
+
+const _quota = Symbol("quota");
+const _requested = Symbol("requested");
+
+// Defined in WebIDL 4.3.1.
+// https://webidl.spec.whatwg.org/#quotaexceedederror
+class QuotaExceededError extends DOMException {
+  [_quota];
+  [_requested];
+
+  constructor(message = "", options = { __proto__: null }) {
+    super(message, "QuotaExceededError");
+
+    if (options !== null && typeof options === "object") {
+      if (ObjectHasOwn(options, "quota")) {
+        const quota = webidl.converters["unrestricted double"](
+          options.quota,
+          "Failed to construct 'QuotaExceededError'",
+          "'quota' member of QuotaExceededErrorOptions",
+        );
+        if (quota < 0) {
+          throw new RangeError(
+            "Failed to construct 'QuotaExceededError': quota must not be negative",
+          );
+        }
+        this[_quota] = quota;
+      } else {
+        this[_quota] = null;
+      }
+      if (ObjectHasOwn(options, "requested")) {
+        const requested = webidl.converters["unrestricted double"](
+          options.requested,
+          "Failed to construct 'QuotaExceededError'",
+          "'requested' member of QuotaExceededErrorOptions",
+        );
+        if (requested < 0) {
+          throw new RangeError(
+            "Failed to construct 'QuotaExceededError': requested must not be negative",
+          );
+        }
+        this[_requested] = requested;
+      } else {
+        this[_requested] = null;
+      }
+    } else {
+      this[_quota] = null;
+      this[_requested] = null;
+    }
+  }
+
+  get quota() {
+    webidl.assertBranded(this, QuotaExceededErrorPrototype);
+    return this[_quota];
+  }
+
+  get requested() {
+    webidl.assertBranded(this, QuotaExceededErrorPrototype);
+    return this[_requested];
+  }
+}
+
+webidl.configureInterface(QuotaExceededError);
+const QuotaExceededErrorPrototype = QuotaExceededError.prototype;
+
+return {
+  DOMException,
+  DOMExceptionPrototype,
+  QuotaExceededError,
+  QuotaExceededErrorPrototype,
+};
+})();

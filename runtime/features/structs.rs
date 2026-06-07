@@ -7,7 +7,7 @@ pub enum UnstableFeatureKind {
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "it's used, but somehow warns")]
 pub struct UnstableFeatureDefinition {
   pub name: &'static str,
   pub flag_name: &'static str,

@@ -1,0 +1,12 @@
+{
+  "name": "@test/jsx-precompile",
+  "version": "1.0.0",
+  "exports": "./mod.tsx",
+  "imports": {
+    "preact": "npm:preact@^10.19"
+  },
+  "compilerOptions": {
+    "jsx": "precompile",
+    "jsxImportSource": "preact"
+  }
+}

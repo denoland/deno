@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::future::Future;
@@ -9,6 +10,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -38,6 +40,7 @@ use crate::util::fs::canonicalize_path;
 
 const CLEAR_SCREEN: &str = "\x1B[H\x1B[2J\x1B[3J";
 const DEBOUNCE_INTERVAL: Duration = Duration::from_millis(200);
+const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(500);
 
 struct DebouncedReceiver {
   // The `recv()` call could be used in a tokio `select!` macro,
@@ -61,9 +64,7 @@ impl DebouncedReceiver {
 
   async fn recv(&mut self) -> Option<Vec<PathBuf>> {
     if self.received_items.is_empty() {
-      self
-        .received_items
-        .extend(self.receiver.recv().await?.into_iter());
+      self.received_items.extend(self.receiver.recv().await?);
     }
 
     loop {
@@ -141,7 +142,7 @@ impl PrintConfig {
 
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "want to clear the terminal")]
     if clear_screen && std::io::stderr().is_terminal() {
       eprint!("{}", CLEAR_SCREEN);
     }
@@ -304,11 +305,13 @@ where
   ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
-  let initial_cwd_url = flags
-    .initial_cwd
+  let initial_cwd = crate::util::env::resolve_cwd(flags.initial_cwd.as_deref())
+    .map(|cwd| cwd.into_owned())
+    .ok();
+  let initial_cwd_url = initial_cwd
     .as_ref()
     .and_then(|path| deno_path_util::url_from_directory_path(path).ok());
-  let exclude_set = flags.resolve_watch_exclude_set()?;
+  let exclude_set = Arc::new(flags.resolve_watch_exclude_set()?);
   let (paths_to_watch_tx, mut paths_to_watch_rx) =
     tokio::sync::mpsc::unbounded_channel();
   let (restart_tx, mut restart_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -359,7 +362,15 @@ where
       tokio::task::yield_now().await;
     }
 
-    let mut watcher = new_watcher(watcher_sender.clone())?;
+    // The previous iteration of the watched program may have changed the
+    // process's working directory (e.g. via `Deno.chdir()`). Restore it
+    // before starting the next run so that module resolution, watched
+    // paths, and `Deno.cwd()` all behave as they did on the first run.
+    if let Some(initial_cwd) = &initial_cwd {
+      let _ = std::env::set_current_dir(initial_cwd);
+    }
+
+    let mut watcher = new_watcher(watcher_sender.clone(), exclude_set.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
 
     let receiver_future = async {
@@ -368,20 +379,18 @@ where
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap(), &exclude_set);
       }
     };
-    let env_file_paths: Option<Vec<PathBuf>> =
-      flags.env_file.as_ref().map(|files| {
-        files
-          .iter()
-          .map(|file| match flags.initial_cwd.as_ref() {
-            Some(cwd) => cwd.join(file),
-            None => PathBuf::from(file),
-          })
-          .collect()
-      });
-    WatchEnvTracker::snapshot().load_env_variables_from_env_files(
-      env_file_paths.as_ref(),
-      flags.log_level,
-    );
+    let snapshot = WatchEnvTracker::snapshot();
+    if let Some(env_files) = &flags.env_file {
+      let cwd = initial_cwd
+        .as_deref()
+        .map(Cow::Borrowed)
+        .unwrap_or_else(|| Cow::Owned(PathBuf::from(".")));
+      snapshot.load_env_variables_from_env_files(
+        &cwd,
+        env_files,
+        flags.log_level,
+      );
+    }
     let operation_future = error_handler(
       operation(
         flags.clone(),
@@ -399,17 +408,55 @@ where
       });
     }
 
+    tokio::pin!(operation_future);
+
     select! {
       _ = receiver_future => {},
       _ = deno_signals::ctrl_c() => {
+        // Dispatch SIGINT (matching what Ctrl+C normally sends) and
+        // SIGTERM to give JS code a chance for async cleanup. Some
+        // libraries only listen for SIGINT, others for SIGTERM.
+        // Note: `raise()` works on all platforms (including Windows)
+        // because it synthetically invokes registered JS handlers via
+        // `handle_signal()` rather than using OS-level signal delivery.
+        //
+        // Use bitwise OR (not `||`) to ensure both signals are always
+        // raised regardless of whether the first one has handlers.
+        let has_handlers = deno_signals::raise(deno_signals::SIGINT)
+          | deno_signals::raise(deno_signals::SIGTERM);
+        if has_handlers {
+          info!(
+            "{} Waiting for graceful termination...",
+            colors::intense_blue(banner),
+          );
+          let _ = tokio::time::timeout(
+            GRACEFUL_SHUTDOWN_TIMEOUT,
+            &mut operation_future,
+          )
+          .await;
+        }
         return Ok(());
       },
       _ = restart_rx.recv() => {
+        // Dispatch SIGTERM to give JS code a chance for async cleanup
+        // before restarting. If handlers are registered, wait for the
+        // operation to finish gracefully before restarting.
+        if deno_signals::raise(deno_signals::SIGTERM) {
+          info!(
+            "{} Waiting for graceful termination...",
+            colors::intense_blue(banner),
+          );
+          let _ = tokio::time::timeout(
+            GRACEFUL_SHUTDOWN_TIMEOUT,
+            &mut operation_future,
+          )
+          .await;
+        }
         deno_runtime::deno_inspector_server::notify_restart();
         print_after_restart();
         continue;
       },
-      success = operation_future => {
+      success = &mut operation_future => {
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
         if print_finished {
           // TODO(bartlomieju): print exit code here?
@@ -452,6 +499,7 @@ where
 
 fn new_watcher(
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
+  exclude_set: Arc<PathOrPatternSet>,
 ) -> Result<RecommendedWatcher, AnyError> {
   Ok(Watcher::new(
     move |res: Result<NotifyEvent, NotifyError>| {
@@ -466,16 +514,47 @@ fn new_watcher(
         return;
       }
 
-      let paths = event
+      let canonicalized: Vec<PathBuf> = event
         .paths
         .iter()
         .filter_map(|path| canonicalize_path(path).ok())
         .collect();
+      let paths: Vec<PathBuf> = canonicalized
+        .iter()
+        .filter(|path| !exclude_set.matches_path(path))
+        .cloned()
+        .collect();
+
+      // Only bail when the empty result was caused by exclusion, not
+      // by canonicalize failures — preserves pre-PR behavior for
+      // file-removal events.
+      if paths.is_empty() && !canonicalized.is_empty() {
+        return;
+      }
 
       sender.send(paths).unwrap();
     },
     Default::default(),
   )?)
+}
+
+/// Computes the set of paths a watcher should observe for a given set of file
+/// patterns.
+///
+/// When `include` patterns are present, their base paths are watched: a
+/// directory for directory/glob patterns, or the file itself for explicit file
+/// paths. When no `include` is set, the base directory is watched so that newly
+/// created files within it are detected.
+///
+/// This is important for subcommands like `fmt`, `lint`, `test` and `bench`
+/// running in `--watch` mode: watching the already-resolved list of files would
+/// miss files created after the watcher started, because the watcher would only
+/// observe the individual file inodes rather than their containing directories.
+pub fn watch_paths_for_file_patterns(patterns: &FilePatterns) -> Vec<PathBuf> {
+  match &patterns.include {
+    Some(set) => set.base_paths(),
+    None => vec![patterns.base.clone()],
+  }
 }
 
 fn add_paths_to_watcher(

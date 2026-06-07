@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use boxed_error::Boxed;
 use deno_bundle_runtime::BundleProvider;
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
@@ -14,6 +15,7 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 use deno_runtime::BootstrapOptions;
+use deno_runtime::CpuProfilerConfig;
 use deno_runtime::FeatureChecker;
 use deno_runtime::UNSTABLE_FEATURES;
 use deno_runtime::WorkerExecutionMode;
@@ -59,6 +61,8 @@ use crate::util::checksum;
 pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_require_loader: Rc<dyn NodeRequireLoader>,
+  pub hook_registry:
+    Option<deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -122,8 +126,10 @@ impl StorageKeyResolver {
 }
 
 pub fn get_cache_storage_dir() -> PathBuf {
-  // ok because this won't ever be used by the js runtime
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "ok because this won't ever be used by the js runtime"
+  )]
   // Note: we currently use temp_dir() to avoid managing storage size.
   std::env::temp_dir().join("deno_cache")
 }
@@ -133,8 +139,11 @@ pub fn get_cache_storage_dir() -> PathBuf {
 /// as a default. In case the platform is Linux and `DENO_USE_CGROUPS` is set,
 /// parse cgroup config to get the cgroup-constrained memory limit.
 pub fn create_isolate_create_params<TSys: DenoLibSys>(
-  // This is used only in Linux to get cgroup-constrained memory limit.
-  #[allow(unused_variables)] sys: &TSys,
+  #[allow(
+    unused_variables,
+    reason = "used only in Linux to get cgroup-constrained memory limit"
+  )]
+  sys: &TSys,
 ) -> Option<v8::CreateParams> {
   #[cfg(any(target_os = "android", target_os = "linux"))]
   {
@@ -166,7 +175,7 @@ mod linux {
       .map(|mem_info| mem_info.total);
 
     // For performance, parse cgroup config only when DENO_USE_CGROUPS is set
-    if std::env::var("DENO_USE_CGROUPS").is_err() {
+    if sys.env_var_os("DENO_USE_CGROUPS").is_none() {
       return system_total_memory;
     }
 
@@ -200,8 +209,13 @@ mod linux {
   }
 }
 
+#[derive(Debug, Boxed, deno_error::JsError)]
+pub struct ResolveNpmBinaryEntrypointError(
+  pub Box<ResolveNpmBinaryEntrypointErrorKind>,
+);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolveNpmBinaryEntrypointError {
+pub enum ResolveNpmBinaryEntrypointErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] deno_path_util::PathToUrlError),
@@ -231,7 +245,6 @@ pub enum ResolveNpmBinaryEntrypointFallbackError {
 pub struct LibMainWorkerOptions {
   pub argv: Vec<String>,
   pub log_level: WorkerLogLevel,
-  pub enable_op_summary_metrics: bool,
   pub enable_raw_imports: bool,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
@@ -246,6 +259,8 @@ pub struct LibMainWorkerOptions {
   pub location: Option<Url>,
   pub argv0: Option<String>,
   pub node_debug: Option<String>,
+  pub node_cluster_unique_id: Option<String>,
+  pub node_cluster_sched_policy: Option<String>,
   pub otel_config: OtelConfig,
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
@@ -254,6 +269,10 @@ pub struct LibMainWorkerOptions {
   pub node_ipc_init: Option<(i64, ChildIpcSerialization)>,
   pub no_legacy_abort: bool,
   pub startup_snapshot: Option<&'static [u8]>,
+  /// Residual `lazy_loaded_js` sources from the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  /// Residual `lazy_loaded_esm` sources from the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
   pub maybe_initial_cwd: Option<Url>,
@@ -274,6 +293,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   feature_checker: Arc<FeatureChecker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_coverage_dir: Option<PathBuf>,
+  maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   main_inspector_session_tx: MainInspectorSessionChannel,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver:
@@ -323,6 +343,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
+        hook_registry,
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
@@ -428,7 +449,6 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
             .map(|p| p.get())
             .unwrap_or(1),
           log_level: shared.options.log_level,
-          enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
           enable_testing_features: shared.options.enable_testing_features,
           locale: deno_core::v8::icu::get_language_tag(),
           location: Some(args.main_module),
@@ -441,6 +461,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
           node_debug: shared.options.node_debug.clone(),
+          node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+          node_cluster_sched_policy: shared
+            .options
+            .node_cluster_sched_policy
+            .clone(),
           node_ipc_init: None,
           mode: WorkerExecutionMode::Worker,
           serve_port: shared.options.serve_port,
@@ -451,6 +476,8 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         },
         extensions: vec![],
         startup_snapshot: shared.options.startup_snapshot,
+        residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
         create_params,
         unsafely_ignore_certificate_errors: shared
           .options
@@ -468,8 +495,11 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
         maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
+        maybe_cpu_prof_config: shared.maybe_cpu_prof_config.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
-        enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
+        enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(
+          &shared.sys,
+        ),
       };
 
       let has_resource_limits = args.resource_limits.is_some();
@@ -484,6 +514,13 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       }
 
       worker.bootstrap(&bootstrap_options);
+
+      // Wire the module hook registry into OpState after bootstrap so
+      // `module.registerHooks()` in worker scripts shares state with the
+      // worker's module loader (same pattern as the main worker).
+      if let Some(registry) = hook_registry {
+        worker.js_runtime.op_state().borrow_mut().put(registry);
+      }
 
       // When resource limits are set, install a near-heap-limit callback
       // that terminates the worker's isolate gracefully instead of
@@ -510,7 +547,7 @@ pub struct LibMainWorkerFactory<TSys: DenoLibSys> {
 }
 
 impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     blob_store: Arc<BlobStore>,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
@@ -518,6 +555,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     feature_checker: Arc<FeatureChecker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_coverage_dir: Option<PathBuf>,
+    maybe_cpu_prof_config: Option<CpuProfilerConfig>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<
       NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>,
@@ -541,6 +579,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         feature_checker,
         fs,
         maybe_coverage_dir,
+        maybe_cpu_prof_config,
         main_inspector_session_tx: MainInspectorSessionChannel::new(),
         module_loader_factory,
         node_resolver,
@@ -556,7 +595,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     }
   }
 
-  #[allow(clippy::result_large_err)]
   pub fn create_main_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -577,8 +615,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     )
   }
 
-  #[allow(clippy::result_large_err)]
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -594,6 +631,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
+      hook_registry,
     } = shared
       .module_loader_factory
       .create_for_main(permissions.clone());
@@ -654,7 +692,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           .map(|p| p.get())
           .unwrap_or(1),
         log_level: shared.options.log_level,
-        enable_op_summary_metrics: shared.options.enable_op_summary_metrics,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
@@ -667,6 +704,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
         node_debug: shared.options.node_debug.clone(),
+        node_cluster_unique_id: shared.options.node_cluster_unique_id.clone(),
+        node_cluster_sched_policy: shared
+          .options
+          .node_cluster_sched_policy
+          .clone(),
         node_ipc_init: shared.options.node_ipc_init,
         mode,
         no_legacy_abort: shared.options.no_legacy_abort,
@@ -677,6 +719,8 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       },
       extensions: custom_extensions,
       startup_snapshot: shared.options.startup_snapshot,
+      residual_lazy_js_sources: shared.options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: shared.options.residual_lazy_esm_sources,
       create_params: create_isolate_create_params(&shared.sys),
       unsafely_ignore_certificate_errors: shared
         .options
@@ -695,13 +739,18 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       stdio,
       skip_op_registration: shared.options.skip_op_registration,
       enable_raw_imports: shared.options.enable_raw_imports,
-      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(),
+      enable_stack_trace_arg_in_ops: has_trace_permissions_enabled(&shared.sys),
       unconfigured_runtime,
     };
 
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
+
+    // Wire module hook registry into OpState so JS ops share it with the loader
+    if let Some(registry) = hook_registry {
+      worker.js_runtime.op_state().borrow_mut().put(registry);
+    }
 
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();
@@ -716,7 +765,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     })
   }
 
-  #[allow(clippy::result_large_err)]
   pub fn resolve_npm_binary_entrypoint(
     &self,
     package_folder: &Path,
@@ -734,15 +782,19 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
           self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
         match result {
           Ok(Some(path)) => Ok(url_from_file_path(&path)?),
-          Ok(None) => {
-            Err(ResolveNpmBinaryEntrypointError::ResolvePkgJsonBinExport(
+          Ok(None) => Err(
+            ResolveNpmBinaryEntrypointErrorKind::ResolvePkgJsonBinExport(
               original_err,
-            ))
-          }
-          Err(fallback_err) => Err(ResolveNpmBinaryEntrypointError::Fallback {
-            original: original_err,
-            fallback: fallback_err,
-          }),
+            )
+            .into_box(),
+          ),
+          Err(fallback_err) => Err(
+            ResolveNpmBinaryEntrypointErrorKind::Fallback {
+              original: original_err,
+              fallback: fallback_err,
+            }
+            .into_box(),
+          ),
         }
       }
     }
@@ -851,14 +903,43 @@ impl LibMainWorker {
     self.worker.dispatch_process_exit_event()
   }
 
+  #[inline]
+  pub fn run_napi_ref_finalizers(&mut self) {
+    self.worker.run_napi_ref_finalizers()
+  }
+
   pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
-    self.worker.evaluate_module(id).await
+    self.worker.evaluate_module(id).await?;
+
+    // After loading and evaluating all modules, trim the glibc malloc arena.
+    // Module loading/TypeScript compilation creates heavy allocation churn
+    // that glibc's allocator doesn't release back to the OS, causing RSS on
+    // Linux to be much higher than on other platforms (see #25722).
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+      // SAFETY: calling libc malloc_trim which is safe to call at any time.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
+
+    Ok(())
   }
 
   pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
-    self.worker.evaluate_module(id).await
+    self.worker.evaluate_module(id).await?;
+
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+      // SAFETY: calling libc malloc_trim which is safe to call at any time.
+      unsafe {
+        libc::malloc_trim(0);
+      }
+    }
+
+    Ok(())
   }
 
   pub async fn execute_preload_modules(&mut self) -> Result<(), CoreError> {
@@ -903,6 +984,7 @@ impl LibMainWorker {
 
     self.worker.dispatch_unload_event()?;
     self.worker.dispatch_process_exit_event()?;
+    self.worker.run_napi_ref_finalizers();
 
     Ok(self.worker.exit_code())
   }

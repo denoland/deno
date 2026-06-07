@@ -232,7 +232,7 @@ impl AsyncWrite for WindowsPipeStream {
 pub struct WindowsPipeListener;
 
 impl WindowsPipeListener {
-  #[allow(clippy::unused_async)]
+  #[allow(clippy::unused_async, reason = "same interface as unix")]
   pub async fn accept(
     &self,
   ) -> io::Result<(WindowsPipeStream, WindowsPipeAddr)> {

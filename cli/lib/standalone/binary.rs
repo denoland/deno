@@ -67,6 +67,8 @@ pub struct SerializedWorkspaceResolver {
   pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage>,
   pub package_jsons: BTreeMap<String, serde_json::Value>,
   pub pkg_json_resolution: PackageJsonDepResolution,
+  #[serde(default)]
+  pub catalogs: IndexMap<String, IndexMap<String, String>>,
 }
 
 // Note: Don't use hashmaps/hashsets. Ensure the serialization
@@ -193,7 +195,7 @@ impl<'a> DenoRtSerializable<'a> for RemoteModuleEntry<'a> {
 
 impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
   fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)> {
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity, reason = "private code")]
     fn deserialize_data_if_has_flag(
       input: &[u8],
       has_data_flags: u8,
@@ -320,7 +322,7 @@ impl<TData> SpecifierDataStore<TData> {
     self.data.iter().map(|(k, v)| (*k, v))
   }
 
-  #[allow(clippy::len_without_is_empty)]
+  #[allow(clippy::len_without_is_empty, reason = "not useful")]
   pub fn len(&self) -> usize {
     self.data.len()
   }

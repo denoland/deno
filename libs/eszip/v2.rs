@@ -1342,7 +1342,10 @@ impl EszipV2 {
       }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+      clippy::too_many_arguments,
+      reason = "many parameters needed for module visiting"
+    )]
     fn visit_module<'a>(
       graph: &'a ModuleGraph,
       module_kind_provider: &dyn ModuleKindResolver,
@@ -2055,6 +2058,7 @@ mod tests {
   }
 
   impl deno_graph::source::Loader for FileLoader {
+    #[allow(clippy::disallowed_methods, reason = "test code")]
     fn load(
       &self,
       specifier: &ModuleSpecifier,
@@ -2148,6 +2152,7 @@ mod tests {
     struct ExternalLoader;
 
     impl deno_graph::source::Loader for ExternalLoader {
+      #[allow(clippy::disallowed_methods, reason = "test code")]
       fn load(
         &self,
         specifier: &ModuleSpecifier,
@@ -2877,7 +2882,6 @@ mod tests {
         core::str::from_utf8(&content).unwrap(),
         &Default::default(),
       )
-      .unwrap()
       .unwrap(),
     )
     .unwrap();
@@ -2961,7 +2965,6 @@ mod tests {
         core::str::from_utf8(&content).unwrap(),
         &Default::default(),
       )
-      .unwrap()
       .unwrap(),
     )
     .unwrap();

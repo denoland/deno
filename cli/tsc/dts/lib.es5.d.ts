@@ -7,14 +7,12 @@ License at http://www.apache.org/licenses/LICENSE-2.0
 THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
 WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
-MERCHANTABLITY OR NON-INFRINGEMENT.
+MERCHANTABILITY OR NON-INFRINGEMENT.
 
 See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-/// <reference no-default-lib="true"/>
 
 /// <reference lib="decorators" />
 /// <reference lib="decorators.legacy" />
@@ -430,14 +428,14 @@ interface String {
     concat(...strings: string[]): string;
 
     /**
-     * Returns the position of the first occurrence of a substring.
+     * Returns the position of the first occurrence of a substring, or -1 if it is not present.
      * @param searchString The substring to search for in the string
      * @param position The index at which to begin searching the String object. If omitted, search starts at the beginning of the string.
      */
     indexOf(searchString: string, position?: number): number;
 
     /**
-     * Returns the last occurrence of a substring in the string.
+     * Returns the last occurrence of a substring in the string, or -1 if it is not present.
      * @param searchString The substring to search for.
      * @param position The index at which to begin searching. If omitted, the search begins at the end of the string.
      */
@@ -1973,7 +1971,7 @@ interface Int8Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     forEach(callbackfn: (value: number, index: number, array: this) => void, thisArg?: any): void;
 
     /**
-     * Returns the index of the first occurrence of a value in an array.
+     * Returns the index of the first occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -1988,7 +1986,7 @@ interface Int8Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     join(separator?: string): string;
 
     /**
-     * Returns the index of the last occurrence of a value in an array.
+     * Returns the index of the last occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -2255,7 +2253,7 @@ interface Uint8Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     forEach(callbackfn: (value: number, index: number, array: this) => void, thisArg?: any): void;
 
     /**
-     * Returns the index of the first occurrence of a value in an array.
+     * Returns the index of the first occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -2270,7 +2268,7 @@ interface Uint8Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     join(separator?: string): string;
 
     /**
-     * Returns the index of the last occurrence of a value in an array.
+     * Returns the index of the last occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -2537,7 +2535,7 @@ interface Uint8ClampedArray<TArrayBuffer extends ArrayBufferLike = ArrayBufferLi
     forEach(callbackfn: (value: number, index: number, array: this) => void, thisArg?: any): void;
 
     /**
-     * Returns the index of the first occurrence of a value in an array.
+     * Returns the index of the first occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -2552,7 +2550,7 @@ interface Uint8ClampedArray<TArrayBuffer extends ArrayBufferLike = ArrayBufferLi
     join(separator?: string): string;
 
     /**
-     * Returns the index of the last occurrence of a value in an array.
+     * Returns the index of the last occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -2818,7 +2816,7 @@ interface Int16Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
      */
     forEach(callbackfn: (value: number, index: number, array: this) => void, thisArg?: any): void;
     /**
-     * Returns the index of the first occurrence of a value in an array.
+     * Returns the index of the first occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -2833,7 +2831,7 @@ interface Int16Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     join(separator?: string): string;
 
     /**
-     * Returns the index of the last occurrence of a value in an array.
+     * Returns the index of the last occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -3100,7 +3098,7 @@ interface Uint16Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     forEach(callbackfn: (value: number, index: number, array: this) => void, thisArg?: any): void;
 
     /**
-     * Returns the index of the first occurrence of a value in an array.
+     * Returns the index of the first occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -3115,7 +3113,7 @@ interface Uint16Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     join(separator?: string): string;
 
     /**
-     * Returns the index of the last occurrence of a value in an array.
+     * Returns the index of the last occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -3381,7 +3379,7 @@ interface Int32Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     forEach(callbackfn: (value: number, index: number, array: this) => void, thisArg?: any): void;
 
     /**
-     * Returns the index of the first occurrence of a value in an array.
+     * Returns the index of the first occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -3396,7 +3394,7 @@ interface Int32Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     join(separator?: string): string;
 
     /**
-     * Returns the index of the last occurrence of a value in an array.
+     * Returns the index of the last occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -3662,7 +3660,7 @@ interface Uint32Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
      */
     forEach(callbackfn: (value: number, index: number, array: this) => void, thisArg?: any): void;
     /**
-     * Returns the index of the first occurrence of a value in an array.
+     * Returns the index of the first occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -3677,7 +3675,7 @@ interface Uint32Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     join(separator?: string): string;
 
     /**
-     * Returns the index of the last occurrence of a value in an array.
+     * Returns the index of the last occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -3944,7 +3942,7 @@ interface Float32Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     forEach(callbackfn: (value: number, index: number, array: this) => void, thisArg?: any): void;
 
     /**
-     * Returns the index of the first occurrence of a value in an array.
+     * Returns the index of the first occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -3959,7 +3957,7 @@ interface Float32Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     join(separator?: string): string;
 
     /**
-     * Returns the index of the last occurrence of a value in an array.
+     * Returns the index of the last occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -4226,7 +4224,7 @@ interface Float64Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     forEach(callbackfn: (value: number, index: number, array: this) => void, thisArg?: any): void;
 
     /**
-     * Returns the index of the first occurrence of a value in an array.
+     * Returns the index of the first occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -4241,7 +4239,7 @@ interface Float64Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
     join(separator?: string): string;
 
     /**
-     * Returns the index of the last occurrence of a value in an array.
+     * Returns the index of the last occurrence of a value in an array, or -1 if it is not present.
      * @param searchElement The value to locate in the array.
      * @param fromIndex The array index at which to begin the search. If fromIndex is omitted, the
      * search starts at index 0.
@@ -4422,7 +4420,7 @@ declare namespace Intl {
         numeric?: boolean | undefined;
         caseFirst?: "upper" | "lower" | "false" | undefined;
         sensitivity?: "base" | "accent" | "case" | "variant" | undefined;
-        collation?: "big5han" | "compat" | "dict" | "direct" | "ducet" | "emoji" | "eor" | "gb2312" | "phonebk" | "phonetic" | "pinyin" | "reformed" | "searchjl" | "stroke" | "trad" | "unihan" | "zhuyin" | undefined;
+        collation?: "big5han" | "compat" | "default" | "dict" | "direct" | "ducet" | "emoji" | "eor" | "gb2312" | "phonebk" | "phonetic" | "pinyin" | "reformed" | "searchjl" | "stroke" | "trad" | "unihan" | "zhuyin" | undefined;
         ignorePunctuation?: boolean | undefined;
     }
 

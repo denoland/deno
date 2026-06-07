@@ -189,26 +189,27 @@ impl RuntimeActivityStatsFactory {
       ResourceOpenStats::default()
     };
 
+    // Timers are JS-managed; the Rust side tracks active IDs via
+    // op_timer_track/op_timer_untrack for the leak sanitizer.
+    // System timers (e.g. AbortSignal.timeout) are excluded from stats.
     let timers = if filter.include_timers {
-      let timer_count = self.context_state.timers.len();
-      let mut timers = TimerStats {
-        timers: Vec::with_capacity(timer_count),
-        repeats: BitSet::with_capacity(timer_count),
+      let active = self.context_state.active_timers.borrow();
+      let mut stats = TimerStats {
+        timers: Vec::with_capacity(active.len()),
+        repeats: BitSet::new(),
       };
-      for (timer_id, repeats, is_system_timer) in
-        &self.context_state.timers.iter()
-      {
-        // Ignore system timer from stats
-        if is_system_timer {
+      for (&id, &(is_repeat, is_system)) in active.iter() {
+        // Ignore system timers from stats
+        if is_system {
           continue;
         }
-
-        if repeats {
-          timers.repeats.insert(timers.timers.len());
+        let idx = stats.timers.len();
+        stats.timers.push(id);
+        if is_repeat {
+          stats.repeats.insert(idx);
         }
-        timers.timers.push(timer_id as usize);
       }
-      timers
+      stats
     } else {
       TimerStats::default()
     };

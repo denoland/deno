@@ -36,7 +36,11 @@ interface FormData extends DomIterable<string, FormDataEntryValue> {
   set(name: string, value: string | Blob, fileName?: string): void;
 }
 
-/** @category Fetch */
+/** The constructor object for {@linkcode FormData}, used to create a new,
+ * empty `FormData` object that can be populated with fields and submitted with
+ * {@linkcode fetch}.
+ *
+ * @category Fetch */
 declare var FormData: {
   readonly prototype: FormData;
   new (): FormData;
@@ -146,6 +150,8 @@ type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 /** @category Fetch */
 type RequestRedirect = "error" | "follow" | "manual";
 /** @category Fetch */
+type RequestPriority = "auto" | "high" | "low";
+/** @category Fetch */
 type ReferrerPolicy =
   | ""
   | "no-referrer"
@@ -227,6 +233,11 @@ interface RequestInit {
    * restricted to same-origin URLs. Sets request's mode.
    */
   mode?: RequestMode;
+  /**
+   * A string indicating the relative priority of the request. Sets request's
+   * priority.
+   */
+  priority?: RequestPriority;
   /**
    * A string indicating whether request follows redirects, results in an error
    * upon encountering a redirect, or returns the redirect (in an opaque
@@ -430,7 +441,11 @@ interface EventSourceEventMap {
   "open": Event;
 }
 
-/**
+/** Represents a connection to a server that sends
+ * [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events),
+ * receiving updates pushed by the server as a stream of `message` events over a
+ * persistent HTTP connection that automatically reconnects when interrupted.
+ *
  * @category Fetch
  */
 interface EventSource extends EventTarget {
@@ -488,7 +503,10 @@ interface EventSource extends EventTarget {
   ): void;
 }
 
-/**
+/** The constructor object for {@linkcode EventSource}, used to open a new
+ * server-sent events connection to the given `url`. The object also exposes the
+ * `CONNECTING`, `OPEN`, and `CLOSED` ready-state constants.
+ *
  * @category Fetch
  */
 declare var EventSource: {

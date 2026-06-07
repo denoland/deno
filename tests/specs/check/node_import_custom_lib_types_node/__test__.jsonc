@@ -1,21 +1,13 @@
 {
   "tempDir": true,
-  "steps": [{
-    "args": "install",
-    "output": "[WILDCARD]"
-  }, {
-    "args": "check --all --quiet main.ts",
-    "output": ""
-  }],
-  "variants": {
-    "tsgo": {
-      "use_tsgo": "1"
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
     },
-    "tsc": {
-      "use_tsgo": ""
+    {
+      "args": "check --all --quiet main.ts",
+      "output": ""
     }
-  },
-  "envs": {
-    "DENO_UNSTABLE_TSGO": "${use_tsgo}"
-  }
+  ]
 }

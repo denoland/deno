@@ -144,11 +144,7 @@ impl GPUQueue {
       v8::Local::<v8::TypedArray>::try_from(data_arg)
     {
       let len = typed_array.length();
-      let bpe = if len > 0 {
-        typed_array.byte_length() / len
-      } else {
-        1
-      };
+      let bpe = (typed_array.byte_length()).checked_div(len).unwrap_or(1);
       let byte_offset = typed_array.byte_offset();
       let byte_len = typed_array.byte_length();
       let ab = typed_array.buffer(scope).unwrap();
@@ -159,6 +155,13 @@ impl GPUQueue {
           // SAFETY: the slice is within the bounds of the backing store
           unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
       (buf, bpe)
+    } else if let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(data_arg) {
+      let byte_len = ab.byte_length();
+      let ptr = ab.data().unwrap().as_ptr();
+      let buf =
+        // SAFETY: Pointer is non-null and byte_len is within the backing store.
+        unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+      (buf, 1)
     } else if let Ok(view) =
       v8::Local::<v8::ArrayBufferView>::try_from(data_arg)
     {

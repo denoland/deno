@@ -2,7 +2,16 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
+  getOwnNonIndexProperties,
+  ONLY_ENUMERABLE,
+  SKIP_SYMBOLS,
+} = core.loadExtScript("ext:deno_node/internal_binding/util.ts");
+const lazyAssert = core.createLazyLoader("node:assert");
+const {
   isAnyArrayBuffer,
   isArrayBufferView,
   isBigIntObject,
@@ -16,24 +25,19 @@ import {
   isKeyObject,
   isMap,
   isNumberObject,
+  isPromise,
   isRegExp,
   isSet,
   isStringObject,
   isSymbolObject,
   isWeakMap,
   isWeakSet,
-} from "ext:deno_node/internal/util/types.ts";
-import { Buffer } from "node:buffer";
-import {
-  getOwnNonIndexProperties,
-  ONLY_ENUMERABLE,
-  SKIP_SYMBOLS,
-} from "ext:deno_node/internal_binding/util.ts";
-import { primordials } from "ext:core/mod.js";
-import assert from "node:assert";
-import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
-import { isError } from "ext:deno_node/internal/util.mjs";
-import { isURL } from "ext:deno_node/internal/url.ts";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const { kKeyObject } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/constants.ts",
+);
+const { isError } = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const lazyUrl = () => core.loadExtScript("ext:deno_node/internal/url.ts");
 
 const {
   Array,
@@ -59,6 +63,7 @@ const {
   Int8Array,
   Map,
   Number,
+  NumberIsNaN,
   NumberPrototypeValueOf,
   Object,
   ObjectGetOwnPropertyDescriptor,
@@ -237,7 +242,7 @@ function isEqualBoxedPrimitive(val1: unknown, val2: unknown) {
       SymbolPrototypeValueOf(val1) === SymbolPrototypeValueOf(val2);
   }
   /* c8 ignore next */
-  assert.fail(`Unknown boxed type ${val1}`);
+  lazyAssert().fail(`Unknown boxed type ${val1}`);
 }
 
 function isEnumerableOrIdentical(
@@ -343,10 +348,12 @@ function objectComparisonStart(
   } else if (val1Tag === "[object Object]") {
     return keyCheck(val1, val2, mode, memos, valueType.noIterator);
   } else if (isDate(val1)) {
-    if (
-      !isDate(val2) ||
-      DatePrototypeGetTime(val1) !== DatePrototypeGetTime(val2)
-    ) {
+    if (!isDate(val2)) {
+      return false;
+    }
+    const time1 = DatePrototypeGetTime(val1);
+    const time2 = DatePrototypeGetTime(val2);
+    if (time1 !== time2 && !(NumberIsNaN(time1) && NumberIsNaN(time2))) {
       return false;
     }
   } else if (isRegExp(val1)) {
@@ -452,8 +459,8 @@ function objectComparisonStart(
     isError(val2)
   ) {
     return false;
-  } else if (isURL(val1)) {
-    if (!isURL(val2) || val1.href !== val2.href) {
+  } else if (lazyUrl().isURL(val1)) {
+    if (!lazyUrl().isURL(val2) || val1.href !== val2.href) {
       return false;
     }
   } else if (isKeyObject(val1)) {
@@ -471,6 +478,9 @@ function objectComparisonStart(
       return false;
     }
   } else if (isWeakMap(val1) || isWeakSet(val1)) {
+    return false;
+  } else if (isPromise(val1) && isPromise(val2)) {
+    // Native Promises can only be equal by reference.
     return false;
   }
 
@@ -810,8 +820,10 @@ function setObjectEquiv(
         if (b.has(val1)) {
           continue;
         }
-      } else if (mode !== kLoose || b.has(val1)) {
+      } else if (b.has(val1)) {
         continue;
+      } else if (mode !== kLoose) {
+        return false;
       }
     }
 
@@ -1030,13 +1042,12 @@ function mapObjectEquiv(
   const extraChecks = mode === kLoose || array.length !== a.size;
 
   for (const { 0: key1, 1: item1 } of a) {
-    if (
-      extraChecks &&
-      (typeof key1 !== "object" || key1 === null) &&
-      (mode !== kLoose ||
-        (b.has(key1) && innerDeepEqual(item1, b.get(key1), mode, memo)))
-    ) { // Mixed mode
-      continue;
+    if (extraChecks && (typeof key1 !== "object" || key1 === null)) {
+      if (b.has(key1) && innerDeepEqual(item1, b.get(key1), mode, memo)) {
+        continue;
+      } else if (mode !== kLoose) {
+        return false;
+      }
     }
 
     let innerStart = start;
@@ -1272,11 +1283,16 @@ function objEquiv(
         if (!hasOwn(b, i)) {
           return sparseArrayEquiv(a, b, mode, memos, i);
         }
-        if (a[i] !== undefined || !hasOwn(a, i)) {
+        if (mode !== kLoose && (a[i] !== undefined || !hasOwn(a, i))) {
+          return false;
+        } else if (
+          mode === kLoose && !innerDeepEqual(a[i], b[i], mode, memos)
+        ) {
           return false;
         }
       } else if (
-        a[i] === undefined || !innerDeepEqual(a[i], b[i], mode, memos)
+        (mode !== kLoose && a[i] === undefined) ||
+        !innerDeepEqual(a[i], b[i], mode, memos)
       ) {
         return false;
       }
@@ -1309,11 +1325,11 @@ let detectCycles = function (
   }
 };
 
-export function isDeepEqual(val1: unknown, val2: unknown): boolean {
+function isDeepEqual(val1: unknown, val2: unknown): boolean {
   return detectCycles(val1, val2, kLoose);
 }
 
-export function isDeepStrictEqual(
+function isDeepStrictEqual(
   val1: unknown,
   val2: unknown,
   skipPrototype?: boolean,
@@ -1324,6 +1340,13 @@ export function isDeepStrictEqual(
   return detectCycles(val1, val2, kStrict);
 }
 
-export function isPartialStrictEqual(val1: unknown, val2: unknown): boolean {
+function isPartialStrictEqual(val1: unknown, val2: unknown): boolean {
   return detectCycles(val1, val2, kPartial);
 }
+
+return {
+  isDeepEqual,
+  isDeepStrictEqual,
+  isPartialStrictEqual,
+};
+})();

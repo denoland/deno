@@ -54,7 +54,10 @@ unsafe fn ffi_call_rtype_struct(
   call_args: Vec<Arg>,
   out_buffer: *mut u8,
 ) {
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "safety comment on the containing block"
+  )]
   unsafe {
     libffi::raw::ffi_call(
       cif.as_raw_ptr(),
@@ -317,19 +320,29 @@ where
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
-  let call_args = ffi_parse_args(scope, parameters, &def.parameters)?;
-  let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
+  let mut backing_store_holder = BackingStoreHolder::new();
+  let call_args = ffi_parse_args_nonblocking(
+    scope,
+    parameters,
+    &def.parameters,
+    &mut backing_store_holder,
+  )?;
+  let out_buffer_ptr =
+    out_buffer_as_ptr_nonblocking(scope, out_buffer, &mut backing_store_holder);
 
   let join_handle = spawn_blocking(move || {
     let PtrSymbol { cif, ptr } = symbol.clone();
-    ffi_call(
+    let result = ffi_call(
       call_args,
       &cif,
       ptr,
       &def.parameters,
       def.result,
       out_buffer_ptr,
-    )
+    );
+    // prevent backing stores from being dropped before the FFI call completes
+    drop(backing_store_holder);
+    result
   });
 
   Ok(async move {
@@ -363,8 +376,15 @@ pub fn op_ffi_call_nonblocking(
       .clone()
   };
 
-  let call_args = ffi_parse_args(scope, parameters, &symbol.parameter_types)?;
-  let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
+  let mut backing_store_holder = BackingStoreHolder::new();
+  let call_args = ffi_parse_args_nonblocking(
+    scope,
+    parameters,
+    &symbol.parameter_types,
+    &mut backing_store_holder,
+  )?;
+  let out_buffer_ptr =
+    out_buffer_as_ptr_nonblocking(scope, out_buffer, &mut backing_store_holder);
 
   let join_handle = spawn_blocking(move || {
     let Symbol {
@@ -374,14 +394,17 @@ pub fn op_ffi_call_nonblocking(
       result_type,
       ..
     } = symbol.clone();
-    ffi_call(
+    let result = ffi_call(
       call_args,
       &cif,
       ptr,
       &parameter_types,
       result_type,
       out_buffer_ptr,
-    )
+    );
+    // prevent backing stores from being dropped before the FFI call completes
+    drop(backing_store_holder);
+    result
   });
 
   Ok(async move {

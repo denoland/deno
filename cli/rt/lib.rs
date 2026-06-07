@@ -56,10 +56,8 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
 fn load_env_vars(env_vars: &IndexMap<String, String>) {
   env_vars.iter().for_each(|env_var| {
     if env::var(env_var.0).is_err() {
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        std::env::set_var(env_var.0, env_var.1)
-      };
+      // SAFETY: called during single-threaded startup before tokio runtime
+      unsafe { std::env::set_var(env_var.0, env_var.1) };
     }
   })
 }
@@ -67,6 +65,13 @@ fn load_env_vars(env_vars: &IndexMap<String, String>) {
 #[inline(always)]
 pub fn main() {
   init_logging(None, None);
+
+  // Enable ANSI virtual terminal processing on Windows consoles that don't
+  // do so by default (e.g. Windows Server / classic conhost), so that
+  // compiled binaries render colored output instead of raw escape codes.
+  // This mirrors the setup done in the main `deno` binary entrypoint.
+  #[cfg(windows)]
+  colors::enable_ansi(); // For Windows 10
 
   deno_runtime::deno_permissions::mark_standalone();
 
@@ -79,7 +84,14 @@ pub fn main() {
   let future = async move {
     match standalone {
       Ok(data) => {
+        let sys = if data.metadata.self_extracting.is_some() {
+          binary::extract_vfs_to_disk(&data.vfs, &data.root_path)?;
+          DenoRtSys::new_self_extracting(data.vfs.clone())
+        } else {
+          DenoRtSys::new(data.vfs.clone())
+        };
         deno_runtime::deno_telemetry::init(
+          &sys,
           otel_runtime_config(),
           data.metadata.otel_config.clone(),
         )?;
@@ -88,12 +100,6 @@ pub fn main() {
           Some(data.metadata.otel_config.clone()),
         );
         load_env_vars(&data.metadata.env_vars_from_env_file);
-        let sys = if data.metadata.self_extracting.is_some() {
-          binary::extract_vfs_to_disk(&data.vfs, &data.root_path)?;
-          DenoRtSys::new_self_extracting(data.vfs.clone())
-        } else {
-          DenoRtSys::new(data.vfs.clone())
-        };
         let exit_code = run::run(Arc::new(sys.clone()), sys, data).await?;
         deno_runtime::exit(exit_code);
       }

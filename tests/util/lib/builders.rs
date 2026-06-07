@@ -30,7 +30,6 @@ use crate::HttpServerGuard;
 use crate::TempDir;
 use crate::assertions::assert_wildcard_match;
 use crate::assertions::assert_wildcard_match_with_logger;
-use crate::consts::tsgo_prebuilt_path;
 use crate::deno_exe_path;
 use crate::denort_exe_path;
 use crate::env_vars_for_jsr_tests;
@@ -977,12 +976,6 @@ impl TestCommandBuilder {
       envs.insert(
         "NODEJS_ORG_MIRROR".to_string(),
         nodejs_org_mirror_unset_url(),
-      );
-    }
-    if !envs.contains_key("DENO_TSGO_PATH") {
-      envs.insert(
-        "DENO_TSGO_PATH".to_string(),
-        tsgo_prebuilt_path().to_string(),
       );
     }
     if !envs.contains_key("PATH") {
