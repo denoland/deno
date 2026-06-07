@@ -564,14 +564,44 @@ fn transpile(
     },
     emit_options,
   )?;
-  let transpiled_source = match transpile_result {
+  let mut transpiled_source = match transpile_result {
     TranspileResult::Owned(source) => source,
     TranspileResult::Cloned(source) => {
       debug_assert!(false, "Transpile owned failed.");
       source
     }
   };
+  patch_public_decorator_access_has(&mut transpiled_source.text);
   Ok(transpiled_source)
+}
+
+pub fn patch_public_decorator_access_has(source: &mut String) {
+  if !source.contains("_apply_decs_2203_r") {
+    return;
+  }
+
+  const OLD_EMITTED_ACCESS_OBJECT: &str = concat!(
+    "    ctx.access = get && set ? {\n",
+    "      get: get,\n",
+    "      set: set\n",
+    "    } : get ? {\n",
+    "      get: get\n",
+    "    } : {\n",
+    "      set: set\n",
+    "    };\n",
+  );
+  const NEW_EMITTED_ACCESS_OBJECT: &str = concat!(
+    "    if (isPrivate) {\n",
+    "      ctx.access = get && set ? { get: get, set: set } : get ? { get: get } : { set: set };\n",
+    "    } else {\n",
+    "      if (get) { var originalGet = get; get = function(target) { if (arguments.length === 0) target = this; return originalGet.call(target); }; }\n",
+    "      if (set) { var originalSet = set; set = function(target, value) { if (arguments.length === 1) { value = target; target = this; } return originalSet.call(target, value); }; }\n",
+    "      var has = function(target) { return name in target; };\n",
+    "      ctx.access = get && set ? { has: has, get: get, set: set } : get ? { has: has, get: get } : { has: has, set: set };\n",
+    "    }\n",
+  );
+  *source =
+    source.replace(OLD_EMITTED_ACCESS_OBJECT, NEW_EMITTED_ACCESS_OBJECT);
 }
 
 fn program_has_decorators(program: deno_ast::ProgramRef<'_>) -> bool {
