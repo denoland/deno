@@ -363,6 +363,57 @@ function cloneAsUint8Array(O) {
   }
 }
 
+/**
+ * Coerce an ArrayBuffer or ArrayBufferView into a Uint8Array view over the
+ * same underlying memory (no copy). Used by resource-backed underlying sinks
+ * which need to forward bytes to a native op regardless of the user-provided
+ * view type. Throws TypeError for anything else.
+ * @param {unknown} O
+ * @returns {Uint8Array}
+ */
+function bufferSourceAsUint8Array(O) {
+  if (isTypedArray(O)) {
+    return new Uint8Array(
+      TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (O)),
+      TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (O)),
+      TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (O)),
+    );
+  }
+  if (ArrayBufferIsView(O)) {
+    return new Uint8Array(
+      DataViewPrototypeGetBuffer(/** @type {DataView} */ (O)),
+      DataViewPrototypeGetByteOffset(/** @type {DataView} */ (O)),
+      DataViewPrototypeGetByteLength(/** @type {DataView} */ (O)),
+    );
+  }
+  if (isAnyArrayBuffer(O)) {
+    return new Uint8Array(/** @type {ArrayBuffer} */ (O));
+  }
+  throw new TypeError(
+    "Expected ArrayBuffer or ArrayBufferView for write chunk",
+  );
+}
+
+/**
+ * Byte length of an ArrayBuffer or ArrayBufferView. Throws TypeError otherwise.
+ * @param {unknown} O
+ * @returns {number}
+ */
+function bufferSourceByteLength(O) {
+  if (isTypedArray(O)) {
+    return TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (O));
+  }
+  if (ArrayBufferIsView(O)) {
+    return DataViewPrototypeGetByteLength(/** @type {DataView} */ (O));
+  }
+  if (isAnyArrayBuffer(O)) {
+    return ArrayBufferPrototypeGetByteLength(/** @type {ArrayBuffer} */ (O));
+  }
+  throw new TypeError(
+    "Expected ArrayBuffer or ArrayBufferView for write chunk",
+  );
+}
+
 // Using SymbolFor to make globally available. This is used by `node:stream`
 // to interop with the web streams API.
 const _isClosedPromise = SymbolFor("nodejs.webstream.isClosedPromise");
@@ -1246,12 +1297,13 @@ function writableStreamForRid(rid, autoClose = true, cfn, options) {
   const underlyingSink = {
     async write(chunk, controller) {
       try {
+        const view = bufferSourceAsUint8Array(chunk);
         if (bufferSize > 0) {
-          const chunkLen = TypedArrayPrototypeGetByteLength(chunk);
+          const chunkLen = TypedArrayPrototypeGetByteLength(view);
           // Large chunks: flush buffer then write directly
           if (chunkLen >= bufferSize) {
             await flushBuffer();
-            await core.writeAll(rid, chunk);
+            await core.writeAll(rid, view);
             return;
           }
 
@@ -1266,14 +1318,18 @@ function writableStreamForRid(rid, autoClose = true, cfn, options) {
           }
 
           // Copy chunk into buffer
-          TypedArrayPrototypeSet(buffer, chunk, bufferOffset);
+          TypedArrayPrototypeSet(buffer, view, bufferOffset);
           bufferOffset += chunkLen;
         } else {
-          await core.writeAll(rid, chunk);
+          await core.writeAll(rid, view);
         }
       } catch (e) {
         controller.error(annotateResourceStreamError(e));
         tryClose();
+        // Re-throw so writer.write() rejects with this specific error
+        // rather than resolving successfully and only failing subsequent
+        // writes via the now-errored controller.
+        throw e;
       }
     },
     async close() {
@@ -1292,7 +1348,7 @@ function writableStreamForRid(rid, autoClose = true, cfn, options) {
 
   const highWaterMark = bufferSize > 0 ? bufferSize : 1;
   const sizeAlgorithm = bufferSize > 0
-    ? (chunk) => TypedArrayPrototypeGetByteLength(chunk)
+    ? (chunk) => bufferSourceByteLength(chunk)
     : () => 1;
 
   initializeWritableStream(stream);
