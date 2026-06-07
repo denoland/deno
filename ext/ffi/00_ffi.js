@@ -3,7 +3,7 @@
 (function () {
 const { core, internals, primordials } = __bootstrap;
 const {
-  isArrayBuffer,
+  isAnyArrayBuffer,
   isDataView,
   isTypedArray,
 } = core;
@@ -244,7 +244,7 @@ class UnsafePointer {
       } else {
         pointer = op_ffi_ptr_of(value);
       }
-    } else if (isArrayBuffer(value)) {
+    } else if (isAnyArrayBuffer(value)) {
       if (value.length === 0) {
         pointer = op_ffi_ptr_of_exact(new Uint8Array(value));
       } else {
@@ -252,7 +252,7 @@ class UnsafePointer {
       }
     } else {
       throw new TypeError(
-        `Cannot access pointer: expected 'ArrayBuffer', 'ArrayBufferView' or 'UnsafeCallbackPrototype', received ${typeof value}`,
+        `Cannot access pointer: expected 'ArrayBuffer', 'SharedArrayBuffer', 'ArrayBufferView' or 'UnsafeCallbackPrototype', received ${typeof value}`,
       );
     }
     if (pointer) {

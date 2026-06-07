@@ -1,6 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
+import {
+  assertEquals,
+  assertNotEquals,
+  assertRejects,
+  assertThrows,
+} from "./test_util.ts";
 
 Deno.test({ permissions: { ffi: true } }, function dlopenInvalidArguments() {
   const filename = "/usr/lib/libc.so.6";
@@ -98,6 +103,22 @@ Deno.test({ permissions: { ffi: true } }, function pointerOf() {
   );
   assertEquals(baseAddress + 80n, float64AddressOffset);
 });
+
+Deno.test(
+  { permissions: { ffi: true } },
+  function pointerOfSharedArrayBuffer() {
+    const sab = new SharedArrayBuffer(1024);
+    const baseAddress = Deno.UnsafePointer.value(Deno.UnsafePointer.of(sab));
+    assertNotEquals(baseAddress, 0n);
+    const uint8Address = Deno.UnsafePointer.value(
+      Deno.UnsafePointer.of(new Uint8Array(sab)),
+    );
+    assertEquals(baseAddress, uint8Address);
+    // An empty buffer has no backing memory, so it resolves to the null pointer,
+    // matching the behavior of an empty `ArrayBuffer`.
+    assertEquals(Deno.UnsafePointer.of(new SharedArrayBuffer(0)), null);
+  },
+);
 
 Deno.test({ permissions: { ffi: true } }, function callWithError() {
   const throwCb = () => {

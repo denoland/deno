@@ -266,6 +266,12 @@ function takesGenericU8(buf: Uint8Array) {
 }
 takesGenericU8(new Uint8Array(1));
 
+// `SharedArrayBuffer` (and `SharedArrayBuffer`-backed views) are also valid
+// buffer arguments.
+Deno.UnsafePointer.of(new SharedArrayBuffer(1));
+Deno.UnsafePointer.of(new Uint8Array(new SharedArrayBuffer(1)));
+remote.symbols.method23(new Uint8Array(new SharedArrayBuffer(1)));
+
 // @ts-expect-error: Cannot pass pointer values as buffer.
 remote.symbols.method23({});
 // @ts-expect-error: Cannot pass pointer values as buffer.
