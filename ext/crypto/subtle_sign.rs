@@ -39,11 +39,18 @@ use crate::subtle_key::SubtleKey;
 /// it into a `NotSupportedError` `DOMException`.
 pub enum SubtleSignParams {
   RsassaPkcs1v15,
-  RsaPss { salt_length: u32 },
-  Ecdsa { hash: ShaHash },
+  RsaPss {
+    salt_length: u32,
+  },
+  Ecdsa {
+    hash: ShaHash,
+  },
   Hmac,
   Ed25519,
-  MlDsa { variant: u8, context: Option<Vec<u8>> },
+  MlDsa {
+    variant: u8,
+    context: Option<Vec<u8>>,
+  },
   Unknown(String),
 }
 
@@ -97,13 +104,8 @@ impl<'a> WebIdlConverter<'a> for SubtleSignParams {
       "ECDSA" => {
         let obj =
           maybe_obj.ok_or_else(|| missing_dict(prefix.clone(), &context))?;
-        let hash = read_required_hash(
-          scope,
-          obj,
-          "hash",
-          prefix.clone(),
-          &context,
-        )?;
+        let hash =
+          read_required_hash(scope, obj, "hash", prefix.clone(), &context)?;
         Ok(Self::Ecdsa { hash })
       }
       "HMAC" => Ok(Self::Hmac),
@@ -114,8 +116,8 @@ impl<'a> WebIdlConverter<'a> for SubtleSignParams {
           "ML-DSA-65" => 1,
           _ => 2,
         };
-        let context_bytes =
-          maybe_obj.and_then(|o| read_optional_buffer_source(scope, o, "context"));
+        let context_bytes = maybe_obj
+          .and_then(|o| read_optional_buffer_source(scope, o, "context"));
         Ok(Self::MlDsa {
           variant,
           context: context_bytes,
@@ -215,7 +217,9 @@ pub(crate) fn read_required_hash<'a, 'b>(
     return Err(WebIdlError::other(
       prefix,
       context.borrowed(),
-      JsErrorBox::type_error(format!("'{field}' must be a HashAlgorithmIdentifier")),
+      JsErrorBox::type_error(format!(
+        "'{field}' must be a HashAlgorithmIdentifier"
+      )),
     ));
   };
   match name_str.as_str() {
@@ -316,9 +320,9 @@ pub fn run(
       if key.key_type != CryptoKeyType::Private {
         return Err(invalid_access("Key type not supported".to_string()));
       }
-      let hash = key.algorithm_hash.ok_or_else(|| {
-        op_error("RSA-PSS key is missing 'hash'".to_string())
-      })?;
+      let hash = key
+        .algorithm_hash
+        .ok_or_else(|| op_error("RSA-PSS key is missing 'hash'".to_string()))?;
       let key_data: KeyData = (&key.raw).into();
       let args = SignArg::new(
         Algorithm::RsaPss,
@@ -332,10 +336,10 @@ pub fn run(
       if key.key_type != CryptoKeyType::Private {
         return Err(invalid_access("Key type not supported".to_string()));
       }
-      let curve_name = key
-        .algorithm_named_curve
-        .as_deref()
-        .ok_or_else(|| op_error("ECDSA key is missing 'namedCurve'".to_string()))?;
+      let curve_name =
+        key.algorithm_named_curve.as_deref().ok_or_else(|| {
+          op_error("ECDSA key is missing 'namedCurve'".to_string())
+        })?;
       if !SUPPORTED_NAMED_CURVES.iter().any(|c| *c == curve_name) {
         return Err(not_supported("Curve not supported".to_string()));
       }
@@ -351,9 +355,9 @@ pub fn run(
       sign_key_sync(key_data, args, &data)
     }
     SubtleSignParams::Hmac => {
-      let hash = key.algorithm_hash.ok_or_else(|| {
-        op_error("HMAC key is missing 'hash'".to_string())
-      })?;
+      let hash = key
+        .algorithm_hash
+        .ok_or_else(|| op_error("HMAC key is missing 'hash'".to_string()))?;
       let key_data: KeyData = (&key.raw).into();
       let args = SignArg::new(
         Algorithm::Hmac,
@@ -378,8 +382,13 @@ pub fn run(
       if key.key_type != CryptoKeyType::Private {
         return Err(invalid_access("Key type not supported".to_string()));
       }
-      mldsa_sign(variant, key.raw.expanded_private_key(), &data, context.as_deref())
-        .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))
+      mldsa_sign(
+        variant,
+        key.raw.expanded_private_key(),
+        &data,
+        context.as_deref(),
+      )
+      .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))
     }
     SubtleSignParams::Unknown(name) => Err(not_supported(format!(
       "Algorithm '{name}' is not supported"

@@ -34,11 +34,18 @@ use crate::verify_key_sync;
 
 pub enum SubtleVerifyParams {
   RsassaPkcs1v15,
-  RsaPss { salt_length: u32 },
-  Ecdsa { hash: ShaHash },
+  RsaPss {
+    salt_length: u32,
+  },
+  Ecdsa {
+    hash: ShaHash,
+  },
   Hmac,
   Ed25519,
-  MlDsa { variant: u8, context: Option<Vec<u8>> },
+  MlDsa {
+    variant: u8,
+    context: Option<Vec<u8>>,
+  },
   Unknown(String),
 }
 
@@ -80,20 +87,20 @@ impl<'a> WebIdlConverter<'a> for SubtleVerifyParams {
       "RSA-PSS" => {
         let obj =
           maybe_obj.ok_or_else(|| missing_dict(prefix.clone(), &context))?;
-        let salt_length =
-          read_required_u32(scope, obj, "saltLength", prefix.clone(), &context)?;
+        let salt_length = read_required_u32(
+          scope,
+          obj,
+          "saltLength",
+          prefix.clone(),
+          &context,
+        )?;
         Ok(Self::RsaPss { salt_length })
       }
       "ECDSA" => {
         let obj =
           maybe_obj.ok_or_else(|| missing_dict(prefix.clone(), &context))?;
-        let hash = read_required_hash(
-          scope,
-          obj,
-          "hash",
-          prefix.clone(),
-          &context,
-        )?;
+        let hash =
+          read_required_hash(scope, obj, "hash", prefix.clone(), &context)?;
         Ok(Self::Ecdsa { hash })
       }
       "HMAC" => Ok(Self::Hmac),
@@ -104,8 +111,8 @@ impl<'a> WebIdlConverter<'a> for SubtleVerifyParams {
           "ML-DSA-65" => 1,
           _ => 2,
         };
-        let context_bytes =
-          maybe_obj.and_then(|o| read_optional_buffer_source(scope, o, "context"));
+        let context_bytes = maybe_obj
+          .and_then(|o| read_optional_buffer_source(scope, o, "context"));
         Ok(Self::MlDsa {
           variant,
           context: context_bytes,
@@ -183,9 +190,9 @@ pub fn run(
       if key.key_type != CryptoKeyType::Public {
         return Err(invalid_access("Key type not supported".to_string()));
       }
-      let hash = key.algorithm_hash.ok_or_else(|| {
-        op_error("RSA-PSS key is missing 'hash'".to_string())
-      })?;
+      let hash = key
+        .algorithm_hash
+        .ok_or_else(|| op_error("RSA-PSS key is missing 'hash'".to_string()))?;
       let key_data: KeyData = (&key.raw).into();
       let args = VerifyArg::new(
         Algorithm::RsaPss,
@@ -200,10 +207,10 @@ pub fn run(
       if key.key_type != CryptoKeyType::Public {
         return Err(invalid_access("Key type not supported".to_string()));
       }
-      let curve_name = key
-        .algorithm_named_curve
-        .as_deref()
-        .ok_or_else(|| op_error("ECDSA key is missing 'namedCurve'".to_string()))?;
+      let curve_name =
+        key.algorithm_named_curve.as_deref().ok_or_else(|| {
+          op_error("ECDSA key is missing 'namedCurve'".to_string())
+        })?;
       if !SUPPORTED_NAMED_CURVES.iter().any(|c| *c == curve_name) {
         return Err(not_supported("Curve not supported".to_string()));
       }
@@ -220,9 +227,9 @@ pub fn run(
       verify_key_sync(key_data, args, &data)
     }
     SubtleVerifyParams::Hmac => {
-      let hash = key.algorithm_hash.ok_or_else(|| {
-        op_error("HMAC key is missing 'hash'".to_string())
-      })?;
+      let hash = key
+        .algorithm_hash
+        .ok_or_else(|| op_error("HMAC key is missing 'hash'".to_string()))?;
       let key_data: KeyData = (&key.raw).into();
       let args = VerifyArg::new(
         Algorithm::Hmac,

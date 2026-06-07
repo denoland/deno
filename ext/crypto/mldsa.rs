@@ -18,7 +18,6 @@ use serde::Serialize;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MlDsaError {
   #[class("DOMExceptionDataError")]

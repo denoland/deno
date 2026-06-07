@@ -13,7 +13,6 @@ use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Ed25519Error {
   #[class("DOMExceptionOperationError")]
