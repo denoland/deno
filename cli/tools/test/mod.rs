@@ -1394,7 +1394,7 @@ async fn run_tests_for_worker_inner(
   })?;
 
   let mut had_uncaught_error = false;
-  let sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
+  let mut sanitizer_helper = sanitizers::create_test_sanitizer_helper(worker);
   let watchdog = TestWatchdog::new(&mut worker.js_runtime);
 
   // Execute beforeAll hooks (FIFO order)
@@ -1546,7 +1546,7 @@ async fn run_tests_for_worker_inner(
           && after_each_failure.is_none()
           && let Some(diff) = sanitizers::wait_for_activity_to_stabilize(
             worker,
-            &sanitizer_helper,
+            &mut sanitizer_helper,
             before_test_stats,
             desc.sanitize_ops,
             desc.sanitize_resources,

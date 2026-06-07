@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use deno_core::error::CoreError;
 use deno_core::stats::RuntimeActivity;
@@ -16,6 +17,40 @@ use super::poll_event_loop;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
 const MAX_SANITIZER_LOOP_SPINS: usize = 16;
+
+/// A stable identity for a runtime activity (op, resource, timer or interval).
+///
+/// Op promise IDs, resource IDs and timer/interval IDs are all allocated
+/// monotonically within a single isolate, so they uniquely identify a leaked
+/// activity for as long as the isolate lives. This is used to remember leaks
+/// that escaped a sanitizer-ignoring test so that later tests don't attribute
+/// them as their own.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum LeakKey {
+  AsyncOp(i32),
+  Resource(u32),
+  Timer(usize),
+  Interval(usize),
+}
+
+fn leak_key(activity: &RuntimeActivity) -> LeakKey {
+  match activity {
+    RuntimeActivity::AsyncOp(id, ..) => LeakKey::AsyncOp(*id),
+    RuntimeActivity::Resource(id, ..) => LeakKey::Resource(*id),
+    RuntimeActivity::Timer(id, ..) => LeakKey::Timer(*id),
+    RuntimeActivity::Interval(id, ..) => LeakKey::Interval(*id),
+  }
+}
+
+/// Move every activity in `from` that matches `pred` into `into`, retaining the
+/// rest in `from`.
+fn drain_matching(
+  from: &mut Vec<RuntimeActivity>,
+  into: &mut Vec<RuntimeActivity>,
+  pred: impl Fn(&RuntimeActivity) -> bool,
+) {
+  into.extend(from.extract_if(.., |activity| pred(activity)));
+}
 
 #[derive(Default)]
 struct TopLevelSanitizerStats {
@@ -50,11 +85,35 @@ pub struct TestSanitizerHelper {
   activity_stats: RuntimeActivityStatsFactory,
   activity_filter: RuntimeActivityStatsFilter,
   top_level_sanitizer_stats: TopLevelSanitizerStats,
+  /// Ops, resources, timers and intervals that leaked out of a test which
+  /// ignored sanitizers. These must not trigger leak detection in later tests.
+  ignored_activities: HashSet<LeakKey>,
 }
 
 impl TestSanitizerHelper {
   pub fn capture_stats(&self) -> RuntimeActivityStats {
     self.activity_stats.clone().capture(&self.activity_filter)
+  }
+
+  /// Drop any activity from the diff that was previously recorded as a leak
+  /// escaping a sanitizer-ignoring test.
+  fn remove_ignored_activities(&self, diff: &mut RuntimeActivityDiff) {
+    if self.ignored_activities.is_empty() {
+      return;
+    }
+    diff.appeared.retain(|activity| {
+      !self.ignored_activities.contains(&leak_key(activity))
+    });
+    diff.disappeared.retain(|activity| {
+      !self.ignored_activities.contains(&leak_key(activity))
+    });
+  }
+
+  /// Remember the given leaked activities so future tests ignore them.
+  fn record_ignored_activities(&mut self, leaked: &[RuntimeActivity]) {
+    for activity in leaked {
+      self.ignored_activities.insert(leak_key(activity));
+    }
   }
 }
 
@@ -100,6 +159,7 @@ pub fn create_test_sanitizer_helper(
     activity_stats: stats,
     activity_filter: filter,
     top_level_sanitizer_stats: top_level,
+    ignored_activities: HashSet::new(),
   }
 }
 
@@ -161,7 +221,7 @@ fn is_empty(
 
 pub async fn wait_for_activity_to_stabilize(
   worker: &mut MainWorker,
-  helper: &TestSanitizerHelper,
+  helper: &mut TestSanitizerHelper,
   before_test_stats: RuntimeActivityStats,
   sanitize_ops: bool,
   sanitize_resources: bool,
@@ -170,6 +230,9 @@ pub async fn wait_for_activity_to_stabilize(
   let after_test_stats = helper.capture_stats();
   let mut diff =
     RuntimeActivityStats::diff(&before_test_stats, &after_test_stats);
+  // Ops/resources/timers that leaked out of an earlier sanitizer-ignoring test
+  // must not be attributed to this one.
+  helper.remove_ignored_activities(&mut diff);
   if is_empty(&helper.top_level_sanitizer_stats, &diff) {
     // No activity, so we return early
     return Ok(None);
@@ -185,23 +248,29 @@ pub async fn wait_for_activity_to_stabilize(
 
     let after_test_stats = helper.capture_stats();
     diff = RuntimeActivityStats::diff(&before_test_stats, &after_test_stats);
+    helper.remove_ignored_activities(&mut diff);
     if is_empty(&helper.top_level_sanitizer_stats, &diff) {
       return Ok(None);
     }
   }
 
+  // Activities that this test opted out of sanitizing. If it leaks one of these,
+  // the test itself doesn't fail, but the leak lingers and would otherwise be
+  // blamed on a later test, so we remember it (see `remove_ignored_activities`).
+  let mut leaked = Vec::new();
+
   if !sanitize_ops {
-    diff
-      .appeared
-      .retain(|activity| !matches!(activity, RuntimeActivity::AsyncOp(..)));
+    drain_matching(&mut diff.appeared, &mut leaked, |activity| {
+      matches!(activity, RuntimeActivity::AsyncOp(..))
+    });
     diff
       .disappeared
       .retain(|activity| !matches!(activity, RuntimeActivity::AsyncOp(..)));
   }
   if !sanitize_resources {
-    diff
-      .appeared
-      .retain(|activity| !matches!(activity, RuntimeActivity::Resource(..)));
+    drain_matching(&mut diff.appeared, &mut leaked, |activity| {
+      matches!(activity, RuntimeActivity::Resource(..))
+    });
     diff
       .disappeared
       .retain(|activity| !matches!(activity, RuntimeActivity::Resource(..)));
@@ -210,8 +279,8 @@ pub async fn wait_for_activity_to_stabilize(
   // Since we don't have an option to disable timer sanitization, we use sanitize_ops == false &&
   // sanitize_resources == false to disable those.
   if !sanitize_ops && !sanitize_resources {
-    diff.appeared.retain(|activity| {
-      !matches!(
+    drain_matching(&mut diff.appeared, &mut leaked, |activity| {
+      matches!(
         activity,
         RuntimeActivity::Timer(..) | RuntimeActivity::Interval(..)
       )
@@ -223,6 +292,10 @@ pub async fn wait_for_activity_to_stabilize(
       )
     });
   }
+
+  // Record the leaks that escaped this sanitizer-ignoring test so subsequent
+  // tests don't flag them.
+  helper.record_ignored_activities(&leaked);
 
   Ok(if is_empty(&helper.top_level_sanitizer_stats, &diff) {
     None
