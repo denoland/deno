@@ -211,7 +211,7 @@ pub fn run(
         key.algorithm_named_curve.as_deref().ok_or_else(|| {
           op_error("ECDSA key is missing 'namedCurve'".to_string())
         })?;
-      if !SUPPORTED_NAMED_CURVES.iter().any(|c| *c == curve_name) {
+      if !SUPPORTED_NAMED_CURVES.contains(&curve_name) {
         return Err(not_supported("Curve not supported".to_string()));
       }
       let named_curve = parse_named_curve(curve_name)
