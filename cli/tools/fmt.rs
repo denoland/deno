@@ -21,6 +21,7 @@ use std::sync::atomic::Ordering;
 
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
+use deno_config::deno_json::NewLineKind;
 use deno_config::deno_json::VueComponentCase as DenoVueComponentCase;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
@@ -1466,8 +1467,6 @@ fn get_resolved_typescript_config(
 fn get_resolved_markdown_config(
   options: &FmtOptionsConfig,
 ) -> dprint_plugin_markdown::configuration::Configuration {
-  use deno_config::deno_json::*;
-
   let mut builder =
     dprint_plugin_markdown::configuration::ConfigurationBuilder::new();
 
@@ -1516,8 +1515,6 @@ fn get_resolved_markdown_config(
 fn get_resolved_json_config(
   options: &FmtOptionsConfig,
 ) -> dprint_plugin_json::configuration::Configuration {
-  use deno_config::deno_json::*;
-
   let mut builder =
     dprint_plugin_json::configuration::ConfigurationBuilder::new();
 
