@@ -634,7 +634,7 @@ ObjectAssign(SubtleCrypto.prototype, {
         break;
       }
       case "Ed25519": {
-        result = exportKeyEd25519(format, key, innerKey);
+        result = exportKeyOkp("Ed25519", format, key, innerKey);
         break;
       }
       case "ML-DSA-44":
@@ -644,11 +644,11 @@ ObjectAssign(SubtleCrypto.prototype, {
         break;
       }
       case "X448": {
-        result = exportKeyXcurve("X448", format, key, innerKey);
+        result = exportKeyOkp("X448", format, key, innerKey);
         break;
       }
       case "X25519": {
-        result = exportKeyXcurve("X25519", format, key, innerKey);
+        result = exportKeyOkp("X25519", format, key, innerKey);
         break;
       }
       case "AES-CTR":
@@ -5214,93 +5214,37 @@ function exportKeyRSA(format, key, innerKey) {
   }
 }
 
-function exportKeyEd25519(format, key, innerKey) {
-  switch (format) {
-    // "raw-public" is an alias of "raw" for existing asymmetric public keys.
-    case "raw-public":
-    case "raw": {
-      // 1.
-      if (key.type !== "public") {
-        throw new DOMException(
-          "Key is not a public key",
-          "InvalidAccessError",
-        );
-      }
-
-      // 2-3.
-      return TypedArrayPrototypeGetBuffer(innerKey);
-    }
-    case "spki": {
-      // 1.
-      if (key.type !== "public") {
-        throw new DOMException(
-          "Key is not a public key",
-          "InvalidAccessError",
-        );
-      }
-
-      const spkiDer = op_crypto_export_spki_ed25519(innerKey);
-      return TypedArrayPrototypeGetBuffer(spkiDer);
-    }
-    case "pkcs8": {
-      // 1.
-      if (key.type !== "private") {
-        throw new DOMException(
-          "Key is not a public key",
-          "InvalidAccessError",
-        );
-      }
-
-      const pkcs8Der = op_crypto_export_pkcs8_ed25519(
-        new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
-      );
-      pkcs8Der[15] = 0x20;
-      return TypedArrayPrototypeGetBuffer(pkcs8Der);
-    }
-    case "jwk": {
-      const x = key.type === "private"
-        ? op_crypto_jwk_x_ed25519(innerKey)
-        : op_crypto_base64url_encode(innerKey);
-      const jwk = {
-        kty: "OKP",
-        crv: "Ed25519",
-        x,
-        "key_ops": key.usages,
-        ext: key.extractable,
-      };
-      if (key.type === "private") {
-        jwk.d = op_crypto_base64url_encode(innerKey);
-      }
-      return jwk;
-    }
-    default:
-      throw new DOMException("Not implemented", "NotSupportedError");
-  }
-}
-
-// X25519 and X448 share an identical export shape. The differences --
-// curve name, dedicated SPKI/PKCS8 ops, the 2-byte PKCS8 OCTET-STRING
-// prefix and the length-fixup byte at offset 15, and the
-// `op_crypto_x*_public_key` op used for the JWK `x` field of a private key
-// -- are looked up in a single table.
-const X_CURVE_OPS = {
+// Ed25519, X25519, and X448 export all share the RFC 8037 OKP export
+// shape. They differ only in the per-curve SPKI/PKCS8 ops, the 2-byte
+// PKCS8 OCTET-STRING prefix and length-fixup byte at offset 15, the JWK
+// `crv` name, and the way `jwk.x` is recovered for a private key
+// (`op_crypto_jwk_x_ed25519` returns a base64url string directly for
+// Ed25519; X-curves return raw public bytes that must be base64-encoded).
+const OKP_EXPORT_OPS = {
+  Ed25519: {
+    spki: op_crypto_export_spki_ed25519,
+    pkcs8: op_crypto_export_pkcs8_ed25519,
+    privJwkX: (inner) => op_crypto_jwk_x_ed25519(inner),
+    prefix: [0x04, 0x22],
+    lenByte: 0x20,
+  },
   X448: {
     spki: op_crypto_export_spki_x448,
     pkcs8: op_crypto_export_pkcs8_x448,
-    pub: op_crypto_x448_public_key,
+    privJwkX: (inner) => op_crypto_x448_public_key(inner),
     prefix: [0x04, 0x3a],
     lenByte: 0x38,
   },
   X25519: {
     spki: op_crypto_export_spki_x25519,
     pkcs8: op_crypto_export_pkcs8_x25519,
-    pub: op_crypto_x25519_public_key,
+    privJwkX: (inner) => op_crypto_x25519_public_key(inner),
     prefix: [0x04, 0x22],
     lenByte: 0x20,
   },
 };
-function exportKeyXcurve(name, format, key, innerKey) {
-  const ops = X_CURVE_OPS[name];
+function exportKeyOkp(name, format, key, innerKey) {
+  const ops = OKP_EXPORT_OPS[name];
   switch (format) {
     // "raw-public" is an alias of "raw" for existing asymmetric public keys.
     case "raw-public":
@@ -5343,7 +5287,7 @@ function exportKeyXcurve(name, format, key, innerKey) {
         ext: key.extractable,
       };
       if (key.type === "private") {
-        jwk.x = ops.pub(innerKey);
+        jwk.x = ops.privJwkX(innerKey);
         jwk.d = op_crypto_base64url_encode(innerKey);
       } else {
         jwk.x = op_crypto_base64url_encode(innerKey);
