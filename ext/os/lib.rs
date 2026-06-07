@@ -76,14 +76,13 @@ impl OpExitCallbacks {
 /// ends the current run without killing the file watcher. See issue #7590.
 pub struct WatcherExitHandle(pub v8::IsolateHandle);
 
-/// Set by `op_exit` when a [`WatcherExitHandle`] is present to record that the
-/// script called `Deno.exit()`. The watcher reads this after the run to learn
-/// the requested exit code and to confirm the V8 termination it observes was
-/// caused by `Deno.exit()` rather than another error.
+/// Marker set by `op_exit` when a [`WatcherExitHandle`] is present, recording
+/// that the script called `Deno.exit()`. The watcher reads this after the run
+/// to confirm the V8 termination it observes was caused by `Deno.exit()` rather
+/// than another error; the requested exit code is read separately from the
+/// worker's `ExitCode` (set by `Deno.exit()` before `op_exit` runs).
 #[derive(Clone, Copy, Debug)]
-pub struct WatcherExitInfo {
-  pub exit_code: i32,
-}
+pub struct WatcherExited;
 
 deno_core::extension!(
   deno_os,
@@ -373,11 +372,7 @@ fn op_exit(state: &mut OpState) {
   if let Some(handle) =
     state.try_borrow::<WatcherExitHandle>().map(|h| h.0.clone())
   {
-    let code = state
-      .try_borrow::<ExitCode>()
-      .map(|exit_code| exit_code.get())
-      .unwrap_or_default();
-    state.put(WatcherExitInfo { exit_code: code });
+    state.put(WatcherExited);
     handle.terminate_execution();
     return;
   }
