@@ -619,7 +619,7 @@ ObjectAssign(SubtleCrypto.prototype, {
 
     switch (algorithmName) {
       case "HMAC": {
-        result = exportKeyHMAC(format, key, innerKey);
+        result = exportKeySymmetric("HMAC", format, key, innerKey);
         break;
       }
       case "RSASSA-PKCS1-v1_5":
@@ -656,11 +656,11 @@ ObjectAssign(SubtleCrypto.prototype, {
       case "AES-GCM":
       case "AES-OCB":
       case "AES-KW": {
-        result = exportKeyAES(format, key, innerKey);
+        result = exportKeySymmetric("AES", format, key, innerKey);
         break;
       }
       case "ChaCha20-Poly1305": {
-        result = exportKeyChaCha20Poly1305(format, key, innerKey);
+        result = exportKeySymmetric("ChaCha20-Poly1305", format, key, innerKey);
         break;
       }
       case "ML-KEM-512":
@@ -2724,103 +2724,71 @@ function importKeyOkp(name, format, keyData, extractable, keyUsages) {
   }
 }
 
-function exportKeyAES(
-  format,
-  key,
-  innerKey,
-) {
-  switch (format) {
-    // 2.
-    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
-    case "raw-secret":
-    case "raw": {
-      // 1.
-      const data = innerKey.data;
-      // 2.
-      return TypedArrayPrototypeGetBuffer(data);
-    }
-    case "jwk": {
-      // 1-2.
-      const jwk = {
-        kty: "oct",
-      };
+// Map of HMAC hash name -> JWK `alg` value per RFC 7518 §3.
+const HMAC_JWK_ALG = {
+  "SHA-1": "HS1",
+  "SHA-256": "HS256",
+  "SHA-384": "HS384",
+  "SHA-512": "HS512",
+  "SHA3-256": "HS3-256",
+  "SHA3-384": "HS3-384",
+  "SHA3-512": "HS3-512",
+};
 
-      // 3.
-      const data = op_crypto_export_key({
-        format: "jwksecret",
-        algorithm: "AES",
-      }, innerKey);
-      ObjectAssign(jwk, data);
-
-      // 4.
-      const algorithm = key.algorithm;
-      switch (algorithm.length) {
-        case 128:
-          jwk.alg = aesJwkAlg[algorithm.name][128];
-          break;
-        case 192:
-          jwk.alg = aesJwkAlg[algorithm.name][192];
-          break;
-        case 256:
-          jwk.alg = aesJwkAlg[algorithm.name][256];
-          break;
-        default:
-          throw new DOMException(
-            `Invalid key length: ${algorithm.length}`,
-            "NotSupportedError",
-          );
+// Symmetric (kty=oct) export -- AES-*, HMAC, ChaCha20-Poly1305. They share
+// `raw` / `jwk` export, with the only differences being whether `raw`
+// is an alias for `raw-secret` (it is for the existing AES/HMAC
+// algorithms, but NOT for modern ChaCha20-Poly1305), the JWK `alg` value
+// (per-curve/length/hash), and the Rust-side algorithm name fed to
+// `op_crypto_export_key`'s `jwksecret` path.
+function exportKeySymmetric(family, format, key, innerKey) {
+  if (family === "HMAC" && innerKey == null) {
+    throw new DOMException("Key is not available", "OperationError");
+  }
+  const rawAliasAllowed = family !== "ChaCha20-Poly1305";
+  if (format === "raw-secret" || (format === "raw" && rawAliasAllowed)) {
+    return TypedArrayPrototypeGetBuffer(innerKey.data);
+  }
+  if (format !== "jwk") {
+    throw new DOMException("Not implemented", "NotSupportedError");
+  }
+  const jwk = { kty: "oct" };
+  const rustAlgo = family === "HMAC" ? key.algorithm.name : "AES";
+  const data = op_crypto_export_key(
+    { format: "jwksecret", algorithm: rustAlgo },
+    innerKey,
+  );
+  jwk.k = data.k;
+  switch (family) {
+    case "AES": {
+      const len = key.algorithm.length;
+      if (len !== 128 && len !== 192 && len !== 256) {
+        throw new DOMException(
+          `Invalid key length: ${len}`,
+          "NotSupportedError",
+        );
       }
-
-      // 5.
-      jwk.key_ops = key.usages;
-
-      // 6.
-      jwk.ext = key.extractable;
-
-      // 7.
-      return jwk;
+      jwk.alg = aesJwkAlg[key.algorithm.name][len];
+      break;
     }
-    default:
-      throw new DOMException("Not implemented", "NotSupportedError");
-  }
-}
-
-function exportKeyChaCha20Poly1305(format, key, innerKey) {
-  switch (format) {
-    // ChaCha20-Poly1305 is a modern symmetric algorithm and therefore only
-    // recognizes "raw-secret" (not the "raw" alias).
-    case "raw-secret": {
-      const data = innerKey.data;
-      return TypedArrayPrototypeGetBuffer(data);
-    }
-    case "jwk": {
-      // 1-2.
-      const jwk = {
-        kty: "oct",
-      };
-
-      // 3.
-      const data = op_crypto_export_key({
-        format: "jwksecret",
-        algorithm: "AES",
-      }, innerKey);
-      jwk.k = data.k;
-
-      // 4.
+    case "ChaCha20-Poly1305":
       jwk.alg = "C20P";
-
-      // 5.
-      jwk.key_ops = key.usages;
-
-      // 6.
-      jwk.ext = key.extractable;
-
-      // 7.
-      return jwk;
+      break;
+    case "HMAC": {
+      const hmacAlg = HMAC_JWK_ALG[key.algorithm.hash.name];
+      if (hmacAlg === undefined) {
+        throw new DOMException(
+          "Hash algorithm not supported",
+          "NotSupportedError",
+        );
+      }
+      jwk.alg = hmacAlg;
+      break;
     }
-    default:
-      throw new DOMException("Not implemented", "NotSupportedError");
   }
+  jwk.key_ops = key.usages;
+  jwk.ext = key.extractable;
+  return jwk;
 }
 
 const ML_KEM_PUBLIC_SIZES = {
@@ -4978,83 +4946,6 @@ function importKeyKdf(name, format, keyData, extractable, keyUsages) {
     { name },
     handle,
   );
-}
-
-function exportKeyHMAC(format, key, innerKey) {
-  // 1.
-  if (innerKey == null) {
-    throw new DOMException("Key is not available", "OperationError");
-  }
-
-  switch (format) {
-    // 3.
-    // For existing symmetric algorithms "raw" is an alias of "raw-secret".
-    case "raw-secret":
-    case "raw": {
-      const bits = innerKey.data;
-      // TODO(petamoriken): Uint8Array does not have push method
-      // for (let _i = 7 & (8 - bits.length % 8); _i > 0; _i--) {
-      //   bits.push(0);
-      // }
-      // 4-5.
-      return TypedArrayPrototypeGetBuffer(bits);
-    }
-    case "jwk": {
-      // 1-2.
-      const jwk = {
-        kty: "oct",
-      };
-
-      // 3.
-      const data = op_crypto_export_key({
-        format: "jwksecret",
-        algorithm: key.algorithm.name,
-      }, innerKey);
-      jwk.k = data.k;
-
-      // 4.
-      const algorithm = key.algorithm;
-      // 5.
-      const hash = algorithm.hash;
-      // 6.
-      switch (hash.name) {
-        case "SHA-1":
-          jwk.alg = "HS1";
-          break;
-        case "SHA-256":
-          jwk.alg = "HS256";
-          break;
-        case "SHA-384":
-          jwk.alg = "HS384";
-          break;
-        case "SHA-512":
-          jwk.alg = "HS512";
-          break;
-        case "SHA3-256":
-          jwk.alg = "HS3-256";
-          break;
-        case "SHA3-384":
-          jwk.alg = "HS3-384";
-          break;
-        case "SHA3-512":
-          jwk.alg = "HS3-512";
-          break;
-        default:
-          throw new DOMException(
-            "Hash algorithm not supported",
-            "NotSupportedError",
-          );
-      }
-      // 7.
-      jwk.key_ops = key.usages;
-      // 8.
-      jwk.ext = key.extractable;
-      // 9.
-      return jwk;
-    }
-    default:
-      throw new DOMException("Not implemented", "NotSupportedError");
-  }
 }
 
 function exportKeyRSA(format, key, innerKey) {
