@@ -502,7 +502,6 @@ struct MapObjectAccess<'a, 's, 'i> {
   obj: v8::Local<'a, v8::Object>,
   keys: SeqAccess<'a, 's, 'i>,
   next_value: Option<v8::Local<'s, v8::Value>>,
-  remaining_depth: usize,
 }
 
 impl<'a, 's, 'i> MapObjectAccess<'a, 's, 'i> {
@@ -527,7 +526,6 @@ impl<'a, 's, 'i> MapObjectAccess<'a, 's, 'i> {
       obj,
       keys,
       next_value: None,
-      remaining_depth,
     }
   }
 }
@@ -550,7 +548,7 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_, '_> {
         self.keys.scope,
         key.v8_value,
         None,
-        self.remaining_depth,
+        self.keys.remaining_depth,
       );
       return seed.deserialize(&mut deserializer).map(Some);
     }
@@ -569,7 +567,7 @@ impl<'de> de::MapAccess<'de> for MapObjectAccess<'_, '_, '_> {
       self.keys.scope,
       v8_val,
       None,
-      self.remaining_depth,
+      self.keys.remaining_depth,
     );
     seed.deserialize(&mut deserializer)
   }
