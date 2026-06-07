@@ -219,7 +219,7 @@ pub fn strip_windows_trailing_chars(path: &str) -> Cow<'_, str> {
 /// path argument the way the Windows file system would (see
 /// [`strip_windows_trailing_chars`]). URL arguments (anything with a URI
 /// scheme) are passed through unchanged.
-pub fn resolve_url_or_path(
+pub fn resolve_url_or_path_normalized(
   specifier: &str,
   current_dir: &Path,
 ) -> Result<ModuleSpecifier, deno_path_util::ResolveUrlOrPathError> {
@@ -262,6 +262,18 @@ mod test {
     assert_eq!(strip_windows_trailing_chars("a\\.."), "a\\..");
     // an all-trailing-chars name is left alone (avoid producing an empty name)
     assert_eq!(strip_windows_trailing_chars("a\\   "), "a\\   ");
+  }
+
+  #[test]
+  fn test_resolve_url_or_path_normalized_url_passthrough() {
+    let cwd = std::env::current_dir().unwrap();
+    // URL arguments must bypass the Windows trailing-char normalization. The
+    // scheme guard is what prevents the strip from mangling URLs (e.g. turning
+    // `.../foo.tsx.` into `.../foo.tsx` on Windows), so lock that in here.
+    let url =
+      resolve_url_or_path_normalized("http://example.com/foo.tsx.", &cwd)
+        .unwrap();
+    assert_eq!(url.as_str(), "http://example.com/foo.tsx.");
   }
 
   #[test]

@@ -37,7 +37,7 @@ use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliManagedNpmResolver;
-use crate::util::path::resolve_url_or_path;
+use crate::util::path::resolve_url_or_path_normalized;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -159,7 +159,9 @@ pub async fn info(
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
-      None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
+      None => {
+        resolve_url_or_path_normalized(&specifier, cli_options.initial_cwd())?
+      }
     };
 
     let mut loader =
