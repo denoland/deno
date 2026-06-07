@@ -239,36 +239,46 @@ fn extract_files_from_regex_blocks(
         .rfind('\n')
         .map(|i| &before_fence[i + 1..])
         .unwrap_or(before_fence);
-      // Strip the leading `* ` (or `*`) comment marker from the fence line,
-      // then collect the remaining `> ` tokens as the blockquote prefix.
-      let fence_line_after_star = line_before_fence
-        .trim_start()
-        .strip_prefix('*')
-        .map(|s| s.strip_prefix(' ').unwrap_or(s))
-        .unwrap_or("");
-      let mut blockquote_prefix = String::new();
+      // Strip the leading `* ` (or `*`) JSDoc comment marker from the fence
+      // line if present, then collect the remaining `> ` tokens as the
+      // blockquote prefix. Plain markdown fences (for example in a `.md` file)
+      // have no `*` marker, so in that case we read the blockquote tokens from
+      // the trimmed line directly.
+      let trimmed_fence_line = line_before_fence.trim_start();
+      let fence_line_after_star = match trimmed_fence_line.strip_prefix('*') {
+        Some(after_star) => after_star.strip_prefix(' ').unwrap_or(after_star),
+        None => trimmed_fence_line,
+      };
+      // Count the blockquote depth, that is the number of leading `>` markers
+      // on the fence line. Each `>` may be followed by an optional single space
+      // or tab. A fence that is not inside a blockquote has depth zero.
+      let mut blockquote_depth = 0usize;
       let mut rest = fence_line_after_star;
-      loop {
-        if let Some(r) = rest.strip_prefix("> ") {
-          blockquote_prefix.push_str("> ");
-          rest = r;
-        } else if rest == ">" || rest.starts_with(">`") {
-          // bare `>` with no space before the fence (e.g. `* >```ts`)
-          blockquote_prefix.push('>');
-          break;
-        } else {
-          break;
-        }
+      while let Some(after_marker) = rest.strip_prefix('>') {
+        blockquote_depth += 1;
+        rest = after_marker
+          .strip_prefix(|c| c == ' ' || c == '\t')
+          .unwrap_or(after_marker);
       }
 
       // TODO(caspervonb) generate an inline source map
       let mut file_source = String::new();
       for line in lines_regex.captures_iter(text) {
         let line_text = line.get(1).or_else(|| line.get(3)).unwrap();
-        let stripped = line_text
-          .as_str()
-          .strip_prefix(blockquote_prefix.as_str())
-          .unwrap_or(line_text.as_str());
+        // Strip up to `blockquote_depth` leading `>` markers, each followed by
+        // an optional single space or tab. This keeps empty quoted lines that
+        // are written as a bare `>` from leaking a stray marker into the
+        // extracted source. A block with depth zero is left untouched, so a
+        // normal code line that happens to start with `> ` is preserved.
+        let mut stripped = line_text.as_str();
+        for _ in 0..blockquote_depth {
+          let Some(after_marker) = stripped.strip_prefix('>') else {
+            break;
+          };
+          stripped = after_marker
+            .strip_prefix(|c| c == ' ' || c == '\t')
+            .unwrap_or(after_marker);
+        }
         writeln!(file_source, "{}", stripped).unwrap();
       }
 
