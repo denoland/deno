@@ -19,9 +19,6 @@ const {
   op_crypto_base64url_encode,
   op_crypto_get_key_length,
   op_crypto_get_registered_algorithm,
-  op_crypto_derive_bits,
-  op_crypto_derive_bits_x25519,
-  op_crypto_derive_bits_x448,
   op_crypto_export_key,
   op_crypto_export_pkcs8_ed25519,
   op_crypto_export_pkcs8_x25519,
@@ -701,39 +698,6 @@ ObjectAssign(SubtleCrypto.prototype, {
    * @param {number | null} length
    * @returns {Promise<ArrayBuffer>}
    */
-  async deriveBits(algorithm, baseKey, length = null) {
-    webidl.assertBranded(this, SubtleCryptoPrototype);
-    const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
-    algorithm = webidl.converters.AlgorithmIdentifier(
-      algorithm,
-      prefix,
-      "Argument 1",
-    );
-    baseKey = webidl.converters.CryptoKey(baseKey, prefix, "Argument 2");
-    if (length !== null) {
-      length = webidl.converters["unsigned long"](length, prefix, "Argument 3");
-    }
-
-    // 2.
-    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
-    // 4-6.
-    const result = await deriveBits(normalizedAlgorithm, baseKey, length);
-    // 7.
-    if (normalizedAlgorithm.name !== baseKey.algorithm.name) {
-      throw new DOMException("Invalid algorithm name", "InvalidAccessError");
-    }
-    // 8.
-    if (!ArrayPrototypeIncludes(baseKey.usages, "deriveBits")) {
-      throw new DOMException(
-        "'baseKey' usages does not contain 'deriveBits'",
-        "InvalidAccessError",
-      );
-    }
-    // 9-10.
-    return result;
-  },
-
   /**
    * @param {AlgorithmIdentifier} algorithm
    * @param {CryptoKey} baseKey
@@ -809,7 +773,7 @@ ObjectAssign(SubtleCrypto.prototype, {
     const length = getKeyLength(normalizedDerivedKeyAlgorithmLength);
 
     // 14.
-    const secret = await deriveBits(
+    const secret = await this.deriveBits(
       normalizedAlgorithm,
       baseKey,
       length,
@@ -6350,223 +6314,6 @@ async function generateKeyAES(normalizedAlgorithm, extractable, usages) {
 
   // 12.
   return key;
-}
-
-async function deriveBits(normalizedAlgorithm, baseKey, length) {
-  switch (normalizedAlgorithm.name) {
-    case "PBKDF2": {
-      // 1.
-      if (length == null || length == 0 || length % 8 !== 0) {
-        throw new DOMException("Invalid length", "OperationError");
-      }
-
-      if (normalizedAlgorithm.iterations == 0) {
-        throw new DOMException(
-          "iterations must not be zero",
-          "OperationError",
-        );
-      }
-
-      const handle = op_crypto_key_handle(baseKey);
-
-      normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
-
-      const buf = await op_crypto_derive_bits(handle.cppgc, null, {
-        algorithm: "PBKDF2",
-        hash: normalizedAlgorithm.hash.name,
-        iterations: normalizedAlgorithm.iterations,
-        length,
-      }, normalizedAlgorithm.salt);
-
-      return TypedArrayPrototypeGetBuffer(buf);
-    }
-    case "ECDH": {
-      // 1.
-      if (baseKey.type !== "private") {
-        throw new DOMException("Invalid key type", "InvalidAccessError");
-      }
-      // 2.
-      const publicKey = normalizedAlgorithm.public;
-      // 3.
-      if (publicKey.type !== "public") {
-        throw new DOMException("Invalid key type", "InvalidAccessError");
-      }
-      // 4.
-      if (publicKey.algorithm.name !== baseKey.algorithm.name) {
-        throw new DOMException(
-          "Algorithm mismatch",
-          "InvalidAccessError",
-        );
-      }
-      // 5.
-      if (
-        publicKey.algorithm.namedCurve !== baseKey.algorithm.namedCurve
-      ) {
-        throw new DOMException(
-          "'namedCurve' mismatch",
-          "InvalidAccessError",
-        );
-      }
-      // 6.
-      if (
-        ArrayPrototypeIncludes(
-          supportedNamedCurves,
-          publicKey.algorithm.namedCurve,
-        )
-      ) {
-        const baseKeyhandle = op_crypto_key_handle(baseKey);
-        const publicKeyhandle = op_crypto_key_handle(publicKey);
-
-        const buf = await op_crypto_derive_bits(
-          baseKeyhandle.cppgc,
-          publicKeyhandle.cppgc,
-          {
-            algorithm: "ECDH",
-            namedCurve: publicKey.algorithm.namedCurve,
-            length: length ?? 0,
-          },
-        );
-
-        // 8.
-        if (length === null) {
-          return TypedArrayPrototypeGetBuffer(buf);
-        } else if (TypedArrayPrototypeGetByteLength(buf) * 8 < length) {
-          throw new DOMException("Invalid length", "OperationError");
-        } else {
-          return ArrayBufferPrototypeSlice(
-            TypedArrayPrototypeGetBuffer(buf),
-            0,
-            MathCeil(length / 8),
-          );
-        }
-      } else {
-        throw new DOMException("Not implemented", "NotSupportedError");
-      }
-    }
-    case "HKDF": {
-      // 1.
-      if (length === null || length === 0 || length % 8 !== 0) {
-        throw new DOMException("Invalid length", "OperationError");
-      }
-
-      const handle = op_crypto_key_handle(baseKey);
-
-      normalizedAlgorithm.salt = copyBuffer(normalizedAlgorithm.salt);
-
-      normalizedAlgorithm.info = copyBuffer(normalizedAlgorithm.info);
-
-      const buf = await op_crypto_derive_bits(handle.cppgc, null, {
-        algorithm: "HKDF",
-        hash: normalizedAlgorithm.hash.name,
-        info: normalizedAlgorithm.info,
-        length,
-      }, normalizedAlgorithm.salt);
-
-      return TypedArrayPrototypeGetBuffer(buf);
-    }
-    case "X448": {
-      // 1.
-      if (baseKey.type !== "private") {
-        throw new DOMException("Invalid key type", "InvalidAccessError");
-      }
-      // 2.
-      const publicKey = normalizedAlgorithm.public;
-      // 3.
-      if (publicKey.type !== "public") {
-        throw new DOMException("Invalid key type", "InvalidAccessError");
-      }
-      // 4.
-      if (publicKey.algorithm.name !== baseKey.algorithm.name) {
-        throw new DOMException(
-          "Algorithm mismatch",
-          "InvalidAccessError",
-        );
-      }
-
-      // 5.
-      const kHandle = op_crypto_key_handle(baseKey);
-      const uHandle = op_crypto_key_handle(publicKey);
-
-      const secret = new Uint8Array(56);
-      const isIdentity = op_crypto_derive_bits_x448(
-        kHandle.cppgc,
-        uHandle.cppgc,
-        secret,
-      );
-
-      // 6.
-      if (isIdentity) {
-        throw new DOMException("Invalid key", "OperationError");
-      }
-
-      // 7.
-      if (length === null) {
-        return TypedArrayPrototypeGetBuffer(secret);
-      } else if (
-        TypedArrayPrototypeGetByteLength(secret) * 8 < length
-      ) {
-        throw new DOMException("Invalid length", "OperationError");
-      } else {
-        return ArrayBufferPrototypeSlice(
-          TypedArrayPrototypeGetBuffer(secret),
-          0,
-          MathCeil(length / 8),
-        );
-      }
-    }
-    case "X25519": {
-      // 1.
-      if (baseKey.type !== "private") {
-        throw new DOMException("Invalid key type", "InvalidAccessError");
-      }
-      // 2.
-      const publicKey = normalizedAlgorithm.public;
-      // 3.
-      if (publicKey.type !== "public") {
-        throw new DOMException("Invalid key type", "InvalidAccessError");
-      }
-      // 4.
-      if (publicKey.algorithm.name !== baseKey.algorithm.name) {
-        throw new DOMException(
-          "Algorithm mismatch",
-          "InvalidAccessError",
-        );
-      }
-
-      // 5.
-      const kHandle = op_crypto_key_handle(baseKey);
-      const uHandle = op_crypto_key_handle(publicKey);
-
-      const secret = new Uint8Array(32);
-      const isIdentity = op_crypto_derive_bits_x25519(
-        kHandle.cppgc,
-        uHandle.cppgc,
-        secret,
-      );
-
-      // 6.
-      if (isIdentity) {
-        throw new DOMException("Invalid key", "OperationError");
-      }
-
-      // 7.
-      if (length === null) {
-        return TypedArrayPrototypeGetBuffer(secret);
-      } else if (
-        TypedArrayPrototypeGetByteLength(secret) * 8 < length
-      ) {
-        throw new DOMException("Invalid length", "OperationError");
-      } else {
-        return ArrayBufferPrototypeSlice(
-          TypedArrayPrototypeGetBuffer(secret),
-          0,
-          MathCeil(length / 8),
-        );
-      }
-    }
-    default:
-      throw new DOMException("Not implemented", "NotSupportedError");
-  }
 }
 
 webidl.configureInterface(SubtleCrypto);

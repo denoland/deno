@@ -22,6 +22,8 @@ use crate::digest::run as run_digest;
 use crate::shared::SharedError;
 use crate::subtle_decrypt::SubtleDecryptParams;
 use crate::subtle_decrypt::run as run_decrypt;
+use crate::subtle_derive_bits::SubtleDeriveBitsParams;
+use crate::subtle_derive_bits::run as run_derive_bits;
 use crate::subtle_encrypt::SubtleEncryptParams;
 use crate::subtle_encrypt::run as run_encrypt;
 use crate::subtle_key::SubtleKey;
@@ -152,6 +154,26 @@ impl SubtleCrypto {
   ) -> Result<bool, CryptoError> {
     spawn_blocking(move || run_verify(algorithm, key, signature.0, data.0))
       .await?
+  }
+
+  /// `SubtleCrypto.deriveBits(algorithm, baseKey, length?)` —
+  /// algorithm-specific key derivation (PBKDF2 / HKDF / ECDH /
+  /// X25519 / X448). The `SubtleDeriveBitsParams` `WebIdlConverter`
+  /// pulls the algorithm dictionary (`hash` / `salt` / `iterations`
+  /// for PBKDF2; `hash` / `salt` / `info` for HKDF; peer `public`
+  /// `CryptoKey` for the ECDH / X-curve variants) and `SubtleKey`
+  /// snapshots `baseKey`; dispatch lives in
+  /// [`crate::subtle_derive_bits::run`].
+  #[arraybuffer]
+  #[rename("deriveBits")]
+  #[required(2)]
+  async fn derive_bits(
+    &self,
+    #[webidl] algorithm: SubtleDeriveBitsParams,
+    #[webidl] base_key: SubtleKey,
+    length: Option<u32>,
+  ) -> Result<Vec<u8>, CryptoError> {
+    spawn_blocking(move || run_derive_bits(algorithm, base_key, length)).await?
   }
 }
 

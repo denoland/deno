@@ -12,8 +12,6 @@ use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
-use crate::key_store::CryptoKeyHandle;
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X25519Error {
   #[class("DOMExceptionOperationError")]
@@ -60,22 +58,18 @@ pub fn op_crypto_x25519_public_key(#[buffer] private_key: &[u8]) -> String {
 
 const MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 32]);
 
-#[op2(fast)]
-pub fn op_crypto_derive_bits_x25519(
-  #[cppgc] k: &CryptoKeyHandle,
-  #[cppgc] u: &CryptoKeyHandle,
-  #[buffer] secret: &mut [u8],
+/// Compute the X25519 shared secret from a raw 32-byte private key
+/// `k` and 32-byte peer public key `u`, writing into `secret`. Returns
+/// `Ok(true)` if the result is the Montgomery identity (low-order
+/// point), in which case the caller must reject. Called from
+/// [`crate::subtle_derive_bits::run`].
+pub(crate) fn x25519_derive_bits(
+  k: &[u8],
+  u: &[u8],
+  secret: &mut [u8],
 ) -> Result<bool, X25519Error> {
-  let k: [u8; 32] = k
-    .data()
-    .bytes()
-    .try_into()
-    .map_err(|_| X25519Error::InvalidKeyLength)?;
-  let u: [u8; 32] = u
-    .data()
-    .bytes()
-    .try_into()
-    .map_err(|_| X25519Error::InvalidKeyLength)?;
+  let k: [u8; 32] = k.try_into().map_err(|_| X25519Error::InvalidKeyLength)?;
+  let u: [u8; 32] = u.try_into().map_err(|_| X25519Error::InvalidKeyLength)?;
   let sh_sec = x25519_dalek::x25519(k, u);
   let point = MontgomeryPoint(sh_sec);
   if point.ct_eq(&MONTGOMERY_IDENTITY).unwrap_u8() == 1 {

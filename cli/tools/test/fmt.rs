@@ -354,7 +354,6 @@ pub const OP_DETAILS: phf::Map<&'static str, [&'static str; 2]> = phf_map! {
   "op_broadcast_recv" => ["receive a message from a BroadcastChannel", "closing the BroadcastChannel"],
   "op_broadcast_send" => ["send a message to a BroadcastChannel", "closing the BroadcastChannel"],
   "op_crypto_decrypt" => ["decrypt data", "awaiting the result of a `crypto.subtle.decrypt` call"],
-  "op_crypto_derive_bits" => ["derive bits from a key", "awaiting the result of a `crypto.subtle.deriveBits` call"],
   "op_crypto_encrypt" => ["encrypt data", "awaiting the result of a `crypto.subtle.encrypt` call"],
   "op_crypto_generate_key" => ["generate a key", "awaiting the result of a `crypto.subtle.generateKey` call"],
   "op_crypto_subtle_digest" => ["digest data", "awaiting the result of a `crypto.subtle.digest` call"],

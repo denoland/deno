@@ -13,8 +13,6 @@ use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
-use crate::key_store::CryptoKeyHandle;
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X448Error {
   #[class("DOMExceptionOperationError")]
@@ -46,22 +44,18 @@ pub fn op_crypto_generate_x448_keypair(
 
 static MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 56]);
 
-#[op2(fast)]
-pub fn op_crypto_derive_bits_x448(
-  #[cppgc] k: &CryptoKeyHandle,
-  #[cppgc] u: &CryptoKeyHandle,
-  #[buffer] secret: &mut [u8],
+/// Compute the X448 shared secret from a raw 56-byte private key `k`
+/// and 56-byte peer public key `u`, writing into `secret`. Returns
+/// `Ok(true)` if the result is the Montgomery identity (low-order
+/// point), in which case the caller must reject. Called from
+/// [`crate::subtle_derive_bits::run`].
+pub(crate) fn x448_derive_bits(
+  k: &[u8],
+  u: &[u8],
+  secret: &mut [u8],
 ) -> Result<bool, X448Error> {
-  let k: [u8; 56] = k
-    .data()
-    .bytes()
-    .try_into()
-    .map_err(|_| X448Error::InvalidKeyLength)?;
-  let u: [u8; 56] = u
-    .data()
-    .bytes()
-    .try_into()
-    .map_err(|_| X448Error::InvalidKeyLength)?;
+  let k: [u8; 56] = k.try_into().map_err(|_| X448Error::InvalidKeyLength)?;
+  let u: [u8; 56] = u.try_into().map_err(|_| X448Error::InvalidKeyLength)?;
 
   // x448(k, u)
   let mut scalar_bytes = [0u8; 57];

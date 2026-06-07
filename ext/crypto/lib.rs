@@ -73,6 +73,7 @@ mod mlkem;
 mod shared;
 mod subtle_crypto;
 mod subtle_decrypt;
+mod subtle_derive_bits;
 mod subtle_encrypt;
 mod subtle_key;
 mod subtle_sign;
@@ -112,7 +113,6 @@ deno_core::extension!(deno_crypto,
     crypto_key::op_crypto_key_handle,
     op_crypto_get_random_values,
     op_crypto_generate_key,
-    op_crypto_derive_bits,
     op_crypto_import_key,
     op_crypto_export_key,
     op_crypto_encrypt,
@@ -131,13 +131,11 @@ deno_core::extension!(deno_crypto,
     key_store::op_crypto_key_store_get,
     x25519::op_crypto_generate_x25519_keypair,
     x25519::op_crypto_x25519_public_key,
-    x25519::op_crypto_derive_bits_x25519,
     x25519::op_crypto_import_spki_x25519,
     x25519::op_crypto_import_pkcs8_x25519,
     x25519::op_crypto_export_spki_x25519,
     x25519::op_crypto_export_pkcs8_x25519,
     x448::op_crypto_generate_x448_keypair,
-    x448::op_crypto_derive_bits_x448,
     x448::op_crypto_import_spki_x448,
     x448::op_crypto_import_pkcs8_x448,
     x448::op_crypto_x448_public_key,
@@ -798,201 +796,177 @@ pub(crate) fn verify_key_sync(
   }
 }
 
-#[derive(deno_core::FromV8)]
-pub struct DeriveKeyArg {
-  #[from_v8(serde)]
+/// Synchronous body of the old `op_crypto_derive_bits`; called directly
+/// from [`crate::subtle_derive_bits::run`] inside `spawn_blocking`. The
+/// `salt` is `Some` for PBKDF2 / HKDF and `None` for ECDH.
+pub(crate) fn derive_bits_sync(
+  key: KeyData,
+  public_key: Option<KeyData>,
   algorithm: Algorithm,
-  #[from_v8(serde)]
   hash: Option<CryptoHash>,
   length: usize,
   iterations: Option<u32>,
-  // ECDH
-  #[from_v8(serde)]
   named_curve: Option<CryptoNamedCurve>,
-  // HKDF
-  #[from_v8(serde)]
-  info: Option<JsBuffer>,
-}
+  info: Option<Vec<u8>>,
+  salt: Option<Vec<u8>>,
+) -> Result<Vec<u8>, CryptoError> {
+  match algorithm {
+    Algorithm::Pbkdf2 => {
+      let salt = salt.ok_or_else(JsErrorBox::not_supported)?;
+      assert!(length > 0);
+      assert!(length.is_multiple_of(8));
 
-#[op2]
-pub async fn op_crypto_derive_bits(
-  #[cppgc] key: &CryptoKeyHandle,
-  // ECDH peer public key, if applicable.
-  #[cppgc] public_key: Option<&CryptoKeyHandle>,
-  #[scoped] args: DeriveKeyArg,
-  #[buffer] zero_copy: Option<JsBuffer>,
-) -> Result<Uint8Array, CryptoError> {
-  let key: KeyData = key.data().into();
-  let public_key: Option<KeyData> = public_key.map(|k| k.data().into());
-  deno_core::unsync::spawn_blocking(move || {
-    let algorithm = args.algorithm;
-    match algorithm {
-      Algorithm::Pbkdf2 => {
-        let zero_copy = zero_copy.ok_or_else(JsErrorBox::not_supported)?;
-        let salt = &*zero_copy;
-        // The caller must validate these cases.
-        assert!(args.length > 0);
-        assert!(args.length.is_multiple_of(8));
+      let algorithm = match hash.ok_or_else(JsErrorBox::not_supported)? {
+        CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
+        CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
+        CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
+        CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
+        _ => return Err(CryptoError::UnsupportedAlgorithm),
+      };
 
-        let algorithm = match args.hash.ok_or_else(JsErrorBox::not_supported)? {
-          CryptoHash::Sha1 => pbkdf2::PBKDF2_HMAC_SHA1,
-          CryptoHash::Sha256 => pbkdf2::PBKDF2_HMAC_SHA256,
-          CryptoHash::Sha384 => pbkdf2::PBKDF2_HMAC_SHA384,
-          CryptoHash::Sha512 => pbkdf2::PBKDF2_HMAC_SHA512,
-          _ => return Err(CryptoError::UnsupportedAlgorithm),
-        };
+      let iterations =
+        NonZeroU32::new(iterations.ok_or_else(JsErrorBox::not_supported)?)
+          .unwrap();
+      let secret = key.data;
+      let mut out = vec![0; length / 8];
+      pbkdf2::derive(algorithm, iterations, &salt, &secret, &mut out);
+      Ok(out)
+    }
+    Algorithm::Ecdh => {
+      let named_curve =
+        named_curve.ok_or(CryptoError::MissingArgumentNamedCurve)?;
 
-        // This will never panic. We have already checked length earlier.
-        let iterations = NonZeroU32::new(
-          args.iterations.ok_or_else(JsErrorBox::not_supported)?,
-        )
-        .unwrap();
-        let secret = key.data;
-        let mut out = vec![0; args.length / 8];
-        pbkdf2::derive(algorithm, iterations, salt, &secret, &mut out);
-        Ok(out.into())
-      }
-      Algorithm::Ecdh => {
-        let named_curve = args
-          .named_curve
-          .ok_or_else(|| CryptoError::MissingArgumentNamedCurve)?;
+      let public_key =
+        public_key.ok_or(CryptoError::MissingArgumentPublicKey)?;
 
-        let public_key =
-          public_key.ok_or_else(|| CryptoError::MissingArgumentPublicKey)?;
+      match named_curve {
+        CryptoNamedCurve::P256 => {
+          let secret_key = p256::SecretKey::from_pkcs8_der(&key.data)
+            .map_err(|_| CryptoError::DecodePrivateKey)?;
 
-        match named_curve {
-          CryptoNamedCurve::P256 => {
-            let secret_key = p256::SecretKey::from_pkcs8_der(&key.data)
-              .map_err(|_| CryptoError::DecodePrivateKey)?;
+          let public_key = match public_key.r#type {
+            KeyType::Private => {
+              p256::SecretKey::from_pkcs8_der(&public_key.data)
+                .map_err(|_| CryptoError::DecodePrivateKey)?
+                .public_key()
+            }
+            KeyType::Public => {
+              let point = p256::EncodedPoint::from_bytes(public_key.data)
+                .map_err(|_| CryptoError::DecodePrivateKey)?;
 
-            let public_key = match public_key.r#type {
-              KeyType::Private => {
-                p256::SecretKey::from_pkcs8_der(&public_key.data)
-                  .map_err(|_| CryptoError::DecodePrivateKey)?
-                  .public_key()
+              let pk = p256::PublicKey::from_encoded_point(&point);
+              // pk is a constant time Option.
+              if pk.is_some().into() {
+                pk.unwrap()
+              } else {
+                return Err(CryptoError::DecodePrivateKey);
               }
-              KeyType::Public => {
-                let point = p256::EncodedPoint::from_bytes(public_key.data)
-                  .map_err(|_| CryptoError::DecodePrivateKey)?;
+            }
+            _ => unreachable!(),
+          };
 
-                let pk = p256::PublicKey::from_encoded_point(&point);
-                // pk is a constant time Option.
-                if pk.is_some().into() {
-                  pk.unwrap()
-                } else {
-                  return Err(CryptoError::DecodePrivateKey);
-                }
+          let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
+            secret_key.to_nonzero_scalar(),
+            public_key.as_affine(),
+          );
+
+          // raw serialized x-coordinate of the computed point
+          Ok(shared_secret.raw_secret_bytes().to_vec())
+        }
+        CryptoNamedCurve::P384 => {
+          let secret_key = p384::SecretKey::from_pkcs8_der(&key.data)
+            .map_err(|_| CryptoError::DecodePrivateKey)?;
+
+          let public_key = match public_key.r#type {
+            KeyType::Private => {
+              p384::SecretKey::from_pkcs8_der(&public_key.data)
+                .map_err(|_| CryptoError::DecodePrivateKey)?
+                .public_key()
+            }
+            KeyType::Public => {
+              let point = p384::EncodedPoint::from_bytes(public_key.data)
+                .map_err(|_| CryptoError::DecodePrivateKey)?;
+
+              let pk = p384::PublicKey::from_encoded_point(&point);
+              // pk is a constant time Option.
+              if pk.is_some().into() {
+                pk.unwrap()
+              } else {
+                return Err(CryptoError::DecodePrivateKey);
               }
-              _ => unreachable!(),
-            };
+            }
+            _ => unreachable!(),
+          };
 
-            let shared_secret = p256::elliptic_curve::ecdh::diffie_hellman(
-              secret_key.to_nonzero_scalar(),
-              public_key.as_affine(),
-            );
+          let shared_secret = p384::elliptic_curve::ecdh::diffie_hellman(
+            secret_key.to_nonzero_scalar(),
+            public_key.as_affine(),
+          );
 
-            // raw serialized x-coordinate of the computed point
-            Ok(shared_secret.raw_secret_bytes().to_vec().into())
-          }
-          CryptoNamedCurve::P384 => {
-            let secret_key = p384::SecretKey::from_pkcs8_der(&key.data)
-              .map_err(|_| CryptoError::DecodePrivateKey)?;
+          // raw serialized x-coordinate of the computed point
+          Ok(shared_secret.raw_secret_bytes().to_vec())
+        }
+        CryptoNamedCurve::P521 => {
+          let secret_key = p521::SecretKey::from_pkcs8_der(&key.data)
+            .map_err(|_| CryptoError::DecodePrivateKey)?;
 
-            let public_key = match public_key.r#type {
-              KeyType::Private => {
-                p384::SecretKey::from_pkcs8_der(&public_key.data)
-                  .map_err(|_| CryptoError::DecodePrivateKey)?
-                  .public_key()
+          let public_key = match public_key.r#type {
+            KeyType::Private => {
+              p521::SecretKey::from_pkcs8_der(&public_key.data)
+                .map_err(|_| CryptoError::DecodePrivateKey)?
+                .public_key()
+            }
+            KeyType::Public => {
+              let point = p521::EncodedPoint::from_bytes(public_key.data)
+                .map_err(|_| CryptoError::DecodePrivateKey)?;
+
+              let pk = p521::PublicKey::from_encoded_point(&point);
+              // pk is a constant time Option.
+              if pk.is_some().into() {
+                pk.unwrap()
+              } else {
+                return Err(CryptoError::DecodePrivateKey);
               }
-              KeyType::Public => {
-                let point = p384::EncodedPoint::from_bytes(public_key.data)
-                  .map_err(|_| CryptoError::DecodePrivateKey)?;
+            }
+            _ => unreachable!(),
+          };
 
-                let pk = p384::PublicKey::from_encoded_point(&point);
-                // pk is a constant time Option.
-                if pk.is_some().into() {
-                  pk.unwrap()
-                } else {
-                  return Err(CryptoError::DecodePrivateKey);
-                }
-              }
-              _ => unreachable!(),
-            };
+          let shared_secret = p521::elliptic_curve::ecdh::diffie_hellman(
+            secret_key.to_nonzero_scalar(),
+            public_key.as_affine(),
+          );
 
-            let shared_secret = p384::elliptic_curve::ecdh::diffie_hellman(
-              secret_key.to_nonzero_scalar(),
-              public_key.as_affine(),
-            );
-
-            // raw serialized x-coordinate of the computed point
-            Ok(shared_secret.raw_secret_bytes().to_vec().into())
-          }
-          CryptoNamedCurve::P521 => {
-            let secret_key = p521::SecretKey::from_pkcs8_der(&key.data)
-              .map_err(|_| CryptoError::DecodePrivateKey)?;
-
-            let public_key = match public_key.r#type {
-              KeyType::Private => {
-                p521::SecretKey::from_pkcs8_der(&public_key.data)
-                  .map_err(|_| CryptoError::DecodePrivateKey)?
-                  .public_key()
-              }
-              KeyType::Public => {
-                let point = p521::EncodedPoint::from_bytes(public_key.data)
-                  .map_err(|_| CryptoError::DecodePrivateKey)?;
-
-                let pk = p521::PublicKey::from_encoded_point(&point);
-                // pk is a constant time Option.
-                if pk.is_some().into() {
-                  pk.unwrap()
-                } else {
-                  return Err(CryptoError::DecodePrivateKey);
-                }
-              }
-              _ => unreachable!(),
-            };
-
-            let shared_secret = p521::elliptic_curve::ecdh::diffie_hellman(
-              secret_key.to_nonzero_scalar(),
-              public_key.as_affine(),
-            );
-
-            // raw serialized x-coordinate of the computed point
-            Ok(shared_secret.raw_secret_bytes().to_vec().into())
-          }
+          // raw serialized x-coordinate of the computed point
+          Ok(shared_secret.raw_secret_bytes().to_vec())
         }
       }
-      Algorithm::Hkdf => {
-        let zero_copy = zero_copy.ok_or_else(JsErrorBox::not_supported)?;
-        let salt = &*zero_copy;
-        let algorithm = match args.hash.ok_or_else(JsErrorBox::not_supported)? {
-          CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
-          CryptoHash::Sha256 => hkdf::HKDF_SHA256,
-          CryptoHash::Sha384 => hkdf::HKDF_SHA384,
-          CryptoHash::Sha512 => hkdf::HKDF_SHA512,
-          _ => return Err(CryptoError::UnsupportedAlgorithm),
-        };
-
-        let info = args.info.ok_or(CryptoError::MissingArgumentInfo)?;
-        // IKM
-        let secret = key.data;
-        // L
-        let length = args.length / 8;
-
-        let salt = hkdf::Salt::new(algorithm, salt);
-        let prk = salt.extract(&secret);
-        let info = &[&*info];
-        let okm = prk
-          .expand(info, HkdfOutput(length))
-          .map_err(|_e| CryptoError::HKDFLengthTooLarge)?;
-        let mut r = vec![0u8; length];
-        okm.fill(&mut r)?;
-        Ok(r.into())
-      }
-      _ => Err(CryptoError::UnsupportedAlgorithm),
     }
-  })
-  .await?
+    Algorithm::Hkdf => {
+      let salt = salt.ok_or_else(JsErrorBox::not_supported)?;
+      let algorithm = match hash.ok_or_else(JsErrorBox::not_supported)? {
+        CryptoHash::Sha1 => hkdf::HKDF_SHA1_FOR_LEGACY_USE_ONLY,
+        CryptoHash::Sha256 => hkdf::HKDF_SHA256,
+        CryptoHash::Sha384 => hkdf::HKDF_SHA384,
+        CryptoHash::Sha512 => hkdf::HKDF_SHA512,
+        _ => return Err(CryptoError::UnsupportedAlgorithm),
+      };
+
+      let info = info.ok_or(CryptoError::MissingArgumentInfo)?;
+      let secret = key.data;
+      let length = length / 8;
+
+      let salt = hkdf::Salt::new(algorithm, &salt);
+      let prk = salt.extract(&secret);
+      let info_slice: &[&[u8]] = &[&info];
+      let okm = prk
+        .expand(info_slice, HkdfOutput(length))
+        .map_err(|_e| CryptoError::HKDFLengthTooLarge)?;
+      let mut r = vec![0u8; length];
+      okm.fill(&mut r)?;
+      Ok(r)
+    }
+    _ => Err(CryptoError::UnsupportedAlgorithm),
+  }
 }
 
 fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, CryptoError> {
