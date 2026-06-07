@@ -329,6 +329,146 @@
         "message": "",
         "code": 2
       }
+    },
+    {
+      "traceId": "00000000000000000000000000000004",
+      "spanId": "0000000000000007",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "server.address",
+          "value": {
+            "stringValue": "[WILDLINE]"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/reset"
+          }
+        },
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "Error"
+          }
+        },
+        {
+          "key": "exception.type",
+          "value": {
+            "stringValue": "Error"
+          }
+        },
+        {
+          "key": "exception.message",
+          "value": {
+            "stringValue": "Stream closed with error code NGHTTP2_INTERNAL_ERROR"
+          }
+        },
+        {
+          "key": "exception.stacktrace",
+          "value": {
+            "stringValue": "[WILDCARD]"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "Stream closed with error code NGHTTP2_INTERNAL_ERROR",
+        "code": 2
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000004",
+      "spanId": "0000000000000008",
+      "traceState": "",
+      "parentSpanId": "0000000000000007",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "server.address",
+          "value": {
+            "stringValue": "[WILDLINE]"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/reset"
+          }
+        },
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "Error"
+          }
+        },
+        {
+          "key": "exception.type",
+          "value": {
+            "stringValue": "Error"
+          }
+        },
+        {
+          "key": "exception.message",
+          "value": {
+            "stringValue": "Stream closed with error code NGHTTP2_INTERNAL_ERROR"
+          }
+        },
+        {
+          "key": "exception.stacktrace",
+          "value": {
+            "stringValue": "[WILDCARD]"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "Stream closed with error code NGHTTP2_INTERNAL_ERROR",
+        "code": 2
+      }
     }
   ],
   "logs": [],

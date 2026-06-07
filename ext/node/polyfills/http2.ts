@@ -4642,6 +4642,15 @@ class ClientHttp2Session extends Http2Session {
         for (const propagator of otelState.PROPAGATORS) {
           propagator.inject(spanContext, headersParam, {
             set(carrier, key, value) {
+              // Match the object path's overwrite semantics: replace an
+              // existing entry rather than appending a duplicate (a caller
+              // could have already set `traceparent`/`tracestate`).
+              for (let i = 0; i < carrier.length; i += 2) {
+                if (StringPrototypeToLowerCase(carrier[i]) === key) {
+                  carrier[i + 1] = value;
+                  return;
+                }
+              }
               ArrayPrototypePush(carrier, key, value);
             },
           });
