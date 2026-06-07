@@ -10,6 +10,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFileError;
+use deno_config::deno_json::ConfigFileRc;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::Workspace;
 use deno_error::JsError;
@@ -860,14 +861,60 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       specified_import_map: Option<SpecifiedImportMap>,
     ) -> Result<Option<ImportMapWithDiagnostics>, WorkspaceResolverCreateError>
     {
+      // Builds the import map scope contributed by a workspace member or linked
+      // package. The member's `imports` (not its `scopes`) are layered into the
+      // synthetic map; this follows an external `importMap` file when the
+      // member uses one. `to_import_map_value` already applies Deno's bare
+      // specifier expansion for inline maps and leaves external maps untouched,
+      // matching the import map standard, so no extra expansion is done here.
+      fn child_import_map_config(
+        sys: &impl FsRead,
+        config: &ConfigFileRc,
+      ) -> import_map::ext::ImportMapConfig {
+        let (base_url, value) = match config.to_import_map_value(sys) {
+          Ok(Some((specifier, value))) => (specifier.into_owned(), value),
+          Ok(None) => (
+            config.specifier.clone(),
+            serde_json::Value::Object(Default::default()),
+          ),
+          Err(err) => {
+            log::debug!(
+              "Ignoring import map for {}: {:#}",
+              config.specifier,
+              err
+            );
+            (
+              config.specifier.clone(),
+              serde_json::Value::Object(Default::default()),
+            )
+          }
+        };
+        let mut imports_only = serde_json::Map::with_capacity(1);
+        if let serde_json::Value::Object(mut obj) = value
+          && let Some(imports) = obj.remove("imports")
+        {
+          imports_only.insert("imports".to_string(), imports);
+        }
+        import_map::ext::ImportMapConfig {
+          base_url,
+          import_map_value: imports_only.into(),
+        }
+      }
+
       let root_deno_json = workspace.root_deno_json();
       let deno_jsons = workspace.resolver_deno_jsons().collect::<Vec<_>>();
 
-      let (import_map_url, import_map) = match specified_import_map {
-        Some(SpecifiedImportMap {
-          base_url,
-          value: import_map,
-        }) => (base_url, import_map),
+      // The base of the synthetic import map: either an explicitly specified map
+      // (the `--import-map` flag or the root's external `importMap` file) or the
+      // root deno.json's own import map. Either way, workspace member and linked
+      // package scopes are layered on top so their bare specifiers resolve.
+      let base_import_map_config = match specified_import_map {
+        Some(SpecifiedImportMap { base_url, value }) => {
+          import_map::ext::ImportMapConfig {
+            base_url,
+            import_map_value: value,
+          }
+        }
         None => {
           if !deno_jsons.iter().any(|p| p.is_package())
             && !deno_jsons.iter().any(|c| {
@@ -886,59 +933,48 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
             return Ok(None);
           }
 
-          let config_specified_import_map = match root_deno_json.as_ref() {
+          let (base_url, value) = match root_deno_json.as_ref() {
             Some(deno_json) => deno_json
               .to_import_map_value(sys)
               .map_err(|source| WorkspaceResolverCreateError::ImportMapFetch {
                 referrer: deno_json.specifier.clone(),
                 source: Box::new(source),
               })?
+              .map(|(specifier, value)| (specifier.into_owned(), value))
               .unwrap_or_else(|| {
                 (
-                  Cow::Borrowed(&deno_json.specifier),
+                  deno_json.specifier.clone(),
                   serde_json::Value::Object(Default::default()),
                 )
               }),
             None => (
-              Cow::Owned(workspace.root_dir_url().join("deno.json").unwrap()),
+              workspace.root_dir_url().join("deno.json").unwrap(),
               serde_json::Value::Object(Default::default()),
             ),
           };
-          let base_import_map_config = import_map::ext::ImportMapConfig {
-            base_url: config_specified_import_map.0.into_owned(),
-            import_map_value: config_specified_import_map.1,
-          };
-          let child_import_map_configs = deno_jsons
-            .iter()
-            .filter(|f| {
-              Some(&f.specifier)
-                != root_deno_json.as_ref().map(|c| &c.specifier)
-            })
-            .map(|config| import_map::ext::ImportMapConfig {
-              base_url: config.specifier.clone(),
-              import_map_value: {
-                // don't include scopes here
-                let mut value = serde_json::Map::with_capacity(1);
-                if let Some(imports) = &config.json.imports {
-                  value.insert("imports".to_string(), imports.clone());
-                }
-                value.into()
-              },
-            })
-            .collect::<Vec<_>>();
-          let (import_map_url, import_map) =
-            ::import_map::ext::create_synthetic_import_map(
-              base_import_map_config,
-              child_import_map_configs,
-            );
-          let import_map = import_map::ext::expand_import_map_value(import_map);
-          log::debug!(
-            "Workspace config generated this import map {}",
-            serde_json::to_string_pretty(&import_map).unwrap()
-          );
-          (import_map_url, import_map)
+          import_map::ext::ImportMapConfig {
+            base_url,
+            import_map_value: value,
+          }
         }
       };
+
+      let child_import_map_configs = deno_jsons
+        .iter()
+        .filter(|f| {
+          Some(&f.specifier) != root_deno_json.as_ref().map(|c| &c.specifier)
+        })
+        .map(|config| child_import_map_config(sys, config))
+        .collect::<Vec<_>>();
+      let (import_map_url, import_map) =
+        ::import_map::ext::create_synthetic_import_map(
+          base_import_map_config,
+          child_import_map_configs,
+        );
+      log::debug!(
+        "Workspace config generated this import map {}",
+        serde_json::to_string_pretty(&import_map).unwrap()
+      );
       Ok(Some(import_map::parse_from_value(
         import_map_url,
         import_map,
@@ -2245,6 +2281,55 @@ mod test {
   }
 
   #[test]
+  fn auto_link_external_import_map_file() {
+    // Same as the basic case, but the root project points at an external
+    // `importMap` file instead of an inline `imports` map. The path entry
+    // there resolves relative to the import map file, and discovery must still
+    // find repo1's deno.json (issue #26764).
+    let sys = InMemorySys::default();
+    let repo2 = root_dir().join("repo2");
+    let repo1 = root_dir().join("repo1");
+    sys.fs_insert_json(
+      repo2.join("deno.json"),
+      json!({
+        "importMap": "./import_map.json",
+      }),
+    );
+    sys.fs_insert_json(
+      repo2.join("import_map.json"),
+      json!({
+        "imports": {
+          "@jpravetz/bmod": "../repo1/bmod/mod.ts",
+        },
+      }),
+    );
+    sys.fs_insert_json(
+      repo1.join("bmod/deno.json"),
+      json!({
+        "imports": {
+          "@scope/amod": "../amod/mod.ts",
+        },
+      }),
+    );
+
+    let workspace = workspace_at_start_dir(&sys, &repo2);
+    let resolver = create_resolver_with_sys(sys.clone(), &workspace);
+    let referrer = url_from_file_path(&repo1.join("bmod/mod.ts")).unwrap();
+    let resolution = resolver
+      .resolve("@scope/amod", &referrer, ResolutionKind::Execution)
+      .unwrap();
+    let MappedResolution::Normal { specifier, .. } = &resolution else {
+      unreachable!("{:#?}", &resolution);
+    };
+    assert_eq!(
+      specifier.as_str(),
+      url_from_file_path(&repo1.join("amod/mod.ts"))
+        .unwrap()
+        .as_str()
+    );
+  }
+
+  #[test]
   fn auto_link_external_import_map_transitive() {
     // Auto-discovery follows path import entries transitively across several
     // external packages.
@@ -2975,6 +3060,72 @@ mod test {
   }
 
   #[test]
+  fn specified_import_map_layers_link_scopes() {
+    // A specified import map (e.g. the root's external `importMap` file passed
+    // by the CLI) must still layer in the scopes of linked packages, so a bare
+    // specifier imported from a linked package resolves against that package's
+    // own import map (issue #26764).
+    let sys = InMemorySys::default();
+    let repo2 = root_dir().join("repo2");
+    let repo1 = root_dir().join("repo1");
+    sys.fs_insert_json(
+      repo2.join("deno.json"),
+      json!({
+        "importMap": "./import_map.json",
+      }),
+    );
+    sys.fs_insert_json(
+      repo2.join("import_map.json"),
+      json!({
+        "imports": {
+          "@jpravetz/bmod": "../repo1/bmod/mod.ts",
+        },
+      }),
+    );
+    sys.fs_insert_json(
+      repo1.join("bmod/deno.json"),
+      json!({
+        "imports": {
+          "@scope/amod": "../amod/mod.ts",
+        },
+      }),
+    );
+    let workspace_dir = workspace_at_start_dir(&sys, &repo2);
+    let resolver = WorkspaceResolver::from_workspace(
+      &workspace_dir.workspace,
+      sys,
+      super::CreateResolverOptions {
+        pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
+        // mimic the CLI loading the root's external `importMap` file
+        specified_import_map: Some(SpecifiedImportMap {
+          base_url: url_from_file_path(&repo2.join("import_map.json")).unwrap(),
+          value: json!({
+            "imports": {
+              "@jpravetz/bmod": "../repo1/bmod/mod.ts",
+            },
+          }),
+        }),
+        sloppy_imports_options: SloppyImportsOptions::Unspecified,
+        fs_cache_options: FsCacheOptions::Enabled,
+      },
+    )
+    .unwrap();
+    let referrer = url_from_file_path(&repo1.join("bmod/mod.ts")).unwrap();
+    let MappedResolution::Normal { specifier, .. } = resolver
+      .resolve("@scope/amod", &referrer, ResolutionKind::Execution)
+      .unwrap()
+    else {
+      unreachable!();
+    };
+    assert_eq!(
+      specifier.as_str(),
+      url_from_file_path(&repo1.join("amod/mod.ts"))
+        .unwrap()
+        .as_str()
+    );
+  }
+
+  #[test]
   fn workspace_specified_import_map() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
@@ -3323,6 +3474,25 @@ mod test {
     WorkspaceResolver::from_workspace(
       &workspace_dir.workspace,
       UnreachableSys,
+      super::CreateResolverOptions {
+        pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
+        specified_import_map: None,
+        sloppy_imports_options: SloppyImportsOptions::Unspecified,
+        fs_cache_options: FsCacheOptions::Enabled,
+      },
+    )
+    .unwrap()
+  }
+
+  // Like `create_resolver`, but uses a real (in-memory) sys so the resolver can
+  // read external `importMap` files referenced by config files.
+  fn create_resolver_with_sys(
+    sys: InMemorySys,
+    workspace_dir: &WorkspaceDirectory,
+  ) -> WorkspaceResolver<InMemorySys> {
+    WorkspaceResolver::from_workspace(
+      &workspace_dir.workspace,
+      sys,
       super::CreateResolverOptions {
         pkg_json_dep_resolution: PackageJsonDepResolution::Enabled,
         specified_import_map: None,

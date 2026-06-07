@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@jpravetz/bmod": "../repo1/bmod/mod.ts"
+  }
+}

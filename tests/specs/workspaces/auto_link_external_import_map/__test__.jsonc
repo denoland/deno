@@ -15,6 +15,9 @@
       "args": "check main.ts",
       "output": "check.out"
     },
+    // Auto-linking pulls repo1's deno.json into resolution, but it must not
+    // widen lint scope: running `lint` from repo2 still only checks repo2's own
+    // file (repo2/main.ts), not the auto-linked repo1 packages.
     "lint": {
       "args": "lint",
       "output": "Checked 1 file\n"

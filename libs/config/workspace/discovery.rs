@@ -1161,11 +1161,11 @@ fn resolve_auto_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
     visited.insert((**key).clone());
   }
 
-  // worklist of (config dir, path-style import map values) still to scan
+  // worklist of (import map dir, path-style import map values) still to scan
   let mut worklist: Vec<(Url, Vec<String>)> = Vec::new();
-  enqueue_import_path_values(root_config_folder, &mut worklist);
+  enqueue_import_path_values(sys, root_config_folder, &mut worklist);
   for folder in members.values().chain(links.values()) {
-    enqueue_import_path_values(folder, &mut worklist);
+    enqueue_import_path_values(sys, folder, &mut worklist);
   }
 
   while let Some((base_dir, values)) = worklist.pop() {
@@ -1189,15 +1189,20 @@ fn resolve_auto_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
         load_config_folder,
       ) {
         Ok(folders) => folders,
-        Err(_) => {
+        Err(err) => {
           // not resolvable as a linkable package; skip and don't retry
+          log::debug!(
+            "Skipping auto-linked import map dir {}: {:#}",
+            governing_dir,
+            err
+          );
           visited.insert(governing_dir);
           continue;
         }
       };
       for (dir_url, folder) in expanded {
         if visited.insert((*dir_url).clone()) {
-          enqueue_import_path_values(&folder, &mut worklist);
+          enqueue_import_path_values(sys, &folder, &mut worklist);
           links.insert(dir_url, folder);
         }
       }
@@ -1205,21 +1210,39 @@ fn resolve_auto_link_config_folders<TSys: FsRead + FsMetadata + FsReadDir>(
   }
 }
 
-fn enqueue_import_path_values(
+fn enqueue_import_path_values<TSys: FsRead>(
+  sys: &TSys,
   folder: &ConfigFolder,
   worklist: &mut Vec<(Url, Vec<String>)>,
 ) {
-  if let Some(deno_json) = folder.deno_json() {
-    let values = collect_import_path_values(deno_json);
-    if !values.is_empty() {
-      worklist.push((url_parent(&deno_json.specifier), values));
+  let Some(deno_json) = folder.deno_json() else {
+    return;
+  };
+  // Resolve the import map, following an external `importMap` file if present.
+  // Path entries resolve against the import map's own location: the deno.json
+  // for inline maps, or the external file's directory otherwise.
+  let map_value = match deno_json.to_import_map_value(sys) {
+    Ok(Some((specifier, value))) => (url_parent(&specifier), value),
+    Ok(None) => return,
+    Err(err) => {
+      log::debug!(
+        "Skipping auto-link discovery for {}: {:#}",
+        deno_json.specifier,
+        err
+      );
+      return;
     }
+  };
+  let (base_dir, value) = map_value;
+  let values = collect_import_path_values(&value);
+  if !values.is_empty() {
+    worklist.push((base_dir, values));
   }
 }
 
-/// Collects the string values of a config file's `imports` and `scopes` maps.
-/// Only inline import maps are considered (not an external `importMap` file).
-fn collect_import_path_values(config: &ConfigFile) -> Vec<String> {
+/// Collects the path-style string values from an import map value's `imports`
+/// and `scopes` maps.
+fn collect_import_path_values(value: &serde_json::Value) -> Vec<String> {
   fn collect_from_map(
     map: &serde_json::Map<String, serde_json::Value>,
     out: &mut Vec<String>,
@@ -1232,10 +1255,13 @@ fn collect_import_path_values(config: &ConfigFile) -> Vec<String> {
   }
 
   let mut out = Vec::new();
-  if let Some(serde_json::Value::Object(imports)) = &config.json.imports {
+  let serde_json::Value::Object(obj) = value else {
+    return out;
+  };
+  if let Some(serde_json::Value::Object(imports)) = obj.get("imports") {
     collect_from_map(imports, &mut out);
   }
-  if let Some(serde_json::Value::Object(scopes)) = &config.json.scopes {
+  if let Some(serde_json::Value::Object(scopes)) = obj.get("scopes") {
     for scope_value in scopes.values() {
       if let serde_json::Value::Object(scope_imports) = scope_value {
         collect_from_map(scope_imports, &mut out);
@@ -1256,6 +1282,10 @@ fn import_value_target_url(base_dir: &Url, value: &str) -> Option<Url> {
     base_dir.join(value).ok()
   } else if value.starts_with("file:") {
     Url::parse(value).ok()
+  } else if cfg!(windows) && value.contains('\\') {
+    // a Windows absolute path like `C:\pkg\mod.ts`; mirror the backslash
+    // handling that `resolve_link_dir_url` applies to explicit links
+    url_from_file_path(Path::new(value)).ok()
   } else {
     None
   }
