@@ -137,27 +137,6 @@ fn get_prelude() -> String {
 
   globalThis.clear = console.clear.bind(console);
 
-  // Some globals are exposed through lazily-loaded getters that pull in an
-  // extension module and/or initialize native state the first time they are
-  // accessed (e.g. `navigator.gpu`). Tab-completion evaluates the object
-  // expression with `throwOnSideEffect: true`; V8's static analysis flags the
-  // getter as side-effecting because its bytecode calls native ops (even in
-  // not-yet-taken branches), so the evaluation aborts and no completions are
-  // shown. Resolve the getter once here and shadow it with a plain data
-  // property on the `navigator` instance, so later side-effect-free
-  // evaluations can read it directly. See
-  // https://github.com/denoland/deno/issues/24917
-  try {
-    Object.defineProperty(navigator, "gpu", {
-      __proto__: null,
-      configurable: true,
-      enumerable: true,
-      value: navigator.gpu,
-    });
-  } catch {
-    // ignore -- the getter may be unavailable in this build/configuration
-  }
-
   return repl_internal;
 })()"#.to_string()
 }
