@@ -392,6 +392,44 @@ function usageIntersection(a, b) {
  * @param {string[]} requested
  * @param {string[]} allowed
  */
+// Common JWK validation for AKP (kty=AKP) importKey paths (ML-KEM, ML-DSA).
+// Validates `kty`, `alg`, `use` (per family: "enc" for ML-KEM, "sig" for
+// ML-DSA), `key_ops` subset+coverage, and ext/extractable. The
+// algorithm-specific seed/pub decoding stays in the per-family helper.
+function validateJwkAkp(jwk, algorithmName, expectedUse, keyUsages, extractable) {
+  if (jwk.kty !== "AKP") {
+    throw new DOMException("Invalid key type", "DataError");
+  }
+  if (jwk.alg !== algorithmName) {
+    throw new DOMException("Invalid algorithm", "DataError");
+  }
+  if (
+    keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== expectedUse
+  ) {
+    throw new DOMException("Invalid key usage", "DataError");
+  }
+  if (jwk.key_ops !== undefined) {
+    if (
+      ArrayPrototypeFind(
+        jwk.key_ops,
+        (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+      ) !== undefined ||
+      !ArrayPrototypeEvery(
+        keyUsages,
+        (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
+      )
+    ) {
+      throw new DOMException(
+        "'key_ops' property of JsonWebKey is invalid",
+        "DataError",
+      );
+    }
+  }
+  if (jwk.ext !== undefined && jwk.ext === false && extractable) {
+    throw new DOMException("Invalid key extractability", "DataError");
+  }
+}
+
 // Common JWK validation that every kty=oct importKey path shares -- kty,
 // k presence, `use` against the algorithm family's expected value ("enc"
 // for symmetric encryption, "sig" for HMAC), `key_ops` ⊆ recognisedUsages
@@ -2984,81 +3022,21 @@ function importKeyMlKem(
       return makePrivateKey(imported.seed, imported.privateKey);
     }
     case "jwk": {
-      // 1.
       const jwk = keyData;
-
-      // 2.
-      if (jwk.priv !== undefined) {
-        if (
-          ArrayPrototypeFind(
-            keyUsages,
-            (u) => !ArrayPrototypeIncludes(ML_KEM_PRIVATE_USAGES, u),
-          ) !== undefined
-        ) {
-          throw new DOMException("Invalid key usage", "SyntaxError");
-        }
-      } else {
-        if (
-          ArrayPrototypeFind(
-            keyUsages,
-            (u) => !ArrayPrototypeIncludes(ML_KEM_PUBLIC_USAGES, u),
-          ) !== undefined
-        ) {
-          throw new DOMException("Invalid key usage", "SyntaxError");
-        }
-      }
-
-      // 3.
-      if (jwk.kty !== "AKP") {
-        throw new DOMException("Invalid key type", "DataError");
-      }
-
-      // 4.
-      if (jwk.alg !== algorithmName) {
-        throw new DOMException("Invalid algorithm", "DataError");
-      }
-
-      // 5.
+      const wantsPrivate = jwk.priv !== undefined;
+      const expectedUsages = wantsPrivate
+        ? ML_KEM_PRIVATE_USAGES
+        : ML_KEM_PUBLIC_USAGES;
       if (
-        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(expectedUsages, u),
+        ) !== undefined
       ) {
-        throw new DOMException("Invalid key usage", "DataError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
-
-      // 6.
-      if (jwk.key_ops !== undefined) {
-        if (
-          ArrayPrototypeFind(
-            jwk.key_ops,
-            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-          ) !== undefined
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-
-        if (
-          !ArrayPrototypeEvery(
-            keyUsages,
-            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
-          )
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-      }
-
-      // 7.
-      if (jwk.ext !== undefined && jwk.ext === false && extractable) {
-        throw new DOMException("Invalid key extractability", "DataError");
-      }
-
-      // 8.
-      if (jwk.priv !== undefined) {
+      validateJwkAkp(jwk, algorithmName, "enc", keyUsages, extractable);
+      if (wantsPrivate) {
         let seed;
         try {
           seed = op_crypto_base64url_decode(jwk.priv);
@@ -3812,81 +3790,19 @@ function importKeyMlDsa(
       return makePublicKey(pub);
     }
     case "jwk": {
-      // 1.
       const jwk = keyData;
-
-      // 2.
-      if (jwk.priv !== undefined) {
-        if (
-          ArrayPrototypeFind(
-            keyUsages,
-            (u) => !ArrayPrototypeIncludes(["sign"], u),
-          ) !== undefined
-        ) {
-          throw new DOMException("Invalid key usage", "SyntaxError");
-        }
-      } else {
-        if (
-          ArrayPrototypeFind(
-            keyUsages,
-            (u) => !ArrayPrototypeIncludes(["verify"], u),
-          ) !== undefined
-        ) {
-          throw new DOMException("Invalid key usage", "SyntaxError");
-        }
-      }
-
-      // 3.
-      if (jwk.kty !== "AKP") {
-        throw new DOMException("Invalid key type", "DataError");
-      }
-
-      // 4.
-      if (jwk.alg !== algorithmName) {
-        throw new DOMException("Invalid algorithm", "DataError");
-      }
-
-      // 5.
+      const wantsPrivate = jwk.priv !== undefined;
+      const expectedUsages = wantsPrivate ? ["sign"] : ["verify"];
       if (
-        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
+        ArrayPrototypeFind(
+          keyUsages,
+          (u) => !ArrayPrototypeIncludes(expectedUsages, u),
+        ) !== undefined
       ) {
-        throw new DOMException("Invalid key usage", "DataError");
+        throw new DOMException("Invalid key usage", "SyntaxError");
       }
-
-      // 6.
-      if (jwk.key_ops !== undefined) {
-        if (
-          ArrayPrototypeFind(
-            jwk.key_ops,
-            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-          ) !== undefined
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-
-        if (
-          !ArrayPrototypeEvery(
-            keyUsages,
-            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
-          )
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-      }
-
-      // 7.
-      if (jwk.ext !== undefined && jwk.ext === false && extractable) {
-        throw new DOMException("Invalid key extractability", "DataError");
-      }
-
-      // 8.
-      if (jwk.priv !== undefined) {
+      validateJwkAkp(jwk, algorithmName, "sig", keyUsages, extractable);
+      if (wantsPrivate) {
         let seed;
         try {
           seed = op_crypto_base64url_decode(jwk.priv);
