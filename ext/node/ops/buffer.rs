@@ -225,9 +225,6 @@ pub fn op_node_encoding_slice<'a>(
     }
     1 => {
       // latin1Slice
-      // A copy is required to prevent subsequent ArrayBufferView modifications
-      // from altering the immutable string.
-      // Zero-copy cannot be used here.
       v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
     }
     2 => {
@@ -237,12 +234,14 @@ pub fn op_node_encoding_slice<'a>(
         None
       } else if buffer.len() > ZERO_COPY_THRESHOLD {
         let ascii_bytes = mask_ascii_fast(buffer);
-        // Create a V8 string with zero-copy
+        // `ascii_bytes` is already a copied clone
+        // (not a zero‑copy reference to the ArrayBufferView),
+        // so we can zero‑copy create a V8 string from it.
         v8::String::new_external_onebyte(scope, ascii_bytes.into_boxed_slice())
       } else if buffer.is_ascii() {
         // A copy is required to prevent subsequent ArrayBufferView modifications
         // from altering the immutable string.
-        // Zero-copy cannot be used here.
+        // Cannot zero-copy create a V8 string here.
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
         let ascii_bytes = mask_ascii_fast(buffer);
@@ -364,7 +363,7 @@ fn decode_utf16le_from_bytes<'a>(
       // Fast path: Memory is perfectly 2-byte aligned.
       // A copy is required to prevent subsequent ArrayBufferView modifications
       // from altering the immutable string.
-      // Zero-copy cannot be used here.
+      // Cannot zero-copy create a V8 string here.
       v8::String::new_from_two_byte(scope, u16_slice, v8::NewStringType::Normal)
     } else {
       // Slow path: Unaligned memory (rare in V8, but must be handled).
@@ -389,6 +388,10 @@ fn decode_utf16le_from_bytes<'a>(
         // Manually set the length.
         u16_data.set_len(target_len);
       }
+
+      // `u16_data` is already a copied clone
+      // (not a zero‑copy reference to the ArrayBufferView),
+      // so we can zero‑copy create a V8 string from it.
       if len <= ZERO_COPY_THRESHOLD {
         // Copy bytes to a string
         v8::String::new_from_two_byte(
@@ -410,6 +413,10 @@ fn decode_utf16le_from_bytes<'a>(
       .chunks_exact(2)
       .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
       .collect();
+
+    // `u16_data` is already a copied clone
+    // (not a zero‑copy reference to the ArrayBufferView),
+    // so we can zero‑copy create a V8 string from it.
     if len <= ZERO_COPY_THRESHOLD {
       // Copy bytes to a string
       v8::String::new_from_two_byte(scope, &u16_data, v8::NewStringType::Normal)
