@@ -256,6 +256,16 @@ remote.symbols.method23(new Uint8Array(1));
 remote.symbols.method23(new Uint32Array(1));
 remote.symbols.method23(new Uint8Array(1));
 
+// A non-`ArrayBuffer`-backed `Uint8Array<ArrayBufferLike>` (the default
+// inferred form for an untyped `Uint8Array` parameter in TS 5.9+) must still
+// be accepted by buffer parameters and `Deno.UnsafePointer.of()`.
+// See https://github.com/denoland/deno/issues/32063
+function takesGenericU8(buf: Uint8Array) {
+  remote.symbols.method23(buf);
+  Deno.UnsafePointer.of(buf);
+}
+takesGenericU8(new Uint8Array(1));
+
 // @ts-expect-error: Cannot pass pointer values as buffer.
 remote.symbols.method23({});
 // @ts-expect-error: Cannot pass pointer values as buffer.
@@ -381,7 +391,7 @@ type __Tests__ = [
     {
       symbols: {
         pushBuf: (
-          buf: BufferSource | null,
+          buf: AllowSharedBufferSource | null,
           ptr: Deno.PointerValue | null,
           func: Deno.PointerValue | null,
         ) => void;
@@ -399,7 +409,7 @@ type __Tests__ = [
     {
       symbols: {
         pushBuf: (
-          buf: BufferSource | null,
+          buf: AllowSharedBufferSource | null,
           ptr: Deno.PointerValue,
           func: Deno.PointerValue,
         ) => Deno.PointerValue;
