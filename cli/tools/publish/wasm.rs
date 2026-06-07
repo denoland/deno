@@ -313,7 +313,7 @@ fn skip_val_type(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
     .copied()
     .context("Unexpected end of Wasm")?
   {
-    0x7f | 0x7e | 0x7d | 0x7c | 0x7b => {
+    0x7b..=0x7f => {
       *offset += 1;
       Ok(())
     }
@@ -359,8 +359,7 @@ fn skip_abstract_heap_type(
   offset: &mut usize,
 ) -> Result<(), AnyError> {
   match read_byte(bytes, offset)? {
-    0x70 | 0x6f | 0x6e | 0x71 | 0x72 | 0x73 | 0x6d | 0x6b | 0x6a | 0x6c
-    | 0x69 | 0x74 | 0x68 | 0x75 => Ok(()),
+    0x68..=0x75 => Ok(()),
     ty => bail!("Invalid Wasm abstract heap type 0x{ty:02x}"),
   }
 }
