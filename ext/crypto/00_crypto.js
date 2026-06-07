@@ -640,7 +640,7 @@ ObjectAssign(SubtleCrypto.prototype, {
       case "ML-DSA-44":
       case "ML-DSA-65":
       case "ML-DSA-87": {
-        result = exportKeyMlDsa(format, key, innerKey);
+        result = exportKeyAkp("ML-DSA", format, key, innerKey);
         break;
       }
       case "X448": {
@@ -666,7 +666,7 @@ ObjectAssign(SubtleCrypto.prototype, {
       case "ML-KEM-512":
       case "ML-KEM-768":
       case "ML-KEM-1024": {
-        result = exportKeyMlKem(format, key, innerKey);
+        result = exportKeyAkp("ML-KEM", format, key, innerKey);
         break;
       }
       default:
@@ -3063,99 +3063,6 @@ function importKeyMlKem(
   }
 }
 
-function exportKeyMlKem(format, key, innerKey) {
-  const algorithmName = key.algorithm.name;
-  const type = key.type;
-
-  switch (format) {
-    case "raw-public": {
-      if (type !== "public") {
-        throw new DOMException(
-          "'raw-public' is only valid for public keys",
-          "InvalidAccessError",
-        );
-      }
-      return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(innerKey));
-    }
-    case "raw-seed": {
-      if (type !== "private") {
-        throw new DOMException(
-          "'raw-seed' is only valid for private keys",
-          "InvalidAccessError",
-        );
-      }
-      const seed = innerKey?.seed;
-      if (seed == null) {
-        throw new DOMException(
-          "Seed is not available for this key",
-          "OperationError",
-        );
-      }
-      return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(seed));
-    }
-    case "spki": {
-      if (type !== "public") {
-        throw new DOMException(
-          "'spki' is only valid for public keys",
-          "InvalidAccessError",
-        );
-      }
-      const der = op_crypto_ml_kem_export_spki(algorithmName, innerKey);
-      return TypedArrayPrototypeGetBuffer(der);
-    }
-    case "pkcs8": {
-      if (type !== "private") {
-        throw new DOMException(
-          "'pkcs8' is only valid for private keys",
-          "InvalidAccessError",
-        );
-      }
-      const seed = innerKey?.seed;
-      if (seed == null) {
-        throw new DOMException(
-          "PKCS#8 export requires the original ML-KEM seed; this key was " +
-            "imported without one",
-          "OperationError",
-        );
-      }
-      const der = op_crypto_ml_kem_export_pkcs8(algorithmName, seed);
-      return TypedArrayPrototypeGetBuffer(der);
-    }
-    case "jwk": {
-      const jwk = {
-        kty: "AKP",
-        alg: algorithmName,
-        "key_ops": key.usages,
-        ext: key.extractable,
-      };
-      if (type === "private") {
-        const seed = innerKey?.seed;
-        if (seed == null) {
-          throw new DOMException(
-            "JWK export requires the original ML-KEM seed; this key was " +
-              "imported without one",
-            "OperationError",
-          );
-        }
-        const publicKeyBytes = op_crypto_ml_kem_get_public_key(
-          algorithmName,
-          op_crypto_key_handle(key).cppgc,
-        );
-        jwk.pub = op_crypto_base64url_encode(publicKeyBytes);
-        jwk.priv = op_crypto_base64url_encode(seed);
-      } else {
-        jwk.pub = op_crypto_base64url_encode(innerKey);
-      }
-      return jwk;
-    }
-    default:
-      throw new DOMException(
-        "Unsupported key format for ML-KEM",
-        "NotSupportedError",
-      );
-  }
-}
-
 function importKeyChaCha20Poly1305(
   format,
   keyData,
@@ -4271,64 +4178,85 @@ function importKeyMlDsa(
   }
 }
 
-function exportKeyMlDsa(format, key, innerKey) {
+// ML-KEM and ML-DSA both export as `AKP`-kind keys. They share the
+// raw-public / raw-seed / spki / pkcs8 / jwk export shape; the only
+// per-family differences (the SPKI/PKCS8 export op, and the way the
+// JWK `pub` slot of a private key is filled -- ML-KEM derives it from
+// the cppgc handle, ML-DSA looks it up in a JS-side WeakMap populated at
+// generate/import time) live in `AKP_EXPORT_FAMILY`. The wrapper is
+// `exportKeyAkp(family, ...)`.
+const AKP_EXPORT_FAMILY = {
+  "ML-KEM": {
+    exportSpki: (name, innerKey) => op_crypto_ml_kem_export_spki(name, innerKey),
+    exportPkcs8: (name, seed) => op_crypto_ml_kem_export_pkcs8(name, seed),
+    privJwkPub: (key) =>
+      op_crypto_ml_kem_get_public_key(
+        key.algorithm.name,
+        op_crypto_key_handle(key).cppgc,
+      ),
+  },
+  "ML-DSA": {
+    exportSpki: (name, innerKey) =>
+      op_crypto_mldsa_export_spki(mldsaVariantId(name), innerKey),
+    exportPkcs8: (name, seed) =>
+      op_crypto_mldsa_export_pkcs8(mldsaVariantId(name), seed),
+    privJwkPub: (key) => {
+      const publicKey = WeakMapPrototypeGet(MLDSA_PUBLIC_FROM_PRIVATE, key);
+      return getKeyData(op_crypto_key_handle(publicKey));
+    },
+  },
+};
+function exportKeyAkp(family, format, key, innerKey) {
+  const ops = AKP_EXPORT_FAMILY[family];
   const algorithmName = key.algorithm.name;
-  const variant = mldsaVariantId(algorithmName);
-
+  const requirePublic = (label) => {
+    if (key.type !== "public") {
+      throw new DOMException(
+        `'${label}' is only valid for public keys`,
+        "InvalidAccessError",
+      );
+    }
+  };
+  const requirePrivate = (label) => {
+    if (key.type !== "private") {
+      throw new DOMException(
+        `'${label}' is only valid for private keys`,
+        "InvalidAccessError",
+      );
+    }
+  };
+  const requireSeed = (op) => {
+    const seed = innerKey?.seed;
+    if (seed == null) {
+      throw new DOMException(
+        op === "raw-seed"
+          ? "Seed is not available for this key"
+          : `${op} export requires the original ${family} seed; this key ` +
+            "was imported without one",
+        "OperationError",
+      );
+    }
+    return seed;
+  };
   switch (format) {
-    case "raw-seed": {
-      if (key.type !== "private") {
-        throw new DOMException(
-          "Key is not a private key",
-          "InvalidAccessError",
-        );
-      }
-      const seed = innerKey?.seed;
-      if (seed == null) {
-        throw new DOMException(
-          "Seed is not available for this key",
-          "OperationError",
-        );
-      }
-      return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(seed));
-    }
-    case "raw-public": {
-      if (key.type !== "public") {
-        throw new DOMException(
-          "Key is not a public key",
-          "InvalidAccessError",
-        );
-      }
+    case "raw-public":
+      requirePublic("raw-public");
       return TypedArrayPrototypeGetBuffer(TypedArrayPrototypeSlice(innerKey));
-    }
-    case "pkcs8": {
-      if (key.type !== "private") {
-        throw new DOMException(
-          "Key is not a private key",
-          "InvalidAccessError",
-        );
-      }
-      const seed = innerKey?.seed;
-      if (seed == null) {
-        throw new DOMException(
-          "PKCS#8 export requires the original ML-DSA seed; this key was " +
-            "imported without one",
-          "OperationError",
-        );
-      }
-      const der = op_crypto_mldsa_export_pkcs8(variant, seed);
-      return TypedArrayPrototypeGetBuffer(der);
-    }
-    case "spki": {
-      if (key.type !== "public") {
-        throw new DOMException(
-          "Key is not a public key",
-          "InvalidAccessError",
-        );
-      }
-      const der = op_crypto_mldsa_export_spki(variant, innerKey);
-      return TypedArrayPrototypeGetBuffer(der);
-    }
+    case "raw-seed":
+      requirePrivate("raw-seed");
+      return TypedArrayPrototypeGetBuffer(
+        TypedArrayPrototypeSlice(requireSeed("raw-seed")),
+      );
+    case "spki":
+      requirePublic("spki");
+      return TypedArrayPrototypeGetBuffer(
+        ops.exportSpki(algorithmName, innerKey),
+      );
+    case "pkcs8":
+      requirePrivate("pkcs8");
+      return TypedArrayPrototypeGetBuffer(
+        ops.exportPkcs8(algorithmName, requireSeed("PKCS#8")),
+      );
     case "jwk": {
       const jwk = {
         kty: "AKP",
@@ -4337,18 +4265,8 @@ function exportKeyMlDsa(format, key, innerKey) {
         ext: key.extractable,
       };
       if (key.type === "private") {
-        const seed = innerKey?.seed;
-        if (seed == null) {
-          throw new DOMException(
-            "JWK export requires the original ML-DSA seed; this key was " +
-              "imported without one",
-            "OperationError",
-          );
-        }
-        const publicKey = WeakMapPrototypeGet(MLDSA_PUBLIC_FROM_PRIVATE, key);
-        jwk.pub = op_crypto_base64url_encode(
-          getKeyData(op_crypto_key_handle(publicKey)),
-        );
+        const seed = requireSeed("JWK");
+        jwk.pub = op_crypto_base64url_encode(ops.privJwkPub(key));
         jwk.priv = op_crypto_base64url_encode(seed);
       } else {
         jwk.pub = op_crypto_base64url_encode(innerKey);
@@ -4356,7 +4274,10 @@ function exportKeyMlDsa(format, key, innerKey) {
       return jwk;
     }
     default:
-      throw new DOMException("Not implemented", "NotSupportedError");
+      throw new DOMException(
+        `Unsupported key format for ${family}`,
+        "NotSupportedError",
+      );
   }
 }
 
