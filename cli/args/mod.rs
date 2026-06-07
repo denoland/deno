@@ -46,7 +46,6 @@ use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
-use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
@@ -62,6 +61,7 @@ use thiserror::Error;
 
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path;
+use crate::util::path::resolve_url_or_path;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
