@@ -769,21 +769,43 @@ impl ReplSession {
     &mut self,
     expression: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
-    let parsed_source =
-      match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
+    let tsx_result =
+      parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx);
+    // Prefer a clean `.tsx` parse. Fall back to parsing as TypeScript when the
+    // `.tsx` parse fails outright, or when it only recovered by inserting an
+    // `Invalid` placeholder node (e.g. a TypeScript type assertion like
+    // `<string>x` is misread as JSX in `.tsx`).
+    let needs_ts_fallback = match &tsx_result {
+      Ok(parsed) => {
+        deno_resolver::emit::invalid_syntax_parse_diagnostics(parsed).is_some()
+      }
+      Err(_) => true,
+    };
+    let parsed_source = match tsx_result {
+      Ok(parsed) if !needs_ts_fallback => parsed,
+      tsx_result => match parse_source_as(
+        expression.to_string(),
+        deno_ast::MediaType::TypeScript,
+      ) {
         Ok(parsed) => parsed,
-        Err(err) => {
-          match parse_source_as(
-            expression.to_string(),
-            deno_ast::MediaType::TypeScript,
-          ) {
-            Ok(parsed) => parsed,
-            _ => {
-              return Err(err);
-            }
-          }
-        }
-      };
+        Err(ts_err) => match tsx_result {
+          // Both parses have errors; report the recovered `.tsx` diagnostics
+          // via the check below.
+          Ok(parsed) => parsed,
+          Err(_) => return Err(ts_err),
+        },
+      },
+    };
+
+    // If `swc` recovered from a syntax error by inserting an `Invalid`
+    // placeholder node, surface the precise parse diagnostic instead of
+    // transpiling to `<invalid>` and letting V8 report a misleading
+    // `Unexpected token '<'`. See denoland/deno#19457.
+    if let Some(diagnostics) =
+      deno_resolver::emit::invalid_syntax_parse_diagnostics(&parsed_source)
+    {
+      return Err(diagnostics.into());
+    }
 
     self
       .check_for_npm_or_node_imports(&parsed_source.program())
