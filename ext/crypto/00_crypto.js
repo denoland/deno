@@ -63,7 +63,6 @@ const {
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
-  ArrayBufferPrototypeSlice,
   ArrayPrototypeEvery,
   ArrayPrototypeFilter,
   ArrayPrototypeFind,
@@ -73,7 +72,6 @@ const {
   DataViewPrototypeGetByteOffset,
   JSONParse,
   JSONStringify,
-  MathCeil,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectHasOwn,
