@@ -90,8 +90,13 @@ impl<'a> WebIdlConverter<'a> for SubtleDeriveBitsParams {
 
     match canonical {
       "PBKDF2" => {
-        let hash_name =
-          read_required_hash_name(scope, obj, "hash", prefix.clone(), &context)?;
+        let hash_name = read_required_hash_name(
+          scope,
+          obj,
+          "hash",
+          prefix.clone(),
+          &context,
+        )?;
         let salt = read_required_buffer_source(
           scope,
           obj,
@@ -113,8 +118,13 @@ impl<'a> WebIdlConverter<'a> for SubtleDeriveBitsParams {
         })
       }
       "HKDF" => {
-        let hash_name =
-          read_required_hash_name(scope, obj, "hash", prefix.clone(), &context)?;
+        let hash_name = read_required_hash_name(
+          scope,
+          obj,
+          "hash",
+          prefix.clone(),
+          &context,
+        )?;
         let salt = read_required_buffer_source(
           scope,
           obj,
