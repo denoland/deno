@@ -1563,14 +1563,22 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     match workspace_version_req {
       PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
         match version_req.inner() {
-          RangeSetOrTag::RangeSet(set) => {
+          RangeSetOrTag::RangeSet(_) => {
             match pkg_json
               .version
               .as_ref()
               .and_then(|v| Version::parse_from_npm(v).ok())
             {
               Some(version) => {
-                if set.satisfies(&version) {
+                // Match prerelease versions that fall within the range bounds
+                // too. A workspace member with a prerelease version (e.g.
+                // `0.40.0-pre`) should still resolve to the local package
+                // instead of being rejected, since it is provided explicitly
+                // rather than picked from the registry.
+                if crate::npm::version_req_matches_including_pre(
+                  version_req,
+                  &version,
+                ) {
                   Ok(pkg_json.dir_path())
                 } else {
                   Err(
@@ -2195,7 +2203,8 @@ mod test {
         "workspaces": [
           "a",
           "b",
-          "no-version"
+          "no-version",
+          "pre"
         ]
       }),
     );
@@ -2217,6 +2226,13 @@ mod test {
       root_dir().join("no-version/package.json"),
       json!({
         "name": "@scope/no-version",
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("pre/package.json"),
+      json!({
+        "name": "@scope/pre",
+        "version": "0.40.0-pre",
       }),
     );
     let workspace = workspace_at_start_dir(&sys, &root_dir());
@@ -2254,6 +2270,14 @@ mod test {
       // just match any tags with the workspace
       assert_eq!(resolve("@scope/a", "latest").unwrap(), root_dir().join("a"));
 
+      // a workspace member with a prerelease version still resolves, even
+      // though npm semver ranges normally exclude prereleases
+      assert_eq!(resolve("@scope/pre", "*").unwrap(), root_dir().join("pre"));
+      assert_eq!(
+        resolve("@scope/pre", "^0.40.0-pre").unwrap(),
+        root_dir().join("pre")
+      );
+
       // match any version for a pkg with no version
       assert_eq!(
         resolve("@scope/no-version", "1").unwrap(),
@@ -2276,6 +2300,8 @@ mod test {
         resolve("@scope/no-version@1").unwrap(),
         root_dir().join("no-version")
       );
+      // a bare `npm:` specifier (`*`) resolves a prerelease workspace member
+      assert_eq!(resolve("@scope/pre@*").unwrap(), root_dir().join("pre"));
 
       // won't match for tags
       assert_eq!(resolve("@scope/a@workspace"), None);

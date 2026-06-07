@@ -61,6 +61,34 @@ pub struct PackageJsonDepValueParseWithLocationError {
   pub source: PackageJsonDepValueParseError,
 }
 
+/// A `workspace:<version>` dependency referenced a local workspace member by
+/// name, but the member's version did not satisfy the requested constraint.
+/// Like pnpm, this is a hard error rather than silently linking the member or
+/// falling back to the registry. The message mirrors the equivalent
+/// `deno run` resolver error (`VersionNotSatisfied`).
+#[derive(Debug, Error, Clone)]
+#[error(
+  "Failed to install '{alias}': found package.json in workspace, but version '{version}' didn't satisfy constraint '{version_req}'\n    at {location}"
+)]
+pub struct WorkspaceMemberVersionNotSatisfiedError {
+  pub location: Url,
+  pub alias: StackString,
+  pub version_req: VersionReq,
+  pub version: Version,
+}
+
+/// An error surfaced while reconciling a package.json's dependencies against
+/// the workspace before installing.
+#[derive(Debug, Error, Clone)]
+pub enum EnsurePackageJsonDepsError {
+  #[error(transparent)]
+  DepValueParse(#[from] Box<PackageJsonDepValueParseWithLocationError>),
+  #[error(transparent)]
+  WorkspaceMemberVersionNotSatisfied(
+    #[from] Box<WorkspaceMemberVersionNotSatisfiedError>,
+  ),
+}
+
 #[derive(Debug, Default)]
 pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
@@ -68,6 +96,7 @@ pub struct NpmInstallDepsProvider {
   patch_pkgs: Vec<InstallPatchPkg>,
   workspace_pkgs: Vec<InstallWorkspacePkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
+  workspace_member_version_errors: Vec<WorkspaceMemberVersionNotSatisfiedError>,
 }
 
 fn package_json_to_lifecycle_nv(
@@ -110,6 +139,7 @@ impl NpmInstallDepsProvider {
     let mut patch_pkgs = Vec::new();
     let mut workspace_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
+    let mut workspace_member_version_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
 
     for (_, folder) in workspace.config_folders() {
@@ -135,7 +165,7 @@ impl NpmInstallDepsProvider {
 
             let workspace_pkg = workspace_npm_pkgs
               .iter()
-              .find(|pkg| pkg.matches_req(&pkg_req));
+              .find(|pkg| pkg.matches_req_including_pre(&pkg_req));
 
             if let Some(pkg) = workspace_pkg {
               local_pkgs.push(InstallLocalPkg {
@@ -196,7 +226,7 @@ impl NpmInstallDepsProvider {
                 continue;
               }
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
-                pkg.matches_req(pkg_req)
+                pkg.matches_req_including_pre(pkg_req)
                         // do not resolve to the current package
                         && pkg.pkg_json.path != pkg_json.path
               });
@@ -223,26 +253,50 @@ impl NpmInstallDepsProvider {
               }
             }
             PackageJsonDepValue::Workspace(workspace_version_req) => {
-              let version_req = match workspace_version_req {
-                PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
-                  version_req.clone()
+              // A `workspace:` dependency resolves to the local workspace
+              // member with a matching name. `workspace:*`, `workspace:~` and
+              // `workspace:^` are placeholders that match the member regardless
+              // of its version (the range only affects what gets written when
+              // publishing). An explicit `workspace:<range>` must be satisfied
+              // by the member's version though; like pnpm, a mismatch is a hard
+              // error rather than silently linking the member or falling back
+              // to the registry. Prerelease versions within the range bounds
+              // match too, since the member is provided explicitly (#30155).
+              if let Some(pkg) = workspace_npm_pkgs
+                .iter()
+                .find(|pkg| pkg.matches_name(alias))
+              {
+                let satisfied = match workspace_version_req {
+                  PackageJsonDepWorkspaceReq::Tilde
+                  | PackageJsonDepWorkspaceReq::Caret => true,
+                  PackageJsonDepWorkspaceReq::VersionReq(version_req) => pkg
+                    .matches_name_and_version_req_including_pre(
+                      alias,
+                      version_req,
+                    ),
+                };
+                if satisfied {
+                  workspace_pkg_deps.push(InstallWorkspacePkgDep::Workspace {
+                    alias: alias.clone(),
+                    nv: pkg.nv.clone(),
+                  });
+                  local_pkgs.push(InstallLocalPkg {
+                    alias: Some(alias.clone()),
+                    target_dir: pkg.pkg_json.dir_path().to_path_buf(),
+                  });
+                } else if let PackageJsonDepWorkspaceReq::VersionReq(
+                  version_req,
+                ) = workspace_version_req
+                {
+                  workspace_member_version_errors.push(
+                    WorkspaceMemberVersionNotSatisfiedError {
+                      location: pkg_json.specifier(),
+                      alias: alias.clone(),
+                      version_req: version_req.clone(),
+                      version: pkg.nv.version.clone(),
+                    },
+                  );
                 }
-                PackageJsonDepWorkspaceReq::Tilde
-                | PackageJsonDepWorkspaceReq::Caret => {
-                  VersionReq::parse_from_npm("*").unwrap()
-                }
-              };
-              if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
-                pkg.matches_name_and_version_req(alias, &version_req)
-              }) {
-                workspace_pkg_deps.push(InstallWorkspacePkgDep::Workspace {
-                  alias: alias.clone(),
-                  nv: pkg.nv.clone(),
-                });
-                local_pkgs.push(InstallLocalPkg {
-                  alias: Some(alias.clone()),
-                  target_dir: pkg.pkg_json.dir_path().to_path_buf(),
-                });
               }
             }
             PackageJsonDepValue::Catalog(catalog_name) => {
@@ -257,7 +311,7 @@ impl NpmInstallDepsProvider {
                   version_req,
                 };
                 let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
-                  pkg.matches_req(&pkg_req)
+                  pkg.matches_req_including_pre(&pkg_req)
                     && pkg.pkg_json.path != pkg_json.path
                 });
 
@@ -339,6 +393,7 @@ impl NpmInstallDepsProvider {
       patch_pkgs,
       workspace_pkgs,
       pkg_json_dep_errors,
+      workspace_member_version_errors,
     }
   }
 
@@ -362,5 +417,11 @@ impl NpmInstallDepsProvider {
     &self,
   ) -> &[PackageJsonDepValueParseWithLocationError] {
     &self.pkg_json_dep_errors
+  }
+
+  pub fn workspace_member_version_errors(
+    &self,
+  ) -> &[WorkspaceMemberVersionNotSatisfiedError] {
+    &self.workspace_member_version_errors
   }
 }
