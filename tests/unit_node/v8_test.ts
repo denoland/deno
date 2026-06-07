@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import * as v8 from "node:v8";
+import { Buffer } from "node:buffer";
 import { runInNewContext } from "node:vm";
 import { assertEquals, assertThrows } from "@std/assert";
 
