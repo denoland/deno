@@ -264,7 +264,7 @@ pub fn op_node_encoding_slice<'a>(
         let target_len = buffer.len() * 2;
         let mut hex_bytes = vec![0u8; target_len];
         if let Err(e) = faster_hex::hex_encode(buffer, &mut hex_bytes) {
-          return Err(JsErrorBox::generic(format!("Hex encode failed: {}", e)));
+          return Err(JsErrorBox::generic(format!("Hex encode failed: {e}")));
         }
         if target_len <= ZERO_COPY_THRESHOLD {
           // Copy bytes to a string
