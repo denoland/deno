@@ -392,6 +392,58 @@ function usageIntersection(a, b) {
  * @param {string[]} requested
  * @param {string[]} allowed
  */
+// Common JWK validation that every kty=oct importKey path shares -- kty,
+// k presence, `use` against the algorithm family's expected value ("enc"
+// for symmetric encryption, "sig" for HMAC), `key_ops` ⊆ recognisedUsages
+// and `keyUsages` ⊆ jwk.key_ops, and the ext/extractable invariant.
+// Per-algorithm helpers continue to own the algorithm-specific
+// `jwk.alg` and length checks.
+function validateJwkOct(jwk, expectedUse, keyUsages, extractable) {
+  if (jwk.kty !== "oct") {
+    throw new DOMException(
+      "'kty' property of JsonWebKey must be 'oct'",
+      "DataError",
+    );
+  }
+  if (jwk.k === undefined) {
+    throw new DOMException(
+      "'k' property of JsonWebKey must be present",
+      "DataError",
+    );
+  }
+  if (
+    keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== expectedUse
+  ) {
+    throw new DOMException(
+      `'use' property of JsonWebKey must be '${expectedUse}'`,
+      "DataError",
+    );
+  }
+  if (jwk.key_ops !== undefined) {
+    if (
+      ArrayPrototypeFind(
+        jwk.key_ops,
+        (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
+      ) !== undefined ||
+      !ArrayPrototypeEvery(
+        keyUsages,
+        (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
+      )
+    ) {
+      throw new DOMException(
+        "'key_ops' property of JsonWebKey is invalid",
+        "DataError",
+      );
+    }
+  }
+  if (jwk.ext === false && extractable === true) {
+    throw new DOMException(
+      "'ext' property of JsonWebKey must not be false if extractable is true",
+      "DataError",
+    );
+  }
+}
+
 function validatePublicKeyUsages(requested, allowed) {
   for (let i = 0; i < requested.length; i++) {
     if (!ArrayPrototypeIncludes(allowed, requested[i])) {
@@ -3095,84 +3147,20 @@ function importKeyChaCha20Poly1305(
     }
     case "jwk": {
       const jwk = keyData;
-
-      // 2.
-      if (jwk.kty !== "oct") {
-        throw new DOMException(
-          "'kty' property of JsonWebKey must be 'oct'",
-          "DataError",
-        );
-      }
-
-      // Section 6.4.1 of RFC7518
-      if (jwk.k === undefined) {
-        throw new DOMException(
-          "'k' property of JsonWebKey must be present",
-          "DataError",
-        );
-      }
-
-      // 4.
+      validateJwkOct(jwk, "enc", keyUsages, extractable);
       const { rawData } = op_crypto_import_key(
         { algorithm: "AES" },
         { jwkSecret: jwk },
       );
       data = rawData.data;
-
-      // 5.
       if (TypedArrayPrototypeGetByteLength(data) !== 32) {
         throw new DOMException(
           "Invalid key length: ChaCha20-Poly1305 requires 256-bit key",
           "DataError",
         );
       }
-
-      // 6.
       if (jwk.alg !== undefined && jwk.alg !== "C20P") {
         throw new DOMException(`Invalid algorithm: ${jwk.alg}`, "DataError");
-      }
-
-      // 7.
-      if (
-        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
-      ) {
-        throw new DOMException("Invalid key usage", "DataError");
-      }
-
-      // 8.
-      // Section 4.3 of RFC7517
-      if (jwk.key_ops !== undefined) {
-        if (
-          ArrayPrototypeFind(
-            jwk.key_ops,
-            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-          ) !== undefined
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-
-        if (
-          !ArrayPrototypeEvery(
-            keyUsages,
-            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
-          )
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-      }
-
-      // 9.
-      if (jwk.ext === false && extractable === true) {
-        throw new DOMException(
-          "'ext' property of JsonWebKey must not be false if extractable is true",
-          "DataError",
-        );
       }
       break;
     }
@@ -3239,117 +3227,21 @@ function importKeyAES(
       break;
     }
     case "jwk": {
-      // 1.
       const jwk = keyData;
-
-      // 2.
-      if (jwk.kty !== "oct") {
-        throw new DOMException(
-          "'kty' property of JsonWebKey must be 'oct'",
-          "DataError",
-        );
-      }
-
-      // Section 6.4.1 of RFC7518
-      if (jwk.k === undefined) {
-        throw new DOMException(
-          "'k' property of JsonWebKey must be present",
-          "DataError",
-        );
-      }
-
-      // 4.
+      validateJwkOct(jwk, "enc", keyUsages, extractable);
       const { rawData } = op_crypto_import_key(
         { algorithm: "AES" },
         { jwkSecret: jwk },
       );
       data = rawData.data;
-
-      // 5.
-      switch (TypedArrayPrototypeGetByteLength(data) * 8) {
-        case 128:
-          if (
-            jwk.alg !== undefined &&
-            jwk.alg !== aesJwkAlg[algorithmName][128]
-          ) {
-            throw new DOMException(
-              `Invalid algorithm: ${jwk.alg}`,
-              "DataError",
-            );
-          }
-          break;
-        case 192:
-          if (
-            jwk.alg !== undefined &&
-            jwk.alg !== aesJwkAlg[algorithmName][192]
-          ) {
-            throw new DOMException(
-              `Invalid algorithm: ${jwk.alg}`,
-              "DataError",
-            );
-          }
-          break;
-        case 256:
-          if (
-            jwk.alg !== undefined &&
-            jwk.alg !== aesJwkAlg[algorithmName][256]
-          ) {
-            throw new DOMException(
-              `Invalid algorithm: ${jwk.alg}`,
-              "DataError",
-            );
-          }
-          break;
-        default:
-          throw new DOMException(
-            "Invalid key length",
-            "DataError",
-          );
+      const bits = TypedArrayPrototypeGetByteLength(data) * 8;
+      const expectedAlg = aesJwkAlg[algorithmName][bits];
+      if (expectedAlg === undefined) {
+        throw new DOMException("Invalid key length", "DataError");
       }
-
-      // 6.
-      if (
-        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "enc"
-      ) {
-        throw new DOMException("Invalid key usage", "DataError");
+      if (jwk.alg !== undefined && jwk.alg !== expectedAlg) {
+        throw new DOMException(`Invalid algorithm: ${jwk.alg}`, "DataError");
       }
-
-      // 7.
-      // Section 4.3 of RFC7517
-      if (jwk.key_ops !== undefined) {
-        if (
-          ArrayPrototypeFind(
-            jwk.key_ops,
-            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-          ) !== undefined
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-
-        if (
-          !ArrayPrototypeEvery(
-            keyUsages,
-            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
-          )
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-      }
-
-      // 8.
-      if (jwk.ext === false && extractable === true) {
-        throw new DOMException(
-          "'ext' property of JsonWebKey must not be false if extractable is true",
-          "DataError",
-        );
-      }
-
       break;
     }
     default:
@@ -3357,27 +3249,18 @@ function importKeyAES(
   }
 
   const handle = {};
-  setKeyData(handle, {
-    type: "secret",
-    data,
-  });
-
-  // 4-7.
+  setKeyData(handle, { type: "secret", data });
   const algorithm = {
     name: algorithmName,
     length: TypedArrayPrototypeGetByteLength(data) * 8,
   };
-
-  const key = constructKey(
+  return constructKey(
     "secret",
     extractable,
     usageIntersection(keyUsages, recognisedUsages),
     algorithm,
     handle,
   );
-
-  // 8.
-  return key;
 }
 
 function importKeyHMAC(
@@ -3412,148 +3295,23 @@ function importKeyHMAC(
     }
     case "jwk": {
       const jwk = keyData;
-
-      // 2.
-      if (jwk.kty !== "oct") {
-        throw new DOMException(
-          "'kty' property of JsonWebKey must be 'oct'",
-          "DataError",
-        );
-      }
-
-      // Section 6.4.1 of RFC7518
-      if (jwk.k === undefined) {
-        throw new DOMException(
-          "'k' property of JsonWebKey must be present",
-          "DataError",
-        );
-      }
-
-      // 4.
+      validateJwkOct(jwk, "sig", keyUsages, extractable);
       const { rawData } = op_crypto_import_key(
         { algorithm: "HMAC" },
         { jwkSecret: jwk },
       );
       data = rawData.data;
-
-      // 5.
       hash = normalizedAlgorithm.hash;
-
-      // 6.
-      switch (hash.name) {
-        case "SHA-1": {
-          if (jwk.alg !== undefined && jwk.alg !== "HS1") {
-            throw new DOMException(
-              "'alg' property of JsonWebKey must be 'HS1'",
-              "DataError",
-            );
-          }
-          break;
-        }
-        case "SHA-256": {
-          if (jwk.alg !== undefined && jwk.alg !== "HS256") {
-            throw new DOMException(
-              "'alg' property of JsonWebKey must be 'HS256'",
-              "DataError",
-            );
-          }
-          break;
-        }
-        case "SHA-384": {
-          if (jwk.alg !== undefined && jwk.alg !== "HS384") {
-            throw new DOMException(
-              "'alg' property of JsonWebKey must be 'HS384'",
-              "DataError",
-            );
-          }
-          break;
-        }
-        case "SHA-512": {
-          if (jwk.alg !== undefined && jwk.alg !== "HS512") {
-            throw new DOMException(
-              "'alg' property of JsonWebKey must be 'HS512'",
-              "DataError",
-            );
-          }
-          break;
-        }
-        case "SHA3-256": {
-          if (jwk.alg !== undefined && jwk.alg !== "HS3-256") {
-            throw new DOMException(
-              "'alg' property of JsonWebKey must be 'HS3-256'",
-              "DataError",
-            );
-          }
-          break;
-        }
-        case "SHA3-384": {
-          if (jwk.alg !== undefined && jwk.alg !== "HS3-384") {
-            throw new DOMException(
-              "'alg' property of JsonWebKey must be 'HS3-384'",
-              "DataError",
-            );
-          }
-          break;
-        }
-        case "SHA3-512": {
-          if (jwk.alg !== undefined && jwk.alg !== "HS3-512") {
-            throw new DOMException(
-              "'alg' property of JsonWebKey must be 'HS3-512'",
-              "DataError",
-            );
-          }
-          break;
-        }
-        default:
-          throw new TypeError("Unreachable");
+      const expectedAlg = HMAC_JWK_ALG[hash.name];
+      if (expectedAlg === undefined) {
+        throw new TypeError("Unreachable");
       }
-
-      // 7.
-      if (
-        keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
-      ) {
+      if (jwk.alg !== undefined && jwk.alg !== expectedAlg) {
         throw new DOMException(
-          "'use' property of JsonWebKey must be 'sig'",
+          `'alg' property of JsonWebKey must be '${expectedAlg}'`,
           "DataError",
         );
       }
-
-      // 8.
-      // Section 4.3 of RFC7517
-      if (jwk.key_ops !== undefined) {
-        if (
-          ArrayPrototypeFind(
-            jwk.key_ops,
-            (u) => !ArrayPrototypeIncludes(recognisedUsages, u),
-          ) !== undefined
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-
-        if (
-          !ArrayPrototypeEvery(
-            keyUsages,
-            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
-          )
-        ) {
-          throw new DOMException(
-            "'key_ops' property of JsonWebKey is invalid",
-            "DataError",
-          );
-        }
-      }
-
-      // 9.
-      if (jwk.ext === false && extractable === true) {
-        throw new DOMException(
-          "'ext' property of JsonWebKey must not be false if extractable is true",
-          "DataError",
-        );
-      }
-
       break;
     }
     default:
