@@ -834,23 +834,24 @@ impl Workspace {
                         req: package_req.clone(),
                       }))
                     }
-                    PackageJsonDepValue::Workspace(workspace_req) => {
-                      Some(Dep::Req(JsrDepPackageReq {
-                        kind: PackageKind::Npm,
-                        req: PackageReq {
-                          name: k.clone(),
-                          version_req: match workspace_req {
-                            PackageJsonDepWorkspaceReq::VersionReq(
-                              version_req,
-                            ) => version_req.clone(),
-                            PackageJsonDepWorkspaceReq::Tilde
-                            | PackageJsonDepWorkspaceReq::Caret => {
-                              VersionReq::parse_from_npm("*").unwrap()
-                            }
-                          },
+                    PackageJsonDepValue::Workspace {
+                      name,
+                      version_req: workspace_req,
+                    } => Some(Dep::Req(JsrDepPackageReq {
+                      kind: PackageKind::Npm,
+                      req: PackageReq {
+                        name: name.clone().unwrap_or_else(|| k.clone()),
+                        version_req: match workspace_req {
+                          PackageJsonDepWorkspaceReq::VersionReq(
+                            version_req,
+                          ) => version_req.clone(),
+                          PackageJsonDepWorkspaceReq::Tilde
+                          | PackageJsonDepWorkspaceReq::Caret => {
+                            VersionReq::parse_from_npm("*").unwrap()
+                          }
                         },
-                      }))
-                    }
+                      },
+                    })),
                     PackageJsonDepValue::Catalog(catalog_name) => catalogs
                       .get(catalog_name.as_str())
                       .and_then(|catalog| catalog.get(k.as_str()))

@@ -455,11 +455,14 @@ impl WorkspaceMainModuleResolver {
               sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
             ))?
           }
-          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+          deno_package_json::PackageJsonDepValue::Workspace {
+            name,
+            version_req,
+          } => {
             let pkg_folder = self
               .workspace_resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-                alias,
+                name.as_deref().unwrap_or(alias),
                 version_req,
               )?;
             self

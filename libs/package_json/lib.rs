@@ -175,7 +175,13 @@ pub fn parse_jsr_dep_value<'a>(
 pub enum PackageJsonDepValue {
   File(String),
   Req(PackageReq),
-  Workspace(PackageJsonDepWorkspaceReq),
+  Workspace {
+    /// Target workspace package name for pnpm-style aliased deps
+    /// (`workspace:<name>@<range>`). `None` means resolve using the
+    /// dependency key.
+    name: Option<StackString>,
+    version_req: PackageJsonDepWorkspaceReq,
+  },
   Catalog(String),
 }
 
@@ -236,14 +242,8 @@ impl PackageJsonDepValue {
           Ok(Self::Catalog(name))
         }
         "workspace" => {
-          let workspace_req = match value {
-            "~" => PackageJsonDepWorkspaceReq::Tilde,
-            "^" => PackageJsonDepWorkspaceReq::Caret,
-            _ => PackageJsonDepWorkspaceReq::VersionReq(
-              VersionReq::parse_from_npm(value)?,
-            ),
-          };
-          Ok(Self::Workspace(workspace_req))
+          let (name, version_req) = parse_workspace_dep_value(value)?;
+          Ok(Self::Workspace { name, version_req })
         }
         scheme => Err(
           PackageJsonDepValueParseErrorKind::Unsupported {
@@ -255,6 +255,53 @@ impl PackageJsonDepValue {
     } else {
       from_name_and_version_req(key.into(), value)
     }
+  }
+}
+
+/// Parses the part after `workspace:` in a package.json dependency.
+///
+/// Besides the bare requirement forms (`workspace:*`, `workspace:~`,
+/// `workspace:^`, `workspace:1.2.3`), this also supports the pnpm-style alias
+/// form `workspace:<name>@<range>` (e.g. `workspace:foo@*` or
+/// `workspace:@scope/pkg@^1.2`), where the dependency is imported under its key
+/// but resolves to the workspace member named `<name>`.
+fn parse_workspace_dep_value(
+  value: &str,
+) -> Result<
+  (Option<StackString>, PackageJsonDepWorkspaceReq),
+  PackageJsonDepValueParseError,
+> {
+  fn parse_workspace_req(
+    range: &str,
+  ) -> Result<PackageJsonDepWorkspaceReq, PackageJsonDepValueParseError> {
+    Ok(match range {
+      "~" => PackageJsonDepWorkspaceReq::Tilde,
+      "^" => PackageJsonDepWorkspaceReq::Caret,
+      _ => PackageJsonDepWorkspaceReq::VersionReq(VersionReq::parse_from_npm(
+        range,
+      )?),
+    })
+  }
+
+  match value {
+    "~" => Ok((None, PackageJsonDepWorkspaceReq::Tilde)),
+    "^" => Ok((None, PackageJsonDepWorkspaceReq::Caret)),
+    _ => match VersionReq::parse_from_npm(value) {
+      Ok(version_req) => {
+        Ok((None, PackageJsonDepWorkspaceReq::VersionReq(version_req)))
+      }
+      Err(version_req_err) => {
+        // Not a bare version requirement: try the pnpm-style alias form
+        // `workspace:<name>@<range>`. The name may be scoped (`@scope/name`),
+        // so split on the last `@`.
+        if let Some((name, range)) = value.rsplit_once('@')
+          && !name.is_empty()
+        {
+          return Ok((Some(name.into()), parse_workspace_req(range)?));
+        }
+        Err(version_req_err.into())
+      }
+    },
   }
 }
 
@@ -1031,6 +1078,22 @@ mod test {
       ("work-test-star".to_string(), "workspace:*".to_string()),
       ("work-test-tilde".to_string(), "workspace:~".to_string()),
       ("work-test-caret".to_string(), "workspace:^".to_string()),
+      (
+        "work-test-alias-star".to_string(),
+        "workspace:@scope/pkg@*".to_string(),
+      ),
+      (
+        "work-test-alias-tilde".to_string(),
+        "workspace:other@~".to_string(),
+      ),
+      (
+        "work-test-alias-caret".to_string(),
+        "workspace:other@^".to_string(),
+      ),
+      (
+        "work-test-alias-version".to_string(),
+        "workspace:other@1.1.1".to_string(),
+      ),
       ("catalog-test".to_string(), "catalog:".to_string()),
       (
         "catalog-default-test".to_string(),
@@ -1057,31 +1120,67 @@ mod test {
         ),
         (
           "work-test-star".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::VersionReq(
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
               VersionReq::parse_from_npm("*").unwrap()
             )
-          ))
+          })
         ),
         (
           "work-test-version-req".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::VersionReq(
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
               VersionReq::parse_from_npm("1.1.1").unwrap()
             )
-          ))
+          })
         ),
         (
           "work-test-tilde".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::Tilde
-          ))
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::Tilde
+          })
         ),
         (
           "work-test-caret".to_string(),
-          Ok(PackageJsonDepValue::Workspace(
-            PackageJsonDepWorkspaceReq::Caret
-          ))
+          Ok(PackageJsonDepValue::Workspace {
+            name: None,
+            version_req: PackageJsonDepWorkspaceReq::Caret
+          })
+        ),
+        (
+          "work-test-alias-star".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("@scope/pkg".into()),
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
+              VersionReq::parse_from_npm("*").unwrap()
+            )
+          })
+        ),
+        (
+          "work-test-alias-tilde".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("other".into()),
+            version_req: PackageJsonDepWorkspaceReq::Tilde
+          })
+        ),
+        (
+          "work-test-alias-caret".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("other".into()),
+            version_req: PackageJsonDepWorkspaceReq::Caret
+          })
+        ),
+        (
+          "work-test-alias-version".to_string(),
+          Ok(PackageJsonDepValue::Workspace {
+            name: Some("other".into()),
+            version_req: PackageJsonDepWorkspaceReq::VersionReq(
+              VersionReq::parse_from_npm("1.1.1").unwrap()
+            )
+          })
         ),
         (
           "catalog-test".to_string(),

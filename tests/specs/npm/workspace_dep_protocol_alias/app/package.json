@@ -1,0 +1,8 @@
+{
+  "name": "@denotest/app",
+  "version": "1.0.0",
+  "dependencies": {
+    "my-adder": "workspace:@denotest/adder@*",
+    "adder-caret": "workspace:@denotest/adder@^"
+  }
+}
