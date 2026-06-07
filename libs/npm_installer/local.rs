@@ -797,7 +797,7 @@ impl<
         let local_registry_package_path = join_package_name(
           Cow::Owned(
             deno_local_registry_dir
-              .join(target_folder_name)
+              .join(&target_folder_name)
               .join("node_modules"),
           ),
           &id.nv.name,
@@ -809,6 +809,30 @@ impl<
           &join_package_name(
             Cow::Borrowed(&self.root_node_modules_path),
             &id.nv.name,
+          ),
+        )?;
+      }
+
+      // Additionally expose JSR npm-compat packages (`@jsr/scope__name`) under
+      // their original `@scope/name` so external tooling resolves them like a
+      // regular npm install (mirrors pnpm's `jsr:` alias symlink).
+      if let Some(alias) = jsr_npm_name_to_original(&id.nv.name)
+        && setup_cache.insert_root_symlink(&alias, &target_folder_name)
+      {
+        let local_registry_package_path = join_package_name(
+          Cow::Owned(
+            deno_local_registry_dir
+              .join(&target_folder_name)
+              .join("node_modules"),
+          ),
+          &id.nv.name,
+        );
+        symlink_package_dir(
+          sys.as_ref(),
+          &local_registry_package_path,
+          &join_package_name(
+            Cow::Borrowed(&self.root_node_modules_path),
+            &alias,
           ),
         )?;
       }
@@ -1171,6 +1195,17 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
 }
 
 /// `node_modules/.deno/<package>/`
+/// Reverse of JSR's npm-compatibility naming: `@jsr/scope__name` -> the
+/// original JSR specifier name `@scope/name`. Returns `None` when `name` is not
+/// a `@jsr/`-scoped package. Used to expose JSR packages installed via the npm
+/// registry under their original names so external tooling (type checkers,
+/// bundlers) can resolve them like pnpm/npm do.
+fn jsr_npm_name_to_original(name: &str) -> Option<String> {
+  let rest = name.strip_prefix("@jsr/")?;
+  let (scope, pkg) = rest.split_once("__")?;
+  Some(format!("@{scope}/{pkg}"))
+}
+
 fn local_node_modules_package_folder(
   local_registry_dir: &Path,
   package: &NpmResolutionPackage,
