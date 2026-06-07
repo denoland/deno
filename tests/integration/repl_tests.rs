@@ -254,6 +254,20 @@ fn await_timeout() {
 }
 
 #[test(flaky)]
+fn pty_uncaught_exception_from_timeout() {
+  // Regression test for https://github.com/denoland/deno/issues/21622:
+  // an uncaught exception thrown from a `setTimeout` callback must be printed
+  // while sitting at the prompt, without requiring another expression to be
+  // evaluated first.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("setTimeout(() => { throw new Error('boom') }, 200);");
+    // Do NOT evaluate anything else. The exception should be reported on its
+    // own once the timer fires.
+    console.expect("Uncaught Error: boom");
+  });
+}
+
+#[test(flaky)]
 fn let_redeclaration() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("let foo = 0;");
