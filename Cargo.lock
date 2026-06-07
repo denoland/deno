@@ -1121,7 +1121,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
- "unicode-width 0.2.2",
+ "unicode-width 0.1.13",
 ]
 
 [[package]]
@@ -2241,8 +2241,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.200.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "766da743b9cf2f59151996cfb62ff541c8cc72ccee52791de5cd42d96b9c7db9"
+source = "git+https://github.com/denoland/deno_doc.git?rev=f50339c4e0f60e34331f9da70dc533f4d3122886#f50339c4e0f60e34331f9da70dc533f4d3122886"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -5934,7 +5933,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.2",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8423,7 +8422,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -9063,7 +9062,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
