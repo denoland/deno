@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "byonm_from_member": {
+      "steps": [{
+        "args": "install",
+        "cwd": "member",
+        "output": "install.out"
+      }, {
+        "args": "run -A member/main.ts",
+        "output": "run.out"
+      }]
+    }
+  }
+}

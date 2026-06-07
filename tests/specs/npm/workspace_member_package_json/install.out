@@ -1,0 +1,4 @@
+[WILDCARD]
+Dependencies:
++ npm:@denotest/esm-basic 1.0.0
+[WILDCARD]

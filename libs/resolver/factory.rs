@@ -355,20 +355,23 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
 
     let workspace = &self.workspace_directory()?.workspace;
 
-    if let Some(pkg_json) = workspace.root_pkg_json() {
-      if let Ok(deno_dir) = self.deno_dir() {
-        let deno_dir = &deno_dir.root;
-        // `deno_dir` can be symlink in macOS or on the CI
-        if let Ok(deno_dir) =
-          canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
-          && pkg_json.path.starts_with(deno_dir)
-        {
-          // if the package.json is in deno_dir, then do not use node_modules
-          // next to it as local node_modules dir
-          return Ok(NodeModulesDirMode::None);
-        }
-      }
+    // `deno_dir` can be symlink in macOS or on the CI
+    let canonicalized_deno_dir = self.deno_dir().ok().and_then(|deno_dir| {
+      canonicalize_path_maybe_not_exists(&self.sys, &deno_dir.root).ok()
+    });
+    // Enable BYONM if there's a package.json anywhere in the workspace, whether
+    // it's at the root or in a member. A package.json located inside deno_dir
+    // is ignored because the global npm cache may contain package.json files
+    // that should not enable a local node_modules directory next to them.
+    let has_workspace_pkg_json =
+      workspace
+        .package_jsons()
+        .any(|pkg_json| match &canonicalized_deno_dir {
+          Some(deno_dir) => !pkg_json.path.starts_with(deno_dir),
+          None => true,
+        });
 
+    if has_workspace_pkg_json {
       Ok(NodeModulesDirMode::Manual)
     } else if workspace.vendor_dir_path().is_some() {
       Ok(NodeModulesDirMode::Auto)
