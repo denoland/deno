@@ -5382,11 +5382,7 @@
     "sea/test-single-executable-application-snapshot.js": {},
     "sea/test-single-executable-application-use-code-cache.js": {},
     "sea/test-single-executable-application.js": {},
-    "sequential/test-child-process-emfile.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "Expected values to be strictly equal"
-    },
+    "sequential/test-child-process-emfile.js": {},
     "sequential/test-child-process-pass-fd.js": {
       "windows": false,
       "darwin": false,
