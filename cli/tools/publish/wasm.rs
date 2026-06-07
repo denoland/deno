@@ -56,11 +56,9 @@ pub fn unfurl_wasm(
       .context("Wasm section length out of bounds")?;
 
     if id == WASM_IMPORT_SECTION_ID {
-      if let Some(new_section) = rewrite_import_section(
-        &bytes[body_start..body_end],
-        body_start,
-        unfurl,
-      )? {
+      if let Some(new_section) =
+        rewrite_import_section(&bytes[body_start..body_end], unfurl)?
+      {
         output.push(WASM_IMPORT_SECTION_ID);
         let section_len = u32::try_from(new_section.len())
           .context("Wasm import section too large")?;
@@ -88,35 +86,17 @@ pub fn unfurl_wasm(
 /// `unfurl`. Returns `None` if no specifier changed.
 fn rewrite_import_section(
   body: &[u8],
-  body_offset: usize,
   unfurl: &mut dyn FnMut(&str) -> Option<String>,
 ) -> Result<Option<Vec<u8>>, AnyError> {
-  let reader = wasmparser::ImportSectionReader::new(
-    wasmparser::BinaryReader::new(body, body_offset),
-  )
-  .context("Failed to parse Wasm import section")?;
-
-  let mut groups = Vec::new();
-  for group in reader.into_iter_with_offsets() {
-    let (offset, group) = group.context("Failed to parse Wasm import")?;
-    groups.push((offset - body_offset, group));
-  }
-
   let mut records = Vec::new();
-  let mut groups = groups.into_iter().peekable();
-  while let Some((group_offset, group)) = groups.next() {
-    let group_end = groups
-      .peek()
-      .map(|(offset, _)| *offset)
-      .unwrap_or(body.len());
-    collect_import_records(
-      body,
-      body_offset,
-      group_offset,
-      group_end,
-      group,
-      &mut records,
-    )?;
+  let mut offset = 0;
+  let group_count = read_var_u32_at(body, &mut offset)
+    .context("Failed to parse Wasm import count")?;
+  for _ in 0..group_count {
+    collect_import_records(body, &mut offset, &mut records)?;
+  }
+  if offset != body.len() {
+    bail!("Unexpected trailing bytes in Wasm import section");
   }
 
   let mut replacements = Vec::with_capacity(records.len());
@@ -153,104 +133,236 @@ struct ImportRecord<'a> {
 
 fn collect_import_records<'a>(
   body: &'a [u8],
-  body_offset: usize,
-  group_offset: usize,
-  group_end: usize,
-  group: wasmparser::Imports<'a>,
+  offset: &mut usize,
   records: &mut Vec<ImportRecord<'a>>,
 ) -> Result<(), AnyError> {
-  match group {
-    wasmparser::Imports::Single(_, import) => {
-      let module = read_wasm_string(body, group_offset)
-        .context("Failed to parse Wasm import module name")?;
-      if module.value != import.module {
-        bail!("Mismatched Wasm import module name");
-      }
-      let name = read_wasm_string(body, module.range.end)
-        .context("Failed to parse Wasm import name")?;
-      if name.value != import.name {
-        bail!("Mismatched Wasm import name");
-      }
-      if group_end < name.range.end {
-        bail!("Wasm import range out of bounds");
-      }
-      records.push(ImportRecord {
-        module: import.module,
-        suffix: body[module.range.end..group_end].to_vec(),
-      });
-    }
-    wasmparser::Imports::Compact1 { module, items } => {
-      let mut items = items.into_iter_with_offsets().peekable();
-      while let Some(item) = items.next() {
-        let (item_offset, _) =
-          item.context("Failed to parse compact Wasm import item")?;
-        let item_offset = item_offset - body_offset;
-        let item_end = items
-          .peek()
-          .map(|item| match item {
-            Ok((offset, _)) => *offset - body_offset,
-            Err(_) => group_end,
-          })
-          .unwrap_or(group_end);
-        if item_end < item_offset {
-          bail!("Compact Wasm import item range out of bounds");
-        }
+  let module = read_wasm_string(body, *offset)
+    .context("Failed to parse Wasm import module name")?;
+  *offset = module.range.end;
+  let name = read_wasm_string(body, *offset)
+    .context("Failed to parse Wasm import name")?;
+  *offset = name.range.end;
+
+  match (name.value, body.get(*offset).copied()) {
+    ("", Some(0x7f)) => {
+      *offset += 1;
+      let item_count = read_var_u32_at(body, offset)
+        .context("Failed to parse compact Wasm import item count")?;
+      for _ in 0..item_count {
+        let item_start = *offset;
+        let _name = read_wasm_string(body, *offset)
+          .context("Failed to parse compact Wasm import item name")?;
+        *offset = _name.range.end;
+        skip_type_ref(body, offset)
+          .context("Failed to parse compact Wasm import item type")?;
         records.push(ImportRecord {
-          module,
-          suffix: body[item_offset..item_end].to_vec(),
+          module: module.value,
+          suffix: body[item_start..*offset].to_vec(),
         });
       }
     }
-    wasmparser::Imports::Compact2 {
-      module,
-      ty: _,
-      names,
-    } => {
-      let module_name = read_wasm_string(body, group_offset)
-        .context("Failed to parse compact Wasm import module name")?;
-      if module_name.value != module {
-        bail!("Mismatched compact Wasm import module name");
-      }
-      let empty_name = read_wasm_string(body, module_name.range.end)
-        .context("Failed to parse compact Wasm import marker")?;
-      if !empty_name.value.is_empty() {
-        bail!("Unexpected compact Wasm import marker");
-      }
-      let discriminator = empty_name.range.end;
-      if body.get(discriminator) != Some(&0x7e) {
-        bail!("Unexpected compact Wasm import discriminator");
-      }
-      let type_start = discriminator + 1;
-      let type_end = names.range().start - body_offset;
-      if type_end < type_start || type_end > body.len() {
-        bail!("Compact Wasm import type range out of bounds");
-      }
-
-      let mut names = names.into_iter_with_offsets().peekable();
-      while let Some(name) = names.next() {
-        let (name_offset, _) =
-          name.context("Failed to parse compact Wasm import name")?;
-        let name_offset = name_offset - body_offset;
-        let name_end = names
-          .peek()
-          .map(|name| match name {
-            Ok((offset, _)) => *offset - body_offset,
-            Err(_) => group_end,
-          })
-          .unwrap_or(group_end);
-        if name_end < name_offset {
-          bail!("Compact Wasm import name range out of bounds");
-        }
-        let mut suffix = Vec::with_capacity(
-          (name_end - name_offset) + (type_end - type_start),
-        );
-        suffix.extend_from_slice(&body[name_offset..name_end]);
+    ("", Some(0x7e)) => {
+      *offset += 1;
+      let type_start = *offset;
+      skip_type_ref(body, offset)
+        .context("Failed to parse compact Wasm import type")?;
+      let type_end = *offset;
+      let name_count = read_var_u32_at(body, offset)
+        .context("Failed to parse compact Wasm import name count")?;
+      for _ in 0..name_count {
+        let name_start = *offset;
+        let _name = read_wasm_string(body, *offset)
+          .context("Failed to parse compact Wasm import name")?;
+        *offset = _name.range.end;
+        let mut suffix =
+          Vec::with_capacity((*offset - name_start) + (type_end - type_start));
+        suffix.extend_from_slice(&body[name_start..*offset]);
         suffix.extend_from_slice(&body[type_start..type_end]);
-        records.push(ImportRecord { module, suffix });
+        records.push(ImportRecord {
+          module: module.value,
+          suffix,
+        });
       }
+    }
+    _ => {
+      skip_type_ref(body, offset)
+        .context("Failed to parse Wasm import type")?;
+      records.push(ImportRecord {
+        module: module.value,
+        suffix: body[module.range.end..*offset].to_vec(),
+      });
     }
   }
   Ok(())
+}
+
+fn read_byte(bytes: &[u8], offset: &mut usize) -> Result<u8, AnyError> {
+  let byte = bytes
+    .get(*offset)
+    .copied()
+    .context("Unexpected end of Wasm")?;
+  *offset += 1;
+  Ok(byte)
+}
+
+fn read_var_u32_at(bytes: &[u8], offset: &mut usize) -> Result<u32, AnyError> {
+  let (value, len) = read_var_u32(&bytes[*offset..])?;
+  *offset += len;
+  Ok(value)
+}
+
+fn skip_var_u64(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  for i in 0..10 {
+    let byte = read_byte(bytes, offset)?;
+    if i == 9 && byte & 0xfe != 0 {
+      bail!("LEB128 integer too large");
+    }
+    if byte & 0x80 == 0 {
+      return Ok(());
+    }
+  }
+  bail!("LEB128 integer too large");
+}
+
+fn skip_var_s33(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  for _ in 0..5 {
+    let byte = read_byte(bytes, offset)?;
+    if byte & 0x80 == 0 {
+      return Ok(());
+    }
+  }
+  bail!("LEB128 integer too large");
+}
+
+fn skip_type_ref(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  match read_byte(bytes, offset)? {
+    0x00 | 0x20 => {
+      read_var_u32_at(bytes, offset)?;
+    }
+    0x01 => skip_table_type(bytes, offset)?,
+    0x02 => skip_memory_type(bytes, offset)?,
+    0x03 => skip_global_type(bytes, offset)?,
+    0x04 => skip_tag_type(bytes, offset)?,
+    kind => bail!("Invalid Wasm import kind 0x{kind:02x}"),
+  }
+  Ok(())
+}
+
+fn skip_table_type(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  skip_ref_type(bytes, offset)?;
+  let flags = read_byte(bytes, offset)?;
+  if flags & !0b111 != 0 {
+    bail!("Invalid Wasm table limits flags");
+  }
+  skip_limit_bounds(bytes, offset, flags & 0b001 != 0, flags & 0b100 != 0)
+}
+
+fn skip_memory_type(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  let flags = read_byte(bytes, offset)?;
+  if flags & !0b1111 != 0 {
+    bail!("Invalid Wasm memory limits flags");
+  }
+  skip_limit_bounds(bytes, offset, flags & 0b0001 != 0, flags & 0b0100 != 0)?;
+  if flags & 0b1000 != 0 {
+    read_var_u32_at(bytes, offset)?;
+  }
+  Ok(())
+}
+
+fn skip_limit_bounds(
+  bytes: &[u8],
+  offset: &mut usize,
+  has_max: bool,
+  is_64: bool,
+) -> Result<(), AnyError> {
+  if is_64 {
+    skip_var_u64(bytes, offset)?;
+    if has_max {
+      skip_var_u64(bytes, offset)?;
+    }
+  } else {
+    read_var_u32_at(bytes, offset)?;
+    if has_max {
+      read_var_u32_at(bytes, offset)?;
+    }
+  }
+  Ok(())
+}
+
+fn skip_global_type(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  skip_val_type(bytes, offset)?;
+  let flags = read_byte(bytes, offset)?;
+  if flags > 0b11 {
+    bail!("Invalid Wasm global flags");
+  }
+  Ok(())
+}
+
+fn skip_tag_type(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  let attribute = read_byte(bytes, offset)?;
+  if attribute != 0 {
+    bail!("Invalid Wasm tag attribute");
+  }
+  read_var_u32_at(bytes, offset)?;
+  Ok(())
+}
+
+fn skip_val_type(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  match bytes
+    .get(*offset)
+    .copied()
+    .context("Unexpected end of Wasm")?
+  {
+    0x7f | 0x7e | 0x7d | 0x7c | 0x7b => {
+      *offset += 1;
+      Ok(())
+    }
+    _ => skip_ref_type(bytes, offset),
+  }
+}
+
+fn skip_ref_type(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  match bytes
+    .get(*offset)
+    .copied()
+    .context("Unexpected end of Wasm")?
+  {
+    0x63 | 0x64 => {
+      *offset += 1;
+      skip_heap_type(bytes, offset)
+    }
+    _ => skip_heap_type(bytes, offset),
+  }
+}
+
+fn skip_heap_type(bytes: &[u8], offset: &mut usize) -> Result<(), AnyError> {
+  match bytes
+    .get(*offset)
+    .copied()
+    .context("Unexpected end of Wasm")?
+  {
+    0x65 => {
+      *offset += 1;
+      skip_abstract_heap_type(bytes, offset)
+    }
+    0x62 => {
+      *offset += 1;
+      read_var_u32_at(bytes, offset)?;
+      Ok(())
+    }
+    _ => skip_var_s33(bytes, offset),
+  }
+}
+
+fn skip_abstract_heap_type(
+  bytes: &[u8],
+  offset: &mut usize,
+) -> Result<(), AnyError> {
+  match read_byte(bytes, offset)? {
+    0x70 | 0x6f | 0x6e | 0x71 | 0x72 | 0x73 | 0x6d | 0x6b | 0x6a | 0x6c
+    | 0x69 | 0x74 | 0x68 | 0x75 => Ok(()),
+    ty => bail!("Invalid Wasm abstract heap type 0x{ty:02x}"),
+  }
 }
 
 /// Reads an unsigned LEB128 (variable length) `u32`, returning the value and
