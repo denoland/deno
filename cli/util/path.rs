@@ -266,12 +266,13 @@ mod test {
 
   #[test]
   fn test_resolve_url_or_path_normalized_url_passthrough() {
-    let cwd = std::env::current_dir().unwrap();
     // URL arguments must bypass the Windows trailing-char normalization. The
     // scheme guard is what prevents the strip from mangling URLs (e.g. turning
-    // `.../foo.tsx.` into `.../foo.tsx` on Windows), so lock that in here.
+    // `.../foo.tsx.` into `.../foo.tsx` on Windows), so lock that in here. The
+    // current dir is unused for URL inputs, so a dummy is fine.
+    let cwd = Path::new("/");
     let url =
-      resolve_url_or_path_normalized("http://example.com/foo.tsx.", &cwd)
+      resolve_url_or_path_normalized("http://example.com/foo.tsx.", cwd)
         .unwrap();
     assert_eq!(url.as_str(), "http://example.com/foo.tsx.");
   }
