@@ -77,6 +77,9 @@ pub enum CronError {
   #[error("Invalid cron schedule")]
   InvalidCron,
   #[class(type)]
+  #[error("Invalid cron timezone: {0}")]
+  InvalidTimezone(String),
+  #[class(type)]
   #[error("Invalid backoff schedule")]
   InvalidBackoff,
   #[class(generic)]
@@ -100,6 +103,7 @@ fn op_cron_create(
   #[string] name: String,
   #[string] cron_schedule: String,
   #[scoped] backoff_schedule: Option<Vec<u32>>,
+  #[string] timezone: Option<String>,
 ) -> Result<ResourceId, CronError> {
   let cron_handler = {
     let state = state.borrow();
@@ -111,9 +115,18 @@ fn op_cron_create(
 
   validate_cron_name(&name)?;
 
+  // Validate the timezone eagerly so a bad IANA name is reported regardless of
+  // which handler backend ends up computing the schedule.
+  if let Some(timezone) = &timezone {
+    timezone
+      .parse::<chrono_tz::Tz>()
+      .map_err(|_| CronError::InvalidTimezone(timezone.clone()))?;
+  }
+
   let handle = cron_handler.create(CronSpec {
     name,
     cron_schedule,
+    timezone,
     backoff_schedule,
   })?;
 

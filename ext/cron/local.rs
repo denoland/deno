@@ -126,7 +126,7 @@ impl LocalCronHandler {
             cron.current_execution_retries += 1;
             now + backoff_ms as u64
           } else {
-            let next_ts = compute_next_deadline(&cron.spec.cron_schedule)?;
+            let next_ts = compute_next_deadline(&cron.spec)?;
             cron.current_execution_retries = 0;
             next_ts
           };
@@ -321,7 +321,7 @@ impl CronHandle for CronExecutionHandle {
   }
 }
 
-fn compute_next_deadline(cron_expression: &str) -> Result<u64, CronError> {
+fn compute_next_deadline(spec: &CronSpec) -> Result<u64, CronError> {
   let now = chrono::Utc::now();
 
   if let Ok(test_schedule) = env::var("DENO_CRON_TEST_SCHEDULE_OFFSET")
@@ -330,10 +330,20 @@ fn compute_next_deadline(cron_expression: &str) -> Result<u64, CronError> {
     return Ok(now.timestamp_millis() as u64 + offset);
   }
 
-  let cron = cron_expression
+  let cron = spec
+    .cron_schedule
     .parse::<Schedule>()
     .map_err(|_| CronError::InvalidCron)?;
-  let Some(next_deadline) = cron.next_after(now) else {
+  let next_deadline = match &spec.timezone {
+    Some(timezone) => {
+      let tz = timezone
+        .parse::<chrono_tz::Tz>()
+        .map_err(|_| CronError::InvalidTimezone(timezone.clone()))?;
+      cron.next_after_tz(now, tz)
+    }
+    None => cron.next_after(now),
+  };
+  let Some(next_deadline) = next_deadline else {
     return Err(CronError::InvalidCron);
   };
   Ok(next_deadline.timestamp_millis() as u64)
@@ -357,11 +367,28 @@ mod tests {
 
   #[test]
   fn test_compute_next_deadline() {
+    fn spec(schedule: &str, timezone: Option<&str>) -> CronSpec {
+      CronSpec {
+        name: "test".to_string(),
+        cron_schedule: schedule.to_string(),
+        timezone: timezone.map(|s| s.to_string()),
+        backoff_schedule: None,
+      }
+    }
+
     let now = chrono::Utc::now().timestamp_millis() as u64;
-    assert!(compute_next_deadline("*/1 * * * *").unwrap() > now);
-    assert!(compute_next_deadline("* * * * *").unwrap() > now);
-    assert!(compute_next_deadline("bogus").is_err());
-    assert!(compute_next_deadline("* * * * * *").is_err());
-    assert!(compute_next_deadline("* * *").is_err());
+    assert!(compute_next_deadline(&spec("*/1 * * * *", None)).unwrap() > now);
+    assert!(compute_next_deadline(&spec("* * * * *", None)).unwrap() > now);
+    assert!(
+      compute_next_deadline(&spec("0 12 * * *", Some("America/New_York")))
+        .unwrap()
+        > now
+    );
+    assert!(compute_next_deadline(&spec("bogus", None)).is_err());
+    assert!(compute_next_deadline(&spec("* * * * * *", None)).is_err());
+    assert!(compute_next_deadline(&spec("* * *", None)).is_err());
+    assert!(
+      compute_next_deadline(&spec("* * * * *", Some("Not/AZone"))).is_err()
+    );
   }
 }

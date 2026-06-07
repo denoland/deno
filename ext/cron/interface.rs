@@ -38,5 +38,8 @@ pub trait CronHandle {
 pub struct CronSpec {
   pub name: String,
   pub cron_schedule: String,
+  /// Optional IANA timezone name (e.g. "America/New_York") the schedule is
+  /// interpreted in. `None` means UTC.
+  pub timezone: Option<String>,
   pub backoff_schedule: Option<Vec<u32>>,
 }

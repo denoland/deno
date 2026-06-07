@@ -199,6 +199,7 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 # Note: Do not use the "clock" feature of chrono, as it links us to CoreFoundation on macOS.
 #       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+chrono-tz = { version = "0.10", default-features = false }
 color-print = "0.3.5"
 cooked-waker = "5"
 criterion = "0.5"

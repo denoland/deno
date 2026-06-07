@@ -56,6 +56,8 @@ struct CronRegistration<'a> {
   name: &'a str,
   schedule: &'a str,
   #[serde(skip_serializing_if = "Option::is_none")]
+  timezone: Option<&'a str>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   backoff_schedule: Option<&'a [u32]>,
 }
 
@@ -418,6 +420,7 @@ async fn register_cron(
   let cron = CronRegistration {
     name: &spec.name,
     schedule: &spec.cron_schedule,
+    timezone: spec.timezone.as_deref(),
     backoff_schedule: spec.backoff_schedule.as_deref(),
   };
 

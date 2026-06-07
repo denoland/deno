@@ -479,13 +479,30 @@ declare namespace Deno {
    * second, 5 seconds, and 10 seconds delay between each retry. There is a
    * limit of 5 retries and a maximum interval of 1 hour (3600000 milliseconds).
    *
+   * The `timezone` option can be used to interpret the schedule in a specific
+   * IANA timezone (e.g. `"America/New_York"`) instead of UTC. Daylight saving
+   * transitions are handled by the runtime: ambiguous local times fire at the
+   * earliest occurrence and nonexistent local times are skipped.
+   *
+   * ```ts
+   * Deno.cron("nightly", "0 0 * * *", {
+   *   timezone: "America/New_York",
+   * }, () => {
+   *   console.log("runs at midnight in New York");
+   * });
+   * ```
+   *
    * @category Cloud
    * @experimental
    */
   export function cron(
     name: string,
     schedule: string | CronSchedule,
-    options: { backoffSchedule?: number[]; signal?: AbortSignal },
+    options: {
+      backoffSchedule?: number[];
+      signal?: AbortSignal;
+      timezone?: string;
+    },
     handler: () => Promise<void> | void,
   ): Promise<void>;
 

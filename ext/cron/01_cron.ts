@@ -110,7 +110,7 @@ function cron(
   schedule: string | Deno.CronSchedule,
   handlerOrOptions1:
     | (() => Promise<void> | void)
-    | ({ backoffSchedule?: number[]; signal?: AbortSignal }),
+    | ({ backoffSchedule?: number[]; signal?: AbortSignal; timezone?: string }),
   handler2?: () => Promise<void> | void,
 ) {
   if (name === undefined) {
@@ -128,7 +128,7 @@ function cron(
 
   let handler: () => Promise<void> | void;
   let options:
-    | { backoffSchedule?: number[]; signal?: AbortSignal }
+    | { backoffSchedule?: number[]; signal?: AbortSignal; timezone?: string }
     | undefined = undefined;
 
   if (typeof handlerOrOptions1 === "function") {
@@ -149,6 +149,7 @@ function cron(
     name,
     schedule,
     options?.backoffSchedule,
+    options?.timezone,
   );
 
   if (options?.signal) {
