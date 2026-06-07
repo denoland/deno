@@ -283,25 +283,25 @@ fn parse_workspace_dep_value(
     })
   }
 
-  match value {
-    "~" => Ok((None, PackageJsonDepWorkspaceReq::Tilde)),
-    "^" => Ok((None, PackageJsonDepWorkspaceReq::Caret)),
-    _ => match VersionReq::parse_from_npm(value) {
-      Ok(version_req) => {
-        Ok((None, PackageJsonDepWorkspaceReq::VersionReq(version_req)))
+  // Bare requirement forms (`*`, `~`, `^`, an explicit range) never contain an
+  // `@`, so try interpreting the whole value as one first.
+  match parse_workspace_req(value) {
+    Ok(version_req) => Ok((None, version_req)),
+    Err(bare_err) => {
+      // Otherwise this may be the pnpm-style alias form
+      // `workspace:<name>@<range>`. The name may be scoped (`@scope/name`), so
+      // split on the last `@`. Both the name and range must be non-empty;
+      // degenerate forms like `workspace:foo@` or `workspace:@scope/pkg` (no
+      // range) are rejected with the original requirement parse error.
+      if let Some((name, range)) = value.rsplit_once('@')
+        && !name.is_empty()
+        && !range.is_empty()
+      {
+        Ok((Some(name.into()), parse_workspace_req(range)?))
+      } else {
+        Err(bare_err)
       }
-      Err(version_req_err) => {
-        // Not a bare version requirement: try the pnpm-style alias form
-        // `workspace:<name>@<range>`. The name may be scoped (`@scope/name`),
-        // so split on the last `@`.
-        if let Some((name, range)) = value.rsplit_once('@')
-          && !name.is_empty()
-        {
-          return Ok((Some(name.into()), parse_workspace_req(range)?));
-        }
-        Err(version_req_err.into())
-      }
-    },
+    }
   }
 }
 
@@ -973,6 +973,40 @@ mod test {
     assert_eq!(
       format!("{}", err.source().unwrap()),
       concat!("Unexpected character.\n", "  %*(#$%()\n", "  ~")
+    );
+  }
+
+  #[test]
+  fn test_get_local_package_json_version_reqs_workspace_alias_degenerate() {
+    let mut package_json =
+      PackageJson::load_from_string(PathBuf::from("/package.json"), "{}")
+        .unwrap();
+    package_json.dependencies = Some(IndexMap::from([
+      // valid alias form for reference
+      ("ok".to_string(), "workspace:foo@*".to_string()),
+      // empty range after the alias `@`
+      ("empty-range".to_string(), "workspace:foo@".to_string()),
+      // scoped name with no range at all
+      ("no-range".to_string(), "workspace:@scope/pkg".to_string()),
+    ]));
+    let map = get_local_package_json_version_reqs_for_tests(&package_json);
+    assert_eq!(
+      map.get("ok").unwrap().as_ref().unwrap(),
+      &PackageJsonDepValue::Workspace {
+        name: Some("foo".into()),
+        version_req: PackageJsonDepWorkspaceReq::VersionReq(
+          VersionReq::parse_from_npm("*").unwrap()
+        )
+      }
+    );
+    // both degenerate forms are rejected rather than silently accepted
+    assert_eq!(
+      format!("{}", map.get("empty-range").unwrap().as_ref().unwrap_err()),
+      "Invalid version requirement"
+    );
+    assert_eq!(
+      format!("{}", map.get("no-range").unwrap().as_ref().unwrap_err()),
+      "Invalid version requirement"
     );
   }
 

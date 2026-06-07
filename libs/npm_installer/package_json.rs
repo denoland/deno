@@ -68,13 +68,30 @@ pub struct PackageJsonDepValueParseWithLocationError {
 /// `deno run` resolver error (`VersionNotSatisfied`).
 #[derive(Debug, Error, Clone)]
 #[error(
-  "Failed to install '{alias}': found package.json in workspace, but version '{version}' didn't satisfy constraint '{version_req}'\n    at {location}"
+  "Failed to install '{alias}'{}: found package.json in workspace, but version '{version}' didn't satisfy constraint '{version_req}'\n    at {location}",
+  self.member_suffix()
 )]
 pub struct WorkspaceMemberVersionNotSatisfiedError {
   pub location: Url,
+  /// The dependency key the member is imported under.
   pub alias: StackString,
+  /// The resolved workspace member name. Differs from `alias` for pnpm-style
+  /// `workspace:<name>@<range>` aliases.
+  pub member_name: StackString,
   pub version_req: VersionReq,
   pub version: Version,
+}
+
+impl WorkspaceMemberVersionNotSatisfiedError {
+  /// When the member is imported under a different name (an alias), append the
+  /// resolved member name so the offending entry is easy to locate.
+  fn member_suffix(&self) -> String {
+    if self.member_name == self.alias {
+      String::new()
+    } else {
+      format!(" (workspace member '{}')", self.member_name)
+    }
+  }
 }
 
 /// An error surfaced while reconciling a package.json's dependencies against
@@ -296,7 +313,8 @@ impl NpmInstallDepsProvider {
                   workspace_member_version_errors.push(
                     WorkspaceMemberVersionNotSatisfiedError {
                       location: pkg_json.specifier(),
-                      alias: target_name.into(),
+                      alias: alias.clone(),
+                      member_name: target_name.into(),
                       version_req: version_req.clone(),
                       version: pkg.nv.version.clone(),
                     },

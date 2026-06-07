@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "dependencies": {
     "my-adder": "workspace:@denotest/adder@*",
-    "adder-caret": "workspace:@denotest/adder@^"
+    "adder-caret": "workspace:@denotest/adder@^",
+    "my-mult": "workspace:multiplier@1.0.0"
   }
 }
