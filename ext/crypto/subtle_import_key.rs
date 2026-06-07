@@ -28,16 +28,10 @@ use deno_error::JsErrorBox;
 
 use crate::CryptoError;
 use crate::crypto_key::CryptoKeyType;
-use crate::ed25519::op_crypto_import_pkcs8_ed25519;
-use crate::ed25519::op_crypto_import_spki_ed25519;
 use crate::make_key::AlgorithmDict;
 use crate::make_key::make_crypto_key;
 use crate::shared::RawKeyData;
 use crate::subtle_export_key::KeyFormat;
-use crate::x25519::op_crypto_import_pkcs8_x25519;
-use crate::x25519::op_crypto_import_spki_x25519;
-use crate::x448::op_crypto_import_pkcs8_x448;
-use crate::x448::op_crypto_import_spki_x448;
 
 const ALL_USAGES: &[&str] = &[
   "encrypt",
@@ -248,9 +242,477 @@ pub fn run<'s>(
     "PBKDF2" => {
       import_key_kdf(scope, "PBKDF2", format, key_data, extractable, usages)
     }
+    "Ed25519" => import_key_okp(
+      scope,
+      OkpKind::Ed25519,
+      format,
+      key_data,
+      extractable,
+      usages,
+    ),
+    "X25519" => import_key_okp(
+      scope,
+      OkpKind::X25519,
+      format,
+      key_data,
+      extractable,
+      usages,
+    ),
+    "X448" => import_key_okp(
+      scope,
+      OkpKind::X448,
+      format,
+      key_data,
+      extractable,
+      usages,
+    ),
+    "ECDSA" | "ECDH" => import_key_ec(
+      scope,
+      name,
+      algorithm.named_curve.as_deref(),
+      format,
+      key_data,
+      extractable,
+      usages,
+    ),
     _ => Err(not_supported(format!(
       "importKey is not yet implemented in Rust for {name}"
     ))),
+  }
+}
+
+fn import_key_ec<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  named_curve: Option<&str>,
+  format: KeyFormat,
+  key_data: ImportKeyData,
+  extractable: bool,
+  usages: &[String],
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+  let named_curve = named_curve
+    .ok_or_else(|| data_error("EC import requires 'namedCurve'".into()))?
+    .to_string();
+  if !matches!(named_curve.as_str(), "P-256" | "P-384" | "P-521") {
+    return Err(data_error("Invalid namedCurve".into()));
+  }
+  let curve = match named_curve.as_str() {
+    "P-256" => crate::shared::EcNamedCurve::P256,
+    "P-384" => crate::shared::EcNamedCurve::P384,
+    "P-521" => crate::shared::EcNamedCurve::P521,
+    _ => unreachable!(),
+  };
+  let pub_usages = match name {
+    "ECDSA" => vec!["verify"],
+    "ECDH" => vec![],
+    _ => unreachable!(),
+  };
+  let priv_usages = match name {
+    "ECDSA" => vec!["sign"],
+    "ECDH" => vec!["deriveKey", "deriveBits"],
+    _ => unreachable!(),
+  };
+  let jwk_use = match name {
+    "ECDSA" => "sig",
+    "ECDH" => "enc",
+    _ => unreachable!(),
+  };
+
+  let alg = AlgorithmDict::new(name).with_named_curve(&named_curve);
+  let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
+
+  use crate::import_key::ImportKeyOptions;
+  use crate::import_key::ImportKeyResult;
+  use crate::import_key::KeyData;
+  use crate::import_key::op_crypto_import_key_inner;
+
+  let opts = match name {
+    "ECDSA" => ImportKeyOptions::Ecdsa { named_curve: curve },
+    "ECDH" => ImportKeyOptions::Ecdh { named_curve: curve },
+    _ => unreachable!(),
+  };
+
+  match (format, key_data) {
+    (KeyFormat::Raw, ImportKeyData::Buffer(b))
+    | (KeyFormat::RawPublic, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &pub_usages)?;
+      let result = op_crypto_import_key_inner(opts, KeyData::Raw(b))
+        .map_err(|e| CryptoError::Other(deno_error::JsErrorBox::from_err(e)))?;
+      let ImportKeyResult::Ec { raw_data } = result else {
+        return Err(data_error("Invalid key data".into()));
+      };
+      Ok(make_crypto_key(
+        scope,
+        CryptoKeyType::Public,
+        extractable,
+        &allowed_usages,
+        alg,
+        raw_key_data_to_raw(raw_data),
+      ))
+    }
+    (KeyFormat::Spki, ImportKeyData::Buffer(b)) => {
+      if name == "ECDSA" {
+        check_usages_subset(usages, &pub_usages)?;
+      } else if !usages.is_empty() {
+        return Err(syntax_error("Key usage must be empty".into()));
+      }
+      let result = op_crypto_import_key_inner(opts, KeyData::Spki(b))
+        .map_err(|e| CryptoError::Other(deno_error::JsErrorBox::from_err(e)))?;
+      let ImportKeyResult::Ec { raw_data } = result else {
+        return Err(data_error("Invalid key data".into()));
+      };
+      Ok(make_crypto_key(
+        scope,
+        CryptoKeyType::Public,
+        extractable,
+        &allowed_usages,
+        alg,
+        raw_key_data_to_raw(raw_data),
+      ))
+    }
+    (KeyFormat::Pkcs8, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &priv_usages)?;
+      let result = op_crypto_import_key_inner(opts, KeyData::Pkcs8(b))
+        .map_err(|e| CryptoError::Other(deno_error::JsErrorBox::from_err(e)))?;
+      let ImportKeyResult::Ec { raw_data } = result else {
+        return Err(data_error("Invalid key data".into()));
+      };
+      Ok(make_crypto_key(
+        scope,
+        CryptoKeyType::Private,
+        extractable,
+        &allowed_usages,
+        alg,
+        raw_key_data_to_raw(raw_data),
+      ))
+    }
+    (KeyFormat::Jwk, ImportKeyData::Jwk(jwk_g)) => {
+      let jwk = v8::Local::new(scope, &jwk_g);
+      let is_priv = read_string_member(scope, jwk, b"d").is_some();
+      let usages_set = if is_priv { &priv_usages } else { &pub_usages };
+      check_usages_subset(usages, usages_set)?;
+      if read_string_member(scope, jwk, b"kty").as_deref() != Some("EC") {
+        return Err(data_error(
+          "'kty' property of JsonWebKey must be 'EC'".into(),
+        ));
+      }
+      if !usages.is_empty() {
+        if let Some(use_) = read_string_member(scope, jwk, b"use")
+          && use_ != jwk_use
+        {
+          return Err(data_error(format!(
+            "'use' property of JsonWebKey must be '{jwk_use}'"
+          )));
+        }
+      }
+      if let Some(key_ops) = read_string_array_member(scope, jwk, b"key_ops") {
+        for u in &key_ops {
+          if !ALL_USAGES.iter().any(|a| *a == u.as_str()) {
+            return Err(data_error(
+              "'key_ops' member of JsonWebKey is invalid".into(),
+            ));
+          }
+        }
+        for u in usages {
+          if !key_ops.iter().any(|k| k == u) {
+            return Err(data_error(
+              "'key_ops' member of JsonWebKey is invalid".into(),
+            ));
+          }
+        }
+      }
+      if read_bool_member(scope, jwk, b"ext") == Some(false) && extractable {
+        return Err(data_error(
+          "'ext' property of JsonWebKey must not be false if extractable is true"
+            .into(),
+        ));
+      }
+      if name == "ECDSA"
+        && let Some(alg_s) = read_string_member(scope, jwk, b"alg")
+      {
+        let want = match alg_s.as_str() {
+          "ES256" => "P-256",
+          "ES384" => "P-384",
+          "ES512" => "P-521",
+          _ => {
+            return Err(data_error("Curve algorithm not supported".into()));
+          }
+        };
+        if want != named_curve {
+          return Err(data_error("Mismatched curve algorithm".into()));
+        }
+      }
+      let x = read_string_member(scope, jwk, b"x")
+        .ok_or_else(|| data_error("'x' property of JsonWebKey is required for EC keys".into()))?;
+      let y = read_string_member(scope, jwk, b"y")
+        .ok_or_else(|| data_error("'y' property of JsonWebKey is required for EC keys".into()))?;
+      let key_type = if is_priv {
+        CryptoKeyType::Private
+      } else {
+        CryptoKeyType::Public
+      };
+      let result = if is_priv {
+        let d = read_string_member(scope, jwk, b"d").unwrap();
+        op_crypto_import_key_inner(opts, KeyData::JwkPrivateEc { x, y, d })
+          .map_err(|e| {
+            CryptoError::Other(deno_error::JsErrorBox::from_err(e))
+          })?
+      } else {
+        op_crypto_import_key_inner(opts, KeyData::JwkPublicEc { x, y })
+          .map_err(|e| {
+            CryptoError::Other(deno_error::JsErrorBox::from_err(e))
+          })?
+      };
+      let ImportKeyResult::Ec { raw_data } = result else {
+        return Err(data_error("Invalid key data".into()));
+      };
+      Ok(make_crypto_key(
+        scope,
+        key_type,
+        extractable,
+        &allowed_usages,
+        alg,
+        raw_key_data_to_raw(raw_data),
+      ))
+    }
+    _ => Err(not_supported("Not implemented".into())),
+  }
+}
+
+fn raw_key_data_to_raw(rkd: crate::shared::RustRawKeyData) -> RawKeyData {
+  use crate::shared::RustRawKeyData;
+  match rkd {
+    RustRawKeyData::Public(b) => {
+      RawKeyData::Public(b.as_ref().to_vec().into_boxed_slice())
+    }
+    RustRawKeyData::Private(b) => {
+      RawKeyData::Private(b.as_ref().to_vec().into_boxed_slice())
+    }
+    RustRawKeyData::Secret(b) => {
+      RawKeyData::Secret(b.as_ref().to_vec().into_boxed_slice())
+    }
+  }
+}
+
+#[derive(Copy, Clone)]
+enum OkpKind {
+  Ed25519,
+  X25519,
+  X448,
+}
+
+impl OkpKind {
+  fn name(self) -> &'static str {
+    match self {
+      Self::Ed25519 => "Ed25519",
+      Self::X25519 => "X25519",
+      Self::X448 => "X448",
+    }
+  }
+  fn key_len(self) -> usize {
+    match self {
+      Self::Ed25519 => 32,
+      Self::X25519 => 32,
+      Self::X448 => 56,
+    }
+  }
+  fn pub_usages(self) -> &'static [&'static str] {
+    match self {
+      Self::Ed25519 => &["verify"],
+      Self::X25519 | Self::X448 => &[],
+    }
+  }
+  fn priv_usages(self) -> &'static [&'static str] {
+    match self {
+      Self::Ed25519 => &["sign"],
+      Self::X25519 | Self::X448 => &["deriveKey", "deriveBits"],
+    }
+  }
+  fn jwk_use(self) -> &'static str {
+    match self {
+      Self::Ed25519 => "sig",
+      Self::X25519 | Self::X448 => "enc",
+    }
+  }
+  fn import_spki(self, key_data: &[u8], out: &mut [u8]) -> bool {
+    use elliptic_curve::pkcs8::der::Decode;
+    let oid = match self {
+      Self::Ed25519 => crate::ed25519::ED25519_OID,
+      Self::X25519 => crate::x25519::X25519_OID,
+      Self::X448 => crate::x448::X448_OID,
+    };
+    let Ok(info) = spki::SubjectPublicKeyInfoRef::try_from(key_data) else {
+      return false;
+    };
+    if info.algorithm.oid != oid || info.algorithm.parameters.is_some() {
+      return false;
+    }
+    let bytes = info.subject_public_key.raw_bytes();
+    if bytes.len() != out.len() {
+      return false;
+    }
+    out.copy_from_slice(bytes);
+    true
+  }
+  fn import_pkcs8(self, key_data: &[u8], out: &mut [u8]) -> bool {
+    use elliptic_curve::pkcs8::PrivateKeyInfo;
+    use elliptic_curve::pkcs8::der::Decode;
+    let oid = match self {
+      Self::Ed25519 => crate::ed25519::ED25519_OID,
+      Self::X25519 => crate::x25519::X25519_OID,
+      Self::X448 => crate::x448::X448_OID,
+    };
+    let Ok(pk_info) = PrivateKeyInfo::from_der(key_data) else {
+      return false;
+    };
+    if pk_info.algorithm.oid != oid || pk_info.algorithm.parameters.is_some()
+    {
+      return false;
+    }
+    // CurvePrivateKey ::= OCTET STRING; the wrapper is the 2-byte DER
+    // octet-string header followed by the raw private key bytes.
+    let want_inner = out.len();
+    let want_total = want_inner + 2;
+    if pk_info.private_key.len() != want_total {
+      return false;
+    }
+    out.copy_from_slice(&pk_info.private_key[2..]);
+    true
+  }
+}
+
+fn import_key_okp<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  kind: OkpKind,
+  format: KeyFormat,
+  key_data: ImportKeyData,
+  extractable: bool,
+  usages: &[String],
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+  let alg = AlgorithmDict::new(kind.name());
+  let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
+  match (format, key_data) {
+    (KeyFormat::Raw, ImportKeyData::Buffer(b))
+    | (KeyFormat::RawPublic, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, kind.pub_usages())?;
+      if b.len() != kind.key_len() {
+        return Err(data_error("Invalid key data".into()));
+      }
+      Ok(make_crypto_key(
+        scope,
+        CryptoKeyType::Public,
+        extractable,
+        &allowed_usages,
+        alg,
+        RawKeyData::Raw(b.into_boxed_slice()),
+      ))
+    }
+    (KeyFormat::Spki, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, kind.pub_usages())?;
+      let mut out = vec![0u8; kind.key_len()];
+      if !kind.import_spki(&b, &mut out) {
+        return Err(data_error("Invalid key data".into()));
+      }
+      Ok(make_crypto_key(
+        scope,
+        CryptoKeyType::Public,
+        extractable,
+        &allowed_usages,
+        alg,
+        RawKeyData::Raw(out.into_boxed_slice()),
+      ))
+    }
+    (KeyFormat::Pkcs8, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, kind.priv_usages())?;
+      let mut out = vec![0u8; kind.key_len()];
+      if !kind.import_pkcs8(&b, &mut out) {
+        return Err(data_error("Invalid key data".into()));
+      }
+      Ok(make_crypto_key(
+        scope,
+        CryptoKeyType::Private,
+        extractable,
+        &allowed_usages,
+        alg,
+        RawKeyData::Raw(out.into_boxed_slice()),
+      ))
+    }
+    (KeyFormat::Jwk, ImportKeyData::Jwk(jwk_g)) => {
+      let jwk = v8::Local::new(scope, &jwk_g);
+      // RFC 8037: kty=OKP, crv=<curve name>.
+      let kty = read_string_member(scope, jwk, b"kty");
+      if kty.as_deref() != Some("OKP") {
+        return Err(data_error("Invalid key type".into()));
+      }
+      let crv = read_string_member(scope, jwk, b"crv");
+      if crv.as_deref() != Some(kind.name()) {
+        return Err(data_error("Invalid curve".into()));
+      }
+      if !usages.is_empty() {
+        if let Some(use_) = read_string_member(scope, jwk, b"use")
+          && use_ != kind.jwk_use()
+        {
+          return Err(data_error("Invalid key use".into()));
+        }
+      }
+      if let Some(key_ops) = read_string_array_member(scope, jwk, b"key_ops") {
+        for u in &key_ops {
+          if !ALL_USAGES.iter().any(|a| *a == u.as_str()) {
+            return Err(data_error(
+              "'key_ops' property of JsonWebKey is invalid".into(),
+            ));
+          }
+        }
+        for u in usages {
+          if !key_ops.iter().any(|k| k == u) {
+            return Err(data_error(
+              "'key_ops' property of JsonWebKey is invalid".into(),
+            ));
+          }
+        }
+      }
+      if read_bool_member(scope, jwk, b"ext") == Some(false) && extractable {
+        return Err(data_error("Invalid key extractability".into()));
+      }
+      if let Some(d) = read_string_member(scope, jwk, b"d") {
+        check_usages_subset(usages, kind.priv_usages())?;
+        let bytes = BASE64_URL_SAFE_NO_PAD
+          .decode(d.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid private key data".into()))?;
+        if bytes.len() != kind.key_len() {
+          return Err(data_error("Invalid private key data".into()));
+        }
+        Ok(make_crypto_key(
+          scope,
+          CryptoKeyType::Private,
+          extractable,
+          &allowed_usages,
+          alg,
+          RawKeyData::Raw(bytes.into_boxed_slice()),
+        ))
+      } else {
+        if !usages.is_empty() {
+          check_usages_subset(usages, kind.pub_usages())?;
+        }
+        let x = read_string_member(scope, jwk, b"x")
+          .ok_or_else(|| data_error("Invalid public key data".into()))?;
+        let bytes = BASE64_URL_SAFE_NO_PAD
+          .decode(x.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid public key data".into()))?;
+        if bytes.len() != kind.key_len() {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        Ok(make_crypto_key(
+          scope,
+          CryptoKeyType::Public,
+          extractable,
+          &allowed_usages,
+          alg,
+          RawKeyData::Raw(bytes.into_boxed_slice()),
+        ))
+      }
+    }
+    _ => Err(not_supported("Not implemented".into())),
   }
 }
 

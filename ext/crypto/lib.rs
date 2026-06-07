@@ -84,6 +84,7 @@ mod subtle_import_key;
 mod subtle_key;
 mod subtle_sign;
 mod subtle_verify;
+mod subtle_wrap_key;
 mod x25519;
 mod x448;
 

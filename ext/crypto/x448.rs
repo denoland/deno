@@ -71,7 +71,7 @@ pub(crate) fn x448_derive_bits(
 }
 
 // id-X448 OBJECT IDENTIFIER ::= { 1 3 101 111 }
-const X448_OID: const_oid::ObjectIdentifier =
+pub const X448_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.111");
 
 pub(crate) fn x448_public_key(private_key: &[u8]) -> Result<String, X448Error> {

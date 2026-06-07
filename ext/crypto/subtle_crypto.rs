@@ -52,6 +52,10 @@ use crate::subtle_sign::SubtleSignParams;
 use crate::subtle_sign::run as run_sign;
 use crate::subtle_verify::SubtleVerifyParams;
 use crate::subtle_verify::run as run_verify;
+use crate::subtle_wrap_key::UnwrapAlgorithm;
+use crate::subtle_wrap_key::WrapAlgorithm;
+use crate::subtle_wrap_key::run_unwrap_key;
+use crate::subtle_wrap_key::run_wrap_key;
 
 pub struct SubtleCrypto;
 
@@ -324,6 +328,61 @@ impl SubtleCrypto {
       run_decapsulate_bits(algorithm, decapsulation_key, ciphertext.0)
     })
     .await?
+  }
+
+  /// `SubtleCrypto.wrapKey(format, key, wrappingKey, wrapAlgorithm)` —
+  /// export `key` in `format`, then encrypt the resulting bytes under
+  /// `wrappingKey` using `wrapAlgorithm`. Uses AES-KW when
+  /// `wrapAlgorithm` is `AES-KW`; otherwise falls through to the
+  /// `encrypt` op for the algorithm (RSA-OAEP, AES-GCM, ChaCha20-Poly1305,
+  /// etc).
+  #[arraybuffer]
+  #[rename("wrapKey")]
+  #[required(4)]
+  async fn wrap_key(
+    &self,
+    #[webidl] format: KeyFormat,
+    #[webidl] key: SubtleKey,
+    #[webidl] wrapping_key: SubtleKey,
+    #[webidl] wrap_algorithm: WrapAlgorithm,
+  ) -> Result<Vec<u8>, CryptoError> {
+    let WrapAlgorithm { name, params } = wrap_algorithm;
+    spawn_blocking(move || {
+      run_wrap_key(format, key, &name, wrapping_key, params)
+    })
+    .await?
+  }
+
+  /// `SubtleCrypto.unwrapKey(format, wrappedKey, unwrappingKey,
+  /// unwrapAlgorithm, unwrappedKeyAlgorithm, extractable, keyUsages)` —
+  /// decrypt `wrappedKey` under `unwrappingKey` and import the result as
+  /// `unwrappedKeyAlgorithm`. AES-KW or full encrypt path symmetric with
+  /// [`wrap_key`](Self::wrap_key).
+  #[rename("unwrapKey")]
+  #[required(7)]
+  fn unwrap_key<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[webidl] format: KeyFormat,
+    #[webidl] wrapped_key: BufferSource,
+    #[webidl] unwrapping_key: SubtleKey,
+    #[webidl] unwrap_algorithm: UnwrapAlgorithm,
+    #[webidl] unwrapped_key_algorithm: crate::subtle_import_key::ImportAlgorithm,
+    extractable: bool,
+    #[webidl] usages: Vec<String>,
+  ) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+    let UnwrapAlgorithm { name, params } = unwrap_algorithm;
+    run_unwrap_key(
+      scope,
+      format,
+      wrapped_key.0,
+      &name,
+      unwrapping_key,
+      params,
+      unwrapped_key_algorithm,
+      extractable,
+      usages,
+    )
   }
 
   /// `SubtleCrypto.encapsulateKey(algorithm, encapsulationKey,

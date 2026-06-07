@@ -17,7 +17,6 @@ const {
   op_crypto_key_handle,
   op_crypto_base64url_decode,
   op_crypto_base64url_encode,
-  op_crypto_get_key_length,
   op_crypto_get_registered_algorithm,
   op_crypto_export_key,
   op_crypto_export_pkcs8_ed25519,
@@ -55,8 +54,6 @@ const {
   op_crypto_mldsa_from_pkcs8,
   op_crypto_mldsa_from_seed,
   op_crypto_mldsa_from_spki,
-  op_crypto_unwrap_key,
-  op_crypto_wrap_key,
   op_crypto_x25519_public_key,
   op_crypto_x448_public_key,
 } = core.ops;
@@ -71,16 +68,12 @@ const {
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
   FunctionPrototypeCall,
-  JSONParse,
-  JSONStringify,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   SafeWeakMap,
-  StringFromCharCode,
-  StringPrototypeCharCodeAt,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
   SymbolFor,
@@ -748,118 +741,10 @@ ObjectAssign(SubtleCrypto.prototype, {
    * @param {KeyUsage[]} keyUsages
    * @returns {Promise<any>}
    */
-  async wrapKey(format, key, wrappingKey, wrapAlgorithm) {
-    webidl.assertBranded(this, SubtleCryptoPrototype);
-    const prefix = "Failed to execute 'wrapKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 4, prefix);
-    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
-    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
-    wrappingKey = webidl.converters.CryptoKey(
-      wrappingKey,
-      prefix,
-      "Argument 3",
-    );
-    wrapAlgorithm = webidl.converters.AlgorithmIdentifier(
-      wrapAlgorithm,
-      prefix,
-      "Argument 4",
-    );
-
-    let normalizedAlgorithm;
-
-    try {
-      // 2.
-      normalizedAlgorithm = normalizeAlgorithm(wrapAlgorithm, "wrapKey");
-    } catch (_) {
-      // 3.
-      normalizedAlgorithm = normalizeAlgorithm(wrapAlgorithm, "encrypt");
-    }
-
-    // 8.
-    if (normalizedAlgorithm.name !== wrappingKey.algorithm.name) {
-      throw new DOMException(
-        "Wrapping algorithm does not match key algorithm",
-        "InvalidAccessError",
-      );
-    }
-
-    // 9.
-    if (!ArrayPrototypeIncludes(wrappingKey.usages, "wrapKey")) {
-      throw new DOMException(
-        "The requested operation is not valid for the provided key",
-        "InvalidAccessError",
-      );
-    }
-
-    // 10. NotSupportedError will be thrown in step 12.
-    // 11.
-    if (key.extractable === false) {
-      throw new DOMException(
-        "Key is not extractable",
-        "InvalidAccessError",
-      );
-    }
-
-    // 12.
-    const exportedKey = await this.exportKey(format, key);
-
-    let bytes;
-    // 13.
-    if (format !== "jwk") {
-      bytes = new Uint8Array(exportedKey);
-    } else {
-      const jwk = JSONStringify(exportedKey);
-      const ret = new Uint8Array(jwk.length);
-      for (let i = 0; i < jwk.length; i++) {
-        ret[i] = StringPrototypeCharCodeAt(jwk, i);
-      }
-      bytes = ret;
-    }
-
-    // 14-15.
-    if (
-      isAlgorithmRegisteredFor(normalizedAlgorithm.name, "wrapKey")
-    ) {
-      const handle = op_crypto_key_handle(wrappingKey);
-
-      switch (normalizedAlgorithm.name) {
-        case "AES-KW": {
-          const cipherText = await op_crypto_wrap_key(handle.cppgc, {
-            algorithm: normalizedAlgorithm.name,
-          }, bytes);
-
-          // 4.
-          return TypedArrayPrototypeGetBuffer(cipherText);
-        }
-        default: {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
-        }
-      }
-    } else if (
-      isAlgorithmRegisteredFor(normalizedAlgorithm.name, "encrypt")
-    ) {
-      // must construct a new key, since keyUsages is ["wrapKey"] and not ["encrypt"]
-      return await this.encrypt(
-        normalizedAlgorithm,
-        constructKey(
-          wrappingKey.type,
-          wrappingKey.extractable,
-          ["encrypt"],
-          wrappingKey.algorithm,
-          op_crypto_key_handle(wrappingKey),
-        ),
-        bytes,
-      );
-    } else {
-      throw new DOMException(
-        "Algorithm not supported",
-        "NotSupportedError",
-      );
-    }
-  },
+  // `SubtleCrypto.prototype.wrapKey` is implemented natively on the
+  // cppgc impl block in `ext/crypto/subtle_crypto.rs`; see
+  // `subtle_wrap_key.rs` for the composition of exportKey + AES-KW or
+  // encrypt-fallback.
 
   /**
    * @param {string} format
@@ -871,168 +756,10 @@ ObjectAssign(SubtleCrypto.prototype, {
    * @param {KeyUsage[]} keyUsages
    * @returns {Promise<CryptoKey>}
    */
-  async unwrapKey(
-    format,
-    wrappedKey,
-    unwrappingKey,
-    unwrapAlgorithm,
-    unwrappedKeyAlgorithm,
-    extractable,
-    keyUsages,
-  ) {
-    webidl.assertBranded(this, SubtleCryptoPrototype);
-    const prefix = "Failed to execute 'unwrapKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 7, prefix);
-    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
-    wrappedKey = webidl.converters.BufferSource(
-      wrappedKey,
-      prefix,
-      "Argument 2",
-    );
-    unwrappingKey = webidl.converters.CryptoKey(
-      unwrappingKey,
-      prefix,
-      "Argument 3",
-    );
-    unwrapAlgorithm = webidl.converters.AlgorithmIdentifier(
-      unwrapAlgorithm,
-      prefix,
-      "Argument 4",
-    );
-    unwrappedKeyAlgorithm = webidl.converters.AlgorithmIdentifier(
-      unwrappedKeyAlgorithm,
-      prefix,
-      "Argument 5",
-    );
-    extractable = webidl.converters.boolean(extractable, prefix, "Argument 6");
-    keyUsages = webidl.converters["sequence<KeyUsage>"](
-      keyUsages,
-      prefix,
-      "Argument 7",
-    );
-
-    // 2.
-    wrappedKey = copyBuffer(wrappedKey);
-
-    let normalizedAlgorithm;
-
-    try {
-      // 3.
-      normalizedAlgorithm = normalizeAlgorithm(unwrapAlgorithm, "unwrapKey");
-    } catch (_) {
-      // 4.
-      normalizedAlgorithm = normalizeAlgorithm(unwrapAlgorithm, "decrypt");
-    }
-
-    // 6.
-    const normalizedKeyAlgorithm = normalizeAlgorithm(
-      unwrappedKeyAlgorithm,
-      "importKey",
-    );
-
-    // 11.
-    if (normalizedAlgorithm.name !== unwrappingKey.algorithm.name) {
-      throw new DOMException(
-        "Unwrapping algorithm does not match key algorithm",
-        "InvalidAccessError",
-      );
-    }
-
-    // 12.
-    if (!ArrayPrototypeIncludes(unwrappingKey.usages, "unwrapKey")) {
-      throw new DOMException(
-        "The requested operation is not valid for the provided key",
-        "InvalidAccessError",
-      );
-    }
-
-    // 13.
-    let key;
-    if (
-      isAlgorithmRegisteredFor(normalizedAlgorithm.name, "unwrapKey")
-    ) {
-      const handle = op_crypto_key_handle(unwrappingKey);
-
-      switch (normalizedAlgorithm.name) {
-        case "AES-KW": {
-          const plainText = await op_crypto_unwrap_key(handle.cppgc, {
-            algorithm: normalizedAlgorithm.name,
-          }, wrappedKey);
-
-          // 4.
-          key = TypedArrayPrototypeGetBuffer(plainText);
-          break;
-        }
-        default: {
-          throw new DOMException(
-            "Not implemented",
-            "NotSupportedError",
-          );
-        }
-      }
-    } else if (
-      isAlgorithmRegisteredFor(normalizedAlgorithm.name, "decrypt")
-    ) {
-      // must construct a new key, since keyUsages is ["unwrapKey"] and not ["decrypt"]
-      key = await this.decrypt(
-        normalizedAlgorithm,
-        constructKey(
-          unwrappingKey.type,
-          unwrappingKey.extractable,
-          ["decrypt"],
-          unwrappingKey.algorithm,
-          op_crypto_key_handle(unwrappingKey),
-        ),
-        wrappedKey,
-      );
-    } else {
-      throw new DOMException(
-        "Algorithm not supported",
-        "NotSupportedError",
-      );
-    }
-
-    let bytes;
-    // 14.
-    if (format !== "jwk") {
-      bytes = key;
-    } else {
-      const k = new Uint8Array(key);
-      let str = "";
-      for (let i = 0; i < k.length; i++) {
-        str += StringFromCharCode(k[i]);
-      }
-      bytes = JSONParse(str);
-    }
-
-    // 15.
-    const result = await this.importKey(
-      format,
-      bytes,
-      normalizedKeyAlgorithm,
-      extractable,
-      keyUsages,
-    );
-    // 16.
-    if (
-      (result.type == "secret" || result.type == "private") &&
-      keyUsages.length == 0
-    ) {
-      throw new SyntaxError("Invalid key type");
-    }
-    // 17, 18, 19. Build a fresh `CryptoKey` reusing the imported key
-    // material so the public `extractable`/`usages` getters reflect the
-    // unwrapKey arguments (the getters on the Rust cppgc class are
-    // read-only, so we can't mutate slots in place the way the old
-    // JS-class implementation did).
-    return constructKey(
-      result.type,
-      extractable,
-      usageIntersection(keyUsages, recognisedUsages),
-      result.algorithm,
-      op_crypto_key_handle(result),
-    );
-  },
+  // `SubtleCrypto.prototype.unwrapKey` is implemented natively on the
+  // cppgc impl block in `ext/crypto/subtle_crypto.rs`; see
+  // `subtle_wrap_key.rs` for the AES-KW or decrypt-fallback path
+  // followed by importKey.
 
   /**
    * @param {string} algorithm
