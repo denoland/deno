@@ -117,6 +117,14 @@ impl MlKemVariant {
     k * 384
   }
 
+  /// `public_from_expanded` re-exported for [`crate::subtle_export_key`].
+  pub(crate) fn public_from_expanded_for_subtle(
+    self,
+    expanded: &[u8],
+  ) -> Result<Vec<u8>, MlKemError> {
+    self.public_from_expanded(expanded)
+  }
+
   /// Extract the encapsulation (public) key bytes embedded in an expanded
   /// decapsulation key.
   fn public_from_expanded(
@@ -418,12 +426,10 @@ pub struct MlKemPkcs8Import {
   pub public_key: Uint8Array,
 }
 
-/// Export the encapsulation key as SubjectPublicKeyInfo (SPKI).
-#[op2]
-pub fn op_crypto_ml_kem_export_spki(
-  #[serde] variant: MlKemVariant,
-  #[buffer] public_key: &[u8],
-) -> Result<Uint8Array, MlKemError> {
+pub(crate) fn ml_kem_export_spki(
+  variant: MlKemVariant,
+  public_key: &[u8],
+) -> Result<Vec<u8>, MlKemError> {
   if public_key.len() != variant.public_key_size() {
     return Err(MlKemError::InvalidKeyData);
   }
@@ -435,12 +441,23 @@ pub fn op_crypto_ml_kem_export_spki(
     subject_public_key: BitString::from_bytes(public_key)
       .map_err(|_| MlKemError::OperationFailed)?,
   };
-  Ok(
-    info
-      .to_der()
-      .map_err(|_| MlKemError::OperationFailed)?
-      .into(),
-  )
+  Ok(info.to_der().map_err(|_| MlKemError::OperationFailed)?)
+}
+
+/// Export the encapsulation key as SubjectPublicKeyInfo (SPKI).
+#[op2]
+pub fn op_crypto_ml_kem_export_spki(
+  #[serde] variant: MlKemVariant,
+  #[buffer] public_key: &[u8],
+) -> Result<Uint8Array, MlKemError> {
+  ml_kem_export_spki(variant, public_key).map(Into::into)
+}
+
+pub(crate) fn ml_kem_export_pkcs8(
+  variant: MlKemVariant,
+  seed: &[u8],
+) -> Result<Vec<u8>, MlKemError> {
+  encode_pkcs8_seed(variant, seed)
 }
 
 /// Export the decapsulation key as PKCS#8 PrivateKeyInfo in the standard
@@ -453,7 +470,7 @@ pub fn op_crypto_ml_kem_export_pkcs8(
   #[serde] variant: MlKemVariant,
   #[buffer] seed: &[u8],
 ) -> Result<Uint8Array, MlKemError> {
-  Ok(encode_pkcs8_seed(variant, seed)?.into())
+  ml_kem_export_pkcs8(variant, seed).map(Into::into)
 }
 
 /// Encode a 64-byte seed as a PKCS#8 PrivateKeyInfo whose `privateKey` is the

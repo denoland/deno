@@ -33,6 +33,9 @@ use crate::subtle_encapsulate::run_encapsulate_bits;
 use crate::subtle_encrypt::SubtleEncryptParams;
 use crate::subtle_encrypt::run as run_encrypt;
 use crate::subtle_encrypt::v8_str;
+use crate::subtle_export_key::ExportKeyOutput;
+use crate::subtle_export_key::KeyFormat;
+use crate::subtle_export_key::run as run_export_key;
 use crate::subtle_key::SubtleKey;
 use crate::subtle_sign::SubtleSignParams;
 use crate::subtle_sign::run as run_sign;
@@ -208,6 +211,23 @@ impl SubtleCrypto {
     length: Option<f64>,
   ) -> Result<Vec<u8>, CryptoError> {
     spawn_blocking(move || run_derive_bits(algorithm, base_key, length)).await?
+  }
+
+  /// `SubtleCrypto.exportKey(format, key)` — produce the wire-encoded key
+  /// material for an extractable `CryptoKey`. The `KeyFormat`
+  /// `WebIdlConverter` accepts the WebCrypto spec formats
+  /// (`raw`/`spki`/`pkcs8`/`jwk`) plus the WICG modern-algos extensions
+  /// (`raw-secret`/`raw-public`/`raw-seed`); per-algorithm dispatch lives
+  /// in [`crate::subtle_export_key::run`], which assembles the JWK shape
+  /// in Rust and returns either an `ArrayBuffer` or a plain `Object`.
+  #[rename("exportKey")]
+  #[required(2)]
+  async fn export_key(
+    &self,
+    #[webidl] format: KeyFormat,
+    #[webidl] key: SubtleKey,
+  ) -> Result<ExportKeyOutput, CryptoError> {
+    spawn_blocking(move || run_export_key(format, key)).await?
   }
 
   /// `SubtleCrypto.encapsulateBits(algorithm, encapsulationKey)` from the

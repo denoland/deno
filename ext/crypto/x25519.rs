@@ -45,15 +45,18 @@ pub fn op_crypto_generate_x25519_keypair(
   pubkey.copy_from_slice(&x25519_dalek::x25519(pkey, X25519_BASEPOINT_BYTES));
 }
 
-#[op2]
-#[string]
-pub fn op_crypto_x25519_public_key(#[buffer] private_key: &[u8]) -> String {
+pub(crate) fn x25519_public_key(private_key: &[u8]) -> String {
   use base64::Engine;
-
   let private_key: [u8; 32] =
     private_key.try_into().expect("Expected byteLength 32");
   BASE64_URL_SAFE_NO_PAD
     .encode(x25519_dalek::x25519(private_key, X25519_BASEPOINT_BYTES))
+}
+
+#[op2]
+#[string]
+pub fn op_crypto_x25519_public_key(#[buffer] private_key: &[u8]) -> String {
+  x25519_public_key(private_key)
 }
 
 const MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 32]);
@@ -135,44 +138,44 @@ pub fn op_crypto_import_pkcs8_x25519(
   true
 }
 
-#[op2]
-pub fn op_crypto_export_spki_x25519(
-  #[buffer] pubkey: &[u8],
-) -> Result<Uint8Array, X25519Error> {
+pub(crate) fn export_spki_x25519(
+  pubkey: &[u8],
+) -> Result<Vec<u8>, X25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierRef {
-      // id-X25519
       oid: X25519_OID,
       parameters: None,
     },
     subject_public_key: BitString::from_bytes(pubkey)?,
   };
-  Ok(
-    key_info
-      .to_der()
-      .map_err(|_| X25519Error::FailedExport)?
-      .into(),
-  )
+  Ok(key_info.to_der().map_err(|_| X25519Error::FailedExport)?)
+}
+
+#[op2]
+pub fn op_crypto_export_spki_x25519(
+  #[buffer] pubkey: &[u8],
+) -> Result<Uint8Array, X25519Error> {
+  export_spki_x25519(pubkey).map(Into::into)
+}
+
+pub(crate) fn export_pkcs8_x25519(pkey: &[u8]) -> Result<Vec<u8>, X25519Error> {
+  use rsa::pkcs1::der::Encode;
+  let pk_info = rsa::pkcs8::PrivateKeyInfo {
+    public_key: None,
+    algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+      oid: X25519_OID,
+      parameters: None,
+    },
+    private_key: pkey,
+  };
+  let mut buf = Vec::new();
+  pk_info.encode_to_vec(&mut buf)?;
+  Ok(buf)
 }
 
 #[op2]
 pub fn op_crypto_export_pkcs8_x25519(
   #[buffer] pkey: &[u8],
 ) -> Result<Uint8Array, X25519Error> {
-  use rsa::pkcs1::der::Encode;
-
-  // This should probably use OneAsymmetricKey instead
-  let pk_info = rsa::pkcs8::PrivateKeyInfo {
-    public_key: None,
-    algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
-      // id-X25519
-      oid: X25519_OID,
-      parameters: None,
-    },
-    private_key: pkey, // OCTET STRING
-  };
-
-  let mut buf = Vec::new();
-  pk_info.encode_to_vec(&mut buf)?;
-  Ok(buf.into())
+  export_pkcs8_x25519(pkey).map(Into::into)
 }

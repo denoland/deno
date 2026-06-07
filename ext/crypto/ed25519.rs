@@ -130,46 +130,53 @@ pub fn op_crypto_import_pkcs8_ed25519(
   true
 }
 
-#[op2]
-pub fn op_crypto_export_spki_ed25519(
-  #[buffer] pubkey: &[u8],
-) -> Result<Uint8Array, Ed25519Error> {
+pub(crate) fn export_spki_ed25519(
+  pubkey: &[u8],
+) -> Result<Vec<u8>, Ed25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierOwned {
-      // id-Ed25519
       oid: ED25519_OID,
       parameters: None,
     },
     subject_public_key: BitString::from_bytes(pubkey)?,
   };
-  Ok(
-    key_info
-      .to_der()
-      .map_err(|_| Ed25519Error::FailedExport)?
-      .into(),
-  )
+  Ok(key_info.to_der().map_err(|_| Ed25519Error::FailedExport)?)
+}
+
+#[op2]
+pub fn op_crypto_export_spki_ed25519(
+  #[buffer] pubkey: &[u8],
+) -> Result<Uint8Array, Ed25519Error> {
+  export_spki_ed25519(pubkey).map(Into::into)
+}
+
+pub(crate) fn export_pkcs8_ed25519(
+  pkey: &[u8],
+) -> Result<Vec<u8>, Ed25519Error> {
+  use rsa::pkcs1::der::Encode;
+  let pk_info = rsa::pkcs8::PrivateKeyInfo {
+    public_key: None,
+    algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
+      oid: ED25519_OID,
+      parameters: None,
+    },
+    private_key: pkey,
+  };
+  let mut buf = Vec::new();
+  pk_info.encode_to_vec(&mut buf)?;
+  Ok(buf)
 }
 
 #[op2]
 pub fn op_crypto_export_pkcs8_ed25519(
   #[buffer] pkey: &[u8],
 ) -> Result<Uint8Array, Ed25519Error> {
-  use rsa::pkcs1::der::Encode;
+  export_pkcs8_ed25519(pkey).map(Into::into)
+}
 
-  // This should probably use OneAsymmetricKey instead
-  let pk_info = rsa::pkcs8::PrivateKeyInfo {
-    public_key: None,
-    algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
-      // id-Ed25519
-      oid: ED25519_OID,
-      parameters: None,
-    },
-    private_key: pkey, // OCTET STRING
-  };
-
-  let mut buf = Vec::new();
-  pk_info.encode_to_vec(&mut buf)?;
-  Ok(buf.into())
+pub(crate) fn jwk_x_ed25519(pkey: &[u8]) -> Result<String, Ed25519Error> {
+  let pair = Ed25519KeyPair::from_seed_unchecked(pkey)?;
+  Ok(BASE64_URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()))
 }
 
 // 'x' from Section 2 of RFC 8037
@@ -179,6 +186,5 @@ pub fn op_crypto_export_pkcs8_ed25519(
 pub fn op_crypto_jwk_x_ed25519(
   #[buffer] pkey: &[u8],
 ) -> Result<String, Ed25519Error> {
-  let pair = Ed25519KeyPair::from_seed_unchecked(pkey)?;
-  Ok(BASE64_URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()))
+  jwk_x_ed25519(pkey)
 }

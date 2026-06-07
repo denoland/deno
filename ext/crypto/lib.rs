@@ -76,6 +76,7 @@ mod subtle_decrypt;
 mod subtle_derive_bits;
 mod subtle_encapsulate;
 mod subtle_encrypt;
+mod subtle_export_key;
 mod subtle_key;
 mod subtle_sign;
 mod subtle_verify;

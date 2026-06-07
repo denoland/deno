@@ -693,92 +693,9 @@ ObjectAssign(SubtleCrypto.prototype, {
     return result;
   },
 
-  /**
-   * @param {string} format
-   * @param {CryptoKey} key
-   * @returns {Promise<any>}
-   */
-  // deno-lint-ignore require-await
-  async exportKey(format, key) {
-    webidl.assertBranded(this, SubtleCryptoPrototype);
-    const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 2, prefix);
-    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
-    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
-
-    const handle = op_crypto_key_handle(key);
-    // 2.
-    const innerKey = getKeyData(handle);
-
-    const algorithmName = key.algorithm.name;
-
-    let result;
-
-    switch (algorithmName) {
-      case "HMAC": {
-        result = exportKeySymmetric("HMAC", format, key, innerKey);
-        break;
-      }
-      case "RSASSA-PKCS1-v1_5":
-      case "RSA-PSS":
-      case "RSA-OAEP": {
-        result = exportKeyRSA(format, key, innerKey);
-        break;
-      }
-      case "ECDH":
-      case "ECDSA": {
-        result = exportKeyEC(format, key, innerKey);
-        break;
-      }
-      case "Ed25519": {
-        result = exportKeyOkp("Ed25519", format, key, innerKey);
-        break;
-      }
-      case "ML-DSA-44":
-      case "ML-DSA-65":
-      case "ML-DSA-87": {
-        result = exportKeyAkp("ML-DSA", format, key, innerKey);
-        break;
-      }
-      case "X448": {
-        result = exportKeyOkp("X448", format, key, innerKey);
-        break;
-      }
-      case "X25519": {
-        result = exportKeyOkp("X25519", format, key, innerKey);
-        break;
-      }
-      case "AES-CTR":
-      case "AES-CBC":
-      case "AES-GCM":
-      case "AES-OCB":
-      case "AES-KW": {
-        result = exportKeySymmetric("AES", format, key, innerKey);
-        break;
-      }
-      case "ChaCha20-Poly1305": {
-        result = exportKeySymmetric("ChaCha20-Poly1305", format, key, innerKey);
-        break;
-      }
-      case "ML-KEM-512":
-      case "ML-KEM-768":
-      case "ML-KEM-1024": {
-        result = exportKeyAkp("ML-KEM", format, key, innerKey);
-        break;
-      }
-      default:
-        throw new DOMException("Not implemented", "NotSupportedError");
-    }
-
-    if (key.extractable === false) {
-      throw new DOMException(
-        "Key is not extractable",
-        "InvalidAccessError",
-      );
-    }
-
-    return result;
-  },
+  // `SubtleCrypto.prototype.exportKey` is implemented natively on the cppgc
+  // impl block in `ext/crypto/subtle_crypto.rs`; see `subtle_export_key.rs`
+  // for the `KeyFormat` converter, JWK assembly and per-algorithm dispatch.
 
   /**
    * @param {AlgorithmIdentifier} algorithm

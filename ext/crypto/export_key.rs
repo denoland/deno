@@ -114,19 +114,37 @@ pub fn op_crypto_export_key(
   #[serde] opts: ExportKeyOptions,
   #[serde] key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, ExportKeyError> {
+  let key_data = v8_raw_to_raw(key_data);
   match opts.algorithm {
     ExportKeyAlgorithm::RsassaPkcs1v15 {}
     | ExportKeyAlgorithm::RsaPss {}
-    | ExportKeyAlgorithm::RsaOaep {} => export_key_rsa(opts.format, key_data),
+    | ExportKeyAlgorithm::RsaOaep {} => export_key_rsa(opts.format, &key_data),
     ExportKeyAlgorithm::Ecdh { named_curve }
     | ExportKeyAlgorithm::Ecdsa { named_curve } => {
-      export_key_ec(opts.format, key_data, opts.algorithm, named_curve)
+      export_key_ec(opts.format, &key_data, opts.algorithm, named_curve)
     }
     ExportKeyAlgorithm::Aes {} | ExportKeyAlgorithm::Hmac {} => {
-      export_key_symmetric(opts.format, key_data)
+      export_key_symmetric(opts.format, &key_data)
     }
   }
 }
+
+/// Convert the JS-side wire form into the owned `RawKeyData` used by the
+/// per-family export helpers (which now take `&RawKeyData`). The
+/// `RawKeyData::SeededPrivate` and `RawKeyData::Raw` variants never appear
+/// on this path -- the JS shim only ever passes `Secret` / `Private` /
+/// `Public` -- but they are folded into the closest match for the few
+/// `cppgc`-side callers that share this conversion.
+fn v8_raw_to_raw(v: V8RawKeyData) -> RawKeyData {
+  match v {
+    V8RawKeyData::Secret(b) => RawKeyData::Secret(b.as_ref().into()),
+    V8RawKeyData::Private(b) => RawKeyData::Private(b.as_ref().into()),
+    V8RawKeyData::Public(b) => RawKeyData::Public(b.as_ref().into()),
+  }
+}
+
+pub(crate) use export_key_ec as export_key_ec_for_subtle;
+pub(crate) use export_key_rsa as export_key_rsa_for_subtle;
 
 fn uint_to_b64(bytes: UintRef) -> String {
   BASE64_URL_SAFE_NO_PAD.encode(bytes.as_bytes())
@@ -136,9 +154,9 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
   BASE64_URL_SAFE_NO_PAD.encode(bytes)
 }
 
-fn export_key_rsa(
+pub(crate) fn export_key_rsa(
   format: ExportKeyFormat,
-  key_data: V8RawKeyData,
+  key_data: &RawKeyData,
 ) -> Result<ExportKeyResult, ExportKeyError> {
   match format {
     ExportKeyFormat::Spki => {
@@ -222,9 +240,9 @@ fn export_key_rsa(
   }
 }
 
-fn export_key_symmetric(
+pub(crate) fn export_key_symmetric(
   format: ExportKeyFormat,
-  key_data: V8RawKeyData,
+  key_data: &RawKeyData,
 ) -> Result<ExportKeyResult, ExportKeyError> {
   match format {
     ExportKeyFormat::JwkSecret => {
@@ -238,9 +256,9 @@ fn export_key_symmetric(
   }
 }
 
-fn export_key_ec(
+pub(crate) fn export_key_ec(
   format: ExportKeyFormat,
-  key_data: V8RawKeyData,
+  key_data: &RawKeyData,
   algorithm: ExportKeyAlgorithm,
   named_curve: EcNamedCurve,
 ) -> Result<ExportKeyResult, ExportKeyError> {

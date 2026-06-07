@@ -74,17 +74,11 @@ pub(crate) fn x448_derive_bits(
 const X448_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.111");
 
-#[op2]
-#[string]
-pub fn op_crypto_x448_public_key(
-  #[buffer] private_key: &[u8],
-) -> Result<String, X448Error> {
+pub(crate) fn x448_public_key(private_key: &[u8]) -> Result<String, X448Error> {
   use base64::Engine;
-
   let private_key: [u8; 56] = private_key
     .try_into()
     .map_err(|_| X448Error::InvalidKeyLength)?;
-  // x448(pkey, 5), identical derivation to op_crypto_generate_x448_keypair.
   let mut scalar_bytes = [0u8; 57];
   scalar_bytes[..56].copy_from_slice(&private_key);
   let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
@@ -93,9 +87,14 @@ pub fn op_crypto_x448_public_key(
 }
 
 #[op2]
-pub fn op_crypto_export_spki_x448(
-  #[buffer] pubkey: &[u8],
-) -> Result<Uint8Array, X448Error> {
+#[string]
+pub fn op_crypto_x448_public_key(
+  #[buffer] private_key: &[u8],
+) -> Result<String, X448Error> {
+  x448_public_key(private_key)
+}
+
+pub(crate) fn export_spki_x448(pubkey: &[u8]) -> Result<Vec<u8>, X448Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierRef {
       oid: X448_OID,
@@ -103,32 +102,36 @@ pub fn op_crypto_export_spki_x448(
     },
     subject_public_key: BitString::from_bytes(pubkey)?,
   };
-  Ok(
-    key_info
-      .to_der()
-      .map_err(|_| X448Error::FailedExport)?
-      .into(),
-  )
+  Ok(key_info.to_der().map_err(|_| X448Error::FailedExport)?)
 }
 
 #[op2]
-pub fn op_crypto_export_pkcs8_x448(
-  #[buffer] pkey: &[u8],
+pub fn op_crypto_export_spki_x448(
+  #[buffer] pubkey: &[u8],
 ) -> Result<Uint8Array, X448Error> {
-  use rsa::pkcs1::der::Encode;
+  export_spki_x448(pubkey).map(Into::into)
+}
 
+pub(crate) fn export_pkcs8_x448(pkey: &[u8]) -> Result<Vec<u8>, X448Error> {
+  use rsa::pkcs1::der::Encode;
   let pk_info = rsa::pkcs8::PrivateKeyInfo {
     public_key: None,
     algorithm: rsa::pkcs8::AlgorithmIdentifierRef {
       oid: X448_OID,
       parameters: None,
     },
-    private_key: pkey, // OCTET STRING
+    private_key: pkey,
   };
-
   let mut buf = Vec::new();
   pk_info.encode_to_vec(&mut buf)?;
-  Ok(buf.into())
+  Ok(buf)
+}
+
+#[op2]
+pub fn op_crypto_export_pkcs8_x448(
+  #[buffer] pkey: &[u8],
+) -> Result<Uint8Array, X448Error> {
+  export_pkcs8_x448(pkey).map(Into::into)
 }
 
 #[op2(fast)]
