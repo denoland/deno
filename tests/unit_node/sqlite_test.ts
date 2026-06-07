@@ -12,6 +12,10 @@ import { writeFileSync } from "node:fs";
 
 const tempDir = Deno.makeTempDirSync();
 
+type DatabaseSyncWithAuthorizer = DatabaseSync & {
+  setAuthorizer(callback: (() => number) | null): void;
+};
+
 const populate = (db: DatabaseSync, rows: number) => {
   db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
   let values = "";
@@ -1495,6 +1499,134 @@ Deno.test(
     nodeAssert.ok(
       closeErrors.length > 0,
       "expected db.close() inside scalar callback to throw",
+    );
+    for (const err of closeErrors) {
+      assertStrictEquals(
+        (err as { code?: string }).code,
+        "ERR_INVALID_STATE",
+      );
+    }
+
+    assertStrictEquals(db.isOpen, true);
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.setAuthorizer can clear itself before throwing",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    const authorizerDb = db as DatabaseSyncWithAuthorizer;
+    let calls = 0;
+
+    authorizerDb.setAuthorizer(() => {
+      calls++;
+      authorizerDb.setAuthorizer(null);
+      throw new Error("authorizer failed");
+    });
+
+    assertThrows(() => db.prepare("SELECT 1").get(), Error);
+    assertStrictEquals(calls, 1);
+
+    assertEquals(db.prepare("SELECT 1 AS value").get(), {
+      value: 1,
+      __proto__: null,
+    });
+
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.setAuthorizer keeps current callback on invalid replacement",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    const authorizerDb = db as DatabaseSyncWithAuthorizer;
+    let calls = 0;
+
+    authorizerDb.setAuthorizer(() => {
+      calls++;
+      return 0;
+    });
+
+    assertThrows(
+      () => {
+        (db as unknown as { setAuthorizer(callback: unknown): void })
+          .setAuthorizer(123);
+      },
+      TypeError,
+      'The "callback" argument must be a function or null.',
+    );
+
+    assertEquals(db.prepare("SELECT 1 AS value").get(), {
+      value: 1,
+      __proto__: null,
+    });
+    nodeAssert.ok(calls > 0, "expected the original authorizer to run");
+
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.setAuthorizer can replace itself while active",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    const authorizerDb = db as DatabaseSyncWithAuthorizer;
+    let oldCalls = 0;
+    let newCalls = 0;
+
+    authorizerDb.setAuthorizer(() => {
+      oldCalls++;
+      if (oldCalls === 1) {
+        authorizerDb.setAuthorizer(() => {
+          newCalls++;
+          return 0;
+        });
+      }
+      return 0;
+    });
+
+    assertEquals(db.prepare("SELECT 1 AS value").get(), {
+      value: 1,
+      __proto__: null,
+    });
+    nodeAssert.ok(oldCalls > 0, "expected the original authorizer to run");
+
+    assertEquals(db.prepare("SELECT 2 AS value").get(), {
+      value: 2,
+      __proto__: null,
+    });
+    nodeAssert.ok(newCalls > 0, "expected the replacement authorizer to run");
+
+    db.close();
+  },
+);
+
+Deno.test(
+  "[node/sqlite] DatabaseSync.close from authorizer throws instead of corrupting state",
+  () => {
+    const db = new DatabaseSync(":memory:");
+    const authorizerDb = db as DatabaseSyncWithAuthorizer;
+    const closeErrors: unknown[] = [];
+
+    authorizerDb.setAuthorizer(() => {
+      try {
+        db.close();
+      } catch (e) {
+        closeErrors.push(e);
+      }
+      return 0;
+    });
+
+    assertEquals(db.prepare("SELECT 1 AS value").get(), {
+      value: 1,
+      __proto__: null,
+    });
+
+    nodeAssert.ok(
+      closeErrors.length > 0,
+      "expected db.close() inside authorizer to throw",
     );
     for (const err of closeErrors) {
       assertStrictEquals(
