@@ -1,5 +1,14 @@
 {
-  "args": "test --doc --allow-read --allow-env --reload main.ts",
-  "exitCode": 1,
-  "output": "main.out"
+  "tests": {
+    "permissions": {
+      "args": "test --doc --allow-read --allow-env --reload main.ts",
+      "exitCode": 1,
+      "output": "main.out"
+    },
+    "invalid_shebang": {
+      "args": "test --doc --reload invalid.ts",
+      "exitCode": 1,
+      "output": "invalid.out"
+    }
+  }
 }

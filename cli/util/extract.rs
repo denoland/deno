@@ -54,10 +54,10 @@ enum WrapKind {
 struct TestOrSnippet {
   file: File,
   has_deno_test: bool,
-  /// Permissions parsed from a shebang at the top of the snippet, if any.
-  /// `None` means the snippet had no shebang and the test should run with the
-  /// inherited (current) permissions, matching the historical behavior.
-  shebang_permissions: Option<PermissionFlags>,
+  /// The parsed shebang at the top of the snippet, if any. `None` means the
+  /// snippet had no shebang and the test runs with the inherited (current)
+  /// permissions, matching the historical behavior.
+  shebang: Option<Shebang>,
 }
 
 fn extract_inner(
@@ -110,7 +110,7 @@ fn extract_inner(
         &file.specifier,
         &exports,
         wrap_kind,
-        extracted.shebang_permissions.as_ref(),
+        extracted.shebang.as_ref(),
       )
     })
     .collect::<Result<_, _>>()
@@ -245,7 +245,7 @@ fn extract_files_from_regex_blocks(
 
       // TODO(caspervonb) generate an inline source map
       let mut file_source = String::new();
-      let mut shebang_permissions = None;
+      let mut shebang = None;
       let mut is_first_line = true;
       for line in text.lines() {
         let line = if is_markdown_blockquote {
@@ -256,13 +256,16 @@ fn extract_files_from_regex_blocks(
         let Some(captures) = lines_regex.captures(line) else {
           continue;
         };
-        let text = captures.get(1).or_else(|| captures.get(3)).unwrap();
-        let text = text.as_str();
+        let text = captures
+          .get(1)
+          .or_else(|| captures.get(3))
+          .unwrap()
+          .as_str();
         // A shebang is only valid as the very first line of the snippet. When
         // present, it is stripped (so the wrapped code parses) and its
         // permission flags are forwarded to the generated `Deno.test` call.
         if is_first_line && text.starts_with("#!") {
-          shebang_permissions = parse_shebang_permissions(text);
+          shebang = Some(parse_shebang(text));
           is_first_line = false;
           continue;
         }
@@ -292,7 +295,7 @@ fn extract_files_from_regex_blocks(
       Some(TestOrSnippet {
         file,
         has_deno_test,
-        shebang_permissions,
+        shebang,
       })
     })
     .collect();
@@ -321,43 +324,49 @@ fn strip_markdown_blockquote_marker(line: &str) -> &str {
   line
 }
 
-/// Parses a shebang line like `#!/usr/bin/env -S deno run --allow-read` and
-/// returns the permission flags it requests so that they can be forwarded to
-/// the generated `Deno.test` call.
+/// The outcome of parsing a doc snippet's shebang.
+enum Shebang {
+  /// The shebang's permission flags, to be forwarded to `Deno.test`.
+  Permissions(Box<PermissionFlags>),
+  /// The shebang could not be parsed as a `deno` command. The generated test
+  /// is made to fail at runtime with this message rather than silently running
+  /// with inherited permissions.
+  Invalid(String),
+}
+
+/// Parses a shebang line like `#!/usr/bin/env -S deno run --allow-read`.
 ///
 /// The flags are parsed by reconstructing the argv that `deno` would receive
-/// when the OS executes the shebang (everything from the `deno` token onwards,
-/// plus the script path the OS appends) and handing it to the regular CLI flag
-/// parser. This reuses `deno`'s own flag handling rather than reimplementing
-/// it.
-///
-/// Returns `None` when the shebang does not invoke `deno` (so an unrelated
-/// interpreter does not silently revoke the test's permissions) or when the
-/// reconstructed command does not parse. A `deno` shebang with no permission
-/// flags yields an empty [`PermissionFlags`], which results in the test running
-/// with no permissions.
-fn parse_shebang_permissions(shebang: &str) -> Option<PermissionFlags> {
-  let line = shebang.trim_start().strip_prefix("#!")?;
+/// when the OS executes the shebang (the `deno` token, everything after it, and
+/// the script path the OS appends) and handing it to the regular CLI flag
+/// parser, so `deno`'s own flag handling is reused rather than reimplemented. A
+/// `deno` shebang with no permission flags yields an empty [`PermissionFlags`],
+/// which runs the test with no permissions.
+fn parse_shebang(shebang: &str) -> Shebang {
+  let invalid = || {
+    Shebang::Invalid(format!("invalid doc test shebang: {}", shebang.trim()))
+  };
+  let Some(line) = shebang.trim_start().strip_prefix("#!") else {
+    return invalid();
+  };
   let tokens = line.split_whitespace().collect::<Vec<_>>();
-
   // Find the `deno` executable in the shebang (e.g. `deno`, `/usr/bin/deno`,
   // or the program passed to `env -S deno ...`).
-  let deno_index = tokens.iter().position(|token| {
+  let Some(deno_index) = tokens.iter().position(|token| {
     std::path::Path::new(token)
       .file_stem()
       .and_then(|stem| stem.to_str())
       == Some("deno")
-  })?;
-
-  // Reconstruct the argv `deno` is invoked with: the `deno` token, every
-  // argument that follows it, and the script path that the OS appends when it
-  // runs the shebang. Parsing the whole command (rather than cherry-picking
-  // flags) lets the CLI parser own all of the flag semantics.
+  }) else {
+    return invalid();
+  };
   let mut args = vec![OsString::from("deno")];
   args.extend(tokens[deno_index + 1..].iter().map(OsString::from));
   args.push(OsString::from("./__doctest_shebang__.ts"));
-
-  flags_from_vec(args).ok().map(|flags| flags.permissions)
+  match flags_from_vec(args) {
+    Ok(flags) => Shebang::Permissions(Box::new(flags.permissions)),
+    Err(_) => invalid(),
+  }
 }
 
 #[derive(Default)]
@@ -679,7 +688,7 @@ fn generate_pseudo_file(
   base_file_specifier: &ModuleSpecifier,
   exports: &ExportCollector,
   wrap_kind: WrapKind,
-  shebang_permissions: Option<&PermissionFlags>,
+  shebang: Option<&Shebang>,
 ) -> Result<File, AnyError> {
   let file = TextDecodedFile::decode(file)?;
 
@@ -707,7 +716,7 @@ fn generate_pseudo_file(
         exports_from_base: exports,
         atoms_to_be_excluded_from_import: top_level_atoms,
         wrap_kind,
-        shebang_permissions,
+        shebang,
       }));
 
   let source = deno_ast::swc::codegen::to_code_with_comments(
@@ -732,7 +741,7 @@ struct Transform<'a> {
   exports_from_base: &'a ExportCollector,
   atoms_to_be_excluded_from_import: rustc_hash::FxHashSet<Atom>,
   wrap_kind: WrapKind,
-  shebang_permissions: Option<&'a PermissionFlags>,
+  shebang: Option<&'a Shebang>,
 }
 
 impl VisitMut for Transform<'_> {
@@ -822,7 +831,7 @@ impl VisitMut for Transform<'_> {
             transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
               stmts,
               self.specifier.to_string().into(),
-              self.shebang_permissions,
+              self.shebang,
             )));
           }
           WrapKind::NoWrap => {
@@ -861,7 +870,7 @@ impl VisitMut for Transform<'_> {
             transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
               script.body.clone(),
               self.specifier.to_string().into(),
-              self.shebang_permissions,
+              self.shebang,
             )));
           }
           WrapKind::NoWrap => {
@@ -884,46 +893,48 @@ impl VisitMut for Transform<'_> {
 }
 
 fn wrap_in_deno_test(
-  stmts: Vec<ast::Stmt>,
+  mut stmts: Vec<ast::Stmt>,
   test_name: Atom,
-  shebang_permissions: Option<&PermissionFlags>,
+  shebang: Option<&Shebang>,
 ) -> ast::Stmt {
-  let mut args = vec![ast::ExprOrSpread {
-    spread: None,
-    expr: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
-      span: DUMMY_SP,
-      value: test_name.into(),
-      raw: None,
-    }))),
-  }];
+  // When the snippet declared a shebang, either forward the permissions it
+  // requested as a `{ permissions }` options object (so the test runs with
+  // exactly those permissions instead of inheriting the full set), or, if it
+  // could not be parsed, make the test fail at runtime with a `throw`.
+  let options = match shebang {
+    Some(Shebang::Permissions(permissions)) => {
+      Some(permissions_options_object(permissions))
+    }
+    Some(Shebang::Invalid(message)) => {
+      stmts.insert(0, throw_stmt(message));
+      None
+    }
+    None => None,
+  };
 
-  // When the snippet declared a shebang, forward the permissions it requested
-  // as a `{ permissions }` options object so the test runs with exactly those
-  // permissions instead of inheriting the full set.
-  if let Some(permissions) = shebang_permissions {
-    args.push(ast::ExprOrSpread {
-      spread: None,
-      expr: Box::new(permissions_options_object(permissions)),
-    });
-  }
-
-  args.push(ast::ExprOrSpread {
-    spread: None,
-    expr: Box::new(ast::Expr::Arrow(ast::ArrowExpr {
+  let test_fn = ast::Expr::Arrow(ast::ArrowExpr {
+    span: DUMMY_SP,
+    params: vec![],
+    body: Box::new(ast::BlockStmtOrExpr::BlockStmt(ast::BlockStmt {
       span: DUMMY_SP,
-      params: vec![],
-      body: Box::new(ast::BlockStmtOrExpr::BlockStmt(ast::BlockStmt {
-        span: DUMMY_SP,
-        stmts,
-        ..Default::default()
-      })),
-      is_async: true,
-      is_generator: false,
-      type_params: None,
-      return_type: None,
+      stmts,
       ..Default::default()
     })),
+    is_async: true,
+    is_generator: false,
+    type_params: None,
+    return_type: None,
+    ..Default::default()
   });
+
+  let args = [Some(string_lit(test_name.as_str())), options, Some(test_fn)]
+    .into_iter()
+    .flatten()
+    .map(|expr| ast::ExprOrSpread {
+      spread: None,
+      expr: Box::new(expr),
+    })
+    .collect();
 
   ast::Stmt::Expr(ast::ExprStmt {
     span: DUMMY_SP,
@@ -957,6 +968,49 @@ fn string_lit(value: &str) -> ast::Expr {
   }))
 }
 
+/// Builds a `throw new Error(message)` statement.
+fn throw_stmt(message: &str) -> ast::Stmt {
+  ast::Stmt::Throw(ast::ThrowStmt {
+    span: DUMMY_SP,
+    arg: Box::new(ast::Expr::New(ast::NewExpr {
+      callee: Box::new(ast::Expr::Ident(ast::Ident {
+        span: DUMMY_SP,
+        sym: "Error".into(),
+        optional: false,
+        ..Default::default()
+      })),
+      args: Some(vec![ast::ExprOrSpread {
+        spread: None,
+        expr: Box::new(string_lit(message)),
+      }]),
+      ..Default::default()
+    })),
+  })
+}
+
+/// Builds an object literal `{ <name>: <value>, ... }`.
+fn object_lit(
+  props: impl IntoIterator<Item = (&'static str, ast::Expr)>,
+) -> ast::Expr {
+  ast::Expr::Object(ast::ObjectLit {
+    span: DUMMY_SP,
+    props: props
+      .into_iter()
+      .map(|(name, value)| {
+        ast::PropOrSpread::Prop(Box::new(ast::Prop::KeyValue(
+          ast::KeyValueProp {
+            key: ast::PropName::Ident(ast::IdentName {
+              span: DUMMY_SP,
+              sym: name.into(),
+            }),
+            value: Box::new(value),
+          },
+        )))
+      })
+      .collect(),
+  })
+}
+
 /// Builds the `{ permissions: ... }` options object passed to `Deno.test` for a
 /// snippet that declared a shebang.
 ///
@@ -972,12 +1026,21 @@ fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
   let value = if permissions.allow_all {
     string_lit("inherit")
   } else {
-    let mut props = vec![];
-    let mut push = |name: &str, allowlist: &Option<Vec<String>>| {
-      let Some(allowlist) = allowlist else {
-        return;
-      };
+    let props = [
+      ("env", &permissions.allow_env),
+      ("ffi", &permissions.allow_ffi),
+      ("import", &permissions.allow_import),
+      ("net", &permissions.allow_net),
+      ("read", &permissions.allow_read),
+      ("run", &permissions.allow_run),
+      ("sys", &permissions.allow_sys),
+      ("write", &permissions.allow_write),
+    ]
+    .into_iter()
+    .filter_map(|(name, allowlist)| {
+      let allowlist = allowlist.as_ref()?;
       let value = if allowlist.is_empty() {
+        // A bare `--allow-*` inherits the runner's scope for that permission.
         string_lit("inherit")
       } else {
         ast::Expr::Array(ast::ArrayLit {
@@ -993,48 +1056,18 @@ fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
             .collect(),
         })
       };
-      props.push(ast::PropOrSpread::Prop(Box::new(ast::Prop::KeyValue(
-        ast::KeyValueProp {
-          key: ast::PropName::Ident(ast::IdentName {
-            span: DUMMY_SP,
-            sym: name.into(),
-          }),
-          value: Box::new(value),
-        },
-      ))));
-    };
-
-    push("env", &permissions.allow_env);
-    push("ffi", &permissions.allow_ffi);
-    push("import", &permissions.allow_import);
-    push("net", &permissions.allow_net);
-    push("read", &permissions.allow_read);
-    push("run", &permissions.allow_run);
-    push("sys", &permissions.allow_sys);
-    push("write", &permissions.allow_write);
+      Some((name, value))
+    })
+    .collect::<Vec<_>>();
 
     if props.is_empty() {
       string_lit("none")
     } else {
-      ast::Expr::Object(ast::ObjectLit {
-        span: DUMMY_SP,
-        props,
-      })
+      object_lit(props)
     }
   };
 
-  ast::Expr::Object(ast::ObjectLit {
-    span: DUMMY_SP,
-    props: vec![ast::PropOrSpread::Prop(Box::new(ast::Prop::KeyValue(
-      ast::KeyValueProp {
-        key: ast::PropName::Ident(ast::IdentName {
-          span: DUMMY_SP,
-          sym: "permissions".into(),
-        }),
-        value: Box::new(value),
-      },
-    )))],
-  })
+  object_lit([("permissions", value)])
 }
 
 #[cfg(test)]
@@ -1565,14 +1598,14 @@ Deno.test("file:///main.ts$3-7.ts", {
           media_type: MediaType::TypeScript,
         }],
       },
-      // Non-permission flags in the shebang are parsed by the CLI flag parser
-      // and simply ignored; only the permissions are forwarded.
+      // A shebang that is not a parseable `deno` command makes the generated
+      // test throw rather than silently running with inherited permissions.
       Test {
         input: Input {
           source: r#"
 /**
  * ```ts
- * #!/usr/bin/env -S deno run --no-check --allow-read
+ * #!/bin/sh
  * foo();
  * ```
  */
@@ -1582,11 +1615,8 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
-Deno.test("file:///main.ts$3-7.ts", {
-    permissions: {
-        read: "inherit"
-    }
-}, async ()=>{
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    throw new Error("invalid doc test shebang: #!/bin/sh");
     foo();
 });
 "#,
