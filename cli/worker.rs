@@ -24,6 +24,8 @@ use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::cpu_prof_filename;
 use deno_runtime::cpu_profiler::CpuProfiler;
 use deno_runtime::deno_os::OpExitCallbacks;
+use deno_runtime::deno_os::WatcherExitHandle;
+use deno_runtime::deno_os::WatcherExitInfo;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -194,7 +196,16 @@ impl CliMainWorker {
     Ok(self.worker.exit_code())
   }
 
-  pub async fn run_for_watcher(self) -> Result<(), CoreError> {
+  pub async fn run_for_watcher(mut self) -> Result<(), CoreError> {
+    // Install the isolate handle so that a script calling `Deno.exit()`
+    // terminates this isolate instead of the whole process, allowing the file
+    // watcher to survive and restart on the next change. See issue #7590.
+    let isolate_handle = self.v8_isolate_handle();
+    self
+      .op_state()
+      .borrow_mut()
+      .put(WatcherExitHandle(isolate_handle));
+
     /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
     /// state of any pending events and emitting accordingly on drop in the case of a future
     /// cancellation.
@@ -261,7 +272,20 @@ impl CliMainWorker {
     }
 
     let mut executor = FileWatcherModuleExecutor::new(self);
-    executor.execute().await
+    let result = executor.execute().await;
+
+    // If the script called `Deno.exit()`, `op_exit` terminated the isolate
+    // instead of the process. Treat it as a normal end of run: clear V8's
+    // termination flag so the worker can be dropped cleanly, and let the
+    // watcher wait for the next file change rather than propagating the
+    // termination as an error. See issue #7590.
+    let exited = executor.inner.op_state().borrow().has::<WatcherExitInfo>();
+    if exited {
+      executor.inner.cancel_terminate_execution();
+      return Ok(());
+    }
+
+    result
   }
 
   #[inline]
