@@ -320,19 +320,18 @@ fn stdin_is_raw_mode() -> bool {
 
 #[cfg(all(not(unix), not(target_arch = "wasm32")))]
 fn stdin_is_raw_mode() -> bool {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::um::consoleapi::GetConsoleMode;
-  use winapi::um::processenv::GetStdHandle;
-  use winapi::um::winbase::STD_INPUT_HANDLE;
-  use winapi::um::wincon::ENABLE_LINE_INPUT;
+  use windows_sys::Win32::System::Console::ENABLE_LINE_INPUT;
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
 
-  // SAFETY: winapi calls. GetConsoleMode returns FALSE for non-console handles
-  // (e.g. when stdin is a pipe), in which case we conservatively return false.
+  // SAFETY: winapi calls. GetConsoleMode returns 0 (FALSE) for non-console
+  // handles (e.g. when stdin is a pipe), in which case we conservatively
+  // return false.
   unsafe {
     let handle = GetStdHandle(STD_INPUT_HANDLE);
-    let mut mode: DWORD = 0;
-    if GetConsoleMode(handle, &mut mode) == FALSE {
+    let mut mode = 0u32;
+    if GetConsoleMode(handle, &mut mode) == 0 {
       return false;
     }
     mode & ENABLE_LINE_INPUT == 0
@@ -390,11 +389,15 @@ impl PermissionPrompter for TtyPrompter {
     #[cfg(not(target_arch = "wasm32"))]
     #[allow(clippy::print_stderr, reason = "actually want to print")]
     if stdin_is_raw_mode() {
+      // Escape the message/name since they can contain user-controlled strings
+      // (env var names, file paths) that could otherwise spoof the terminal.
       eprintln!(
-        "❌ Cannot prompt for {message}: stdin is in raw mode (a library has likely called setRawMode)."
+        "❌ Cannot prompt for {}: stdin is in raw mode (a library has likely called setRawMode).",
+        escape_control_characters(message)
       );
       eprintln!(
-        "❌ Run again with --allow-{name} to grant the permission up front, or with -A to skip all prompts."
+        "❌ Run again with --allow-{} to grant the permission up front, or with -A to skip all prompts.",
+        escape_control_characters(name)
       );
       return PromptResponse::Deny;
     }
