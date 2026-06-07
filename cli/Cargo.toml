@@ -197,8 +197,8 @@ tokio-vsock.workspace = true
 deno_core = { workspace = true, features = ["unsafe_use_unprotected_platform"] }
 pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
-wasmparser = "0.244.0"
 test_util.workspace = true
+wasmparser = "0.244.0"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.
