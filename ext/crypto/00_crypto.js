@@ -1209,10 +1209,18 @@ ObjectAssign(SubtleCrypto.prototype, {
       );
     }
 
-    const { ciphertext, sharedSecret } = mlKemEncapsulate(
-      normalizedAlgorithm,
-      encapsulationKey,
-    );
+    let ciphertext;
+    let sharedSecret;
+    try {
+      const result = op_crypto_ml_kem_encapsulate(
+        normalizedAlgorithm.name,
+        op_crypto_key_handle(encapsulationKey).cppgc,
+      );
+      ciphertext = result.ciphertext;
+      sharedSecret = result.sharedSecret;
+    } catch (_) {
+      throw new DOMException("Encapsulation failed", "OperationError");
+    }
 
     const sharedKey = await this.importKey(
       "raw-secret",
@@ -1302,11 +1310,23 @@ ObjectAssign(SubtleCrypto.prototype, {
       );
     }
 
-    const sharedSecret = mlKemDecapsulate(
-      normalizedAlgorithm,
-      decapsulationKey,
-      ciphertext,
-    );
+    const expectedCtSize = ML_KEM_CIPHERTEXT_SIZES[normalizedAlgorithm.name];
+    if (TypedArrayPrototypeGetByteLength(ciphertext) !== expectedCtSize) {
+      throw new DOMException(
+        `ML-KEM ${normalizedAlgorithm.name} ciphertext must be ${expectedCtSize} bytes`,
+        "OperationError",
+      );
+    }
+    let sharedSecret;
+    try {
+      sharedSecret = op_crypto_ml_kem_decapsulate(
+        normalizedAlgorithm.name,
+        op_crypto_key_handle(decapsulationKey).cppgc,
+        ciphertext,
+      );
+    } catch (_) {
+      throw new DOMException("Decapsulation failed", "OperationError");
+    }
 
     return await this.importKey(
       "raw-secret",
@@ -1871,65 +1891,6 @@ function supportsGetPublicKey(algName) {
     }
   }
   return false;
-}
-
-function mlKemEncapsulate(normalizedAlgorithm, encapsulationKey) {
-  switch (normalizedAlgorithm.name) {
-    case "ML-KEM-512":
-    case "ML-KEM-768":
-    case "ML-KEM-1024": {
-      const handle = op_crypto_key_handle(encapsulationKey);
-      let result;
-      try {
-        result = op_crypto_ml_kem_encapsulate(
-          normalizedAlgorithm.name,
-          handle.cppgc,
-        );
-      } catch (_) {
-        throw new DOMException("Encapsulation failed", "OperationError");
-      }
-      return {
-        ciphertext: result.ciphertext,
-        sharedSecret: result.sharedSecret,
-      };
-    }
-    default:
-      throw new DOMException(
-        `Encapsulation not supported for ${normalizedAlgorithm.name}`,
-        "NotSupportedError",
-      );
-  }
-}
-
-function mlKemDecapsulate(normalizedAlgorithm, decapsulationKey, ciphertext) {
-  switch (normalizedAlgorithm.name) {
-    case "ML-KEM-512":
-    case "ML-KEM-768":
-    case "ML-KEM-1024": {
-      const expectedCtSize = ML_KEM_CIPHERTEXT_SIZES[normalizedAlgorithm.name];
-      if (TypedArrayPrototypeGetByteLength(ciphertext) !== expectedCtSize) {
-        throw new DOMException(
-          `ML-KEM ${normalizedAlgorithm.name} ciphertext must be ${expectedCtSize} bytes`,
-          "OperationError",
-        );
-      }
-      const handle = op_crypto_key_handle(decapsulationKey);
-      try {
-        return op_crypto_ml_kem_decapsulate(
-          normalizedAlgorithm.name,
-          handle.cppgc,
-          ciphertext,
-        );
-      } catch (_) {
-        throw new DOMException("Decapsulation failed", "OperationError");
-      }
-    }
-    default:
-      throw new DOMException(
-        `Decapsulation not supported for ${normalizedAlgorithm.name}`,
-        "NotSupportedError",
-      );
-  }
 }
 
 async function generateKey(normalizedAlgorithm, extractable, usages) {
