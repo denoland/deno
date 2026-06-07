@@ -70,6 +70,7 @@ const {
   DataViewPrototypeGetBuffer,
   DataViewPrototypeGetByteLength,
   DataViewPrototypeGetByteOffset,
+  FunctionPrototypeCall,
   JSONParse,
   JSONStringify,
   ObjectAssign,
@@ -1616,18 +1617,25 @@ const SubtleCryptoPrototype = SubtleCrypto.prototype;
 // so wrap the cppgc method in a small forwarder whose declared params
 // give it `length === 2` (the `length` default doesn't count) and
 // explicitly pass all three args through.
-{
-  const cppgcDeriveBits = SubtleCryptoPrototype.deriveBits;
-  function deriveBits(algorithm, baseKey, length = undefined) {
-    return cppgcDeriveBits.call(this, algorithm, baseKey, length);
-  }
-  ObjectDefineProperty(SubtleCryptoPrototype, "deriveBits", {
-    value: deriveBits,
-    writable: true,
-    enumerable: true,
-    configurable: true,
-  });
-}
+const cppgcDeriveBits = SubtleCryptoPrototype.deriveBits;
+const deriveBitsForwarder = {
+  deriveBits(algorithm, baseKey, length = undefined) {
+    return FunctionPrototypeCall(
+      cppgcDeriveBits,
+      this,
+      algorithm,
+      baseKey,
+      length,
+    );
+  },
+}.deriveBits;
+ObjectDefineProperty(SubtleCryptoPrototype, "deriveBits", {
+  __proto__: null,
+  value: deriveBitsForwarder,
+  writable: true,
+  enumerable: true,
+  configurable: true,
+});
 
 const SUPPORTS_OPERATIONS = [
   "encrypt",
