@@ -514,7 +514,7 @@ pub(crate) fn ml_kem_export_spki(
     subject_public_key: BitString::from_bytes(public_key)
       .map_err(|_| MlKemError::OperationFailed)?,
   };
-  Ok(info.to_der().map_err(|_| MlKemError::OperationFailed)?)
+  info.to_der().map_err(|_| MlKemError::OperationFailed)
 }
 
 /// Export the encapsulation key as SubjectPublicKeyInfo (SPKI).

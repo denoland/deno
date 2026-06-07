@@ -1,5 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+#![allow(
+  clippy::too_many_arguments,
+  reason = "cppgc impl methods mirror the WebCrypto WebIDL slot lists \
+            (`unwrapKey(format, wrappedKey, unwrappingKey, unwrapAlgorithm, \
+            unwrappedKeyAlgorithm, extractable, keyUsages)`, \
+            `decapsulateKey(algorithm, decapsulationKey, ciphertext, \
+            sharedKeyAlgorithm, extractable, usages)`); the op2 macro \
+            expansion at the impl-block site is what trips the lint"
+)]
+
 //! WebCrypto `SubtleCrypto` as a cppgc-wrapped Rust object.
 //!
 //! Registered on the extension via `objects = [SubtleCrypto]` so the class
@@ -266,7 +276,8 @@ impl SubtleCrypto {
     #[webidl] usages: Vec<String>,
   ) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
     let data = ImportKeyData::from_v8(scope, key_data, format)?;
-    let key = run_import_key(scope, format, &algorithm, data, extractable, &usages)?;
+    let key =
+      run_import_key(scope, format, &algorithm, data, extractable, &usages)?;
     // Spec step: private/secret keys with empty usages -> SyntaxError.
     let key_type = deno_core::cppgc::try_unwrap_cppgc_object::<
       crate::crypto_key::CryptoKey,
@@ -407,7 +418,8 @@ impl SubtleCrypto {
     #[webidl] wrapped_key: BufferSource,
     #[webidl] unwrapping_key: SubtleKey,
     #[webidl] unwrap_algorithm: UnwrapAlgorithm,
-    #[webidl] unwrapped_key_algorithm: crate::subtle_import_key::ImportAlgorithm,
+    #[webidl]
+    unwrapped_key_algorithm: crate::subtle_import_key::ImportAlgorithm,
     extractable: bool,
     #[webidl] usages: Vec<String>,
   ) -> Result<v8::Local<'s, v8::Object>, CryptoError> {

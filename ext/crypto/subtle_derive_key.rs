@@ -15,7 +15,6 @@ use deno_error::JsErrorBox;
 use crate::CryptoError;
 use crate::algorithm::compute_key_length;
 use crate::subtle_derive_bits::SubtleDeriveBitsParams;
-use crate::subtle_derive_bits::run as run_derive_bits;
 use crate::subtle_export_key::KeyFormat;
 use crate::subtle_import_key::ImportAlgorithm;
 use crate::subtle_import_key::ImportKeyData;
@@ -54,7 +53,7 @@ impl<'a> ToV8<'a> for DerivedKey {
       extractable,
       &usages,
     )
-    .map_err(|e| crypto_error_to_js(e))?;
+    .map_err(crypto_error_to_js)?;
     Ok(key.into())
   }
 }
@@ -72,8 +71,12 @@ fn crypto_error_to_js(err: CryptoError) -> JsErrorBox {
 pub fn key_length_for(
   derived: &ImportAlgorithm,
 ) -> Result<Option<u32>, CryptoError> {
-  compute_key_length(&derived.name, derived.length, derived.hash_name.as_deref())
-    .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))
+  compute_key_length(
+    &derived.name,
+    derived.length,
+    derived.hash_name.as_deref(),
+  )
+  .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))
 }
 
 pub fn check_base_key(

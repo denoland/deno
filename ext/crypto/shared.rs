@@ -332,6 +332,12 @@ pub enum SharedError {
   InvalidKeyType,
 }
 
+#[allow(
+  dead_code,
+  reason = "V8RawKeyData accessors fronted the legacy op_crypto_sign/verify path; \
+            kept for completeness while the per-op key-handling helpers are \
+            still being merged into the cppgc impl"
+)]
 impl V8RawKeyData {
   pub fn as_rsa_public_key(&self) -> Result<Cow<'_, [u8]>, SharedError> {
     match self {

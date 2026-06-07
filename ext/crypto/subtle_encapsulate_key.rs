@@ -159,8 +159,10 @@ pub fn run_decapsulate_key<'s>(
   // Mirror the JS forwarder's "private/secret + empty usages →
   // SyntaxError" rule.
   let key_type = key_type_of(scope, shared_key);
-  if matches!(key_type, Some(CryptoKeyType::Private) | Some(CryptoKeyType::Secret))
-    && usages.is_empty()
+  if matches!(
+    key_type,
+    Some(CryptoKeyType::Private) | Some(CryptoKeyType::Secret)
+  ) && usages.is_empty()
   {
     return Err(syntax_error("Invalid key usage".into()));
   }

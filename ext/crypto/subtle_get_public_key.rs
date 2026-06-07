@@ -32,8 +32,8 @@ use crate::subtle_import_key::ImportAlgorithm;
 use crate::subtle_import_key::ImportKeyData;
 use crate::subtle_import_key::run as run_import_key;
 use crate::subtle_key::SubtleKey;
-use crate::x25519::x25519_public_key;
 use crate::x448::x448_public_key;
+use crate::x25519::x25519_public_key;
 
 pub fn run<'s>(
   scope: &mut v8::PinScope<'s, '_>,
@@ -42,20 +42,9 @@ pub fn run<'s>(
 ) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
   let algorithm_name = key.algorithm_name.as_str();
   match algorithm_name {
-    "RSASSA-PKCS1-v1_5"
-    | "RSA-PSS"
-    | "RSA-OAEP"
-    | "ECDSA"
-    | "ECDH"
-    | "Ed25519"
-    | "X25519"
-    | "X448"
-    | "ML-DSA-44"
-    | "ML-DSA-65"
-    | "ML-DSA-87"
-    | "ML-KEM-512"
-    | "ML-KEM-768"
-    | "ML-KEM-1024" => {}
+    "RSASSA-PKCS1-v1_5" | "RSA-PSS" | "RSA-OAEP" | "ECDSA" | "ECDH"
+    | "Ed25519" | "X25519" | "X448" | "ML-DSA-44" | "ML-DSA-65"
+    | "ML-DSA-87" | "ML-KEM-512" | "ML-KEM-768" | "ML-KEM-1024" => {}
     other => {
       return Err(not_supported(format!(
         "getPublicKey() is not supported for {other}"
@@ -80,9 +69,11 @@ pub fn run<'s>(
         "ML-KEM-1024" => crate::mlkem::MlKemVariant::MlKem1024,
         _ => unreachable!(),
       };
-      let public_key =
-        crate::mlkem::public_from_expanded(variant, key.raw.expanded_private_key())
-          .map_err(|_| op_error("Failed to derive public key".into()))?;
+      let public_key = crate::mlkem::public_from_expanded(
+        variant,
+        key.raw.expanded_private_key(),
+      )
+      .map_err(|_| op_error("Failed to derive public key".into()))?;
       let usages_strs: Vec<&str> = usages.iter().map(String::as_str).collect();
       Ok(make_crypto_key(
         scope,
@@ -213,7 +204,7 @@ fn validate_public_key_usages(
   allowed: &[&str],
 ) -> Result<(), CryptoError> {
   for u in usages {
-    if !allowed.iter().any(|a| *a == u.as_str()) {
+    if !allowed.contains(&u.as_str()) {
       return Err(CryptoError::Other(JsErrorBox::new(
         "DOMExceptionSyntaxError",
         "Invalid key usage",

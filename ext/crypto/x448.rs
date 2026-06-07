@@ -113,7 +113,7 @@ pub(crate) fn export_spki_x448(pubkey: &[u8]) -> Result<Vec<u8>, X448Error> {
     },
     subject_public_key: BitString::from_bytes(pubkey)?,
   };
-  Ok(key_info.to_der().map_err(|_| X448Error::FailedExport)?)
+  key_info.to_der().map_err(|_| X448Error::FailedExport)
 }
 
 #[op2]

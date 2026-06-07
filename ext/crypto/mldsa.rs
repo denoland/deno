@@ -368,6 +368,11 @@ pub fn from_pkcs8_native(
 
 pub struct MlDsaPkcs8Bytes {
   pub private_key: Vec<u8>,
+  #[allow(
+    dead_code,
+    reason = "exposed via the from_pkcs8 helper for the JS importKey \
+              path that's still being slimmed"
+  )]
   pub public_key: Vec<u8>,
   pub seed: Option<Vec<u8>>,
 }

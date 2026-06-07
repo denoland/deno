@@ -32,8 +32,8 @@ use crate::make_key::make_crypto_key;
 use crate::shared::EcNamedCurve;
 use crate::shared::RawKeyData;
 use crate::shared::ShaHash;
-use crate::x25519::generate_x25519_keypair;
 use crate::x448::generate_x448_keypair;
+use crate::x25519::generate_x25519_keypair;
 
 /// Per-algorithm shape captured at WebIDL conversion time. Mirrors the
 /// JS `simpleAlgorithmDictionaries` table.
@@ -85,13 +85,28 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
     let obj = obj.as_ref();
     Ok(match canonical.as_str() {
       "RSASSA-PKCS1-v1_5" | "RSA-PSS" | "RSA-OAEP" => {
-        let o = obj.ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing RSA dict"))?;
+        let o = obj.ok_or_else(|| {
+          make_err(prefix.clone(), context.borrowed(), "Missing RSA dict")
+        })?;
         let modulus_length = read_u32_member(scope, *o, b"modulusLength")
-          .ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing 'modulusLength'"))?;
+          .ok_or_else(|| {
+            make_err(
+              prefix.clone(),
+              context.borrowed(),
+              "Missing 'modulusLength'",
+            )
+          })?;
         let public_exponent = read_buffer_bytes(scope, *o, b"publicExponent")
-          .ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing 'publicExponent'"))?;
-        let hash = read_hash_name(scope, *o)
-          .ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing 'hash'"))?;
+          .ok_or_else(|| {
+          make_err(
+            prefix.clone(),
+            context.borrowed(),
+            "Missing 'publicExponent'",
+          )
+        })?;
+        let hash = read_hash_name(scope, *o).ok_or_else(|| {
+          make_err(prefix.clone(), context.borrowed(), "Missing 'hash'")
+        })?;
         Self::Rsa {
           name: canonical,
           modulus_length,
@@ -100,9 +115,13 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
         }
       }
       "ECDSA" | "ECDH" => {
-        let o = obj.ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing EC dict"))?;
+        let o = obj.ok_or_else(|| {
+          make_err(prefix.clone(), context.borrowed(), "Missing EC dict")
+        })?;
         let curve_str = read_string_member(scope, *o, b"namedCurve")
-          .ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing 'namedCurve'"))?;
+          .ok_or_else(|| {
+            make_err(prefix.clone(), context.borrowed(), "Missing 'namedCurve'")
+          })?;
         let named_curve = match curve_str.as_str() {
           "P-256" => EcNamedCurve::P256,
           "P-384" => EcNamedCurve::P384,
@@ -121,18 +140,25 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
         }
       }
       "AES-CTR" | "AES-CBC" | "AES-GCM" | "AES-OCB" | "AES-KW" => {
-        let o = obj.ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing AES dict"))?;
-        let length = read_u32_member(scope, *o, b"length")
-          .ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing 'length'"))?;
+        let o = obj.ok_or_else(|| {
+          make_err(prefix.clone(), context.borrowed(), "Missing AES dict")
+        })?;
+        let length =
+          read_u32_member(scope, *o, b"length").ok_or_else(|| {
+            make_err(prefix.clone(), context.borrowed(), "Missing 'length'")
+          })?;
         Self::Aes {
           name: canonical,
           length,
         }
       }
       "HMAC" => {
-        let o = obj.ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing HMAC dict"))?;
-        let hash_name = read_hash_name(scope, *o)
-          .ok_or_else(|| make_err(prefix.clone(), context.borrowed(), "Missing 'hash'"))?;
+        let o = obj.ok_or_else(|| {
+          make_err(prefix.clone(), context.borrowed(), "Missing HMAC dict")
+        })?;
+        let hash_name = read_hash_name(scope, *o).ok_or_else(|| {
+          make_err(prefix.clone(), context.borrowed(), "Missing 'hash'")
+        })?;
         let hash = sha_from_name(&hash_name).ok_or_else(|| {
           make_err(prefix.clone(), context.borrowed(), "Unsupported hash")
         })?;
@@ -207,7 +233,8 @@ impl<'a> ToV8<'a> for GenerateKeyOutput {
         if let Some(h) = hash_name {
           alg.hash_name = Some(h);
         }
-        let usages_strs: Vec<&str> = usages.iter().map(String::as_str).collect();
+        let usages_strs: Vec<&str> =
+          usages.iter().map(String::as_str).collect();
         let key = make_crypto_key(
           scope,
           CryptoKeyType::Secret,
@@ -226,8 +253,10 @@ impl<'a> ToV8<'a> for GenerateKeyOutput {
         priv_raw,
         extractable,
       } => {
-        let pub_strs: Vec<&str> = pub_usages.iter().map(String::as_str).collect();
-        let priv_strs: Vec<&str> = priv_usages.iter().map(String::as_str).collect();
+        let pub_strs: Vec<&str> =
+          pub_usages.iter().map(String::as_str).collect();
+        let priv_strs: Vec<&str> =
+          priv_usages.iter().map(String::as_str).collect();
         let pub_alg = clone_alg(&algorithm);
         let pub_key = make_crypto_key(
           scope,
@@ -280,12 +309,11 @@ pub async fn run(
       hash,
     } => {
       check_usages(&usages, &usages_for_rsa(&name))?;
-      let key_data = spawn_blocking(move || {
-        generate_rsa(modulus_length, &public_exponent)
-      })
-      .await
-      .map_err(|e| op_error(format!("Failed to generate key: {e}")))?
-      .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
+      let key_data =
+        spawn_blocking(move || generate_rsa(modulus_length, &public_exponent))
+          .await
+          .map_err(|e| op_error(format!("Failed to generate key: {e}")))?
+          .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
       let alg = AlgorithmDict::new(&name)
         .with_modulus_length(modulus_length)
         .with_public_exponent({
@@ -328,8 +356,8 @@ pub async fn run(
         &["encrypt", "decrypt", "wrapKey", "unwrapKey"]
       };
       check_usages(&usages, allowed)?;
-      let bytes =
-        generate_aes(length as usize).map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
+      let bytes = generate_aes(length as usize)
+        .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
       Ok(GenerateKeyOutput::Symmetric {
         algorithm_name: name,
         length: Some(length),
@@ -437,8 +465,10 @@ pub async fn run(
       let res = crate::mlkem::from_seed(variant, &seed)
         .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
       let alg = AlgorithmDict::new(ml_kem_name(variant));
-      let pub_us = filter_usages(&usages, &["encapsulateKey", "encapsulateBits"]);
-      let priv_us = filter_usages(&usages, &["decapsulateKey", "decapsulateBits"]);
+      let pub_us =
+        filter_usages(&usages, &["encapsulateKey", "encapsulateBits"]);
+      let priv_us =
+        filter_usages(&usages, &["decapsulateKey", "decapsulateBits"]);
       Ok(GenerateKeyOutput::Pair {
         algorithm: alg,
         pub_usages: pub_us,
@@ -482,7 +512,7 @@ fn check_usages(
   allowed: &[&str],
 ) -> Result<(), CryptoError> {
   for u in usages {
-    if !allowed.iter().any(|a| *a == u.as_str()) {
+    if !allowed.contains(&u.as_str()) {
       return Err(CryptoError::Other(JsErrorBox::new(
         "DOMExceptionSyntaxError",
         "Invalid key usage",
@@ -495,7 +525,7 @@ fn check_usages(
 fn filter_usages(usages: &[String], allowed: &[&str]) -> Vec<String> {
   usages
     .iter()
-    .filter(|u| allowed.iter().any(|a| *a == u.as_str()))
+    .filter(|u| allowed.contains(&u.as_str()))
     .cloned()
     .collect()
 }
@@ -508,7 +538,10 @@ fn usages_for_rsa(name: &str) -> Vec<&'static str> {
   }
 }
 
-fn pair_usages_rsa(name: &str, usages: &[String]) -> (Vec<String>, Vec<String>) {
+fn pair_usages_rsa(
+  name: &str,
+  usages: &[String],
+) -> (Vec<String>, Vec<String>) {
   match name {
     "RSASSA-PKCS1-v1_5" | "RSA-PSS" => (
       filter_usages(usages, &["verify"]),
@@ -536,10 +569,7 @@ fn pair_usages_ec(name: &str, usages: &[String]) -> (Vec<String>, Vec<String>) {
       filter_usages(usages, &["verify"]),
       filter_usages(usages, &["sign"]),
     ),
-    "ECDH" => (
-      vec![],
-      filter_usages(usages, &["deriveKey", "deriveBits"]),
-    ),
+    "ECDH" => (vec![], filter_usages(usages, &["deriveKey", "deriveBits"])),
     _ => (vec![], vec![]),
   }
 }

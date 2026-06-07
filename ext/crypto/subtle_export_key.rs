@@ -97,10 +97,12 @@ impl<'a> WebIdlConverter<'a> for KeyFormat {
 
 /// Output of `SubtleCrypto.exportKey()`. The `Bytes` variant becomes a
 /// `v8::ArrayBuffer` (spec mandates `ArrayBuffer` for non-jwk formats);
-/// `Jwk` becomes a plain `v8::Object` with the spec-mandated slots.
+/// `Jwk` becomes a plain `v8::Object` with the spec-mandated slots. The
+/// `Jwk` payload is `Box`ed so the discriminant doesn't carry the full
+/// `JsonWebKey` size on the `Bytes` path.
 pub enum ExportKeyOutput {
   Bytes(Vec<u8>),
-  Jwk(JsonWebKey),
+  Jwk(Box<JsonWebKey>),
 }
 
 #[derive(Default)]
@@ -134,7 +136,7 @@ impl<'a> ToV8<'a> for ExportKeyOutput {
   ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
     match self {
       ExportKeyOutput::Bytes(bytes) => Ok(bytes_to_array_buffer(scope, bytes)),
-      ExportKeyOutput::Jwk(jwk) => Ok(jwk_to_object(scope, jwk).into()),
+      ExportKeyOutput::Jwk(jwk) => Ok(jwk_to_object(scope, *jwk).into()),
     }
   }
 }
@@ -313,7 +315,7 @@ fn export_symmetric(
       };
       jwk.k = Some(b64_url(key.raw.bytes()));
       jwk.alg = Some(jwk_alg_for_symmetric(kind, key)?);
-      Ok(ExportKeyOutput::Jwk(jwk))
+      Ok(ExportKeyOutput::Jwk(Box::new(jwk)))
     }
     _ => Err(not_supported("Not implemented".to_string())),
   }
@@ -436,7 +438,7 @@ fn export_rsa(
         }
         _ => return Err(op_error("unexpected".into())),
       }
-      Ok(ExportKeyOutput::Jwk(jwk))
+      Ok(ExportKeyOutput::Jwk(Box::new(jwk)))
     }
     _ => Err(not_supported("Not implemented".to_string())),
   }
@@ -577,7 +579,7 @@ fn export_ec(
     }
     _ => return Err(op_error("unexpected".into())),
   }
-  Ok(ExportKeyOutput::Jwk(jwk))
+  Ok(ExportKeyOutput::Jwk(Box::new(jwk)))
 }
 
 #[derive(Copy, Clone)]
@@ -675,7 +677,7 @@ fn export_okp(
       } else {
         jwk.x = Some(b64_url(raw));
       }
-      Ok(ExportKeyOutput::Jwk(jwk))
+      Ok(ExportKeyOutput::Jwk(Box::new(jwk)))
     }
     _ => Err(not_supported("Not implemented".to_string())),
   }
@@ -771,7 +773,7 @@ fn export_akp_mlkem(
       } else {
         jwk.pub_field = Some(b64_url(key.raw.bytes()));
       }
-      Ok(ExportKeyOutput::Jwk(jwk))
+      Ok(ExportKeyOutput::Jwk(Box::new(jwk)))
     }
     _ => Err(not_supported(format!(
       "Unsupported key format for ML-KEM: {format:?}"
@@ -852,7 +854,7 @@ fn export_akp_mldsa(
       } else {
         jwk.pub_field = Some(b64_url(key.raw.bytes()));
       }
-      Ok(ExportKeyOutput::Jwk(jwk))
+      Ok(ExportKeyOutput::Jwk(Box::new(jwk)))
     }
     _ => Err(not_supported(format!(
       "Unsupported key format for ML-DSA: {format:?}"

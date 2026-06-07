@@ -34,11 +34,11 @@ use crate::subtle_import_key::ImportKeyData;
 use crate::subtle_import_key::run as run_import_key;
 use crate::subtle_key::SubtleKey;
 
-/// Common shape for either side of the wrap/unwrap pair: the
-/// "transform" algorithm name + parameters, captured as one of two
-/// concrete forms — an AES-KW pass (which only uses `key.algorithm.name`
-/// + the symmetric `wrappingKey`) or a full encrypt/decrypt pass (with
-/// the per-algorithm params already coerced).
+/// Common shape for either side of the wrap/unwrap pair: the "transform"
+/// algorithm name + parameters, captured as one of two concrete forms —
+/// an AES-KW pass (which only uses `key.algorithm.name` + the symmetric
+/// `wrappingKey`) or a full encrypt/decrypt pass (with the per-algorithm
+/// params already coerced).
 pub enum WrapParams {
   AesKw,
   Encrypt(SubtleEncryptParams),
@@ -78,8 +78,7 @@ impl<'a> WebIdlConverter<'a> for WrapAlgorithm {
         params: WrapParams::AesKw,
       });
     }
-    let enc =
-      SubtleEncryptParams::convert(scope, value, prefix, context, &())?;
+    let enc = SubtleEncryptParams::convert(scope, value, prefix, context, &())?;
     Ok(Self {
       name: enc.canonical_name().to_string(),
       params: WrapParams::Encrypt(enc),
@@ -114,8 +113,7 @@ impl<'a> WebIdlConverter<'a> for UnwrapAlgorithm {
         params: UnwrapParams::AesKw,
       });
     }
-    let dec =
-      SubtleDecryptParams::convert(scope, value, prefix, context, &())?;
+    let dec = SubtleDecryptParams::convert(scope, value, prefix, context, &())?;
     Ok(Self {
       name: dec.canonical_name().to_string(),
       params: UnwrapParams::Decrypt(dec),
@@ -167,6 +165,11 @@ pub fn run_wrap_key(
 /// Body of `SubtleCrypto.unwrapKey(format, wrappedKey, unwrappingKey,
 /// unwrapAlgorithm, unwrappedKeyAlgorithm, extractable, keyUsages)`.
 /// Returns the v8 `CryptoKey` Object directly.
+#[allow(
+  clippy::too_many_arguments,
+  reason = "signature mirrors the WebCrypto unwrapKey spec slots; \
+            collapsing them into a struct would just rename the IDL fields"
+)]
 pub fn run_unwrap_key<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   format: KeyFormat,
@@ -217,8 +220,10 @@ pub fn run_unwrap_key<'s>(
     crate::crypto_key::CryptoKey,
   >(scope, key.into())
   .map(|p| p.key_type());
-  if matches!(key_type, Some(CryptoKeyType::Private) | Some(CryptoKeyType::Secret))
-    && usages.is_empty()
+  if matches!(
+    key_type,
+    Some(CryptoKeyType::Private) | Some(CryptoKeyType::Secret)
+  ) && usages.is_empty()
   {
     return Err(syntax_error("Invalid key type".into()));
   }
@@ -267,25 +272,6 @@ fn aes_kw_unwrap(
 /// JWK members).
 fn jwk_to_utf8(jwk: &crate::subtle_export_key::JsonWebKey) -> Vec<u8> {
   let mut out = String::new();
-  out.push('{');
-  let mut first = true;
-  let mut field = |out: &mut String, name: &str, val: &str| {
-    if !*&{ first } {
-      out.push(',');
-    }
-    first = false;
-    out.push('"');
-    out.push_str(name);
-    out.push('"');
-    out.push(':');
-    out.push('"');
-    out.push_str(val);
-    out.push('"');
-  };
-  let _ = field;
-  // The above closure approach was too tangled; build manually instead.
-  // Reset and use the simpler push approach with first-flag tracking.
-  out.clear();
   out.push('{');
   let mut first = true;
   macro_rules! emit_str {

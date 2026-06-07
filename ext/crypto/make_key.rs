@@ -48,7 +48,9 @@ pub fn set_symbols(symbols: CryptoSymbols) {
   SYMBOLS.with(|cell| cell.set(Some(leaked)));
 }
 
-pub fn symbols<'s>(_scope: &mut v8::PinScope<'s, '_>) -> Option<&'static CryptoSymbols> {
+pub fn symbols<'s>(
+  _scope: &mut v8::PinScope<'s, '_>,
+) -> Option<&'static CryptoSymbols> {
   SYMBOLS.with(|cell| cell.get())
 }
 
@@ -173,7 +175,10 @@ pub fn build_handle_object<'s>(
 
 /// Construct a fully-stamped CryptoKey cppgc instance reachable from JS.
 /// Mirrors the legacy JS `constructKey` helper.
-#[allow(clippy::too_many_arguments, reason = "dictionary-style key construction")]
+#[allow(
+  clippy::too_many_arguments,
+  reason = "dictionary-style key construction"
+)]
 pub fn make_crypto_key<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   key_type: CryptoKeyType,
@@ -183,8 +188,14 @@ pub fn make_crypto_key<'s>(
   data: RawKeyData,
 ) -> v8::Local<'s, v8::Object> {
   let key_data_jsval = key_data_to_jsval(scope, &data);
-  let host_object_snapshot =
-    build_host_object_snapshot(scope, key_type, extractable, usages, &alg, &data);
+  let host_object_snapshot = build_host_object_snapshot(
+    scope,
+    key_type,
+    extractable,
+    usages,
+    &alg,
+    &data,
+  );
   let handle = build_handle_object(scope, data);
   let algorithm_obj = build_algorithm_object(scope, &alg);
   let usages_arr = build_usages_array(scope, usages);

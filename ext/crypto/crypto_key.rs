@@ -127,6 +127,20 @@ impl CryptoKey {
     crate::node_interop::export_node_key_material(scope, key)
   }
 
+  /// Internal `CryptoKey.fromCloneData(data)` — reconstructs a
+  /// `CryptoKey` from the snapshot produced by the host-object brand
+  /// during structured clone. Used by the JS `registerCloneableResource`
+  /// callback.
+  #[rename("fromCloneData")]
+  #[required(1)]
+  #[static_method]
+  fn from_clone_data<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    data: v8::Local<'s, v8::Value>,
+  ) -> Result<v8::Local<'s, v8::Object>, crate::CryptoError> {
+    crate::node_interop::from_clone_data(scope, data)
+  }
+
   /// Internal `CryptoKey.importSync(format, keyData, algorithm,
   /// extractable, usages)` — synchronous version of
   /// `SubtleCrypto.importKey` for `ext/node/polyfills/internal/crypto/keys.ts`.

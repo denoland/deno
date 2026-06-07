@@ -157,7 +157,7 @@ pub(crate) fn export_spki_x25519(
     },
     subject_public_key: BitString::from_bytes(pubkey)?,
   };
-  Ok(key_info.to_der().map_err(|_| X25519Error::FailedExport)?)
+  key_info.to_der().map_err(|_| X25519Error::FailedExport)
 }
 
 #[op2]
