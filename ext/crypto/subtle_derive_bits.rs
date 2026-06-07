@@ -30,19 +30,18 @@ use crate::subtle_encrypt::extract_name_and_obj;
 use crate::subtle_encrypt::v8_str;
 use crate::subtle_key::SubtleKey;
 use crate::subtle_sign::read_optional_buffer_source;
-use crate::subtle_sign::read_required_hash;
 use crate::subtle_sign::read_required_u32;
 use crate::x448::x448_derive_bits;
 use crate::x25519::x25519_derive_bits;
 
 pub enum SubtleDeriveBitsParams {
   Pbkdf2 {
-    hash: ShaHash,
+    hash_name: String,
     salt: Vec<u8>,
     iterations: u32,
   },
   Hkdf {
-    hash: ShaHash,
+    hash_name: String,
     salt: Vec<u8>,
     info: Vec<u8>,
   },
@@ -91,8 +90,8 @@ impl<'a> WebIdlConverter<'a> for SubtleDeriveBitsParams {
 
     match canonical {
       "PBKDF2" => {
-        let hash =
-          read_required_hash(scope, obj, "hash", prefix.clone(), &context)?;
+        let hash_name =
+          read_required_hash_name(scope, obj, "hash", prefix.clone(), &context)?;
         let salt = read_required_buffer_source(
           scope,
           obj,
@@ -108,14 +107,14 @@ impl<'a> WebIdlConverter<'a> for SubtleDeriveBitsParams {
           &context,
         )?;
         Ok(Self::Pbkdf2 {
-          hash,
+          hash_name,
           salt,
           iterations,
         })
       }
       "HKDF" => {
-        let hash =
-          read_required_hash(scope, obj, "hash", prefix.clone(), &context)?;
+        let hash_name =
+          read_required_hash_name(scope, obj, "hash", prefix.clone(), &context)?;
         let salt = read_required_buffer_source(
           scope,
           obj,
@@ -130,7 +129,11 @@ impl<'a> WebIdlConverter<'a> for SubtleDeriveBitsParams {
           prefix.clone(),
           &context,
         )?;
-        Ok(Self::Hkdf { hash, salt, info })
+        Ok(Self::Hkdf {
+          hash_name,
+          salt,
+          info,
+        })
       }
       "ECDH" => {
         let public = read_required_public_key(
@@ -187,6 +190,56 @@ fn missing_dict(
     context.borrowed(),
     JsErrorBox::type_error("Algorithm requires a parameter dictionary"),
   )
+}
+
+/// Read the `hash` field as an `AlgorithmIdentifier` (string or `{name}` dict)
+/// and return its raw name. Unlike [`crate::subtle_sign::read_required_hash`],
+/// no digest-registry lookup is performed here: that lookup is deferred to
+/// [`run`] so an unrecognized name maps to a spec-mandated `NotSupportedError`
+/// `DOMException` rather than the `TypeError` op2 produces when a
+/// `WebIdlConverter` returns `Err`.
+fn read_required_hash_name<'a, 'b>(
+  scope: &mut v8::PinScope<'a, '_>,
+  obj: v8::Local<'a, v8::Object>,
+  field: &'static str,
+  prefix: Cow<'static, str>,
+  context: &ContextFn<'b>,
+) -> Result<String, WebIdlError> {
+  let key = v8_str(scope, field);
+  let val = obj
+    .get(scope, key.into())
+    .unwrap_or_else(|| v8::undefined(scope).into());
+  if val.is_undefined() {
+    return Err(WebIdlError::other(
+      prefix,
+      context.borrowed(),
+      JsErrorBox::type_error(format!("required dictionary member '{field}'")),
+    ));
+  }
+  if val.is_string() {
+    return Ok(val.to_rust_string_lossy(scope));
+  }
+  if let Ok(o) = v8::Local::<v8::Object>::try_from(val) {
+    let name_key = v8_str(scope, "name");
+    let name_val = o
+      .get(scope, name_key.into())
+      .unwrap_or_else(|| v8::undefined(scope).into());
+    let s = name_val.to_string(scope).ok_or_else(|| {
+      WebIdlError::other(
+        prefix.clone(),
+        context.borrowed(),
+        JsErrorBox::type_error(format!("'{field}.name' is not a DOMString")),
+      )
+    })?;
+    return Ok(s.to_rust_string_lossy(scope));
+  }
+  Err(WebIdlError::other(
+    prefix,
+    context.borrowed(),
+    JsErrorBox::type_error(format!(
+      "'{field}' must be a HashAlgorithmIdentifier"
+    )),
+  ))
 }
 
 fn read_required_buffer_source<'a, 'b>(
@@ -303,10 +356,12 @@ pub fn run(
   let length_u32 = length.map(|l| l as u32);
   match params {
     SubtleDeriveBitsParams::Pbkdf2 {
-      hash,
+      hash_name,
       salt,
       iterations,
     } => {
+      let hash = parse_sha_hash(&hash_name)
+        .ok_or_else(|| not_supported("Unrecognized algorithm name".into()))?;
       let length =
         length_u32.ok_or_else(|| op_error("Invalid length".to_string()))?;
       if length == 0 || length % 8 != 0 {
@@ -328,7 +383,13 @@ pub fn run(
         Some(salt),
       )
     }
-    SubtleDeriveBitsParams::Hkdf { hash, salt, info } => {
+    SubtleDeriveBitsParams::Hkdf {
+      hash_name,
+      salt,
+      info,
+    } => {
+      let hash = parse_sha_hash(&hash_name)
+        .ok_or_else(|| not_supported("Unrecognized algorithm name".into()))?;
       let length =
         length_u32.ok_or_else(|| op_error("Invalid length".to_string()))?;
       if length == 0 || length % 8 != 0 {
@@ -440,6 +501,23 @@ fn truncate_to_length(
   }
   let n = length.div_ceil(8) as usize;
   Ok(bytes[..n].to_vec())
+}
+
+/// Map a `HashAlgorithmIdentifier.name` string onto the digest-registry
+/// `ShaHash` enum. The lookup is case-sensitive and requires the exact
+/// canonical spelling per the spec ("SHA-256", "SHA3-256", etc.), so a stray
+/// "SHA384" or non-digest name like "PBKDF2" yields `None`.
+fn parse_sha_hash(name: &str) -> Option<ShaHash> {
+  match name {
+    "SHA-1" => Some(ShaHash::Sha1),
+    "SHA-256" => Some(ShaHash::Sha256),
+    "SHA-384" => Some(ShaHash::Sha384),
+    "SHA-512" => Some(ShaHash::Sha512),
+    "SHA3-256" => Some(ShaHash::Sha3_256),
+    "SHA3-384" => Some(ShaHash::Sha3_384),
+    "SHA3-512" => Some(ShaHash::Sha3_512),
+    _ => None,
+  }
 }
 
 fn sha_to_crypto_hash(h: ShaHash) -> CryptoHash {
