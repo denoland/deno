@@ -504,17 +504,9 @@ function bytesEqual(a, b) {
   return true;
 }
 
-// `getKeyLength` lives in Rust now -- see ext/crypto/algorithm.rs. The Rust
-// op throws the same DOMException / TypeError shapes the JS impl did
-// (OperationError for AES length, NotSupportedError for unknown HMAC hash,
-// TypeError for HMAC length=0 / unreachable algorithm).
-function getKeyLength(algorithm) {
-  return op_crypto_get_key_length(
-    algorithm.name,
-    algorithm.length ?? null,
-    algorithm.hash?.name ?? null,
-  );
-}
+// `getKeyLength` is now inlined at its two call sites (`deriveKey` and the
+// JS `supports()` two-overload path) -- the Rust `op_crypto_get_key_length`
+// already produces the spec DOMException / TypeError shapes.
 
 // `SubtleCrypto.prototype.digest` is implemented natively on the cppgc
 // impl block in `ext/crypto/subtle_crypto.rs`; see `digest.rs` for the
@@ -769,7 +761,11 @@ ObjectAssign(SubtleCrypto.prototype, {
     }
 
     // 13.
-    const length = getKeyLength(normalizedDerivedKeyAlgorithmLength);
+    const length = op_crypto_get_key_length(
+      normalizedDerivedKeyAlgorithmLength.name,
+      normalizedDerivedKeyAlgorithmLength.length ?? null,
+      normalizedDerivedKeyAlgorithmLength.hash?.name ?? null,
+    );
 
     // 14.
     const secret = await this.__deriveBitsInternal(
@@ -1593,7 +1589,11 @@ SubtleCrypto.supports = function supports(
           additionalAlgorithm,
           "get key length",
         );
-        derivedLen = getKeyLength(normalizedDerived);
+        derivedLen = op_crypto_get_key_length(
+          normalizedDerived.name,
+          normalizedDerived.length ?? null,
+          normalizedDerived.hash?.name ?? null,
+        );
       } catch {
         return false;
       }
