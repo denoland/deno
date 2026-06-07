@@ -100,6 +100,21 @@ pub fn create_validate_import_attributes_callback(
     move |scope: &mut v8::PinScope<'_, '_>,
           attributes: &HashMap<String, String>,
           context: &deno_core::ImportAttributesContext| {
+      // If `module.registerHooks()` has installed user hooks, defer
+      // import-attribute validation to the user hooks so they can
+      // implement custom module types and attributes
+      // (e.g. `with { type: "x-css" }`). Without this, the builtin
+      // validator rejects anything outside the small allow-list before
+      // hooks ever get a chance to handle the import.
+      let op_state = JsRuntime::op_state_from(&*scope);
+      if let Ok(op_state) = op_state.try_borrow()
+        && let Some(registry) = op_state
+          .try_borrow::<deno_node::ops::module_hooks::LoaderHookRegistry>(
+        )
+        && registry.hooks_active.get()
+      {
+        return;
+      }
       let valid_attribute = |kind: &str| {
         matches!(kind, "json" | "text")
           || (enable_raw_imports.load(Ordering::Relaxed) && kind == "bytes")

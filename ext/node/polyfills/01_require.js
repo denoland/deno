@@ -765,11 +765,17 @@ function executeEsmResolveHookChain(specifier, context) {
   return nextResolve(specifier, context);
 }
 
-function esmResolveHookCallback(specifier, referrer) {
+function esmResolveHookCallback(specifier, referrer, importAttributes) {
+  const attrs = { __proto__: null };
+  if (importAttributes !== null && typeof importAttributes === "object") {
+    for (const key in importAttributes) {
+      attrs[key] = importAttributes[key];
+    }
+  }
   const context = {
     parentURL: referrer || undefined,
-    conditions: ["node", "import"],
-    importAttributes: { __proto__: null },
+    conditions: ["node", "import", "module-sync", "node-addons"],
+    importAttributes: attrs,
   };
   try {
     const result = executeEsmResolveHookChain(specifier, context);
@@ -780,7 +786,11 @@ function esmResolveHookCallback(specifier, referrer) {
 }
 
 // ESM load hook chain: runs hooks in LIFO order.
-// Returns { source } if hooks provided source, or null for fallthrough.
+// Returns `{ result, effectiveUrl }` where `result` is the hook chain's
+// return value (or null when no hooks are registered) and `effectiveUrl`
+// is the URL the chain ultimately delegated to via `nextLoad(newUrl)`:
+// used by the load loop when falling through to Rust default loading so
+// the source comes from the URL the user redirected to, not the original.
 function executeEsmLoadHookChain(fileUrl, context) {
   const loadHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -792,18 +802,30 @@ function executeEsmLoadHookChain(fileUrl, context) {
 
   let index = 0;
   let currentContext = context;
+  let effectiveUrl = fileUrl;
 
   function nextLoad(loadUrl, ctx) {
+    effectiveUrl = loadUrl;
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain - perform default load so user hooks calling
-      // nextLoad() receive the actual source they can transform.
+      // End of chain. Synthesize a default load result so user hooks
+      // that call `await nextLoad(...)` observe a real `source` they
+      // can transform (matches Node, where `defaultLoad` returns the
+      // on-disk source).
       if (StringPrototypeStartsWith(loadUrl, "node:")) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
       if (StringPrototypeStartsWith(loadUrl, "file://")) {
+        // `type: "bytes"` modules cannot be faithfully represented as a JS
+        // string here; fall through to Rust default loading, which reads the
+        // file as bytes and produces a correctly-typed module. (Reading it as
+        // a string would otherwise trip "Source code for Bytes module must be
+        // provided as bytes".)
+        if (currentContext?.importAttributes?.type === "bytes") {
+          return { source: null, shortCircuit: true };
+        }
         try {
           const source = op_require_read_file(url.fileURLToPath(loadUrl));
           return {
@@ -812,10 +834,11 @@ function executeEsmLoadHookChain(fileUrl, context) {
             shortCircuit: true,
           };
         } catch {
-          // Any synchronous read failure (file absent from disk because it's
+          // Any sync read failure (file absent from disk because it's
           // embedded in a compiled binary's eszip, permission errors,
-          // transient IO) falls through to Rust default loading, which will
-          // surface a clearer error if the module truly cannot be loaded.
+          // transient IO) falls through to Rust default loading via
+          // the load loop, which surfaces a clearer error if the
+          // module truly cannot be loaded.
           return { source: null, shortCircuit: true };
         }
       }
@@ -838,7 +861,8 @@ function executeEsmLoadHookChain(fileUrl, context) {
     return result;
   }
 
-  return nextLoad(fileUrl, context);
+  const result = nextLoad(fileUrl, context);
+  return { result, effectiveUrl };
 }
 
 function _startEsmLoadLoop() {
@@ -850,26 +874,37 @@ function _startEsmLoadLoop() {
       core.unrefOpPromise(pollPromise);
       const req = await pollPromise;
       if (req === null) break;
-      const [id, fileUrl] = req;
+      const [id, fileUrl, rawAttributes] = req;
+      const importAttributes = { __proto__: null };
+      if (rawAttributes !== null && typeof rawAttributes === "object") {
+        for (const key in rawAttributes) {
+          importAttributes[key] = rawAttributes[key];
+        }
+      }
       const context = {
         format: undefined,
-        conditions: ["node", "import"],
-        importAttributes: { __proto__: null },
+        conditions: ["node", "import", "module-sync", "node-addons"],
+        importAttributes,
       };
       try {
-        const result = executeEsmLoadHookChain(fileUrl, context);
+        const chainResult = executeEsmLoadHookChain(fileUrl, context);
+        const result = chainResult?.result;
+        const effectiveUrl = chainResult?.effectiveUrl ?? null;
         if (result?.format === "builtin") {
-          op_module_hooks_respond_load(id, null, "builtin", null);
+          op_module_hooks_respond_load(id, null, "builtin", null, null);
         } else if (result !== null && result.source != null) {
           const source = loadHookSourceToString(result.source);
           const format = result.format || null;
-          op_module_hooks_respond_load(id, source, format, null);
+          op_module_hooks_respond_load(id, source, format, null, null);
         } else {
-          // Fallthrough: tell Rust to use default loading
-          op_module_hooks_respond_load(id, null, null, null);
+          // Fallthrough: tell Rust to use default loading. Pass the URL the
+          // hook chain ultimately delegated to (may differ from the original
+          // when a hook called `nextLoad(newUrl)`) so source is fetched from
+          // there while the module keeps the original URL as its identity.
+          op_module_hooks_respond_load(id, null, null, null, effectiveUrl);
         }
       } catch (e) {
-        op_module_hooks_respond_load(id, null, null, String(e));
+        op_module_hooks_respond_load(id, null, null, String(e), null);
       }
     }
   })();

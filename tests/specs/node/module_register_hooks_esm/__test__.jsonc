@@ -17,6 +17,31 @@
       "cwd": "worker",
       "args": "run -A main.mjs",
       "output": "worker/main.out"
+    },
+    "preload_main": {
+      "cwd": "preload_main",
+      "args": "run -A --import=./hook.mjs main.mjs",
+      "output": "preload_main/main.out"
+    },
+    "import_attributes": {
+      "cwd": "import_attributes",
+      "args": "run -A --import=./hook.mjs main.mjs",
+      "output": "import_attributes/main.out"
+    },
+    "import_attributes_custom": {
+      "cwd": "import_attributes_custom",
+      "args": "run -A --import=./hook.mjs main.mjs",
+      "output": "import_attributes_custom/main.out"
+    },
+    "load_import_attributes": {
+      "cwd": "load_import_attributes",
+      "args": "run -A --import=./hook.mjs main.mjs",
+      "output": "load_import_attributes/main.out"
+    },
+    "load_raw_imports": {
+      "cwd": "load_raw_imports",
+      "args": "run -A --unstable-raw-imports --import=./hook.mjs main.mjs",
+      "output": "load_raw_imports/main.out"
     }
   }
 }

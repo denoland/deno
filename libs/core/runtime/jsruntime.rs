@@ -21,6 +21,7 @@ use std::task::Waker;
 
 use deno_error::JsErrorBox;
 use futures::FutureExt;
+use futures::StreamExt;
 use futures::task::AtomicWaker;
 use smallvec::SmallVec;
 
@@ -72,12 +73,15 @@ use crate::modules::ExtCodeCache;
 use crate::modules::ExtModuleLoader;
 use crate::modules::IntoModuleCodeString;
 use crate::modules::IntoModuleName;
+use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::ModuleName;
 use crate::modules::RequestedModuleType;
+use crate::modules::SideModuleKind;
 use crate::modules::ValidateImportAttributesCb;
+use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::modules::script_origin;
 use crate::ops_metrics::OpMetricsFactoryFn;
 use crate::ops_metrics::dispatch_metrics_async;
@@ -3061,15 +3065,8 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: impl IntoModuleCodeString,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
     self
-      .inner
-      .main_realm
-      .load_main_es_module_from_code(
-        isolate,
-        specifier,
-        Some(code.into_module_code()),
-      )
+      .drive_es_module_load(true, specifier, Some(code.into_module_code()))
       .await
   }
 
@@ -3085,12 +3082,7 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
-    self
-      .inner
-      .main_realm
-      .load_main_es_module_from_code(isolate, specifier, None)
-      .await
+    self.drive_es_module_load(true, specifier, None).await
   }
 
   /// Asynchronously load specified ES module and all of its dependencies from the
@@ -3111,15 +3103,8 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: impl IntoModuleCodeString,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
     self
-      .inner
-      .main_realm
-      .load_side_es_module_from_code(
-        isolate,
-        specifier.to_string(),
-        Some(code.into_module_code()),
-      )
+      .drive_es_module_load(false, specifier, Some(code.into_module_code()))
       .await
   }
 
@@ -3135,12 +3120,116 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
-    self
-      .inner
-      .main_realm
-      .load_side_es_module_from_code(isolate, specifier.to_string(), None)
-      .await
+    self.drive_es_module_load(false, specifier, None).await
+  }
+
+  /// Drive a recursive ES module load to completion while concurrently
+  /// pumping the event loop. The event loop pumping is required so that
+  /// JavaScript-side `module.registerHooks()` load hooks (which run as an
+  /// async polling task) can respond to load requests from the recursive
+  /// load. Without it, static module loads that go through hook bridges
+  /// would deadlock.
+  async fn drive_es_module_load(
+    &mut self,
+    is_main: bool,
+    specifier: &ModuleSpecifier,
+    code: Option<ModuleCodeString>,
+  ) -> Result<ModuleId, CoreError> {
+    let realm = JsRealm::clone(&self.inner.main_realm);
+    let module_map_rc = realm.0.module_map();
+
+    // Only pump the V8 event loop alongside the load when the loader resolves
+    // modules through asynchronous JavaScript (e.g. Node
+    // `module.registerHooks()` load hooks). For ordinary loads pumping is
+    // unnecessary and would run unrelated event-loop work mid-load, so the
+    // load is driven on its own instead.
+    let pump_event_loop =
+      module_map_rc.loader.borrow().pump_event_loop_during_load();
+
+    if let Some(code) = code {
+      jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+      module_map_rc
+        .new_es_module(
+          scope,
+          is_main,
+          specifier.to_string().into(),
+          code,
+          false,
+          None,
+        )
+        .map_err(|e| e.into_error(scope, false, false))?;
+    }
+
+    let mut load = if is_main {
+      RecursiveModuleLoad::main(specifier.to_string(), module_map_rc.clone())
+        .await?
+    } else {
+      RecursiveModuleLoad::side(
+        specifier.to_string(),
+        module_map_rc.clone(),
+        SideModuleKind::Async,
+        None,
+      )
+      .await?
+    };
+
+    loop {
+      // Drive the recursive load, optionally pumping the V8 event loop
+      // concurrently. Pumping is what lets JavaScript-side module hooks
+      // (`module.registerHooks()`) respond to load requests issued by the
+      // recursive load via the async hook bridge; for ordinary loads it is
+      // skipped so unrelated event-loop work doesn't run mid-load.
+      let next_step = poll_fn(|cx| {
+        if let Poll::Ready(t) = load.poll_next_unpin(cx) {
+          return Poll::Ready(Ok::<_, CoreError>(t));
+        }
+        if !pump_event_loop {
+          return Poll::Pending;
+        }
+        match self.poll_event_loop(cx, PollEventLoopOptions::default()) {
+          Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+          Poll::Ready(Ok(())) | Poll::Pending => {}
+        }
+        // After polling the event loop, the recursive load may have new
+        // results ready (e.g. a hook callback responded). Re-poll.
+        match load.poll_next_unpin(cx) {
+          Poll::Ready(t) => Poll::Ready(Ok(t)),
+          Poll::Pending => Poll::Pending,
+        }
+      })
+      .await?;
+
+      let Some(load_result) = next_step else { break };
+      let (request, source) = load_result?;
+
+      jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+      load.register_and_recurse(scope, &request, source).map_err(
+        |e| match e {
+          ModuleError::Exception(g) => {
+            let exception = v8::Local::new(scope, g);
+            CoreErrorKind::Js(crate::error::exception_to_err(
+              scope, exception, false, false,
+            ))
+            .into_box()
+          }
+          ModuleError::Core(e) => e,
+          ModuleError::Concrete(e) => CoreErrorKind::Module(e).into_box(),
+        },
+      )?;
+    }
+
+    let root_id = load.root_module_id().expect("Root module should be loaded");
+
+    jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+    realm.instantiate_module(scope, root_id).map_err(|e| {
+      let exception = v8::Local::new(scope, e);
+      CoreErrorKind::Js(crate::error::exception_to_err(
+        scope, exception, false, false,
+      ))
+      .into_box()
+    })?;
+
+    Ok(root_id)
   }
 
   /// Load and evaluate an ES module provided the specifier and source code.
