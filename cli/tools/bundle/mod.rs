@@ -700,8 +700,7 @@ fn inline_declarations(
     // Strip `import type ... from "./relative"` lines when the referenced
     // file's declarations have been (or will be) inlined. The types are
     // available directly in the flattened output.
-    if (trimmed.starts_with("import type ")
-      || trimmed.starts_with("import {"))
+    if (trimmed.starts_with("import type ") || trimmed.starts_with("import {"))
       && let Some(import_path) = extract_import_path(trimmed)
     {
       let resolved = resolve_relative_dts_path(source_dir, &import_path);
