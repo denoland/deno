@@ -398,6 +398,18 @@ pub fn op_crypto_get_key_length(
   compute_key_length(name, length, hash_name.as_deref())
 }
 
+/// Resolve `name` against the registered algorithm table for `operation`,
+/// returning the canonical (spec-cased) name if registered. Used by the
+/// Rust-side `SubtleCrypto` methods (`importKey`, `generateKey`, …) so
+/// `"aes-cbc"` and `"AES-CBC"` resolve to the same canonical name without
+/// re-entering JS to call `normalizeAlgorithm`.
+pub fn canonical_name_for(
+  operation: &str,
+  algorithm_name: &str,
+) -> Option<&'static str> {
+  registered_algorithm(operation, algorithm_name).map(|(n, _)| n)
+}
+
 /// Lookup the registered (canonical name, dictionary type) for an operation
 /// slot. Pure-Rust mirror of the JS shim's `op_crypto_get_registered_algorithm`
 /// call sequence inside `normalizeAlgorithm`; used by the `supports()` 2-arg

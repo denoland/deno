@@ -102,6 +102,12 @@ const { createFilteredInspectProxy } = core.loadExtScript(
 const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 const { kKeyObject } = internals;
 
+// Hand the WebIDL brand + node:crypto `kKeyObject` symbols over to the
+// Rust-native `make_crypto_key` helper. Called once at module-load time;
+// the Rust side caches them per isolate so every `CryptoKey` minted from
+// Rust (importKey / generateKey / etc) ends up correctly branded.
+Crypto.registerSymbols(webidl.brand, kKeyObject);
+
 const supportedNamedCurves = ["P-256", "P-384", "P-521"];
 const recognisedUsages = [
   "encrypt",
@@ -669,6 +675,26 @@ ObjectAssign(SubtleCrypto.prototype, {
       if (ArrayBufferIsView(keyData) || isArrayBuffer(keyData)) {
         throw new TypeError("Cannot import key: 'keyData' is not a JsonWebKey");
       }
+    }
+
+    // Try Rust-native importKey first for algorithm/format combos that have
+    // been ported. Returns null for unsupported combos so we fall back to
+    // the legacy JS path.
+    const native = this.__importKeyRustNative(
+      format,
+      keyData,
+      algorithm,
+      extractable,
+      keyUsages,
+    );
+    if (native !== null) {
+      if (
+        ArrayPrototypeIncludes(["private", "secret"], native.type) &&
+        keyUsages.length == 0
+      ) {
+        throw new SyntaxError("Invalid key usage");
+      }
+      return native;
     }
 
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "importKey");

@@ -13,6 +13,7 @@ use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
+use deno_error::JsErrorClass;
 
 use crate::CryptoError;
 use crate::algorithm::check_support_for_algorithm;
@@ -30,12 +31,18 @@ use crate::subtle_encapsulate::EncapsulateBitsOutput;
 use crate::subtle_encapsulate::SubtleEncapsulateParams;
 use crate::subtle_encapsulate::run_decapsulate_bits;
 use crate::subtle_encapsulate::run_encapsulate_bits;
+use crate::subtle_encapsulate_key::EncapsulateKeyOutput;
+use crate::subtle_encapsulate_key::run_decapsulate_key;
+use crate::subtle_encapsulate_key::run_encapsulate_key;
 use crate::subtle_encrypt::SubtleEncryptParams;
 use crate::subtle_encrypt::run as run_encrypt;
 use crate::subtle_encrypt::v8_str;
 use crate::subtle_export_key::ExportKeyOutput;
 use crate::subtle_export_key::KeyFormat;
 use crate::subtle_export_key::run as run_export_key;
+use crate::subtle_import_key::ImportAlgorithm;
+use crate::subtle_import_key::ImportKeyData;
+use crate::subtle_import_key::run as run_import_key;
 use crate::subtle_key::SubtleKey;
 use crate::subtle_sign::SubtleSignParams;
 use crate::subtle_sign::run as run_sign;
@@ -213,6 +220,42 @@ impl SubtleCrypto {
     spawn_blocking(move || run_derive_bits(algorithm, base_key, length)).await?
   }
 
+  /// Internal Rust-side `importKey` entry. Called by the JS forwarder for
+  /// the algorithm/format combos already ported to Rust; falls back to the
+  /// legacy JS path for the rest. Returns a string ("unsupported") instead
+  /// of throwing for the fallback case so the JS forwarder can take over
+  /// without a try/catch.
+  #[rename("__importKeyRustNative")]
+  fn import_key_native<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[webidl] format: KeyFormat,
+    key_data: v8::Local<'s, v8::Value>,
+    #[webidl] algorithm: ImportAlgorithm,
+    extractable: bool,
+    #[webidl] usages: Vec<String>,
+  ) -> Result<v8::Local<'s, v8::Value>, CryptoError> {
+    let data = ImportKeyData::from_v8(scope, key_data, format)?;
+    match run_import_key(scope, format, &algorithm, data, extractable, &usages) {
+      Ok(obj) => Ok(obj.into()),
+      Err(err) => {
+        // Sentinel `null` means "not handled in Rust yet" -- the JS
+        // forwarder falls back to the legacy per-algorithm path. Real
+        // errors (DataError / SyntaxError) are re-raised as-is.
+        if let CryptoError::Other(boxed) = &err
+          && boxed
+            .get_class()
+            .as_ref()
+            == "DOMExceptionNotSupportedError"
+          && boxed.to_string().starts_with("importKey is not yet implemented in Rust")
+        {
+          return Ok(v8::null(scope).into());
+        }
+        Err(err)
+      }
+    }
+  }
+
   /// `SubtleCrypto.exportKey(format, key)` — produce the wire-encoded key
   /// material for an extractable `CryptoKey`. The `KeyFormat`
   /// `WebIdlConverter` accepts the WebCrypto spec formats
@@ -262,6 +305,56 @@ impl SubtleCrypto {
       run_decapsulate_bits(algorithm, decapsulation_key, ciphertext.0)
     })
     .await?
+  }
+
+  /// `SubtleCrypto.encapsulateKey(algorithm, encapsulationKey,
+  /// sharedKeyAlgorithm, extractable, usages)` from the WICG modern-algos
+  /// spec. Returns `{ ciphertext, sharedKey: CryptoKey }`. Composes
+  /// [`run_encapsulate_bits`] (ML-KEM) with the Rust-native
+  /// [`crate::subtle_import_key::run`] (`raw-secret`).
+  #[rename("encapsulateKey")]
+  fn encapsulate_key<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[webidl] algorithm: SubtleEncapsulateParams,
+    #[webidl] encapsulation_key: SubtleKey,
+    #[webidl] shared_key_algorithm: crate::subtle_import_key::ImportAlgorithm,
+    extractable: bool,
+    #[webidl] usages: Vec<String>,
+  ) -> Result<EncapsulateKeyOutput<'s>, CryptoError> {
+    run_encapsulate_key(
+      scope,
+      algorithm,
+      encapsulation_key,
+      shared_key_algorithm,
+      extractable,
+      usages,
+    )
+  }
+
+  /// `SubtleCrypto.decapsulateKey(algorithm, decapsulationKey, ciphertext,
+  /// sharedKeyAlgorithm, extractable, usages)` from the WICG modern-algos
+  /// spec. Returns the imported shared `CryptoKey`.
+  #[rename("decapsulateKey")]
+  fn decapsulate_key<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[webidl] algorithm: SubtleEncapsulateParams,
+    #[webidl] decapsulation_key: SubtleKey,
+    #[webidl] ciphertext: BufferSource,
+    #[webidl] shared_key_algorithm: crate::subtle_import_key::ImportAlgorithm,
+    extractable: bool,
+    #[webidl] usages: Vec<String>,
+  ) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+    run_decapsulate_key(
+      scope,
+      algorithm,
+      decapsulation_key,
+      shared_key_algorithm,
+      ciphertext.0,
+      extractable,
+      usages,
+    )
   }
 }
 

@@ -182,6 +182,9 @@ pub fn make_crypto_key<'s>(
   alg: AlgorithmDict,
   data: RawKeyData,
 ) -> v8::Local<'s, v8::Object> {
+  let key_data_jsval = key_data_to_jsval(scope, &data);
+  let host_object_snapshot =
+    build_host_object_snapshot(scope, key_type, extractable, usages, &alg, &data);
   let handle = build_handle_object(scope, data);
   let algorithm_obj = build_algorithm_object(scope, &alg);
   let usages_arr = build_usages_array(scope, usages);
@@ -195,13 +198,15 @@ pub fn make_crypto_key<'s>(
     handle.into(),
   );
   let obj = make_cppgc_object(scope, crypto_key);
-  stamp_symbols(scope, obj);
+  stamp_symbols(scope, obj, key_data_jsval, host_object_snapshot);
   obj
 }
 
 fn stamp_symbols<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Object>,
+  k_key_object_val: v8::Local<'s, v8::Value>,
+  host_object_snapshot: v8::Local<'s, v8::Value>,
 ) {
   let Some(syms) = symbols(scope) else {
     return;
@@ -209,9 +214,142 @@ fn stamp_symbols<'s>(
   let brand = v8::Local::new(scope, &syms.webidl_brand);
   let _ = key.set(scope, brand.into(), brand.into());
 
-  // The other two are read by node:crypto polyfills + structured-clone via
-  // the prototype getters installed alongside `op_crypto_install_symbols`,
-  // so no per-instance stamping is needed for them.
+  let k_key_object = v8::Local::new(scope, &syms.k_key_object);
+  let _ = key.set(scope, k_key_object.into(), k_key_object_val);
+
+  // The hostObjectBrand is a function-valued property that the
+  // structured-clone serializer calls; replicate the legacy JS shape.
+  let host_brand_sym = v8::Local::new(scope, &syms.host_object_brand);
+  // The legacy JS used `ObjectDefineProperty(key, hostObjectBrand, { value:
+  // () => snapshot })` -- a closure-bound function. From Rust the same
+  // shape is built via a FunctionTemplate whose `data` slot carries the
+  // snapshot and whose body returns it.
+  let ft = v8::FunctionTemplate::builder(host_object_thunk)
+    .data(host_object_snapshot)
+    .build(scope);
+  let host_fn = ft.get_function(scope).unwrap();
+  let _ = key.set(scope, host_brand_sym.into(), host_fn.into());
+}
+
+fn host_object_thunk(
+  _scope: &mut v8::PinScope,
+  args: v8::FunctionCallbackArguments,
+  mut rv: v8::ReturnValue,
+) {
+  rv.set(args.data());
+}
+
+/// Build the `{ type: "CryptoKey", keyType, extractable, usages, algorithm,
+/// keyData }` snapshot the legacy `hostObjectBrand` getter returned.
+fn build_host_object_snapshot<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  key_type: CryptoKeyType,
+  extractable: bool,
+  usages: &[&str],
+  alg: &AlgorithmDict,
+  data: &RawKeyData,
+) -> v8::Local<'s, v8::Value> {
+  let obj = v8::Object::new(scope);
+  let type_key = one_byte_internalized(scope, b"type");
+  let type_val = v8::String::new(scope, "CryptoKey").unwrap();
+  obj.set(scope, type_key.into(), type_val.into());
+
+  let key_type_key = one_byte_internalized(scope, b"keyType");
+  let key_type_val = v8::String::new(scope, key_type_str(key_type)).unwrap();
+  obj.set(scope, key_type_key.into(), key_type_val.into());
+
+  let ext_key = one_byte_internalized(scope, b"extractable");
+  let ext_val = v8::Boolean::new(scope, extractable);
+  obj.set(scope, ext_key.into(), ext_val.into());
+
+  let usages_key = one_byte_internalized(scope, b"usages");
+  let usages_val = build_usages_array(scope, usages);
+  obj.set(scope, usages_key.into(), usages_val.into());
+
+  let alg_key = one_byte_internalized(scope, b"algorithm");
+  let alg_val = build_algorithm_object(scope, alg);
+  obj.set(scope, alg_key.into(), alg_val.into());
+
+  let kd_key = one_byte_internalized(scope, b"keyData");
+  let kd_val = key_data_to_jsval(scope, data);
+  obj.set(scope, kd_key.into(), kd_val);
+
+  obj.into()
+}
+
+fn key_type_str(t: CryptoKeyType) -> &'static str {
+  match t {
+    CryptoKeyType::Public => "public",
+    CryptoKeyType::Private => "private",
+    CryptoKeyType::Secret => "secret",
+  }
+}
+
+/// Reconstruct the `getKeyData(handle)` JS shape from raw key data.
+/// `RawKeyData::Raw` returns a bare `Uint8Array`; `Secret`/`Private`/
+/// `Public` return `{ type, data }`; `SeededPrivate` returns
+/// `{ seed, privateKey }`.
+fn key_data_to_jsval<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  data: &RawKeyData,
+) -> v8::Local<'s, v8::Value> {
+  fn u8a<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    bytes: &[u8],
+  ) -> v8::Local<'s, v8::Uint8Array> {
+    let backing = if bytes.is_empty() {
+      v8::ArrayBuffer::new(scope, 0)
+    } else {
+      let bs = v8::ArrayBuffer::new_backing_store_from_bytes(
+        bytes.to_vec().into_boxed_slice(),
+      )
+      .make_shared();
+      v8::ArrayBuffer::with_backing_store(scope, &bs)
+    };
+    v8::Uint8Array::new(scope, backing, 0, bytes.len()).unwrap()
+  }
+  match data {
+    RawKeyData::Raw(b) => u8a(scope, b).into(),
+    RawKeyData::Secret(b) => tagged(scope, "secret", b),
+    RawKeyData::Private(b) => tagged(scope, "private", b),
+    RawKeyData::Public(b) => tagged(scope, "public", b),
+    RawKeyData::SeededPrivate { seed, private_key } => {
+      let obj = v8::Object::new(scope);
+      let pk_key = one_byte_internalized(scope, b"privateKey");
+      let pk_arr = u8a(scope, private_key);
+      obj.set(scope, pk_key.into(), pk_arr.into());
+      if let Some(seed) = seed {
+        let seed_key = one_byte_internalized(scope, b"seed");
+        let seed_arr = u8a(scope, seed);
+        obj.set(scope, seed_key.into(), seed_arr.into());
+      }
+      obj.into()
+    }
+  }
+}
+
+fn tagged<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  kind: &str,
+  bytes: &[u8],
+) -> v8::Local<'s, v8::Value> {
+  let obj = v8::Object::new(scope);
+  let type_key = one_byte_internalized(scope, b"type");
+  let type_val = v8::String::new(scope, kind).unwrap();
+  obj.set(scope, type_key.into(), type_val.into());
+  let data_key = one_byte_internalized(scope, b"data");
+  let backing = if bytes.is_empty() {
+    v8::ArrayBuffer::new(scope, 0)
+  } else {
+    let bs = v8::ArrayBuffer::new_backing_store_from_bytes(
+      bytes.to_vec().into_boxed_slice(),
+    )
+    .make_shared();
+    v8::ArrayBuffer::with_backing_store(scope, &bs)
+  };
+  let data_arr = v8::Uint8Array::new(scope, backing, 0, bytes.len()).unwrap();
+  obj.set(scope, data_key.into(), data_arr.into());
+  obj.into()
 }
 
 fn set_string<'s>(
