@@ -361,6 +361,29 @@ impl NpmFetchResolver {
           None => Ok(None),
         })
         .map_err(|e| format!("{e:#}"))?;
+    // Identify as an npm client. Some registries (e.g. self-hosted GitLab) only
+    // serve package metadata to requests that send the npm `Accept` header and
+    // otherwise redirect to registry.npmjs.org, which drops the auth header on
+    // the cross-origin redirect and 404s for private packages. The npm install
+    // path sends this same header, so matching it keeps `deno outdated`/`deno
+    // add` working wherever `deno install` does.
+    // See https://github.com/denoland/deno/issues/31924
+    //
+    // Mirror the install path's tradeoff: this header requests the abbreviated
+    // packument, which omits the `time` field that `minimumDependencyAge` relies
+    // on for date filtering (`matches_newest_dependency_date`). When a date is
+    // configured we must request the full packument instead, so we don't send
+    // the header (matching `CliNpmCacheHttpClient`'s `Full` packument format).
+    let maybe_accept = if self
+      .version_resolver
+      .newest_dependency_date_options
+      .date
+      .is_none()
+    {
+      Some(NPM_PACKAGE_INFO_ACCEPT)
+    } else {
+      None
+    };
     let file = self
       .file_fetcher
       .fetch_with_options(
@@ -368,14 +391,7 @@ impl NpmFetchResolver {
         FetchPermissionsOptionRef::AllowAll,
         FetchOptions {
           maybe_auth: maybe_auth_header,
-          // Identify as an npm client. Some registries (e.g. self-hosted
-          // GitLab) only serve package metadata to requests that send the npm
-          // `Accept` header and otherwise redirect to registry.npmjs.org, which
-          // drops the auth header on the cross-origin redirect and 404s for
-          // private packages. The npm install path sends this same header, so
-          // matching it keeps `deno outdated`/`deno add` working wherever
-          // `deno install` does. See https://github.com/denoland/deno/issues/31924
-          maybe_accept: Some(NPM_PACKAGE_INFO_ACCEPT),
+          maybe_accept,
           ..Default::default()
         },
       )

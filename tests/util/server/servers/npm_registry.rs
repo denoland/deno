@@ -226,7 +226,10 @@ async fn private_npm_registry3_handler(
       .status(StatusCode::FOUND)
       .header(
         http::header::LOCATION,
-        format!("http://localhost:4260{uri_path}"),
+        format!(
+          "http://localhost:{}{uri_path}",
+          crate::consts::PUBLIC_NPM_REGISTRY_PORT
+        ),
       )
       .body(empty_body())
       .map_err(|e| e.into());
