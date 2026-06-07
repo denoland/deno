@@ -16,6 +16,20 @@
         }
       ]
     },
+    // Catalogs are a workspace-root concept, so a non-recursive `deno outdated`
+    // run from the root still reports them.
+    "print_outdated_root": {
+      "steps": [
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "outdated",
+          "output": "outdated.out"
+        }
+      ]
+    },
     // `deno update --latest` should write the new version requirement back to
     // the catalog definition in the root config.
     "update_latest_recursive": {

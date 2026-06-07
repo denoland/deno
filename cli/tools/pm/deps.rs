@@ -438,10 +438,9 @@ fn add_deps_from_catalogs(
   // Mirror `Workspace`'s own resolution: a root package.json catalog takes
   // precedence over deno.json, and if it's present deno.json catalogs are
   // ignored entirely.
-  let pkg_json = workspace.root_pkg_json().filter(|pj| {
-    pj.catalog.as_ref().is_some_and(|c| !c.is_empty())
-      || pj.catalogs.as_ref().is_some_and(|c| !c.is_empty())
-  });
+  let pkg_json = workspace
+    .root_pkg_json()
+    .filter(|pj| pj.catalog.is_some() || pj.catalogs.is_some());
 
   let (path, kind, catalog, catalogs, nested) = if let Some(pj) = pkg_json {
     (
