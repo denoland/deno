@@ -999,6 +999,10 @@ function readableStreamForRid(rid, autoClose = true, cfn, onError) {
     core.tryClose(rid);
   };
 
+  const cancelRead = () => {
+    core.cancelRead(rid);
+  };
+
   if (autoClose) {
     RESOURCE_REGISTRY.register(stream, rid, stream);
   }
@@ -1038,6 +1042,7 @@ function readableStreamForRid(rid, autoClose = true, cfn, onError) {
       }
     },
     cancel() {
+      cancelRead();
       tryClose();
     },
     autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
