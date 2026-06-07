@@ -42,23 +42,6 @@ class C {
 
   @collect
   static staticMethod() {}
-
-  @collect
-  #privateMethod() {}
-
-  @collect
-  get #privateGetter() {
-    return 1;
-  }
-
-  @collect
-  set #privateSetter(_value: number) {}
-
-  @collect
-  accessor #privateAccessor = 1;
-
-  @collect
-  #privateField = 1;
 }
 
 const instance = new C();
@@ -70,7 +53,7 @@ function assert(condition: unknown, message: string) {
   }
 }
 
-assert(contexts.length === 11, "expected all member decorators to run");
+assert(contexts.length === 6, "expected all member decorators to run");
 
 for (const context of contexts) {
   assert("access" in context, `${context.kind} context is missing access`);

@@ -564,14 +564,121 @@ fn transpile(
     },
     emit_options,
   )?;
-  let transpiled_source = match transpile_result {
+  let mut transpiled_source = match transpile_result {
     TranspileResult::Owned(source) => source,
     TranspileResult::Cloned(source) => {
       debug_assert!(false, "Transpile owned failed.");
       source
     }
   };
+  patch_public_decorator_access_has(&mut transpiled_source.text);
   Ok(transpiled_source)
+}
+
+pub fn patch_public_decorator_access_has(source: &mut String) {
+  if !source.contains("_apply_decs_2203_r") {
+    return;
+  }
+
+  const OLD_ACCESS_OBJECT: &str = concat!(
+    "        ctx.access =\n",
+    "            get && set ? { get: get, set: set } : get ? { get: get } : { set: set };\n",
+  );
+  const NEW_ACCESS_OBJECT: &str = concat!(
+    "        if (isPrivate) {\n",
+    "            ctx.access =\n",
+    "                get && set ? { get: get, set: set } : get ? { get: get } : { set: set };\n",
+    "        } else {\n",
+    "            if (get) {\n",
+    "                var originalGet = get;\n",
+    "                get = function (target) {\n",
+    "                    if (arguments.length === 0) {\n",
+    "                        target = this;\n",
+    "                    }\n",
+    "                    return originalGet.call(target);\n",
+    "                };\n",
+    "            }\n",
+    "            if (set) {\n",
+    "                var originalSet = set;\n",
+    "                set = function (target, value) {\n",
+    "                    if (arguments.length === 1) {\n",
+    "                        value = target;\n",
+    "                        target = this;\n",
+    "                    }\n",
+    "                    return originalSet.call(target, value);\n",
+    "                };\n",
+    "            }\n",
+    "            var has = function (target) {\n",
+    "                return name in target;\n",
+    "            };\n",
+    "            ctx.access =\n",
+    "                get && set\n",
+    "                    ? { has: has, get: get, set: set }\n",
+    "                    : get\n",
+    "                    ? { has: has, get: get }\n",
+    "                    : { has: has, set: set };\n",
+    "        }\n",
+  );
+  *source = source.replace(OLD_ACCESS_OBJECT, NEW_ACCESS_OBJECT);
+
+  const OLD_EMITTED_ACCESS_OBJECT: &str = concat!(
+    "    ctx.access = get && set ? {\n",
+    "      get: get,\n",
+    "      set: set\n",
+    "    } : get ? {\n",
+    "      get: get\n",
+    "    } : {\n",
+    "      set: set\n",
+    "    };\n",
+  );
+  const NEW_EMITTED_ACCESS_OBJECT: &str = concat!(
+    "    if (isPrivate) {\n",
+    "      ctx.access = get && set ? {\n",
+    "        get: get,\n",
+    "        set: set\n",
+    "      } : get ? {\n",
+    "        get: get\n",
+    "      } : {\n",
+    "        set: set\n",
+    "      };\n",
+    "    } else {\n",
+    "      if (get) {\n",
+    "        var originalGet = get;\n",
+    "        get = function(target) {\n",
+    "          if (arguments.length === 0) {\n",
+    "            target = this;\n",
+    "          }\n",
+    "          return originalGet.call(target);\n",
+    "        };\n",
+    "      }\n",
+    "      if (set) {\n",
+    "        var originalSet = set;\n",
+    "        set = function(target, value) {\n",
+    "          if (arguments.length === 1) {\n",
+    "            value = target;\n",
+    "            target = this;\n",
+    "          }\n",
+    "          return originalSet.call(target, value);\n",
+    "        };\n",
+    "      }\n",
+    "      var has = function(target) {\n",
+    "        return name in target;\n",
+    "      };\n",
+    "      ctx.access = get && set ? {\n",
+    "        has: has,\n",
+    "        get: get,\n",
+    "        set: set\n",
+    "      } : get ? {\n",
+    "        has: has,\n",
+    "        get: get\n",
+    "      } : {\n",
+    "        has: has,\n",
+    "        set: set\n",
+    "      };\n",
+    "    }\n",
+  );
+  *source =
+    source.replace(OLD_EMITTED_ACCESS_OBJECT, NEW_EMITTED_ACCESS_OBJECT);
 }
 
 fn program_has_decorators(program: deno_ast::ProgramRef<'_>) -> bool {
