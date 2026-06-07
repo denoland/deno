@@ -4826,7 +4826,12 @@ declare namespace Deno {
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -4847,7 +4852,12 @@ declare namespace Deno {
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
