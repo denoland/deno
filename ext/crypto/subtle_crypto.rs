@@ -27,6 +27,10 @@ use crate::subtle_decrypt::SubtleDecryptParams;
 use crate::subtle_decrypt::run as run_decrypt;
 use crate::subtle_derive_bits::SubtleDeriveBitsParams;
 use crate::subtle_derive_bits::run as run_derive_bits;
+use crate::subtle_derive_key::DerivedKey;
+use crate::subtle_derive_key::check_base_key;
+use crate::subtle_derive_key::key_length_for;
+use crate::subtle_derive_key::run as run_derive_key;
 use crate::subtle_encapsulate::EncapsulateBitsOutput;
 use crate::subtle_encapsulate::SubtleEncapsulateParams;
 use crate::subtle_encapsulate::run_decapsulate_bits;
@@ -204,20 +208,35 @@ impl SubtleCrypto {
     spawn_blocking(move || run_derive_bits(algorithm, base_key, length)).await?
   }
 
-  /// Internal entry point used by `SubtleCrypto.prototype.deriveKey`
-  /// (still in JS) to derive raw bits without re-checking the
-  /// `deriveBits` usage on the base key. The JS shim has already
-  /// enforced the `deriveKey` usage and algorithm match before calling
-  /// this method.
-  #[arraybuffer]
-  #[rename("__deriveBitsInternal")]
-  async fn derive_bits_internal(
+  /// `SubtleCrypto.deriveKey(algorithm, baseKey, derivedKeyType,
+  /// extractable, keyUsages)` — derives `derivedKeyType` bits from
+  /// `baseKey` and imports them as a fresh CryptoKey via the Rust-native
+  /// `raw-secret` importKey path. Composes
+  /// [`crate::subtle_derive_bits::run`] (the bytes path) with
+  /// [`crate::subtle_import_key::run`] (the import path); the
+  /// `derivedKeyType` length is computed via
+  /// [`crate::algorithm::compute_key_length`].
+  ///
+  /// The derivation bytes path runs in `spawn_blocking`; the v8 globals
+  /// (algorithm dictionary, derived-key-type object) are held on the
+  /// main task and only consumed for the synchronous `importKey` call
+  /// after the await resolves.
+  #[rename("deriveKey")]
+  async fn derive_key(
     &self,
     #[webidl] algorithm: SubtleDeriveBitsParams,
     #[webidl] base_key: SubtleKey,
-    length: Option<f64>,
-  ) -> Result<Vec<u8>, CryptoError> {
-    spawn_blocking(move || run_derive_bits(algorithm, base_key, length)).await?
+    #[webidl] derived_key_type: crate::subtle_import_key::ImportAlgorithm,
+    extractable: bool,
+    #[webidl] usages: Vec<String>,
+  ) -> Result<DerivedKey, CryptoError> {
+    check_base_key(&algorithm, &base_key)?;
+    let derived_length = key_length_for(&derived_key_type)?;
+    let bits = spawn_blocking(move || {
+      run_derive_bits(algorithm, base_key, derived_length.map(|l| l as f64))
+    })
+    .await??;
+    Ok(run_derive_key(bits, derived_key_type, extractable, usages))
   }
 
   /// Internal Rust-side `importKey` entry. Called by the JS forwarder for

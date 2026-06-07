@@ -735,107 +735,12 @@ ObjectAssign(SubtleCrypto.prototype, {
    * @param {number} length
    * @returns {Promise<ArrayBuffer>}
    */
-  async deriveKey(
-    algorithm,
-    baseKey,
-    derivedKeyType,
-    extractable,
-    keyUsages,
-  ) {
-    webidl.assertBranded(this, SubtleCryptoPrototype);
-    const prefix = "Failed to execute 'deriveKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 5, prefix);
-    algorithm = webidl.converters.AlgorithmIdentifier(
-      algorithm,
-      prefix,
-      "Argument 1",
-    );
-    baseKey = webidl.converters.CryptoKey(baseKey, prefix, "Argument 2");
-    derivedKeyType = webidl.converters.AlgorithmIdentifier(
-      derivedKeyType,
-      prefix,
-      "Argument 3",
-    );
-    extractable = webidl.converters["boolean"](
-      extractable,
-      prefix,
-      "Argument 4",
-    );
-    keyUsages = webidl.converters["sequence<KeyUsage>"](
-      keyUsages,
-      prefix,
-      "Argument 5",
-    );
-
-    // 2-3.
-    const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
-
-    // 4-5.
-    const normalizedDerivedKeyAlgorithmImport = normalizeAlgorithm(
-      derivedKeyType,
-      "importKey",
-    );
-
-    // 6-7.
-    const normalizedDerivedKeyAlgorithmLength = normalizeAlgorithm(
-      derivedKeyType,
-      "get key length",
-    );
-
-    // 8-10.
-
-    // 11.
-    if (normalizedAlgorithm.name !== baseKey.algorithm.name) {
-      throw new DOMException(
-        `Invalid algorithm name: ${normalizedAlgorithm.name}`,
-        "InvalidAccessError",
-      );
-    }
-
-    // 12.
-    if (!ArrayPrototypeIncludes(baseKey.usages, "deriveKey")) {
-      throw new DOMException(
-        "'baseKey' usages does not contain 'deriveKey'",
-        "InvalidAccessError",
-      );
-    }
-
-    // 13.
-    const length = op_crypto_get_key_length(
-      normalizedDerivedKeyAlgorithmLength.name,
-      normalizedDerivedKeyAlgorithmLength.length ?? null,
-      normalizedDerivedKeyAlgorithmLength.hash?.name ?? null,
-    );
-
-    // 14.
-    const secret = await this.__deriveBitsInternal(
-      normalizedAlgorithm,
-      baseKey,
-      length,
-    );
-
-    // 15.
-    // Use "raw-secret" (the unified symmetric key format) so deriveKey works
-    // for both the existing symmetric algorithms (where "raw" is an alias) and
-    // the modern ones (e.g. ChaCha20-Poly1305) that only accept "raw-secret".
-    const result = await this.importKey(
-      "raw-secret",
-      secret,
-      normalizedDerivedKeyAlgorithmImport,
-      extractable,
-      keyUsages,
-    );
-
-    // 16.
-    if (
-      ArrayPrototypeIncludes(["private", "secret"], result.type) &&
-      keyUsages.length == 0
-    ) {
-      throw new SyntaxError("Invalid key usage");
-    }
-    // 17.
-    return result;
-  },
+  // `SubtleCrypto.prototype.deriveKey` is implemented natively on the
+  // cppgc impl block in `ext/crypto/subtle_crypto.rs`; see
+  // `subtle_derive_key.rs` for the composition of deriveBits + raw-secret
+  // importKey. The cppgc method handles all the spec validation
+  // (algorithm match, deriveKey usage, key length computation, derived
+  // key usage check).
 
   /**
    * @param {string} algorithm

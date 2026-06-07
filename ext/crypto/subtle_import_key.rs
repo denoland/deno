@@ -28,10 +28,16 @@ use deno_error::JsErrorBox;
 
 use crate::CryptoError;
 use crate::crypto_key::CryptoKeyType;
+use crate::ed25519::op_crypto_import_pkcs8_ed25519;
+use crate::ed25519::op_crypto_import_spki_ed25519;
 use crate::make_key::AlgorithmDict;
 use crate::make_key::make_crypto_key;
 use crate::shared::RawKeyData;
 use crate::subtle_export_key::KeyFormat;
+use crate::x25519::op_crypto_import_pkcs8_x25519;
+use crate::x25519::op_crypto_import_spki_x25519;
+use crate::x448::op_crypto_import_pkcs8_x448;
+use crate::x448::op_crypto_import_spki_x448;
 
 const ALL_USAGES: &[&str] = &[
   "encrypt",
@@ -49,13 +55,21 @@ const ALL_USAGES: &[&str] = &[
 ];
 
 /// Argument-coerced view of the algorithm dictionary the user passed.
-/// Carries the canonical algorithm name (after registry lookup) plus the
-/// raw v8 object so per-algorithm paths can read their own dictionary
-/// members (`hash`, `length`, `namedCurve`, `modulusLength`,
-/// `publicExponent`).
+/// Extracts every per-algorithm slot (`hash`, `length`, `namedCurve`,
+/// `modulusLength`, `publicExponent`) up front, so the import-path
+/// dispatch can run off the v8 stack — needed by `deriveKey`'s
+/// `spawn_blocking` and by the structured-clone resurrection path. The
+/// optional `jwk_alg` slot is the raw `alg` member off the user-supplied
+/// algorithm dictionary when it itself names an algorithm (it almost
+/// never does; included so importKey's "hash" sub-normalization works).
+#[derive(Clone)]
 pub struct ImportAlgorithm {
   pub name: String,
-  pub obj: v8::Global<v8::Value>,
+  pub hash_name: Option<String>,
+  pub length: Option<u32>,
+  pub named_curve: Option<String>,
+  pub modulus_length: Option<u32>,
+  pub public_exponent: Option<Vec<u8>>,
 }
 
 impl<'a> WebIdlConverter<'a> for ImportAlgorithm {
@@ -68,16 +82,71 @@ impl<'a> WebIdlConverter<'a> for ImportAlgorithm {
     context: ContextFn<'b>,
     _options: &Self::Options,
   ) -> Result<Self, WebIdlError> {
-    let (name, _obj) =
-      crate::subtle_encrypt::extract_name_and_obj(scope, value, prefix.clone(), context.borrowed())?;
+    let (name, obj) = crate::subtle_encrypt::extract_name_and_obj(
+      scope,
+      value,
+      prefix.clone(),
+      context.borrowed(),
+    )?;
     let canonical = crate::algorithm::canonical_name_for("importKey", &name)
       .map(str::to_string)
       .unwrap_or(name);
+    let hash_name = obj.as_ref().and_then(|o| read_hash_name(scope, *o));
+    let length = obj.as_ref().and_then(|o| read_u32_member(scope, *o, b"length"));
+    let named_curve = obj
+      .as_ref()
+      .and_then(|o| read_string_member(scope, *o, b"namedCurve"));
+    let modulus_length = obj
+      .as_ref()
+      .and_then(|o| read_u32_member(scope, *o, b"modulusLength"));
+    let public_exponent = obj
+      .as_ref()
+      .and_then(|o| read_buffer_source_bytes(scope, *o, b"publicExponent"));
     Ok(ImportAlgorithm {
       name: canonical,
-      obj: v8::Global::new(scope, value),
+      hash_name,
+      length,
+      named_curve,
+      modulus_length,
+      public_exponent,
     })
   }
+}
+
+fn read_buffer_source_bytes<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  field: &[u8],
+) -> Option<Vec<u8>> {
+  let key = v8::String::new_from_one_byte(
+    scope,
+    field,
+    v8::NewStringType::Internalized,
+  )?;
+  let val = obj.get(scope, key.into())?;
+  if val.is_undefined() || val.is_null() {
+    return None;
+  }
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(val) {
+    let mut out = vec![0u8; view.byte_length()];
+    let n = view.copy_contents(&mut out);
+    out.truncate(n);
+    return Some(out);
+  }
+  if let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(val) {
+    let len = ab.byte_length();
+    let mut out = Vec::with_capacity(len);
+    if len > 0 {
+      // SAFETY: ArrayBuffer.data is valid for byte_length bytes.
+      unsafe {
+        let src = ab.data().unwrap().as_ptr() as *const u8;
+        std::ptr::copy_nonoverlapping(src, out.as_mut_ptr(), len);
+        out.set_len(len);
+      }
+    }
+    return Some(out);
+  }
+  None
 }
 
 /// Carries either the BufferSource bytes (for `raw`/`raw-*`/`spki`/`pkcs8`)
@@ -168,7 +237,8 @@ pub fn run<'s>(
     }
     "HMAC" => import_key_hmac(
       scope,
-      &algorithm.obj,
+      algorithm.hash_name.as_deref(),
+      algorithm.length,
       format,
       key_data,
       extractable,
@@ -282,19 +352,17 @@ fn import_key_chacha20<'s>(
 
 fn import_key_hmac<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  algorithm_obj: &v8::Global<v8::Value>,
+  hash_name: Option<&str>,
+  length_override: Option<u32>,
   format: KeyFormat,
   key_data: ImportKeyData,
   extractable: bool,
   usages: &[String],
 ) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
   check_usages_subset(usages, &["sign", "verify"])?;
-  let alg_l = v8::Local::new(scope, algorithm_obj);
-  let alg_obj = v8::Local::<v8::Object>::try_from(alg_l)
-    .map_err(|_| data_error("HMAC import requires algorithm dictionary".into()))?;
-  let hash_name = read_hash_name(scope, alg_obj)
+  let hash_name = hash_name
+    .map(str::to_string)
     .ok_or_else(|| data_error("HMAC import requires 'hash'".into()))?;
-  let length_override = read_u32_member(scope, alg_obj, b"length");
 
   let data = match (format, key_data) {
     (KeyFormat::Raw, ImportKeyData::Buffer(b))
