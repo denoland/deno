@@ -180,6 +180,7 @@ uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 wasm_dep_analyzer = "0.4.0"
 wasmparser = "0.244.0"
+yaml_parser.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
