@@ -68,6 +68,7 @@ mod generate_key;
 mod import_key;
 mod key;
 mod key_store;
+mod make_key;
 mod mldsa;
 mod mlkem;
 mod shared;

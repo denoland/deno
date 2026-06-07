@@ -31,6 +31,13 @@ impl CryptoKeyHandle {
   pub fn data(&self) -> &RawKeyData {
     &self.data
   }
+
+  /// Construct directly from Rust-side raw key data. Used by the
+  /// Rust-native [`crate::make_key::make_crypto_key`] helper that
+  /// replaces the legacy JS `constructKey` shim.
+  pub fn from_raw(data: RawKeyData) -> Self {
+    Self { data }
+  }
 }
 
 // SAFETY: `CryptoKeyHandle` only owns plain key bytes and holds no references

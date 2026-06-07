@@ -231,13 +231,36 @@ pub fn op_create_crypto_key(
   algorithm: v8::Local<v8::Value>,
   handle: v8::Local<v8::Value>,
 ) -> Result<CryptoKey, SharedError> {
-  Ok(CryptoKey {
-    key_type: CryptoKeyType::parse(key_type)?,
+  Ok(CryptoKey::from_parts(
+    scope,
+    CryptoKeyType::parse(key_type)?,
     extractable,
-    usages: v8::Global::new(scope, usages),
-    algorithm: v8::Global::new(scope, algorithm),
-    handle: v8::Global::new(scope, handle),
-  })
+    usages,
+    algorithm,
+    handle,
+  ))
+}
+
+impl CryptoKey {
+  /// Construct a `CryptoKey` from its slot values. Used by both
+  /// `op_create_crypto_key` (the JS-facing op) and the Rust-native
+  /// `make_crypto_key` helper that replaces the legacy JS `constructKey`.
+  pub fn from_parts(
+    scope: &mut v8::PinScope<'_, '_>,
+    key_type: CryptoKeyType,
+    extractable: bool,
+    usages: v8::Local<v8::Value>,
+    algorithm: v8::Local<v8::Value>,
+    handle: v8::Local<v8::Value>,
+  ) -> Self {
+    Self {
+      key_type,
+      extractable,
+      usages: v8::Global::new(scope, usages),
+      algorithm: v8::Global::new(scope, algorithm),
+      handle: v8::Global::new(scope, handle),
+    }
+  }
 }
 
 /// Internal accessor used by JS code that still needs the opaque handle
