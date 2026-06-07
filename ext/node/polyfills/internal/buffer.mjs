@@ -1089,7 +1089,7 @@ Buffer.prototype.base64urlSlice = function base64urlSlice(
     return forgivingBase64UrlEncode(this);
   } else {
     return forgivingBase64UrlEncode(
-      TypedArrayPrototypeSubarray(this, offset, length),
+      TypedArrayPrototypeSlice(this, offset, length),
     );
   }
 };
