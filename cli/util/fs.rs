@@ -184,6 +184,11 @@ pub struct FsCleaner {
   pub files_removed: u64,
   pub dirs_removed: u64,
   pub bytes_removed: u64,
+  /// Paths that could not be removed, along with the error encountered. The
+  /// cleaner is best-effort: a single locked or read-only file (for example a
+  /// cache database held open by a running Deno process) should not abort the
+  /// entire clean, so failures are collected here and reported afterwards.
+  pub failed: Vec<(PathBuf, std::io::Error)>,
   pub progress_guard: Option<UpdateGuard>,
 }
 
@@ -193,6 +198,7 @@ impl FsCleaner {
       files_removed: 0,
       dirs_removed: 0,
       bytes_removed: 0,
+      failed: Vec::new(),
       progress_guard,
     }
   }
@@ -201,12 +207,29 @@ impl FsCleaner {
     let sys = CliSys::default();
     let sys = sys.with_paths_in_errors();
     for entry in walkdir::WalkDir::new(path).contents_first(true) {
-      let entry = entry.map_err(std::io::Error::other)?;
+      let entry = match entry {
+        Ok(entry) => entry,
+        Err(err) => {
+          // Record the path we failed to walk (e.g. permission denied) and
+          // keep going so the rest of the tree is still cleaned.
+          if let Some(path) = err.path().map(Path::to_path_buf) {
+            let err = err
+              .into_io_error()
+              .unwrap_or_else(|| std::io::Error::other("failed to walk path"));
+            self.failed.push((path, err));
+          }
+          continue;
+        }
+      };
 
       if entry.file_type().is_dir() {
-        self.dirs_removed += 1;
+        // A directory only fails to be removed when one of its children could
+        // not be removed, which we already record below, so swallow the error
+        // here rather than reporting the same cause twice.
+        if sys.fs_remove_dir_all(entry.path()).is_ok() {
+          self.dirs_removed += 1;
+        }
         self.update_progress();
-        sys.fs_remove_dir_all(entry.path())?;
       } else {
         self.remove_file(entry.path(), entry.metadata().ok())?;
       }
@@ -239,12 +262,22 @@ impl FsCleaner {
     path: &Path,
     meta: Option<std::fs::Metadata>,
   ) -> Result<(), std::io::Error> {
-    if let Some(meta) = meta {
-      self.bytes_removed += meta.len();
+    match remove_file_or_symlink(&CliSys::default(), path) {
+      Ok(()) => {
+        if let Some(meta) = meta {
+          self.bytes_removed += meta.len();
+        }
+        self.files_removed += 1;
+        self.update_progress();
+        Ok(())
+      }
+      Err(err) => {
+        // Best-effort: keep cleaning the rest of the cache and surface the
+        // locked path to the user afterwards.
+        self.failed.push((path.to_path_buf(), err));
+        Ok(())
+      }
     }
-    self.files_removed += 1;
-    self.update_progress();
-    remove_file_or_symlink(&CliSys::default(), path)
   }
 
   fn update_progress(&self) {

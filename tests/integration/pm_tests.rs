@@ -379,3 +379,32 @@ fn approve_scripts_no_lock_detects_packages() {
       pty.expect("Approved npm:@denotest/node-lifecycle-scripts@1.0.0");
     });
 }
+
+#[test(flaky)]
+fn update_interactive_shows_version_req() {
+  if !Pty::is_supported() {
+    return;
+  }
+  let context = pm_context_builder().build();
+  // The requirement (`^1.0.0`) resolves to the latest compatible version
+  // (`1.0.1`). The interactive picker must show the version requirement being
+  // updated (`1.0.0 -> 1.0.1`), not the resolved version on both sides
+  // (`1.0.1 -> 1.0.1`). Regression test for
+  // https://github.com/denoland/deno/issues/34668
+  context.temp_dir().write(
+    "deno.json",
+    r#"{"imports": {"@denotest/update-latest-semver": "npm:@denotest/update-latest-semver@^1.0.0"}}"#,
+  );
+  context
+    .new_command()
+    .args("install")
+    .run()
+    .skip_output_check();
+  context
+    .new_command()
+    .args("update --interactive")
+    .with_pty(|mut pty| {
+      pty.expect("Select which packages to update");
+      pty.expect("1.0.0 -> 1.0.1");
+    });
+}

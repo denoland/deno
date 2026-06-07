@@ -26,6 +26,7 @@ const {
   RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeArrayIterator,
+  SafeMap,
   SafePromiseAll,
   SafeRegExp,
   SafeSet,
@@ -160,6 +161,7 @@ const pipePrefixRe = new SafeRegExp("^\\s*\\|\\s*");
 const shellVarMatchRe = new SafeRegExp(
   '^(?:"\\$\\{([^}]+)\\}"|"\\$([A-Za-z_][A-Za-z0-9_]*)"|\\$\\{([^}]+)\\}|\\$([A-Za-z_][A-Za-z0-9_]*))',
 );
+const shellCompoundOperatorRe = new SafeRegExp("^(.*?)\\s*(&&|\\|\\||;)\\s*");
 
 function mapValues(
   record,
@@ -213,6 +215,8 @@ function stdioStringToArray(
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
 const kCanDisconnect = Symbol("_canDisconnect");
+const kChildStdioUsedAsInput = Symbol("childStdioUsedAsInput");
+const childStdioStreamsByFd = new SafeMap();
 let emittedShellDeprecation = false;
 
 // We only want to emit a close event for the child process when all of
@@ -233,6 +237,9 @@ function flushStdio(subprocess) {
   for (let i = 0; i < stdio.length; i++) {
     const stream = stdio[i];
     if (!stream || !stream.readable) {
+      continue;
+    }
+    if (stream[kChildStdioUsedAsInput]) {
       continue;
     }
     stream.resume();
@@ -561,6 +568,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stdout);
         this.stdout.on("close", () => {
           maybeClose(this);
         });
@@ -575,6 +583,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stderr);
         this.stderr.on("close", () => {
           maybeClose(this);
         });
@@ -601,6 +610,7 @@ class ChildProcess extends EventEmitter {
               handle: pipe,
             },
           );
+          registerChildStdioStream(this.stdio[fd]);
           this.stdio[fd]?.on("close", () => {
             maybeClose(this);
           });
@@ -729,50 +739,67 @@ class ChildProcess extends EventEmitter {
         childProcessSpawnChannel.error.publish({ process: this, error: e });
       }
 
-      // Set up stdio streams even when spawn fails (Node.js creates pipes
-      // before the OS spawn call, so they exist regardless of spawn outcome).
-      if (stdin === "pipe") {
-        this.stdin = new Writable({
-          write(_chunk, _enc, cb) {
-            cb(new Error("spawn failed"));
-          },
-        });
-      }
-      if (stdout === "pipe") {
-        this.stdout = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stdout.on("close", () => {
-          maybeClose(this);
-        });
-      }
-      if (stderr === "pipe") {
-        this.stderr = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stderr.on("close", () => {
-          maybeClose(this);
-        });
-      }
+      // When spawn fails due to EMFILE/ENFILE, the OS couldn't create pipes
+      // so stdio must remain undefined (matching Node.js behavior).
+      const isResourceError = e && (e.code === "EMFILE" || e.code === "ENFILE");
 
-      this.stdio[0] = this.stdin;
-      this.stdio[1] = this.stdout;
-      this.stdio[2] = this.stderr;
+      if (isResourceError) {
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdin = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdout = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stderr = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdio = undefined;
+      } else {
+        // Set up stdio streams even when spawn fails (Node.js creates pipes
+        // before the OS spawn call, so they exist regardless of spawn outcome).
+        if (stdin === "pipe") {
+          this.stdin = new Writable({
+            write(_chunk, _enc, cb) {
+              cb(new Error("spawn failed"));
+            },
+          });
+        }
+        if (stdout === "pipe") {
+          this.stdout = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stdout.on("close", () => {
+            maybeClose(this);
+          });
+        }
+        if (stderr === "pipe") {
+          this.stderr = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stderr.on("close", () => {
+            maybeClose(this);
+          });
+        }
+
+        this.stdio[0] = this.stdin;
+        this.stdio[1] = this.stdout;
+        this.stdio[2] = this.stderr;
+      }
 
       this.#_handleError(e);
 
-      // Destroy stdio streams and emit close (matching Node.js behavior
-      // where failed spawns still trigger 'close' but not 'exit').
-      nextTick(() => {
-        if (this.stdout) {
-          this.stdout.destroy();
-        }
-        if (this.stderr) {
-          this.stderr.destroy();
-        }
-        if (this.stdin) {
-          this.stdin.destroy();
-        }
-        maybeClose(this);
-      });
+      if (!isResourceError) {
+        // Destroy stdio streams and emit close (matching Node.js behavior
+        // where failed spawns still trigger 'close' but not 'exit').
+        nextTick(() => {
+          if (this.stdout) {
+            this.stdout.destroy();
+          }
+          if (this.stderr) {
+            this.stderr.destroy();
+          }
+          if (this.stdin) {
+            this.stdin.destroy();
+          }
+          maybeClose(this);
+        });
+      }
     }
   }
 
@@ -917,6 +944,29 @@ function streamHandleFd(stream) {
   return -1;
 }
 
+function registerChildStdioStream(stream) {
+  const fd = streamHandleFd(stream);
+  if (fd < 0) {
+    return;
+  }
+
+  childStdioStreamsByFd.set(fd, stream);
+  stream.on("close", () => {
+    if (childStdioStreamsByFd.get(fd) === stream) {
+      childStdioStreamsByFd.delete(fd);
+    }
+  });
+}
+
+function markChildStdioUsedAsInput(fd) {
+  const stream = childStdioStreamsByFd.get(fd);
+  if (stream) {
+    stream[kChildStdioUsedAsInput] = true;
+    stream.pause();
+    stream._handle?.readStop?.();
+  }
+}
+
 function toDenoStdio(
   pipe,
 ) {
@@ -929,6 +979,9 @@ function toDenoStdio(
     // another child's stdin shares the underlying OS pipe.
     const fd = streamHandleFd(pipe);
     if (fd >= 0) {
+      pipe[kChildStdioUsedAsInput] = true;
+      pipe.pause();
+      pipe._handle?.readStop?.();
       return fd;
     }
     // For streams without a usable fd, create a pipe and set up JS-level
@@ -936,6 +989,7 @@ function toDenoStdio(
     return "piped";
   }
   if (typeof pipe === "number") {
+    markChildStdioUsedAsInput(pipe);
     return pipe;
   }
   switch (pipe) {
@@ -1366,6 +1420,11 @@ function normalizeSpawnArguments(
 }
 
 function waitForReadableToClose(readable) {
+  if (readable[kChildStdioUsedAsInput]) {
+    const closePromise = waitForStreamToClose(readable);
+    readable.destroy();
+    return closePromise;
+  }
   readable.resume(); // Ensure buffered data will be consumed.
   return waitForStreamToClose(readable);
 }
@@ -1476,6 +1535,26 @@ function transformDenoShellCommand(
   }
 
   if (!startsWithDeno) {
+    // The command doesn't start with deno, but it may contain a deno
+    // invocation after a shell compound operator (&&, ||, ;).
+    // Split on the first operator and try to transform the remainder.
+    // NOTE: This regex doesn't handle quoted strings, so an operator
+    // inside quotes (e.g. `echo "foo && bar"`) would be matched.
+    // This is safe because if no real `deno` invocation follows, the
+    // `transformedRest !== rest` guard returns the original command.
+    const operatorMatch = StringPrototypeMatch(
+      command,
+      shellCompoundOperatorRe,
+    );
+    if (operatorMatch) {
+      const prefix = operatorMatch[1];
+      const operator = operatorMatch[2];
+      const rest = StringPrototypeSlice(command, operatorMatch[0].length);
+      const transformedRest = transformDenoShellCommand(rest, env, isCmdExe);
+      if (transformedRest !== rest) {
+        return prefix + " " + operator + " " + transformedRest;
+      }
+    }
     return command;
   }
 

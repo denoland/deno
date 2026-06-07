@@ -1879,11 +1879,36 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   flags_from_vec_with_initial_cwd(args, None)
 }
 
+/// Strip a single trailing carriage return from an argument.
+///
+/// When a script with CRLF line endings starts with a shebang like
+/// `#!/usr/bin/env -S deno run --allow-net`, the kernel passes the trailing
+/// `\r` as part of the final argument (e.g. `--allow-net\r`), which then
+/// fails clap parsing with a confusing "isn't valid in this context" error.
+/// Trimming a trailing CR here makes such scripts run as the author intended.
+fn strip_trailing_cr(arg: OsString) -> OsString {
+  let bytes = arg.as_encoded_bytes();
+  if bytes.ends_with(b"\r") {
+    let stripped = bytes[..bytes.len() - 1].to_vec();
+    // SAFETY: `\r` is the single ASCII byte 0x0D; removing an ASCII byte from
+    // the end of a valid OS-string byte sequence (UTF-8 on Unix, WTF-8 on
+    // Windows) cannot split a multi-byte code point and keeps the encoding
+    // valid.
+    unsafe { OsString::from_encoded_bytes_unchecked(stripped) }
+  } else {
+    arg
+  }
+}
+
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
+  // Strip a trailing `\r` from each argument so that a shebang in a script
+  // saved with CRLF line endings (e.g. `#!/usr/bin/env -S deno run -A\r`)
+  // doesn't poison the final shebang argument with a stray carriage return.
+  let args: Vec<OsString> = args.into_iter().map(strip_trailing_cr).collect();
   let args = if !args.is_empty()
     && (args[0].as_encoded_bytes().ends_with(b"dx")
       || args[0].as_encoded_bytes().ends_with(b"denox")
@@ -4448,10 +4473,26 @@ thread_local! {
   static TEST_NODE_OPTIONS: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
+/// Whether `word` is a `--inspect`, `--inspect-brk`, or `--inspect-wait` flag
+/// (with or without a `=value` suffix), as it might appear in `NODE_OPTIONS`.
+/// Note `--inspect-publish-uid` is intentionally excluded here; it's handled
+/// separately.
+fn is_inspect_node_option(word: &str) -> bool {
+  ["--inspect", "--inspect-brk", "--inspect-wait"]
+    .iter()
+    .any(|name| {
+      word == *name
+        || word
+          .strip_prefix(name)
+          .is_some_and(|rest| rest.starts_with('='))
+    })
+}
+
 /// Reads some flags from NODE_OPTIONS:
 /// https://nodejs.org/api/cli.html#node_optionsoptions
 /// Currently supports:
 /// - `--require` / `-r`
+/// - `--inspect` / `--inspect-brk` / `--inspect-wait`
 /// - `--inspect-publish-uid`
 fn apply_node_options(flags: &mut Flags) {
   let node_options = match std::env::var("NODE_OPTIONS") {
@@ -4480,19 +4521,18 @@ fn apply_node_options(flags: &mut Flags) {
         *prev_was_require = true;
         return Some((word, true));
       }
-      if word.starts_with("--inspect-publish-uid=") || *prev_was_require {
-        *prev_was_require = false;
-        return Some((word, true));
-      }
+      let keep = *prev_was_require
+        || word.starts_with("--inspect-publish-uid=")
+        || is_inspect_node_option(word);
       *prev_was_require = false;
-      Some((word, false))
+      Some((word, keep))
     })
     .filter_map(|(word, should_keep)| should_keep.then_some(word));
 
-  let cmd = Command::new("node-options-parser")
-    .arg(require_arg().short('r'))
-    .arg(inspect_publish_uid_arg())
-    .ignore_errors(true);
+  let cmd = inspect_args(
+    Command::new("node-options-parser").arg(require_arg().short('r')),
+  )
+  .ignore_errors(true);
   let mut matches =
     cmd.get_matches_from(std::iter::once("node-options-parser").chain(args));
 
@@ -4502,6 +4542,18 @@ fn apply_node_options(flags: &mut Flags) {
     flags.require = merged_require;
   }
 
+  // `--inspect`, `--inspect-brk`, and `--inspect-wait` are mutually exclusive,
+  // so only apply them from NODE_OPTIONS if the user didn't pass any inspector
+  // flag on the command line. An explicit CLI flag takes precedence over the
+  // whole NODE_OPTIONS inspector family.
+  if flags.inspect.is_none()
+    && flags.inspect_brk.is_none()
+    && flags.inspect_wait.is_none()
+  {
+    flags.inspect = matches.remove_one::<SocketAddr>("inspect");
+    flags.inspect_brk = matches.remove_one::<SocketAddr>("inspect-brk");
+    flags.inspect_wait = matches.remove_one::<SocketAddr>("inspect-wait");
+  }
   if flags.inspect_publish_uid.is_none() {
     flags.inspect_publish_uid =
       matches.remove_one::<InspectPublishUid>("inspect-publish-uid");
@@ -9102,6 +9154,30 @@ mod tests {
     let r2 = flags_from_vec(svec!["deno", "run", "--log-level", "debug", "--quiet", "script.ts"]);
     let flags2 = r2.unwrap();
     assert_eq!(flags2, flags);
+  }
+
+  #[test]
+  fn crlf_shebang_arg() {
+    // A script saved with CRLF line endings whose first line is
+    // `#!/usr/bin/env -S deno run --allow-net` is invoked by the kernel as
+    // roughly `deno run --allow-net\r script.ts`. The stray `\r` on the last
+    // shebang token must not break flag parsing.
+    let r = flags_from_vec(svec!["deno", "run", "--allow-net\r", "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string()
+        )),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          ..PermissionFlags::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -16918,6 +16994,52 @@ Usage: deno lint [OPTIONS] [files]...\n"
         http: false,
       })
     );
+  }
+
+  #[test]
+  fn node_options_inspect() {
+    set_test_node_options(Some("--inspect=127.0.0.1:9333"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect, Some("127.0.0.1:9333".parse().unwrap()));
+  }
+
+  #[test]
+  fn node_options_inspect_default_address() {
+    set_test_node_options(Some("--inspect"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect, Some("127.0.0.1:9229".parse().unwrap()));
+  }
+
+  #[test]
+  fn node_options_inspect_brk_and_wait() {
+    set_test_node_options(Some("--inspect-brk=127.0.0.1:9334"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect_brk, Some("127.0.0.1:9334".parse().unwrap()));
+
+    set_test_node_options(Some("--inspect-wait=127.0.0.1:9335"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect_wait, Some("127.0.0.1:9335".parse().unwrap()));
+  }
+
+  #[test]
+  fn node_options_inspect_cli_precedence() {
+    // An explicit CLI inspector flag suppresses the entire NODE_OPTIONS
+    // inspector family, since --inspect/-brk/-wait are mutually exclusive.
+    set_test_node_options(Some("--inspect=127.0.0.1:9333"));
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect-brk=127.0.0.1:9444",
+      "script.ts",
+    ])
+    .unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect, None);
+    assert_eq!(flags.inspect_brk, Some("127.0.0.1:9444".parse().unwrap()));
   }
 
   #[test]

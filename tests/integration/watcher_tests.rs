@@ -828,6 +828,51 @@ async fn serve_watch_all() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/30382.
+// Ensures that `deno serve --watch` applies the import map from deno.json when
+// resolving the main module, so a bare specifier entrypoint resolves the same
+// way it does without `--watch`.
+#[test(flaky)]
+async fn serve_watch_with_import_map() {
+  let t = TempDir::new();
+
+  let server_file = t.path().join("server.js");
+  server_file.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"hello\");
+      },
+    };",
+  );
+
+  t.path().join("deno.json").write(
+    "{
+      \"imports\": {
+        \"app\": \"./server.js\"
+      }
+    }",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch=.")
+    .arg("--port")
+    .arg("0")
+    .arg("app")
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // The bare specifier "app" only resolves if the import map is applied. Before
+  // the fix this failed with `Module not found "file://.../app"` and the server
+  // never started listening.
+  wait_contains("Listening on", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
 // Regression test for https://github.com/denoland/deno/issues/30046
 // `deno serve` used to ignore `--watch-exclude` entirely, so writing to an
 // excluded file that's part of the module graph would trigger a restart.
