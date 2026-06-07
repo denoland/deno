@@ -161,6 +161,7 @@ const pipePrefixRe = new SafeRegExp("^\\s*\\|\\s*");
 const shellVarMatchRe = new SafeRegExp(
   '^(?:"\\$\\{([^}]+)\\}"|"\\$([A-Za-z_][A-Za-z0-9_]*)"|\\$\\{([^}]+)\\}|\\$([A-Za-z_][A-Za-z0-9_]*))',
 );
+const shellCompoundOperatorRe = new SafeRegExp("^(.*?)\\s*(&&|\\|\\||;)\\s*");
 
 function mapValues(
   record,
@@ -1541,13 +1542,14 @@ function transformDenoShellCommand(
     // inside quotes (e.g. `echo "foo && bar"`) would be matched.
     // This is safe because if no real `deno` invocation follows, the
     // `transformedRest !== rest` guard returns the original command.
-    const operatorMatch = command.match(
-      /^(.*?)\s*(&&|\|\||;)\s*/,
+    const operatorMatch = StringPrototypeMatch(
+      command,
+      shellCompoundOperatorRe,
     );
     if (operatorMatch) {
       const prefix = operatorMatch[1];
       const operator = operatorMatch[2];
-      const rest = command.slice(operatorMatch[0].length);
+      const rest = StringPrototypeSlice(command, operatorMatch[0].length);
       const transformedRest = transformDenoShellCommand(rest, env, isCmdExe);
       if (transformedRest !== rest) {
         return prefix + " " + operator + " " + transformedRest;
