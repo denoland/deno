@@ -970,6 +970,13 @@ impl<TGraphContainer: ModuleGraphContainer>
     let referrer = self
       .resolve_referrer(raw_referrer)
       .map_err(JsErrorBox::from_err)?;
+    if let Ok(specifier) =
+      deno_path_util::resolve_import(raw_specifier, &referrer)
+      && self.shared.in_npm_pkg_checker.in_npm_package(&specifier)
+      && self.shared.memory_files.get(&specifier).is_some()
+    {
+      return Ok(specifier);
+    }
     let graph = self.graph_container.graph();
     let result = self.shared.resolver.resolve_with_graph(
       graph.as_ref(),
@@ -1269,9 +1276,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     // Synthetic modules such as `deno eval`'s `$deno$eval.*` can live under an
     // npm package cwd during lifecycle scripts. They need graph preparation so
-    // the module loader can read them from `MemoryFiles` instead of trying to
+    // the module loader can read them from in-memory source instead of trying to
     // load them as physical npm package files.
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier)
+      && maybe_code.is_none()
       && self.0.shared.memory_files.get(specifier).is_none()
     {
       self.0.shared.has_js_execution_started_flag.raise();
@@ -1330,9 +1338,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
       let file_overrides = maybe_code
-        .map(|code| {
-          HashMap::from([(specifier.clone(), Arc::from(code.into_bytes()))])
+        .map(|code| Arc::from(code.into_bytes()))
+        .or_else(|| {
+          inner
+            .shared
+            .memory_files
+            .get(&specifier)
+            .map(|file| file.source)
         })
+        .map(|source| HashMap::from([(specifier.clone(), source)]))
         .unwrap_or_default();
       let specifiers = &[specifier];
       {
