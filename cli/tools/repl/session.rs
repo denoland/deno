@@ -465,12 +465,28 @@ impl ReplSession {
         .js_runtime
         .v8_isolate()
         .perform_microtask_checkpoint();
-      self.worker.js_runtime.poll_event_loop(
+      let poll_result = self.worker.js_runtime.poll_event_loop(
         cx,
         deno_core::PollEventLoopOptions {
           wait_for_inspector: true,
         },
-      )
+      );
+      // Flush inspector sessions again after the event-loop tick. A timer (or
+      // other async) callback that ran during `poll_event_loop` may have
+      // produced inspector notifications (e.g. `Runtime.exceptionThrown` from
+      // an uncaught error). These are queued on the session's outbound channel
+      // and are only delivered to the REPL's notification channel when the
+      // sessions are pumped. Without this second pump they would linger until
+      // the next evaluation, so an uncaught exception thrown from a timeout
+      // would not be printed until the user evaluated another expression (see
+      // https://github.com/denoland/deno/issues/21622). Delivering them here
+      // wakes the `notifications` stream in the REPL read loop right away.
+      self
+        .worker
+        .js_runtime
+        .inspector()
+        .poll_sessions_from_event_loop(cx);
+      poll_result
     })
     .await
   }
