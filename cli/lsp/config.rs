@@ -1446,7 +1446,9 @@ impl ConfigData {
       member_dir.workspace.node_modules_dir().unwrap_or_default();
     let byonm = match node_modules_dir {
       Some(mode) => mode == NodeModulesDirMode::Manual,
-      None => member_dir.workspace.root_pkg_json().is_some(),
+      // Enable BYONM if there's a package.json anywhere in the workspace,
+      // whether at the root or in a member (matches the CLI behavior).
+      None => member_dir.workspace.package_jsons().next().is_some(),
     };
     if byonm {
       lsp_log!("  Enabled 'bring your own node_modules'.");
