@@ -218,7 +218,6 @@ pub fn op_node_encoding_slice<'a>(
     0 => {
       // utf8Slice
       if buffer.len() <= 256 && buffer.is_ascii() {
-        // Must copy bytes to a string
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
         v8::String::new_from_utf8(scope, buffer, v8::NewStringType::Normal)
@@ -226,7 +225,9 @@ pub fn op_node_encoding_slice<'a>(
     }
     1 => {
       // latin1Slice
-      // Must copy bytes to a string
+      // A copy is required to prevent subsequent ArrayBufferView modifications
+      // from altering the immutable string.
+      // Zero-copy cannot be used here.
       v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
     }
     2 => {
@@ -239,7 +240,9 @@ pub fn op_node_encoding_slice<'a>(
         // Create a V8 string with zero-copy
         v8::String::new_external_onebyte(scope, ascii_bytes.into_boxed_slice())
       } else if buffer.is_ascii() {
-        // Must copy bytes to a string
+        // A copy is required to prevent subsequent ArrayBufferView modifications
+        // from altering the immutable string.
+        // Zero-copy cannot be used here.
         v8::String::new_from_one_byte(scope, buffer, v8::NewStringType::Normal)
       } else {
         let ascii_bytes = mask_ascii_fast(buffer);
@@ -360,7 +363,9 @@ fn decode_utf16le_from_bytes<'a>(
 
     if prefix.is_empty() && suffix.is_empty() {
       // Fast path: Memory is perfectly 2-byte aligned.
-      // Must copy bytes to a string
+      // A copy is required to prevent subsequent ArrayBufferView modifications
+      // from altering the immutable string.
+      // Zero-copy cannot be used here.
       v8::String::new_from_two_byte(scope, u16_slice, v8::NewStringType::Normal)
     } else {
       // Slow path: Unaligned memory (rare in V8, but must be handled).
