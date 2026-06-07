@@ -13,7 +13,6 @@ use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::webidl::WebIdlInterfaceConverter;
-use deno_error::JsErrorClass;
 
 use crate::CryptoError;
 use crate::algorithm::check_support_for_algorithm;
@@ -44,6 +43,10 @@ use crate::subtle_encrypt::v8_str;
 use crate::subtle_export_key::ExportKeyOutput;
 use crate::subtle_export_key::KeyFormat;
 use crate::subtle_export_key::run as run_export_key;
+use crate::subtle_generate_key::GenerateKeyAlgorithm;
+use crate::subtle_generate_key::GenerateKeyOutput;
+use crate::subtle_generate_key::run as run_generate_key;
+use crate::subtle_get_public_key::run as run_get_public_key;
 use crate::subtle_import_key::ImportAlgorithm;
 use crate::subtle_import_key::ImportKeyData;
 use crate::subtle_import_key::run as run_import_key;
@@ -243,13 +246,17 @@ impl SubtleCrypto {
     Ok(run_derive_key(bits, derived_key_type, extractable, usages))
   }
 
-  /// Internal Rust-side `importKey` entry. Called by the JS forwarder for
-  /// the algorithm/format combos already ported to Rust; falls back to the
-  /// legacy JS path for the rest. Returns a string ("unsupported") instead
-  /// of throwing for the fallback case so the JS forwarder can take over
-  /// without a try/catch.
-  #[rename("__importKeyRustNative")]
-  fn import_key_native<'s>(
+  /// `SubtleCrypto.importKey(format, keyData, algorithm, extractable,
+  /// keyUsages)` — coerces the algorithm/format/keyData triple and
+  /// dispatches into the per-algorithm Rust importKey path in
+  /// [`crate::subtle_import_key`]. Returns the v8 `CryptoKey` object.
+  ///
+  /// All algorithm paths (RSA-*, ECDSA, ECDH, AES-*, HMAC, HKDF,
+  /// PBKDF2, ChaCha20-Poly1305, Ed25519, X25519, X448, ML-KEM-*,
+  /// ML-DSA-*) are implemented in Rust.
+  #[rename("importKey")]
+  #[required(4)]
+  fn import_key<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
     #[webidl] format: KeyFormat,
@@ -257,26 +264,26 @@ impl SubtleCrypto {
     #[webidl] algorithm: ImportAlgorithm,
     extractable: bool,
     #[webidl] usages: Vec<String>,
-  ) -> Result<v8::Local<'s, v8::Value>, CryptoError> {
+  ) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
     let data = ImportKeyData::from_v8(scope, key_data, format)?;
-    match run_import_key(scope, format, &algorithm, data, extractable, &usages) {
-      Ok(obj) => Ok(obj.into()),
-      Err(err) => {
-        // Sentinel `null` means "not handled in Rust yet" -- the JS
-        // forwarder falls back to the legacy per-algorithm path. Real
-        // errors (DataError / SyntaxError) are re-raised as-is.
-        if let CryptoError::Other(boxed) = &err
-          && boxed
-            .get_class()
-            .as_ref()
-            == "DOMExceptionNotSupportedError"
-          && boxed.to_string().starts_with("importKey is not yet implemented in Rust")
-        {
-          return Ok(v8::null(scope).into());
-        }
-        Err(err)
-      }
+    let key = run_import_key(scope, format, &algorithm, data, extractable, &usages)?;
+    // Spec step: private/secret keys with empty usages -> SyntaxError.
+    let key_type = deno_core::cppgc::try_unwrap_cppgc_object::<
+      crate::crypto_key::CryptoKey,
+    >(scope, key.into())
+    .map(|p| p.key_type());
+    if matches!(
+      key_type,
+      Some(crate::crypto_key::CryptoKeyType::Private)
+        | Some(crate::crypto_key::CryptoKeyType::Secret)
+    ) && usages.is_empty()
+    {
+      return Err(CryptoError::Other(deno_error::JsErrorBox::new(
+        "DOMExceptionSyntaxError",
+        "Invalid key usage",
+      )));
     }
+    Ok(key)
   }
 
   /// `SubtleCrypto.exportKey(format, key)` — produce the wire-encoded key
@@ -328,6 +335,39 @@ impl SubtleCrypto {
       run_decapsulate_bits(algorithm, decapsulation_key, ciphertext.0)
     })
     .await?
+  }
+
+  /// `SubtleCrypto.generateKey(algorithm, extractable, keyUsages)` —
+  /// generates a fresh `CryptoKey` (symmetric) or `{ publicKey,
+  /// privateKey }` pair. The body's heavy lifts (RSA + EC key
+  /// generation) run inside `spawn_blocking`; ML-KEM and ML-DSA also
+  /// generate fresh seeds.
+  #[rename("generateKey")]
+  #[required(3)]
+  async fn generate_key(
+    &self,
+    #[webidl] algorithm: GenerateKeyAlgorithm,
+    extractable: bool,
+    #[webidl] usages: Vec<String>,
+  ) -> Result<GenerateKeyOutput, CryptoError> {
+    run_generate_key(algorithm, extractable, usages).await
+  }
+
+  /// `SubtleCrypto.getPublicKey(key, keyUsages)` from the WICG
+  /// modern-algos spec. Derives the matching public key of a private
+  /// `CryptoKey`. RSA / EC keys round-trip through SPKI export+import;
+  /// OKP keys derive the raw bytes and reimport. ML-KEM derives via
+  /// `public_from_expanded`; ML-DSA recomputes via `from_seed` (which
+  /// is always available for seeded private keys).
+  #[rename("getPublicKey")]
+  #[required(2)]
+  fn get_public_key<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[webidl] key: SubtleKey,
+    #[webidl] key_usages: Vec<String>,
+  ) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+    run_get_public_key(scope, key, key_usages)
   }
 
   /// `SubtleCrypto.wrapKey(format, key, wrappingKey, wrapAlgorithm)` —

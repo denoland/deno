@@ -113,6 +113,43 @@ impl CryptoKey {
   ) -> v8::Local<'s, v8::Value> {
     v8::Local::new(scope, &self.algorithm)
   }
+
+  /// Internal `CryptoKey.exportNodeMaterial(key)` — used by the
+  /// `ext/node/polyfills/internal/crypto/keys.ts` interop bridge.
+  /// Returns `{ type, data: Uint8Array }`.
+  #[rename("exportNodeMaterial")]
+  #[required(1)]
+  #[static_method]
+  fn export_node_material<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    key: v8::Local<'s, v8::Value>,
+  ) -> Result<v8::Local<'s, v8::Value>, crate::CryptoError> {
+    crate::node_interop::export_node_key_material(scope, key)
+  }
+
+  /// Internal `CryptoKey.importSync(format, keyData, algorithm,
+  /// extractable, usages)` — synchronous version of
+  /// `SubtleCrypto.importKey` for `ext/node/polyfills/internal/crypto/keys.ts`.
+  #[rename("importSync")]
+  #[required(5)]
+  #[static_method]
+  fn import_sync<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    #[webidl] format: crate::subtle_export_key::KeyFormat,
+    key_data: v8::Local<'s, v8::Value>,
+    #[webidl] algorithm: crate::subtle_import_key::ImportAlgorithm,
+    extractable: bool,
+    #[webidl] usages: Vec<String>,
+  ) -> Result<v8::Local<'s, v8::Object>, crate::CryptoError> {
+    crate::node_interop::import_sync(
+      scope,
+      format,
+      key_data,
+      algorithm,
+      extractable,
+      usages,
+    )
+  }
 }
 
 #[allow(

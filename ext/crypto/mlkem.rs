@@ -300,6 +300,79 @@ pub fn op_crypto_ml_kem_import_pkcs8(
   import_pkcs8(data)
 }
 
+/// Rust-side callable view of [`op_crypto_ml_kem_from_seed`] for the
+/// `SubtleCrypto.importKey` dispatcher.
+pub fn from_seed(
+  variant: MlKemVariant,
+  seed: &[u8],
+) -> Result<MlKemSeedBytes, MlKemError> {
+  let (private_key, public_key) = variant.expand_seed(seed)?;
+  Ok(MlKemSeedBytes {
+    private_key,
+    public_key,
+  })
+}
+
+pub struct MlKemSeedBytes {
+  pub private_key: Vec<u8>,
+  pub public_key: Vec<u8>,
+}
+
+/// Rust-side callable view of [`op_crypto_ml_kem_import_spki`].
+pub fn import_spki(data: &[u8]) -> Result<MlKemSpkiBytes, MlKemError> {
+  let info = spki::SubjectPublicKeyInfoRef::try_from(data)
+    .map_err(|_| MlKemError::InvalidKeyData)?;
+  let variant = MlKemVariant::from_oid(&info.algorithm.oid)
+    .ok_or(MlKemError::InvalidKeyData)?;
+  if info.algorithm.parameters.is_some() {
+    return Err(MlKemError::InvalidKeyData);
+  }
+  let public_key = info
+    .subject_public_key
+    .as_bytes()
+    .ok_or(MlKemError::InvalidKeyData)?;
+  if public_key.len() != variant.public_key_size() {
+    return Err(MlKemError::InvalidKeyData);
+  }
+  kem::EncapsulationKey::new(variant.algorithm(), public_key)
+    .map_err(|_| MlKemError::InvalidKeyData)?;
+  Ok(MlKemSpkiBytes {
+    variant,
+    public_key: public_key.to_vec(),
+  })
+}
+
+pub struct MlKemSpkiBytes {
+  pub variant: MlKemVariant,
+  pub public_key: Vec<u8>,
+}
+
+/// Rust-side callable view of [`op_crypto_ml_kem_import_pkcs8`]. Returns
+/// the same `(seed, private_key, public_key)` triple but as plain
+/// `Vec<u8>` for use by the Rust-native importKey dispatcher.
+pub fn import_pkcs8_native(data: &[u8]) -> Result<MlKemPkcs8Bytes, MlKemError> {
+  let res = import_pkcs8(data)?;
+  Ok(MlKemPkcs8Bytes {
+    variant: res.variant,
+    seed: res.seed.as_ref().to_vec(),
+    private_key: res.private_key.as_ref().to_vec(),
+  })
+}
+
+pub struct MlKemPkcs8Bytes {
+  pub variant: MlKemVariant,
+  pub seed: Vec<u8>,
+  pub private_key: Vec<u8>,
+}
+
+/// Rust-side callable view of [`op_crypto_ml_kem_validate_public_key`].
+pub fn validate_public_key(variant: MlKemVariant, public_key: &[u8]) -> bool {
+  if public_key.len() != variant.public_key_size() {
+    return false;
+  }
+  kem::EncapsulationKey::new(variant.algorithm(), public_key).is_ok()
+}
+
 fn import_pkcs8(data: &[u8]) -> Result<MlKemPkcs8Import, MlKemError> {
   let info = pkcs8::PrivateKeyInfo::from_der(data)
     .map_err(|_| MlKemError::InvalidKeyData)?;
@@ -508,6 +581,14 @@ fn encode_pkcs8_seed(
     .encode_to_vec(&mut buf)
     .map_err(|_| MlKemError::OperationFailed)?;
   Ok(buf)
+}
+
+/// Rust-side callable view of [`op_crypto_ml_kem_get_public_key`].
+pub fn public_from_expanded(
+  variant: MlKemVariant,
+  expanded_private_key: &[u8],
+) -> Result<Vec<u8>, MlKemError> {
+  variant.public_from_expanded(expanded_private_key)
 }
 
 /// Derive the encapsulation key (public key) bytes from a decapsulation key.

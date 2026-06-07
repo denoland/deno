@@ -114,18 +114,46 @@ pub fn op_crypto_export_key(
   #[serde] opts: ExportKeyOptions,
   #[serde] key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, ExportKeyError> {
+  op_crypto_export_key_inner(opts, key_data)
+}
+
+/// Rust-side callable view of [`op_crypto_export_key`]. Used by
+/// `getPublicKey` when round-tripping RSA / EC keys through SPKI without
+/// a JS hop.
+pub fn op_crypto_export_key_inner(
+  opts: ExportKeyOptions,
+  key_data: V8RawKeyData,
+) -> Result<ExportKeyResult, ExportKeyError> {
   let key_data = v8_raw_to_raw(key_data);
+  export_key_with_raw(opts, &key_data)
+}
+
+/// Rust-side entry that accepts an already-`RawKeyData` and dispatches
+/// per algorithm. Used by `getPublicKey` where the key material is owned
+/// by Rust (the `CryptoKeyHandle` lives in the cppgc heap) so the
+/// `V8RawKeyData` wire round-trip is wasted work.
+pub fn export_key_with_raw(
+  opts: ExportKeyOptions,
+  key_data: &crate::shared::RawKeyData,
+) -> Result<ExportKeyResult, ExportKeyError> {
   match opts.algorithm {
     ExportKeyAlgorithm::RsassaPkcs1v15 {}
     | ExportKeyAlgorithm::RsaPss {}
-    | ExportKeyAlgorithm::RsaOaep {} => export_key_rsa(opts.format, &key_data),
+    | ExportKeyAlgorithm::RsaOaep {} => export_key_rsa(opts.format, key_data),
     ExportKeyAlgorithm::Ecdh { named_curve }
     | ExportKeyAlgorithm::Ecdsa { named_curve } => {
-      export_key_ec(opts.format, &key_data, opts.algorithm, named_curve)
+      export_key_ec(opts.format, key_data, opts.algorithm, named_curve)
     }
     ExportKeyAlgorithm::Aes {} | ExportKeyAlgorithm::Hmac {} => {
-      export_key_symmetric(opts.format, &key_data)
+      export_key_symmetric(opts.format, key_data)
     }
+  }
+}
+
+impl ExportKeyOptions {
+  /// Builder used by the Rust-native `getPublicKey` dispatcher.
+  pub fn new(format: ExportKeyFormat, algorithm: ExportKeyAlgorithm) -> Self {
+    Self { format, algorithm }
   }
 }
 

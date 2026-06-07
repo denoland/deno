@@ -89,6 +89,35 @@ pub async fn op_crypto_generate_key(
   Ok(buf.into())
 }
 
+/// Rust-callable view of the RSA keygen path. Returns raw PKCS#1 DER
+/// bytes ready to feed [`crate::shared::RawKeyData::Private`].
+pub fn generate_rsa(
+  modulus_length: u32,
+  public_exponent: &[u8],
+) -> Result<Vec<u8>, GenerateKeyError> {
+  generate_key_rsa(modulus_length, public_exponent)
+}
+
+/// Rust-callable EC keygen.
+pub fn generate_ec(
+  named_curve: EcNamedCurve,
+) -> Result<Vec<u8>, GenerateKeyError> {
+  generate_key_ec(named_curve)
+}
+
+/// Rust-callable AES keygen.
+pub fn generate_aes(length: usize) -> Result<Vec<u8>, GenerateKeyError> {
+  generate_key_aes(length)
+}
+
+/// Rust-callable HMAC keygen.
+pub fn generate_hmac(
+  hash: ShaHash,
+  length: Option<usize>,
+) -> Result<Vec<u8>, GenerateKeyError> {
+  generate_key_hmac(hash, length)
+}
+
 fn generate_key_rsa(
   modulus_length: u32,
   public_exponent: &[u8],

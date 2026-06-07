@@ -26,6 +26,19 @@ pub enum Ed25519Error {
   KeyRejected(#[from] aws_lc_rs::error::KeyRejected),
 }
 
+/// Rust-callable wrapper for [`op_crypto_generate_ed25519_keypair`]. Fills
+/// the provided 32-byte buffers with a random Ed25519 keypair.
+pub fn generate_ed25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) -> bool {
+  let mut rng = OsRng;
+  rng.fill_bytes(pkey);
+  let pair = match Ed25519KeyPair::from_seed_unchecked(pkey) {
+    Ok(p) => p,
+    Err(_) => return false,
+  };
+  pubkey.copy_from_slice(pair.public_key().as_ref());
+  true
+}
+
 #[op2(fast)]
 pub fn op_crypto_generate_ed25519_keypair(
   #[buffer] pkey: &mut [u8],

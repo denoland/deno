@@ -29,6 +29,14 @@ const X25519_BASEPOINT_BYTES: [u8; 32] = [
   9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0,
 ];
+/// Rust-callable wrapper for [`op_crypto_generate_x25519_keypair`].
+pub fn generate_x25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) {
+  let mut rng = OsRng;
+  rng.fill_bytes(pkey);
+  let pkey: [u8; 32] = pkey.try_into().expect("Expected byteLength 32");
+  pubkey.copy_from_slice(&x25519_dalek::x25519(pkey, X25519_BASEPOINT_BYTES));
+}
+
 #[op2(fast)]
 pub fn op_crypto_generate_x25519_keypair(
   #[buffer] pkey: &mut [u8],
@@ -83,6 +91,7 @@ pub(crate) fn x25519_derive_bits(
 }
 
 // id-X25519 OBJECT IDENTIFIER ::= { 1 3 101 110 }
+#[allow(dead_code, reason = "used by node_interop and subtle_import_key")]
 pub const X25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.110");
 

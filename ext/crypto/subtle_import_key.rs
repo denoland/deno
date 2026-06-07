@@ -275,10 +275,638 @@ pub fn run<'s>(
       extractable,
       usages,
     ),
+    "RSASSA-PKCS1-v1_5" | "RSA-PSS" | "RSA-OAEP" => import_key_rsa(
+      scope,
+      name,
+      algorithm.hash_name.as_deref(),
+      format,
+      key_data,
+      extractable,
+      usages,
+    ),
+    "ML-KEM-512" | "ML-KEM-768" | "ML-KEM-1024" => import_key_ml_kem(
+      scope,
+      name,
+      format,
+      key_data,
+      extractable,
+      usages,
+    ),
+    "ML-DSA-44" | "ML-DSA-65" | "ML-DSA-87" => import_key_ml_dsa(
+      scope,
+      name,
+      format,
+      key_data,
+      extractable,
+      usages,
+    ),
     _ => Err(not_supported(format!(
       "importKey is not yet implemented in Rust for {name}"
     ))),
   }
+}
+
+fn import_key_rsa<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  hash_name: Option<&str>,
+  format: KeyFormat,
+  key_data: ImportKeyData,
+  extractable: bool,
+  usages: &[String],
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+  use crate::import_key::ImportKeyOptions;
+  use crate::import_key::ImportKeyResult;
+  use crate::import_key::KeyData;
+  use crate::import_key::op_crypto_import_key_inner;
+  let pub_usages: &[&str] = match name {
+    "RSASSA-PKCS1-v1_5" | "RSA-PSS" => &["verify"],
+    "RSA-OAEP" => &["encrypt", "wrapKey"],
+    _ => unreachable!(),
+  };
+  let priv_usages: &[&str] = match name {
+    "RSASSA-PKCS1-v1_5" | "RSA-PSS" => &["sign"],
+    "RSA-OAEP" => &["decrypt", "unwrapKey"],
+    _ => unreachable!(),
+  };
+  let jwk_use = match name {
+    "RSASSA-PKCS1-v1_5" | "RSA-PSS" => "sig",
+    "RSA-OAEP" => "enc",
+    _ => unreachable!(),
+  };
+  let hash = hash_name
+    .ok_or_else(|| data_error("RSA import requires 'hash'".into()))?
+    .to_string();
+  let opts = match name {
+    "RSASSA-PKCS1-v1_5" => ImportKeyOptions::RsassaPkcs1v15 {},
+    "RSA-PSS" => ImportKeyOptions::RsaPss {},
+    "RSA-OAEP" => ImportKeyOptions::RsaOaep {},
+    _ => unreachable!(),
+  };
+  let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
+
+  let build = |scope: &mut v8::PinScope<'s, '_>,
+               key_type: CryptoKeyType,
+               modulus_length: u32,
+               public_exponent: Vec<u8>,
+               rkd: crate::shared::RustRawKeyData|
+   -> v8::Local<'s, v8::Object> {
+    let alg = AlgorithmDict::new(name)
+      .with_hash(&hash)
+      .with_modulus_length(modulus_length)
+      .with_public_exponent(public_exponent);
+    make_crypto_key(
+      scope,
+      key_type,
+      extractable,
+      &allowed_usages,
+      alg,
+      raw_key_data_to_raw(rkd),
+    )
+  };
+
+  match (format, key_data) {
+    (KeyFormat::Pkcs8, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, priv_usages)?;
+      let result = op_crypto_import_key_inner(opts, KeyData::Pkcs8(b))
+        .map_err(|e| CryptoError::Other(deno_error::JsErrorBox::from_err(e)))?;
+      let ImportKeyResult::Rsa {
+        raw_data,
+        modulus_length,
+        public_exponent,
+      } = result
+      else {
+        return Err(data_error("Invalid key data".into()));
+      };
+      Ok(build(
+        scope,
+        CryptoKeyType::Private,
+        modulus_length as u32,
+        public_exponent.as_ref().to_vec(),
+        raw_data,
+      ))
+    }
+    (KeyFormat::Spki, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, pub_usages)?;
+      let result = op_crypto_import_key_inner(opts, KeyData::Spki(b))
+        .map_err(|e| CryptoError::Other(deno_error::JsErrorBox::from_err(e)))?;
+      let ImportKeyResult::Rsa {
+        raw_data,
+        modulus_length,
+        public_exponent,
+      } = result
+      else {
+        return Err(data_error("Invalid key data".into()));
+      };
+      Ok(build(
+        scope,
+        CryptoKeyType::Public,
+        modulus_length as u32,
+        public_exponent.as_ref().to_vec(),
+        raw_data,
+      ))
+    }
+    (KeyFormat::Jwk, ImportKeyData::Jwk(jwk_g)) => {
+      let jwk = v8::Local::new(scope, &jwk_g);
+      let is_priv = read_string_member(scope, jwk, b"d").is_some();
+      let want = if is_priv { priv_usages } else { pub_usages };
+      check_usages_subset(usages, want)?;
+      let kty_upper = read_string_member(scope, jwk, b"kty")
+        .map(|s| s.to_ascii_uppercase());
+      if kty_upper.as_deref() != Some("RSA") {
+        return Err(data_error(
+          "'kty' property of JsonWebKey must be 'RSA'".into(),
+        ));
+      }
+      if !usages.is_empty() {
+        if let Some(use_) = read_string_member(scope, jwk, b"use")
+          && use_.to_ascii_lowercase() != jwk_use
+        {
+          return Err(data_error(format!(
+            "'use' property of JsonWebKey must be '{jwk_use}'"
+          )));
+        }
+      }
+      if let Some(key_ops) = read_string_array_member(scope, jwk, b"key_ops") {
+        for u in &key_ops {
+          if !ALL_USAGES.iter().any(|a| *a == u.as_str()) {
+            return Err(data_error(
+              "'key_ops' property of JsonWebKey is invalid".into(),
+            ));
+          }
+        }
+        for u in usages {
+          if !key_ops.iter().any(|k| k == u) {
+            return Err(data_error(
+              "'key_ops' property of JsonWebKey is invalid".into(),
+            ));
+          }
+        }
+      }
+      if read_bool_member(scope, jwk, b"ext") == Some(false) && extractable {
+        return Err(data_error(
+          "'ext' property of JsonWebKey must not be false if extractable is true"
+            .into(),
+        ));
+      }
+      if let Some(alg_s) = read_string_member(scope, jwk, b"alg") {
+        let want_hash = rsa_jwk_alg_to_hash(name, &alg_s)?;
+        if want_hash != hash {
+          return Err(data_error(format!(
+            "'alg' property of JsonWebKey must be '{name}': received {alg_s}"
+          )));
+        }
+      }
+      if is_priv {
+        // Per spec, optimized private keys (with p, q, dp, dq, qi) are
+        // required.
+        let p = read_string_member(scope, jwk, b"p");
+        let q = read_string_member(scope, jwk, b"q");
+        let dp = read_string_member(scope, jwk, b"dp");
+        let dq = read_string_member(scope, jwk, b"dq");
+        let qi = read_string_member(scope, jwk, b"qi");
+        let any_present =
+          p.is_some() || q.is_some() || dp.is_some() || dq.is_some() || qi.is_some();
+        if !any_present {
+          return Err(not_supported(
+            "Only optimized private keys are supported".into(),
+          ));
+        }
+        if q.is_none() {
+          return Err(data_error(
+            "'q' property of JsonWebKey is required for private keys".into(),
+          ));
+        }
+        if dp.is_none() {
+          return Err(data_error(
+            "'dp' property of JsonWebKey is required for private keys".into(),
+          ));
+        }
+        if dq.is_none() {
+          return Err(data_error(
+            "'dq' property of JsonWebKey is required for private keys".into(),
+          ));
+        }
+        if qi.is_none() {
+          return Err(data_error(
+            "'qi' property of JsonWebKey is required for private keys".into(),
+          ));
+        }
+        if read_string_member(scope, jwk, b"oth").is_some() {
+          return Err(not_supported(
+            "'oth' property of JsonWebKey is not supported".into(),
+          ));
+        }
+        let n = read_string_member(scope, jwk, b"n")
+          .ok_or_else(|| data_error("'n' property of JsonWebKey is required".into()))?;
+        let e = read_string_member(scope, jwk, b"e")
+          .ok_or_else(|| data_error("'e' property of JsonWebKey is required".into()))?;
+        let d = read_string_member(scope, jwk, b"d").unwrap();
+        let result = op_crypto_import_key_inner(
+          opts,
+          KeyData::JwkPrivateRsa {
+            n,
+            e,
+            d,
+            p: p.unwrap(),
+            q: q.unwrap(),
+            dp: dp.unwrap(),
+            dq: dq.unwrap(),
+            qi: qi.unwrap(),
+          },
+        )
+        .map_err(|e| CryptoError::Other(deno_error::JsErrorBox::from_err(e)))?;
+        let ImportKeyResult::Rsa {
+          raw_data,
+          modulus_length,
+          public_exponent,
+        } = result
+        else {
+          return Err(data_error("Invalid key data".into()));
+        };
+        Ok(build(
+          scope,
+          CryptoKeyType::Private,
+          modulus_length as u32,
+          public_exponent.as_ref().to_vec(),
+          raw_data,
+        ))
+      } else {
+        let n = read_string_member(scope, jwk, b"n").ok_or_else(|| {
+          data_error("'n' property of JsonWebKey is required for public keys".into())
+        })?;
+        let e = read_string_member(scope, jwk, b"e").ok_or_else(|| {
+          data_error("'e' property of JsonWebKey is required for public keys".into())
+        })?;
+        let result =
+          op_crypto_import_key_inner(opts, KeyData::JwkPublicRsa { n, e })
+            .map_err(|e| {
+              CryptoError::Other(deno_error::JsErrorBox::from_err(e))
+            })?;
+        let ImportKeyResult::Rsa {
+          raw_data,
+          modulus_length,
+          public_exponent,
+        } = result
+        else {
+          return Err(data_error("Invalid key data".into()));
+        };
+        Ok(build(
+          scope,
+          CryptoKeyType::Public,
+          modulus_length as u32,
+          public_exponent.as_ref().to_vec(),
+          raw_data,
+        ))
+      }
+    }
+    _ => Err(not_supported("Not implemented".into())),
+  }
+}
+
+fn rsa_jwk_alg_to_hash(name: &str, alg: &str) -> Result<&'static str, CryptoError> {
+  Ok(match (name, alg) {
+    ("RSASSA-PKCS1-v1_5", "RS1") => "SHA-1",
+    ("RSASSA-PKCS1-v1_5", "RS256") => "SHA-256",
+    ("RSASSA-PKCS1-v1_5", "RS384") => "SHA-384",
+    ("RSASSA-PKCS1-v1_5", "RS512") => "SHA-512",
+    ("RSASSA-PKCS1-v1_5", "RS3-256") => "SHA3-256",
+    ("RSASSA-PKCS1-v1_5", "RS3-384") => "SHA3-384",
+    ("RSASSA-PKCS1-v1_5", "RS3-512") => "SHA3-512",
+    ("RSA-PSS", "PS1") => "SHA-1",
+    ("RSA-PSS", "PS256") => "SHA-256",
+    ("RSA-PSS", "PS384") => "SHA-384",
+    ("RSA-PSS", "PS512") => "SHA-512",
+    ("RSA-PSS", "PS3-256") => "SHA3-256",
+    ("RSA-PSS", "PS3-384") => "SHA3-384",
+    ("RSA-PSS", "PS3-512") => "SHA3-512",
+    ("RSA-OAEP", "RSA-OAEP") => "SHA-1",
+    ("RSA-OAEP", "RSA-OAEP-256") => "SHA-256",
+    ("RSA-OAEP", "RSA-OAEP-384") => "SHA-384",
+    ("RSA-OAEP", "RSA-OAEP-512") => "SHA-512",
+    ("RSA-OAEP", "RSA-OAEP3-256") => "SHA3-256",
+    ("RSA-OAEP", "RSA-OAEP3-384") => "SHA3-384",
+    ("RSA-OAEP", "RSA-OAEP3-512") => "SHA3-512",
+    _ => {
+      return Err(data_error(format!(
+        "'alg' property of JsonWebKey unrecognized for {name}: {alg}"
+      )));
+    }
+  })
+}
+
+fn import_key_ml_kem<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  format: KeyFormat,
+  key_data: ImportKeyData,
+  extractable: bool,
+  usages: &[String],
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+  let variant = match name {
+    "ML-KEM-512" => crate::mlkem::MlKemVariant::MlKem512,
+    "ML-KEM-768" => crate::mlkem::MlKemVariant::MlKem768,
+    "ML-KEM-1024" => crate::mlkem::MlKemVariant::MlKem1024,
+    _ => unreachable!(),
+  };
+  let pub_usages: &[&str] = &["encapsulateKey", "encapsulateBits"];
+  let priv_usages: &[&str] = &["decapsulateKey", "decapsulateBits"];
+  let pub_size = variant.public_key_size();
+  let alg = AlgorithmDict::new(name);
+  let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
+
+  let make_public = |scope: &mut v8::PinScope<'s, '_>,
+                     bytes: Vec<u8>|
+   -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+    Ok(make_crypto_key(
+      scope,
+      CryptoKeyType::Public,
+      extractable,
+      &allowed_usages,
+      AlgorithmDict::new(name),
+      RawKeyData::Raw(bytes.into_boxed_slice()),
+    ))
+  };
+  let make_private =
+    |scope: &mut v8::PinScope<'s, '_>,
+     seed: Option<Vec<u8>>,
+     private_key: Vec<u8>|
+     -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+      Ok(make_crypto_key(
+        scope,
+        CryptoKeyType::Private,
+        extractable,
+        &allowed_usages,
+        AlgorithmDict::new(name),
+        RawKeyData::SeededPrivate {
+          seed: seed.map(|s| s.into_boxed_slice()),
+          private_key: private_key.into_boxed_slice(),
+        },
+      ))
+    };
+  let _ = alg;
+  match (format, key_data) {
+    (KeyFormat::RawPublic, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, pub_usages)?;
+      if b.len() != pub_size {
+        return Err(data_error("Invalid key data".into()));
+      }
+      if !crate::mlkem::validate_public_key(variant, &b) {
+        return Err(data_error("Invalid key data".into()));
+      }
+      make_public(scope, b)
+    }
+    (KeyFormat::RawSeed, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, priv_usages)?;
+      if b.len() != 64 {
+        return Err(data_error("Invalid key data".into()));
+      }
+      let res = crate::mlkem::from_seed(variant, &b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      make_private(scope, Some(b.clone()), res.private_key)
+    }
+    (KeyFormat::Spki, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, pub_usages)?;
+      let res = crate::mlkem::import_spki(&b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      if res.variant != variant {
+        return Err(data_error("Imported key algorithm does not match".into()));
+      }
+      make_public(scope, res.public_key)
+    }
+    (KeyFormat::Pkcs8, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, priv_usages)?;
+      let res =
+        crate::mlkem::import_pkcs8_native(&b).map_err(|e| match e {
+          crate::mlkem::MlKemError::UnsupportedPkcs8Format => not_supported(
+            "ML-KEM 'expandedKey' PKCS#8 format is not supported; only the seed form is supported"
+              .into(),
+          ),
+          _ => data_error("Invalid key data".into()),
+        })?;
+      if res.variant != variant {
+        return Err(data_error("Imported key algorithm does not match".into()));
+      }
+      make_private(scope, Some(res.seed), res.private_key)
+    }
+    (KeyFormat::Jwk, ImportKeyData::Jwk(jwk_g)) => {
+      let jwk = v8::Local::new(scope, &jwk_g);
+      let wants_private = read_string_member(scope, jwk, b"priv").is_some();
+      let expected = if wants_private { priv_usages } else { pub_usages };
+      check_usages_subset(usages, expected)?;
+      validate_jwk_akp(scope, jwk, name, "enc", usages, extractable)?;
+      if wants_private {
+        let priv_s = read_string_member(scope, jwk, b"priv").unwrap();
+        let seed = BASE64_URL_SAFE_NO_PAD
+          .decode(priv_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid private key data".into()))?;
+        if seed.len() != 64 {
+          return Err(data_error("Invalid private key data".into()));
+        }
+        let res = crate::mlkem::from_seed(variant, &seed)
+          .map_err(|_| data_error("Invalid private key data".into()))?;
+        let pub_s = read_string_member(scope, jwk, b"pub").ok_or_else(|| {
+          data_error("Invalid public key data".into())
+        })?;
+        let pub_bytes = BASE64_URL_SAFE_NO_PAD
+          .decode(pub_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid public key data".into()))?;
+        if pub_bytes != res.public_key {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        make_private(scope, Some(seed), res.private_key)
+      } else {
+        let pub_s = read_string_member(scope, jwk, b"pub")
+          .ok_or_else(|| data_error("Invalid public key data".into()))?;
+        let pub_bytes = BASE64_URL_SAFE_NO_PAD
+          .decode(pub_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid public key data".into()))?;
+        if pub_bytes.len() != pub_size {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        if !crate::mlkem::validate_public_key(variant, &pub_bytes) {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        make_public(scope, pub_bytes)
+      }
+    }
+    _ => Err(not_supported("Unsupported key format for ML-KEM".into())),
+  }
+}
+
+fn import_key_ml_dsa<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  name: &str,
+  format: KeyFormat,
+  key_data: ImportKeyData,
+  extractable: bool,
+  usages: &[String],
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
+  let variant = match name {
+    "ML-DSA-44" => 0u8,
+    "ML-DSA-65" => 1,
+    "ML-DSA-87" => 2,
+    _ => unreachable!(),
+  };
+  let pub_len = mldsa_public_key_len(variant);
+  let allowed_usages: Vec<&str> = filter_usages(usages, ALL_USAGES);
+  let make_public = |scope: &mut v8::PinScope<'s, '_>,
+                     bytes: Vec<u8>|
+   -> v8::Local<'s, v8::Object> {
+    make_crypto_key(
+      scope,
+      CryptoKeyType::Public,
+      extractable,
+      &allowed_usages,
+      AlgorithmDict::new(name),
+      RawKeyData::Raw(bytes.into_boxed_slice()),
+    )
+  };
+  let make_private =
+    |scope: &mut v8::PinScope<'s, '_>,
+     seed: Option<Vec<u8>>,
+     private_key: Vec<u8>|
+     -> v8::Local<'s, v8::Object> {
+      make_crypto_key(
+        scope,
+        CryptoKeyType::Private,
+        extractable,
+        &allowed_usages,
+        AlgorithmDict::new(name),
+        RawKeyData::SeededPrivate {
+          seed: seed.map(|s| s.into_boxed_slice()),
+          private_key: private_key.into_boxed_slice(),
+        },
+      )
+    };
+  match (format, key_data) {
+    (KeyFormat::RawSeed, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["sign"])?;
+      if b.len() != 32 {
+        return Err(data_error("Invalid key data".into()));
+      }
+      let res = crate::mldsa::from_seed(variant, &b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      Ok(make_private(scope, Some(b.clone()), res.private_key))
+    }
+    (KeyFormat::RawPublic, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["verify"])?;
+      if b.len() != pub_len {
+        return Err(data_error("Invalid key data".into()));
+      }
+      Ok(make_public(scope, b))
+    }
+    (KeyFormat::Pkcs8, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["sign"])?;
+      let res = crate::mldsa::from_pkcs8_native(variant, &b).map_err(|e| match e {
+        crate::mldsa::MlDsaError::UnsupportedPkcs8Format => not_supported(
+          "ML-DSA 'expandedKey' PKCS#8 format is not supported; only the seed form is supported"
+            .into(),
+        ),
+        _ => data_error("Invalid key data".into()),
+      })?;
+      Ok(make_private(scope, res.seed, res.private_key))
+    }
+    (KeyFormat::Spki, ImportKeyData::Buffer(b)) => {
+      check_usages_subset(usages, &["verify"])?;
+      let pub_bytes = crate::mldsa::from_spki(variant, &b)
+        .map_err(|_| data_error("Invalid key data".into()))?;
+      Ok(make_public(scope, pub_bytes))
+    }
+    (KeyFormat::Jwk, ImportKeyData::Jwk(jwk_g)) => {
+      let jwk = v8::Local::new(scope, &jwk_g);
+      let wants_private = read_string_member(scope, jwk, b"priv").is_some();
+      let expected: &[&str] = if wants_private { &["sign"] } else { &["verify"] };
+      check_usages_subset(usages, expected)?;
+      validate_jwk_akp(scope, jwk, name, "sig", usages, extractable)?;
+      if wants_private {
+        let priv_s = read_string_member(scope, jwk, b"priv").unwrap();
+        let seed = BASE64_URL_SAFE_NO_PAD
+          .decode(priv_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid private key data".into()))?;
+        if seed.len() != 32 {
+          return Err(data_error("Invalid private key data".into()));
+        }
+        let res = crate::mldsa::from_seed(variant, &seed)
+          .map_err(|_| data_error("Invalid private key data".into()))?;
+        let pub_s = read_string_member(scope, jwk, b"pub").ok_or_else(|| {
+          data_error("Invalid public key data".into())
+        })?;
+        let pub_bytes = BASE64_URL_SAFE_NO_PAD
+          .decode(pub_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid public key data".into()))?;
+        if pub_bytes != res.public_key {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        Ok(make_private(scope, Some(seed), res.private_key))
+      } else {
+        let pub_s = read_string_member(scope, jwk, b"pub")
+          .ok_or_else(|| data_error("Invalid public key data".into()))?;
+        let pub_bytes = BASE64_URL_SAFE_NO_PAD
+          .decode(pub_s.trim_end_matches('='))
+          .map_err(|_| data_error("Invalid public key data".into()))?;
+        if pub_bytes.len() != pub_len {
+          return Err(data_error("Invalid public key data".into()));
+        }
+        Ok(make_public(scope, pub_bytes))
+      }
+    }
+    _ => Err(not_supported("Unsupported key format for ML-DSA".into())),
+  }
+}
+
+fn mldsa_public_key_len(variant: u8) -> usize {
+  match variant {
+    0 => 1312,
+    1 => 1952,
+    2 => 2592,
+    _ => 0,
+  }
+}
+
+fn validate_jwk_akp<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  jwk: v8::Local<'s, v8::Object>,
+  algorithm_name: &str,
+  expected_use: &str,
+  usages: &[String],
+  extractable: bool,
+) -> Result<(), CryptoError> {
+  let kty = read_string_member(scope, jwk, b"kty");
+  if kty.as_deref() != Some("AKP") {
+    return Err(data_error("Invalid key type".into()));
+  }
+  let alg = read_string_member(scope, jwk, b"alg");
+  if alg.as_deref() != Some(algorithm_name) {
+    return Err(data_error("Invalid algorithm".into()));
+  }
+  if !usages.is_empty() {
+    if let Some(use_) = read_string_member(scope, jwk, b"use")
+      && use_ != expected_use
+    {
+      return Err(data_error("Invalid key usage".into()));
+    }
+  }
+  if let Some(key_ops) = read_string_array_member(scope, jwk, b"key_ops") {
+    for u in &key_ops {
+      if !ALL_USAGES.iter().any(|a| *a == u.as_str()) {
+        return Err(data_error(
+          "'key_ops' property of JsonWebKey is invalid".into(),
+        ));
+      }
+    }
+    for u in usages {
+      if !key_ops.iter().any(|k| k == u) {
+        return Err(data_error(
+          "'key_ops' property of JsonWebKey is invalid".into(),
+        ));
+      }
+    }
+  }
+  if read_bool_member(scope, jwk, b"ext") == Some(false) && extractable {
+    return Err(data_error("Invalid key extractability".into()));
+  }
+  Ok(())
 }
 
 fn import_key_ec<'s>(

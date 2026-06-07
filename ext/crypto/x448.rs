@@ -26,6 +26,17 @@ pub enum X448Error {
   Der(#[from] spki::der::Error),
 }
 
+/// Rust-callable wrapper for [`op_crypto_generate_x448_keypair`].
+pub fn generate_x448_keypair(pkey: &mut [u8], pubkey: &mut [u8]) {
+  let mut rng = OsRng;
+  rng.fill_bytes(pkey);
+  let mut scalar_bytes = [0u8; 57];
+  scalar_bytes[..56].copy_from_slice(pkey);
+  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
+  let point = &MontgomeryPoint::GENERATOR * &scalar;
+  pubkey.copy_from_slice(&point.0);
+}
+
 #[op2(fast)]
 pub fn op_crypto_generate_x448_keypair(
   #[buffer] pkey: &mut [u8],

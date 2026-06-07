@@ -311,6 +311,85 @@ fn parse_tlv(buf: &[u8], tag: u8) -> Option<(&[u8], &[u8])> {
   Some((&body_start[..len], &body_start[len..]))
 }
 
+/// Rust-side callable view of [`op_crypto_mldsa_from_seed`].
+pub fn from_seed(
+  variant: u8,
+  seed: &[u8],
+) -> Result<MlDsaSeedBytes, MlDsaError> {
+  let (private_key, public_key) = mldsa_from_seed(variant, seed)?;
+  Ok(MlDsaSeedBytes {
+    private_key,
+    public_key,
+  })
+}
+
+pub struct MlDsaSeedBytes {
+  pub private_key: Vec<u8>,
+  pub public_key: Vec<u8>,
+}
+
+/// Rust-side callable view of [`op_crypto_mldsa_from_pkcs8`]; returns the
+/// triple as plain `Vec<u8>` for use by the Rust-native importKey
+/// dispatcher (no `Uint8Array` allocation through deno_core).
+pub fn from_pkcs8_native(
+  variant: u8,
+  pkcs8: &[u8],
+) -> Result<MlDsaPkcs8Bytes, MlDsaError> {
+  let p = params(variant)?;
+  match classify_pkcs8_inner(pkcs8) {
+    Some(Pkcs8Inner::Expanded) => {
+      return Err(MlDsaError::UnsupportedPkcs8Format);
+    }
+    Some(Pkcs8Inner::Both { seed, expanded }) => {
+      let derived = PqdsaKeyPair::from_seed(p.signing, &seed)
+        .ok()
+        .and_then(|kp| kp.private_key().as_raw_bytes_vec().ok());
+      match derived {
+        Some(d) if d == expanded => {}
+        _ => return Err(MlDsaError::InvalidKeyData),
+      }
+    }
+    Some(Pkcs8Inner::Seed(_)) | None => {}
+  }
+  let key_pair = PqdsaKeyPair::from_pkcs8(p.signing, pkcs8)
+    .map_err(|_| MlDsaError::InvalidKeyData)?;
+  let private_key = key_pair
+    .private_key()
+    .as_raw_bytes_vec()
+    .map_err(|_| MlDsaError::FailedExport)?;
+  let public_key = key_pair.public_key().as_ref().to_vec();
+  let seed = extract_seed_from_pkcs8(pkcs8);
+  Ok(MlDsaPkcs8Bytes {
+    private_key,
+    public_key,
+    seed,
+  })
+}
+
+pub struct MlDsaPkcs8Bytes {
+  pub private_key: Vec<u8>,
+  pub public_key: Vec<u8>,
+  pub seed: Option<Vec<u8>>,
+}
+
+/// Rust-side callable view of [`op_crypto_mldsa_from_spki`].
+pub fn from_spki(variant: u8, spki: &[u8]) -> Result<Vec<u8>, MlDsaError> {
+  let p = params(variant)?;
+  let pk_info = spki::SubjectPublicKeyInfoRef::try_from(spki)
+    .map_err(|_| MlDsaError::InvalidKeyData)?;
+  if pk_info.algorithm.oid != p.oid {
+    return Err(MlDsaError::InvalidKeyData);
+  }
+  if pk_info.algorithm.parameters.is_some() {
+    return Err(MlDsaError::InvalidKeyData);
+  }
+  let raw = pk_info.subject_public_key.raw_bytes();
+  if raw.len() != p.pub_key_len {
+    return Err(MlDsaError::InvalidKeyData);
+  }
+  Ok(raw.to_vec())
+}
+
 #[op2]
 pub fn op_crypto_mldsa_from_spki(
   variant: u8,
