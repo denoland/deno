@@ -290,17 +290,14 @@ pub fn run(
   key: SubtleKey,
   length: Option<u32>,
 ) -> Result<Vec<u8>, CryptoError> {
-  // Steps 4-7 of the WebCrypto spec are interleaved with algorithm-
-  // specific validation below. Spec steps 7/8 (algorithm name + usage
-  // check on baseKey) are reproduced first since they apply across all
-  // algorithms.
+  // Spec step 7 (algorithm name match on baseKey). The `deriveBits`
+  // usage check is the caller's responsibility -- the cppgc method
+  // body enforces it for the external `SubtleCrypto.deriveBits` path,
+  // while the internal `__deriveBitsInternal` path used by
+  // `deriveKey` skips it (since `deriveKey` requires `deriveKey`
+  // usage on the base key, not `deriveBits`).
   if params.canonical_name() != key.algorithm_name {
     return Err(invalid_access("Invalid algorithm name".to_string()));
-  }
-  if !key.has_usage("deriveBits") {
-    return Err(invalid_access(
-      "'baseKey' usages does not contain 'deriveBits'".to_string(),
-    ));
   }
 
   match params {

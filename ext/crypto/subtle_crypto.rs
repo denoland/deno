@@ -173,6 +173,29 @@ impl SubtleCrypto {
     #[webidl] base_key: SubtleKey,
     length: Option<u32>,
   ) -> Result<Vec<u8>, CryptoError> {
+    if !base_key.has_usage("deriveBits") {
+      return Err(CryptoError::Other(deno_error::JsErrorBox::new(
+        "DOMExceptionInvalidAccessError",
+        "'baseKey' usages does not contain 'deriveBits'",
+      )));
+    }
+    spawn_blocking(move || run_derive_bits(algorithm, base_key, length)).await?
+  }
+
+  /// Internal entry point used by `SubtleCrypto.prototype.deriveKey`
+  /// (still in JS) to derive raw bits without re-checking the
+  /// `deriveBits` usage on the base key. The JS shim has already
+  /// enforced the `deriveKey` usage and algorithm match before calling
+  /// this method.
+  #[arraybuffer]
+  #[rename("__deriveBitsInternal")]
+  #[required(2)]
+  async fn derive_bits_internal(
+    &self,
+    #[webidl] algorithm: SubtleDeriveBitsParams,
+    #[webidl] base_key: SubtleKey,
+    length: Option<u32>,
+  ) -> Result<Vec<u8>, CryptoError> {
     spawn_blocking(move || run_derive_bits(algorithm, base_key, length)).await?
   }
 }

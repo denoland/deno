@@ -771,7 +771,7 @@ ObjectAssign(SubtleCrypto.prototype, {
     const length = getKeyLength(normalizedDerivedKeyAlgorithmLength);
 
     // 14.
-    const secret = await this.deriveBits(
+    const secret = await this.__deriveBitsInternal(
       normalizedAlgorithm,
       baseKey,
       length,
