@@ -81,30 +81,49 @@ impl PublishOrderGraph {
   }
 }
 
-/// Identifies a cycle in the package dependency graph starting from
-/// `current_name`, returning the cycle in dependency order (e.g.
-/// `["a", "b", "c", "a"]` for `a -> b -> c -> a`).
+/// Looks for a cycle reachable from `current_name` using a depth first search.
 ///
-/// This runs on every publish (via `ensure_no_cycles`), including the common
-/// no-cycle case. It is inefficient, but that's ok because it's simple and the
-/// graphs involved are small.
+/// `visited` is shared across every starting node so the whole graph is
+/// explored in a single O(V + E) pass: a node that has been fully explored
+/// without participating in a cycle is never revisited. `stack` holds the
+/// current DFS path; encountering a node that is already on it closes a cycle,
+/// which is returned in dependency order (e.g. `["a", "b", "c", "a"]` for
+/// `a -> b -> c -> a`).
+///
+/// This runs on every publish (via [`ensure_no_cycles`]), including the common
+/// no-cycle case, so it avoids the per-edge cloning a naive search would do.
 fn identify_cycle(
   current_name: &str,
-  mut visited: HashSet<String>,
+  visited: &mut HashSet<String>,
+  stack: &mut Vec<String>,
   packages: &HashMap<String, HashSet<String>>,
 ) -> Option<Vec<String>> {
-  if visited.insert(current_name.to_string()) {
-    let deps = packages.get(current_name)?;
+  if !visited.insert(current_name.to_string()) {
+    return None;
+  }
+  stack.push(current_name.to_string());
+
+  // A dep may not be a key in `packages` (e.g. an external, non-workspace
+  // dependency); such a node has no outgoing edges and cannot be part of a
+  // cycle, so treat it as a leaf.
+  if let Some(deps) = packages.get(current_name) {
+    // Sort for deterministic cycle reporting.
+    let mut deps = deps.iter().collect::<Vec<_>>();
+    deps.sort();
     for dep in deps {
-      if let Some(mut cycle) = identify_cycle(dep, visited.clone(), packages) {
-        cycle.push(current_name.to_string());
+      if let Some(start) = stack.iter().position(|name| name == dep) {
+        let mut cycle = stack[start..].to_vec();
+        cycle.push(dep.to_string());
+        return Some(cycle);
+      }
+      if let Some(cycle) = identify_cycle(dep, visited, stack, packages) {
         return Some(cycle);
       }
     }
-    None
-  } else {
-    Some(vec![current_name.to_string()])
   }
+
+  stack.pop();
+  None
 }
 
 /// Detects a circular package dependency, returning an error describing the
@@ -113,12 +132,15 @@ fn identify_cycle(
 fn ensure_no_cycles(
   packages: &HashMap<String, HashSet<String>>,
 ) -> Result<(), AnyError> {
+  let mut visited = HashSet::new();
+  let mut stack = Vec::new();
   let mut pkg_names = packages.keys().collect::<Vec<_>>();
   pkg_names.sort(); // determinism
   for pkg_name in pkg_names {
-    if let Some(mut cycle) = identify_cycle(pkg_name, HashSet::new(), packages)
+    stack.clear();
+    if let Some(cycle) =
+      identify_cycle(pkg_name, &mut visited, &mut stack, packages)
     {
-      cycle.reverse();
       bail!(
         "Circular package dependency detected: {}",
         cycle.join(" -> ")
@@ -342,6 +364,33 @@ mod test {
       .unwrap_err()
       .to_string(),
       "Circular package dependency detected: a -> b -> c -> a"
+    );
+
+    // cycle reachable through a non-cyclic lead-in node: the reported cycle
+    // starts at the node where it actually closes, not the entry point.
+    assert_eq!(
+      ensure_no_cycles(&HashMap::from([
+        ("a".to_string(), HashSet::from(["b".to_string()])),
+        ("b".to_string(), HashSet::from(["c".to_string()])),
+        ("c".to_string(), HashSet::from(["b".to_string()])),
+      ]))
+      .unwrap_err()
+      .to_string(),
+      "Circular package dependency detected: b -> c -> b"
+    );
+
+    // an acyclic component is fully explored (and its nodes marked visited)
+    // before the cyclic one is reached in the shared single pass.
+    assert_eq!(
+      ensure_no_cycles(&HashMap::from([
+        ("a".to_string(), HashSet::from(["b".to_string()])),
+        ("b".to_string(), HashSet::new()),
+        ("y".to_string(), HashSet::from(["z".to_string()])),
+        ("z".to_string(), HashSet::from(["y".to_string()])),
+      ]))
+      .unwrap_err()
+      .to_string(),
+      "Circular package dependency detected: y -> z -> y"
     );
   }
 }
