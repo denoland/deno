@@ -50,6 +50,7 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::npm::PackageInfoLoadError;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
 
@@ -453,6 +454,10 @@ where
 pub struct PackageLatestVersion {
   pub semver_compatible: Option<PackageNv>,
   pub latest: Option<PackageNv>,
+  /// Set when fetching the package's metadata failed (e.g. an unreachable or
+  /// unauthorized private registry). The package is dropped from the outdated
+  /// table, so this is used to warn the user instead of skipping silently.
+  pub fetch_error: Option<Arc<PackageInfoLoadError>>,
 }
 
 pub struct DepManager {
@@ -739,9 +744,13 @@ impl DepManager {
               .await
               .ok()
               .flatten();
-            let info =
-              self.npm_fetch_resolver.package_info(&semver_req.name).await;
-            let latest = info
+            let info_result = self
+              .npm_fetch_resolver
+              .package_info_with_reason(&semver_req.name)
+              .await;
+            let fetch_error = info_result.as_ref().err().cloned();
+            let latest = info_result
+              .ok()
               .and_then(|info| {
                 let version_resolver =
                   self.npm_version_resolver.get_for_package(&info);
@@ -781,6 +790,7 @@ impl DepManager {
             PackageLatestVersion {
               latest,
               semver_compatible,
+              fetch_error,
             }
           }
           .boxed_local(),
@@ -795,9 +805,13 @@ impl DepManager {
               .await
               .ok()
               .flatten();
-            let info =
-              self.jsr_fetch_resolver.package_info(&semver_req.name).await;
-            let latest = info
+            let info_result = self
+              .jsr_fetch_resolver
+              .package_info_with_reason(&semver_req.name)
+              .await;
+            let fetch_error = info_result.as_ref().err().cloned();
+            let latest = info_result
+              .ok()
               .and_then(|info| {
                 let version_resolver = self
                   .jsr_fetch_resolver
@@ -831,6 +845,7 @@ impl DepManager {
             PackageLatestVersion {
               latest,
               semver_compatible,
+              fetch_error,
             }
           }
           .boxed_local(),
