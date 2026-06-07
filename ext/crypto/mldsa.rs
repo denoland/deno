@@ -18,7 +18,6 @@ use serde::Serialize;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
-use crate::key_store::CryptoKeyHandle;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MlDsaError {
@@ -364,18 +363,17 @@ pub fn op_crypto_mldsa_export_spki(
   Ok(der.into())
 }
 
-#[op2]
-pub fn op_crypto_sign_mldsa(
+/// ML-DSA sign. `private_key_bytes` is the FIPS 204 expanded private
+/// key (`d || z` for raw-seed imports), and `context` is the optional
+/// FIPS 204 §5.2 application context byte string (only `None` or empty
+/// is currently accepted). Called from [`crate::subtle_sign::run`].
+pub(crate) fn mldsa_sign(
   variant: u8,
-  #[cppgc] key: &CryptoKeyHandle,
-  #[buffer] data: &[u8],
-  #[buffer] context: Option<&[u8]>,
-) -> Result<Uint8Array, MlDsaError> {
-  let private_key_bytes = key.data().expanded_private_key();
+  private_key_bytes: &[u8],
+  data: &[u8],
+  context: Option<&[u8]>,
+) -> Result<Vec<u8>, MlDsaError> {
   let p = params(variant)?;
-  // aws-lc-rs 1.16 does not expose a way to set the FIPS 204 §5.2 context
-  // parameter for ML-DSA. The empty context is signed by default; reject
-  // non-empty contexts until the underlying API supports them.
   if context.is_some_and(|c| !c.is_empty()) {
     return Err(MlDsaError::ContextNotSupported);
   }
@@ -386,23 +384,22 @@ pub fn op_crypto_sign_mldsa(
   key_pair
     .sign(data, &mut signature)
     .map_err(|_| MlDsaError::SigningFailed)?;
-  Ok(signature.into())
+  Ok(signature)
 }
 
-#[op2]
-pub fn op_crypto_verify_mldsa(
+/// ML-DSA verify. `public_key_bytes` is the raw FIPS 204 public key.
+/// Matches the sign-side limitation that only empty `context` is
+/// accepted. Called from [`crate::subtle_verify::run`].
+pub(crate) fn mldsa_verify(
   variant: u8,
-  #[cppgc] key: &CryptoKeyHandle,
-  #[buffer] data: &[u8],
-  #[buffer] signature: &[u8],
-  #[buffer] context: Option<&[u8]>,
+  public_key_bytes: &[u8],
+  data: &[u8],
+  signature: &[u8],
+  context: Option<&[u8]>,
 ) -> bool {
-  let public_key_bytes = key.data().bytes();
   let Ok(p) = params(variant) else {
     return false;
   };
-  // Match the limitation in op_crypto_sign_mldsa: only empty context is
-  // currently supported.
   if context.is_some_and(|c| !c.is_empty()) {
     return false;
   }

@@ -13,7 +13,6 @@ use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
-use crate::key_store::CryptoKeyHandle;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Ed25519Error {
@@ -44,14 +43,16 @@ pub fn op_crypto_generate_ed25519_keypair(
   true
 }
 
-#[op2(fast)]
-pub fn op_crypto_sign_ed25519(
-  #[cppgc] key: &CryptoKeyHandle,
-  #[buffer] data: &[u8],
-  #[buffer] signature: &mut [u8],
+/// Ed25519 raw sign. `seed` is the 32-byte raw private key,
+/// `signature` is the 64-byte destination buffer. Returns `false` if
+/// the seed is malformed. Called from
+/// [`crate::subtle_sign::run`].
+pub(crate) fn ed25519_sign_into(
+  seed: &[u8],
+  data: &[u8],
+  signature: &mut [u8],
 ) -> bool {
-  let key = key.data().bytes();
-  let pair = match Ed25519KeyPair::from_seed_unchecked(key) {
+  let pair = match Ed25519KeyPair::from_seed_unchecked(seed) {
     Ok(p) => p,
     Err(_) => return false,
   };
@@ -59,13 +60,13 @@ pub fn op_crypto_sign_ed25519(
   true
 }
 
-#[op2(fast)]
-pub fn op_crypto_verify_ed25519(
-  #[cppgc] pubkey: &CryptoKeyHandle,
-  #[buffer] data: &[u8],
-  #[buffer] signature: &[u8],
+/// Ed25519 verify. `pubkey` is the raw 32-byte public key. Called from
+/// [`crate::subtle_verify::run`].
+pub(crate) fn ed25519_verify(
+  pubkey: &[u8],
+  data: &[u8],
+  signature: &[u8],
 ) -> bool {
-  let pubkey = pubkey.data().bytes();
   aws_lc_rs::signature::UnparsedPublicKey::new(
     &aws_lc_rs::signature::ED25519,
     pubkey,

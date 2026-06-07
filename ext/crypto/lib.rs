@@ -75,6 +75,8 @@ mod subtle_crypto;
 mod subtle_decrypt;
 mod subtle_encrypt;
 mod subtle_key;
+mod subtle_sign;
+mod subtle_verify;
 mod x25519;
 mod x448;
 
@@ -110,8 +112,6 @@ deno_core::extension!(deno_crypto,
     crypto_key::op_crypto_key_handle,
     op_crypto_get_random_values,
     op_crypto_generate_key,
-    op_crypto_sign_key,
-    op_crypto_verify_key,
     op_crypto_derive_bits,
     op_crypto_import_key,
     op_crypto_export_key,
@@ -146,8 +146,6 @@ deno_core::extension!(deno_crypto,
     ed25519::op_crypto_generate_ed25519_keypair,
     ed25519::op_crypto_import_spki_ed25519,
     ed25519::op_crypto_import_pkcs8_ed25519,
-    ed25519::op_crypto_sign_ed25519,
-    ed25519::op_crypto_verify_ed25519,
     ed25519::op_crypto_export_spki_ed25519,
     ed25519::op_crypto_export_pkcs8_ed25519,
     ed25519::op_crypto_jwk_x_ed25519,
@@ -156,8 +154,6 @@ deno_core::extension!(deno_crypto,
     mldsa::op_crypto_mldsa_from_spki,
     mldsa::op_crypto_mldsa_export_pkcs8,
     mldsa::op_crypto_mldsa_export_spki,
-    mldsa::op_crypto_sign_mldsa,
-    mldsa::op_crypto_verify_mldsa,
     mlkem::op_crypto_ml_kem_from_seed,
     mlkem::op_crypto_ml_kem_encapsulate,
     mlkem::op_crypto_ml_kem_decapsulate,
@@ -370,15 +366,32 @@ pub struct SignArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2]
-pub async fn op_crypto_sign_key(
-  #[cppgc] key: &CryptoKeyHandle,
-  #[scoped] args: SignArg,
-  #[buffer] zero_copy: JsBuffer,
-) -> Result<Uint8Array, CryptoError> {
-  let key: KeyData = key.data().into();
-  deno_core::unsync::spawn_blocking(move || {
-    let data = &*zero_copy;
+impl SignArg {
+  pub(crate) fn new(
+    algorithm: Algorithm,
+    salt_length: Option<u32>,
+    hash: Option<CryptoHash>,
+    named_curve: Option<CryptoNamedCurve>,
+  ) -> Self {
+    Self {
+      algorithm,
+      salt_length,
+      hash,
+      named_curve,
+    }
+  }
+}
+
+/// Synchronous per-algorithm sign dispatch. Called from
+/// [`crate::subtle_sign::run`] inside `spawn_blocking`; the op-layer
+/// wrapper that previously fronted this for the JS shim has been
+/// retired alongside the JS `SubtleCrypto.prototype.sign` body.
+pub(crate) fn sign_key_sync(
+  key: KeyData,
+  args: SignArg,
+  data: &[u8],
+) -> Result<Vec<u8>, CryptoError> {
+  {
     let algorithm = args.algorithm;
 
     let signature = match algorithm {
@@ -530,9 +543,8 @@ pub async fn op_crypto_sign_key(
       _ => return Err(CryptoError::UnsupportedAlgorithm),
     };
 
-    Ok(signature.into())
-  })
-  .await?
+    Ok(signature)
+  }
 }
 
 fn hmac_sign<M: hmac::Mac + hmac::digest::KeyInit>(
@@ -568,15 +580,34 @@ pub struct VerifyArg {
   named_curve: Option<CryptoNamedCurve>,
 }
 
-#[op2]
-pub async fn op_crypto_verify_key(
-  #[cppgc] key: &CryptoKeyHandle,
-  #[scoped] args: VerifyArg,
-  #[buffer] zero_copy: JsBuffer,
+impl VerifyArg {
+  pub(crate) fn new(
+    algorithm: Algorithm,
+    salt_length: Option<u32>,
+    hash: Option<CryptoHash>,
+    signature: Vec<u8>,
+    named_curve: Option<CryptoNamedCurve>,
+  ) -> Self {
+    Self {
+      algorithm,
+      salt_length,
+      hash,
+      signature: signature.into(),
+      named_curve,
+    }
+  }
+}
+
+/// Synchronous per-algorithm verify dispatch. Called from
+/// [`crate::subtle_verify::run`] inside `spawn_blocking`; the op-layer
+/// wrapper that previously fronted this for the JS shim has been
+/// retired alongside the JS `SubtleCrypto.prototype.verify` body.
+pub(crate) fn verify_key_sync(
+  key: KeyData,
+  args: VerifyArg,
+  data: &[u8],
 ) -> Result<bool, CryptoError> {
-  let key: KeyData = key.data().into();
-  deno_core::unsync::spawn_blocking(move || {
-    let data = &*zero_copy;
+  {
     let algorithm = args.algorithm;
 
     let verification = match algorithm {
@@ -764,8 +795,7 @@ pub async fn op_crypto_verify_key(
     };
 
     Ok(verification)
-  })
-  .await?
+  }
 }
 
 #[derive(deno_core::FromV8)]

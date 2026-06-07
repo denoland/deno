@@ -25,6 +25,10 @@ use crate::subtle_decrypt::run as run_decrypt;
 use crate::subtle_encrypt::SubtleEncryptParams;
 use crate::subtle_encrypt::run as run_encrypt;
 use crate::subtle_key::SubtleKey;
+use crate::subtle_sign::SubtleSignParams;
+use crate::subtle_sign::run as run_sign;
+use crate::subtle_verify::SubtleVerifyParams;
+use crate::subtle_verify::run as run_verify;
 
 pub struct SubtleCrypto;
 
@@ -114,6 +118,40 @@ impl SubtleCrypto {
     #[webidl] data: BufferSource,
   ) -> Result<Vec<u8>, CryptoError> {
     spawn_blocking(move || run_decrypt(algorithm, key, data.0)).await?
+  }
+
+  /// `SubtleCrypto.sign(algorithm, key, data)` — produce a signature
+  /// of `data` under `key`. The `SubtleSignParams` `WebIdlConverter`
+  /// handles the per-algorithm parameter dictionary (`saltLength` for
+  /// RSA-PSS, `hash` for ECDSA, optional `context` for ML-DSA), and
+  /// `SubtleKey` snapshots the `CryptoKey` slots so the dispatch runs
+  /// off the v8 stack inside `spawn_blocking`. Ed25519 stays a sync
+  /// fastcall in the spawned closure.
+  #[required(3)]
+  #[arraybuffer]
+  async fn sign(
+    &self,
+    #[webidl] algorithm: SubtleSignParams,
+    #[webidl] key: SubtleKey,
+    #[webidl] data: BufferSource,
+  ) -> Result<Vec<u8>, CryptoError> {
+    spawn_blocking(move || run_sign(algorithm, key, data.0)).await?
+  }
+
+  /// `SubtleCrypto.verify(algorithm, key, signature, data)` — mirror of
+  /// [`sign`](Self::sign). The signature `BufferSource` is copied
+  /// upfront so the spawned closure sees stable bytes; per-algorithm
+  /// dispatch lives in [`crate::subtle_verify::run`].
+  #[required(4)]
+  async fn verify(
+    &self,
+    #[webidl] algorithm: SubtleVerifyParams,
+    #[webidl] key: SubtleKey,
+    #[webidl] signature: BufferSource,
+    #[webidl] data: BufferSource,
+  ) -> Result<bool, CryptoError> {
+    spawn_blocking(move || run_verify(algorithm, key, signature.0, data.0))
+      .await?
   }
 }
 
