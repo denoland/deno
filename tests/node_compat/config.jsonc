@@ -411,7 +411,6 @@
       "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
     },
     "parallel/test-child-process-send-type-error.js": {},
-    "parallel/test-child-process-send-utf8.js": {},
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
     "parallel/test-child-process-spawn-args.mjs": {},

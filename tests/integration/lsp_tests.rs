@@ -11782,6 +11782,75 @@ fn lsp_auto_import_npm_export_node_modules_dir_no_package_json() {
   client.shutdown();
 }
 
+// The lockfile, .npmrc and node_modules directory are resolved once per
+// workspace root and shared across members. This checks that npm resolution
+// still works for a member that reuses the cached workspace data (i.e. is not
+// the first member loaded), rather than only for the first one.
+#[test(timeout = 300)]
+fn lsp_npm_export_shared_workspace_data_across_members() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["member_a", "member_b"],
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  for member in ["member_a", "member_b"] {
+    temp_dir.write(
+      format!("{member}/deno.json"),
+      json!({
+        "imports": {
+          "preact": "npm:preact",
+        },
+      })
+      .to_string(),
+    );
+    temp_dir.write(format!("{member}/other.ts"), "import \"preact/hooks\";\n");
+  }
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // Open the second member's file. It reuses the workspace data cached while
+  // loading the first member, so a broken cache would fail to resolve the npm
+  // export here.
+  let file = temp_dir.source_file("member_b/mod.ts", "useEffect;\n");
+  let diagnostics = client.did_open_file(&file).all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.first().unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 },
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\"",
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/30666.
 #[test(timeout = 300)]
 fn lsp_auto_import_npm_export_import_map_workspace_member() {

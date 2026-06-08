@@ -798,8 +798,10 @@ function executeEsmLoadHookChain(fileUrl, context) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain - perform default load so user hooks calling
-      // nextLoad() receive the actual source they can transform.
+      // End of chain. Synthesize a default load result so user hooks
+      // that call `await nextLoad(...)` observe a real `source` they
+      // can transform (matches Node, where `defaultLoad` returns the
+      // on-disk source).
       if (StringPrototypeStartsWith(loadUrl, "node:")) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
@@ -812,10 +814,11 @@ function executeEsmLoadHookChain(fileUrl, context) {
             shortCircuit: true,
           };
         } catch {
-          // Any synchronous read failure (file absent from disk because it's
+          // Any sync read failure (file absent from disk because it's
           // embedded in a compiled binary's eszip, permission errors,
-          // transient IO) falls through to Rust default loading, which will
-          // surface a clearer error if the module truly cannot be loaded.
+          // transient IO) falls through to Rust default loading via
+          // the load loop, which surfaces a clearer error if the
+          // module truly cannot be loaded.
           return { source: null, shortCircuit: true };
         }
       }
