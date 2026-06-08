@@ -1,47 +1,53 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
-import {
-  type Dirent,
-  direntFromDeno,
-} from "ext:deno_node/internal/fs/utils.mjs";
-const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
-const { ERR_MISSING_ARGS, ERR_DIR_CLOSED } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
-);
+import { type Dirent } from "ext:deno_node/internal/fs/utils.mjs";
+const { ERR_MISSING_ARGS, ERR_DIR_CLOSED, ERR_INVALID_THIS } = core
+  .loadExtScript(
+    "ext:deno_node/internal/errors.ts",
+  );
 const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+// Directory entries are produced natively in Rust (ext/node/ops/fs.rs); the
+// whole listing is read up front and handed out one entry at a time.
+import { op_node_fs_readdir, op_node_fs_readdir_sync } from "ext:core/ops";
 
 const {
   Promise,
-  ReflectApply,
+  PromiseResolve,
   ObjectPrototypeIsPrototypeOf,
   Uint8ArrayPrototype,
   PromisePrototypeThen,
   SymbolAsyncIterator,
   SymbolAsyncDispose,
   SymbolDispose,
-  ArrayIteratorPrototypeNext,
-  SymbolIterator,
 } = primordials;
 
 export default class Dir {
   #dirPath: string | Uint8Array;
-  #syncIterator!: Iterator<Deno.DirEntry, undefined> | null;
-  #asyncIterator!: AsyncIterator<Deno.DirEntry, undefined> | null;
+  #entries: Dirent[] | null = null;
+  #idx = 0;
   #closed = false;
+  #recursive: boolean;
 
-  constructor(path: string | Uint8Array) {
+  constructor(path: string | Uint8Array, recursive = false) {
     if (!path) {
       throw new ERR_MISSING_ARGS("path");
     }
     this.#dirPath = path;
+    this.#recursive = recursive;
   }
 
   get path(): string {
+    // Match Node: invoking the getter on a non-Dir receiver (e.g. the
+    // prototype) throws ERR_INVALID_THIS rather than a private-field error.
+    // deno-lint-ignore prefer-primordials -- private-field brand check
+    if (!(#dirPath in this)) {
+      throw new ERR_INVALID_THIS("Dir");
+    }
     if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, this.#dirPath)) {
       return new TextDecoder().decode(this.#dirPath);
     }
-    return this.#dirPath;
+    return this.#dirPath as string;
   }
 
   // deno-lint-ignore no-explicit-any
@@ -57,51 +63,51 @@ export default class Dir {
         }
         return;
       }
-      if (!this.#asyncIterator) {
-        this.#asyncIterator = Deno.readDir(this.path)[SymbolAsyncIterator]();
+      const emit = (dirent: Dirent | null) => {
+        if (callback) {
+          callback(null, dirent);
+        }
+        resolve(dirent);
+      };
+      if (this.#entries === null) {
+        PromisePrototypeThen(
+          op_node_fs_readdir(this.path, this.#recursive, true),
+          (entries: Dirent[]) => {
+            this.#entries = entries;
+            emit(this.#next());
+          },
+          (err) => {
+            if (callback) {
+              callback(err);
+            }
+            reject(err);
+          },
+        );
+        return;
       }
-      assert(this.#asyncIterator);
-      PromisePrototypeThen(
-        ReflectApply(this.#asyncIterator.next, this.#asyncIterator, []),
-        (iteratorResult) => {
-          resolve(
-            iteratorResult.done
-              ? null
-              : direntFromDeno(iteratorResult.value, this.#dirPath),
-          );
-          if (callback) {
-            callback(
-              null,
-              iteratorResult.done
-                ? null
-                : direntFromDeno(iteratorResult.value, this.#dirPath),
-            );
-          }
-        },
-        (err) => {
-          if (callback) {
-            callback(err);
-          }
-          reject(err);
-        },
-      );
+      emit(this.#next());
     });
+  }
+
+  #next(): Dirent | null {
+    if (this.#entries && this.#idx < this.#entries.length) {
+      return this.#entries[this.#idx++];
+    }
+    return null;
   }
 
   readSync(): Dirent | null {
     if (this.#closed) {
       throw new ERR_DIR_CLOSED();
     }
-    if (!this.#syncIterator) {
-      this.#syncIterator = Deno.readDirSync(this.path)![SymbolIterator]();
+    if (this.#entries === null) {
+      this.#entries = op_node_fs_readdir_sync(
+        this.path,
+        this.#recursive,
+        true,
+      ) as unknown as Dirent[];
     }
-
-    const iteratorResult = ArrayIteratorPrototypeNext(this.#syncIterator);
-    if (iteratorResult.done) {
-      return null;
-    } else {
-      return direntFromDeno(iteratorResult.value, this.#dirPath);
-    }
+    return this.#next();
   }
 
   /**
@@ -111,7 +117,18 @@ export default class Dir {
    */
   // deno-lint-ignore no-explicit-any
   close(callback?: (...args: any[]) => void): Promise<void> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+      // Match Node: closing an already-closed Dir is an error.
+      if (this.#closed) {
+        const err = new ERR_DIR_CLOSED();
+        if (callback) {
+          callback(err);
+          resolve();
+        } else {
+          reject(err);
+        }
+        return;
+      }
       this.#closed = true;
       if (callback) {
         callback(null);
@@ -126,14 +143,20 @@ export default class Dir {
    * finished reading
    */
   closeSync() {
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
     this.#closed = true;
   }
 
+  // Unlike explicit close()/closeSync(), the dispose protocol is idempotent:
+  // repeated invocations must not throw (see node's file-handle-dispose test).
   [SymbolDispose]() {
-    this.closeSync();
+    if (!this.#closed) this.closeSync();
   }
 
   [SymbolAsyncDispose](): Promise<void> {
+    if (this.#closed) return PromiseResolve();
     return this.close();
   }
 

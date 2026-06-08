@@ -32,7 +32,14 @@ use deno_core::op2;
 #[op2]
 #[string]
 pub fn op_node_sys_to_uv_error(err: i32) -> String {
-  let uv_err = match err {
+  sys_errno_to_uv_code(err).to_string()
+}
+
+/// Maps a Windows system error code to its libuv error-code name (e.g.
+/// `ERROR_FILE_NOT_FOUND` -> `"ENOENT"`). Returns `"UNKNOWN"` when unmapped.
+/// Ported from libuv's `src/win/error.c`.
+pub fn sys_errno_to_uv_code(err: i32) -> &'static str {
+  match err {
     ERROR_NOACCESS => "EACCES",
     WSAEACCES => "EACCES",
     ERROR_CANT_ACCESS_FILE => "EACCES",
@@ -132,8 +139,7 @@ pub fn op_node_sys_to_uv_error(err: i32) -> String {
     ERROR_META_EXPANSION_TOO_LONG => "E2BIG",
     WSAESOCKTNOSUPPORT => "ESOCKTNOSUPPORT",
     _ => "UNKNOWN",
-  };
-  uv_err.to_string()
+  }
 }
 
 // Windows system error codes

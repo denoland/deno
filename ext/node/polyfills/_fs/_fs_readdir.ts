@@ -6,22 +6,15 @@ const { denoErrorToNodeError } = core.loadExtScript(
 );
 import {
   type Dirent,
-  direntFromDeno,
   getValidatedPathToString,
 } from "ext:deno_node/internal/fs/utils.mjs";
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-import {
-  op_fs_read_dir_async,
-  op_fs_read_dir_async_next,
-  op_fs_read_dir_sync,
-} from "ext:core/ops";
-const lazyPath = core.createLazyLoader("node:path");
+import { op_node_fs_readdir, op_node_fs_readdir_sync } from "ext:core/ops";
 
 const {
-  ArrayPrototypePush,
-  ArrayPrototypeShift,
   Error,
+  PromisePrototypeThen,
 } = primordials;
 
 type readDirOptions = {
@@ -37,23 +30,6 @@ type readDirCallbackDirent = (err: Error | null, files: Dirent[]) => void;
 type readDirBoth = (
   ...args: [Error] | [null, string[] | Dirent[] | Array<string | Dirent>]
 ) => void;
-
-async function collectReadDir(path: string): Promise<Deno.DirEntry[]> {
-  const rid = await op_fs_read_dir_async(path);
-  const entries: Deno.DirEntry[] = [];
-  try {
-    while (true) {
-      const entry = await op_fs_read_dir_async_next(rid);
-      if (entry === null) {
-        break;
-      }
-      ArrayPrototypePush(entries, entry);
-    }
-  } finally {
-    core.close(rid);
-  }
-  return entries;
-}
 
 // Mirrors Node's lib/internal/fs/utils.js getOptions(): a bare string options
 // arg is treated as { encoding: <string> }.
@@ -108,62 +84,44 @@ export function readdir(
 
   validateEncoding(options?.encoding);
 
-  const { join, relative } = lazyPath();
-  const result: Array<string | Dirent> = [];
-  const dirs = [path];
-  let current: string | undefined;
-  (async () => {
-    while ((current = ArrayPrototypeShift(dirs)) !== undefined) {
-      try {
-        const entries = await collectReadDir(current);
-
-        for (let i = 0; i < entries.length; i++) {
-          const entry = entries[i];
-          if (options?.recursive && entry.isDirectory) {
-            ArrayPrototypePush(dirs, join(current, entry.name));
-          }
-
-          if (options?.withFileTypes) {
-            entry.parentPath = current;
-            ArrayPrototypePush(
-              result,
-              applyDirentEncoding(
-                direntFromDeno(entry),
-                options?.encoding,
-              ),
-            );
-          } else {
-            let name = entry.name;
-            if (options?.recursive) {
-              name = relative(path, join(current, name));
-            }
-            ArrayPrototypePush(result, decode(name, options?.encoding));
-          }
-        }
-      } catch (err) {
-        callback(
-          denoErrorToNodeError(err as Error, {
-            syscall: "readdir",
-            path: current,
-          }),
-        );
-        return;
-      }
-    }
-
-    callback(null, result);
-  })();
+  PromisePrototypeThen(
+    op_node_fs_readdir(
+      path,
+      options?.recursive ?? false,
+      options?.withFileTypes ?? false,
+    ),
+    (result) => callback(null, applyReaddirEncoding(result, options)),
+    (err) => callback(denoErrorToNodeError(err, { syscall: "scandir", path })),
+  );
 }
 
-function applyDirentEncoding(dirent: Dirent, encoding?: string): Dirent {
-  if (!encoding || encoding === "utf8" || encoding === "utf-8") {
-    return dirent;
+// Names come back utf8 from the native op; re-encode for the rare non-utf8
+// encodings (`buffer` -> Buffer name/parentPath; others -> re-encoded string).
+function applyReaddirEncoding(
+  result: Array<string | Dirent>,
+  options: readDirOptions | null,
+): Array<string | Dirent> {
+  const enc = options?.encoding;
+  if (!enc || enc === "utf8" || enc === "utf-8") return result;
+  if (options?.withFileTypes) {
+    for (let i = 0; i < result.length; i++) {
+      const d = result[i] as Dirent;
+      if (enc === "buffer") {
+        d.name = Buffer.from(d.name as string, "utf8") as unknown as string;
+        d.parentPath = Buffer.from(
+          d.parentPath as string,
+          "utf8",
+        ) as unknown as string;
+      } else {
+        d.name = decode(d.name as string, enc) as string;
+      }
+    }
+  } else {
+    for (let i = 0; i < result.length; i++) {
+      result[i] = decode(result[i] as string, enc);
+    }
   }
-  dirent.name = decode(dirent.name as string, encoding);
-  if (typeof dirent.parentPath === "string") {
-    dirent.parentPath = decode(dirent.parentPath, encoding);
-  }
-  return dirent;
+  return result;
 }
 
 function decode(str: string, encoding?: string): string | Buffer {
@@ -208,44 +166,17 @@ export function readdirSync(
 
   validateEncoding(options?.encoding);
 
-  const { join, relative } = lazyPath();
-  const result: Array<string | Dirent> = [];
-  const dirs = [path];
-  let current: string | undefined;
-  while ((current = ArrayPrototypeShift(dirs)) !== undefined) {
-    try {
-      const entries = op_fs_read_dir_sync(current);
-
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        if (options?.recursive && entry.isDirectory) {
-          ArrayPrototypePush(dirs, join(current, entry.name));
-        }
-
-        if (options?.withFileTypes) {
-          entry.parentPath = current;
-          ArrayPrototypePush(
-            result,
-            applyDirentEncoding(
-              direntFromDeno(entry),
-              options?.encoding,
-            ),
-          );
-        } else {
-          let name = entry.name;
-          if (options?.recursive) {
-            name = relative(path, join(current, name));
-          }
-          ArrayPrototypePush(result, decode(name, options?.encoding));
-        }
-      }
-    } catch (e) {
-      throw denoErrorToNodeError(e as Error, {
-        syscall: "readdir",
-        path: current,
-      });
-    }
+  // Native recursive walk + Dirent/name construction in Rust.
+  let result: Array<string | Dirent>;
+  try {
+    result = op_node_fs_readdir_sync(
+      path,
+      options?.recursive ?? false,
+      options?.withFileTypes ?? false,
+    );
+  } catch (e) {
+    throw denoErrorToNodeError(e as Error, { syscall: "scandir", path });
   }
 
-  return result;
+  return applyReaddirEncoding(result, options);
 }

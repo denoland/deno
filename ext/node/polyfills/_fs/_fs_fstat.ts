@@ -2,92 +2,23 @@
 
 (function () {
 const { core, primordials } = __bootstrap;
-const { op_node_fs_fstat, op_node_fs_fstat_sync } = core.ops;
-
-const {
-  Date,
-  Error,
-  Promise,
-  PromisePrototypeThen,
-} = primordials;
-
-const lazyStatUtils = core.createLazyLoader(
-  "ext:deno_node/internal/fs/stat_utils.ts",
-);
-const lazyFsUtils = core.createLazyLoader(
-  "ext:deno_node/internal/fs/utils.mjs",
-);
-const { denoErrorToNodeError } = core.loadExtScript(
-  "ext:deno_node/internal/errors.ts",
+// fstat returns the cppgc `Stats` directly with the bigint variant handled in
+// Rust (ext/node/ops/fs.rs); errors carry `os_errno` and denoErrorToNodeError
+// derives the node `code`/message.
+const { op_node_fs_fstat_stats, op_node_fs_fstat_stats_sync } = core.ops;
+const { callbackifyOpt } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_common.ts",
 );
 
-function nodeFsStatToFileInfo(stat) {
-  return {
-    isFile: stat.isFile,
-    isDirectory: stat.isDirectory,
-    isSymlink: stat.isSymlink,
-    size: stat.size,
-    mtime: stat.mtimeMs != null ? new Date(stat.mtimeMs) : null,
-    atime: stat.atimeMs != null ? new Date(stat.atimeMs) : null,
-    birthtime: stat.birthtimeMs != null ? new Date(stat.birthtimeMs) : null,
-    ctime: stat.ctimeMs != null ? new Date(stat.ctimeMs) : null,
-    dev: stat.dev,
-    ino: stat.ino ?? 0,
-    mode: stat.mode,
-    nlink: stat.nlink ?? 0,
-    uid: stat.uid,
-    gid: stat.gid,
-    rdev: stat.rdev,
-    blksize: stat.blksize,
-    blocks: stat.blocks ?? 0,
-    isBlockDevice: stat.isBlockDevice,
-    isCharDevice: stat.isCharDevice,
-    isFifo: stat.isFifo,
-    isSocket: stat.isSocket,
-  };
-}
+const { Promise } = primordials;
 
-function fstat(
-  fd,
-  optionsOrCallback,
-  maybeCallback,
-) {
-  fd = lazyFsUtils().getValidatedFd(fd);
-  const callback = typeof optionsOrCallback === "function"
-    ? optionsOrCallback
-    : maybeCallback;
-  const options = typeof optionsOrCallback === "object"
-    ? optionsOrCallback
-    : { bigint: false };
+// The op validates the fd (getValidatedFd) + extracts bigint from options and
+// returns the cppgc Stats (errors node-formatted with syscall "fstat").
+const fstat = callbackifyOpt(op_node_fs_fstat_stats);
 
-  if (!callback) throw new Error("No callback function supplied");
-
-  PromisePrototypeThen(
-    op_node_fs_fstat(fd),
-    (stat) =>
-      callback(
-        null,
-        lazyStatUtils().CFISBIS(nodeFsStatToFileInfo(stat), options.bigint),
-      ),
-    (err) => callback(denoErrorToNodeError(err, { syscall: "fstat" })),
-  );
-}
-
-function fstatSync(
-  fd,
-  options,
-) {
-  fd = lazyFsUtils().getValidatedFd(fd);
-  try {
-    const stat = op_node_fs_fstat_sync(fd);
-    return lazyStatUtils().CFISBIS(
-      nodeFsStatToFileInfo(stat),
-      options?.bigint || false,
-    );
-  } catch (err) {
-    throw denoErrorToNodeError(err, { syscall: "fstat" });
-  }
-}
+// Direct op binding: the op validates the fd, extracts bigint from options,
+// reads the stats, and node-formats errors (syscall "fstat").
+const fstatSync = op_node_fs_fstat_stats_sync;
 
 function fstatPromise(
   fd,

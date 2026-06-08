@@ -10,12 +10,12 @@ import {
   getValidatedPathToString,
   getValidMode,
 } from "ext:deno_node/internal/fs/utils.mjs";
-
 const {
   Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
 } = primordials;
+const { op_node_fs_copy_file, op_node_fs_copy_file_sync } = core.ops;
 const { fs } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
@@ -60,8 +60,9 @@ export function copyFile(
       cb(e);
     }, (e) => {
       if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
+        // The op throws the final node error (code/errno/syscall/path/dest).
         PromisePrototypeThen(
-          Deno.copyFile(srcStr, destStr),
+          op_node_fs_copy_file(srcStr, destStr),
           () => cb(null),
           cb,
         );
@@ -70,7 +71,11 @@ export function copyFile(
       }
     });
   } else {
-    PromisePrototypeThen(Deno.copyFile(srcStr, destStr), () => cb(null), cb);
+    PromisePrototypeThen(
+      op_node_fs_copy_file(srcStr, destStr),
+      () => cb(null),
+      cb,
+    );
   }
 }
 
@@ -95,12 +100,13 @@ export function copyFileSync(
       throw new Error(`A file exists at the destination: ${destStr}`);
     } catch (e) {
       if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)) {
-        Deno.copyFileSync(srcStr, destStr);
+        // The op throws the final node error (code/errno/syscall/path/dest).
+        op_node_fs_copy_file_sync(srcStr, destStr);
       } else {
         throw e;
       }
     }
   } else {
-    Deno.copyFileSync(srcStr, destStr);
+    op_node_fs_copy_file_sync(srcStr, destStr);
   }
 }

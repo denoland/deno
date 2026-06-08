@@ -28,7 +28,7 @@ const {
 } = core.loadExtScript("ext:deno_node/path/mod.ts");
 import {
   type Dirent,
-  DirentFromStats,
+  direntFromStats,
 } from "ext:deno_node/internal/fs/utils.mjs";
 
 const {
@@ -120,7 +120,7 @@ async function getDirent(path) {
   } catch {
     return null;
   }
-  return new DirentFromStats(basename(path), stat, dirname(path));
+  return direntFromStats(basename(path), stat, dirname(path));
 }
 
 /**
@@ -133,7 +133,7 @@ function getDirentSync(path) {
     if (stat === undefined) {
       return null;
     }
-    return new DirentFromStats(basename(path), stat, dirname(path));
+    return direntFromStats(basename(path), stat, dirname(path));
   } catch (err) {
     if (err.code === "ENOTDIR") {
       return null;

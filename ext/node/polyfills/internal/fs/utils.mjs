@@ -3,6 +3,10 @@
 "use strict";
 
 import { core, primordials } from "ext:core/mod.js";
+// node `fs.Stats` / `fs.Dirent` cppgc classes, implemented in Rust
+// (ext/node/ops/fs.rs).
+import { Dirent, Stats } from "ext:core/ops";
+const { op_node_fs_dirent, op_node_fs_dirent_from_stats } = core.ops;
 const {
   ArrayIsArray,
   BigInt,
@@ -169,70 +173,27 @@ export function assertEncoding(encoding) {
   }
 }
 
-export class Dirent {
-  constructor(name, type, path) {
-    this.name = name;
-    this.parentPath = path;
-    this[kType] = type;
-  }
+// `fs.Dirent` is the cppgc class above (built in Rust). The JS `Dirent` +
+// `DirentFromStats` classes were removed; entries are built via ops.
+export { Dirent };
 
-  isDirectory() {
-    return this[kType] === UV_DIRENT_DIR;
-  }
-
-  isFile() {
-    return this[kType] === UV_DIRENT_FILE;
-  }
-
-  isBlockDevice() {
-    return this[kType] === UV_DIRENT_BLOCK;
-  }
-
-  isCharacterDevice() {
-    return this[kType] === UV_DIRENT_CHAR;
-  }
-
-  isSymbolicLink() {
-    return this[kType] === UV_DIRENT_LINK;
-  }
-
-  isFIFO() {
-    return this[kType] === UV_DIRENT_FIFO;
-  }
-
-  isSocket() {
-    return this[kType] === UV_DIRENT_SOCKET;
-  }
-}
-
+// Build a Dirent from a Deno DirEntry, mapping to the uv dirent type
+// (UNKNOWN=0 FILE=1 DIR=2 LINK=3) the cppgc Dirent expects.
 export function direntFromDeno(entry, path) {
-  let type;
-
+  let kind = UV_DIRENT_UNKNOWN;
   if (entry.isDirectory) {
-    type = UV_DIRENT_DIR;
+    kind = UV_DIRENT_DIR;
   } else if (entry.isFile) {
-    type = UV_DIRENT_FILE;
+    kind = UV_DIRENT_FILE;
   } else if (entry.isSymlink) {
-    type = UV_DIRENT_LINK;
+    kind = UV_DIRENT_LINK;
   }
-
-  return new Dirent(entry.name, type, path ?? entry.parentPath);
+  return op_node_fs_dirent(entry.name, path ?? entry.parentPath, kind);
 }
 
-export class DirentFromStats extends Dirent {
-  constructor(name, stats, path) {
-    super(name, null, path);
-    this[kStats] = stats;
-  }
-}
-
-for (const name of new SafeArrayIterator(ReflectOwnKeys(Dirent.prototype))) {
-  if (name === "constructor") {
-    continue;
-  }
-  DirentFromStats.prototype[name] = function () {
-    return this[kStats][name]();
-  };
+// Build a Dirent whose predicates come from a `Stats` (was `DirentFromStats`).
+export function direntFromStats(name, stats, path) {
+  return op_node_fs_dirent_from_stats(name, path, stats);
 }
 
 export function copyObject(source) {
@@ -305,13 +266,13 @@ export function getDirents(path, { 0: names, 1: types }, callback) {
             callback(err);
             return;
           }
-          names[idx] = new DirentFromStats(name, stats, path);
+          names[idx] = direntFromStats(name, stats, path);
           if (--toFinish === 0) {
             callback(null, names);
           }
         });
       } else {
-        names[i] = new Dirent(names[i], types[i], path);
+        names[i] = op_node_fs_dirent(names[i], path, types[i]);
       }
     }
     if (toFinish === 0) {
@@ -341,16 +302,16 @@ export function getDirent(path, name, type, callback) {
           callback(err);
           return;
         }
-        callback(null, new DirentFromStats(name, stats, path));
+        callback(null, direntFromStats(name, stats, path));
       });
     } else {
-      callback(null, new Dirent(name, type, path));
+      callback(null, op_node_fs_dirent(name, path, type));
     }
   } else if (type === UV_DIRENT_UNKNOWN) {
     const stats = lstatSync(join(path, name));
-    return new DirentFromStats(name, stats, path);
+    return direntFromStats(name, stats, path);
   } else {
-    return new Dirent(name, type, path);
+    return op_node_fs_dirent(name, path, type);
   }
 }
 
@@ -453,298 +414,13 @@ export function preprocessSymlinkDestination(path, type, linkPath) {
 }
 
 // Constructor for file stats.
-function StatsBase(
-  dev,
-  mode,
-  nlink,
-  uid,
-  gid,
-  rdev,
-  blksize,
-  ino,
-  size,
-  blocks,
-) {
-  this.dev = dev;
-  this.mode = mode;
-  this.nlink = nlink;
-  this.uid = uid;
-  this.gid = gid;
-  this.rdev = rdev;
-  this.blksize = blksize;
-  this.ino = ino;
-  this.size = size;
-  this.blocks = blocks;
-}
-
-StatsBase.prototype.isDirectory = function () {
-  return this._checkModeProperty(S_IFDIR);
-};
-
-StatsBase.prototype.isFile = function () {
-  return this._checkModeProperty(S_IFREG);
-};
-
-StatsBase.prototype.isBlockDevice = function () {
-  return this._checkModeProperty(S_IFBLK);
-};
-
-StatsBase.prototype.isCharacterDevice = function () {
-  return this._checkModeProperty(S_IFCHR);
-};
-
-StatsBase.prototype.isSymbolicLink = function () {
-  return this._checkModeProperty(S_IFLNK);
-};
-
-StatsBase.prototype.isFIFO = function () {
-  return this._checkModeProperty(S_IFIFO);
-};
-
-StatsBase.prototype.isSocket = function () {
-  return this._checkModeProperty(S_IFSOCK);
-};
-
-const kNsPerMsBigInt = 10n ** 6n;
-const kNsPerSecBigInt = 10n ** 9n;
-const kMsPerSec = 10 ** 3;
-const kNsPerMs = 10 ** 6;
-function msFromTimeSpec(sec, nsec) {
-  return sec * kMsPerSec + nsec / kNsPerMs;
-}
-
-function nsFromTimeSpecBigInt(sec, nsec) {
-  return sec * kNsPerSecBigInt + nsec;
-}
-
-// The Date constructor performs Math.floor() to the timestamp.
-// https://www.ecma-international.org/ecma-262/#sec-timeclip
-// Since there may be a precision loss when the timestamp is
-// converted to a floating point number, we manually round
-// the timestamp here before passing it to Date().
-// Refs: https://github.com/nodejs/node/pull/12607
-function dateFromMs(ms) {
-  return new Date(Number(ms) + 0.5);
-}
-
-const lazyDateFields = {
-  __proto__: null,
-  atime: {
-    __proto__: null,
-    enumerable: true,
-    configurable: true,
-    get() {
-      return this.atime = dateFromMs(this.atimeMs);
-    },
-    set(value) {
-      ObjectDefineProperty(this, "atime", {
-        __proto__: null,
-        value,
-        writable: true,
-      });
-    },
-  },
-  mtime: {
-    __proto__: null,
-    enumerable: true,
-    configurable: true,
-    get() {
-      return this.mtime = dateFromMs(this.mtimeMs);
-    },
-    set(value) {
-      ObjectDefineProperty(this, "mtime", {
-        __proto__: null,
-        value,
-        writable: true,
-      });
-    },
-  },
-  ctime: {
-    __proto__: null,
-    enumerable: true,
-    configurable: true,
-    get() {
-      return this.ctime = dateFromMs(this.ctimeMs);
-    },
-    set(value) {
-      ObjectDefineProperty(this, "ctime", {
-        __proto__: null,
-        value,
-        writable: true,
-      });
-    },
-  },
-  birthtime: {
-    __proto__: null,
-    enumerable: true,
-    configurable: true,
-    get() {
-      return this.birthtime = dateFromMs(this.birthtimeMs);
-    },
-    set(value) {
-      ObjectDefineProperty(this, "birthtime", {
-        __proto__: null,
-        value,
-        writable: true,
-      });
-    },
-  },
-};
-
-export function BigIntStats(
-  dev,
-  mode,
-  nlink,
-  uid,
-  gid,
-  rdev,
-  blksize,
-  ino,
-  size,
-  blocks,
-  atimeNs,
-  mtimeNs,
-  ctimeNs,
-  birthtimeNs,
-) {
-  ReflectApply(StatsBase, this, [
-    dev,
-    mode,
-    nlink,
-    uid,
-    gid,
-    rdev,
-    blksize,
-    ino,
-    size,
-    blocks,
-  ]);
-
-  this.atimeMs = atimeNs / kNsPerMsBigInt;
-  this.mtimeMs = mtimeNs / kNsPerMsBigInt;
-  this.ctimeMs = ctimeNs / kNsPerMsBigInt;
-  this.birthtimeMs = birthtimeNs / kNsPerMsBigInt;
-  this.atimeNs = atimeNs;
-  this.mtimeNs = mtimeNs;
-  this.ctimeNs = ctimeNs;
-  this.birthtimeNs = birthtimeNs;
-  this.atime = dateFromMs(this.atimeMs);
-  this.mtime = dateFromMs(this.mtimeMs);
-  this.ctime = dateFromMs(this.ctimeMs);
-}
-
-ObjectSetPrototypeOf(BigIntStats.prototype, StatsBase.prototype);
-ObjectSetPrototypeOf(BigIntStats, StatsBase);
-ObjectDefineProperties(BigIntStats.prototype, lazyDateFields);
-
-BigIntStats.prototype._checkModeProperty = function (property) {
-  if (
-    isWindows && (property === S_IFIFO || property === S_IFBLK ||
-      property === S_IFSOCK)
-  ) {
-    return false; // Some types are not available on Windows
-  }
-  return (this.mode & BigInt(S_IFMT)) === BigInt(property);
-};
-
-export function Stats(
-  dev,
-  mode,
-  nlink,
-  uid,
-  gid,
-  rdev,
-  blksize,
-  ino,
-  size,
-  blocks,
-  atimeMs,
-  mtimeMs,
-  ctimeMs,
-  birthtimeMs,
-) {
-  FunctionPrototypeCall(
-    StatsBase,
-    this,
-    dev,
-    mode,
-    nlink,
-    uid,
-    gid,
-    rdev,
-    blksize,
-    ino,
-    size,
-    blocks,
-  );
-  this.atimeMs = atimeMs;
-  this.mtimeMs = mtimeMs;
-  this.ctimeMs = ctimeMs;
-  this.birthtimeMs = birthtimeMs;
-  this.atime = dateFromMs(atimeMs);
-  this.mtime = dateFromMs(mtimeMs);
-  this.ctime = dateFromMs(ctimeMs);
-}
-
-ObjectSetPrototypeOf(Stats.prototype, StatsBase.prototype);
-ObjectSetPrototypeOf(Stats, StatsBase);
-ObjectDefineProperties(Stats.prototype, lazyDateFields);
-
-// HACK: Workaround for https://github.com/standard-things/esm/issues/821.
-// TODO(ronag): Remove this as soon as `esm` publishes a fixed version.
-Stats.prototype.isFile = StatsBase.prototype.isFile;
-
-Stats.prototype._checkModeProperty = function (property) {
-  if (
-    isWindows && (property === S_IFIFO || property === S_IFBLK ||
-      property === S_IFSOCK)
-  ) {
-    return false; // Some types are not available on Windows
-  }
-  return (this.mode & S_IFMT) === property;
-};
-
-/**
- * @param {Float64Array | BigUint64Array} stats
- * @param {number} offset
- * @returns
- */
-export function getStatsFromBinding(stats, offset = 0) {
-  if (isBigUint64Array(stats)) {
-    return new BigIntStats(
-      stats[0 + offset],
-      stats[1 + offset],
-      stats[2 + offset],
-      stats[3 + offset],
-      stats[4 + offset],
-      stats[5 + offset],
-      stats[6 + offset],
-      stats[7 + offset],
-      stats[8 + offset],
-      stats[9 + offset],
-      nsFromTimeSpecBigInt(stats[10 + offset], stats[11 + offset]),
-      nsFromTimeSpecBigInt(stats[12 + offset], stats[13 + offset]),
-      nsFromTimeSpecBigInt(stats[14 + offset], stats[15 + offset]),
-      nsFromTimeSpecBigInt(stats[16 + offset], stats[17 + offset]),
-    );
-  }
-  return new Stats(
-    stats[0 + offset],
-    stats[1 + offset],
-    stats[2 + offset],
-    stats[3 + offset],
-    stats[4 + offset],
-    stats[5 + offset],
-    stats[6 + offset],
-    stats[7 + offset],
-    stats[8 + offset],
-    stats[9 + offset],
-    msFromTimeSpec(stats[10 + offset], stats[11 + offset]),
-    msFromTimeSpec(stats[12 + offset], stats[13 + offset]),
-    msFromTimeSpec(stats[14 + offset], stats[15 + offset]),
-    msFromTimeSpec(stats[16 + offset], stats[17 + offset]),
-  );
-}
+// node `fs.Stats` is the cppgc object built in Rust (ext/node/ops/fs.rs);
+// the stat ops return it directly. `BigIntStats` is the same class
+// (one-class design: `bigint: true` stats carry BigInt fields). The JS
+// `StatsBase`/`Stats`/`BigIntStats` classes and `getStatsFromBinding` were
+// removed so they no longer load into the startup snapshot.
+export { Stats };
+export const BigIntStats = Stats;
 
 export function stringToFlags(flags, name = "flags") {
   if (typeof flags === "number") {
@@ -965,7 +641,7 @@ const defaultCpOptions = {
   verbatimSymlinks: false,
 };
 
-const defaultRmOptions = {
+export const defaultRmOptions = {
   recursive: false,
   force: false,
   retryDelay: 100,
@@ -1215,7 +891,6 @@ export default {
   nullCheck,
   preprocessSymlinkDestination,
   realpathCacheKey,
-  getStatsFromBinding,
   stringToFlags,
   stringToSymlinkType,
   Stats,
