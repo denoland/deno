@@ -42,18 +42,25 @@ pub enum GenerateKeyAlgorithm {
     name: String,
     modulus_length: u32,
     public_exponent: Vec<u8>,
+    /// Captured as the raw user string so an unrecognized digest name
+    /// (e.g. `MD5`) can be reported as `NotSupportedError` from `run`
+    /// rather than as a `TypeError` from the WebIDL converter.
     hash: String,
   },
   Ec {
     name: String,
-    named_curve: EcNamedCurve,
+    /// Captured as the raw user string so an unrecognized curve
+    /// (e.g. `P-128`) can be reported as `NotSupportedError` from `run`.
+    named_curve: String,
   },
   Aes {
     name: String,
     length: u32,
   },
   Hmac {
-    hash: ShaHash,
+    /// Captured as the raw user string so an unrecognized digest name
+    /// (e.g. `MD5`) can be reported as `NotSupportedError` from `run`.
+    hash: String,
     length: Option<u32>,
   },
   ChaCha20Poly1305,
@@ -128,21 +135,9 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
           .ok_or_else(|| {
             make_err(prefix.clone(), context.borrowed(), "Missing 'namedCurve'")
           })?;
-        let named_curve = match curve_str.as_str() {
-          "P-256" => EcNamedCurve::P256,
-          "P-384" => EcNamedCurve::P384,
-          "P-521" => EcNamedCurve::P521,
-          _ => {
-            return Err(make_err(
-              prefix.clone(),
-              context.borrowed(),
-              "Unsupported named curve",
-            ));
-          }
-        };
         Self::Ec {
           name: canonical,
-          named_curve,
+          named_curve: curve_str,
         }
       }
       "AES-CTR" | "AES-CBC" | "AES-GCM" | "AES-OCB" | "AES-KW" => {
@@ -165,11 +160,11 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
         let hash_name = read_hash_name(scope, *o).ok_or_else(|| {
           make_err(prefix.clone(), context.borrowed(), "Missing 'hash'")
         })?;
-        let hash = sha_from_name(&hash_name).ok_or_else(|| {
-          make_err(prefix.clone(), context.borrowed(), "Unsupported hash")
-        })?;
         let length = read_u32_member(scope, *o, b"length");
-        Self::Hmac { hash, length }
+        Self::Hmac {
+          hash: hash_name,
+          length,
+        }
       }
       "ChaCha20-Poly1305" => Self::ChaCha20Poly1305,
       "Ed25519" => Self::Ed25519,
@@ -309,6 +304,14 @@ pub async fn run(
       hash,
     } => {
       check_usages(&usages, &usages_for_rsa(&name))?;
+      // Per `normalizeAlgorithm` with op `digest`, an unrecognized `hash`
+      // value rejects with `NotSupportedError`, not the converter's
+      // `TypeError`.
+      if sha_from_name(&hash).is_none() {
+        return Err(not_supported(format!(
+          "Unrecognized hash algorithm: {hash}"
+        )));
+      }
       let key_data =
         spawn_blocking(move || generate_rsa(modulus_length, &public_exponent))
           .await
@@ -333,8 +336,18 @@ pub async fn run(
     }
     GenerateKeyAlgorithm::Ec { name, named_curve } => {
       check_usages(&usages, &usages_for_ec(&name))?;
-      let curve_str = ec_curve_str(named_curve);
-      let key_data = spawn_blocking(move || generate_ec(named_curve))
+      let curve = match named_curve.as_str() {
+        "P-256" => EcNamedCurve::P256,
+        "P-384" => EcNamedCurve::P384,
+        "P-521" => EcNamedCurve::P521,
+        other => {
+          return Err(not_supported(format!(
+            "Unsupported named curve: {other}"
+          )));
+        }
+      };
+      let curve_str = ec_curve_str(curve);
+      let key_data = spawn_blocking(move || generate_ec(curve))
         .await
         .map_err(|e| op_error(format!("Failed to generate key: {e}")))?
         .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
@@ -378,8 +391,13 @@ pub async fn run(
       if length == Some(0) {
         return Err(op_error("Invalid length".into()));
       }
-      let hash_name = sha_name(hash);
-      let bytes = generate_hmac(hash, length.map(|l| l as usize))
+      // Per `normalizeAlgorithm` with op `digest`, an unrecognized
+      // `hash` rejects with `NotSupportedError`.
+      let sha = sha_from_name(&hash).ok_or_else(|| {
+        not_supported(format!("Unrecognized hash algorithm: {hash}"))
+      })?;
+      let hash_name = sha_name(sha);
+      let bytes = generate_hmac(sha, length.map(|l| l as usize))
         .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
       let length_bits = (bytes.len() * 8) as u32;
       Ok(GenerateKeyOutput::Symmetric {
@@ -639,6 +657,10 @@ fn sha_from_name(s: &str) -> Option<ShaHash> {
 
 fn op_error(msg: String) -> CryptoError {
   CryptoError::Other(JsErrorBox::new("DOMExceptionOperationError", msg))
+}
+
+fn not_supported(msg: String) -> CryptoError {
+  CryptoError::Other(JsErrorBox::new("DOMExceptionNotSupportedError", msg))
 }
 
 fn make_err(
