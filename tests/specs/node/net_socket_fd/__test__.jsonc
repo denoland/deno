@@ -17,6 +17,10 @@
     "tcp_open": {
       "args": "run -A --unstable-ffi tcp_open.ts",
       "output": "tcp_open.out"
+    },
+    "duplicate_fd": {
+      "args": "run -A duplicate_fd.ts",
+      "output": "duplicate_fd.out"
     }
   }
 }

@@ -8,11 +8,13 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::net::ToSocketAddrs;
+use std::rc::Rc;
 
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::uv_compat;
 use deno_core::uv_compat::UvConnect;
@@ -343,9 +345,18 @@ impl TCPWrap {
   }
 
   #[fast]
-  fn open(&self, #[smi] fd: i32) -> i32 {
+  fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
     if fd < 0 {
       return uv_compat::UV_EBADF;
+    }
+    // Refuse to adopt a descriptor Deno already tracks. Stdio (0-2) is
+    // pre-registered and may be re-opened; any other fd already in the
+    // FdTable is rejected, matching `PipeWrap::open`.
+    {
+      let fd_table = state.borrow::<deno_io::FdTable>();
+      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
+        return -libc::EEXIST;
+      }
     }
     let tcp = self.tcp_ptr();
     if tcp.is_null() {
@@ -353,12 +364,22 @@ impl TCPWrap {
     }
     // SAFETY: tcp handle is valid (null-checked above); fd is validated above.
     // Platform-specific non-blocking setup and uv_tcp_open are safe with valid args.
-    unsafe {
+    let ret = unsafe {
       #[cfg(unix)]
       {
         let flags = libc::fcntl(fd, libc::F_GETFL);
         if flags != -1 {
           libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+        }
+        // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
+        // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
+        // libuv layer doesn't autodetect — it uses the wrap's intent to
+        // decide how to register the fd, then `listen()` on a listening fd
+        // is a no-op at the kernel level.
+        if self.socket_type.get() == SocketType::Server {
+          uv_compat::uv_tcp_open_listener(tcp, fd)
+        } else {
+          uv_compat::uv_tcp_open(tcp, fd)
         }
       }
       #[cfg(windows)]
@@ -367,18 +388,41 @@ impl TCPWrap {
         use windows_sys::Win32::Networking::WinSock::ioctlsocket;
         let mut nonblocking: u32 = 1;
         ioctlsocket(fd as usize, FIONBIO, &mut nonblocking);
+        uv_compat::uv_tcp_open(tcp, fd)
       }
-      // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
-      // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
-      // libuv layer doesn't autodetect — it uses the wrap's intent to
-      // decide how to register the fd, then `listen()` on a listening fd
-      // is a no-op at the kernel level.
-      #[cfg(unix)]
-      if self.socket_type.get() == SocketType::Server {
-        return uv_compat::uv_tcp_open_listener(tcp, fd);
-      }
-      uv_compat::uv_tcp_open(tcp, fd)
+    };
+    // Track the adopted fd so it can't be re-adopted by another wrap and is
+    // dropped from the FdTable on close.
+    if ret == 0 {
+      state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);
+      self.base.set_fd(fd);
     }
+    ret
+  }
+
+  /// Override the base close to drop the `FdTable` entry registered by
+  /// `open()` before `uv_close` frees the fd. A no-op for sockets that were
+  /// never adopted via `open()` — their fd stays -1.
+  #[reentrant]
+  fn close(
+    &self,
+    op_state: Rc<RefCell<OpState>>,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::PinScope<'_, '_>,
+    #[scoped] cb: Option<v8::Global<v8::Function>>,
+  ) -> Result<(), ResourceError> {
+    let fd = self.base.get_fd();
+    if fd >= 0 {
+      op_state
+        .borrow_mut()
+        .borrow_mut::<deno_io::FdTable>()
+        .remove(fd);
+    }
+    self.base.clear_js_handle();
+    self
+      .base
+      .handle_wrap()
+      .close_handle(op_state, this, scope, cb)
   }
 
   #[fast]
