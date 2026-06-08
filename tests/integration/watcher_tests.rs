@@ -1907,6 +1907,55 @@ async fn run_watch_process_exit_on_restart() {
   check_alive_then_kill(child);
 }
 
+/// Test that a script calling `Deno.exit()` under `--watch` ends the current
+/// run without killing the watcher, which keeps watching and restarts the
+/// script on the next file change. See https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn run_watch_deno_exit() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      globalThis.addEventListener("unload", () => {
+        console.log("unload event fired");
+      });
+      console.log("started");
+      Deno.exit(42);
+      console.log("not reached");
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("started", &mut stdout_lines).await;
+  // `Deno.exit()` still dispatches the `unload` event, and code after it does
+  // not run.
+  wait_contains("unload event fired", &mut stdout_lines).await;
+  // The watcher must survive `Deno.exit()` instead of terminating the process.
+  wait_contains("Process finished", &mut stderr_lines).await;
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Editing the file restarts the run, proving the watcher is still alive.
+  file_to_watch.write("console.log('restarted');");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("restarted", &mut stdout_lines).await;
+  wait_contains("Process finished", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
 /// Test that SIGTERM is dispatched to JS signal handlers on watch restart,
 /// giving the process a chance to clean up before restarting.
 #[test(flaky)]

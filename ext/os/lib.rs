@@ -70,6 +70,21 @@ impl OpExitCallbacks {
   }
 }
 
+/// Holds the main isolate's handle so that `op_exit` (i.e. `Deno.exit()`) can
+/// terminate the current isolate instead of the whole process. Installed by
+/// `deno run --watch` / `deno serve --watch` so a script calling `Deno.exit()`
+/// ends the current run without killing the file watcher. See issue #7590.
+pub struct WatcherExitHandle(pub v8::IsolateHandle);
+
+/// Set by `op_exit` when a [`WatcherExitHandle`] is present to record that the
+/// script called `Deno.exit()`. The watcher reads this after the run to learn
+/// the requested exit code and to confirm the V8 termination it observes was
+/// caused by `Deno.exit()` rather than another error.
+#[derive(Clone, Copy, Debug)]
+pub struct WatcherExitInfo {
+  pub exit_code: i32,
+}
+
 deno_core::extension!(
   deno_os,
   ops = [
@@ -352,6 +367,21 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
+  // Under `deno run --watch`, terminate the current V8 isolate instead of
+  // exiting the process so the file watcher survives and can restart the
+  // script on the next file change. See issue #7590.
+  if let Some(handle) =
+    state.try_borrow::<WatcherExitHandle>().map(|h| h.0.clone())
+  {
+    let code = state
+      .try_borrow::<ExitCode>()
+      .map(|exit_code| exit_code.get())
+      .unwrap_or_default();
+    state.put(WatcherExitInfo { exit_code: code });
+    handle.terminate_execution();
+    return;
+  }
+
   if let Some(cbs) = state.try_borrow_mut::<OpExitCallbacks>() {
     cbs.run();
   }

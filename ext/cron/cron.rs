@@ -5,10 +5,14 @@ use std::str::FromStr;
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Duration;
+use chrono::LocalResult;
+use chrono::NaiveDate;
+use chrono::NaiveDateTime;
 use chrono::TimeZone;
 use chrono::Timelike;
 use chrono::Utc;
 use chrono::Weekday;
+use chrono_tz::Tz;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParseError;
@@ -117,7 +121,43 @@ impl FromStr for Schedule {
 }
 
 impl Schedule {
+  /// Find the next execution time strictly after `date`, interpreting the
+  /// schedule in UTC.
   pub fn next_after(&self, date: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    let next = self.next_naive(date.naive_utc())?;
+    Some(Utc.from_utc_datetime(&next))
+  }
+
+  /// Find the next execution time strictly after `date`, interpreting the
+  /// schedule as wall-clock time in the given IANA timezone `tz`.
+  ///
+  /// Cron fields describe a wall clock, so the search runs in the timezone's
+  /// local time and the matching instant is then resolved back to UTC. DST
+  /// transitions are handled as follows:
+  /// - Ambiguous local times (fall back, the clock repeats an hour) fire at the
+  ///   earliest occurrence.
+  /// - Nonexistent local times (spring forward, the clock skips an hour) are
+  ///   skipped; the search continues to the next matching wall-clock time.
+  pub fn next_after_tz(
+    &self,
+    date: DateTime<Utc>,
+    tz: Tz,
+  ) -> Option<DateTime<Utc>> {
+    let mut cursor = date.with_timezone(&tz).naive_local();
+    loop {
+      let candidate = self.next_naive(cursor)?;
+      match tz.from_local_datetime(&candidate) {
+        LocalResult::Single(dt) => return Some(dt.with_timezone(&Utc)),
+        LocalResult::Ambiguous(earliest, _) => {
+          return Some(earliest.with_timezone(&Utc));
+        }
+        LocalResult::None => cursor = candidate,
+      }
+    }
+  }
+
+  /// Core search loop over wall-clock time, independent of any timezone.
+  fn next_naive(&self, date: NaiveDateTime) -> Option<NaiveDateTime> {
     // Rare schedules such as 5th Fridays in February can have multi-decade
     // gaps. Keep the bounded search broad enough to preserve saffron behavior.
     const MAX_SEARCH_DAYS: i64 = 366 * 100;
@@ -150,14 +190,14 @@ impl Schedule {
     None
   }
 
-  fn contains(&self, date: DateTime<Utc>) -> bool {
+  fn contains(&self, date: NaiveDateTime) -> bool {
     (self.minutes & (1u64 << date.minute())) != 0
       && (self.hours & (1u32 << date.hour())) != 0
       && (self.months & (1u16 << date.month())) != 0
       && self.matches_day(date)
   }
 
-  fn matches_day(&self, date: DateTime<Utc>) -> bool {
+  fn matches_day(&self, date: NaiveDateTime) -> bool {
     match (self.days_of_month.is_any(), self.days_of_week.is_any()) {
       (true, true) => true,
       (true, false) => self.days_of_week.contains(date),
@@ -170,8 +210,8 @@ impl Schedule {
 
   fn next_matching_month_start(
     &self,
-    date: DateTime<Utc>,
-  ) -> Option<DateTime<Utc>> {
+    date: NaiveDateTime,
+  ) -> Option<NaiveDateTime> {
     let mut year = date.year();
     let mut month = date.month().checked_add(1)?;
 
@@ -190,8 +230,8 @@ impl Schedule {
 
   fn next_matching_hour_start(
     &self,
-    date: DateTime<Utc>,
-  ) -> Option<DateTime<Utc>> {
+    date: NaiveDateTime,
+  ) -> Option<NaiveDateTime> {
     for hour in date.hour()..=23 {
       if (self.hours & (1u32 << hour)) != 0 {
         return date.with_hour(hour)?.with_minute(0);
@@ -206,8 +246,8 @@ impl Schedule {
 
   fn next_matching_minute_start(
     &self,
-    date: DateTime<Utc>,
-  ) -> Option<DateTime<Utc>> {
+    date: NaiveDateTime,
+  ) -> Option<NaiveDateTime> {
     for minute in date.minute()..=59 {
       if (self.minutes & (1u64 << minute)) != 0 {
         return date.with_minute(minute);
@@ -223,7 +263,7 @@ impl DaysOfMonth {
     matches!(self, Self::Any)
   }
 
-  fn contains(&self, date: DateTime<Utc>) -> bool {
+  fn contains(&self, date: NaiveDateTime) -> bool {
     let day = date.day();
     let days_in_month = days_in_month(date.year(), date.month());
     match *self {
@@ -254,7 +294,7 @@ impl DaysOfWeek {
     matches!(self, Self::Any)
   }
 
-  fn contains(&self, date: DateTime<Utc>) -> bool {
+  fn contains(&self, date: NaiveDateTime) -> bool {
     let weekday = date.weekday().num_days_from_sunday();
     match *self {
       Self::Any => true,
@@ -471,10 +511,8 @@ fn ymd_hms(
   hour: u32,
   minute: u32,
   second: u32,
-) -> Option<DateTime<Utc>> {
-  Utc
-    .with_ymd_and_hms(year, month, day, hour, minute, second)
-    .single()
+) -> Option<NaiveDateTime> {
+  NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(hour, minute, second)
 }
 
 fn is_leap_year(year: i32) -> bool {
@@ -521,6 +559,61 @@ mod tests {
       .unwrap()
       .next_after(date)
       .unwrap()
+  }
+
+  fn next_tz(schedule: &str, date: DateTime<Utc>, tz: &str) -> DateTime<Utc> {
+    schedule
+      .parse::<Schedule>()
+      .unwrap()
+      .next_after_tz(date, tz.parse().unwrap())
+      .unwrap()
+  }
+
+  #[test]
+  fn next_after_tz_standard_time() {
+    // Noon in New York during EST (UTC-5) is 17:00 UTC.
+    assert_eq!(
+      next_tz("0 12 * * *", dt(2024, 1, 15, 0, 0), "America/New_York"),
+      dt(2024, 1, 15, 17, 0)
+    );
+  }
+
+  #[test]
+  fn next_after_tz_daylight_time() {
+    // Noon in New York during EDT (UTC-4) is 16:00 UTC.
+    assert_eq!(
+      next_tz("0 12 * * *", dt(2024, 7, 15, 0, 0), "America/New_York"),
+      dt(2024, 7, 15, 16, 0)
+    );
+  }
+
+  #[test]
+  fn next_after_tz_spring_forward_gap_is_skipped() {
+    // On 2024-03-10 New York jumps from 02:00 to 03:00, so 02:30 local does
+    // not exist. The 02:30 firing is skipped and the next match is the
+    // following day at 02:30 EDT (UTC-4) = 06:30 UTC.
+    assert_eq!(
+      next_tz("30 2 * * *", dt(2024, 3, 10, 0, 0), "America/New_York"),
+      dt(2024, 3, 11, 6, 30)
+    );
+  }
+
+  #[test]
+  fn next_after_tz_fall_back_picks_earliest() {
+    // On 2024-11-03 New York repeats 01:00-02:00. The 01:30 firing resolves to
+    // the earliest occurrence, still EDT (UTC-4) = 05:30 UTC.
+    assert_eq!(
+      next_tz("30 1 * * *", dt(2024, 11, 3, 0, 0), "America/New_York"),
+      dt(2024, 11, 3, 5, 30)
+    );
+  }
+
+  #[test]
+  fn next_after_tz_utc_matches_plain() {
+    assert_eq!(
+      next_tz("30 4 * * *", dt(2024, 6, 1, 0, 0), "UTC"),
+      next("30 4 * * *", dt(2024, 6, 1, 0, 0))
+    );
   }
 
   #[test]
@@ -629,7 +722,11 @@ mod tests {
       ("0 0 31-1 * *", dt(2020, 1, 2, 0, 0), false),
     ] {
       let schedule = schedule.parse::<Schedule>().unwrap();
-      assert_eq!(schedule.contains(date), expected, "{schedule:?} {date}");
+      assert_eq!(
+        schedule.contains(date.naive_utc()),
+        expected,
+        "{schedule:?} {date}"
+      );
     }
   }
 
@@ -669,7 +766,11 @@ mod tests {
       ("0 0 13 * TUE", dt(2024, 5, 15, 0, 0), false),
     ] {
       let schedule = schedule.parse::<Schedule>().unwrap();
-      assert_eq!(schedule.contains(date), expected, "{schedule:?} {date}");
+      assert_eq!(
+        schedule.contains(date.naive_utc()),
+        expected,
+        "{schedule:?} {date}"
+      );
     }
   }
 
@@ -677,7 +778,7 @@ mod tests {
   fn invalid_derived_dates_do_not_panic_or_match() {
     let schedule = "0 0 L-30W APR *".parse::<Schedule>().unwrap();
     for day in 1..=30 {
-      assert!(!schedule.contains(dt(2021, 4, day, 0, 0)));
+      assert!(!schedule.contains(dt(2021, 4, day, 0, 0).naive_utc()));
     }
     assert_eq!(
       schedule.next_after(dt(2021, 4, 1, 0, 0)),

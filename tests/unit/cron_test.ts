@@ -113,6 +113,45 @@ Deno.test(function invalidBackoffScheduleTest() {
   );
 });
 
+Deno.test(function invalidTimezoneTest() {
+  assertThrows(
+    () =>
+      Deno.cron(
+        "abc",
+        "*/1 * * * *",
+        { timezone: "Not/AZone" },
+        () => {},
+      ),
+    TypeError,
+    "Invalid cron timezone",
+  );
+});
+
+Deno.test(async function basicTestWithTimezone() {
+  Deno.env.set("DENO_CRON_TEST_SCHEDULE_OFFSET", "100");
+
+  let count = 0;
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ac = new AbortController();
+  const c = Deno.cron(
+    "abc",
+    "0 12 * * *",
+    { signal: ac.signal, timezone: "America/New_York" },
+    () => {
+      count++;
+      if (count > 5) {
+        resolve();
+      }
+    },
+  );
+  try {
+    await promise;
+  } finally {
+    ac.abort();
+    await c;
+  }
+});
+
 Deno.test(async function tooManyCrons() {
   const crons: Promise<void>[] = [];
   const ac = new AbortController();
