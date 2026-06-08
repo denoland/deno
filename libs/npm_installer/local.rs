@@ -19,8 +19,11 @@ use std::sync::Arc;
 use anyhow::Error as AnyError;
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
+use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmPackageIdPeerDependencies;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmResolutionPackageSystemInfo;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
@@ -67,6 +70,7 @@ use crate::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use crate::lifecycle_scripts::LifecycleScriptsStrategy;
 use crate::lifecycle_scripts::has_lifecycle_scripts;
 use crate::lifecycle_scripts::is_running_lifecycle_script;
+use crate::package_json::InstallWorkspacePkgDep;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::process_state::NpmProcessState;
 
@@ -187,7 +191,12 @@ impl<
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), SyncResolutionWithFsError> {
     let has_no_packages = snapshot.is_empty()
-      && self.npm_install_deps_provider.local_pkgs().is_empty();
+      && self.npm_install_deps_provider.local_pkgs().is_empty()
+      && !self
+        .npm_install_deps_provider
+        .workspace_pkgs()
+        .iter()
+        .any(|pkg| !pkg.scripts.is_empty());
     let deno_local_registry_dir = self.root_node_modules_path.join(".deno");
     if has_no_packages
       && (!self.clean_on_install
@@ -244,6 +253,8 @@ impl<
     //
     // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
     // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
+    let workspace_lifecycle_packages =
+      self.resolve_workspace_lifecycle_packages(snapshot)?;
     let mut cache_futures = FuturesUnordered::new();
     let mut newest_packages_by_name: HashMap<
       &StackString,
@@ -622,6 +633,7 @@ impl<
     while let Some(result) = cache_futures.next().await {
       result?; // surface the first error
     }
+    drop(cache_futures);
 
     // 5. Symlink all the dependencies into the .deno directory.
     //
@@ -887,6 +899,22 @@ impl<
       }
     }
 
+    for package in &workspace_lifecycle_packages {
+      sys.fs_create_dir_all(local_node_modules_package_folder(
+        &deno_local_registry_dir,
+        &package.package,
+      ))?;
+      lifecycle_scripts.borrow_mut().add(
+        &package.package,
+        &NpmPackageExtraInfo {
+          scripts: package.scripts.clone(),
+          ..Default::default()
+        },
+        Cow::Borrowed(&package.package_path),
+        Vec::new(),
+      );
+    }
+
     {
       let packages_with_deprecation_warnings =
         packages_with_deprecation_warnings.lock();
@@ -922,7 +950,7 @@ impl<
       }
     }
 
-    let lifecycle_scripts = std::mem::replace(
+    let lifecycle_scripts_to_run = std::mem::replace(
       &mut *lifecycle_scripts.borrow_mut(),
       LifecycleScripts::new(
         sys.as_ref(),
@@ -934,10 +962,16 @@ impl<
         },
       ),
     );
-    lifecycle_scripts.warn_not_run_scripts()?;
+    drop(lifecycle_scripts);
+    lifecycle_scripts_to_run.warn_not_run_scripts()?;
 
-    let packages_with_scripts = lifecycle_scripts.packages_with_scripts();
+    let packages_with_scripts =
+      lifecycle_scripts_to_run.packages_with_scripts();
     if !packages_with_scripts.is_empty() {
+      let additional_packages = workspace_lifecycle_packages
+        .iter()
+        .map(|package| &package.package)
+        .collect::<Vec<_>>();
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
@@ -960,6 +994,7 @@ impl<
           },
           snapshot,
           system_packages: &package_partitions.packages,
+          additional_packages: &additional_packages,
           packages_with_scripts,
           extra_info_provider: &extra_info_provider,
         })
@@ -972,6 +1007,85 @@ impl<
     drop(pb_clear_guard);
 
     Ok(())
+  }
+
+  fn resolve_workspace_lifecycle_packages(
+    &self,
+    snapshot: &NpmResolutionSnapshot,
+  ) -> Result<Vec<WorkspaceLifecyclePackage>, JsErrorBox> {
+    let workspace_pkgs = self.npm_install_deps_provider.workspace_pkgs();
+    let workspace_pkg_ids = workspace_pkgs
+      .iter()
+      .map(|pkg| {
+        (
+          pkg.nv.clone(),
+          NpmPackageId {
+            nv: pkg.nv.clone(),
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+        )
+      })
+      .collect::<HashMap<_, _>>();
+    let mut packages = Vec::with_capacity(workspace_pkgs.len());
+    for workspace_pkg in workspace_pkgs {
+      let mut dependencies = HashMap::with_capacity(workspace_pkg.deps.len());
+      for dep in &workspace_pkg.deps {
+        match dep {
+          InstallWorkspacePkgDep::Remote { alias, req } => {
+            if let Some(id) = resolve_remote_pkg_id(snapshot, req) {
+              dependencies.insert(alias.clone(), id);
+            }
+          }
+          InstallWorkspacePkgDep::Workspace { alias, nv } => {
+            if let Some(id) = workspace_pkg_ids.get(nv) {
+              dependencies.insert(alias.clone(), id.clone());
+            }
+          }
+        }
+      }
+      let id = workspace_pkg_ids
+        .get(&workspace_pkg.nv)
+        .expect("workspace package id should exist")
+        .clone();
+      packages.push(WorkspaceLifecyclePackage {
+        package: NpmResolutionPackage {
+          id,
+          copy_index: 0,
+          system: NpmResolutionPackageSystemInfo::default(),
+          dist: None,
+          dependencies,
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(NpmPackageExtraInfo {
+            scripts: workspace_pkg.scripts.clone(),
+            ..Default::default()
+          }),
+          is_deprecated: false,
+          has_bin: false,
+          has_scripts: !workspace_pkg.scripts.is_empty(),
+        },
+        package_path: workspace_pkg.target_dir.clone(),
+        scripts: workspace_pkg.scripts.clone(),
+      });
+    }
+    Ok(packages)
+  }
+}
+
+struct WorkspaceLifecyclePackage {
+  package: NpmResolutionPackage,
+  package_path: PathBuf,
+  scripts: HashMap<deno_semver::SmallStackString, String>,
+}
+
+fn resolve_remote_pkg_id(
+  snapshot: &NpmResolutionSnapshot,
+  req: &deno_semver::package::PackageReq,
+) -> Option<NpmPackageId> {
+  match snapshot.resolve_pkg_from_pkg_req(req) {
+    Ok(pkg) => Some(pkg.id.clone()),
+    Err(_) if req.version_req.tag().is_some() => None,
+    Err(_) => snapshot.resolve_best_package_id(&req.name, &req.version_req),
   }
 }
 
@@ -1035,8 +1149,22 @@ pub(crate) fn clone_dir_recursive_except_node_modules_child(
         &new_to,
       )?;
     } else if file_type.is_file() {
-      hard_link_file(sys.as_ref(), &new_from, &new_to)
-        .or_else(|_| sys.fs_copy(&new_from, &new_to).map(|_| ()))?;
+      hard_link_file(sys.as_ref(), &new_from, &new_to).or_else(|_| {
+        sys
+          .fs_copy(&new_from, &new_to)
+          .or_else(|err| {
+            if deno_npm_cache::is_etxtbsy(&err) {
+              // The destination is a hardlink to a currently-executing
+              // binary (ETXTBSY). Remove it to break the hardlink, then
+              // retry the copy.
+              let _ = sys.fs_remove_file(&new_to);
+              sys.fs_copy(&new_from, &new_to)
+            } else {
+              Err(err)
+            }
+          })
+          .map(|_| ())
+      })?;
     }
   }
   Ok(())

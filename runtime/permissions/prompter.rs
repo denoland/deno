@@ -43,6 +43,9 @@ type DefaultPrompter = DeniedPrompter;
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
   Lazy::new(|| Mutex::new(Box::new(DefaultPrompter::default())));
 
+static TERMINAL_INPUT_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
+  std::sync::OnceLock::new();
+
 static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
 
@@ -86,6 +89,18 @@ pub fn set_prompt_callbacks(
 
 pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
   *PERMISSION_PROMPTER.lock() = prompter;
+}
+
+/// Guards direct reads from the process terminal input.
+///
+/// Permission prompts also read from stdin directly. Holding this lock around
+/// other terminal reads prevents permission prompts from racing with
+/// user-space interactive prompts and consuming or flushing their input.
+pub fn lock_terminal_input() -> std::sync::MutexGuard<'static, ()> {
+  TERMINAL_INPUT_LOCK
+    .get_or_init(Default::default)
+    .lock()
+    .unwrap_or_else(|err| err.into_inner())
 }
 
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
@@ -355,6 +370,8 @@ impl PermissionPrompter for TtyPrompter {
     #[cfg(unix)]
     let metadata_before = get_stdin_metadata().unwrap();
 
+    let terminal_input_guard = lock_terminal_input();
+
     // Lock stdio streams, so no other output is written while the prompt is
     // displayed.
     let stdout_lock = std::io::stdout().lock();
@@ -499,6 +516,7 @@ impl PermissionPrompter for TtyPrompter {
     drop(stdout_lock);
     drop(stderr_lock);
     drop(stdin_lock);
+    drop(terminal_input_guard);
 
     // Ensure that stdin has not changed from the beginning to the end of the prompt. We consider
     // it sufficient to check a subset of stat calls. We do not consider the likelihood of a stdin

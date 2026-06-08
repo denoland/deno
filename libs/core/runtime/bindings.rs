@@ -28,10 +28,12 @@ use crate::error::JsStackFrame;
 use crate::error::callsite_fns;
 use crate::error::has_call_site;
 use crate::error::is_instance_of_error;
+use crate::extension_set::LoadedSource;
 use crate::extension_set::LoadedSources;
 use crate::modules::ImportAttributesKind;
 use crate::modules::ModuleImportPhase;
 use crate::modules::ModuleMap;
+use crate::modules::ModuleName;
 use crate::modules::get_requested_module_type_from_attributes;
 use crate::modules::parse_import_attributes;
 use crate::modules::synthetic_module_evaluation_steps;
@@ -178,13 +180,24 @@ pub(crate) fn create_external_references(
   references
 }
 
+/// Result of [`externalize_sources`]: the `v8::OneByteConst` backings, the
+/// original source strings they borrow from (kept alive), and the specifiers of
+/// the externalized `lazy_loaded_js` sources (parallel to the trailing
+/// `original_sources` entries).
+pub(crate) type ExternalizedSources = (
+  Box<[v8::OneByteConst]>,
+  Box<[FastString]>,
+  Box<[ModuleName]>,
+);
+
 /// Combine the snapshotted sources (which may be empty) with the loaded sources, and ensure that
 /// each of the loaded source files passed to this function has a correct `v8::OneByteConst` backing
 /// that can be used for compilation.
 pub(crate) fn externalize_sources(
   sources: &mut LoadedSources,
   snapshot_sources: Vec<&'static [u8]>,
-) -> (Box<[v8::OneByteConst]>, Box<[FastString]>) {
+  externalize_lazy_js: bool,
+) -> ExternalizedSources {
   // This is a complex method partly because we're still waiting on the `Copy` trait on v8::OneByteConst
   // to land.
 
@@ -192,13 +205,34 @@ pub(crate) fn externalize_sources(
   // Because we don't have that trait, we work around it with [usize; 3].
   const INIT_VALUE: MaybeUninit<[usize; 3]> =
     MaybeUninit::<[usize; 3]>::uninit();
-  // Size to match the actual iteration (`js + esm + lazy_esm`). `LoadedSources::len`
-  // also counts `lazy_loaded_js`, which are *not* externalized here — counting them
-  // leaves trailing uninitialized slots that later flow into V8's external_references
-  // list and shift snapshot indices, causing miscompilation of JIT'd code that
-  // references those entries.
-  let sources_count =
-    sources.js.len() + sources.esm.len() + sources.lazy_esm.len();
+  // Size to match the actual iteration below. The count must EXACTLY match the
+  // number of sources iterated (and the `source_count` recorded into the
+  // snapshot sidecar in `jsruntime`): a mismatch leaves trailing uninitialized
+  // slots that flow into V8's external_references list and shift snapshot
+  // indices, causing miscompilation of JIT'd code that references those
+  // entries. `lazy_loaded_js` is only externalized when building the snapshot
+  // (`externalize_lazy_js`); at runtime those scripts stay as static
+  // registrations and consumed ones re-link via `snapshot_sources`.
+  let sources_count = sources.js.len()
+    + sources.esm.len()
+    + sources.lazy_esm.len()
+    + if externalize_lazy_js {
+      sources.lazy_js.len()
+    } else {
+      0
+    };
+  // Record the externalized `lazy_loaded_js` specifiers in iteration order
+  // (these become the trailing entries of `original_sources`). `snapshot()`
+  // uses them to drop non-consumed scripts' bytes from the sidecar.
+  let lazy_js_specifiers: Box<[ModuleName]> = if externalize_lazy_js {
+    sources
+      .lazy_js
+      .iter()
+      .map(|s| s.specifier.try_clone().unwrap())
+      .collect()
+  } else {
+    Box::default()
+  };
   let externals =
     vec![INIT_VALUE; sources_count + snapshot_sources.len()].into_boxed_slice();
 
@@ -224,8 +258,22 @@ pub(crate) fn externalize_sources(
     // Next, add the non-snapshot sources. For each source file, we swap its `code`
     // member to use this new external string. Note that this is only safe because
     // we keep the original source alive.
+    //
+    // Iterate `js + esm + lazy_esm` always, plus `lazy_js` only when building the
+    // snapshot. The empty slice keeps the iterator type identical in both arms.
+    let lazy_js: &mut [LoadedSource] = if externalize_lazy_js {
+      &mut sources.lazy_js
+    } else {
+      &mut []
+    };
+    let source_iter = sources
+      .js
+      .iter_mut()
+      .chain(sources.esm.iter_mut())
+      .chain(sources.lazy_esm.iter_mut())
+      .chain(lazy_js.iter_mut());
     let offset = snapshot_sources.len();
-    for (index, source) in sources.into_iter().enumerate() {
+    for (index, source) in source_iter.enumerate() {
       externals[index + offset] =
         FastStaticString::create_external_onebyte_const(std::mem::transmute::<
           &[u8],
@@ -241,7 +289,11 @@ pub(crate) fn externalize_sources(
       original_sources.push(original_source)
     }
 
-    (externals, original_sources.into_boxed_slice())
+    (
+      externals,
+      original_sources.into_boxed_slice(),
+      lazy_js_specifiers,
+    )
   }
 }
 
@@ -941,7 +993,15 @@ pub fn host_import_module_with_phase_dynamically_callback<'s, 'i>(
       if let Some(validate_import_attributes_cb) =
         &state.validate_import_attributes_cb
       {
-        (validate_import_attributes_cb)(tc_scope, &assertions);
+        // Dynamic imports don't expose a source offset, so line/column are
+        // unavailable here.
+        let context = crate::modules::ImportAttributesContext {
+          referrer: referrer_name_str.clone(),
+          specifier: specifier_str.clone(),
+          line_number: None,
+          column_number: None,
+        };
+        (validate_import_attributes_cb)(tc_scope, &assertions, &context);
       }
     }
 
@@ -1298,10 +1358,15 @@ fn catch_dynamic_import_promise_error<'s, 'i>(
         }
         _ => v8::Exception::error(scope, message),
       };
-      let code_key = CODE.v8_string(scope).unwrap();
-      let code_value = ERR_MODULE_NOT_FOUND.v8_string(scope).unwrap();
-      let exception_obj = exception.to_object(scope).unwrap();
-      exception_obj.set(scope, code_key.into(), code_value.into());
+      // V8 module linking errors (e.g. a missing named export) are
+      // spec-defined `SyntaxError`s and must not carry a host-defined `code`.
+      // Only genuine resolution/loading failures get `ERR_MODULE_NOT_FOUND`.
+      if name.as_str() != deno_error::builtin_classes::SYNTAX_ERROR {
+        let code_key = CODE.v8_string(scope).unwrap();
+        let code_value = ERR_MODULE_NOT_FOUND.v8_string(scope).unwrap();
+        let exception_obj = exception.to_object(scope).unwrap();
+        exception_obj.set(scope, code_key.into(), code_value.into());
+      }
       scope.throw_exception(exception);
       return;
     }

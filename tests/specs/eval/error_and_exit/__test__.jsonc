@@ -1,0 +1,22 @@
+{
+  "tests": {
+    "deno_exit_propagates": {
+      "args": [
+        "eval",
+        "console.log('before'); Deno.exit(42); console.log('after')"
+      ],
+      "output": "exit42.out",
+      "exitCode": 42
+    },
+    "uncaught_error": {
+      "args": ["eval", "throw new Error('boom')"],
+      "output": "uncaught_error.out",
+      "exitCode": 1
+    },
+    "unhandled_rejection": {
+      "args": ["eval", "Promise.reject(new Error('rejected'))"],
+      "output": "unhandled_rejection.out",
+      "exitCode": 1
+    }
+  }
+}

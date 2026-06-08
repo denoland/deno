@@ -3425,10 +3425,27 @@ function colorEquals(color1, color2) {
     color1?.[2] == color2?.[2];
 }
 
+// `background-color` and `color` can be stored either as an already parsed
+// `[r, g, b]` array or as a raw string (a named color like "white" or a
+// hex/rgb/hsl string). When both sides are strings, `colorEquals` would index
+// them by character, so two different colors sharing a prefix (e.g. "#FFFFFF"
+// and "#FFAFC8", which share the same red component) are wrongly treated as
+// equal. Parse both strings to `[r, g, b]` arrays so they are compared by
+// value. Mixed cases (a string against `null` or an array) keep the original
+// comparison: an unparseable string like "inherit" parses to `null`, and
+// conflating that with an absent color would suppress the reset escape.
+// See #21605.
+function cssColorEquals(color1, color2) {
+  if (typeof color1 === "string" && typeof color2 === "string") {
+    return colorEquals(parseCssColor(color1), parseCssColor(color2));
+  }
+  return colorEquals(color1, color2);
+}
+
 function cssToAnsi(css, prevCss = null) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
-  if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
+  if (!cssColorEquals(css.backgroundColor, prevCss.backgroundColor)) {
     if (css.backgroundColor == null) {
       ansi += "\x1b[49m";
     } else if (css.backgroundColor == "black") {
@@ -3462,7 +3479,7 @@ function cssToAnsi(css, prevCss = null) {
       }
     }
   }
-  if (!colorEquals(css.color, prevCss.color)) {
+  if (!cssColorEquals(css.color, prevCss.color)) {
     if (css.color == null) {
       ansi += "\x1b[39m";
     } else if (css.color == "black") {

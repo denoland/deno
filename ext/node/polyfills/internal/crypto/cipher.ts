@@ -1,8 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 
 (function () {
 const { core, primordials } = __bootstrap;
@@ -10,7 +9,24 @@ const {
   encode,
 } = core;
 const {
+  ArrayBufferIsView,
+  Boolean,
+  Error,
+  FunctionPrototypeCall,
+  MathFloor,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  SafeRegExp,
+  SafeSet,
+  SetPrototypeHas,
+  StringPrototypeReplace,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
   SymbolSpecies,
+  TypeError,
+  TypedArrayPrototypeAt,
+  TypedArrayPrototypeGetByteLength,
+  Uint8Array,
 } = primordials;
 const {
   op_node_aes_unwrap_key,
@@ -68,7 +84,9 @@ const {
 const { ERR_CRYPTO_INVALID_STATE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
-const { StringDecoder } = core.loadExtScript("ext:deno_node/string_decoder.ts");
+const { StringDecoder } = core.loadExtScript(
+  "ext:deno_node/string_decoder.ts",
+);
 const { default: assert } = core.loadExtScript("ext:deno_node/assert.ts");
 const { normalizeEncoding } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",
@@ -107,7 +125,7 @@ function isStringOrBuffer(
 // `lib/internal/crypto/cipher.js`: accepts string, Buffer, TypedArray
 // or DataView, but rejects raw ArrayBuffer / SharedArrayBuffer.
 function validateCipherUpdateData(data: unknown): void {
-  if (typeof data !== "string" && !ArrayBuffer.isView(data)) {
+  if (typeof data !== "string" && !ArrayBufferIsView(data)) {
     throw new ERR_INVALID_ARG_TYPE(
       "data",
       ["string", "Buffer", "TypedArray", "DataView"],
@@ -136,18 +154,20 @@ function Cipheriv(
   iv: any,
   options?: any,
 ) {
-  if (!(this instanceof Cipheriv)) {
+  if (!ObjectPrototypeIsPrototypeOf(Cipheriv.prototype, this)) {
     return new Cipheriv(cipher, key, iv, options);
   }
 
   const authTagLength = getUIntOption(options, "authTagLength");
 
-  getTransform().call(this, {
+  FunctionPrototypeCall(getTransform(), this, {
     transform(chunk, encoding, cb) {
+      // deno-lint-ignore prefer-primordials -- `this` is a Transform stream
       this.push(this.update(chunk, encoding));
       cb();
     },
     final(cb) {
+      // deno-lint-ignore prefer-primordials -- `this` is a Transform stream
       this.push(this.final());
       cb();
     },
@@ -185,8 +205,8 @@ function Cipheriv(
   this._decoder = undefined;
 }
 
-Object.setPrototypeOf(Cipheriv.prototype, getTransform().prototype);
-Object.setPrototypeOf(Cipheriv, getTransform());
+ObjectSetPrototypeOf(Cipheriv.prototype, getTransform().prototype);
+ObjectSetPrototypeOf(Cipheriv, getTransform());
 
 Cipheriv.prototype.final = function (
   encoding: string = getDefaultEncoding(),
@@ -204,7 +224,8 @@ Cipheriv.prototype.final = function (
 
   const bs = this._blockSize;
   const buf = new FastBuffer(bs);
-  const hasNoBufferedData = this._cache.cache.byteLength === 0;
+  const hasNoBufferedData =
+    TypedArrayPrototypeGetByteLength(this._cache.cache) === 0;
   const shouldPadEmptyBlock = this._needsBlockCache && this._autoPadding;
 
   if (hasNoBufferedData && !shouldPadEmptyBlock) {
@@ -214,7 +235,10 @@ Cipheriv.prototype.final = function (
     return encoding === "buffer" ? Buffer.from([]) : "";
   }
 
-  if (!this._autoPadding && this._cache.cache.byteLength != bs) {
+  if (
+    !this._autoPadding &&
+    TypedArrayPrototypeGetByteLength(this._cache.cache) != bs
+  ) {
     throw opensslError(
       "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH",
       "wrong final block length",
@@ -382,7 +406,7 @@ class BlockModeCache {
       return null;
     }
 
-    len = Math.floor(len / bs) * bs;
+    len = MathFloor(len / bs) * bs;
     const out = this.cache.subarray(0, len);
     this.cache = this.cache.subarray(len);
     return out;
@@ -394,7 +418,7 @@ class BlockModeCache {
 }
 
 function getBlockSize(cipher: string): number {
-  if (cipher.startsWith("des")) {
+  if (StringPrototypeStartsWith(cipher, "des")) {
     return 8;
   }
   return 16;
@@ -417,18 +441,20 @@ function Decipheriv(
   iv: any,
   options?: any,
 ) {
-  if (!(this instanceof Decipheriv)) {
+  if (!ObjectPrototypeIsPrototypeOf(Decipheriv.prototype, this)) {
     return new Decipheriv(cipher, key, iv, options);
   }
 
   const authTagLength = getUIntOption(options, "authTagLength");
 
-  getTransform().call(this, {
+  FunctionPrototypeCall(getTransform(), this, {
     transform(chunk, encoding, cb) {
+      // deno-lint-ignore prefer-primordials -- `this` is a Transform stream
       this.push(this.update(chunk, encoding));
       cb();
     },
     final(cb) {
+      // deno-lint-ignore prefer-primordials -- `this` is a Transform stream
       this.push(this.final());
       cb();
     },
@@ -469,8 +495,8 @@ function Decipheriv(
   this._decoder = undefined;
 }
 
-Object.setPrototypeOf(Decipheriv.prototype, getTransform().prototype);
-Object.setPrototypeOf(Decipheriv, getTransform());
+ObjectSetPrototypeOf(Decipheriv.prototype, getTransform().prototype);
+ObjectSetPrototypeOf(Decipheriv, getTransform());
 
 Decipheriv.prototype.final = function (
   encoding: string = getDefaultEncoding(),
@@ -496,11 +522,14 @@ Decipheriv.prototype.final = function (
     this._authTag || NO_TAG,
   );
 
-  if (!this._needsBlockCache || this._cache.cache.byteLength === 0) {
+  if (
+    !this._needsBlockCache ||
+    TypedArrayPrototypeGetByteLength(this._cache.cache) === 0
+  ) {
     this._finalized = true;
     return encoding === "buffer" ? Buffer.from([]) : "";
   }
-  if (this._cache.cache.byteLength != bs) {
+  if (TypedArrayPrototypeGetByteLength(this._cache.cache) != bs) {
     throw opensslError(
       "ERR_OSSL_EVP_WRONG_FINAL_BLOCK_LENGTH",
       "wrong final block length",
@@ -508,7 +537,7 @@ Decipheriv.prototype.final = function (
   }
 
   if (this._autoPadding) {
-    const padLen = buf.at(-1);
+    const padLen = TypedArrayPrototypeAt(buf, -1);
     if (padLen === 0 || padLen > bs) {
       throw opensslError(
         "ERR_OSSL_EVP_BAD_DECRYPT",
@@ -551,6 +580,7 @@ Decipheriv.prototype.setAuthTag = function (
   // an explicit `authTagLength` option at decipher creation time.
   if (
     this._isGcmMode && this._authTagLength === -1 &&
+    // deno-lint-ignore prefer-primordials -- `buffer` may be Buffer/TypedArray/DataView
     buffer.byteLength !== 16 && !gcmShortTagDeprecationEmitted
   ) {
     gcmShortTagDeprecationEmitted = true;
@@ -563,6 +593,7 @@ Decipheriv.prototype.setAuthTag = function (
       "DEP0182",
     );
   }
+  // deno-lint-ignore prefer-primordials -- `buffer` may be Buffer/TypedArray/DataView
   op_node_decipheriv_auth_tag(this._context, buffer.byteLength);
   this._authTag = buffer;
   return this;
@@ -656,7 +687,7 @@ function _lazyInitDecipherDecoder(self: any, encoding: string) {
   }
 }
 
-const ENCRYPT_UNSUPPORTED_KEY_TYPES = new Set([
+const ENCRYPT_UNSUPPORTED_KEY_TYPES = new SafeSet([
   "rsa-pss",
   "dsa",
   "ec",
@@ -670,10 +701,12 @@ function checkUnsupportedKeyType(key) {
   const keyType = isKeyObject(key)
     ? key.asymmetricKeyType
     : key?.key?.asymmetricKeyType;
-  if (keyType && ENCRYPT_UNSUPPORTED_KEY_TYPES.has(keyType)) {
+  if (keyType && SetPrototypeHas(ENCRYPT_UNSUPPORTED_KEY_TYPES, keyType)) {
     throw new Error("operation not supported for this keytype");
   }
 }
+
+const WEBCRYPTO_SHA_HYPHEN_RE = new SafeRegExp("^(sha)-(?!3-)");
 
 function normalizeOaepHash(hash: unknown): string | undefined {
   if (hash === undefined) return undefined;
@@ -684,7 +717,11 @@ function normalizeOaepHash(hash: unknown): string | undefined {
   // Normalize to lowercase and strip WebCrypto-style hyphens
   // (e.g. "SHA-256" -> "sha256") but keep sha3/sha512 sub-variants
   // (e.g. "sha3-256", "sha512-224") intact.
-  const normalized = hash.toLowerCase().replace(/^(sha)-(?!3-)/, "$1");
+  const normalized = StringPrototypeReplace(
+    StringPrototypeToLowerCase(hash),
+    WEBCRYPTO_SHA_HYPHEN_RE,
+    "$1",
+  );
   // Validate before key parsing so unknown hash throws ERR_OSSL_EVP_INVALID_DIGEST
   // even when the key itself cannot be parsed as a private key.
   op_node_validate_oaep_hash(normalized);
