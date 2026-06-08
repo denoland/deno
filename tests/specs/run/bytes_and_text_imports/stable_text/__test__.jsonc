@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "static": {
+      "args": "run main.ts",
+      "output": "main.out"
+    },
+    "dynamic": {
+      "args": "run --allow-read=non_analyzable.txt dynamic.ts",
+      "output": "dynamic.out"
+    }
+  }
+}

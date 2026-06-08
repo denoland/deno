@@ -14,6 +14,10 @@ pub mod to_v8;
 mod kw {
   syn::custom_keyword!(rename);
   syn::custom_keyword!(serde);
+  syn::custom_keyword!(tag);
+  syn::custom_keyword!(untagged);
+  syn::custom_keyword!(content);
+  syn::custom_keyword!(skip_if);
 }
 
 #[allow(dead_code, reason = "unused properties")]

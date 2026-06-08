@@ -5,7 +5,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::num::NonZeroI32;
-use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -16,7 +15,38 @@ use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
 
-use crate::create_host_defined_options;
+use crate::create_vm_dynamic_import_callback_host_defined_options;
+use crate::create_vm_dynamic_import_missing_host_defined_options;
+
+/// Build the host-defined options to attach to a `node:vm`-compiled
+/// script/function/module. `-1` means the script was created with
+/// `importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER`
+/// — return `None` so dynamic `import()` falls through to the host's
+/// regular module loader. `0` means no callback was provided and returns the
+/// marker that makes the dynamic-import host callback reject with
+/// `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`. Wiring up a user-provided
+/// callback uses a positive registry key.
+fn vm_host_defined_options<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback_id: i32,
+) -> Option<v8::Local<'s, v8::Data>> {
+  match callback_id {
+    -1 => None,
+    0 => Some(create_vm_dynamic_import_missing_host_defined_options(scope)),
+    id if id > 0 => Some(
+      create_vm_dynamic_import_callback_host_defined_options(scope, id as u32),
+    ),
+    _ => Some(create_vm_dynamic_import_missing_host_defined_options(scope)),
+  }
+}
+
+#[op2(fast)]
+pub fn op_vm_dynamic_import_callback_register(
+  scope: &mut v8::PinScope<'_, '_>,
+  callback: v8::Local<v8::Function>,
+) -> u32 {
+  deno_core::register_vm_dynamic_import_callback(scope, callback)
+}
 
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
@@ -48,6 +78,7 @@ impl ContextifyScript {
     cached_data: Option<JsBuffer>,
     produce_cached_data: bool,
     parsing_context: Option<v8::Local<'s, v8::Object>>,
+    import_module_dynamically_id: i32,
   ) -> Option<CompileResult<'s>> {
     let context = if let Some(parsing_context) = parsing_context {
       let Some(context) =
@@ -68,7 +99,8 @@ impl ContextifyScript {
     };
 
     let scope = &mut v8::ContextScope::new(scope, context);
-    let host_defined_options = create_host_defined_options(scope);
+    let host_defined_options =
+      vm_host_defined_options(scope, import_module_dynamically_id);
     let origin = v8::ScriptOrigin::new(
       scope,
       filename,
@@ -80,7 +112,7 @@ impl ContextifyScript {
       false,
       false,
       false,
-      Some(host_defined_options),
+      host_defined_options,
     );
 
     let mut source = if let Some(cached_data) = cached_data {
@@ -319,6 +351,7 @@ pub struct ContextifyContext {
   microtask_queue: *mut v8::MicrotaskQueue,
   context: v8::TracedReference<v8::Context>,
   sandbox: v8::TracedReference<v8::Object>,
+  allow_code_gen_wasm: bool,
 }
 
 // SAFETY: we're sure this can be GCed
@@ -344,16 +377,48 @@ impl Drop for ContextifyContext {
   }
 }
 
-struct AllowCodeGenWasm(bool);
+// A unique tag pointer used as a marker in embedder slot
+// `CONTEXTIFY_TAG_SLOT` to identify v8::Context instances created by
+// `ContextifyContext::attach` / `attach_vanilla`. The wasm code generation
+// callback runs for every context (it is an isolate-wide hook), and reads
+// embedder data from arbitrary contexts where the slots may contain
+// unrelated data — without a tag we cannot tell whether the value at
+// `CONTEXTIFY_CTX_SLOT` is a `ContextifyContext` pointer or random bytes.
+// The tag must be at least pointer-aligned because V8's
+// `SetAlignedPointerInEmbedderData` requires aligned values.
+#[repr(align(8))]
+struct ContextifyTag(
+  #[allow(dead_code, reason = "only its address is used as a sentinel")] u8,
+);
+static CONTEXTIFY_TAG: ContextifyTag = ContextifyTag(0);
+const CONTEXTIFY_TAG_SLOT: i32 = 4;
+const CONTEXTIFY_CTX_SLOT: i32 = 3;
 
 extern "C" fn allow_wasm_code_gen(
   context: v8::Local<v8::Context>,
   _source: v8::Local<v8::String>,
 ) -> bool {
-  match context.get_slot::<AllowCodeGenWasm>() {
-    Some(b) => b.0,
-    None => true,
+  // Verify this is a contextified context by checking the tag slot. Reading
+  // raw embedder data from a non-contextified context (such as deno_core's
+  // main context) would otherwise return arbitrary bytes — V8 stores SMI-
+  // tagged values in unused slots, which are misaligned when interpreted as
+  // pointers.
+  let tag_ptr =
+    context.get_aligned_pointer_from_embedder_data(CONTEXTIFY_TAG_SLOT);
+  if tag_ptr != &raw const CONTEXTIFY_TAG as *mut _ {
+    return true;
   }
+  let context_ptr =
+    context.get_aligned_pointer_from_embedder_data(CONTEXTIFY_CTX_SLOT);
+  if context_ptr.is_null() {
+    return true;
+  }
+  // SAFETY: The tag match guarantees this slot was populated by
+  // `attach`/`attach_vanilla`, so it points at a valid ContextifyContext.
+  // The ContextifyContext outlives the v8::Context because it owns a
+  // TracedReference to it.
+  let ctx = unsafe { &*(context_ptr as *const ContextifyContext) };
+  ctx.allow_code_gen_wasm
 }
 
 impl ContextifyContext {
@@ -404,7 +469,6 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
 
     let wrapper = {
       let context = v8::TracedReference::new(scope, context);
@@ -415,6 +479,7 @@ impl ContextifyContext {
           context,
           sandbox,
           microtask_queue,
+          allow_code_gen_wasm,
         },
       )
     };
@@ -424,12 +489,29 @@ impl ContextifyContext {
     // SAFETY: We are storing a pointer to the ContextifyContext
     // in the embedder data of the v8::Context. The contextified wrapper
     // lives longer than the execution context, so this should be safe.
+    // The tag slot is set to a static sentinel so `allow_wasm_code_gen` —
+    // which runs for every context — can distinguish contextified contexts
+    // from non-contextified ones.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
-        3,
+        CONTEXTIFY_CTX_SLOT,
         &*ptr.unwrap() as *const ContextifyContext as _,
       );
+      context.set_aligned_pointer_in_embedder_data(
+        CONTEXTIFY_TAG_SLOT,
+        &raw const CONTEXTIFY_TAG as *mut _,
+      );
     }
+
+    // Drop the v8::Context annex (created by `set_aligned_pointer_in_embedder_data`).
+    // The annex holds a `Weak<Context>` with a guaranteed finalizer. If left in
+    // place, the Weak is not reset before isolate teardown's final GC (because
+    // `dispose_annex` nulls the isolate pointer before running remaining
+    // finalizers, which causes `Weak::drop` to skip `v8__Global__Reset`), and
+    // V8's final GC then fires the weak callback on freed memory and panics.
+    // Dropping the annex here, while the isolate is still alive, ensures the
+    // Weak is reset cleanly through `Weak::drop`'s normal path.
+    context.clear_all_slots();
 
     let private_str =
       v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
@@ -494,7 +576,7 @@ impl ContextifyContext {
 
     scope.set_allow_wasm_code_generation_callback(allow_wasm_code_gen);
     context.set_allow_generation_from_strings(allow_code_gen_strings);
-    context.set_slot(Rc::new(AllowCodeGenWasm(allow_code_gen_wasm)));
+    crate::ops::v8::install_gc_if_exposed(scope, context);
 
     // For vanilla contexts, the sandbox IS the global proxy
     let sandbox_obj = context.global(scope);
@@ -508,6 +590,7 @@ impl ContextifyContext {
           context,
           sandbox,
           microtask_queue,
+          allow_code_gen_wasm,
         },
       )
     };
@@ -517,12 +600,20 @@ impl ContextifyContext {
     // SAFETY: We are storing a pointer to the ContextifyContext
     // in the embedder data of the v8::Context. The contextified wrapper
     // lives longer than the execution context, so this should be safe.
+    // See `attach` for the tag slot.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
-        3,
+        CONTEXTIFY_CTX_SLOT,
         &*ptr.unwrap() as *const ContextifyContext as _,
       );
+      context.set_aligned_pointer_in_embedder_data(
+        CONTEXTIFY_TAG_SLOT,
+        &raw const CONTEXTIFY_TAG as *mut _,
+      );
     }
+
+    // See `attach` for why we clear the annex here.
+    context.clear_all_slots();
 
     let private_str =
       v8::String::new_from_onebyte_const(scope, &PRIVATE_SYMBOL_NAME);
@@ -651,6 +742,8 @@ pub fn create_v8_context<'a>(
     };
     ctx
   };
+
+  crate::ops::v8::install_gc_if_exposed(scope, context);
 
   scope.escape(context)
 }
@@ -1249,6 +1342,7 @@ pub fn op_vm_create_script<'a>(
   #[buffer] cached_data: Option<JsBuffer>,
   produce_cached_data: bool,
   parsing_context: Option<v8::Local<'a, v8::Object>>,
+  import_module_dynamically_id: i32,
 ) -> Option<CompileResult<'a>> {
   ContextifyScript::create(
     scope,
@@ -1259,6 +1353,7 @@ pub fn op_vm_create_script<'a>(
     cached_data,
     produce_cached_data,
     parsing_context,
+    import_module_dynamically_id,
   )
 }
 
@@ -1358,6 +1453,7 @@ pub fn op_vm_compile_function<'s>(
   parsing_context: Option<v8::Local<'s, v8::Object>>,
   context_extensions: Option<v8::Local<'s, v8::Array>>,
   params: Option<v8::Local<'s, v8::Array>>,
+  import_module_dynamically_id: i32,
 ) -> Option<CompileResult<'s>> {
   let context = if let Some(parsing_context) = parsing_context {
     let Some(context) =
@@ -1374,7 +1470,8 @@ pub fn op_vm_compile_function<'s>(
   };
 
   let scope = &mut v8::ContextScope::new(scope, context);
-  let host_defined_options = create_host_defined_options(scope);
+  let host_defined_options =
+    vm_host_defined_options(scope, import_module_dynamically_id);
   let origin = v8::ScriptOrigin::new(
     scope,
     filename,
@@ -1386,7 +1483,7 @@ pub fn op_vm_compile_function<'s>(
     false,
     false,
     false,
-    Some(host_defined_options),
+    host_defined_options,
   );
 
   let mut source = if let Some(cached_data) = cached_data {
@@ -1571,12 +1668,14 @@ pub fn op_vm_module_create_source_text_module<'a>(
   line_offset: i32,
   column_offset: i32,
   context_object: Option<v8::Local<'a, v8::Object>>,
+  import_module_dynamically_id: i32,
 ) -> Option<ContextifyModule> {
   let (context, microtask_queue) =
     resolve_module_context(scope, context_object)?;
 
   let scope = &mut v8::ContextScope::new(scope, context);
-  let host_defined_options = create_host_defined_options(scope);
+  let host_defined_options =
+    vm_host_defined_options(scope, import_module_dynamically_id);
   let filename = v8::String::new(scope, &identifier)?;
   let origin = v8::ScriptOrigin::new(
     scope,
@@ -1589,7 +1688,7 @@ pub fn op_vm_module_create_source_text_module<'a>(
     false,
     false,
     true, // is_module
-    Some(host_defined_options),
+    host_defined_options,
   );
 
   let mut compile_source =

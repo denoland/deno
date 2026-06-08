@@ -1,6 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_console_size } = core.ops;
 const {
   Uint32Array,

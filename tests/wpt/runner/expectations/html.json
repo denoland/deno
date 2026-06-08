@@ -5,8 +5,8 @@
         "json-module": {
           "charset-bom.any.html": true,
           "charset-bom.any.worker.html": true,
-          "invalid-content-type.any.html": true,
-          "invalid-content-type.any.worker.html": true,
+          "invalid-content-type.any.html": false,
+          "invalid-content-type.any.worker.html": false,
           "non-object.any.html": true,
           "non-object.any.worker.html": true,
           "repeated-imports.any.html": {
@@ -309,10 +309,6 @@
           "039.html": false,
           "040.html": false,
           "041.html": false,
-          "042.html": false,
-          "043.html": false,
-          "044.html": false,
-          "045.html": false,
           "046.html": false,
           "047.html": false,
           "048.html": false,
@@ -321,8 +317,6 @@
           "051.html": false,
           "052.html": false,
           "053.html": false,
-          "054.html": false,
-          "055.html": false,
           "056.html": false,
           "057.html": false,
           "058.html": false,
@@ -971,15 +965,19 @@
       "structured-clone.any.html": {
         "expectedFailures": [
           "Growable SharedArrayBuffer",
-          "Transferring OOB TypedArray throws",
-          "Transferring a non-transferable platform object fails"
+          "ImageBitmap",
+          "OffscreenCanvas",
+          "Transferring a non-transferable platform object fails",
+          "Transferring OOB TypedArray throws"
         ]
       },
       "structured-clone.any.worker.html": {
         "expectedFailures": [
           "Growable SharedArrayBuffer",
-          "Transferring OOB TypedArray throws",
-          "Transferring a non-transferable platform object fails"
+          "ImageBitmap",
+          "OffscreenCanvas",
+          "Transferring a non-transferable platform object fails",
+          "Transferring OOB TypedArray throws"
         ]
       },
       "structured-clone-cross-realm-method.html": false
@@ -1109,7 +1107,9 @@
           "ImageData object can be cloned",
           "ImageData expandos are not cloned",
           "Document objects cannot be cloned",
-          "URIError objects from other realms are treated as URIError"
+          "URIError objects from other realms are treated as URIError",
+          "QuotaExceededError objects can be cloned",
+          "QuotaExceededError objects with empty quota/requested can be cloned"
         ]
       }
     },
@@ -1122,7 +1122,6 @@
         "nontraditional-about-srcdoc.html": false
       },
       "base-url": {
-        "base-url-detached-document.https.window.html": false,
         "base-url-javascript-nav.https.window.html": false,
         "document-base-uri-synthetic-document.html": false,
         "document-base-url-changes-about-srcdoc-2.https.html": false,

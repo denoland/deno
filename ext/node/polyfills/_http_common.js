@@ -308,6 +308,7 @@ function cleanParser(parser) {
   parser.onIncoming = null;
   parser.joinDuplicateHeaders = null;
   parser._asyncResource = null;
+  parser._lastRawPacket = null;
 }
 
 // The Rust binding collapses every llhttp errno into the generic HPE_ERROR;

@@ -1771,8 +1771,7 @@ fn compiler_options_to_transpile_and_emit_options(
     imports_not_used_as_values,
     jsx,
     var_decl_imports: false,
-    // todo(dsherret): support verbatim_module_syntax here properly
-    verbatim_module_syntax: false,
+    verbatim_module_syntax: options.verbatim_module_syntax,
   };
   let emit = deno_ast::EmitOptions {
     inline_sources: options.inline_sources,

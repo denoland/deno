@@ -12,7 +12,7 @@
  */
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   AggregateError,
   ArrayIsArray,
@@ -1035,6 +1035,24 @@ class ERR_CONSTRUCT_CALL_REQUIRED extends NodeTypeError {
   }
 }
 
+class ERR_CONSTRUCT_CALL_INVALID extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_CONSTRUCT_CALL_INVALID",
+      `Constructor for class ${x} cannot be invoked`,
+    );
+  }
+}
+
+class ERR_CLOSED_MESSAGE_PORT extends NodeError {
+  constructor() {
+    super(
+      "ERR_CLOSED_MESSAGE_PORT",
+      "Cannot send data on closed MessagePort",
+    );
+  }
+}
+
 class ERR_CONTEXT_NOT_INITIALIZED extends NodeError {
   constructor() {
     super("ERR_CONTEXT_NOT_INITIALIZED", "context used is not initialized");
@@ -1821,6 +1839,16 @@ class ERR_INVALID_PROTOCOL extends NodeTypeError {
       "ERR_INVALID_PROTOCOL",
       `Protocol "${x}" not supported. Expected "${y}"`,
     );
+  }
+}
+class ERR_PROXY_INVALID_CONFIG extends NodeError {
+  constructor(reason: string) {
+    super("ERR_PROXY_INVALID_CONFIG", reason);
+  }
+}
+class ERR_PROXY_TUNNEL extends NodeError {
+  constructor(reason: string) {
+    super("ERR_PROXY_TUNNEL", reason);
   }
 }
 class ERR_INVALID_REPL_EVAL_CONFIG extends NodeTypeError {
@@ -3319,7 +3347,9 @@ return {
   ERR_CHILD_CLOSED_BEFORE_REPLY,
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
+  ERR_CLOSED_MESSAGE_PORT,
   ERR_CONSOLE_WRITABLE_STREAM,
+  ERR_CONSTRUCT_CALL_INVALID,
   ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_CONTEXT_NOT_INITIALIZED,
   ERR_CPU_USAGE,
@@ -3455,6 +3485,8 @@ return {
   ERR_INVALID_PACKAGE_TARGET,
   ERR_INVALID_PERFORMANCE_MARK,
   ERR_INVALID_PROTOCOL,
+  ERR_PROXY_INVALID_CONFIG,
+  ERR_PROXY_TUNNEL,
   ERR_INVALID_REPL_EVAL_CONFIG,
   ERR_INVALID_REPL_INPUT,
   ERR_INVALID_RETURN_PROPERTY,
@@ -3637,7 +3669,9 @@ return {
     ERR_CHILD_CLOSED_BEFORE_REPLY,
     ERR_CHILD_PROCESS_IPC_REQUIRED,
     ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
+    ERR_CLOSED_MESSAGE_PORT,
     ERR_CONSOLE_WRITABLE_STREAM,
+    ERR_CONSTRUCT_CALL_INVALID,
     ERR_CONSTRUCT_CALL_REQUIRED,
     ERR_CONTEXT_NOT_INITIALIZED,
     ERR_CPU_USAGE,
@@ -3770,6 +3804,8 @@ return {
     ERR_INVALID_PACKAGE_TARGET,
     ERR_INVALID_PERFORMANCE_MARK,
     ERR_INVALID_PROTOCOL,
+    ERR_PROXY_INVALID_CONFIG,
+    ERR_PROXY_TUNNEL,
     ERR_INVALID_REPL_EVAL_CONFIG,
     ERR_INVALID_REPL_INPUT,
     ERR_INVALID_RETURN_PROPERTY,

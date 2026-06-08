@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { internals, primordials } = globalThis.__bootstrap;
+const { internals, primordials } = __bootstrap;
 
 const { String, StringPrototypeSlice } = primordials;
 

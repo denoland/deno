@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 const {
   Blob,
@@ -385,6 +385,7 @@ function decodeLatin1StringAsUtf8(latin1String) {
 const CRLF = "\r\n";
 const LF = StringPrototypeCodePointAt(CRLF, 1);
 const CR = StringPrototypeCodePointAt(CRLF, 0);
+const DASH = StringPrototypeCodePointAt("-", 0);
 
 class MultipartParser {
   /**
@@ -429,6 +430,31 @@ class MultipartParser {
   }
 
   /**
+   * @param {number} index
+   * @returns {0 | 1 | 2}
+   */
+  #delimiterType(index) {
+    for (let i = 0; i < this.boundaryChars.length; i++) {
+      if (this.body[index + i] !== this.boundaryChars[i]) {
+        return 0;
+      }
+    }
+
+    const suffixIndex = index + this.boundaryChars.length;
+    if (this.body[suffixIndex] === CR && this.body[suffixIndex + 1] === LF) {
+      return 1;
+    }
+    if (
+      this.body[suffixIndex] === DASH &&
+      this.body[suffixIndex + 1] === DASH
+    ) {
+      return 2;
+    }
+
+    return 0;
+  }
+
+  /**
    * @returns {FormData}
    */
   parse() {
@@ -449,7 +475,6 @@ class MultipartParser {
 
     const formData = new FormData();
     let headerText = "";
-    let boundaryIndex = 0;
     let state = 0;
     let fileStart = 0;
 
@@ -476,18 +501,17 @@ class MultipartParser {
           fileStart = i + 3; // After \r\n
         }
       } else if (state === 2) {
-        if (this.boundaryChars[boundaryIndex] !== byte) {
-          boundaryIndex = 0;
-        } else {
-          boundaryIndex++;
-        }
+        if (isNewLine) {
+          const delimiterType = this.#delimiterType(i + 1);
+          if (delimiterType === 0) {
+            continue;
+          }
 
-        if (boundaryIndex >= this.boundary.length) {
           const { headers, disposition } = this.#parseHeaders(headerText);
           const content = TypedArrayPrototypeSubarray(
             this.body,
             fileStart,
-            i - boundaryIndex - 1,
+            i - 1,
           );
           // https://fetch.spec.whatwg.org/#ref-for-dom-body-formdata
           // These are UTF-8 decoded as if it was Latin-1.
@@ -496,31 +520,32 @@ class MultipartParser {
           const latin1Filename = MapPrototypeGet(disposition, "filename");
           const latin1Name = MapPrototypeGet(disposition, "name");
 
-          state = 3;
-          // Reset
-          boundaryIndex = 0;
           headerText = "";
 
-          if (!latin1Name) {
-            continue; // Skip, unknown name
+          // Skip nameless parts, but still advance past the matched delimiter.
+          if (latin1Name) {
+            const name = decodeLatin1StringAsUtf8(latin1Name);
+            if (latin1Filename) {
+              const blob = new Blob([content], {
+                type: headers.get("Content-Type") || "application/octet-stream",
+              });
+              formData.append(
+                name,
+                blob,
+                decodeLatin1StringAsUtf8(latin1Filename),
+              );
+            } else {
+              formData.append(name, core.decode(content));
+            }
           }
 
-          const name = decodeLatin1StringAsUtf8(latin1Name);
-          if (latin1Filename) {
-            const blob = new Blob([content], {
-              type: headers.get("Content-Type") || "application/octet-stream",
-            });
-            formData.append(
-              name,
-              blob,
-              decodeLatin1StringAsUtf8(latin1Filename),
-            );
-          } else {
-            formData.append(name, core.decode(content));
+          if (delimiterType === 2) {
+            break;
           }
+
+          state = 1;
+          i += this.boundaryChars.length + 2; // Skip boundary + trailing \r\n
         }
-      } else if (state === 3 && isNewLine) {
-        state = 1;
       }
     }
 
