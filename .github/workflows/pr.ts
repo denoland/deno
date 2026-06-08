@@ -5,7 +5,7 @@ import { createWorkflow, step } from "jsr:@david/gagen@0.3.1";
 const workflow = createWorkflow({
   name: "pr",
   on: {
-    pull_request_target: {
+    pull_request: {
       types: ["opened", "edited", "synchronize"],
     },
   },

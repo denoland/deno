@@ -40,6 +40,7 @@ use deno_resolver::deno_json::ToMaybeJsxImportSourceConfigError;
 use deno_resolver::file_fetcher::GraphLoaderReporterRc;
 use deno_resolver::graph::EnhanceGraphErrorMode;
 use deno_resolver::graph::EnhancedGraphError;
+use deno_resolver::graph::NpmTypesResolutionMode;
 use deno_resolver::graph::enhance_graph_error;
 use deno_resolver::graph::enhanced_integrity_error_message;
 use deno_resolver::graph::format_deno_graph_error;
@@ -414,6 +415,10 @@ impl ModuleGraphCreator {
     }
   }
 
+  pub fn module_graph_builder(&self) -> &Arc<ModuleGraphBuilder> {
+    &self.module_graph_builder
+  }
+
   pub async fn create_graph(
     &self,
     graph_kind: GraphKind,
@@ -560,6 +565,7 @@ impl ModuleGraphCreator {
           workspace_fast_check: WorkspaceFastCheckOption::Enabled(
             &fast_check_workspace_members,
           ),
+          fast_check_dts: false,
         },
       )?;
     }
@@ -643,6 +649,8 @@ pub struct BuildFastCheckGraphOptions<'a> {
   /// Whether to do fast check on workspace members. This
   /// is mostly only useful when publishing.
   pub workspace_fast_check: deno_graph::WorkspaceFastCheckOption<'a>,
+  /// Whether to generate .d.ts files during fast check.
+  pub fast_check_dts: bool,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -812,6 +820,14 @@ impl ModuleGraphBuilder {
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
       None,
+      // When type checking, an npm package that has no type declarations
+      // (e.g. a "bring your own node_modules" dependency without bundled
+      // types and without a corresponding `@types` package) should be
+      // treated as untyped rather than producing a hard "Failed resolving
+      // types" error. Falling back to the execution entrypoint matches the
+      // behaviour of the managed npm resolver. See:
+      // https://github.com/denoland/deno/issues/23507
+      NpmTypesResolutionMode::FallbackToExecution,
     );
     let maybe_reporter = self.maybe_reporter.as_deref();
     let mut locker = self.lockfile.as_ref().map(|l| l.as_deno_graph_locker());
@@ -837,7 +853,7 @@ impl ModuleGraphBuilder {
           resolver: Some($resolver),
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
-          unstable_text_imports: self.cli_options.unstable_raw_imports(),
+          unstable_text_imports: true,
         }
       };
     }
@@ -864,6 +880,7 @@ impl ModuleGraphBuilder {
           self.cjs_tracker.as_ref(),
           &jsx_import_source_config_resolver,
           Some(&cloned_graph),
+          NpmTypesResolutionMode::FallbackToExecution,
         );
 
         graph
@@ -1001,13 +1018,14 @@ impl ModuleGraphBuilder {
       self.cjs_tracker.as_ref(),
       &jsx_import_source_config_resolver,
       None,
+      NpmTypesResolutionMode::Strict,
     );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
         es_parser: Some(&parser),
         fast_check_cache: fast_check_cache.as_ref().map(|c| c as _),
-        fast_check_dts: false,
+        fast_check_dts: options.fast_check_dts,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
         workspace_fast_check: options.workspace_fast_check,

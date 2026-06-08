@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -176,6 +177,116 @@ impl SerializedNpmResolutionSnapshot {
       self.into_valid().unwrap()
     } else {
       ValidSerializedNpmResolutionSnapshot(self)
+    }
+  }
+
+  /// Merges packages of the same name+version whose effective dependency
+  /// set is identical — i.e. they declare the same `dependencies`
+  /// (mapping name → child `nv`), `optional_dependencies`, and
+  /// `optional_peer_dependencies`. These appear in old lockfiles when the
+  /// resolver produced spurious peer-dep variants whose `NpmPackageId`
+  /// strings differ only in cycle-unrolling depth. Without merging them,
+  /// each variant becomes a separate `Module._cache` entry at install
+  /// time and identity comparisons across require chains fail (e.g.
+  /// NestJS DI comparing `ModuleRef` constructors). See deno#26427.
+  ///
+  /// Equivalent variants are remapped to a single canonical id and the
+  /// duplicate entries are dropped. Acts iteratively because merging one
+  /// nv may make its peer-dep variants comparable in turn.
+  pub fn dedup_equivalent_peer_variants(&mut self) {
+    fn dep_signature(
+      pkg: &SerializedNpmResolutionSnapshotPackage,
+    ) -> (
+      BTreeMap<StackString, PackageNv>,
+      BTreeSet<StackString>,
+      BTreeSet<StackString>,
+      NpmResolutionPackageSystemInfo,
+    ) {
+      (
+        pkg
+          .dependencies
+          .iter()
+          .map(|(name, id)| (name.clone(), id.nv.clone()))
+          .collect(),
+        pkg.optional_dependencies.iter().cloned().collect(),
+        pkg.optional_peer_dependencies.iter().cloned().collect(),
+        pkg.system.clone(),
+      )
+    }
+
+    loop {
+      // Group packages by nv.
+      let mut nv_to_indices: HashMap<PackageNv, Vec<usize>> = HashMap::new();
+      for (i, p) in self.packages.iter().enumerate() {
+        nv_to_indices.entry(p.id.nv.clone()).or_default().push(i);
+      }
+
+      // For each nv group, partition packages by their dep signature and
+      // emit (subset → canonical) mappings for equivalent partitions.
+      let mut mappings: HashMap<NpmPackageId, NpmPackageId> = HashMap::new();
+      for indices in nv_to_indices.values() {
+        if indices.len() < 2 {
+          continue;
+        }
+        // Partition by signature.
+        let mut partitions: Vec<Vec<usize>> = Vec::new();
+        for &i in indices {
+          let sig = dep_signature(&self.packages[i]);
+          let mut placed = false;
+          for part in partitions.iter_mut() {
+            if dep_signature(&self.packages[part[0]]) == sig {
+              part.push(i);
+              placed = true;
+              break;
+            }
+          }
+          if !placed {
+            partitions.push(vec![i]);
+          }
+        }
+        // Within each partition, the entry with the shortest serialized
+        // id is treated as canonical so we converge on the simplest
+        // representation across iterations.
+        for partition in partitions {
+          if partition.len() < 2 {
+            continue;
+          }
+          let canonical_idx = *partition
+            .iter()
+            .min_by_key(|&&i| self.packages[i].id.as_serialized().len())
+            .unwrap();
+          let canonical_id = self.packages[canonical_idx].id.clone();
+          for i in partition {
+            if i != canonical_idx {
+              mappings
+                .insert(self.packages[i].id.clone(), canonical_id.clone());
+            }
+          }
+        }
+      }
+
+      if mappings.is_empty() {
+        break;
+      }
+
+      // Rewrite root_packages.
+      for id in self.root_packages.values_mut() {
+        if let Some(new_id) = mappings.get(id) {
+          *id = new_id.clone();
+        }
+      }
+
+      // Rewrite per-package dependency ids.
+      for pkg in self.packages.iter_mut() {
+        for id in pkg.dependencies.values_mut() {
+          if let Some(new_id) = mappings.get(id) {
+            *id = new_id.clone();
+          }
+        }
+      }
+
+      // Drop packages whose id was remapped (kept by the canonical entry).
+      self.packages.retain(|p| !mappings.contains_key(&p.id));
     }
   }
 }
@@ -887,6 +998,12 @@ pub struct SnapshotFromLockfileParams<'a> {
   pub link_packages: &'a HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
   pub lockfile: &'a Lockfile,
   pub default_tarball_url: &'a dyn DefaultTarballUrlProvider,
+  /// If true, merge equivalent peer-dep variants that differ only in
+  /// cycle-unrolling depth (see
+  /// [`SerializedNpmResolutionSnapshot::dedup_equivalent_peer_variants`]).
+  /// Should only be set on install paths — `deno run` must not silently
+  /// rewrite the user's lockfile.
+  pub dedup_equivalent_peer_variants: bool,
 }
 
 pub trait DefaultTarballUrlProvider {
@@ -1022,7 +1139,7 @@ pub fn snapshot_from_lockfile(
       id,
       dependencies: dependencies
         .into_iter()
-        .chain(optional_dependencies.clone().into_iter())
+        .chain(optional_dependencies.clone())
         .collect(),
       optional_dependencies: optional_dependencies.into_keys().collect(),
       system: NpmResolutionPackageSystemInfo {
@@ -1041,11 +1158,21 @@ pub fn snapshot_from_lockfile(
     });
   }
 
-  let snapshot = SerializedNpmResolutionSnapshot {
+  let mut snapshot = SerializedNpmResolutionSnapshot {
     packages,
     root_packages,
+  };
+  if params.dedup_equivalent_peer_variants {
+    // Old lockfiles may contain spurious peer-dep variants of the same
+    // name+version whose `NpmPackageId` strings differ only in cycle
+    // unrolling depth. Merge them so install produces a single physical
+    // copy per nv (matches pnpm) — preserving class identity for
+    // libraries that rely on decorator metadata (NestJS DI). See
+    // deno#26427. Gated to install paths so `deno run` doesn't rewrite
+    // the user's lockfile out from under them.
+    snapshot.dedup_equivalent_peer_variants();
   }
-  .into_valid()?;
+  let snapshot = snapshot.into_valid()?;
   Ok(snapshot)
 }
 
@@ -1223,6 +1350,138 @@ mod tests {
   }
 
   #[test]
+  fn test_dedup_equivalent_peer_variants_cycle_unrolling() {
+    // Two `core@1.0.0` entries whose `NpmPackageId` strings differ only
+    // because the peer-dep cycle (core ↔ pe) was unrolled to different
+    // depths. Their effective dependencies (by nv) are the same. They
+    // should collapse to a single canonical id (the shortest one), and
+    // the equivalent `pe` variants should collapse too.
+    let canonical_core = "core@1.0.0";
+    let unrolled_core = "core@1.0.0_pe@1.0.0";
+    let canonical_pe = "pe@1.0.0";
+    let unrolled_pe = "pe@1.0.0_core@1.0.0";
+
+    fn pkg(
+      id: &str,
+      deps: &[(&str, &str)],
+    ) -> SerializedNpmResolutionSnapshotPackage {
+      SerializedNpmResolutionSnapshotPackage {
+        id: NpmPackageId::from_serialized(id).unwrap(),
+        dependencies: deps
+          .iter()
+          .map(|(n, i)| {
+            (
+              StackString::from(*n),
+              NpmPackageId::from_serialized(i).unwrap(),
+            )
+          })
+          .collect(),
+        optional_peer_dependencies: Default::default(),
+        system: Default::default(),
+        optional_dependencies: Default::default(),
+        dist: None,
+        extra: None,
+        is_deprecated: false,
+        has_bin: false,
+        has_scripts: false,
+      }
+    }
+
+    let mut snapshot = SerializedNpmResolutionSnapshot {
+      root_packages: root_pkgs(&[("core@1", unrolled_core)]),
+      packages: vec![
+        pkg(canonical_core, &[("pe", canonical_pe)]),
+        pkg(unrolled_core, &[("pe", unrolled_pe)]),
+        pkg(canonical_pe, &[]),
+        pkg(unrolled_pe, &[]),
+      ],
+    };
+
+    snapshot.dedup_equivalent_peer_variants();
+
+    // Both pairs collapse to their canonical (shortest) entries.
+    assert_eq!(snapshot.packages.len(), 2);
+    let mut ids: Vec<_> = snapshot
+      .packages
+      .iter()
+      .map(|p| p.id.as_serialized().to_string())
+      .collect();
+    ids.sort();
+    assert_eq!(
+      ids,
+      vec![canonical_core.to_string(), canonical_pe.to_string()]
+    );
+
+    // Root reference is rewritten to the canonical id.
+    let root_id = snapshot.root_packages.values().next().unwrap();
+    assert_eq!(root_id.as_serialized().as_str(), canonical_core);
+
+    // The surviving core's pe dependency was rewritten to the canonical pe.
+    let core_pkg = snapshot
+      .packages
+      .iter()
+      .find(|p| p.id.as_serialized().as_str() == canonical_core)
+      .unwrap();
+    assert_eq!(
+      core_pkg
+        .dependencies
+        .get("pe")
+        .unwrap()
+        .as_serialized()
+        .as_str(),
+      canonical_pe
+    );
+  }
+
+  #[test]
+  fn test_dedup_keeps_distinct_peer_resolutions() {
+    // Two `core@1.0.0` entries that legitimately resolve to different
+    // peers (`pe@1` vs `pe@2`) — they must NOT be merged.
+    let core_with_pe1 = "core@1.0.0_pe@1.0.0";
+    let core_with_pe2 = "core@1.0.0_pe@2.0.0";
+    let pkg = |id: &str,
+               deps: &[(&str, &str)]|
+     -> SerializedNpmResolutionSnapshotPackage {
+      SerializedNpmResolutionSnapshotPackage {
+        id: NpmPackageId::from_serialized(id).unwrap(),
+        dependencies: deps
+          .iter()
+          .map(|(n, i)| {
+            (
+              StackString::from(*n),
+              NpmPackageId::from_serialized(i).unwrap(),
+            )
+          })
+          .collect(),
+        optional_peer_dependencies: Default::default(),
+        system: Default::default(),
+        optional_dependencies: Default::default(),
+        dist: None,
+        extra: None,
+        is_deprecated: false,
+        has_bin: false,
+        has_scripts: false,
+      }
+    };
+    let mut snapshot = SerializedNpmResolutionSnapshot {
+      root_packages: root_pkgs(&[
+        ("core@1", core_with_pe1),
+        ("pe@1", "pe@1.0.0"),
+        ("pe@2", "pe@2.0.0"),
+      ]),
+      packages: vec![
+        pkg(core_with_pe1, &[("pe", "pe@1.0.0")]),
+        pkg(core_with_pe2, &[("pe", "pe@2.0.0")]),
+        pkg("pe@1.0.0", &[]),
+        pkg("pe@2.0.0", &[]),
+      ],
+    };
+    let before = snapshot.packages.len();
+    snapshot.dedup_equivalent_peer_variants();
+    assert_eq!(snapshot.packages.len(), before);
+  }
+
+  #[test]
   fn resolve_pkg_from_pkg_cache_folder_id() {
     let original_serialized = SerializedNpmResolutionSnapshot {
       root_packages: root_pkgs(&[("a@1", "a@1.0.0")]),
@@ -1382,6 +1641,7 @@ mod tests {
         lockfile: &lockfile,
         link_packages: &Default::default(),
         default_tarball_url: &TestDefaultTarballUrlProvider,
+        dedup_equivalent_peer_variants: false,
       })
       .is_ok()
     );
@@ -1433,6 +1693,7 @@ mod tests {
       lockfile: &lockfile,
       link_packages: &Default::default(),
       default_tarball_url: &TestDefaultTarballUrlProvider,
+      dedup_equivalent_peer_variants: false,
     })
     .unwrap();
     assert_eq!(
@@ -1599,6 +1860,7 @@ mod tests {
       lockfile: &lockfile,
       link_packages,
       default_tarball_url: &TestDefaultTarballUrlProvider,
+      dedup_equivalent_peer_variants: false,
     })
     .unwrap();
 
@@ -1664,6 +1926,7 @@ mod tests {
       lockfile: &lockfile,
       link_packages,
       default_tarball_url: &TestDefaultTarballUrlProvider,
+      dedup_equivalent_peer_variants: false,
     })
     .unwrap();
 

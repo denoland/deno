@@ -23,11 +23,22 @@ use crate::http_util;
 use crate::http_util::HttpClient;
 use crate::http_util::HttpClientProvider;
 
+struct FixableAction {
+  module_name: String,
+  target_version: String,
+  is_major: bool,
+}
+
+struct AuditResult {
+  exit_code: i32,
+  fixable_actions: Vec<FixableAction>,
+}
+
 pub async fn audit(
   flags: Arc<Flags>,
   audit_flags: AuditFlags,
 ) -> Result<i32, AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let npm_resolver = factory.npm_resolver().await?;
   let npm_resolver = npm_resolver.as_managed().unwrap();
   let snapshot = npm_resolver.resolution().snapshot();
@@ -39,8 +50,9 @@ pub async fn audit(
     .context("Failed to create HTTP client")?;
 
   let use_socket = audit_flags.socket;
+  let fix = audit_flags.fix;
 
-  let r =
+  let result =
     npm::call_audits_api(audit_flags, npm_url, &snapshot, http_client).await?;
 
   if use_socket {
@@ -51,7 +63,135 @@ pub async fn audit(
     .await?;
   }
 
-  Ok(r)
+  if fix && !result.fixable_actions.is_empty() {
+    apply_fixes(&factory, flags, &result.fixable_actions).await?;
+  }
+
+  Ok(result.exit_code)
+}
+
+async fn apply_fixes(
+  factory: &CliFactory,
+  flags: Arc<Flags>,
+  fixable_actions: &[FixableAction],
+) -> Result<(), AnyError> {
+  use deno_semver::VersionReq;
+
+  use super::CacheTopLevelDepsOptions;
+
+  let (mut deps, jsr_fetch_resolver) =
+    super::create_dep_manager_and_resolvers(factory).await?;
+
+  let mut fixed = Vec::new();
+  let mut unfixable = Vec::new();
+
+  // Build a map of dep name -> (dep_id, version_req_str) for matching.
+  // If multiple deps share the same package name (e.g. aliases), treat
+  // them as unfixable to avoid updating the wrong one.
+  let mut dep_lookup: std::collections::HashMap<
+    String,
+    Option<(super::deps::DepId, String)>,
+  > = std::collections::HashMap::new();
+  for (id, dep) in deps.deps_with_ids() {
+    let name = dep.req.name.to_string();
+    let entry = dep_lookup.entry(name);
+    match entry {
+      std::collections::hash_map::Entry::Vacant(e) => {
+        e.insert(Some((id, dep.req.version_req.to_string())));
+      }
+      std::collections::hash_map::Entry::Occupied(mut e) => {
+        // Duplicate - mark as ambiguous
+        e.insert(None);
+      }
+    }
+  }
+
+  for action in fixable_actions {
+    if action.is_major {
+      unfixable.push(format!(
+        "{} (major upgrade to {})",
+        action.module_name, action.target_version
+      ));
+      continue;
+    }
+
+    match dep_lookup.get(&action.module_name) {
+      Some(Some((dep_id, version_req_str))) => {
+        // Preserve the original version requirement style.
+        // Only handle simple spec styles (caret, tilde, exact pin)
+        // to avoid silently rewriting complex ranges.
+        let trimmed = version_req_str.trim();
+        let new_spec = if trimmed.starts_with('~') {
+          format!("~{}", action.target_version)
+        } else if trimmed.starts_with('^') {
+          format!("^{}", action.target_version)
+        } else if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+          action.target_version.clone()
+        } else {
+          unfixable.push(format!(
+            "{} (unsupported version spec: {})",
+            action.module_name, version_req_str
+          ));
+          continue;
+        };
+        let new_version_req = VersionReq::parse_from_specifier(&new_spec)?;
+        deps.update_dep(*dep_id, new_version_req);
+        fixed.push(format!(
+          "{} {} -> {}",
+          action.module_name, version_req_str, new_spec
+        ));
+      }
+      Some(None) => {
+        unfixable.push(format!(
+          "{} (ambiguous: multiple dependencies with this name)",
+          action.module_name
+        ));
+      }
+      None => {
+        unfixable
+          .push(format!("{} (transitive dependency)", action.module_name));
+      }
+    }
+  }
+
+  if !fixed.is_empty() {
+    deps.commit_changes()?;
+
+    super::npm_install_after_modification(
+      flags,
+      Some(jsr_fetch_resolver),
+      CacheTopLevelDepsOptions {
+        lockfile_only: false,
+      },
+    )
+    .await?;
+
+    let stdout = &mut std::io::stdout();
+    _ = writeln!(
+      stdout,
+      "\nFixed {} vulnerabilit{}:",
+      fixed.len(),
+      if fixed.len() == 1 { "y" } else { "ies" }
+    );
+    for f in &fixed {
+      _ = writeln!(stdout, "  {}", f);
+    }
+  }
+
+  if !unfixable.is_empty() {
+    let stdout = &mut std::io::stdout();
+    _ = writeln!(
+      stdout,
+      "\n{} vulnerabilit{} could not be fixed automatically:",
+      unfixable.len(),
+      if unfixable.len() == 1 { "y" } else { "ies" }
+    );
+    for u in &unfixable {
+      _ = writeln!(stdout, "  {}", u);
+    }
+  }
+
+  Ok(())
 }
 
 mod npm {
@@ -101,7 +241,7 @@ mod npm {
     npm_url: &Url,
     npm_resolution_snapshot: &NpmResolutionSnapshot,
     client: HttpClient,
-  ) -> Result<i32, AnyError> {
+  ) -> Result<super::AuditResult, AnyError> {
     // Build request body for the bulk advisory endpoint:
     // { "pkg-name": ["ver1", "ver2"], ... }
     let mut body_map: HashMap<String, HashSet<String>> = HashMap::new();
@@ -123,7 +263,10 @@ mod npm {
         Err(err) => {
           if audit_flags.ignore_registry_errors {
             log::error!("Failed to get data from the registry: {}", err);
-            return Ok(0);
+            return Ok(super::AuditResult {
+              exit_code: 0,
+              fixable_actions: vec![],
+            });
           } else {
             return Err(err);
           }
@@ -146,32 +289,32 @@ mod npm {
       }
     }
 
+    // Build map of installed versions per package for vulnerability filtering
+    // and fix target computation.
+    let mut installed_versions: HashMap<String, Vec<deno_semver::Version>> =
+      HashMap::new();
+    for pkg in npm_resolution_snapshot.all_packages_for_every_system() {
+      installed_versions
+        .entry(pkg.id.nv.name.to_string())
+        .or_default()
+        .push(pkg.id.nv.version.clone());
+    }
+
     // Filter out advisories where no installed version falls within
     // the vulnerable range. This handles package.json overrides that
     // force a patched version.
-    {
-      let mut installed_versions: HashMap<String, Vec<deno_semver::Version>> =
-        HashMap::new();
-      for pkg in npm_resolution_snapshot.all_packages_for_every_system() {
-        installed_versions
-          .entry(pkg.id.nv.name.to_string())
-          .or_default()
-          .push(pkg.id.nv.version.clone());
+    advisories.retain(|adv| {
+      let Ok(vulnerable_range) =
+        deno_semver::VersionReq::parse_from_npm(&adv.vulnerable_versions)
+      else {
+        return true;
+      };
+      if let Some(versions) = installed_versions.get(&adv.module_name) {
+        versions.iter().any(|v| vulnerable_range.matches(v))
+      } else {
+        false
       }
-      advisories.retain(|adv| {
-        let Ok(vulnerable_range) =
-          deno_semver::VersionReq::parse_from_npm(&adv.vulnerable_versions)
-        else {
-          // Can't parse the range; keep the advisory to be safe
-          return true;
-        };
-        if let Some(versions) = installed_versions.get(&adv.module_name) {
-          versions.iter().any(|v| vulnerable_range.matches(v))
-        } else {
-          false
-        }
-      });
-    }
+    });
 
     // Filter out ignored CVEs
     if !audit_flags.ignore.is_empty() {
@@ -199,7 +342,10 @@ mod npm {
 
     if vulns.total() == 0 {
       _ = writeln!(&mut std::io::stdout(), "No known vulnerabilities found",);
-      return Ok(0);
+      return Ok(super::AuditResult {
+        exit_code: 0,
+        fixable_actions: vec![],
+      });
     }
 
     advisories.sort_by_cached_key(|adv| {
@@ -215,13 +361,124 @@ mod npm {
       audit_flags.ignore_unfixable,
     );
 
+    // Derive fixable actions from advisories at or above the severity
+    // threshold that have patched versions. The bulk API does not return
+    // explicit "actions" like the retired full audit API did, so we
+    // extract the minimum satisfying version from patched_versions ranges.
+    let fixable_actions = derive_fixable_actions(
+      &advisories,
+      &installed_versions,
+      minimal_severity,
+    );
+
     // Exit code 1 only if there are vulnerabilities at or above the specified level
     let exit_code = if vulns.count_at_or_above(minimal_severity) > 0 {
       1
     } else {
       0
     };
-    Ok(exit_code)
+    Ok(super::AuditResult {
+      exit_code,
+      fixable_actions,
+    })
+  }
+
+  /// Derive fix actions from advisory patched_versions ranges.
+  ///
+  /// Only considers advisories at or above `min_severity` so that
+  /// `--fix` respects the `--severity` flag. For each vulnerable
+  /// package, parse the patched_versions range to find the minimum
+  /// version that fixes the vulnerability. If multiple advisories
+  /// affect the same package, pick the highest target version so all
+  /// are resolved. Compare the target major version with the installed
+  /// major version to determine if it is a major upgrade.
+  fn derive_fixable_actions(
+    advisories: &[AuditAdvisory],
+    installed_versions: &HashMap<String, Vec<deno_semver::Version>>,
+    min_severity: AdvisorySeverity,
+  ) -> Vec<super::FixableAction> {
+    use deno_semver::Version;
+
+    // module_name -> (target_version, is_major)
+    let mut best_target: HashMap<String, (Version, bool)> = HashMap::new();
+
+    for adv in advisories {
+      // Skip advisories below the severity threshold
+      let Some(severity) = AdvisorySeverity::parse(&adv.severity) else {
+        continue;
+      };
+      if severity < min_severity {
+        continue;
+      }
+
+      if adv.patched_versions.is_empty() {
+        continue;
+      }
+
+      let Some(target) = min_version_from_range(&adv.patched_versions) else {
+        continue;
+      };
+
+      let installed_major = installed_versions
+        .get(&adv.module_name)
+        .and_then(|vs| vs.iter().min())
+        .map(|v| v.major)
+        .unwrap_or(0);
+      let is_major = target.major > installed_major;
+
+      match best_target.get(&adv.module_name) {
+        Some((existing, _)) if *existing >= target => {}
+        _ => {
+          best_target.insert(adv.module_name.clone(), (target, is_major));
+        }
+      }
+    }
+
+    best_target
+      .into_iter()
+      .map(|(module_name, (target, is_major))| super::FixableAction {
+        module_name,
+        target_version: target.to_string(),
+        is_major,
+      })
+      .collect()
+  }
+
+  /// Extract the minimum patched version from a npm version range string.
+  ///
+  /// Handles common patched_versions formats from npm advisories:
+  /// - ">=1.1.0" or ">=1.1.0 <2.0.0" (lower-bounded range)
+  /// - ">1.0.0" (exclusive lower bound -- we cannot determine exact
+  ///   min version, so skip)
+  /// - "=1.1.0" or "1.1.0" (exact version)
+  ///
+  /// Returns None if the range cannot be parsed or has no usable lower
+  /// bound, in which case the advisory is skipped for auto-fix.
+  fn min_version_from_range(range: &str) -> Option<deno_semver::Version> {
+    let trimmed = range.trim();
+
+    // ">=X.Y.Z ..." -- most common npm patched_versions format
+    if let Some(rest) = trimmed.strip_prefix(">=") {
+      let ver_str = rest.split_whitespace().next()?;
+      return deno_semver::Version::parse_standard(ver_str).ok();
+    }
+
+    // "=X.Y.Z" -- exact version
+    if let Some(rest) = trimmed.strip_prefix('=') {
+      let ver_str = rest.split_whitespace().next()?;
+      return deno_semver::Version::parse_standard(ver_str).ok();
+    }
+
+    // Bare version "X.Y.Z" (no operator) -- treat as exact
+    if trimmed.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+      let ver_str = trimmed.split_whitespace().next()?;
+      return deno_semver::Version::parse_standard(ver_str).ok();
+    }
+
+    // ">X.Y.Z", "~X.Y.Z", "^X.Y.Z", "||" ranges, etc.
+    // We cannot reliably determine the exact minimum version
+    // for these, so skip them (advisory will not be auto-fixed).
+    None
   }
 
   fn print_report(

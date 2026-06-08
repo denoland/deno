@@ -81,6 +81,24 @@ pub const UV_EOF: i32 = -4095;
 /// Map a `std::io::Error` to the closest libuv error code.
 pub(crate) fn io_error_to_uv(err: &std::io::Error) -> c_int {
   use std::io::ErrorKind;
+  // On Windows, several Win32 error codes don't get a stable ErrorKind
+  // mapping from std (they all end up as `Uncategorized`). Handle the
+  // pipe-related ones explicitly first so they don't fall through to
+  // the catch-all UV_EINVAL.
+  #[cfg(windows)]
+  if let Some(code) = err.raw_os_error() {
+    match code {
+      231 => return UV_EBUSY,  // ERROR_PIPE_BUSY
+      536 => return UV_EAGAIN, // ERROR_PIPE_LISTENING
+      230 => return UV_EPIPE,  // ERROR_BAD_PIPE
+      // `ERROR_PIPE_NOT_CONNECTED` maps to `UV_EPIPE` to match libuv's
+      // `uv_translate_sys_error` — node code pattern-matches against
+      // libuv's actual values, so semantic accuracy (`UV_ENOTCONN`)
+      // would break those callers.
+      233 => return UV_EPIPE, // ERROR_PIPE_NOT_CONNECTED
+      _ => {}
+    }
+  }
   match err.kind() {
     ErrorKind::AddrInUse => UV_EADDRINUSE,
     ErrorKind::AddrNotAvailable => UV_EINVAL,
@@ -770,14 +788,13 @@ impl UvLoopInner {
           cb(pw.req, UV_ECANCELED);
         }
       }
-      if let Some(stream) = tcp.internal_stream.take() {
-        // Match libuv: just close the fd. The OS delivers FIN/RST to the
-        // peer naturally; the peer's read loop detects EOF via recv()
-        // returning 0.  libuv does NOT manually signal EOF to peer handles.
-        if let Ok(std_stream) = stream.into_std() {
-          let _ = std_stream.shutdown(std::net::Shutdown::Both);
-        }
-      }
+      // Match libuv's uv__stream_close: plain close(2) on the fd, no
+      // shutdown. The kernel emits FIN when the kernel-level open file
+      // description (OFD) refcount reaches zero, which handles both regular
+      // closes and IPC-transferred fds (where the receiver still holds a dup,
+      // so FIN is correctly suppressed).
+      drop(tcp.internal_stream.take());
+      tcp.internal_fd = None;
       tcp.internal_socket = None;
       tcp.internal_delayed_error = 0;
       tcp.internal_listener = None;

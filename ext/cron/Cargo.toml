@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_cron"
-version = "0.126.0"
+version = "0.130.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,7 +20,6 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_features.workspace = true
 once_cell.workspace = true
-saffron.workspace = true
 serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
 tokio.workspace = true

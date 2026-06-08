@@ -1,0 +1,7 @@
+{
+  "name": "@scope/totally-different-foo",
+  "tasks": {
+    "dev": "echo 'foo-dir ran'"
+  },
+  "exports": {}
+}

@@ -164,6 +164,12 @@ pub enum CoreErrorKind {
   PendingPromiseResolution,
   #[class(generic)]
   #[error(
+    "Module evaluation is still pending after multiple event loop iterations, \
+     but no stalled top-level await was found. This is a bug in Deno."
+  )]
+  ModuleEvaluationDeadlock,
+  #[class(generic)]
+  #[error(
     "Cannot evaluate dynamically imported module, because JavaScript execution has been terminated"
   )]
   EvaluateDynamicImportedModule,
@@ -380,7 +386,15 @@ pub(crate) fn call_site_evals_key<'s, 'i>(
 /// the one defined here, that adds source map support and colorful formatting.
 /// When updating this struct, also update errors_are_equal_without_cause() in
 /// fmt_error.rs.
-#[derive(Debug, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+  Debug,
+  PartialEq,
+  Clone,
+  serde::Deserialize,
+  serde::Serialize,
+  deno_ops::FromV8,
+  deno_ops::ToV8,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct JsError {
   pub name: Option<String>,
@@ -433,7 +447,16 @@ impl JsErrorClass for JsError {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(
+  Debug,
+  Eq,
+  PartialEq,
+  Clone,
+  serde::Deserialize,
+  serde::Serialize,
+  deno_ops::FromV8,
+  deno_ops::ToV8,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct JsStackFrame {
   pub type_name: Option<String>,
@@ -446,6 +469,7 @@ pub struct JsStackFrame {
   // Warning! isToplevel has inconsistent snake<>camel case, "typo" originates in v8:
   // https://source.chromium.org/search?q=isToplevel&sq=&ss=chromium%2Fchromium%2Fsrc:v8%2F
   #[serde(rename = "isToplevel")]
+  #[v8(rename = "isToplevel")]
   pub is_top_level: Option<bool>,
   pub is_eval: bool,
   pub is_native: bool,
@@ -2454,5 +2478,115 @@ mod tests {
       .expect("should fall back to message string");
 
     assert_eq!(value.to_rust_string_lossy(scope), expected_message);
+  }
+
+  #[cfg(not(miri))]
+  #[test]
+  fn test_js_error_v8_roundtrip_preserves_shape() {
+    use crate::convert::FromV8;
+    use crate::convert::ToV8;
+
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    let frame = JsStackFrame {
+      type_name: Some("Foo".to_string()),
+      function_name: Some("bar".to_string()),
+      method_name: None,
+      file_name: Some("file:///a.ts".to_string()),
+      line_number: Some(10),
+      column_number: Some(5),
+      eval_origin: None,
+      is_top_level: Some(true),
+      is_eval: false,
+      is_native: false,
+      is_constructor: false,
+      is_async: false,
+      is_promise_all: false,
+      is_wasm: false,
+      promise_index: None,
+    };
+    let cause = JsError {
+      name: Some("Error".to_string()),
+      message: Some("inner".to_string()),
+      stack: None,
+      cause: None,
+      exception_message: "Error: inner".to_string(),
+      frames: vec![],
+      source_line: None,
+      source_line_frame_index: None,
+      aggregated: None,
+      additional_properties: vec![],
+    };
+    let err = JsError {
+      name: Some("TypeError".to_string()),
+      message: Some("boom".to_string()),
+      stack: Some(
+        "TypeError: boom\n    at Foo.bar (file:///a.ts:10:5)".to_string(),
+      ),
+      cause: Some(Box::new(cause)),
+      exception_message: "TypeError: boom".to_string(),
+      frames: vec![frame],
+      source_line: Some("throw new TypeError('boom');".to_string()),
+      source_line_frame_index: Some(0),
+      aggregated: None,
+      additional_properties: vec![("code".to_string(), "X1".to_string())],
+    };
+
+    let v = err.clone().to_v8(scope).unwrap();
+
+    // Lock in JS-visible field names: serde-emitted shape (camelCase, with
+    // the `isToplevel` quirk preserved) must match what the derive emits.
+    let obj = v8::Local::<v8::Object>::try_from(v).expect("object");
+    let expected_keys = [
+      "name",
+      "message",
+      "stack",
+      "cause",
+      "exceptionMessage",
+      "frames",
+      "sourceLine",
+      "sourceLineFrameIndex",
+      "aggregated",
+      "additionalProperties",
+    ];
+    for key in expected_keys {
+      let key_v = v8::String::new(scope, key).unwrap();
+      assert!(
+        obj.has(scope, key_v.into()).unwrap(),
+        "JsError v8 shape missing key {key}",
+      );
+    }
+
+    let frames_key = v8::String::new(scope, "frames").unwrap();
+    let frames_v = obj.get(scope, frames_key.into()).unwrap();
+    let frames = v8::Local::<v8::Array>::try_from(frames_v).unwrap();
+    let frame0 = frames.get_index(scope, 0).unwrap();
+    let frame0 = v8::Local::<v8::Object>::try_from(frame0).unwrap();
+    let frame_keys = [
+      "typeName",
+      "functionName",
+      "fileName",
+      "lineNumber",
+      "columnNumber",
+      // serde rename for the v8 "typo"; must be `isToplevel`, not `isTopLevel`.
+      "isToplevel",
+      "isEval",
+      "isNative",
+      "isConstructor",
+      "isAsync",
+      "isPromiseAll",
+      "isWasm",
+    ];
+    for key in frame_keys {
+      let key_v = v8::String::new(scope, key).unwrap();
+      assert!(
+        frame0.has(scope, key_v.into()).unwrap(),
+        "JsStackFrame v8 shape missing key {key}",
+      );
+    }
+
+    let back = JsError::from_v8(scope, v).unwrap();
+    assert_eq!(err, back);
   }
 }

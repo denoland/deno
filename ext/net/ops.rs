@@ -34,7 +34,6 @@ use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use hickory_resolver::system_conf;
 use quinn::rustls;
-use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
 use socket2::Protocol;
@@ -61,7 +60,7 @@ pub struct TlsHandshakeInfo {
     Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
-#[derive(Debug, FromV8, ToV8, Deserialize, Serialize)]
+#[derive(Debug, FromV8, ToV8)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -227,7 +226,6 @@ pub async fn op_net_accept_tcp(
 }
 
 #[op2]
-#[serde]
 pub async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -749,8 +747,7 @@ pub async fn op_net_connect_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_connect_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -791,8 +788,7 @@ pub fn op_net_listen_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_listen_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -840,8 +836,7 @@ pub async fn op_net_accept_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
@@ -889,8 +884,8 @@ pub async fn op_net_accept_tunnel(
   Ok((rid, local_addr.into(), remote_addr.into()))
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
-#[serde(untagged)]
+#[derive(ToV8, Eq, PartialEq, Debug)]
+#[to_v8(untagged)]
 pub enum DnsRecordData {
   A(String),
   Aaaa(String),
@@ -935,8 +930,11 @@ pub enum DnsRecordData {
 
 #[derive(ToV8, Eq, PartialEq, Debug)]
 pub struct DnsRecordWithTtl {
-  #[to_v8(serde)]
   pub data: DnsRecordData,
+  /// Record type name, populated for ANY queries to distinguish
+  /// untagged string variants (A vs AAAA vs NS vs PTR vs CNAME).
+  #[to_v8(serde)]
+  pub record_type: Option<String>,
   pub ttl: u32,
 }
 
@@ -974,7 +972,7 @@ pub async fn op_dns_resolve(
     cancel_rid,
   } = args;
 
-  let (config, opts) = if let Some(name_server) =
+  let (config, mut opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
     let group = NameServerConfigGroup::from_ips_clear(
@@ -992,6 +990,14 @@ pub async fn op_dns_resolve(
   } else {
     system_conf::read_system_conf()?
   };
+
+  // When a cancel handle is provided, use a short resolver timeout so
+  // that hickory's background connection tasks clean up quickly after
+  // cancellation (they are not aborted by the cancel handle itself).
+  if cancel_rid.is_some() {
+    opts.timeout = std::time::Duration::from_secs(1);
+    opts.attempts = 1;
+  }
 
   {
     let mut s = state.borrow_mut();
@@ -1058,10 +1064,22 @@ pub async fn op_dns_resolve(
     .records()
     .iter()
     .filter_map(|rec| {
-      let r = format_rdata(record_type)(rec.data()).transpose();
+      let is_any = record_type == RecordType::ANY;
+      // For ANY queries, use each record's actual type for formatting
+      let effective_type = if is_any {
+        rec.record_type()
+      } else {
+        record_type
+      };
+      let r = format_rdata(effective_type)(rec.data()).transpose();
       r.map(|maybe_data| {
         maybe_data.map(|data| DnsRecordWithTtl {
           data,
+          record_type: if is_any {
+            Some(effective_type.to_string())
+          } else {
+            None
+          },
           ttl: rec.ttl(),
         })
       })
