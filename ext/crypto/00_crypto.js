@@ -28,6 +28,7 @@ const {
   ObjectAssign,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
+  SafeArrayIterator,
   SymbolFor,
 } = primordials;
 
@@ -112,6 +113,43 @@ ObjectDefineProperty(SubtleCryptoPrototype, "deriveBits", {
   enumerable: true,
   configurable: true,
 });
+
+// The WebCrypto spec declares `importKey`, `getPublicKey`, `unwrapKey`,
+// `encapsulateKey`, and `decapsulateKey` as returning Promises. The cppgc
+// impls (`subtle_crypto.rs`) run their bodies synchronously because the
+// per-algorithm work is bounded (no IO, no large key derivation off-CPU),
+// but a sync error path would propagate to JS as a synchronous `throw`.
+// That breaks `assertRejects` callers in the test suite and any
+// `.catch()`-only consumer. The async wrappers below coerce both the
+// success and error paths through a Promise, matching the legacy JS
+// async-fn shape.
+function makeAsyncForwarder(name, methodName) {
+  const cppgc = SubtleCryptoPrototype[methodName];
+  // The `name` parameter is captured in the wrapper's `Function.name`
+  // slot via a property assignment because async-arrow `function.name`
+  // would otherwise be `"makeAsyncForwarder"` from the surrounding fn.
+  const wrapper = {
+    async [methodName](...args) {
+      return FunctionPrototypeCall(
+        cppgc,
+        this,
+        ...new SafeArrayIterator(args),
+      );
+    },
+  }[methodName];
+  ObjectDefineProperty(SubtleCryptoPrototype, name, {
+    __proto__: null,
+    value: wrapper,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+makeAsyncForwarder("importKey", "importKey");
+makeAsyncForwarder("getPublicKey", "getPublicKey");
+makeAsyncForwarder("unwrapKey", "unwrapKey");
+makeAsyncForwarder("encapsulateKey", "encapsulateKey");
+makeAsyncForwarder("decapsulateKey", "decapsulateKey");
 
 // `SubtleCrypto`'s prototype keeps a single privateCustomInspect helper so
 // `Deno.inspect(crypto.subtle)` prints `SubtleCrypto {}` rather than the

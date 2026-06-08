@@ -222,11 +222,27 @@ fn stamp_symbols<'s>(
   let Some(syms) = symbols(scope) else {
     return;
   };
+  // The brand symbols must be non-enumerable to match the legacy JS
+  // `ObjectDefineProperty(key, sym, { value: ... })` shape. Without
+  // `DONT_ENUM` the cppgc instance exposes them as plain own properties,
+  // which breaks `assert.deepStrictEqual` of two distinct keys with the
+  // same material (test/parallel/test-assert-deep.js Crypto subtest) and
+  // shows up as `[Symbol(...)]` slots in `Deno.inspect()` output.
   let brand = v8::Local::new(scope, &syms.webidl_brand);
-  let _ = key.set(scope, brand.into(), brand.into());
+  let _ = key.define_own_property(
+    scope,
+    brand.into(),
+    brand.into(),
+    v8::PropertyAttribute::DONT_ENUM,
+  );
 
   let k_key_object = v8::Local::new(scope, &syms.k_key_object);
-  let _ = key.set(scope, k_key_object.into(), k_key_object_val);
+  let _ = key.define_own_property(
+    scope,
+    k_key_object.into(),
+    k_key_object_val,
+    v8::PropertyAttribute::DONT_ENUM,
+  );
 
   // The hostObjectBrand is a function-valued property that the
   // structured-clone serializer calls; replicate the legacy JS shape.
@@ -239,7 +255,12 @@ fn stamp_symbols<'s>(
     .data(host_object_snapshot)
     .build(scope);
   let host_fn = ft.get_function(scope).unwrap();
-  let _ = key.set(scope, host_brand_sym.into(), host_fn.into());
+  let _ = key.define_own_property(
+    scope,
+    host_brand_sym.into(),
+    host_fn.into(),
+    v8::PropertyAttribute::DONT_ENUM,
+  );
 }
 
 fn host_object_thunk(

@@ -306,9 +306,11 @@ pub fn run<'s>(
     "ML-DSA-44" | "ML-DSA-65" | "ML-DSA-87" => {
       import_key_ml_dsa(scope, name, format, key_data, extractable, usages)
     }
-    _ => Err(not_supported(format!(
-      "importKey is not yet implemented in Rust for {name}"
-    ))),
+    // Spec: any algorithm not recognized for `importKey` triggers
+    // `normalizeAlgorithm` to throw `NotSupportedError: Unrecognized
+    // algorithm name`. node_compat test-crypto-key-objects-to-crypto-key.js
+    // and the WebCrypto WPT suite both rely on the exact message.
+    _ => Err(not_supported("Unrecognized algorithm name".into())),
   }
 }
 
