@@ -4882,10 +4882,7 @@
     "parallel/test-fastutf8stream-write.js": {},
     "parallel/test-file-write-stream.js": {},
     "parallel/test-file-write-stream4.js": {},
-    "parallel/test-fileurltopathbuffer.js": {
-      "linux": false,
-      "reason": "fileURLToPathBuffer is not a function"
-    },
+    "parallel/test-fileurltopathbuffer.js": {},
     "parallel/test-fs-read-position-validation.mjs": {},
     "parallel/test-fs-read-promises-position-validation.mjs": {},
     "parallel/test-fs-readdir-ucs2.js": {
