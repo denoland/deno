@@ -573,7 +573,9 @@ async fn bundle_watch(
             watcher_communicator.watch_paths(current_roots.borrow().clone());
         }
 
-        Ok(())
+        // `deno bundle --watch` has no per-run exit code (and disables the
+        // "finished" message above), so report 0 to the watcher.
+        Ok(0)
       })
     },
   )

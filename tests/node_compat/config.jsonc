@@ -5261,7 +5261,10 @@
       "darwin": false,
       "reason": "Mismatched <anonymous> function calls. Expected exactly 1, actual 0."
     },
-    "parallel/test-watch-mode-kill-signal-default.mjs": {},
+    "parallel/test-watch-mode-kill-signal-default.mjs": {
+      "ignore": true,
+      "reason": "Node runs --watch in a separate child process, so the test kills the watcher with SIGTERM while the script's own process.exit() stays independent. Deno runs --watch in the same process and, per #7590, process.exit()/Deno.exit() under --watch terminates the isolate so the watcher survives; the watcher process therefore never exits and the test times out"
+    },
     "parallel/test-watch-mode-kill-signal-invalid.mjs": {
       "linux": false,
       "darwin": false,
