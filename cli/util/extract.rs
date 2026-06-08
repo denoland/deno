@@ -309,6 +309,26 @@ struct ExportCollector {
 }
 
 impl ExportCollector {
+  /// Record `name` as a value export. A value export always wins over a
+  /// type-only export of the same identifier (e.g. a `const` and an
+  /// `interface` sharing a name via declaration merging), so this clears any
+  /// prior type-only marking to keep the injected import a value import.
+  fn add_value_export(&mut self, name: Atom) {
+    self.named_type_only_exports.remove(&name);
+    self.named_exports.insert(name);
+  }
+
+  /// Record `name` as a type-only export, unless it is already known to be a
+  /// value export (in which case the value import must be preserved).
+  fn add_type_only_export(&mut self, name: Atom) {
+    let already_value = self.named_exports.contains(&name)
+      && !self.named_type_only_exports.contains(&name);
+    if !already_value {
+      self.named_type_only_exports.insert(name.clone());
+    }
+    self.named_exports.insert(name);
+  }
+
   fn to_import_specifiers(
     &self,
     symbols_to_exclude: &rustc_hash::FxHashSet<Atom>,
@@ -371,19 +391,20 @@ impl Visit for ExportCollector {
   fn visit_export_decl(&mut self, export_decl: &ast::ExportDecl) {
     match &export_decl.decl {
       ast::Decl::Class(class) => {
-        self.named_exports.insert(class.ident.sym.clone());
+        self.add_value_export(class.ident.sym.clone());
       }
       ast::Decl::Fn(func) => {
-        self.named_exports.insert(func.ident.sym.clone());
+        self.add_value_export(func.ident.sym.clone());
       }
       ast::Decl::Var(var) => {
         for var_decl in &var.decls {
-          let atoms = extract_sym_from_pat(&var_decl.name);
-          self.named_exports.extend(atoms);
+          for atom in extract_sym_from_pat(&var_decl.name) {
+            self.add_value_export(atom);
+          }
         }
       }
       ast::Decl::TsEnum(ts_enum) => {
-        self.named_exports.insert(ts_enum.id.sym.clone());
+        self.add_value_export(ts_enum.id.sym.clone());
       }
       ast::Decl::TsModule(ts_module) => {
         if ts_module.declare {
@@ -392,24 +413,18 @@ impl Visit for ExportCollector {
 
         match &ts_module.id {
           ast::TsModuleName::Ident(ident) => {
-            self.named_exports.insert(ident.sym.clone());
+            self.add_value_export(ident.sym.clone());
           }
           ast::TsModuleName::Str(s) => {
-            self
-              .named_exports
-              .insert(s.value.to_atom_lossy().into_owned());
+            self.add_value_export(s.value.to_atom_lossy().into_owned());
           }
         }
       }
       ast::Decl::TsTypeAlias(ts_type_alias) => {
-        let name = ts_type_alias.id.sym.clone();
-        self.named_exports.insert(name.clone());
-        self.named_type_only_exports.insert(name);
+        self.add_type_only_export(ts_type_alias.id.sym.clone());
       }
       ast::Decl::TsInterface(ts_interface) => {
-        let name = ts_interface.id.sym.clone();
-        self.named_exports.insert(name.clone());
-        self.named_type_only_exports.insert(name);
+        self.add_type_only_export(ts_interface.id.sym.clone());
       }
       ast::Decl::Using(_) => {}
     }
@@ -478,9 +493,10 @@ impl Visit for ExportCollector {
       // type-only.
       let is_type_only = named_export.type_only || named.is_type_only;
       if is_type_only {
-        self.named_type_only_exports.insert(name.clone());
+        self.add_type_only_export(name);
+      } else {
+        self.add_value_export(name);
       }
-      self.named_exports.insert(name);
     }
   }
 }
@@ -1431,6 +1447,35 @@ export class Quux {}
           source: r#"import { type Bar, type Foo, Quux, useFoo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-6.ts", async ()=>{
     useFoo();
+});
+"#,
+          specifier: "file:///main.ts$3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A name that is both a value export and a type export via declaration
+      // merging (here `const Foo` + `interface Foo`) must be injected as a
+      // value import, otherwise the value binding is dropped under
+      // `verbatimModuleSyntax: true`. The order of the value/type
+      // declarations must not matter.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * doSomething();
+ * ```
+ */
+export function doSomething() {}
+export interface Foo { x: number }
+export const Foo = 1;
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { Foo, doSomething } from "file:///main.ts";
+Deno.test("file:///main.ts$3-6.ts", async ()=>{
+    doSomething();
 });
 "#,
           specifier: "file:///main.ts$3-6.ts",
