@@ -296,7 +296,16 @@ pub async fn run(
   extractable: bool,
   usages: Vec<String>,
 ) -> Result<GenerateKeyOutput, CryptoError> {
-  match algorithm {
+  // The algorithm-agnostic empty-usages SyntaxError (WPT
+  // `failures_*` "Empty usages") only fires AFTER per-algorithm
+  // property validation (`NotSupportedError`/`OperationError`) and
+  // per-entry usage validation (`SyntaxError` on bad entries). Keep
+  // the empty flag here so it can be raised once the per-arm body
+  // returns successfully -- this preserves spec ordering against
+  // "Bad algorithm property + empty usages" combos which expect
+  // `OperationError` / `NotSupportedError` to win.
+  let usages_empty = usages.is_empty();
+  let result = match algorithm {
     GenerateKeyAlgorithm::Rsa {
       name,
       modulus_length,
@@ -368,17 +377,20 @@ pub async fn run(
       })
     }
     GenerateKeyAlgorithm::Aes { name, length } => {
+      // Spec (WebCrypto §29.5.2): if `length` isn't a member of
+      // `{128, 192, 256}`, abort with `OperationError`. This check has
+      // to run BEFORE the usage check so that a "bad length + empty
+      // usages" combo (WPT `failures_AES-*` "Bad algorithm property"
+      // cases) rejects with `OperationError`, not `SyntaxError`.
+      if !matches!(length, 128 | 192 | 256) {
+        return Err(op_error("Invalid AES key length".into()));
+      }
       let allowed: &[&str] = if name == "AES-KW" {
         &["wrapKey", "unwrapKey"]
       } else {
         &["encrypt", "decrypt", "wrapKey", "unwrapKey"]
       };
       check_usages(&usages, allowed)?;
-      // Spec (WebCrypto §29.5.2): if `length` isn't a member of
-      // `{128, 192, 256}`, abort with `OperationError`.
-      if !matches!(length, 128 | 192 | 256) {
-        return Err(op_error("Invalid AES key length".into()));
-      }
       let bytes = generate_aes(length as usize)
         .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
       Ok(GenerateKeyOutput::Symmetric {
@@ -537,7 +549,20 @@ pub async fn run(
         format!("Unrecognized algorithm name: {name}"),
       )))
     }
+  }?;
+  // After the per-algorithm body has run cleanly (so any
+  // `NotSupportedError`/`OperationError` from a bad algorithm
+  // property has already aborted), raise the algorithm-agnostic
+  // empty-usages SyntaxError. Every algorithm dispatched above
+  // produces secret or private key material, for which empty usages
+  // is invalid per the WebCrypto spec.
+  if usages_empty {
+    return Err(CryptoError::Other(JsErrorBox::new(
+      "DOMExceptionSyntaxError",
+      "Usages cannot be empty",
+    )));
   }
+  Ok(result)
 }
 
 use crate::rand::Rng;
@@ -553,16 +578,6 @@ fn check_usages(
         "Invalid key usage",
       )));
     }
-  }
-  // WebCrypto generateKey: empty `usages` on a key that produces secret or
-  // private material must throw `SyntaxError`. WPT `generateKey/failures.js`
-  // ("Empty usages") covers every algorithm we dispatch to, and all
-  // generate-key paths in this file produce secret/private material.
-  if usages.is_empty() {
-    return Err(CryptoError::Other(JsErrorBox::new(
-      "DOMExceptionSyntaxError",
-      "Usages cannot be empty",
-    )));
   }
   Ok(())
 }
