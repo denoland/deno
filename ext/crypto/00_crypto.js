@@ -96,8 +96,8 @@ core.registerCloneableResource(
 const SubtleCryptoPrototype = SubtleCrypto.prototype;
 const cppgcDeriveBits = SubtleCryptoPrototype.deriveBits;
 const deriveBitsForwarder = {
-  deriveBits(algorithm, baseKey, length = undefined) {
-    return FunctionPrototypeCall(
+  async deriveBits(algorithm, baseKey, length = undefined) {
+    return await FunctionPrototypeCall(
       cppgcDeriveBits,
       this,
       algorithm,
@@ -148,10 +148,30 @@ function makeAsyncForwarder(name, methodName) {
     configurable: true,
   });
 }
+// Per WebCrypto spec, every SubtleCrypto method returns a Promise. The
+// op2-generated dispatchers invoke `WebIdlConverter`s synchronously before
+// the async body runs, so a converter-level throw (`TypeError: Missing
+// 'modulusLength'`, `Unrecognized algorithm`, etc.) reaches the call site
+// as a synchronous exception. WPT's `promise_rejects_dom` wraps the call
+// in `fn.call(undefined)`, which then surfaces the throw as
+// `TypeError: Failed to execute 'call' on 'SubtleCrypto': ...` -- a wrong
+// shape compared to the spec's "rejected promise". Forward every method
+// through `async` so the throw becomes a Promise rejection.
+makeAsyncForwarder("digest", "digest");
+makeAsyncForwarder("encrypt", "encrypt");
+makeAsyncForwarder("decrypt", "decrypt");
+makeAsyncForwarder("sign", "sign");
+makeAsyncForwarder("verify", "verify");
+makeAsyncForwarder("deriveKey", "deriveKey");
 makeAsyncForwarder("importKey", "importKey");
+makeAsyncForwarder("exportKey", "exportKey");
+makeAsyncForwarder("generateKey", "generateKey");
 makeAsyncForwarder("getPublicKey", "getPublicKey");
+makeAsyncForwarder("wrapKey", "wrapKey");
 makeAsyncForwarder("unwrapKey", "unwrapKey");
+makeAsyncForwarder("encapsulateBits", "encapsulateBits");
 makeAsyncForwarder("encapsulateKey", "encapsulateKey");
+makeAsyncForwarder("decapsulateBits", "decapsulateBits");
 makeAsyncForwarder("decapsulateKey", "decapsulateKey");
 
 // `SubtleCrypto`'s prototype keeps a single privateCustomInspect helper so

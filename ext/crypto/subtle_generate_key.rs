@@ -62,6 +62,12 @@ pub enum GenerateKeyAlgorithm {
   X448,
   MlKem(crate::mlkem::MlKemVariant),
   MlDsa(u8, String),
+  /// Captured for any algorithm name not registered under `generateKey`.
+  /// Deferring the error to [`run`] lets us reject with `NotSupportedError`
+  /// (the WebCrypto spec's `normalizeAlgorithm` outcome) rather than the
+  /// `TypeError` an `Err` here would surface. WPT
+  /// `WebCryptoAPI/generateKey/failures_*.https.any.html` relies on this.
+  Unknown(String),
 }
 
 impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
@@ -175,13 +181,7 @@ impl<'a> WebIdlConverter<'a> for GenerateKeyAlgorithm {
       "ML-DSA-44" => Self::MlDsa(0, canonical),
       "ML-DSA-65" => Self::MlDsa(1, canonical),
       "ML-DSA-87" => Self::MlDsa(2, canonical),
-      other => {
-        return Err(make_err(
-          prefix,
-          context,
-          &format!("Unrecognized algorithm: {other}"),
-        ));
-      }
+      _ => Self::Unknown(canonical),
     })
   }
 }
@@ -356,6 +356,11 @@ pub async fn run(
         &["encrypt", "decrypt", "wrapKey", "unwrapKey"]
       };
       check_usages(&usages, allowed)?;
+      // Spec (WebCrypto §29.5.2): if `length` isn't a member of
+      // `{128, 192, 256}`, abort with `OperationError`.
+      if !matches!(length, 128 | 192 | 256) {
+        return Err(op_error("Invalid AES key length".into()));
+      }
       let bytes = generate_aes(length as usize)
         .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
       Ok(GenerateKeyOutput::Symmetric {
@@ -502,6 +507,11 @@ pub async fn run(
         extractable,
       })
     }
+    GenerateKeyAlgorithm::Unknown(name) => Err(CryptoError::Other(
+      JsErrorBox::new("DOMExceptionNotSupportedError", format!(
+        "Unrecognized algorithm name: {name}"
+      )),
+    )),
   }
 }
 
