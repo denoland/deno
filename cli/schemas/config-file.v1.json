@@ -743,12 +743,11 @@
         },
         "singleBodyPosition": {
           "description": "The position of the body in single body blocks in JavaScript and TypeScript.",
-          "default": "sameLineUnlessHanging",
+          "default": "maintain",
           "enum": [
             "maintain",
             "sameLine",
-            "nextLine",
-            "sameLineUnlessHanging"
+            "nextLine"
           ]
         },
         "nextControlFlowPosition": {
