@@ -73,7 +73,6 @@ use crate::modules::ExtCodeCache;
 use crate::modules::ExtModuleLoader;
 use crate::modules::IntoModuleCodeString;
 use crate::modules::IntoModuleName;
-use crate::modules::ModuleError;
 use crate::modules::ModuleId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
@@ -3203,19 +3202,9 @@ impl JsRuntime {
       let (request, source) = load_result?;
 
       jsrealm::context_scope!(scope, &realm, self.v8_isolate());
-      load.register_and_recurse(scope, &request, source).map_err(
-        |e| match e {
-          ModuleError::Exception(g) => {
-            let exception = v8::Local::new(scope, g);
-            CoreErrorKind::Js(crate::error::exception_to_err(
-              scope, exception, false, false,
-            ))
-            .into_box()
-          }
-          ModuleError::Core(e) => e,
-          ModuleError::Concrete(e) => CoreErrorKind::Module(e).into_box(),
-        },
-      )?;
+      load
+        .register_and_recurse(scope, &request, source)
+        .map_err(|e| e.into_error(scope, false, false))?;
     }
 
     let root_id = load.root_module_id().expect("Root module should be loaded");

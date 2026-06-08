@@ -1350,6 +1350,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
             },
           )
           .await;
+        // Ignore prepare failures: a hook may have resolved this specifier to
+        // a virtual URL the graph builder cannot fetch, in which case the load
+        // is serviced entirely by hooks. Committing a possibly-partial graph
+        // here is intentional and harmless, since the hooks (not this graph)
+        // satisfy the load.
         graph.prune_types();
         update_permit.commit();
         Ok(())
