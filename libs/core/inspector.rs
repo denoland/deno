@@ -627,6 +627,19 @@ impl JsRuntimeInspectorState {
                     }),
                   ));
                 }
+
+                if self.nodeworker_enabled.get() {
+                  (main_session.state.send)(InspectorMsg::notification(
+                    json!({
+                      "method": "NodeWorker.attachedToWorker",
+                      "params": {
+                        "sessionId": ts.session_id,
+                        "workerInfo": ts.worker_info(),
+                        "waitingForDebugger": false
+                      }
+                    }),
+                  ));
+                }
               }
 
               continue;
@@ -2028,5 +2041,15 @@ impl LocalInspectorSession {
 
     let stringified_msg = serde_json::to_string(&message).unwrap();
     self.dispatch(stringified_msg);
+  }
+}
+
+impl Drop for LocalInspectorSession {
+  fn drop(&mut self) {
+    let mut sessions = self.sessions.borrow_mut();
+    sessions.local.remove(&self.session_id);
+    if sessions.main_session_id == Some(self.session_id) {
+      sessions.main_session_id = sessions.local.keys().next().copied();
+    }
   }
 }

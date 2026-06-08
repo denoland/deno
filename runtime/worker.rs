@@ -98,7 +98,8 @@ pub fn create_validate_import_attributes_callback(
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
     move |scope: &mut v8::PinScope<'_, '_>,
-          attributes: &HashMap<String, String>| {
+          attributes: &HashMap<String, String>,
+          context: &deno_core::ImportAttributesContext| {
       let valid_attribute = |kind: &str| {
         matches!(kind, "json" | "text")
           || (enable_raw_imports.load(Ordering::Relaxed) && kind == "bytes")
@@ -116,6 +117,7 @@ pub fn create_validate_import_attributes_callback(
           continue;
         };
 
+        let msg = format!("{msg}{}", context.format_location());
         let message = v8::String::new(scope, &msg).unwrap();
         let exception = v8::Exception::type_error(scope, message);
         scope.throw_exception(exception);
@@ -917,6 +919,34 @@ impl MainWorker {
       .js_runtime
       .run_event_loop(PollEventLoopOptions { wait_for_inspector })
       .await
+  }
+
+  /// If a debugger session is attached and would otherwise be dropped on
+  /// shutdown (a legacy blocking session, or one that opted into
+  /// `NodeRuntime.notifyWhenWaitingForDisconnect` (e.g. Chrome DevTools)),
+  /// block until it disconnects. Returns immediately when no such session
+  /// is attached.
+  ///
+  /// This mirrors the wait the `deno run` event loop performs at the end of
+  /// execution and is meant for tools like `deno test` / `deno bench` whose
+  /// normal shutdown polls the event loop with a zero-duration timeout and
+  /// would otherwise exit while a debugger is still attached.
+  pub async fn wait_for_inspector_session_disconnect(
+    &mut self,
+  ) -> Result<(), CoreError> {
+    let sessions_state = self.js_runtime.inspector().sessions_state();
+    if sessions_state.has_active
+      && (sessions_state.has_blocking
+        || sessions_state.has_nonblocking_wait_for_disconnect)
+    {
+      self
+        .js_runtime
+        .run_event_loop(PollEventLoopOptions {
+          wait_for_inspector: true,
+        })
+        .await?;
+    }
+    Ok(())
   }
 
   /// Return exit code set by the executed code (either in main worker

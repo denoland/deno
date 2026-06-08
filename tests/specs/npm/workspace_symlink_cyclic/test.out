@@ -1,0 +1,17 @@
+Check [WILDLINE]
+running 1 test from ./packages/pkg-a/src/test.spec.ts
+cyclic workspace packages resolve through node_modules symlinks ...
+------- output -------
+invoked pkg-a.packageA
+invoked packageAFromPackageB
+invoked pkg-b.packageB
+invoked packageBFromPackageA
+invoked pkg-a.packageA
+invoked packageAFromPackageB
+invoked pkg-b.packageB
+invoked packageBFromPackageA
+----- output end -----
+cyclic workspace packages resolve through node_modules symlinks ... ok ([WILDLINE])
+
+ok | 1 passed | 0 failed ([WILDLINE])
+

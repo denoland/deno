@@ -56,6 +56,8 @@ pub fn print_linker_flags(name: &str) {
       "OPENGL32",
       // network related functions
       "iphlpapi",
+      // restart manager (only needed on the `deno clean` locked-file path)
+      "rstrtmgr",
     ];
     for dll in dlls {
       println!("cargo:rustc-link-arg-bin={name}=/delayload:{dll}.dll");

@@ -43,6 +43,8 @@ mod install;
 mod jsr;
 #[path = "jupyter_tests.rs"]
 mod jupyter;
+#[path = "jupyter_client.rs"]
+mod jupyter_client;
 #[path = "lsp_tests.rs"]
 mod lsp;
 #[path = "napi_tests.rs"]
@@ -91,7 +93,7 @@ pub fn main() {
     return;
   }
 
-  let _ = rustls::crypto::ring::default_provider().install_default();
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
   let mut main_category: CollectedTestCategory<&'static TestMacroCase> =
     CollectedTestCategory {
       name: module_path!().to_string(),
