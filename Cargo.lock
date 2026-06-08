@@ -2135,7 +2135,6 @@ dependencies = [
  "cooked-waker",
  "criterion",
  "deno_ast",
- "deno_core_icudata",
  "deno_error",
  "deno_ops",
  "deno_path_util",
@@ -2165,12 +2164,6 @@ dependencies = [
  "v8",
  "wasm_dep_analyzer",
 ]
-
-[[package]]
-name = "deno_core_icudata"
-version = "0.77.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9efff8990a82c1ae664292507e1a5c6749ddd2312898cdf9cd7cb1fd4bc64c6"
 
 [[package]]
 name = "deno_core_testing"
