@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "tls_jsstreamsocket_close": {
+      "args": "run --allow-all main.ts",
+      "output": "main.out"
+    }
+  }
+}

@@ -17,6 +17,7 @@ use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
+use serde_json::Value;
 use thiserror::Error;
 
 use crate::resolution::NewestDependencyDate;
@@ -131,6 +132,11 @@ pub enum NpmDependencyEntryErrorSource {
 
 To work around this, you can use a package.json and install the dependencies via `npm install`.", .specifier)]
   RemoteDependency { specifier: String },
+  /// A `file:` or `link:` dependency that references a local path.
+  /// These are typically used during development and should be bundled
+  /// in the published package tarball. We silently skip them.
+  #[error("Unsupported local dependency: {specifier}")]
+  LocalDependency { specifier: String },
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -196,6 +202,8 @@ pub enum NpmPackageVersionBinEntry {
 #[serde(rename_all = "camelCase")]
 pub struct NpmPackageVersionInfo {
   pub version: Version,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub exports: Option<Value>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub dist: Option<NpmPackageVersionDistInfo>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -281,9 +289,11 @@ impl NpmPackageVersionInfo {
       parent_nv: (&str, &Version),
       key_value: (&StackString, &StackString),
       kind: NpmDependencyEntryKind,
-    ) -> Result<NpmDependencyEntry, Box<NpmDependencyEntryError>> {
-      parse_dep_entry_inner(key_value, kind).map_err(|source| {
-        Box::new(NpmDependencyEntryError {
+    ) -> Result<Option<NpmDependencyEntry>, Box<NpmDependencyEntryError>> {
+      match parse_dep_entry_inner(key_value, kind) {
+        Ok(entry) => Ok(Some(entry)),
+        Err(NpmDependencyEntryErrorSource::LocalDependency { .. }) => Ok(None),
+        Err(source) => Err(Box::new(NpmDependencyEntryError {
           parent_nv: PackageNv {
             name: parent_nv.0.into(),
             version: parent_nv.1.clone(),
@@ -291,8 +301,8 @@ impl NpmPackageVersionInfo {
           key: key_value.0.to_string(),
           value: key_value.1.to_string(),
           source,
-        })
-      })
+        })),
+      }
     }
 
     let normalized_dependencies = if self
@@ -333,18 +343,21 @@ impl NpmPackageVersionInfo {
         true => NpmDependencyEntryKind::OptionalPeer,
         false => NpmDependencyEntryKind::Peer,
       };
-      let entry = parse_dep_entry(nv, entry, kind)?;
-      result.insert(entry.bare_specifier.clone(), entry);
+      if let Some(entry) = parse_dep_entry(nv, entry, kind)? {
+        result.insert(entry.bare_specifier.clone(), entry);
+      }
     }
     for entry in normalized_dependencies.iter() {
       let entry = parse_dep_entry(nv, entry, NpmDependencyEntryKind::Dep)?;
-      // people may define a dependency as a peer dependency as well,
-      // so in those cases, attempt to resolve as a peer dependency,
-      // but then use this dependency version requirement otherwise
-      if let Some(peer_dep_entry) = result.get_mut(&entry.bare_specifier) {
-        peer_dep_entry.peer_dep_version_req = Some(entry.version_req);
-      } else {
-        result.insert(entry.bare_specifier.clone(), entry);
+      if let Some(entry) = entry {
+        // people may define a dependency as a peer dependency as well,
+        // so in those cases, attempt to resolve as a peer dependency,
+        // but then use this dependency version requirement otherwise
+        if let Some(peer_dep_entry) = result.get_mut(&entry.bare_specifier) {
+          peer_dep_entry.peer_dep_version_req = Some(entry.version_req);
+        } else {
+          result.insert(entry.bare_specifier.clone(), entry);
+        }
       }
     }
     Ok(result.into_values().collect())
@@ -379,6 +392,11 @@ fn parse_dep_entry_name_and_raw_version<'a>(
     || version_req.starts_with("git+")
   {
     Err(NpmDependencyEntryErrorSource::RemoteDependency {
+      specifier: version_req.to_string(),
+    })
+  } else if version_req.starts_with("file:") || version_req.starts_with("link:")
+  {
+    Err(NpmDependencyEntryErrorSource::LocalDependency {
       specifier: version_req.to_string(),
     })
   } else {
@@ -1451,6 +1469,45 @@ mod test {
   }
 
   #[test]
+  fn test_parse_dep_entry_name_and_raw_version_local_dep() {
+    for specifier in ["file:./rtt-plugin", "file:rust-client", "link:../foo"] {
+      let err = parse_dep_entry_name_and_raw_version(
+        &StackString::from("test"),
+        &StackString::from(specifier),
+      )
+      .unwrap_err();
+      match err {
+        NpmDependencyEntryErrorSource::LocalDependency {
+          specifier: err_specifier,
+        } => assert_eq!(err_specifier, specifier),
+        _ => unreachable!(),
+      }
+    }
+  }
+
+  #[test]
+  fn local_deps_as_entries_are_skipped() {
+    for specifier in [
+      "file:./rtt-plugin",
+      "file:rust-client",
+      "file:components/tryghost-parse-email-address-6.22.0.tgz",
+      "link:../foo",
+    ] {
+      let deps = NpmPackageVersionInfo {
+        dependencies: HashMap::from([
+          ("a".into(), "^1.0.0".into()),
+          ("local-dep".into(), specifier.into()),
+        ]),
+        ..Default::default()
+      };
+      let entries = deps.dependencies_as_entries("pkg-name").unwrap();
+      // The local dependency should be skipped, only "a" remains
+      assert_eq!(entries.len(), 1);
+      assert_eq!(entries[0].bare_specifier.as_str(), "a");
+    }
+  }
+
+  #[test]
   fn example_deserialization_fail() {
     #[derive(Debug, Serialize, Deserialize, Clone)]
     pub struct SerializedCachedPackageInfo {
@@ -1493,6 +1550,7 @@ mod test {
   fn minimize_serialization_version_info() {
     let data = NpmPackageVersionInfo {
       version: Version::parse_from_npm("1.0.0").unwrap(),
+      exports: Default::default(),
       dist: Default::default(),
       bin: Default::default(),
       dependencies: Default::default(),

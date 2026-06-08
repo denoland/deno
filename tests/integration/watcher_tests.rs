@@ -302,6 +302,47 @@ async fn lint_watch_without_args_test() {
   drop(t);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28437
+#[test(flaky)]
+async fn lint_watch_picks_up_new_file_test() {
+  let t = TempDir::new();
+  let badly_linted_fixed1 =
+    util::testdata_path().join("lint/watch/badly_linted_fixed1.js");
+
+  // Start with a single file present. No path args are passed, so the watcher
+  // must fall back to watching the base directory rather than the resolved
+  // file list.
+  let existing = t.path().join("existing.js");
+  badly_linted_fixed1.copy(&existing);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("lint")
+    .arg("--watch")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Lint started");
+  assert_contains!(
+    wait_contains("Checked", &mut stderr_lines).await,
+    "Checked 1 file"
+  );
+
+  // Create a new file *after* the watcher started. The watcher should notice it
+  // and include it in the next run even though it wasn't initially resolved.
+  let new_file = t.path().join("new_file.js");
+  badly_linted_fixed1.copy(&new_file);
+
+  assert_contains!(
+    wait_contains("Checked", &mut stderr_lines).await,
+    "Checked 2 files"
+  );
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn lint_all_files_on_each_change_test() {
   let t = TempDir::new();
@@ -453,6 +494,50 @@ async fn fmt_watch_without_args_test() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28437
+#[test(flaky)]
+async fn fmt_watch_picks_up_new_file_test() {
+  let fmt_testdata_path = util::testdata_path().join("fmt");
+  let t = TempDir::new();
+  let fixed = fmt_testdata_path.join("badly_formatted_fixed.js");
+  let badly_formatted_original = fmt_testdata_path.join("badly_formatted.mjs");
+
+  // Start with a single, already-formatted file so the initial run is clean.
+  let existing = t.path().join("existing.js");
+  fixed.copy(&existing);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("fmt")
+    .arg("--watch")
+    .arg(".")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Fmt started");
+  wait_contains("Fmt finished.", &mut stderr_lines).await;
+
+  // Create a new badly-formatted file *after* the watcher started. The watcher
+  // should notice it even though it wasn't part of the initially resolved set.
+  let new_file = t.path().join("new_file.js");
+  badly_formatted_original.copy(&new_file);
+
+  assert_contains!(
+    wait_contains("new_file.js", &mut stderr_lines).await,
+    "new_file.js"
+  );
+  wait_contains("Fmt finished.", &mut stderr_lines).await;
+
+  // The newly created file should have been formatted by the watcher.
+  let expected = fixed.read_to_string();
+  let actual = new_file.read_to_string();
+  assert_eq!(actual, expected);
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn fmt_check_all_files_on_each_change_test() {
   let t = TempDir::new();
@@ -487,6 +572,105 @@ async fn fmt_check_all_files_on_each_change_test() {
     wait_contains("error", &mut stderr_lines).await,
     "Found 2 not formatted files in 2 files"
   );
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
+async fn check_watch_test() {
+  let t = TempDir::new();
+  let file_to_check = t.path().join("main.ts");
+  file_to_check.write("const x: number = \"hello\";\n");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("check")
+    .arg(&file_to_check)
+    .arg("--watch")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  let next_line = next_line(&mut stderr_lines).await.unwrap();
+  assert_contains!(&next_line, "Check started");
+  assert_contains!(wait_contains("TS2322", &mut stderr_lines).await, "TS2322");
+  wait_contains("Check failed.", &mut stderr_lines).await;
+
+  // Fix the type error.
+  file_to_check.write("const x: number = 42;\nconsole.log(x);\n");
+
+  wait_contains("Check finished.", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
+async fn compile_watch_test() {
+  let t = TempDir::new();
+  let main = t.path().join("main.ts");
+  let message = t.path().join("message.ts");
+  let data = t.path().join("data.txt");
+  let exe = if cfg!(windows) {
+    t.path().join("app.exe")
+  } else {
+    t.path().join("app")
+  };
+
+  main.write(
+    r#"import { message } from "./message.ts";
+console.log(message);
+console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
+"#,
+  );
+  message.write(r#"export const message = "before";"#);
+  data.write("included before");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("compile")
+    .arg("--watch")
+    .arg("--no-clear-screen")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-read")
+    .arg("--include")
+    .arg(&data)
+    .arg("--output")
+    .arg(&exe)
+    .arg(&main)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("data.txt", &mut stderr_lines).await;
+  wait_for_watcher("message.ts", &mut stderr_lines).await;
+  wait_contains("Compile finished", &mut stderr_lines).await;
+
+  let output = std::process::Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "before");
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
+
+  message.write(r#"export const message = "after";"#);
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Compile finished", &mut stderr_lines).await;
+
+  let output = std::process::Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
+
+  data.write("included after");
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Compile finished", &mut stderr_lines).await;
+
+  let output = std::process::Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "included after");
 
   check_alive_then_kill(child);
 }
@@ -641,6 +825,109 @@ async fn serve_watch_all() {
   );
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+// Regression test for https://github.com/denoland/deno/issues/30382.
+// Ensures that `deno serve --watch` applies the import map from deno.json when
+// resolving the main module, so a bare specifier entrypoint resolves the same
+// way it does without `--watch`.
+#[test(flaky)]
+async fn serve_watch_with_import_map() {
+  let t = TempDir::new();
+
+  let server_file = t.path().join("server.js");
+  server_file.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"hello\");
+      },
+    };",
+  );
+
+  t.path().join("deno.json").write(
+    "{
+      \"imports\": {
+        \"app\": \"./server.js\"
+      }
+    }",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch=.")
+    .arg("--port")
+    .arg("0")
+    .arg("app")
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // The bare specifier "app" only resolves if the import map is applied. Before
+  // the fix this failed with `Module not found "file://.../app"` and the server
+  // never started listening.
+  wait_contains("Listening on", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+// Regression test for https://github.com/denoland/deno/issues/30046
+// `deno serve` used to ignore `--watch-exclude` entirely, so writing to an
+// excluded file that's part of the module graph would trigger a restart.
+#[test(flaky)]
+async fn serve_watch_with_excluded_paths() {
+  let t = TempDir::new();
+
+  let excluded_file = t.path().join("excluded.js");
+  excluded_file.write("export const foo = 0;");
+
+  let main_file = t.path().join("main_file_to_watch.js");
+  main_file.write(
+    "import { foo } from './excluded.js';
+    console.log('ran', foo);
+    export default { fetch: () => new Response('ok') };",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch")
+    .arg("--watch-exclude=excluded.js")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-net")
+    .arg(&main_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("ran", &mut stdout_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  // Writing the excluded file must not trigger a restart. Writing the watched
+  // main file must, and the first restart we observe must be for the main file
+  // rather than the excluded one.
+  excluded_file.write("export const foo = 42;");
+  main_file.write(
+    "import { foo } from './excluded.js';
+    console.log('ran2', foo);
+    export default { fetch: () => new Response('ok') };",
+  );
+
+  let restart = wait_contains("File change detected", &mut stderr_lines).await;
+  assert!(
+    restart.contains("main_file_to_watch.js"),
+    "unexpected file triggered restart: {restart}"
+  );
+  assert!(
+    !restart.contains("excluded.js"),
+    "excluded file triggered a restart: {restart}"
+  );
+  wait_contains("ran2", &mut stdout_lines).await;
   check_alive_then_kill(child);
 }
 
@@ -1036,15 +1323,16 @@ async fn test_watch_basic() {
   another_test.write("syntax error ^^");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
-  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
+  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "  |");
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "  syntax error ^^"
+    "1 | syntax error ^^"
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "         ~~~~~"
+    "  |        ~~~~~"
   );
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "at file:");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Test failed");
 
   // Then restore the file
@@ -1090,6 +1378,43 @@ async fn test_watch_basic() {
   // Test that circular dependencies work fine
   foo_file.write("import './bar.js'; export default function foo() { 1 + 1 }");
   bar_file.write("import './foo.js'; export default function bar() { 2 + 2 }");
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
+async fn test_watch_external_watch_files() {
+  let t = TempDir::new();
+
+  let test_file = t.path().join("test_file.ts");
+  test_file.write("Deno.test('hello', () => {});");
+
+  let external_file = t.path().join("external_file.txt");
+  external_file.write("Hello world");
+
+  let mut watch_arg = "--watch=".to_owned();
+  let external_file_str = external_file.to_string();
+  watch_arg.push_str(&external_file_str);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg(watch_arg)
+    .arg("-L")
+    .arg("debug")
+    .arg(&test_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_for_watcher("external_file.txt", &mut stderr_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Change content of the external file — should trigger a re-run
+  external_file.write("Hello world2");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
   check_alive_then_kill(child);
 }
 
@@ -1223,6 +1548,84 @@ async fn test_watch_doc() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/24558:
+// `deno test --doc --watch` panicked with a parse error on Markdown files
+// because the watcher passed them to the module graph builder as roots.
+#[test(flaky)]
+async fn test_watch_doc_markdown() {
+  let t = TempDir::new();
+
+  let readme = t.path().join("README.md");
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+console.log("Hello world");
+```
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg("--config")
+    .arg(util::deno_config_path())
+    .arg("--watch")
+    .arg("--doc")
+    .arg(t.path())
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Edit the markdown file to introduce a failing assertion in its doc test.
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+assertEquals(1, 2);
+```
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("FAILED | 0 passed | 1 failed", &mut stdout_lines).await;
+  wait_contains("Test failed", &mut stderr_lines).await;
+
+  // Fix it again.
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+assertEquals(1, 1);
+```
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn test_watch_module_graph_error_referrer() {
   let t = TempDir::new();
@@ -1321,6 +1724,66 @@ async fn run_watch_blob_urls_reset() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/25559 —
+// `Deno.chdir()` in the watched program must not break module
+// resolution on restart. The watcher should restore the original cwd
+// before re-running so the main module can still be loaded.
+#[test(flaky)]
+async fn run_watch_chdir() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+console.log("Files reloaded");
+console.log("cwd:", Deno.cwd());
+Deno.mkdirSync("temp", { recursive: true });
+Deno.chdir("temp");
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--allow-read")
+    .arg("--allow-write")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Files reloaded", &mut stdout_lines).await;
+  let initial_cwd_log = wait_contains("cwd:", &mut stdout_lines).await;
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart. The previous run changed cwd via `Deno.chdir`;
+  // the watcher must restore the original cwd or this restart will
+  // fail with "Module not found".
+  file_to_watch.write(
+    r#"
+console.log("Files reloaded");
+console.log("cwd:", Deno.cwd());
+Deno.mkdirSync("temp", { recursive: true });
+Deno.chdir("temp");
+console.log("done");
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("Files reloaded", &mut stdout_lines).await;
+  let cwd_line_after = wait_contains("cwd:", &mut stdout_lines).await;
+  wait_contains("done", &mut stdout_lines).await;
+  // The cwd printed on restart must match the cwd printed on the
+  // first run — `Deno.chdir("temp")` from the previous iteration must
+  // not leak across the watcher restart.
+  assert_eq!(initial_cwd_log, cwd_line_after);
+  check_alive_then_kill(child);
+}
+
 #[cfg(unix)]
 #[test(flaky)]
 async fn test_watch_sigint() {
@@ -1345,6 +1808,202 @@ async fn test_watch_sigint() {
   signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).unwrap();
   let exit_status = child.wait().unwrap();
   assert_eq!(exit_status.code(), Some(130));
+}
+
+/// Test that the "unload" event fires on watch restart when the
+/// event loop is running (e.g. with setInterval keeping it alive).
+#[test(flaky)]
+async fn run_watch_unload_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      addEventListener("unload", () => {
+        console.log("unload event fired");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file
+  file_to_watch.write(
+    r#"
+      addEventListener("unload", () => {
+        console.log("unload event fired");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The unload handler should fire before the process restarts
+  wait_contains("unload event fired", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that Node.js process "exit" event fires on watch restart.
+#[test(flaky)]
+async fn run_watch_process_exit_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      import process from "node:process";
+      process.on("exit", () => {
+        console.log("process exit fired");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file
+  file_to_watch.write(
+    r#"
+      import process from "node:process";
+      process.on("exit", () => {
+        console.log("process exit fired");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The process exit handler should fire before the process restarts
+  wait_contains("process exit fired", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that SIGTERM is dispatched to JS signal handlers on watch restart,
+/// giving the process a chance to clean up before restarting.
+#[test(flaky)]
+async fn run_watch_sigterm_on_restart() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      Deno.addSignalListener("SIGTERM", () => {
+        console.log("received SIGTERM");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Trigger a restart by modifying the file (keep same behavior)
+  file_to_watch.write(
+    r#"
+      Deno.addSignalListener("SIGTERM", () => {
+        console.log("received SIGTERM");
+      });
+      setInterval(() => {}, 1000);
+      // changed
+    "#,
+  );
+
+  // The SIGTERM handler should fire before the process restarts
+  wait_contains("received SIGTERM", &mut stdout_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that both SIGINT and SIGTERM are dispatched on Ctrl+C in watch mode.
+#[cfg(unix)]
+#[test(flaky)]
+async fn test_watch_sigint_and_sigterm_on_ctrlc() {
+  use nix::sys::signal;
+  use nix::sys::signal::Signal;
+  use nix::unistd::Pid;
+
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+      Deno.addSignalListener("SIGINT", () => {
+        console.log("received SIGINT");
+      });
+      Deno.addSignalListener("SIGTERM", () => {
+        console.log("received SIGTERM");
+      });
+      setInterval(() => {}, 1000);
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+
+  // Send SIGINT (simulating Ctrl+C)
+  signal::kill(Pid::from_raw(child.id() as i32), Signal::SIGINT).unwrap();
+
+  // Both signal handlers should fire before exit
+  wait_contains("received SIGINT", &mut stdout_lines).await;
+  wait_contains("received SIGTERM", &mut stdout_lines).await;
+
+  // The watcher handles Ctrl+C gracefully and exits with 0
+  // (not 130) because it intercepts SIGINT via ctrl_c().
+  let exit_status = child.wait().unwrap();
+  assert_eq!(exit_status.code(), Some(0));
 }
 
 #[test(flaky)]
@@ -1429,15 +2088,16 @@ async fn bench_watch_basic() {
   another_test.write("syntax error ^^");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
-  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
+  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "  |");
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "  syntax error ^^"
+    "1 | syntax error ^^"
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "         ~~~~~"
+    "  |        ~~~~~"
   );
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "at file:");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Bench failed");
 
   // Then restore the file
@@ -1477,6 +2137,8 @@ async fn run_watch_reload_once() {
     .arg("--allow-import")
     .arg("--watch")
     .arg("--reload")
+    .arg("-L")
+    .arg("debug")
     .arg(&file_to_watch)
     .env("NO_COLOR", "1")
     .piped_output()
@@ -1484,15 +2146,23 @@ async fn run_watch_reload_once() {
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
 
-  wait_contains("finished", &mut stderr_lines).await;
+  wait_contains("Process started", &mut stderr_lines).await;
   let first_output = next_line(&mut stdout_lines).await.unwrap();
+
+  // Make sure the watcher is actually watching the file before we modify it,
+  // otherwise the change may be written before the watch is registered and
+  // never picked up (causing a hang/timeout).
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("finished", &mut stderr_lines).await;
 
   file_to_watch.write(file_content);
   // The remote dynamic module should not have been reloaded again.
 
-  wait_contains("finished", &mut stderr_lines).await;
+  wait_contains("Restarting", &mut stderr_lines).await;
   let second_output = next_line(&mut stdout_lines).await.unwrap();
   assert_eq!(second_output, first_output);
+
+  wait_contains("finished", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
 }
@@ -1663,6 +2333,53 @@ async fn run_watch_dynamic_imports() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/30642
+#[test(flaky)]
+async fn run_watch_dynamic_raw_imports() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+    console.log("main module loaded");
+    const d = await import("./" + "d.md", { with: { type: "text" } });
+    console.log("d:", d.default.trim());
+    "#,
+  );
+  let raw_file = t.path().join("d.md");
+  raw_file.write("hello v1\n");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch")
+    .arg("--unstable-raw-imports")
+    .arg("--allow-read")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
+
+  wait_contains("main module loaded", &mut stdout_lines).await;
+  wait_contains("d: hello v1", &mut stdout_lines).await;
+
+  wait_for_watcher("d.md", &mut stderr_lines).await;
+  wait_contains("finished", &mut stderr_lines).await;
+
+  raw_file.write("hello v2\n");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("main module loaded", &mut stdout_lines).await;
+  wait_contains("d: hello v2", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn run_watch_inspect() {
   let t = TempDir::new();
@@ -1740,6 +2457,89 @@ async fn run_watch_with_excluded_paths() {
   mjs_file_to_exclude.write("export const foo = 42;");
 
   wait_contains("finished", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+// Regression test for https://github.com/denoland/deno/issues/26217
+// When using `--watch=.` (directory), excluded files within that directory
+// should not trigger restarts.
+#[test(flaky)]
+async fn run_watch_directory_with_excluded_file() {
+  let t = TempDir::new();
+
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write("console.log('hello');");
+
+  let file_to_exclude = t.path().join("file_to_exclude.txt");
+  file_to_exclude.write("original content");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch=.")
+    .arg("--watch-exclude=file_to_exclude.txt")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("hello", &mut stdout_lines).await;
+  wait_contains("finished", &mut stderr_lines).await;
+
+  // Modify excluded file - should NOT trigger restart
+  file_to_exclude.write("modified content");
+
+  // Modify watched file - should trigger restart
+  file_to_watch.write("console.log('restarted');");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("restarted", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+// When using `--watch=.`, excluded subdirectories should not trigger restarts
+// for any file changes within them.
+#[test(flaky)]
+async fn run_watch_directory_with_excluded_subdirectory() {
+  let t = TempDir::new();
+
+  let file_to_watch = t.path().join("main.js");
+  file_to_watch.write("console.log('start');");
+
+  let sub_dir = t.path().join("ignored_dir");
+  sub_dir.create_dir_all();
+  let sub_file = sub_dir.join("data.txt");
+  sub_file.write("data");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch=.")
+    .arg("--watch-exclude=ignored_dir")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("start", &mut stdout_lines).await;
+  wait_contains("finished", &mut stderr_lines).await;
+
+  // Modify file inside excluded subdirectory - should NOT trigger restart
+  sub_file.write("data updated");
+
+  // Modify watched file - should trigger restart
+  file_to_watch.write("console.log('restarted');");
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("restarted", &mut stdout_lines).await;
+
   check_alive_then_kill(child);
 }
 
@@ -2661,6 +3461,57 @@ console.log("---");
   );
   wait_contains("BAR: another_value", &mut stdout_lines).await;
   wait_contains("---", &mut stdout_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
+async fn test_watch_env_file() {
+  let t = TempDir::new();
+
+  // Create initial .env file
+  let env_file = t.path().join(".env");
+  std::fs::write(&env_file, "FOO=initial_value\nBAR=test_value").unwrap();
+
+  // Create test that reads environment variables
+  let test_file = t.path().join("env_test.ts");
+  std::fs::write(
+    &test_file,
+    r#"
+Deno.test("env test", () => {
+  console.log("FOO:", Deno.env.get("FOO"));
+  console.log("BAR:", Deno.env.get("BAR"));
+});
+"#,
+  )
+  .unwrap();
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg("--watch")
+    .arg("--no-check")
+    .arg("--allow-env")
+    .arg("--env-file=.env")
+    .arg(&test_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // Wait for initial run
+  wait_contains("FOO: initial_value", &mut stdout_lines).await;
+  wait_contains("BAR: test_value", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Change the .env file
+  std::fs::write(&env_file, "FOO=updated_value\nBAR=new_value").unwrap();
+
+  // Wait for restart and verify updated values
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("FOO: updated_value", &mut stdout_lines).await;
+  wait_contains("BAR: new_value", &mut stdout_lines).await;
 
   check_alive_then_kill(child);
 }

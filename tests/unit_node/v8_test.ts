@@ -1,20 +1,16 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import {
-  cachedDataVersionTag,
-  deserialize,
-  getHeapStatistics,
-  serialize,
-  setFlagsFromString,
-} from "node:v8";
-import { assertEquals } from "@std/assert";
+import * as v8 from "node:v8";
+import { Buffer } from "node:buffer";
+import { runInNewContext } from "node:vm";
+import { assertEquals, assertThrows } from "@std/assert";
 
 // https://github.com/nodejs/node/blob/a2bbe5ff216bc28f8dac1c36a8750025a93c3827/test/parallel/test-v8-version-tag.js#L6
 Deno.test({
   name: "cachedDataVersionTag success",
   fn() {
-    const tag = cachedDataVersionTag();
+    const tag = v8.cachedDataVersionTag();
     assertEquals(typeof tag, "number");
-    assertEquals(cachedDataVersionTag(), tag);
+    assertEquals(v8.cachedDataVersionTag(), tag);
   },
 });
 
@@ -22,7 +18,7 @@ Deno.test({
 Deno.test({
   name: "getHeapStatistics success",
   fn() {
-    const s = getHeapStatistics();
+    const s = v8.getHeapStatistics();
     const keys = [
       "does_zap_garbage",
       "external_memory",
@@ -31,6 +27,7 @@ Deno.test({
       "number_of_detached_contexts",
       "number_of_native_contexts",
       "peak_malloced_memory",
+      "total_allocated_bytes",
       "total_available_size",
       "total_global_handles_size",
       "total_heap_size",
@@ -52,15 +49,156 @@ Deno.test({
 Deno.test({
   name: "setFlagsFromString",
   fn() {
-    setFlagsFromString("--allow_natives_syntax");
+    v8.setFlagsFromString("--allow_natives_syntax");
+  },
+});
+
+Deno.test({
+  name: "setFlagsFromString exposes gc to new vm contexts",
+  fn() {
+    v8.setFlagsFromString("--expose_gc");
+    const gc = runInNewContext("gc");
+    assertEquals(typeof gc, "function");
+    assertEquals(gc(), undefined);
   },
 });
 
 Deno.test({
   name: "serialize deserialize",
   fn() {
-    const s = serialize({ a: 1 });
-    const d = deserialize(s);
+    const s = v8.serialize({ a: 1 });
+    const d = v8.deserialize(s);
     assertEquals(d, { a: 1 });
+  },
+});
+
+Deno.test({
+  name: "Deserializer keeps delegate alive across GC",
+  fn() {
+    v8.setFlagsFromString("--expose_gc");
+    const gc = runInNewContext("gc");
+    const serialized = v8.serialize(Buffer.from([1, 2, 3, 4]));
+
+    class HostObjectDeserializer extends v8.DefaultDeserializer {
+      calls = 0;
+
+      _readHostObject() {
+        this.calls++;
+        const defaultDeserializer = v8.DefaultDeserializer.prototype as
+          & v8.DefaultDeserializer
+          & { _readHostObject(): unknown };
+        return defaultDeserializer._readHostObject.call(this);
+      }
+    }
+
+    const deserializer = new HostObjectDeserializer(serialized);
+    assertEquals(deserializer.readHeader(), true);
+    for (let i = 0; i < 10; i++) {
+      gc();
+    }
+
+    const value = deserializer.readValue();
+    assertEquals(value, Buffer.from([1, 2, 3, 4]));
+    assertEquals(deserializer.calls, 1);
+  },
+});
+
+Deno.test({
+  name: "writeHeapSnapshot requires write permission",
+  permissions: { write: false },
+  fn() {
+    assertThrows(() => {
+      v8.writeHeapSnapshot("test.heapsnapshot");
+    }, Deno.errors.NotCapable);
+  },
+});
+
+Deno.test({
+  name: "queryObjects counts instances by constructor",
+  fn() {
+    class QueryObjectsTestFixture {}
+    const before = v8.queryObjects(QueryObjectsTestFixture, {
+      format: "count",
+    });
+    assertEquals(typeof before, "number");
+    const instances = [];
+    for (let i = 0; i < 50; i++) {
+      instances.push(new QueryObjectsTestFixture());
+    }
+    const after = v8.queryObjects(QueryObjectsTestFixture, {
+      format: "count",
+    });
+    assertEquals(after - before >= 50, true);
+
+    const summary = v8.queryObjects(QueryObjectsTestFixture, {
+      format: "summary",
+    });
+    assertEquals(Array.isArray(summary), true);
+    assertEquals((summary as string[]).length, 1);
+    assertEquals(
+      (summary as string[])[0].includes("QueryObjectsTestFixture"),
+      true,
+    );
+
+    // Keep the instances reachable until after the snapshot.
+    assertEquals(instances.length, 50);
+  },
+});
+
+Deno.test({
+  name: "queryObjects validates the constructor argument",
+  fn() {
+    assertThrows(() => {
+      // @ts-expect-error testing invalid input
+      v8.queryObjects("not a function");
+    });
+  },
+});
+
+Deno.test({
+  name: "queryObjects validates the format option",
+  fn() {
+    class Anything {}
+    assertThrows(() => {
+      v8.queryObjects(
+        Anything,
+        // @ts-expect-error testing invalid input
+        { format: "bogus" },
+      );
+    });
+  },
+});
+
+Deno.test({
+  name: "startupSnapshot exposes the documented API surface",
+  fn() {
+    assertEquals(typeof v8.startupSnapshot, "object");
+    assertEquals(
+      typeof v8.startupSnapshot.setDeserializeMainFunction,
+      "function",
+    );
+    assertEquals(typeof v8.startupSnapshot.addSerializeCallback, "function");
+    assertEquals(typeof v8.startupSnapshot.addDeserializeCallback, "function");
+    assertEquals(typeof v8.startupSnapshot.isBuildingSnapshot, "function");
+    assertEquals(v8.startupSnapshot.isBuildingSnapshot(), false);
+  },
+});
+
+Deno.test({
+  name:
+    "startupSnapshot.addSerializeCallback and addDeserializeCallback accept callables",
+  fn() {
+    // Storing callbacks must not throw; Deno has no snapshot lifecycle so the
+    // callbacks are never invoked.
+    v8.startupSnapshot.addSerializeCallback(() => {});
+    v8.startupSnapshot.addDeserializeCallback(() => {});
+    assertThrows(() => {
+      // @ts-expect-error testing invalid input
+      v8.startupSnapshot.addSerializeCallback("not a function");
+    });
+    assertThrows(() => {
+      // @ts-expect-error testing invalid input
+      v8.startupSnapshot.addDeserializeCallback(123);
+    });
   },
 });

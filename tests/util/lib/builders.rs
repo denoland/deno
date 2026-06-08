@@ -30,7 +30,6 @@ use crate::HttpServerGuard;
 use crate::TempDir;
 use crate::assertions::assert_wildcard_match;
 use crate::assertions::assert_wildcard_match_with_logger;
-use crate::consts::tsgo_prebuilt_path;
 use crate::deno_exe_path;
 use crate::denort_exe_path;
 use crate::env_vars_for_jsr_tests;
@@ -385,9 +384,16 @@ impl TestContext {
 
 fn kill_process(pid: u32) {
   #[cfg(unix)]
-  // SAFETY: We're sending SIGKILL to a process we spawned.
-  unsafe {
-    libc::kill(pid as i32, libc::SIGKILL);
+  {
+    // kill the process tree by first killing children via
+    // pkill, then the process itself
+    let _ = std::process::Command::new("pkill")
+      .args(["-9", "-P", &pid.to_string()])
+      .output();
+    // SAFETY: We're sending SIGKILL to a process we spawned.
+    unsafe {
+      libc::kill(pid as i32, libc::SIGKILL);
+    }
   }
   #[cfg(not(unix))]
   {
@@ -970,12 +976,6 @@ impl TestCommandBuilder {
       envs.insert(
         "NODEJS_ORG_MIRROR".to_string(),
         nodejs_org_mirror_unset_url(),
-      );
-    }
-    if !envs.contains_key("DENO_TSGO_PATH") {
-      envs.insert(
-        "DENO_TSGO_PATH".to_string(),
-        tsgo_prebuilt_path().to_string(),
       );
     }
     if !envs.contains_key("PATH") {

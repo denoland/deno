@@ -1,11 +1,17 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import type { Span } from "ext:deno_telemetry/telemetry.ts";
+(function () {
+const { internals, primordials } = __bootstrap;
 
 const { String, StringPrototypeSlice } = primordials;
 
-export function updateSpanFromRequest(span: Span, request: Request) {
+type Span = {
+  updateName(name: string): void;
+  setAttribute(key: string, value: string): void;
+  setStatus(status: { code: number; message: string }): void;
+};
+
+function updateSpanFromRequest(span: Span, request: Request) {
   span.updateName(request.method);
 
   span.setAttribute("http.request.method", request.method);
@@ -19,19 +25,42 @@ export function updateSpanFromRequest(span: Span, request: Request) {
   span.setAttribute("url.query", StringPrototypeSlice(url.search, 1));
 }
 
-export function updateSpanFromResponse(span: Span, response: Response) {
+function setResponseAttributes(
+  span: Span,
+  response: Response,
+  errorThreshold: number,
+) {
   span.setAttribute(
     "http.response.status_code",
     String(response.status),
   );
-  if (response.status >= 400) {
+  if (response.status >= errorThreshold) {
     span.setAttribute("error.type", String(response.status));
     span.setStatus({ code: 2, message: response.statusText });
   }
 }
 
+// Per OTel HTTP semantic conventions, client spans should have ERROR status
+// for all >= 400 responses.
+function updateSpanFromClientResponse(
+  span: Span,
+  response: Response,
+) {
+  setResponseAttributes(span, response, 400);
+}
+
+// Per OTel HTTP semantic conventions, server spans should only have ERROR
+// status for 5xx responses. 4xx responses are client errors, not server
+// errors.
+function updateSpanFromServerResponse(
+  span: Span,
+  response: Response,
+) {
+  setResponseAttributes(span, response, 500);
+}
+
 // deno-lint-ignore no-explicit-any
-export function updateSpanFromError(span: Span, error: any) {
+function updateSpanFromError(span: Span, error: any) {
   const errorType = error.name ?? "Error";
   span.setAttribute("error.type", errorType);
   span.setAttribute("exception.type", errorType);
@@ -43,3 +72,17 @@ export function updateSpanFromError(span: Span, error: any) {
   }
   span.setStatus({ code: 2, message: error.message ?? String(error) });
 }
+
+internals.__telemetryUtil = {
+  updateSpanFromClientResponse,
+  updateSpanFromError,
+  updateSpanFromRequest,
+};
+
+return {
+  updateSpanFromRequest,
+  updateSpanFromClientResponse,
+  updateSpanFromServerResponse,
+  updateSpanFromError,
+};
+})();

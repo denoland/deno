@@ -22,9 +22,9 @@ use deno_lib::util::checksum;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_npmrc::ResolvedNpmRc;
 use deno_path_util::resolve_url_or_path;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
@@ -101,10 +101,13 @@ pub async fn info(
                 .into(),
             );
           }
-          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+          deno_package_json::PackageJsonDepValue::Workspace {
+            name,
+            version_req,
+          } => {
             let pkg_folder = resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-                alias,
+                name.as_deref().unwrap_or(alias),
                 version_req,
               )?;
             Some(
@@ -125,6 +128,16 @@ pub async fn info(
               req,
               sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
             ))?)
+          }
+          deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+            match resolver.resolve_catalog_dep(alias, catalog_name) {
+              Some(req) => Some(ModuleSpecifier::parse(&format!(
+                "npm:{}{}",
+                req,
+                sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
+              ))?),
+              None => None,
+            }
           }
         },
         deno_resolver::workspace::MappedResolution::PackageJsonImport {
@@ -183,7 +196,7 @@ pub async fn info(
 
       add_npm_packages_to_json(
         &mut json_graph,
-        maybe_npm_info.as_ref().map(|(_, s)| s),
+        maybe_npm_info.as_ref().map(|(r, s)| (r.as_ref(), s)),
         npmrc,
       );
       display::write_json_to_stdout(&json_graph)?;
@@ -207,7 +220,7 @@ pub async fn info(
   Ok(())
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "print method")]
 fn print_cache_info(
   factory: &CliFactory,
   json: bool,
@@ -215,7 +228,6 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let deno_version = DENO_VERSION_INFO.deno;
   let dir = factory.deno_dir()?;
-  #[allow(deprecated)]
   let modules_cache = factory.global_http_cache()?.dir_path();
   let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;
@@ -295,10 +307,10 @@ fn print_cache_info(
 
 fn add_npm_packages_to_json(
   json: &mut serde_json::Value,
-  npm_snapshot: Option<&NpmResolutionSnapshot>,
+  npm_info: Option<(&CliManagedNpmResolver, &NpmResolutionSnapshot)>,
   npmrc: &ResolvedNpmRc,
 ) {
-  let Some(npm_snapshot) = npm_snapshot else {
+  let Some((npm_resolver, npm_snapshot)) = npm_info else {
     return; // does not include byonm to deno info's output
   };
 
@@ -405,6 +417,15 @@ fn add_npm_packages_to_json(
     kv.insert("dependencies".to_string(), deps.into());
     let registry_url = npmrc.get_registry_url(&pkg.id.nv.name);
     kv.insert("registryUrl".to_string(), registry_url.to_string().into());
+
+    // the local path where the package is (or would be) cached, so tools can
+    // locate npm packages cached by Deno (e.g. https://github.com/denoland/deno/issues/17168)
+    if let Ok(folder) = npm_resolver.resolve_pkg_folder_from_pkg_id(&pkg.id) {
+      kv.insert(
+        "localPath".to_string(),
+        folder.to_string_lossy().into_owned().into(),
+      );
+    }
 
     json_packages.insert(pkg.id.as_serialized().into_string(), kv.into());
   }

@@ -79,6 +79,10 @@ impl ModuleLoader for TypescriptModuleLoader {
       } else {
         0
       };
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "test module loader uses direct fs access"
+      )]
       let path = if module_specifier.scheme() == "file" {
         module_specifier.to_file_path().unwrap()
       } else {
@@ -90,6 +94,10 @@ impl ModuleLoader for TypescriptModuleLoader {
           | RequestedModuleType::Text
           | RequestedModuleType::Other(_)
       ) {
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "test module loader uses direct fs access"
+        )]
         let bytes = fs::read(path).map_err(JsErrorBox::from_err)?;
         return Ok(ModuleSource::new(
           match requested_module_type {
@@ -130,6 +138,10 @@ impl ModuleLoader for TypescriptModuleLoader {
           }
         }
       };
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "test module loader uses direct fs access"
+      )]
       let code = if should_transpile {
         let code = std::fs::read_to_string(&path).map_err(|source| {
           JsErrorBox::from_err(AttemptedLoadError {
@@ -170,6 +182,10 @@ impl ModuleLoader for TypescriptModuleLoader {
           .insert(module_specifier.to_string(), source_map);
         ModuleSourceCode::String(res.text.into())
       } else {
+        #[allow(
+          clippy::disallowed_methods,
+          reason = "test module loader uses direct fs access"
+        )]
         let code = std::fs::read(&path).map_err(|source| {
           JsErrorBox::from_err(AttemptedLoadError {
             path,

@@ -137,11 +137,16 @@ fn generate_coverage_report(
       continue;
     }
 
-    let line_index = range_to_src_line_index(
+    // Skip functions that the source map can't trace back to the original
+    // source — these are injected by the transformer (e.g. SWC's decorator
+    // runtime helpers) and shouldn't show up in user-visible coverage.
+    let Some(line_index) = range_to_src_line_index(
       &function.ranges[0],
       &runtime_text_lines,
       &maybe_source_map,
-    );
+    ) else {
+      continue;
+    };
 
     if line_index > 0
       && coverage_ignore_next_directives.contains(&(line_index - 1_usize))
@@ -203,8 +208,14 @@ fn generate_coverage_report(
       Vec<(usize, &cdp::CoverageRange)>,
     > = std::collections::BTreeMap::new();
     for (idx, range) in function.ranges[1..].iter().enumerate() {
-      let line_index =
-        range_to_src_line_index(range, &runtime_text_lines, &maybe_source_map);
+      // Same rationale as above: drop sub-ranges with no source mapping —
+      // they belong to transformer-injected helper code, not the user's
+      // source.
+      let Some(line_index) =
+        range_to_src_line_index(range, &runtime_text_lines, &maybe_source_map)
+      else {
+        continue;
+      };
       branches_by_line
         .entry(line_index)
         .or_default()
@@ -336,7 +347,11 @@ fn generate_coverage_report(
         }
       }
 
-      // We reset the count if any block with a zero count overlaps with the line range.
+      // Reset the count if a zero-count range overlaps the line and reaches
+      // at least one edge (start or end) of the line. A zero-count range
+      // floating in the middle of a line (not reaching either edge) is
+      // typically just a tiny gap between blocks (e.g. the unreachable path
+      // between catch's return and finally) and should not zero out the line.
       for function in &options.script_coverage.functions {
         for range in &function.ranges {
           if range.count > 0 {
@@ -345,7 +360,9 @@ fn generate_coverage_report(
 
           let overlaps = range.start_char_offset < line_end_char_offset
             && range.end_char_offset > line_start_char_offset;
-          if overlaps {
+          let reaches_edge = range.start_char_offset <= line_start_char_offset
+            || range.end_char_offset >= line_end_char_offset;
+          if overlaps && reaches_edge {
             count = 0;
           }
         }
@@ -439,11 +456,19 @@ fn generate_coverage_report(
   Ok(coverage_report)
 }
 
+/// Maps a runtime coverage range back to a line in the original source.
+///
+/// Returns `None` when the source map exists but has no mapping for this
+/// position. That happens for code injected by the transformer (e.g. SWC's
+/// decorator runtime helpers like `applyDecs2203R`) — the bytes exist in
+/// the runtime JS but didn't come from the user's source, so callers
+/// should drop these coverage entries rather than reporting them as if
+/// they were the user's own code.
 fn range_to_src_line_index(
   range: &cdp::CoverageRange,
   text_lines: &TextLines,
   maybe_source_map: &Option<SourceMap>,
-) -> usize {
+) -> Option<usize> {
   let source_lc = text_lines.line_and_column_index(
     text_lines.byte_index_from_char_index(range.start_char_offset),
   );
@@ -451,9 +476,8 @@ fn range_to_src_line_index(
     source_map
       .lookup_token(source_lc.line_index as u32, source_lc.column_index as u32)
       .map(|token| token.get_src_line() as usize)
-      .unwrap_or(0)
   } else {
-    source_lc.line_index
+    Some(source_lc.line_index)
   }
 }
 
@@ -521,6 +545,7 @@ fn filter_coverages(
   include: Vec<String>,
   exclude: Vec<String>,
   in_npm_pkg_checker: &DenoInNpmPackageChecker,
+  link_dir_urls: &[String],
 ) -> Vec<cdp::ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -545,6 +570,11 @@ fn filter_coverages(
         || e.url.ends_with(".snap")
         || is_supported_test_path(Path::new(e.url.as_str()))
         || doc_test_re.is_match(e.url.as_str())
+        // Exclude packages brought in via the "links" (formerly "patch")
+        // feature. These are third-party dependencies replacing a registry
+        // version, so they shouldn't show up in the user's coverage report,
+        // matching how npm packages are excluded above.
+        || link_dir_urls.iter().any(|dir| e.url.starts_with(dir))
         || Url::parse(&e.url)
           .ok()
           .map(|url| in_npm_pkg_checker.in_npm_package(&url))
@@ -591,8 +621,19 @@ pub fn cover_files(
   if script_coverages.is_empty() {
     return Err(anyhow!("No coverage files found"));
   }
-  let script_coverages =
-    filter_coverages(script_coverages, include, exclude, in_npm_pkg_checker);
+  let link_dir_urls = cli_options
+    .workspace()
+    .link_folders()
+    .keys()
+    .map(|url| url.as_str().to_string())
+    .collect::<Vec<_>>();
+  let script_coverages = filter_coverages(
+    script_coverages,
+    include,
+    exclude,
+    in_npm_pkg_checker,
+    &link_dir_urls,
+  );
   if script_coverages.is_empty() {
     return Err(anyhow!("No covered files included in the report"));
   }

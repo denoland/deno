@@ -14,24 +14,40 @@ _Note: Testing for text encoding is done via WPT in cli/._
 From javascript, include the extension's source:
 
 ```javascript
-import * as infra from "ext:deno_web/00_infra.js";
-import * as DOMException from "ext:deno_web/01_dom_exception.js";
-import * as mimesniff from "ext:deno_web/01_mimesniff.js";
-import * as event from "ext:deno_web/02_event.js";
-import * as structuredClone from "ext:deno_web/02_structured_clone.js";
-import * as timers from "ext:deno_web/02_timers.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import * as globalInterfaces from "ext:deno_web/04_global_interfaces.js";
-import * as base64 from "ext:deno_web/05_base64.js";
-import * as streams from "ext:deno_web/06_streams.js";
-import * as encoding from "ext:deno_web/08_text_encoding.js";
-import * as file from "ext:deno_web/09_file.js";
-import * as fileReader from "ext:deno_web/10_filereader.js";
-import * as location from "ext:deno_web/12_location.js";
-import * as messagePort from "ext:deno_web/13_message_port.js";
-import * as compression from "ext:deno_web/14_compression.js";
-import * as performance from "ext:deno_web/15_performance.js";
-import * as imageData from "ext:deno_web/16_image_data.js";
+import { core } from "ext:core/mod.js";
+
+const infra = core.loadExtScript("ext:deno_web/00_infra.js");
+const url = core.loadExtScript("ext:deno_web/00_url.js");
+const broadcastChannel = core.loadExtScript(
+  "ext:deno_web/01_broadcast_channel.js",
+);
+const console = core.loadExtScript("ext:deno_web/01_console.js");
+const DOMException = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const mimesniff = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const urlPattern = core.loadExtScript("ext:deno_web/01_urlpattern.js");
+const event = core.loadExtScript("ext:deno_web/02_event.js");
+const structuredClone = core.loadExtScript(
+  "ext:deno_web/02_structured_clone.js",
+);
+const timers = core.loadExtScript("ext:deno_web/02_timers.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const globalInterfaces = core.loadExtScript(
+  "ext:deno_web/04_global_interfaces.js",
+);
+const base64 = core.loadExtScript("ext:deno_web/05_base64.js");
+const streams = core.loadExtScript("ext:deno_web/06_streams.js");
+const encoding = core.loadExtScript("ext:deno_web/08_text_encoding.js");
+const file = core.loadExtScript("ext:deno_web/09_file.js");
+const fileReader = core.loadExtScript("ext:deno_web/10_filereader.js");
+const location = core.loadExtScript("ext:deno_web/12_location.js");
+const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
+const compression = core.loadExtScript("ext:deno_web/14_compression.js");
+const performance = core.loadExtScript("ext:deno_web/15_performance.js");
+const imageData = core.loadExtScript("ext:deno_web/16_image_data.js");
+const loadGeometry = core.createLazyLoader("ext:deno_web/geometry.js");
+const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
+const geometry = loadGeometry();
+const webTransport = loadWebTransport();
 ```
 
 Then assign the properties below to the global scope like this example:
@@ -50,6 +66,7 @@ Object.defineProperty(globalThis, "AbortController", {
 | AbortController                  | abortSignal.AbortController              | false      | true         | true      |
 | AbortSignal                      | abortSignal.AbortSignal                  | false      | true         | true      |
 | Blob                             | file.Blob                                | false      | true         | true      |
+| BroadcastChannel                 | broadcastChannel.BroadcastChannel        | false      | true         | true      |
 | ByteLengthQueuingStrategy        | streams.ByteLengthQueuingStrategy        |            |              |           |
 | CloseEvent                       | event.CloseEvent                         | false      | true         | true      |
 | CompressionStream                | compression.CompressionStream            | false      | true         | true      |
@@ -76,6 +93,9 @@ Object.defineProperty(globalThis, "AbortController", {
 | TextDecoderStream                | encoding.TextDecoderStream               | false      | true         | true      |
 | TextEncoderStream                | encoding.TextEncoderStream               | false      | true         | true      |
 | TransformStream                  | streams.TransformStream                  | false      | true         | true      |
+| URL                              | url.URL                                  | false      | true         | true      |
+| URLPattern                       | urlPattern.URLPattern                    | false      | true         | true      |
+| URLSearchParams                  | url.URLSearchParams                      | false      | true         | true      |
 | MessageChannel                   | messagePort.MessageChannel               | false      | true         | true      |
 | MessagePort                      | messagePort.MessagePort                  | false      | true         | true      |
 | WritableStream                   | streams.WritableStream                   | false      | true         | true      |
@@ -91,6 +111,7 @@ Object.defineProperty(globalThis, "AbortController", {
 | btoa                             | base64.btoa                              | true       | true         | true      |
 | clearInterval                    | timers.clearInterval                     | true       | true         | true      |
 | clearTimeout                     | timers.clearTimeout                      | true       | true         | true      |
+| console                          | new console.Console(printer)             | false      | true         | true      |
 | performance                      | performance.performance                  | true       | true         | true      |
 | reportError                      | event.reportError                        | true       | true         | true      |
 | setInterval                      | timers.setInterval                       | true       | true         | true      |
@@ -98,14 +119,15 @@ Object.defineProperty(globalThis, "AbortController", {
 | structuredClone                  | messagePort.structuredClone              | true       | true         | true      |
 
 Then from rust, provide:
-`deno_web::deno_web::init::<Permissions>(Arc<BlobStore>, Option<Url>)` in the
-`extensions` field of your `RuntimeOptions`
+`deno_web::deno_web::init(Arc<BlobStore>, Option<Url>, bool, InMemoryBroadcastChannel)`
+in the `extensions` field of your `RuntimeOptions`
 
 Where:
 
-- `Permissions` is a struct implementing `deno_web::TimersPermission`
 - `Arc<BlobStore>` can be provided by `Default::default()`
 - `Option<Url>` provides an optional base URL for certain ops
+- `bool` indicates whether window features are enabled at initialization
+- `InMemoryBroadcastChannel` can be provided by `Default::default()`
 
 ## Dependencies
 
@@ -116,7 +138,9 @@ Where:
 Following ops are provided, which can be accessed through `Deno.ops`:
 
 - op_base64_decode
+- op_base64_decode_into
 - op_base64_encode
+- op_base64_encode_from_buffer
 - op_base64_atob
 - op_base64_btoa
 - op_encoding_normalize_label
@@ -125,22 +149,29 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_encoding_new_decoder
 - op_encoding_decode
 - op_encoding_encode_into
+- op_encoding_encode_into_fallback
 - op_blob_create_part
 - op_blob_slice_part
 - op_blob_read_part
 - op_blob_remove_part
+- op_blob_clone_part
 - op_blob_create_object_url
 - op_blob_revoke_object_url
 - op_blob_from_object_url
 - op_message_port_create_entangled
 - op_message_port_post_message
+- op_message_port_post_message_raw
 - op_message_port_recv_message
 - op_message_port_recv_message_sync
 - op_compression_new
 - op_compression_write
 - op_compression_finish
 - op_now
+- op_time_origin
 - op_defer
+- op_geometry_get_enable_css_parser_features
+- op_geometry_matrix_set_matrix_value
+- op_geometry_matrix_to_string
 - op_readable_stream_resource_allocate
 - op_readable_stream_resource_allocate_sized
 - op_readable_stream_resource_get_sink
@@ -149,3 +180,27 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_readable_stream_resource_write_sync
 - op_readable_stream_resource_close
 - op_readable_stream_resource_await_close
+- op_url_reparse
+- op_url_parse
+- op_url_get_serialization
+- op_url_parse_with_base
+- op_url_parse_search_params
+- op_url_stringify_search_params
+- op_urlpattern_parse
+- op_urlpattern_process_match_input
+- op_preview_entries
+- op_broadcast_subscribe
+- op_broadcast_unsubscribe
+- op_broadcast_serialize
+- op_broadcast_deserialize
+- op_broadcast_free
+- op_broadcast_send
+- op_broadcast_recv
+- DOMPointReadOnly
+- DOMPoint
+- DOMRectReadOnly
+- DOMRect
+- DOMQuad
+- DOMMatrixReadOnly
+- DOMMatrix
+- ImageData

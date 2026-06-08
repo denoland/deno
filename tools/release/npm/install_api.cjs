@@ -45,7 +45,7 @@ module.exports = {
       // into the deno package folder
       hardLinkOrCopy(sourceExecutablePath, targetExecutablePath);
       if (os.platform() !== "win32") {
-        // chomd +x
+        // chmod +x
         chmodX(targetExecutablePath);
       }
       return targetExecutablePath;
@@ -60,12 +60,6 @@ module.exports = {
           err,
         );
       }
-      // use the path found in the specific package
-      try {
-        chmodX(sourceExecutablePath);
-      } catch (_err) {
-        // ignore
-      }
       return sourceExecutablePath;
     }
   },
@@ -73,8 +67,13 @@ module.exports = {
 
 /** @filePath {string} */
 function chmodX(filePath) {
-  const perms = fs.statSync(filePath).mode;
-  fs.chmodSync(filePath, perms | 0o111);
+  const fd = fs.openSync(filePath, "r");
+  try {
+    const perms = fs.fstatSync(fd).mode;
+    fs.fchmodSync(fd, perms | 0o111);
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 function getTarget() {
@@ -191,6 +190,22 @@ function replaceBinEntry(exePath) {
 }
 
 function findBinDir() {
+  // For global installs, npm sets npm_config_global=true and npm_config_prefix
+  // to the install prefix. The bin dir is {prefix}/bin on Linux/Mac or
+  // {prefix} on Windows (e.g. %APPDATA%\npm).
+  if (process.env.npm_config_global === "true") {
+    const prefix = process.env.npm_config_prefix;
+    if (prefix) {
+      const binDir = os.platform() === "win32"
+        ? prefix
+        : path.join(prefix, "bin");
+      if (isBinDirForThisPackage(binDir)) {
+        return binDir;
+      }
+    }
+  }
+
+  // For local installs, walk up looking for node_modules/.bin
   let dir = __dirname;
   for (let i = 0; i < 64; i++) {
     const parent = path.dirname(dir);

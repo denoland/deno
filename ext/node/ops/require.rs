@@ -39,6 +39,12 @@ fn ensure_read_permission<'a>(
   state: &mut OpState,
   file_path: Cow<'a, Path>,
 ) -> Result<Cow<'a, Path>, JsErrorBox> {
+  // Fast path: when read is fully granted there's nothing to check, so skip
+  // fetching the loader and the per-call work it does (e.g. module graph
+  // lookups) entirely.
+  if state.borrow::<PermissionsContainer>().query_read_all() {
+    return Ok(file_path);
+  }
   let loader = state.borrow::<NodeRequireLoaderRc>().clone();
   let permissions = state.borrow_mut::<PermissionsContainer>();
   loader.ensure_read_permission(permissions, file_path)
@@ -170,9 +176,15 @@ pub fn op_require_node_module_paths<TSys: ExtNodeSys + 'static>(
   #[string] from: &str,
 ) -> Result<Vec<String>, RequireError> {
   let sys = state.borrow::<TSys>();
-  // Guarantee that "from" is absolute.
+  // Guarantee that "from" is absolute. Avoid calling `env_current_dir()`
+  // when we don't need it — on macOS it walks the directory tree from `/`
+  // and fails with EACCES if any ancestor is unreadable (see #21585), so
+  // an unrelated absolute `from` would otherwise crash here.
+  let from_path = Path::new(from);
   let from = if from.starts_with("file:///") {
     Cow::Owned(url_to_file_path(&Url::parse(from)?)?)
+  } else if from_path.is_absolute() {
+    normalize_path(Cow::Borrowed(from_path))
   } else {
     let current_dir = &sys
       .env_current_dir()
@@ -226,7 +238,10 @@ pub fn op_require_proxy_path(#[string] filename: &str) -> Option<String> {
 
 #[op2(fast)]
 pub fn op_require_is_request_relative(#[string] request: &str) -> bool {
-  if request.starts_with("./") || request.starts_with("../") || request == ".."
+  if request.starts_with("./")
+    || request.starts_with("../")
+    || request == "."
+    || request == ".."
   {
     return true;
   }
@@ -262,15 +277,63 @@ pub fn op_require_resolve_deno_dir<
   >>();
 
   let path = Path::new(parent_filename);
+  if let Ok(folder) = resolver.resolve_package_folder_from_package(
+    request,
+    &UrlOrPathRef::from_path(path),
+  ) {
+    return Ok(Some(folder.to_string_lossy().into_owned()));
+  }
+
+  // Referrer-based resolution failed. When the referrer lives outside the
+  // global cache (e.g. a user's project file invoking `require()` through
+  // a hook installed by a package that *is* in the cache, mirroring the
+  // Playwright config-transpile flow), the npm resolver has no way to
+  // anchor the lookup. Fall back to resolving the bare specifier as a
+  // top-level dependency in the npm graph.
+  let referrer_is_in_npm_package = url_from_file_path(path)
+    .map(|url| resolver.in_npm_package(&url))
+    .unwrap_or(false);
+  if referrer_is_in_npm_package {
+    return Ok(None);
+  }
+  let package_name = bare_specifier_package_name(request);
+  if package_name.is_empty() {
+    return Ok(None);
+  }
+  let loader = state.borrow::<NodeRequireLoaderRc>();
   Ok(
-    resolver
-      .resolve_package_folder_from_package(
-        request,
-        &UrlOrPathRef::from_path(path),
-      )
-      .ok()
+    loader
+      .resolve_package_folder_from_name(package_name)
       .map(|p| p.to_string_lossy().into_owned()),
   )
+}
+
+/// Returns the npm package name portion of a bare specifier such as
+/// `pkg`, `pkg/sub`, `@scope/pkg`, or `@scope/pkg/sub`. Returns an empty
+/// string for relative or otherwise invalid specifiers.
+fn bare_specifier_package_name(specifier: &str) -> &str {
+  if specifier.is_empty()
+    || specifier.starts_with('.')
+    || specifier.starts_with('/')
+    || specifier.starts_with('#')
+  {
+    return "";
+  }
+  if let Some(rest) = specifier.strip_prefix('@') {
+    let Some(scope_end) = rest.find('/') else {
+      return "";
+    };
+    let after_scope = &rest[scope_end + 1..];
+    match after_scope.find('/') {
+      Some(rel) => &specifier[..1 + scope_end + 1 + rel],
+      None => specifier,
+    }
+  } else {
+    match specifier.find('/') {
+      Some(i) => &specifier[..i],
+      None => specifier,
+    }
+  }
 }
 
 #[op2(fast)]
@@ -320,15 +383,17 @@ pub fn op_require_resolve_lookup_paths(
     }
   }
 
-  // In REPL, parent.filename is null.
-  // if (!parent || !parent.id || !parent.filename) {
-  //   // Make require('./path/to/foo') work - normally the path is taken
-  //   // from realpath(__filename) but in REPL there is no filename
-  //   const mainPaths = ['.'];
-
-  //   debug('looking for %j in %j', request, mainPaths);
-  //   return mainPaths;
-  // }
+  // In REPL, parent.filename is null/empty.
+  if parent_filename.is_empty() {
+    // If parent has paths (e.g. fakeParent from require.resolve with
+    // options.paths), use those. Otherwise fall back to cwd.
+    if let Some(parent_paths) = maybe_parent_paths
+      && !parent_paths.is_empty()
+    {
+      return Some(parent_paths);
+    }
+    return Some(vec![".".to_string()]);
+  }
 
   let p = Path::new(parent_filename);
   Some(vec![p.parent().unwrap().to_string_lossy().into_owned()])
@@ -497,23 +562,40 @@ pub fn op_require_try_self<
 }
 
 #[op2(stack_trace)]
-pub fn op_require_read_file(
+pub fn op_require_read_file<TSys: ExtNodeSys + 'static>(
   state: &mut OpState,
-  #[string] file_path: &str,
+  #[string] file_path_str: &str,
 ) -> Result<FastString, RequireError> {
-  let file_path = Cow::Borrowed(Path::new(file_path));
+  let file_path = Cow::Borrowed(Path::new(file_path_str));
   // todo(dsherret): there's multiple borrows to NodeRequireLoaderRc here
   let file_path = ensure_read_permission(state, file_path)
     .map_err(RequireErrorKind::Permission)?;
-  let loader = state.borrow::<NodeRequireLoaderRc>();
-  loader
-    .load_text_file_lossy(&file_path)
-    .map_err(|e| RequireErrorKind::ReadModule(e).into_box())
+  let code = {
+    let loader = state.borrow::<NodeRequireLoaderRc>();
+    loader
+      .load_text_file_lossy(&file_path)
+      .map_err(|e| RequireErrorKind::ReadModule(e).into_box())?
+  };
+  // Apply load-time security mitigations for known React Server Components
+  // CVEs to required (CommonJS) source. Opt in via `DENO_PATCH_REACT_CVE`.
+  let sys = state.borrow::<TSys>();
+  if deno_resolver::is_react_cve_patch_enabled(sys) {
+    match deno_resolver::patch_react_cves(file_path_str, code.as_str().into()) {
+      Cow::Borrowed(_) => Ok(code),
+      Cow::Owned(s) => Ok(s.into()),
+    }
+  } else {
+    Ok(code)
+  }
 }
 
 #[op2]
 #[string]
 pub fn op_require_as_file_path(#[string] file_or_url: &str) -> Option<String> {
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "don't need error and this doesn't need to work in Wasm"
+  )]
   if let Ok(url) = Url::parse(file_or_url)
     && let Ok(p) = url.to_file_path()
   {
@@ -606,7 +688,7 @@ pub fn op_require_is_maybe_cjs(
     return Ok(false);
   };
   let loader = state.borrow::<NodeRequireLoaderRc>();
-  loader.is_maybe_cjs(&url).map_err(Into::into)
+  loader.is_maybe_cjs_from_require(&url).map_err(Into::into)
 }
 
 #[op2(stack_trace)]

@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "deny_net_websocket_resolved_ip": {
+      "args": "run --allow-net --deny-net=127.0.0.1,[::1] main.ts",
+      "output": "main.out"
+    }
+  }
+}

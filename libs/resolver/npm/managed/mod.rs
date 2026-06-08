@@ -5,9 +5,11 @@ mod global;
 mod local;
 mod resolution;
 
+use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
@@ -20,12 +22,12 @@ use deno_semver::package::PackageReq;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPathRef;
-use sys_traits::FsCanonicalize;
-use sys_traits::FsMetadata;
+use node_resolver::cache::NodeResolutionSys;
 use url::Url;
 
 use self::common::NpmPackageFsResolver;
 use self::global::GlobalNpmPackageResolver;
+use self::global::GlobalNpmPackageResolverSys;
 use self::local::LocalNpmPackageResolver;
 pub use self::resolution::NpmResolutionCell;
 pub use self::resolution::NpmResolutionCellRc;
@@ -89,17 +91,18 @@ pub enum ResolvePkgIdFromSpecifierError {
 
 pub struct ManagedNpmResolverCreateOptions<TSys: ManagedNpmResolverSys> {
   pub npm_cache_dir: NpmCacheDirRc,
-  pub sys: TSys,
+  pub sys: NodeResolutionSys<TSys>,
   pub maybe_node_modules_path: Option<PathBuf>,
   pub npm_system_info: NpmSystemInfo,
   pub npmrc: ResolvedNpmRcRc,
   pub npm_resolution: NpmResolutionCellRc,
+  pub linker_mode: NodeModulesLinkerMode,
 }
 
 #[sys_traits::auto_impl]
-pub trait ManagedNpmResolverSys: FsCanonicalize + FsMetadata + Clone {}
+pub trait ManagedNpmResolverSys: GlobalNpmPackageResolverSys + Clone {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type ManagedNpmResolverRc<TSys> =
   deno_maybe_sync::MaybeArc<ManagedNpmResolver<TSys>>;
 
@@ -108,7 +111,8 @@ pub struct ManagedNpmResolver<TSys: ManagedNpmResolverSys> {
   fs_resolver: NpmPackageFsResolver<TSys>,
   npm_cache_dir: NpmCacheDirRc,
   resolution: NpmResolutionCellRc,
-  sys: TSys,
+  sys: NodeResolutionSys<TSys>,
+  linker_mode: NodeModulesLinkerMode,
 }
 
 impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
@@ -136,6 +140,7 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
       npm_cache_dir: options.npm_cache_dir,
       sys: options.sys,
       resolution: options.npm_resolution,
+      linker_mode: options.linker_mode,
     }
   }
 
@@ -144,12 +149,20 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
     self.fs_resolver.node_modules_path()
   }
 
+  pub fn linker_mode(&self) -> NodeModulesLinkerMode {
+    self.linker_mode
+  }
+
   pub fn global_cache_root_path(&self) -> &Path {
     self.npm_cache_dir.root_dir()
   }
 
   pub fn global_cache_root_url(&self) -> &Url {
     self.npm_cache_dir.root_dir_url()
+  }
+
+  pub fn known_registries_dirnames(&self) -> &[String] {
+    self.npm_cache_dir.known_registries_dirnames()
   }
 
   pub fn resolution(&self) -> &NpmResolutionCell {
@@ -163,7 +176,7 @@ impl<TSys: ManagedNpmResolverSys> ManagedNpmResolver<TSys> {
       .resolve_pkg_id_from_pkg_req(req)
       .ok()
       .and_then(|id| self.resolve_pkg_folder_from_pkg_id(&id).ok())
-      .map(|folder| self.sys.fs_exists_no_err(folder))
+      .map(|folder| self.sys.exists_(Cow::Owned(folder)))
       .unwrap_or(false)
   }
 

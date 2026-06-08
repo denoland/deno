@@ -5,7 +5,7 @@
 pub fn raise_fd_limit() {
   #[cfg(unix)]
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  // SAFETY: calling libc getrlimit/setrlimit with valid pointers
   unsafe {
     let mut limits = libc::rlimit {
       rlim_cur: 0,

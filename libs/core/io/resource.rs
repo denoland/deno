@@ -185,10 +185,14 @@ pub trait Resource: Any + 'static {
   /// resource has been removed from the resource table.
   fn close(self: Rc<Self>) {}
 
+  /// Cancel pending read operations without removing the resource from the
+  /// resource table.
+  fn cancel_read_ops(self: Rc<Self>) {}
+
   /// Resources backed by a file descriptor or socket handle can let ops know
   /// to allow for low-level optimizations.
   fn backing_handle(self: Rc<Self>) -> Option<ResourceHandle> {
-    #[allow(deprecated)]
+    #[allow(deprecated, reason = "needed for compatibility")]
     self.backing_fd().map(ResourceHandle::Fd)
   }
 
@@ -217,12 +221,18 @@ impl dyn Resource {
   }
 
   #[inline(always)]
-  #[allow(clippy::needless_lifetimes)]
+  #[allow(
+    clippy::needless_lifetimes,
+    reason = "explicit lifetimes improve clarity"
+  )]
   pub fn downcast_rc<'a, T: Resource>(self: &'a Rc<Self>) -> Option<&'a Rc<T>> {
     if self.is::<T>() {
       let ptr = self as *const Rc<_> as *const Rc<T>;
       // TODO(piscisaureus): safety comment
-      #[allow(clippy::undocumented_unsafe_blocks)]
+      #[allow(
+        clippy::undocumented_unsafe_blocks,
+        reason = "safety comment on the containing block"
+      )]
       Some(unsafe { &*ptr })
     } else {
       None

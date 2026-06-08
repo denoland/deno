@@ -38,13 +38,13 @@ use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm_cache::NpmCacheSetting;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::NpmInstallerFactory;
 use deno_npm_installer::NpmInstallerFactoryOptions;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npm_installer::lifecycle_scripts::NullLifecycleScriptsExecutor;
+use deno_npmrc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_package_json::PackageJsonCacheResult;
 use deno_path_util::url_to_file_path;
@@ -851,37 +851,34 @@ impl Settings {
   pub fn path_enabled(&self, path: &Path) -> Option<bool> {
     let (settings, mut folder_uri) = self.get_for_path(path);
     folder_uri = folder_uri.or(self.first_folder.as_ref());
-    let mut disable_paths = vec![];
-    let mut enable_paths = None;
-    if let Some(folder_uri) = folder_uri
+    let enabled = if let Some(folder_uri) = folder_uri
       && let Ok(folder_path) = url_to_file_path(folder_uri)
     {
-      disable_paths = settings
-        .disable_paths
-        .iter()
-        .map(|p| folder_path.join(p))
-        .collect::<Vec<_>>();
-      enable_paths = settings.enable_paths.as_ref().map(|enable_paths| {
-        enable_paths
-          .iter()
-          .map(|p| folder_path.join(p))
-          .collect::<Vec<_>>()
-      });
-    }
-
-    if disable_paths.iter().any(|p| path.starts_with(p)) {
-      Some(false)
-    } else if let Some(enable_paths) = &enable_paths {
-      for enable_path in enable_paths {
-        // Also enable if the checked path is a dir containing an enabled path.
-        if path.starts_with(enable_path) || enable_path.starts_with(path) {
-          return Some(true);
-        }
-      }
-      Some(false)
+      path_enabled_for_settings(settings, &folder_path, path)
     } else {
       settings.enable
+    };
+    if enabled != Some(false) {
+      return enabled;
     }
+
+    // If the path is an ancestor of a separately enabled workspace folder, it
+    // must remain enabled so the workspace walk can reach that folder.
+    for (folder_uri, settings) in &self.by_workspace_folder {
+      let Some(settings) = settings else {
+        continue;
+      };
+      let Ok(folder_path) = url_to_file_path(folder_uri) else {
+        continue;
+      };
+      if !folder_path.starts_with(path) {
+        continue;
+      }
+      if path_enabled_for_settings(settings, &folder_path, path) == Some(true) {
+        return Some(true);
+      }
+    }
+    enabled
   }
 
   /// Returns `None` if the value should be deferred to the presence of a
@@ -949,6 +946,32 @@ impl Settings {
     }
     hasher.write_hashable(&self.first_folder);
     hasher.finish()
+  }
+}
+
+fn path_enabled_for_settings(
+  settings: &WorkspaceSettings,
+  folder_path: &Path,
+  path: &Path,
+) -> Option<bool> {
+  let disable_paths = settings
+    .disable_paths
+    .iter()
+    .map(|p| folder_path.join(p))
+    .collect::<Vec<_>>();
+  if disable_paths.iter().any(|p| path.starts_with(p)) {
+    return Some(false);
+  }
+  if let Some(enable_paths) = &settings.enable_paths {
+    for enable_path in enable_paths.iter().map(|p| folder_path.join(p)) {
+      // Also enable if the checked path is a dir containing an enabled path.
+      if path.starts_with(&enable_path) || enable_path.starts_with(path) {
+        return Some(true);
+      }
+    }
+    Some(false)
+  } else {
+    settings.enable
   }
 }
 
@@ -1241,7 +1264,11 @@ pub enum ConfigWatchedFileType {
   ImportMap,
 }
 
-/// Per-workspace-root parts of ConfigData
+/// Parts of [`ConfigData`] that are shared by every member of a workspace.
+///
+/// These are resolved from the workspace root (single lockfile, `.npmrc`,
+/// `node_modules` directory, etc.), so they're computed once per workspace
+/// root and reused across members instead of being rebuilt for every scope.
 struct WorkspaceConfigData {
   lockfile: Option<Arc<CliLockfile>>,
   npmrc: Option<Arc<ResolvedNpmRc>>,
@@ -1249,14 +1276,14 @@ struct WorkspaceConfigData {
   vendor_dir: Option<PathBuf>,
   byonm: bool,
 }
+
 impl WorkspaceConfigData {
   async fn load(
     workspace: &WorkspaceRc,
     http_client_provider: Option<&Arc<HttpClientProvider>>,
     add_watched_file: &mut impl FnMut(ModuleSpecifier, ConfigWatchedFileType),
-  ) -> WorkspaceConfigData {
-    let node_modules_dir = workspace.node_modules_dir().unwrap_or_default();
-    let byonm = match node_modules_dir {
+  ) -> Self {
+    let byonm = match workspace.node_modules_dir().unwrap_or_default() {
       Some(mode) => mode == NodeModulesDirMode::Manual,
       None => workspace.root_pkg_json().is_some(),
     };
@@ -1264,7 +1291,7 @@ impl WorkspaceConfigData {
       lsp_log!("  Enabled 'bring your own node_modules'.");
     }
 
-    let workspace_factory = WorkspaceFactory::new(
+    let mut workspace_factory = WorkspaceFactory::new(
       CliSys::default(),
       workspace.root_dir_path(),
       WorkspaceFactoryOptions {
@@ -1275,9 +1302,8 @@ impl WorkspaceConfigData {
         frozen_lockfile: None,
         lock_arg: None,
         lockfile_skip_write: true,
-        node_modules_dir: Some(resolve_node_modules_dir_mode(
-          &workspace, byonm,
-        )),
+        node_modules_dir: Some(resolve_node_modules_dir_mode(workspace, byonm)),
+        node_modules_linker: None,
         no_lock: false,
         no_npm: false,
         npm_process_state: None,
@@ -1285,6 +1311,8 @@ impl WorkspaceConfigData {
         vendor: None,
       },
     );
+    // Reuse the already-discovered workspace instead of rediscovering it.
+    workspace_factory.set_workspace_directory(workspace.root_dir());
     let resolver_factory = ResolverFactory::new(
       Arc::new(workspace_factory),
       ResolverFactoryOptions {
@@ -1325,9 +1353,12 @@ impl WorkspaceConfigData {
       None,
       NpmInstallerFactoryOptions {
         clean_on_install: false,
+        dedup_lockfile_peer_variants: false,
         cache_setting: NpmCacheSetting::Use,
         caching_strategy: NpmCachingStrategy::Eager,
         lifecycle_scripts_config: LifecycleScriptsConfig::default(),
+        production: false,
+        skip_types: false,
         resolve_npm_resolution_snapshot: Box::new(|| Ok(None)),
       },
     );
@@ -1380,10 +1411,10 @@ impl WorkspaceConfigData {
       .map(|p| p.to_path_buf());
 
     Self {
-      lockfile: lockfile.clone(),
-      npmrc: npmrc.clone(),
-      node_modules_dir: node_modules_dir.clone(),
-      vendor_dir: vendor_dir.clone(),
+      lockfile,
+      npmrc,
+      node_modules_dir,
+      vendor_dir,
       byonm,
     }
   }
@@ -1410,7 +1441,7 @@ pub struct ConfigData {
 }
 
 impl ConfigData {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "TODO: cleanup")]
   async fn load(
     specified_config: Option<&Path>,
     scope: &Arc<Url>,
@@ -1444,7 +1475,10 @@ impl ConfigData {
             deno_json_cache: Some(deno_json_cache),
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
-            discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
+            discover_pkg_json: !has_flag_env_var(
+              &CliSys::default(),
+              "DENO_NO_PACKAGE_JSON",
+            ),
             maybe_vendor_override: None,
           },
         )
@@ -1571,15 +1605,18 @@ impl ConfigData {
       );
     }
 
-    let ws_root_dir = member_dir.workspace.root_dir_url();
-    let ws_data_entry = match ws_data_cache.entry(ws_root_dir.clone()) {
+    // The lockfile, .npmrc, node_modules dir, etc. are resolved from the
+    // workspace root, so they're shared by every member. Load them once per
+    // workspace root and reuse the result across members.
+    let ws_root_url = member_dir.workspace.root_dir_url();
+    let ws_data = match ws_data_cache.entry(ws_root_url.clone()) {
       Entry::Occupied(entry) => {
-        lsp_log!("  Cached workspace root: {ws_root_dir}.");
-        entry
+        lsp_log!("  Cached workspace root: {ws_root_url}.");
+        entry.into_mut()
       }
       Entry::Vacant(entry) => {
-        lsp_log!("  New workspace root: {ws_root_dir}.");
-        entry.insert_entry(
+        lsp_log!("  New workspace root: {ws_root_url}.");
+        entry.insert(
           WorkspaceConfigData::load(
             &member_dir.workspace,
             http_client_provider,
@@ -1589,7 +1626,11 @@ impl ConfigData {
         )
       }
     };
-    let ws_data = ws_data_entry.get();
+    let byonm = ws_data.byonm;
+    let node_modules_dir = ws_data.node_modules_dir.clone();
+    let vendor_dir = ws_data.vendor_dir.clone();
+    let lockfile = ws_data.lockfile.clone();
+    let npmrc = ws_data.npmrc.clone();
 
     let default_file_pattern_base =
       scope.to_file_path().unwrap_or_else(|_| PathBuf::from("/"));
@@ -1714,18 +1755,15 @@ impl ConfigData {
       fmt_config,
       test_config,
       exclude_files,
+      byonm,
+      node_modules_dir,
+      vendor_dir,
+      lockfile,
+      npmrc,
       import_map_from_settings,
       specified_import_map,
       unstable,
       watched_files,
-      // Instead of cloning, we could also just store Arc<WorkspaceConfigData>
-      // in ConfigData? Not sure if it is a good idea to expose this in api,
-      // or it should be left as an implementation detail
-      byonm: ws_data.byonm,
-      node_modules_dir: ws_data.node_modules_dir.clone(),
-      vendor_dir: ws_data.vendor_dir.clone(),
-      lockfile: ws_data.lockfile.clone(),
-      npmrc: ws_data.npmrc.clone(),
     }
   }
 
@@ -1789,16 +1827,16 @@ impl ConfigTree {
   pub fn config_files(&self) -> Vec<&Arc<ConfigFile>> {
     self
       .scopes
-      .iter()
-      .filter_map(|(_, d)| d.maybe_deno_json())
+      .values()
+      .filter_map(|d| d.maybe_deno_json())
       .collect()
   }
 
   pub fn package_jsons(&self) -> Vec<&Arc<PackageJson>> {
     self
       .scopes
-      .iter()
-      .filter_map(|(_, d)| d.maybe_pkg_json())
+      .values()
+      .filter_map(|d| d.maybe_pkg_json())
       .collect()
   }
 
@@ -1899,9 +1937,10 @@ impl ConfigTree {
     let deno_json_cache = DenoJsonMemCache::default();
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
-    let mut scopes = BTreeMap::new();
-    // Idk if this can be reduced, this looks too ugly
+    // Shared per-workspace-root data (lockfile, .npmrc, node_modules dir),
+    // computed once per root and reused across its members.
     let mut ws_data_cache = HashMap::<UrlRc, WorkspaceConfigData>::new();
+    let mut scopes = BTreeMap::new();
     let fs_root_url = canonicalize_path(Path::new("/"))
       .ok()
       .and_then(|p| Url::from_directory_path(p).ok())
@@ -2408,6 +2447,71 @@ mod tests {
       vec![],
     );
     assert!(!config.specifier_enabled(&root_uri.join("mod.ts").unwrap()));
+  }
+
+  #[test]
+  fn config_path_enabled_for_nested_workspace_folder() {
+    let root_uri = root_dir();
+    let shared_uri = root_uri.join("shared/").unwrap();
+    let backend_uri = root_uri.join("apps/backend/").unwrap();
+    let web_uri = root_uri.join("apps/web/").unwrap();
+    let mut config = Config::new_with_roots(vec![
+      shared_uri.clone(),
+      backend_uri.clone(),
+      web_uri.clone(),
+      root_uri.clone(),
+    ]);
+    config.set_workspace_settings(
+      WorkspaceSettings {
+        enable: Some(false),
+        ..Default::default()
+      },
+      vec![
+        (
+          Arc::new(shared_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(backend_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(true),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(web_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+        (
+          Arc::new(root_uri.clone()),
+          WorkspaceSettings {
+            enable: Some(false),
+            ..Default::default()
+          },
+        ),
+      ],
+    );
+
+    assert!(
+      config.settings.path_enabled(
+        &url_to_file_path(&root_uri.join("apps/").unwrap()).unwrap()
+      ) == Some(true)
+    );
+    assert!(
+      config.specifier_enabled(&backend_uri.join("src/main.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled(&root_uri.join("apps/web/main.ts").unwrap())
+    );
+    assert!(!config.specifier_enabled(
+      &root_uri.join("shared/ts/core/src/index.ts").unwrap()
+    ));
   }
 
   #[tokio::test]

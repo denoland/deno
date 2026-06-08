@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    "deno_exit": {
+      "steps": [
+        {
+          "args": "run --coverage=cov_out main.js",
+          "output": "calling Deno.exit()\n"
+        },
+        {
+          "args": "coverage cov_out",
+          "output": "coverage.out"
+        }
+      ]
+    }
+  }
+}

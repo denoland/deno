@@ -831,13 +831,23 @@ declare namespace Deno {
      * not await. This helps in preventing logic errors and memory leaks
      * in the application code.
      *
-     * @default {true} */
+     * Can also be enabled globally with the `--sanitize-ops` CLI flag,
+     * the `DENO_TEST_SANITIZE_OPS=1` environment variable, or the
+     * `test.sanitizeOps` option in `deno.json`. Can be set per-module
+     * with {@linkcode Deno.test.sanitizer}.
+     *
+     * @default {false} */
     sanitizeOps?: boolean;
     /** Ensure the test step does not "leak" resources - like open files or
      * network connections - by ensuring the open resources at the start of the
      * test match the open resources at the end of the test.
      *
-     * @default {true} */
+     * Can also be enabled globally with the `--sanitize-resources` CLI flag,
+     * the `DENO_TEST_SANITIZE_RESOURCES=1` environment variable, or the
+     * `test.sanitizeResources` option in `deno.json`. Can be set per-module
+     * with {@linkcode Deno.test.sanitizer}.
+     *
+     * @default {false} */
     sanitizeResources?: boolean;
     /** Ensure the test case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
@@ -852,6 +862,13 @@ declare namespace Deno {
      *
      * @default {"inherit"} */
     permissions?: PermissionOptions;
+    /** Maximum duration in milliseconds that the test is allowed to run
+     * before being marked as a failed test. Both asynchronous hangs and
+     * synchronous hot loops are caught.
+     *
+     * If unset or `0`, the test runs without a deadline.
+     */
+    timeout?: number;
   }
 
   /** Register a test which will be run when `deno test` is used on the command
@@ -1243,6 +1260,41 @@ declare namespace Deno {
      * @category Testing
      */
     afterAll(fn: () => void | Promise<void>): void;
+
+    /** Configure sanitizers at the module level. This overrides CLI flags and
+     * config file settings, but can still be overridden per-test via
+     * `sanitizeOps` / `sanitizeResources` in test options.
+     *
+     * Should be called at the top of the module, before any `Deno.test()`
+     * registrations — each call sets the defaults that subsequently registered
+     * tests inherit, so tests registered before the call use the previous
+     * defaults.
+     *
+     * ```ts
+     * // Enable both sanitizers for all tests in this file
+     * Deno.test.sanitizer({ ops: true, resources: true });
+     *
+     * Deno.test("my test", () => {
+     *   // This test will have ops and resources sanitizers enabled
+     * });
+     *
+     * Deno.test({
+     *   name: "override per-test",
+     *   sanitizeOps: false,
+     *   fn() {
+     *     // This test opts out of ops sanitizer
+     *   },
+     * });
+     * ```
+     *
+     * @category Testing
+     */
+    sanitizer(options: {
+      /** Enable or disable the ops sanitizer for all tests in this module. */
+      ops?: boolean;
+      /** Enable or disable the resources sanitizer for all tests in this module. */
+      resources?: boolean;
+    }): void;
   }
 
   /**
@@ -1577,6 +1629,22 @@ declare namespace Deno {
   /** An interface containing methods to interact with the process environment
    * variables.
    *
+   * Environment variables can also be loaded from a `.env` file by using the
+   * `--env-file` flag when running a Deno program:
+   *
+   * ```sh
+   * deno run --env-file=.env --allow-env main.ts
+   * ```
+   *
+   * If `--env-file` is specified without a value, it defaults to loading `.env`
+   * from the current working directory:
+   *
+   * ```sh
+   * deno run --env-file --allow-env main.ts
+   * ```
+   *
+   * Learn more at [the Deno docs](https://docs.deno.com/runtime/reference/env_variables/).
+   *
    * @tags allow-env
    * @category Runtime
    */
@@ -1867,6 +1935,11 @@ declare namespace Deno {
      *   console.log(decoder.decode(chunk));
      * }
      * ```
+     *
+     * Note that the readable stream *takes ownership of the file*: reading the
+     * stream to completion (or cancelling it) closes the file automatically, so
+     * you should not close the file yourself while the stream is still being
+     * consumed.
      */
     readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** A {@linkcode WritableStream} instance to write the contents of the
@@ -1882,6 +1955,10 @@ declare namespace Deno {
      *   await writer.write(encoder.encode(item));
      * }
      * ```
+     *
+     * Note that the writable stream *takes ownership of the file*: closing or
+     * aborting the stream closes the file automatically, so you should not
+     * close the file yourself while the stream is still in use.
      */
     readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /** Write the contents of the array buffer (`p`) to the file.
@@ -2278,6 +2355,10 @@ declare namespace Deno {
    * system. It's not a reflection of how many characters will fit within the
    * console window, but can be used as part of that calculation.
    *
+   * Throws if none of stdin, stdout, or stderr is connected to a terminal
+   * (e.g. all are piped or redirected). Use {@linkcode Deno.stdout.isTerminal}
+   * to check before calling.
+   *
    * @category I/O
    */
   export function consoleSize(): {
@@ -2623,7 +2704,8 @@ declare namespace Deno {
    * await Deno.mkdir("restricted_access_dir", { mode: 0o700 });
    * ```
    *
-   * Defaults to throwing error if the directory already exists.
+   * Throws if the directory already exists, unless `recursive` is set to
+   * `true`.
    *
    * Requires `allow-write` permission.
    *
@@ -2643,7 +2725,8 @@ declare namespace Deno {
    * Deno.mkdirSync("restricted_access_dir", { mode: 0o700 });
    * ```
    *
-   * Defaults to throwing error if the directory already exists.
+   * Throws if the directory already exists, unless `recursive` is set to
+   * `true`.
    *
    * Requires `allow-write` permission.
    *
@@ -3678,8 +3761,8 @@ declare namespace Deno {
    * );
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */
@@ -3696,8 +3779,8 @@ declare namespace Deno {
    * Deno.removeSignalListener("SIGTERM", listener);
    * ```
    *
-   * _Note_: On Windows only `"SIGINT"` (CTRL+C) and `"SIGBREAK"` (CTRL+Break)
-   * are supported.
+   * _Note_: On Windows only `"SIGINT"` (CTRL+C), `"SIGBREAK"` (CTRL+Break),
+   * `"SIGTERM"`, `"SIGQUIT"`, `"SIGHUP"`, and `"SIGWINCH"` are supported.
    *
    * @category Runtime
    */
@@ -4348,7 +4431,8 @@ declare namespace Deno {
       | "homedir"
       | "statfs"
       | "getPriority"
-      | "setPriority";
+      | "setPriority"
+      | "ca";
   }
 
   /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
@@ -4742,7 +4826,12 @@ declare namespace Deno {
    * await Deno.symlink("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -4763,7 +4852,12 @@ declare namespace Deno {
    * Deno.symlinkSync("old/name", "new/name");
    * ```
    *
-   * Requires full `allow-read` and `allow-write` permissions.
+   * Requires `allow-read` and `allow-write` permissions granted *without* a
+   * path scope (i.e. `--allow-read --allow-write`, not
+   * `--allow-read=./dir --allow-write=./dir`). A symlink's target may be a
+   * relative, absolute, or not-yet-existing path that is only resolved when the
+   * link is later traversed, so it cannot be checked against a path-scoped
+   * allow-list at creation time. Path-scoped grants are therefore rejected.
    *
    * @tags allow-read, allow-write
    * @category File System
@@ -4864,6 +4958,33 @@ declare namespace Deno {
      * The unit is seconds, with a default of 30.
      * Set to `0` to disable timeouts. */
     idleTimeout?: number;
+    /** A `node:net` `Socket` from a `node:http` server's `"upgrade"` event.
+     * When provided, the WebSocket upgrade is performed over this existing
+     * TCP connection instead of through `Deno.serve`'s built-in upgrade
+     * mechanism. The 101 Switching Protocols response is written
+     * automatically.
+     *
+     * ```ts ignore
+     * import http from "node:http";
+     *
+     * const server = http.createServer();
+     * server.on("upgrade", (req, socket, head) => {
+     *   const { socket: ws } = Deno.upgradeWebSocket(
+     *     new Request(`http://${req.headers.host}/`, {
+     *       headers: req.headers as HeadersInit,
+     *     }),
+     *     { socket: socket as import("node:net").Socket, head },
+     *   );
+     *   ws.onmessage = (e) => ws.send(e.data);
+     * });
+     * ```
+     */
+    socket?: import("node:net").Socket;
+    /** Extra bytes already buffered by the HTTP parser that arrived with
+     * the upgrade request headers. This is the `head` `Buffer` from the
+     * `node:http` server's `"upgrade"` event and must be forwarded so
+     * those bytes are not lost. */
+    head?: Uint8Array;
   }
 
   /**
@@ -5303,14 +5424,14 @@ declare namespace Deno {
    *
    * @category Runtime
    */
-  export function refTimer(id: number): void;
+  export function refTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Make the timer of the given `id` not block the event loop from finishing.
    *
    * @category Runtime
    */
-  export function unrefTimer(id: number): void;
+  export function unrefTimer(id: number | NodeJS.Timeout): void;
 
   /**
    * Returns the user id of the process on POSIX platforms. Returns null on Windows.

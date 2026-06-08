@@ -1,0 +1,77 @@
+{
+  "version": 2,
+  "nodes": {
+    "file:///[WILDCARD]/mod.ts": {
+      "symbols": [
+        {
+          "name": "field",
+          "declarations": [
+            {
+              "location": {
+                "filename": "file:///[WILDCARD]/mod.ts",
+                "line": 30,
+                "col": 0,
+                "byteIndex": 673
+              },
+              "declarationKind": "export",
+              "jsDoc": {
+                "doc": "Creates a tracing field for use with the `@instrument` decorator.\n",
+                "tags": [
+                  {
+                    "kind": "example",
+                    "doc": "Instrument a method with a custom field\n```ts\nimport { instrument, field } from \"@bcheidemann/tracing\";\n\nclass Example {\n  @instrument(field(\"fieldName\", \"fieldValue\"))\n  test() {\n    // ...\n  }\n}\n```\n"
+                  },
+                  {
+                    "kind": "example",
+                    "doc": "Instrument a function with a custom field\n```ts\nimport { instrumentCallback, field } from \"@bcheidemann/tracing\";\n\nconst test = instrumentCallback(\n  [field(\"fieldName\", \"fieldValue\")],\n  function test() {\n    // ...\n  }\n);\n```\n"
+                  },
+                  {
+                    "kind": "param",
+                    "name": "name",
+                    "doc": "The name of the field"
+                  },
+                  {
+                    "kind": "param",
+                    "name": "value",
+                    "doc": "The value of the field"
+                  }
+                ]
+              },
+              "kind": "function",
+              "def": {
+                "params": [
+                  {
+                    "kind": "identifier",
+                    "name": "name",
+                    "optional": false,
+                    "tsType": {
+                      "repr": "string",
+                      "kind": "keyword",
+                      "value": "string"
+                    }
+                  },
+                  {
+                    "kind": "identifier",
+                    "name": "value",
+                    "optional": false,
+                    "tsType": {
+                      "repr": "unknown",
+                      "kind": "keyword",
+                      "value": "unknown"
+                    }
+                  }
+                ],
+                "returnType": {
+                  "repr": "unknown",
+                  "kind": "keyword",
+                  "value": "unknown"
+                },
+                "hasBody": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

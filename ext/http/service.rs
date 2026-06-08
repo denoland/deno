@@ -5,10 +5,12 @@ use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
+use std::ffi::c_void;
 use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::OnceLock;
 use std::task::Context;
 use std::task::Poll;
@@ -16,8 +18,12 @@ use std::task::Waker;
 use std::task::ready;
 
 use deno_core::BufView;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::futures::task::AtomicWaker;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use http::request::Parts;
 use hyper::body::Body;
@@ -32,9 +38,11 @@ use tokio::sync::oneshot;
 
 use crate::OtelInfo;
 use crate::OtelInfoAttributes;
+use crate::request_body::BufferedIncoming;
 use crate::request_properties::HttpConnectionProperties;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::ResponseStreamResult;
+use crate::v8_util::v8_string_to_utf8_bytes;
 
 pub type Request = hyper::Request<Incoming>;
 pub type Response = hyper::Response<HttpRecordResponse>;
@@ -76,6 +84,7 @@ macro_rules! http_trace {
 }
 
 pub(crate) use http_general_trace;
+#[cfg(feature = "__http_tracing")]
 pub(crate) use http_trace;
 
 pub(crate) struct HttpServerStateInner {
@@ -155,13 +164,344 @@ impl std::ops::Deref for HttpServerState {
   }
 }
 
-enum RequestBodyState {
-  Incoming(Incoming),
-  Resource(#[allow(dead_code)] HttpRequestBodyAutocloser),
+/// Holds the v8 callback registered by the JavaScript side via
+/// `op_http_serve` along with the isolate/context required to invoke
+/// it. This lets the hyper service synchronously call back into
+/// JavaScript when a new request arrives, instead of routing every
+/// request through an mpsc channel that the JS side has to drain in
+/// a separate task.
+pub struct ServerCallback {
+  isolate_ptr: v8::UnsafeRawIsolatePtr,
+  context: v8::Global<v8::Context>,
+  callback: v8::Global<v8::Function>,
+  native_callback: v8::Global<v8::Function>,
+  serve_native_response_key: v8::Global<v8::Value>,
+  serve_fast_status_key: v8::Global<v8::Value>,
+  serve_fast_body_key: v8::Global<v8::Value>,
+  serve_fast_header_kind_key: v8::Global<v8::Value>,
+  serve_fast_content_type_key: v8::Global<v8::Value>,
+  serve_fast_consumed_key: v8::Global<v8::Value>,
+  raw_no_request: bool,
+  runtime_waker: Arc<AtomicWaker>,
 }
 
-impl From<Incoming> for RequestBodyState {
-  fn from(value: Incoming) -> Self {
+pub enum DirectResponseBody {
+  Empty,
+  Bytes(BufView),
+}
+
+pub enum DirectResponseHeaders {
+  None,
+  DefaultText,
+  ContentType(Vec<u8>),
+  List(Vec<(Vec<u8>, Vec<u8>)>),
+}
+
+pub struct DirectResponse {
+  pub status: u16,
+  pub headers: DirectResponseHeaders,
+  pub body: DirectResponseBody,
+}
+
+pub struct NativeResponseCell(RefCell<Option<DirectResponse>>);
+
+impl NativeResponseCell {
+  #[allow(
+    clippy::new_ret_no_self,
+    reason = "returns an opaque pointer consumed by JS finalizers"
+  )]
+  pub fn new(response: DirectResponse) -> *const c_void {
+    Rc::into_raw(Rc::new(Self(RefCell::new(Some(response))))) as *const c_void
+  }
+
+  /// # Safety
+  ///
+  /// `ptr` must have been returned by [`NativeResponseCell::new`], and the
+  /// associated JS finalizer must still own one `Rc` strong reference.
+  pub unsafe fn take(ptr: *const c_void) -> Option<DirectResponse> {
+    if ptr.is_null() {
+      return None;
+    }
+    // SAFETY: caller guarantees this is a valid NativeResponseCell pointer.
+    let rc = unsafe { Rc::from_raw(ptr as *const Self) };
+    let response = rc.0.borrow_mut().take();
+    let _ = Rc::into_raw(rc);
+    response
+  }
+
+  /// # Safety
+  ///
+  /// `ptr` must have been returned by [`NativeResponseCell::new`] and must be
+  /// dropped exactly once for the JS-owned strong reference.
+  pub unsafe fn drop(ptr: *const c_void) {
+    if ptr.is_null() {
+      return;
+    }
+    // SAFETY: caller guarantees this is the JS-owned strong reference.
+    drop(unsafe { Rc::from_raw(ptr as *const Self) });
+  }
+}
+
+impl ServerCallback {
+  #[allow(
+    clippy::too_many_arguments,
+    reason = "captures JS callback and fast-response symbols in one place"
+  )]
+  pub fn new(
+    scope: &mut v8::PinScope<'_, '_>,
+    isolate: &mut v8::Isolate,
+    callback: v8::Global<v8::Function>,
+    native_callback: v8::Global<v8::Function>,
+    serve_native_response_key: v8::Global<v8::Value>,
+    serve_fast_status_key: v8::Global<v8::Value>,
+    serve_fast_body_key: v8::Global<v8::Value>,
+    serve_fast_header_kind_key: v8::Global<v8::Value>,
+    serve_fast_content_type_key: v8::Global<v8::Value>,
+    serve_fast_consumed_key: v8::Global<v8::Value>,
+    raw_no_request: bool,
+    runtime_waker: Arc<AtomicWaker>,
+  ) -> Self {
+    let ctx = scope.get_current_context();
+    let context = v8::Global::new(scope, ctx);
+    // SAFETY: isolate is a valid live isolate.
+    let isolate_ptr = unsafe { isolate.as_raw_isolate_ptr() };
+    Self {
+      isolate_ptr,
+      context,
+      callback,
+      native_callback,
+      serve_native_response_key,
+      serve_fast_status_key,
+      serve_fast_body_key,
+      serve_fast_header_kind_key,
+      serve_fast_content_type_key,
+      serve_fast_consumed_key,
+      raw_no_request,
+      runtime_waker,
+    }
+  }
+
+  pub fn raw_no_request(&self) -> bool {
+    self.raw_no_request
+  }
+
+  fn direct_response_body_from_v8<'s>(
+    scope: &mut v8::PinScope<'s, '_>,
+    body_value: v8::Local<'s, v8::Value>,
+  ) -> Option<DirectResponseBody> {
+    if body_value.is_null_or_undefined() {
+      Some(DirectResponseBody::Empty)
+    } else if let Ok(text) = v8::Local::<v8::String>::try_from(body_value) {
+      Some(DirectResponseBody::Bytes(BufView::from(
+        v8_string_to_utf8_bytes(scope, text),
+      )))
+    } else {
+      let buffer = serde_v8::from_v8::<JsBuffer>(scope, body_value).ok()?;
+      Some(DirectResponseBody::Bytes(BufView::from(buffer)))
+    }
+  }
+
+  fn direct_response_from_response_v8<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    value: v8::Local<'s, v8::Value>,
+  ) -> Option<DirectResponse> {
+    let response = v8::Local::<v8::Object>::try_from(value).ok()?;
+
+    let native_key = v8::Local::new(scope, &self.serve_native_response_key);
+    let native = response.get(scope, native_key)?;
+    if let Ok(native) = v8::Local::<v8::External>::try_from(native) {
+      // SAFETY: this external is created by op_http_new_response_native_*.
+      let response_value = unsafe { NativeResponseCell::take(native.value()) };
+      let null = v8::null(scope);
+      let _ = response.set(scope, native_key, null.into());
+      if response_value.is_some() {
+        let consumed_key = v8::Local::new(scope, &self.serve_fast_consumed_key);
+        let consumed = v8::Boolean::new(scope, true);
+        let _ = response.set(scope, consumed_key, consumed.into());
+        return response_value;
+      }
+    }
+
+    let consumed_key = v8::Local::new(scope, &self.serve_fast_consumed_key);
+    let consumed = response.get(scope, consumed_key)?;
+    if consumed.boolean_value(scope) {
+      return None;
+    }
+
+    let status_key = v8::Local::new(scope, &self.serve_fast_status_key);
+    let status = response.get(scope, status_key)?.uint32_value(scope)? as u16;
+    if status == 0 {
+      return None;
+    }
+
+    let body_key = v8::Local::new(scope, &self.serve_fast_body_key);
+    let body = Self::direct_response_body_from_v8(
+      scope,
+      response.get(scope, body_key)?,
+    )?;
+
+    let header_kind_key =
+      v8::Local::new(scope, &self.serve_fast_header_kind_key);
+    let header_kind =
+      response.get(scope, header_kind_key)?.uint32_value(scope)?;
+    let headers = match header_kind {
+      0 => DirectResponseHeaders::None,
+      1 => DirectResponseHeaders::DefaultText,
+      2 => {
+        let content_type_key =
+          v8::Local::new(scope, &self.serve_fast_content_type_key);
+        let content_type = response.get(scope, content_type_key)?;
+        let content_type = v8::Local::<v8::String>::try_from(content_type)
+          .ok()
+          .map(|text| v8_string_to_utf8_bytes(scope, text))?;
+        DirectResponseHeaders::ContentType(content_type)
+      }
+      _ => return None,
+    };
+
+    let consumed = v8::Boolean::new(scope, true);
+    if !response
+      .set(scope, consumed_key, consumed.into())
+      .unwrap_or(false)
+    {
+      return None;
+    }
+
+    Some(DirectResponse {
+      status,
+      headers,
+      body,
+    })
+  }
+
+  /// Invoke the JavaScript native-response callback. The callback either
+  /// returns a Response object that can be extracted natively, or completes the
+  /// record through the regular JS response ops and returns undefined.
+  pub unsafe fn dispatch_native_response(
+    &self,
+    record_ptr: *mut std::ffi::c_void,
+  ) -> Option<DirectResponse> {
+    // SAFETY: caller upholds isolate validity.
+    unsafe {
+      let mut isolate = v8::Isolate::from_raw_isolate_ptr(self.isolate_ptr);
+      v8::scope!(let handle_scope, &mut isolate);
+      let context = v8::Local::new(handle_scope, &self.context);
+      let scope = &mut v8::ContextScope::new(handle_scope, context);
+      let pin_scope: &mut v8::PinScope = scope;
+
+      let response = {
+        v8::tc_scope!(tc, pin_scope);
+        let cb = v8::Local::new(tc, &self.native_callback);
+        let arg = v8::External::new(tc, record_ptr);
+        let recv = v8::undefined(tc);
+        let value = cb.call(tc, recv.into(), &[arg.into()]);
+        if tc.has_caught() {
+          tc.reset();
+          None
+        } else if let Some(mut value) = value {
+          let mut pending_or_rejected = false;
+          if let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) {
+            tc.perform_microtask_checkpoint();
+            match promise.state() {
+              v8::PromiseState::Fulfilled => {
+                value = promise.result(tc);
+              }
+              v8::PromiseState::Pending | v8::PromiseState::Rejected => {
+                pending_or_rejected = true;
+              }
+            }
+          }
+          if pending_or_rejected || value.is_undefined() || value.is_null() {
+            None
+          } else {
+            self.direct_response_from_response_v8(tc, value)
+          }
+        } else {
+          None
+        }
+      };
+      // The native callback can complete the response synchronously and return
+      // undefined. Drain reactions queued by user code in the handler before
+      // returning to the raw h1 task; otherwise tests/user code awaiting a
+      // promise resolved inside the handler can sleep until unrelated JS work
+      // enters V8.
+      pin_scope.perform_microtask_checkpoint();
+      self.runtime_waker.wake();
+      response
+    }
+  }
+
+  /// Invoke the JavaScript callback with the given record-pointer
+  /// argument. The pointer is wrapped as a v8 External so the JS side
+  /// can pass it back to ops that take `*const c_void` parameters.
+  ///
+  /// # Safety
+  /// `record_ptr` must be a valid `ExternalPointer<RcHttpRecord>` raw
+  /// pointer that the JS side will eventually consume (or that will
+  /// otherwise be reclaimed). The isolate pointed to by
+  /// `self.isolate_ptr` must still be live (this is upheld because the
+  /// `HttpJoinHandle` holding this `ServerCallback` is dropped as part
+  /// of resource teardown which happens before the isolate dies).
+  pub unsafe fn dispatch(&self, record_ptr: *mut std::ffi::c_void) {
+    // SAFETY: caller upholds isolate validity.
+    unsafe {
+      let mut isolate = v8::Isolate::from_raw_isolate_ptr(self.isolate_ptr);
+      v8::scope!(let handle_scope, &mut isolate);
+      let context = v8::Local::new(handle_scope, &self.context);
+      let scope = &mut v8::ContextScope::new(handle_scope, context);
+      let pin_scope: &mut v8::PinScope = scope;
+
+      {
+        v8::tc_scope!(tc, pin_scope);
+        let cb = v8::Local::new(tc, &self.callback);
+        let arg = v8::External::new(tc, record_ptr);
+        let recv = v8::undefined(tc);
+        let _ = cb.call(tc, recv.into(), &[arg.into()]);
+        // The JS side is responsible for catching its own errors via
+        // the wrapper installed in 00_serve.ts. Any exception that
+        // escapes is swallowed here -- otherwise we would leave the
+        // isolate in an exception-pending state and the next v8 call
+        // would crash.
+        if tc.has_caught() {
+          tc.reset();
+        }
+      }
+      // Drain microtasks queued by the JS callback. Because the
+      // hyper service runs as a free-standing tokio task (not
+      // registered with the JsRuntime's op driver), the runtime is
+      // not woken by request arrival, so any `await`-style microtask
+      // continuations in the handler chain would otherwise sit
+      // un-drained until some unrelated op happened to fire.
+      // Draining here makes the dispatch effectively synchronous up
+      // to the first real async-op boundary in user code -- matching
+      // how Bun's onRequest invokes its handler.
+      pin_scope.perform_microtask_checkpoint();
+
+      // Request arrival is handled by a standalone hyper task, not by
+      // an op future owned by JsRuntime. If the handler reached an
+      // async boundary above, the full event loop must run at least
+      // once to drive timers, ops, and uv-compatible Node I/O.
+      self.runtime_waker.wake();
+    }
+  }
+}
+
+enum RequestBodyState {
+  Incoming(BufferedIncoming),
+  Resource(
+    #[allow(dead_code, reason = "prevent drop until variant is dropped")]
+    HttpRequestBodyAutocloser,
+  ),
+}
+
+pub enum FlatResponseBody {
+  Empty,
+  Bytes(BufView),
+}
+
+impl From<BufferedIncoming> for RequestBodyState {
+  fn from(value: BufferedIncoming) -> Self {
     RequestBodyState::Incoming(value)
   }
 }
@@ -183,7 +523,7 @@ impl Drop for HttpRequestBodyAutocloser {
   }
 }
 
-#[allow(clippy::collapsible_if)] // for logic clarity
+#[allow(clippy::collapsible_if, reason = "for logic clarity")]
 fn validate_request(req: &Request) -> bool {
   if req.uri() == "*" {
     if req.method() != http::Method::OPTIONS {
@@ -202,15 +542,18 @@ fn validate_request(req: &Request) -> bool {
   true
 }
 
-pub(crate) async fn handle_request(
+pub(crate) async fn handle_request<F>(
   request: Request,
   request_info: HttpConnectionProperties,
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
-  tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
+  dispatch: F,
   legacy_abort: bool,
-) -> Result<Response, hyper_v014::Error> {
+) -> Result<Response, hyper::Error>
+where
+  F: FnOnce(Rc<HttpRecord>),
+{
   if !validate_request(&request) {
-    let mut response = Response::new(HttpRecordResponse(None));
+    let mut response = Response::new(HttpRecordResponse::empty());
     *response.version_mut() = request.version();
     *response.status_mut() = http::StatusCode::BAD_REQUEST;
     return Ok(response);
@@ -239,6 +582,7 @@ pub(crate) async fn handle_request(
         server_address: request.uri().host().map(|host| host.to_string()),
         server_port: request.uri().port_u16().map(|port| port as i64),
         error_type: Default::default(),
+        http_route: None,
         http_response_status_code: Default::default(),
       },
     ))
@@ -261,9 +605,13 @@ pub(crate) async fn handle_request(
     HttpRecord::cancel,
   );
 
-  // Clone HttpRecord and send to JavaScript for processing.
-  // Safe to unwrap as channel receiver is never closed.
-  tx.send(guarded_record.clone()).await.unwrap();
+  // Synchronously dispatch to the registered JavaScript callback.
+  // The dispatch closure handles wrapping the record as a V8 external
+  // and invoking the user-supplied function under a HandleScope. The
+  // JS side is expected to call op_http_set_response_* eventually,
+  // which fires `record.complete()` and wakes the response_ready
+  // future below.
+  dispatch(guarded_record.clone());
 
   // Wait for JavaScript handler to return request.
   http_trace!(*guarded_record, "handle_request response_ready.await");
@@ -290,6 +638,7 @@ struct HttpRecordInner {
   response_ready: bool,
   response_waker: Option<Waker>,
   response_body: ResponseBytesInner,
+  flat_response_body: Option<FlatResponseBody>,
   response_body_finished: bool,
   response_body_waker: Option<Waker>,
   trailers: Option<HeaderMap>,
@@ -321,10 +670,8 @@ fn trust_proxy_headers() -> bool {
 
   *TRUST_PROXY_HEADERS.get_or_init(|| {
     if let Some(v) = std::env::var_os(VAR_NAME) {
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        std::env::remove_var(VAR_NAME)
-      };
+      // SAFETY: called once during single-threaded init via OnceLock
+      unsafe { std::env::remove_var(VAR_NAME) };
       v == "1"
     } else {
       false
@@ -346,7 +693,27 @@ impl HttpRecord {
     } else {
       None
     };
-    let request_body = Some(request_body.into());
+    let request_body = Some(BufferedIncoming::new(request_body).into());
+    Self::new_from_parts(
+      request_parts,
+      request_info,
+      server_state,
+      request_body,
+      otel_info,
+      client_addr,
+      legacy_abort,
+    )
+  }
+
+  fn new_from_parts(
+    request_parts: Parts,
+    request_info: HttpConnectionProperties,
+    server_state: SignallingRc<HttpServerState>,
+    request_body: Option<RequestBodyState>,
+    otel_info: Option<OtelInfo>,
+    client_addr: Option<http::HeaderValue>,
+    legacy_abort: bool,
+  ) -> Rc<Self> {
     let (mut response_parts, _) = http::Response::new(()).into_parts();
     let record = match server_state.borrow_mut().pool.pop() {
       Some((record, headers)) => {
@@ -360,7 +727,7 @@ impl HttpRecord {
           RECORD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
 
-        #[allow(clippy::let_and_return)]
+        #[allow(clippy::let_and_return, reason = "depends on cfg")]
         let record = Rc::new(Self(RefCell::new(None)));
         http_trace!(record, "HttpRecord::new");
         record
@@ -375,6 +742,7 @@ impl HttpRecord {
       response_ready: false,
       response_waker: None,
       response_body: ResponseBytesInner::Empty,
+      flat_response_body: None,
       response_body_finished: false,
       response_body_waker: None,
       trailers: None,
@@ -468,7 +836,7 @@ impl HttpRecord {
   }
 
   /// Take the Hyper body from this record.
-  pub fn take_request_body(&self) -> Option<Incoming> {
+  pub fn take_request_body(&self) -> Option<BufferedIncoming> {
     let body_holder = &mut self.self_mut().request_body;
     let body = body_holder.take();
     match body {
@@ -477,6 +845,21 @@ impl HttpRecord {
         *body_holder = x;
         None
       }
+    }
+  }
+
+  /// Try to drain the request body in one shot without ever
+  /// blocking. Returns `Some(bytes)` iff the entire body is
+  /// already buffered in hyper at the time of the call. On
+  /// `None` the body is left intact for the streaming path
+  /// (any frames that were polled out are kept in the wrapper
+  /// and replayed transparently before further reads).
+  pub fn try_take_full_request_body(&self) -> Option<Vec<u8>> {
+    let body_holder = &mut self.self_mut().request_body;
+    if let Some(RequestBodyState::Incoming(body)) = body_holder.as_mut() {
+      body.try_take_full()
+    } else {
+      None
     }
   }
 
@@ -558,13 +941,30 @@ impl HttpRecord {
   pub fn set_response_body(&self, response_body: ResponseBytesInner) {
     let mut inner = self.self_mut();
     debug_assert!(matches!(inner.response_body, ResponseBytesInner::Empty));
+    debug_assert!(inner.flat_response_body.is_none());
     inner.response_body = response_body;
+  }
+
+  pub fn set_flat_response_body(&self, response_body: FlatResponseBody) {
+    let mut inner = self.self_mut();
+    debug_assert!(matches!(inner.response_body, ResponseBytesInner::Empty));
+    debug_assert!(inner.flat_response_body.is_none());
+    inner.flat_response_body = Some(response_body);
   }
 
   /// Take the response.
   fn into_response(self: Rc<Self>) -> Response {
-    let parts = self.self_mut().response_parts.take().unwrap();
-    let body = HttpRecordResponse(Some(ManuallyDrop::new(self)));
+    let mut inner = self.self_mut();
+    let parts = inner.response_parts.take().unwrap();
+    let flat_response_body = inner.flat_response_body.take();
+    drop(inner);
+    let body = match flat_response_body {
+      Some(body) => HttpRecordResponse::Flat {
+        record: Some(ManuallyDrop::new(self)),
+        body,
+      },
+      None => HttpRecordResponse::Record(Some(ManuallyDrop::new(self))),
+    };
     Response::from_parts(parts, body)
   }
 
@@ -645,6 +1045,22 @@ impl HttpRecord {
     }
   }
 
+  /// Copy relevant attributes (like `http.route`) from a span to OtelInfo
+  /// for metrics.
+  pub fn copy_span_to_otel_info(&self, span: &deno_telemetry::OtelSpan) {
+    let mut inner = self.self_mut();
+    let span_state = span.0.borrow();
+    if let deno_telemetry::OtelSpanState::Recording(data) = &**span_state
+      && let Some(info) = inner.otel_info.as_mut()
+    {
+      for attr in &data.attributes {
+        if attr.key.as_str() == "http.route" {
+          info.attributes.http_route = Some(attr.value.to_string());
+        }
+      }
+    }
+  }
+
   pub fn client_addr(&self) -> Ref<'_, Option<http::HeaderValue>> {
     Ref::map(self.self_ref(), |inner| &inner.client_addr)
   }
@@ -652,8 +1068,20 @@ impl HttpRecord {
 
 // `None` variant used when no body is present, for example
 // when we want to return a synthetic 400 for invalid requests.
-#[repr(transparent)]
-pub struct HttpRecordResponse(Option<ManuallyDrop<Rc<HttpRecord>>>);
+pub enum HttpRecordResponse {
+  Empty,
+  Record(Option<ManuallyDrop<Rc<HttpRecord>>>),
+  Flat {
+    record: Option<ManuallyDrop<Rc<HttpRecord>>>,
+    body: FlatResponseBody,
+  },
+}
+
+impl HttpRecordResponse {
+  pub fn empty() -> Self {
+    Self::Empty
+  }
+}
 
 impl Body for HttpRecordResponse {
   type Data = BufView;
@@ -664,87 +1092,124 @@ impl Body for HttpRecordResponse {
     cx: &mut Context<'_>,
   ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
     use crate::response_body::PollFrame;
-    let Some(record) = &self.0 else {
-      return Poll::Ready(None);
-    };
+    match self.get_mut() {
+      Self::Empty => Poll::Ready(None),
+      Self::Flat { record, body } => {
+        match std::mem::replace(body, FlatResponseBody::Empty) {
+          FlatResponseBody::Empty => Poll::Ready(None),
+          FlatResponseBody::Bytes(buf) => {
+            if let Some(record) = record {
+              let mut http = record.0.borrow_mut();
+              if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info
+                && let Some(response_size) = &mut otel_info.response_size
+              {
+                *response_size += buf.len() as u64;
+              }
+            }
+            Poll::Ready(Some(Ok(Frame::data(buf))))
+          }
+        }
+      }
+      Self::Record(record) => {
+        let Some(record) = record else {
+          return Poll::Ready(None);
+        };
 
-    let res = loop {
-      let mut inner = record.self_mut();
-      let res = match &mut inner.response_body {
-        ResponseBytesInner::Done | ResponseBytesInner::Empty => {
-          if let Some(trailers) = inner.trailers.take() {
+        let res = loop {
+          let mut inner = record.self_mut();
+          let res = match &mut inner.response_body {
+            ResponseBytesInner::Done | ResponseBytesInner::Empty => {
+              if let Some(trailers) = inner.trailers.take() {
+                return Poll::Ready(Some(Ok(Frame::trailers(trailers))));
+              }
+              unreachable!()
+            }
+            ResponseBytesInner::Bytes(..) => {
+              drop(inner);
+              let ResponseBytesInner::Bytes(data) = record.take_response_body()
+              else {
+                unreachable!();
+              };
+              return Poll::Ready(Some(Ok(Frame::data(data))));
+            }
+            ResponseBytesInner::UncompressedStream(stm) => {
+              ready!(Pin::new(stm).poll_frame(cx))
+            }
+            ResponseBytesInner::GZipStream(stm) => {
+              ready!(Pin::new(stm.as_mut()).poll_frame(cx))
+            }
+            ResponseBytesInner::BrotliStream(stm) => {
+              ready!(Pin::new(stm.as_mut()).poll_frame(cx))
+            }
+          };
+          // This is where we retry the NoData response
+          if matches!(res, ResponseStreamResult::NoData) {
+            continue;
+          }
+          break res;
+        };
+
+        if matches!(res, ResponseStreamResult::EndOfStream) {
+          if let Some(trailers) = record.self_mut().trailers.take() {
             return Poll::Ready(Some(Ok(Frame::trailers(trailers))));
           }
-          unreachable!()
+          record.take_response_body();
         }
-        ResponseBytesInner::Bytes(..) => {
-          drop(inner);
-          let ResponseBytesInner::Bytes(data) = record.take_response_body()
-          else {
-            unreachable!();
-          };
-          return Poll::Ready(Some(Ok(Frame::data(data))));
-        }
-        ResponseBytesInner::UncompressedStream(stm) => {
-          ready!(Pin::new(stm).poll_frame(cx))
-        }
-        ResponseBytesInner::GZipStream(stm) => {
-          ready!(Pin::new(stm.as_mut()).poll_frame(cx))
-        }
-        ResponseBytesInner::BrotliStream(stm) => {
-          ready!(Pin::new(stm.as_mut()).poll_frame(cx))
-        }
-      };
-      // This is where we retry the NoData response
-      if matches!(res, ResponseStreamResult::NoData) {
-        continue;
-      }
-      break res;
-    };
 
-    if matches!(res, ResponseStreamResult::EndOfStream) {
-      if let Some(trailers) = record.self_mut().trailers.take() {
-        return Poll::Ready(Some(Ok(Frame::trailers(trailers))));
-      }
-      record.take_response_body();
-    }
+        if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
+          let mut http = record.0.borrow_mut();
+          if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info
+            && let Some(response_size) = &mut otel_info.response_size
+          {
+            *response_size += buf.len() as u64;
+          }
+        }
 
-    if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
-      let mut http = record.0.borrow_mut();
-      if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info
-        && let Some(response_size) = &mut otel_info.response_size
-      {
-        *response_size += buf.len() as u64;
+        Poll::Ready(res.into())
       }
     }
-
-    Poll::Ready(res.into())
   }
 
   fn is_end_stream(&self) -> bool {
-    let Some(record) = &self.0 else {
-      return true;
-    };
-    let inner = record.self_ref();
-    matches!(
-      inner.response_body,
-      ResponseBytesInner::Done | ResponseBytesInner::Empty
-    ) && inner.trailers.is_none()
+    match self {
+      Self::Empty => true,
+      Self::Flat { body, .. } => matches!(body, FlatResponseBody::Empty),
+      Self::Record(Some(record)) => {
+        let inner = record.self_ref();
+        matches!(
+          inner.response_body,
+          ResponseBytesInner::Done | ResponseBytesInner::Empty
+        ) && inner.trailers.is_none()
+      }
+      Self::Record(None) => true,
+    }
   }
 
   fn size_hint(&self) -> SizeHint {
-    let Some(record) = &self.0 else {
-      return SizeHint::with_exact(0);
-    };
-    // The size hint currently only used in the case where it is exact bounds in hyper, but we'll pass it through
-    // anyways just in case hyper needs it.
-    record.self_ref().response_body.size_hint()
+    match self {
+      Self::Empty => SizeHint::with_exact(0),
+      Self::Flat { body, .. } => match body {
+        FlatResponseBody::Empty => SizeHint::with_exact(0),
+        FlatResponseBody::Bytes(buf) => SizeHint::with_exact(buf.len() as u64),
+      },
+      Self::Record(Some(record)) => {
+        // The size hint currently only used in the case where it is exact bounds in hyper, but we'll pass it through
+        // anyways just in case hyper needs it.
+        record.self_ref().response_body.size_hint()
+      }
+      Self::Record(None) => SizeHint::with_exact(0),
+    }
   }
 }
 
 impl Drop for HttpRecordResponse {
   fn drop(&mut self) {
-    let Some(record) = &mut self.0 else {
+    let record = match self {
+      Self::Empty => None,
+      Self::Record(record) => record.as_mut(),
+      Self::Flat { record, .. } => record.as_mut(),
+    };
+    let Some(record) = record else {
       return;
     };
     // SAFETY: this ManuallyDrop is not used again.
@@ -814,13 +1279,18 @@ mod tests {
       peer_port: None,
       local_port: None,
       stream_type: NetworkStreamType::Tcp,
+      scheme: "http://",
+      fallback_host: "localhost".into(),
     };
     let svc = service_fn(move |req: hyper::Request<Incoming>| {
+      let tx = tx.clone();
       handle_request(
         req,
         request_info.clone(),
         server_state.clone(),
-        tx.clone(),
+        move |record| {
+          tx.try_send(record).unwrap();
+        },
         true,
       )
     });

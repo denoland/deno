@@ -24,6 +24,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::UrlOrPath;
+use node_resolver::errors::NodeJsErrorCode;
 use node_resolver::errors::NodeJsErrorCoded;
 use url::Url;
 
@@ -37,7 +38,7 @@ use crate::npm::managed::ManagedResolvePkgFolderFromDenoReqError;
 use crate::workspace::MappedResolutionDiagnostic;
 use crate::workspace::sloppy_imports_resolve;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type FoundPackageJsonDepFlagRc =
   deno_maybe_sync::MaybeArc<FoundPackageJsonDepFlag>;
 
@@ -93,6 +94,17 @@ impl ResolveWithGraphError {
       ResolveWithGraphErrorKind::ResolvePkgFolderFromDenoModule(_) => None,
     }
   }
+
+  pub fn into_deno_graph_error(self) -> deno_graph::source::ResolveError {
+    use deno_graph::source::ResolveError;
+
+    match self.into_kind() {
+      ResolveWithGraphErrorKind::Resolve(deno_resolve_error) => {
+        deno_resolve_error.into_deno_graph_error()
+      }
+      err => ResolveError::from_err(err),
+    }
+  }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -146,7 +158,7 @@ pub struct MappedResolutionDiagnosticWithPosition<'a> {
   pub start: deno_graph::Position,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type OnMappedResolutionDiagnosticFn = deno_maybe_sync::MaybeArc<
   dyn Fn(MappedResolutionDiagnosticWithPosition) + Send + Sync,
 >;
@@ -161,6 +173,12 @@ pub struct ResolveWithGraphOptions {
   pub maintain_npm_specifiers: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NpmTypesResolutionMode {
+  Strict,
+  FallbackToExecution,
+}
+
 pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
   npm::DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
@@ -168,7 +186,7 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
   TSys,
 >;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type DenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
@@ -383,6 +401,51 @@ impl<
     )
   }
 
+  /// Best-effort resolution of a bare specifier against the managed npm
+  /// snapshot, regardless of whether the referrer's `package.json` declares
+  /// it.
+  ///
+  /// `deno compile --bundle` follows `new Worker(new URL(...))` and similar
+  /// references into modules that can live outside the entrypoint's package
+  /// scope (e.g. a worker authored in a sibling source tree, pulled in
+  /// alongside a `dist/`-rooted entrypoint). A bare npm import from such a
+  /// referrer can fail to map even though the package is installed and
+  /// resolves fine elsewhere in the same build. This lets the bundler fall
+  /// back to the snapshot by package name, matching Node/Bun's "find it in a
+  /// reachable node_modules" behavior.
+  ///
+  /// Known limitation: the specifier carries no version constraint, so this
+  /// resolves `name@*`. If the build's snapshot holds more than one version
+  /// of the package, the snapshot picks one by name alone, which may not be
+  /// the version the referrer's own `node_modules` tree would select. Node
+  /// and Bun resolve to the nearest reachable version; this does not. For the
+  /// common single-version case the result is identical.
+  ///
+  /// Returns `None` when npm resolution isn't managed or the package isn't
+  /// present in the snapshot.
+  pub fn resolve_bare_specifier_in_npm_snapshot(
+    &self,
+    raw_specifier: &str,
+    maybe_referrer: Option<&Url>,
+    resolution_mode: node_resolver::ResolutionMode,
+    resolution_kind: node_resolver::NodeResolutionKind,
+  ) -> Option<Url> {
+    let req_ref =
+      NpmPackageReqReference::from_str(&format!("npm:{raw_specifier}")).ok()?;
+    // Bail unless npm resolution is managed; `resolve_managed_npm_req_ref`
+    // unwraps these and would otherwise panic.
+    let node_and_npm_resolver = self.resolver.node_and_npm_resolver.as_ref()?;
+    node_and_npm_resolver.npm_resolver.as_managed()?;
+    self
+      .resolve_managed_npm_req_ref(
+        &req_ref,
+        maybe_referrer,
+        resolution_mode,
+        resolution_kind,
+      )
+      .ok()
+  }
+
   pub fn resolve(
     &self,
     raw_specifier: &str,
@@ -430,6 +493,8 @@ impl<
     &'a self,
     cjs_tracker: &'a CjsTracker<TInNpmPackageChecker, TSys>,
     jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
+    maybe_graph: Option<&'a deno_graph::ModuleGraph>,
+    npm_types_resolution_mode: NpmTypesResolutionMode,
   ) -> DenoGraphResolverAdapter<
     'a,
     TInNpmPackageChecker,
@@ -441,6 +506,8 @@ impl<
       cjs_tracker,
       resolver: self,
       jsx_import_source_config_resolver,
+      maybe_graph,
+      npm_types_resolution_mode,
     }
   }
 }
@@ -460,6 +527,8 @@ pub struct DenoGraphResolverAdapter<
     TSys,
   >,
   jsx_import_source_config_resolver: &'a JsxImportSourceConfigResolver,
+  maybe_graph: Option<&'a deno_graph::ModuleGraph>,
+  npm_types_resolution_mode: NpmTypesResolutionMode,
 }
 
 impl<
@@ -523,23 +592,71 @@ impl<
     referrer_range: &deno_graph::Range,
     resolution_kind: deno_graph::source::ResolutionKind,
   ) -> Result<Url, ResolveError> {
-    self
-      .resolver
-      .resolve(
+    let resolution_mode = referrer_range
+      .resolution_mode
+      .map(node_resolver::ResolutionMode::from_deno_graph)
+      .unwrap_or_else(|| {
+        self
+          .cjs_tracker
+          .get_referrer_kind(&referrer_range.specifier)
+      });
+    let node_resolution_kind =
+      node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind);
+    let resolve = |kind| match self.maybe_graph {
+      Some(graph) => self.resolver.resolve_with_graph(
+        graph,
         raw_specifier,
         &referrer_range.specifier,
         referrer_range.range.start,
-        referrer_range
-          .resolution_mode
-          .map(node_resolver::ResolutionMode::from_deno_graph)
-          .unwrap_or_else(|| {
-            self
-              .cjs_tracker
-              .get_referrer_kind(&referrer_range.specifier)
-          }),
-        node_resolver::NodeResolutionKind::from_deno_graph(resolution_kind),
-      )
-      .map_err(|err| err.into_deno_graph_error())
+        ResolveWithGraphOptions {
+          mode: resolution_mode,
+          kind,
+          maintain_npm_specifiers: false,
+        },
+      ),
+      None => self
+        .resolver
+        .resolve(
+          raw_specifier,
+          &referrer_range.specifier,
+          referrer_range.range.start,
+          resolution_mode,
+          kind,
+        )
+        .map_err(|err| err.into()),
+    };
+
+    let result = resolve(node_resolution_kind);
+    if node_resolution_kind == node_resolver::NodeResolutionKind::Types
+      && self.npm_types_resolution_mode
+        == NpmTypesResolutionMode::FallbackToExecution
+      && result
+        .as_ref()
+        .is_err_and(|err| err.is_types_not_found_for_npm_resolution())
+    {
+      return resolve(node_resolver::NodeResolutionKind::Execution)
+        .map_err(|err| err.into_deno_graph_error());
+    }
+
+    result.map_err(|err| err.into_deno_graph_error())
+  }
+}
+
+impl ResolveWithGraphError {
+  fn is_types_not_found_for_npm_resolution(&self) -> bool {
+    match self.as_kind() {
+      ResolveWithGraphErrorKind::CouldNotResolveNpmReqRef(err) => {
+        err.source.code() == NodeJsErrorCode::ERR_TYPES_NOT_FOUND
+      }
+      ResolveWithGraphErrorKind::ResolveNpmReqRef(err) => {
+        err.err.as_kind().maybe_code()
+          == Some(NodeJsErrorCode::ERR_TYPES_NOT_FOUND)
+      }
+      ResolveWithGraphErrorKind::Resolve(err) => {
+        err.maybe_node_code() == Some(NodeJsErrorCode::ERR_TYPES_NOT_FOUND)
+      }
+      _ => false,
+    }
   }
 }
 
@@ -584,7 +701,7 @@ pub fn enhance_graph_error(
   error: ModuleGraphError,
   mode: EnhanceGraphErrorMode,
 ) -> EnhancedGraphError {
-  let message = match &error {
+  let mut message = match &error {
     ModuleGraphError::ResolutionError(resolution_error) => {
       enhanced_resolution_error_message(resolution_error)
     }
@@ -602,10 +719,39 @@ pub fn enhance_graph_error(
     }
   };
 
+  if let Some(docs_url) = maybe_docs_url_for_graph_error(&error) {
+    message.push_str(&format!(
+      "\n  {} {}",
+      deno_terminal::colors::cyan("docs:"),
+      docs_url,
+    ));
+  }
+
   EnhancedGraphError {
     original: error,
     message,
     mode,
+  }
+}
+
+/// Returns a link to relevant Deno documentation for known module graph
+/// errors so users can quickly find the recommended fix.
+fn maybe_docs_url_for_graph_error(
+  error: &ModuleGraphError,
+) -> Option<&'static str> {
+  let ModuleGraphError::ModuleError(error) = error else {
+    return None;
+  };
+  match error.as_kind() {
+    ModuleErrorKind::UnsupportedMediaType {
+      media_type: MediaType::Json,
+      ..
+    }
+    | ModuleErrorKind::InvalidTypeAssertion {
+      actual_media_type: MediaType::Json,
+      ..
+    } => Some("https://docs.deno.com/examples/importing_json/"),
+    _ => None,
   }
 }
 
@@ -753,7 +899,7 @@ pub fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
 fn enhanced_unsupported_import_attribute(err: &ModuleError) -> Option<String> {
   match err.as_kind() {
     ModuleErrorKind::UnsupportedImportAttributeType { kind, .. }
-      if matches!(kind.as_str(), "bytes" | "text") =>
+      if kind == "bytes" =>
     {
       let mut text = format_deno_graph_error(err);
       text.push_str(&format!(
@@ -927,7 +1073,10 @@ mod test {
       let specifier = Url::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        #[allow(clippy::disallowed_types)]
+        #[allow(
+          clippy::disallowed_types,
+          reason = "ResolutionError requires Arc"
+        )]
         error: std::sync::Arc::new(ResolveError::from_err(err)),
         specifier: input.to_string(),
         range: Range {

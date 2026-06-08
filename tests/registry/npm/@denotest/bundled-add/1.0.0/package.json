@@ -1,0 +1,12 @@
+{
+  "name": "@denotest/bundled-add",
+  "version": "1.0.0",
+  "bin": "./index.js",
+  "dependencies": {
+    "@denotest/add": "1"
+  },
+  "bundleDependencies": [
+    "@denotest/add"
+  ],
+  "exports": "./index.js"
+}

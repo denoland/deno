@@ -1,0 +1,26 @@
+{
+  "tests": {
+    "default_title_is_exec_path": {
+      "args": "run -A main.ts default",
+      "output": "default.out"
+    },
+    "set_title": {
+      "args": "run -A main.ts set",
+      "output": "set.out"
+    },
+    "node_options_title": {
+      "envs": {
+        "NODE_OPTIONS": "--title=custom-title"
+      },
+      "args": "run -A main.ts node_options",
+      "output": "node_options.out"
+    },
+    "node_options_title_quoted_spaces": {
+      "envs": {
+        "NODE_OPTIONS": "--title=\"hello world\""
+      },
+      "args": "run -A main.ts node_options",
+      "output": "node_options_quoted.out"
+    }
+  }
+}
