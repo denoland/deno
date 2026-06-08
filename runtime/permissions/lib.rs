@@ -23,7 +23,7 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use fqdn::FQDN;
-use ipnetwork::IpNetwork;
+use ipnet::IpNet;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use serde::Deserialize;
@@ -1314,15 +1314,35 @@ impl PartialEq<PathDescriptor> for PathQueryDescriptor<'_> {
   }
 }
 
-/// On Windows, returns a lowercased copy of the path for case-insensitive
-/// comparison, matching NTFS behavior. On other platforms, returns a clone.
+/// Returns a normalized copy of the path for filesystem-aware comparison.
+///
+/// - Windows (NTFS): ASCII-lowercased for case-insensitive matching.
+/// - macOS (APFS/HFS+): NFKD-normalized and Unicode-case-folded, because
+///   APFS resolves Unicode-equivalent and case-differing paths to the same
+///   inode (e.g. `ß`/`ss`, `ﬁ`/`fi`, NFC/NFD forms, upper/lower).
+/// - Other platforms: returns a clone (case-sensitive, no normalization).
 #[inline]
+#[cfg(windows)]
 fn comparison_path(path: &Path) -> PathBuf {
-  if cfg!(windows) {
-    PathBuf::from(path.to_string_lossy().to_ascii_lowercase())
-  } else {
-    path.to_path_buf()
-  }
+  PathBuf::from(path.to_string_lossy().to_ascii_lowercase())
+}
+
+#[inline]
+#[cfg(target_os = "macos")]
+fn comparison_path(path: &Path) -> PathBuf {
+  use unicode_normalization::UnicodeNormalization;
+  // NFKD handles canonical decomposition (NFC->NFD) and compatibility
+  // decomposition (ligatures like fi->fi). Uppercase then lowercase
+  // approximates Unicode case folding (maps ss->SS->ss, etc.).
+  let s = path.to_string_lossy();
+  let normalized: String = s.nfkd().collect();
+  PathBuf::from(normalized.to_uppercase().to_lowercase())
+}
+
+#[inline]
+#[cfg(not(any(windows, target_os = "macos")))]
+fn comparison_path(path: &Path) -> PathBuf {
+  path.to_path_buf()
 }
 
 impl<'a> PathQueryDescriptor<'a> {
@@ -1749,7 +1769,7 @@ pub enum Host {
   FqdnWithSubdomainWildcard(FQDN),
   Ip(IpAddr),
   Vsock(u32),
-  IpSubnet(IpNetwork),
+  IpSubnet(IpNet),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -1813,7 +1833,7 @@ impl Host {
         ));
       }
       Ok(Host::Ip(normalize_ip(ip)))
-    } else if let Ok(ip_subnet) = s.parse::<IpNetwork>() {
+    } else if let Ok(ip_subnet) = s.parse::<IpNet>() {
       Ok(Host::IpSubnet(ip_subnet))
     } else {
       let lower = if s.chars().all(|c| c.is_ascii_lowercase()) {
@@ -1909,7 +1929,7 @@ impl QueryDescriptor for NetDescriptor {
       ) => a == b,
       (Host::Ip(a), Host::Ip(b)) => a == b,
       (Host::Vsock(a), Host::Vsock(b)) => a == b,
-      (Host::IpSubnet(a), Host::Ip(b)) => a.contains(*b),
+      (Host::IpSubnet(a), Host::Ip(b)) => a.contains(b),
       _ => false,
     }
   }
@@ -2805,6 +2825,25 @@ pub struct SpecialFilePathQueryDescriptor<'a> {
 }
 
 impl<'a> SpecialFilePathQueryDescriptor<'a> {
+  /// Construct from a `PathQueryDescriptor` without resolving symlinks.
+  ///
+  /// Used by no-follow access modes (lstat, readlink, readdir, etc.) where
+  /// canonicalizing would change semantics by resolving the final path
+  /// component. The /proc, /dev, /sys prefix guard in `check_special_file`
+  /// still applies — it just uses the un-resolved path.
+  pub fn from_path_query_no_canonicalize(
+    path: PathQueryDescriptor<'a>,
+  ) -> Self {
+    let PathQueryDescriptor {
+      path, requested, ..
+    } = path;
+    Self {
+      path,
+      requested,
+      canonicalized: false,
+    }
+  }
+
   pub fn parse(
     sys: &impl sys_traits::FsCanonicalize,
     path: PathQueryDescriptor<'a>,
@@ -2862,7 +2901,7 @@ impl SysDescriptor {
       "hostname" | "inspector" | "osRelease" | "osUptime" | "loadavg"
       | "networkInterfaces" | "systemMemoryInfo" | "uid" | "gid" | "cpus"
       | "homedir" | "getegid" | "statfs" | "getPriority" | "setPriority"
-      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setuid" => {
+      | "userInfo" | "setegid" | "seteuid" | "setgid" | "setuid" | "ca" => {
         Ok(Self(kind))
       }
 
@@ -3205,10 +3244,10 @@ impl UnaryPermission<NetDescriptor> {
     for item in self.descriptors.iter() {
       match item {
         UnaryPermissionDesc::FlagDenied(v)
-        | UnaryPermissionDesc::FlagIgnored(v) => {
-          if desc.matches_deny(v) {
-            return Err(denied());
-          }
+        | UnaryPermissionDesc::FlagIgnored(v)
+          if desc.matches_deny(v) =>
+        {
+          return Err(denied());
         }
         _ => {}
       }
@@ -3833,7 +3872,7 @@ fn ignored_to_not_found(err: PermissionDeniedError) -> PermissionCheckError {
   #[cfg(windows)]
   fn not_found() -> std::io::Error {
     std::io::Error::from_raw_os_error(
-      winapi::shared::winerror::ERROR_FILE_NOT_FOUND as i32,
+      windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND as i32,
     )
   }
 
@@ -4128,18 +4167,16 @@ impl PermissionsContainer {
       }
     };
 
-    if access_kind.is_no_follow() {
-      Ok(CheckedPath {
-        path: PathWithRequested {
-          path: path.path,
-          requested: path.requested.map(Cow::Owned),
-        },
-        canonicalized: false,
-      })
+    let special_path = if access_kind.is_no_follow() {
+      // Don't canonicalize: lstat/readlink/readdir need to operate on the
+      // un-resolved path. The /proc, /dev, /sys prefix guard inside
+      // `check_special_file` still fires when the caller-supplied path is
+      // itself a kernel-magic location (e.g. `/proc/self/root/...`).
+      SpecialFilePathQueryDescriptor::from_path_query_no_canonicalize(path)
     } else {
-      let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-      self.check_special_file(path, access_kind, api_name)
-    }
+      self.descriptor_parser.parse_special_file_descriptor(path)?
+    };
+    self.check_special_file(special_path, access_kind, api_name)
   }
 
   #[inline(always)]
@@ -5599,6 +5636,118 @@ mod tests {
         is_ok
       );
     }
+  }
+
+  #[test]
+  #[cfg(target_os = "macos")]
+  fn check_paths_macos_unicode_normalization() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+
+    // Deny a path containing ß — on APFS this is the same file as one with "ss"
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/file_\u{00df}.txt"]),
+        allow_write: Some(svec!["/data"]),
+        deny_write: Some(svec!["/data/file_\u{00df}.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Access via "ss" form must also be denied (APFS treats ß and ss as same file)
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_ss.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via ß/ss equivalence"
+    );
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_ss.txt")),
+          OpenAccessKind::Write,
+          Some("api")
+        )
+        .is_err(),
+      "deny-write bypass via ß/ss equivalence"
+    );
+
+    // NFC é (U+00E9) vs NFD e + combining accent (U+0065 U+0301)
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/file_\u{00e9}.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_e\u{0301}.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via NFC/NFD equivalence"
+    );
+
+    // Case insensitivity: APFS is case-insensitive by default
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/SECRET.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/secret.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via case insensitivity"
+    );
+
+    // fi ligature (U+FB01) vs "fi" — NFKD compatibility decomposition
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_read: Some(svec!["/data"]),
+        deny_read: Some(svec!["/data/file_\u{fb01}.txt"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("/data/file_fi.txt")),
+          OpenAccessKind::Read,
+          Some("api")
+        )
+        .is_err(),
+      "deny-read bypass via fi ligature equivalence"
+    );
   }
 
   #[test]

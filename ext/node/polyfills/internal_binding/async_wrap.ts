@@ -25,12 +25,16 @@
 // - https://github.com/nodejs/node/blob/master/src/async_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/async_wrap.h
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+(function () {
+const { core, primordials } = __bootstrap;
+const { AsyncWrap, op_node_new_async_id } = core.ops;
+const {
+  Float64Array,
+  ObjectKeys,
+  Uint32Array,
+} = primordials;
 
-import { AsyncWrap, op_node_new_async_id } from "ext:core/ops";
-
-export function registerDestroyHook(
+function registerDestroyHook(
   // deno-lint-ignore no-explicit-any
   _target: any,
   _asyncId: number,
@@ -39,7 +43,7 @@ export function registerDestroyHook(
   // TODO(kt3k): implement actual procedures
 }
 
-export enum constants {
+enum constants {
   kInit,
   kBefore,
   kAfter,
@@ -55,23 +59,21 @@ export enum constants {
   kStackLength,
 }
 
-const asyncHookFields = new Uint32Array(Object.keys(constants).length);
-
-export { asyncHookFields as async_hook_fields };
+const asyncHookFields = new Uint32Array(ObjectKeys(constants).length);
 
 // Increment the internal id counter and return the value.
-export function newAsyncId() {
+function newAsyncId() {
   return op_node_new_async_id();
 }
 
-export enum UidFields {
+enum UidFields {
   kExecutionAsyncId,
   kTriggerAsyncId,
   kDefaultTriggerAsyncId,
   kUidFieldsCount,
 }
 
-const asyncIdFields = new Float64Array(Object.keys(UidFields).length);
+const asyncIdFields = new Float64Array(ObjectKeys(UidFields).length);
 
 // `kDefaultTriggerAsyncId` should be `-1`, this indicates that there is no
 // specified default value and it should fallback to the executionAsyncId.
@@ -79,9 +81,7 @@ const asyncIdFields = new Float64Array(Object.keys(UidFields).length);
 // context which is different from a default context.
 asyncIdFields[UidFields.kDefaultTriggerAsyncId] = -1;
 
-export { asyncIdFields };
-
-export enum providerType {
+enum providerType {
   NONE,
   DIRHANDLE,
   DNSCHANNEL,
@@ -127,4 +127,14 @@ export enum providerType {
   ZLIB,
 }
 
-export { AsyncWrap };
+return {
+  async_hook_fields: asyncHookFields,
+  asyncIdFields,
+  AsyncWrap,
+  registerDestroyHook,
+  newAsyncId,
+  constants,
+  UidFields,
+  providerType,
+};
+})();

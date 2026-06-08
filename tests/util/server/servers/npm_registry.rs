@@ -232,6 +232,13 @@ async fn handle_req_for_registry(
     return npm_security_advisories_bulk(req).await;
   }
 
+  // Package requests may arrive through a registry url configured with a
+  // sub-path (e.g. `http://localhost:4260/sub/path/`). Strip the known test
+  // sub-path prefix so the same package files are served. This lets tests
+  // exercise sub-path registry cache layouts (the on-disk cache ends up under
+  // `<host>/sub/path/<pkg>` rather than `<host>/<pkg>`).
+  let uri_path = uri_path.strip_prefix("/sub/path").unwrap_or(uri_path);
+
   let mut file_path = root_dir.to_path_buf();
   file_path.push(uri_path[1..].replace("%2f", "/").replace("%2F", "/"));
 

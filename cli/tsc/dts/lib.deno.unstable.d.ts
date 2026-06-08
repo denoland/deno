@@ -197,6 +197,11 @@ declare namespace Deno {
    * @experimental
    */
   export class UnsafeWindowSurface {
+    /** The height of the window. */
+    height: number;
+    /** The width of the window. */
+    width: number;
+
     constructor(
       options: {
         system: "cocoa" | "win32" | "x11" | "wayland";
@@ -206,12 +211,13 @@ declare namespace Deno {
         height: number;
       },
     );
-    getContext(context: "webgpu"): GPUCanvasContext;
+
+    getContext(
+      contextId: OffscreenRenderingContextId,
+      options?: any,
+    ): OffscreenRenderingContext | null;
+
     present(): void;
-    /**
-     * This method should be invoked when the size of the window changes.
-     */
-    resize(width: number, height: number): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -353,6 +359,20 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Unstable options which can be set when opening a `unixpacket` datagram
+   * listener via {@linkcode Deno.listenDatagram}.
+   *
+   * @category Network
+   * @experimental
+   */
+  export interface UnixListenDatagramOptions {
+    /** A path to the Unix Socket. When omitted the socket is left unbound, so
+     * it can be used to send messages but cannot receive them. */
+    path?: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Listen announces on the local transport address.
    *
    * ```ts
@@ -369,7 +389,7 @@ declare namespace Deno {
    * @experimental
    */
   export function listenDatagram(
-    options: UnixListenOptions & { transport: "unixpacket" },
+    options: UnixListenDatagramOptions & { transport: "unixpacket" },
   ): DatagramConn;
 
   /** **UNSTABLE**: New API, yet to be vetted.

@@ -1305,7 +1305,7 @@ pub unsafe fn uv_tty_init(
       let mut reopened = false;
       if handle_type == uv_handle_type::UV_TTY && tty_is_slave(fd) {
         let mut path = [0u8; 256];
-        if libc::ttyname_r(fd, path.as_mut_ptr().cast(), path.len()) == 0 {
+        if tty_path(fd, &mut path) {
           let new_fd =
             open_cloexec(path.as_ptr().cast(), mode | libc::O_NOCTTY);
           if new_fd >= 0 {
@@ -1850,6 +1850,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data,
         offset: 0,
+        iovecs: None,
         cb,
         status: None,
       });
@@ -1872,6 +1873,7 @@ pub(crate) unsafe fn write_tty(
                   req,
                   data: Vec::new(),
                   offset: 0,
+                  iovecs: None,
                   cb,
                   status: Some(0),
                 });
@@ -1884,6 +1886,7 @@ pub(crate) unsafe fn write_tty(
                 req,
                 data: data[offset..].to_vec(),
                 offset: 0,
+                iovecs: None,
                 cb,
                 status: None,
               });
@@ -1895,6 +1898,7 @@ pub(crate) unsafe fn write_tty(
                 req,
                 data: Vec::new(),
                 offset: 0,
+                iovecs: None,
                 cb,
                 status: Some(UV_EPIPE),
               });
@@ -1908,6 +1912,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data: Vec::new(),
         offset: 0,
+        iovecs: None,
         cb,
         status: Some(0),
       });
@@ -1922,6 +1927,7 @@ pub(crate) unsafe fn write_tty(
         req,
         data: Vec::new(),
         offset: 0,
+        iovecs: None,
         cb,
         status: Some(0),
       });
@@ -1939,6 +1945,7 @@ pub(crate) unsafe fn write_tty(
               req,
               data: Vec::new(),
               offset: 0,
+              iovecs: None,
               cb,
               status: Some(0),
             });
@@ -1951,6 +1958,7 @@ pub(crate) unsafe fn write_tty(
             req,
             data: data[offset..].to_vec(),
             offset: 0,
+            iovecs: None,
             cb,
             status: None,
           });
@@ -1962,6 +1970,7 @@ pub(crate) unsafe fn write_tty(
             req,
             data: Vec::new(),
             offset: 0,
+            iovecs: None,
             cb,
             status: Some(UV_EPIPE),
           });
@@ -2487,19 +2496,48 @@ pub(crate) unsafe fn poll_tty_handle(
           let pw = (*tty_ptr).internal_write_queue.front_mut().unwrap();
           let mut done = false;
           let mut error = false;
-          loop {
-            if pw.offset >= pw.data.len() {
-              done = true;
-              break;
-            }
-            match tty_try_write(tty_ptr, &pw.data[pw.offset..]) {
-              Ok(n) => pw.offset += n,
-              Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+          if let Some(ref mut iov) = pw.iovecs {
+            // TTY has no native writev — iterate across iovecs calling
+            // single-buffer try_write.
+            loop {
+              if iov.is_empty() {
+                done = true;
                 break;
               }
-              Err(_) => {
-                error = true;
+              let (head_base, head_len) = {
+                let first = &iov.bufs[iov.head_index];
+                (first.base, first.len - iov.head_off)
+              };
+              let slice = std::slice::from_raw_parts(
+                (head_base as *const u8).add(iov.head_off),
+                head_len,
+              );
+              match tty_try_write(tty_ptr, slice) {
+                Ok(n) => iov.advance(n),
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
+              }
+            }
+          } else {
+            loop {
+              if pw.offset >= pw.data.len() {
+                done = true;
                 break;
+              }
+              match tty_try_write(tty_ptr, &pw.data[pw.offset..]) {
+                Ok(n) => pw.offset += n,
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                  break;
+                }
+                Err(_) => {
+                  error = true;
+                  break;
+                }
               }
             }
           }
@@ -3048,6 +3086,56 @@ unsafe fn tty_is_slave(fd: c_int) -> bool {
     // Fallback: ptsname() returns NULL for slave fds.
     unsafe { libc::ptsname(fd).is_null() }
   }
+}
+
+/// Resolve the path of a TTY slave fd into `buf` (NUL-terminated).
+///
+/// `ttyname_r` on macOS scans `/dev` with `lstat` on every entry, which
+/// shows up as a startup-time hot spot when initializing stdin/stdout/stderr.
+/// `F_GETPATH` (macOS) and `/proc/self/fd` (Linux) read the path directly
+/// from the fd's vnode entry in O(1) without touching the filesystem.
+#[cfg(unix)]
+unsafe fn tty_path(fd: c_int, buf: &mut [u8]) -> bool {
+  #[cfg(target_os = "macos")]
+  {
+    // F_GETPATH requires a buffer of MAXPATHLEN (1024). Resolve into a
+    // local buffer, then copy the (short) tty path into the caller's buf.
+    let mut tmp = [0u8; libc::PATH_MAX as usize];
+    if unsafe { libc::fcntl(fd, libc::F_GETPATH, tmp.as_mut_ptr()) } == 0 {
+      let len = tmp.iter().position(|&b| b == 0).unwrap_or(tmp.len());
+      if len < buf.len() {
+        buf[..len].copy_from_slice(&tmp[..len]);
+        buf[len] = 0;
+        return true;
+      }
+    }
+  }
+  #[cfg(target_os = "linux")]
+  {
+    let mut link = [0u8; 64];
+    let n = unsafe {
+      libc::snprintf(
+        link.as_mut_ptr().cast(),
+        link.len(),
+        c"/proc/self/fd/%d".as_ptr(),
+        fd,
+      )
+    };
+    if n > 0 && (n as usize) < link.len() {
+      let r = unsafe {
+        libc::readlink(
+          link.as_ptr().cast(),
+          buf.as_mut_ptr().cast(),
+          buf.len() - 1,
+        )
+      };
+      if r > 0 && (r as usize) < buf.len() {
+        buf[r as usize] = 0;
+        return true;
+      }
+    }
+  }
+  unsafe { libc::ttyname_r(fd, buf.as_mut_ptr().cast(), buf.len()) == 0 }
 }
 
 /// Open a file with O_CLOEXEC set.

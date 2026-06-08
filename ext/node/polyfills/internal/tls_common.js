@@ -4,22 +4,33 @@
 // Shared TLS helpers used by both tls.ts and _tls_wrap.js.
 // Extracted to avoid circular dependency between those modules.
 
-// deno-lint-ignore-file prefer-primordials
-
-import { Buffer } from "node:buffer";
-import { codes } from "ext:deno_node/internal/errors.ts";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { codes } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   isArrayBufferView,
+  isTypedArray,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
-import { primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 
-const { ArrayIsArray } = primordials;
+const {
+  Array,
+  ArrayBufferPrototypeSlice,
+  ArrayIsArray,
+  ArrayPrototypeReduce,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+} = primordials;
 
 function convertProtocols(protocols) {
   const lengths = new Array(protocols.length);
   const buffer = Buffer.allocUnsafe(
-    protocols.reduce((total, protocol, index) => {
+    ArrayPrototypeReduce(protocols, (total, protocol, index) => {
       const length = Buffer.byteLength(protocol);
       if (length > 255) {
         throw new codes.ERR_OUT_OF_RANGE(
@@ -44,17 +55,26 @@ function convertProtocols(protocols) {
   return buffer;
 }
 
-export function convertALPNProtocols(protocols, out) {
+function convertALPNProtocols(protocols, out) {
   if (ArrayIsArray(protocols)) {
     out.ALPNProtocols = convertProtocols(protocols);
   } else if (isUint8Array(protocols)) {
     out.ALPNProtocols = Buffer.from(protocols);
   } else if (isArrayBufferView(protocols)) {
+    const buffer = isTypedArray(protocols)
+      ? TypedArrayPrototypeGetBuffer(protocols)
+      : DataViewPrototypeGetBuffer(protocols);
+    const byteOffset = isTypedArray(protocols)
+      ? TypedArrayPrototypeGetByteOffset(protocols)
+      : DataViewPrototypeGetByteOffset(protocols);
+    const byteLength = isTypedArray(protocols)
+      ? TypedArrayPrototypeGetByteLength(protocols)
+      : DataViewPrototypeGetByteLength(protocols);
     out.ALPNProtocols = Buffer.from(
-      protocols.buffer.slice(
-        protocols.byteOffset,
-        protocols.byteOffset + protocols.byteLength,
-      ),
+      ArrayBufferPrototypeSlice(buffer, byteOffset, byteOffset + byteLength),
     );
   }
 }
+
+return { convertALPNProtocols, default: { convertALPNProtocols } };
+})();

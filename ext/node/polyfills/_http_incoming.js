@@ -22,17 +22,20 @@
 
 // Ported from Node.js lib/_http_incoming.js
 
-// deno-lint-ignore-file prefer-primordials
-
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
+  ArrayPrototypePush,
+  FunctionPrototypeCall,
   ObjectDefineProperty,
   ObjectSetPrototypeOf,
+  StringPrototypeCharCodeAt,
+  StringPrototypeSlice,
+  StringPrototypeToLowerCase,
   Symbol,
 } = primordials;
 
 import { finished, Readable } from "node:stream";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 
 const kHeaders = Symbol("kHeaders");
 const kHeadersDistinct = Symbol("kHeadersDistinct");
@@ -54,16 +57,16 @@ function readStop(socket) {
 }
 
 /* Abstract base class for ServerRequest and ClientResponse. */
-function IncomingMessage(socket) {
+function IncomingMessage(socket, options) {
   let streamOptions;
 
   if (socket) {
     streamOptions = {
-      highWaterMark: socket.readableHighWaterMark,
+      highWaterMark: options?.highWaterMark ?? socket.readableHighWaterMark,
     };
   }
 
-  Readable.call(this, streamOptions);
+  FunctionPrototypeCall(Readable, this, streamOptions);
 
   this._readableState.readingMore = true;
 
@@ -369,15 +372,28 @@ function matchKnownFields(field, lowercased) {
   if (lowercased) {
     return "\u0000" + field;
   }
-  return matchKnownFields(field.toLowerCase(), true);
+  return matchKnownFields(StringPrototypeToLowerCase(field), true);
 }
 
 IncomingMessage.prototype._addHeaderLine = _addHeaderLine;
 function _addHeaderLine(field, value, dest) {
+  if (
+    field.length > 2 && field[1] === "-" &&
+    (field[0] === "X" || field[0] === "x")
+  ) {
+    field = StringPrototypeToLowerCase(field);
+    if (typeof dest[field] === "string") {
+      dest[field] += ", " + value;
+    } else {
+      dest[field] = value;
+    }
+    return;
+  }
+
   field = matchKnownFields(field);
-  const flag = field.charCodeAt(0);
+  const flag = StringPrototypeCharCodeAt(field, 0);
   if (flag === 0 || flag === 2) {
-    field = field.slice(1);
+    field = StringPrototypeSlice(field, 1);
     // Make a delimited list
     if (typeof dest[field] === "string") {
       dest[field] += (flag === 0 ? ", " : "; ") + value;
@@ -387,7 +403,7 @@ function _addHeaderLine(field, value, dest) {
   } else if (flag === 1) {
     // Array header -- only Set-Cookie at the moment
     if (dest["set-cookie"] !== undefined) {
-      dest["set-cookie"].push(value);
+      ArrayPrototypePush(dest["set-cookie"], value);
     } else {
       dest["set-cookie"] = [value];
     }
@@ -405,11 +421,11 @@ function _addHeaderLine(field, value, dest) {
 
 IncomingMessage.prototype._addHeaderLineDistinct = _addHeaderLineDistinct;
 function _addHeaderLineDistinct(field, value, dest) {
-  field = field.toLowerCase();
+  field = StringPrototypeToLowerCase(field);
   if (!dest[field]) {
     dest[field] = [value];
   } else {
-    dest[field].push(value);
+    ArrayPrototypePush(dest[field], value);
   }
 }
 

@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, internals, primordials } = __bootstrap;
+const {
   op_kill,
   op_node_spawn_child,
   op_run,
@@ -12,7 +13,7 @@ import {
   op_spawn_kill,
   op_spawn_sync,
   op_spawn_wait,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeMap,
@@ -33,12 +34,12 @@ const {
   SymbolFor,
 } = primordials;
 
-import { FsFile } from "ext:deno_fs/30_fs.js";
-import { readAll } from "ext:deno_io/12_io.js";
-import { assert, pathFromURL } from "ext:deno_web/00_infra.js";
-import { packageData } from "ext:deno_fetch/22_body.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import {
+const { FsFile } = core.loadExtScript("ext:deno_fs/30_fs.js");
+const { readAll } = core.loadExtScript("ext:deno_io/12_io.js");
+const { assert, pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { packageData } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const {
   ReadableStream,
   readableStreamCollectIntoUint8Array,
   readableStreamForRidUnrefable,
@@ -46,7 +47,7 @@ import {
   readableStreamForRidUnrefableUnref,
   ReadableStreamPrototype,
   writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
+} = core.loadExtScript("ext:deno_web/06_streams.js");
 
 // The key for private `input` option for `Deno.Command`
 const kInputOption = Symbol("kInputOption");
@@ -171,10 +172,10 @@ function run({
   return new Process(res);
 }
 
-export const kExtraStdio = Symbol("extraStdio");
-export const kIpc = Symbol("ipc");
-export const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
-export const kSerialization = Symbol("serialization");
+const kExtraStdio = Symbol("extraStdio");
+const kIpc = Symbol("ipc");
+const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
+const kSerialization = Symbol("serialization");
 const kArgv0 = Symbol("argv0");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
@@ -279,7 +280,7 @@ internals.kExtraStdio = kExtraStdio;
 // Node compat spawn: returns a lightweight object with raw fds for stdio
 // instead of a full Deno.ChildProcess with web streams.
 // The caller (child_process.ts) is responsible for providing all fields.
-export function nodeSpawnChild(command, {
+function nodeSpawnChild(command, {
   args = [],
   cwd,
   clearEnv = false,
@@ -291,6 +292,7 @@ export function nodeSpawnChild(command, {
   stdout = "piped",
   stderr = "piped",
   windowsRawArguments = false,
+  windowsHide = false,
   ipc = -1,
   serialization = "json",
   extraStdio = [],
@@ -310,6 +312,7 @@ export function nodeSpawnChild(command, {
     stdout,
     stderr,
     windowsRawArguments,
+    windowsHide,
     ipc,
     serialization,
     extraStdio,
@@ -354,7 +357,7 @@ export function nodeSpawnChild(command, {
 
 // Node compat sync spawn: calls op_spawn_sync and returns pid/killedByTimeout
 // as normal fields instead of hidden properties on a Deno.CommandOutput.
-export function nodeSpawnSyncChild({
+function nodeSpawnSyncChild({
   args,
   cwd,
   clearEnv,
@@ -367,6 +370,7 @@ export function nodeSpawnSyncChild({
   stderr,
   extraStdio = [],
   windowsRawArguments,
+  windowsHide = false,
   needsNpmProcessState,
   input,
   timeout,
@@ -384,6 +388,7 @@ export function nodeSpawnSyncChild({
     stdout,
     stderr,
     windowsRawArguments,
+    windowsHide,
     extraStdio,
     detached: false,
     needsNpmProcessState,
@@ -616,6 +621,7 @@ function spawnInner(command, {
   env = { __proto__: null },
   uid = undefined,
   gid = undefined,
+  signal = undefined,
   stdin = "null",
   stdout = "piped",
   stderr = "piped",
@@ -654,29 +660,50 @@ function spawnInner(command, {
   const stdoutRid = child.stdoutRid;
   const stderrRid = child.stderrRid;
 
+  let onAbort = null;
+  if (signal !== undefined) {
+    onAbort = () => {
+      try {
+        op_spawn_kill(child.rid, "SIGTERM");
+      } catch {
+        // Ignore the error for https://github.com/denoland/deno/issues/27112
+      }
+    };
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal[abortSignal.add](onAbort);
+    }
+  }
+
   return PromisePrototypeThen(
     SafePromiseAll([
       op_spawn_wait(child.rid),
       stdoutRid != null ? readAllRid(stdoutRid) : null,
       stderrRid != null ? readAllRid(stderrRid) : null,
     ]),
-    ({ 0: status, 1: stdout, 2: stderr }) => ({
-      success: status.success,
-      code: status.code,
-      signal: status.signal,
-      get stdout() {
-        if (stdout == null) {
-          throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
-        }
-        return stdout;
-      },
-      get stderr() {
-        if (stderr == null) {
-          throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
-        }
-        return stderr;
-      },
-    }),
+    ({ 0: status, 1: stdout, 2: stderr }) => {
+      if (onAbort !== null) {
+        signal[abortSignal.remove](onAbort);
+      }
+      return {
+        success: status.success,
+        code: status.code,
+        signal: status.signal,
+        get stdout() {
+          if (stdout == null) {
+            throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
+          }
+          return stdout;
+        },
+        get stderr() {
+          if (stderr == null) {
+            throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
+          }
+          return stderr;
+        },
+      };
+    },
   );
 }
 
@@ -826,17 +853,24 @@ function spawnAndWaitSync(command, argsOrOptions, maybeOptions) {
   return new Command(command, argsOrOptions).outputSync();
 }
 
-export {
+return {
   ChildProcess,
   Command,
   kArgv0,
-  kill,
+  kExtraStdio,
+  kIpc,
   kInputOption,
   kKillSignalOption,
+  kNeedsNpmProcessState,
+  kSerialization,
   kTimeoutOption,
+  kill,
+  nodeSpawnChild,
+  nodeSpawnSyncChild,
   Process,
   run,
   spawn,
   spawnAndWait,
   spawnAndWaitSync,
 };
+})();
