@@ -1,11 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  Error,
+  ObjectDefineProperty,
+  ReflectHas,
+  SafeArrayIterator,
+  StringPrototypeToLowerCase,
+} = primordials;
 const { ERR_CRYPTO_FIPS_FORCED } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",
 );
@@ -163,7 +167,7 @@ function hash(
     // If the encoding is invalid, normalizeEncoding() returns undefined.
     if (normalized === undefined) {
       // normalizeEncoding() doesn't handle 'buffer'.
-      if (outputEncoding.toLowerCase() === "buffer") {
+      if (StringPrototypeToLowerCase(outputEncoding) === "buffer") {
         normalized = "buffer";
       } else {
         throw new ERR_INVALID_ARG_VALUE("outputEncoding", outputEncoding);
@@ -171,7 +175,7 @@ function hash(
     }
   }
 
-  const algoLower = algorithm.toLowerCase();
+  const algoLower = StringPrototypeToLowerCase(algorithm);
   const isXof = algoLower === "shake128" || algoLower === "shake256";
 
   if (outputLength != null && !isXof) {
@@ -213,7 +217,7 @@ function validateCipherivArgs(
   }
   if (
     typeof key !== "string" && !isArrayBufferView(key) &&
-    !(key && typeof key === "object" && "type" in key)
+    !(key && typeof key === "object" && ReflectHas(key, "type"))
   ) {
     throw new ERR_INVALID_ARG_TYPE(
       "key",
@@ -364,7 +368,8 @@ function getFipsForced() {
   return 1;
 }
 
-Object.defineProperty(constants, "defaultCipherList", {
+ObjectDefineProperty(constants, "defaultCipherList", {
+  __proto__: null,
   value: getOptionValue("--tls-cipher-list"),
 });
 
@@ -451,14 +456,16 @@ const defaultExport = {
 // getters to mirror Node's lib/crypto.js getRandomBytesAlias(). With
 // --pending-deprecation, accessing them prints DEP0115.
 function defineRandomBytesAlias(target: object, key: string) {
-  Object.defineProperty(target, key, {
+  ObjectDefineProperty(target, key, {
+    __proto__: null,
     enumerable: false,
     configurable: true,
     get() {
       const value = getOptionValue("--pending-deprecation")
         ? deprecate(randomBytes, `crypto.${key} is deprecated.`, "DEP0115")
         : randomBytes;
-      Object.defineProperty(this, key, {
+      ObjectDefineProperty(this, key, {
+        __proto__: null,
         enumerable: false,
         configurable: true,
         writable: true,
@@ -467,7 +474,8 @@ function defineRandomBytesAlias(target: object, key: string) {
       return value;
     },
     set(value) {
-      Object.defineProperty(this, key, {
+      ObjectDefineProperty(this, key, {
+        __proto__: null,
         enumerable: false,
         configurable: true,
         writable: true,
@@ -476,7 +484,9 @@ function defineRandomBytesAlias(target: object, key: string) {
     },
   });
 }
-for (const key of ["pseudoRandomBytes", "prng", "rng"]) {
+for (
+  const key of new SafeArrayIterator(["pseudoRandomBytes", "prng", "rng"])
+) {
   defineRandomBytesAlias(defaultExport, key);
 }
 

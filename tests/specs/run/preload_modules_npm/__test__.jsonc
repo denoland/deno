@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "import_npm": {
+      "args": "run --quiet --import npm:@denotest/say-hello main.ts",
+      "output": "main.out"
+    },
+    "preload_npm": {
+      "args": "run --quiet --preload npm:@denotest/say-hello main.ts",
+      "output": "main.out"
+    }
+  }
+}

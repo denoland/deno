@@ -22,6 +22,11 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const lazyStream = core.createLazyLoader("node:stream");
+// `node:tty`'s module body calls `setReadStream(...)` to register the TTY
+// ReadStream class with this file. We used to rely on `node:tty` being
+// loaded eagerly at snapshot from 01_require.js; now it's lazy, so the TTY
+// branch of `initStdin` has to force-load it before using `readStream`.
+const lazyTty = core.createLazyLoader("node:tty");
 const io = core.loadExtScript("ext:deno_io/12_io.js");
 const { guessHandleType } = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
@@ -34,8 +39,16 @@ const { validateInteger } = core.loadExtScript(
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {
-  const stream = new (lazyStream().Writable)({
+  const Writable = lazyStream().Writable;
+  const stream = new Writable({
     emitClose: false,
+    // Store the WritableState bitfield behind an accessor for the stdio
+    // streams. They are long lived and, under test runners like Jest that run
+    // each test file in its own module realm, get exercised across a large
+    // number of realms; a synchronous write could otherwise read back a stale
+    // `kState` in `onwrite()` and throw a spurious `ERR_MULTIPLE_CALLBACK`.
+    // See denoland/deno#24646.
+    [Writable.kForceStableState]: true,
     write(buf, enc, cb) {
       if (!writer) {
         this.destroy(
@@ -245,6 +258,8 @@ export const initStdin = (warmup = false) => {
       if (warmup) {
         return null;
       }
+      // Force `node:tty` to evaluate so its body runs `setReadStream`.
+      lazyTty();
       stdin = new readStream(fd);
       break;
     }

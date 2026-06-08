@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_otel_collect_isolate_metrics,
   op_otel_enable_isolate_metrics,
@@ -237,6 +237,7 @@ interface OtelTracer {
   startSpanForeign(
     parentTraceId: string,
     parentSpanId: string,
+    parentTraceFlags: number,
     name: string,
     spanKind: SpanKind,
     startTime: number | undefined,
@@ -413,6 +414,7 @@ class Tracer {
       otelSpan = this.#tracer.startSpanForeign(
         spanContext.traceId,
         spanContext.spanId,
+        spanContext.traceFlags ?? 0,
         name,
         options?.kind ?? 0,
         startTime,

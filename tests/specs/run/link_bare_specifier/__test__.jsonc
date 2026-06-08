@@ -1,0 +1,18 @@
+{
+  "tempDir": true,
+  "tests": {
+    "bare_specifier_rejected": {
+      "args": "run bare.ts",
+      "output": "bare.out",
+      "exitCode": 1
+    },
+    "jsr_specifier_resolves": {
+      "args": "run jsr_prefix.ts",
+      "output": "jsr_prefix.out"
+    },
+    "import_map_entry_resolves": {
+      "args": "run --config=with_import_map.json import_map.ts",
+      "output": "import_map.out"
+    }
+  }
+}

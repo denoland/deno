@@ -1,6 +1,10 @@
 Listening on vsock:4294967295:1234567
 Response {
-  body: ReadableStream { locked: false },
+  body: ReadableStream {
+    locked: false,
+    state: "readable",
+    supportsBYOB: true
+  },
   bodyUsed: false,
   headers: Headers {
     "content-length": "24",
@@ -15,7 +19,11 @@ Response {
 }
 http://insecure.invalid/
 Response {
-  body: ReadableStream { locked: false },
+  body: ReadableStream {
+    locked: false,
+    state: "readable",
+    supportsBYOB: true
+  },
   bodyUsed: false,
   headers: Headers {
     "content-length": "23",

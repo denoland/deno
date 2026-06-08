@@ -27,7 +27,7 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   Int32Array,
 } = primordials;

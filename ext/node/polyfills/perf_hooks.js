@@ -1,10 +1,37 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayFrom,
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  BigInt,
+  BigIntPrototypeToString,
+  Error,
+  FunctionPrototypeApply,
+  MapPrototypeGet,
+  MapPrototypeSet,
+  MathMax,
+  MathRound,
+  Number,
+  NumberIsInteger,
+  NumberMAX_SAFE_INTEGER,
+  ObjectDefineProperty,
+  ObjectFromEntries,
+  ObjectPrototypeIsPrototypeOf,
+  queueMicrotask,
+  ReflectConstruct,
+  SafeArrayIterator,
+  SafeMap,
+  Symbol,
+  SymbolDispose,
+} = primordials;
 const {
   performance,
   PerformanceEntry,
@@ -49,14 +76,15 @@ const _nodeCallback = Symbol("[[nodeCallback]]");
 function createNodeEntryList(entries) {
   return {
     getEntries() {
-      return entries.slice();
+      return ArrayPrototypeSlice(entries);
     },
     getEntriesByType(type) {
-      return entries.filter((e) => e.entryType === type);
+      return ArrayPrototypeFilter(entries, (e) => e.entryType === type);
     },
     getEntriesByName(name, type) {
-      return entries.filter((e) =>
-        e.name === name && (type === undefined || e.entryType === type)
+      return ArrayPrototypeFilter(
+        entries,
+        (e) => e.name === name && (type === undefined || e.entryType === type),
       );
     },
   };
@@ -79,8 +107,8 @@ class PerformanceObserver extends WebPerformanceObserver {
 
   static get supportedEntryTypes() {
     return [
-      ...WebPerformanceObserver.supportedEntryTypes,
-      ...NODE_ENTRY_TYPES,
+      ...new SafeArrayIterator(WebPerformanceObserver.supportedEntryTypes),
+      ...new SafeArrayIterator(NODE_ENTRY_TYPES),
     ];
   }
 
@@ -89,7 +117,7 @@ class PerformanceObserver extends WebPerformanceObserver {
       throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
     }
     if (
-      options.entryTypes !== undefined && !Array.isArray(options.entryTypes)
+      options.entryTypes !== undefined && !ArrayIsArray(options.entryTypes)
     ) {
       throw new ERR_INVALID_ARG_TYPE(
         "options.entryTypes",
@@ -102,11 +130,13 @@ class PerformanceObserver extends WebPerformanceObserver {
       ? options.entryTypes
       : (options.type !== undefined ? [options.type] : []);
 
-    const webTypes = requestedTypes.filter(
-      (t) => !NODE_ENTRY_TYPES.includes(t),
+    const webTypes = ArrayPrototypeFilter(
+      requestedTypes,
+      (t) => !ArrayPrototypeIncludes(NODE_ENTRY_TYPES, t),
     );
-    const nodeTypes = requestedTypes.filter(
-      (t) => NODE_ENTRY_TYPES.includes(t),
+    const nodeTypes = ArrayPrototypeFilter(
+      requestedTypes,
+      (t) => ArrayPrototypeIncludes(NODE_ENTRY_TYPES, t),
     );
 
     if (webTypes.length > 0) {
@@ -120,16 +150,16 @@ class PerformanceObserver extends WebPerformanceObserver {
     if (nodeTypes.length > 0) {
       this[_nodeTypes] = nodeTypes;
       this[_nodeBuffer] = [];
-      if (!nodeObservers.includes(this)) {
-        nodeObservers.push(this);
+      if (!ArrayPrototypeIncludes(nodeObservers, this)) {
+        ArrayPrototypePush(nodeObservers, this);
       }
     }
   }
 
   disconnect() {
     super.disconnect();
-    const idx = nodeObservers.indexOf(this);
-    if (idx !== -1) nodeObservers.splice(idx, 1);
+    const idx = ArrayPrototypeIndexOf(nodeObservers, this);
+    if (idx !== -1) ArrayPrototypeSplice(nodeObservers, idx, 1);
     this[_nodeTypes] = [];
     this[_nodeBuffer] = [];
   }
@@ -141,8 +171,8 @@ class PerformanceObserver extends WebPerformanceObserver {
 function enqueueNodePerformanceEntry(entry) {
   for (let i = 0; i < nodeObservers.length; i++) {
     const obs = nodeObservers[i];
-    if (!obs[_nodeTypes].includes(entry.entryType)) continue;
-    obs[_nodeBuffer].push(entry);
+    if (!ArrayPrototypeIncludes(obs[_nodeTypes], entry.entryType)) continue;
+    ArrayPrototypePush(obs[_nodeBuffer], entry);
     if (obs[_nodeScheduled]) continue;
     obs[_nodeScheduled] = true;
     queueMicrotask(() => {
@@ -160,6 +190,15 @@ function enqueueNodePerformanceEntry(entry) {
   }
 }
 
+function hasNodeObserverForType(entryType) {
+  for (let i = 0; i < nodeObservers.length; i++) {
+    if (ArrayPrototypeIncludes(nodeObservers[i][_nodeTypes], entryType)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const eventLoopUtilization = () => {
   // TODO(@marvinhagemeister): Return actual non-stubbed values
   return { idle: 0, active: 0, utilization: 0 };
@@ -170,7 +209,7 @@ performance.eventLoopUtilization = eventLoopUtilization;
 performance.nodeTiming = {};
 
 function recordTimerifyHistogram(histogram, start) {
-  const durationNs = Math.max(1, Math.round((performance.now() - start) * 1e6));
+  const durationNs = MathMax(1, MathRound((performance.now() - start) * 1e6));
   histogram.record(durationNs);
 }
 
@@ -186,7 +225,12 @@ const timerify = (fn, options = {}) => {
   }
 
   if (options?.histogram !== undefined) {
-    if (!(options.histogram instanceof RecordableHistogram)) {
+    if (
+      !ObjectPrototypeIsPrototypeOf(
+        RecordableHistogram.prototype,
+        options.histogram,
+      )
+    ) {
       throw new ERR_INVALID_ARG_TYPE(
         "options.histogram",
         "RecordableHistogram",
@@ -202,7 +246,9 @@ const timerify = (fn, options = {}) => {
     const start = histogram === undefined ? 0 : performance.now();
     let result;
     try {
-      result = new.target ? new fn(...args) : fn.apply(this, args);
+      result = new.target
+        ? ReflectConstruct(fn, args)
+        : FunctionPrototypeApply(fn, this, args);
     } catch (err) {
       if (histogram !== undefined) {
         recordTimerifyHistogram(histogram, start);
@@ -214,6 +260,9 @@ const timerify = (fn, options = {}) => {
       (typeof result === "object" || typeof result === "function") &&
       typeof result.then === "function"
     ) {
+      // `result` is an arbitrary user thenable, not necessarily a native
+      // Promise, so PromisePrototypeFinally cannot be used here.
+      // deno-lint-ignore prefer-primordials
       return result.finally(() => recordTimerifyHistogram(histogram, start));
     }
     if (histogram !== undefined) {
@@ -222,11 +271,13 @@ const timerify = (fn, options = {}) => {
     return result;
   }
 
-  Object.defineProperty(timerified, "name", {
+  ObjectDefineProperty(timerified, "name", {
+    __proto__: null,
     value: `timerified ${fn.name}`,
     configurable: true,
   });
-  Object.defineProperty(timerified, "length", {
+  ObjectDefineProperty(timerified, "length", {
+    __proto__: null,
     value: fn.length,
     configurable: true,
   });
@@ -238,7 +289,7 @@ performance.timerify = timerify;
 // TODO(bartlomieju):
 performance.markResourceTiming = () => {};
 
-function monitorEventLoopDelay(options = {}) {
+function monitorEventLoopDelay(options = { __proto__: null }) {
   const { resolution = 10 } = options;
 
   return new EventLoopDelayHistogram(new EldHistogram(resolution));
@@ -246,20 +297,24 @@ function monitorEventLoopDelay(options = {}) {
 
 core.registerCloneableResource("EventLoopDelayHistogram", snapshotHistogram);
 
-const NUMBER_MAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
+const NUMBER_MAX_SAFE_INTEGER = NumberMAX_SAFE_INTEGER;
 const EMPTY_HISTOGRAM_MIN = 9223372036854776000;
 const EMPTY_HISTOGRAM_MIN_BIGINT = 9223372036854775807n;
 const BIGINT_MAX = 0x7FFFFFFFFFFFFFFFn;
 const _handle = Symbol("[[handle]]");
 const _cloneId = Symbol("[[cloneId]]");
 let nextHistogramCloneId = 1;
-const histogramCloneRegistry = new Map();
+const histogramCloneRegistry = new SafeMap();
 
 function getHistogramCloneId(histogram) {
   if (histogram[_cloneId] === undefined) {
     histogram[_cloneId] = nextHistogramCloneId++;
   }
-  histogramCloneRegistry.set(histogram[_cloneId], histogram[_handle]);
+  MapPrototypeSet(
+    histogramCloneRegistry,
+    histogram[_cloneId],
+    histogram[_handle],
+  );
   return histogram[_cloneId];
 }
 
@@ -309,48 +364,54 @@ class Histogram {
     return BigInt(this[_handle].exceedsBigInt ?? 0);
   }
   get percentiles() {
+    // Real Map (not SafeMap): returned to userland and must pass
+    // `instanceof Map` (SafeMap's prototype chain excludes Map).
+    // deno-lint-ignore prefer-primordials
     const out = new Map();
     if (typeof this[_handle].percentiles === "function") {
       const flat = this[_handle].percentiles();
       for (let i = 0; i < flat.length; i += 2) {
-        out.set(flat[i], flat[i + 1]);
+        MapPrototypeSet(out, flat[i], flat[i + 1]);
       }
     } else if (this.count === 0) {
-      out.set(100, 0);
+      MapPrototypeSet(out, 100, 0);
     } else {
-      out.set(0, this.min);
+      MapPrototypeSet(out, 0, this.min);
       for (
         let percentile = 50;
         percentile < 100;
         percentile += (100 - percentile) / 2
       ) {
-        out.set(percentile, this.percentile(percentile));
+        MapPrototypeSet(out, percentile, this.percentile(percentile));
         if (percentile > 99.999) break;
       }
-      out.set(100, this.max);
+      MapPrototypeSet(out, 100, this.max);
     }
     return out;
   }
   get percentilesBigInt() {
+    // Real Map (not SafeMap): returned to userland and must pass
+    // `instanceof Map` (SafeMap's prototype chain excludes Map).
+    // deno-lint-ignore prefer-primordials
     const out = new Map();
     if (typeof this[_handle].percentilesBigInt === "function") {
       const flat = this[_handle].percentilesBigInt();
       for (let i = 0; i < flat.length; i += 2) {
-        out.set(flat[i], BigInt(flat[i + 1]));
+        MapPrototypeSet(out, flat[i], BigInt(flat[i + 1]));
       }
     } else if (this.count === 0) {
-      out.set(100, 0n);
+      MapPrototypeSet(out, 100, 0n);
     } else {
-      out.set(0, this.minBigInt);
+      MapPrototypeSet(out, 0, this.minBigInt);
       for (
         let percentile = 50;
         percentile < 100;
         percentile += (100 - percentile) / 2
       ) {
-        out.set(percentile, this.percentileBigInt(percentile));
+        MapPrototypeSet(out, percentile, this.percentileBigInt(percentile));
         if (percentile > 99.999) break;
       }
-      out.set(100, this.maxBigInt);
+      MapPrototypeSet(out, 100, this.maxBigInt);
     }
     return out;
   }
@@ -383,7 +444,7 @@ class Histogram {
       mean: this.mean,
       exceeds: this.exceeds,
       stddev: this.stddev,
-      percentiles: Object.fromEntries(this.percentiles),
+      percentiles: ObjectFromEntries(this.percentiles),
     };
   }
   [customInspectSymbol](depth, options) {
@@ -419,7 +480,7 @@ class RecordableHistogram extends Histogram {
       this[_handle].record(val);
       return;
     }
-    if (typeof val !== "number" || !Number.isInteger(val)) {
+    if (typeof val !== "number" || !NumberIsInteger(val)) {
       throw new ERR_INVALID_ARG_TYPE("val", ["integer", "bigint"], val);
     }
     if (val < 1 || val > NUMBER_MAX_SAFE_INTEGER) {
@@ -437,7 +498,7 @@ class RecordableHistogram extends Histogram {
   }
 
   add(other) {
-    if (!(other instanceof RecordableHistogram)) {
+    if (!ObjectPrototypeIsPrototypeOf(RecordableHistogram.prototype, other)) {
       throw new ERR_INVALID_ARG_TYPE(
         "other",
         "RecordableHistogram",
@@ -468,7 +529,7 @@ class EventLoopDelayHistogram extends Histogram {
     return this[_handle].disable();
   }
 
-  [Symbol.dispose]() {
+  [SymbolDispose]() {
     this.disable();
   }
 
@@ -485,10 +546,10 @@ class EventLoopDelayHistogram extends Histogram {
       exceeds: this.exceeds,
       exceedsBigInt: this.exceedsBigInt,
       stddev: this.stddev,
-      percentiles: Array.from(this.percentiles),
-      percentilesBigInt: Array.from(
+      percentiles: ArrayFrom(this.percentiles),
+      percentilesBigInt: ArrayFrom(
         this.percentilesBigInt,
-        ([key, value]) => [key, value.toString()],
+        (entry) => [entry[0], BigIntPrototypeToString(entry[1])],
       ),
     };
   }
@@ -508,29 +569,31 @@ function snapshotHistogram(data) {
     stddev: data.stddev,
     percentiles: () => {
       const out = [];
-      for (const [key, value] of data.percentiles ?? [[100, 0]]) {
-        out.push(key, value);
+      const entries = data.percentiles ?? [[100, 0]];
+      for (let i = 0; i < entries.length; i++) {
+        ArrayPrototypePush(out, entries[i][0], entries[i][1]);
       }
       return out;
     },
     percentilesBigInt: () => {
       const out = [];
-      for (const [key, value] of data.percentilesBigInt ?? [[100, "0"]]) {
-        out.push(key, value);
+      const entries = data.percentilesBigInt ?? [[100, "0"]];
+      for (let i = 0; i < entries.length; i++) {
+        ArrayPrototypePush(out, entries[i][0], entries[i][1]);
       }
       return out;
     },
     percentile: (p) => {
       const entries = data.percentiles ?? [[100, 0]];
-      for (const [key, value] of entries) {
-        if (key >= p) return value;
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i][0] >= p) return entries[i][1];
       }
       return data.max;
     },
     percentileBigInt: (p) => {
       const entries = data.percentilesBigInt ?? [[100, "0"]];
-      for (const [key, value] of entries) {
-        if (key >= p) return BigInt(value);
+      for (let i = 0; i < entries.length; i++) {
+        if (entries[i][0] >= p) return BigInt(entries[i][1]);
       }
       return BigInt(data.maxBigInt);
     },
@@ -539,7 +602,7 @@ function snapshotHistogram(data) {
 }
 
 core.registerCloneableResource("RecordableHistogram", (data) => {
-  const handle = histogramCloneRegistry.get(data.id);
+  const handle = MapPrototypeGet(histogramCloneRegistry, data.id);
   if (handle === undefined) {
     throw new Error("Unable to deserialize RecordableHistogram");
   }
@@ -553,7 +616,7 @@ function validateInteger(value, name, min, max) {
     }
     return Number(value);
   }
-  if (typeof value !== "number" || !Number.isInteger(value)) {
+  if (typeof value !== "number" || !NumberIsInteger(value)) {
     throw new ERR_INVALID_ARG_TYPE(name, ["integer", "bigint"], value);
   }
   if (value < min || value > max) {
@@ -562,7 +625,7 @@ function validateInteger(value, name, min, max) {
   return value;
 }
 
-function createHistogram(options = {}) {
+function createHistogram(options = { __proto__: null }) {
   if (options === null || typeof options !== "object") {
     throw new ERR_INVALID_ARG_TYPE("options", "Object", options);
   }
@@ -583,7 +646,7 @@ function createHistogram(options = {}) {
     2 * lo,
     NUMBER_MAX_SAFE_INTEGER,
   );
-  if (typeof figures !== "number" || !Number.isInteger(figures)) {
+  if (typeof figures !== "number" || !NumberIsInteger(figures)) {
     throw new ERR_INVALID_ARG_TYPE("options.figures", "integer", figures);
   }
   if (figures < 1 || figures > 5) {
@@ -609,6 +672,7 @@ return {
   createHistogram,
   enqueueNodePerformanceEntry,
   eventLoopUtilization,
+  hasNodeObserverForType,
   monitorEventLoopDelay,
   performance,
   PerformanceEntry,
