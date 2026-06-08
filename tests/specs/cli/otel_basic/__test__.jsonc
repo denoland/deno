@@ -66,6 +66,10 @@
       "args": "run -A main.ts node_http_request.ts",
       "output": "node_http_request.out"
     },
+    "http2": {
+      "args": "run -A main.ts http2.ts",
+      "output": "http2.out"
+    },
     "events": {
       "args": "run -A main.ts events.ts",
       "output": "events.out"
@@ -128,6 +132,76 @@
     "http_serve_error_with_otel": {
       "args": "run -A main.ts http_serve_error_with_otel.ts",
       "output": "http_serve_error_with_otel.out"
+    },
+    "basic_grpc": {
+      "args": "run -A -q main.ts basic.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+      },
+      "output": "basic.out"
+    },
+    "metric_grpc": {
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
+      "args": "run -A -q main.ts metric.ts",
+      "output": "metric.out"
+    },
+    "events_grpc": {
+      "args": "run -A -q main.ts events.ts",
+      "envs": {
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
+      },
+      "output": "events.out"
+    },
+    "grpc_trailers": {
+      "args": "run -A -q grpc_trailer_main.ts events.ts",
+      "output": "events.out"
+    },
+    "grpc_trailers_error": {
+      "args": "run -A -q grpc_trailer_main.ts events.ts",
+      "envs": {
+        "GRPC_TRAILER_STATUS": "14",
+        "GRPC_TRAILER_MESSAGE": "UNAVAILABLE"
+      },
+      "output": "grpc_trailers_error.out"
+    },
+    "span_attribute_limit": {
+      "args": "run -A main.ts span_attribute_limit.ts",
+      "envs": {
+        "OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT": "2"
+      },
+      "output": "span_attribute_limit.out"
+    },
+    "traces_sampler_always_on": {
+      "args": "run -A main.ts traces_sampler.ts",
+      "envs": {
+        "OTEL_TRACES_SAMPLER": "always_on"
+      },
+      "output": "traces_sampler_on.out"
+    },
+    "traces_sampler_always_off": {
+      "args": "run -A main.ts traces_sampler.ts",
+      "envs": {
+        "OTEL_TRACES_SAMPLER": "always_off"
+      },
+      "output": "traces_sampler_off.out"
+    },
+    "traces_sampler_traceidratio_zero": {
+      "args": "run -A main.ts traces_sampler.ts",
+      "envs": {
+        "OTEL_TRACES_SAMPLER": "traceidratio",
+        "OTEL_TRACES_SAMPLER_ARG": "0"
+      },
+      "output": "traces_sampler_off.out"
+    },
+    "traces_sampler_parentbased_always_off": {
+      "args": "run -A main.ts traces_sampler.ts",
+      "envs": {
+        "OTEL_TRACES_SAMPLER": "parentbased_always_off"
+      },
+      "output": "traces_sampler_off.out"
     }
   }
 }

@@ -9,8 +9,8 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use deno_core::BufMutView;
-use deno_core::ByteString;
 use deno_core::Resource;
+use deno_core::convert::ByteString;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
 use rusqlite::Connection;
