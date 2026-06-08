@@ -17845,7 +17845,7 @@ fn lsp_vendor_dir_workspace_folder_added() {
   context
     .new_command()
     .current_dir("project")
-    .args("cache file.ts")
+    .args("cache --allow-import file.ts")
     .run()
     .skip_output_check()
     .assert_exit_code(0);
