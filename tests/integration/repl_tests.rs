@@ -482,6 +482,32 @@ fn syntax_error() {
 }
 
 #[test(flaky)]
+fn syntax_error_invalid_arrow_params() {
+  // Regression test for https://github.com/denoland/deno/issues/19457: swc
+  // recovers from the malformed arrow params by emitting an `<invalid>` token,
+  // which used to surface as a misleading `Unexpected token '<'`.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const test = (i, 2 * i) => console.log(i);");
+    console.expect("parse error: Not a pattern");
+    // ensure it keeps accepting input after
+    console.write_line("7 * 6");
+    console.expect("42");
+  });
+}
+
+#[test(flaky)]
+fn type_assertion_still_parses() {
+  // A `.ts` type assertion looks like JSX when parsed as `.tsx`; the repl must
+  // fall back to parsing as TypeScript rather than reporting a parse error.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const x = <string>('hello' as unknown);");
+    console.expect("undefined");
+    console.write_line("x");
+    console.expect("\"hello\"");
+  });
+}
+
+#[test(flaky)]
 fn jsx_errors_without_pragma() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("const element = <div />;");
