@@ -20,6 +20,7 @@ exclude_runtime_main_js = []
 hmr = ["transpile"]
 snapshot = ["transpile"]
 transpile = ["deno_ast"]
+tokio_metrics = ["dep:tokio-metrics"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
@@ -82,7 +83,7 @@ serde.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-metrics.workspace = true
+tokio-metrics = { workspace = true, optional = true }
 twox-hash.workspace = true
 uuid.workspace = true
 

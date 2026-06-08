@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 
 use deno_core::unsync::MaskFutureAsSend;
-#[cfg(tokio_unstable)]
+#[cfg(all(tokio_unstable, feature = "tokio_metrics"))]
 use tokio_metrics::RuntimeMonitor;
 
 /// Default configuration for tokio. In the future, this method may have different defaults
@@ -79,7 +79,7 @@ where
   // SAFETY: this is guaranteed to be running on a current-thread executor
   let future = unsafe { MaskFutureAsSend::new(future) };
 
-  #[cfg(tokio_unstable)]
+  #[cfg(all(tokio_unstable, feature = "tokio_metrics"))]
   let join_handle = if metrics_enabled {
     rt.spawn(async move {
       let metrics_interval: u64 = std::env::var("DENO_TOKIO_METRICS_INTERVAL")
@@ -108,8 +108,11 @@ where
     rt.spawn(future)
   };
 
-  #[cfg(not(tokio_unstable))]
-  let join_handle = rt.spawn(future);
+  #[cfg(not(all(tokio_unstable, feature = "tokio_metrics")))]
+  let join_handle = {
+    let _ = metrics_enabled;
+    rt.spawn(future)
+  };
 
   let r = rt.block_on(join_handle).unwrap().into_inner();
   // Forcefully shutdown the runtime - we're done executing JS code at this
@@ -135,6 +138,9 @@ where
   F: std::future::Future<Output = R> + 'static,
   R: Send + 'static,
 {
+  #[cfg(all(tokio_unstable, feature = "tokio_metrics"))]
   let metrics_enabled = std::env::var("DENO_TOKIO_METRICS").ok().is_some();
+  #[cfg(not(all(tokio_unstable, feature = "tokio_metrics")))]
+  let metrics_enabled = false;
   create_and_run_current_thread_inner(future, metrics_enabled)
 }
