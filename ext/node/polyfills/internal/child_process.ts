@@ -2757,12 +2757,16 @@ function setupChannel(
         nextTick(handleMessage, msg, undefined);
       }
     } catch (err) {
+      // All of these mean the IPC channel went away while we were reading it.
+      // ConnectionReset in particular shows up on Linux when the peer exits
+      // with data still buffered: instead of a clean EOF the kernel delivers a
+      // RST, surfacing here as ECONNRESET. Node treats an IPC channel teardown
+      // as a disconnect, never as a process `error`, so we follow suit and tear
+      // down cleanly instead of emitting an uncaught error.
       if (
-        ObjectPrototypeIsPrototypeOf(
-          Deno.errors.Interrupted.prototype,
-          err,
-        ) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err)
+        ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionReset.prototype, err)
       ) {
         // Channel torn down from under us; release any handles awaiting an
         // ACK that will now never arrive so they don't keep us alive.
