@@ -298,28 +298,35 @@ fn clear_n_lines(stderr_lock: &mut std::io::StderrLock, n: usize) {
 }
 
 /// Returns true if stdin's terminal line discipline has been put into raw
-/// mode (canonical input disabled) by something else in this process — for
-/// example a Node.js library calling `process.stdin.setRawMode(true)`.
+/// mode by something else in this process — for example a Node.js library
+/// calling `process.stdin.setRawMode(true)`.
 ///
 /// When that has happened our line-oriented `read_line()` prompt loop would
 /// hang forever (Enter delivers `\r` rather than `\n`, and ECHO is off so the
 /// user can't see they're typing), so we bail out instead.
+///
+/// We require *both* canonical input and echo to be disabled, matching what
+/// `setRaw`/`setRawMode` actually does (see `runtime/ops/tty.rs`). Clearing
+/// canonical mode alone does not trigger the hang as long as newlines are
+/// still delivered, and treating that as raw would misfire on setups that
+/// disable only canonical mode (such as the test PTY harness).
 #[cfg(unix)]
 fn stdin_is_raw_mode() -> bool {
-  // SAFETY: tcgetattr on a possibly-invalid fd 0 returns -1; we only treat
-  // ICANON-cleared as raw, so any failure conservatively returns false.
+  // SAFETY: tcgetattr on a possibly-invalid fd 0 returns -1; on any failure we
+  // conservatively report not-raw.
   unsafe {
     let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
     if libc::tcgetattr(libc::STDIN_FILENO, termios.as_mut_ptr()) != 0 {
       return false;
     }
     let termios = termios.assume_init();
-    termios.c_lflag & libc::ICANON == 0
+    termios.c_lflag & (libc::ICANON | libc::ECHO) == 0
   }
 }
 
 #[cfg(all(not(unix), not(target_arch = "wasm32")))]
 fn stdin_is_raw_mode() -> bool {
+  use windows_sys::Win32::System::Console::ENABLE_ECHO_INPUT;
   use windows_sys::Win32::System::Console::ENABLE_LINE_INPUT;
   use windows_sys::Win32::System::Console::GetConsoleMode;
   use windows_sys::Win32::System::Console::GetStdHandle;
@@ -334,7 +341,7 @@ fn stdin_is_raw_mode() -> bool {
     if GetConsoleMode(handle, &mut mode) == 0 {
       return false;
     }
-    mode & ENABLE_LINE_INPUT == 0
+    mode & (ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT) == 0
   }
 }
 
