@@ -469,8 +469,7 @@ pub struct JsStackFrame {
   // Warning! isToplevel has inconsistent snake<>camel case, "typo" originates in v8:
   // https://source.chromium.org/search?q=isToplevel&sq=&ss=chromium%2Fchromium%2Fsrc:v8%2F
   #[serde(rename = "isToplevel")]
-  #[from_v8(rename = "isToplevel")]
-  #[to_v8(rename = "isToplevel")]
+  #[v8(rename = "isToplevel")]
   pub is_top_level: Option<bool>,
   pub is_eval: bool,
   pub is_native: bool,
