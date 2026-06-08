@@ -1645,6 +1645,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_CONDITIONS",
+    description: "Comma-separated list of custom conditions to resolve npm package\nexports and imports with. Equivalent to using the --conditions flag.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_COVERAGE_DIR",
     description: "Set the directory for collecting code coverage profiles.\nEquivalent to using the --coverage flag.",
     example: None,
@@ -1658,6 +1663,11 @@ static ENV_VARS: &[EnvVar] = &[
     name: "DENO_INSTALL_ROOT",
     description: "Set deno install's output directory",
     example: Some("(defaults to $HOME/.deno/bin)"),
+  },
+  EnvVar {
+    name: "DENO_JOBS",
+    description: "Number of parallel workers used for the --parallel flag with the test\nsubcommand. Defaults to the number of available CPUs.",
+    example: None,
   },
   EnvVar {
     name: "DENO_KV_DB_MODE",
@@ -1682,6 +1692,11 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_NO_PACKAGE_JSON",
     description: "Disables auto-resolution of package.json.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_NO_PROMPT",
+    description: "Set to disable permission prompts on access\n(alternative to passing --no-prompt on invocation).",
     example: None,
   },
   EnvVar {
@@ -1721,6 +1736,11 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_USE_CGROUPS",
     description: "Use cgroups to determine V8 memory limit.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_V8_FLAGS",
+    description: "Set V8 command line options. Equivalent to using the --v8-flags flag;\nflags passed via --v8-flags are appended after these.",
     example: None,
   },
   EnvVar {
