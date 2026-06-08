@@ -630,6 +630,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
     self.resolve_inner(raw_specifier, referrer, kind)
   }
 
+  fn pump_event_loop_during_load(&self) -> bool {
+    // Load hooks respond through the async bridge, so the event loop must be
+    // pumped during the recursive load or the load deadlocks.
+    self.hook_registry.load_active.get()
+  }
+
   fn get_host_defined_options<'s>(
     &self,
     scope: &mut deno_core::v8::PinScope<'s, '_>,
