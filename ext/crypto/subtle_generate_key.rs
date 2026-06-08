@@ -507,11 +507,12 @@ pub async fn run(
         extractable,
       })
     }
-    GenerateKeyAlgorithm::Unknown(name) => Err(CryptoError::Other(
-      JsErrorBox::new("DOMExceptionNotSupportedError", format!(
-        "Unrecognized algorithm name: {name}"
-      )),
-    )),
+    GenerateKeyAlgorithm::Unknown(name) => {
+      Err(CryptoError::Other(JsErrorBox::new(
+        "DOMExceptionNotSupportedError",
+        format!("Unrecognized algorithm name: {name}"),
+      )))
+    }
   }
 }
 
