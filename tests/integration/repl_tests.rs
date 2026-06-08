@@ -254,6 +254,20 @@ fn await_timeout() {
 }
 
 #[test(flaky)]
+fn pty_uncaught_exception_from_timeout() {
+  // Regression test for https://github.com/denoland/deno/issues/21622:
+  // an uncaught exception thrown from a `setTimeout` callback must be printed
+  // while sitting at the prompt, without requiring another expression to be
+  // evaluated first.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("setTimeout(() => { throw new Error('boom') }, 200);");
+    // Do NOT evaluate anything else. The exception should be reported on its
+    // own once the timer fires.
+    console.expect("Uncaught Error: boom");
+  });
+}
+
+#[test(flaky)]
 fn let_redeclaration() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("let foo = 0;");
@@ -464,6 +478,32 @@ fn syntax_error() {
     // ensure it keeps accepting input after
     console.write_line("7 * 6");
     console.expect("42");
+  });
+}
+
+#[test(flaky)]
+fn syntax_error_invalid_arrow_params() {
+  // Regression test for https://github.com/denoland/deno/issues/19457: swc
+  // recovers from the malformed arrow params by emitting an `<invalid>` token,
+  // which used to surface as a misleading `Unexpected token '<'`.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const test = (i, 2 * i) => console.log(i);");
+    console.expect("parse error: Not a pattern");
+    // ensure it keeps accepting input after
+    console.write_line("7 * 6");
+    console.expect("42");
+  });
+}
+
+#[test(flaky)]
+fn type_assertion_still_parses() {
+  // A `.ts` type assertion looks like JSX when parsed as `.tsx`; the repl must
+  // fall back to parsing as TypeScript rather than reporting a parse error.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const x = <string>('hello' as unknown);");
+    console.expect("undefined");
+    console.write_line("x");
+    console.expect("\"hello\"");
   });
 }
 
@@ -1119,5 +1159,55 @@ fn repl_no_globalthis() {
       console.write_line_raw("console.log('Hello World')");
       console.expect(r#"Hello World"#);
       console.expect(r#"undefined"#);
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/34360.
+// Running `babel-node` (or any user code that calls `repl.start` with both
+// a custom `eval` and `preview: true`) used to evaluate the typed input
+// via `vm.Script` on every keystroke. That produced visible side effects
+// the moment a closing paren completed an expression -- `console.log("hi")`
+// would print "hi" while still being typed.
+#[test(flaky)]
+fn pty_node_repl_no_preview_side_effects_with_custom_eval() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.mjs",
+    r#"import repl from "node:repl";
+globalThis.__sideEffectCount = 0;
+const server = repl.start({
+  prompt: "> ",
+  // babel-node's pattern: custom eval + preview enabled. Preview must
+  // not re-run the typed input via vm.Script.
+  preview: true,
+  useGlobal: true,
+  eval(_code, _ctx, _file, cb) {
+    process.stdout.write(
+      "EVALED__side_effect=" + globalThis.__sideEffectCount + "\n",
+    );
+    cb(null);
+  },
+});
+server.on("exit", () => process.exit(0));
+"#,
+  );
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args_vec(["run", "-A", "main.mjs"])
+    .with_pty(|mut console| {
+      console.expect("> ");
+      // Type a fully-formed expression that *would* increment the side-
+      // effect counter if the preview path eagerly ran user code via
+      // `vm.Script`. Critically, do not press Enter yet.
+      console.write_raw("(globalThis.__sideEffectCount++, 0)");
+      // Give the REPL plenty of time to (not) run the preview eval.
+      console.human_delay();
+      // Now press Enter. The custom eval reports the counter value: it
+      // must still be 0, meaning no preview-time side effects occurred.
+      console.write_raw("\r");
+      console.expect("EVALED__side_effect=0");
+      console.write_raw(".exit\r");
     });
 }

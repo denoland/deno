@@ -90,7 +90,7 @@ fn init() -> Handle {
 
   // SAFETY: Registering handler
   unsafe {
-    winapi::um::consoleapi::SetConsoleCtrlHandler(Some(handle), 1);
+    windows_sys::Win32::System::Console::SetConsoleCtrlHandler(Some(handle), 1);
   }
 
   Handle
@@ -101,21 +101,21 @@ fn start_sigwinch_polling() {
   static STARTED: OnceLock<()> = OnceLock::new();
   STARTED.get_or_init(|| {
     std::thread::spawn(|| {
-      // SAFETY: winapi calls to open CONOUT$ and poll console size
+      // SAFETY: Win32 calls to open CONOUT$ and poll console size
       unsafe {
         let conout_name: Vec<u16> =
           "CONOUT$".encode_utf16().chain(Some(0)).collect();
-        let handle = winapi::um::fileapi::CreateFileW(
+        let handle = windows_sys::Win32::Storage::FileSystem::CreateFileW(
           conout_name.as_ptr(),
-          winapi::um::winnt::GENERIC_READ,
-          winapi::um::winnt::FILE_SHARE_READ
-            | winapi::um::winnt::FILE_SHARE_WRITE,
-          std::ptr::null_mut(),
-          winapi::um::fileapi::OPEN_EXISTING,
+          windows_sys::Win32::Foundation::GENERIC_READ,
+          windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ
+            | windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE,
+          std::ptr::null(),
+          windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING,
           0,
           std::ptr::null_mut(),
         );
-        if handle == winapi::um::handleapi::INVALID_HANDLE_VALUE {
+        if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
           return;
         }
 
@@ -123,9 +123,9 @@ fn start_sigwinch_polling() {
         let mut prev_rows: i32 = 0;
 
         // Read initial size
-        let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+        let mut bufinfo: windows_sys::Win32::System::Console::CONSOLE_SCREEN_BUFFER_INFO =
           std::mem::zeroed();
-        if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
+        if windows_sys::Win32::System::Console::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
           != 0
         {
           prev_cols =
@@ -135,11 +135,11 @@ fn start_sigwinch_polling() {
         }
 
         loop {
-          winapi::um::synchapi::Sleep(250);
+          windows_sys::Win32::System::Threading::Sleep(250);
 
-          let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+          let mut bufinfo: windows_sys::Win32::System::Console::CONSOLE_SCREEN_BUFFER_INFO =
             std::mem::zeroed();
-          if winapi::um::wincon::GetConsoleScreenBufferInfo(
+          if windows_sys::Win32::System::Console::GetConsoleScreenBufferInfo(
             handle,
             &mut bufinfo,
           ) == 0

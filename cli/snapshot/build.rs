@@ -74,10 +74,19 @@ fn create_cli_snapshot(
       &file.specifier,
       &file.path,
     );
-    let entry = (file.specifier.as_str(), transpiled_path);
     match file.kind {
-      LazyExtensionFileKind::Js => residual_js.push(entry),
-      LazyExtensionFileKind::Esm => residual_esm.push(entry),
+      LazyExtensionFileKind::Js => {
+        // `lazy_loaded_js` (loadExtScript) sources are evaluated as the body of
+        // a `compile_function` call: `"use strict"; return (<IIFE>);`. Doing
+        // that wrap here at build time means the runtime loads the source as a
+        // `&'static` external string (via `include_str!`), avoiding a per-script
+        // owned source copy in the V8 heap. See `load_ext_script`.
+        wrap_residual_js_source(&transpiled_path);
+        residual_js.push((file.specifier.as_str(), transpiled_path));
+      }
+      LazyExtensionFileKind::Esm => {
+        residual_esm.push((file.specifier.as_str(), transpiled_path));
+      }
     }
   }
 
@@ -128,6 +137,14 @@ fn transpile_residual_source(
   let out_path = out_dir.join(format!("{sanitized}.js"));
   std::fs::write(&out_path, transpiled.as_bytes()).unwrap();
   out_path
+}
+
+#[cfg(not(feature = "disable"))]
+fn wrap_residual_js_source(path: &std::path::Path) {
+  use deno_runtime::deno_core::wrap_lazy_ext_script;
+  let source = std::fs::read_to_string(path).unwrap();
+  let wrapped = wrap_lazy_ext_script(&source);
+  std::fs::write(path, wrapped.as_bytes()).unwrap();
 }
 
 #[cfg(not(feature = "disable"))]

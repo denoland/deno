@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.8.0"
+version = "2.8.2"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -29,6 +29,7 @@ deno_runtime.workspace = true
 deno_core.workspace = true
 
 [dependencies]
+deno_ast = { workspace = true, features = ["cjs"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core.workspace = true

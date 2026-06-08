@@ -627,6 +627,7 @@ pub struct PerProcessOptions {
   pub use_openssl_ca: bool,
   pub use_system_ca: bool,
   pub use_bundled_ca: bool,
+  pub use_env_proxy: bool,
   pub enable_fips_crypto: bool,
   pub force_fips_crypto: bool,
   pub openssl_legacy_provider: bool,
@@ -671,6 +672,7 @@ impl Default for PerProcessOptions {
       use_openssl_ca: false,
       use_system_ca: false,
       use_bundled_ca: false,
+      use_env_proxy: false,
       enable_fips_crypto: false,
       force_fips_crypto: false,
       openssl_legacy_provider: false,
@@ -2159,6 +2161,13 @@ impl OptionsParser {
       false,
     );
     self.add_option(
+      "--use-env-proxy",
+      "use HTTP_PROXY, HTTPS_PROXY, and NO_PROXY for HTTP requests",
+      OptionType::Boolean,
+      OptionEnvvarSettings::AllowedInEnvvar,
+      false,
+    );
+    self.add_option(
       "--node-memory-debug",
       "Run with extra debug checks for memory leaks in Node.js itself",
       OptionType::NoOp,
@@ -2538,6 +2547,7 @@ impl OptionsParser {
       "--use-openssl-ca" => options.use_openssl_ca = value,
       "--use-system-ca" => options.use_system_ca = value,
       "--use-bundled-ca" => options.use_bundled_ca = value,
+      "--use-env-proxy" => options.use_env_proxy = value,
       "[ssl_openssl_cert_store]" => options.ssl_openssl_cert_store = value,
       "--enable-fips" => options.enable_fips_crypto = value,
       "--force-fips" => options.force_fips_crypto = value,
@@ -3512,19 +3522,6 @@ pub fn translate_to_deno_args(
   }
   for pattern in &env_opts.test_skip_pattern {
     node_options.push(format!("--test-skip-pattern={}", pattern));
-  }
-
-  // Forward --require/--import modules to Deno's run subcommand so that
-  // child_process.spawnSync(process.execPath, ['-r', wrapper, main])
-  // (the pattern Node.js compat tests use) actually preloads the wrapper
-  // before evaluating the main script.
-  for module in &env_opts.preload_cjs_modules {
-    deno_args.push("--require".to_string());
-    deno_args.push(module.clone());
-  }
-  for module in &env_opts.preload_esm_modules {
-    deno_args.push("--import".to_string());
-    deno_args.push(module.clone());
   }
 
   // Add the script and remaining args

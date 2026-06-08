@@ -1,9 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 (function () {
+const { primordials } = __bootstrap;
+const {
+  Symbol,
+} = primordials;
 const kAddHistory = Symbol("_addHistory");
 const kDecoder = Symbol("_decoder");
 const kDeleteLeft = Symbol("_deleteLeft");

@@ -75,7 +75,7 @@ use crate::glob::PathOrPatternSet;
 mod discovery;
 
 #[allow(clippy::disallowed_types, reason = "definition")]
-type UrlRc = deno_maybe_sync::MaybeArc<Url>;
+pub type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
 #[allow(clippy::disallowed_types, reason = "definition")]
@@ -136,6 +136,66 @@ impl NpmPackageConfig {
       RangeSetOrTag::Tag(tag) => tag == "workspace",
     }
   }
+
+  /// Like [`Self::matches_req`], but also matches prerelease versions that fall
+  /// within the requirement's range bounds (see
+  /// [`version_req_matches_including_pre`]). Used when resolving a local
+  /// workspace member, which is provided explicitly by the user.
+  pub fn matches_req_including_pre(&self, req: &PackageReq) -> bool {
+    self.matches_name_and_version_req_including_pre(&req.name, &req.version_req)
+  }
+
+  /// Like [`Self::matches_name_and_version_req`], but prerelease-inclusive.
+  pub fn matches_name_and_version_req_including_pre(
+    &self,
+    name: &str,
+    version_req: &VersionReq,
+  ) -> bool {
+    if name != self.nv.name {
+      return false;
+    }
+    version_req_matches_including_pre(version_req, &self.nv.version)
+      || matches!(version_req.inner(), RangeSetOrTag::Tag(tag) if tag == "workspace")
+  }
+
+  pub fn matches_name(&self, name: &str) -> bool {
+    name == self.nv.name
+  }
+}
+
+/// Like [`VersionReq::matches`], but also matches prerelease versions that fall
+/// within the requirement's range bounds.
+///
+/// npm's default semver rules exclude prereleases from ranges like `*` or
+/// `^1.0.0` to avoid silently selecting an unstable version from the registry,
+/// but a locally provided package (a pnpm/npm workspace member, or a package
+/// already installed in `node_modules`) is there because the user put it there,
+/// so a member with a prerelease version (e.g. `0.40.0-pre`) should still
+/// satisfy a bare `npm:<pkg>` (`*`) requirement instead of being rejected.
+///
+/// This is intentionally a touch more permissive than npm's `includePrerelease`
+/// (e.g. `^1.0.0` matches `2.0.0-pre` here, whereas npm excludes it because
+/// `2.0.0-pre >= 2.0.0-0`); that is acceptable because it only applies to
+/// explicitly provided local packages.
+///
+/// Unlike [`VersionReq::matches`], a tag requirement never matches here (rather
+/// than panicking), since a local package has no dist-tags to compare against.
+///
+/// `deno_npm`'s `link_version_req_satisfies` keeps an identical copy of this
+/// fallback for the npm graph resolver (it can't depend on this crate). Keep
+/// the two in sync.
+pub fn version_req_matches_including_pre(
+  version_req: &VersionReq,
+  version: &Version,
+) -> bool {
+  match version_req.inner() {
+    RangeSetOrTag::RangeSet(set) => {
+      set.satisfies(version)
+        || (!version.pre.is_empty()
+          && set.0.iter().any(|range| range.intersects_version(version)))
+    }
+    RangeSetOrTag::Tag(_) => false,
+  }
 }
 
 #[derive(Clone, Debug, Default, Hash, PartialEq)]
@@ -162,6 +222,8 @@ pub enum WorkspaceDiagnosticKind {
   InvalidWorkspacesOption,
   #[error("\"exports\" field should be specified when specifying a \"name\".")]
   MissingExports,
+  #[error("Invalid \"exports\" field in configuration file. {0}")]
+  InvalidExports(String),
   #[error(
     "\"importMap\" field is ignored when \"imports\" or \"scopes\" are specified in the config file."
   )]
@@ -213,6 +275,19 @@ pub enum ResolveWorkspaceLinkErrorKind {
   #[class(type)]
   #[error("Could not find link member in '{}'.", .dir_url)]
   NotFound { dir_url: Url },
+  #[class(inherit)]
+  #[error(
+    "Failed converting link '{}' to pattern for config '{}'.",
+    link,
+    base
+  )]
+  LinkToPattern {
+    base: Url,
+    link: String,
+    #[source]
+    #[inherit]
+    source: PathOrPatternParseError,
+  },
   #[class(type)]
   #[error("Workspace member cannot be specified as a link.")]
   WorkspaceMemberNotAllowed,
@@ -222,6 +297,9 @@ pub enum ResolveWorkspaceLinkErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
   Workspace(Box<WorkspaceDiscoverError>),
@@ -756,23 +834,24 @@ impl Workspace {
                         req: package_req.clone(),
                       }))
                     }
-                    PackageJsonDepValue::Workspace(workspace_req) => {
-                      Some(Dep::Req(JsrDepPackageReq {
-                        kind: PackageKind::Npm,
-                        req: PackageReq {
-                          name: k.clone(),
-                          version_req: match workspace_req {
-                            PackageJsonDepWorkspaceReq::VersionReq(
-                              version_req,
-                            ) => version_req.clone(),
-                            PackageJsonDepWorkspaceReq::Tilde
-                            | PackageJsonDepWorkspaceReq::Caret => {
-                              VersionReq::parse_from_npm("*").unwrap()
-                            }
-                          },
+                    PackageJsonDepValue::Workspace {
+                      name,
+                      version_req: workspace_req,
+                    } => Some(Dep::Req(JsrDepPackageReq {
+                      kind: PackageKind::Npm,
+                      req: PackageReq {
+                        name: name.clone().unwrap_or_else(|| k.clone()),
+                        version_req: match workspace_req {
+                          PackageJsonDepWorkspaceReq::VersionReq(
+                            version_req,
+                          ) => version_req.clone(),
+                          PackageJsonDepWorkspaceReq::Tilde
+                          | PackageJsonDepWorkspaceReq::Caret => {
+                            VersionReq::parse_from_npm("*").unwrap()
+                          }
                         },
-                      }))
-                    }
+                      },
+                    })),
                     PackageJsonDepValue::Catalog(catalog_name) => catalogs
                       .get(catalog_name.as_str())
                       .and_then(|catalog| catalog.get(k.as_str()))
@@ -1243,6 +1322,7 @@ impl Workspace {
           kind: WorkspaceDiagnosticKind::MissingExports,
         });
       }
+      check_invalid_exports(config, diagnostics);
       if config.is_an_import_map() && config.json.import_map.is_some() {
         diagnostics.push(WorkspaceDiagnostic {
           config_url: config.specifier.clone(),
@@ -1314,6 +1394,26 @@ impl Workspace {
       }
     }
 
+    // Surface a clear error when a package's `exports` map is invalid.
+    //
+    // This is especially important for linked packages: an invalid `exports`
+    // map would otherwise cause the package to be silently dropped during
+    // resolution and fall back to fetching it from the JSR registry, producing
+    // a confusing "JSR package not found" error instead.
+    fn check_invalid_exports(
+      config: &ConfigFile,
+      diagnostics: &mut Vec<WorkspaceDiagnostic>,
+    ) {
+      if config.json.exports.is_some()
+        && let Err(err) = config.to_exports_config()
+      {
+        diagnostics.push(WorkspaceDiagnostic {
+          config_url: config.specifier.clone(),
+          kind: WorkspaceDiagnosticKind::InvalidExports(err.to_string()),
+        });
+      }
+    }
+
     let mut diagnostics = Vec::new();
     for (url, folder) in &self.config_folders {
       let is_root = url == &self.root_dir_url;
@@ -1351,14 +1451,15 @@ impl Workspace {
     }
 
     for folder in self.links.values() {
-      if let Some(config) = &folder.deno_json
-        && config.json.links.is_some()
-      {
-        // supporting linking in links is too complicated
-        diagnostics.push(WorkspaceDiagnostic {
-          config_url: config.specifier.clone(),
-          kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
-        });
+      if let Some(config) = &folder.deno_json {
+        if config.json.links.is_some() {
+          // supporting linking in links is too complicated
+          diagnostics.push(WorkspaceDiagnostic {
+            config_url: config.specifier.clone(),
+            kind: WorkspaceDiagnosticKind::RootOnlyOption("links"),
+          });
+        }
+        check_invalid_exports(config, &mut diagnostics);
       }
     }
 
@@ -1792,18 +1893,15 @@ impl WorkspaceDirectory {
             // so this is ok for now
             let path = &paths[0];
             match sys.fs_is_dir(path) {
-              Ok(is_dir) => Ok(
-                url_from_directory_path(if is_dir {
-                  path
-                } else {
-                  path.parent().unwrap()
-                })
-                .unwrap(),
-              ),
+              Ok(is_dir) => Ok(url_from_directory_path(if is_dir {
+                path
+              } else {
+                path.parent().unwrap()
+              })?),
               Err(_err) => {
                 // assume the parent is a directory
                 match path.parent() {
-                  Some(parent) => Ok(url_from_directory_path(parent).unwrap()),
+                  Some(parent) => Ok(url_from_directory_path(parent)?),
                   None => Err(
                     WorkspaceDiscoverErrorKind::FailedResolvingStartDirectory(
                       FailedResolvingStartDirectoryError::CouldNotResolvePath(
@@ -1825,7 +1923,7 @@ impl WorkspaceDirectory {
               ),
             )
           })?;
-          Ok(url_from_directory_path(parent).unwrap())
+          Ok(url_from_directory_path(parent)?)
         }
       }
     }
@@ -2203,6 +2301,10 @@ impl WorkspaceDirectory {
           .options
           .trailing_commas
           .or(root_config.options.trailing_commas),
+        json_trailing_commas: member_config
+          .options
+          .json_trailing_commas
+          .or(root_config.options.json_trailing_commas),
         operator_position: member_config
           .options
           .operator_position
@@ -2966,6 +3068,7 @@ pub mod test {
   use crate::deno_json::BracePosition;
   use crate::deno_json::BracketPosition;
   use crate::deno_json::DenoJsonCache;
+  use crate::deno_json::JsonTrailingCommaKind;
   use crate::deno_json::MultiLineParens;
   use crate::deno_json::NewLineKind;
   use crate::deno_json::NextControlFlowPosition;
@@ -3018,6 +3121,32 @@ pub mod test {
     } else {
       PathBuf::from("/home/user")
     }
+  }
+
+  #[test]
+  fn version_req_matches_including_pre_cases() {
+    fn matches(req: &str, version: &str) -> bool {
+      version_req_matches_including_pre(
+        &VersionReq::parse_from_npm(req).unwrap(),
+        &Version::parse_from_npm(version).unwrap(),
+      )
+    }
+
+    // a prerelease version satisfies a wildcard, unlike plain npm semver
+    assert!(matches("*", "0.40.0-pre"));
+    // ... and an explicit prerelease range that contains it
+    assert!(matches("^0.40.0-pre", "0.40.0-pre"));
+    // but not a range whose lower bound is above the prerelease
+    assert!(!matches("^0.40.0", "0.40.0-pre"));
+    // an exact version does not match a lower prerelease of itself
+    assert!(!matches("1.3.6", "1.3.6-beta"));
+    // a prerelease below the exclusive upper bound is included
+    assert!(matches("^1.0.0", "2.0.0-pre"));
+    // non-prerelease behaviour is unchanged
+    assert!(matches("^1.0.0", "1.5.0"));
+    assert!(!matches("^1.0.0", "2.0.0"));
+    // a tag never matches a local package (and does not panic)
+    assert!(!matches("latest", "1.0.0"));
   }
 
   #[test]
@@ -3390,6 +3519,49 @@ pub mod test {
   }
 
   #[test]
+  fn test_link_invalid_exports() {
+    // A linked package with an invalid `exports` map should surface a
+    // diagnostic instead of being silently dropped (which would cause a
+    // confusing fallback to fetching the package from the JSR registry).
+    let workspace_dir = workspace_for_root_and_member_with_fs(
+      json!({
+        "links": ["../dir"],
+      }),
+      json!({}),
+      |fs| {
+        fs.fs_insert_json(
+          root_dir().join("../dir/deno.json"),
+          json!({
+            "name": "@scope/pkg",
+            "version": "1.0.0",
+            "exports": {
+              ".": "./mod.ts",
+              "types": "./types.ts"
+            }
+          }),
+        );
+      },
+    );
+    let diagnostics = workspace_dir.workspace.diagnostics();
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(
+      diagnostics[0].config_url,
+      url_from_directory_path(&root_dir())
+        .unwrap()
+        .join("../dir/deno.json")
+        .unwrap(),
+    );
+    assert!(matches!(
+      diagnostics[0].kind,
+      WorkspaceDiagnosticKind::InvalidExports(..)
+    ));
+    assert_eq!(
+      diagnostics[0].kind.to_string(),
+      "Invalid \"exports\" field in configuration file. The 'types' export must start with './'. Did you mean './types'?",
+    );
+  }
+
+  #[test]
   fn test_link_not_exists() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
@@ -3482,13 +3654,150 @@ pub mod test {
     let link_folders = workspace_dir
       .workspace
       .link_folders()
-      .values()
+      .iter()
+      .collect::<Vec<_>>();
+    assert_eq!(link_folders.len(), 1);
+    let (link_dir_url, link_folder) = link_folders[0];
+    assert_eq!(
+      **link_dir_url,
+      url_from_directory_path(&root_dir().join("../dir")).unwrap()
+    );
+    assert_eq!(
+      link_folder.deno_json.as_ref().unwrap().specifier,
+      url_from_file_path(&root_dir().join("../dir/deno.json")).unwrap()
+    )
+  }
+
+  #[test]
+  fn test_link_glob() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("pkg/deno.json"),
+      json!({
+        "links": ["../packages/*"]
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-a/deno.json"),
+      json!({}),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-b/package.json"),
+      json!({}),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-c/deno.jsonc"),
+      json!({}),
+    );
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir().join("pkg"));
+    assert_eq!(workspace_dir.workspace.diagnostics(), vec![]);
+    let link_folders = workspace_dir
+      .workspace
+      .link_folders()
+      .iter()
+      .collect::<Vec<_>>();
+    assert_eq!(link_folders.len(), 3);
+    assert!(link_folders.iter().any(|(url, _)| {
+      ***url
+        == url_from_directory_path(&root_dir().join("packages/package-a"))
+          .unwrap()
+    }));
+    assert!(link_folders.iter().any(|(url, _)| {
+      ***url
+        == url_from_directory_path(&root_dir().join("packages/package-b"))
+          .unwrap()
+    }));
+    assert!(link_folders.iter().any(|(url, _)| {
+      ***url
+        == url_from_directory_path(&root_dir().join("packages/package-c"))
+          .unwrap()
+    }));
+  }
+
+  #[test]
+  fn test_link_glob_file_url() {
+    let sys = InMemorySys::default();
+    let mut link_url = url_from_directory_path(&root_dir().join("packages"))
+      .unwrap()
+      .to_string();
+    link_url.push('*');
+    sys.fs_insert_json(
+      root_dir().join("pkg/deno.json"),
+      json!({
+        "links": [link_url]
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-a/deno.json"),
+      json!({}),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-b/deno.json"),
+      json!({}),
+    );
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir().join("pkg"));
+    assert_eq!(workspace_dir.workspace.diagnostics(), vec![]);
+    assert_eq!(workspace_dir.workspace.link_folders().len(), 2);
+  }
+
+  #[test]
+  fn test_link_glob_negation() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("pkg/deno.json"),
+      json!({
+        "links": [
+          "../packages/*",
+          "!../packages/package-b"
+        ]
+      }),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-a/deno.json"),
+      json!({}),
+    );
+    sys.fs_insert_json(
+      root_dir().join("packages/package-b/deno.json"),
+      json!({}),
+    );
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir().join("pkg"));
+    assert_eq!(workspace_dir.workspace.diagnostics(), vec![]);
+    let link_folders = workspace_dir
+      .workspace
+      .link_folders()
+      .iter()
       .collect::<Vec<_>>();
     assert_eq!(link_folders.len(), 1);
     assert_eq!(
-      link_folders[0].deno_json.as_ref().unwrap().specifier,
-      url_from_file_path(&root_dir().join("../dir/deno.json")).unwrap()
-    )
+      **link_folders[0].0,
+      url_from_directory_path(&root_dir().join("packages/package-a")).unwrap()
+    );
+  }
+
+  #[test]
+  fn test_link_glob_error_uses_originating_pattern() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("pkg/deno.json"),
+      json!({
+        "links": ["../*"]
+      }),
+    );
+    let err = workspace_at_start_dir_err(&sys, &root_dir().join("pkg"));
+    match err.into_kind() {
+      WorkspaceDiscoverErrorKind::ResolveLink { link, base, source } => {
+        assert_eq!(link, "../*");
+        assert_eq!(
+          base,
+          url_from_directory_path(&root_dir().join("pkg")).unwrap()
+        );
+        assert!(matches!(
+          source.into_kind(),
+          ResolveWorkspaceLinkErrorKind::WorkspaceMemberNotAllowed
+        ));
+      }
+      _ => unreachable!(),
+    }
   }
 
   #[test]
@@ -3763,6 +4072,7 @@ pub mod test {
           "singleBodyPosition": "sameLine",
           "nextControlFlowPosition": "nextLine",
           "trailingCommas": "always",
+          "json.trailingCommas": "never",
           "operatorPosition": "sameLine",
           "jsx.bracketPosition": "sameLine",
           "jsx.forceNewLinesSurroundingContent": false,
@@ -3788,6 +4098,7 @@ pub mod test {
           "singleBodyPosition": "maintain",
           "nextControlFlowPosition": "maintain",
           "trailingCommas": "onlyMultiLine",
+          "json.trailingCommas": "maintain",
           "operatorPosition": "nextLine",
           "jsx.bracketPosition": "nextLine",
           "jsx.forceNewLinesSurroundingContent": true,
@@ -3819,6 +4130,7 @@ pub mod test {
           single_body_position: Some(SingleBodyPosition::Maintain),
           next_control_flow_position: Some(NextControlFlowPosition::Maintain),
           trailing_commas: Some(TrailingCommas::OnlyMultiLine),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Maintain),
           operator_position: Some(OperatorPosition::NextLine),
           jsx_bracket_position: Some(BracketPosition::NextLine),
           jsx_force_new_lines_surrounding_content: Some(true),
@@ -3863,6 +4175,7 @@ pub mod test {
           single_body_position: Some(SingleBodyPosition::SameLine),
           next_control_flow_position: Some(NextControlFlowPosition::NextLine),
           trailing_commas: Some(TrailingCommas::Always),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Never),
           operator_position: Some(OperatorPosition::SameLine),
           jsx_bracket_position: Some(BracketPosition::SameLine),
           jsx_force_new_lines_surrounding_content: Some(false),
@@ -4854,7 +5167,7 @@ pub mod test {
   }
 
   #[test]
-  fn test_deno_workspace_member_no_config_file_error() {
+  fn test_deno_workspace_member_missing_dir_skipped() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("deno.json"),
@@ -4862,8 +5175,29 @@ pub mod test {
         "workspace": ["./member"]
       }),
     );
-    // no deno.json in this folder, so should error
-    let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
+    // The listed member directory does not exist on disk; we should warn
+    // and skip it instead of erroring, so other workspace operations can
+    // still proceed (e.g. partial Docker images that only copy a subset
+    // of workspace members).
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    assert_eq!(workspace_dir.workspace.deno_jsons().count(), 1);
+    assert_eq!(workspace_dir.workspace.config_folders().len(), 1);
+  }
+
+  #[test]
+  fn test_deno_workspace_member_dir_without_config_errors() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./member"]
+      }),
+    );
+    // The member directory exists but has no deno.json(c). This is a
+    // genuine misconfiguration (typo'd path or missing config file) and
+    // should still error rather than being silently skipped.
+    sys.fs_insert(root_dir().join("member/other.ts"), "");
+    let err = workspace_at_start_dir_err(&sys, &root_dir());
     assert_eq!(
       err.to_string(),
       normalize_err_text(
@@ -4894,23 +5228,25 @@ pub mod test {
 
   #[test]
   fn test_deno_member_not_referenced_in_deno_workspace() {
-    fn assert_err(err: &WorkspaceDiscoverError, config_file_path: &Path) {
-      match err.as_kind() {
-        WorkspaceDiscoverErrorKind::ConfigNotWorkspaceMember {
-          workspace_url,
-          config_url,
-        } => {
-          assert_eq!(
-            workspace_url,
-            &url_from_directory_path(&root_dir()).unwrap()
-          );
-          assert_eq!(
-            config_url,
-            &url_from_file_path(config_file_path).unwrap()
-          );
-        }
-        _ => unreachable!(),
-      }
+    // A start directory that has a deno.json but is not a member of the
+    // parent deno workspace falls back to a standalone workspace at the start
+    // directory (a warning is logged about the ignored parent workspace).
+    fn assert_standalone(
+      workspace_dir: &WorkspaceDirectoryRc,
+      config_file_path: &Path,
+    ) {
+      assert_eq!(
+        workspace_dir.workspace.root_dir_path(),
+        config_file_path.parent().unwrap(),
+      );
+      assert_eq!(
+        workspace_dir
+          .workspace
+          .deno_jsons()
+          .map(|c| deno_path_util::url_to_file_path(&c.specifier).unwrap())
+          .collect::<Vec<_>>(),
+        vec![config_file_path.to_path_buf()],
+      );
     }
 
     for file_name in ["deno.json", "deno.jsonc"] {
@@ -4924,11 +5260,12 @@ pub mod test {
       );
       sys.fs_insert_json(root_dir().join("member-a/deno.json"), json!({}));
       sys.fs_insert_json(config_file_path.clone(), json!({}));
-      let err = workspace_at_start_dir_err(&sys, &root_dir().join("member-b"));
-      assert_err(&err, &config_file_path);
+      let workspace_dir =
+        workspace_at_start_dir(&sys, &root_dir().join("member-b"));
+      assert_standalone(&workspace_dir, &config_file_path);
 
       // try for when the config file is specified as well
-      let err = WorkspaceDirectory::discover(
+      let workspace_dir = WorkspaceDirectory::discover(
         &sys,
         WorkspaceDiscoverStart::ConfigFile(&config_file_path),
         &WorkspaceDiscoverOptions {
@@ -4936,8 +5273,8 @@ pub mod test {
           ..Default::default()
         },
       )
-      .unwrap_err();
-      assert_err(&err, &config_file_path);
+      .unwrap();
+      assert_standalone(&workspace_dir, &config_file_path);
     }
   }
 
@@ -5021,16 +5358,40 @@ pub mod test {
     );
     sys.fs_insert_json(root_dir().join("member/deno.json"), json!({}));
     sys.fs_insert_json(root_dir().join("package/package.json"), json!({}));
-    // npm package needs to be a member of the deno workspace
-    let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
+    // The start folder is not referenced by the parent deno workspace, so the
+    // parent workspace is discarded and the start folder is resolved on its
+    // own (a warning is logged for the deno workspace case).
+    let workspace_dir =
+      workspace_at_start_dir(&sys, &root_dir().join("package"));
     assert_eq!(
-      err.to_string(),
-      normalize_err_text(
-        "Config file must be a member of the workspace.
-  Config: [ROOT_DIR_URL]/package/package.json
-  Workspace: [ROOT_DIR_URL]/"
-      )
+      workspace_dir.workspace.root_dir_path(),
+      root_dir().join("package"),
     );
+    assert_eq!(workspace_dir.workspace.deno_jsons().count(), 0);
+    assert_eq!(workspace_dir.workspace.package_jsons().count(), 1);
+  }
+
+  #[test]
+  fn test_npm_package_under_deno_workspace_with_empty_members() {
+    // Exact repro from #30672: parent deno.json has an empty `workspace` array
+    // and the start folder contains only a package.json. The parent workspace
+    // should be discarded and the start folder resolved standalone.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": []
+      }),
+    );
+    sys.fs_insert_json(root_dir().join("package/package.json"), json!({}));
+    let workspace_dir =
+      workspace_at_start_dir(&sys, &root_dir().join("package"));
+    assert_eq!(
+      workspace_dir.workspace.root_dir_path(),
+      root_dir().join("package"),
+    );
+    assert_eq!(workspace_dir.workspace.deno_jsons().count(), 0);
+    assert_eq!(workspace_dir.workspace.package_jsons().count(), 1);
   }
 
   #[test]
@@ -5097,7 +5458,7 @@ pub mod test {
   }
 
   #[test]
-  fn test_npm_workspace_member_no_config_file_error() {
+  fn test_npm_workspace_member_missing_dir_skipped() {
     let sys = InMemorySys::default();
     sys.fs_insert_json(
       root_dir().join("package.json"),
@@ -5105,8 +5466,49 @@ pub mod test {
         "workspaces": ["./member"]
       }),
     );
-    // no package.json in this folder, so should error
-    let err = workspace_at_start_dir_err(&sys, &root_dir().join("package"));
+    // The listed npm workspace member directory does not exist; warn and
+    // skip instead of erroring, matching npm's behavior and supporting
+    // partial Docker image scenarios.
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    assert_eq!(workspace_dir.workspace.package_jsons().count(), 1);
+    assert_eq!(workspace_dir.workspace.config_folders().len(), 1);
+  }
+
+  #[test]
+  fn test_npm_workspace_member_only_deno_json_errors() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("package.json"),
+      json!({
+        "workspaces": ["./member"]
+      }),
+    );
+    // Member exists with a deno.json but no package.json — that's a
+    // genuine npm-workspace misconfiguration and should still error.
+    sys.fs_insert_json(root_dir().join("member/deno.json"), json!({}));
+    let err = workspace_at_start_dir_err(&sys, &root_dir());
+    assert_eq!(
+      err.to_string(),
+      normalize_err_text(
+        "Could not find package.json for workspace member in '[ROOT_DIR_URL]/member/'."
+      )
+    );
+  }
+
+  #[test]
+  fn test_npm_workspace_member_dir_without_config_errors() {
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("package.json"),
+      json!({
+        "workspaces": ["./member"]
+      }),
+    );
+    // Member directory exists but has no package.json (or deno.json) at
+    // all. Treat this like a typo'd path and surface the package.json
+    // error rather than silently skipping it.
+    sys.fs_insert(root_dir().join("member/other.ts"), "");
+    let err = workspace_at_start_dir_err(&sys, &root_dir());
     assert_eq!(
       err.to_string(),
       normalize_err_text(
@@ -5577,6 +5979,26 @@ pub mod test {
         .collect::<Vec<_>>(),
       vec![deno_path_util::url_from_file_path(&other_deno_json).unwrap()]
     );
+  }
+
+  #[test]
+  fn test_config_file_path_not_convertible_to_url() {
+    // Regression test for https://github.com/denoland/deno/issues/34308 -
+    // passing a path whose parent can't be converted to a `file://` URL
+    // (e.g. a `file:///D:/deno.json` argument joined with cwd on Windows)
+    // used to panic. It should return an error instead.
+    let sys = InMemorySys::default();
+    let path = PathBuf::from("deno.json"); // relative path; parent is ""
+    let err = WorkspaceDirectory::discover(
+      &sys,
+      WorkspaceDiscoverStart::ConfigFile(&path),
+      &WorkspaceDiscoverOptions::default(),
+    )
+    .unwrap_err();
+    assert!(matches!(
+      err.as_kind(),
+      WorkspaceDiscoverErrorKind::PathToUrl(_)
+    ));
   }
 
   #[test]

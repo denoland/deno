@@ -29,6 +29,14 @@ use crate::file_fetcher::CreateCliFileFetcherOptions;
 use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
+use crate::npm::PackageInfoLoadError;
+
+/// Packages whose metadata could not be fetched (e.g. unreachable or
+/// unauthorized private registries) are dropped from the update check. They are
+/// collected here, keyed and deduplicated by `(kind, name)`, so we can warn the
+/// user instead of skipping them silently.
+type SkippedPackages =
+  std::collections::BTreeMap<(DepKind, StackString), Arc<PackageInfoLoadError>>;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct OutdatedPackage {
@@ -129,10 +137,13 @@ fn print_outdated(
 ) -> Result<(), AnyError> {
   let mut outdated = Vec::new();
   let mut seen = std::collections::BTreeSet::new();
+  let mut skipped = SkippedPackages::new();
   for (dep_id, resolved, latest_versions) in
     deps.deps_with_resolved_latest_versions()
   {
     let dep = deps.get_dep(dep_id);
+
+    collect_skipped(&mut skipped, dep.kind, &dep.req.name, &latest_versions);
 
     let Some(resolved) = resolved else { continue };
 
@@ -171,10 +182,73 @@ fn print_outdated(
   if !outdated.is_empty() {
     outdated.sort();
     print_outdated_table(&outdated);
+  }
+
+  print_skipped_warning(&skipped);
+
+  if !outdated.is_empty() {
     print_suggestion(compatible);
   }
 
   Ok(())
+}
+
+/// Records a package whose metadata fetch failed, deduplicating by
+/// `(kind, name)` and keeping the first reason seen.
+fn collect_skipped(
+  skipped: &mut SkippedPackages,
+  kind: DepKind,
+  name: &StackString,
+  latest_versions: &PackageLatestVersion,
+) {
+  if let Some(error) = &latest_versions.fetch_error {
+    skipped
+      .entry((kind, name.clone()))
+      .or_insert_with(|| error.clone());
+  }
+}
+
+fn print_skipped_warning(skipped: &SkippedPackages) {
+  if skipped.is_empty() {
+    return;
+  }
+
+  log::warn!("");
+  log::warn!(
+    "{}",
+    color_print::cformat!(
+      "<yellow>Warning</>: Unable to check updates for {} package(s), their metadata could not be fetched (e.g. private registry auth or network issues).",
+      skipped.len(),
+    )
+  );
+
+  if log::log_enabled!(log::Level::Debug) {
+    for ((kind, name), error) in skipped {
+      log::warn!(
+        "{}",
+        color_print::cformat!(
+          "  <bold>{}:{}</> (registry: {})",
+          kind.scheme(),
+          name,
+          error.registry_url,
+        )
+      );
+      log::warn!("    Reason: {}", error.reason);
+    }
+    log::warn!(
+      "{}",
+      color_print::cformat!(
+        "<p(245)>Verify your registry credentials (.npmrc) and network connectivity.</>"
+      )
+    );
+  } else {
+    log::warn!(
+      "{}",
+      color_print::cformat!(
+        "<p(245)>Run with </><u>--log-level=debug</><p(245)> for details on which packages could not be checked.</>"
+      )
+    );
+  }
 }
 
 pub async fn outdated(
@@ -368,6 +442,7 @@ async fn update(
   let mut to_update = Vec::new();
 
   let mut can_update_to_latest = false;
+  let mut skipped = SkippedPackages::new();
 
   for (dep_id, resolved, latest_versions) in deps
     .deps_with_resolved_latest_versions()
@@ -375,6 +450,7 @@ async fn update(
     .collect::<Vec<_>>()
   {
     let dep = deps.get_dep(dep_id);
+    collect_skipped(&mut skipped, dep.kind, &dep.req.name, &latest_versions);
     let new_version_req = choose_new_version_req(
       dep,
       resolved.as_ref(),
@@ -407,10 +483,7 @@ async fn update(
           let dep = deps.get_dep(to_update.dep_id);
           interactive::PackageInfo {
             id: to_update.dep_id,
-            current_version: to_update
-              .current_version
-              .as_ref()
-              .map(|nv| nv.version.clone()),
+            current_version_req: to_update.current_version_req.clone(),
             name: dep.alias_or_name().into(),
             kind: dep.kind,
             new_version: to_update.new_version_req.clone(),
@@ -555,6 +628,8 @@ async fn update(
       log::info!("All {maybe_matching}dependencies are up to date.");
     }
   }
+
+  print_skipped_warning(&skipped);
 
   Ok(())
 }

@@ -40,7 +40,6 @@ const {
   RangeError,
   SafeRegExp,
   String,
-  StringFromCharCode,
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeIncludes,
@@ -73,7 +72,7 @@ const {
   op_node_buffer_compare,
   op_node_buffer_compare_offset,
   op_node_call_is_from_dependency,
-  op_node_decode_utf8,
+  op_node_decode,
   op_transcode,
 } = core.ops;
 
@@ -666,8 +665,6 @@ function byteLength(string, encoding) {
 
 Buffer.byteLength = byteLength;
 
-Buffer.prototype._isBuffer = true;
-
 function swap(b, n, m) {
   const i = b[n];
   b[n] = b[m];
@@ -712,10 +709,20 @@ Buffer.prototype.swap64 = function swap64() {
 };
 
 function decodeUtf8(buffer, start, end) {
-  return op_node_decode_utf8(
+  return op_node_decode(
     buffer,
     start,
     end,
+    0,
+  );
+}
+
+function decodeLatin1(buffer, start, end) {
+  return op_node_decode(
+    buffer,
+    start,
+    end,
+    1,
   );
 }
 
@@ -1021,6 +1028,14 @@ Buffer.prototype.base64Slice = function base64Slice(
   offset,
   length,
 ) {
+  if (offset === undefined) {
+    offset = 0;
+  }
+
+  if (length === undefined) {
+    length = this.length;
+  }
+
   // Use op_base64_encode (#[string] return) for small buffers where
   // the lighter-weight op2 string path is faster.
   // Use op_base64_encode_from_buffer (v8::String::new_external_onebyte) for
@@ -1080,7 +1095,7 @@ Buffer.prototype.hexSlice = function hexSlice(offset, length) {
 };
 
 Buffer.prototype.latin1Slice = function latin1Slice(offset, length) {
-  return _latin1Slice(this, offset, length);
+  return decodeLatin1(this, offset, length);
 };
 
 Buffer.prototype.latin1Write = function latin1Write(
@@ -1263,20 +1278,6 @@ function _utf8Slice(buf, start, end) {
     }
     throw err;
   }
-}
-
-function _latin1Slice(buf, start, end) {
-  let ret = "";
-  if (!start || start < 0) {
-    start = 0;
-  }
-  if (end === undefined || end > buf.length) {
-    end = buf.length;
-  }
-  for (let i = start; i < end; ++i) {
-    ret += StringFromCharCode(buf[i]);
-  }
-  return ret;
 }
 
 function _hexSlice(buf, start, end) {
