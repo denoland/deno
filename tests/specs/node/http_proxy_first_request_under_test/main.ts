@@ -42,15 +42,17 @@ Deno.test("first request to a node:http proxy under deno test", async () => {
   const proxyPort = (proxy.address() as net.AddressInfo).port;
 
   try {
-    const r1 = statusLine(await rawRequest(proxyPort));
-    const r2 = statusLine(await rawRequest(proxyPort));
+    const r1 = await request(proxyPort);
+    const r2 = await request(proxyPort);
 
-    strictEqual(r1, "HTTP/1.1 200 OK");
-    strictEqual(r2, "HTTP/1.1 200 OK");
+    strictEqual(r1.status, 200);
+    strictEqual(r2.status, 200);
+    strictEqual(r1.body, "ok");
+    strictEqual(r2.body, "ok");
     strictEqual(targetRequests, 2);
 
-    console.log("R1", r1);
-    console.log("R2", r2);
+    console.log("R1", r1.status);
+    console.log("R2", r2.status);
     console.log("target requests:", targetRequests);
   } finally {
     await close(proxy);
@@ -70,21 +72,20 @@ function close(server: http.Server): Promise<void> {
   });
 }
 
-function rawRequest(port: number): Promise<string> {
+function request(port: number): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
-    const socket = net.connect(port, "127.0.0.1", () => {
-      socket.write("GET / HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n");
+    const req = http.get({
+      host: "127.0.0.1",
+      port,
+      path: "/",
+    }, (res) => {
+      res.setEncoding("utf8");
+      let body = "";
+      res.on("data", (chunk) => body += chunk);
+      res.on("end", () => {
+        resolve({ status: res.statusCode ?? 0, body });
+      });
     });
-    let response = "";
-    socket.setTimeout(5000, () => {
-      socket.destroy(new Error("timed out waiting for proxy response"));
-    });
-    socket.on("data", (chunk) => response += chunk);
-    socket.on("error", reject);
-    socket.on("close", () => resolve(response));
+    req.on("error", reject);
   });
-}
-
-function statusLine(response: string): string {
-  return response.split("\r\n", 1)[0];
 }
