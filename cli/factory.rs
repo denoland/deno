@@ -105,7 +105,6 @@ use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
 use crate::tools::installer::BinNameResolver;
 use crate::tools::lint::LintRuleProvider;
-use crate::tools::run::hmr::HmrRunnerState;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -1164,6 +1163,9 @@ impl CliFactory {
     };
     let pkg_json_resolver = self.pkg_json_resolver()?;
     let module_loader_factory = self.create_module_loader_factory().await?;
+    // Share the HMR source-override map between the module loader (which reads
+    // it) and the worker (which writes freshly-transpiled source to it).
+    let hmr_source_overrides = module_loader_factory.hmr_source_overrides();
     self.maybe_start_inspector_server()?;
 
     let maybe_cpu_prof_config_for_workers =
@@ -1208,7 +1210,7 @@ impl CliFactory {
       self.npm_installer_if_managed().await?.cloned(),
       npm_resolver.clone(),
       self.text_only_progress_bar().clone(),
-      self.create_cli_main_worker_options()?,
+      self.create_cli_main_worker_options(hmr_source_overrides)?,
       self.root_permissions_container()?.clone(),
     ))
   }
@@ -1267,15 +1269,15 @@ impl CliFactory {
 
   fn create_cli_main_worker_options(
     &self,
+    hmr_source_overrides: crate::module_loader::HmrSourceOverrides,
   ) -> Result<CliMainWorkerOptions, AnyError> {
     let cli_options = self.cli_options()?;
-    let create_hmr_runner = if cli_options.has_hmr() {
-      let watcher_communicator = self.watcher_communicator.clone().unwrap();
-      let emitter = self.emitter()?.clone();
-      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move || {
-        HmrRunnerState::new(emitter.clone(), watcher_communicator.clone())
-      });
-      Some(fn_)
+    let maybe_native_hmr = if cli_options.has_hmr() {
+      Some(crate::worker::NativeHmrState {
+        emitter: self.emitter()?.clone(),
+        watcher_communicator: self.watcher_communicator.clone().unwrap(),
+        source_overrides: hmr_source_overrides,
+      })
     } else {
       None
     };
@@ -1294,7 +1296,7 @@ impl CliFactory {
 
     Ok(CliMainWorkerOptions {
       needs_test_modules: cli_options.sub_command().needs_test(),
-      create_hmr_runner,
+      maybe_native_hmr,
       maybe_coverage_dir,
       maybe_cpu_prof_config,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),

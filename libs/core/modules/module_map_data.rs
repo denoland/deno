@@ -97,6 +97,26 @@ impl<T> ModuleNameTypeMap<T> {
     }
   }
 
+  /// Remove the entry for `name`+`module_type`, returning the previous value
+  /// if present. Used by the module reload engine (HMR) to evict a module so
+  /// the next load recompiles it instead of skipping it as already-registered.
+  pub fn remove<Q>(
+    &mut self,
+    module_type: &RequestedModuleType,
+    name: &Q,
+  ) -> Option<T>
+  where
+    ModuleName: std::borrow::Borrow<Q>,
+    Q: std::cmp::Eq + std::hash::Hash + ?Sized,
+  {
+    let index = self.map_index(module_type)?;
+    let removed = self.submaps.get_mut(index)?.remove(name);
+    if removed.is_some() {
+      self.len -= 1;
+    }
+    removed
+  }
+
   /// Rather than providing an iterator, we provide a drain method. This is mainly because Rust
   /// doesn't have generators.
   pub fn drain(
@@ -402,6 +422,52 @@ impl ModuleMapData {
   pub(crate) fn get_name_by_id(&self, id: ModuleId) -> Option<String> {
     // TODO(mmastrac): Don't clone
     self.info.get(id).map(|info| info.name.as_str().to_owned())
+  }
+
+  /// Return the names (resolved specifiers) of the modules that directly
+  /// import `target`. Used by the HMR runtime to walk up the importer graph to
+  /// the nearest accepting boundary.
+  pub(crate) fn direct_importers(&self, target: ModuleId) -> Vec<String> {
+    let mut importers = Vec::new();
+    for info in &self.info {
+      let imports_target = info.requests.iter().any(|request| {
+        self.get_id(
+          request.reference.specifier.as_str(),
+          &request.reference.requested_module_type,
+        ) == Some(target)
+      });
+      if imports_target {
+        importers.push(info.name.as_str().to_owned());
+      }
+    }
+    importers
+  }
+
+  /// Evict the given modules from the `by_name` lookup so the next load
+  /// recompiles them instead of skipping them as already-registered. The
+  /// `handles`/`info`/`handles_inverted` entries are left in place (tombstoned)
+  /// so existing [`ModuleId`] indices stay valid; the orphaned `v8::Module`
+  /// keeps the old instance's top-level state alive until it is dropped, but it
+  /// is no longer reachable by specifier. Eviction only ever runs at runtime,
+  /// never at snapshot time, so the snapshot length invariants are unaffected.
+  pub(crate) fn evict_modules(&mut self, ids: &HashSet<ModuleId>) {
+    // Collect owned eviction keys first to avoid borrowing `self.info` while
+    // mutating `self.by_name`/`self.handles_inverted`.
+    let evictions: Vec<(RequestedModuleType, String, v8::Global<v8::Module>)> =
+      ids
+        .iter()
+        .filter_map(|&id| {
+          let info = self.info.get(id)?;
+          let handle = self.handles.get(id)?.clone();
+          let requested_module_type =
+            RequestedModuleType::from(info.module_type.clone());
+          Some((requested_module_type, info.name.as_str().to_owned(), handle))
+        })
+        .collect();
+    for (requested_module_type, name, handle) in evictions {
+      self.by_name.remove(&requested_module_type, name.as_str());
+      self.handles_inverted.remove(&handle);
+    }
   }
 
   pub fn serialize_for_snapshotting(

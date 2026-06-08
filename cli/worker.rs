@@ -10,7 +10,6 @@ use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
-use deno_core::futures::FutureExt;
 use deno_core::v8;
 use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
@@ -30,19 +29,25 @@ use deno_semver::npm::NpmPackageReqReference;
 use tokio::select;
 
 use crate::args::CliLockfile;
+use crate::module_loader::CliEmitter;
+use crate::module_loader::HmrSourceOverrides;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
-use crate::tools::run::hmr::HmrRunner;
-use crate::tools::run::hmr::HmrRunnerState;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::util::progress_bar::ProgressBar;
 
-pub type CreateHmrRunnerCb = Box<dyn Fn() -> HmrRunnerState + Send + Sync>;
+/// State needed to drive native Hot Module Replacement (`import.meta.hot`)
+/// under `--watch-hmr`. Present only when HMR is enabled.
+pub struct NativeHmrState {
+  pub emitter: Arc<CliEmitter>,
+  pub watcher_communicator: Arc<WatcherCommunicator>,
+  pub source_overrides: HmrSourceOverrides,
+}
 
 pub struct CliMainWorkerOptions {
-  pub create_hmr_runner: Option<CreateHmrRunnerCb>,
+  pub maybe_native_hmr: Option<NativeHmrState>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub default_npm_caching_strategy: NpmCachingStrategy,
@@ -52,7 +57,7 @@ pub struct CliMainWorkerOptions {
 
 /// Data shared between the factory and workers.
 struct SharedState {
-  pub create_hmr_runner: Option<CreateHmrRunnerCb>,
+  pub maybe_native_hmr: Option<NativeHmrState>,
   pub maybe_coverage_dir: Option<PathBuf>,
   pub maybe_cpu_prof_config: Option<CpuProfilerConfig>,
   pub maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
@@ -78,7 +83,7 @@ impl CliMainWorker {
   pub async fn run(&mut self) -> Result<i32, CoreError> {
     let maybe_coverage_collector = self.maybe_setup_coverage_collector();
     let maybe_cpu_profiler = self.maybe_setup_cpu_profiler();
-    let mut maybe_hmr_runner = self.maybe_setup_hmr_runner();
+    let hmr_enabled = self.shared.maybe_native_hmr.is_some();
 
     // Wrap profiler and coverage in Rc<RefCell<Option<...>>> so that
     // both the normal cleanup path and the Deno.exit() op_exit path
@@ -135,26 +140,21 @@ impl CliMainWorker {
 
     log::debug!("main_module {}", self.worker.main_module());
 
+    // Enable native HMR (`import.meta.hot`) before any user module loads, so
+    // the main module and its whole graph get an `import.meta.hot` attached
+    // during instantiation. Must happen before `execute_main_module`.
+    if hmr_enabled {
+      self.enable_native_hmr()?;
+    }
+
     // Run preload modules first if they were defined
     self.worker.execute_preload_modules().await?;
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
     loop {
-      if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-        let hmr_future = hmr_runner.run().boxed_local();
-        let event_loop_future = self.worker.run_event_loop(false).boxed_local();
-
-        let result;
-        select! {
-          hmr_result = hmr_future => {
-            result = hmr_result;
-          },
-          event_loop_result = event_loop_future => {
-            result = event_loop_result;
-          }
-        }
-        if let Err(e) = result {
+      if hmr_enabled {
+        if let Err(e) = self.run_event_loop_with_native_hmr().await {
           self
             .shared
             .maybe_file_watcher_communicator
@@ -187,11 +187,149 @@ impl CliMainWorker {
     if let Some(mut cpu_profiler) = profiler_cell.borrow_mut().take() {
       cpu_profiler.stop_profiling()?;
     }
-    if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-      hmr_runner.stop();
+    if hmr_enabled {
+      self
+        .shared
+        .maybe_file_watcher_communicator
+        .as_ref()
+        .unwrap()
+        .change_restart_mode(WatcherRestartMode::Automatic);
     }
 
     Ok(self.worker.exit_code())
+  }
+
+  /// Run the event loop while applying native HMR updates on file changes.
+  /// Returns when the program's event loop completes (e.g. a script finishes);
+  /// the outer file watcher then handles further changes via full restart.
+  async fn run_event_loop_with_native_hmr(&mut self) -> Result<(), CoreError> {
+    let comm = self
+      .shared
+      .maybe_native_hmr
+      .as_ref()
+      .unwrap()
+      .watcher_communicator
+      .clone();
+    comm.change_restart_mode(WatcherRestartMode::Manual);
+    loop {
+      let changed_paths;
+      select! {
+        biased;
+
+        event_loop_result = self.worker.run_event_loop(false) => {
+          return event_loop_result;
+        },
+        paths = comm.watch_for_changed_paths() => {
+          changed_paths = paths.map_err(JsErrorBox::from_err)?;
+        }
+      }
+      self.apply_native_hmr(changed_paths).await?;
+    }
+  }
+
+  /// Apply an HMR update for the changed paths: read + transpile fresh source,
+  /// register it as a loader override, then drive `applyHmrUpdate` in JS. Falls
+  /// back to a full restart (`force_restart`) when a path can't be hot-replaced
+  /// or no accepting boundary handled the update.
+  async fn apply_native_hmr(
+    &mut self,
+    changed_paths: Option<Vec<PathBuf>>,
+  ) -> Result<(), CoreError> {
+    let hmr = self.shared.maybe_native_hmr.as_ref().unwrap();
+    let comm = hmr.watcher_communicator.clone();
+    let emitter = hmr.emitter.clone();
+    let overrides = hmr.source_overrides.clone();
+
+    let Some(paths) = changed_paths else {
+      let _ = comm.force_restart();
+      return Ok(());
+    };
+    let filtered: Vec<PathBuf> = paths
+      .into_iter()
+      .filter(|p| {
+        p.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+          matches!(
+            e,
+            "js" | "ts" | "jsx" | "tsx" | "mjs" | "mts" | "cjs" | "cts"
+          )
+        })
+      })
+      .collect();
+    if filtered.is_empty() {
+      // A non-JS/TS file changed (or an explicit `--watch-hmr=<file>`): fall
+      // back to a full restart.
+      let _ = comm.force_restart();
+      return Ok(());
+    }
+
+    for path in filtered {
+      let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
+        let _ = comm.force_restart();
+        return Ok(());
+      };
+      let source = match tokio::fs::read_to_string(&path).await {
+        Ok(source) => source,
+        Err(_) => {
+          let _ = comm.force_restart();
+          return Ok(());
+        }
+      };
+      let emitted = emitter.emit_for_hmr(&specifier, source)?;
+      overrides.lock().insert(specifier.clone(), emitted);
+      let handled = self.run_apply_hmr_update(&specifier).await;
+      overrides.lock().remove(&specifier);
+
+      match handled {
+        Ok(true) => {
+          comm.print(format!("Replaced changed module {}", specifier.as_str()));
+        }
+        Ok(false) => {
+          comm.print(format!(
+            "No HMR boundary for {}, restarting...",
+            specifier.as_str()
+          ));
+          let _ = comm.force_restart();
+          return Ok(());
+        }
+        Err(e) => {
+          comm.print(format!(
+            "Failed to hot-replace {}: {}, restarting...",
+            specifier.as_str(),
+            e
+          ));
+          let _ = comm.force_restart();
+          return Ok(());
+        }
+      }
+    }
+    Ok(())
+  }
+
+  /// Drive `Deno.core.applyHmrUpdate(specifier)` in JS and return whether the
+  /// update was handled by an accepting boundary.
+  async fn run_apply_hmr_update(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, CoreError> {
+    let script = format!(
+      "Deno[Deno.internal].core.applyHmrUpdate({})",
+      deno_core::serde_json::to_string(specifier.as_str()).unwrap()
+    );
+    let value = {
+      let runtime = self.worker.js_runtime();
+      let promise = runtime.execute_script("[deno:hmr_apply]", script)?;
+      let resolved = runtime.resolve(promise);
+      runtime
+        .with_event_loop_promise(
+          resolved,
+          deno_core::PollEventLoopOptions::default(),
+        )
+        .await?
+    };
+    let runtime = self.worker.js_runtime();
+    deno_core::scope!(scope, runtime);
+    let local = v8::Local::new(scope, value);
+    Ok(local.is_true())
   }
 
   pub async fn run_for_watcher(self) -> Result<(), CoreError> {
@@ -301,18 +439,15 @@ impl CliMainWorker {
       .cancel_terminate_execution();
   }
 
-  pub fn maybe_setup_hmr_runner(&mut self) -> Option<HmrRunner> {
-    let setup_hmr_runner = self.shared.create_hmr_runner.as_ref()?;
-
-    let hmr_runner_state = setup_hmr_runner();
-    let state = hmr_runner_state.clone();
-
-    let callback = Box::new(move |message| hmr_runner_state.callback(message));
-    let session = self.worker.create_inspector_session(callback);
-    let mut hmr_runner = HmrRunner::new(state, session);
-    hmr_runner.start();
-
-    Some(hmr_runner)
+  /// Turn on the native HMR runtime so `import.meta.hot` is attached to user
+  /// modules as they are instantiated. Registers the `import.meta.hot` factory
+  /// in `libs/core/01_core.js` via `Deno.core.enableHmr()`.
+  fn enable_native_hmr(&mut self) -> Result<(), CoreError> {
+    self.worker.js_runtime().execute_script(
+      "[deno:enable_hmr]",
+      "Deno[Deno.internal].core.enableHmr();",
+    )?;
+    Ok(())
   }
 
   pub fn maybe_setup_coverage_collector(
@@ -411,7 +546,7 @@ impl CliMainWorkerFactory {
       progress_bar,
       root_permissions,
       shared: Arc::new(SharedState {
-        create_hmr_runner: options.create_hmr_runner,
+        maybe_native_hmr: options.maybe_native_hmr,
         maybe_coverage_dir: options.maybe_coverage_dir,
         maybe_cpu_prof_config: options.maybe_cpu_prof_config,
         maybe_file_watcher_communicator,

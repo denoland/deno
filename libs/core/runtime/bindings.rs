@@ -1210,6 +1210,21 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 
   maybe_add_import_meta_filename_dirname(scope, meta, &name);
 
+  // When HMR is enabled (the JS HMR runtime has registered a factory), attach
+  // `import.meta.hot` for user (file:) modules. The factory builds/returns the
+  // module's HotContext (registering it in the JS-side boundary registry).
+  if name.starts_with("file:")
+    && let Some(factory) = state.create_hot_context_fn.borrow().clone()
+  {
+    let factory = v8::Local::new(scope, factory);
+    let recv = v8::undefined(scope);
+    let arg = v8::String::new(scope, &name).unwrap();
+    if let Some(hot) = factory.call(scope, recv.into(), &[arg.into()]) {
+      let hot_key = HOT.v8_string(scope).unwrap();
+      meta.create_data_property(scope, hot_key.into(), hot);
+    }
+  }
+
   if name.starts_with("ext:")
     && let Some(proto) = state.ext_import_meta_proto.borrow().clone()
   {

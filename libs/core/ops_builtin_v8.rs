@@ -197,6 +197,74 @@ pub fn op_lazy_load_esm(
   module_map_rc.lazy_load_esm_module(scope, &module_specifier)
 }
 
+/// Evict a module from the module map so the next `import()` of it recompiles
+/// and re-evaluates it (Hot Module Replacement). Dependencies are left intact,
+/// so a shared dependency keeps its singleton and the reloaded module rebinds
+/// to that same instance. Returns `true` if the specifier was found and
+/// evicted. Backs `Deno.core.reloadEsModule`.
+#[op2(fast)]
+pub fn op_reload_module_evict(
+  scope: &mut v8::PinScope,
+  #[string] specifier: String,
+) -> bool {
+  let Ok(url) = resolve_url(&specifier) else {
+    return false;
+  };
+  let module_map_rc = JsRealm::module_map_from(scope);
+  !module_map_rc.evict_for_reload(&[url]).is_empty()
+}
+
+/// Register the JS factory that builds `import.meta.hot` objects. Called once
+/// by the JS HMR runtime when HMR is enabled; until then `import.meta.hot` is
+/// not attached to user modules.
+#[op2(fast)]
+pub fn op_set_create_hot_context(
+  scope: &mut v8::PinScope,
+  cb: v8::Local<v8::Function>,
+) {
+  let cb = v8::Global::new(scope, cb);
+  let context_state_rc = JsRealm::state_from_scope(scope);
+  *context_state_rc.create_hot_context_fn.borrow_mut() = Some(cb);
+}
+
+/// Return the resolved specifiers of the modules that directly import the
+/// given module. Backs the JS HMR runtime's walk up the importer graph to find
+/// accepting boundaries.
+#[op2]
+#[serde]
+pub fn op_hmr_module_importers(
+  scope: &mut v8::PinScope,
+  #[string] specifier: String,
+) -> Vec<String> {
+  let Ok(url) = resolve_url(&specifier) else {
+    return Vec::new();
+  };
+  let module_map_rc = JsRealm::module_map_from(scope);
+  module_map_rc.direct_importers(&url)
+}
+
+/// Resolve `specifier` relative to `referrer` the same way the module loader
+/// would, returning the resolved URL (or `specifier` unchanged on failure).
+/// Lets the JS HMR runtime match relative `accept(['./dep'])` specifiers
+/// against the absolute specifiers in the importer graph.
+#[op2]
+#[string]
+pub fn op_hmr_resolve(
+  scope: &mut v8::PinScope,
+  #[string] specifier: String,
+  #[string] referrer: String,
+) -> String {
+  let module_map_rc = JsRealm::module_map_from(scope);
+  match module_map_rc.resolve(
+    &specifier,
+    &referrer,
+    crate::ResolutionKind::Import,
+  ) {
+    Ok(url) => url.to_string(),
+    Err(_) => specifier,
+  }
+}
+
 #[op2(reentrant)]
 pub fn op_load_ext_script(
   scope: &mut v8::PinScope,

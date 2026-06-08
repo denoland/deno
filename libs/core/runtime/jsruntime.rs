@@ -3143,6 +3143,31 @@ impl JsRuntime {
       .await
   }
 
+  /// Reload an already-loaded ES module (Hot Module Replacement).
+  ///
+  /// The named module is evicted from the module map and re-loaded from the
+  /// [`ModuleLoader`], producing a fresh `v8::Module`. Its imports resolve to
+  /// the surviving (un-evicted) module instances, so shared dependencies keep
+  /// their singletons and only this module's top-level code re-runs. The
+  /// returned `ModuleId` is new and not yet evaluated; the caller must call
+  /// [`JsRuntime::mod_evaluate`] with it.
+  ///
+  /// Only the named module is reloaded -- importers of the old module are not
+  /// automatically rebound to the new instance. Use the returned id /
+  /// namespace, or (later) `import.meta.hot` boundaries, to wire up the new
+  /// instance.
+  pub async fn reload_es_module(
+    &mut self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<ModuleId, CoreError> {
+    let isolate = &mut self.inner.v8_isolate;
+    self
+      .inner
+      .main_realm
+      .reload_es_module(isolate, specifier)
+      .await
+  }
+
   /// Load and evaluate an ES module provided the specifier and source code.
   ///
   /// The module should not have Top-Level Await (that is, it should be

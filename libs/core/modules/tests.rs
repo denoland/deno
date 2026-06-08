@@ -3146,3 +3146,370 @@ async fn test_dyn_import_async_graph_with_lazy_esm_no_stall() {
   let v = g.get(scope, key.into()).unwrap();
   assert!(v.is_true(), "main.js await import never resolved");
 }
+
+/// A module loader whose per-specifier source can be mutated between loads,
+/// simulating a file edit for the HMR reload engine.
+#[derive(Default)]
+struct ReloadableLoader {
+  sources: Rc<RefCell<HashMap<String, String>>>,
+}
+
+impl ModuleLoader for ReloadableLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    _kind: ResolutionKind,
+  ) -> ModuleResolveResponse {
+    let referrer = if referrer == "." {
+      "file:///"
+    } else {
+      referrer
+    };
+    resolve_import(specifier, referrer).map_err(JsErrorBox::from_err)
+  }
+
+  fn load(
+    &self,
+    module_specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<&ModuleLoadReferrer>,
+    _options: ModuleLoadOptions,
+  ) -> ModuleLoadResponse {
+    let code = self
+      .sources
+      .borrow()
+      .get(module_specifier.as_str())
+      .cloned();
+    match code {
+      Some(code) => ModuleLoadResponse::Sync(Ok(ModuleSource::new(
+        ModuleType::JavaScript,
+        ModuleSourceCode::String(code.into()),
+        module_specifier,
+        None,
+      ))),
+      None => ModuleLoadResponse::Sync(Err(JsErrorBox::generic(format!(
+        "not found: {module_specifier}"
+      )))),
+    }
+  }
+}
+
+/// `JsRuntime::reload_es_module` recompiles and re-evaluates the named module
+/// (picking up edited source) while leaving its dependencies untouched, so a
+/// shared dependency keeps its singleton state and the reloaded module rebinds
+/// to that same instance.
+#[tokio::test]
+async fn test_reload_es_module_preserves_dependency_singleton() {
+  let sources: Rc<RefCell<HashMap<String, String>>> =
+    Rc::new(RefCell::new(HashMap::new()));
+  {
+    let mut s = sources.borrow_mut();
+    s.insert(
+      "file:///child.js".into(),
+      "globalThis.childInit = (globalThis.childInit ?? 0) + 1;\n\
+       export const id = 'child';\n"
+        .into(),
+    );
+    s.insert(
+      "file:///mid.js".into(),
+      "import { id } from './child.js';\n\
+       globalThis.midInit = (globalThis.midInit ?? 0) + 1;\n\
+       export const tag = 'mid-A:' + id;\n\
+       globalThis.midTag = tag;\n"
+        .into(),
+    );
+    s.insert("file:///main.js".into(), "import './mid.js';\n".into());
+  }
+  let loader = Rc::new(ReloadableLoader {
+    sources: sources.clone(),
+  });
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let main = ModuleSpecifier::parse("file:///main.js").unwrap();
+  let id = runtime.load_main_es_module(&main).await.unwrap();
+  let result = runtime.mod_evaluate(id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+
+  runtime
+    .execute_script(
+      "check_initial",
+      "if (globalThis.childInit !== 1) throw new Error('childInit=' + globalThis.childInit);\n\
+       if (globalThis.midInit !== 1) throw new Error('midInit=' + globalThis.midInit);\n\
+       if (globalThis.midTag !== 'mid-A:child') throw new Error('midTag=' + globalThis.midTag);",
+    )
+    .unwrap();
+
+  // "Edit" mid.js: bump the version tag. child.js is untouched.
+  sources.borrow_mut().insert(
+    "file:///mid.js".into(),
+    "import { id } from './child.js';\n\
+     globalThis.midInit = (globalThis.midInit ?? 0) + 1;\n\
+     export const tag = 'mid-B:' + id;\n\
+     globalThis.midTag = tag;\n"
+      .into(),
+  );
+
+  let mid = ModuleSpecifier::parse("file:///mid.js").unwrap();
+  let new_id = runtime.reload_es_module(&mid).await.unwrap();
+  assert_ne!(new_id, id, "reload should produce a fresh module id");
+  let result = runtime.mod_evaluate(new_id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+
+  runtime
+    .execute_script(
+      "check_reload",
+      // mid re-ran (midInit 1 -> 2) with the new source (midTag is mid-B), but
+      // the shared child.js was preserved (childInit still 1) and the reloaded
+      // mid rebound to that same instance (tag suffix still ':child').
+      "if (globalThis.childInit !== 1) throw new Error('childInit after reload=' + globalThis.childInit);\n\
+       if (globalThis.midInit !== 2) throw new Error('midInit after reload=' + globalThis.midInit);\n\
+       if (globalThis.midTag !== 'mid-B:child') throw new Error('midTag after reload=' + globalThis.midTag);",
+    )
+    .unwrap();
+
+  // The reloaded module's namespace reflects the new export, and a dynamic
+  // import of the specifier resolves to the reloaded instance.
+  let dyn_import = runtime
+    .execute_script("dyn_import", "import('file:///mid.js').then((m) => m.tag)")
+    .unwrap();
+  let value = runtime.resolve(dyn_import);
+  let value = runtime
+    .with_event_loop_promise(value, Default::default())
+    .await
+    .unwrap();
+  {
+    deno_core::scope!(scope, runtime);
+    let local = v8::Local::new(scope, value);
+    assert_eq!(local.to_rust_string_lossy(scope), "mid-B:child");
+  }
+}
+
+/// The JS-facing `Deno.core.reloadEsModule` (op_reload_module_evict + dynamic
+/// import) recompiles the edited module and resolves to its fresh namespace,
+/// while preserving the shared dependency's singleton.
+#[tokio::test]
+async fn test_core_reload_es_module_js_api() {
+  let sources: Rc<RefCell<HashMap<String, String>>> =
+    Rc::new(RefCell::new(HashMap::new()));
+  {
+    let mut s = sources.borrow_mut();
+    s.insert(
+      "file:///child.js".into(),
+      "globalThis.childInit = (globalThis.childInit ?? 0) + 1;\n\
+       export const id = 'child';\n"
+        .into(),
+    );
+    s.insert(
+      "file:///mid.js".into(),
+      "import { id } from './child.js';\n\
+       globalThis.midInit = (globalThis.midInit ?? 0) + 1;\n\
+       export const tag = 'mid-A:' + id;\n"
+        .into(),
+    );
+    s.insert("file:///main.js".into(), "import './mid.js';\n".into());
+  }
+  let loader = Rc::new(ReloadableLoader {
+    sources: sources.clone(),
+  });
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  let main = ModuleSpecifier::parse("file:///main.js").unwrap();
+  let id = runtime.load_main_es_module(&main).await.unwrap();
+  let result = runtime.mod_evaluate(id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+
+  // "Edit" mid.js and reload it through the JS API.
+  sources.borrow_mut().insert(
+    "file:///mid.js".into(),
+    "import { id } from './child.js';\n\
+     globalThis.midInit = (globalThis.midInit ?? 0) + 1;\n\
+     export const tag = 'mid-B:' + id;\n"
+      .into(),
+  );
+
+  runtime
+    .execute_script(
+      "reload",
+      "Deno.core.reloadEsModule('file:///mid.js').then((m) => {\n\
+         globalThis.reloadedTag = m.tag;\n\
+       });",
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+
+  runtime
+    .execute_script(
+      "check_js_reload",
+      "if (globalThis.childInit !== 1) throw new Error('childInit=' + globalThis.childInit);\n\
+       if (globalThis.midInit !== 2) throw new Error('midInit=' + globalThis.midInit);\n\
+       if (globalThis.reloadedTag !== 'mid-B:child') throw new Error('reloadedTag=' + globalThis.reloadedTag);",
+    )
+    .unwrap();
+}
+
+/// `import.meta.hot.accept()` self-accepting boundary: an HMR update re-runs the
+/// module, its `dispose` handler hands state to the reloaded instance via
+/// `hot.data`, and the accept callback receives the fresh module namespace.
+#[tokio::test]
+async fn test_import_meta_hot_self_accept_and_dispose() {
+  let mid_v1 = "globalThis.midEval = (globalThis.midEval ?? 0) + 1;\n\
+     globalThis.restored = import.meta.hot.data.saved ?? 'none';\n\
+     import.meta.hot.dispose((data) => { data.saved = 'from-v1'; });\n\
+     import.meta.hot.accept((m) => { globalThis.accepted = m.tag; });\n\
+     export const tag = 'A';\n";
+  let sources: Rc<RefCell<HashMap<String, String>>> =
+    Rc::new(RefCell::new(HashMap::new()));
+  {
+    let mut s = sources.borrow_mut();
+    s.insert("file:///mid.js".into(), mid_v1.into());
+    s.insert("file:///main.js".into(), "import './mid.js';\n".into());
+  }
+  let loader = Rc::new(ReloadableLoader {
+    sources: sources.clone(),
+  });
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  // Enable HMR before loading user code so `import.meta.hot` is attached.
+  runtime
+    .execute_script("enable_hmr", "Deno.core.enableHmr();")
+    .unwrap();
+
+  let main = ModuleSpecifier::parse("file:///main.js").unwrap();
+  let id = runtime.load_main_es_module(&main).await.unwrap();
+  let result = runtime.mod_evaluate(id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+
+  runtime
+    .execute_script(
+      "check_initial",
+      "if (globalThis.midEval !== 1) throw new Error('midEval=' + globalThis.midEval);\n\
+       if (globalThis.restored !== 'none') throw new Error('restored=' + globalThis.restored);\n\
+       if (globalThis.accepted !== undefined) throw new Error('accepted=' + globalThis.accepted);",
+    )
+    .unwrap();
+
+  // "Edit" mid.js (tag A -> B) and apply the HMR update.
+  sources
+    .borrow_mut()
+    .insert("file:///mid.js".into(), mid_v1.replace("'A'", "'B'"));
+  runtime
+    .execute_script(
+      "apply",
+      "Deno.core.applyHmrUpdate('file:///mid.js').then((ok) => {\n\
+         globalThis.hmrHandled = ok;\n\
+       });",
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+
+  runtime
+    .execute_script(
+      "check_hmr",
+      "if (globalThis.hmrHandled !== true) throw new Error('hmrHandled=' + globalThis.hmrHandled);\n\
+       if (globalThis.midEval !== 2) throw new Error('midEval=' + globalThis.midEval);\n\
+       if (globalThis.restored !== 'from-v1') throw new Error('restored=' + globalThis.restored);\n\
+       if (globalThis.accepted !== 'B') throw new Error('accepted=' + globalThis.accepted);",
+    )
+    .unwrap();
+}
+
+/// An importer that accepts a changed dependency via `accept(['./dep'], cb)` is
+/// the boundary: its callback receives the new dependency module, while the
+/// importer itself is not re-evaluated. A change with no accepting boundary up
+/// to the entry point reports "not handled" (full reload required).
+#[tokio::test]
+async fn test_import_meta_hot_dependency_accept_and_full_reload() {
+  let sources: Rc<RefCell<HashMap<String, String>>> =
+    Rc::new(RefCell::new(HashMap::new()));
+  {
+    let mut s = sources.borrow_mut();
+    s.insert(
+      "file:///dep.js".into(),
+      "globalThis.depEval = (globalThis.depEval ?? 0) + 1;\nexport const v = 1;\n".into(),
+    );
+    s.insert(
+      "file:///parent.js".into(),
+      "import { v } from './dep.js';\n\
+       globalThis.parentEval = (globalThis.parentEval ?? 0) + 1;\n\
+       globalThis.seen = v;\n\
+       import.meta.hot.accept(['./dep.js'], ({ module }) => { globalThis.newDepV = module.v; });\n"
+        .into(),
+    );
+    s.insert("file:///main.js".into(), "import './parent.js';\n".into());
+  }
+  let loader = Rc::new(ReloadableLoader {
+    sources: sources.clone(),
+  });
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    module_loader: Some(loader),
+    ..Default::default()
+  });
+
+  runtime
+    .execute_script("enable_hmr", "Deno.core.enableHmr();")
+    .unwrap();
+  let main = ModuleSpecifier::parse("file:///main.js").unwrap();
+  let id = runtime.load_main_es_module(&main).await.unwrap();
+  let result = runtime.mod_evaluate(id);
+  runtime.run_event_loop(Default::default()).await.unwrap();
+  result.await.unwrap();
+
+  // Change dep.js; parent accepts it, so the update is handled and parent's
+  // callback sees the new value, without re-running parent.
+  sources.borrow_mut().insert(
+    "file:///dep.js".into(),
+    "globalThis.depEval = (globalThis.depEval ?? 0) + 1;\nexport const v = 2;\n".into(),
+  );
+  runtime
+    .execute_script(
+      "apply_dep",
+      "Deno.core.applyHmrUpdate('file:///dep.js').then((ok) => { globalThis.depHandled = ok; });",
+    )
+    .unwrap();
+  runtime.run_event_loop(Default::default()).await.unwrap();
+
+  runtime
+    .execute_script(
+      "check_dep",
+      "if (globalThis.depHandled !== true) throw new Error('depHandled=' + globalThis.depHandled);\n\
+       if (globalThis.depEval !== 2) throw new Error('depEval=' + globalThis.depEval);\n\
+       if (globalThis.parentEval !== 1) throw new Error('parentEval=' + globalThis.parentEval);\n\
+       if (globalThis.newDepV !== 2) throw new Error('newDepV=' + globalThis.newDepV);",
+    )
+    .unwrap();
+
+  // A change to a module with no accepting boundary up to the entry point is
+  // not handled by HMR (caller must do a full reload).
+  let not_handled = runtime
+    .execute_script(
+      "apply_unaccepted",
+      "Deno.core.applyHmrUpdate('file:///parent.js')",
+    )
+    .unwrap();
+  let not_handled = runtime.resolve(not_handled);
+  let not_handled = runtime
+    .with_event_loop_promise(not_handled, Default::default())
+    .await
+    .unwrap();
+  {
+    deno_core::scope!(scope, runtime);
+    let local = v8::Local::new(scope, not_handled);
+    assert!(
+      local.is_false(),
+      "unaccepted change should report not-handled"
+    );
+  }
+}

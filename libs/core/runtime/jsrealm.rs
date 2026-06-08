@@ -88,6 +88,11 @@ pub struct ContextState {
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) wasm_instance_fn: RefCell<Option<v8::Global<v8::Function>>>,
+  /// JS factory `(specifier: string) => ImportMetaHot` used to build the
+  /// `import.meta.hot` object for user modules. `None` unless HMR is enabled
+  /// (the JS HMR runtime registers it via `op_set_create_hot_context`); when
+  /// `None`, `import.meta.hot` is not attached.
+  pub(crate) create_hot_context_fn: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) unrefed_ops: UnrefedOps,
   pub(crate) activity_traces: RuntimeActivityTraces,
   pub(crate) pending_ops: Rc<OpDriverImpl>,
@@ -176,6 +181,7 @@ impl ContextState {
       run_immediate_callbacks_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),
+      create_hot_context_fn: Default::default(),
       activity_traces: Default::default(),
       op_ctxs,
       op_method_decls,
@@ -683,6 +689,29 @@ impl JsRealm {
       exception_to_err(scope, exception, false, false)
     })?;
     Ok(root_id)
+  }
+
+  /// Reload an already-loaded ES module (HMR). The module is evicted from the
+  /// module map and re-loaded from the [`ModuleLoader`], producing a fresh
+  /// `v8::Module` whose imports resolve to the surviving (un-evicted) instances
+  /// -- so shared dependencies keep their singletons. The returned `ModuleId`
+  /// is new; the caller must evaluate it with [`JsRealm::mod_evaluate`].
+  ///
+  /// Only the named module is reloaded. Importers of the old module are not
+  /// rebound to the new instance; that is the responsibility of
+  /// `import.meta.hot` boundaries (a later layer).
+  pub(crate) async fn reload_es_module(
+    &self,
+    isolate: &mut v8::Isolate,
+    specifier: &ModuleSpecifier,
+  ) -> Result<ModuleId, CoreError> {
+    self
+      .0
+      .module_map()
+      .evict_for_reload(std::slice::from_ref(specifier));
+    self
+      .load_side_es_module_from_code(isolate, specifier.to_string(), None)
+      .await
   }
 
   /// Load and evaluate an ES module provided the specifier and source code.

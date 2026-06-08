@@ -3,8 +3,12 @@
 
 ((window) => {
   const {
+    ArrayIsArray,
+    ArrayPrototypeForEach,
+    ArrayPrototypeIndexOf,
     ArrayPrototypeMap,
     ArrayPrototypePush,
+    ArrayPrototypeSplice,
     Error,
     ErrorCaptureStackTrace,
     FunctionPrototypeBind,
@@ -17,6 +21,7 @@
     ObjectHasOwn,
     setQueueMicrotask,
     SafeMap,
+    SafeSet,
     SafeWeakMap,
     StringPrototypeSlice,
     Symbol,
@@ -61,6 +66,10 @@
     op_get_ext_import_meta_proto,
     op_drain_pending_rejections,
     op_lazy_load_esm,
+    op_reload_module_evict,
+    op_set_create_hot_context,
+    op_hmr_module_importers,
+    op_hmr_resolve,
     op_load_ext_script,
     op_set_captured_bootstrap,
     op_memory_usage,
@@ -931,6 +940,209 @@
     };
   }
 
+  // Hot Module Replacement escape hatch. Evicts the module from the module
+  // map so the following dynamic import recompiles and re-evaluates it,
+  // returning its fresh namespace. Dependencies are left intact, so shared
+  // dependencies keep their singleton state. Importers of the old instance are
+  // NOT rebound -- callers use the returned namespace (or an `import.meta.hot`
+  // boundary) to wire up the new module.
+  function reloadEsModule(specifier) {
+    op_reload_module_evict(specifier);
+    return import(specifier);
+  }
+
+  // ---- Hot Module Replacement (`import.meta.hot`) runtime ----
+  //
+  // Boundary registry keyed by absolute module specifier. A module becomes a
+  // "boundary" by calling `import.meta.hot.accept(...)`. `applyHmrUpdate` walks
+  // up the importer graph (queried from Rust) to the nearest boundary, runs
+  // dispose handlers, reloads the changed module, and invokes accept handlers.
+  // Shape follows the ESM-HMR / Vite `import.meta.hot` API.
+  const hmrRegistry = new SafeMap();
+
+  // Sentinel thrown by `invalidate()` to abort the in-progress update and force
+  // a full reload.
+  const HMR_INVALIDATE = SymbolFor("Deno.core.hmrInvalidate");
+
+  class HotContext {
+    constructor(specifier) {
+      this.specifier = specifier;
+      // Resolved dependency specifier -> accept callback (or null).
+      this.acceptDeps = new SafeMap();
+      this.acceptingSelf = false;
+      this.selfCallback = null;
+      this.disposers = [];
+      this.listeners = new SafeMap();
+      this.declined = false;
+      // Persists across reloads (see `createHotContext`).
+      this.data = { __proto__: null };
+    }
+
+    accept(deps, callback) {
+      if (deps === undefined || typeof deps === "function") {
+        this.acceptingSelf = true;
+        this.selfCallback = deps ?? null;
+      } else if (typeof deps === "string") {
+        this.acceptDeps.set(
+          op_hmr_resolve(deps, this.specifier),
+          callback ?? null,
+        );
+      } else if (ArrayIsArray(deps)) {
+        ArrayPrototypeForEach(deps, (dep) => {
+          this.acceptDeps.set(
+            op_hmr_resolve(dep, this.specifier),
+            callback ?? null,
+          );
+        });
+      }
+    }
+
+    dispose(callback) {
+      ArrayPrototypePush(this.disposers, callback);
+    }
+
+    decline() {
+      this.declined = true;
+    }
+
+    invalidate() {
+      throw HMR_INVALIDATE;
+    }
+
+    on(event, callback) {
+      let list = this.listeners.get(event);
+      if (list === undefined) {
+        list = [];
+        this.listeners.set(event, list);
+      }
+      ArrayPrototypePush(list, callback);
+    }
+
+    off(event, callback) {
+      const list = this.listeners.get(event);
+      if (list !== undefined) {
+        const i = ArrayPrototypeIndexOf(list, callback);
+        if (i !== -1) ArrayPrototypeSplice(list, i, 1);
+      }
+    }
+  }
+
+  // Factory invoked from Rust (`host_initialize_import_meta_object_callback`)
+  // for each user module when HMR is enabled. Reuses an existing context for a
+  // specifier so `hot.data` survives a reload; the module's freshly-evaluated
+  // code re-registers its accept/dispose handlers, so those are reset here.
+  function createHotContext(specifier) {
+    let hot = hmrRegistry.get(specifier);
+    if (hot === undefined) {
+      hot = new HotContext(specifier);
+      hmrRegistry.set(specifier, hot);
+    } else {
+      hot.acceptDeps = new SafeMap();
+      hot.acceptingSelf = false;
+      hot.selfCallback = null;
+      hot.disposers = [];
+      hot.listeners = new SafeMap();
+      hot.declined = false;
+    }
+    return hot;
+  }
+
+  // Enable HMR: register the factory so subsequently-loaded user modules get
+  // an `import.meta.hot`. Returns `applyHmrUpdate`.
+  function enableHmr() {
+    op_set_create_hot_context(createHotContext);
+    return applyHmrUpdate;
+  }
+
+  function emitHmrEvent(hot, event, payload) {
+    const list = hot.listeners.get(event);
+    if (list !== undefined) {
+      ArrayPrototypeForEach(list, (cb) => cb(payload));
+    }
+  }
+
+  // Walk up the importer graph from `specifier` collecting accepting
+  // boundaries. Returns null if the update cannot be handled (a module
+  // declined, or the graph reaches an entry point with no boundary), meaning
+  // the caller should fall back to a full reload.
+  function collectHmrBoundaries(specifier) {
+    const boundaries = [];
+    const visited = new SafeSet();
+
+    function propagate(current, acceptedDep) {
+      if (visited.has(current)) return true;
+      visited.add(current);
+
+      const hot = hmrRegistry.get(current);
+      if (hot !== undefined && hot.declined) return false;
+
+      // A module that accepts the dependency that changed below it (or itself)
+      // is a boundary; the climb stops here.
+      if (
+        acceptedDep !== null && hot !== undefined &&
+        hot.acceptDeps.has(acceptedDep)
+      ) {
+        ArrayPrototypePush(boundaries, { hot, dep: acceptedDep, self: false });
+        return true;
+      }
+      if (hot !== undefined && hot.acceptingSelf) {
+        ArrayPrototypePush(boundaries, { hot, dep: current, self: true });
+        return true;
+      }
+
+      const importers = op_hmr_module_importers(current);
+      if (importers.length === 0) return false; // reached an entry point
+      for (let i = 0; i < importers.length; i++) {
+        if (!propagate(importers[i], current)) return false;
+      }
+      return true;
+    }
+
+    return propagate(specifier, null) ? boundaries : null;
+  }
+
+  // Apply an HMR update for a changed module. Returns true if handled via
+  // boundaries; false if a full reload is required. The changed module is
+  // recompiled once; each boundary's accept handler then receives the fresh
+  // module namespace.
+  async function applyHmrUpdate(changedSpecifier) {
+    const boundaries = collectHmrBoundaries(changedSpecifier);
+    if (boundaries === null || boundaries.length === 0) return false;
+
+    const changedHot = hmrRegistry.get(changedSpecifier);
+    if (changedHot !== undefined) {
+      emitHmrEvent(changedHot, "vite:beforeUpdate", { type: "update" });
+      ArrayPrototypeForEach(changedHot.disposers, (cb) => cb(changedHot.data));
+    }
+
+    let newModule;
+    try {
+      newModule = await reloadEsModule(changedSpecifier);
+    } catch (err) {
+      if (err === HMR_INVALIDATE) return false;
+      throw err;
+    }
+
+    try {
+      ArrayPrototypeForEach(boundaries, (b) => {
+        if (b.self) {
+          if (b.hot.selfCallback !== null) b.hot.selfCallback(newModule);
+        } else {
+          const cb = b.hot.acceptDeps.get(b.dep);
+          if (cb !== null) cb({ module: newModule });
+        }
+      });
+    } catch (err) {
+      if (err === HMR_INVALIDATE) return false;
+      throw err;
+    }
+
+    if (changedHot !== undefined) {
+      emitHmrEvent(changedHot, "vite:afterUpdate", { type: "update" });
+    }
+    return true;
+  }
+
   const loadedScripts = { __proto__: null };
 
   // Note: the Rust side of `op_load_ext_script` (in `libs/core/modules/map.rs`)
@@ -1252,6 +1464,9 @@
     propNonEnumerableLazyLoaded,
     defineGlobalProperties,
     createLazyLoader,
+    reloadEsModule,
+    enableHmr,
+    applyHmrUpdate,
     loadExtScript,
     createCancelHandle: () => op_cancel_handle(),
     getAsyncContext,

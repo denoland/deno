@@ -296,31 +296,6 @@ pub type TimeDelta = u64;
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-UnserializableValue>
 pub type UnserializableValue = String;
 
-/// <https://chromedevtools.github.io/devtools-protocol/tot/Debugger/#method-setScriptSource>
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SetScriptSourceResponse {
-  pub status: Status,
-  pub exception_details: Option<ExceptionDetails>,
-}
-
-#[derive(Debug, Deserialize)]
-pub enum Status {
-  Ok,
-  CompileError,
-  BlockedByActiveGenerator,
-  BlockedByActiveFunction,
-  BlockedByTopLevelEsModuleChange,
-}
-
-/// <https://chromedevtools.github.io/devtools-protocol/tot/Debugger/#event-scriptParsed>
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ScriptParsed {
-  pub script_id: String,
-  pub url: String,
-}
-
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-CoverageRange>
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
