@@ -63,7 +63,8 @@ pub async fn install_global(
   let deps_http_cache = factory.global_http_cache()?;
   let create_deps_file_fetcher = |download_log_level: log::Level| {
     Arc::new(create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(deno_runtime::deno_web::BlobStore::default())
+        as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
       http_client.clone(),
       factory.memory_files().clone(),
