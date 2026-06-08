@@ -393,7 +393,6 @@ impl PermissionPrompter for TtyPrompter {
     // hang forever waiting for a `\n` that the terminal will never deliver,
     // and the user wouldn't see what they're typing either. Bail out with a
     // clear message so the program doesn't appear to freeze.
-    #[cfg(not(target_arch = "wasm32"))]
     #[allow(clippy::print_stderr, reason = "actually want to print")]
     if stdin_is_raw_mode() {
       // Escape the message/name since they can contain user-controlled strings
