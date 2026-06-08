@@ -1211,3 +1211,19 @@ server.on("exit", () => process.exit(0));
       console.write_raw(".exit\r");
     });
 }
+
+#[test(flaky)]
+fn pty_lint_run_plugin_disabled() {
+  // Regression test for https://github.com/denoland/deno/issues/28264
+  // `Deno.lint.runPlugin` is not available outside of `deno test`, so calling
+  // it in the REPL should throw a helpful error instead of a cryptic
+  // "op_lint_create_serialized_ast is not a function".
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      "Deno.lint.runPlugin({ name: \"x\", rules: {} }, \"x.ts\", \"\");",
+    );
+    console.expect(
+      "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+    );
+  });
+}
