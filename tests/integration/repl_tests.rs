@@ -254,6 +254,20 @@ fn await_timeout() {
 }
 
 #[test(flaky)]
+fn pty_uncaught_exception_from_timeout() {
+  // Regression test for https://github.com/denoland/deno/issues/21622:
+  // an uncaught exception thrown from a `setTimeout` callback must be printed
+  // while sitting at the prompt, without requiring another expression to be
+  // evaluated first.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("setTimeout(() => { throw new Error('boom') }, 200);");
+    // Do NOT evaluate anything else. The exception should be reported on its
+    // own once the timer fires.
+    console.expect("Uncaught Error: boom");
+  });
+}
+
+#[test(flaky)]
 fn let_redeclaration() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("let foo = 0;");
@@ -464,6 +478,32 @@ fn syntax_error() {
     // ensure it keeps accepting input after
     console.write_line("7 * 6");
     console.expect("42");
+  });
+}
+
+#[test(flaky)]
+fn syntax_error_invalid_arrow_params() {
+  // Regression test for https://github.com/denoland/deno/issues/19457: swc
+  // recovers from the malformed arrow params by emitting an `<invalid>` token,
+  // which used to surface as a misleading `Unexpected token '<'`.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const test = (i, 2 * i) => console.log(i);");
+    console.expect("parse error: Not a pattern");
+    // ensure it keeps accepting input after
+    console.write_line("7 * 6");
+    console.expect("42");
+  });
+}
+
+#[test(flaky)]
+fn type_assertion_still_parses() {
+  // A `.ts` type assertion looks like JSX when parsed as `.tsx`; the repl must
+  // fall back to parsing as TypeScript rather than reporting a parse error.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const x = <string>('hello' as unknown);");
+    console.expect("undefined");
+    console.write_line("x");
+    console.expect("\"hello\"");
   });
 }
 
@@ -1170,4 +1210,20 @@ server.on("exit", () => process.exit(0));
       console.expect("EVALED__side_effect=0");
       console.write_raw(".exit\r");
     });
+}
+
+#[test(flaky)]
+fn pty_lint_run_plugin_disabled() {
+  // Regression test for https://github.com/denoland/deno/issues/28264
+  // `Deno.lint.runPlugin` is not available outside of `deno test`, so calling
+  // it in the REPL should throw a helpful error instead of a cryptic
+  // "op_lint_create_serialized_ast is not a function".
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      "Deno.lint.runPlugin({ name: \"x\", rules: {} }, \"x.ts\", \"\");",
+    );
+    console.expect(
+      "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+    );
+  });
 }

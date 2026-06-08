@@ -2398,9 +2398,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.108.2"
+version = "0.108.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abf8dde12e88c720eceb649d7aa38abb202840b5e780ee8b1bb12250f0668266"
+checksum = "21d2b976d342f56afb862e2291e891a13391e07771baf6d266aee16bfd758285"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -10638,9 +10638,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "149.2.0"
+version = "149.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46dccf61a364b61bbaac70a8ba64a1a1006e87123b7d62eaeec999a3ba31ecdb"
+checksum = "65a9ff61a9b12e7b2559a7b1e5e1515e379a999c97a65b9356b936307b7f687a"
 dependencies = [
  "bindgen 0.72.1",
  "bitflags 2.9.3",
