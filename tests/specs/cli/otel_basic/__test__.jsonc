@@ -167,6 +167,13 @@
       },
       "output": "grpc_trailers_error.out"
     },
+    "span_attribute_limit": {
+      "args": "run -A main.ts span_attribute_limit.ts",
+      "envs": {
+        "OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT": "2"
+      },
+      "output": "span_attribute_limit.out"
+    },
     "traces_sampler_always_on": {
       "args": "run -A main.ts traces_sampler.ts",
       "envs": {
