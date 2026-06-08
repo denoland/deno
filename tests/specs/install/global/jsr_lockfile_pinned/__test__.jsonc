@@ -1,22 +1,9 @@
 {
   "tempDir": true,
   "steps": [{
-    "if": "unix",
     "args": "install -g --root ./bins jsr:@denotest/echo-lockfile-pinned",
     "output": "install.out"
   }, {
-    "if": "unix",
-    "args": [
-      "eval",
-      "const lock = JSON.parse(Deno.readTextFileSync('./bins/bin/.echo-lockfile-pinned/deno.lock')); console.log(lock.specifiers['jsr:@denotest/add@0.2']); console.log(lock.workspace.dependencies.includes('jsr:@denotest/add@0.2'));"
-    ],
-    "output": "lockfile.out"
-  }, {
-    "if": "windows",
-    "args": "install -g --root ./bins jsr:@denotest/echo-lockfile-pinned",
-    "output": "install.out"
-  }, {
-    "if": "windows",
     "args": [
       "eval",
       "const lock = JSON.parse(Deno.readTextFileSync('./bins/bin/.echo-lockfile-pinned/deno.lock')); console.log(lock.specifiers['jsr:@denotest/add@0.2']); console.log(lock.workspace.dependencies.includes('jsr:@denotest/add@0.2'));"

@@ -498,7 +498,7 @@ async fn setup_config_dir(
   }
 
   // fetch deno.lock from JSR if this is a JSR package
-  let fetched_lockfile_content = if !flags.no_lock
+  let fetched_lockfile = if !flags.no_lock
     && let Some(fetcher) = jsr_lockfile_fetcher
   {
     fetcher.fetch_lockfile(&bin_name_and_url.module_url).await
@@ -509,7 +509,7 @@ async fn setup_config_dir(
   // generated config's import map. Without them the local install below would
   // see an empty workspace, prune those roots from the lockfile, and re-resolve
   // the pins to newer versions (denoland/deno#33323).
-  if let Some(fetched) = &fetched_lockfile_content {
+  if let Some(fetched) = &fetched_lockfile {
     let imports = config_obj.object_value_or_set("imports");
     for (key, value) in &fetched.workspace_imports {
       if imports.get(key).is_none() {
@@ -533,7 +533,7 @@ async fn setup_config_dir(
     )?;
   }
 
-  if let Some(fetched) = fetched_lockfile_content {
+  if let Some(fetched) = fetched_lockfile {
     fs::write(dir.join("deno.lock"), fetched.content)?;
   }
 
