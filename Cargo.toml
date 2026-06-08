@@ -93,7 +93,7 @@ deno_ast = { version = "=0.53.2", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.199.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.108.2", default-features = false }
+deno_graph = { version = "=0.108.4", default-features = false }
 deno_lint = "=0.84.1"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -103,7 +103,7 @@ deno_task_shell = "=0.33.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "149.2.0", default-features = false, features = ["simdutf"] }
+v8 = { version = "149.3.0", default-features = false, features = ["simdutf"] }
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -277,7 +277,7 @@ rusqlite = { version = "0.37.0", features = ["unlock_notify", "bundled", "sessio
 rustls = { version = "=0.23.40", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.8.0"
-rustls-webpki = "0.102"
+rustls-webpki = "0.103"
 rustyline = { version = "=17.0.0", features = ["custom-bindings"] }
 rustyline-derive = "=0.11.1"
 same-file = "1.0.6"

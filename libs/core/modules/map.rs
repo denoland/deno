@@ -28,6 +28,7 @@ use v8::PromiseState;
 use wasm_dep_analyzer::WasmDeps;
 
 use super::CustomModuleEvaluationKind;
+use super::ImportAttributesContext;
 use super::IntoModuleCodeString;
 use super::IntoModuleName;
 use super::LazyEsmModuleLoader;
@@ -1032,7 +1033,16 @@ impl ModuleMap {
         if let Some(validate_import_attributes_cb) =
           &state.validate_import_attributes_cb
         {
-          (validate_import_attributes_cb)(tc_scope, &attributes);
+          let location = module
+            .source_offset_to_location(module_request.get_source_offset());
+          let context = ImportAttributesContext {
+            referrer: name.as_str().to_string(),
+            specifier: import_specifier.to_string(),
+            // V8 reports 0-based line/column; report them 1-based.
+            line_number: Some(location.get_line_number() as u32 + 1),
+            column_number: Some(location.get_column_number() as u32 + 1),
+          };
+          (validate_import_attributes_cb)(tc_scope, &attributes, &context);
         }
       }
 

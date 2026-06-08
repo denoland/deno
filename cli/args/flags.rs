@@ -170,6 +170,11 @@ pub struct VersionFlags {
   pub release_notes: Option<String>,
   /// Don't write any files; just print what would happen.
   pub dry_run: bool,
+  /// Explicit path to the manifest file to bump. May point to a `deno.json`
+  /// (or `.jsonc`) or a `package.json`. When set, single-file mode is forced
+  /// (workspace auto-detection is bypassed). Useful when both `deno.json` and
+  /// `package.json` exist in the same directory.
+  pub config: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1640,6 +1645,11 @@ static ENV_VARS: &[EnvVar] = &[
     example: None,
   },
   EnvVar {
+    name: "DENO_CONDITIONS",
+    description: "Comma-separated list of custom conditions to resolve npm package\nexports and imports with. Equivalent to using the --conditions flag.",
+    example: None,
+  },
+  EnvVar {
     name: "DENO_COVERAGE_DIR",
     description: "Set the directory for collecting code coverage profiles.\nEquivalent to using the --coverage flag.",
     example: None,
@@ -1653,6 +1663,11 @@ static ENV_VARS: &[EnvVar] = &[
     name: "DENO_INSTALL_ROOT",
     description: "Set deno install's output directory",
     example: Some("(defaults to $HOME/.deno/bin)"),
+  },
+  EnvVar {
+    name: "DENO_JOBS",
+    description: "Number of parallel workers used for the --parallel flag with the test\nsubcommand. Defaults to the number of available CPUs.",
+    example: None,
   },
   EnvVar {
     name: "DENO_KV_DB_MODE",
@@ -1677,6 +1692,11 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_NO_PACKAGE_JSON",
     description: "Disables auto-resolution of package.json.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_NO_PROMPT",
+    description: "Set to disable permission prompts on access\n(alternative to passing --no-prompt on invocation).",
     example: None,
   },
   EnvVar {
@@ -1716,6 +1736,11 @@ static ENV_VARS: &[EnvVar] = &[
   EnvVar {
     name: "DENO_USE_CGROUPS",
     description: "Use cgroups to determine V8 memory limit.",
+    example: None,
+  },
+  EnvVar {
+    name: "DENO_V8_FLAGS",
+    description: "Set V8 command line options. Equivalent to using the --v8-flags flag;\nflags passed via --v8-flags are appended after these.",
     example: None,
   },
   EnvVar {
@@ -1874,11 +1899,36 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   flags_from_vec_with_initial_cwd(args, None)
 }
 
+/// Strip a single trailing carriage return from an argument.
+///
+/// When a script with CRLF line endings starts with a shebang like
+/// `#!/usr/bin/env -S deno run --allow-net`, the kernel passes the trailing
+/// `\r` as part of the final argument (e.g. `--allow-net\r`), which then
+/// fails clap parsing with a confusing "isn't valid in this context" error.
+/// Trimming a trailing CR here makes such scripts run as the author intended.
+fn strip_trailing_cr(arg: OsString) -> OsString {
+  let bytes = arg.as_encoded_bytes();
+  if bytes.ends_with(b"\r") {
+    let stripped = bytes[..bytes.len() - 1].to_vec();
+    // SAFETY: `\r` is the single ASCII byte 0x0D; removing an ASCII byte from
+    // the end of a valid OS-string byte sequence (UTF-8 on Unix, WTF-8 on
+    // Windows) cannot split a multi-byte code point and keeps the encoding
+    // valid.
+    unsafe { OsString::from_encoded_bytes_unchecked(stripped) }
+  } else {
+    arg
+  }
+}
+
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec_with_initial_cwd(
   args: Vec<OsString>,
   initial_cwd: Option<PathBuf>,
 ) -> clap::error::Result<Flags> {
+  // Strip a trailing `\r` from each argument so that a shebang in a script
+  // saved with CRLF line endings (e.g. `#!/usr/bin/env -S deno run -A\r`)
+  // doesn't poison the final shebang argument with a stray carriage return.
+  let args: Vec<OsString> = args.into_iter().map(strip_trailing_cr).collect();
   let args = if !args.is_empty()
     && (args[0].as_encoded_bytes().ends_with(b"dx")
       || args[0].as_encoded_bytes().ends_with(b"denox")
@@ -2449,6 +2499,8 @@ Or multiple dependencies at once:
       )
       .arg(add_dev_arg())
       .arg(allow_scripts_arg())
+      .arg(allow_import_arg())
+      .arg(deny_import_arg())
       .args(lock_args())
       .arg(lockfile_only_arg())
       .args(default_registry_args())
@@ -4443,10 +4495,26 @@ thread_local! {
   static TEST_NODE_OPTIONS: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
+/// Whether `word` is a `--inspect`, `--inspect-brk`, or `--inspect-wait` flag
+/// (with or without a `=value` suffix), as it might appear in `NODE_OPTIONS`.
+/// Note `--inspect-publish-uid` is intentionally excluded here; it's handled
+/// separately.
+fn is_inspect_node_option(word: &str) -> bool {
+  ["--inspect", "--inspect-brk", "--inspect-wait"]
+    .iter()
+    .any(|name| {
+      word == *name
+        || word
+          .strip_prefix(name)
+          .is_some_and(|rest| rest.starts_with('='))
+    })
+}
+
 /// Reads some flags from NODE_OPTIONS:
 /// https://nodejs.org/api/cli.html#node_optionsoptions
 /// Currently supports:
 /// - `--require` / `-r`
+/// - `--inspect` / `--inspect-brk` / `--inspect-wait`
 /// - `--inspect-publish-uid`
 fn apply_node_options(flags: &mut Flags) {
   let node_options = match std::env::var("NODE_OPTIONS") {
@@ -4475,19 +4543,18 @@ fn apply_node_options(flags: &mut Flags) {
         *prev_was_require = true;
         return Some((word, true));
       }
-      if word.starts_with("--inspect-publish-uid=") || *prev_was_require {
-        *prev_was_require = false;
-        return Some((word, true));
-      }
+      let keep = *prev_was_require
+        || word.starts_with("--inspect-publish-uid=")
+        || is_inspect_node_option(word);
       *prev_was_require = false;
-      Some((word, false))
+      Some((word, keep))
     })
     .filter_map(|(word, should_keep)| should_keep.then_some(word));
 
-  let cmd = Command::new("node-options-parser")
-    .arg(require_arg().short('r'))
-    .arg(inspect_publish_uid_arg())
-    .ignore_errors(true);
+  let cmd = inspect_args(
+    Command::new("node-options-parser").arg(require_arg().short('r')),
+  )
+  .ignore_errors(true);
   let mut matches =
     cmd.get_matches_from(std::iter::once("node-options-parser").chain(args));
 
@@ -4497,6 +4564,18 @@ fn apply_node_options(flags: &mut Flags) {
     flags.require = merged_require;
   }
 
+  // `--inspect`, `--inspect-brk`, and `--inspect-wait` are mutually exclusive,
+  // so only apply them from NODE_OPTIONS if the user didn't pass any inspector
+  // flag on the command line. An explicit CLI flag takes precedence over the
+  // whole NODE_OPTIONS inspector family.
+  if flags.inspect.is_none()
+    && flags.inspect_brk.is_none()
+    && flags.inspect_wait.is_none()
+  {
+    flags.inspect = matches.remove_one::<SocketAddr>("inspect");
+    flags.inspect_brk = matches.remove_one::<SocketAddr>("inspect-brk");
+    flags.inspect_wait = matches.remove_one::<SocketAddr>("inspect-wait");
+  }
   if flags.inspect_publish_uid.is_none() {
     flags.inspect_publish_uid =
       matches.remove_one::<InspectPublishUid>("inspect-publish-uid");
@@ -5165,6 +5244,21 @@ release note is prepended to <p(245)>Releases.md</>."
           .help(
             "[conventional-commits mode] Path to the release notes file to prepend. Default: Releases.md",
           ),
+      )
+      .arg(
+        Arg::new("config")
+          .long("config")
+          .short('c')
+          .value_name("FILE")
+          .value_hint(ValueHint::FilePath)
+          .conflicts_with("workspace")
+          .help(cstr!(
+            "Explicit path to the manifest file to bump.
+  <p(245)>May point to a `deno.json`/`deno.jsonc` or a `package.json`. When
+  set, single-file mode is forced (workspace auto-detection is bypassed).
+  Useful when both `deno.json` and `package.json` exist in the same
+  directory.</>"
+          )),
       )
   })
 }
@@ -6781,6 +6875,7 @@ fn add_parse(
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
   allow_scripts_arg_parse(flags, matches)?;
+  allow_and_deny_import_parse(flags, matches)?;
   lock_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   flags.subcommand = DenoSubcommand::Add(add_parse_inner(matches, None));
@@ -6854,6 +6949,7 @@ fn bump_version_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     import_map: matches.remove_one::<String>("import-map"),
     release_notes: matches.remove_one::<String>("release-notes"),
     dry_run: matches.get_flag("dry-run"),
+    config: matches.remove_one::<String>("config"),
   });
 }
 
@@ -6947,6 +7043,11 @@ fn bundle_parse(
   let output = matches.remove_one::<String>("output");
   let outdir = matches.remove_one::<String>("outdir");
   compile_args_without_check_parse(flags, matches)?;
+  // `bundle_subcommand` advertises `--check`, but the parser dropped the
+  // value so `flags.type_check_mode` stayed at its default (`None`),
+  // which made the bundle silently skip type-checking even with
+  // `--check=all` (denoland/deno#30159).
+  check_arg_parse(flags, matches);
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   allow_and_deny_import_parse(flags, matches)?;
   env_file_arg_parse(flags, matches);
@@ -9081,6 +9182,30 @@ mod tests {
     let r2 = flags_from_vec(svec!["deno", "run", "--log-level", "debug", "--quiet", "script.ts"]);
     let flags2 = r2.unwrap();
     assert_eq!(flags2, flags);
+  }
+
+  #[test]
+  fn crlf_shebang_arg() {
+    // A script saved with CRLF line endings whose first line is
+    // `#!/usr/bin/env -S deno run --allow-net` is invoked by the kernel as
+    // roughly `deno run --allow-net\r script.ts`. The stray `\r` on the last
+    // shebang token must not break flag parsing.
+    let r = flags_from_vec(svec!["deno", "run", "--allow-net\r", "script.ts"]);
+    let flags = r.unwrap();
+    assert_eq!(
+      flags,
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string()
+        )),
+        permissions: PermissionFlags {
+          allow_net: Some(vec![]),
+          ..PermissionFlags::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
+    );
   }
 
   #[test]
@@ -15345,6 +15470,33 @@ mod tests {
         );
       }
     }
+
+    {
+      let r = flags_from_vec(svec![
+        "deno",
+        "add",
+        "--allow-import=example.com",
+        "@david/which"
+      ]);
+      assert_eq!(
+        r.unwrap(),
+        Flags {
+          subcommand: DenoSubcommand::Add(AddFlags {
+            packages: svec!["@david/which"],
+            dev: false,
+            default_registry: Some(DefaultRegistry::Npm),
+            lockfile_only: false,
+            save_exact: false,
+            package_json: false,
+          }),
+          permissions: PermissionFlags {
+            allow_import: Some(svec!["example.com"]),
+            ..Default::default()
+          },
+          ..Flags::default()
+        }
+      );
+    }
   }
 
   #[test]
@@ -16900,6 +17052,52 @@ Usage: deno lint [OPTIONS] [files]...\n"
   }
 
   #[test]
+  fn node_options_inspect() {
+    set_test_node_options(Some("--inspect=127.0.0.1:9333"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect, Some("127.0.0.1:9333".parse().unwrap()));
+  }
+
+  #[test]
+  fn node_options_inspect_default_address() {
+    set_test_node_options(Some("--inspect"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect, Some("127.0.0.1:9229".parse().unwrap()));
+  }
+
+  #[test]
+  fn node_options_inspect_brk_and_wait() {
+    set_test_node_options(Some("--inspect-brk=127.0.0.1:9334"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect_brk, Some("127.0.0.1:9334".parse().unwrap()));
+
+    set_test_node_options(Some("--inspect-wait=127.0.0.1:9335"));
+    let flags = flags_from_vec(svec!["deno", "run", "script.ts",]).unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect_wait, Some("127.0.0.1:9335".parse().unwrap()));
+  }
+
+  #[test]
+  fn node_options_inspect_cli_precedence() {
+    // An explicit CLI inspector flag suppresses the entire NODE_OPTIONS
+    // inspector family, since --inspect/-brk/-wait are mutually exclusive.
+    set_test_node_options(Some("--inspect=127.0.0.1:9333"));
+    let flags = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--inspect-brk=127.0.0.1:9444",
+      "script.ts",
+    ])
+    .unwrap();
+    set_test_node_options(None);
+    assert_eq!(flags.inspect, None);
+    assert_eq!(flags.inspect_brk, Some("127.0.0.1:9444".parse().unwrap()));
+  }
+
+  #[test]
   fn node_options_combined() {
     // Test NODE_OPTIONS with both --require and --inspect-publish-uid
     set_test_node_options(Some(
@@ -17086,6 +17284,48 @@ Usage: deno lint [OPTIONS] [files]...\n"
           base: Some("main".to_string()),
           import_map: Some("import_map.json".to_string()),
           release_notes: Some("Releases.md".to_string()),
+          config: None,
+        }),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn bump_version_config() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "bump-version",
+      "patch",
+      "--config",
+      "package.json",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+          config: Some("package.json".to_string()),
+          ..Default::default()
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "bump-version",
+      "-c",
+      "package.json",
+      "patch",
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::BumpVersion(VersionFlags {
+          increment: Some(VersionIncrement::Patch),
+          config: Some("package.json".to_string()),
+          ..Default::default()
         }),
         ..Flags::default()
       }

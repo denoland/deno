@@ -39,6 +39,11 @@
       "output": "hello from worker\n",
       "exitCode": 0
     },
+    "broadcast_channel_sab": {
+      "args": "run --quiet --allow-read --unstable-broadcast-channel broadcast_channel_sab.mjs",
+      "output": "broadcast_channel_sab.out",
+      "exitCode": 0
+    },
     "parent_port_unref": {
       "args": "run --allow-env --allow-read message_port_unref.mjs",
       "envs": {

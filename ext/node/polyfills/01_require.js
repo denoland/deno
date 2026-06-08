@@ -798,8 +798,10 @@ function executeEsmLoadHookChain(fileUrl, context) {
       currentContext = { ...currentContext, ...ctx };
     }
     if (index >= loadHooks.length) {
-      // End of chain - perform default load so user hooks calling
-      // nextLoad() receive the actual source they can transform.
+      // End of chain. Synthesize a default load result so user hooks
+      // that call `await nextLoad(...)` observe a real `source` they
+      // can transform (matches Node, where `defaultLoad` returns the
+      // on-disk source).
       if (StringPrototypeStartsWith(loadUrl, "node:")) {
         return { source: null, format: "builtin", shortCircuit: true };
       }
@@ -812,10 +814,11 @@ function executeEsmLoadHookChain(fileUrl, context) {
             shortCircuit: true,
           };
         } catch {
-          // Any synchronous read failure (file absent from disk because it's
+          // Any sync read failure (file absent from disk because it's
           // embedded in a compiled binary's eszip, permission errors,
-          // transient IO) falls through to Rust default loading, which will
-          // surface a clearer error if the module truly cannot be loaded.
+          // transient IO) falls through to Rust default loading via
+          // the load loop, which surfaces a clearer error if the
+          // module truly cannot be loaded.
           return { source: null, shortCircuit: true };
         }
       }
@@ -1375,6 +1378,25 @@ Module._resolveLookupPaths = function (request, parent) {
 };
 
 Module._load = function (request, parent, isMain) {
+  // A `node:`-prefixed `require()` of a specifier that isn't a user-requirable
+  // builtin throws ERR_UNKNOWN_BUILTIN_MODULE. This covers unknown ids and
+  // `internal/*` modules (Node only exposes those under `--expose-internals`).
+  // `require.resolve()` goes through `_resolveFilename` directly and instead
+  // reports MODULE_NOT_FOUND, so this check lives here rather than there.
+  if (
+    typeof request === "string" &&
+    StringPrototypeStartsWith(request, "node:") &&
+    !(hookEntries.length > 0 && !insideResolveHook)
+  ) {
+    const id = StringPrototypeSlice(request, 5);
+    if (
+      !(id in nativeModuleExports) ||
+      StringPrototypeStartsWith(id, "internal/")
+    ) {
+      throw new internalErrors.ERR_UNKNOWN_BUILTIN_MODULE(request);
+    }
+  }
+
   let relResolveCacheIdentifier;
   if (parent) {
     // Fast path for (lazy loaded) modules in the same directory. The indirect
@@ -1675,6 +1697,9 @@ Module._resolveFilename = function (
     if (hookEntries.length > 0 && !insideResolveHook) {
       return request;
     }
+    // `require.resolve("node:unknown")` reports MODULE_NOT_FOUND, unlike
+    // `require("node:unknown")` which throws ERR_UNKNOWN_BUILTIN_MODULE from
+    // `Module._load`.
     const err = new Error(`Cannot find module '${request}'`);
     err.code = "MODULE_NOT_FOUND";
     throw err;

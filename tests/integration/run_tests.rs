@@ -3317,6 +3317,17 @@ fn node_process_stdin_unref_with_pty() {
 }
 
 #[test]
+fn stdin_readable_cancel_with_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/stdin_readable_cancel.ts"])
+    .with_pty(|mut console| {
+      console.expect("CANCELLED");
+      console.expect("DONE");
+    });
+}
+
+#[test]
 async fn listen_tls_alpn() {
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
