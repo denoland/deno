@@ -546,8 +546,19 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
     // this call will generate an optimized function that binds to the provided
     // op, while keeping track of promises and error remapping.
     if op_ctx.decl.is_async {
+      let eager_throw =
+        v8::Boolean::new(scope, op_ctx.decl.metadata.eager_throw);
       let result = set_up_async_stub_fn
-        .call(scope, undefined.into(), &[key.into(), op_fn.into()])
+        .call(
+          scope,
+          undefined.into(),
+          &[
+            key.into(),
+            op_fn.into(),
+            undefined.into(),
+            eager_throw.into(),
+          ],
+        )
         .unwrap();
       op_fn = result.try_into().unwrap()
     }

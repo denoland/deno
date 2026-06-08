@@ -48,7 +48,11 @@ for (let i = 0; i < 10; i++) {
     .replaceAll(/__ARGS__/g, args)
     .replaceAll(/__ARGS_PARAM__/g, args.replace(/id(, )?/, ""))
     .replaceAll(/__OP__/g, "originalOp")
-    .replaceAll(/[\s]*__ERR__;/g, "")
+    // For ops declared `async(eager_throw)`, surface the synchronous eager
+    // error (validation in the op's sync prologue) as a synchronous throw to
+    // match node, instead of folding it into a rejected promise. `eagerThrow`
+    // is captured from the enclosing setUpAsyncStub scope.
+    .replaceAll(/__ERR__;/g, "if (eagerThrow) throw err;")
     .replaceAll(/^/gm, "  ");
   asyncStubCases += `
 case ${i}:

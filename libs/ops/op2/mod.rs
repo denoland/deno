@@ -336,6 +336,7 @@ pub(crate) fn generate_op2(
   };
   let is_async = signature.ret_val.is_async() || config.fake_async;
   let is_reentrant = config.reentrant;
+  let eager_throw = config.async_eager_throw;
   let no_side_effect = config.no_side_effects;
 
   let mut fast_generator_state = base_generator_state.clone();
@@ -471,6 +472,7 @@ pub(crate) fn generate_op2(
           /*fast_fn_metrics*/ #fast_definition_metrics,
           /*metadata*/ ::deno_core::OpMetadata {
             #(#meta_key: Some(#meta_value),)*
+            eager_throw: #eager_throw,
             ..::deno_core::OpMetadata::default()
           },
         );
