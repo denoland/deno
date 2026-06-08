@@ -130,7 +130,10 @@ function makeAsyncForwarder(name, methodName) {
   // would otherwise be `"makeAsyncForwarder"` from the surrounding fn.
   const wrapper = {
     async [methodName](...args) {
-      return FunctionPrototypeCall(
+      // `await` keeps `dlint require-await` happy and is a no-op when the
+      // underlying cppgc method returns a non-thenable (the WebCrypto
+      // surface guarantees a CryptoKey/array/dict, not a Promise).
+      return await FunctionPrototypeCall(
         cppgc,
         this,
         ...new SafeArrayIterator(args),
