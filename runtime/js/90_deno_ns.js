@@ -124,12 +124,8 @@ defineLazyInternal("kExtraStdio", "ext:deno_process/40_process.js");
 const usageBuffer = new Float64Array(4);
 
 const denoNs = {
-  get Process() {
-    return lazyProcess().Process;
-  },
-  get run() {
-    return lazyProcess().run;
-  },
+  Process: undefined,
+  run: undefined,
   isatty: tty.isatty,
   writeFileSync: fs.writeFileSync,
   writeFile: fs.writeFile,
@@ -222,21 +218,13 @@ const denoNs = {
   permissions: permissions.permissions,
   Permissions: permissions.Permissions,
   PermissionStatus: permissions.PermissionStatus,
-  get serveHttp() {
-    return lazyHttp().serveHttp;
-  },
-  get serve() {
-    return lazyServe().serve;
-  },
+  serveHttp: undefined,
+  serve: undefined,
   resolveDns: net.resolveDns,
-  get upgradeWebSocket() {
-    return lazyWebsocket().upgradeWebSocket;
-  },
+  upgradeWebSocket: undefined,
   utime: fs.utime,
   utimeSync: fs.utimeSync,
-  get kill() {
-    return lazyProcess().kill;
-  },
+  kill: undefined,
   addSignalListener: signals.addSignalListener,
   removeSignalListener: signals.removeSignalListener,
   refTimer: timers.refTimer,
@@ -249,21 +237,11 @@ const denoNs = {
   consoleSize: tty.consoleSize,
   gid: os.gid,
   uid: os.uid,
-  get Command() {
-    return lazyProcess().Command;
-  },
-  get ChildProcess() {
-    return lazyProcess().ChildProcess;
-  },
-  get spawn() {
-    return lazyProcess().spawn;
-  },
-  get spawnAndWait() {
-    return lazyProcess().spawnAndWait;
-  },
-  get spawnAndWaitSync() {
-    return lazyProcess().spawnAndWaitSync;
-  },
+  Command: undefined,
+  ChildProcess: undefined,
+  spawn: undefined,
+  spawnAndWait: undefined,
+  spawnAndWaitSync: undefined,
   dlopen: ffi.dlopen,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,
@@ -274,6 +252,38 @@ const denoNs = {
   createHttpClient: httpClient.createHttpClient,
   telemetry: telemetry.telemetry,
 };
+
+core.defineGlobalProperties(denoNs, {
+  Process: core.propWritableLazyLoaded(
+    (process) => process.Process,
+    lazyProcess,
+  ),
+  run: core.propWritableLazyLoaded((process) => process.run, lazyProcess),
+  serveHttp: core.propWritableLazyLoaded((http) => http.serveHttp, lazyHttp),
+  serve: core.propWritableLazyLoaded((serve) => serve.serve, lazyServe),
+  upgradeWebSocket: core.propWritableLazyLoaded(
+    (websocket) => websocket.upgradeWebSocket,
+    lazyWebsocket,
+  ),
+  kill: core.propWritableLazyLoaded((process) => process.kill, lazyProcess),
+  Command: core.propWritableLazyLoaded(
+    (process) => process.Command,
+    lazyProcess,
+  ),
+  ChildProcess: core.propWritableLazyLoaded(
+    (process) => process.ChildProcess,
+    lazyProcess,
+  ),
+  spawn: core.propWritableLazyLoaded((process) => process.spawn, lazyProcess),
+  spawnAndWait: core.propWritableLazyLoaded(
+    (process) => process.spawnAndWait,
+    lazyProcess,
+  ),
+  spawnAndWaitSync: core.propWritableLazyLoaded(
+    (process) => process.spawnAndWaitSync,
+    lazyProcess,
+  ),
+});
 
 const denoNsUnstableById = { __proto__: null };
 
