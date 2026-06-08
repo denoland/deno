@@ -138,6 +138,17 @@ fn pty_complete_expression() {
 }
 
 #[test(flaky)]
+fn pty_complete_lazy_loaded_getter() {
+  // `navigator.gpu` is exposed through a lazily-loaded getter that triggers a
+  // side effect on first access. Completion must still surface its properties.
+  // https://github.com/denoland/deno/issues/24917
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line_raw("navigator.gpu.getPreferredCanvasForma\t");
+    console.expect("navigator.gpu.getPreferredCanvasFormat");
+  });
+}
+
+#[test(flaky)]
 fn pty_ignore_symbols() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line_raw("Array.Symbol\t");

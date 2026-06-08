@@ -75,6 +75,7 @@ deno_core::extension!(deno_web,
     op_encoding_normalize_label,
     op_encoding_decode_single,
     op_encoding_decode_utf8,
+    op_encoding_decode_utf8_ascii_only,
     op_encoding_new_decoder,
     op_encoding_decode,
     op_encoding_encode_into,
@@ -519,6 +520,25 @@ fn op_encoding_normalize_label(
   let encoding = Encoding::for_label_no_replacement(label.as_bytes())
     .ok_or(WebError::InvalidEncodingLabel(label))?;
   Ok(encoding.name().to_lowercase())
+}
+
+// Streaming-mode fast path for UTF-8 decoding: returns a V8 string when the
+// input is pure ASCII, and `null` otherwise. Pure ASCII can never split a
+// codepoint at a chunk boundary, so a streaming `TextDecoder` whose internal
+// state is idle can decode an ASCII chunk without touching its incremental
+// decoder at all. Used by `TextDecoder.decode(chunk, { stream: true })` in
+// `08_text_encoding.js` to skip the `Vec<u16>` allocation and UTF-16
+// conversion of the encoding_rs path while keeping the decoder idle for the
+// next ASCII chunk.
+#[op2]
+fn op_encoding_decode_utf8_ascii_only<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[anybuffer] zero_copy: &[u8],
+) -> Option<v8::Local<'a, v8::String>> {
+  if !v8::simdutf::validate_ascii(zero_copy) {
+    return None;
+  }
+  v8::String::new_from_one_byte(scope, zero_copy, v8::NewStringType::Normal)
 }
 
 #[op2]
