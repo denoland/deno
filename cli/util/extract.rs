@@ -1004,6 +1004,34 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
         input: Input {
           source: r#"
 /**
+ * Documentation of my function.
+ *
+ * @example Usage
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read
+ * foo("bar")
+ * ```
+ */
+export function foo(s: string) {
+  return s;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$6-10.ts", async ()=>{
+    foo("bar");
+});
+"#,
+          specifier: "file:///main.ts$6-10.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
  * This is a module-level doc.
  *
  * ```ts

@@ -1548,6 +1548,84 @@ async fn test_watch_doc() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/24558:
+// `deno test --doc --watch` panicked with a parse error on Markdown files
+// because the watcher passed them to the module graph builder as roots.
+#[test(flaky)]
+async fn test_watch_doc_markdown() {
+  let t = TempDir::new();
+
+  let readme = t.path().join("README.md");
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+console.log("Hello world");
+```
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg("--config")
+    .arg(util::deno_config_path())
+    .arg("--watch")
+    .arg("--doc")
+    .arg(t.path())
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Edit the markdown file to introduce a failing assertion in its doc test.
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+assertEquals(1, 2);
+```
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("FAILED | 0 passed | 1 failed", &mut stdout_lines).await;
+  wait_contains("Test failed", &mut stderr_lines).await;
+
+  // Fix it again.
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+assertEquals(1, 1);
+```
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn test_watch_module_graph_error_referrer() {
   let t = TempDir::new();
