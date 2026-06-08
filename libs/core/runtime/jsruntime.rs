@@ -85,11 +85,13 @@ use crate::runtime::ContextState;
 use crate::runtime::JsRealm;
 use crate::runtime::OpDriverImpl;
 use crate::runtime::jsrealm;
+use crate::runtime::jsrealm::IMM_IDX_COUNT;
 use crate::runtime::jsrealm::IMM_IDX_HAS_OUTSTANDING;
 use crate::runtime::jsrealm::IMM_IDX_REF_COUNT;
 use crate::source_map::SourceMapData;
 use crate::source_map::SourceMapper;
 use crate::stats::RuntimeActivityType;
+use crate::uv_compat;
 
 pub type WaitForInspectorDisconnectCallback = Box<dyn Fn()>;
 const STATE_DATA_OFFSET: u32 = 0;
@@ -105,6 +107,14 @@ pub type ExtensionTranspiler =
 pub(crate) struct IsolateAllocations {
   pub(crate) externalized_sources: Box<[v8::OneByteConst]>,
   pub(crate) original_sources: Box<[FastString]>,
+  /// Specifiers of the externalized `lazy_loaded_js` sources, parallel to the
+  /// trailing entries of `original_sources` (only populated when building a
+  /// snapshot). Used at serialize time to drop the bytes of *non-consumed*
+  /// lazy scripts from the snapshot sidecar — their external-reference slots
+  /// must stay (for index alignment) but nothing references them, so storing
+  /// empty bytes avoids duplicating residual sources (which the binary already
+  /// ships via the residual table).
+  pub(crate) lazy_js_specifiers: Box<[ModuleName]>,
   pub(crate) near_heap_limit_callback_data:
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
@@ -451,6 +461,9 @@ pub struct JsRuntimeState {
     Option<WaitForInspectorDisconnectCallback>,
   pub(crate) validate_import_attributes_cb: Option<ValidateImportAttributesCb>,
   pub(crate) custom_module_evaluation_cb: Option<CustomModuleEvaluationCb>,
+  pub(crate) vm_dynamic_import_callbacks:
+    RefCell<HashMap<u32, v8::Global<v8::Function>>>,
+  pub(crate) next_vm_dynamic_import_callback_id: Cell<u32>,
   pub(crate) eval_context_get_code_cache_cb:
     RefCell<Option<EvalContextGetCodeCacheCb>>,
   pub(crate) eval_context_code_cache_ready_cb:
@@ -467,6 +480,10 @@ pub struct JsRuntimeState {
   inspector: RefCell<Option<Rc<JsRuntimeInspector>>>,
   has_inspector: Cell<bool>,
   lazy_extensions: Vec<&'static str>,
+  /// Counter for consecutive event loop iterations where module evaluation
+  /// is pending but V8 reports no stalled top-level await. Used to detect
+  /// deadlocks and avoid spinning the event loop indefinitely.
+  tla_stall_retries: Cell<u32>,
 }
 
 #[derive(Default)]
@@ -502,6 +519,16 @@ pub struct RuntimeOptions {
   /// For testing, use `runtime.snapshot()` and then [`Box::leak`] to acquire
   // a static slice.
   pub startup_snapshot: Option<&'static [u8]>,
+
+  /// Source for `lazy_loaded_js` files that were *not* consumed at snapshot
+  /// build time and therefore aren't reachable via the snapshot blob. The
+  /// build script that produced `startup_snapshot` emits this table.
+  /// Each entry is `(specifier, source)`.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+
+  /// Source for `lazy_loaded_esm` files that were *not* consumed at snapshot
+  /// build time. See [`Self::residual_lazy_js_sources`].
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
 
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
@@ -709,6 +736,11 @@ impl JsRuntime {
     let mut extensions = std::mem::take(&mut options.extensions);
     let mut isolate_allocations = IsolateAllocations::default();
 
+    // `lazy_loaded_js` sources are externalized (and pre-wrapped) only when
+    // building the snapshot, so consumed scripts bake in as clean external
+    // sources. At runtime they stay as static registrations.
+    let externalize_lazy_js = will_snapshot;
+
     let enable_stack_trace_in_ops =
       options.maybe_op_stack_trace_callback.is_some();
 
@@ -737,6 +769,7 @@ impl JsRuntime {
       options.extension_transpiler.as_deref(),
       &extensions,
       sidecar_data.as_ref().map(|s| &*s.snapshot_data.extensions),
+      externalize_lazy_js,
       |source| {
         mark_as_loaded_from_fs_during_snapshot(&mut files_loaded, &source.code)
       },
@@ -773,6 +806,8 @@ impl JsRuntime {
       op_state: op_state.clone(),
       validate_import_attributes_cb: options.validate_import_attributes_cb,
       custom_module_evaluation_cb: options.custom_module_evaluation_cb,
+      vm_dynamic_import_callbacks: Default::default(),
+      next_vm_dynamic_import_callback_id: Cell::new(1),
       eval_context_get_code_cache_cb: RefCell::new(
         eval_context_get_code_cache_cb,
       ),
@@ -788,6 +823,7 @@ impl JsRuntime {
       function_templates: Default::default(),
       callsite_prototype: None.into(),
       lazy_extensions,
+      tla_stall_retries: Cell::new(0),
     });
 
     // ...now we're moving on to ops; set them up, create `OpCtx` for each op
@@ -815,10 +851,23 @@ impl JsRuntime {
       additional_references,
     ) = extension_set::get_middlewares_and_external_refs(&mut extensions);
 
-    // Capture the extension, op and source counts
+    // Capture the extension, op and source counts. `source_count` MUST mirror
+    // the number of `v8::OneByteConst` external strings produced by
+    // [`bindings::externalize_sources`] for the same `will_snapshot` value:
+    // `js + esm + lazy_esm`, plus `lazy_loaded_js` only when building the
+    // snapshot (where those scripts are externalized so consumed ones bake into
+    // the snapshot as clean external sources). At runtime `lazy_loaded_js` is
+    // not externalized here.
     let extensions = extensions.iter().map(|e| e.name).collect();
     let op_count = op_ctxs.len();
-    let source_count = sources.len();
+    let source_count = sources.js.len()
+      + sources.esm.len()
+      + sources.lazy_esm.len()
+      + if externalize_lazy_js {
+        sources.lazy_js.len()
+      } else {
+        0
+      };
     let addl_refs_count = additional_references.len();
 
     let ops_in_snapshot = sidecar_data
@@ -837,7 +886,12 @@ impl JsRuntime {
     (
       isolate_allocations.externalized_sources,
       isolate_allocations.original_sources,
-    ) = bindings::externalize_sources(&mut sources, snapshot_sources);
+      isolate_allocations.lazy_js_specifiers,
+    ) = bindings::externalize_sources(
+      &mut sources,
+      snapshot_sources,
+      externalize_lazy_js,
+    );
 
     let external_references = bindings::create_external_references(
       &op_ctxs,
@@ -958,6 +1012,19 @@ impl JsRuntime {
           &context_state.op_method_decls,
           methods_ctx_offset,
           &mut state_rc.function_templates.borrow_mut(),
+          will_snapshot,
+        );
+      } else if !will_snapshot {
+        // Snapshots built against V8 14.9+ bake the slow version of each op
+        // function (see `op_ctx_template`). Re-attach fast-call overloads to
+        // the snapshotted ops (top-level + cppgc class methods) now that
+        // we're running.
+        bindings::upgrade_snapshotted_ops_with_fast_calls(
+          scope,
+          context,
+          &context_state.op_ctxs,
+          &context_state.op_method_decls,
+          methods_ctx_offset,
         );
       }
 
@@ -1112,6 +1179,25 @@ impl JsRuntime {
 
       js_runtime.store_js_callbacks(&realm, will_snapshot);
 
+      // Register residual `lazy_loaded_*` sources from the snapshot bundle.
+      // These are the files that were declared on extensions but were not
+      // consumed at snapshot build time, so the snapshot blob doesn't carry
+      // them and `core.loadExtScript()` / lazy ESM imports need to find them
+      // here. (When there is no snapshot, the same sources are loaded from
+      // disk through `Extension.lazy_loaded_*_files` instead.)
+      for (specifier, code) in options.residual_lazy_js_sources {
+        module_map.add_lazy_loaded_script_source(
+          crate::ModuleName::from_static(specifier),
+          crate::ModuleCodeString::from_static(code),
+        );
+      }
+      for (specifier, code) in options.residual_lazy_esm_sources {
+        module_map.add_lazy_loaded_esm_source(
+          crate::ModuleName::from_static(specifier),
+          crate::ModuleCodeString::from_static(code),
+        );
+      }
+
       js_runtime.init_extension_js(
         &realm,
         &module_map,
@@ -1122,6 +1208,27 @@ impl JsRuntime {
 
     if will_snapshot {
       js_runtime.files_loaded_from_fs_during_snapshot = files_loaded;
+    }
+
+    // Every runtime gets a uv loop for the libuv compat layer (timers,
+    // I/O, setImmediate, etc.). Stored in both OpState (for ext/node ops
+    // that need the raw pointer) and ContextState (for event loop phases).
+    if !will_snapshot {
+      // SAFETY: zeroed memory is valid for uv_loop_t before uv_loop_init.
+      let mut uv_loop =
+        Box::new(unsafe { std::mem::zeroed::<uv_compat::UvLoop>() });
+      // SAFETY: uv_loop points to valid zeroed memory.
+      unsafe { uv_compat::uv_loop_init(&mut *uv_loop) };
+      let loop_ptr: *mut uv_compat::UvLoop = &mut *uv_loop;
+      // SAFETY: loop_ptr is valid and initialized.
+      unsafe { js_runtime.register_uv_loop(loop_ptr) };
+      js_runtime.inner.state.op_state.borrow_mut().put(uv_loop);
+      js_runtime
+        .inner
+        .state
+        .op_state
+        .borrow_mut()
+        .put(uv_compat::AsyncId::default());
     }
 
     // ...and we've made it; `JsRuntime` is ready to execute user code.
@@ -1250,6 +1357,21 @@ impl JsRuntime {
     &self.files_loaded_from_fs_during_snapshot
   }
 
+  /// Returns the specifiers of every `lazy_loaded_esm` / `lazy_loaded_js` file
+  /// whose source was compiled into the V8 snapshot during snapshot creation.
+  pub(crate) fn consumed_lazy_specifiers(&self) -> Vec<String> {
+    let module_map = self.inner.main_realm.0.module_map();
+    let data = module_map.get_data().borrow();
+    let mut set: Vec<String> = data
+      .consumed_lazy_specifiers
+      .borrow()
+      .iter()
+      .cloned()
+      .collect();
+    set.sort();
+    set
+  }
+
   /// Create a synthetic module - `ext:core/ops` - that exports all ops registered
   /// with the runtime.
   fn execute_virtual_ops_module(
@@ -1327,6 +1449,18 @@ impl JsRuntime {
     // First, add all the lazy ESM
     for source in loaded_sources.lazy_esm {
       module_map.add_lazy_loaded_esm_source(source.specifier, source.code);
+    }
+
+    // Add lazy-loaded scripts (loaded on demand via loadExtScript())
+    for source in loaded_sources.lazy_js {
+      module_map.add_lazy_loaded_script_source(source.specifier, source.code);
+    }
+
+    // Register `synthetic_esm` mappings so imports of the declared module
+    // specifiers resolve via the synthetic-module dispatch in
+    // `resolve_callback` instead of going through normal ESM loading.
+    for (module_spec, backing_spec) in loaded_sources.synthetic_esm {
+      module_map.add_synthetic_esm_module(module_spec, backing_spec);
     }
 
     // Temporarily override the loader of the `ModuleMap` so we can load
@@ -1449,12 +1583,11 @@ impl JsRuntime {
   /// JsRuntime to operate properly.
   fn store_js_callbacks(&mut self, realm: &JsRealm, will_snapshot: bool) {
     let (
-      resolve_ops_cb,
+      event_loop_tick_cb,
       drain_next_tick_and_macrotasks_cb,
       handle_rejections_cb,
       build_custom_error_cb,
       run_immediate_callbacks_cb,
-      process_timers_cb,
       wasm_instance_fn,
     ) = {
       scope!(scope, self);
@@ -1466,8 +1599,12 @@ impl JsRuntime {
       let core_obj: v8::Local<v8::Object> =
         bindings::get(scope, deno_obj, CORE, "Deno.core");
 
-      let resolve_ops_cb: v8::Local<v8::Function> =
-        bindings::get(scope, core_obj, RESOLVE_OPS, "Deno.core.__resolveOps");
+      let event_loop_tick_cb: v8::Local<v8::Function> = bindings::get(
+        scope,
+        core_obj,
+        EVENT_LOOP_TICK,
+        "Deno.core.__eventLoopTick",
+      );
       let drain_next_tick_and_macrotasks_cb: v8::Local<v8::Function> =
         bindings::get(
           scope,
@@ -1492,12 +1629,6 @@ impl JsRuntime {
         core_obj,
         RUN_IMMEDIATE_CALLBACKS,
         "Deno.core.runImmediateCallbacks",
-      );
-      let process_timers_cb: v8::Local<v8::Function> = bindings::get(
-        scope,
-        core_obj,
-        PROCESS_TIMERS,
-        "Deno.core.__processTimers",
       );
       let mut wasm_instance_fn = None;
       if !will_snapshot {
@@ -1620,13 +1751,49 @@ impl JsRuntime {
         core_obj.delete(scope, key.into());
       }
 
+      // Create a shared Float64Array backed by ContextState::timer_expiry
+      // and pass it to JS via __setTimerExpiry so JS can write the next
+      // timer expiry without a return value or op call.
+      {
+        let state_rc = realm.0.state();
+        let timer_expiry_ptr =
+          state_rc.timer_expiry.as_ptr() as *mut std::ffi::c_void;
+        let timer_expiry_byte_len = std::mem::size_of::<f64>();
+        let backing_store = unsafe {
+          v8::ArrayBuffer::new_backing_store_from_ptr(
+            timer_expiry_ptr,
+            timer_expiry_byte_len,
+            _no_op_deleter,
+            std::ptr::null_mut(),
+          )
+        };
+        let backing_store_shared = backing_store.make_shared();
+        let ab =
+          v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+        let timer_expiry_array =
+          v8::Float64Array::new(scope, ab, 0, 1).unwrap();
+        let set_timer_expiry_fn: v8::Local<v8::Function> = bindings::get(
+          scope,
+          core_obj,
+          SET_TIMER_EXPIRY,
+          "Deno.core.__setTimerExpiry",
+        );
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        set_timer_expiry_fn.call(
+          scope,
+          undefined,
+          &[timer_expiry_array.into()],
+        );
+        let key = SET_TIMER_EXPIRY.v8_string(scope).unwrap();
+        core_obj.delete(scope, key.into());
+      }
+
       (
-        v8::Global::new(scope, resolve_ops_cb),
+        v8::Global::new(scope, event_loop_tick_cb),
         v8::Global::new(scope, drain_next_tick_and_macrotasks_cb),
         v8::Global::new(scope, handle_rejections_cb),
         v8::Global::new(scope, build_custom_error_cb),
         v8::Global::new(scope, run_immediate_callbacks_cb),
-        v8::Global::new(scope, process_timers_cb),
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
       )
     };
@@ -1634,9 +1801,9 @@ impl JsRuntime {
     // Put global handles in the realm's ContextState
     let state_rc = realm.0.state();
     state_rc
-      .js_resolve_ops_cb
+      .js_event_loop_tick_cb
       .borrow_mut()
-      .replace(resolve_ops_cb);
+      .replace(event_loop_tick_cb);
     state_rc
       .js_drain_next_tick_and_macrotasks_cb
       .borrow_mut()
@@ -1654,10 +1821,6 @@ impl JsRuntime {
       .run_immediate_callbacks_cb
       .borrow_mut()
       .replace(run_immediate_callbacks_cb);
-    state_rc
-      .js_process_timers_cb
-      .borrow_mut()
-      .replace(process_timers_cb);
     if let Some(wasm_instance_fn) = wasm_instance_fn {
       state_rc
         .wasm_instance_fn
@@ -1670,6 +1833,12 @@ impl JsRuntime {
   /// and access resources between op calls.
   pub fn op_state(&self) -> Rc<RefCell<OpState>> {
     self.inner.state.op_state.clone()
+  }
+
+  /// Returns the raw `uv_loop_t` pointer registered with this runtime,
+  /// or `None` if no loop is registered.
+  pub fn uv_loop_ptr(&self) -> Option<*mut uv_compat::uv_loop_t> {
+    self.inner.main_realm.0.context_state.uv_loop_ptr.get()
   }
 
   /// Returns the runtime's source mapper, which can be used to apply
@@ -1691,13 +1860,12 @@ impl JsRuntime {
   /// outlives the runtime.
   pub unsafe fn register_uv_loop(
     &mut self,
-    loop_ptr: *mut crate::uv_compat::uv_loop_t,
+    loop_ptr: *mut uv_compat::uv_loop_t,
   ) {
     let realm = &self.inner.main_realm;
     let context_state = &realm.0.context_state;
-    let inner_ptr =
-      unsafe { crate::uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
-    let uv_inner = inner_ptr as *const crate::uv_compat::UvLoopInner;
+    let inner_ptr = unsafe { uv_compat::uv_loop_get_inner_ptr(loop_ptr) };
+    let uv_inner = inner_ptr as *const uv_compat::UvLoopInner;
     context_state.uv_loop_inner.set(Some(uv_inner));
     context_state.uv_loop_ptr.set(Some(loop_ptr));
 
@@ -1710,6 +1878,13 @@ impl JsRuntime {
     unsafe {
       (*loop_ptr).data = raw.as_ptr() as *mut std::ffi::c_void;
     }
+
+    // Create the check handle for setImmediate.
+    // JS controls start/stop/ref/unref via op_immediate_check.
+    // SAFETY: loop_ptr is valid per caller contract.
+    let check_handle =
+      unsafe { uv_compat::ImmediateCheckHandle::new(loop_ptr) };
+    *context_state.immediate_check_handle.borrow_mut() = Some(check_handle);
   }
 
   /// Returns the runtime's op names, ordered by OpId.
@@ -2108,10 +2283,10 @@ impl JsRuntime {
   ///
   /// 1. Timers          -- fire expired libuv C timers + JS user timers
   /// 2. Pending work     -- module progress, task spawner, async ops,
-  ///    nextTick/macrotask drain, immediates, rejections
-  /// 3. I/O              -- drive TCP read/write/accept via UvLoopInner
-  /// 4. Idle / Prepare   -- libuv idle + prepare callbacks
-  /// 5. Check            -- libuv check callbacks
+  ///    nextTick/macrotask drain, rejections
+  /// 3. Idle / Prepare   -- libuv idle + prepare callbacks
+  /// 4. I/O              -- drive TCP read/write/accept via UvLoopInner
+  /// 5. Check            -- libuv check callbacks + immediates
   /// 6. Close            -- close callbacks (Rust + libuv)
   ///
   /// Microtask checkpoints run between phases.
@@ -2166,12 +2341,9 @@ impl JsRuntime {
     // ===== Phase 1: Timers =====
     // 1a. Fire expired libuv C timers
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
+      // Update cached loop time at the start of each tick, matching libuv.
+      unsafe { (*uv_inner_ptr).update_time() };
       unsafe { (*uv_inner_ptr).run_timers() };
-    }
-    // 1b. Fire expired user timers via JS-side processTimers
-    did_work |= Self::dispatch_user_timers(cx, scope, context_state);
-    if !context_state.has_tick_scheduled() {
-      scope.perform_microtask_checkpoint();
     }
 
     // ===== Phase 2: Pending work =====
@@ -2181,12 +2353,24 @@ impl JsRuntime {
     // 2a. V8 task spawner tasks
     dispatched_ops |= Self::dispatch_task_spawner(cx, scope, context_state);
 
-    // 2b. Poll and resolve completed async ops
-    // NOTE: No microtask checkpoint here. Under Explicit microtask policy,
-    // microtasks from op completions (including await continuations) are
-    // deferred to __drainNextTickAndMacrotasks which correctly interleaves
-    // nextTick callbacks before promise microtasks.
-    dispatched_ops |= Self::dispatch_pending_ops(cx, scope, context_state)?;
+    // 2b. Process timers + resolve ops in a single Rust-to-JS call via
+    // __eventLoopTick(timerNow, ops...). Does NOT drain ticks -- that
+    // happens in 2d below, matching the original ordering where Rust
+    // controls the microtask checkpoint between op resolution and tick
+    // draining to preserve the nextTick-before-then invariant.
+    let timer_ready = context_state.user_timer.poll_ready(cx).is_ready();
+    did_work |= timer_ready;
+    dispatched_ops |=
+      Self::dispatch_event_loop_tick(cx, scope, context_state, timer_ready)?;
+    // After the JS call, read timer_expiry shared buffer and schedule.
+    if timer_ready {
+      Self::process_timer_expiry(context_state);
+    }
+    // Microtask checkpoint after timer/op processing, but only when
+    // no ticks are scheduled (matching original guard after timers).
+    if !context_state.has_tick_scheduled() {
+      scope.perform_microtask_checkpoint();
+    }
 
     // 2c. Dispatch "rejectionhandled" events before tick processing.
     // This ensures rejectionhandled fires before unhandledrejection for
@@ -2194,72 +2378,99 @@ impl JsRuntime {
     // rejections via processPromiseRejections.
     Self::dispatch_handled_rejections(scope, exception_state);
 
-    // 2d. nextTick drain + macrotask drain (before microtask checkpoint)
-    // Only drain if there's actual work (ops dispatched, tick scheduled, or timers fired).
-    // This prevents macrotask callbacks from running on empty iterations.
+    // 2d. nextTick drain + macrotask drain.
+    // Only drain if there's actual work (ops dispatched, tick scheduled,
+    // or timers fired). This prevents macrotask callbacks from running
+    // on empty iterations.
     let has_tick_scheduled = context_state.has_tick_scheduled();
     dispatched_ops |= has_tick_scheduled;
     if dispatched_ops || did_work || has_tick_scheduled {
       Self::drain_next_tick_and_macrotasks(scope, context_state)?;
     }
 
-    // 2d. Immediates (if ops or timers did work)
-    if (did_work || dispatched_ops)
-      && context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
-    {
-      Self::do_js_run_immediate_callbacks(scope, context_state)?;
-    }
-
     // 2e. Handle promise rejections (after nextTick/macrotask, since
     // unhandledrejection handlers are run in macrotask callbacks).
-    // Note: rejections are also drained inside processTicksAndRejections
-    // (via processPromiseRejections in the do-while loop). That path
-    // handles rejections created by tick callbacks or their microtasks.
-    // This path handles rejections from op completions or timer callbacks
-    // when no ticks were scheduled (so processTicksAndRejections didn't
-    // run). Both drain the same pending_promise_rejections queue via
-    // pop_front/drain, so there is no double-processing.
     Self::dispatch_rejections(scope, context_state, exception_state)?;
     scope.perform_microtask_checkpoint();
 
     // ===== Phase 3: Idle / Prepare =====
     // In libuv: idle runs after pending callbacks, prepare runs right
     // before I/O polling. Both must precede I/O.
+    let has_uv = context_state.uv_loop_inner.get().is_some();
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe {
         (*uv_inner_ptr).run_idle();
         (*uv_inner_ptr).run_prepare();
       };
+      // Idle/prepare callbacks may call into JS; flush microtasks.
+      scope.perform_microtask_checkpoint();
     }
-    scope.perform_microtask_checkpoint();
 
     // ===== Phase 4: I/O =====
-    // Tight I/O loop: when run_io reads data and fires callbacks, the
-    // resulting JS work (nextTick/macrotasks from HTTP2 frame processing)
-    // may produce write calls. Drain those immediately and re-poll for
-    // more data, avoiding kqueue/kevent round-trip latency between batches.
+    // Single run_io call per tick, matching libuv's uv_run (one
+    // uv__io_poll per iteration, callbacks fire, then we return).
+    // Spinning run_io in place until it returns `false` batches more
+    // work per tick but under sustained inbound traffic never exits —
+    // tokio keeps delivering readiness as we poll — and traps the
+    // event loop processing hundreds of handles back-to-back, which
+    // crushes tail latency (p99 30–200 ms vs ~1 ms with a single
+    // call).
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe {
         (*uv_inner_ptr).set_waker(cx.waker());
       }
-      for _io_spin in 0..8 {
-        let did_io = unsafe { (*uv_inner_ptr).run_io() };
-        if !did_io {
-          break;
-        }
+      let did_io = unsafe { (*uv_inner_ptr).run_io() };
+      if did_io {
         uv_did_io = true;
+        // Flush microtasks from I/O callbacks, then drain ticks.
+        // processTicksAndRejections runs op_run_microtasks internally,
+        // so the trailing checkpoint is only needed when no ticks ran.
         scope.perform_microtask_checkpoint();
         Self::drain_next_tick_and_macrotasks(scope, context_state)?;
-        scope.perform_microtask_checkpoint();
+        if !context_state.has_tick_scheduled() {
+          scope.perform_microtask_checkpoint();
+        }
       }
     }
 
     // ===== Phase 5: Check =====
     // In libuv: check runs right after I/O polling.
+    // Immediates fire here, matching Node.js's setImmediate semantics
+    // (libuv check phase, after I/O).
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_check() };
     }
+    // Drain immediates in the check phase, matching Node.js semantics:
+    // - Refed immediates always fire (they keep the event loop alive).
+    // - Unrefed immediates only fire if other work drove this iteration
+    //   (did_work, dispatched_ops, or uv I/O). This matches libuv's
+    //   behavior where unrefed handles participate in iterations driven
+    //   by other work, but don't start new iterations on their own.
+    {
+      let has_immediates =
+        context_state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0
+          || context_state.immediate_info[IMM_IDX_COUNT] > 0;
+      let has_refed = context_state.immediate_info[IMM_IDX_REF_COUNT] > 0;
+      if has_immediates
+        && (has_refed || did_work || dispatched_ops || uv_did_io)
+      {
+        Self::do_js_run_immediate_callbacks(scope, context_state)?;
+        // Drain ticks queued by immediate callbacks so they don't
+        // require an extra full event loop iteration.
+        if context_state.has_tick_scheduled() {
+          Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+        }
+      }
+    }
     scope.perform_microtask_checkpoint();
+
+    // Drain nextTick queue before close phase, matching Node.js/libuv
+    // where process.nextTick fires between each event loop phase.
+    // This ensures nextTicks from I/O callbacks (Phase 4) fire before
+    // close callbacks (Phase 6).
+    if context_state.has_tick_scheduled() {
+      Self::drain_next_tick_and_macrotasks(scope, context_state)?;
+    }
 
     // ===== Phase 6: Close =====
     exception_state.check_exception_condition(scope)?;
@@ -2270,7 +2481,29 @@ impl JsRuntime {
     if let Some(uv_inner_ptr) = context_state.uv_loop_inner.get() {
       unsafe { (*uv_inner_ptr).run_close() };
     }
-    scope.perform_microtask_checkpoint();
+    // Run V8 close callbacks (JS handle.close() callbacks).
+    // These are deferred to Phase 6 to match libuv's uv_close behavior
+    // where close callbacks fire at the END of the event loop iteration,
+    // after all nextTick and microtask queues have drained.
+    {
+      let v8_cbs = context_state
+        .event_loop_phases
+        .borrow_mut()
+        .drain_v8_close_callbacks();
+      for cb in v8_cbs {
+        (cb.callback)(scope);
+      }
+    }
+    // libuv close callbacks may call into JS; flush microtasks if present.
+    if has_uv
+      || !context_state
+        .event_loop_phases
+        .borrow()
+        .v8_close_callbacks
+        .is_empty()
+    {
+      scope.perform_microtask_checkpoint();
+    }
 
     // Evaluate pending state
     let pending_state =
@@ -2298,12 +2531,6 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
-    // Run immediates if not already run above and there are refed immediates pending
-    if !did_work && !dispatched_ops && pending_state.has_refed_immediates > 0 {
-      Self::do_js_run_immediate_callbacks(scope, context_state)?;
-      scope.perform_microtask_checkpoint();
-    }
-
     // Re-wake logic for next iteration
     #[allow(
       clippy::suspicious_else_formatting,
@@ -2314,7 +2541,7 @@ impl JsRuntime {
       if pending_state.has_pending_background_tasks
         || pending_state.has_tick_scheduled
         || pending_state.has_outstanding_immediates
-        || pending_state.has_refed_immediates > 0
+        || context_state.immediate_info[IMM_IDX_REF_COUNT] > 0
         || pending_state.has_pending_promise_events
         || uv_did_io
       {
@@ -2336,18 +2563,54 @@ impl JsRuntime {
         || pending_state.has_pending_background_tasks
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
-        || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_timers
         || pending_state.has_uv_alive_handles
       {
         // pass, will be polled again
       } else {
-        return Poll::Ready(Err(
-          CoreErrorKind::Js(find_and_report_stalled_level_await_in_any_realm(
-            scope, &realm.0,
-          ))
-          .into_box(),
-        ));
+        // Last-resort: try one more microtask checkpoint before reporting
+        // a stalled TLA. Under Explicit microtask policy, V8's internal
+        // async module evaluation state machine may require an additional
+        // checkpoint to fully resolve the evaluation promise (e.g. when
+        // TLA resumes trigger lazy module loads whose nested checkpoints
+        // are no-ops due to V8's reentrancy guard).
+        scope.perform_microtask_checkpoint();
+        let modules = &realm.0.module_map();
+        if !modules.has_pending_module_evaluation() {
+          // The checkpoint resolved the evaluation -- keep going
+          self.inner.state.tla_stall_retries.set(0);
+          self.inner.state.waker.wake();
+        } else if let Some(js_error) =
+          find_and_report_stalled_level_await_in_any_realm(scope, &realm.0)
+        {
+          self.inner.state.tla_stall_retries.set(0);
+          return Poll::Ready(Err(CoreErrorKind::Js(js_error).into_box()));
+        } else {
+          // V8 reports no stalled TLA but the evaluation promise is still
+          // pending. This can happen with large async module graphs under
+          // Explicit microtask policy. Give the event loop a few more
+          // iterations to make progress, but bail if we are stuck.
+          const MAX_TLA_STALL_RETRIES: u32 = 10;
+          let retries = self.inner.state.tla_stall_retries.get() + 1;
+          self.inner.state.tla_stall_retries.set(retries);
+          if retries > MAX_TLA_STALL_RETRIES {
+            self.inner.state.tla_stall_retries.set(0);
+            return Poll::Ready(Err(
+              CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
+            ));
+          }
+          #[allow(
+            clippy::print_stderr,
+            reason = "intentional debug diagnostic for TLA stall recovery"
+          )]
+          {
+            eprintln!(
+              "warning: module evaluation pending but no stalled top-level \
+               await found, retrying event loop iteration ({retries}/{MAX_TLA_STALL_RETRIES})"
+            );
+          }
+          self.inner.state.waker.wake();
+        }
       }
     }
 
@@ -2357,18 +2620,39 @@ impl JsRuntime {
         || pending_state.has_pending_background_tasks
         || pending_state.has_pending_external_ops
         || pending_state.has_tick_scheduled
-        || pending_state.has_refed_immediates > 0
         || pending_state.has_pending_timers
         || pending_state.has_uv_alive_handles
       {
         // pass, will be polled again
       } else if realm.modules_idle() {
-        return Poll::Ready(Err(
-          CoreErrorKind::Js(find_and_report_stalled_level_await_in_any_realm(
-            scope, &realm.0,
-          ))
-          .into_box(),
-        ));
+        if let Some(js_error) =
+          find_and_report_stalled_level_await_in_any_realm(scope, &realm.0)
+        {
+          self.inner.state.tla_stall_retries.set(0);
+          return Poll::Ready(Err(CoreErrorKind::Js(js_error).into_box()));
+        } else {
+          const MAX_TLA_STALL_RETRIES: u32 = 10;
+          let retries = self.inner.state.tla_stall_retries.get() + 1;
+          self.inner.state.tla_stall_retries.set(retries);
+          if retries > MAX_TLA_STALL_RETRIES {
+            self.inner.state.tla_stall_retries.set(0);
+            return Poll::Ready(Err(
+              CoreErrorKind::ModuleEvaluationDeadlock.into_box(),
+            ));
+          }
+          #[allow(
+            clippy::print_stderr,
+            reason = "intentional debug diagnostic for TLA stall recovery"
+          )]
+          {
+            eprintln!(
+              "warning: dynamic module evaluation pending but no stalled \
+               top-level await found, retrying event loop iteration \
+               ({retries}/{MAX_TLA_STALL_RETRIES})"
+            );
+          }
+          self.inner.state.waker.wake();
+        }
       } else {
         realm.increment_modules_idle();
         self.inner.state.waker.wake();
@@ -2382,7 +2666,7 @@ impl JsRuntime {
 fn find_and_report_stalled_level_await_in_any_realm(
   scope: &mut v8::PinScope,
   inner_realm: &JsRealmInner,
-) -> Box<JsError> {
+) -> Option<Box<JsError>> {
   let module_map = inner_realm.module_map();
   let messages = module_map.find_stalled_top_level_await(scope);
 
@@ -2393,10 +2677,10 @@ fn find_and_report_stalled_level_await_in_any_realm(
     // situation is gonna be very rare, if ever happening).
     let msg = v8::Local::new(scope, &messages[0]);
     let js_error = JsError::from_v8_message(scope, msg);
-    return js_error;
+    return Some(js_error);
   }
 
-  unreachable!("Expected at least one stalled top-level await");
+  None
 }
 
 fn create_context<'s, 'i>(
@@ -2469,9 +2753,29 @@ impl JsRuntimeForSnapshot {
     self.inner.prepare_for_cleanup();
     let original_sources =
       std::mem::take(&mut self.0.allocations.original_sources);
+    let lazy_js_specifiers =
+      std::mem::take(&mut self.0.allocations.lazy_js_specifiers);
+    // `lazy_loaded_js` sources are externalized for the snapshot (so consumed
+    // scripts bake in as clean external strings), but only the *consumed* ones
+    // are actually referenced by snapshotted code. Non-consumed (residual)
+    // scripts are already shipped via the residual table, so persisting their
+    // bytes here would duplicate them. Store empty bytes for those slots — the
+    // external-reference index is preserved (nothing references it), avoiding
+    // the duplication.
+    let consumed: std::collections::HashSet<String> =
+      self.consumed_lazy_specifiers().into_iter().collect();
+    let lazy_js_start = original_sources.len() - lazy_js_specifiers.len();
     let external_strings = original_sources
       .iter()
-      .map(|s| s.as_str().as_bytes())
+      .enumerate()
+      .map(|(i, s)| {
+        if i >= lazy_js_start
+          && !consumed.contains(lazy_js_specifiers[i - lazy_js_start].as_str())
+        {
+          return &[][..];
+        }
+        s.as_str().as_bytes()
+      })
       .collect();
     let realm = JsRealm::clone(&self.inner.main_realm);
 
@@ -2578,7 +2882,6 @@ pub(crate) struct EventLoopPendingState {
   has_pending_promise_events: bool,
   has_pending_external_ops: bool,
   has_outstanding_immediates: bool,
-  has_refed_immediates: u32,
   has_pending_timers: bool,
   has_uv_alive_handles: bool,
 }
@@ -2613,10 +2916,8 @@ impl EventLoopPendingState {
     let has_pending_refed_ops = has_pending_tasks
       || has_pending_refed_user_timers
       || num_pending_ops > num_unrefed_ops;
-    let (has_outstanding_immediates, has_refed_immediates) = (
-      state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0,
-      state.immediate_info[IMM_IDX_REF_COUNT],
-    );
+    let has_outstanding_immediates =
+      state.immediate_info[IMM_IDX_HAS_OUTSTANDING] != 0;
     let has_pending_timers = !state.active_timers.borrow().is_empty();
     let has_uv_alive_handles =
       if let Some(uv_inner_ptr) = state.uv_loop_inner.get() {
@@ -2635,7 +2936,6 @@ impl EventLoopPendingState {
       has_pending_promise_events,
       has_pending_external_ops: state.external_ops_tracker.has_pending_ops(),
       has_outstanding_immediates,
-      has_refed_immediates,
       has_pending_timers,
       has_uv_alive_handles,
     }
@@ -2655,7 +2955,6 @@ impl EventLoopPendingState {
       || self.has_pending_module_evaluation
       || self.has_pending_background_tasks
       || self.has_tick_scheduled
-      || self.has_refed_immediates > 0
       || self.has_pending_promise_events
       || self.has_pending_external_ops
       || self.has_uv_alive_handles
@@ -2886,69 +3185,41 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Phase 1b: Poll the user timer and call JS processTimers(now).
+  /// Read the timer_expiry shared buffer after __eventLoopTick returns
+  /// and schedule the next timer wake-up accordingly.
   ///
-  /// The JS side manages all user timer state (linked lists, priority queue).
-  /// Rust just provides a single-deadline wake mechanism. When the deadline
-  /// arrives, we call `__processTimers(now)` which returns the next expiry:
+  /// The JS side writes the next expiry to timer_expiry[0]:
   ///   - positive: next expiry time (has refed timers)
   ///   - negative: next expiry time negated (only unrefed timers)
-  ///   - 0: no more timers
-  fn dispatch_user_timers(
-    cx: &mut Context,
-    scope: &mut v8::PinScope,
-    context_state: &ContextState,
-  ) -> bool {
-    if context_state.user_timer.poll_ready(cx).is_pending() {
-      return false;
-    }
+  ///   - 0.0: no timers remain
+  fn process_timer_expiry(context_state: &ContextState) {
+    let expiry_ms = context_state.timer_expiry[0];
 
-    let process_timers_cb = context_state.js_process_timers_cb.borrow();
-    let Some(process_timers_fn_global) = process_timers_cb.as_ref() else {
-      return false;
-    };
-    let process_timers_fn = process_timers_fn_global.open(scope);
-
-    let now = context_state.user_timer.now();
-    let now_val = v8::Number::new(scope, now);
-    let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
-
-    let result = process_timers_fn.call(scope, undefined, &[now_val.into()]);
-
-    if let Some(result) = result {
-      let expiry_ms = result.number_value(scope).unwrap_or(0.0);
-
-      if expiry_ms != 0.0 {
-        // Calculate delay from current time to next expiry
-        let next_expiry = expiry_ms.abs();
-        let current_now = context_state.user_timer.now();
-        let delay_ms = if next_expiry > current_now {
-          (next_expiry - current_now) as u64
-        } else {
-          0
-        };
-        context_state
-          .user_timer
-          .schedule(std::time::Duration::from_millis(if delay_ms > 0 {
-            delay_ms
-          } else {
-            1
-          }));
-
-        // Update ref state based on sign
-        if expiry_ms > 0.0 {
-          context_state.user_timer.ref_timer();
-        } else {
-          context_state.user_timer.unref_timer();
-        }
+    if expiry_ms != 0.0 {
+      let next_expiry = expiry_ms.abs();
+      let current_now = context_state.user_timer.now();
+      let delay_ms = if next_expiry > current_now {
+        (next_expiry - current_now) as u64
       } else {
-        // No more timers
-        context_state.user_timer.clear();
+        0
+      };
+      context_state
+        .user_timer
+        .schedule(std::time::Duration::from_millis(if delay_ms > 0 {
+          delay_ms
+        } else {
+          1
+        }));
+
+      if expiry_ms > 0.0 {
+        context_state.user_timer.ref_timer();
+      } else {
         context_state.user_timer.unref_timer();
       }
+    } else {
+      context_state.user_timer.clear();
+      context_state.user_timer.unref_timer();
     }
-
-    true
   }
 
   /// Phase 2a: Poll and dispatch V8 task spawner tasks.
@@ -2979,19 +3250,42 @@ impl JsRuntime {
     dispatched
   }
 
-  /// Phase 2b: Poll completed async ops and batch-resolve via JS __resolveOps.
-  fn dispatch_pending_ops<'s, 'i>(
+  /// Phase 2c: Combined event loop tick - process timers and resolve ops
+  /// in a single Rust-to-JS call via
+  /// `__eventLoopTick(timerNow, promiseId, isOk, res, ...)`.
+  ///
+  /// When `timer_ready` is true, the first arg is the current time for
+  /// timer processing. When false, it is 0 (skip timers). Remaining args
+  /// are completed async op results in (promiseId, isOk, res) triplets.
+  ///
+  /// If neither timers nor ops are ready, returns Ok(false) and the
+  /// caller should use drain_next_tick_and_macrotasks for any pending ticks.
+  fn dispatch_event_loop_tick<'s, 'i>(
     cx: &mut Context,
     scope: &mut v8::PinScope<'s, 'i>,
     context_state: &ContextState,
+    timer_ready: bool,
   ) -> Result<bool, Box<JsError>> {
     const MAX_VEC_SIZE_FOR_OPS: usize = 1024;
 
     let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
       SmallVec::with_capacity(32);
 
+    // First arg: timer now (positive = process timers, -1 = skip)
+    let timer_now = if timer_ready {
+      let now = context_state.user_timer.now();
+      // Ensure JS always sees a positive value when timers are ready,
+      // even if elapsed time is exactly 0.0 at startup.
+      if now <= 0.0 { f64::EPSILON } else { now }
+    } else {
+      -1.0
+    };
+    args.push(v8::Number::new(scope, timer_now).into());
+
+    // Remaining args: completed async ops as (promiseId, isOk, res) triplets
     loop {
-      if args.len() >= MAX_VEC_SIZE_FOR_OPS {
+      // Ensure there is room for the next (promiseId, isOk, res) triplet
+      if args.len() + 3 > MAX_VEC_SIZE_FOR_OPS {
         cx.waker().wake_by_ref();
         break;
       }
@@ -3024,7 +3318,9 @@ impl JsRuntime {
       args.push(res.unwrap_or_else(std::convert::identity));
     }
 
-    if args.is_empty() {
+    // Skip the call if no timers fired and no ops completed
+    let has_ops = args.len() > 1;
+    if !timer_ready && !has_ops {
       return Ok(false);
     }
 
@@ -3032,9 +3328,9 @@ impl JsRuntime {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    let resolve_ops_cb = context_state.js_resolve_ops_cb.borrow();
-    let resolve_ops_fn = resolve_ops_cb.as_ref().unwrap().open(tc_scope);
-    resolve_ops_fn.call(tc_scope, undefined, args.as_slice());
+    let tick_cb = context_state.js_event_loop_tick_cb.borrow();
+    let tick_fn = tick_cb.as_ref().unwrap().open(tc_scope);
+    tick_fn.call(tc_scope, undefined, args.as_slice());
 
     if let Some(exception) = tc_scope.exception() {
       return exception_to_err_result(tc_scope, exception, false, true);
@@ -3043,7 +3339,7 @@ impl JsRuntime {
       return Ok(false);
     }
 
-    Ok(true)
+    Ok(has_ops)
   }
 
   /// Dispatch "rejectionhandled" events for promises that were previously
@@ -3122,7 +3418,8 @@ impl JsRuntime {
     Ok(())
   }
 
-  /// Phase 5a: Drain nextTick queue and macrotask queue.
+  /// Drain nextTick queue and macrotask queue (no op resolution).
+  /// Used when ticks are pending but no async ops completed.
   fn drain_next_tick_and_macrotasks<'s, 'i>(
     scope: &mut v8::PinScope<'s, 'i>,
     context_state: &ContextState,

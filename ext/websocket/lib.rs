@@ -23,8 +23,11 @@ use deno_core::unsync::spawn;
 use deno_core::url;
 use deno_error::JsErrorBox;
 use deno_fetch::ClientConnectError;
+use deno_fetch::CreateHttpClientOptions;
 use deno_fetch::HttpClientCreateError;
 use deno_fetch::HttpClientResource;
+use deno_fetch::Options as FetchOptions;
+use deno_fetch::create_http_client;
 use deno_fetch::get_or_create_client_from_state;
 use deno_net::raw::NetworkStream;
 use deno_permissions::PermissionCheckError;
@@ -144,6 +147,13 @@ pub struct CreateResponse {
   rid: ResourceId,
   protocol: String,
   extensions: String,
+  /// HTTP status code from the handshake response (101 on success).
+  /// Exposed to JS for inspector `Network.webSocketHandshakeResponseReceived`.
+  status: u16,
+  /// HTTP status text from the handshake response.
+  status_text: String,
+  /// All handshake response headers, as a flat `[name, value]` list.
+  headers: Vec<(ByteString, ByteString)>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -395,6 +405,38 @@ fn populate_common_request_headers(
   Ok(request)
 }
 
+fn create_client_from_websocket_options(
+  options: &FetchOptions,
+  permissions: PermissionsContainer,
+  ca_certs: Vec<String>,
+  unsafely_ignore_certificate_errors: bool,
+) -> Result<deno_fetch::Client, HttpClientCreateError> {
+  create_http_client(
+    &options.user_agent,
+    CreateHttpClientOptions {
+      root_cert_store: options
+        .root_cert_store()
+        .map_err(HttpClientCreateError::RootCertStore)?,
+      ca_certs: ca_certs.into_iter().map(|cert| cert.into_bytes()).collect(),
+      proxy: options.proxy.clone(),
+      dns_resolver: options.resolver.clone().with_permissions(permissions),
+      unsafely_ignore_certificate_errors: unsafely_ignore_certificate_errors
+        .then_some(vec![]),
+      client_cert_chain_and_key: options
+        .client_cert_chain_and_key
+        .clone()
+        .try_into()
+        .unwrap_or_default(),
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      http1: true,
+      http2: true,
+      local_address: None,
+      client_builder_hook: options.client_builder_hook,
+    },
+  )
+}
+
 #[op2(stack_trace)]
 pub async fn op_ws_create(
   state: Rc<RefCell<OpState>>,
@@ -403,6 +445,8 @@ pub async fn op_ws_create(
   #[string] protocols: String,
   #[smi] cancel_handle: Option<ResourceId>,
   #[scoped] headers: Option<Vec<(ByteString, ByteString)>>,
+  #[scoped] ca_certs: Option<Vec<String>>,
+  unsafely_ignore_certificate_errors: bool,
   #[smi] client_rid: Option<u32>,
 ) -> Result<CreateResponse, WebsocketError> {
   let (client, allow_host) = {
@@ -418,6 +462,18 @@ pub async fn op_ws_create(
     if let Some(rid) = client_rid {
       let r = s.resource_table.get::<HttpClientResource>(rid)?;
       (r.client.clone(), r.allow_host)
+    } else if ca_certs.is_some() || unsafely_ignore_certificate_errors {
+      let permissions = s.borrow::<PermissionsContainer>().clone();
+      let options = s.borrow::<FetchOptions>().clone();
+      (
+        create_client_from_websocket_options(
+          &options,
+          permissions,
+          ca_certs.unwrap_or_default(),
+          unsafely_ignore_certificate_errors,
+        )?,
+        false,
+      )
     } else {
       (get_or_create_client_from_state(&mut s)?, false)
     }
@@ -449,6 +505,25 @@ pub async fn op_ws_create(
     res.close();
   }
 
+  // `handshake_websocket` only resolves on a successful Upgrade response, so
+  // the status is implicitly 101 Switching Protocols. We surface it (plus
+  // the response headers) for the inspector's
+  // `Network.webSocketHandshakeResponseReceived` event.
+  //
+  // Failed handshakes (non-101) bail earlier via
+  // `HandshakeError::InvalidStatusCode` and never reach this point, so
+  // DevTools won't see a `webSocketHandshakeResponseReceived` for them —
+  // only the eventual `webSocketClosed`. This matches Chrome's behavior.
+  let response_headers: Vec<(ByteString, ByteString)> = response
+    .iter()
+    .map(|(name, value)| {
+      (
+        ByteString::from(name.as_str().as_bytes()),
+        ByteString::from(value.as_bytes()),
+      )
+    })
+    .collect();
+
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(ServerWebSocket::new(stream));
 
@@ -465,6 +540,9 @@ pub async fn op_ws_create(
     rid,
     protocol: protocol.to_string(),
     extensions,
+    status: 101,
+    status_text: "Switching Protocols".to_string(),
+    headers: response_headers,
   })
 }
 
@@ -866,7 +944,7 @@ deno_core::extension!(
     op_ws_send_ping,
     op_ws_get_buffered_amount,
   ],
-  esm = ["01_websocket.js", "02_websocketstream.js"],
+  lazy_loaded_esm = ["01_websocket.js", "02_websocketstream.js"],
 );
 
 // Needed so hyper can use non Send futures

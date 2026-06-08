@@ -179,7 +179,12 @@ async function runSingleTestInner(
     interval = setInterval(() => {
       const passedTime = performance.now() - start;
       if (passedTime > timeout) {
-        proc.kill("SIGINT");
+        try {
+          proc.kill("SIGINT");
+        } catch {
+          // Race: proc may have terminated between the for-await loop
+          // draining stderr and `clearInterval` running in `finally`.
+        }
       }
     }, 1000);
     for await (const line of lines as AsyncIterable<string>) {

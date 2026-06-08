@@ -20,87 +20,68 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { customPromisifyArgs } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const {
   validateBoolean,
   validateFunction,
   validateNumber,
   validateOneOf,
   validatePort,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { isIP } from "ext:deno_node/internal/net.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
+const dnsUtilsNs = core.loadExtScript(
+  "ext:deno_node/internal/dns/utils.ts",
+);
+const {
   dnsOrderToNumber,
-  emitInvalidHostnameWarning,
   getDefaultDnsOrder,
   getDefaultResolver,
   isFamily,
   isLookupCallback,
   isLookupOptions,
   isResolveCallback,
-  Resolver as CallbackResolver,
   setDefaultResolver,
   setDefaultResultOrder,
   validateHints,
   validDnsOrders,
-} from "ext:deno_node/internal/dns/utils.ts";
-import type {
-  AnyAaaaRecord,
-  AnyARecord,
-  AnyCnameRecord,
-  AnyMxRecord,
-  AnyNaptrRecord,
-  AnyNsRecord,
-  AnyPtrRecord,
-  AnyRecord,
-  AnySoaRecord,
-  AnySrvRecord,
-  AnyTxtRecord,
-  CaaRecord,
-  LookupAddress,
-  LookupAllOptions,
-  LookupOneOptions,
-  LookupOptions,
-  MxRecord,
-  NaptrRecord,
-  Records,
-  RecordWithTtl,
-  ResolveCallback,
-  ResolveOptions,
-  ResolverOptions,
-  ResolveWithTtlOptions,
-  SoaRecord,
-  SrvRecord,
-} from "ext:deno_node/internal/dns/utils.ts";
-import promisesBase from "ext:deno_node/internal/dns/promises.ts";
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import {
+} = dnsUtilsNs;
+const CallbackResolver = dnsUtilsNs.Resolver;
+const promisesBase =
+  core.loadExtScript("ext:deno_node/internal/dns/promises.ts").default;
+const {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_MISSING_ARGS,
   handleDnsError,
-} from "ext:deno_node/internal/errors.ts";
-import {
-  AI_ADDRCONFIG as ADDRCONFIG,
-  AI_ALL as ALL,
-  AI_V4MAPPED as V4MAPPED,
-} from "ext:deno_node/internal_binding/ares.ts";
-import cares, {
-  type ChannelWrapQuery,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  AI_ADDRCONFIG: ADDRCONFIG,
+  AI_ALL: ALL,
+  AI_V4MAPPED: V4MAPPED,
+} = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
+const {
+  default: cares,
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
-} from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { domainToASCII } from "ext:deno_node/internal/idna.ts";
-import { primordials } from "ext:core/mod.js";
+} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
+const { domainToASCII } = core.loadExtScript(
+  "ext:deno_node/internal/idna.ts",
+);
 
-const { ObjectDefineProperty } = primordials;
+const {
+  ArrayPrototypeMap,
+  ObjectCreate,
+  ObjectDefineProperty,
+  ReflectApply,
+} = primordials;
 
 function onlookup(
   this: GetAddrInfoReqWrap,
@@ -158,7 +139,7 @@ const validFamilies = [0, 4, 6];
 
 // Easy DNS A/AAAA look up
 // lookup(hostname, [options,] callback)
-export function lookup(
+function lookup(
   hostname: string,
   family: number,
   callback: (
@@ -167,7 +148,7 @@ export function lookup(
     family: number,
   ) => void,
 ): GetAddrInfoReqWrap | Record<string, never>;
-export function lookup(
+function lookup(
   hostname: string,
   options: LookupOneOptions,
   callback: (
@@ -176,12 +157,12 @@ export function lookup(
     family: number,
   ) => void,
 ): GetAddrInfoReqWrap | Record<string, never>;
-export function lookup(
+function lookup(
   hostname: string,
   options: LookupAllOptions,
   callback: (err: ErrnoException | null, addresses: LookupAddress[]) => void,
 ): GetAddrInfoReqWrap | Record<string, never>;
-export function lookup(
+function lookup(
   hostname: string,
   options: LookupOptions,
   callback: (
@@ -190,7 +171,7 @@ export function lookup(
     family: number,
   ) => void,
 ): GetAddrInfoReqWrap | Record<string, never>;
-export function lookup(
+function lookup(
   hostname: string,
   callback: (
     err: ErrnoException | null,
@@ -198,7 +179,7 @@ export function lookup(
     family: number,
   ) => void,
 ): GetAddrInfoReqWrap | Record<string, never>;
-export function lookup(
+function lookup(
   hostname: string,
   options: unknown,
   callback?: unknown,
@@ -277,14 +258,16 @@ export function lookup(
   }
 
   if (!hostname) {
-    emitInvalidHostnameWarning(hostname);
-
     if (all) {
       nextTick(callback as LookupCallback, null, []);
     } else {
-      nextTick(callback as LookupCallback, null, null, family === 6 ? 6 : 4);
+      nextTick(
+        callback as LookupCallback,
+        null,
+        null,
+        family === 6 ? 6 : 4,
+      );
     }
-
     return {};
   }
 
@@ -329,7 +312,8 @@ export function lookup(
   return req;
 }
 
-Object.defineProperty(lookup, customPromisifyArgs, {
+ObjectDefineProperty(lookup, customPromisifyArgs, {
+  __proto__: null,
   value: ["address", "family"],
   enumerable: false,
 });
@@ -347,7 +331,7 @@ function onlookupservice(
   this.callback!(err, hostname, service);
 }
 
-export function lookupService(
+function lookupService(
   address: string,
   port: number,
   callback: (
@@ -401,16 +385,19 @@ function onresolve(
   }
 
   const parsedRecords = ttls && this.ttl
-    ? (records as string[]).map((address: string, index: number) => ({
-      address,
-      ttl: ttls[index],
-    }))
+    ? ArrayPrototypeMap(
+      records as string[],
+      (address: string, index: number) => ({
+        address,
+        ttl: ttls[index],
+      }),
+    )
     : records;
 
   this.callback(null, parsedRecords);
 }
 
-function resolver(bindingName: keyof ChannelWrapQuery) {
+function resolver(bindingName: string) {
   function query(
     this: Resolver,
     name: string,
@@ -441,20 +428,20 @@ function resolver(bindingName: keyof ChannelWrapQuery) {
     return req;
   }
 
-  Object.defineProperty(query, "name", { value: bindingName });
+  ObjectDefineProperty(query, "name", {
+    __proto__: null,
+    value: bindingName,
+  });
 
   return query;
 }
 
-const resolveMap = Object.create(null);
+const resolveMap = ObjectCreate(null);
 
-export class Resolver extends CallbackResolver {
+class Resolver extends CallbackResolver {
   constructor(options?: ResolverOptions) {
     super(options);
   }
-
-  // deno-lint-ignore no-explicit-any
-  [resolveMethod: string]: any;
 }
 
 Resolver.prototype.resolveAny = resolveMap.ANY = resolver("queryAny");
@@ -494,7 +481,7 @@ function _resolve(
   }
 
   if (typeof resolver === "function") {
-    return Reflect.apply(resolver, this, [hostname, callback]);
+    return ReflectApply(resolver, this, [hostname, callback]);
   }
 
   throw new ERR_INVALID_ARG_VALUE("rrtype", rrtype);
@@ -529,7 +516,7 @@ function _resolve(
  *
  * @param servers array of `RFC 5952` formatted addresses
  */
-export function setServers(servers: ReadonlyArray<string>) {
+function setServers(servers: ReadonlyArray<string>) {
   const resolver = new Resolver();
 
   resolver.setServers(servers);
@@ -556,8 +543,12 @@ export function setServers(servers: ReadonlyArray<string>) {
  * ]
  * ```
  */
-export function getServers(): string[] {
-  return Resolver.prototype.getServers.bind(getDefaultResolver())();
+function getServers(): string[] {
+  return ReflectApply(
+    Resolver.prototype.getServers,
+    getDefaultResolver(),
+    [],
+  );
 }
 
 /**
@@ -589,13 +580,15 @@ export function getServers(): string[] {
  * better to call individual methods like `resolve4`, `resolveMx`, and so on.
  * For more details, see [RFC 8482](https://tools.ietf.org/html/rfc8482).
  */
-export function resolveAny(
+function resolveAny(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: AnyRecord[]) => void,
 ): QueryReqWrap;
-export function resolveAny(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveAny.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolveAny(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolveAny,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -606,16 +599,16 @@ export function resolveAny(...args: unknown[]): QueryReqWrap {
  *
  * @param hostname Host name to resolve.
  */
-export function resolve4(
+function resolve4(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): void;
-export function resolve4(
+function resolve4(
   hostname: string,
   options: ResolveWithTtlOptions,
   callback: (err: ErrnoException | null, addresses: RecordWithTtl[]) => void,
 ): void;
-export function resolve4(
+function resolve4(
   hostname: string,
   options: ResolveOptions,
   callback: (
@@ -623,15 +616,15 @@ export function resolve4(
     addresses: string[] | RecordWithTtl[],
   ) => void,
 ): void;
-export function resolve4(
+function resolve4(
   hostname: string,
   options: unknown,
   callback?: unknown,
 ) {
-  return Resolver.prototype.resolve4.bind(getDefaultResolver() as Resolver)(
-    hostname,
-    options,
-    callback,
+  return ReflectApply(
+    Resolver.prototype.resolve4,
+    getDefaultResolver() as Resolver,
+    [hostname, options, callback],
   );
 }
 
@@ -642,16 +635,16 @@ export function resolve4(
  *
  * @param hostname Host name to resolve.
  */
-export function resolve6(
+function resolve6(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): void;
-export function resolve6(
+function resolve6(
   hostname: string,
   options: ResolveWithTtlOptions,
   callback: (err: ErrnoException | null, addresses: RecordWithTtl[]) => void,
 ): void;
-export function resolve6(
+function resolve6(
   hostname: string,
   options: ResolveOptions,
   callback: (
@@ -659,15 +652,15 @@ export function resolve6(
     addresses: string[] | RecordWithTtl[],
   ) => void,
 ): void;
-export function resolve6(
+function resolve6(
   hostname: string,
   options: unknown,
   callback?: unknown,
 ) {
-  return Resolver.prototype.resolve6.bind(getDefaultResolver() as Resolver)(
-    hostname,
-    options,
-    callback,
+  return ReflectApply(
+    Resolver.prototype.resolve6,
+    getDefaultResolver() as Resolver,
+    [hostname, options, callback],
   );
 }
 
@@ -677,13 +670,15 @@ export function resolve6(
  * of certification authority authorization records available for the
  * `hostname` (e.g. `[{critical: 0, iodef: 'mailto:pki@example.com'}, {critical: 128, issue: 'pki.example.com'}]`).
  */
-export function resolveCaa(
+function resolveCaa(
   hostname: string,
   callback: (err: ErrnoException | null, records: CaaRecord[]) => void,
 ): QueryReqWrap;
-export function resolveCaa(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveCaa.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolveCaa(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolveCaa,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -692,13 +687,15 @@ export function resolveCaa(...args: unknown[]): QueryReqWrap {
  * `addresses` argument passed to the `callback` function will contain an array
  * of canonical name records available for the `hostname`(e.g. `['bar.example.com']`).
  */
-export function resolveCname(
+function resolveCname(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
-export function resolveCname(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveCname.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolveCname(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolveCname,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -708,13 +705,15 @@ export function resolveCname(...args: unknown[]): QueryReqWrap {
  * contain an array of objects containing both a `priority` and `exchange`
  * property (e.g. `[{priority: 10, exchange: 'mx.example.com'}, ...]`).
  */
-export function resolveMx(
+function resolveMx(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: MxRecord[]) => void,
 ): QueryReqWrap;
-export function resolveMx(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveMx.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolveMx(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolveMx,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -724,13 +723,15 @@ export function resolveMx(...args: unknown[]): QueryReqWrap {
  * contain an array of name server records available for `hostname`
  * (e.g. `['ns1.example.com', 'ns2.example.com']`).
  */
-export function resolveNs(
+function resolveNs(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
-export function resolveNs(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveNs.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolveNs(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolveNs,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -742,13 +743,15 @@ export function resolveNs(...args: unknown[]): QueryReqWrap {
  * chunks of one record. Depending on the use case, these could be either
  * joined together or treated separately.
  */
-export function resolveTxt(
+function resolveTxt(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: string[][]) => void,
 ): QueryReqWrap;
-export function resolveTxt(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveTxt.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolveTxt(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolveTxt,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -771,13 +774,15 @@ export function resolveTxt(...args: unknown[]): QueryReqWrap {
  * }
  * ```
  */
-export function resolveSrv(
+function resolveSrv(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: SrvRecord[]) => void,
 ): QueryReqWrap;
-export function resolveSrv(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveSrv.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolveSrv(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolveSrv,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -786,13 +791,15 @@ export function resolveSrv(...args: unknown[]): QueryReqWrap {
  * `hostname`. The `addresses` argument passed to the `callback` function will
  * be an array of strings containing the reply records.
  */
-export function resolvePtr(
+function resolvePtr(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
-export function resolvePtr(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolvePtr.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolvePtr(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolvePtr,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -820,13 +827,15 @@ export function resolvePtr(...args: unknown[]): QueryReqWrap {
  * }
  * ```
  */
-export function resolveNaptr(
+function resolveNaptr(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: NaptrRecord[]) => void,
 ): QueryReqWrap;
-export function resolveNaptr(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveNaptr.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolveNaptr(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolveNaptr,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -855,13 +864,15 @@ export function resolveNaptr(...args: unknown[]): QueryReqWrap {
  * }
  * ```
  */
-export function resolveSoa(
+function resolveSoa(
   hostname: string,
   callback: (err: ErrnoException | null, address: SoaRecord) => void,
 ): QueryReqWrap;
-export function resolveSoa(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.resolveSoa.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function resolveSoa(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.resolveSoa,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -872,13 +883,15 @@ export function resolveSoa(...args: unknown[]): QueryReqWrap {
  * On error, `err` is an `Error` object, where `err.code` is
  * one of the `DNS error codes`.
  */
-export function reverse(
+function reverse(
   ip: string,
   callback: (err: ErrnoException | null, hostnames: string[]) => void,
 ): QueryReqWrap;
-export function reverse(...args: unknown[]): QueryReqWrap {
-  return Resolver.prototype.reverse.bind(getDefaultResolver() as Resolver)(
-    ...args,
+function reverse(...args: unknown[]): QueryReqWrap {
+  return ReflectApply(
+    Resolver.prototype.reverse,
+    getDefaultResolver() as Resolver,
+    args,
   );
 }
 
@@ -893,66 +906,66 @@ export function reverse(...args: unknown[]): QueryReqWrap {
  * @param hostname Host name to resolve.
  * @param [rrtype='A'] Resource record type.
  */
-export function resolve(
+function resolve(
   hostname: string,
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "A",
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "AAAA",
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "ANY",
   callback: (err: ErrnoException | null, addresses: AnyRecord[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "CNAME",
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "MX",
   callback: (err: ErrnoException | null, addresses: MxRecord[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "NAPTR",
   callback: (err: ErrnoException | null, addresses: NaptrRecord[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "NS",
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "PTR",
   callback: (err: ErrnoException | null, addresses: string[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "SOA",
   callback: (err: ErrnoException | null, addresses: SoaRecord) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "SRV",
   callback: (err: ErrnoException | null, addresses: SrvRecord[]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: "TXT",
   callback: (err: ErrnoException | null, addresses: string[][]) => void,
 ): QueryReqWrap;
-export function resolve(
+function resolve(
   hostname: string,
   rrtype: string,
   callback: (
@@ -967,42 +980,43 @@ export function resolve(
       | AnyRecord[],
   ) => void,
 ): QueryReqWrap;
-export function resolve(hostname: string, rrtype: unknown, callback?: unknown) {
-  return Resolver.prototype.resolve.bind(getDefaultResolver() as Resolver)(
-    hostname,
-    rrtype,
-    callback,
+function resolve(hostname: string, rrtype: unknown, callback?: unknown) {
+  return ReflectApply(
+    Resolver.prototype.resolve,
+    getDefaultResolver() as Resolver,
+    [hostname, rrtype, callback],
   );
 }
 
 // ERROR CODES
-export const NODATA = "ENODATA";
-export const FORMERR = "EFORMERR";
-export const SERVFAIL = "ESERVFAIL";
-export const NOTFOUND = "ENOTFOUND";
-export const NOTIMP = "ENOTIMP";
-export const REFUSED = "EREFUSED";
-export const BADQUERY = "EBADQUERY";
-export const BADNAME = "EBADNAME";
-export const BADFAMILY = "EBADFAMILY";
-export const BADRESP = "EBADRESP";
-export const CONNREFUSED = "ECONNREFUSED";
-export const TIMEOUT = "ETIMEOUT";
-export const EOF = "EOF";
-export const FILE = "EFILE";
-export const NOMEM = "ENOMEM";
-export const DESTRUCTION = "EDESTRUCTION";
-export const BADSTR = "EBADSTR";
-export const BADFLAGS = "EBADFLAGS";
-export const NONAME = "ENONAME";
-export const BADHINTS = "EBADHINTS";
-export const NOTINITIALIZED = "ENOTINITIALIZED";
-export const LOADIPHLPAPI = "ELOADIPHLPAPI";
-export const ADDRGETNETWORKPARAMS = "EADDRGETNETWORKPARAMS";
-export const CANCELLED = "ECANCELLED";
+const NODATA = "ENODATA";
+const FORMERR = "EFORMERR";
+const SERVFAIL = "ESERVFAIL";
+const NOTFOUND = "ENOTFOUND";
+const NOTIMP = "ENOTIMP";
+const REFUSED = "EREFUSED";
+const BADQUERY = "EBADQUERY";
+const BADNAME = "EBADNAME";
+const BADFAMILY = "EBADFAMILY";
+const BADRESP = "EBADRESP";
+const CONNREFUSED = "ECONNREFUSED";
+const TIMEOUT = "ETIMEOUT";
+const EOF = "EOF";
+const FILE = "EFILE";
+const NOMEM = "ENOMEM";
+const DESTRUCTION = "EDESTRUCTION";
+const BADSTR = "EBADSTR";
+const BADFLAGS = "EBADFLAGS";
+const NONAME = "ENONAME";
+const BADHINTS = "EBADHINTS";
+const NOTINITIALIZED = "ENOTINITIALIZED";
+const LOADIPHLPAPI = "ELOADIPHLPAPI";
+const ADDRGETNETWORKPARAMS = "EADDRGETNETWORKPARAMS";
+const CANCELLED = "ECANCELLED";
 
 const promises = {
   ...promisesBase,
+  getDefaultResultOrder: getDefaultDnsOrder,
   setDefaultResultOrder,
   setServers,
 
@@ -1033,38 +1047,7 @@ const promises = {
   CANCELLED,
 };
 
-export { ADDRCONFIG, ALL, promises, setDefaultResultOrder, V4MAPPED };
-
-export type {
-  AnyAaaaRecord,
-  AnyARecord,
-  AnyCnameRecord,
-  AnyMxRecord,
-  AnyNaptrRecord,
-  AnyNsRecord,
-  AnyPtrRecord,
-  AnyRecord,
-  AnySoaRecord,
-  AnySrvRecord,
-  AnyTxtRecord,
-  CaaRecord,
-  LookupAddress,
-  LookupAllOptions,
-  LookupOneOptions,
-  LookupOptions,
-  MxRecord,
-  NaptrRecord,
-  Records,
-  RecordWithTtl,
-  ResolveCallback,
-  ResolveOptions,
-  ResolverOptions,
-  ResolveWithTtlOptions,
-  SoaRecord,
-  SrvRecord,
-};
-
-export default {
+const defaultExport = {
   ADDRCONFIG,
   ALL,
   V4MAPPED,
@@ -1087,6 +1070,7 @@ export default {
   Resolver,
   reverse,
   setServers,
+  getDefaultResultOrder: getDefaultDnsOrder,
   setDefaultResultOrder,
   promises,
   NODATA,
@@ -1114,3 +1098,57 @@ export default {
   ADDRGETNETWORKPARAMS,
   CANCELLED,
 };
+
+return {
+  default: defaultExport,
+  ADDRCONFIG,
+  ALL,
+  V4MAPPED,
+  lookup,
+  lookupService,
+  getServers,
+  resolveAny,
+  resolve4,
+  resolve6,
+  resolveCaa,
+  resolveCname,
+  resolveMx,
+  resolveNs,
+  resolveTxt,
+  resolveSrv,
+  resolvePtr,
+  resolveNaptr,
+  resolveSoa,
+  resolve,
+  Resolver,
+  reverse,
+  setServers,
+  getDefaultResultOrder: getDefaultDnsOrder,
+  setDefaultResultOrder,
+  promises,
+  NODATA,
+  FORMERR,
+  SERVFAIL,
+  NOTFOUND,
+  NOTIMP,
+  REFUSED,
+  BADQUERY,
+  BADNAME,
+  BADFAMILY,
+  BADRESP,
+  CONNREFUSED,
+  TIMEOUT,
+  EOF,
+  FILE,
+  NOMEM,
+  DESTRUCTION,
+  BADSTR,
+  BADFLAGS,
+  NONAME,
+  BADHINTS,
+  NOTINITIALIZED,
+  LOADIPHLPAPI,
+  ADDRGETNETWORKPARAMS,
+  CANCELLED,
+};
+})();

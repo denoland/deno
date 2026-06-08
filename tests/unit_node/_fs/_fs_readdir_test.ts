@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals, assertNotEquals, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { readdir, readdirSync } from "node:fs";
+import { type Dirent, readdir, readdirSync } from "node:fs";
+import { Buffer } from "node:buffer";
 import { join } from "@std/path";
 
 Deno.test({
@@ -112,6 +113,65 @@ Deno.test("SYNC: read dirs recursively", () => {
     assertEqualsArrayAnyOrder(
       files,
       ["file1.txt", "sub", join("sub", "file2.txt")],
+    );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
+Deno.test("SYNC: withFileTypes + buffer encoding returns Buffer name/parentPath", () => {
+  const dir = Deno.makeTempDirSync();
+  try {
+    Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
+    const entries = readdirSync(Buffer.from(dir) as unknown as string, {
+      withFileTypes: true,
+      encoding: "buffer",
+    } as unknown as { withFileTypes: true }) as unknown as Dirent[];
+    assertEquals(entries.length, 1);
+    const [entry] = entries;
+    assertEquals(Buffer.isBuffer(entry.name), true);
+    assertEquals(
+      (entry.name as unknown as Buffer).toString("utf8"),
+      "file1.txt",
+    );
+    assertEquals(Buffer.isBuffer(entry.parentPath), true);
+    assertEquals(
+      (entry.parentPath as unknown as Buffer).toString("utf8"),
+      dir,
+    );
+  } finally {
+    Deno.removeSync(dir, { recursive: true });
+  }
+});
+
+Deno.test("ASYNC: withFileTypes + buffer encoding returns Buffer name/parentPath", async () => {
+  const dir = Deno.makeTempDirSync();
+  try {
+    Deno.writeTextFileSync(join(dir, "file1.txt"), "hi");
+    const entries = await new Promise<Dirent[]>((resolve, reject) => {
+      readdir(
+        Buffer.from(dir) as unknown as string,
+        {
+          withFileTypes: true,
+          encoding: "buffer",
+        } as unknown as { withFileTypes: true },
+        (err, files) => {
+          if (err) reject(err);
+          else resolve(files as unknown as Dirent[]);
+        },
+      );
+    });
+    assertEquals(entries.length, 1);
+    const [entry] = entries;
+    assertEquals(Buffer.isBuffer(entry.name), true);
+    assertEquals(
+      (entry.name as unknown as Buffer).toString("utf8"),
+      "file1.txt",
+    );
+    assertEquals(Buffer.isBuffer(entry.parentPath), true);
+    assertEquals(
+      (entry.parentPath as unknown as Buffer).toString("utf8"),
+      dir,
     );
   } finally {
     Deno.removeSync(dir, { recursive: true });

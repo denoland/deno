@@ -18,6 +18,12 @@ The following block should be given a ts extension on extraction:
 console.log("ts");
 ```
 
+The following block is inside a markdown blockquote:
+
+> ```ts
+> console.log("blockquote");
+> ```
+
 The following example contains the ignore attribute and will be ignored:
 
 ```ts ignore

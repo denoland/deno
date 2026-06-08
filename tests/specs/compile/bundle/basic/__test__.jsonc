@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "compile --bundle --no-check --output main main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --bundle --no-check --output main.exe main.ts",
+    "output": "compile.out"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "run.out",
+    "exitCode": 0
+  }]
+}
