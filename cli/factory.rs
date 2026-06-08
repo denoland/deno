@@ -54,6 +54,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::NodeConditionOptions;
 use node_resolver::NodeResolverOptions;
@@ -296,7 +297,7 @@ impl<T> Deferred<T> {
 
 #[derive(Default)]
 struct CliFactoryServices {
-  blob_store: Deferred<Arc<BlobStore>>,
+  blob_store: Deferred<Arc<dyn BlobStoreTrait>>,
   caches: Deferred<Arc<Caches>>,
   cli_options: Deferred<Arc<CliOptions>>,
   code_cache: Deferred<Arc<CodeCache>>,
@@ -425,8 +426,11 @@ impl CliFactory {
     })
   }
 
-  pub fn blob_store(&self) -> &Arc<BlobStore> {
-    self.services.blob_store.get_or_init(Default::default)
+  pub fn blob_store(&self) -> &Arc<dyn BlobStoreTrait> {
+    self
+      .services
+      .blob_store
+      .get_or_init(|| BlobStore::default_arc())
   }
 
   pub fn bin_name_resolver(&self) -> Result<BinNameResolver<'_>, AnyError> {
