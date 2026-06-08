@@ -1964,13 +1964,18 @@ function spawnSync(
       input: input_,
       timeout,
       killSignal,
+      maxBuffer,
     });
 
     const status = output.signal ? null : output.code;
     let stdout = output.stdout ? Buffer.from(output.stdout) : null;
     let stderr = output.stderr ? Buffer.from(output.stderr) : null;
 
+    // Defensive: if Rust didn't kill on overflow (e.g. maxBuffer was
+    // unlimited but the JS layer somehow still has a longer buffer), fall
+    // back to the post-hoc length check.
     if (
+      output.killedByMaxBuffer ||
       (stdout && stdout.length > maxBuffer) ||
       (stderr && stderr.length > maxBuffer)
     ) {
@@ -1989,11 +1994,13 @@ function spawnSync(
     }
 
     result.pid = output.pid;
-    // When killed by timeout, report the killSignal (matching Node.js behavior).
-    // On Windows there are no real Unix signals, but Node still reports the
-    // configured killSignal so callers can detect the timeout.
-    result.status = output.killedByTimeout ? null : status;
-    result.signal = output.killedByTimeout
+    // When killed by timeout or maxBuffer, report the killSignal (matching
+    // Node.js behavior). On Windows there are no real Unix signals, but
+    // Node still reports the configured killSignal so callers can detect
+    // why the child was terminated.
+    const killedByDeno = output.killedByTimeout || output.killedByMaxBuffer;
+    result.status = killedByDeno ? null : status;
+    result.signal = killedByDeno
       ? _resolveKillSignalName(killSignal)
       : output.signal;
     result.stdout = stdout;

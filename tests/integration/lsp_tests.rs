@@ -11782,6 +11782,75 @@ fn lsp_auto_import_npm_export_node_modules_dir_no_package_json() {
   client.shutdown();
 }
 
+// The lockfile, .npmrc and node_modules directory are resolved once per
+// workspace root and shared across members. This checks that npm resolution
+// still works for a member that reuses the cached workspace data (i.e. is not
+// the first member loaded), rather than only for the first one.
+#[test(timeout = 300)]
+fn lsp_npm_export_shared_workspace_data_across_members() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["member_a", "member_b"],
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  for member in ["member_a", "member_b"] {
+    temp_dir.write(
+      format!("{member}/deno.json"),
+      json!({
+        "imports": {
+          "preact": "npm:preact",
+        },
+      })
+      .to_string(),
+    );
+    temp_dir.write(format!("{member}/other.ts"), "import \"preact/hooks\";\n");
+  }
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // Open the second member's file. It reuses the workspace data cached while
+  // loading the first member, so a broken cache would fail to resolve the npm
+  // export here.
+  let file = temp_dir.source_file("member_b/mod.ts", "useEffect;\n");
+  let diagnostics = client.did_open_file(&file).all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.first().unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 },
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\"",
+  );
+  client.shutdown();
+}
+
 // Regression test for https://github.com/denoland/deno/issues/30666.
 #[test(timeout = 300)]
 fn lsp_auto_import_npm_export_import_map_workspace_member() {
@@ -17808,6 +17877,110 @@ fn lsp_deno_json_scopes_compiler_options() {
       },
     ]),
   );
+  client.shutdown();
+}
+
+// Regression test: adding a workspace folder must refresh the cache so the
+// resolver picks up that folder's vendor directory mapping. Previously
+// `post_did_change_workspace_folders` refreshed the config tree and the
+// resolver but skipped `update_cache()`, so the resolver kept reading a stale
+// `vendors_by_scope` map and resolved vendored remote imports against the
+// global cache instead of the folder's vendor directory.
+#[test(timeout = 300)]
+fn lsp_vendor_dir_workspace_folder_added() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  // The initial workspace folder. The "project" folder below is intentionally
+  // not part of the workspace yet, so its vendor config is only discovered once
+  // the folder is added via `workspace/didChangeWorkspaceFolders`.
+  temp_dir.create_dir_all("initial");
+  temp_dir.write("initial/deno.json", json!({}).to_string());
+  // A separate project that vendors its remote dependencies.
+  temp_dir.create_dir_all("project");
+  temp_dir.write(
+    "project/deno.json",
+    json!({ "vendor": true, "lock": false }).to_string(),
+  );
+  let file = temp_dir.source_file(
+    "project/file.ts",
+    "import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';\nconst test: string = returnsHi();\nconsole.log(test);",
+  );
+  // Populate the project's vendor directory out of band so the mapping exists
+  // on disk independently of the language server's workspace state. Run from the
+  // project directory so its deno.json (and `vendor: true`) is discovered.
+  context
+    .new_command()
+    .current_dir("project")
+    .args("cache --allow-import file.ts")
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+  let vendored_file = temp_dir
+    .path()
+    .join("project/vendor/http_localhost_4545/subdir/mod1.ts");
+  assert!(vendored_file.exists());
+  let vendored_file_uri = vendored_file.uri_file();
+
+  let mut client = context.new_lsp_command().build();
+  let initial_uri =
+    url_to_uri(&temp_dir.url().join("initial/").unwrap()).unwrap();
+  client.initialize(|builder| {
+    builder.set_root_uri(initial_uri.clone());
+    builder.set_workspace_folders(vec![lsp::WorkspaceFolder {
+      uri: initial_uri.clone(),
+      name: "initial".to_string(),
+    }]);
+  });
+
+  // Add the project as a workspace folder. The handler under test must call
+  // `update_cache()` here so the resolver sees the project's vendor directory.
+  let project_uri =
+    url_to_uri(&temp_dir.url().join("project/").unwrap()).unwrap();
+  client.write_notification(
+    "workspace/didChangeWorkspaceFolders",
+    json!({
+      "event": {
+        "added": [{ "uri": project_uri, "name": "project" }],
+        "removed": [],
+      },
+    }),
+  );
+  // `did_change_workspace_folders` triggers `refresh_configuration`, which sends
+  // a `workspace/configuration` request that must be answered for the handler to
+  // proceed to `post_did_change_workspace_folders`.
+  client.handle_configuration_request();
+
+  client.did_open_raw(json!({
+    "textDocument": file.text_document(),
+  }));
+
+  // The declaration of `returnsHi` must resolve into the project's vendor
+  // directory. Without the `update_cache()` call the import resolves against the
+  // global cache instead, so the declaration's URI is a `deno:` specifier and
+  // none of the references point at the vendored file.
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": { "uri": file.uri() },
+      "position": { "line": 0, "character": 9 }, // returnsHi
+      "context": { "includeDeclaration": true },
+    }),
+  );
+  let references = res.as_array().unwrap();
+  let resolves_to_vendor = references.iter().any(|reference| {
+    reference.as_object().unwrap().get("uri").unwrap().as_str()
+      == Some(vendored_file_uri.as_str())
+  });
+  assert!(
+    resolves_to_vendor,
+    "expected a reference in the vendor directory ({}), got: {:#?}",
+    vendored_file_uri.as_str(),
+    references,
+  );
+
   client.shutdown();
 }
 
