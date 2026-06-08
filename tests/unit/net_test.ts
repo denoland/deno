@@ -34,11 +34,11 @@ Deno.test(
   {
     permissions: { net: true },
   },
-  function netTcpListenEphermalClose() {
+  function netTcpListenEphemeralClose() {
     const listener = Deno.listen({ hostname: "127.0.0.1" });
     assert(listener.addr.transport === "tcp");
     assertEquals(listener.addr.hostname, "127.0.0.1");
-    // Ephermal port range starts at 49152 according to RFC 6335 / IANA, but
+    // Ephemeral port range starts at 49152 according to RFC 6335 / IANA, but
     // many OSes use the lower number below (old OSes also started at 1024)
     assertGreaterOrEqual(listener.addr.port, 32768);
     listener.close();
@@ -66,14 +66,14 @@ Deno.test(
   {
     permissions: { net: true },
   },
-  function netUdpListenEphermalClose() {
+  function netUdpListenEphemeralClose() {
     const socket = Deno.listenDatagram({
       hostname: "127.0.0.1",
       transport: "udp",
     });
     assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.hostname, "127.0.0.1");
-    // Ephermal port range starts at 49152 according to RFC 6335 / IANA, but
+    // Ephemeral port range starts at 49152 according to RFC 6335 / IANA, but
     // many OSes use the lower number below (old OSes also started at 1024)
     assertGreaterOrEqual(socket.addr.port, 32768);
     socket.close();
@@ -1067,22 +1067,59 @@ Deno.test(
     ignore: Deno.build.os !== "linux",
     permissions: { read: true, write: true },
   },
-  function netUnixAbstractPathShouldNotPanic() {
-    const err = assertThrows(
-      () =>
-        Deno.listen({
-          path: "\0aaa",
-          transport: "unix",
-        }),
-      Error,
-    );
-    const errorText = err.toString();
-    if (
-      !errorText.includes("paths must not contain interior null bytes") &&
-      !errorText.includes("file name contained an unexpected NUL byte")
-    ) {
-      throw new Error("Did not contain any expected message");
-    }
+  async function netUnixAbstractPathAddr() {
+    const path = `\0deno-net-test-${crypto.randomUUID()}`;
+    const listener = Deno.listen({
+      path,
+      transport: "unix",
+    });
+    assertEquals(listener.addr.path, path);
+
+    const acceptPromise = listener.accept();
+    const conn = await Deno.connect({ path, transport: "unix" });
+    assertEquals(conn.remoteAddr.path, path);
+
+    const acceptedConn = await acceptPromise;
+    assertEquals(acceptedConn.localAddr.path, path);
+
+    conn.close();
+    acceptedConn.close();
+    listener.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { read: true, write: true },
+  },
+  async function netUnixPacketAbstractPathAddr() {
+    const alicePath = `\0deno-net-test-${crypto.randomUUID()}`;
+    const alice = Deno.listenDatagram({
+      path: alicePath,
+      transport: "unixpacket",
+    });
+    assert(alice.addr.transport === "unixpacket");
+    assertEquals(alice.addr.path, alicePath);
+
+    const bobPath = `\0deno-net-test-${crypto.randomUUID()}`;
+    const bob = Deno.listenDatagram({
+      path: bobPath,
+      transport: "unixpacket",
+    });
+    assert(bob.addr.transport === "unixpacket");
+    assertEquals(bob.addr.path, bobPath);
+
+    const sent = new Uint8Array([1, 2, 3]);
+    assertEquals(await alice.send(sent, bob.addr), sent.byteLength);
+
+    const [received, remoteAddr] = await bob.receive();
+    assert(remoteAddr.transport === "unixpacket");
+    assertEquals(remoteAddr.path, alicePath);
+    assertEquals(received, sent);
+
+    alice.close();
+    bob.close();
   },
 );
 

@@ -270,12 +270,12 @@ impl EmbeddedModuleLoader {
               url_or_path.into_url().map_err(JsErrorBox::from_err)
             })?,
         ),
-        PackageJsonDepValue::Workspace(version_req) => {
+        PackageJsonDepValue::Workspace { name, version_req } => {
           let pkg_folder = self
             .shared
             .workspace_resolver
             .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-              alias,
+              name.as_deref().unwrap_or(alias),
               version_req,
             )
             .map_err(JsErrorBox::from_err)?;

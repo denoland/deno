@@ -1,0 +1,4 @@
+{
+  "args": "run --allow-net main.mjs",
+  "output": "main.out"
+}

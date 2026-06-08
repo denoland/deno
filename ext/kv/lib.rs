@@ -11,7 +11,6 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE;
@@ -186,7 +185,7 @@ pub enum KvErrorKind {
   #[error("Invalid check")]
   InvalidCheck(#[source] KvCheckError),
   #[class(inherit)]
-  #[error("Invalid mutation")]
+  #[error("Invalid mutation: {0}")]
   InvalidMutation(#[source] KvMutationError),
   #[class(inherit)]
   #[error("Invalid enqueue")]
@@ -633,6 +632,9 @@ pub enum KvMutationError {
   #[class(type)]
   #[error("Invalid mutation '{0}' without value")]
   InvalidMutationWithoutValue(String),
+  #[class(type)]
+  #[error("expireIn is too large: {0}")]
+  InvalidExpireAt(u64),
 }
 
 type V8KvMutation = (KvKey, String, Option<FromV8Value>, Option<u64>);
@@ -662,12 +664,26 @@ fn mutation_from_v8(
       return Err(KvMutationError::InvalidMutationWithoutValue(op.to_string()));
     }
   };
+  let expire_at = match value.3 {
+    None => None,
+    Some(expire_in) => {
+      // Compute the absolute expiry with checked arithmetic so an
+      // out-of-range expireIn surfaces as an error instead of panicking the
+      // process on overflow.
+      let expire_at = i64::try_from(expire_in)
+        .ok()
+        .and_then(chrono::TimeDelta::try_milliseconds)
+        .and_then(|delta| current_timstamp.checked_add_signed(delta));
+      match expire_at {
+        Some(expire_at) => Some(expire_at),
+        None => return Err(KvMutationError::InvalidExpireAt(expire_in)),
+      }
+    }
+  };
   Ok(Mutation {
     key,
     kind,
-    expire_at: value
-      .3
-      .map(|expire_in| current_timstamp + Duration::from_millis(expire_in)),
+    expire_at,
   })
 }
 

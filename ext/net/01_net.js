@@ -638,7 +638,10 @@ function listen(args) {
 }
 
 function validatePort(maybePort, isServer = false) {
-  if (maybePort === null || maybePort === undefined) {
+  // A missing port means "any available port" (port 0) for servers. Clients
+  // must always specify a port to connect to, so a missing port is left as-is
+  // and rejected below.
+  if (isServer && (maybePort === null || maybePort === undefined)) {
     maybePort = 0;
   }
   if (typeof maybePort !== "number" && typeof maybePort !== "string") {
@@ -652,9 +655,8 @@ function validatePort(maybePort, isServer = false) {
     } else {
       throw new TypeError(`Invalid port: ${maybePort}`);
     }
-  } else if (!isServer && (port < 1 || port > 65535)) {
-    throw new RangeError(`Invalid port (out of range): ${maybePort}`);
-  } else if (port < 0 || port > 65535) {
+  } else if (port < (isServer ? 0 : 1) || port > 65535) {
+    // Servers may bind to port 0 (OS-assigned), clients may not connect to it.
     throw new RangeError(`Invalid port (out of range): ${maybePort}`);
   }
   return port;

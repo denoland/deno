@@ -256,12 +256,7 @@
       "windows": false,
       "reason": "testing private benchmark utility"
     },
-    "parallel/test-blob-createobjecturl.js": {
-      "darwin": false,
-      "linux": false,
-      "windows": false,
-      "reason": "URL.createObjectURL does not throw ERR_INVALID_ARG_TYPE for non-Blob arguments"
-    },
+    "parallel/test-blob-createobjecturl.js": {},
     "parallel/test-blocklist.js": {},
     "parallel/test-btoa-atob.js": {},
     "parallel/test-buffer-alloc-unsafe-is-initialized-with-zero-fill-flag.js": {},
@@ -416,6 +411,7 @@
       "reason": "net.Socket IPC handle passing uses SCM_RIGHTS, not yet implemented on Windows"
     },
     "parallel/test-child-process-send-type-error.js": {},
+    "parallel/test-child-process-send-utf8.js": {},
     "parallel/test-child-process-set-blocking.js": {},
     "parallel/test-child-process-silent.js": {},
     "parallel/test-child-process-spawn-args.mjs": {},
@@ -1039,7 +1035,10 @@
     "parallel/test-dns-default-order-ipv6.js": {},
     "parallel/test-dns-default-order-verbatim.js": {},
     "parallel/test-dns-get-server.js": {},
-    "parallel/test-dns-lookup.js": {},
+    "parallel/test-dns-lookup.js": {
+      "ignore": true,
+      "reason": "Fixture predates nodejs/node#39793 (Node 17): asserts that dns.lookup(false, {all:true}, cb) and the promise variant throw/reject with ERR_INVALID_ARG_VALUE, but current Node calls cb(null, []) / resolves with []. Deno matches current Node — see denoland/deno#34801."
+    },
     "parallel/test-dns-lookup-promises.js": {},
     "parallel/test-dns-lookup-promises-options-deprecated.js": {},
     "parallel/test-dns-lookupService.js": {},
@@ -2286,7 +2285,10 @@
 
     "parallel/test-inspector-esm.js": {},
     "parallel/test-inspector-console.js": {},
-    "parallel/test-inspector-async-stack-traces-promise-then.js": {},
+    "parallel/test-inspector-async-stack-traces-promise-then.js": {
+      "windows": false,
+      "reason": "Flaky on Windows CI; can fail all retries while waiting for inspector async stack trace events"
+    },
     // "parallel/test-inspector-exception.js": {},
     // "parallel/test-inspector-async-hook-setup-at-inspect-brk.js": {},
     // "parallel/test-inspector-async-stack-traces-set-interval.js": {},
@@ -2928,6 +2930,7 @@
     "parallel/test-process-execve-worker-threads.js": {},
     "parallel/test-process-exit-code-validation.js": {
       "flaky": true,
+      "darwin": false,
       "reason": "Spawns deno 34 times via spawnSync; cumulative startup overhead can exceed the 20s per-test timeout on slow macOS CI runners"
     },
     "parallel/test-process-exit-from-before-exit.js": {},
@@ -3861,6 +3864,7 @@
     "parallel/test-vm-global-define-property.js": {},
     "parallel/test-vm-global-get-own.js": {},
     "parallel/test-vm-global-identity.js": {},
+    "parallel/test-vm-global-non-writable-properties.js": {},
     "parallel/test-vm-global-setter.js": {},
     "parallel/test-vm-harmony-symbols.js": {},
     "parallel/test-vm-indexed-properties.js": {},
@@ -3876,6 +3880,7 @@
     "parallel/test-vm-module-modulerequests.js": {},
     "parallel/test-vm-new-script-new-context.js": {},
     "parallel/test-vm-new-script-this-context.js": {},
+    "parallel/test-vm-no-dynamic-import-callback.js": {},
     "parallel/test-vm-not-strict.js": {},
     "parallel/test-vm-options-validation.js": {},
     "parallel/test-vm-ownkeys.js": {},
@@ -3892,6 +3897,7 @@
     "parallel/test-vm-set-proto-null-on-globalthis.js": {},
     "parallel/test-vm-source-map-url.js": {},
     "parallel/test-vm-static-this.js": {},
+    "parallel/test-vm-strict-assign.js": {},
     "parallel/test-vm-strict-mode.js": {},
     "parallel/test-vm-symbols.js": {},
     "parallel/test-vm-syntax-error-message.js": {},
@@ -4475,7 +4481,34 @@
     "client-proxy/test-http-proxy-request-no-proxy-domain.mjs": {},
     "client-proxy/test-http-proxy-request-no-proxy-ip.mjs": {},
     "client-proxy/test-http-proxy-request-no-proxy.mjs": {},
+    "client-proxy/test-http-proxy-request.mjs": {},
+    "client-proxy/test-http-proxy-request-connection-refused.mjs": {},
+    "client-proxy/test-http-proxy-request-invalid-char-in-url.mjs": {},
+    "client-proxy/test-http-proxy-request-invalid-credentials.mjs": {},
+    "client-proxy/test-http-proxy-request-invalid-proxy.mjs": {},
+    "client-proxy/test-http-proxy-request-invalid-url.mjs": {},
+    "client-proxy/test-http-proxy-request-ipv6.mjs": {
+      "windows": false,
+      "reason": "Windows CI runner reports hasIPv6=true but rejects connections to the IPv6 proxy listener with ECONNREFUSED; unrelated to proxy logic"
+    },
+    "client-proxy/test-http-proxy-request-no-proxy-port-specific.mjs": {},
+    "client-proxy/test-http-proxy-request-proxy-failure-500.mjs": {},
+    "client-proxy/test-http-proxy-request-proxy-failure-hang-up.mjs": {},
+    "client-proxy/test-http-proxy-request-socket-keep-alive.mjs": {},
+    "client-proxy/test-http-request-proxy-post.mjs": {},
+    "client-proxy/test-http-request-proxy-post-server-failure.mjs": {},
+    "client-proxy/test-http-set-global-proxy-from-env-http-request.mjs": {},
+    "client-proxy/test-http-set-global-proxy-from-env-http-request-default.mjs": {},
+    "client-proxy/test-http-set-global-proxy-from-env-http-request-empty.mjs": {},
+    "client-proxy/test-http-set-global-proxy-from-env-http-request-restore.mjs": {},
+    "client-proxy/test-http-set-global-proxy-from-env-invalid-type.mjs": {},
+    "client-proxy/test-http-set-global-proxy-from-env-invalid-url.mjs": {},
+    "client-proxy/test-http-set-global-proxy-from-env-no-proxy.mjs": {},
+    "client-proxy/test-http-set-global-proxy-from-env-override-http.mjs": {},
     "client-proxy/test-https-proxy-request-invalid-char-in-options.mjs": {},
+    "client-proxy/test-https-proxy-request-connection-refused.mjs": {},
+    "client-proxy/test-https-proxy-request-invalid-credentials.mjs": {},
+    "client-proxy/test-https-proxy-request-invalid-url.mjs": {},
     "es-module/test-esm-dns-promises.mjs": {},
     "es-module/test-esm-json.mjs": {},
     "es-module/test-esm-long-path-win.js": {
@@ -4753,7 +4786,10 @@
       "reason": "'.' is not recognized as an internal or external command,"
     },
     "parallel/test-child-process-windows-hide.js": {},
-    "parallel/test-cluster-concurrent-disconnect.js": {},
+    "parallel/test-cluster-concurrent-disconnect.js": {
+      "linuxAarch64": false,
+      "reason": "err.syscall is undefined on linux-aarch64"
+    },
     "parallel/test-cluster-dgram-1.js": {
       "linux": false,
       "darwin": false,
@@ -4912,8 +4948,8 @@
     "parallel/test-http-client-timeout-on-connect.js": {},
     "parallel/test-http-client-with-create-connection.js": {},
     "parallel/test-http-keep-alive-empty-line.mjs": {
-      "windows": false,
-      "reason": "error: Uncaught Error: read ECONNRESET"
+      "ignore": true,
+      "reason": "keepAliveTimeout via socket.setTimeout doesn't fire on a consumed HTTP socket; test previously passed by accident because ConnectionsList headersTimeout incorrectly fired (fixed in #34356)"
     },
     "parallel/test-http-localaddress.js": {},
     "parallel/test-http-parser-timeout-reset.js": {},
@@ -5347,11 +5383,7 @@
     "sea/test-single-executable-application-snapshot.js": {},
     "sea/test-single-executable-application-use-code-cache.js": {},
     "sea/test-single-executable-application.js": {},
-    "sequential/test-child-process-emfile.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "Expected values to be strictly equal"
-    },
+    "sequential/test-child-process-emfile.js": {},
     "sequential/test-child-process-pass-fd.js": {
       "windows": false,
       "darwin": false,

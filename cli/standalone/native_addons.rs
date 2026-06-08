@@ -139,6 +139,24 @@ pub fn collect_bundle_required_packages(
   let mut seeds: HashSet<NpmPackageId> =
     native_packages.into_iter().filter_map(|p| p.id).collect();
 
+  // One-level reverse walk: include any package that depends on a
+  // native-addon package. NAPI-RS packages are typically split into a
+  // JS-only wrapper (e.g. `@mariozechner/clipboard`) and a set of
+  // platform-specific binary packages it loads via optional deps
+  // (`@mariozechner/clipboard-darwin-arm64`). Only the binary one has
+  // a `.node` file, so the forward closure misses the wrapper — which
+  // is the package user code actually imports. Pull it in here.
+  let native_seeds: HashSet<NpmPackageId> = seeds.iter().cloned().collect();
+  for pkg in snapshot.all_packages_for_every_system() {
+    if pkg
+      .dependencies
+      .values()
+      .any(|dep_id| native_seeds.contains(dep_id))
+    {
+      seeds.insert(pkg.id.clone());
+    }
+  }
+
   // Map each referenced path to its owning package using longest-prefix
   // matching, so a path inside a nested package directory is attributed
   // to the nested one rather than its parent.

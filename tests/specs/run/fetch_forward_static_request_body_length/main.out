@@ -5,3 +5,7 @@ content-length preserved: true
 stream body forwarded: true
 stream content-length: null
 stream content-length unknown: true
+split body forwarded: true
+split content-length: 54
+split expected length: 54
+split content-length preserved: true

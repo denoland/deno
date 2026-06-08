@@ -5,7 +5,6 @@ import {
   assertEquals,
   assertNotEquals,
   assertRejects,
-  assertThrows,
 } from "./test_util.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -14,7 +13,7 @@ type AnyAlg = any;
 type AnyKey = any;
 
 // Cast over the static `KeyFormat` overloads so we can pass the extended
-// ML-DSA formats (`raw-seed`, `raw-public`, `raw-private`).
+// ML-DSA formats (`raw-seed`, `raw-public`).
 const exportKey = (
   format: string,
   key: CryptoKey,
@@ -44,7 +43,7 @@ const variants = [
   ["ML-DSA-87", 2592, 4896, 4627],
 ] as const;
 
-for (const [name, pubLen, privLen, sigLen] of variants) {
+for (const [name, pubLen, _privLen, sigLen] of variants) {
   Deno.test(`webcrypto ${name} generate/sign/verify`, async () => {
     const { publicKey, privateKey } = await crypto.subtle.generateKey(
       { name } as AnyAlg,
@@ -134,7 +133,7 @@ for (const [name, pubLen, privLen, sigLen] of variants) {
     );
   });
 
-  Deno.test(`webcrypto ${name} export raw-public / raw-private / raw-seed`, async () => {
+  Deno.test(`webcrypto ${name} export raw-public / raw-seed`, async () => {
     const { publicKey, privateKey } = await crypto.subtle.generateKey(
       { name } as AnyAlg,
       true,
@@ -143,9 +142,6 @@ for (const [name, pubLen, privLen, sigLen] of variants) {
 
     const rawPub = new Uint8Array(await exportKey("raw-public", publicKey));
     assertEquals(rawPub.byteLength, pubLen);
-
-    const rawPriv = new Uint8Array(await exportKey("raw-private", privateKey));
-    assertEquals(rawPriv.byteLength, privLen);
 
     const rawSeed = new Uint8Array(await exportKey("raw-seed", privateKey));
     assertEquals(rawSeed.byteLength, 32);
@@ -170,56 +166,11 @@ for (const [name, pubLen, privLen, sigLen] of variants) {
       ["sign"],
     );
 
-    // Both must produce the same expanded raw-private bytes.
-    const raw1 = new Uint8Array(await exportKey("raw-private", priv1));
-    const raw2 = new Uint8Array(await exportKey("raw-private", priv2));
-    assertEquals(raw1, raw2);
-
-    // Seed export equals the seed we imported.
-    const seedOut = new Uint8Array(await exportKey("raw-seed", priv1));
-    assertEquals(seedOut, seed);
-  });
-
-  Deno.test(`webcrypto ${name} import raw-private round-trip + sign/verify`, async () => {
-    const original = await crypto.subtle.generateKey(
-      { name } as AnyAlg,
-      true,
-      ["sign", "verify"],
-    ) as CryptoKeyPair;
-    const rawPriv = new Uint8Array(
-      await exportKey("raw-private", original.privateKey),
-    );
-    const rawPub = new Uint8Array(
-      await exportKey("raw-public", original.publicKey),
-    );
-
-    const priv = await importKey(
-      "raw-private",
-      rawPriv,
-      { name },
-      true,
-      ["sign"],
-    );
-    const pub = await importKey(
-      "raw-public",
-      rawPub,
-      { name },
-      true,
-      ["verify"],
-    );
-
-    const msg = new TextEncoder().encode("via raw");
-    const sig = await crypto.subtle.sign({ name } as AnyAlg, priv, msg);
-    const ok = await crypto.subtle.verify({ name } as AnyAlg, pub, sig, msg);
-    assert(ok);
-
-    // raw-seed should not be available for keys imported from raw-private.
-    await assertRejects(
-      async () => {
-        await exportKey("raw-seed", priv);
-      },
-      DOMException,
-    );
+    // Both keys derived from the same seed must export the same seed.
+    const seed1 = new Uint8Array(await exportKey("raw-seed", priv1));
+    const seed2 = new Uint8Array(await exportKey("raw-seed", priv2));
+    assertEquals(seed1, seed2);
+    assertEquals(seed1, seed);
   });
 
   Deno.test(`webcrypto ${name} pkcs8/spki round-trip + sign/verify`, async () => {
@@ -241,6 +192,87 @@ for (const [name, pubLen, privLen, sigLen] of variants) {
     assert(ok);
   });
 
+  Deno.test(`webcrypto ${name} jwk round-trip + sign/verify`, async () => {
+    const orig = await crypto.subtle.generateKey(
+      { name } as AnyAlg,
+      true,
+      ["sign", "verify"],
+    ) as CryptoKeyPair;
+
+    // deno-lint-ignore no-explicit-any
+    const privJwk: any = await (crypto.subtle.exportKey as AnyAlg)(
+      "jwk",
+      orig.privateKey,
+    );
+    assertEquals(privJwk.kty, "AKP");
+    assertEquals(privJwk.alg, name);
+    assert(typeof privJwk.pub === "string");
+    assert(typeof privJwk.priv === "string");
+    assertEquals(privJwk.key_ops, ["sign"]);
+    assertEquals(privJwk.ext, true);
+
+    // deno-lint-ignore no-explicit-any
+    const pubJwk: any = await (crypto.subtle.exportKey as AnyAlg)(
+      "jwk",
+      orig.publicKey,
+    );
+    assertEquals(pubJwk.kty, "AKP");
+    assertEquals(pubJwk.alg, name);
+    assert(typeof pubJwk.pub === "string");
+    assertEquals(pubJwk.priv, undefined);
+    assertEquals(pubJwk.key_ops, ["verify"]);
+    // The public key embedded in the private JWK matches the public JWK.
+    assertEquals(privJwk.pub, pubJwk.pub);
+
+    const priv = await importKey("jwk", privJwk, { name }, true, ["sign"]);
+    const pub = await importKey("jwk", pubJwk, { name }, true, ["verify"]);
+    assertEquals(priv.type, "private");
+    assertEquals(pub.type, "public");
+
+    const msg = new TextEncoder().encode("via jwk");
+    const sig = await crypto.subtle.sign({ name } as AnyAlg, priv, msg);
+    assert(await crypto.subtle.verify({ name } as AnyAlg, pub, sig, msg));
+
+    // Re-export the re-imported private key and confirm the seed survives.
+    // deno-lint-ignore no-explicit-any
+    const privJwk2: any = await (crypto.subtle.exportKey as AnyAlg)(
+      "jwk",
+      priv,
+    );
+    assertEquals(privJwk2.priv, privJwk.priv);
+    assertEquals(privJwk2.pub, privJwk.pub);
+  });
+
+  Deno.test(`webcrypto ${name} jwk import rejects mismatched pub`, async () => {
+    const orig = await crypto.subtle.generateKey(
+      { name } as AnyAlg,
+      true,
+      ["sign", "verify"],
+    ) as CryptoKeyPair;
+    // deno-lint-ignore no-explicit-any
+    const privJwk: any = await (crypto.subtle.exportKey as AnyAlg)(
+      "jwk",
+      orig.privateKey,
+    );
+    const other = await crypto.subtle.generateKey(
+      { name } as AnyAlg,
+      true,
+      ["sign", "verify"],
+    ) as CryptoKeyPair;
+    // deno-lint-ignore no-explicit-any
+    const otherJwk: any = await (crypto.subtle.exportKey as AnyAlg)(
+      "jwk",
+      other.publicKey,
+    );
+    privJwk.pub = otherJwk.pub;
+    await assertRejects(
+      async () => {
+        await importKey("jwk", privJwk, { name }, true, ["sign"]);
+      },
+      DOMException,
+    );
+  });
+
   Deno.test(`webcrypto ${name} getPublicKey() returns matching public key`, async () => {
     const { publicKey, privateKey } = await crypto.subtle.generateKey(
       { name } as AnyAlg,
@@ -248,10 +280,17 @@ for (const [name, pubLen, privLen, sigLen] of variants) {
       ["sign", "verify"],
     ) as CryptoKeyPair;
 
-    const derived = (privateKey as AnyKey).getPublicKey();
+    // getPublicKey lives on SubtleCrypto.prototype, not CryptoKey.prototype.
+    assertEquals(typeof (privateKey as AnyKey).getPublicKey, "undefined");
+
+    const derived = await (crypto.subtle as AnyKey).getPublicKey(
+      privateKey,
+      ["verify"],
+    );
     assert(derived);
     assertEquals(derived.type, "public");
     assertEquals(derived.algorithm.name, name);
+    assertEquals(derived.usages, ["verify"]);
 
     const rawPub = new Uint8Array(await exportKey("raw-public", publicKey));
     const rawDerived = new Uint8Array(await exportKey("raw-public", derived));
@@ -264,14 +303,20 @@ for (const [name, pubLen, privLen, sigLen] of variants) {
     );
   });
 
-  Deno.test(`webcrypto ${name} getPublicKey() throws for public keys`, async () => {
-    const { publicKey } = await crypto.subtle.generateKey(
+  Deno.test(`webcrypto ${name} getPublicKey() rejects invalid input`, async () => {
+    const { publicKey, privateKey } = await crypto.subtle.generateKey(
       { name } as AnyAlg,
       true,
       ["sign", "verify"],
     ) as CryptoKeyPair;
-    assertThrows(
-      () => (publicKey as AnyKey).getPublicKey(),
+    // Public keys are not valid input.
+    await assertRejects(
+      () => (crypto.subtle as AnyKey).getPublicKey(publicKey, ["verify"]),
+      DOMException,
+    );
+    // Invalid public-key usages for the algorithm reject with SyntaxError.
+    await assertRejects(
+      () => (crypto.subtle as AnyKey).getPublicKey(privateKey, ["sign"]),
       DOMException,
     );
   });
@@ -349,4 +394,58 @@ Deno.test("webcrypto ML-DSA spki round-trips for all variants", async () => {
     const re = await importKey("spki", spki, { name }, true, ["verify"]);
     assertEquals(re.algorithm.name, name);
   }
+});
+
+Deno.test("webcrypto ML-DSA jwk import rejects wrong kty", async () => {
+  const { publicKey } = await crypto.subtle.generateKey(
+    { name: "ML-DSA-65" } as AnyAlg,
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+  // deno-lint-ignore no-explicit-any
+  const jwk: any = await (crypto.subtle.exportKey as AnyAlg)("jwk", publicKey);
+  jwk.kty = "OKP";
+  await assertRejects(
+    async () => {
+      await importKey("jwk", jwk, { name: "ML-DSA-65" }, true, ["verify"]);
+    },
+    DOMException,
+  );
+});
+
+Deno.test("webcrypto ML-DSA jwk import rejects mismatched alg", async () => {
+  const { publicKey } = await crypto.subtle.generateKey(
+    { name: "ML-DSA-65" } as AnyAlg,
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+  // deno-lint-ignore no-explicit-any
+  const jwk: any = await (crypto.subtle.exportKey as AnyAlg)("jwk", publicKey);
+  jwk.alg = "ML-DSA-87";
+  await assertRejects(
+    async () => {
+      await importKey("jwk", jwk, { name: "ML-DSA-65" }, true, ["verify"]);
+    },
+    DOMException,
+  );
+});
+
+Deno.test("webcrypto ML-DSA jwk import rejects bad private usage", async () => {
+  const orig = await crypto.subtle.generateKey(
+    { name: "ML-DSA-65" } as AnyAlg,
+    true,
+    ["sign", "verify"],
+  ) as CryptoKeyPair;
+  // deno-lint-ignore no-explicit-any
+  const jwk: any = await (crypto.subtle.exportKey as AnyAlg)(
+    "jwk",
+    orig.privateKey,
+  );
+  // A private (priv present) JWK may only be imported for "sign".
+  await assertRejects(
+    async () => {
+      await importKey("jwk", jwk, { name: "ML-DSA-65" }, true, ["verify"]);
+    },
+    DOMException,
+  );
 });

@@ -3317,6 +3317,17 @@ fn node_process_stdin_unref_with_pty() {
 }
 
 #[test]
+fn stdin_readable_cancel_with_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/stdin_readable_cancel.ts"])
+    .with_pty(|mut console| {
+      console.expect("CANCELLED");
+      console.expect("DONE");
+    });
+}
+
+#[test]
 async fn listen_tls_alpn() {
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
@@ -3600,6 +3611,27 @@ fn readline_multi_prompt_pty() {
       console.expect("Q2?");
       console.write_line("world");
       console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/17047.
+// Verifies that permission prompts wait for an active user-space stdin prompt
+// instead of racing it and consuming the user's answer.
+#[test]
+fn readline_permission_prompt_interleaving_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_permission_prompt_interleaving.ts"])
+    .with_pty(|mut console| {
+      console.expect("Project?");
+      console.write_line("demo");
+      console.expect("ANSWER:demo");
+      console.expect("Deno requests read access to");
+      console.expect("Allow?");
+      console.human_delay();
+      console.write_line_raw("n");
+      console.expect("Denied read access to");
+      console.expect("READ_ERROR:NotCapable");
     });
 }
 
