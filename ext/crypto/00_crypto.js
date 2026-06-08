@@ -123,7 +123,7 @@ ObjectDefineProperty(SubtleCryptoPrototype, "deriveBits", {
 // `.catch()`-only consumer. The async wrappers below coerce both the
 // success and error paths through a Promise, matching the legacy JS
 // async-fn shape.
-function makeAsyncForwarder(name, methodName) {
+function makeAsyncForwarder(name, methodName, arity) {
   const cppgc = SubtleCryptoPrototype[methodName];
   // The `name` parameter is captured in the wrapper's `Function.name`
   // slot via a property assignment because async-arrow `function.name`
@@ -140,6 +140,14 @@ function makeAsyncForwarder(name, methodName) {
       );
     },
   }[methodName];
+  // `Function.length` of `(...args) => ...` is 0, but the WebIDL idl-harness
+  // test (`SubtleCrypto interface: operation <name>(...)`) requires it to
+  // match the operation's required-argument count per the spec.
+  ObjectDefineProperty(wrapper, "length", {
+    __proto__: null,
+    value: arity,
+    configurable: true,
+  });
   ObjectDefineProperty(SubtleCryptoPrototype, name, {
     __proto__: null,
     value: wrapper,
@@ -157,22 +165,24 @@ function makeAsyncForwarder(name, methodName) {
 // `TypeError: Failed to execute 'call' on 'SubtleCrypto': ...` -- a wrong
 // shape compared to the spec's "rejected promise". Forward every method
 // through `async` so the throw becomes a Promise rejection.
-makeAsyncForwarder("digest", "digest");
-makeAsyncForwarder("encrypt", "encrypt");
-makeAsyncForwarder("decrypt", "decrypt");
-makeAsyncForwarder("sign", "sign");
-makeAsyncForwarder("verify", "verify");
-makeAsyncForwarder("deriveKey", "deriveKey");
-makeAsyncForwarder("importKey", "importKey");
-makeAsyncForwarder("exportKey", "exportKey");
-makeAsyncForwarder("generateKey", "generateKey");
-makeAsyncForwarder("getPublicKey", "getPublicKey");
-makeAsyncForwarder("wrapKey", "wrapKey");
-makeAsyncForwarder("unwrapKey", "unwrapKey");
-makeAsyncForwarder("encapsulateBits", "encapsulateBits");
-makeAsyncForwarder("encapsulateKey", "encapsulateKey");
-makeAsyncForwarder("decapsulateBits", "decapsulateBits");
-makeAsyncForwarder("decapsulateKey", "decapsulateKey");
+// The third argument is the required-arg count from the WebCrypto IDL,
+// applied to the wrapper's `Function.length` for idlharness compliance.
+makeAsyncForwarder("digest", "digest", 2);
+makeAsyncForwarder("encrypt", "encrypt", 3);
+makeAsyncForwarder("decrypt", "decrypt", 3);
+makeAsyncForwarder("sign", "sign", 3);
+makeAsyncForwarder("verify", "verify", 4);
+makeAsyncForwarder("deriveKey", "deriveKey", 5);
+makeAsyncForwarder("importKey", "importKey", 5);
+makeAsyncForwarder("exportKey", "exportKey", 2);
+makeAsyncForwarder("generateKey", "generateKey", 3);
+makeAsyncForwarder("getPublicKey", "getPublicKey", 2);
+makeAsyncForwarder("wrapKey", "wrapKey", 4);
+makeAsyncForwarder("unwrapKey", "unwrapKey", 7);
+makeAsyncForwarder("encapsulateBits", "encapsulateBits", 2);
+makeAsyncForwarder("encapsulateKey", "encapsulateKey", 5);
+makeAsyncForwarder("decapsulateBits", "decapsulateBits", 3);
+makeAsyncForwarder("decapsulateKey", "decapsulateKey", 6);
 
 // `SubtleCrypto`'s prototype keeps a single privateCustomInspect helper so
 // `Deno.inspect(crypto.subtle)` prints `SubtleCrypto {}` rather than the

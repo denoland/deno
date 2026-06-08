@@ -554,6 +554,16 @@ fn check_usages(
       )));
     }
   }
+  // WebCrypto generateKey: empty `usages` on a key that produces secret or
+  // private material must throw `SyntaxError`. WPT `generateKey/failures.js`
+  // ("Empty usages") covers every algorithm we dispatch to, and all
+  // generate-key paths in this file produce secret/private material.
+  if usages.is_empty() {
+    return Err(CryptoError::Other(JsErrorBox::new(
+      "DOMExceptionSyntaxError",
+      "Usages cannot be empty",
+    )));
+  }
   Ok(())
 }
 
