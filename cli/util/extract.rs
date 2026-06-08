@@ -227,33 +227,34 @@ fn extract_files_from_regex_blocks(
       let body = block.name("body").unwrap();
       let text = body.as_str();
 
-      // Detect whether this code block is inside a blockquote by looking at
-      // what appears on the opening fence line before the ``` in the source.
-      // For example, a JSDoc line like `* > ```ts` has blockquote prefix `> `,
-      // while `* ```ts` has none. We capture exactly the `> ` (or `> > `, etc.)
-      // sequence so we can strip it precisely from each content line, rather
-      // than stripping any leading `> ` regardless of context.
-      let fence_start = block.get(0).unwrap().start();
-      let before_fence = &source[..fence_start];
-      let line_before_fence = before_fence
-        .rfind('\n')
-        .map(|i| &before_fence[i + 1..])
-        .unwrap_or(before_fence);
-      // Strip the leading `* ` (or `*`) JSDoc comment marker from the fence
-      // line if present, then collect the remaining `> ` tokens as the
-      // blockquote prefix. Plain markdown fences (for example in a `.md` file)
-      // have no `*` marker, so in that case we read the blockquote tokens from
-      // the trimmed line directly.
-      let trimmed_fence_line = line_before_fence.trim_start();
-      let fence_line_after_star = match trimmed_fence_line.strip_prefix('*') {
-        Some(after_star) => after_star.strip_prefix(' ').unwrap_or(after_star),
-        None => trimmed_fence_line,
+      // Detect whether this code block is inside a blockquote so the `> `
+      // markers can be stripped precisely from each content line, rather than
+      // stripping any leading `> ` regardless of context. The markdown block
+      // pattern captures the opening fence prefix directly in the `blockquote`
+      // group. The JSDoc block pattern has no such group, so for it we look at
+      // the text on the fence line before the ``` and drop the `* ` comment
+      // marker. A `* ```ts` or plain ` ```ts ` fence has no blockquote markers.
+      let fence_prefix: &str = match block.name("blockquote") {
+        Some(blockquote) => blockquote.as_str(),
+        None => {
+          let fence_start = block.get(0).unwrap().start();
+          let before_fence = &source[..fence_start];
+          let line_before_fence = before_fence
+            .rfind('\n')
+            .map(|i| &before_fence[i + 1..])
+            .unwrap_or(before_fence)
+            .trim_start();
+          line_before_fence
+            .strip_prefix("* ")
+            .or_else(|| line_before_fence.strip_prefix('*'))
+            .unwrap_or(line_before_fence)
+        }
       };
       // Count the blockquote depth, that is the number of leading `>` markers
       // on the fence line. Each `>` may be followed by an optional single space
       // or tab. A fence that is not inside a blockquote has depth zero.
       let mut blockquote_depth = 0usize;
-      let mut rest = fence_line_after_star;
+      let mut rest = fence_prefix;
       while let Some(after_marker) = rest.strip_prefix('>') {
         blockquote_depth += 1;
         rest = after_marker
