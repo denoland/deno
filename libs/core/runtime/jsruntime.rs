@@ -2269,14 +2269,34 @@ impl JsRuntime {
     cx: &mut Context,
     poll_options: PollEventLoopOptions,
   ) -> Poll<Result<(), CoreError>> {
+    let has_inspector = self.inner.state.has_inspector.get();
+
     // SAFETY: We know this isolate is valid and non-null at this time
     let mut isolate =
       unsafe { v8::Isolate::from_raw_isolate_ptr(self.v8_isolate_ptr()) };
-    v8::scope!(let isolate_scope, &mut isolate);
-    let context =
-      v8::Local::new(isolate_scope, self.inner.main_realm.context());
-    let mut scope = v8::ContextScope::new(isolate_scope, context);
-    self.poll_event_loop_inner(cx, &mut scope, poll_options)
+
+    let result = {
+      v8::scope!(let isolate_scope, &mut isolate);
+      let context =
+        v8::Local::new(isolate_scope, self.inner.main_realm.context());
+      let mut scope = v8::ContextScope::new(isolate_scope, context);
+      self.poll_event_loop_inner(cx, &mut scope, poll_options)
+    };
+
+    // Tell V8's CPU profiler whether we're about to go idle. When the event
+    // loop has no immediate work it returns `Poll::Pending` and the task parks
+    // until an external event (timer, I/O) wakes it. Marking the isolate idle
+    // makes the profiler attribute that wait to the `(idle)` node instead of
+    // `(program)`, which otherwise makes an idle process look like it is using
+    // 100% CPU in DevTools (https://github.com/denoland/deno/issues/21620).
+    //
+    // This must happen *after* the `v8::ContextScope` above is dropped: tearing
+    // the scope down calls `Isolate::Exit`, which restores the VM state that was
+    // saved on entry and would clobber the idle state if we set it any earlier.
+    if has_inspector {
+      isolate.set_idle(result.is_pending());
+    }
+    result
   }
 
   /// Phase-based event loop tick, loosely following libuv's architecture:
