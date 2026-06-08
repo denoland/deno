@@ -192,14 +192,20 @@ pub fn to_percent_decoded_str(s: &str) -> String {
 ///
 /// This is a no-op on non-Windows platforms, where trailing whitespace and dots
 /// in a file name are significant.
+///
+/// `\\?\` extended-length paths *can* preserve trailing spaces/dots, so this
+/// would diverge there, but such a path as a CLI argument is vanishingly rare
+/// and intentionally out of scope.
 #[cfg(windows)]
 pub fn strip_windows_trailing_chars(path: &str) -> Cow<'_, str> {
   let (dir, name) = match path.rfind(['/', '\\']) {
     Some(i) => path.split_at(i + 1),
     None => ("", path),
   };
-  // Leave relative directory references and drive specifiers (e.g. "C:") alone.
-  if name == "." || name == ".." || name.ends_with(':') {
+  // Leave drive specifiers (e.g. "C:") alone. Relative directory references
+  // ("." / "..") are handled by the `trimmed.is_empty()` check below, since
+  // they trim away entirely.
+  if name.ends_with(':') {
     return Cow::Borrowed(path);
   }
   let trimmed = name.trim_end_matches([' ', '.']);
