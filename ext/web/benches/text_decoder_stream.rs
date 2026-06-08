@@ -1,10 +1,13 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::sync::Arc;
+
 use deno_bench_util::bench_js_sync;
 use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::Bencher;
 use deno_bench_util::bencher::benchmark_group;
 use deno_core::Extension;
+use deno_web::BlobStore;
 
 fn setup() -> Vec<Extension> {
   // 08_text_encoding.js exposes `TextDecoder` via `core.loadExtScript`, so the
@@ -43,8 +46,7 @@ fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::init(
-      std::sync::Arc::new(deno_web::BlobStore::default())
-        as std::sync::Arc<dyn deno_web::BlobStoreTrait>,
+      Arc::new(BlobStore::default()),
       None,
       Default::default(),
       Default::default(),
