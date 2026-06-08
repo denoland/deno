@@ -303,15 +303,17 @@ pub async fn run(
       public_exponent,
       hash,
     } => {
-      check_usages(&usages, &usages_for_rsa(&name))?;
-      // Per `normalizeAlgorithm` with op `digest`, an unrecognized `hash`
-      // value rejects with `NotSupportedError`, not the converter's
-      // `TypeError`.
+      // Spec order: normalizeAlgorithm validates `hash` (op `digest`)
+      // BEFORE the per-algorithm body runs its usage check. WPT
+      // `failures_RSA*.https.any.html` asserts `NotSupportedError`
+      // wins over `SyntaxError` when the hash is bad and the usages
+      // are also wrong.
       if sha_from_name(&hash).is_none() {
         return Err(not_supported(format!(
           "Unrecognized hash algorithm: {hash}"
         )));
       }
+      check_usages(&usages, &usages_for_rsa(&name))?;
       let key_data =
         spawn_blocking(move || generate_rsa(modulus_length, &public_exponent))
           .await
@@ -335,7 +337,9 @@ pub async fn run(
       })
     }
     GenerateKeyAlgorithm::Ec { name, named_curve } => {
-      check_usages(&usages, &usages_for_ec(&name))?;
+      // Spec order: validate `namedCurve` before checking usages so a
+      // simultaneously-bad curve + bad usage rejects with
+      // `NotSupportedError`, not `SyntaxError`.
       let curve = match named_curve.as_str() {
         "P-256" => EcNamedCurve::P256,
         "P-384" => EcNamedCurve::P384,
@@ -346,6 +350,7 @@ pub async fn run(
           )));
         }
       };
+      check_usages(&usages, &usages_for_ec(&name))?;
       let curve_str = ec_curve_str(curve);
       let key_data = spawn_blocking(move || generate_ec(curve))
         .await
@@ -386,16 +391,17 @@ pub async fn run(
       })
     }
     GenerateKeyAlgorithm::Hmac { hash, length } => {
+      // Spec order: normalizeAlgorithm validates `hash` before the
+      // per-op body checks usages or length, so a bad hash wins over a
+      // bad usage / `length: 0`.
+      let sha = sha_from_name(&hash).ok_or_else(|| {
+        not_supported(format!("Unrecognized hash algorithm: {hash}"))
+      })?;
       check_usages(&usages, &["sign", "verify"])?;
       // Spec: a literal `length: 0` is OperationError.
       if length == Some(0) {
         return Err(op_error("Invalid length".into()));
       }
-      // Per `normalizeAlgorithm` with op `digest`, an unrecognized
-      // `hash` rejects with `NotSupportedError`.
-      let sha = sha_from_name(&hash).ok_or_else(|| {
-        not_supported(format!("Unrecognized hash algorithm: {hash}"))
-      })?;
       let hash_name = sha_name(sha);
       let bytes = generate_hmac(sha, length.map(|l| l as usize))
         .map_err(|e| CryptoError::Other(JsErrorBox::from_err(e)))?;
