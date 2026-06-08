@@ -39,8 +39,6 @@ use deno_core::unsync::JoinHandle;
 use deno_core::unsync::spawn;
 use deno_core::v8;
 use deno_http_h1 as h1;
-use deno_io::fs::File;
-use deno_io::fs::FileResource;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamReadHalf;
@@ -703,94 +701,6 @@ enum RawResponseBody {
   },
 }
 
-struct RawFileBodyState {
-  position: u64,
-  remaining: u64,
-}
-
-struct RawFileBodyResource {
-  resource: Rc<FileResource>,
-  file: Rc<dyn File>,
-  auto_close: bool,
-  state: RefCell<RawFileBodyState>,
-}
-
-impl RawFileBodyResource {
-  fn new(
-    resource: Rc<FileResource>,
-    auto_close: bool,
-  ) -> Option<(Rc<Self>, u64)> {
-    let file = resource.file();
-    let stat = file.clone().stat_sync().ok()?;
-    if !stat.is_file {
-      return None;
-    }
-    let position = file.clone().seek_sync(io::SeekFrom::Current(0)).ok()?;
-    let remaining = stat.size.saturating_sub(position);
-    Some((
-      Rc::new(Self {
-        resource,
-        file,
-        auto_close,
-        state: RefCell::new(RawFileBodyState {
-          position,
-          remaining,
-        }),
-      }),
-      remaining,
-    ))
-  }
-}
-
-impl Resource for RawFileBodyResource {
-  fn name(&self) -> Cow<'_, str> {
-    "rawFileBody".into()
-  }
-
-  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(async move {
-      let (position, read_len) = {
-        let state = self.state.borrow();
-        if state.remaining == 0 || limit == 0 {
-          return Ok(BufView::empty());
-        }
-        let read_len =
-          limit.min(state.remaining.min(usize::MAX as u64) as usize);
-        (state.position, read_len)
-      };
-      let buf = BufMutView::new(read_len);
-      let (read, mut buf) = self
-        .file
-        .clone()
-        .read_at_async(buf, position)
-        .await
-        .map_err(deno_error::JsErrorBox::from_err)?;
-      {
-        let mut state = self.state.borrow_mut();
-        state.position = position + read as u64;
-        if read < read_len {
-          state.remaining = 0;
-        } else {
-          state.remaining = state.remaining.saturating_sub(read as u64);
-        }
-      }
-      buf.truncate(read);
-      Ok(buf.into_view())
-    })
-  }
-
-  fn size_hint(&self) -> (u64, Option<u64>) {
-    let remaining = self.state.borrow().remaining;
-    (remaining, Some(remaining))
-  }
-
-  fn close(self: Rc<Self>) {
-    if self.auto_close {
-      self.resource.clone().close();
-    }
-  }
-}
-
 fn raw_request_compression(headers: &RawRequestHeaders) -> Compression {
   let Some(accept_encoding) = headers.get_joined(b"accept-encoding", b", ")
   else {
@@ -1224,28 +1134,17 @@ impl RawHttpRecord {
 
   fn set_stream_response_body_resource(
     &self,
-    length: Option<usize>,
+    content_length: Option<u64>,
+    length_for_compression: Option<usize>,
     resource: Rc<dyn Resource>,
     auto_close: bool,
   ) {
-    let compression = self.prepare_stream_compression(length);
+    let compression = self.prepare_stream_compression(length_for_compression);
+    let content_length = (compression == Compression::None)
+      .then_some(content_length)
+      .flatten();
     self.set_stream_response_body(
       ResponseBytesInner::from_resource(compression, resource, auto_close),
-      None,
-    );
-  }
-
-  fn set_stream_response_body_file(
-    &self,
-    content_length: u64,
-    length_for_compression: Option<usize>,
-    resource: Rc<dyn Resource>,
-  ) {
-    let compression = self.prepare_stream_compression(length_for_compression);
-    let content_length =
-      (compression == Compression::None).then_some(content_length);
-    self.set_stream_response_body(
-      ResponseBytesInner::from_resource(compression, resource, true),
       content_length,
     );
   }
@@ -3033,39 +2932,21 @@ pub async fn op_http_set_response_body_resource(
   if let HttpRecordExternal::Raw(record) = http {
     let resource = {
       let mut state = state.borrow_mut();
-      if let Ok(file_resource) =
-        state.resource_table.get::<FileResource>(stream_rid)
-      {
-        if auto_close {
-          state.resource_table.take::<FileResource>(stream_rid)?
-            as Rc<dyn Resource>
-        } else {
-          file_resource as Rc<dyn Resource>
-        }
-      } else if auto_close {
+      if auto_close {
         state.resource_table.take_any(stream_rid)?
       } else {
         state.resource_table.get_any(stream_rid)?
       }
     };
     record.set_status(status);
-    if auto_close
-      && let Some(file_resource) = resource.downcast_rc::<FileResource>()
-      && let Some((file_body, content_length)) =
-        RawFileBodyResource::new(file_resource.clone(), auto_close)
-    {
-      record.set_stream_response_body_file(
-        content_length,
-        usize::try_from(content_length).ok(),
-        file_body,
-      );
-    } else {
-      record.set_stream_response_body_resource(
-        resource.size_hint().1.map(|s| s as usize),
-        resource,
-        auto_close,
-      );
-    }
+    let (lower, upper) = resource.size_hint();
+    let exact_length = upper.filter(|upper| *upper == lower);
+    record.set_stream_response_body_resource(
+      exact_length,
+      exact_length.and_then(|length| usize::try_from(length).ok()),
+      resource,
+      auto_close,
+    );
     record.complete();
     return Ok(record.response_body_finished().await);
   }
