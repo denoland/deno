@@ -92,6 +92,20 @@ openssl pkcs12 -export \
 
 - `localhost_modern.pfx` — passphrase `secret`, PBES2/AES-256-CBC bags
 
+A variant without a MAC (`-nomac`) checks that MAC-less PFX files are still
+accepted, and that a wrong passphrase surfaces as a key-decrypt failure rather
+than a MAC failure (the certs are plaintext, only the key is shrouded).
+Generated with:
+
+```shell
+openssl pkcs12 -export \
+  -inkey localhost.key -in localhost.crt \
+  -passout pass:secret -nomac \
+  -out localhost_modern_nomac.pfx
+```
+
+- `localhost_modern_nomac.pfx` — passphrase `secret`, PBES2 shrouded key, no MAC
+
 A separate self-signed bundle exercises the `DEPTH_ZERO_SELF_SIGNED_CERT` path
 in the TLS handshake. Generated with:
 

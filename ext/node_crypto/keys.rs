@@ -4274,6 +4274,11 @@ pub fn op_node_load_pfx(
         .ok_or(PfxLoadError::KeyDecryptFailed)?;
         key_ders.push(der);
       }
+      // Unencrypted KeyBags and other bag kinds are ignored, matching the
+      // upstream `p12` behaviour this replaces: `SafeBagKind::get_key` only
+      // extracts `Pkcs8ShroudedKeyBag`, and an unencrypted PKCS#8 KeyBag
+      // parses as `OtherBagKind`. TLS PFX bundles always shroud the key, so
+      // this is not a shape we need to support.
       _ => {}
     }
   }
@@ -4299,10 +4304,10 @@ pub fn op_node_load_pfx(
   Ok(LoadPfxResult { cert, key, ca })
 }
 
-// PBES2 OID (id-PBES2) from RFC 8018.
-fn pbes2_oid() -> yasna::models::ObjectIdentifier {
-  yasna::models::ObjectIdentifier::from_slice(&[1, 2, 840, 113_549, 1, 5, 13])
-}
+// PBES2 OID (id-PBES2) arcs from RFC 8018, compared against the parsed
+// algorithm OID directly so we do not allocate a fresh `ObjectIdentifier`
+// for every bag.
+const PBES2_OID_ARCS: [u64; 7] = [1, 2, 840, 113_549, 1, 5, 13];
 
 // Decrypt a PFX blob (the SafeContents body of an EncryptedData ContentInfo,
 // or the EncryptedPrivateKeyInfo body of a shrouded key bag), dispatching
@@ -4322,13 +4327,23 @@ fn decrypt_pfx_blob(
   bmp_password: &[u8],
 ) -> Option<Vec<u8>> {
   match alg {
-    Pkcs12AlgorithmIdentifier::PbewithSHAAnd40BitRC2CBC(_)
-    | Pkcs12AlgorithmIdentifier::PbeWithSHAAnd3KeyTripleDESCBC(_) => {
+    Pkcs12AlgorithmIdentifier::PbewithSHAAnd40BitRC2CBC(params)
+    | Pkcs12AlgorithmIdentifier::PbeWithSHAAnd3KeyTripleDESCBC(params) => {
+      // The legacy PKCS#12 PBE iteration count is attacker-controlled too
+      // (`Pkcs12PbeParams::iterations`), and `p12::decrypt_pbe` does not cap
+      // it; apply the same cap as the MAC and PBES2 paths.
+      if params.iterations > PFX_PBKDF_ITERATIONS_CAP {
+        return None;
+      }
       alg.decrypt_pbe(ciphertext, bmp_password)
     }
     Pkcs12AlgorithmIdentifier::OtherAlg(other)
-      if other.algorithm_type == pbes2_oid() =>
+      if other.algorithm_type.components().as_slice()
+        == PBES2_OID_ARCS.as_slice() =>
     {
+      // `p12` keeps `OtherAlg` as a partial parse (just the raw params
+      // bytes), so round-trip the whole AlgorithmIdentifier back to DER to
+      // let the pkcs8/pkcs5 crate parse the PBES2 parameters.
       let alg_der = yasna::construct_der(|w| alg.write(w));
       let scheme = pkcs8::pkcs5::EncryptionScheme::from_der(&alg_der).ok()?;
       // Apply the same PBKDF iteration cap used for the MAC. The PBKDF2

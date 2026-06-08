@@ -1145,3 +1145,40 @@ Deno.test("tls.createSecureContext accepts modern pfx (PBES2/AES-256-CBC)", () =
   const ctx = tls.createSecureContext({ pfx, passphrase: "secret" });
   assert(ctx);
 });
+
+// A modern (MAC'd) PFX with the wrong passphrase fails at MAC verification,
+// before any bag is decrypted, so the error matches the legacy fixtures.
+Deno.test("tls.createSecureContext rejects modern pfx with wrong passphrase", () => {
+  const pfx = Buffer.from(
+    Deno.readFileSync(join(tlsTestdataDir, "localhost_modern.pfx")),
+  );
+  assertThrows(
+    () => tls.createSecureContext({ pfx, passphrase: "wrong" }),
+    Error,
+    "mac verify failure",
+  );
+});
+
+// A PFX produced without a MAC (`openssl pkcs12 -export -nomac`) is still
+// accepted, matching Node/OpenSSL which treat the MAC as optional. The certs
+// are stored in plaintext and only the key is shrouded, so a wrong passphrase
+// gets past the (absent) MAC and surfaces as a key-decrypt failure rather than
+// "mac verify failure"; this exercises the PBES2 shrouded-key path directly.
+Deno.test("tls.createSecureContext accepts modern pfx without a MAC", () => {
+  const pfx = Buffer.from(
+    Deno.readFileSync(join(tlsTestdataDir, "localhost_modern_nomac.pfx")),
+  );
+  const ctx = tls.createSecureContext({ pfx, passphrase: "secret" });
+  assert(ctx);
+});
+
+Deno.test("tls.createSecureContext reports key decrypt failure on bad passphrase", () => {
+  const pfx = Buffer.from(
+    Deno.readFileSync(join(tlsTestdataDir, "localhost_modern_nomac.pfx")),
+  );
+  assertThrows(
+    () => tls.createSecureContext({ pfx, passphrase: "wrong" }),
+    Error,
+    "failed to decrypt PFX private key",
+  );
+});
