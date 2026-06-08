@@ -4412,6 +4412,7 @@ impl Inner {
     self
       .refresh_config_tree("did_change_workspace_folders")
       .await;
+    self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
     self.refresh_linter_resolver();
