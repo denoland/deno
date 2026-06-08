@@ -3635,19 +3635,7 @@
         "ECDSA P-384 with SHA-1 with altered plaintext during call",
         "ECDSA P-384 with SHA-1 with altered plaintext after call",
         "ECDSA P-384 with SHA-1 with transferred plaintext after call",
-        "ECDSA P-384 with SHA-1 round trip",
-        "ECDSA P-256 with SHA-1 verification failure due to bad hash name",
-        "ECDSA P-256 with SHA-256 verification failure due to bad hash name",
-        "ECDSA P-256 with SHA-384 verification failure due to bad hash name",
-        "ECDSA P-256 with SHA-512 verification failure due to bad hash name",
-        "ECDSA P-384 with SHA-1 verification failure due to bad hash name",
-        "ECDSA P-384 with SHA-256 verification failure due to bad hash name",
-        "ECDSA P-384 with SHA-384 verification failure due to bad hash name",
-        "ECDSA P-384 with SHA-512 verification failure due to bad hash name",
-        "ECDSA P-521 with SHA-1 verification failure due to bad hash name",
-        "ECDSA P-521 with SHA-256 verification failure due to bad hash name",
-        "ECDSA P-521 with SHA-384 verification failure due to bad hash name",
-        "ECDSA P-521 with SHA-512 verification failure due to bad hash name"
+        "ECDSA P-384 with SHA-1 round trip"
       ]
     },
     "ecdsa.https.any.worker.html": {
@@ -3659,19 +3647,7 @@
         "ECDSA P-384 with SHA-1 with altered plaintext during call",
         "ECDSA P-384 with SHA-1 with altered plaintext after call",
         "ECDSA P-384 with SHA-1 with transferred plaintext after call",
-        "ECDSA P-384 with SHA-1 round trip",
-        "ECDSA P-256 with SHA-1 verification failure due to bad hash name",
-        "ECDSA P-256 with SHA-256 verification failure due to bad hash name",
-        "ECDSA P-256 with SHA-384 verification failure due to bad hash name",
-        "ECDSA P-256 with SHA-512 verification failure due to bad hash name",
-        "ECDSA P-384 with SHA-1 verification failure due to bad hash name",
-        "ECDSA P-384 with SHA-256 verification failure due to bad hash name",
-        "ECDSA P-384 with SHA-384 verification failure due to bad hash name",
-        "ECDSA P-384 with SHA-512 verification failure due to bad hash name",
-        "ECDSA P-521 with SHA-1 verification failure due to bad hash name",
-        "ECDSA P-521 with SHA-256 verification failure due to bad hash name",
-        "ECDSA P-521 with SHA-384 verification failure due to bad hash name",
-        "ECDSA P-521 with SHA-512 verification failure due to bad hash name"
+        "ECDSA P-384 with SHA-1 round trip"
       ]
     },
     "hmac.https.any.html": true,
