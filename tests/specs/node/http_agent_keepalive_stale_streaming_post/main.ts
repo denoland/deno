@@ -14,8 +14,13 @@ idleSocketClosed = new Promise((r) => (resolveIdleSocketClosed = r));
 const BODY = '{"test":true}';
 const DELAYED_BODY = "chunk-one/chunk-two";
 const DELAYED_BODY_FIRST_CHUNK = "chunk-one/";
+const LARGE_BODY_FIRST_CHUNK = Buffer.alloc(1024 * 1024 + 1, "a");
+const LARGE_BODY_SECOND_CHUNK = Buffer.from("b");
+const LARGE_BODY_LENGTH = LARGE_BODY_FIRST_CHUNK.length +
+  LARGE_BODY_SECOND_CHUNK.length;
 
 let destroyedDirectWriteAttempt = false;
+let destroyedLargeDirectWriteAttempt = false;
 
 const server = net.createServer((socket) => {
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -46,6 +51,17 @@ const server = net.createServer((socket) => {
       body.length < contentLength
     ) {
       destroyedDirectWriteAttempt = true;
+      socket.destroy();
+      return;
+    }
+
+    if (
+      path === "/direct-write-too-large" &&
+      !destroyedLargeDirectWriteAttempt &&
+      body.length >= LARGE_BODY_FIRST_CHUNK.length &&
+      body.length < contentLength
+    ) {
+      destroyedLargeDirectWriteAttempt = true;
       socket.destroy();
       return;
     }
@@ -161,6 +177,40 @@ function postDelayedStreaming(port: number): Promise<string> {
   });
 }
 
+async function* largeBodyChunks() {
+  yield LARGE_BODY_FIRST_CHUNK;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  yield LARGE_BODY_SECOND_CHUNK;
+}
+
+function postLargeDelayedStreaming(port: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("timeout")), 5000);
+    const req = http.request(
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: "/direct-write-too-large",
+        method: "POST",
+        agent,
+        headers: { "Content-Length": String(LARGE_BODY_LENGTH) },
+      },
+      () => {
+        clearTimeout(timeout);
+        reject(new Error("unexpected response"));
+      },
+    );
+    req.on("error", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    req.flushHeaders();
+
+    const bodyStream = Readable.from(largeBodyChunks());
+    pipeline(bodyStream, req).catch(() => {});
+  });
+}
+
 server.listen(0, async () => {
   const port = (server.address() as net.AddressInfo).port;
   try {
@@ -186,6 +236,13 @@ server.listen(0, async () => {
     // header write and the direct body write.
     const third = await postDelayedStreaming(port);
     console.log("Request 3: OK", third);
+
+    await waitForFreeSocket();
+
+    // Larger direct-write bodies exceed the bounded retry buffer. They should
+    // not be retried after the reused socket is dropped.
+    await postLargeDelayedStreaming(port);
+    console.log("Request 4: OK not retried");
 
     console.log("PASS");
   } catch (e) {

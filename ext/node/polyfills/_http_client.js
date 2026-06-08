@@ -28,7 +28,6 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeIndexOf,
-  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSplice,
   Boolean,
@@ -130,6 +129,7 @@ const kPath = Symbol("kPath");
 const kOtelSpan = Symbol("kOtelSpan");
 const kPerfStartTime = Symbol("kPerfStartTime");
 const kRetryData = Symbol("kRetryData");
+const kRetryDataSize = Symbol("kRetryDataSize");
 const kRetryOptions = Symbol("kRetryOptions");
 const kProxy = Symbol("kProxy");
 const kProxyTargetHost = Symbol("kProxyTargetHost");
@@ -138,6 +138,9 @@ const kInspectorRequestId = Symbol("kInspectorRequestId");
 const kInspectorNetwork = Symbol("kInspectorNetwork");
 const kInspectorUrl = Symbol("kInspectorUrl");
 const kInspectorCompleted = Symbol("kInspectorCompleted");
+// Bound replay buffering for stale keep-alive retry. Larger streaming uploads
+// keep constant-memory behavior and surface the socket error instead.
+const MAX_RETRY_DATA_SIZE = 1024 * 1024;
 
 // ============================================================================
 // Inspector Network domain instrumentation (Chrome DevTools Protocol).
@@ -881,12 +884,44 @@ function ondrain() {
   }
 }
 
+function canRetryRequest(req) {
+  return req.reusedSocket && !req.res && req.agent && !req._retrying &&
+    req[kRetryData] !== null;
+}
+
+function getRetryDataSize(data, encoding) {
+  if (typeof data === "string") {
+    // deno-lint-ignore prefer-primordials
+    return Buffer.byteLength(data, encoding || undefined);
+  }
+  return data?.byteLength ?? data?.length ?? 0;
+}
+
+function cloneOutputDataForRetry(req) {
+  const retryData = [];
+  let retryDataSize = 0;
+  for (let i = 0; i < req.outputData.length; i++) {
+    const item = req.outputData[i];
+    retryDataSize += getRetryDataSize(item.data, item.encoding);
+    if (retryDataSize > MAX_RETRY_DATA_SIZE) {
+      req[kRetryData] = null;
+      req[kRetryDataSize] = 0;
+      return;
+    }
+    ArrayPrototypePush(retryData, {
+      data: item.data,
+      encoding: item.encoding,
+      callback: item.callback,
+    });
+  }
+  req[kRetryData] = retryData;
+  req[kRetryDataSize] = retryDataSize;
+}
+
 // Transparently retry a request on a new connection when the reused
 // keepalive socket turns out to be stale (server closed it while idle).
 function maybeRetryRequest(req, socket) {
-  if (!req.reusedSocket || req.res || !req.agent || req._retrying) {
-    return false;
-  }
+  if (!canRetryRequest(req)) return false;
 
   req._retrying = true;
   const agent = req.agent;
@@ -944,6 +979,7 @@ function maybeRetryRequest(req, socket) {
   if (req[kRetryData]) {
     req.outputData = req[kRetryData];
     req[kRetryData] = null;
+    req[kRetryDataSize] = 0;
     req._header = retryHeader;
     req._headerSent = true;
   }
@@ -1171,6 +1207,8 @@ function parserOnIncomingClient(res, shouldKeepAlive) {
   }
 
   req.res = res;
+  req[kRetryData] = null;
+  req[kRetryDataSize] = 0;
   res.req = req;
 
   // Emit HttpClient perf entry (at response-header time)
@@ -1426,12 +1464,8 @@ function onSocketNT(req, socket, err) {
     tickOnSocket(req, socket);
     // Save output data before flushing so it can be replayed on retry
     // if this reused keepalive socket turns out to be stale.
-    if (req.reusedSocket && req.outputData.length > 0) {
-      req[kRetryData] = ArrayPrototypeMap(req.outputData, (item) => ({
-        data: item.data,
-        encoding: item.encoding,
-        callback: item.callback,
-      }));
+    if (canRetryRequest(req) && req.outputData.length > 0) {
+      cloneOutputDataForRetry(req);
     }
     req._flush();
   }
@@ -1508,13 +1542,21 @@ ClientRequest.prototype._recordRetryData = function _recordRetryData(
   encoding,
   callback,
 ) {
-  if (!this.reusedSocket || this.res || !this.agent || this._retrying) {
+  if (!canRetryRequest(this)) return;
+
+  const dataSize = getRetryDataSize(data, encoding);
+  const retryDataSize = (this[kRetryDataSize] ?? 0) + dataSize;
+  if (retryDataSize > MAX_RETRY_DATA_SIZE) {
+    this[kRetryData] = null;
+    this[kRetryDataSize] = 0;
     return;
   }
+
   if (this[kRetryData] === null || this[kRetryData] === undefined) {
     this[kRetryData] = [];
   }
   ArrayPrototypePush(this[kRetryData], { data, encoding, callback });
+  this[kRetryDataSize] = retryDataSize;
 };
 
 export { ClientRequest };
