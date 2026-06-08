@@ -369,6 +369,12 @@ fn op_exit(state: &mut OpState) {
   // Under `deno run --watch`, terminate the current V8 isolate instead of
   // exiting the process so the file watcher survives and can restart the
   // script on the next file change. See issue #7590.
+  //
+  // We intentionally return before running `OpExitCallbacks` here: those flush
+  // coverage/profiler data and notify the inspector as the process is about to
+  // disappear. Under a watcher the process keeps running, so that teardown is
+  // not wanted; the watcher run paths stop the coverage collector and profiler
+  // themselves after the run completes.
   if let Some(handle) =
     state.try_borrow::<WatcherExitHandle>().map(|h| h.0.clone())
   {
