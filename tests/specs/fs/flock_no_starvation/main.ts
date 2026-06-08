@@ -6,8 +6,12 @@ const COUNTER_FILE = "./test.counter";
 await Deno.writeTextFile(COUNTER_FILE, "0");
 
 async function incrementCounter() {
+  // Open with write access so the handle can be locked on Windows, where
+  // LockFileEx requires GENERIC_READ/GENERIC_WRITE (an append-only handle
+  // would be rejected with ERROR_ACCESS_DENIED).
   const lockFile = await Deno.open("./test.lock", {
-    append: true,
+    read: true,
+    write: true,
     create: true,
   });
 
