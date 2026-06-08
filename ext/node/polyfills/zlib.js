@@ -681,8 +681,9 @@ function processCallback() {
           handle.availInBefore, // in_len
           self._outBuffer, // out
           self._outOffset, // out_off
-          self._chunkSize,
-        ); // out_len
+          self._chunkSize, // out_len
+          self._writeState,
+        );
         if (handle._callbackPending) {
           processCallback.call(this);
         }
@@ -705,8 +706,9 @@ function processCallback() {
             handle.availInBefore, // in_len
             self._outBuffer, // out
             self._outOffset, // out_off
-            self._chunkSize,
-          ); // out_len
+            self._chunkSize, // out_len
+            self._writeState,
+          );
           if (handle._callbackPending && !self[kError]) {
             processCallback.call(this);
           }
