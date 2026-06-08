@@ -686,10 +686,11 @@ impl GlobPattern {
 
   pub fn matches_path(&self, path: &Path) -> PathGlobMatch {
     let matched = if self.base_path.as_os_str().is_empty() {
-      // No literal prefix to strip; `relative_pattern` equals `pattern` here.
-      self
-        .relative_pattern
-        .matches_path_with(path, match_options())
+      // No literal prefix to strip, so match the full pattern. This is
+      // unconditionally equivalent to the old behavior, including for
+      // root-anchored patterns like `/**/*.ts` where `relative_pattern`
+      // (`**/*.ts`) drops the leading slash that `pattern` keeps.
+      self.pattern.matches_path_with(path, match_options())
     } else if let Ok(relative_path) = path.strip_prefix(&self.base_path) {
       // Hot path: skip re-matching the literal base on every call.
       self
@@ -1590,6 +1591,28 @@ mod test {
     assert_eq!(pattern.base_path(), PathBuf::new());
     assert_eq!(
       pattern.matches_path(Path::new("a/b/foo.ts")),
+      PathGlobMatch::Matched
+    );
+
+    // A relative pattern without `**` honors `require_literal_separator`: the
+    // `*` segment must not span directory boundaries.
+    let pattern = GlobPattern::new("a/b/*.ts").unwrap();
+    assert_eq!(pattern.base_path(), PathBuf::from("a/b"));
+    assert_eq!(
+      pattern.matches_path(Path::new("a/b/foo.ts")),
+      PathGlobMatch::Matched
+    );
+    assert_eq!(
+      pattern.matches_path(Path::new("a/b/c/foo.ts")),
+      PathGlobMatch::NotMatched
+    );
+
+    // A root-anchored pattern has an empty base but must keep the leading slash
+    // (the empty-base branch matches the full `pattern`, not `relative_pattern`).
+    let pattern = GlobPattern::new("/**/*.ts").unwrap();
+    assert_eq!(pattern.base_path(), PathBuf::new());
+    assert_eq!(
+      pattern.matches_path(Path::new("/a/b/foo.ts")),
       PathGlobMatch::Matched
     );
   }
