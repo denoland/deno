@@ -891,9 +891,9 @@ function canRetryRequest(req) {
 
 function getRetryDataSize(data, encoding) {
   if (typeof data === "string") {
-    // deno-lint-ignore prefer-primordials
     return Buffer.byteLength(data, encoding || undefined);
   }
+  // deno-lint-ignore prefer-primordials
   return data?.byteLength ?? data?.length ?? 0;
 }
 
