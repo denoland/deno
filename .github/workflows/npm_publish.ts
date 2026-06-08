@@ -134,7 +134,7 @@ const installPnpm = step.dependsOn(startVerdaccio)({
     'PNPM_HOME="${{ runner.temp }}/pnpm-global"',
     'mkdir -p "$PNPM_HOME"',
     'echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"',
-    'echo "$PNPM_HOME" >> "$GITHUB_PATH"',
+    'echo "$PNPM_HOME/bin" >> "$GITHUB_PATH"',
   ],
 });
 
@@ -245,7 +245,7 @@ const testPnpmLocalNoScripts = step.dependsOn(testNpmGlobalIgnoreScripts)({
     'cd "$TEST_DIR"',
     "npm init -y",
     'EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"',
-    "pnpm install deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
+    "pnpm install --ignore-scripts deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
     'ACTUAL="$(node node_modules/deno/bin.cjs -v)"',
     'echo "$ACTUAL"',
     '[ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected \'$EXPECTED_VERSION\', got \'$ACTUAL\'"; exit 1; }',
@@ -256,26 +256,22 @@ const testPnpmGlobalNoScripts = step.dependsOn(testPnpmLocalNoScripts)({
   name: "Test pnpm global install deno (without postinstall)",
   run: [
     'EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"',
-    "pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
-    'ACTUAL="$(node "$PNPM_HOME/global/5/node_modules/deno/bin.cjs" -v)"',
+    "pnpm install -g --ignore-scripts deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
+    'ACTUAL="$(deno -v)"',
     'echo "$ACTUAL"',
     '[ "$ACTUAL" = "$EXPECTED_VERSION" ] || { echo "Version mismatch: expected \'$EXPECTED_VERSION\', got \'$ACTUAL\'"; exit 1; }',
     "pnpm uninstall -g deno",
   ],
 });
 
-const allowPnpmBuildScripts = step.dependsOn(testPnpmGlobalNoScripts)({
-  name: "Allow pnpm build scripts",
-  run: "pnpm config set --global onlyBuiltDependencies '[\"*\"]'",
-});
-
-const testPnpmLocalWithScripts = step.dependsOn(allowPnpmBuildScripts)({
+const testPnpmLocalWithScripts = step.dependsOn(testPnpmGlobalNoScripts)({
   name: "Test pnpm local install deno (with postinstall)",
   run: [
     'TEST_DIR="${{ runner.temp }}/pnpm-test"',
     'mkdir -p "$TEST_DIR"',
     'cd "$TEST_DIR"',
     "npm init -y",
+    "printf 'allowBuilds:\\n  deno: true\\n' > pnpm-workspace.yaml",
     'EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"',
     "pnpm install deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
     'ACTUAL="$(pnpm exec deno -v)"',
@@ -287,6 +283,9 @@ const testPnpmLocalWithScripts = step.dependsOn(allowPnpmBuildScripts)({
 const testPnpmGlobalWithScripts = step.dependsOn(testPnpmLocalWithScripts)({
   name: "Test pnpm global install deno (with postinstall)",
   run: [
+    'GLOBAL_DIR="$(pnpm root -g)"',
+    'mkdir -p "$GLOBAL_DIR"',
+    "printf 'allowBuilds:\\n  deno: true\\n' > \"$GLOBAL_DIR/pnpm-workspace.yaml\"",
     'EXPECTED_VERSION="deno ${{ steps.publish-verdaccio.outputs.version }}"',
     "pnpm install -g deno@${{ steps.publish-verdaccio.outputs.version }} --registry http://localhost:4873/",
     'ACTUAL="$(deno -v)"',

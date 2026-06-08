@@ -1,0 +1,13 @@
+{
+  "tests": {
+    "run": {
+      "args": "run b.js",
+      "output": "4\n"
+    },
+    "check": {
+      "args": "check --quiet b.js",
+      "output": "",
+      "exitCode": 0
+    }
+  }
+}

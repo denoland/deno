@@ -29,10 +29,8 @@
 // Pipe-specific ops (bind, listen, connect, accept, open, fchmod,
 // setPendingInstances) are on PipeWrap itself.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_node_create_pipe, PipeWrap } = core.ops;
 const { AsyncWrap, providerType } = core.loadExtScript(
   "ext:deno_node/internal_binding/async_wrap.ts",
@@ -40,12 +38,14 @@ const { AsyncWrap, providerType } = core.loadExtScript(
 const { ceilPowOf2 } = core.loadExtScript(
   "ext:deno_node/internal_binding/_listen.ts",
 );
-const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { codeMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
 const { fs } = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
 
-const { MapPrototypeGet } = primordials;
+const { FunctionPrototypeCall, MapPrototypeGet } = primordials;
 
 // Mark PipeWrap as a StreamBase handle, matching Node's StreamBase::AddMethods.
 PipeWrap.prototype.isStreamBase = true;
@@ -100,14 +100,14 @@ PipeWrap.prototype.fchmod = function (mode: number): number {
     desiredMode |= fs.S_IWUSR | fs.S_IWGRP | fs.S_IWOTH;
   }
 
-  return nativeFchmod.call(this, desiredMode);
+  return FunctionPrototypeCall(nativeFchmod, this, desiredMode);
 };
 
 // Round up the backlog to the next power of two (matching the previous
 // implementation). TCP uses the raw backlog; pipes historically rounded.
 const nativeListen = PipeWrap.prototype.listen;
 PipeWrap.prototype.listen = function (backlog: number): number {
-  return nativeListen.call(this, ceilPowOf2(backlog + 1));
+  return FunctionPrototypeCall(nativeListen, this, ceilPowOf2(backlog + 1));
 };
 
 /**
@@ -121,7 +121,12 @@ function setupListenWrap(serverHandle: InstanceType<typeof PipeWrap>) {
   serverHandle.onconnection = function (status: number) {
     if (status !== 0) {
       if (userOnConnection) {
-        userOnConnection.call(serverHandle, status, undefined);
+        FunctionPrototypeCall(
+          userOnConnection,
+          serverHandle,
+          status,
+          undefined,
+        );
       }
       return;
     }
@@ -130,13 +135,18 @@ function setupListenWrap(serverHandle: InstanceType<typeof PipeWrap>) {
     const acceptErr = serverHandle.accept(clientHandle);
     if (acceptErr !== 0) {
       if (userOnConnection) {
-        userOnConnection.call(serverHandle, acceptErr, undefined);
+        FunctionPrototypeCall(
+          userOnConnection,
+          serverHandle,
+          acceptErr,
+          undefined,
+        );
       }
       return;
     }
 
     if (userOnConnection) {
-      userOnConnection.call(serverHandle, 0, clientHandle);
+      FunctionPrototypeCall(userOnConnection, serverHandle, 0, clientHandle);
     }
   };
 }

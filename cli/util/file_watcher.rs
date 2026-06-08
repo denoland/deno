@@ -10,6 +10,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
+use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -361,6 +362,14 @@ where
       tokio::task::yield_now().await;
     }
 
+    // The previous iteration of the watched program may have changed the
+    // process's working directory (e.g. via `Deno.chdir()`). Restore it
+    // before starting the next run so that module resolution, watched
+    // paths, and `Deno.cwd()` all behave as they did on the first run.
+    if let Some(initial_cwd) = &initial_cwd {
+      let _ = std::env::set_current_dir(initial_cwd);
+    }
+
     let mut watcher = new_watcher(watcher_sender.clone(), exclude_set.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
 
@@ -527,6 +536,25 @@ fn new_watcher(
     },
     Default::default(),
   )?)
+}
+
+/// Computes the set of paths a watcher should observe for a given set of file
+/// patterns.
+///
+/// When `include` patterns are present, their base paths are watched: a
+/// directory for directory/glob patterns, or the file itself for explicit file
+/// paths. When no `include` is set, the base directory is watched so that newly
+/// created files within it are detected.
+///
+/// This is important for subcommands like `fmt`, `lint`, `test` and `bench`
+/// running in `--watch` mode: watching the already-resolved list of files would
+/// miss files created after the watcher started, because the watcher would only
+/// observe the individual file inodes rather than their containing directories.
+pub fn watch_paths_for_file_patterns(patterns: &FilePatterns) -> Vec<PathBuf> {
+  match &patterns.include {
+    Some(set) => set.base_paths(),
+    None => vec![patterns.base.clone()],
+  }
 }
 
 fn add_paths_to_watcher(

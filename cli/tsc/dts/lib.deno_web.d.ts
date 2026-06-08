@@ -38,7 +38,11 @@ interface DOMException extends Error {
   readonly DATA_CLONE_ERR: 25;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode DOMException}, used to construct an
+ * exception describing an abnormal event raised by a web API. It also exposes
+ * the legacy numeric error code constants (e.g. `ABORT_ERR`).
+ *
+ * @category Platform */
 declare var DOMException: {
   readonly prototype: DOMException;
   new (message?: string, name?: string): DOMException;
@@ -85,7 +89,10 @@ interface QuotaExceededError extends DOMException {
   readonly requested: number | null;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode QuotaExceededError}, used to construct
+ * an error thrown when an operation would exceed an enforced quota.
+ *
+ * @category Platform */
 declare var QuotaExceededError: {
   readonly prototype: QuotaExceededError;
   new (
@@ -455,7 +462,11 @@ interface TextDecoder extends TextDecoderCommon {
   decode(input?: AllowSharedBufferSource, options?: TextDecodeOptions): string;
 }
 
-/** @category Encoding */
+/** The constructor object for {@linkcode TextDecoder}, used to create a decoder
+ * for a given text encoding (UTF-8 by default) that turns byte streams into
+ * strings.
+ *
+ * @category Encoding */
 declare var TextDecoder: {
   readonly prototype: TextDecoder;
   new (label?: string, options?: TextDecoderOptions): TextDecoder;
@@ -502,7 +513,10 @@ interface TextEncoder extends TextEncoderCommon {
   ): TextEncoderEncodeIntoResult;
 }
 
-/** @category Encoding */
+/** The constructor object for {@linkcode TextEncoder}, used to create an
+ * encoder that turns strings into UTF-8 encoded bytes.
+ *
+ * @category Encoding */
 declare var TextEncoder: {
   readonly prototype: TextEncoder;
   new (): TextEncoder;
@@ -520,7 +534,10 @@ interface TextDecoderStream extends GenericTransformStream, TextDecoderCommon {
   readonly writable: WritableStream<AllowSharedBufferSource>;
 }
 
-/** @category Encoding */
+/** The constructor object for {@linkcode TextDecoderStream}, used to create a
+ * transform stream that decodes a stream of bytes into a stream of strings.
+ *
+ * @category Encoding */
 declare var TextDecoderStream: {
   readonly prototype: TextDecoderStream;
   new (label?: string, options?: TextDecoderOptions): TextDecoderStream;
@@ -532,7 +549,11 @@ interface TextEncoderStream extends GenericTransformStream, TextEncoderCommon {
   readonly writable: WritableStream<string>;
 }
 
-/** @category Encoding */
+/** The constructor object for {@linkcode TextEncoderStream}, used to create a
+ * transform stream that encodes a stream of strings into a stream of UTF-8
+ * bytes.
+ *
+ * @category Encoding */
 declare var TextEncoderStream: {
   readonly prototype: TextEncoderStream;
   new (): TextEncoderStream;
@@ -603,7 +624,13 @@ interface AbortSignal extends EventTarget {
   throwIfAborted(): void;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode AbortSignal}.
+ *
+ * `AbortSignal` instances are obtained from an `AbortController` or via the
+ * static `abort`, `timeout`, and `any` factory methods rather than constructed
+ * directly, so calling the constructor throws.
+ *
+ * @category Platform */
 declare var AbortSignal: {
   readonly prototype: AbortSignal;
   new (): never;
@@ -674,7 +701,11 @@ interface FileReader extends EventTarget {
   ): void;
 }
 
-/** @category File */
+/** The constructor object for {@linkcode FileReader}, used to create a reader
+ * that asynchronously reads the contents of a {@linkcode Blob} or
+ * {@linkcode File} into memory.
+ *
+ * @category File */
 declare var FileReader: {
   readonly prototype: FileReader;
   new (): FileReader;
@@ -790,7 +821,11 @@ interface ReadableStreamDefaultReader<R = any>
   releaseLock(): void;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode ReadableStreamDefaultReader}, used to
+ * create a default reader locked to the given {@linkcode ReadableStream}. Most
+ * code obtains one via {@linkcode ReadableStream.getReader} instead.
+ *
+ * @category Streams */
 declare var ReadableStreamDefaultReader: {
   readonly prototype: ReadableStreamDefaultReader;
   new <R = any>(stream: ReadableStream<R>): ReadableStreamDefaultReader<R>;
@@ -810,7 +845,11 @@ interface ReadableStreamBYOBReader extends ReadableStreamGenericReader {
   releaseLock(): void;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode ReadableStreamBYOBReader}, used to
+ * create a "bring your own buffer" reader locked to the given byte stream. Most
+ * code obtains one via `ReadableStream.getReader({ mode: "byob" })` instead.
+ *
+ * @category Streams */
 declare var ReadableStreamBYOBReader: {
   readonly prototype: ReadableStreamBYOBReader;
   new (
@@ -825,7 +864,12 @@ interface ReadableStreamBYOBRequest {
   respondWithNewView(view: ArrayBufferView): void;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode ReadableStreamBYOBRequest}.
+ *
+ * Instances are provided to a byte stream's controller rather than constructed
+ * directly, so calling the constructor throws.
+ *
+ * @category Streams */
 declare var ReadableStreamBYOBRequest: {
   readonly prototype: ReadableStreamBYOBRequest;
   new (): never;
@@ -894,7 +938,13 @@ interface ReadableStreamDefaultController<R = any> {
   error(e?: any): void;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode ReadableStreamDefaultController}.
+ *
+ * Instances are passed to a {@linkcode ReadableStream}'s underlying source
+ * callbacks rather than constructed directly, so calling the constructor
+ * throws.
+ *
+ * @category Streams */
 declare var ReadableStreamDefaultController: {
   readonly prototype: ReadableStreamDefaultController;
   new (): never;
@@ -909,7 +959,13 @@ interface ReadableByteStreamController {
   error(e?: any): void;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode ReadableByteStreamController}.
+ *
+ * Instances are passed to a byte-oriented {@linkcode ReadableStream}'s
+ * underlying source callbacks rather than constructed directly, so calling the
+ * constructor throws.
+ *
+ * @category Streams */
 declare var ReadableByteStreamController: {
   readonly prototype: ReadableByteStreamController;
   new (): never;
@@ -944,7 +1000,11 @@ interface CountQueuingStrategy extends QueuingStrategy {
   readonly size: QueuingStrategySize;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode CountQueuingStrategy}, used to create a
+ * queuing strategy that counts each chunk as a single unit toward the stream's
+ * high water mark.
+ *
+ * @category Streams */
 declare var CountQueuingStrategy: {
   readonly prototype: CountQueuingStrategy;
   new (init: QueuingStrategyInit): CountQueuingStrategy;
@@ -956,7 +1016,11 @@ interface ByteLengthQueuingStrategy extends QueuingStrategy<ArrayBufferView> {
   readonly size: QueuingStrategySize<ArrayBufferView>;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode ByteLengthQueuingStrategy}, used to
+ * create a queuing strategy that measures each chunk by its `byteLength` toward
+ * the stream's high water mark.
+ *
+ * @category Streams */
 declare var ByteLengthQueuingStrategy: {
   readonly prototype: ByteLengthQueuingStrategy;
   new (init: QueuingStrategyInit): ByteLengthQueuingStrategy;
@@ -994,7 +1058,11 @@ interface ReadableStream<R = any> {
   ): AsyncIterableIterator<R>;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode ReadableStream}, used to create a
+ * readable stream from an underlying source describing how data is enqueued and
+ * consumed.
+ *
+ * @category Streams */
 declare var ReadableStream: {
   readonly prototype: ReadableStream;
   new (
@@ -1069,7 +1137,11 @@ interface WritableStream<W = any> {
   getWriter(): WritableStreamDefaultWriter<W>;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode WritableStream}, used to create a
+ * writable stream from an underlying sink describing how written chunks are
+ * handled.
+ *
+ * @category Streams */
 declare var WritableStream: {
   readonly prototype: WritableStream;
   new <W = any>(
@@ -1090,7 +1162,13 @@ interface WritableStreamDefaultController {
   error(e?: any): void;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode WritableStreamDefaultController}.
+ *
+ * Instances are passed to a {@linkcode WritableStream}'s underlying sink
+ * callbacks rather than constructed directly, so calling the constructor
+ * throws.
+ *
+ * @category Streams */
 declare var WritableStreamDefaultController: {
   readonly prototype: WritableStreamDefaultController;
   new (): never;
@@ -1113,7 +1191,11 @@ interface WritableStreamDefaultWriter<W = any> {
   write(chunk?: W): Promise<void>;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode WritableStreamDefaultWriter}, used to
+ * create a writer locked to the given {@linkcode WritableStream}. Most code
+ * obtains one via {@linkcode WritableStream.getWriter} instead.
+ *
+ * @category Streams */
 declare var WritableStreamDefaultWriter: {
   readonly prototype: WritableStreamDefaultWriter;
   new <W = any>(stream: WritableStream<W>): WritableStreamDefaultWriter<W>;
@@ -1125,7 +1207,11 @@ interface TransformStream<I = any, O = any> {
   readonly writable: WritableStream<I>;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode TransformStream}, used to create a
+ * transform stream from a transformer describing how chunks read from its
+ * writable side are transformed before appearing on its readable side.
+ *
+ * @category Streams */
 declare var TransformStream: {
   readonly prototype: TransformStream;
   new <I = any, O = any>(
@@ -1143,7 +1229,12 @@ interface TransformStreamDefaultController<O = any> {
   terminate(): void;
 }
 
-/** @category Streams */
+/** The constructor object for {@linkcode TransformStreamDefaultController}.
+ *
+ * Instances are passed to a {@linkcode TransformStream}'s transformer callbacks
+ * rather than constructed directly, so calling the constructor throws.
+ *
+ * @category Streams */
 declare var TransformStreamDefaultController: {
   readonly prototype: TransformStreamDefaultController;
   new (): never;
@@ -1232,7 +1323,11 @@ interface MessageEvent<T = any> extends Event {
   ): void;
 }
 
-/** @category Events */
+/** The constructor object for {@linkcode MessageEvent}, used to construct an
+ * event carrying a message, such as those dispatched for `BroadcastChannel`,
+ * `MessagePort`, and `Worker` messaging.
+ *
+ * @category Events */
 declare var MessageEvent: {
   readonly prototype: MessageEvent;
   new <T>(type: string, eventInitDict?: MessageEventInit<T>): MessageEvent<T>;
@@ -1545,7 +1640,11 @@ interface ImageData {
   readonly colorSpace: PredefinedColorSpace;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode ImageData}, used to create an object
+ * holding the raw pixel data of a rectangular image region, either zero-filled
+ * for the given dimensions or wrapping an existing pixel array.
+ *
+ * @category Platform */
 declare var ImageData: {
   readonly prototype: ImageData;
   new (sw: number, sh: number, settings?: ImageDataSettings): ImageData;
@@ -1623,7 +1722,10 @@ interface WebTransport {
   createSendGroup(): WebTransportSendGroup;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode WebTransport}, used to open a new
+ * WebTransport session to the server at the given `url`.
+ *
+ * @category Platform */
 declare var WebTransport: {
   prototype: WebTransport;
   new (url: string | URL, options?: WebTransportOptions): WebTransport;
@@ -1640,7 +1742,12 @@ interface WebTransportBidirectionalStream {
   readonly writable: WebTransportSendStream;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode WebTransportBidirectionalStream}.
+ *
+ * Instances are obtained from a {@linkcode WebTransport} session rather than
+ * constructed directly.
+ *
+ * @category Platform */
 declare var WebTransportBidirectionalStream: {
   prototype: WebTransportBidirectionalStream;
   new (): WebTransportBidirectionalStream;
@@ -1667,7 +1774,12 @@ interface WebTransportDatagramDuplexStream {
   readonly writable: WebTransportSendStream;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode WebTransportDatagramDuplexStream}.
+ *
+ * The datagram duplex stream is obtained from
+ * {@linkcode WebTransport.datagrams} rather than constructed directly.
+ *
+ * @category Platform */
 declare var WebTransportDatagramDuplexStream: {
   prototype: WebTransportDatagramDuplexStream;
   new (): WebTransportDatagramDuplexStream;
@@ -1688,7 +1800,12 @@ interface WebTransportSendStream extends WritableStream<Uint8Array> {
   getWriter(): WebTransportWriter;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode WebTransportSendStream}.
+ *
+ * Instances are obtained from a {@linkcode WebTransport} session rather than
+ * constructed directly.
+ *
+ * @category Platform */
 declare var WebTransportSendStream: {
   prototype: WebTransportSendStream;
   new (): WebTransportSendStream;
@@ -1710,7 +1827,12 @@ interface WebTransportWriter extends WritableStreamDefaultWriter<Uint8Array> {
   atomicWrite(chunk: any): Promise<undefined>;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode WebTransportWriter}.
+ *
+ * Instances are obtained from a {@linkcode WebTransportSendStream} rather than
+ * constructed directly.
+ *
+ * @category Platform */
 declare var WebTransportWriter: {
   prototype: WebTransportWriter;
   new (): WebTransportWriter;
@@ -1725,7 +1847,12 @@ interface WebTransportReceiveStream extends ReadableStream<Uint8Array> {
   getStats(): Promise<WebTransportReceiveStreamStats>;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode WebTransportReceiveStream}.
+ *
+ * Instances are obtained from a {@linkcode WebTransport} session rather than
+ * constructed directly.
+ *
+ * @category Platform */
 declare var WebTransportReceiveStream: {
   prototype: WebTransportReceiveStream;
   new (): WebTransportReceiveStream;
@@ -1746,7 +1873,12 @@ interface WebTransportSendGroup {
   getStats(): Promise<WebTransportSendStreamStats>;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode WebTransportSendGroup}.
+ *
+ * Instances are obtained from a {@linkcode WebTransport} session rather than
+ * constructed directly.
+ *
+ * @category Platform */
 declare var WebTransportSendGroup: {
   prototype: WebTransportSendGroup;
   new (): WebTransportSendGroup;
@@ -1763,7 +1895,11 @@ interface WebTransportError extends DOMException {
   readonly streamErrorCode: number | null;
 }
 
-/** @category Platform */
+/** The constructor object for {@linkcode WebTransportError}, used to construct
+ * an error describing a failure of a {@linkcode WebTransport} session or one of
+ * its streams.
+ *
+ * @category Platform */
 declare var WebTransportError: {
   prototype: WebTransportError;
   new (message?: string, options?: WebTransportErrorOptions): WebTransportError;

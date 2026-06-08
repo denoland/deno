@@ -51,6 +51,287 @@ impl InspectorMsg {
   }
 }
 
+/// Maximum number of in-flight + completed requests kept for
+/// Network.getResponseBody/streamResourceContent. Older entries are evicted.
+const NETWORK_BUFFER_MAX_REQUESTS: usize = 32;
+/// Per-request body cap. Beyond this, additional chunks are silently dropped
+/// (matching Node's behavior in `RequestEntry::push_*_data_blob`).
+const NETWORK_BUFFER_MAX_BYTES_PER_REQUEST: usize = 10 * 1024 * 1024;
+
+#[derive(Debug, Default)]
+struct NetworkDataEntry {
+  /// Top-level `charset` from `Network.requestWillBeSent`, if any.
+  /// Used by `Network.getRequestPostData` to decide whether the captured
+  /// request body can be returned as a utf-8 string.
+  request_charset: Option<String>,
+  /// `response.charset` from `Network.responseReceived`, if any.
+  /// Used by `Network.getResponseBody` to decide between utf-8 string
+  /// and base64 binary output.
+  response_charset: Option<String>,
+  /// Accumulated request body bytes. Populated from `request.postData` on
+  /// `requestWillBeSent`, then any subsequent `Network.dataSent` chunks.
+  post_data: Vec<u8>,
+  /// Decoded response body bytes, concatenated across `Network.dataReceived`
+  /// events.
+  data: Vec<u8>,
+  /// `true` once the request body is fully sent: either no `hasPostData` was
+  /// declared, or `Network.dataSent` with `finished: true` arrived.
+  is_request_finished: bool,
+  /// `true` once `Network.loadingFinished` arrived for this request.
+  is_response_finished: bool,
+  /// `true` once `Network.streamResourceContent` was called for this request:
+  /// further `Network.dataReceived` events bypass the buffer and flow over the
+  /// wire instead, matching Node's `is_streaming` switch.
+  is_streaming: bool,
+}
+
+/// Bounded per-process buffer of request/response bodies, keyed by
+/// CDP `requestId`. Sized to keep peak memory usage predictable so that
+/// long-running processes attached to a debugger don't grow unbounded.
+#[derive(Debug, Default)]
+struct NetworkDataBuffer {
+  entries: HashMap<String, NetworkDataEntry>,
+  /// FIFO of request IDs in insertion order; oldest evicted first.
+  order: std::collections::VecDeque<String>,
+}
+
+impl NetworkDataBuffer {
+  fn ensure_capacity(&mut self) {
+    while self.order.len() >= NETWORK_BUFFER_MAX_REQUESTS {
+      if let Some(oldest) = self.order.pop_front() {
+        self.entries.remove(&oldest);
+      } else {
+        break;
+      }
+    }
+  }
+
+  fn insert(&mut self, request_id: &str, entry: NetworkDataEntry) {
+    if self.entries.contains_key(request_id) {
+      return;
+    }
+    self.ensure_capacity();
+    self.order.push_back(request_id.to_string());
+    self.entries.insert(request_id.to_string(), entry);
+  }
+
+  fn get(&self, request_id: &str) -> Option<&NetworkDataEntry> {
+    self.entries.get(request_id)
+  }
+
+  fn get_mut(&mut self, request_id: &str) -> Option<&mut NetworkDataEntry> {
+    self.entries.get_mut(request_id)
+  }
+
+  fn erase(&mut self, request_id: &str) {
+    if self.entries.remove(request_id).is_some() {
+      self.order.retain(|id| id != request_id);
+    }
+  }
+}
+
+fn extend_capped(target: &mut Vec<u8>, bytes: &[u8]) {
+  let remaining =
+    NETWORK_BUFFER_MAX_BYTES_PER_REQUEST.saturating_sub(target.len());
+  let take = bytes.len().min(remaining);
+  target.extend_from_slice(&bytes[..take]);
+}
+
+/// Charset string matching Node's `request_charset == "utf-8"` check
+/// in `network_agent.cc`. Anything else is treated as binary.
+fn is_utf8_charset(charset: Option<&str>) -> bool {
+  charset.is_some_and(|c| c.eq_ignore_ascii_case("utf-8"))
+}
+
+fn encode_b64(bytes: &[u8]) -> String {
+  base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
+}
+
+/// CDP error returned by the custom-domain handlers. The error code mirrors
+/// Node's `protocol::DispatchResponse` constants used in `network_agent.cc`:
+/// `InvalidParams` for caller-state issues (request not found, not finished,
+/// streaming), `ServerError` for the binary-request-body case that the
+/// protocol doesn't model.
+enum CdpError {
+  InvalidParams(&'static str),
+  ServerError(&'static str),
+}
+
+impl CdpError {
+  fn code(&self) -> i32 {
+    match self {
+      // Per JSON-RPC spec and Node's DispatchResponse::InvalidParams.
+      Self::InvalidParams(_) => -32602,
+      // Per Node's DispatchResponse::ServerError.
+      Self::ServerError(_) => -32000,
+    }
+  }
+
+  fn message(&self) -> &'static str {
+    match self {
+      Self::InvalidParams(m) | Self::ServerError(m) => m,
+    }
+  }
+}
+
+/// Build the CDP response for `Network.getResponseBody`. Matches Node's
+/// `NetworkAgent::getResponseBody`: rejects if the response hasn't finished,
+/// returns utf-8 as string or otherwise as base64, then erases the entry.
+fn build_get_response_body(
+  buf: &mut NetworkDataBuffer,
+  request_id: &str,
+) -> Result<serde_json::Value, CdpError> {
+  let entry = buf
+    .get(request_id)
+    .ok_or(CdpError::InvalidParams("Request not found"))?;
+  if entry.is_streaming {
+    return Err(CdpError::InvalidParams(
+      "Response body of the request is been streamed",
+    ));
+  }
+  if !entry.is_response_finished {
+    return Err(CdpError::InvalidParams("Response data is not finished yet"));
+  }
+  let result = if is_utf8_charset(entry.response_charset.as_deref())
+    && let Ok(s) = std::str::from_utf8(&entry.data)
+  {
+    json!({ "body": s, "base64Encoded": false })
+  } else {
+    json!({
+      "body": encode_b64(&entry.data),
+      "base64Encoded": true,
+    })
+  };
+  buf.erase(request_id);
+  Ok(result)
+}
+
+/// Build the CDP response for `Network.streamResourceContent`. Matches Node's
+/// `NetworkAgent::streamResourceContent`: returns currently-buffered data,
+/// flips the entry to streaming mode (so subsequent `Network.dataReceived`
+/// events flow over the wire), drains the buffer, and erases the entry if the
+/// response already finished.
+fn build_stream_resource_content(
+  buf: &mut NetworkDataBuffer,
+  request_id: &str,
+) -> Result<serde_json::Value, CdpError> {
+  let entry = buf
+    .get_mut(request_id)
+    .ok_or(CdpError::InvalidParams("Request not found"))?;
+  entry.is_streaming = true;
+  let buffered = std::mem::take(&mut entry.data);
+  let is_response_finished = entry.is_response_finished;
+  if is_response_finished {
+    buf.erase(request_id);
+  }
+  Ok(json!({ "bufferedData": encode_b64(&buffered) }))
+}
+
+/// Build the CDP response for `Network.getRequestPostData`. Matches Node's
+/// `NetworkAgent::getRequestPostData`: rejects if not yet finished, rejects
+/// binary bodies, otherwise returns the body as a utf-8 string.
+fn build_get_request_post_data(
+  buf: &NetworkDataBuffer,
+  request_id: &str,
+) -> Result<serde_json::Value, CdpError> {
+  let entry = buf
+    .get(request_id)
+    .ok_or(CdpError::InvalidParams("Request not found"))?;
+  if !entry.is_request_finished {
+    return Err(CdpError::InvalidParams("Request data is not finished yet"));
+  }
+  if !is_utf8_charset(entry.request_charset.as_deref()) {
+    // Node returns ServerError here, not InvalidParams: the protocol simply
+    // doesn't model binary post bodies, so this is a server-side limitation
+    // rather than a caller mistake.
+    return Err(CdpError::ServerError(
+      "Unable to serialize binary request body",
+    ));
+  }
+  let s = std::str::from_utf8(&entry.post_data)
+    .map_err(|_| CdpError::ServerError("Request body is not valid UTF-8"))?;
+  Ok(json!({ "postData": s }))
+}
+
+fn make_cdp_error_response(id: &serde_json::Value, error: &CdpError) -> String {
+  json!({
+    "id": id,
+    "error": {
+      "code": error.code(),
+      "message": error.message(),
+    }
+  })
+  .to_string()
+}
+
+fn make_cdp_ok_response(
+  id: &serde_json::Value,
+  result: serde_json::Value,
+) -> String {
+  json!({
+    "id": id,
+    "result": result,
+  })
+  .to_string()
+}
+
+enum CustomDomainOutcome {
+  Empty,
+  Result(serde_json::Value),
+  Error(CdpError),
+}
+
+/// Dispatch a CDP command to one of the custom domains we own
+/// (`Network.*`, `DOMStorage.enable/disable`). Returns `None` if the method
+/// isn't ours and should be forwarded to V8.
+fn dispatch_custom_domain(
+  method: &str,
+  parsed: &serde_json::Value,
+  session: &InspectorSession,
+) -> Option<CustomDomainOutcome> {
+  match method {
+    "Network.enable" => {
+      session.state.network_enabled.set(true);
+      Some(CustomDomainOutcome::Empty)
+    }
+    "Network.disable" => {
+      session.state.network_enabled.set(false);
+      Some(CustomDomainOutcome::Empty)
+    }
+    "DOMStorage.enable" => {
+      session.state.dom_storage_enabled.set(true);
+      Some(CustomDomainOutcome::Empty)
+    }
+    "DOMStorage.disable" => {
+      session.state.dom_storage_enabled.set(false);
+      Some(CustomDomainOutcome::Empty)
+    }
+    "Network.getResponseBody"
+    | "Network.streamResourceContent"
+    | "Network.getRequestPostData" => {
+      let request_id = parsed
+        .pointer("/params/requestId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+      let mut buf = session.state.network_data.borrow_mut();
+      let result = match method {
+        "Network.getResponseBody" => {
+          build_get_response_body(&mut buf, request_id)
+        }
+        "Network.streamResourceContent" => {
+          build_stream_resource_content(&mut buf, request_id)
+        }
+        _ => build_get_request_post_data(&buf, request_id),
+      };
+      Some(match result {
+        Ok(v) => CustomDomainOutcome::Result(v),
+        Err(err) => CustomDomainOutcome::Error(err),
+      })
+    }
+    _ => None,
+  }
+}
+
 // TODO(bartlomieju): remove this
 pub type SessionProxySender = UnboundedSender<InspectorMsg>;
 // TODO(bartlomieju): remove this
@@ -177,6 +458,11 @@ struct JsRuntimeInspectorState {
   nodeworker_enabled: Rc<Cell<bool>>,
   auto_attach_enabled: Rc<Cell<bool>>,
   discover_targets_enabled: Rc<Cell<bool>>,
+  /// Shared buffer of captured Network.* request/response bodies, populated
+  /// from `op_inspector_emit_protocol_event` and read by the dispatcher
+  /// when handling `Network.getResponseBody`/`getRequestPostData`/
+  /// `streamResourceContent`.
+  network_data: Rc<RefCell<NetworkDataBuffer>>,
 }
 
 struct JsRuntimeInspectorClient(Rc<JsRuntimeInspectorState>);
@@ -341,6 +627,19 @@ impl JsRuntimeInspectorState {
                     }),
                   ));
                 }
+
+                if self.nodeworker_enabled.get() {
+                  (main_session.state.send)(InspectorMsg::notification(
+                    json!({
+                      "method": "NodeWorker.attachedToWorker",
+                      "params": {
+                        "sessionId": ts.session_id,
+                        "workerInfo": ts.worker_info(),
+                        "waitingForDebugger": false
+                      }
+                    }),
+                  ));
+                }
               }
 
               continue;
@@ -361,6 +660,7 @@ impl JsRuntimeInspectorState {
                 self.auto_attach_enabled.clone(),
                 self.discover_targets_enabled.clone(),
                 self.flags.clone(),
+                self.network_data.clone(),
               );
 
               let prev = sessions.handshake.replace(session);
@@ -589,6 +889,7 @@ impl JsRuntimeInspector {
       nodeworker_enabled: Rc::new(Cell::new(false)),
       auto_attach_enabled: Rc::new(Cell::new(false)),
       discover_targets_enabled: Rc::new(Cell::new(false)),
+      network_data: Rc::new(RefCell::new(NetworkDataBuffer::default())),
     });
     let client = Box::new(JsRuntimeInspectorClient(state.clone()));
     let v8_inspector_client = v8::inspector::V8InspectorClient::new(client);
@@ -683,12 +984,35 @@ impl JsRuntimeInspector {
   /// notify debuggers that the execution context is being torn down before
   /// calling `std::process::exit()`, which would skip the normal event-loop
   /// shutdown path where V8's `context_destroyed` is called.
+  ///
+  /// Sessions that opted into `NodeRuntime.notifyWhenWaitingForDisconnect`
+  /// are skipped here — they receive `NodeRuntime.waitingForDisconnect`
+  /// instead, via `broadcast_waiting_for_disconnect`.
   pub fn broadcast_context_destroyed(&self) {
     let sessions = self.state.sessions.borrow();
     for session in sessions.local.values() {
+      if session.state.notify_waiting_for_disconnect.get() {
+        continue;
+      }
       (session.state.send)(InspectorMsg::notification(json!({
         "method": "Runtime.executionContextDestroyed",
         "params": { "executionContextId": Self::CONTEXT_GROUP_ID }
+      })));
+    }
+  }
+
+  /// Emit `NodeRuntime.waitingForDisconnect` to every session that opted in
+  /// via `NodeRuntime.notifyWhenWaitingForDisconnect(enabled: true)`. Called
+  /// during the process-exit handler before blocking for disconnect, so
+  /// debugger clients can close cleanly instead of waiting for a TCP RST.
+  pub fn broadcast_waiting_for_disconnect(&self) {
+    let sessions = self.state.sessions.borrow();
+    for session in sessions.local.values() {
+      if !session.state.notify_waiting_for_disconnect.get() {
+        continue;
+      }
+      (session.state.send)(InspectorMsg::notification(json!({
+        "method": "NodeRuntime.waitingForDisconnect"
       })));
     }
   }
@@ -810,6 +1134,149 @@ impl JsRuntimeInspector {
     rx
   }
 
+  /// Capture an incoming `Network.*` event payload into the shared body buffer
+  /// before it is broadcast to sessions. Called from
+  /// `op_inspector_emit_protocol_event` so subsequent
+  /// `Network.getResponseBody`/`streamResourceContent`/`getRequestPostData`
+  /// CDP commands have something to return.
+  ///
+  /// Returns `true` if the event should still be broadcast to sessions, or
+  /// `false` if the event was fully consumed by the buffer. Matches Node's
+  /// `NetworkAgent`: `dataSent` is purely a capture event, and `dataReceived`
+  /// is only forwarded once `streamResourceContent` has flipped the entry
+  /// into streaming mode.
+  pub fn capture_network_event(
+    &self,
+    event_name: &str,
+    params: &serde_json::Value,
+  ) -> bool {
+    let Some(request_id) = params.get("requestId").and_then(|v| v.as_str())
+    else {
+      return true;
+    };
+
+    let mut buf = self.state.network_data.borrow_mut();
+    match event_name {
+      "Network.requestWillBeSent" => {
+        let charset = params
+          .get("charset")
+          .and_then(|v| v.as_str())
+          .map(|s| s.to_string());
+        let has_post_data = params
+          .pointer("/request/hasPostData")
+          .and_then(|v| v.as_bool())
+          .unwrap_or(false);
+        let mut entry = NetworkDataEntry {
+          request_charset: charset,
+          is_request_finished: !has_post_data,
+          ..NetworkDataEntry::default()
+        };
+        if let Some(post_data) =
+          params.pointer("/request/postData").and_then(|v| v.as_str())
+        {
+          extend_capped(&mut entry.post_data, post_data.as_bytes());
+        }
+        buf.insert(request_id, entry);
+        true
+      }
+      "Network.responseReceived" => {
+        if let Some(entry) = buf.get_mut(request_id) {
+          entry.response_charset = params
+            .pointer("/response/charset")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        }
+        true
+      }
+      "Network.loadingFinished" => {
+        if let Some(entry) = buf.get_mut(request_id) {
+          entry.is_response_finished = true;
+          if entry.is_streaming {
+            buf.erase(request_id);
+          }
+        }
+        true
+      }
+      "Network.loadingFailed" => {
+        buf.erase(request_id);
+        true
+      }
+      "Network.dataReceived" => {
+        let Some(entry) = buf.get_mut(request_id) else {
+          // No tracked request — pass through to the wire.
+          return true;
+        };
+        if entry.is_streaming {
+          // Streaming mode: bypass the buffer and forward to sessions.
+          return true;
+        }
+        if let Some(data_b64) = params.get("data").and_then(|v| v.as_str())
+          && let Ok(bytes) = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            data_b64,
+          )
+        {
+          extend_capped(&mut entry.data, &bytes);
+        }
+        false
+      }
+      "Network.dataSent" => {
+        let Some(entry) = buf.get_mut(request_id) else {
+          return false;
+        };
+        if params
+          .get("finished")
+          .and_then(|v| v.as_bool())
+          .unwrap_or(false)
+        {
+          entry.is_request_finished = true;
+          return false;
+        }
+        if let Some(data_b64) = params.get("data").and_then(|v| v.as_str())
+          && let Ok(bytes) = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            data_b64,
+          )
+        {
+          extend_capped(&mut entry.post_data, &bytes);
+        }
+        false
+      }
+      _ => true,
+    }
+  }
+
+  /// Broadcast a protocol event notification to all sessions that have the
+  /// given domain enabled. Used for custom domains like Network.
+  pub fn broadcast_to_sessions(&self, event_name: &str, params_json: &str) {
+    let domain = event_name.split('.').next().unwrap_or("");
+    let notification = json!({
+      "method": event_name,
+      "params": serde_json::from_str::<serde_json::Value>(params_json)
+        .unwrap_or_else(|_| json!({}))
+    })
+    .to_string();
+
+    let sessions = self.state.sessions.borrow();
+
+    // `sessions.local` contains all active sessions — both programmatic
+    // (created via create_local_session) and WebSocket-based (added during
+    // handshake). The `established` field only holds their pump futures.
+    for session in sessions.local.values() {
+      let enabled = match domain {
+        "Network" => session.state.network_enabled.get(),
+        "DOMStorage" => session.state.dom_storage_enabled.get(),
+        _ => false,
+      };
+      if enabled {
+        (session.state.send)(InspectorMsg {
+          kind: InspectorMsgKind::Notification,
+          content: notification.clone(),
+        });
+      }
+    }
+  }
+
   pub fn create_local_session(
     inspector: Rc<JsRuntimeInspector>,
     callback: InspectorSessionSend,
@@ -830,6 +1297,7 @@ impl JsRuntimeInspector {
         inspector.state.auto_attach_enabled.clone(),
         inspector.state.discover_targets_enabled.clone(),
         inspector.state.flags.clone(),
+        inspector.state.network_data.clone(),
       );
 
       let session_id = {
@@ -1014,6 +1482,29 @@ impl SessionContainer {
     message: String,
   ) {
     let session = self.local.get(&session_id).unwrap();
+
+    // Try custom-domain dispatch before sending to V8. For methods we own
+    // (Network.*, DOMStorage.enable/disable), generate the response here
+    // and skip V8 entirely.
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&message)
+      && let Some(method) = parsed.get("method").and_then(|m| m.as_str())
+      && let Some(outcome) = dispatch_custom_domain(method, &parsed, session)
+    {
+      if let Some(id) = parsed.get("id") {
+        let call_id = id.as_i64().unwrap_or(0) as i32;
+        let content = match outcome {
+          CustomDomainOutcome::Empty => make_cdp_ok_response(id, json!({})),
+          CustomDomainOutcome::Result(v) => make_cdp_ok_response(id, v),
+          CustomDomainOutcome::Error(err) => make_cdp_error_response(id, &err),
+        };
+        (session.state.send)(InspectorMsg {
+          kind: InspectorMsgKind::Message(call_id),
+          content,
+        });
+      }
+      return;
+    }
+
     session.dispatch_message(message);
   }
 
@@ -1169,11 +1660,23 @@ struct InspectorSessionState {
   auto_attach_enabled: Rc<Cell<bool>>,
   // Track whether Target.setDiscoverTargets has been called (enables target discovery)
   discover_targets_enabled: Rc<Cell<bool>>,
+  // Track whether Network.enable has been called (per-session, not shared)
+  network_enabled: Cell<bool>,
+  // Track whether DOMStorage.enable has been called (per-session, not shared)
+  dom_storage_enabled: Cell<bool>,
   // Track whether NodeRuntime.enable has been called (per-session, not shared,
   // because one client disabling it should not affect another client's state)
   noderuntime_enabled: Cell<bool>,
+  // Track whether NodeRuntime.notifyWhenWaitingForDisconnect has been called
+  // with `enabled: true`. When set, the runtime emits
+  // NodeRuntime.waitingForDisconnect (instead of
+  // Runtime.executionContextDestroyed) to this session at exit, and waits for
+  // the session to disconnect before terminating the process.
+  notify_waiting_for_disconnect: Cell<bool>,
   // Inspector flags (shared with JsRuntimeInspectorState) for checking waiting_for_session
   flags: Rc<RefCell<InspectorFlags>>,
+  // Shared body buffer used by the Network.* command handlers.
+  network_data: Rc<RefCell<NetworkDataBuffer>>,
 }
 
 /// An inspector session that proxies messages to concrete "transport layer",
@@ -1199,6 +1702,7 @@ impl InspectorSession {
     auto_attach_enabled: Rc<Cell<bool>>,
     discover_targets_enabled: Rc<Cell<bool>>,
     flags: Rc<RefCell<InspectorFlags>>,
+    network_data: Rc<RefCell<NetworkDataBuffer>>,
   ) -> Rc<Self> {
     let state = InspectorSessionState {
       is_dispatching_message,
@@ -1210,8 +1714,12 @@ impl InspectorSession {
       nodeworker_enabled,
       auto_attach_enabled,
       discover_targets_enabled,
+      network_enabled: Cell::new(false),
+      dom_storage_enabled: Cell::new(false),
       noderuntime_enabled: Cell::new(false),
+      notify_waiting_for_disconnect: Cell::new(false),
       flags,
+      network_data,
     };
 
     let v8_session = v8_inspector.connect(
@@ -1363,6 +1871,22 @@ async fn pump_inspector_session_messages(
     let params = parsed.get("params").cloned();
     let msg_id = parsed.get("id").cloned();
 
+    if let Some(outcome) = dispatch_custom_domain(method, &parsed, &session) {
+      if let Some(id) = msg_id {
+        let call_id = id.as_i64().unwrap_or(0) as i32;
+        let content = match outcome {
+          CustomDomainOutcome::Empty => make_cdp_ok_response(&id, json!({})),
+          CustomDomainOutcome::Result(v) => make_cdp_ok_response(&id, v),
+          CustomDomainOutcome::Error(err) => make_cdp_error_response(&id, &err),
+        };
+        (session.state.send)(InspectorMsg {
+          kind: InspectorMsgKind::Message(call_id),
+          content,
+        });
+      }
+      continue;
+    }
+
     match method {
       "NodeRuntime.enable" => {
         session.state.noderuntime_enabled.set(true);
@@ -1380,6 +1904,10 @@ async fn pump_inspector_session_messages(
       }
       "NodeRuntime.disable" => {
         session.state.noderuntime_enabled.set(false);
+      }
+      "NodeRuntime.notifyWhenWaitingForDisconnect" => {
+        let enabled = get_bool_param(&params, "enabled");
+        session.state.notify_waiting_for_disconnect.set(enabled);
       }
       "Runtime.runIfWaitingForDebugger" => {
         // Clear paused_on_start so wait_for_session_and_break_on_next_statement
@@ -1458,7 +1986,8 @@ async fn pump_inspector_session_messages(
       }
     }
 
-    // Send response after handling the command
+    // Send default `{result: {}}` ack for commands handled above
+    // that don't produce their own response payload.
     if let Some(id) = msg_id {
       let call_id = id.as_i64().unwrap_or(0) as i32;
       (session.state.send)(InspectorMsg {
@@ -1512,5 +2041,15 @@ impl LocalInspectorSession {
 
     let stringified_msg = serde_json::to_string(&message).unwrap();
     self.dispatch(stringified_msg);
+  }
+}
+
+impl Drop for LocalInspectorSession {
+  fn drop(&mut self) {
+    let mut sessions = self.sessions.borrow_mut();
+    sessions.local.remove(&self.session_id);
+    if sessions.main_session_id == Some(self.session_id) {
+      sessions.main_session_id = sessions.local.keys().next().copied();
+    }
   }
 }

@@ -64,7 +64,7 @@
 // the results of the previous transformed chunk were consumed.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const lazyProcess = core.createLazyLoader("node:process");
 const process = lazyProcess().default;
 const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");

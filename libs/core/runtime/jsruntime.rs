@@ -21,6 +21,7 @@ use std::task::Waker;
 
 use deno_error::JsErrorBox;
 use futures::FutureExt;
+use futures::StreamExt;
 use futures::task::AtomicWaker;
 use smallvec::SmallVec;
 
@@ -77,7 +78,9 @@ use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
 use crate::modules::ModuleName;
 use crate::modules::RequestedModuleType;
+use crate::modules::SideModuleKind;
 use crate::modules::ValidateImportAttributesCb;
+use crate::modules::recursive_load::RecursiveModuleLoad;
 use crate::modules::script_origin;
 use crate::ops_metrics::OpMetricsFactoryFn;
 use crate::ops_metrics::dispatch_metrics_async;
@@ -107,6 +110,14 @@ pub type ExtensionTranspiler =
 pub(crate) struct IsolateAllocations {
   pub(crate) externalized_sources: Box<[v8::OneByteConst]>,
   pub(crate) original_sources: Box<[FastString]>,
+  /// Specifiers of the externalized `lazy_loaded_js` sources, parallel to the
+  /// trailing entries of `original_sources` (only populated when building a
+  /// snapshot). Used at serialize time to drop the bytes of *non-consumed*
+  /// lazy scripts from the snapshot sidecar — their external-reference slots
+  /// must stay (for index alignment) but nothing references them, so storing
+  /// empty bytes avoids duplicating residual sources (which the binary already
+  /// ships via the residual table).
+  pub(crate) lazy_js_specifiers: Box<[ModuleName]>,
   pub(crate) near_heap_limit_callback_data:
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
@@ -453,6 +464,9 @@ pub struct JsRuntimeState {
     Option<WaitForInspectorDisconnectCallback>,
   pub(crate) validate_import_attributes_cb: Option<ValidateImportAttributesCb>,
   pub(crate) custom_module_evaluation_cb: Option<CustomModuleEvaluationCb>,
+  pub(crate) vm_dynamic_import_callbacks:
+    RefCell<HashMap<u32, v8::Global<v8::Function>>>,
+  pub(crate) next_vm_dynamic_import_callback_id: Cell<u32>,
   pub(crate) eval_context_get_code_cache_cb:
     RefCell<Option<EvalContextGetCodeCacheCb>>,
   pub(crate) eval_context_code_cache_ready_cb:
@@ -725,6 +739,11 @@ impl JsRuntime {
     let mut extensions = std::mem::take(&mut options.extensions);
     let mut isolate_allocations = IsolateAllocations::default();
 
+    // `lazy_loaded_js` sources are externalized (and pre-wrapped) only when
+    // building the snapshot, so consumed scripts bake in as clean external
+    // sources. At runtime they stay as static registrations.
+    let externalize_lazy_js = will_snapshot;
+
     let enable_stack_trace_in_ops =
       options.maybe_op_stack_trace_callback.is_some();
 
@@ -753,6 +772,7 @@ impl JsRuntime {
       options.extension_transpiler.as_deref(),
       &extensions,
       sidecar_data.as_ref().map(|s| &*s.snapshot_data.extensions),
+      externalize_lazy_js,
       |source| {
         mark_as_loaded_from_fs_during_snapshot(&mut files_loaded, &source.code)
       },
@@ -789,6 +809,8 @@ impl JsRuntime {
       op_state: op_state.clone(),
       validate_import_attributes_cb: options.validate_import_attributes_cb,
       custom_module_evaluation_cb: options.custom_module_evaluation_cb,
+      vm_dynamic_import_callbacks: Default::default(),
+      next_vm_dynamic_import_callback_id: Cell::new(1),
       eval_context_get_code_cache_cb: RefCell::new(
         eval_context_get_code_cache_cb,
       ),
@@ -832,14 +854,23 @@ impl JsRuntime {
       additional_references,
     ) = extension_set::get_middlewares_and_external_refs(&mut extensions);
 
-    // Capture the extension, op and source counts. `source_count` mirrors the
-    // number of `v8::OneByteConst` external strings produced by
-    // [`bindings::externalize_sources`] (which iterates `js + esm + lazy_esm`
-    // — `lazy_loaded_js` scripts are not externalized as module sources).
+    // Capture the extension, op and source counts. `source_count` MUST mirror
+    // the number of `v8::OneByteConst` external strings produced by
+    // [`bindings::externalize_sources`] for the same `will_snapshot` value:
+    // `js + esm + lazy_esm`, plus `lazy_loaded_js` only when building the
+    // snapshot (where those scripts are externalized so consumed ones bake into
+    // the snapshot as clean external sources). At runtime `lazy_loaded_js` is
+    // not externalized here.
     let extensions = extensions.iter().map(|e| e.name).collect();
     let op_count = op_ctxs.len();
-    let source_count =
-      sources.js.len() + sources.esm.len() + sources.lazy_esm.len();
+    let source_count = sources.js.len()
+      + sources.esm.len()
+      + sources.lazy_esm.len()
+      + if externalize_lazy_js {
+        sources.lazy_js.len()
+      } else {
+        0
+      };
     let addl_refs_count = additional_references.len();
 
     let ops_in_snapshot = sidecar_data
@@ -858,7 +889,12 @@ impl JsRuntime {
     (
       isolate_allocations.externalized_sources,
       isolate_allocations.original_sources,
-    ) = bindings::externalize_sources(&mut sources, snapshot_sources);
+      isolate_allocations.lazy_js_specifiers,
+    ) = bindings::externalize_sources(
+      &mut sources,
+      snapshot_sources,
+      externalize_lazy_js,
+    );
 
     let external_references = bindings::create_external_references(
       &op_ctxs,
@@ -979,6 +1015,19 @@ impl JsRuntime {
           &context_state.op_method_decls,
           methods_ctx_offset,
           &mut state_rc.function_templates.borrow_mut(),
+          will_snapshot,
+        );
+      } else if !will_snapshot {
+        // Snapshots built against V8 14.9+ bake the slow version of each op
+        // function (see `op_ctx_template`). Re-attach fast-call overloads to
+        // the snapshotted ops (top-level + cppgc class methods) now that
+        // we're running.
+        bindings::upgrade_snapshotted_ops_with_fast_calls(
+          scope,
+          context,
+          &context_state.op_ctxs,
+          &context_state.op_method_decls,
+          methods_ctx_offset,
         );
       }
 
@@ -2707,9 +2756,29 @@ impl JsRuntimeForSnapshot {
     self.inner.prepare_for_cleanup();
     let original_sources =
       std::mem::take(&mut self.0.allocations.original_sources);
+    let lazy_js_specifiers =
+      std::mem::take(&mut self.0.allocations.lazy_js_specifiers);
+    // `lazy_loaded_js` sources are externalized for the snapshot (so consumed
+    // scripts bake in as clean external strings), but only the *consumed* ones
+    // are actually referenced by snapshotted code. Non-consumed (residual)
+    // scripts are already shipped via the residual table, so persisting their
+    // bytes here would duplicate them. Store empty bytes for those slots — the
+    // external-reference index is preserved (nothing references it), avoiding
+    // the duplication.
+    let consumed: std::collections::HashSet<String> =
+      self.consumed_lazy_specifiers().into_iter().collect();
+    let lazy_js_start = original_sources.len() - lazy_js_specifiers.len();
     let external_strings = original_sources
       .iter()
-      .map(|s| s.as_str().as_bytes())
+      .enumerate()
+      .map(|(i, s)| {
+        if i >= lazy_js_start
+          && !consumed.contains(lazy_js_specifiers[i - lazy_js_start].as_str())
+        {
+          return &[][..];
+        }
+        s.as_str().as_bytes()
+      })
       .collect();
     let realm = JsRealm::clone(&self.inner.main_realm);
 
@@ -2995,15 +3064,8 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: impl IntoModuleCodeString,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
     self
-      .inner
-      .main_realm
-      .load_main_es_module_from_code(
-        isolate,
-        specifier,
-        Some(code.into_module_code()),
-      )
+      .drive_es_module_load(true, specifier, Some(code.into_module_code()))
       .await
   }
 
@@ -3019,12 +3081,7 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
-    self
-      .inner
-      .main_realm
-      .load_main_es_module_from_code(isolate, specifier, None)
-      .await
+    self.drive_es_module_load(true, specifier, None).await
   }
 
   /// Asynchronously load specified ES module and all of its dependencies from the
@@ -3045,15 +3102,8 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: impl IntoModuleCodeString,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
     self
-      .inner
-      .main_realm
-      .load_side_es_module_from_code(
-        isolate,
-        specifier.to_string(),
-        Some(code.into_module_code()),
-      )
+      .drive_es_module_load(false, specifier, Some(code.into_module_code()))
       .await
   }
 
@@ -3069,12 +3119,106 @@ impl JsRuntime {
     &mut self,
     specifier: &ModuleSpecifier,
   ) -> Result<ModuleId, CoreError> {
-    let isolate = &mut self.inner.v8_isolate;
-    self
-      .inner
-      .main_realm
-      .load_side_es_module_from_code(isolate, specifier.to_string(), None)
-      .await
+    self.drive_es_module_load(false, specifier, None).await
+  }
+
+  /// Drive a recursive ES module load to completion while concurrently
+  /// pumping the event loop. The event loop pumping is required so that
+  /// JavaScript-side `module.registerHooks()` load hooks (which run as an
+  /// async polling task) can respond to load requests from the recursive
+  /// load. Without it, static module loads that go through hook bridges
+  /// would deadlock.
+  async fn drive_es_module_load(
+    &mut self,
+    is_main: bool,
+    specifier: &ModuleSpecifier,
+    code: Option<ModuleCodeString>,
+  ) -> Result<ModuleId, CoreError> {
+    let realm = JsRealm::clone(&self.inner.main_realm);
+    let module_map_rc = realm.0.module_map();
+
+    // Only pump the V8 event loop alongside the load when the loader resolves
+    // modules through asynchronous JavaScript (e.g. Node
+    // `module.registerHooks()` load hooks). For ordinary loads pumping is
+    // unnecessary and would run unrelated event-loop work mid-load, so the
+    // load is driven on its own instead.
+    let pump_event_loop =
+      module_map_rc.loader.borrow().pump_event_loop_during_load();
+
+    if let Some(code) = code {
+      jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+      module_map_rc
+        .new_es_module(
+          scope,
+          is_main,
+          specifier.to_string().into(),
+          code,
+          false,
+          None,
+        )
+        .map_err(|e| e.into_error(scope, false, false))?;
+    }
+
+    let mut load = if is_main {
+      RecursiveModuleLoad::main(specifier.to_string(), module_map_rc.clone())
+        .await?
+    } else {
+      RecursiveModuleLoad::side(
+        specifier.to_string(),
+        module_map_rc.clone(),
+        SideModuleKind::Async,
+        None,
+      )
+      .await?
+    };
+
+    loop {
+      // Drive the recursive load, optionally pumping the V8 event loop
+      // concurrently. Pumping is what lets JavaScript-side module hooks
+      // (`module.registerHooks()`) respond to load requests issued by the
+      // recursive load via the async hook bridge; for ordinary loads it is
+      // skipped so unrelated event-loop work doesn't run mid-load.
+      let next_step = poll_fn(|cx| {
+        if let Poll::Ready(t) = load.poll_next_unpin(cx) {
+          return Poll::Ready(Ok::<_, CoreError>(t));
+        }
+        if !pump_event_loop {
+          return Poll::Pending;
+        }
+        match self.poll_event_loop(cx, PollEventLoopOptions::default()) {
+          Poll::Ready(Err(e)) => return Poll::Ready(Err(e)),
+          Poll::Ready(Ok(())) | Poll::Pending => {}
+        }
+        // After polling the event loop, the recursive load may have new
+        // results ready (e.g. a hook callback responded). Re-poll.
+        match load.poll_next_unpin(cx) {
+          Poll::Ready(t) => Poll::Ready(Ok(t)),
+          Poll::Pending => Poll::Pending,
+        }
+      })
+      .await?;
+
+      let Some(load_result) = next_step else { break };
+      let (request, source) = load_result?;
+
+      jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+      load
+        .register_and_recurse(scope, &request, source)
+        .map_err(|e| e.into_error(scope, false, false))?;
+    }
+
+    let root_id = load.root_module_id().expect("Root module should be loaded");
+
+    jsrealm::context_scope!(scope, &realm, self.v8_isolate());
+    realm.instantiate_module(scope, root_id).map_err(|e| {
+      let exception = v8::Local::new(scope, e);
+      CoreErrorKind::Js(crate::error::exception_to_err(
+        scope, exception, false, false,
+      ))
+      .into_box()
+    })?;
+
+    Ok(root_id)
   }
 
   /// Load and evaluate an ES module provided the specifier and source code.

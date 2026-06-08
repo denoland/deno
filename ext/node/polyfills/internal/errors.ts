@@ -12,7 +12,7 @@
  */
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   AggregateError,
   ArrayIsArray,
@@ -1035,6 +1035,24 @@ class ERR_CONSTRUCT_CALL_REQUIRED extends NodeTypeError {
   }
 }
 
+class ERR_CONSTRUCT_CALL_INVALID extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_CONSTRUCT_CALL_INVALID",
+      `Constructor for class ${x} cannot be invoked`,
+    );
+  }
+}
+
+class ERR_CLOSED_MESSAGE_PORT extends NodeError {
+  constructor() {
+    super(
+      "ERR_CLOSED_MESSAGE_PORT",
+      "Cannot send data on closed MessagePort",
+    );
+  }
+}
+
 class ERR_CONTEXT_NOT_INITIALIZED extends NodeError {
   constructor() {
     super("ERR_CONTEXT_NOT_INITIALIZED", "context used is not initialized");
@@ -1823,6 +1841,16 @@ class ERR_INVALID_PROTOCOL extends NodeTypeError {
     );
   }
 }
+class ERR_PROXY_INVALID_CONFIG extends NodeError {
+  constructor(reason: string) {
+    super("ERR_PROXY_INVALID_CONFIG", reason);
+  }
+}
+class ERR_PROXY_TUNNEL extends NodeError {
+  constructor(reason: string) {
+    super("ERR_PROXY_TUNNEL", reason);
+  }
+}
 class ERR_INVALID_REPL_EVAL_CONFIG extends NodeTypeError {
   constructor() {
     super(
@@ -2346,6 +2374,11 @@ class ERR_TLS_INVALID_PROTOCOL_VERSION extends NodeTypeError {
     );
   }
 }
+class ERR_TLS_INVALID_PROTOCOL_METHOD extends NodeTypeError {
+  constructor(message: string) {
+    super("ERR_TLS_INVALID_PROTOCOL_METHOD", message);
+  }
+}
 class ERR_TLS_PROTOCOL_VERSION_CONFLICT extends NodeTypeError {
   constructor(prevProtocol: string, protocol: string) {
     super(
@@ -2549,6 +2582,21 @@ class ERR_VM_MODULE_NOT_MODULE extends NodeError {
       "ERR_VM_MODULE_NOT_MODULE",
       `Provided module is not an instance of Module`,
     );
+  }
+}
+class ERR_VM_MODULE_LINK_FAILURE extends NodeError {
+  // deno-lint-ignore no-explicit-any
+  constructor(message: string, cause?: any) {
+    super("ERR_VM_MODULE_LINK_FAILURE", message);
+    if (cause !== undefined) {
+      // deno-lint-ignore no-explicit-any
+      (this as any).cause = cause;
+    }
+  }
+}
+class ERR_MODULE_LINK_MISMATCH extends NodeTypeError {
+  constructor(x: string) {
+    super("ERR_MODULE_LINK_MISMATCH", x);
   }
 }
 class ERR_VM_MODULE_STATUS extends NodeError {
@@ -3299,7 +3347,9 @@ return {
   ERR_CHILD_CLOSED_BEFORE_REPLY,
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
+  ERR_CLOSED_MESSAGE_PORT,
   ERR_CONSOLE_WRITABLE_STREAM,
+  ERR_CONSTRUCT_CALL_INVALID,
   ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_CONTEXT_NOT_INITIALIZED,
   ERR_CPU_USAGE,
@@ -3435,6 +3485,8 @@ return {
   ERR_INVALID_PACKAGE_TARGET,
   ERR_INVALID_PERFORMANCE_MARK,
   ERR_INVALID_PROTOCOL,
+  ERR_PROXY_INVALID_CONFIG,
+  ERR_PROXY_TUNNEL,
   ERR_INVALID_REPL_EVAL_CONFIG,
   ERR_INVALID_REPL_INPUT,
   ERR_INVALID_RETURN_PROPERTY,
@@ -3520,6 +3572,7 @@ return {
   ERR_TLS_DH_PARAM_SIZE,
   ERR_TLS_HANDSHAKE_TIMEOUT,
   ERR_TLS_INVALID_CONTEXT,
+  ERR_TLS_INVALID_PROTOCOL_METHOD,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
   ERR_TLS_INVALID_STATE,
@@ -3550,9 +3603,11 @@ return {
   ERR_VM_MODULE_ALREADY_LINKED,
   ERR_VM_MODULE_CANNOT_CREATE_CACHED_DATA,
   ERR_VM_MODULE_DIFFERENT_CONTEXT,
+  ERR_VM_MODULE_LINK_FAILURE,
   ERR_VM_MODULE_LINKING_ERRORED,
   ERR_VM_MODULE_NOT_MODULE,
   ERR_VM_MODULE_STATUS,
+  ERR_MODULE_LINK_MISMATCH,
   ERR_WASI_ALREADY_STARTED,
   ERR_WASI_NOT_STARTED,
   ERR_WORKER_INIT_FAILED,
@@ -3614,7 +3669,9 @@ return {
     ERR_CHILD_CLOSED_BEFORE_REPLY,
     ERR_CHILD_PROCESS_IPC_REQUIRED,
     ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
+    ERR_CLOSED_MESSAGE_PORT,
     ERR_CONSOLE_WRITABLE_STREAM,
+    ERR_CONSTRUCT_CALL_INVALID,
     ERR_CONSTRUCT_CALL_REQUIRED,
     ERR_CONTEXT_NOT_INITIALIZED,
     ERR_CPU_USAGE,
@@ -3747,6 +3804,8 @@ return {
     ERR_INVALID_PACKAGE_TARGET,
     ERR_INVALID_PERFORMANCE_MARK,
     ERR_INVALID_PROTOCOL,
+    ERR_PROXY_INVALID_CONFIG,
+    ERR_PROXY_TUNNEL,
     ERR_INVALID_REPL_EVAL_CONFIG,
     ERR_INVALID_REPL_INPUT,
     ERR_INVALID_RETURN_PROPERTY,
@@ -3828,6 +3887,7 @@ return {
     ERR_TLS_DH_PARAM_SIZE,
     ERR_TLS_HANDSHAKE_TIMEOUT,
     ERR_TLS_INVALID_CONTEXT,
+    ERR_TLS_INVALID_PROTOCOL_METHOD,
     ERR_TLS_INVALID_PROTOCOL_VERSION,
     ERR_TLS_INVALID_STATE,
     ERR_TLS_PROTOCOL_VERSION_CONFLICT,
@@ -3856,9 +3916,11 @@ return {
     ERR_VM_MODULE_ALREADY_LINKED,
     ERR_VM_MODULE_CANNOT_CREATE_CACHED_DATA,
     ERR_VM_MODULE_DIFFERENT_CONTEXT,
+    ERR_VM_MODULE_LINK_FAILURE,
     ERR_VM_MODULE_LINKING_ERRORED,
     ERR_VM_MODULE_NOT_MODULE,
     ERR_VM_MODULE_STATUS,
+    ERR_MODULE_LINK_MISMATCH,
     ERR_WASI_ALREADY_STARTED,
     ERR_WASI_NOT_STARTED,
     ERR_WORKER_INIT_FAILED,

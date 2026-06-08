@@ -343,6 +343,94 @@ extern "C" fn test_raw_unwrap(
   result
 }
 
+/// Invokes `napi_new_instance` on the constructor passed as the first
+/// argument with the i32 second argument forwarded. Regression coverage
+/// for #33924: this verifies the API path still produces a properly
+/// wrapped instance on the normal codepath.
+extern "C" fn test_call_new_instance(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (args, argc, _) = napi_get_callback_info!(env, info, 2);
+  assert_eq!(argc, 2);
+
+  let argv = [args[1]];
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_new_instance(
+    env,
+    args[0],
+    argv.len(),
+    argv.as_ptr(),
+    &mut result,
+  ));
+  result
+}
+
+extern "C" fn js_calling_constructor(
+  env: napi_env,
+  info: napi_callback_info,
+) -> napi_value {
+  let (_, _, this) = napi_get_callback_info!(env, info, 0);
+  let mut global: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_global(env, &mut global));
+
+  let mut object: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_named_property(
+    env,
+    global,
+    c"Object".as_ptr(),
+    &mut object,
+  ));
+
+  let mut seal: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_get_named_property(
+    env,
+    object,
+    c"seal".as_ptr(),
+    &mut seal,
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  let args = [this];
+  assert_napi_ok!(napi_call_function(
+    env,
+    global,
+    seal,
+    args.len(),
+    args.as_ptr(),
+    &mut result,
+  ));
+
+  ptr::null_mut()
+}
+
+extern "C" fn test_new_instance_constructor_can_call_js(
+  env: napi_env,
+  _info: napi_callback_info,
+) -> napi_value {
+  let mut constructor: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_define_class(
+    env,
+    c"JsCallingConstructor".as_ptr(),
+    usize::MAX,
+    Some(js_calling_constructor),
+    ptr::null_mut(),
+    0,
+    ptr::null(),
+    &mut constructor,
+  ));
+
+  let mut result: napi_value = ptr::null_mut();
+  assert_napi_ok!(napi_new_instance(
+    env,
+    constructor,
+    0,
+    ptr::null(),
+    &mut result,
+  ));
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let mut static_prop = napi_new_property!(env, "factory", NapiObject::factory);
   static_prop.attributes = PropertyAttributes::static_;
@@ -429,6 +517,12 @@ pub fn init(env: napi_env, exports: napi_value) {
     napi_new_property!(env, "test_remove_wrap", test_remove_wrap),
     napi_new_property!(env, "test_raw_wrap", test_raw_wrap),
     napi_new_property!(env, "test_raw_unwrap", test_raw_unwrap),
+    napi_new_property!(env, "test_call_new_instance", test_call_new_instance),
+    napi_new_property!(
+      env,
+      "test_new_instance_constructor_can_call_js",
+      test_new_instance_constructor_can_call_js
+    ),
   ];
   assert_napi_ok!(napi_define_properties(
     env,
