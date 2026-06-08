@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::fmt::Formatter;
 use std::io;
 use std::path::Path;
@@ -16,7 +17,6 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
 use deno_core::OpState;
-use deno_core::RcRef;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
 use deno_core::error::ResourceError;
@@ -359,7 +359,7 @@ pub struct FileResource {
   /// Used so streams backed by a file (especially pipes / FIFOs whose
   /// reads can block indefinitely) can be cancelled — see
   /// <https://github.com/denoland/deno/issues/21186>.
-  cancel_handle: CancelHandle,
+  cancel_handle: RefCell<Rc<CancelHandle>>,
 }
 
 impl FileResource {
@@ -367,12 +367,16 @@ impl FileResource {
     Self {
       name,
       file,
-      cancel_handle: Default::default(),
+      cancel_handle: RefCell::new(CancelHandle::new_rc()),
     }
   }
 
-  fn cancel_handle(self: &Rc<Self>) -> RcRef<CancelHandle> {
-    RcRef::map(self, |r| &r.cancel_handle)
+  fn cancel_handle(&self) -> Rc<CancelHandle> {
+    self.cancel_handle.borrow().clone()
+  }
+
+  fn cancel_read_ops(&self) {
+    self.cancel_handle.replace(CancelHandle::new_rc()).cancel();
   }
 
   fn with_resource<F, R>(
@@ -501,6 +505,10 @@ impl deno_core::Resource for FileResource {
     // block indefinitely; without this, a `ReadableStream` backed by
     // such a file could never have its `cancel()` promise resolve while
     // a read is outstanding.
-    self.cancel_handle.cancel();
+    self.cancel_read_ops();
+  }
+
+  fn cancel_read_ops(self: Rc<Self>) {
+    FileResource::cancel_read_ops(&self);
   }
 }

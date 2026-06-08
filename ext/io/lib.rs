@@ -655,6 +655,8 @@ impl StdFileResourceInner {
         reason = "error carries the buffer back for reuse"
       )]
       let fut = self.with_inner_blocking_task(move |file| {
+        let _terminal_input_guard =
+          deno_permissions::prompter::lock_terminal_input();
         /* Start reading, and set the reading flag to true */
         state.lock().reading = true;
         let nread = match file.read(&mut buf) {
@@ -770,6 +772,8 @@ impl crate::fs::File for StdFileResourceInner {
         // Since O_NONBLOCK is per-file-description, it affects all users
         // of fd 0. Retry on WouldBlock to avoid surfacing EAGAIN to JS.
         self.with_sync(|file| {
+          let _terminal_input_guard =
+            deno_permissions::prompter::lock_terminal_input();
           loop {
             match file.read(buf) {
               Ok(nread) => return Ok(nread),
@@ -1218,6 +1222,8 @@ impl crate::fs::File for StdFileResourceInner {
         // Retry on WouldBlock (see read_sync comment for details).
         self
           .with_inner_blocking_task(|file| {
+            let _terminal_input_guard =
+              deno_permissions::prompter::lock_terminal_input();
             loop {
               match file.read(&mut buf) {
                 Ok(nread) => return Ok((nread, buf)),

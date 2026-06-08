@@ -61,6 +61,8 @@ pub fn print_linker_flags(name: &str) {
       // debugging/diagnostics (only needed on panic/crash)
       "dbghelp",
       "psapi",
+      // restart manager (only needed on the `deno clean` locked-file path)
+      "rstrtmgr",
     ];
     for dll in dlls {
       println!("cargo:rustc-link-arg-bin={name}=/delayload:{dll}.dll");

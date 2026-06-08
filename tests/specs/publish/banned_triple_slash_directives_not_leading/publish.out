@@ -1,0 +1,15 @@
+Check [WILDCARD]mod.ts
+Checking for slow types in the public API...
+error[banned-triple-slash-directives]: triple slash directives that modify globals are not allowed
+ --> [WILDLINE]mod.ts:5:1
+  | 
+5 | /// <reference lib="deno.unstable" />
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the triple slash directive
+  | 
+  = hint: remove the triple slash directive
+
+  info: instead instruct the user of your package to specify these directives
+  info: or set their 'lib' compiler option appropriately
+  docs: https://jsr.io/go/banned-triple-slash-directives
+
+error: Found 1 problem

@@ -51,7 +51,7 @@ pub use outdated::outdated;
 pub use why::why;
 
 #[derive(Debug, Copy, Clone, Hash)]
-enum ConfigKind {
+pub(crate) enum ConfigKind {
   DenoJson,
   PackageJson,
 }
@@ -121,6 +121,41 @@ impl ConfigUpdater {
     }
 
     None
+  }
+
+  /// Looks up a property by key path without marking the file as modified.
+  fn get_existing_property(&self, key_path: &KeyPath) -> Option<CstObjectProp> {
+    let mut current_node = self.root_object.clone();
+    for (i, part) in key_path.parts.iter().enumerate() {
+      let s = part.as_str();
+      if i < key_path.parts.len().saturating_sub(1) {
+        current_node = current_node.object_value(s)?;
+      } else {
+        return current_node.get(s);
+      }
+    }
+    None
+  }
+
+  /// Updates a catalog entry's bare version requirement. `key_paths` lists
+  /// candidate locations (e.g. top-level `catalog` vs `workspaces.catalog` in
+  /// package.json); the first one that exists is updated. Returns whether an
+  /// entry was found and updated.
+  fn update_catalog_entry(
+    &mut self,
+    key_paths: &[KeyPath],
+    new_value: &str,
+  ) -> bool {
+    for key_path in key_paths {
+      if let Some(property) = self.get_existing_property(key_path) {
+        property.set_value(jsonc_parser::cst::CstInputValue::String(
+          new_value.to_string(),
+        ));
+        self.modified = true;
+        return true;
+      }
+    }
+    false
   }
 
   fn add(&mut self, selected: SelectedPackage, dev: bool) {
@@ -932,20 +967,45 @@ impl AddRmPackageReq {
       },
     };
 
+    // The reference parsers use the strict specifier version grammar, which
+    // only accepts `^`, `~`, exact versions and tags. On the command line we
+    // also accept the full npm range grammar (`>=4`, `>=4 <5`, `^4 || 5`,
+    // `1 - 2`, etc) by falling back to loose parsing. `deno add` resolves the
+    // requirement to a concrete version before writing it, so what ends up in
+    // the config (and in `npm:`/`jsr:` specifiers in code) still uses the
+    // strict grammar.
     match prefix {
       Prefix::Jsr => {
-        let req_ref =
-          JsrPackageReqReference::from_str(&format!("jsr:{}", entry_text))?;
-        let package_req = req_ref.into_inner().req;
+        let package_req = match JsrPackageReqReference::from_str(&format!(
+          "jsr:{}",
+          entry_text
+        )) {
+          Ok(req_ref) => req_ref.into_inner().req,
+          // If loose parsing also fails the input is genuinely malformed, so
+          // surface the original strict error, which carries the more helpful
+          // diagnostic (e.g. the "did you mean" subpath suggestion).
+          Err(err) => {
+            PackageReq::from_str_loose(entry_text).map_err(|_| err)?
+          }
+        };
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Jsr(package_req),
         }))
       }
       Prefix::Npm => {
-        let req_ref =
-          NpmPackageReqReference::from_str(&format!("npm:{}", entry_text))?;
-        let package_req = req_ref.into_inner().req;
+        let package_req = match NpmPackageReqReference::from_str(&format!(
+          "npm:{}",
+          entry_text
+        )) {
+          Ok(req_ref) => req_ref.into_inner().req,
+          // If loose parsing also fails the input is genuinely malformed, so
+          // surface the original strict error, which carries the more helpful
+          // diagnostic (e.g. the "did you mean" subpath suggestion).
+          Err(err) => {
+            PackageReq::from_str_loose(entry_text).map_err(|_| err)?
+          }
+        };
         Ok(Ok(AddRmPackageReq {
           alias: maybe_alias.unwrap_or_else(|| package_req.name.clone()),
           value: AddRmPackageReqValue::Npm(package_req),
@@ -1128,14 +1188,18 @@ mod test {
   fn jsr_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
     AddRmPackageReq {
       alias: alias.into(),
-      value: AddRmPackageReqValue::Jsr(PackageReq::from_str(req).unwrap()),
+      value: AddRmPackageReqValue::Jsr(
+        PackageReq::from_str_loose(req).unwrap(),
+      ),
     }
   }
 
   fn npm_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
     AddRmPackageReq {
       alias: alias.into(),
-      value: AddRmPackageReqValue::Npm(PackageReq::from_str(req).unwrap()),
+      value: AddRmPackageReqValue::Npm(
+        PackageReq::from_str_loose(req).unwrap(),
+      ),
     }
   }
 
@@ -1179,6 +1243,31 @@ mod test {
       (
         ("@scope/pkg", Some(Prefix::Npm)),
         npm_pkg_req("@scope/pkg", "@scope/pkg@*"),
+      ),
+      // npm range syntax is accepted on the command line (issue #26587)
+      (
+        ("npm:chalk@>=4", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@>=4"),
+      ),
+      (
+        ("npm:chalk@>=4 <5", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@>=4 <5"),
+      ),
+      (
+        ("npm:chalk@^4 || 5", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@^4 || 5"),
+      ),
+      (
+        ("npm:chalk@1 - 2", Some(Prefix::Npm)),
+        npm_pkg_req("chalk", "chalk@1 - 2"),
+      ),
+      (
+        ("alias@npm:chalk@>=4 <5", Some(Prefix::Npm)),
+        npm_pkg_req("alias", "chalk@>=4 <5"),
+      ),
+      (
+        ("jsr:@std/path@>=1.0.0", Some(Prefix::Jsr)),
+        jsr_pkg_req("@std/path", "@std/path@>=1.0.0"),
       ),
     ];
 

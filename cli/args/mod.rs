@@ -455,11 +455,14 @@ impl WorkspaceMainModuleResolver {
               sub_path.map(|s| format!("/{}", s)).unwrap_or_default()
             ))?
           }
-          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+          deno_package_json::PackageJsonDepValue::Workspace {
+            name,
+            version_req,
+          } => {
             let pkg_folder = self
               .workspace_resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-                alias,
+                name.as_deref().unwrap_or(alias),
                 version_req,
               )?;
             self
@@ -1544,7 +1547,7 @@ impl CliOptions {
   pub fn lifecycle_scripts_config(&self) -> LifecycleScriptsConfig {
     LifecycleScriptsConfig {
       allowed: self.flags.allow_scripts.clone(),
-      denied: Default::default(),
+      denied: self.flags.deny_scripts.clone(),
       initial_cwd: self.initial_cwd.clone(),
       root_dir: self.workspace().root_dir_path(),
       explicit_install: matches!(
