@@ -269,7 +269,19 @@ fn read_optional_u8<'a>(
   if val.is_undefined() || val.is_null() {
     return Ok(None);
   }
+  // Read the full u32 and reject values outside `[0, 0xFF]` so a stray
+  // `0x101` does not wrap to `0x01` and slip past the caller's
+  // [1, 0x7F] domain-separation range check (TurboSHAKE edge).
   let u = val.uint32_value(scope).unwrap_or(0);
+  if u > u8::MAX as u32 {
+    return Err(WebIdlError::other(
+      Cow::Borrowed(""),
+      Default::default(),
+      JsErrorBox::type_error(format!(
+        "'{key}' must be in the range [0, 0xFF]"
+      )),
+    ));
+  }
   Ok(Some(u as u8))
 }
 

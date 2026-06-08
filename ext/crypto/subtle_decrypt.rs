@@ -425,6 +425,11 @@ pub fn run(
   key: SubtleKey,
   data: Vec<u8>,
 ) -> Result<Vec<u8>, CryptoError> {
+  if let SubtleDecryptParams::Unknown(name) = &params {
+    return Err(not_supported(format!(
+      "Algorithm '{name}' is not supported"
+    )));
+  }
   // Decrypt step 8: algorithm-name match is an `OperationError`
   // (`encrypt` uses `InvalidAccessError`; the JS shim modelled both).
   if params.canonical_name() != key.algorithm_name {

@@ -167,6 +167,11 @@ pub fn run(
   signature: Vec<u8>,
   data: Vec<u8>,
 ) -> Result<bool, CryptoError> {
+  if let SubtleVerifyParams::Unknown(name) = &params {
+    return Err(not_supported(format!(
+      "Algorithm '{name}' is not supported"
+    )));
+  }
   if params.canonical_name() != key.algorithm_name {
     return Err(invalid_access(format!(
       "Verifying algorithm '{}' does not match key algorithm",

@@ -183,13 +183,26 @@ pub(crate) fn read_required_u32<'a, 'b>(
       JsErrorBox::type_error(format!("required dictionary member '{field}'")),
     ));
   }
-  val.uint32_value(scope).ok_or_else(|| {
+  // `[EnforceRange] unsigned long` semantics — reject NaN/Infinity,
+  // negative, and `> 2**32 - 1` instead of the ECMAScript ToUint32
+  // truncation `uint32_value` would silently apply.
+  let n = val.number_value(scope).ok_or_else(|| {
     WebIdlError::other(
-      prefix,
+      prefix.clone(),
       context.borrowed(),
       JsErrorBox::type_error(format!("'{field}' must be convertible to u32")),
     )
-  })
+  })?;
+  if !n.is_finite() || n.trunc() < 0.0 || n.trunc() > u32::MAX as f64 {
+    return Err(WebIdlError::other(
+      prefix,
+      context.borrowed(),
+      JsErrorBox::type_error(format!(
+        "'{field}' is outside the accepted range for [EnforceRange] unsigned long"
+      )),
+    ));
+  }
+  Ok(n.trunc() as u32)
 }
 
 /// Coerce a hash-algorithm dictionary member to its raw `.name` string
@@ -334,6 +347,11 @@ pub fn run(
   key: SubtleKey,
   data: Vec<u8>,
 ) -> Result<Vec<u8>, CryptoError> {
+  if let SubtleSignParams::Unknown(name) = &params {
+    return Err(not_supported(format!(
+      "Algorithm '{name}' is not supported"
+    )));
+  }
   if params.canonical_name() != key.algorithm_name {
     return Err(invalid_access(format!(
       "Signing algorithm '{}' does not match key algorithm",

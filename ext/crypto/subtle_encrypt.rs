@@ -482,6 +482,11 @@ pub fn run(
   key: SubtleKey,
   data: Vec<u8>,
 ) -> Result<Vec<u8>, CryptoError> {
+  if let SubtleEncryptParams::Unknown(name) = &params {
+    return Err(not_supported(format!(
+      "Algorithm '{name}' is not supported"
+    )));
+  }
   if params.canonical_name() != key.algorithm_name {
     return Err(invalid_access(format!(
       "Encryption algorithm '{}' does not match key algorithm",

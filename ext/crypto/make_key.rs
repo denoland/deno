@@ -126,6 +126,9 @@ pub fn build_algorithm_object<'s>(
   if let Some(ref hash_name) = dict.hash_name {
     let hash_obj = v8::Object::new(scope);
     set_string(scope, hash_obj, b"name", hash_name);
+    hash_obj
+      .set_integrity_level(scope, v8::IntegrityLevel::Frozen)
+      .unwrap();
     let key = one_byte_internalized(scope, b"hash");
     obj.set(scope, key.into(), hash_obj.into());
   }
@@ -147,6 +150,9 @@ pub fn build_algorithm_object<'s>(
     obj.set(scope, key.into(), u8.into());
   }
   obj
+    .set_integrity_level(scope, v8::IntegrityLevel::Frozen)
+    .unwrap();
+  obj
 }
 
 pub fn build_usages_array<'s>(
@@ -159,6 +165,10 @@ pub fn build_usages_array<'s>(
     let s = v8::String::new(scope, u).unwrap();
     arr.set_index(scope, i as u32, s.into());
   }
+  let obj: v8::Local<v8::Object> = arr.into();
+  obj
+    .set_integrity_level(scope, v8::IntegrityLevel::Frozen)
+    .unwrap();
   arr
 }
 
