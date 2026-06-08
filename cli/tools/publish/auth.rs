@@ -22,7 +22,9 @@ pub(crate) fn is_gha() -> bool {
 }
 
 pub(crate) fn gha_oidc_token() -> Option<String> {
-  std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN").ok()
+  std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+    .ok()
+    .filter(|s| !s.is_empty())
 }
 
 fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {

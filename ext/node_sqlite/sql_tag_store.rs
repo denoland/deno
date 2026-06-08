@@ -119,8 +119,54 @@ pub struct SQLTagStore {
   return_arrays: bool,
   use_big_ints: bool,
   db_object: v8::Global<v8::Object>,
-  is_iter_finished: Cell<bool>,
-  iter_sql: RefCell<String>,
+  iter_contexts: RefCell<Vec<*mut SQLTagStoreIteratorContext>>,
+}
+
+struct SQLTagStoreIteratorContext {
+  store: *const SQLTagStore,
+  store_ref: v8::Global<v8::Value>,
+  sql: String,
+  finished: Cell<bool>,
+  finalized_functions: Cell<u8>,
+  next_func: RefCell<Option<v8::Weak<v8::Function>>>,
+  return_func: RefCell<Option<v8::Weak<v8::Function>>>,
+}
+
+impl Drop for SQLTagStore {
+  fn drop(&mut self) {
+    for ctx_ptr in self.iter_contexts.borrow().iter() {
+      // SAFETY: Each pointer was allocated via `Box::into_raw` in `iterate()`
+      // and has not been freed yet (freed contexts are removed from the vec).
+      unsafe {
+        drop(Box::from_raw(*ctx_ptr));
+      }
+    }
+  }
+}
+
+fn release_iterator_context(ctx_ptr: *mut SQLTagStoreIteratorContext) {
+  // SAFETY: `ctx_ptr` was allocated with `Box::into_raw` in `iterate()` and
+  // remains valid until both callback functions have been finalized.
+  let ctx = unsafe { &*ctx_ptr };
+  let finalized_functions = ctx.finalized_functions.get() + 1;
+  ctx.finalized_functions.set(finalized_functions);
+  if finalized_functions != 2 {
+    return;
+  }
+
+  // SAFETY: `ctx.store_ref` keeps the JS wrapper, and therefore this cppgc
+  // object, alive until the context is dropped below.
+  let store = unsafe { &*ctx.store };
+  store
+    .iter_contexts
+    .borrow_mut()
+    .retain(|ptr| *ptr != ctx_ptr);
+
+  // SAFETY: Both callback functions are gone, so no `v8::External` can reach
+  // this context again.
+  unsafe {
+    drop(Box::from_raw(ctx_ptr));
+  }
 }
 
 // SAFETY: we're sure this can be GCed
@@ -149,8 +195,7 @@ impl SQLTagStore {
       return_arrays,
       use_big_ints,
       db_object,
-      is_iter_finished: Cell::new(true),
-      iter_sql: RefCell::new(String::new()),
+      iter_contexts: RefCell::new(Vec::new()),
     }
   }
 
@@ -163,7 +208,8 @@ impl SQLTagStore {
     if args.length() < 1 {
       return Err(SqliteError::Validation(
         super::validators::Error::InvalidArgType(
-          "First argument must be an array of strings (template literal).",
+          "First argument must be an array of strings (template literal)."
+            .into(),
         ),
       ));
     }
@@ -172,7 +218,8 @@ impl SQLTagStore {
     if !first.is_array() {
       return Err(SqliteError::Validation(
         super::validators::Error::InvalidArgType(
-          "First argument must be an array of strings (template literal).",
+          "First argument must be an array of strings (template literal)."
+            .into(),
         ),
       ));
     }
@@ -187,7 +234,7 @@ impl SQLTagStore {
       if !str_val.is_string() {
         return Err(SqliteError::Validation(
           super::validators::Error::InvalidArgType(
-            "Template literal parts must be strings.",
+            "Template literal parts must be strings.".into(),
           ),
         ));
       }
@@ -290,7 +337,7 @@ impl SQLTagStore {
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     let args = args.ok_or(SqliteError::Validation(
       super::validators::Error::InvalidArgType(
-        "First argument must be an array of strings (template literal).",
+        "First argument must be an array of strings (template literal).".into(),
       ),
     ))?;
 
@@ -311,7 +358,7 @@ impl SQLTagStore {
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     let args = args.ok_or(SqliteError::Validation(
       super::validators::Error::InvalidArgType(
-        "First argument must be an array of strings (template literal).",
+        "First argument must be an array of strings (template literal).".into(),
       ),
     ))?;
 
@@ -364,7 +411,7 @@ impl SQLTagStore {
   ) -> Result<v8::Local<'a, v8::Array>, SqliteError> {
     let args = args.ok_or(SqliteError::Validation(
       super::validators::Error::InvalidArgType(
-        "First argument must be an array of strings (template literal).",
+        "First argument must be an array of strings (template literal).".into(),
       ),
     ))?;
 
@@ -398,9 +445,11 @@ impl SQLTagStore {
 
     let args = params.ok_or(SqliteError::Validation(
       super::validators::Error::InvalidArgType(
-        "First argument must be an array of strings (template literal).",
+        "First argument must be an array of strings (template literal).".into(),
       ),
     ))?;
+    // `args.this()` is stored in the iterator context below and keeps the
+    // SQLTagStore cppgc wrapper alive for detached `next`/`return` callbacks.
 
     {
       let db = self.db.borrow();
@@ -458,23 +507,39 @@ impl SQLTagStore {
       stmt.bind_params(scope, args, 1)?;
     }
 
-    *self.iter_sql.borrow_mut() = sql;
-    self.is_iter_finished.set(false);
+    let store_ref = v8::Global::new(scope, args.this().cast::<v8::Value>());
+    let iter_ctx = Box::into_raw(Box::new(SQLTagStoreIteratorContext {
+      store: self as *const SQLTagStore,
+      store_ref,
+      sql,
+      finished: Cell::new(false),
+      finalized_functions: Cell::new(0),
+      next_func: RefCell::new(None),
+      return_func: RefCell::new(None),
+    }));
+    self.iter_contexts.borrow_mut().push(iter_ctx);
 
     let iterate_next = |scope: &mut v8::PinScope<'_, '_>,
                         fargs: v8::FunctionCallbackArguments,
                         mut rv: v8::ReturnValue| {
       let data = v8::Local::<v8::External>::try_from(fargs.data())
         .expect("Iterator#next expected external data");
-      // SAFETY: `data` is a valid pointer to a SQLTagStore instance
-      let store = unsafe { &*(data.value() as *const SQLTagStore) };
+      // SAFETY: `data` points to a live iterator context kept alive by the
+      // callback functions' weak handles.
+      let ctx =
+        unsafe { &*(data.value() as *const SQLTagStoreIteratorContext) };
+      // SAFETY: The context's strong JS wrapper reference keeps the store's
+      // cppgc object alive.
+      let store = unsafe { &*ctx.store };
 
       let names = &[
         DONE.v8_string(scope).unwrap().into(),
         VALUE.v8_string(scope).unwrap().into(),
       ];
 
-      if store.is_iter_finished.get() {
+      // If the cached statement was evicted mid-iteration, finish the iterator
+      // instead of re-preparing and restarting from the first row.
+      if ctx.finished.get() || !store.cache.borrow().exists(&ctx.sql) {
         let values =
           &[v8::Boolean::new(scope, true).into(), v8::null(scope).into()];
         let null = v8::null(scope).into();
@@ -485,8 +550,7 @@ impl SQLTagStore {
       }
 
       let result = {
-        let sql = store.iter_sql.borrow();
-        let stmt = store.get_cached_statement(&sql);
+        let stmt = store.get_cached_statement(&ctx.sql);
         stmt.read_row(scope)
       };
 
@@ -500,10 +564,9 @@ impl SQLTagStore {
           rv.set(result.into());
         }
         Ok(None) | Err(_) => {
-          store.is_iter_finished.set(true);
+          ctx.finished.set(true);
           let _ = {
-            let sql = store.iter_sql.borrow();
-            let stmt = store.get_cached_statement(&sql);
+            let stmt = store.get_cached_statement(&ctx.sql);
             stmt.reset()
           };
           let values =
@@ -522,15 +585,21 @@ impl SQLTagStore {
                           mut rv: v8::ReturnValue| {
       let data = v8::Local::<v8::External>::try_from(fargs.data())
         .expect("Iterator#return expected external data");
-      // SAFETY: `data` is a valid pointer to a SQLTagStore instance
-      let store = unsafe { &*(data.value() as *const SQLTagStore) };
+      // SAFETY: `data` points to a live iterator context kept alive by the
+      // callback functions' weak handles.
+      let ctx =
+        unsafe { &*(data.value() as *const SQLTagStoreIteratorContext) };
+      // SAFETY: The context's strong JS wrapper reference keeps the store's
+      // cppgc object alive.
+      let store = unsafe { &*ctx.store };
 
-      store.is_iter_finished.set(true);
-      let _ = {
-        let sql = store.iter_sql.borrow();
-        let stmt = store.get_cached_statement(&sql);
-        stmt.reset()
-      };
+      ctx.finished.set(true);
+      if store.cache.borrow().exists(&ctx.sql) {
+        let _ = {
+          let stmt = store.get_cached_statement(&ctx.sql);
+          stmt.reset()
+        };
+      }
 
       let names = &[
         DONE.v8_string(scope).unwrap().into(),
@@ -544,7 +613,7 @@ impl SQLTagStore {
       rv.set(result.into());
     };
 
-    let external = v8::External::new(scope, self as *const _ as _);
+    let external = v8::External::new(scope, iter_ctx as _);
     let next_func = v8::Function::builder(iterate_next)
       .data(external.into())
       .build(scope)
@@ -553,6 +622,23 @@ impl SQLTagStore {
       .data(external.into())
       .build(scope)
       .expect("Failed to create Iterator#return function");
+
+    let weak_next = v8::Weak::with_finalizer(
+      scope,
+      next_func,
+      Box::new(move |_| release_iterator_context(iter_ctx)),
+    );
+    let weak_return = v8::Weak::with_finalizer(
+      scope,
+      return_func,
+      Box::new(move |_| release_iterator_context(iter_ctx)),
+    );
+    // SAFETY: `iter_ctx` was allocated above and is kept alive by the weak
+    // handles stored inside it.
+    unsafe {
+      *(*iter_ctx).next_func.borrow_mut() = Some(weak_next);
+      *(*iter_ctx).return_func.borrow_mut() = Some(weak_return);
+    }
 
     let global = scope.get_current_context().global(scope);
     let iter_str = ITERATOR.v8_string(scope).unwrap();
@@ -570,31 +656,30 @@ impl SQLTagStore {
     let names = &[
       NEXT.v8_string(scope).unwrap().into(),
       RETURN.v8_string(scope).unwrap().into(),
-      __STATEMENT_REF.v8_string(scope).unwrap().into(),
     ];
-
-    // Get the cppgc wrapper object to keep the statement alive
-    // We store a reference to the statement object on the iterator to prevent
-    // the GC from collecting it while the iterator is still in use.
-    let statement_ref = if let Some(args) = params {
-      args.this().into()
-    } else {
-      v8::undefined(scope).into()
-    };
-
     let values: &[v8::Local<v8::Value>] =
-      &[next_func.into(), return_func.into(), statement_ref];
+      &[next_func.into(), return_func.into()];
     let iterator = v8::Object::with_prototype_and_properties(
       scope,
       js_iterator_proto,
       names,
       values,
     );
+    // SAFETY: `iter_ctx` was allocated above and remains alive at least until
+    // both generated callback functions are finalized.
+    let store_ref = v8::Local::new(scope, unsafe { &(*iter_ctx).store_ref });
+    let attrs = v8::PropertyAttribute::READ_ONLY
+      | v8::PropertyAttribute::DONT_ENUM
+      | v8::PropertyAttribute::DONT_DELETE;
+    let store_ref_key = __STATEMENT_REF.v8_string(scope).unwrap().into();
+    iterator
+      .define_own_property(scope, store_ref_key, store_ref, attrs)
+      .unwrap();
 
     Ok(iterator)
   }
 
-  #[fast]
+  #[getter]
   #[number]
   fn size(&self) -> u64 {
     self.cache.borrow().size() as u64

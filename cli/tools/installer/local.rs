@@ -12,6 +12,7 @@ use deno_resolver::workspace::WorkspaceResolver;
 use super::InstallReporter;
 use super::print_install_report;
 use crate::args::AddFlags;
+use crate::args::CiFlags;
 use crate::args::Flags;
 use crate::args::InstallFlagsLocal;
 use crate::args::InstallTopLevelFlags;
@@ -66,7 +67,7 @@ pub fn categorize_installed_npm_deps(
 
   for package_json in workspace.package_jsons() {
     let deps = package_json.resolve_local_package_json_deps();
-    for (_k, v) in deps.dependencies.iter() {
+    for (k, v) in deps.dependencies.iter() {
       let Ok(s) = v else {
         continue;
       };
@@ -78,15 +79,21 @@ pub fn categorize_installed_npm_deps(
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           normal_deps.insert(package_req.name.to_string());
         }
-        deno_package_json::PackageJsonDepValue::Workspace(
-          _package_json_dep_workspace_req,
-        ) => {
+        deno_package_json::PackageJsonDepValue::Workspace { .. } => {
           // ignore workspace deps
+        }
+        deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+          if workspace
+            .resolve_catalog_dep(k.as_str(), catalog_name)
+            .is_some()
+          {
+            normal_deps.insert(k.to_string());
+          }
         }
       }
     }
 
-    for (_k, v) in deps.dev_dependencies.iter() {
+    for (k, v) in deps.dev_dependencies.iter() {
       let Ok(s) = v else {
         continue;
       };
@@ -98,10 +105,16 @@ pub fn categorize_installed_npm_deps(
         deno_package_json::PackageJsonDepValue::Req(package_req) => {
           dev_deps.insert(package_req.name.to_string());
         }
-        deno_package_json::PackageJsonDepValue::Workspace(
-          _package_json_dep_workspace_req,
-        ) => {
+        deno_package_json::PackageJsonDepValue::Workspace { .. } => {
           // ignore workspace deps
+        }
+        deno_package_json::PackageJsonDepValue::Catalog(catalog_name) => {
+          if workspace
+            .resolve_catalog_dep(k.as_str(), catalog_name)
+            .is_some()
+          {
+            dev_deps.insert(k.to_string());
+          }
         }
       }
     }
@@ -177,6 +190,43 @@ async fn install_top_level(
   );
 
   Ok(())
+}
+
+pub async fn ci_command(
+  flags: Arc<Flags>,
+  ci_flags: CiFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags.clone());
+  if factory.maybe_lockfile().await?.is_none() {
+    bail!(
+      "deno ci requires a lockfile, but none was found.\n  hint: run `deno install` to create one."
+    );
+  }
+  if let Some(node_modules_dir) = factory.node_modules_dir_path()?
+    && node_modules_dir.exists()
+  {
+    log::info!(
+      "{} {}",
+      deno_terminal::colors::gray("Removing"),
+      node_modules_dir.display()
+    );
+    std::fs::remove_dir_all(node_modules_dir).map_err(|err| {
+      deno_core::anyhow::anyhow!(
+        "failed to remove {}: {err}",
+        node_modules_dir.display()
+      )
+    })?;
+  }
+  drop(factory);
+  install_top_level(
+    flags,
+    InstallTopLevelFlags {
+      lockfile_only: false,
+      production: ci_flags.production,
+      skip_types: ci_flags.skip_types,
+    },
+  )
+  .await
 }
 
 pub fn check_if_installs_a_single_package_globally(

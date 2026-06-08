@@ -2,7 +2,7 @@
 
 [package]
 name = "node_resolver"
-version = "0.79.0"
+version = "0.88.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,7 +22,6 @@ anyhow.workspace = true
 async-trait.workspace = true
 boxed_error.workspace = true
 capacity_builder.workspace = true
-dashmap.workspace = true
 deno_error.workspace = true
 deno_graph = { workspace = true, optional = true }
 deno_maybe_sync.workspace = true

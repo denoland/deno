@@ -29,6 +29,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::StackString;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -49,6 +50,7 @@ use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::CliNpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
+use crate::npm::PackageInfoLoadError;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
 
@@ -62,6 +64,17 @@ pub enum ImportMapKind {
 pub enum DepLocation {
   DenoJson(ConfigFileRc, KeyPath, ImportMapKind),
   PackageJson(PackageJsonRc, KeyPath),
+  /// A `catalog`/`catalogs` entry defined in the workspace root config
+  /// (deno.json or package.json). Unlike the other locations the value is a
+  /// bare version requirement (e.g. `^1.0.0`) rather than a full specifier.
+  /// `key_paths` lists candidate paths to the entry; the first one that
+  /// resolves is updated (package.json may declare catalogs at the top level
+  /// or nested under `workspaces`).
+  Catalog {
+    path: PathBuf,
+    kind: super::ConfigKind,
+    key_paths: Vec<KeyPath>,
+  },
 }
 
 impl DepLocation {
@@ -78,12 +91,14 @@ impl DepLocation {
         ImportMapKind::Outline(path) => Cow::Borrowed(path.as_path()),
       },
       DepLocation::PackageJson(arc, _) => Cow::Borrowed(arc.path.as_ref()),
+      DepLocation::Catalog { path, .. } => Cow::Borrowed(path.as_path()),
     }
   }
   fn config_kind(&self) -> super::ConfigKind {
     match self {
       DepLocation::DenoJson(_, _, _) => super::ConfigKind::DenoJson,
       DepLocation::PackageJson(_, _) => super::ConfigKind::PackageJson,
+      DepLocation::Catalog { kind, .. } => *kind,
     }
   }
 }
@@ -120,6 +135,16 @@ impl std::fmt::Debug for DepLocation {
         let mut debug = f.debug_tuple("PackageJson");
         debug.field(&DebugAdapter(arc)).field(key_path).finish()
       }
+      DepLocation::Catalog {
+        path,
+        kind,
+        key_paths,
+      } => f
+        .debug_struct("Catalog")
+        .field("path", path)
+        .field("kind", kind)
+        .field("key_paths", key_paths)
+        .finish(),
     }
   }
 }
@@ -380,7 +405,8 @@ fn add_deps_from_package_json(
             alias,
           })
         }
-        deno_package_json::PackageJsonDepValue::Workspace(_) => continue,
+        deno_package_json::PackageJsonDepValue::Workspace { .. }
+        | deno_package_json::PackageJsonDepValue::Catalog(_) => continue,
       }
     }
   }
@@ -401,6 +427,120 @@ fn add_deps_from_package_json(
   );
 }
 
+/// Collects dependencies declared in the workspace root `catalog`/`catalogs`
+/// (referenced from members via the `catalog:` protocol). These live in a
+/// single place in the root config, so they are gathered once here rather than
+/// per member reference.
+fn add_deps_from_catalogs(
+  workspace: &Workspace,
+  mut filter: impl DepFilter,
+  deps: &mut Vec<Dep>,
+) {
+  // Mirror `Workspace`'s own resolution: a root package.json catalog takes
+  // precedence over deno.json, and if it's present deno.json catalogs are
+  // ignored entirely.
+  let pkg_json = workspace
+    .root_pkg_json()
+    .filter(|pj| pj.catalog.is_some() || pj.catalogs.is_some());
+
+  let (path, kind, catalog, catalogs, nested) = if let Some(pj) = pkg_json {
+    (
+      pj.path.clone(),
+      super::ConfigKind::PackageJson,
+      pj.catalog.as_ref(),
+      pj.catalogs.as_ref(),
+      // package.json may declare catalogs nested under `workspaces`.
+      true,
+    )
+  } else if let Some(dj) = workspace.root_deno_json() {
+    let Ok(path) = dj.specifier.to_file_path() else {
+      return;
+    };
+    (
+      path,
+      super::ConfigKind::DenoJson,
+      dj.catalog(),
+      dj.catalogs(),
+      false,
+    )
+  } else {
+    return;
+  };
+
+  let mut add_entry = |name: &str,
+                       version_req_str: &str,
+                       key_paths: Vec<KeyPath>| {
+    let version_req = match VersionReq::parse_from_npm(version_req_str) {
+      Ok(version_req) => version_req,
+      Err(err) => {
+        log::warn!(
+          "failed to parse catalog version requirement \"{version_req_str}\" for \"{name}\": {err}"
+        );
+        return;
+      }
+    };
+    let req = PackageReq {
+      name: name.into(),
+      version_req,
+    };
+    // Catalog entries are keyed by the package name itself, so there is no
+    // separate alias.
+    if !filter.should_include(None, &req, DepKind::Npm) {
+      return;
+    }
+    let id = DepId(deps.len());
+    deps.push(Dep {
+      id,
+      kind: DepKind::Npm,
+      location: DepLocation::Catalog {
+        path: path.clone(),
+        kind,
+        key_paths,
+      },
+      req,
+      alias: None,
+    });
+  };
+
+  if let Some(catalog) = catalog {
+    for (name, version_req) in catalog {
+      let mut key_paths = vec![KeyPath::from_parts([
+        KeyPart::String("catalog".into()),
+        KeyPart::String(name.as_str().into()),
+      ])];
+      if nested {
+        key_paths.push(KeyPath::from_parts([
+          KeyPart::String("workspaces".into()),
+          KeyPart::String("catalog".into()),
+          KeyPart::String(name.as_str().into()),
+        ]));
+      }
+      add_entry(name, version_req, key_paths);
+    }
+  }
+
+  if let Some(catalogs) = catalogs {
+    for (catalog_name, entries) in catalogs {
+      for (name, version_req) in entries {
+        let mut key_paths = vec![KeyPath::from_parts([
+          KeyPart::String("catalogs".into()),
+          KeyPart::String(catalog_name.as_str().into()),
+          KeyPart::String(name.as_str().into()),
+        ])];
+        if nested {
+          key_paths.push(KeyPath::from_parts([
+            KeyPart::String("workspaces".into()),
+            KeyPart::String("catalogs".into()),
+            KeyPart::String(catalog_name.as_str().into()),
+            KeyPart::String(name.as_str().into()),
+          ]));
+        }
+        add_entry(name, version_req, key_paths);
+      }
+    }
+  }
+}
+
 fn deps_from_workspace(
   workspace: &Arc<Workspace>,
   dep_filter: impl DepFilter,
@@ -412,6 +552,7 @@ fn deps_from_workspace(
   for package_json in workspace.package_jsons() {
     add_deps_from_package_json(package_json, dep_filter, &mut deps);
   }
+  add_deps_from_catalogs(workspace, dep_filter, &mut deps);
 
   Ok(deps)
 }
@@ -451,6 +592,10 @@ where
 pub struct PackageLatestVersion {
   pub semver_compatible: Option<PackageNv>,
   pub latest: Option<PackageNv>,
+  /// Set when fetching the package's metadata failed (e.g. an unreachable or
+  /// unauthorized private registry). The package is dropped from the outdated
+  /// table, so this is used to warn the user instead of skipping silently.
+  pub fetch_error: Option<Arc<PackageInfoLoadError>>,
 }
 
 pub struct DepManager {
@@ -543,6 +688,11 @@ impl DepManager {
     }
     if let Some(package_json) = workspace_dir.member_pkg_json() {
       add_deps_from_package_json(package_json, dep_filter, &mut deps);
+    }
+    // Catalogs are a workspace-root concept, so only include them when running
+    // in the root directory (the recursive path handles them via the workspace).
+    if workspace_dir.dir_path() == workspace_dir.workspace.root_dir_path() {
+      add_deps_from_catalogs(&workspace_dir.workspace, dep_filter, &mut deps);
     }
 
     Ok(Self::with_deps_args(deps, args))
@@ -737,9 +887,13 @@ impl DepManager {
               .await
               .ok()
               .flatten();
-            let info =
-              self.npm_fetch_resolver.package_info(&semver_req.name).await;
-            let latest = info
+            let info_result = self
+              .npm_fetch_resolver
+              .package_info_with_reason(&semver_req.name)
+              .await;
+            let fetch_error = info_result.as_ref().err().cloned();
+            let latest = info_result
+              .ok()
               .and_then(|info| {
                 let version_resolver =
                   self.npm_version_resolver.get_for_package(&info);
@@ -759,28 +913,17 @@ impl DepManager {
                   return Some(latest_tag.clone());
                 }
 
-                let lower_bound = &semver_compatible.as_ref()?.version;
-                let latest_matches_newest_dep_date =
-                  version_resolver.matches_newest_dependency_date(latest_tag);
-                if latest_matches_newest_dep_date && latest_tag >= lower_bound {
+                // Use the `latest` dist-tag directly, matching npm/pnpm/bun
+                // behavior. Computing the max across all versions is incorrect
+                // when packages publish pre-release versions with commit hashes
+                // (e.g., 1.0.0-beta.9-commit.d91dfb5) because semver considers
+                // alphanumeric pre-release identifiers higher than numeric ones,
+                // so beta.9-commit.hash > beta.32.
+                // Ref: https://github.com/denoland/deno/issues/29647
+                if version_resolver.matches_newest_dependency_date(latest_tag) {
                   Some(latest_tag.clone())
                 } else {
-                  latest_version(
-                    if latest_matches_newest_dep_date {
-                      Some(latest_tag)
-                    } else {
-                      None
-                    },
-                    version_resolver.applicable_version_infos().filter_map(
-                      |version_info| {
-                        if version_info.deprecated.is_none() {
-                          Some(&version_info.version)
-                        } else {
-                          None
-                        }
-                      },
-                    ),
-                  )
+                  None
                 }
               })
               .map(|version| PackageNv {
@@ -790,6 +933,7 @@ impl DepManager {
             PackageLatestVersion {
               latest,
               semver_compatible,
+              fetch_error,
             }
           }
           .boxed_local(),
@@ -804,27 +948,38 @@ impl DepManager {
               .await
               .ok()
               .flatten();
-            let info =
-              self.jsr_fetch_resolver.package_info(&semver_req.name).await;
-            let latest = info
+            let info_result = self
+              .jsr_fetch_resolver
+              .package_info_with_reason(&semver_req.name)
+              .await;
+            let fetch_error = info_result.as_ref().err().cloned();
+            let latest = info_result
+              .ok()
               .and_then(|info| {
                 let version_resolver = self
                   .jsr_fetch_resolver
                   .version_resolver_for_package(&semver_req.name, &info);
                 let lower_bound = &semver_compatible.as_ref()?.version;
-                latest_version(
-                  Some(lower_bound),
-                  info.versions.iter().filter_map(|(version, version_info)| {
-                    if !version_info.yanked
-                      && version_resolver
-                        .matches_newest_dependency_date(version_info)
-                    {
-                      Some(version)
-                    } else {
-                      None
+                {
+                  let mut best: Option<&Version> = Some(lower_bound);
+                  for version in info.versions.iter().filter_map(
+                    |(version, version_info)| {
+                      if !version_info.yanked
+                        && version_resolver
+                          .matches_newest_dependency_date(version_info)
+                      {
+                        Some(version)
+                      } else {
+                        None
+                      }
+                    },
+                  ) {
+                    if best.is_none_or(|b| version > b) {
+                      best = Some(version);
                     }
-                  }),
-                )
+                  }
+                  best.cloned()
+                }
               })
               .map(|version| PackageNv {
                 name: semver_req.name.clone(),
@@ -833,6 +988,7 @@ impl DepManager {
             PackageLatestVersion {
               latest,
               semver_compatible,
+              fetch_error,
             }
           }
           .boxed_local(),
@@ -876,6 +1032,10 @@ impl DepManager {
 
   pub fn get_dep(&self, id: DepId) -> &Dep {
     &self.deps[id.0]
+  }
+
+  pub fn deps_with_ids(&self) -> impl Iterator<Item = (DepId, &Dep)> {
+    self.deps.iter().enumerate().map(|(i, dep)| (DepId(i), dep))
   }
 
   pub fn update_dep(&mut self, dep_id: DepId, new_version_req: VersionReq) {
@@ -971,6 +1131,21 @@ impl DepManager {
               property
                 .set_value(jsonc_parser::cst::CstInputValue::String(new_value));
             }
+            DepLocation::Catalog {
+              path, key_paths, ..
+            } => {
+              let updater =
+                get_or_create_updater(&mut config_updaters, &dep.location)?;
+              if !updater
+                .update_catalog_entry(key_paths, &version_req.to_string())
+              {
+                log::warn!(
+                  "failed to find catalog entry for \"{}\" in {}",
+                  dep.req.name,
+                  path.display()
+                );
+              }
+            }
           }
         }
       }
@@ -980,6 +1155,35 @@ impl DepManager {
       updater.commit()?;
     }
 
+    Ok(())
+  }
+
+  /// Removes the lockfile specifier entries for the given dependencies and
+  /// writes the lockfile to disk. The next install will re-resolve the
+  /// missing entries to the latest version that matches each dependency's
+  /// existing version requirement, bumping the lockfile within ranges
+  /// without modifying `deno.json`/`package.json`.
+  pub fn invalidate_lockfile_for_update(
+    &self,
+    dep_ids: impl IntoIterator<Item = DepId>,
+  ) -> Result<(), AnyError> {
+    let Some(lockfile_lock) = &self.lockfile else {
+      return Ok(());
+    };
+    {
+      let mut lockfile = lockfile_lock.lock();
+      for dep_id in dep_ids {
+        let dep = &self.deps[dep_id.0];
+        let req = match dep.kind {
+          DepKind::Npm => JsrDepPackageReq::npm(dep.req.clone()),
+          DepKind::Jsr => JsrDepPackageReq::jsr(dep.req.clone()),
+        };
+        if lockfile.content.packages.specifiers.remove(&req).is_some() {
+          lockfile.has_content_changed = true;
+        }
+      }
+    }
+    lockfile_lock.write_if_changed()?;
     Ok(())
   }
 }
@@ -1029,19 +1233,4 @@ fn parse_req_reference(
     DepKind::Npm => NpmPackageReqReference::from_str(input)?.into_inner(),
     DepKind::Jsr => JsrPackageReqReference::from_str(input)?.into_inner(),
   })
-}
-
-fn latest_version<'a>(
-  start: Option<&Version>,
-  versions: impl IntoIterator<Item = &'a Version>,
-) -> Option<Version> {
-  let mut best = start;
-  for version in versions {
-    match best {
-      Some(best_version) if version > best_version => best = Some(version),
-      None => best = Some(version),
-      _ => {}
-    }
-  }
-  best.cloned()
 }

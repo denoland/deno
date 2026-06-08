@@ -19,7 +19,11 @@ use std::sync::Arc;
 use anyhow::Error as AnyError;
 use async_trait::async_trait;
 use deno_error::JsErrorBox;
+use deno_npm::NpmPackageExtraInfo;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmPackageIdPeerDependencies;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmResolutionPackageSystemInfo;
 use deno_npm::NpmSystemInfo;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_cache::NpmCache;
@@ -66,6 +70,7 @@ use crate::lifecycle_scripts::LifecycleScriptsExecutorOptions;
 use crate::lifecycle_scripts::LifecycleScriptsStrategy;
 use crate::lifecycle_scripts::has_lifecycle_scripts;
 use crate::lifecycle_scripts::is_running_lifecycle_script;
+use crate::package_json::InstallWorkspacePkgDep;
 use crate::package_json::NpmInstallDepsProvider;
 use crate::process_state::NpmProcessState;
 
@@ -135,9 +140,9 @@ impl<
   }
 }
 
-struct InitializingGuard {
-  nv: PackageNv,
-  install_reporter: Arc<dyn crate::InstallReporter>,
+pub(crate) struct InitializingGuard {
+  pub(crate) nv: PackageNv,
+  pub(crate) install_reporter: Arc<dyn crate::InstallReporter>,
 }
 
 impl Drop for InitializingGuard {
@@ -185,8 +190,17 @@ impl<
     &self,
     snapshot: &NpmResolutionSnapshot,
   ) -> Result<(), SyncResolutionWithFsError> {
-    if snapshot.is_empty()
+    let has_no_packages = snapshot.is_empty()
       && self.npm_install_deps_provider.local_pkgs().is_empty()
+      && !self
+        .npm_install_deps_provider
+        .workspace_pkgs()
+        .iter()
+        .any(|pkg| !pkg.scripts.is_empty());
+    let deno_local_registry_dir = self.root_node_modules_path.join(".deno");
+    if has_no_packages
+      && (!self.clean_on_install
+        || !self.sys.fs_exists_no_err(&deno_local_registry_dir))
     {
       return Ok(()); // don't create the directory
     }
@@ -198,7 +212,6 @@ impl<
     }
 
     let sys = self.sys.with_paths_in_errors();
-    let deno_local_registry_dir = self.root_node_modules_path.join(".deno");
     let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
     sys.fs_create_dir_all(&deno_node_modules_dir)?;
     let bin_node_modules_dir_path = self.root_node_modules_path.join(".bin");
@@ -240,6 +253,8 @@ impl<
     //
     // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
     // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
+    let workspace_lifecycle_packages =
+      self.resolve_workspace_lifecycle_packages(snapshot)?;
     let mut cache_futures = FuturesUnordered::new();
     let mut newest_packages_by_name: HashMap<
       &StackString,
@@ -267,6 +282,17 @@ impl<
     let extra_info_provider = Arc::new(CachedNpmPackageExtraInfoProvider::new(
       self.npm_package_extra_info_provider.clone(),
     ));
+
+    // Map a package to the workspace member directory that declares it as a
+    // direct dependency, so its lifecycle scripts run with `INIT_CWD` pointing
+    // at that member rather than the workspace root.
+    let lifecycle_script_init_cwds: Rc<HashMap<NpmPackageId, Vec<PathBuf>>> =
+      Rc::new(crate::lifecycle_scripts::member_dep_init_cwds(
+        &self.npm_install_deps_provider,
+        snapshot,
+        self.root_node_modules_path.parent(),
+      ));
+
     for package in &package_partitions.packages {
       if let Some(current_pkg) =
         newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -339,6 +365,7 @@ impl<
           let lifecycle_scripts = lifecycle_scripts.clone();
           let bin_entries_to_setup = bin_entries.clone();
           let install_reporter = self.install_reporter.clone();
+          let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
 
           cache_futures.push(
             async move {
@@ -428,10 +455,15 @@ impl<
               }
 
               if package.has_scripts {
+                let init_cwds = lifecycle_script_init_cwds
+                  .get(&package.id)
+                  .cloned()
+                  .unwrap_or_default();
                 lifecycle_scripts.borrow_mut().add(
                   package,
                   &extra,
                   package_path.into(),
+                  init_cwds,
                 );
               }
 
@@ -459,6 +491,7 @@ impl<
           let bin_entries_to_setup = bin_entries.clone();
           let lifecycle_scripts = lifecycle_scripts.clone();
           let extra_info_provider = extra_info_provider.clone();
+          let lifecycle_script_init_cwds = lifecycle_script_init_cwds.clone();
           let sub_node_modules = folder_path.join("node_modules");
           let package_path = join_package_name(
             Cow::Owned(sub_node_modules),
@@ -484,10 +517,15 @@ impl<
               }
 
               if package.has_scripts {
+                let init_cwds = lifecycle_script_init_cwds
+                  .get(&package.id)
+                  .cloned()
+                  .unwrap_or_default();
                 lifecycle_scripts.borrow_mut().add(
                   package,
                   &extra,
                   package_path.into(),
+                  init_cwds,
                 );
               }
 
@@ -595,6 +633,7 @@ impl<
     while let Some(result) = cache_futures.next().await {
       result?; // surface the first error
     }
+    drop(cache_futures);
 
     // 5. Symlink all the dependencies into the .deno directory.
     //
@@ -717,8 +756,7 @@ impl<
           )?;
         } else {
           // symlink the package into `node_modules/<alias>`
-          if setup_cache
-            .insert_root_symlink(&remote_pkg.id.nv.name, &target_folder_name)
+          if setup_cache.insert_root_symlink(remote_alias, &target_folder_name)
           {
             symlink_package_dir(
               sys.as_ref(),
@@ -861,6 +899,22 @@ impl<
       }
     }
 
+    for package in &workspace_lifecycle_packages {
+      sys.fs_create_dir_all(local_node_modules_package_folder(
+        &deno_local_registry_dir,
+        &package.package,
+      ))?;
+      lifecycle_scripts.borrow_mut().add(
+        &package.package,
+        &NpmPackageExtraInfo {
+          scripts: package.scripts.clone(),
+          ..Default::default()
+        },
+        Cow::Borrowed(&package.package_path),
+        Vec::new(),
+      );
+    }
+
     {
       let packages_with_deprecation_warnings =
         packages_with_deprecation_warnings.lock();
@@ -896,7 +950,7 @@ impl<
       }
     }
 
-    let lifecycle_scripts = std::mem::replace(
+    let lifecycle_scripts_to_run = std::mem::replace(
       &mut *lifecycle_scripts.borrow_mut(),
       LifecycleScripts::new(
         sys.as_ref(),
@@ -908,13 +962,20 @@ impl<
         },
       ),
     );
-    lifecycle_scripts.warn_not_run_scripts()?;
+    drop(lifecycle_scripts);
+    lifecycle_scripts_to_run.warn_not_run_scripts()?;
 
-    let packages_with_scripts = lifecycle_scripts.packages_with_scripts();
+    let packages_with_scripts =
+      lifecycle_scripts_to_run.packages_with_scripts();
     if !packages_with_scripts.is_empty() {
+      let additional_packages = workspace_lifecycle_packages
+        .iter()
+        .map(|package| &package.package)
+        .collect::<Vec<_>>();
       let process_state = NpmProcessState::new_local(
         snapshot.as_valid_serialized(),
         &self.root_node_modules_path,
+        crate::process_state::NpmProcessStateLinkerMode::Isolated,
       )
       .as_serialized();
 
@@ -933,6 +994,7 @@ impl<
           },
           snapshot,
           system_packages: &package_partitions.packages,
+          additional_packages: &additional_packages,
           packages_with_scripts,
           extra_info_provider: &extra_info_provider,
         })
@@ -945,6 +1007,85 @@ impl<
     drop(pb_clear_guard);
 
     Ok(())
+  }
+
+  fn resolve_workspace_lifecycle_packages(
+    &self,
+    snapshot: &NpmResolutionSnapshot,
+  ) -> Result<Vec<WorkspaceLifecyclePackage>, JsErrorBox> {
+    let workspace_pkgs = self.npm_install_deps_provider.workspace_pkgs();
+    let workspace_pkg_ids = workspace_pkgs
+      .iter()
+      .map(|pkg| {
+        (
+          pkg.nv.clone(),
+          NpmPackageId {
+            nv: pkg.nv.clone(),
+            peer_dependencies: NpmPackageIdPeerDependencies::from([]),
+          },
+        )
+      })
+      .collect::<HashMap<_, _>>();
+    let mut packages = Vec::with_capacity(workspace_pkgs.len());
+    for workspace_pkg in workspace_pkgs {
+      let mut dependencies = HashMap::with_capacity(workspace_pkg.deps.len());
+      for dep in &workspace_pkg.deps {
+        match dep {
+          InstallWorkspacePkgDep::Remote { alias, req } => {
+            if let Some(id) = resolve_remote_pkg_id(snapshot, req) {
+              dependencies.insert(alias.clone(), id);
+            }
+          }
+          InstallWorkspacePkgDep::Workspace { alias, nv } => {
+            if let Some(id) = workspace_pkg_ids.get(nv) {
+              dependencies.insert(alias.clone(), id.clone());
+            }
+          }
+        }
+      }
+      let id = workspace_pkg_ids
+        .get(&workspace_pkg.nv)
+        .expect("workspace package id should exist")
+        .clone();
+      packages.push(WorkspaceLifecyclePackage {
+        package: NpmResolutionPackage {
+          id,
+          copy_index: 0,
+          system: NpmResolutionPackageSystemInfo::default(),
+          dist: None,
+          dependencies,
+          optional_dependencies: Default::default(),
+          optional_peer_dependencies: Default::default(),
+          extra: Some(NpmPackageExtraInfo {
+            scripts: workspace_pkg.scripts.clone(),
+            ..Default::default()
+          }),
+          is_deprecated: false,
+          has_bin: false,
+          has_scripts: !workspace_pkg.scripts.is_empty(),
+        },
+        package_path: workspace_pkg.target_dir.clone(),
+        scripts: workspace_pkg.scripts.clone(),
+      });
+    }
+    Ok(packages)
+  }
+}
+
+struct WorkspaceLifecyclePackage {
+  package: NpmResolutionPackage,
+  package_path: PathBuf,
+  scripts: HashMap<deno_semver::SmallStackString, String>,
+}
+
+fn resolve_remote_pkg_id(
+  snapshot: &NpmResolutionSnapshot,
+  req: &deno_semver::package::PackageReq,
+) -> Option<NpmPackageId> {
+  match snapshot.resolve_pkg_from_pkg_req(req) {
+    Ok(pkg) => Some(pkg.id.clone()),
+    Err(_) if req.version_req.tag().is_some() => None,
+    Err(_) => snapshot.resolve_best_package_id(&req.name, &req.version_req),
   }
 }
 
@@ -984,7 +1125,7 @@ pub enum SyncResolutionWithFsError {
   Other(#[from] JsErrorBox),
 }
 
-fn clone_dir_recursive_except_node_modules_child(
+pub(crate) fn clone_dir_recursive_except_node_modules_child(
   sys: &impl CloneDirRecursiveSys,
   from: &Path,
   to: &Path,
@@ -1008,8 +1149,22 @@ fn clone_dir_recursive_except_node_modules_child(
         &new_to,
       )?;
     } else if file_type.is_file() {
-      hard_link_file(sys.as_ref(), &new_from, &new_to)
-        .or_else(|_| sys.fs_copy(&new_from, &new_to).map(|_| ()))?;
+      hard_link_file(sys.as_ref(), &new_from, &new_to).or_else(|_| {
+        sys
+          .fs_copy(&new_from, &new_to)
+          .or_else(|err| {
+            if deno_npm_cache::is_etxtbsy(&err) {
+              // The destination is a hardlink to a currently-executing
+              // binary (ETXTBSY). Remove it to break the hardlink, then
+              // retry the copy.
+              let _ = sys.fs_remove_file(&new_to);
+              sys.fs_copy(&new_from, &new_to)
+            } else {
+              Err(err)
+            }
+          })
+          .map(|_| ())
+      })?;
     }
   }
   Ok(())
@@ -1302,9 +1457,11 @@ impl<TSys: NpmCacheSys> LocalSetupCache<TSys> {
   }
 }
 
-fn symlink_package_dir(
+pub(crate) fn symlink_package_dir(
   sys: &(
      impl sys_traits::FsSymlinkDir
+     + sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
      + sys_traits::FsRemoveDirAll
      + sys_traits::FsCreateDirAll
      + sys_traits::FsCreateJunction
@@ -1320,7 +1477,7 @@ fn symlink_package_dir(
   }
 
   // need to delete the previous symlink before creating a new one
-  let _ignore = sys.fs_remove_dir_all(new_path);
+  let _ignore = remove_existing_entry(sys.as_ref(), new_path);
 
   let old_path_relative = relative_path(new_parent, old_path)
     .unwrap_or_else(|| old_path.to_path_buf());
@@ -1341,8 +1498,85 @@ fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
   pathdiff::diff_paths(to, from)
 }
 
+/// Removes whatever currently exists at `path` (file, directory, symlink, or
+/// junction) so a fresh symlink/junction can be created in its place. A stale
+/// entry can be left behind when a `node_modules` directory is reused across
+/// runs, for example when it's restored from a CI cache.
+fn remove_existing_entry(
+  sys: &(
+     impl sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
+     + sys_traits::FsRemoveDirAll
+   ),
+  path: &Path,
+) -> Result<(), std::io::Error> {
+  let is_not_found =
+    |err: &std::io::Error| err.kind() == std::io::ErrorKind::NotFound;
+  // First try the syscall appropriate for the entry's actual type. Its error
+  // is discarded: if it fails we fall through to the recursive removal below
+  // and surface that error instead, since it's the last and most complete
+  // attempt.
+  if sys_traits::impls::is_windows() {
+    // On Windows a directory symlink or junction must be removed with
+    // RemoveDirectory rather than DeleteFile, and `remove_dir_all` may fail on
+    // a dangling directory symlink, so remove the link itself first.
+    match sys.fs_remove_dir(path) {
+      Ok(()) => return Ok(()),
+      Err(err) if is_not_found(&err) => return Ok(()),
+      Err(_) => {}
+    }
+    // It may instead be a file symlink, which needs DeleteFile.
+    match sys.fs_remove_file(path) {
+      Ok(()) => return Ok(()),
+      Err(err) if is_not_found(&err) => return Ok(()),
+      Err(_) => {}
+    }
+  } else {
+    // On Unix unlinking a symlink does not follow it.
+    match sys.fs_remove_file(path) {
+      Ok(()) => return Ok(()),
+      Err(err) if is_not_found(&err) => return Ok(()),
+      Err(_) => {}
+    }
+  }
+  // Fall back to removing a real (possibly non-empty) directory, surfacing
+  // this error if even the recursive removal fails.
+  match sys.fs_remove_dir_all(path) {
+    Ok(()) => Ok(()),
+    Err(err) if is_not_found(&err) => Ok(()),
+    Err(err) => Err(err),
+  }
+}
+
+/// Runs `create`, and if it fails because something already exists at `path`,
+/// removes that entry and tries once more. This makes creating a symlink or
+/// junction resilient to a stale entry left over from a previous run.
+fn create_retry_if_exists(
+  sys: &(
+     impl sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
+     + sys_traits::FsRemoveDirAll
+   ),
+  path: &Path,
+  mut create: impl FnMut() -> Result<(), std::io::Error>,
+) -> Result<(), std::io::Error> {
+  match create() {
+    Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+      remove_existing_entry(sys, path)?;
+      create()
+    }
+    result => result,
+  }
+}
+
 fn junction_or_symlink_dir(
-  sys: &(impl sys_traits::FsSymlinkDir + sys_traits::FsCreateJunction),
+  sys: &(
+     impl sys_traits::FsSymlinkDir
+     + sys_traits::FsCreateJunction
+     + sys_traits::FsRemoveDir
+     + sys_traits::FsRemoveFile
+     + sys_traits::FsRemoveDirAll
+   ),
   old_path_relative: &Path,
   old_path: &Path,
   new_path: &Path,
@@ -1352,21 +1586,29 @@ fn junction_or_symlink_dir(
 
   let sys = sys.with_paths_in_errors();
 
+  // Use junctions because they're supported on ntfs file systems without
+  // needing to elevate privileges on Windows.
+  // Note: junctions don't support relative paths, so we need to use the
+  // absolute path here.
+  let create_junction = || {
+    create_retry_if_exists(sys.as_ref(), new_path, || {
+      sys.fs_create_junction(old_path, new_path)
+    })
+  };
+
   if USE_JUNCTIONS.load(std::sync::atomic::Ordering::Relaxed) {
-    // Use junctions because they're supported on ntfs file systems without
-    // needing to elevate privileges on Windows.
-    // Note: junctions don't support relative paths, so we need to use the
-    // absolute path here.
-    return sys.fs_create_junction(old_path, new_path);
+    return create_junction();
   }
 
-  match symlink_dir(sys.as_ref(), old_path_relative, new_path) {
+  match create_retry_if_exists(sys.as_ref(), new_path, || {
+    symlink_dir(sys.as_ref(), old_path_relative, new_path)
+  }) {
     Ok(()) => Ok(()),
     Err(symlink_err)
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      sys.fs_create_junction(old_path, new_path)
+      create_junction()
     }
     Err(symlink_err) => {
       log::warn!(
@@ -1374,7 +1616,7 @@ fn junction_or_symlink_dir(
         colors::yellow("Warning")
       );
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      sys.fs_create_junction(old_path, new_path)
+      create_junction()
     }
   }
 }
@@ -1403,7 +1645,10 @@ fn create_initialized_file<F: sys_traits::boxed::FsOpenBoxed + ?Sized>(
     .map(|_| ())
 }
 
-fn join_package_name(mut path: Cow<'_, Path>, package_name: &str) -> PathBuf {
+pub(crate) fn join_package_name(
+  mut path: Cow<'_, Path>,
+  package_name: &str,
+) -> PathBuf {
   // ensure backslashes are used on windows
   for part in package_name.split('/') {
     match path {
@@ -1477,17 +1722,6 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     })
     .collect::<HashSet<_>>();
 
-  // Helper closure for removing symlinks cross-platform
-  let remove_symlink = |path: &Path| -> std::io::Result<()> {
-    if sys_traits::impls::is_windows() {
-      sys
-        .fs_remove_dir(path)
-        .or_else(|_| sys.fs_remove_file(path))
-    } else {
-      sys.fs_remove_file(path)
-    }
-  };
-
   // Clean up .deno/node_modules/* symlinks for packages no longer needed
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
   let _ignore = remove_unused_node_modules_symlinks(
@@ -1496,7 +1730,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     &keep_names,
     &mut |name, path| {
       setup_cache.remove_deno_symlink(name);
-      remove_symlink(path)
+      remove_existing_entry(sys, path)
     },
   );
 
@@ -1507,7 +1741,7 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
     &keep_names,
     &mut |name, path| {
       setup_cache.remove_root_symlink(name);
-      remove_symlink(path)
+      remove_existing_entry(sys, path)
     },
   );
 
@@ -1532,11 +1766,17 @@ fn cleanup_unused_packages<TSys: LocalNpmInstallSys>(
 pub fn node_modules_package_actual_dir_to_name(
   path: &Path,
 ) -> Option<Cow<'_, str>> {
-  path
-    .parent()?
-    .parent()?
-    .file_name()
-    .map(|name| name.to_string_lossy())
+  let package_folder = path.parent()?.parent()?;
+  if package_folder.file_name()? == std::ffi::OsStr::new("node_modules") {
+    package_folder
+      .parent()?
+      .file_name()
+      .map(|name| name.to_string_lossy())
+  } else {
+    package_folder
+      .file_name()
+      .map(|name| name.to_string_lossy())
+  }
 }
 
 /// Remove symlinks from a node_modules directory where the target package
@@ -1566,6 +1806,22 @@ pub fn remove_unused_node_modules_symlinks<TSys: LocalNpmInstallSys>(
       {
         on_remove(&name, &entry_path)?;
       }
+    } else if entry.file_name().to_string_lossy().starts_with('@')
+      && entry.file_type().map(|t| t.is_dir()).unwrap_or(false)
+    {
+      remove_unused_node_modules_symlinks(
+        sys.as_ref(),
+        &entry_path,
+        keep_names,
+        on_remove,
+      )?;
+      if sys
+        .fs_read_dir(&entry_path)
+        .map(|mut entries| entries.next().is_none())
+        .unwrap_or(false)
+      {
+        let _ignore = sys.fs_remove_dir(&entry_path);
+      }
     }
   }
   Ok(())
@@ -1573,6 +1829,10 @@ pub fn remove_unused_node_modules_symlinks<TSys: LocalNpmInstallSys>(
 
 #[cfg(test)]
 mod test {
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsMetadata;
+  use sys_traits::FsRead;
+  use sys_traits::FsWrite;
   use test_util::TempDir;
 
   use super::*;
@@ -1610,6 +1870,97 @@ mod test {
       cache
         .with_dep("package-a")
         .insert("package-b", "package-b@1.0.0")
+    );
+  }
+
+  #[test]
+  fn test_symlink_package_dir_replaces_existing_link() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let root = temp_dir.path().to_path_buf();
+
+    let target_a = root.join("target_a");
+    let target_b = root.join("target_b");
+    sys.fs_create_dir_all(&target_a).unwrap();
+    sys.fs_create_dir_all(&target_b).unwrap();
+    sys.fs_write(target_a.join("marker.txt"), "a").unwrap();
+    sys.fs_write(target_b.join("marker.txt"), "b").unwrap();
+
+    let node_modules = root.join("node_modules");
+    sys.fs_create_dir_all(&node_modules).unwrap();
+    let link = node_modules.join("pkg");
+
+    // First the link points at target_a.
+    symlink_package_dir(&sys, &target_a, &link).unwrap();
+    assert_eq!(sys.fs_read_to_string(link.join("marker.txt")).unwrap(), "a");
+
+    // Re-creating over the pre-existing link must succeed (this is what
+    // regressed on Windows: a stale directory symlink/junction has to be
+    // removed before the new one can be created) and now resolve to target_b.
+    symlink_package_dir(&sys, &target_b, &link).unwrap();
+    assert_eq!(sys.fs_read_to_string(link.join("marker.txt")).unwrap(), "b");
+  }
+
+  #[test]
+  fn test_create_retry_if_exists_clears_stale_entry() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let path = temp_dir.path().join("entry").to_path_buf();
+
+    // A stale entry is sitting where we want to create something new.
+    sys.fs_create_dir_all(&path).unwrap();
+
+    let mut attempts = 0;
+    let result = create_retry_if_exists(&sys, &path, || {
+      attempts += 1;
+      if attempts == 1 {
+        // Simulate creation failing because the stale entry is in the way.
+        Err(std::io::Error::new(
+          std::io::ErrorKind::AlreadyExists,
+          "already exists",
+        ))
+      } else {
+        Ok(())
+      }
+    });
+
+    assert!(result.is_ok());
+    assert_eq!(attempts, 2);
+    // The stale entry must have been removed before the retry.
+    assert!(!sys.fs_exists(&path).unwrap());
+  }
+
+  #[test]
+  fn test_create_retry_if_exists_passes_through_success() {
+    let temp_dir = TempDir::new();
+    let sys = sys_traits::impls::RealSys;
+    let path = temp_dir.path().join("entry").to_path_buf();
+
+    let mut attempts = 0;
+    let result = create_retry_if_exists(&sys, &path, || {
+      attempts += 1;
+      Ok(())
+    });
+
+    assert!(result.is_ok());
+    assert_eq!(attempts, 1);
+  }
+
+  #[test]
+  fn test_node_modules_package_actual_dir_to_name() {
+    assert_eq!(
+      node_modules_package_actual_dir_to_name(Path::new(
+        ".deno/chalk@5.0.1/node_modules/chalk"
+      ))
+      .as_deref(),
+      Some("chalk@5.0.1")
+    );
+    assert_eq!(
+      node_modules_package_actual_dir_to_name(Path::new(
+        ".deno/@denotest+add@1.0.0/node_modules/@denotest/add"
+      ))
+      .as_deref(),
+      Some("@denotest+add@1.0.0")
     );
   }
 }

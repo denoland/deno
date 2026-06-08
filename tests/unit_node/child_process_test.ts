@@ -2,7 +2,6 @@
 
 import CP from "node:child_process";
 import { Buffer } from "node:buffer";
-import * as fs from "node:fs";
 import {
   assert,
   assertEquals,
@@ -655,6 +654,43 @@ Deno.test({
     await pStderr.promise;
     assert(cp.killed);
     assertEquals(cp.signalCode, "SIGIOT");
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] AbortSignal aborts the child and emits AbortError",
+  async fn() {
+    const ac = new AbortController();
+    const cp = spawn(
+      Deno.execPath(),
+      ["eval", "setInterval(() => {}, 1000)"],
+      { signal: ac.signal },
+    );
+    const error = withTimeout<Error>();
+    const exit = withTimeout<void>();
+    cp.on("error", (err) => error.resolve(err));
+    cp.on("exit", () => exit.resolve());
+    cp.on("spawn", () => ac.abort());
+    const err = await error.promise;
+    assertEquals(err.name, "AbortError");
+    await exit.promise;
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process] kill() on an exited process returns false and does not throw",
+  async fn() {
+    // Regression for https://github.com/denoland/deno/issues/28882 — killing
+    // a process that has already exited must not surface a spurious error
+    // (PermissionError on Windows / ESRCH on Unix), it should just return
+    // false like Node.js does.
+    const cp = spawn(Deno.execPath(), ["eval", "Deno.exit(0)"]);
+    const exit = withTimeout<void>();
+    cp.on("exit", () => exit.resolve());
+    await exit.promise;
+    assertEquals(cp.kill("SIGTERM"), false);
   },
 });
 
@@ -1346,34 +1382,52 @@ Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
   }
 });
 
+Deno.test(function spawnSyncShellMetacharactersEscaped() {
+  // Shell metacharacters in args should be escaped, not interpreted.
+  // On Unix, & would launch a background process; on Windows, it
+  // would chain a second command. Either way echo should print
+  // the literal string.
+  const ret = spawnSync(
+    Deno.execPath(),
+    ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e"],
+    { shell: true, encoding: "utf-8" },
+  );
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.trim(), "a&b|c<d>e");
+});
+
+Deno.test(function spawnSyncReturnsPid() {
+  const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
+  assertEquals(ret.status, 0);
+  assertEquals(typeof ret.pid, "number");
+  assert(ret.pid > 0);
+});
+
 Deno.test({
-  name: "[node/child_process spawn] supports numeric fd in stdio array",
-  // On Windows, Deno's fs.openSync returns a resource ID, not a CRT file
-  // descriptor, so libc::get_osfhandle receives an invalid fd and crashes.
+  name: "spawnWithNumericFdInStdioArray",
   ignore: Deno.build.os === "windows",
   async fn() {
-    const tmpFile = await Deno.makeTempFile();
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
     try {
-      const fd = fs.openSync(tmpFile, "r");
-      try {
-        // Passing a numeric fd at stdio index 3 should not throw.
-        // Previously this caused: serde_v8 error: invalid type; expected: enum, got: Number
-        const child = spawn(Deno.execPath(), [
-          "eval",
-          "/* no-op */",
-        ], {
-          stdio: ["ignore", "ignore", "ignore", fd],
-        });
-
-        const deferred = withTimeout<number>();
-        child.on("exit", (code: number) => deferred.resolve(code));
-        const code = await deferred.promise;
-        assertEquals(code, 0);
-      } finally {
-        fs.closeSync(fd);
-      }
+      const fd = fs.openSync(tmpFile, "w");
+      const child = spawn("/bin/sh", [
+        "-c",
+        "echo hello from child >&3",
+      ], {
+        stdio: ["ignore", "pipe", "pipe", fd],
+      });
+      const { promise, resolve } = Promise.withResolvers<number>();
+      child.on("close", (code: number) => {
+        resolve(code);
+      });
+      const code = await promise;
+      fs.closeSync(fd);
+      assertEquals(code, 0);
+      const content = Deno.readTextFileSync(tmpFile);
+      assertEquals(content, "hello from child\n");
     } finally {
-      await Deno.remove(tmpFile);
+      Deno.removeSync(tmpFile);
     }
   },
 });

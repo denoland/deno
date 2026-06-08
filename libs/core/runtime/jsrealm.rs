@@ -124,7 +124,7 @@ pub struct ContextState {
   pub(crate) external_ops_tracker: ExternalOpsTracker,
   pub(crate) ext_import_meta_proto: RefCell<Option<v8::Global<v8::Object>>>,
   /// Phase-specific state for the libuv-style event loop.
-  pub(crate) event_loop_phases: RefCell<EventLoopPhases>,
+  pub event_loop_phases: RefCell<EventLoopPhases>,
   /// Pointer to the `UvLoopInner` for the libuv compat layer.
   /// Set via [`JsRuntime::register_uv_loop`] when a `uv_loop_t` is
   /// associated with this context.
@@ -580,53 +580,6 @@ impl JsRealm {
     count.set(count.get() + 1)
   }
 
-  /// Asynchronously load specified module and all of its dependencies.
-  ///
-  /// The module will be marked as "main", and because of that
-  /// "import.meta.main" will return true when checked inside that module.
-  ///
-  /// User must call [`ModuleMap::mod_evaluate`] with returned `ModuleId`
-  /// manually after load is finished.
-  pub(crate) async fn load_main_es_module_from_code(
-    &self,
-    isolate: &mut v8::Isolate,
-    specifier: &ModuleSpecifier,
-    code: Option<ModuleCodeString>,
-  ) -> Result<ModuleId, CoreError> {
-    let module_map_rc = self.0.module_map();
-    if let Some(code) = code {
-      context_scope!(scope, self, isolate);
-      // true for main module
-      module_map_rc
-        .new_es_module(
-          scope,
-          true,
-          specifier.to_string().into(),
-          code,
-          false,
-          None,
-        )
-        .map_err(|e| e.into_error(scope, false, false))?;
-    }
-
-    let root_id =
-      RecursiveModuleLoad::main(specifier.to_string(), module_map_rc.clone())
-        .await?
-        .run_to_completion(|load, request, source| {
-          context_scope!(scope, self, isolate);
-          load
-            .register_and_recurse(scope, request, source)
-            .map_err(|e| e.into_error(scope, false, false))
-        })
-        .await?;
-    context_scope!(scope, self, isolate);
-    self.instantiate_module(scope, root_id).map_err(|e| {
-      let exception = v8::Local::new(scope, e);
-      exception_to_err(scope, exception, false, false)
-    })?;
-    Ok(root_id)
-  }
-
   /// Asynchronously load specified ES module and all of its dependencies.
   ///
   /// This method is meant to be used when loading some utility code that
@@ -660,11 +613,16 @@ impl JsRealm {
       None,
     )
     .await?
-    .run_to_completion(|load, request, source| {
+    .run_to_completion(|load, step| {
       context_scope!(scope, self, isolate);
-      load
-        .register_and_recurse(scope, request, source)
-        .map_err(|e| e.into_error(scope, false, false))
+      match step {
+        crate::modules::recursive_load::RegisterStep::Register {
+          request,
+          source,
+        } => load
+          .register_and_recurse(scope, request, source)
+          .map_err(|e| e.into_error(scope, false, false)),
+      }
     })
     .await?;
     context_scope!(scope, self, isolate);

@@ -1,8 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 //
-pub mod go;
 mod js;
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -42,7 +42,6 @@ use crate::args::CompilerOptions;
 use crate::args::TypeCheckMode;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
-use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
@@ -54,7 +53,6 @@ pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
-pub use self::go::ensure_tsgo;
 pub use self::js::TscConstants;
 
 pub fn get_types_declaration_file_text() -> String {
@@ -284,6 +282,7 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.es2022.intl.d.ts"),
     maybe_compressed_lib!("lib.es2022.object.d.ts"),
     maybe_compressed_lib!("lib.es2022.regexp.d.ts"),
+    maybe_compressed_lib!("lib.es2022.sharedmemory.d.ts"),
     maybe_compressed_lib!("lib.es2022.string.d.ts"),
     maybe_compressed_lib!("lib.es2023.array.d.ts"),
     maybe_compressed_lib!("lib.es2023.collection.d.ts"),
@@ -316,12 +315,13 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
     maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
     maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
     maybe_compressed_lib!("lib.esnext.error.d.ts"),
-    maybe_compressed_lib!("lib.esnext.float16.d.ts"),
     maybe_compressed_lib!("lib.esnext.full.d.ts"),
     maybe_compressed_lib!("lib.esnext.intl.d.ts"),
-    maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
+    maybe_compressed_lib!("lib.esnext.object.d.ts"),
     maybe_compressed_lib!("lib.esnext.promise.d.ts"),
+    maybe_compressed_lib!("lib.esnext.regexp.d.ts"),
     maybe_compressed_lib!("lib.esnext.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.esnext.string.d.ts"),
     maybe_compressed_lib!("lib.esnext.temporal.d.ts"),
     maybe_compressed_lib!("lib.esnext.typedarrays.d.ts"),
     maybe_compressed_lib!("lib.node.d.ts"),
@@ -509,7 +509,6 @@ pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<CliNodeResolver>,
   pub npm_resolver: CliNpmResolver,
-  pub package_json_resolver: Arc<CliPackageJsonResolver>,
 }
 
 /// A structure representing a request to be sent to the tsc runtime.
@@ -531,6 +530,9 @@ pub struct Request {
   pub check_mode: TypeCheckMode,
 
   pub initial_cwd: PathBuf,
+  /// When true, .d.ts and .d.ts.map files emitted by TSC will be captured
+  /// in the response. Only set this for `deno transpile --declaration`.
+  pub capture_emitted_files: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -542,6 +544,8 @@ pub struct Response {
   pub ambient_modules: Vec<String>,
   /// Statistics from the check.
   pub stats: Stats,
+  /// Emitted files from the compiler (e.g., .d.ts declaration files).
+  pub emitted_files: BTreeMap<String, String>,
 }
 
 pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
@@ -848,10 +852,6 @@ pub enum ExecError {
   #[class(inherit)]
   #[error(transparent)]
   Js(Box<deno_core::error::JsError>),
-
-  #[class(inherit)]
-  #[error(transparent)]
-  Go(#[from] go::ExecError),
 }
 
 #[derive(Clone)]
@@ -902,7 +902,6 @@ pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
 pub fn exec(
   request: Request,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
-  maybe_tsgo_path: Option<&Path>,
 ) -> Result<Response, ExecError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
@@ -944,23 +943,13 @@ pub fn exec(
     })
     .collect();
 
-  if let Some(tsgo_path) = maybe_tsgo_path {
-    go::exec_request(
-      request,
-      root_names,
-      root_map,
-      remapped_specifiers,
-      tsgo_path,
-    )
-  } else {
-    js::exec_request(
-      request,
-      root_names,
-      root_map,
-      remapped_specifiers,
-      code_cache,
-    )
-  }
+  js::exec_request(
+    request,
+    root_names,
+    root_map,
+    remapped_specifiers,
+    code_cache,
+  )
 }
 
 pub fn resolve_specifier_for_tsc(
@@ -1294,15 +1283,32 @@ pub static IGNORED_DIAGNOSTIC_CODES: LazyLock<HashSet<u64>> =
       // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
       // so we will ignore complaints about this compiler setting.
       5070,
+      // TS6200: Definitions of the following identifiers conflict with those in another file.
+      // Deno provides its own web API types (WebAssembly, BufferSource, etc.) that intentionally
+      // overlap with lib.dom.d.ts or @types/node. This is expected when both are loaded together.
+      6200,
       // TS7016: Could not find a declaration file for module '...'. '...'
       // implicitly has an 'any' type.  This is due to `allowJs` being off by
       // default but importing of a JavaScript module.
       7016,
+      // TS18060: Deferred imports are only supported when the '--module' flag
+      // is set to 'esnext' or 'preserve'. Deno uses its own module resolution
+      // and supports import defer natively.
+      18060,
     ]
     .into_iter()
     .collect()
   });
 
+// Names of globals that `@types/node` redeclares but that Deno already
+// declares natively (typically in `lib.deno.web.d.ts`). When the TypeScript
+// fork merges `@types/node` into the global symbol table, declarations for
+// these names are dropped so the user-visible global remains Deno's.
+//
+// This keeps `new AbortController().signal` assignable to the `AbortSignal`
+// parameters of `node:fs`, `node:timers/promises`, etc., and avoids the
+// `TS2300` / `TS2320` duplicate-identifier diagnostics reported in
+// https://github.com/denoland/deno/issues/19527.
 pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "AbortController",
   "AbortSignal",
@@ -1355,7 +1361,9 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "ReadableStreamDefaultReader",
   "ReadonlyArray",
   "Request",
+  "RequestInit",
   "Response",
+  "ResponseInit",
   "Storage",
   "SubtleCrypto",
   "TextDecoder",
@@ -1374,27 +1382,10 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
 ];
 
 pub static NODE_ONLY_GLOBALS: &[&str] = &[
-  "__dirname",
-  "__filename",
-  "\"buffer\"",
-  "Buffer",
-  "BufferConstructor",
-  "BufferEncoding",
-  "clearImmediate",
-  "clearInterval",
-  "clearTimeout",
   "console",
   "Console",
   "crypto",
-  "ErrorConstructor",
   "gc",
-  "Global",
   "localStorage",
-  "queueMicrotask",
-  "RequestInit",
-  "ResponseInit",
   "sessionStorage",
-  "setImmediate",
-  "setInterval",
-  "setTimeout",
 ];

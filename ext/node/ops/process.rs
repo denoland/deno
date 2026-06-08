@@ -90,7 +90,7 @@ unsafe fn compute_argv_info(
 ) -> ArgvInfo {
   // SAFETY: argv is valid and has argc entries (guaranteed by caller).
   unsafe {
-    let start = *argv as *mut u8;
+    let start = *argv as *mut _;
     let last_arg = *argv.add(argc - 1);
     let last_arg_len = libc::strlen(last_arg);
     let end = last_arg.add(last_arg_len + 1) as *const u8;
@@ -183,7 +183,7 @@ fn set_process_title(title: &str) {
   let wide: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
   // SAFETY: FFI call, wide is null-terminated
   unsafe {
-    winapi::um::wincon::SetConsoleTitleW(wide.as_ptr());
+    windows_sys::Win32::System::Console::SetConsoleTitleW(wide.as_ptr());
   }
 }
 
