@@ -323,3 +323,36 @@ Deno.test("gunzip doesn't cause stack overflow with 64MiB data", async () => {
 
   await promise;
 });
+
+// The native zlib/brotli/zstd bindings must not retain a pointer into the JS
+// `_writeState` buffer across calls. The result buffer is passed per write and
+// bounds checked, so detaching it (e.g. via a structuredClone transfer) before
+// a write is harmless rather than writing into a freed backing store.
+Deno.test("zlib writeSync does not write through a detached _writeState", () => {
+  // deno-lint-ignore no-explicit-any
+  const make = (factory: () => any) => {
+    const stream = factory();
+    const handle = stream._handle;
+    const state = stream._writeState;
+    // Detach the underlying ArrayBuffer, freeing the backing store.
+    structuredClone(state.buffer, { transfer: [state.buffer] });
+    return { handle, state };
+  };
+
+  const input = new Uint8Array(10);
+  const output = new Uint8Array(64);
+
+  // Each of these would crash or corrupt the heap before the fix. The
+  // assertion is simply that the process survives the write.
+  for (
+    const factory of [
+      createBrotliCompress,
+      createBrotliDecompress,
+      createDeflate,
+    ]
+  ) {
+    const { handle, state } = make(factory);
+    handle.writeSync(0, input, 0, 10, output, 0, 64, state);
+    assertEquals(state.buffer.byteLength, 0);
+  }
+});
