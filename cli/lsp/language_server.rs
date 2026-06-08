@@ -4409,7 +4409,9 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();
-    self.refresh_config_tree("did_change_workspace_folders").await;
+    self
+      .refresh_config_tree("did_change_workspace_folders")
+      .await;
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
     self.refresh_linter_resolver();
