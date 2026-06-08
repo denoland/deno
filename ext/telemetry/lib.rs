@@ -945,6 +945,7 @@ pub struct OtelGlobals {
   pub id_generator: DenoIdGenerator,
   pub meter_provider: SdkMeterProvider,
   pub builtin_instrumentation_scope: InstrumentationScope,
+  pub sampler: Sampler,
   pub config: OtelConfig,
 }
 
@@ -955,6 +956,131 @@ impl OtelGlobals {
 
   pub fn has_metrics(&self) -> bool {
     self.config.metrics_enabled
+  }
+}
+
+/// Head-based trace sampler configured via the `OTEL_TRACES_SAMPLER` and
+/// `OTEL_TRACES_SAMPLER_ARG` environment variables.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#general-sdk-configuration>
+#[derive(Debug, Clone, Copy)]
+pub struct Sampler {
+  /// When set, the sampling decision of a valid parent span takes precedence
+  /// over `root` (the `parentbased_*` variants).
+  parent_based: bool,
+  /// The sampler consulted when there is no parent (or `parent_based` is
+  /// false).
+  root: RootSampler,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum RootSampler {
+  AlwaysOn,
+  AlwaysOff,
+  TraceIdRatio(f64),
+}
+
+impl Default for Sampler {
+  fn default() -> Self {
+    // When `OTEL_TRACES_SAMPLER` is unset, preserve Deno's historical behavior
+    // of recording and sampling every span.
+    Sampler {
+      parent_based: false,
+      root: RootSampler::AlwaysOn,
+    }
+  }
+}
+
+impl Sampler {
+  fn from_env(
+    sys: &impl TelemetrySys,
+  ) -> Result<Self, deno_core::anyhow::Error> {
+    let Ok(value) = sys.env_var("OTEL_TRACES_SAMPLER") else {
+      return Ok(Self::default());
+    };
+    let value = value.trim();
+    if value.is_empty() {
+      return Ok(Self::default());
+    }
+    // `OTEL_TRACES_SAMPLER_ARG` is the sampling probability for the
+    // `traceidratio` samplers, in the range [0, 1]. It defaults to 1.0 and is
+    // ignored by the other samplers.
+    let ratio = || -> f64 {
+      sys
+        .env_var("OTEL_TRACES_SAMPLER_ARG")
+        .ok()
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0)
+    };
+    let sampler = match value {
+      "always_on" => Sampler {
+        parent_based: false,
+        root: RootSampler::AlwaysOn,
+      },
+      "always_off" => Sampler {
+        parent_based: false,
+        root: RootSampler::AlwaysOff,
+      },
+      "traceidratio" => Sampler {
+        parent_based: false,
+        root: RootSampler::TraceIdRatio(ratio()),
+      },
+      "parentbased_always_on" => Sampler {
+        parent_based: true,
+        root: RootSampler::AlwaysOn,
+      },
+      "parentbased_always_off" => Sampler {
+        parent_based: true,
+        root: RootSampler::AlwaysOff,
+      },
+      "parentbased_traceidratio" => Sampler {
+        parent_based: true,
+        root: RootSampler::TraceIdRatio(ratio()),
+      },
+      other => {
+        return Err(deno_core::anyhow::anyhow!(
+          "Env var OTEL_TRACES_SAMPLER specifies an unsupported sampler: {}",
+          other
+        ));
+      }
+    };
+    Ok(sampler)
+  }
+
+  /// Returns whether a span with the given `trace_id` should be sampled
+  /// (recorded and exported), given its `parent` span context if any.
+  fn should_sample(
+    &self,
+    parent: Option<&SpanContext>,
+    trace_id: TraceId,
+  ) -> bool {
+    let parent_decision = parent.and_then(|parent| {
+      (self.parent_based && parent.is_valid()).then(|| parent.is_sampled())
+    });
+    if let Some(sampled) = parent_decision {
+      return sampled;
+    }
+    match self.root {
+      RootSampler::AlwaysOn => true,
+      RootSampler::AlwaysOff => false,
+      RootSampler::TraceIdRatio(ratio) => {
+        if ratio >= 1.0 {
+          return true;
+        }
+        if ratio <= 0.0 {
+          return false;
+        }
+        // Matches the opentelemetry-rust `TraceIdRatioBased` sampler: derive a
+        // deterministic value in [0, 2^63) from the lower 64 bits of the trace
+        // id and keep the span when it falls below the probability bound.
+        let bytes = trace_id.to_bytes();
+        let low = u64::from_be_bytes(bytes[8..16].try_into().unwrap());
+        let value = low >> 1;
+        let bound = (ratio * (1u64 << 63) as f64) as u64;
+        value < bound
+      }
+    }
   }
 }
 
@@ -1142,6 +1268,8 @@ pub fn init(
     DenoIdGenerator::random()
   };
 
+  let sampler = Sampler::from_env(sys)?;
+
   OTEL_GLOBALS
     .set(OtelGlobals {
       log_processor,
@@ -1149,6 +1277,7 @@ pub fn init(
       id_generator,
       meter_provider,
       builtin_instrumentation_scope,
+      sampler,
       config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
@@ -1726,37 +1855,54 @@ impl OtelTracer {
     start_time: Option<f64>,
     #[smi] attribute_count: usize,
   ) -> Result<OtelSpan, JsErrorBox> {
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS
+    let OtelGlobals {
+      id_generator,
+      sampler,
+      ..
+    } = OTEL_GLOBALS
       .get()
       .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?;
-    let span_context;
     let parent_span_id;
+    let trace_id;
+    let trace_state;
+    let parent_span_context;
     match parent {
       Some(parent) => {
         let parent = parent.0.borrow();
-        let parent_span_context = match &**parent {
+        let ctx = match &**parent {
           OtelSpanState::Recording(span) => &span.span_context,
           OtelSpanState::Done(span_context) => span_context,
         };
-        span_context = SpanContext::new(
-          parent_span_context.trace_id(),
-          id_generator.new_span_id(),
-          TraceFlags::SAMPLED,
-          false,
-          parent_span_context.trace_state().clone(),
-        );
-        parent_span_id = parent_span_context.span_id();
+        trace_id = ctx.trace_id();
+        trace_state = ctx.trace_state().clone();
+        parent_span_id = ctx.span_id();
+        parent_span_context = Some(ctx.clone());
       }
       None => {
-        span_context = SpanContext::new(
-          id_generator.new_trace_id(),
-          id_generator.new_span_id(),
-          TraceFlags::SAMPLED,
-          false,
-          TraceState::NONE,
-        );
+        trace_id = id_generator.new_trace_id();
+        trace_state = TraceState::NONE;
         parent_span_id = SpanId::INVALID;
+        parent_span_context = None;
       }
+    }
+    let sampled = sampler.should_sample(parent_span_context.as_ref(), trace_id);
+    let span_context = SpanContext::new(
+      trace_id,
+      id_generator.new_span_id(),
+      if sampled {
+        TraceFlags::SAMPLED
+      } else {
+        TraceFlags::default()
+      },
+      false,
+      trace_state,
+    );
+    if !sampled {
+      // The span is not sampled: keep its context for propagation, but do not
+      // record or export it.
+      return Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+        OtelSpanState::Done(span_context),
+      )))));
     }
     let name = owned_string(
       scope,
@@ -1804,6 +1950,7 @@ impl OtelTracer {
     scope: &mut v8::PinScope<'s, '_>,
     parent_trace_id: v8::Local<'s, v8::Value>,
     parent_span_id: v8::Local<'s, v8::Value>,
+    #[smi] parent_trace_flags: u8,
     name: v8::Local<'s, v8::Value>,
     #[smi] span_kind: u8,
     start_time: Option<f64>,
@@ -1817,16 +1964,39 @@ impl OtelTracer {
     if parent_span_id == SpanId::INVALID {
       return Err(JsErrorBox::generic("invalid span id"));
     };
-    let OtelGlobals { id_generator, .. } = OTEL_GLOBALS
+    let OtelGlobals {
+      id_generator,
+      sampler,
+      ..
+    } = OTEL_GLOBALS
       .get()
       .ok_or_else(|| JsErrorBox::generic("otel not initialized"))?;
+    // Reconstruct the remote parent context so `parentbased_*` samplers honor
+    // the upstream sampling decision carried in the propagated trace flags.
+    let parent_context = SpanContext::new(
+      parent_trace_id,
+      parent_span_id,
+      TraceFlags::new(parent_trace_flags),
+      true,
+      TraceState::NONE,
+    );
+    let sampled = sampler.should_sample(Some(&parent_context), parent_trace_id);
     let span_context = SpanContext::new(
       parent_trace_id,
       id_generator.new_span_id(),
-      TraceFlags::SAMPLED,
+      if sampled {
+        TraceFlags::SAMPLED
+      } else {
+        TraceFlags::default()
+      },
       false,
       TraceState::NONE,
     );
+    if !sampled {
+      return Ok(OtelSpan(Rc::new(RefCell::new(Box::new(
+        OtelSpanState::Done(span_context),
+      )))));
+    }
     let name = owned_string(
       scope,
       name
