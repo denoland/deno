@@ -12,7 +12,7 @@
  */
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   AggregateError,
   ArrayIsArray,
@@ -23,12 +23,15 @@ const {
   ArrayPrototypePush,
   ArrayPrototypePop,
   ArrayPrototypeSlice,
+  ArrayPrototypeForEach,
   ArrayPrototypeSplice,
   Error,
   ErrorPrototype,
   ErrorCaptureStackTrace,
   JSONStringify,
   MapPrototypeGet,
+  MapPrototypeSet,
+  SafeMap,
   MathAbs,
   NumberIsInteger,
   ObjectAssign,
@@ -622,6 +625,71 @@ function makeSystemErrorWithCode(key: string, msgPrfix: string) {
   };
 }
 
+// `SystemError` alias used by `--expose-internals` consumers (e.g. Node's
+// own test suite) that import `internal/errors`.
+const SystemError = NodeSystemError;
+
+// Mirror of Node's `messages` map: associates an error code with its message
+// template (string or function). Populated by `E()` and read by
+// `makeNodeErrorWithCode()`.
+// deno-lint-ignore no-explicit-any
+const messages = new SafeMap<string, string | ((...args: any[]) => string)>();
+
+// Builds a class that extends a non-system Error base (Error, TypeError, etc.)
+// so that `E()` can register codes whose parent isn't `SystemError`.
+// Mirrors Node's `makeNodeErrorWithCode(Base, key)`.
+function makeNodeErrorWithCode(Base: typeof Error, key: string) {
+  return class NodeErrorWithCode extends Base {
+    // deno-lint-ignore no-explicit-any
+    constructor(...args: any[]) {
+      const template = MapPrototypeGet(messages, key);
+      super(
+        typeof template === "function"
+          // deno-lint-ignore no-explicit-any
+          ? (template as (...a: any[]) => string)(
+            ...new SafeArrayIterator(args),
+          )
+          : template as string,
+      );
+      this.code = key;
+      this[kIsNodeError] = true;
+      this.toString = function () {
+        return `${this.name} [${this.code}]: ${this.message}`;
+      };
+    }
+  };
+}
+
+// Mirrors Node's `lib/internal/errors.js`'s `E(sym, val, def, ...otherClasses)`
+// helper: registers a new error class on `codes[sym]`. When `def` is
+// `SystemError`, the class extends `NodeSystemError` and treats `val` as the
+// message prefix (matching Node's `makeSystemErrorWithCode`). Otherwise the
+// class extends `def` (Error/TypeError/RangeError/...) and uses `val` as the
+// message template.
+function E(
+  sym: string,
+  // deno-lint-ignore no-explicit-any
+  val: string | ((...args: any[]) => string),
+  // deno-lint-ignore no-explicit-any
+  def: any,
+  // deno-lint-ignore no-explicit-any
+  ...otherClasses: any[]
+) {
+  MapPrototypeSet(messages, sym, val);
+  let cls;
+  if (def === SystemError) {
+    cls = makeSystemErrorWithCode(sym, val as string);
+  } else {
+    cls = makeNodeErrorWithCode(def, sym);
+  }
+  if (otherClasses.length !== 0) {
+    ArrayPrototypeForEach(otherClasses, (clazz) => {
+      cls[clazz.name] = makeNodeErrorWithCode(clazz, sym);
+    });
+  }
+  codes[sym] = cls;
+}
+
 const ERR_FS_CP_DIR_TO_NON_DIR = makeSystemErrorWithCode(
   "ERR_FS_CP_DIR_TO_NON_DIR",
   "Cannot overwrite non-directory with directory",
@@ -963,6 +1031,24 @@ class ERR_CONSTRUCT_CALL_REQUIRED extends NodeTypeError {
     super(
       "ERR_CONSTRUCT_CALL_REQUIRED",
       `Class constructor ${x} cannot be invoked without \`new\``,
+    );
+  }
+}
+
+class ERR_CONSTRUCT_CALL_INVALID extends NodeTypeError {
+  constructor(x: string) {
+    super(
+      "ERR_CONSTRUCT_CALL_INVALID",
+      `Constructor for class ${x} cannot be invoked`,
+    );
+  }
+}
+
+class ERR_CLOSED_MESSAGE_PORT extends NodeError {
+  constructor() {
+    super(
+      "ERR_CLOSED_MESSAGE_PORT",
+      "Cannot send data on closed MessagePort",
     );
   }
 }
@@ -1755,6 +1841,16 @@ class ERR_INVALID_PROTOCOL extends NodeTypeError {
     );
   }
 }
+class ERR_PROXY_INVALID_CONFIG extends NodeError {
+  constructor(reason: string) {
+    super("ERR_PROXY_INVALID_CONFIG", reason);
+  }
+}
+class ERR_PROXY_TUNNEL extends NodeError {
+  constructor(reason: string) {
+    super("ERR_PROXY_TUNNEL", reason);
+  }
+}
 class ERR_INVALID_REPL_EVAL_CONFIG extends NodeTypeError {
   constructor() {
     super(
@@ -2034,6 +2130,29 @@ class ERR_QUIC_TLS13_REQUIRED extends NodeError {
     super("ERR_QUIC_TLS13_REQUIRED", `QUIC requires TLS version 1.3`);
   }
 }
+class ERR_REQUIRE_ASYNC_MODULE extends NodeError {
+  constructor(filename: string, parentFilename: string) {
+    super(
+      "ERR_REQUIRE_ASYNC_MODULE",
+      `require() cannot be used on an ESM graph with top-level await. Use import() instead. To see where the top-level await comes from, use --stack-trace-limit=100 and inspect the dependency graph. Requiring ${filename}. From ${parentFilename}`,
+    );
+    this.name = `Error [${this.code}]`;
+    this.toString = nodeErrorToStringWithEmbeddedCode;
+  }
+}
+class ERR_REQUIRE_CYCLE_MODULE extends NodeError {
+  constructor(filename: string, parentFilename: string) {
+    super(
+      "ERR_REQUIRE_CYCLE_MODULE",
+      `Cannot require() ES Module ${filename} in a cycle. (from ${parentFilename})`,
+    );
+    this.name = `Error [${this.code}]`;
+    this.toString = nodeErrorToStringWithEmbeddedCode;
+  }
+}
+function nodeErrorToStringWithEmbeddedCode(this: NodeErrorAbstraction) {
+  return `${this.name}: ${this.message}`;
+}
 class ERR_SCRIPT_EXECUTION_INTERRUPTED extends NodeError {
   constructor() {
     super(
@@ -2255,6 +2374,11 @@ class ERR_TLS_INVALID_PROTOCOL_VERSION extends NodeTypeError {
     );
   }
 }
+class ERR_TLS_INVALID_PROTOCOL_METHOD extends NodeTypeError {
+  constructor(message: string) {
+    super("ERR_TLS_INVALID_PROTOCOL_METHOD", message);
+  }
+}
 class ERR_TLS_PROTOCOL_VERSION_CONFLICT extends NodeTypeError {
   constructor(prevProtocol: string, protocol: string) {
     super(
@@ -2460,6 +2584,21 @@ class ERR_VM_MODULE_NOT_MODULE extends NodeError {
     );
   }
 }
+class ERR_VM_MODULE_LINK_FAILURE extends NodeError {
+  // deno-lint-ignore no-explicit-any
+  constructor(message: string, cause?: any) {
+    super("ERR_VM_MODULE_LINK_FAILURE", message);
+    if (cause !== undefined) {
+      // deno-lint-ignore no-explicit-any
+      (this as any).cause = cause;
+    }
+  }
+}
+class ERR_MODULE_LINK_MISMATCH extends NodeTypeError {
+  constructor(x: string) {
+    super("ERR_MODULE_LINK_MISMATCH", x);
+  }
+}
 class ERR_VM_MODULE_STATUS extends NodeError {
   constructor(x: string) {
     super("ERR_VM_MODULE_STATUS", `Module status ${x}`);
@@ -2468,6 +2607,11 @@ class ERR_VM_MODULE_STATUS extends NodeError {
 class ERR_WASI_ALREADY_STARTED extends NodeError {
   constructor() {
     super("ERR_WASI_ALREADY_STARTED", `WASI instance has already started`);
+  }
+}
+class ERR_WASI_NOT_STARTED extends NodeError {
+  constructor() {
+    super("ERR_WASI_NOT_STARTED", `wasi.start() has not been called`);
   }
 }
 class ERR_WORKER_INVALID_EXEC_ARGV extends NodeError {
@@ -2506,6 +2650,38 @@ class ERR_WORKER_PATH extends NodeTypeError {
 class ERR_WORKER_NOT_RUNNING extends NodeError {
   constructor() {
     super("ERR_WORKER_NOT_RUNNING", `Worker instance not running`);
+  }
+}
+class ERR_WORKER_MESSAGING_ERRORED extends NodeError {
+  constructor() {
+    super(
+      "ERR_WORKER_MESSAGING_ERRORED",
+      "The destination thread threw an error while receiving the message.",
+    );
+  }
+}
+class ERR_WORKER_MESSAGING_FAILED extends NodeError {
+  constructor() {
+    super(
+      "ERR_WORKER_MESSAGING_FAILED",
+      "The destination thread refused or failed to receive the message.",
+    );
+  }
+}
+class ERR_WORKER_MESSAGING_SAME_THREAD extends NodeError {
+  constructor() {
+    super(
+      "ERR_WORKER_MESSAGING_SAME_THREAD",
+      "Cannot send a message to the same thread.",
+    );
+  }
+}
+class ERR_WORKER_MESSAGING_TIMEOUT extends NodeError {
+  constructor() {
+    super(
+      "ERR_WORKER_MESSAGING_TIMEOUT",
+      "Sending a message to another thread timed out.",
+    );
   }
 }
 class ERR_WORKER_OUT_OF_MEMORY extends NodeError {
@@ -3171,7 +3347,9 @@ return {
   ERR_CHILD_CLOSED_BEFORE_REPLY,
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
+  ERR_CLOSED_MESSAGE_PORT,
   ERR_CONSOLE_WRITABLE_STREAM,
+  ERR_CONSTRUCT_CALL_INVALID,
   ERR_CONSTRUCT_CALL_REQUIRED,
   ERR_CONTEXT_NOT_INITIALIZED,
   ERR_CPU_USAGE,
@@ -3307,6 +3485,8 @@ return {
   ERR_INVALID_PACKAGE_TARGET,
   ERR_INVALID_PERFORMANCE_MARK,
   ERR_INVALID_PROTOCOL,
+  ERR_PROXY_INVALID_CONFIG,
+  ERR_PROXY_TUNNEL,
   ERR_INVALID_REPL_EVAL_CONFIG,
   ERR_INVALID_REPL_INPUT,
   ERR_INVALID_RETURN_PROPERTY,
@@ -3360,6 +3540,8 @@ return {
   ERR_QUICSTREAM_OPEN_FAILED,
   ERR_QUICSTREAM_UNSUPPORTED_PUSH,
   ERR_QUIC_TLS13_REQUIRED,
+  ERR_REQUIRE_ASYNC_MODULE,
+  ERR_REQUIRE_CYCLE_MODULE,
   ERR_SCRIPT_EXECUTION_INTERRUPTED,
   ERR_SERVER_ALREADY_LISTEN,
   ERR_SERVER_NOT_RUNNING,
@@ -3390,6 +3572,7 @@ return {
   ERR_TLS_DH_PARAM_SIZE,
   ERR_TLS_HANDSHAKE_TIMEOUT,
   ERR_TLS_INVALID_CONTEXT,
+  ERR_TLS_INVALID_PROTOCOL_METHOD,
   ERR_TLS_INVALID_PROTOCOL_VERSION,
   ERR_TLS_ALPN_CALLBACK_INVALID_RESULT,
   ERR_TLS_INVALID_STATE,
@@ -3420,12 +3603,19 @@ return {
   ERR_VM_MODULE_ALREADY_LINKED,
   ERR_VM_MODULE_CANNOT_CREATE_CACHED_DATA,
   ERR_VM_MODULE_DIFFERENT_CONTEXT,
+  ERR_VM_MODULE_LINK_FAILURE,
   ERR_VM_MODULE_LINKING_ERRORED,
   ERR_VM_MODULE_NOT_MODULE,
   ERR_VM_MODULE_STATUS,
+  ERR_MODULE_LINK_MISMATCH,
   ERR_WASI_ALREADY_STARTED,
+  ERR_WASI_NOT_STARTED,
   ERR_WORKER_INIT_FAILED,
   ERR_WORKER_INVALID_EXEC_ARGV,
+  ERR_WORKER_MESSAGING_ERRORED,
+  ERR_WORKER_MESSAGING_FAILED,
+  ERR_WORKER_MESSAGING_SAME_THREAD,
+  ERR_WORKER_MESSAGING_TIMEOUT,
   ERR_WORKER_NOT_RUNNING,
   ERR_WORKER_OUT_OF_MEMORY,
   ERR_WORKER_PATH,
@@ -3437,6 +3627,7 @@ return {
   ERR_CRYPTO_UNKNOWN_CIPHER,
   ERR_CRYPTO_INVALID_KEYLEN,
   ERR_HTTP2_TOO_MANY_CUSTOM_SETTINGS,
+  E,
   NodeError,
   NodeErrorAbstraction,
   NodeRangeError,
@@ -3444,6 +3635,7 @@ return {
   NodeTypeError,
   NodeURIError,
   NodeAggregateError,
+  SystemError,
   aggregateTwoErrors,
   codes,
   connResetException,
@@ -3477,7 +3669,9 @@ return {
     ERR_CHILD_CLOSED_BEFORE_REPLY,
     ERR_CHILD_PROCESS_IPC_REQUIRED,
     ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
+    ERR_CLOSED_MESSAGE_PORT,
     ERR_CONSOLE_WRITABLE_STREAM,
+    ERR_CONSTRUCT_CALL_INVALID,
     ERR_CONSTRUCT_CALL_REQUIRED,
     ERR_CONTEXT_NOT_INITIALIZED,
     ERR_CPU_USAGE,
@@ -3610,6 +3804,8 @@ return {
     ERR_INVALID_PACKAGE_TARGET,
     ERR_INVALID_PERFORMANCE_MARK,
     ERR_INVALID_PROTOCOL,
+    ERR_PROXY_INVALID_CONFIG,
+    ERR_PROXY_TUNNEL,
     ERR_INVALID_REPL_EVAL_CONFIG,
     ERR_INVALID_REPL_INPUT,
     ERR_INVALID_RETURN_PROPERTY,
@@ -3661,6 +3857,8 @@ return {
     ERR_QUICSTREAM_OPEN_FAILED,
     ERR_QUICSTREAM_UNSUPPORTED_PUSH,
     ERR_QUIC_TLS13_REQUIRED,
+    ERR_REQUIRE_ASYNC_MODULE,
+    ERR_REQUIRE_CYCLE_MODULE,
     ERR_SCRIPT_EXECUTION_INTERRUPTED,
     ERR_SERVER_ALREADY_LISTEN,
     ERR_SERVER_NOT_RUNNING,
@@ -3689,6 +3887,7 @@ return {
     ERR_TLS_DH_PARAM_SIZE,
     ERR_TLS_HANDSHAKE_TIMEOUT,
     ERR_TLS_INVALID_CONTEXT,
+    ERR_TLS_INVALID_PROTOCOL_METHOD,
     ERR_TLS_INVALID_PROTOCOL_VERSION,
     ERR_TLS_INVALID_STATE,
     ERR_TLS_PROTOCOL_VERSION_CONFLICT,
@@ -3717,12 +3916,19 @@ return {
     ERR_VM_MODULE_ALREADY_LINKED,
     ERR_VM_MODULE_CANNOT_CREATE_CACHED_DATA,
     ERR_VM_MODULE_DIFFERENT_CONTEXT,
+    ERR_VM_MODULE_LINK_FAILURE,
     ERR_VM_MODULE_LINKING_ERRORED,
     ERR_VM_MODULE_NOT_MODULE,
     ERR_VM_MODULE_STATUS,
+    ERR_MODULE_LINK_MISMATCH,
     ERR_WASI_ALREADY_STARTED,
+    ERR_WASI_NOT_STARTED,
     ERR_WORKER_INIT_FAILED,
     ERR_WORKER_INVALID_EXEC_ARGV,
+    ERR_WORKER_MESSAGING_ERRORED,
+    ERR_WORKER_MESSAGING_FAILED,
+    ERR_WORKER_MESSAGING_SAME_THREAD,
+    ERR_WORKER_MESSAGING_TIMEOUT,
     ERR_WORKER_NOT_RUNNING,
     ERR_WORKER_OUT_OF_MEMORY,
     ERR_WORKER_PATH,
@@ -3730,12 +3936,14 @@ return {
     ERR_WORKER_UNSUPPORTED_EXTENSION,
     ERR_WORKER_UNSUPPORTED_OPERATION,
     ERR_ZLIB_INITIALIZATION_FAILED,
+    E,
     NodeError,
     NodeErrorAbstraction,
     NodeRangeError,
     NodeSyntaxError,
     NodeTypeError,
     NodeURIError,
+    SystemError,
     aggregateTwoErrors,
     codes,
     connResetException,

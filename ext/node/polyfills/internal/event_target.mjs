@@ -523,8 +523,9 @@ class EventTarget extends WebEventTarget {
       const w = new Error(
         "Possible EventTarget memory leak detected. " +
           `${size} ${type} listeners ` +
-          `added to ${inspect(this, { depth: -1 })}. Use ` +
-          "events.setMaxListeners() to increase limit",
+          `added to ${inspect(this, { depth: -1 })}. ` +
+          `MaxListeners is ${this[kMaxEventTargetListeners]}. ` +
+          "Use events.setMaxListeners() to increase limit",
       );
       w.name = "MaxListenersExceededWarning";
       w.target = this;

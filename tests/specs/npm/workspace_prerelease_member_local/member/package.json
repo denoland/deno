@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/prerelease-member",
+  "version": "0.40.0-pre",
+  "exports": "./mod.js"
+}

@@ -46,11 +46,28 @@ pub struct RegistryConfig {
   pub keyfile: Option<String>,
 }
 
+impl RegistryConfig {
+  /// Whether this config carries credentials usable for authentication.
+  ///
+  /// Mirrors the cases that `maybe_auth_header_value_for_npm_registry` turns
+  /// into a header, including treating `email` as a username substitute, so the
+  /// two never disagree.
+  pub fn has_auth(&self) -> bool {
+    self.auth_token.is_some()
+      || self.auth.is_some()
+      || ((self.username.is_some() || self.email.is_some())
+        && self.password.is_some())
+  }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct NpmRc {
   pub registry: Option<String>,
   pub scope_registries: HashMap<String, String>,
   pub registry_configs: HashMap<String, Arc<RegistryConfig>>,
+  /// `min-release-age` value in days. See
+  /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
+  pub min_release_age_days: Option<u64>,
 }
 
 impl NpmRc {
@@ -62,6 +79,7 @@ impl NpmRc {
     let mut registry = None;
     let mut scope_registries: HashMap<String, String> = HashMap::new();
     let mut registry_configs: HashMap<String, RegistryConfig> = HashMap::new();
+    let mut min_release_age_days: Option<u64> = None;
 
     for kv_or_section in kv_or_sections {
       match kv_or_section {
@@ -112,6 +130,22 @@ impl NpmRc {
             {
               let value = expand_vars(text, sys);
               registry = Some(value);
+            } else if key == "min-release-age" {
+              // npm interprets the value as a number of days. Ignore values
+              // that can't be parsed rather than erroring (npm is lenient
+              // about unknown/invalid config values).
+              match &kv.value {
+                Value::Number(n) if *n >= 0 => {
+                  min_release_age_days = Some(*n as u64);
+                }
+                Value::String(text) => {
+                  let value = expand_vars(text, sys);
+                  if let Ok(days) = value.trim().parse::<u64>() {
+                    min_release_age_days = Some(days);
+                  }
+                }
+                _ => {}
+              }
             }
           }
         }
@@ -128,6 +162,7 @@ impl NpmRc {
         .into_iter()
         .map(|(k, v)| (k, Arc::new(v)))
         .collect(),
+      min_release_age_days,
     })
   }
 
@@ -163,6 +198,7 @@ impl NpmRc {
       },
       scopes,
       registry_configs: self.registry_configs.clone(),
+      min_release_age_days: self.min_release_age_days,
     })
   }
 
@@ -234,6 +270,9 @@ pub struct ResolvedNpmRc {
   pub default_config: RegistryConfigWithUrl,
   pub scopes: HashMap<String, RegistryConfigWithUrl>,
   pub registry_configs: HashMap<String, Arc<RegistryConfig>>,
+  /// `min-release-age` value in days. See
+  /// https://docs.npmjs.com/cli/v11/using-npm/config#min-release-age
+  pub min_release_age_days: Option<u64>,
 }
 
 impl ResolvedNpmRc {
@@ -291,6 +330,45 @@ impl ResolvedNpmRc {
       }
     }
     best_match.map(|(_, config)| config)
+  }
+
+  /// Like [`Self::tarball_config`], but falls back to the scoped registry's
+  /// config for `package_name` when the tarball is served from the same origin
+  /// as that registry.
+  ///
+  /// Some registries (e.g. GitLab instance-level npm registries) serve tarballs
+  /// from a different path than the registry endpoint, so a plain path-prefix
+  /// match against the tarball URL misses the auth that is configured for the
+  /// registry. See https://github.com/denoland/deno/issues/27759
+  pub fn tarball_config_for_package(
+    &self,
+    tarball_url: &Url,
+    package_name: &str,
+  ) -> Option<&Arc<RegistryConfig>> {
+    if let Some(config) = self.tarball_config(tarball_url) {
+      return Some(config);
+    }
+    // Mirror get_registry_config/get_registry_url: a scoped-but-unconfigured
+    // package resolves through the default registry, so its tarball auth must
+    // come from default_config too (still gated by same-origin + has_auth
+    // below). Bailing out here would re-introduce the 404 this method fixes for
+    // a default instance-level registry.
+    let scope_registry = get_scope_name(package_name)
+      .and_then(|scope| self.scopes.get(scope))
+      .unwrap_or(&self.default_config);
+    // Only fall back when the tarball is served from the same origin as the
+    // registry the package was resolved from, and that registry actually has
+    // credentials. This keeps the token from leaking to unrelated hosts.
+    let registry_url = &scope_registry.registry_url;
+    let same_origin = registry_url.scheme() == tarball_url.scheme()
+      && registry_url.host_str() == tarball_url.host_str()
+      && registry_url.port_or_known_default()
+        == tarball_url.port_or_known_default();
+    if same_origin && scope_registry.config.has_auth() {
+      Some(&scope_registry.config)
+    } else {
+      None
+    }
   }
 }
 
@@ -483,7 +561,8 @@ registry=https://registry.npmjs.org/
               ..Default::default()
             })
           ),
-        ])
+        ]),
+        min_release_age_days: None,
       }
     );
 
@@ -545,6 +624,7 @@ registry=https://registry.npmjs.org/
           ),
         ]),
         registry_configs: npm_rc.registry_configs.clone(),
+        min_release_age_days: None,
       }
     );
 
@@ -719,7 +799,8 @@ registry=${VAR_FOUND}
             auth_token: Some("SOME_VALUE".to_string()),
             ..Default::default()
           })
-        ),])
+        ),]),
+        min_release_age_days: None,
       }
     )
   }
@@ -746,6 +827,30 @@ registry=${VAR_FOUND}
 
     // npm ignores values with { in them
     assert_eq!(expand_vars("test${VA{R}test", &sys), "test${VA{R}test");
+  }
+
+  #[test]
+  fn test_parse_min_release_age() {
+    let sys = InMemorySys::default();
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=30").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(30));
+    let resolved = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+    assert_eq!(resolved.min_release_age_days, Some(30));
+
+    // not set
+    let npm_rc = NpmRc::parse(&sys, "").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, None);
+
+    // invalid value is ignored
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=invalid").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, None);
+
+    // env var expansion
+    sys.env_set_var("MIN_AGE", "7");
+    let npm_rc = NpmRc::parse(&sys, "min-release-age=${MIN_AGE}").unwrap();
+    assert_eq!(npm_rc.min_release_age_days, Some(7));
   }
 
   #[test]
@@ -880,6 +985,202 @@ registry=${VAR_FOUND}
     assert_eq!(
       resolved.default_config.registry_url.as_str(),
       "http://npmrc.registry.example.com/"
+    );
+  }
+
+  #[test]
+  fn test_gitlab_instance_level_tarball_auth() {
+    // GitLab "instance-level" npm registries serve tarballs from a different
+    // path than the registry endpoint:
+    //   registry: https://gitlab.example.com/api/v4/packages/npm/
+    //   tarball:  https://gitlab.example.com/api/v4/projects/4055/packages/npm/@scope/pkg/-/...tgz
+    // The auth token is scoped to the registry path, so a plain path-prefix
+    // match against the tarball URL fails. See
+    // https://github.com/denoland/deno/issues/27759
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+@myscope:registry=https://gitlab.example.com/api/v4/packages/npm/
+//gitlab.example.com/api/v4/packages/npm/:_authToken=GITLABTOKEN
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/@myscope/pkg/-/@myscope/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+
+    // Plain path-prefix matching (npm-compatible) does not find the auth,
+    // because the tarball path differs from the registry path.
+    assert_eq!(resolved_npm_rc.tarball_config(&tarball_url), None);
+
+    // Package-aware lookup falls back to the scoped registry's auth because the
+    // tarball is served from the same host as the scope's registry.
+    assert_eq!(
+      resolved_npm_rc
+        .tarball_config_for_package(&tarball_url, "@myscope/pkg")
+        .unwrap()
+        .auth_token
+        .as_deref(),
+      Some("GITLABTOKEN"),
+    );
+
+    // The fallback must not apply a scope's token to an unrelated host.
+    let other_host = Url::parse(
+      "https://evil.example.org/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&other_host, "@myscope/pkg"),
+      None,
+    );
+
+    // Same host but a different port is a different origin: no fallback.
+    let other_port = Url::parse(
+      "https://gitlab.example.com:8443/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&other_port, "@myscope/pkg"),
+      None,
+    );
+
+    // Same host but a downgraded scheme is a different origin: the token must
+    // not be sent over http when the registry is https.
+    let other_scheme = Url::parse(
+      "http://gitlab.example.com/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&other_scheme, "@myscope/pkg"),
+      None,
+    );
+
+    // A package whose scope has no configured registry does not fall back to an
+    // unrelated scope's auth.
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&tarball_url, "@other/pkg"),
+      None,
+    );
+  }
+
+  #[test]
+  fn test_tarball_config_for_package_default_scope() {
+    // An instance-level registry configured as the default (unscoped) registry
+    // serves tarballs from a different path; the fallback resolves through
+    // `default_config` for unscoped packages.
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+registry=https://gitlab.example.com/api/v4/packages/npm/
+//gitlab.example.com/api/v4/packages/npm/:_authToken=GITLABTOKEN
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(resolved_npm_rc.tarball_config(&tarball_url), None);
+    assert_eq!(
+      resolved_npm_rc
+        .tarball_config_for_package(&tarball_url, "pkg")
+        .unwrap()
+        .auth_token
+        .as_deref(),
+      Some("GITLABTOKEN"),
+    );
+  }
+
+  #[test]
+  fn test_tarball_config_for_package_scoped_unconfigured_default() {
+    // A scoped package whose scope is not separately configured resolves
+    // through the default instance-level registry, so its same-origin tarball
+    // auth must fall back to `default_config` rather than bailing out (which
+    // would re-introduce the 404 this method fixes).
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+registry=https://gitlab.example.com/api/v4/packages/npm/
+//gitlab.example.com/api/v4/packages/npm/:_authToken=GITLABTOKEN
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/@foo/bar/-/bar-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(resolved_npm_rc.tarball_config(&tarball_url), None);
+    assert_eq!(
+      resolved_npm_rc
+        .tarball_config_for_package(&tarball_url, "@foo/bar")
+        .unwrap()
+        .auth_token
+        .as_deref(),
+      Some("GITLABTOKEN"),
+    );
+  }
+
+  #[test]
+  fn test_has_auth() {
+    let with = |f: fn(&mut RegistryConfig)| {
+      let mut config = RegistryConfig::default();
+      f(&mut config);
+      config.has_auth()
+    };
+    assert!(with(|c| c.auth_token = Some("t".into())));
+    assert!(with(|c| c.auth = Some("a".into())));
+    assert!(with(|c| {
+      c.username = Some("u".into());
+      c.password = Some("p".into());
+    }));
+    // email substitutes for username, matching
+    // maybe_auth_header_value_for_npm_registry.
+    assert!(with(|c| {
+      c.email = Some("e".into());
+      c.password = Some("p".into());
+    }));
+    // Incomplete credentials don't count.
+    assert!(!with(|_| {}));
+    assert!(!with(|c| c.username = Some("u".into())));
+    assert!(!with(|c| c.password = Some("p".into())));
+    assert!(!with(|c| c.email = Some("e".into())));
+  }
+
+  #[test]
+  fn test_tarball_config_for_package_no_auth() {
+    // Same-origin tarball but the registry carries no credentials: there is
+    // nothing to fall back to, so no config is returned.
+    let npm_rc = NpmRc::parse(
+      &InMemorySys::default(),
+      r#"
+@myscope:registry=https://gitlab.example.com/api/v4/packages/npm/
+"#,
+    )
+    .unwrap();
+    let resolved_npm_rc = npm_rc
+      .as_resolved(&npm_url("https://registry.npmjs.org/"))
+      .unwrap();
+
+    let tarball_url = Url::parse(
+      "https://gitlab.example.com/api/v4/projects/4055/packages/npm/@myscope/pkg/-/pkg-1.0.0.tgz",
+    )
+    .unwrap();
+    assert_eq!(
+      resolved_npm_rc.tarball_config_for_package(&tarball_url, "@myscope/pkg"),
+      None,
     );
   }
 

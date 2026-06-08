@@ -1,8 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const {
   denoErrorToNodeError,
@@ -21,7 +18,7 @@ const {
   validateInteger,
   validateObject,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
-const { isArrayBufferView } = core.loadExtScript(
+const { isArrayBufferView, isDataView } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
 import { op_node_fs_read_deferred, op_node_fs_read_sync } from "ext:core/ops";
@@ -31,7 +28,19 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const lazyProcess = core.createLazyLoader("node:process");
 
-const { ObjectDefineProperty } = primordials;
+const {
+  BigInt,
+  DataViewPrototypeGetByteLength,
+  ObjectDefineProperty,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
+
+function getByteLength(buffer: ArrayBufferView): number {
+  return isDataView(buffer)
+    ? DataViewPrototypeGetByteLength(buffer)
+    : TypedArrayPrototypeGetByteLength(buffer);
+}
 
 const validateOptionArgs = { __proto__: null, nullable: true };
 
@@ -107,7 +116,8 @@ export function read(
     }
     ({
       offset = 0,
-      length = buffer?.byteLength - (offset as number),
+      length = (buffer ? getByteLength(buffer as ArrayBufferView) : undefined) -
+        (offset as number),
       position = null,
     } = params ?? kEmptyObject);
   }
@@ -129,7 +139,7 @@ export function read(
     });
   }
 
-  if (buffer.byteLength === 0) {
+  if (getByteLength(buffer as ArrayBufferView) === 0) {
     throw new ERR_INVALID_ARG_VALUE(
       "buffer",
       buffer,
@@ -137,7 +147,11 @@ export function read(
     );
   }
 
-  validateOffsetLengthRead(offset, length, buffer.byteLength);
+  validateOffsetLengthRead(
+    offset,
+    length,
+    getByteLength(buffer as ArrayBufferView),
+  );
 
   if (position == null) {
     position = -1;
@@ -145,17 +159,19 @@ export function read(
     validatePosition(position, "position", length as number);
   }
 
-  // The op handles position seeking internally (pread for positioned reads).
-  // position=-1 means read from current position.
-  const readPos = position != null && position >= 0 ? Number(position) : -1;
-  op_node_fs_read_deferred(
-    fd,
-    arrayBufferViewToUint8Array(buffer).subarray(
-      offset,
-      offset + (length as number),
+  // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
+  const readPos = position != null && position >= 0
+    ? BigInt(position as number | bigint)
+    : -1n;
+  PromisePrototypeThen(
+    op_node_fs_read_deferred(
+      fd,
+      arrayBufferViewToUint8Array(buffer).subarray(
+        offset,
+        offset + (length as number),
+      ),
+      readPos,
     ),
-    readPos,
-  ).then(
     (nread: number) => {
       callback!(null, nread ?? 0, buffer);
     },
@@ -202,7 +218,7 @@ export function readSync(
 
     ({
       offset = 0,
-      length = buffer.byteLength - (offset as number),
+      length = getByteLength(buffer) - (offset as number),
       position = null,
     } = offsetOrOpt ?? kEmptyObject);
   }
@@ -219,7 +235,7 @@ export function readSync(
     return 0;
   }
 
-  if (buffer.byteLength === 0) {
+  if (getByteLength(buffer) === 0) {
     throw new ERR_INVALID_ARG_VALUE(
       "buffer",
       buffer,
@@ -227,7 +243,7 @@ export function readSync(
     );
   }
 
-  validateOffsetLengthRead(offset, length, buffer.byteLength);
+  validateOffsetLengthRead(offset, length, getByteLength(buffer));
 
   if (position == null) {
     position = -1;
@@ -235,9 +251,10 @@ export function readSync(
     validatePosition(position, "position", length);
   }
 
-  // The op handles position seeking internally (saves/restores file offset
-  // for positioned reads). position=-1 means read from current position.
-  const pos = position != null ? Number(position) : -1;
+  // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
+  const pos = position != null && position >= 0
+    ? BigInt(position as number | bigint)
+    : -1n;
   try {
     const numberOfBytesRead = op_node_fs_read_sync(
       fd,

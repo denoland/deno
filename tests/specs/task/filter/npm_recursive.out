@@ -1,4 +1,6 @@
+[UNORDERED_START]
 Task dev (bar) echo 'bar'
-bar
 Task dev (foo) echo 'foo'
-foo
+[bar#dev] bar
+[foo#dev] foo
+[UNORDERED_END]

@@ -18,10 +18,11 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 112;
+const cacheVersion = 116;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
+const ubuntuARMXlRunner = "ubuntu-24.04-arm64-xl";
 const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const windowsArmRunner = "windows-11-arm";
@@ -53,6 +54,14 @@ const Runners = {
     os: "linux",
     arch: "aarch64",
     runner: ubuntuARMRunner,
+  },
+  linuxArmXl: {
+    os: "linux",
+    arch: "aarch64",
+    runner: isDenoland.and(isMainOrTag).then(ubuntuARMXlRunner).else(
+      ubuntuARMRunner,
+    ),
+    testRunner: ubuntuARMRunner,
   },
   macosX86: {
     os: "macos",
@@ -167,6 +176,7 @@ RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-Wl,--icf=safe
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -185,6 +195,7 @@ RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
   -C link-arg=-fuse-ld=lld-${llvmVersion}
+  -C link-arg=-Wl,--icf=safe
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
@@ -388,9 +399,41 @@ function createCacheSteps(m: {
     ),
   };
 }
-const installRustStep = step({
-  uses: "dsherret/rust-toolchain-file@v1",
-});
+// Pin rustup-init to 1.28.2: sh.rustup.rs currently serves 1.29.0, which has
+// a broken proxy multi-call dispatch (cargo/rustc identify as rustup-init).
+// Pre-installing rustup makes `dsherret/rust-toolchain-file@v1`'s internal
+// `command -v rustup` check short-circuit and skip the broken curl install.
+const installRustStep = step(
+  step({
+    name: "Pre-install rustup 1.28.2 (workaround broken 1.29.0)",
+    shell: "bash",
+    run: [
+      "if command -v rustup >/dev/null 2>&1; then",
+      "  if ! rustup --version 2>&1 | grep -q '1\\.29\\.0'; then exit 0; fi",
+      '  echo "Detected broken rustup 1.29.0, replacing with 1.28.2"',
+      "fi",
+      'case "${RUNNER_OS}-${RUNNER_ARCH}" in',
+      "  Linux-X64)     target=x86_64-unknown-linux-gnu; ext= ;;",
+      "  Linux-ARM64)   target=aarch64-unknown-linux-gnu; ext= ;;",
+      "  macOS-X64)     target=x86_64-apple-darwin; ext= ;;",
+      "  macOS-ARM64)   target=aarch64-apple-darwin; ext= ;;",
+      "  Windows-X64)   target=x86_64-pc-windows-msvc; ext=.exe ;;",
+      "  Windows-ARM64) target=aarch64-pc-windows-msvc; ext=.exe ;;",
+      '  *) echo "Unsupported: ${RUNNER_OS}-${RUNNER_ARCH}"; exit 1 ;;',
+      "esac",
+      "curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL \\",
+      '  "https://static.rust-lang.org/rustup/archive/1.28.2/${target}/rustup-init${ext}" \\',
+      '  -o "rustup-init${ext}"',
+      'chmod +x "rustup-init${ext}"',
+      '"./rustup-init${ext}" -y --default-toolchain none --no-modify-path',
+      'rm "rustup-init${ext}"',
+      'echo "${CARGO_HOME:-$HOME/.cargo}/bin" >> "$GITHUB_PATH"',
+    ].join("\n"),
+  }),
+  step({
+    uses: "dsherret/rust-toolchain-file@v1",
+  }),
+);
 const installWasmStep = step({
   name: "Install wasm target",
   run: "rustup target add wasm32-unknown-unknown",
@@ -534,7 +577,7 @@ const buildItems = handleBuildItems([{
   ...Runners.linuxArm,
   profile: "debug",
 }, {
-  ...Runners.linuxArm,
+  ...Runners.linuxArmXl,
   profile: "release",
   use_sysroot: true,
   skip_pr: true,
@@ -1599,7 +1642,7 @@ const denoCoreTestJob = job("deno-core-test", {
       name: "Cargo nextest (release)",
       run: [
         `cargo nextest run --release`,
-        `  --features "deno_core/default deno_core/include_js_files_for_snapshotting deno_core/unsafe_use_unprotected_platform"`,
+        `  --features "deno_core/default deno_core/unsafe_use_unprotected_platform"`,
         `  --tests --examples`,
         `  ${denoCorePackageNames.map((p) => `-p ${p}`).join(" ")}`,
       ].join(" \\\n    "),
@@ -1622,7 +1665,6 @@ const denoCoreTestJob = job("deno-core-test", {
       name: "Run examples (regression tests)",
       run: [
         "cargo run -p deno_core --example op2",
-        "cargo run -p deno_core --example op2 --features include_js_files_for_snapshotting",
       ],
     },
     denoCoreTestCacheSteps.saveCacheStep,

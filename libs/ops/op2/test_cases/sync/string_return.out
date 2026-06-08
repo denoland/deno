@@ -35,11 +35,12 @@ pub const fn op_string_return() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let scope = ::std::pin::pin!(
                 unsafe { deno_core::v8::CallbackScope::new(info) }
             );
             let mut scope = scope.init();
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let mut rv = parts.return_value;
             let result = { Self::call() };
             match deno_core::_ops::RustToV8Fallible::to_v8_fallible(result, &mut scope) {
                 Ok(v) => rv.set(v),
@@ -100,11 +101,12 @@ pub const fn op_string_return_ref() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let scope = ::std::pin::pin!(
                 unsafe { deno_core::v8::CallbackScope::new(info) }
             );
             let mut scope = scope.init();
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let mut rv = parts.return_value;
             let result = { Self::call() };
             match deno_core::_ops::RustToV8Fallible::to_v8_fallible(result, &mut scope) {
                 Ok(v) => rv.set(v),
@@ -165,11 +167,12 @@ pub const fn op_string_return_cow() -> ::deno_core::_ops::OpDecl {
             let _reentrancy_check_guard = deno_core::_ops::reentrancy_check(
                 &<Self as deno_core::_ops::Op>::DECL,
             );
+            let parts: deno_core::v8::FunctionCallbackInfoParts<'s> = info.get_parts();
             let scope = ::std::pin::pin!(
                 unsafe { deno_core::v8::CallbackScope::new(info) }
             );
             let mut scope = scope.init();
-            let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+            let mut rv = parts.return_value;
             let result = { Self::call() };
             match deno_core::_ops::RustToV8Fallible::to_v8_fallible(result, &mut scope) {
                 Ok(v) => rv.set(v),

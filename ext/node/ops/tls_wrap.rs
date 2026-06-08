@@ -309,6 +309,126 @@ enum EncOutAction {
 // These do NOT borrow TLSWrapInner — they work entirely with EmitCtx + args.
 // ---------------------------------------------------------------------------
 
+/// Copy `data` through the user buffer registered on the TLSWrap
+/// (Node's `onread.buffer` option), chunking into `user_buffer.len`
+/// slices so the JS callback only ever sees up to that many bytes per
+/// invocation. The user buffer may be rotated by the JS callback (via
+/// `bufGen`), so it is re-read between chunks.
+///
+/// # Safety
+/// `inner_ptr` must be valid and live for the duration of the call.
+/// No `&` / `&mut` reference to `TLSWrapInner` may be held by the
+/// caller (JS callbacks can re-enter ops on the same object). All
+/// pointers in `ctx` must be valid.
+unsafe fn do_emit_read_through_user_buffer(
+  ctx: &EmitCtx,
+  inner_ptr: *mut TLSWrapInner,
+  onread: Option<&v8::Global<v8::Function>>,
+  state: Option<&v8::Global<v8::Int32Array>>,
+  data: &[u8],
+) {
+  let mut offset = 0;
+  while offset < data.len() {
+    // Re-read the user buffer pointer/length each iteration so a
+    // `bufGen`-driven rotation during the previous callback is honored.
+    let user_buf =
+      unsafe { (*inner_ptr).user_buffer.as_ref().map(|ub| (ub.ptr, ub.len)) };
+    let Some((ptr, len)) = user_buf else {
+      // User buffer was cleared mid-emit — fall back to the
+      // ArrayBuffer-allocating path for the remaining bytes so they
+      // still reach the consumer.
+      let remaining = &data[offset..];
+      unsafe {
+        do_emit_read(
+          ctx,
+          onread,
+          state,
+          remaining.len() as isize,
+          Some(remaining),
+        );
+      }
+      return;
+    };
+    if len == 0 {
+      // Zero-length buffer can't make progress; stop to avoid spinning.
+      return;
+    }
+    let chunk_len = std::cmp::min(data.len() - offset, len);
+    // SAFETY: `ptr` references at least `len >= chunk_len` writable
+    // bytes (the registered user buffer's backing store, held alive by
+    // its retained `Global<Uint8Array>`). `data[offset..offset+chunk_len]`
+    // is in-bounds. Source and destination are distinct allocations.
+    unsafe {
+      std::ptr::copy_nonoverlapping(
+        data[offset..offset + chunk_len].as_ptr(),
+        ptr,
+        chunk_len,
+      );
+    }
+    offset += chunk_len;
+    // SAFETY: caller upholds the EmitCtx invariants; we hand off to a
+    // free function that does not borrow TLSWrapInner.
+    unsafe {
+      do_emit_read_undefined_arg(ctx, onread, state, chunk_len as isize);
+    }
+  }
+}
+
+/// Variant of `do_emit_read` that signals the callback by passing
+/// `undefined` rather than wrapping bytes in a fresh ArrayBuffer.
+/// Used in the static-buffer path: `onStreamRead` reads the bytes via
+/// `stream[kBuffer]` (the same Uint8Array previously passed to
+/// `useUserBuffer`) and ignores the callback argument.
+///
+/// # Safety
+/// EmitCtx must contain valid pointers. No TLSWrapInner reference may be held by the caller.
+unsafe fn do_emit_read_undefined_arg(
+  ctx: &EmitCtx,
+  onread: Option<&v8::Global<v8::Function>>,
+  state: Option<&v8::Global<v8::Int32Array>>,
+  nread: isize,
+) {
+  let Some(state_global) = state else {
+    return;
+  };
+  unsafe {
+    let mut isolate = v8::Isolate::from_raw_isolate_ptr(ctx.isolate_ptr);
+    if ctx.loop_ptr.is_null() {
+      return;
+    }
+    let ctx_ptr = (*ctx.loop_ptr).data;
+    if ctx_ptr.is_null() {
+      return;
+    }
+    let context_global = clone_context_global(&mut isolate, ctx_ptr);
+
+    v8::scope!(let handle_scope, &mut isolate);
+    let context = v8::Local::new(handle_scope, context_global);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+
+    let state_array: v8::Local<v8::Int32Array> =
+      v8::Local::new(scope, state_global);
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::ReadBytesOrError as u32,
+      v8::Integer::new(scope, nread as i32).into(),
+    );
+    state_array.set_index(
+      scope,
+      StreamBaseStateFields::ArrayBufferOffset as u32,
+      v8::Integer::new(scope, 0).into(),
+    );
+
+    let recv = v8::Local::new(scope, &ctx.js_handle);
+    let Some(onread) = onread else {
+      return;
+    };
+    let onread_fn = v8::Local::new(scope, onread);
+    let undef = v8::undefined(scope);
+    onread_fn.call(scope, recv.into(), &[undef.into()]);
+  }
+}
+
 /// Emit read data to JS via onread callback.
 ///
 /// # Safety
@@ -856,6 +976,12 @@ struct TLSWrapInner {
   accepted: Option<rustls::server::Accepted>,
   client_hello_servername: Option<String>,
   client_hello_alpn: Vec<Vec<u8>>,
+
+  /// User-supplied static read buffer (Node's `onread.buffer`).
+  /// When set, decrypted data is copied into this buffer rather than
+  /// emitted via a fresh ArrayBuffer; the JS callback receives the same
+  /// Uint8Array each time. Updated by `TLSWrap::useUserBuffer`.
+  user_buffer: Option<crate::ops::stream_wrap::UserBuffer>,
 }
 
 /// Convert a rustls error to a (message, code) pair that matches Node's
@@ -869,31 +995,28 @@ fn rustls_error_to_node_error(
     // Match Node's OpenSSL wording for record-layer decode failures so user
     // code that pattern-matches err.message keeps working.
     E::InvalidMessage(_) => (
-      format!("{e} (wrong version number)"),
+      format!("{e} (SSL routines:ssl3_get_record:wrong version number)"),
       "ERR_SSL_WRONG_VERSION_NUMBER".to_string(),
     ),
     E::InvalidCertificate(cert_err) => {
-      let reason = format!("{cert_err}");
-      // Map common rustls certificate errors to OpenSSL error codes
-      let code = if reason.contains("UnknownIssuer") {
-        "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
-      } else if reason.contains("NotValidYet") {
-        "CERT_NOT_YET_VALID"
-      } else if reason.contains("Expired") {
-        "CERT_HAS_EXPIRED"
-      } else if reason.contains("NotValidForName") {
-        "ERR_TLS_CERT_ALTNAME_INVALID"
-      } else if reason.contains("CaUsedAsEndEntity")
-        || reason.contains("IssuerNotCrlSigner")
-        || reason.contains("InvalidPurpose")
-      {
-        "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
-      } else if reason.contains("SelfSigned") {
-        "DEPTH_ZERO_SELF_SIGNED_CERT"
-      } else {
-        "ERR_SSL_SSLV3_ALERT_CERTIFICATE_UNKNOWN"
-      };
-      (format!("{e}"), format!("ERR_SSL_{code}"))
+      // Prefer the precise code recorded by NodeServerCertVerifier
+      // (e.g. UNABLE_TO_GET_ISSUER_CERT_LOCALLY from chain-structure analysis)
+      // over the generic mapping derived from the rustls CertificateError.
+      // Map the message text to the same wording that JS `makeVerifyError`
+      // produces, so callers that pattern-match on err.message keep working
+      // when the verifier aborts the handshake (strict mode) instead of
+      // deferring the error to JS.
+      let recorded = CURRENT_VERIFY_ERROR
+        .with(|c| c.borrow().clone())
+        .and_then(|store| {
+          store.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        });
+      let code = recorded
+        .unwrap_or_else(|| cert_error_to_node_code(cert_err).to_string());
+      let msg = node_verify_error_message(&code)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{e}"));
+      (msg, code)
     }
     E::NoCertificatesPresented => (
       format!("{e}"),
@@ -998,6 +1121,7 @@ impl TLSWrapInner {
       accepted: None,
       client_hello_servername: None,
       client_hello_alpn: Vec::new(),
+      user_buffer: None,
     }
   }
 
@@ -1416,13 +1540,23 @@ impl TLSWrapInner {
         } else if let Some(ctx) = extract_emit_ctx(ptr) {
           let onread = (*ptr).onread.clone();
           let state = (*ptr).stream_base_state.clone();
-          do_emit_read(
-            &ctx,
-            onread.as_ref(),
-            state.as_ref(),
-            result.data.len() as isize,
-            Some(&result.data),
-          );
+          if (*ptr).user_buffer.is_some() {
+            do_emit_read_through_user_buffer(
+              &ctx,
+              ptr,
+              onread.as_ref(),
+              state.as_ref(),
+              &result.data,
+            );
+          } else {
+            do_emit_read(
+              &ctx,
+              onread.as_ref(),
+              state.as_ref(),
+              result.data.len() as isize,
+              Some(&result.data),
+            );
+          }
         }
         if (*ptr).tls_conn.is_none() {
           return;
@@ -1588,13 +1722,23 @@ unsafe fn tls_read_interceptor_cb(
       {
         let onread = (*ptr).onread.clone();
         let state = (*ptr).stream_base_state.clone();
-        do_emit_read(
-          &ctx,
-          onread.as_ref(),
-          state.as_ref(),
-          result.data.len() as isize,
-          Some(&result.data),
-        );
+        if (*ptr).user_buffer.is_some() {
+          do_emit_read_through_user_buffer(
+            &ctx,
+            ptr,
+            onread.as_ref(),
+            state.as_ref(),
+            &result.data,
+          );
+        } else {
+          do_emit_read(
+            &ctx,
+            onread.as_ref(),
+            state.as_ref(),
+            result.data.len() as isize,
+            Some(&result.data),
+          );
+        }
       }
       if let Some(ctx) = extract_emit_ctx(ptr) {
         let onread = (*ptr).onread.clone();
@@ -1951,6 +2095,22 @@ impl TLSWrap {
     inner.onread = Some(v8::Global::new(scope, onread));
   }
 
+  /// Register a static read buffer for decrypted plaintext.
+  /// Overrides `LibUvStreamWrap::useUserBuffer` so the buffer is
+  /// associated with the TLS layer rather than the encrypted underlying
+  /// stream (Node's `onread.buffer` semantics).
+  #[fast]
+  #[rename("useUserBuffer")]
+  fn use_user_buffer_tls(
+    &self,
+    buffer: v8::Local<v8::Uint8Array>,
+    scope: &mut v8::PinScope,
+  ) {
+    let inner = unsafe { &mut *self.inner.as_mut_ptr() };
+    inner.user_buffer =
+      crate::ops::stream_wrap::UserBuffer::from_view(scope, buffer);
+  }
+
   /// Start the TLS handshake.
   /// Creates the actual TLS connection from pending config, then begins
   /// the handshake. Mirrors Node's TLSWrap::Start().
@@ -2077,14 +2237,25 @@ impl TLSWrap {
       if !pending_data.is_empty() {
         let onread_clone = inner.onread.clone();
         let state = inner.stream_base_state.clone();
+        let has_user_buffer = inner.user_buffer.is_some();
         unsafe {
-          do_emit_read(
-            &ctx,
-            onread_clone.as_ref(),
-            state.as_ref(),
-            pending_data.len() as isize,
-            Some(&pending_data),
-          );
+          if has_user_buffer {
+            do_emit_read_through_user_buffer(
+              &ctx,
+              inner_ptr,
+              onread_clone.as_ref(),
+              state.as_ref(),
+              &pending_data,
+            );
+          } else {
+            do_emit_read(
+              &ctx,
+              onread_clone.as_ref(),
+              state.as_ref(),
+              pending_data.len() as isize,
+              Some(&pending_data),
+            );
+          }
         }
       }
       if pending_eof {
@@ -3100,9 +3271,21 @@ fn store_verify_error(fallback: &VerifyErrorStore, code: String) {
 struct NodeServerCertVerifier {
   inner: Arc<rustls::client::WebPkiServerVerifier>,
   verify_error: VerifyErrorStore,
+  /// True for an explicit `ca: []`. rustls/webpki cannot build its verifier
+  /// with no roots, so `inner` uses fallback roots only to classify
+  /// certificate-specific failures. Otherwise-valid chains are still recorded
+  /// as unauthorized below.
+  empty_explicit_ca: bool,
   /// Raw DER bytes of every root certificate so we can check whether a
   /// `CaUsedAsEndEntity` cert is actually trusted.
   root_cert_ders: Vec<Vec<u8>>,
+  /// When true (the `rejectUnauthorized: true` path), cert errors fail the
+  /// handshake at the rustls layer so rustls never caches a session that a
+  /// later strict connection could resume without re-running validation.
+  /// When false, errors are stored in `verify_error` and the JS layer chooses
+  /// whether to destroy based on `rejectUnauthorized`. Name-mismatch errors
+  /// are always deferred to JS `checkServerIdentity` regardless.
+  strict_verify: bool,
 }
 
 /// Map a rustls CipherSuite to (OpenSSL name, IANA name).
@@ -3267,6 +3450,11 @@ fn der_content_len(element: &[u8]) -> Option<usize> {
 /// matching. Returns an error code string if the chain cannot be built.
 /// Returns `Ok(())` if the chain reaches a trusted root, or
 /// `Err(code)` with a Node/OpenSSL error code if it does not.
+fn is_self_signed(cert_der: &[u8]) -> bool {
+  extract_issuer_and_subject(cert_der)
+    .is_some_and(|(issuer, subject)| issuer == subject)
+}
+
 fn verify_chain_structure(
   end_entity: &[u8],
   intermediates: &[rustls::pki_types::CertificateDer<'_>],
@@ -3286,6 +3474,7 @@ fn verify_chain_structure(
 
   // Walk the chain from end entity upward.
   let mut current_issuer = ee.0;
+  let end_entity_subject = ee.1;
 
   // Limit iterations to prevent cycles.
   for _ in 0..(intermediates.len() + 2) {
@@ -3308,17 +3497,38 @@ fn verify_chain_structure(
   }
 
   // Chain doesn't reach a trusted root.
-  if root_cert_ders.is_empty() {
-    // No explicit CA was provided (only system/default roots which
-    // didn't match). OpenSSL reports this as "unable to get local
-    // issuer certificate".
-    Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY")
-  } else {
+  if current_issuer == end_entity_subject {
+    Err("DEPTH_ZERO_SELF_SIGNED_CERT")
+  } else if intermediates.is_empty() {
     Err("UNABLE_TO_VERIFY_LEAF_SIGNATURE")
+  } else {
+    Err("UNABLE_TO_GET_ISSUER_CERT_LOCALLY")
   }
 }
 
 /// Map a rustls CertificateError to a Node/OpenSSL-style error code.
+/// Mirror of the JS-side `makeVerifyError` message table in `_tls_wrap.js`.
+/// Returns `None` when the code has no Node-style human message; callers
+/// fall back to the rustls error display.
+fn node_verify_error_message(code: &str) -> Option<&'static str> {
+  match code {
+    "CERT_HAS_EXPIRED" => Some("certificate has expired"),
+    "CERT_NOT_YET_VALID" => Some("certificate is not yet valid"),
+    "DEPTH_ZERO_SELF_SIGNED_CERT" => Some("self-signed certificate"),
+    "SELF_SIGNED_CERT_IN_CHAIN" => {
+      Some("self-signed certificate in certificate chain")
+    }
+    "UNABLE_TO_GET_ISSUER_CERT" => Some("unable to get issuer certificate"),
+    "UNABLE_TO_GET_ISSUER_CERT_LOCALLY" => {
+      Some("unable to get local issuer certificate")
+    }
+    "UNABLE_TO_VERIFY_LEAF_SIGNATURE" => {
+      Some("unable to verify the first certificate")
+    }
+    _ => None,
+  }
+}
+
 fn cert_error_to_node_code(err: &rustls::CertificateError) -> &'static str {
   use rustls::CertificateError as CE;
   match err {
@@ -3345,6 +3555,27 @@ fn cert_error_to_node_code(err: &rustls::CertificateError) -> &'static str {
   }
 }
 
+impl NodeServerCertVerifier {
+  /// In strict mode (`rejectUnauthorized: true`), return Err so rustls
+  /// aborts the handshake before any session is cached. In lenient mode,
+  /// record the Node-style error code and let the handshake proceed so the
+  /// JS layer can surface it as `authorizationError`. In both cases the
+  /// precise code is stashed in `verify_error` so `rustls_error_to_node_error`
+  /// can surface it on the error path even when rustls aborts the handshake.
+  fn record_or_fail(
+    &self,
+    err: rustls::Error,
+    code: String,
+  ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+    store_verify_error(&self.verify_error, code);
+    if self.strict_verify {
+      Err(err)
+    } else {
+      Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+  }
+}
+
 impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
   fn verify_server_cert(
     &self,
@@ -3361,9 +3592,30 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
       ocsp,
       now,
     ) {
-      Ok(v) => Ok(v),
+      Ok(v) => {
+        if self.empty_explicit_ca {
+          let code = verify_chain_structure(
+            end_entity.as_ref(),
+            intermediates,
+            &self.root_cert_ders,
+          )
+          .err()
+          .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
+          self.record_or_fail(
+            rustls::Error::InvalidCertificate(
+              rustls::CertificateError::UnknownIssuer,
+            ),
+            code.to_string(),
+          )
+        } else {
+          Ok(v)
+        }
+      }
       Err(rustls::Error::InvalidCertificate(ref cert_error)) => {
-        // Server-name checks are handled by JS (checkServerIdentity).
+        // Server-name checks are always deferred to JS (checkServerIdentity)
+        // so that custom checkServerIdentity callbacks see a successful
+        // handshake. The JS layer still runs that check and destroys the
+        // connection if it fails.
         if matches!(
           cert_error,
           rustls::CertificateError::NotValidForName
@@ -3400,21 +3652,35 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
               );
             }
             Err(code) => {
-              // Chain is broken -- store the error and let the
-              // handshake proceed so JS can decide.
-              store_verify_error(&self.verify_error, code.to_string());
-              return Ok(
-                rustls::client::danger::ServerCertVerified::assertion(),
+              // Chain is broken -- in strict mode fail the handshake so
+              // rustls doesn't cache a resumable session; in lenient mode
+              // store the error for JS to surface as authorizationError.
+              return self.record_or_fail(
+                rustls::Error::InvalidCertificate(cert_error.clone()),
+                code.to_string(),
               );
             }
           }
+        }
+        if matches!(cert_error, rustls::CertificateError::UnknownIssuer) {
+          let code = verify_chain_structure(
+            end_entity.as_ref(),
+            intermediates,
+            &self.root_cert_ders,
+          )
+          .err()
+          .unwrap_or("UNABLE_TO_VERIFY_LEAF_SIGNATURE");
+          return self.record_or_fail(
+            rustls::Error::InvalidCertificate(cert_error.clone()),
+            code.to_string(),
+          );
         }
         if let rustls::CertificateError::Other(other) = cert_error
           && let Some(webpki_err) = other.0.downcast_ref::<webpki::Error>()
         {
           // CaUsedAsEndEntity is a webpki-specific check that OpenSSL
           // does not have. If the cert is actually in our root store,
-          // trust it silently. Otherwise store the error.
+          // trust it silently. Otherwise fall through.
           if matches!(webpki_err, webpki::Error::CaUsedAsEndEntity) {
             let ee_bytes: &[u8] = end_entity.as_ref();
             let is_trusted =
@@ -3426,12 +3692,14 @@ impl rustls::client::danger::ServerCertVerifier for NodeServerCertVerifier {
             }
           }
         }
-        // Store the error for verifyError() and let the handshake
-        // proceed.  The JS layer will decide whether to tear down
-        // the connection based on `rejectUnauthorized`.
+        // In strict mode, fail the handshake so rustls won't cache the
+        // session; in lenient mode, store the error so JS can surface
+        // it as authorizationError without aborting.
         let code = cert_error_to_node_code(cert_error);
-        store_verify_error(&self.verify_error, code.to_string());
-        Ok(rustls::client::danger::ServerCertVerified::assertion())
+        self.record_or_fail(
+          rustls::Error::InvalidCertificate(cert_error.clone()),
+          code.to_string(),
+        )
       }
       Err(e) => Err(e),
     }
@@ -3522,8 +3790,9 @@ fn build_client_config(
   use deno_tls::TlsKeys;
   use deno_tls::TlsKeysHolder;
 
-  let _reject_unauthorized =
+  let reject_unauthorized =
     get_js_bool(scope, context, "rejectUnauthorized", true);
+  let use_default_ca = get_js_bool(scope, context, "useDefaultCA", true);
   let protocol_versions = match get_protocol_versions(scope, context) {
     ProtocolVersionSelection::Default => {
       &[&rustls::version::TLS13, &rustls::version::TLS12][..]
@@ -3560,17 +3829,18 @@ fn build_client_config(
     .flatten();
 
   // Use custom CA certs from setDefaultCACertificates() only when the
-  // SecureContext doesn't provide its own CA. This matches Node.js
-  // behavior where explicit `ca` in options takes precedence.
-  if ca_certs.is_empty()
+  // SecureContext is on the default CA path. Explicit `ca` replaces the
+  // root store, while context.addCACert() extends whatever default CA store
+  // is active.
+  if use_default_ca
     && let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>()
     && let Some(custom_ca_certs) = &node_tls_state.custom_ca_certs
   {
     root_cert_store = Some(rustls::RootCertStore::empty());
-    ca_certs = custom_ca_certs
-      .iter()
-      .map(|cert| cert.clone().into_bytes())
-      .collect();
+    ca_certs
+      .extend(custom_ca_certs.iter().map(|cert| cert.clone().into_bytes()));
+  } else if !use_default_ca {
+    root_cert_store = Some(rustls::RootCertStore::empty());
   }
 
   // Build client key/cert if provided
@@ -3602,6 +3872,7 @@ fn build_client_config(
   // every TLS connection without explicit CA options to fail verification.
   let mut root_cert_store =
     root_cert_store.unwrap_or_else(deno_tls::create_default_root_cert_store);
+  let empty_explicit_ca = !use_default_ca && ca_certs.is_empty();
 
   // Collect raw DER bytes of root certs so NodeServerCertVerifier can
   // check CaUsedAsEndEntity certs against the trust store.
@@ -3637,6 +3908,7 @@ fn build_client_config(
   // same `Arc`s and session resumption is allowed to proceed (rustls keys
   // its `compatible_config` check on `Arc::downgrade(&verifier)` identity).
   let is_default_path = ca_certs.is_empty()
+    && use_default_ca
     && op_state
       .try_borrow::<NodeTlsState>()
       .is_none_or(|s| s.custom_ca_certs.is_none())
@@ -3684,22 +3956,41 @@ fn build_client_config(
     TlsKeys::Resolver(_) => return None,
   };
 
-  // Enable session resumption using the shared session store from NodeTlsState.
+  // Enable session resumption using the shared session store from
+  // NodeTlsState. Strict and `rejectUnauthorized: false` connections use
+  // separate caches so a session whose cert error was deferred in the
+  // first handshake cannot be picked up by a later strict connection
+  // (which would resume without re-running verification and bypass
+  // checkServerIdentity in JS).
   if let Some(node_tls_state) = op_state.try_borrow::<NodeTlsState>() {
-    config.resumption = rustls::client::Resumption::store(
-      node_tls_state.client_session_store.clone(),
-    );
+    let store = if reject_unauthorized {
+      node_tls_state.client_session_store.clone()
+    } else {
+      node_tls_state.client_session_store_insecure.clone()
+    };
+    config.resumption = rustls::client::Resumption::store(store);
   }
 
   // Install NodeServerCertVerifier to store verification errors for
   // verifyError().  This verifier never aborts the handshake — it
   // matches Node/OpenSSL behaviour where cert errors are deferred.
+  //
+  // The verifier Arc participates in rustls's resumption compatibility
+  // check, so keep separate stable identities for strict verification and
+  // `rejectUnauthorized: false`. Otherwise a session first accepted with
+  // deferred cert errors can be resumed by a later strict connection without
+  // surfacing the original verification error.
   let (final_verify_error, verifier_arc): (
     VerifyErrorStore,
     Option<Arc<dyn rustls::client::danger::ServerCertVerifier>>,
   ) = if is_default_path {
     let state = op_state.borrow_mut::<NodeTlsState>();
-    if let Some((v, e)) = state.cached_default_verifier.clone() {
+    let cached_verifier = if reject_unauthorized {
+      &mut state.cached_default_verifier
+    } else {
+      &mut state.cached_insecure_verifier
+    };
+    if let Some((v, e)) = cached_verifier.clone() {
       (e, Some(v))
     } else {
       let verifier_result = rustls::client::WebPkiServerVerifier::builder(
@@ -3713,9 +4004,11 @@ fn build_client_config(
             Arc::new(NodeServerCertVerifier {
               inner,
               verify_error: store.clone(),
+              empty_explicit_ca: false,
               root_cert_ders,
+              strict_verify: reject_unauthorized,
             });
-          state.cached_default_verifier = Some((v.clone(), store.clone()));
+          *cached_verifier = Some((v.clone(), store.clone()));
           (store, Some(v))
         }
         Err(_) => (Default::default(), None),
@@ -3723,15 +4016,23 @@ fn build_client_config(
     }
   } else {
     let store: VerifyErrorStore = Default::default();
-    let verifier_result =
-      rustls::client::WebPkiServerVerifier::builder(Arc::new(root_cert_store))
-        .build();
+    let verifier_root_store = if empty_explicit_ca {
+      deno_tls::create_default_root_cert_store()
+    } else {
+      root_cert_store.clone()
+    };
+    let verifier_result = rustls::client::WebPkiServerVerifier::builder(
+      Arc::new(verifier_root_store),
+    )
+    .build();
     let v: Option<Arc<dyn rustls::client::danger::ServerCertVerifier>> =
       verifier_result.ok().map(|inner| {
         Arc::new(NodeServerCertVerifier {
           inner,
           verify_error: store.clone(),
+          empty_explicit_ca,
           root_cert_ders,
+          strict_verify: reject_unauthorized,
         }) as Arc<dyn rustls::client::danger::ServerCertVerifier>
       });
     (store, v)
@@ -3742,14 +4043,16 @@ fn build_client_config(
 
   // Install a stable "no client cert" resolver Arc on the default path so
   // rustls's `Arc::downgrade(&client_creds)` identity check keeps the
-  // resumed session compatible across `tls.connect()` calls.  Seed the
-  // cache from the freshly built config on first call, then unconditionally
-  // overwrite `config.client_auth_cert_resolver` from the cache so every
-  // connection (including the first) hands rustls the same Arc identity.
+  // resumed session compatible across `tls.connect()` calls. Keep this
+  // split by verification policy for the same reason as the verifier Arc.
   if is_default_path {
     let state = op_state.borrow_mut::<NodeTlsState>();
-    let resolver = state
-      .cached_no_client_auth
+    let cached_no_client_auth = if reject_unauthorized {
+      &mut state.cached_no_client_auth
+    } else {
+      &mut state.cached_insecure_no_client_auth
+    };
+    let resolver = cached_no_client_auth
       .get_or_insert_with(|| config.client_auth_cert_resolver.clone())
       .clone();
     config.client_auth_cert_resolver = resolver;
@@ -3908,14 +4211,22 @@ impl rustls::server::danger::ClientCertVerifier
 
   fn verify_client_cert(
     &self,
-    _end_entity: &rustls::pki_types::CertificateDer<'_>,
-    _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+    end_entity: &rustls::pki_types::CertificateDer<'_>,
+    intermediates: &[rustls::pki_types::CertificateDer<'_>],
     _now: rustls::pki_types::UnixTime,
   ) -> Result<rustls::server::danger::ClientCertVerified, rustls::Error> {
-    // No root CAs — we cannot verify anything.  Store an error for
-    // verifyError() and let the JS layer decide via `authorized`.
+    // No root CAs, so we cannot establish a trust chain. Match Node's
+    // OpenSSL-derived error codes: a self-signed leaf (no intermediates,
+    // subject == issuer) reports DEPTH_ZERO_SELF_SIGNED_CERT; everything
+    // else falls back to UNABLE_TO_GET_ISSUER_CERT.
+    let code =
+      if intermediates.is_empty() && is_self_signed(end_entity.as_ref()) {
+        "DEPTH_ZERO_SELF_SIGNED_CERT"
+      } else {
+        "UNABLE_TO_GET_ISSUER_CERT"
+      };
     *self.verify_error.lock().unwrap_or_else(|p| p.into_inner()) =
-      Some("UNABLE_TO_GET_ISSUER_CERT".to_string());
+      Some(code.to_string());
     Ok(rustls::server::danger::ClientCertVerified::assertion())
   }
 

@@ -1004,16 +1004,31 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     &self,
   ) -> Result<&MinimumDependencyAgeConfig, anyhow::Error> {
     self.minimum_dependency_age.get_or_try_init(|| {
-      let config = if let Some(date) = self.options.newest_dependency_date {
+      let workspace_factory = self.workspace_factory();
+      let mut config = if let Some(date) = self.options.newest_dependency_date {
         MinimumDependencyAgeConfig {
           age: Some(date),
           exclude: Vec::new(),
         }
       } else {
-        let workspace_factory = self.workspace_factory();
         let workspace = &workspace_factory.workspace_directory()?.workspace;
         workspace.minimum_dependency_age(workspace_factory.sys())?
       };
+      // fall back to .npmrc's `min-release-age` when not configured in deno.json
+      if config.age.is_none()
+        && let Some(days) = workspace_factory.npmrc()?.min_release_age_days
+      {
+        let now = chrono::DateTime::<chrono::Utc>::from(
+          workspace_factory.sys().sys_time_now(),
+        );
+        config.age = Some(if days == 0 {
+          NewestDependencyDate::Disabled
+        } else {
+          NewestDependencyDate::Enabled(
+            now - chrono::Duration::days(days as i64),
+          )
+        });
+      }
       if let Some(newest_dependency_date) =
         config.age.and_then(|d| d.into_option())
       {

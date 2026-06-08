@@ -98,11 +98,11 @@ pub fn create_validate_import_attributes_callback(
 ) -> deno_core::ValidateImportAttributesCb {
   Box::new(
     move |scope: &mut v8::PinScope<'_, '_>,
-          attributes: &HashMap<String, String>| {
+          attributes: &HashMap<String, String>,
+          context: &deno_core::ImportAttributesContext| {
       let valid_attribute = |kind: &str| {
-        enable_raw_imports.load(Ordering::Relaxed)
-          && matches!(kind, "bytes" | "text")
-          || matches!(kind, "json")
+        matches!(kind, "json" | "text")
+          || (enable_raw_imports.load(Ordering::Relaxed) && kind == "bytes")
       };
       for (key, value) in attributes {
         let msg = if key != "type" {
@@ -117,6 +117,7 @@ pub fn create_validate_import_attributes_callback(
           continue;
         };
 
+        let msg = format!("{msg}{}", context.format_location());
         let message = v8::String::new(scope, &msg).unwrap();
         let exception = v8::Exception::type_error(scope, message);
         scope.throw_exception(exception);
@@ -229,6 +230,14 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<&'static [u8]>,
 
+  /// `(specifier, source)` pairs for `lazy_loaded_js` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+
+  /// `(specifier, source)` pairs for `lazy_loaded_esm` files that were not
+  /// consumed during snapshot creation. Emitted by the snapshot build script.
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
+
   /// Should op registration be skipped?
   pub skip_op_registration: bool,
 
@@ -278,6 +287,8 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
+      residual_lazy_js_sources: &[],
+      residual_lazy_esm_sources: &[],
       create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -424,17 +435,6 @@ impl MainWorker {
       options.unconfigured_runtime = None;
     }
 
-    #[cfg(feature = "hmr")]
-    const {
-      assert!(
-        cfg!(not(feature = "only_snapshotted_js_sources")),
-        "'hmr' is incompatible with 'only_snapshotted_js_sources'."
-      );
-    }
-
-    #[cfg(feature = "only_snapshotted_js_sources")]
-    options.startup_snapshot.as_ref().expect("A user snapshot was not provided, even though 'only_snapshotted_js_sources' is used.");
-
     let mut js_runtime = if let Some(u) = options.unconfigured_runtime {
       let js_runtime = u.hydrate(services.module_loader);
 
@@ -460,6 +460,8 @@ impl MainWorker {
       common_runtime(CommonRuntimeOptions {
         module_loader: services.module_loader.clone(),
         startup_snapshot: options.startup_snapshot,
+        residual_lazy_js_sources: options.residual_lazy_js_sources,
+        residual_lazy_esm_sources: options.residual_lazy_esm_sources,
         create_params: options.create_params,
         skip_op_registration: options.skip_op_registration,
         shared_array_buffer_store: services.shared_array_buffer_store,
@@ -919,6 +921,34 @@ impl MainWorker {
       .await
   }
 
+  /// If a debugger session is attached and would otherwise be dropped on
+  /// shutdown (a legacy blocking session, or one that opted into
+  /// `NodeRuntime.notifyWhenWaitingForDisconnect` (e.g. Chrome DevTools)),
+  /// block until it disconnects. Returns immediately when no such session
+  /// is attached.
+  ///
+  /// This mirrors the wait the `deno run` event loop performs at the end of
+  /// execution and is meant for tools like `deno test` / `deno bench` whose
+  /// normal shutdown polls the event loop with a zero-duration timeout and
+  /// would otherwise exit while a debugger is still attached.
+  pub async fn wait_for_inspector_session_disconnect(
+    &mut self,
+  ) -> Result<(), CoreError> {
+    let sessions_state = self.js_runtime.inspector().sessions_state();
+    if sessions_state.has_active
+      && (sessions_state.has_blocking
+        || sessions_state.has_nonblocking_wait_for_disconnect)
+    {
+      self
+        .js_runtime
+        .run_event_loop(PollEventLoopOptions {
+          wait_for_inspector: true,
+        })
+        .await?;
+    }
+    Ok(())
+  }
+
   /// Return exit code set by the executed code (either in main worker
   /// or one of child web workers).
   pub fn exit_code(&self) -> i32 {
@@ -1125,6 +1155,8 @@ fn common_extensions<
 struct CommonRuntimeOptions {
   module_loader: Rc<dyn ModuleLoader>,
   startup_snapshot: Option<&'static [u8]>,
+  residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   create_params: Option<v8::CreateParams>,
   skip_op_registration: bool,
   shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -1142,6 +1174,8 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
   let js_runtime = JsRuntime::new(RuntimeOptions {
     module_loader: Some(opts.module_loader),
     startup_snapshot: opts.startup_snapshot,
+    residual_lazy_js_sources: opts.residual_lazy_js_sources,
+    residual_lazy_esm_sources: opts.residual_lazy_esm_sources,
     create_params: opts.create_params,
     skip_op_registration: opts.skip_op_registration,
     shared_array_buffer_store: opts.shared_array_buffer_store,
@@ -1198,6 +1232,8 @@ pub fn create_permissions_stack_trace_callback()
 
 pub struct UnconfiguredRuntimeOptions {
   pub startup_snapshot: &'static [u8],
+  pub residual_lazy_js_sources: &'static [(&'static str, &'static str)],
+  pub residual_lazy_esm_sources: &'static [(&'static str, &'static str)],
   pub create_params: Option<v8::CreateParams>,
   pub shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -1231,6 +1267,8 @@ impl UnconfiguredRuntime {
     let js_runtime = common_runtime(CommonRuntimeOptions {
       module_loader: module_loader.clone(),
       startup_snapshot: Some(options.startup_snapshot),
+      residual_lazy_js_sources: options.residual_lazy_js_sources,
+      residual_lazy_esm_sources: options.residual_lazy_esm_sources,
       create_params: options.create_params,
       skip_op_registration: true,
       shared_array_buffer_store: options.shared_array_buffer_store,

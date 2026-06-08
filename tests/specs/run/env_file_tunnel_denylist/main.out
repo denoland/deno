@@ -1,0 +1,6 @@
+[WILDLINE]Ignoring 'DENO_CONNECTED' from environment file '[WILDLINE]
+[WILDLINE]Ignoring 'DENO_DEPLOY_TUNNEL_ENDPOINT' from environment file '[WILDLINE]
+DENO_CONNECTED: undefined
+DENO_DEPLOY_TUNNEL_ENDPOINT: undefined
+NOT_DENYLISTED: ok
+user code started
