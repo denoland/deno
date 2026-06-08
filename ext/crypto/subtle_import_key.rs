@@ -19,6 +19,23 @@ use std::borrow::Cow;
 
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
+
+/// JWK base64url decoding per the WebCrypto / JWA spec must accept inputs
+/// whose trailing bit count isn't a multiple of 8 (e.g. `"xxx"` → 2 bytes
+/// with 2 stray bits) and must tolerate `=` padding even on a "no-pad"
+/// alphabet. The default `BASE64_URL_SAFE_NO_PAD` engine rejects both.
+/// Mirrors [`crate::import_key::BASE64_URL_SAFE_FORGIVING`] -- a separate
+/// definition because the existing helper is private to that legacy module.
+const BASE64_JWK_FORGIVING:
+  base64::engine::general_purpose::GeneralPurpose =
+  base64::engine::general_purpose::GeneralPurpose::new(
+    &base64::alphabet::URL_SAFE,
+    base64::engine::general_purpose::GeneralPurposeConfig::new()
+      .with_decode_allow_trailing_bits(true)
+      .with_decode_padding_mode(
+        base64::engine::DecodePaddingMode::Indifferent,
+      ),
+  );
 use deno_core::v8;
 use deno_core::webidl::ContextFn;
 use deno_core::webidl::WebIdlConverter;
@@ -1678,7 +1695,7 @@ fn read_jwk_b64_field<'s>(
   field: &[u8],
 ) -> Option<Vec<u8>> {
   let s = read_string_member(scope, obj, field)?;
-  BASE64_URL_SAFE_NO_PAD.decode(s.trim_end_matches('=')).ok()
+  BASE64_JWK_FORGIVING.decode(s).ok()
 }
 
 fn read_string_member<'s>(
