@@ -880,6 +880,7 @@ impl Graph {
           bin: version_info.bin.clone(),
           scripts: version_info.scripts.clone(),
           deprecated: version_info.deprecated.clone(),
+          libc: Vec::new(),
         }),
         is_deprecated: version_info.deprecated.is_some(),
         has_bin: version_info.bin.is_some(),
@@ -5998,6 +5999,7 @@ mod test {
       &NpmSystemInfo {
         os: "win32".into(),
         cpu: "x86".into(),
+        libc: "".into(),
       },
     );
     assert_eq!(
@@ -6016,6 +6018,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86".into(),
+        libc: "".into(),
       },
     );
     assert_eq!(
@@ -6033,6 +6036,7 @@ mod test {
       &NpmSystemInfo {
         os: "linux".into(),
         cpu: "x86".into(),
+        libc: "".into(),
       },
     );
     assert_eq!(
@@ -6076,6 +6080,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86".into(),
+        libc: "".into(),
       },
     );
     assert_eq!(
@@ -6128,6 +6133,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86_64".into(),
+        libc: "".into(),
       },
     );
     assert_eq!(
@@ -6149,6 +6155,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86_64".into(),
+        libc: "".into(),
       },
     );
     assert_eq!(packages, vec!["package-a@1.0.0".to_string()]);
@@ -6171,6 +6178,7 @@ mod test {
       &NpmSystemInfo {
         os: "darwin".into(),
         cpu: "x86_64".into(),
+        libc: "".into(),
       },
     );
     assert_eq!(
