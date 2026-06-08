@@ -54,10 +54,19 @@ pub fn print_linker_flags(name: &str) {
       // webgpu
       "d3dcompiler_47",
       "OPENGL32",
+      "gdi32",
+      "setupapi",
+      "oleaut32",
+      "combase",
       // network related functions
       "iphlpapi",
       // restart manager (only needed on the `deno clean` locked-file path)
       "rstrtmgr",
+      // timer functions
+      "winmm",
+      // debugging/diagnostics (only needed on panic/crash)
+      "dbghelp",
+      "psapi",
     ];
     for dll in dlls {
       println!("cargo:rustc-link-arg-bin={name}=/delayload:{dll}.dll");
