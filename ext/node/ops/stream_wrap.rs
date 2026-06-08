@@ -210,7 +210,7 @@ impl ShutdownWrap {
 pub struct LibUvStreamWrap {
   base: HandleWrap,
   fd: Cell<i32>,
-  stream: *const uv_stream_t,
+  stream: Cell<*const uv_stream_t>,
   bytes_read: Rc<Cell<u64>>,
   bytes_written: Rc<Cell<u64>>,
   /// Stable per-handle data referenced from `uv_stream_t.data` for the
@@ -227,7 +227,7 @@ impl LibUvStreamWrap {
     Self {
       base,
       fd: Cell::new(fd),
-      stream,
+      stream: Cell::new(stream),
       bytes_read: bytes_read.clone(),
       bytes_written: Rc::new(Cell::new(0)),
       handle_data: Box::new(StreamHandleData {
@@ -246,7 +246,7 @@ impl LibUvStreamWrap {
 
   #[inline]
   pub fn stream_ptr(&self) -> *mut uv_stream_t {
-    self.stream as *mut uv_stream_t
+    self.stream.get() as *mut uv_stream_t
   }
 
   #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
@@ -483,14 +483,18 @@ impl LibUvStreamWrap {
   /// Must be called before the uv handle memory is freed.
   /// Only call this on handles that OWN the uv stream (e.g. TCPWrap),
   /// not on wrappers that borrow it (e.g. TLSWrap).
-  pub(crate) fn detach_stream(&mut self) {
-    if !self.stream.is_null() {
+  pub(crate) fn detach_stream(&self) {
+    // The native handle is no longer ours to close; forget it so the base
+    // `HandleWrap` never calls `uv_close` on freed memory.
+    self.base.clear_handle();
+    let stream = self.stream.get();
+    if !stream.is_null() {
       // SAFETY: stream pointer is non-null (checked above) and valid for the
       // lifetime of the owning handle; we null it to prevent dangling access.
       unsafe {
-        (*(self.stream as *mut uv_stream_t)).data = std::ptr::null_mut();
+        (*(stream as *mut uv_stream_t)).data = std::ptr::null_mut();
       }
-      self.stream = std::ptr::null();
+      self.stream.set(std::ptr::null());
     }
   }
 }
