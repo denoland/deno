@@ -186,13 +186,37 @@ fn parse_xof_dict<'a, 'b>(
   match canonical {
     "cSHAKE128" => Ok(SubtleDigestXof::CShake128 {
       output_length,
-      function_name: read_optional_buffer(scope, obj, "functionName")?,
-      customization: read_optional_buffer(scope, obj, "customization")?,
+      function_name: read_optional_buffer(
+        scope,
+        obj,
+        "functionName",
+        prefix.clone(),
+        &context,
+      )?,
+      customization: read_optional_buffer(
+        scope,
+        obj,
+        "customization",
+        prefix.clone(),
+        &context,
+      )?,
     }),
     "cSHAKE256" => Ok(SubtleDigestXof::CShake256 {
       output_length,
-      function_name: read_optional_buffer(scope, obj, "functionName")?,
-      customization: read_optional_buffer(scope, obj, "customization")?,
+      function_name: read_optional_buffer(
+        scope,
+        obj,
+        "functionName",
+        prefix.clone(),
+        &context,
+      )?,
+      customization: read_optional_buffer(
+        scope,
+        obj,
+        "customization",
+        prefix.clone(),
+        &context,
+      )?,
     }),
     "TurboSHAKE128" => Ok(SubtleDigestXof::TurboShake128 {
       output_length,
@@ -249,10 +273,12 @@ fn read_optional_u8<'a>(
   Ok(Some(u as u8))
 }
 
-fn read_optional_buffer<'a>(
+fn read_optional_buffer<'a, 'b>(
   scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
   key: &'static str,
+  prefix: Cow<'static, str>,
+  context: &ContextFn<'b>,
 ) -> Result<Option<Vec<u8>>, WebIdlError> {
   let key_v8 = v8_str(scope, key);
   let val = obj
@@ -261,7 +287,42 @@ fn read_optional_buffer<'a>(
   if val.is_undefined() || val.is_null() {
     return Ok(None);
   }
-  Ok(Some(value_to_byte_vec(scope, val)))
+  // SAB and SAB-backed views are rejected to match the JS
+  // `webidl.converters.BufferSource` contract (cSHAKE
+  // `functionName`/`customization`), and non-BufferSource values raise
+  // `TypeError` instead of silently materializing as an empty `Vec`.
+  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(val) {
+    if let Some(ab) = view.buffer(scope) {
+      let ab_val: v8::Local<v8::Value> = ab.into();
+      if ab_val.is_shared_array_buffer() {
+        return Err(WebIdlError::other(
+          prefix,
+          context.borrowed(),
+          JsErrorBox::type_error(format!(
+            "'{key}' is a view on a SharedArrayBuffer, which is not allowed"
+          )),
+        ));
+      }
+    }
+    return Ok(Some(value_to_byte_vec(scope, val)));
+  }
+  if val.is_shared_array_buffer() {
+    return Err(WebIdlError::other(
+      prefix,
+      context.borrowed(),
+      JsErrorBox::type_error(format!(
+        "'{key}' is a SharedArrayBuffer, which is not allowed"
+      )),
+    ));
+  }
+  if v8::Local::<v8::ArrayBuffer>::try_from(val).is_ok() {
+    return Ok(Some(value_to_byte_vec(scope, val)));
+  }
+  Err(WebIdlError::other(
+    prefix,
+    context.borrowed(),
+    JsErrorBox::type_error(format!("'{key}' is not a BufferSource")),
+  ))
 }
 
 fn value_to_byte_vec<'a>(

@@ -259,7 +259,16 @@ pub fn run(
   format: KeyFormat,
   key: SubtleKey,
 ) -> Result<ExportKeyOutput, CryptoError> {
-  let result = match key.algorithm_name.as_str() {
+  // Spec: `exportKey` MUST throw `InvalidAccessError` before any
+  // per-algorithm export work runs when the key is non-extractable.
+  // Hoisting this guard ahead of the dispatch prevents a non-extractable
+  // key whose export would also fail (unsupported algorithm or format)
+  // from masking the `InvalidAccessError` with `NotSupportedError` /
+  // `OperationError`.
+  if !key.extractable {
+    return Err(invalid_access("Key is not extractable"));
+  }
+  match key.algorithm_name.as_str() {
     "HMAC" => export_symmetric(format, &key, SymKind::Hmac),
     "AES-CTR" | "AES-CBC" | "AES-GCM" | "AES-OCB" | "AES-KW" => {
       export_symmetric(format, &key, SymKind::Aes)
@@ -277,13 +286,7 @@ pub fn run(
     other => Err(not_supported(format!(
       "Unrecognized algorithm name: {other}"
     ))),
-  }?;
-
-  if !key.extractable {
-    return Err(invalid_access("Key is not extractable"));
   }
-
-  Ok(result)
 }
 
 #[derive(Copy, Clone)]

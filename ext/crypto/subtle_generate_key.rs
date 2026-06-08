@@ -673,16 +673,29 @@ fn sha_name(h: ShaHash) -> &'static str {
   }
 }
 
-fn sha_from_name(s: &str) -> Option<ShaHash> {
-  Some(match s {
-    "SHA-1" => ShaHash::Sha1,
-    "SHA-256" => ShaHash::Sha256,
-    "SHA-384" => ShaHash::Sha384,
-    "SHA-512" => ShaHash::Sha512,
-    "SHA3-256" => ShaHash::Sha3_256,
-    "SHA3-384" => ShaHash::Sha3_384,
-    "SHA3-512" => ShaHash::Sha3_512,
-    _ => return None,
+pub(crate) fn sha_from_name(s: &str) -> Option<ShaHash> {
+  // WebCrypto algorithm names are matched case-insensitively (per the
+  // normalize-an-algorithm spec step that lowercases registry entries
+  // before comparison). Hash names must follow the same rule -- e.g.
+  // `ECDSA verification failure due to bad hash name` WPT cases mutate
+  // `SHA-256` -> `SH256`, and a literal byte-equal match would let
+  // genuinely-canonical mis-cased input through.
+  Some(if s.eq_ignore_ascii_case("SHA-1") {
+    ShaHash::Sha1
+  } else if s.eq_ignore_ascii_case("SHA-256") {
+    ShaHash::Sha256
+  } else if s.eq_ignore_ascii_case("SHA-384") {
+    ShaHash::Sha384
+  } else if s.eq_ignore_ascii_case("SHA-512") {
+    ShaHash::Sha512
+  } else if s.eq_ignore_ascii_case("SHA3-256") {
+    ShaHash::Sha3_256
+  } else if s.eq_ignore_ascii_case("SHA3-384") {
+    ShaHash::Sha3_384
+  } else if s.eq_ignore_ascii_case("SHA3-512") {
+    ShaHash::Sha3_512
+  } else {
+    return None;
   })
 }
 

@@ -43,7 +43,11 @@ pub enum SubtleSignParams {
     salt_length: u32,
   },
   Ecdsa {
-    hash: ShaHash,
+    /// Raw `.name` string from the dictionary; converted to `ShaHash`
+    /// at `run` time so an unknown name surfaces as a `DOMException
+    /// NotSupportedError` (the WPT `bad hash name` cases assert
+    /// `err.name === "NotSupportedError"`).
+    hash: String,
   },
   Hmac,
   Ed25519,
@@ -116,8 +120,16 @@ impl<'a> WebIdlConverter<'a> for SubtleSignParams {
           "ML-DSA-65" => 1,
           _ => 2,
         };
-        let context_bytes = maybe_obj
-          .and_then(|o| read_optional_buffer_source(scope, o, "context"));
+        let context_bytes = match maybe_obj {
+          Some(o) => read_optional_buffer_source(
+            scope,
+            o,
+            "context",
+            prefix.clone(),
+            &context,
+          )?,
+          None => None,
+        };
         Ok(Self::MlDsa {
           variant,
           context: context_bytes,
@@ -180,13 +192,21 @@ pub(crate) fn read_required_u32<'a, 'b>(
   })
 }
 
+/// Coerce a hash-algorithm dictionary member to its raw `.name` string
+/// per the WebIDL `HashAlgorithmIdentifier` union. Does NOT validate
+/// the name against the known SHA list -- callers must do that at
+/// run-time and surface a `DOMException NotSupportedError`. (The
+/// `WebIdlError` type is hardcoded `#[class(type)]`, so any
+/// `NotSupportedError` raised here would surface as a `TypeError`,
+/// breaking WPT `ECDSA verification failure due to bad hash name`
+/// which asserts `err.name === "NotSupportedError"`.)
 pub(crate) fn read_required_hash<'a, 'b>(
   scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
   field: &'static str,
   prefix: Cow<'static, str>,
   context: &ContextFn<'b>,
-) -> Result<ShaHash, WebIdlError> {
+) -> Result<String, WebIdlError> {
   let key = v8_str(scope, field);
   let val = obj
     .get(scope, key.into())
@@ -198,8 +218,8 @@ pub(crate) fn read_required_hash<'a, 'b>(
       JsErrorBox::type_error(format!("required dictionary member '{field}'")),
     ));
   }
-  let name_str = if val.is_string() {
-    val.to_rust_string_lossy(scope)
+  if val.is_string() {
+    Ok(val.to_rust_string_lossy(scope))
   } else if let Ok(obj) = v8::Local::<v8::Object>::try_from(val) {
     let name_key = v8_str(scope, "name");
     let name_val = obj
@@ -212,70 +232,97 @@ pub(crate) fn read_required_hash<'a, 'b>(
         JsErrorBox::type_error(format!("'{field}.name' is not a DOMString")),
       )
     })?;
-    s.to_rust_string_lossy(scope)
+    Ok(s.to_rust_string_lossy(scope))
   } else {
-    return Err(WebIdlError::other(
+    Err(WebIdlError::other(
       prefix,
       context.borrowed(),
       JsErrorBox::type_error(format!(
         "'{field}' must be a HashAlgorithmIdentifier"
       )),
-    ));
-  };
-  match name_str.as_str() {
-    "SHA-1" => Ok(ShaHash::Sha1),
-    "SHA-256" => Ok(ShaHash::Sha256),
-    "SHA-384" => Ok(ShaHash::Sha384),
-    "SHA-512" => Ok(ShaHash::Sha512),
-    "SHA3-256" => Ok(ShaHash::Sha3_256),
-    "SHA3-384" => Ok(ShaHash::Sha3_384),
-    "SHA3-512" => Ok(ShaHash::Sha3_512),
-    _ => Err(WebIdlError::other(
-      prefix,
-      context.borrowed(),
-      JsErrorBox::not_supported(),
-    )),
+    ))
   }
 }
 
-pub(crate) fn read_optional_buffer_source<'a>(
+pub(crate) fn read_optional_buffer_source<'a, 'b>(
   scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
-  field: &str,
-) -> Option<Vec<u8>> {
+  field: &'static str,
+  prefix: Cow<'static, str>,
+  context: &ContextFn<'b>,
+) -> Result<Option<Vec<u8>>, WebIdlError> {
   let key = v8_str(scope, field);
-  let val = obj.get(scope, key.into())?;
+  let val = obj
+    .get(scope, key.into())
+    .unwrap_or_else(|| v8::undefined(scope).into());
   if val.is_undefined() || val.is_null() {
-    return None;
+    return Ok(None);
   }
   if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(val) {
+    // Reject views backed by a `SharedArrayBuffer` to match the JS
+    // `webidl.converters.BufferSource` contract (cSHAKE
+    // `functionName`/`customization`, ML-DSA `context`, ECDH-derive
+    // `info`, etc.).
+    if let Some(ab) = view.buffer(scope) {
+      let ab_val: v8::Local<v8::Value> = ab.into();
+      if ab_val.is_shared_array_buffer() {
+        return Err(WebIdlError::other(
+          prefix,
+          context.borrowed(),
+          JsErrorBox::type_error(format!(
+            "'{field}' is a view on a SharedArrayBuffer, which is not allowed"
+          )),
+        ));
+      }
+    }
     let byte_length = view.byte_length();
     if byte_length == 0 {
-      return Some(Vec::new());
+      return Ok(Some(Vec::new()));
     }
     let byte_offset = view.byte_offset();
-    let ab = view.buffer(scope)?;
+    let ab = view.buffer(scope).ok_or_else(|| {
+      WebIdlError::other(
+        prefix.clone(),
+        context.borrowed(),
+        JsErrorBox::type_error(format!(
+          "'{field}' backing ArrayBuffer is detached"
+        )),
+      )
+    })?;
     // SAFETY: V8 guarantees byte_offset + byte_length stay within the
     // backing store and a non-detached buffer has a non-null data pointer.
     unsafe {
-      let base = ab.data()?.as_ptr() as *const u8;
-      return Some(
+      let base = ab.data().unwrap().as_ptr() as *const u8;
+      return Ok(Some(
         std::slice::from_raw_parts(base.add(byte_offset), byte_length).to_vec(),
-      );
+      ));
     }
+  }
+  if val.is_shared_array_buffer() {
+    return Err(WebIdlError::other(
+      prefix,
+      context.borrowed(),
+      JsErrorBox::type_error(format!(
+        "'{field}' is a SharedArrayBuffer, which is not allowed"
+      )),
+    ));
   }
   if let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(val) {
     let byte_length = ab.byte_length();
     if byte_length == 0 {
-      return Some(Vec::new());
+      return Ok(Some(Vec::new()));
     }
     // SAFETY: as above.
     unsafe {
-      let base = ab.data()?.as_ptr() as *const u8;
-      return Some(std::slice::from_raw_parts(base, byte_length).to_vec());
+      let base = ab.data().unwrap().as_ptr() as *const u8;
+      return Ok(Some(std::slice::from_raw_parts(base, byte_length).to_vec()));
     }
   }
-  None
+  Err(WebIdlError::other(
+    prefix,
+    context.borrowed(),
+    JsErrorBox::type_error(format!("'{field}' is not a BufferSource")),
+  ))
 }
 
 const SUPPORTED_NAMED_CURVES: &[&str] = &["P-256", "P-384", "P-521"];
@@ -333,6 +380,13 @@ pub fn run(
       sign_key_sync(key_data, args, &data)
     }
     SubtleSignParams::Ecdsa { hash } => {
+      // Resolve the raw hash string here so that an unknown / mis-cased
+      // name throws `DOMException NotSupportedError`, matching the
+      // ECDSA `bad hash name` WPT cases.
+      let hash =
+        crate::subtle_generate_key::sha_from_name(&hash).ok_or_else(|| {
+          not_supported(format!("Unrecognized hash algorithm: {hash}"))
+        })?;
       if key.key_type != CryptoKeyType::Private {
         return Err(invalid_access("Key type not supported".to_string()));
       }

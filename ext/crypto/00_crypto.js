@@ -241,6 +241,10 @@ let cryptoSingleton;
 function getCryptoSingleton() {
   if (cryptoSingleton === undefined) {
     cryptoSingleton = op_create_crypto(getSubtleSingleton());
+    // Stamp the WebIDL brand so `Reflect.getPrototypeOf(crypto)` and
+    // the IDL `Crypto interface: operation randomUUID()` invariants
+    // resolve through the same brand-check path as `SubtleCrypto`.
+    cryptoSingleton[webidl.brand] = webidl.brand;
   }
   return cryptoSingleton;
 }

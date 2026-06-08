@@ -259,13 +259,15 @@ fn read_required_buffer_source<'a, 'b>(
   prefix: Cow<'static, str>,
   context: &ContextFn<'b>,
 ) -> Result<Vec<u8>, WebIdlError> {
-  read_optional_buffer_source(scope, obj, field).ok_or_else(|| {
-    WebIdlError::other(
+  match read_optional_buffer_source(scope, obj, field, prefix.clone(), context)?
+  {
+    Some(v) => Ok(v),
+    None => Err(WebIdlError::other(
       prefix,
       context.borrowed(),
       JsErrorBox::type_error(format!("required dictionary member '{field}'")),
-    )
-  })
+    )),
+  }
 }
 
 fn read_required_public_key<'a, 'b>(

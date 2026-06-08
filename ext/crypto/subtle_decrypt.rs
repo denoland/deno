@@ -89,8 +89,16 @@ impl<'a> WebIdlConverter<'a> for SubtleDecryptParams {
     };
     match canonical {
       "RSA-OAEP" => {
-        let label = maybe_obj
-          .and_then(|o| read_optional_buffer_source(scope, o, "label"));
+        let label = match maybe_obj {
+          Some(o) => read_optional_buffer_source(
+            scope,
+            o,
+            "label",
+            prefix.clone(),
+            &context,
+          )?,
+          None => None,
+        };
         Ok(Self::RsaOaep { label })
       }
       "AES-CBC" => {
@@ -129,9 +137,15 @@ impl<'a> WebIdlConverter<'a> for SubtleDecryptParams {
           prefix.clone(),
           &context,
         )?;
-        let additional_data =
-          read_optional_buffer_source(scope, obj, "additionalData");
-        let tag_length = read_optional_u32(scope, obj, "tagLength");
+        let additional_data = read_optional_buffer_source(
+          scope,
+          obj,
+          "additionalData",
+          prefix.clone(),
+          &context,
+        )?;
+        let tag_length =
+          read_optional_u32(scope, obj, "tagLength", prefix.clone(), &context)?;
         Ok(Self::AesGcm {
           iv,
           additional_data,
@@ -148,9 +162,15 @@ impl<'a> WebIdlConverter<'a> for SubtleDecryptParams {
           prefix.clone(),
           &context,
         )?;
-        let additional_data =
-          read_optional_buffer_source(scope, obj, "additionalData");
-        let tag_length = read_optional_u32(scope, obj, "tagLength");
+        let additional_data = read_optional_buffer_source(
+          scope,
+          obj,
+          "additionalData",
+          prefix.clone(),
+          &context,
+        )?;
+        let tag_length =
+          read_optional_u32(scope, obj, "tagLength", prefix.clone(), &context)?;
         Ok(Self::AesOcb {
           iv,
           additional_data,
@@ -160,10 +180,22 @@ impl<'a> WebIdlConverter<'a> for SubtleDecryptParams {
       "ChaCha20-Poly1305" => {
         let obj =
           maybe_obj.ok_or_else(|| missing_dict(prefix.clone(), &context))?;
-        let iv = read_optional_buffer_source(scope, obj, "iv");
-        let additional_data =
-          read_optional_buffer_source(scope, obj, "additionalData");
-        let tag_length = read_optional_u32(scope, obj, "tagLength");
+        let iv = read_optional_buffer_source(
+          scope,
+          obj,
+          "iv",
+          prefix.clone(),
+          &context,
+        )?;
+        let additional_data = read_optional_buffer_source(
+          scope,
+          obj,
+          "additionalData",
+          prefix.clone(),
+          &context,
+        )?;
+        let tag_length =
+          read_optional_u32(scope, obj, "tagLength", prefix.clone(), &context)?;
         Ok(Self::ChaCha20Poly1305 {
           iv,
           additional_data,
@@ -219,23 +251,26 @@ fn read_required_buffer_source<'a, 'b>(
   value_to_buffer_source(scope, val, field, prefix, context)
 }
 
-fn read_optional_buffer_source<'a>(
+fn read_optional_buffer_source<'a, 'b>(
   scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
-  field: &str,
-) -> Option<Vec<u8>> {
+  field: &'static str,
+  prefix: Cow<'static, str>,
+  context: &ContextFn<'b>,
+) -> Result<Option<Vec<u8>>, WebIdlError> {
   let key = v8_str(scope, field);
-  let val = obj.get(scope, key.into())?;
+  let val = obj
+    .get(scope, key.into())
+    .unwrap_or_else(|| v8::undefined(scope).into());
   if val.is_undefined() || val.is_null() {
-    return None;
+    return Ok(None);
   }
-  if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(val) {
-    return Some(view_to_bytes(scope, view));
-  }
-  if let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(val) {
-    return Some(arraybuffer_to_bytes(ab));
-  }
-  None
+  // Route through the strict `BufferSource` guard so `SharedArrayBuffer`
+  // (or a view backed by one) and any non-BufferSource value rejects with
+  // `TypeError`, matching the JS `webidl.converters.BufferSource` contract
+  // for optional dictionary members (e.g. AES-GCM `additionalData`,
+  // RSA-OAEP `label`, ChaCha20-Poly1305 `iv`).
+  value_to_buffer_source(scope, val, field, prefix, context).map(Some)
 }
 
 fn value_to_buffer_source<'a, 'b>(
@@ -309,6 +344,25 @@ fn arraybuffer_to_bytes(ab: v8::Local<v8::ArrayBuffer>) -> Vec<u8> {
   }
 }
 
+/// `[EnforceRange] unsigned long`: NaN/Infinity, negative, and
+/// `> 2**32-1` all reject; otherwise truncate toward zero. See
+/// [`crate::subtle_encrypt::to_enforce_range_u32`] for the matching
+/// encrypt-side helper.
+fn to_enforce_range_u32<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  val: v8::Local<'a, v8::Value>,
+) -> Option<u32> {
+  let n = val.number_value(scope)?;
+  if !n.is_finite() {
+    return None;
+  }
+  let trunc = n.trunc();
+  if trunc < 0.0 || trunc > u32::MAX as f64 {
+    return None;
+  }
+  Some(trunc as u32)
+}
+
 fn read_required_u32<'a, 'b>(
   scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
@@ -327,26 +381,41 @@ fn read_required_u32<'a, 'b>(
       JsErrorBox::type_error(format!("required dictionary member '{field}'")),
     ));
   }
-  val.uint32_value(scope).ok_or_else(|| {
+  to_enforce_range_u32(scope, val).ok_or_else(|| {
     WebIdlError::other(
       prefix,
       context.borrowed(),
-      JsErrorBox::type_error(format!("'{field}' must be convertible to u32")),
+      JsErrorBox::type_error(format!(
+        "'{field}' is outside the [0, 2**32-1] range"
+      )),
     )
   })
 }
 
-fn read_optional_u32<'a>(
+fn read_optional_u32<'a, 'b>(
   scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
-  field: &str,
-) -> Option<u32> {
+  field: &'static str,
+  prefix: Cow<'static, str>,
+  context: &ContextFn<'b>,
+) -> Result<Option<u32>, WebIdlError> {
   let key = v8_str(scope, field);
-  let val = obj.get(scope, key.into())?;
+  let val = obj
+    .get(scope, key.into())
+    .unwrap_or_else(|| v8::undefined(scope).into());
   if val.is_undefined() || val.is_null() {
-    return None;
+    return Ok(None);
   }
-  val.uint32_value(scope)
+  match to_enforce_range_u32(scope, val) {
+    Some(v) => Ok(Some(v)),
+    None => Err(WebIdlError::other(
+      prefix,
+      context.borrowed(),
+      JsErrorBox::type_error(format!(
+        "'{field}' is outside the [0, 2**32-1] range"
+      )),
+    )),
+  }
 }
 
 /// Validate the per-algorithm prerequisites and dispatch to the existing

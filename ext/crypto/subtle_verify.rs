@@ -38,7 +38,10 @@ pub enum SubtleVerifyParams {
     salt_length: u32,
   },
   Ecdsa {
-    hash: ShaHash,
+    /// Raw `.name` string; resolved to `ShaHash` at `run` time so an
+    /// unknown / mis-cased name throws `DOMException NotSupportedError`
+    /// (see `crate::subtle_sign::read_required_hash`).
+    hash: String,
   },
   Hmac,
   Ed25519,
@@ -111,8 +114,16 @@ impl<'a> WebIdlConverter<'a> for SubtleVerifyParams {
           "ML-DSA-65" => 1,
           _ => 2,
         };
-        let context_bytes = maybe_obj
-          .and_then(|o| read_optional_buffer_source(scope, o, "context"));
+        let context_bytes = match maybe_obj {
+          Some(o) => read_optional_buffer_source(
+            scope,
+            o,
+            "context",
+            prefix.clone(),
+            &context,
+          )?,
+          None => None,
+        };
         Ok(Self::MlDsa {
           variant,
           context: context_bytes,
@@ -204,6 +215,13 @@ pub fn run(
       verify_key_sync(key_data, args, &data)
     }
     SubtleVerifyParams::Ecdsa { hash } => {
+      // Resolve the raw hash string here so that an unknown / mis-cased
+      // name throws `DOMException NotSupportedError`, matching the
+      // ECDSA `verification failure due to bad hash name` WPT cases.
+      let hash =
+        crate::subtle_generate_key::sha_from_name(&hash).ok_or_else(|| {
+          not_supported(format!("Unrecognized hash algorithm: {hash}"))
+        })?;
       if key.key_type != CryptoKeyType::Public {
         return Err(invalid_access("Key type not supported".to_string()));
       }
