@@ -1424,20 +1424,19 @@ fn op_spawn_sync(
     /* allow_cwd_inherit */ false,
   )?;
 
-  // When timeout or maxBuffer is specified on Unix, create a new process
-  // group so we can kill the entire tree (shell + children), not just the
-  // shell. Otherwise a shell-wrapped child that exceeds the limit would
-  // outlive the kill signal. maxBuffer only matters when at least one of
-  // stdout/stderr is piped — without a pipe there's nothing to overflow,
-  // and Node.js's spawnSync default `maxBuffer` (1 MiB) means we'd otherwise
-  // move every spawnSync child into its own process group. That breaks TTY
-  // operations like `setRawMode` from inherited stdio (the kernel raises
-  // SIGTTOU on a background-group `tcsetattr`, stopping the child and
-  // hanging the parent).
+  // When a timeout is specified on Unix, create a new process group so the
+  // watchdog can kill the entire tree (shell + children), not just the shell.
+  //
+  // The `maxBuffer` kill path deliberately does NOT force a new group. Node's
+  // spawnSync defaults `maxBuffer` to 1 MiB, so doing so would move every
+  // spawnSync child with a piped stdout/stderr into its own process group,
+  // detaching it from the controlling terminal's foreground group. That breaks
+  // TTY operations like `setRawMode` on inherited stdin: a background-group
+  // `tcsetattr` raises SIGTTOU, which stops the child and hangs the parent.
+  // Node enforces `maxBuffer` by killing only the direct child, so the
+  // maxBuffer reader threads below do the same (see `kill_child`).
   #[cfg(unix)]
-  if timeout.is_some_and(|t| t > 0)
-    || (max_buffer.is_some() && (stdout || stderr))
-  {
+  if timeout.is_some_and(|t| t > 0) {
     command.process_group(0);
   }
 
@@ -1475,33 +1474,55 @@ fn op_spawn_sync(
   #[cfg(windows)]
   let child_pid_for_kill = child.id().expect("Process ID should be set.");
 
-  // Kill the spawned child (its whole process group on Unix). Called either
-  // by the timeout watchdog or the maxBuffer reader threads.
-  let kill_child: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-    #[cfg(unix)]
-    // SAFETY: child_pid_for_kill is the PID of the just-spawned child;
-    // signaling its process group (negative PID) terminates shell-wrapped
-    // subprocesses too. There is a minor race window if the child has
-    // already exited and the PID was recycled; in practice the watchdog
-    // and readers race against EOF / wait() returning so this window is
-    // negligible.
-    unsafe {
-      libc::kill(-(child_pid_for_kill as i32), kill_signal_int);
-    }
-    #[cfg(windows)]
-    // SAFETY: standard Win32 calls; child_pid_for_kill is a valid PID.
-    unsafe {
-      let handle = windows_sys::Win32::System::Threading::OpenProcess(
-        windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
-        false.into(),
-        child_pid_for_kill,
-      );
-      if !handle.is_null() {
-        windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
-        windows_sys::Win32::Foundation::CloseHandle(handle);
+  // How far the kill should reach.
+  enum KillScope {
+    // Signal the child's whole process group. Only valid on the timeout path,
+    // where `process_group(0)` above made the child a group leader; this also
+    // reaps shell-wrapped subprocesses.
+    ProcessGroup,
+    // Signal only the direct child. Used by the maxBuffer path, matching Node,
+    // which never moves the child into a new group for `maxBuffer`.
+    Child,
+  }
+
+  // Kill the spawned child with the requested scope.
+  let kill_child: Arc<dyn Fn(KillScope) + Send + Sync> =
+    Arc::new(move |scope: KillScope| {
+      #[cfg(unix)]
+      {
+        // A negative PID targets the process group. There is a minor race
+        // window if the child has already exited and the PID was recycled; in
+        // practice the watchdog and readers race against EOF / wait()
+        // returning so this window is negligible.
+        let pid = child_pid_for_kill as i32;
+        let target = match scope {
+          KillScope::ProcessGroup => -pid,
+          KillScope::Child => pid,
+        };
+        // SAFETY: `target` references the just-spawned child (or its group).
+        unsafe {
+          libc::kill(target, kill_signal_int);
+        }
       }
-    }
-  });
+      #[cfg(windows)]
+      {
+        // Windows has no process groups here; both scopes terminate the direct
+        // child.
+        let _ = scope;
+        // SAFETY: standard Win32 calls; child_pid_for_kill is a valid PID.
+        unsafe {
+          let handle = windows_sys::Win32::System::Threading::OpenProcess(
+            windows_sys::Win32::System::Threading::PROCESS_TERMINATE,
+            false.into(),
+            child_pid_for_kill,
+          );
+          if !handle.is_null() {
+            windows_sys::Win32::System::Threading::TerminateProcess(handle, 1);
+            windows_sys::Win32::Foundation::CloseHandle(handle);
+          }
+        }
+      }
+    });
 
   // Take stdout/stderr pipes from child so we can read them in background
   // threads. This lets us drop the pipes on timeout to unblock the readers
@@ -1518,7 +1539,7 @@ fn op_spawn_sync(
     mut pipe: R,
     max_buffer: Option<u64>,
     killed_by_max_buffer: Arc<AtomicBool>,
-    kill_child: Arc<dyn Fn() + Send + Sync>,
+    kill_child: Arc<dyn Fn(KillScope) + Send + Sync>,
   ) -> Vec<u8> {
     let mut buf = Vec::new();
     // No limit: fall back to read_to_end so we don't waste cycles checking.
@@ -1537,7 +1558,9 @@ fn op_spawn_sync(
             if buf.len() as u64 > limit {
               overflowed = true;
               if !killed_by_max_buffer.swap(true, Ordering::SeqCst) {
-                kill_child();
+                // Kill only the direct child (matching Node); no process
+                // group is created for the maxBuffer path.
+                kill_child(KillScope::Child);
               }
             }
           }
@@ -1588,7 +1611,9 @@ fn op_spawn_sync(
         return;
       }
       killed.store(true, Ordering::SeqCst);
-      kill_child();
+      // Kill the whole process group: a new group was created above when a
+      // timeout is set, so this also reaps shell-wrapped subprocesses.
+      kill_child(KillScope::ProcessGroup);
     });
   }
   drop(kill_child);
