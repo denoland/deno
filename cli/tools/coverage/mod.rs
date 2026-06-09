@@ -545,6 +545,7 @@ fn filter_coverages(
   include: Vec<String>,
   exclude: Vec<String>,
   in_npm_pkg_checker: &DenoInNpmPackageChecker,
+  link_dir_urls: &[String],
 ) -> Vec<cdp::ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -569,6 +570,11 @@ fn filter_coverages(
         || e.url.ends_with(".snap")
         || is_supported_test_path(Path::new(e.url.as_str()))
         || doc_test_re.is_match(e.url.as_str())
+        // Exclude packages brought in via the "links" (formerly "patch")
+        // feature. These are third-party dependencies replacing a registry
+        // version, so they shouldn't show up in the user's coverage report,
+        // matching how npm packages are excluded above.
+        || link_dir_urls.iter().any(|dir| e.url.starts_with(dir))
         || Url::parse(&e.url)
           .ok()
           .map(|url| in_npm_pkg_checker.in_npm_package(&url))
@@ -615,8 +621,19 @@ pub fn cover_files(
   if script_coverages.is_empty() {
     return Err(anyhow!("No coverage files found"));
   }
-  let script_coverages =
-    filter_coverages(script_coverages, include, exclude, in_npm_pkg_checker);
+  let link_dir_urls = cli_options
+    .workspace()
+    .link_folders()
+    .keys()
+    .map(|url| url.as_str().to_string())
+    .collect::<Vec<_>>();
+  let script_coverages = filter_coverages(
+    script_coverages,
+    include,
+    exclude,
+    in_npm_pkg_checker,
+    &link_dir_urls,
+  );
   if script_coverages.is_empty() {
     return Err(anyhow!("No covered files included in the report"));
   }

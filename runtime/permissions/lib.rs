@@ -2825,6 +2825,25 @@ pub struct SpecialFilePathQueryDescriptor<'a> {
 }
 
 impl<'a> SpecialFilePathQueryDescriptor<'a> {
+  /// Construct from a `PathQueryDescriptor` without resolving symlinks.
+  ///
+  /// Used by no-follow access modes (lstat, readlink, readdir, etc.) where
+  /// canonicalizing would change semantics by resolving the final path
+  /// component. The /proc, /dev, /sys prefix guard in `check_special_file`
+  /// still applies — it just uses the un-resolved path.
+  pub fn from_path_query_no_canonicalize(
+    path: PathQueryDescriptor<'a>,
+  ) -> Self {
+    let PathQueryDescriptor {
+      path, requested, ..
+    } = path;
+    Self {
+      path,
+      requested,
+      canonicalized: false,
+    }
+  }
+
   pub fn parse(
     sys: &impl sys_traits::FsCanonicalize,
     path: PathQueryDescriptor<'a>,
@@ -4148,18 +4167,16 @@ impl PermissionsContainer {
       }
     };
 
-    if access_kind.is_no_follow() {
-      Ok(CheckedPath {
-        path: PathWithRequested {
-          path: path.path,
-          requested: path.requested.map(Cow::Owned),
-        },
-        canonicalized: false,
-      })
+    let special_path = if access_kind.is_no_follow() {
+      // Don't canonicalize: lstat/readlink/readdir need to operate on the
+      // un-resolved path. The /proc, /dev, /sys prefix guard inside
+      // `check_special_file` still fires when the caller-supplied path is
+      // itself a kernel-magic location (e.g. `/proc/self/root/...`).
+      SpecialFilePathQueryDescriptor::from_path_query_no_canonicalize(path)
     } else {
-      let path = self.descriptor_parser.parse_special_file_descriptor(path)?;
-      self.check_special_file(path, access_kind, api_name)
-    }
+      self.descriptor_parser.parse_special_file_descriptor(path)?
+    };
+    self.check_special_file(special_path, access_kind, api_name)
   }
 
   #[inline(always)]

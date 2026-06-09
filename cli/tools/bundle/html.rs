@@ -434,6 +434,23 @@ impl<'a, 'f> HtmlOutputFiles<'a, 'f> {
     self.output_files[parsed_output.index].path = new_path.clone();
     Some(new_path)
   }
+
+  /// Rewrite the `sourceMappingURL` reference in the JS output identified by
+  /// `name`, replacing the (renamed) sourcemap's old file name with its new
+  /// one. Used after a linked sourcemap is renamed alongside its JS bundle.
+  fn update_js_sourcemap_ref(&mut self, name: &str, from: &str, to: &str) {
+    let Some(parsed_output) = self.index.get(name) else {
+      return;
+    };
+    let file = &mut self.output_files[parsed_output.index];
+    let Ok(contents) = std::str::from_utf8(&file.contents) else {
+      return;
+    };
+    if !contents.contains(from) {
+      return;
+    }
+    file.contents = Cow::Owned(contents.replace(from, to).into_bytes());
+  }
 }
 
 impl HtmlEntrypoint {
@@ -484,6 +501,35 @@ impl HtmlEntrypoint {
     let html_out_path = js_out_no_hash
       .unwrap_or_else(|| js_out.clone())
       .with_extension("html");
+
+    // esbuild emits the external/linked sourcemap (`*.js.map`) for the entry
+    // under the internal virtual-entry name. Rename it to match the renamed JS
+    // bundle (e.g. `index-HASH.js.map`) and fix the JS `sourceMappingURL`
+    // reference so the emitted output doesn't leak the `deno-bundle-html.entry`
+    // implementation detail. See denoland/deno#30750.
+    let map_entry_name = format!("{}.js.map", entry_name);
+    let mut old_map_name = None;
+    let new_map_out =
+      html_output_files.get_and_update_path(&map_entry_name, |p, _| {
+        old_map_name = p
+          .file_name()
+          .map(|name| name.to_string_lossy().into_owned());
+        p.to_string_lossy()
+          .replace(entry_name.as_str(), &original_entry_name)
+          .into()
+      });
+    if let Some(old_map_name) = old_map_name
+      && let Some(new_map_name) = new_map_out
+        .as_ref()
+        .and_then(|p| p.file_name())
+        .map(|name| name.to_string_lossy().into_owned())
+    {
+      html_output_files.update_js_sourcemap_ref(
+        &js_entry_name,
+        &old_map_name,
+        &new_map_name,
+      );
+    }
 
     let css_entry_name = format!("{}.css", entry_name);
     let css_out =
