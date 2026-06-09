@@ -2577,7 +2577,14 @@ function setupChannel(
           id: message.id,
         });
       if (socketList) {
-        socketList.close(sendAck);
+        // The parent only sends NOTIFY_CLOSE when its server is closing, so no
+        // further sockets will be registered under this key. Drop the entry
+        // once it drains, otherwise a long-lived child accumulates one
+        // SocketListReceive per server it has ever received sockets from.
+        socketList.close(() => {
+          receivedSocketLists.delete(message.key);
+          sendAck();
+        });
       } else {
         sendAck();
       }
