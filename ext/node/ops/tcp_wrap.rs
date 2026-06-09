@@ -373,7 +373,7 @@ impl TCPWrap {
         }
         // Match Node: a wrap constructed with `new TCP(SERVER)` opens the
         // fd as a listener; `new TCP(SOCKET)` as a connected stream. Node's
-        // libuv layer doesn't autodetect — it uses the wrap's intent to
+        // libuv layer doesn't autodetect; it uses the wrap's intent to
         // decide how to register the fd, then `listen()` on a listening fd
         // is a no-op at the kernel level.
         if self.socket_type.get() == SocketType::Server {
@@ -402,7 +402,7 @@ impl TCPWrap {
 
   /// Override the base close to drop the `FdTable` entry registered by
   /// `open()` before `uv_close` frees the fd. A no-op for sockets that were
-  /// never adopted via `open()` — their fd stays -1.
+  /// never adopted via `open()`; their fd stays -1.
   #[reentrant]
   fn close(
     &self,
