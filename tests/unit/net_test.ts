@@ -3,10 +3,12 @@ import {
   assert,
   assertEquals,
   assertRejects,
+  assertStringIncludes,
   assertThrows,
   delay,
   execCode,
   execCode2,
+  execCode3,
   tmpUnixSocketPath,
 } from "./test_util.ts";
 
@@ -1511,5 +1513,71 @@ Deno.test(
       () => Deno.listen({ path: filePath, transport: "unix" }),
       Deno.errors.NotCapable,
     );
+  },
+);
+
+// The datagram (unixpacket) half of the boundary must be guarded too:
+// `Deno.listenDatagram({ transport: "unixpacket" })` is denied without an
+// `--allow-net=unix:<path>` grant.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function netUnixPacketListenRequiresAllowNet() {
+    const filePath = tmpUnixSocketPath();
+    assertThrows(
+      () => Deno.listenDatagram({ path: filePath, transport: "unixpacket" }),
+      Deno.errors.NotCapable,
+    );
+  },
+);
+
+// `DatagramConn.send()` checks the destination path independently of the
+// listen path. Here the socket is listened with `--allow-net` scoped to its
+// own path, but sending to a different (ungranted) path is denied. Run in a
+// subprocess (`deno run`, not `deno eval` which has implicit full permissions)
+// so the dynamic socket paths can be passed in the allow-net rule.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function netUnixPacketSendRequiresAllowNet() {
+    const alicePath = tmpUnixSocketPath();
+    const bobPath = tmpUnixSocketPath();
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      const alice = Deno.listenDatagram({
+        path: ${JSON.stringify(alicePath)},
+        transport: "unixpacket",
+      });
+      try {
+        await alice.send(new Uint8Array([1, 2, 3]), {
+          path: ${JSON.stringify(bobPath)},
+          transport: "unixpacket",
+        });
+        console.log("SENT");
+      } catch (e) {
+        console.log(
+          e instanceof Deno.errors.NotCapable ? "NOT_CAPABLE" : "OTHER:" + e.name,
+        );
+      } finally {
+        alice.close();
+      }
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--unstable-net",
+      "--allow-read",
+      "--allow-write",
+      `--allow-net=unix:${alicePath}`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "NOT_CAPABLE");
   },
 );
