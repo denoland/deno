@@ -476,10 +476,12 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     let raw_win = window.get_window_handle();
     let raw_display = window.get_display_handle();
 
-    let null_window =
-      || deno_error::JsErrorBox::generic("Laufey returned a null window handle");
-    let null_display =
-      || deno_error::JsErrorBox::generic("Laufey returned a null display handle");
+    let null_window = || {
+      deno_error::JsErrorBox::generic("Laufey returned a null window handle")
+    };
+    let null_display = || {
+      deno_error::JsErrorBox::generic("Laufey returned a null display handle")
+    };
 
     match handle_type {
       laufey::LAUFEY_WINDOW_HANDLE_APPKIT => {
@@ -816,9 +818,7 @@ fn desktop_menu_item_to_laufey_menu_item(
       }
     }
     denort::desktop::MenuItem::Separator => laufey::MenuItem::Separator,
-    denort::desktop::MenuItem::Role { role } => {
-      laufey::MenuItem::Role { role }
-    }
+    denort::desktop::MenuItem::Role { role } => laufey::MenuItem::Role { role },
   }
 }
 
@@ -832,9 +832,7 @@ fn laufey_value_to_v8<'a>(
     laufey::Value::Bool(bool) => v8::Boolean::new(scope, bool).into(),
     laufey::Value::Int(int) => v8::Integer::new(scope, int).into(),
     laufey::Value::Double(double) => v8::Number::new(scope, double).into(),
-    laufey::Value::String(str) => {
-      v8::String::new(scope, &str).unwrap().into()
-    }
+    laufey::Value::String(str) => v8::String::new(scope, &str).unwrap().into(),
     laufey::Value::List(list) => {
       let elements = list
         .into_iter()
@@ -1615,9 +1613,11 @@ async fn run_desktop(
           .copied()
           .collect();
         for id in ids {
-          laufey::Window::from_id(id).execute_js::<fn(
-            Result<laufey::Value, laufey::Value>,
-          )>("location.reload()", None);
+          laufey::Window::from_id(id)
+            .execute_js::<fn(Result<laufey::Value, laufey::Value>)>(
+              "location.reload()",
+              None,
+            );
         }
       }))
     } else {
@@ -1827,9 +1827,9 @@ mod tests {
   use super::desktop_menu_item_to_laufey_menu_item;
   use super::extract_fork_script_path;
   use super::json_to_laufey_value;
-  use super::map_permission_status;
   use super::laufey_value_to_desktop_value;
   use super::laufey_value_to_json;
+  use super::map_permission_status;
 
   // --- extract_fork_script_path ---
   //

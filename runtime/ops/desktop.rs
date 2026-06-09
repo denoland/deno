@@ -552,7 +552,13 @@ impl BrowserWindow {
           .as_ref()
           .and_then(|o| o.transparent_titlebar)
           .unwrap_or(false);
-        api.create_window(width, height, frameless, no_activate, transparent_titlebar)
+        api.create_window(
+          width,
+          height,
+          frameless,
+          no_activate,
+          transparent_titlebar,
+        )
       });
 
     if let Some(options) = &options {

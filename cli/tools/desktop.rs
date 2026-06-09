@@ -509,8 +509,9 @@ async fn run_desktop_hmr(
   flags: &Flags,
   desktop_flags: &DesktopFlags,
 ) -> Result<(), AnyError> {
-  let laufey_backend =
-    laufey_resolver.find_binary(backend, LAUFEY_NATIVE_TARGET).await?;
+  let laufey_backend = laufey_resolver
+    .find_binary(backend, LAUFEY_NATIVE_TARGET)
+    .await?;
   let dylib_abs = dylib_path
     .canonicalize()
     .unwrap_or(dylib_path.to_path_buf());
@@ -647,7 +648,10 @@ async fn run_desktop_hmr(
       // pointed at the unified DevTools frontend instead of CEF's
       // renderer-only native window.
       .env("DENO_DESKTOP_MUX_WS", handle.listen.to_string())
-      .env("LAUFEY_REMOTE_DEBUGGING_PORT", cef_internal.port().to_string());
+      .env(
+        "LAUFEY_REMOTE_DEBUGGING_PORT",
+        cef_internal.port().to_string(),
+      );
     if flags.inspect_brk.is_some() {
       cmd.env("DENO_DESKTOP_INSPECT_BRK", "1");
     }
@@ -675,7 +679,10 @@ async fn run_desktop_hmr(
   #[cfg(target_os = "macos")]
   let status = {
     let mut child = disclaim_spawn::spawn(&cmd).with_context(|| {
-      format!("Failed to launch LAUFEY backend: {}", laufey_backend.display())
+      format!(
+        "Failed to launch LAUFEY backend: {}",
+        laufey_backend.display()
+      )
     })?;
     child
       .wait()
@@ -688,7 +695,10 @@ async fn run_desktop_hmr(
       .kill_on_drop(true)
       .spawn()
       .with_context(|| {
-        format!("Failed to launch LAUFEY backend: {}", laufey_backend.display())
+        format!(
+          "Failed to launch LAUFEY backend: {}",
+          laufey_backend.display()
+        )
       })?;
     child
       .wait()
@@ -739,8 +749,13 @@ async fn package_desktop_app(
     )
     .await
   } else {
-    package_linux_app_dir(dylib_path, desktop_flags, cli_options, laufey_resolver)
-      .await
+    package_linux_app_dir(
+      dylib_path,
+      desktop_flags,
+      cli_options,
+      laufey_resolver,
+    )
+    .await
   }
 }
 
@@ -1039,7 +1054,8 @@ struct LaufeyBackendResolver {
 
 impl LaufeyBackendResolver {
   fn new(factory: &CliFactory) -> Result<Self, AnyError> {
-    let cache_root = factory.deno_dir()?.root.join("laufey").join(LAUFEY_VERSION);
+    let cache_root =
+      factory.deno_dir()?.root.join("laufey").join(LAUFEY_VERSION);
     Ok(Self {
       http_client_provider: factory.http_client_provider().clone(),
       cache_root,
@@ -1494,7 +1510,10 @@ fn locate_app_bundle(dir: &Path, backend: &str) -> Option<PathBuf> {
 /// `desktop_flags.target` (for cross-target packaging); otherwise defaults to
 /// the host triple this deno binary was built for.
 fn laufey_target_for(desktop_flags: &DesktopFlags) -> &str {
-  desktop_flags.target.as_deref().unwrap_or(LAUFEY_NATIVE_TARGET)
+  desktop_flags
+    .target
+    .as_deref()
+    .unwrap_or(LAUFEY_NATIVE_TARGET)
 }
 
 /// Resolve `LAUFEY_DEV_DIR` to a directory path if set and present on disk.
@@ -1926,8 +1945,8 @@ fn harmonize_cached_laufey_identifiers(
   install_dir: &Path,
   backend: &str,
 ) -> Result<(), AnyError> {
-  let laufey_app =
-    locate_laufey_app_in_install(install_dir, backend).ok_or_else(|| {
+  let laufey_app = locate_laufey_app_in_install(install_dir, backend)
+    .ok_or_else(|| {
       deno_core::anyhow::anyhow!(
         "could not find laufey.app under {} to re-sign",
         install_dir.display()
@@ -2079,7 +2098,10 @@ fn locate_laufey_app_in_install(dir: &Path, backend: &str) -> Option<PathBuf> {
       dir.join("Release/laufey_webview.app"),
       dir.join("webview/Release/laufey_webview.app"),
     ],
-    _ => vec![dir.join(format!("laufey_{backend}.app")), dir.join("laufey.app")],
+    _ => vec![
+      dir.join(format!("laufey_{backend}.app")),
+      dir.join("laufey.app"),
+    ],
   };
   candidates.into_iter().find(|p| p.exists())
 }
@@ -2179,7 +2201,9 @@ async fn package_macos_app_bundle(
     "CFBundleExecutable",
   )
   .unwrap_or_else(|| "laufey_webview".to_string());
-  let laufey_binary = laufey_app.join("Contents/MacOS").join(&laufey_executable_name);
+  let laufey_binary = laufey_app
+    .join("Contents/MacOS")
+    .join(&laufey_executable_name);
   if !laufey_binary.exists() {
     bail!(
       "LAUFEY backend executable not found at '{}'",
@@ -2229,7 +2253,10 @@ async fn package_macos_app_bundle(
   // inside `"..."`.
   let dylib_filename_str = dylib_filename.to_string_lossy();
   validate_launcher_name(&app_name, "app name")?;
-  validate_launcher_name(&laufey_executable_name, "LAUFEY backend executable name")?;
+  validate_launcher_name(
+    &laufey_executable_name,
+    "LAUFEY backend executable name",
+  )?;
   validate_launcher_name(&dylib_filename_str, "dylib filename")?;
   let launcher_path = macos_dir.join(&app_name);
   std::fs::write(
@@ -3068,9 +3095,11 @@ mod tests {
   #[test]
   fn release_url_uses_v_prefix() {
     let url = laufey_release_url("laufey-cef-aarch64-apple-darwin.tar.gz");
-    assert!(url.starts_with(
-      "https://github.com/littledivy/laufey/releases/download/v"
-    ));
+    assert!(
+      url.starts_with(
+        "https://github.com/littledivy/laufey/releases/download/v"
+      )
+    );
     assert!(url.ends_with("/laufey-cef-aarch64-apple-darwin.tar.gz"));
     // No spaces, no shell metachars — this string is fed to `curl` and to
     // log messages.
@@ -3847,7 +3876,10 @@ def456  other.zip
     };
     make_helper_app("laufey Helper", "com.example.laufey.helper");
     make_helper_app("laufey Helper (GPU)", "com.example.laufey.helper.gpu");
-    make_helper_app("laufey Helper (Renderer)", "com.example.laufey.helper.renderer");
+    make_helper_app(
+      "laufey Helper (Renderer)",
+      "com.example.laufey.helper.renderer",
+    );
     // A non-helper .app — must NOT be rewritten.
     let other = fw.join("Other.app/Contents");
     std::fs::create_dir_all(&other).unwrap();
@@ -3880,7 +3912,9 @@ def456  other.zip
       "com.acme.myapp.helper.gpu"
     );
     assert_eq!(
-      read_bundle_id(&fw.join("laufey Helper (Renderer).app/Contents/Info.plist")),
+      read_bundle_id(
+        &fw.join("laufey Helper (Renderer).app/Contents/Info.plist")
+      ),
       "com.acme.myapp.helper.renderer"
     );
     // Other.app does not contain "Helper" → must NOT be rewritten.

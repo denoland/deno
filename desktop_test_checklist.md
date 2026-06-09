@@ -13,20 +13,22 @@ Many items reference the audit issue numbers from `desktop_hmr_issues.md` and
 # Build the dev binary once.
 cargo build --bin deno
 
-# Local wef checkout is patched in via Cargo.toml's [patch.crates-io].
-# Verify it still resolves:
+# The backend crate is now `laufey` (was `wef`) — a normal crates.io dep,
+# pinned in Cargo.lock. Verify the version the build expects:
 cargo metadata --format-version=1 --no-deps \
-  | jq '.packages[] | select(.name == "just-wef") | .source'
-# expected: null  (means it's the local path patch)
+  | jq -r '.packages[] | select(.name == "laufey") | .version'
+# expected: 0.3.1 (must match `# version:` in cli/laufey_sums.lock and the
+# LAUFEY_VERSION emitted by cli/build.rs)
 
-# Pre-build a wef backend so individual tests don't pay the download cost.
-WEF_DEV_DIR=$(realpath ../wef) ./target/debug/deno desktop --help
+# Point at a local laufey checkout (replaces the old [patch.crates-io] flow):
+# LAUFEY_DEV_DIR is read at runtime so individual tests skip the download cost.
+LAUFEY_DEV_DIR=$(realpath ../laufey) ./target/debug/deno desktop --help
 ```
 
 For most tests below, the runner is:
 
 ```bash
-WEF_DEV_DIR=$(realpath ../wef) ./target/debug/deno desktop \
+LAUFEY_DEV_DIR=$(realpath ../laufey) ./target/debug/deno desktop \
   --hmr feature_test.ts
 ```
 
@@ -52,27 +54,35 @@ Treat each card on its dashboard as one item.
 
 ### Negative / hardening (cli/tools/desktop.rs)
 
-| #    | Test                       | Steps                                                     | Expected                                                              |
-| ---- | -------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
-| 1.20 | `--output /`               | `deno desktop --output / main.ts`                         | Friendly error, no panic on `file_stem().unwrap()` (#14)              |
-| 1.21 | Shell metachar in app name | `deno desktop --output 'foo$bar' main.ts`                 | Error: `invalid app name "foo$bar": must match [A-Za-z0-9 ._-]+` (#4) |
-| 1.22 | `.bat` metachars (Windows) | `deno desktop --output 'a&b' main.ts`                     | Error: same `validate_launcher_name` family (#5)                      |
-| 1.23 | DMG staging cleanup        | `deno desktop --output Foo.dmg main.ts` mid-Ctrl-C, rerun | No leftover `.dmg-staging-*` dir (now via `tempfile::tempdir_in`, #6) |
-| 1.24 | Spaces in app name         | `deno desktop --output 'My App' main.ts`                  | Allowed; produces `My App.app`                                        |
-| 1.25 | Temp entrypoint cleanup    | `deno desktop .` (framework dir), Ctrl-C mid-build        | `.deno_desktop_entry-*.ts` removed (was leaked on Ctrl-C, #9)         |
+| #    | Test                          | Steps                                                     | Expected                                                                                                                        |
+| ---- | ----------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1.20 | `--output /`                  | `deno desktop --output / main.ts`                         | Friendly error, no panic on `file_stem().unwrap()` (#14)                                                                        |
+| 1.21 | Shell metachar in app name    | `deno desktop --output 'foo$bar' main.ts`                 | Error: `invalid app name "foo$bar": must match [A-Za-z0-9 ._-]+` (#4)                                                           |
+| 1.22 | `.bat` metachars (Windows)    | `deno desktop --output 'a&b' main.ts`                     | Error: same `validate_launcher_name` family (#5)                                                                                |
+| 1.23 | DMG staging cleanup           | `deno desktop --output Foo.dmg main.ts` mid-Ctrl-C, rerun | No leftover `.dmg-staging-*` dir (now via `tempfile::tempdir_in`, #6)                                                           |
+| 1.24 | Spaces in app name            | `deno desktop --output 'My App' main.ts`                  | Allowed; produces `My App.app`                                                                                                  |
+| 1.25 | Temp entrypoint cleanup       | `deno desktop .` (framework dir), Ctrl-C mid-build        | `.deno_desktop_entry-*.ts` closed right after compile + swept at startup; not leaked on Ctrl-C (#9)                             |
+| 1.26 | Dev artifacts stay out of cwd | `deno desktop --hmr feature_test.ts` (or `--inspect`)     | No `<name>.dylib`, `.tmp-*`, `.update-ok` or `.backup` in the project cwd — they go to `<deno_dir>/desktop/<projhash>/` instead |
+| 1.27 | Dev dylib path is stable      | Run 1.26 twice from the same dir                          | Same `<deno_dir>/desktop/<projhash>/<name>` path reused (keyed by cwd hash, so auto-update/rollback sentinels stay consistent)  |
 
-### WEF backend download (TOFU surface)
+### Laufey backend download (TOFU surface)
 
-| #    | Test                        | Steps                                                                     | Expected                                                                                         |
-| ---- | --------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| 1.30 | Concurrent `desktop` builds | Two terminals run the same compile at once with empty WEF cache           | Both succeed; no half-extracted dir; second one cheaply reuses first's cache (atomic-rename, #7) |
-| 1.31 | Checksum mismatch error     | Hand-corrupt a downloaded WEF archive in cache, rerun                     | Bail message includes the post-redirect download URL (#15)                                       |
-| 1.32 | User-Agent header           | Tcpdump / proxy a WEF download                                            | `User-Agent: deno-desktop/{ver} (+https://deno.com)` is sent (#30)                               |
-| 1.33 | Tar zip-slip                | Hand-craft a tar.gz with `../etc/passwd` entry, re-point WEF mirror to it | `refusing tar entry that would unpack outside dest` — `unpack_in` blocks it (#2)                 |
-| 1.34 | Tar symlink escape          | Tar with `foo -> ../../etc` then `foo/passwd`                             | Same — `unpack_in`'s symlink containment kicks in (#2)                                           |
-| 1.35 | Zip zip-slip                | Hand-craft a zip with absolute path / `..`                                | `refusing zip entry with unsafe path` (zip hardening, item #1)                                   |
-| 1.36 | Zip symlink                 | Zip with a symlink entry                                                  | `refusing symlink entry in wef archive`                                                          |
-| 1.37 | Zip perm laundering         | Zip with file mode 04755 (setuid)                                         | File extracted with mode 0755, not 04755                                                         |
+> Renamed from `wef` → `laufey` (crate `laufey 0.3.1`, archives published at
+> `github.com/littledivy/laufey/releases/tag/v{LAUFEY_VERSION}`). The download
+> cache now lives at `<deno_dir>/laufey/<version>/` and the trust anchor is
+> `cli/laufey_sums.lock`.
+
+| #    | Test                        | Steps                                                                        | Expected                                                                                               |
+| ---- | --------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 1.30 | Concurrent `desktop` builds | Two terminals run the same compile at once with empty laufey cache           | Both succeed; no half-extracted dir; second one cheaply reuses first's cache (atomic-rename, #7)       |
+| 1.31 | Checksum mismatch error     | Hand-corrupt a downloaded laufey archive in cache, rerun                     | Bail message includes the post-redirect download URL (#15)                                             |
+| 1.32 | User-Agent header           | Tcpdump / proxy a laufey download                                            | `User-Agent: deno-desktop/{ver} (+https://deno.com)` is sent (#30)                                     |
+| 1.33 | Tar zip-slip                | Hand-craft a tar.gz with `../etc/passwd` entry, re-point laufey mirror to it | `refusing tar entry that would unpack outside dest` — `unpack_in` blocks it (#2)                       |
+| 1.34 | Tar symlink escape          | Tar with `foo -> ../../etc` then `foo/passwd`                                | Same — `unpack_in`'s symlink containment kicks in (#2)                                                 |
+| 1.35 | Zip zip-slip                | Hand-craft a zip with absolute path / `..`                                   | `refusing zip entry with unsafe path` (zip hardening, item #1)                                         |
+| 1.36 | Zip symlink                 | Zip with a symlink entry                                                     | `refusing symlink entry in laufey archive`                                                             |
+| 1.37 | Zip perm laundering         | Zip with file mode 04755 (setuid)                                            | File extracted with mode 0755, not 04755                                                               |
+| 1.38 | Backend version pin         | Bump `laufey` in Cargo.lock without refreshing `cli/laufey_sums.lock`        | `cli/build.rs` fails the build: lock pins vX but build expects vY (`check_laufey_pinned_sums_version`) |
 
 ---
 
@@ -123,14 +133,15 @@ Run `feature_test.ts` and exercise each card.
 
 ### New cards (this branch's expansion)
 
-| #    | Card                           | Steps                                                                     | Expected                                                                           |
-| ---- | ------------------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| 3.20 | Secondary Window — open        | Click "Open Window"                                                       | Second window appears; status shows `windowId`, `isClosed:false`                   |
-| 3.21 | Secondary Window — close (op)  | Click "Close (op)"                                                        | Window closes; `secondwin:close` event fires; status now `isClosed:true`           |
-| 3.22 | Secondary Window — close via X | Open, then click red X on second                                          | Same `close` event delivered to the second window                                  |
-| 3.23 | DevTools singleton             | Click open-devtools (or trigger via Re-run Auto Tests, which calls twice) | Exactly **one** DevTools window opens (#21). Repeat → second call focuses existing |
-| 3.24 | Window Reload                  | Click "reload()"                                                          | Page reloads, dashboard re-initializes                                             |
-| 3.25 | Window Navigate                | Click "navigate(blank page)" then "navigate(home)"                        | First navigates to inline data: page; second restores dashboard                    |
+| #    | Card                           | Steps                                                                           | Expected                                                                                                                                                    |
+| ---- | ------------------------------ | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3.20 | Secondary Window — open        | Click "Open Window"                                                             | Second window appears; status shows `windowId`, `isClosed:false`                                                                                            |
+| 3.21 | Secondary Window — close (op)  | Click "Close (op)"                                                              | Window closes; `secondwin:close` event fires; status now `isClosed:true`                                                                                    |
+| 3.22 | Secondary Window — close via X | Open, then click red X on second                                                | Same `close` event delivered to the second window                                                                                                           |
+| 3.23 | DevTools singleton             | Click open-devtools (or trigger via Re-run Auto Tests, which calls twice)       | Exactly **one** DevTools window opens (#21). Repeat → second call focuses existing                                                                          |
+| 3.24 | Window Reload                  | Click "reload()"                                                                | Page reloads, dashboard re-initializes                                                                                                                      |
+| 3.25 | Window Navigate                | Click "navigate(blank page)" then "navigate(home)"                              | First navigates to inline data: page; second restores dashboard                                                                                             |
+| 3.26 | Transparent titlebar           | Open a window with `new Deno.BrowserWindow(url, { transparentTitlebar: true })` | macOS: titlebar is transparent and content extends under it (`NSWindow` full-size content); default (option omitted/false) keeps the normal opaque titlebar |
 
 ---
 
@@ -169,21 +180,22 @@ deadlock the runtime.
 
 ## 6. Tray (`Deno.Tray`)
 
-| #    | Test              | Steps                                 | Expected                                                                                     |
-| ---- | ----------------- | ------------------------------------- | -------------------------------------------------------------------------------------------- |
-| 6.1  | Create tray       | Click "Create Tray"                   | Visible tray icon (black dot) appears; binding returns `{ ok: true, trayId, reused: false }` |
-| 6.2  | Tray click        | Left-click tray icon                  | `trayclick` event                                                                            |
-| 6.3  | Tray double-click | Double-click tray icon                | `traydblclick` event                                                                         |
-| 6.4  | Tray menu         | Right-click tray, pick item           | `traymenuclick` event with the item `id`                                                     |
-| 6.5  | Set tooltip       | Click "Set Tooltip", hover icon       | Tooltip text shows current time                                                              |
-| 6.6  | Destroy tray      | Click "Destroy Tray"                  | Icon disappears; recreate via 6.1 succeeds                                                   |
-| 6.7  | `Symbol.dispose`  | In an `await using` block in a script | Tray destroyed when block exits                                                              |
-| 6.8  | Get bounds        | Click "Get Bounds"                    | `{ ok: true, bounds: {x,y,width,height} }` (or `bounds: null` on Linux)                      |
-| 6.9  | Attach panel      | Click "Attach Panel"                  | Binding returns `{ ok: true, windowId }`; no window steals focus yet                         |
-| 6.10 | Tray-toggle panel | Click the tray icon                   | Frameless popover appears anchored under the icon; click tray again → hides                  |
-| 6.11 | Blur-dismiss      | Open panel, click another app/window  | Panel hides on blur                                                                          |
-| 6.12 | Button toggle     | Click "Toggle Panel"                  | Panel shows/hides; binding returns `{ visible }`                                             |
-| 6.13 | Detach panel      | Click "Detach Panel"                  | Panel window closes; tray click no longer toggles it                                         |
+| #    | Test              | Steps                                 | Expected                                                                                          |
+| ---- | ----------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| 6.1  | Create tray       | Click "Create Tray"                   | Visible tray icon (black dot) appears; binding returns `{ ok: true, trayId, reused: false }`      |
+| 6.2  | Tray click        | Left-click tray icon                  | `trayclick` event                                                                                 |
+| 6.3  | Tray double-click | Double-click tray icon                | `traydblclick` event                                                                              |
+| 6.4  | Tray menu         | Right-click tray, pick item           | `traymenuclick` event with the item `id`                                                          |
+| 6.5  | Set tooltip       | Click "Set Tooltip", hover icon       | Tooltip text shows current time                                                                   |
+| 6.6  | Destroy tray      | Click "Destroy Tray"                  | Icon disappears; recreate via 6.1 succeeds                                                        |
+| 6.7  | `Symbol.dispose`  | In an `await using` block in a script | Tray destroyed when block exits                                                                   |
+| 6.8  | Get bounds        | Click "Get Bounds"                    | `{ ok: true, bounds: {x,y,width,height} }` (or `bounds: null` on Linux)                           |
+| 6.9  | Attach panel      | Click "Attach Panel"                  | Binding returns `{ ok: true, windowId }`; no window steals focus yet                              |
+| 6.10 | Tray-toggle panel | Click the tray icon                   | Frameless popover appears anchored under the icon; click tray again → hides                       |
+| 6.11 | Blur-dismiss      | Open panel, click another app/window  | Panel hides on blur                                                                               |
+| 6.12 | Button toggle     | Click "Toggle Panel"                  | Panel shows/hides; binding returns `{ visible }`                                                  |
+| 6.13 | Detach panel      | Click "Detach Panel"                  | Panel window closes; tray click no longer toggles it                                              |
+| 6.14 | Rapid tray clicks | Click the tray icon many times fast   | `trayclick` events keep flowing; no UI-thread hang/deadlock (now `try_send`, not blocking `send`) |
 
 ---
 
@@ -246,19 +258,19 @@ startup logic.
 
 ## 10. Process lifecycle / panic / signals
 
-| #     | Test                            | Steps                                                               | Expected                                                                                                               |
-| ----- | ------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 10.1  | Ctrl-C cleanup                  | Run `deno desktop --hmr foo.ts`, Ctrl-C                             | WEF subprocess + CEF renderers all gone (`kill_on_drop`, #24) — verify `pgrep wef` and `pgrep -f denort_desktop` empty |
-| 10.2  | Parent panic cleanup            | Kill the parent with SIGKILL                                        | Same: subprocess dies on Child drop                                                                                    |
-| 10.3  | Ctrl-C while WEF window open    | Window closes; no orphaned processes                                |                                                                                                                        |
-| 10.4  | Forked Next.js worker           | Start Next.js dev under `deno desktop`, watch process tree          | Workers run headless (no extra windows); `is_worker` detects them via argv shape + env var combo (#17)                 |
-| 10.5  | NODE_CHANNEL_FD leak from shell | `NODE_CHANNEL_FD=99 deno desktop main.ts`                           | Window still appears; the env-only check no longer false-positives (#17)                                               |
-| 10.6  | Worker stderr                   | Force the parent to `process.exit()` mid-worker                     | No `/tmp/deno_desktop_worker.log` written (dropped, #8) — the eprintln is best-effort                                  |
-| 10.7  | navigate poll cleanup           | Open desktop, immediately close window                              | No "Server not ready" warnings post-shutdown (navigate JoinHandle aborted, #22)                                        |
-| 10.8  | Panic hook reports              | Force a panic with `error_reporting_url` set to `file:///tmp/r.log` | Report appended to file; process exits                                                                                 |
-| 10.9  | Panic hook with bad URL         | Set `error_reporting_url` to `garbage` or empty                     | Report dropped; warn logged; **does not** write to a local file (#10)                                                  |
-| 10.10 | Panic hook with `http://`       | Set to `http://example.com/r`                                       | Refused (https-only); warn logged                                                                                      |
-| 10.11 | NAPI symbol promotion           | Run a desktop app that loads a NAPI addon (next-swc)                | Addon loads; if `dlopen(self, RTLD_NOLOAD\|RTLD_GLOBAL)` returns null, debug log entry (#12)                           |
+| #     | Test                            | Steps                                                               | Expected                                                                                                                     |
+| ----- | ------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 10.1  | Ctrl-C cleanup                  | Run `deno desktop --hmr foo.ts`, Ctrl-C                             | laufey subprocess + CEF renderers all gone (`kill_on_drop`, #24) — verify `pgrep laufey` and `pgrep -f denort_desktop` empty |
+| 10.2  | Parent panic cleanup            | Kill the parent with SIGKILL                                        | Same: subprocess dies on Child drop                                                                                          |
+| 10.3  | Ctrl-C while laufey window open | Window closes; no orphaned processes                                |                                                                                                                              |
+| 10.4  | Forked Next.js worker           | Start Next.js dev under `deno desktop`, watch process tree          | Workers run headless (no extra windows); `is_worker` detects them via argv shape + env var combo (#17)                       |
+| 10.5  | NODE_CHANNEL_FD leak from shell | `NODE_CHANNEL_FD=99 deno desktop main.ts`                           | Window still appears; the env-only check no longer false-positives (#17)                                                     |
+| 10.6  | Worker stderr                   | Force the parent to `process.exit()` mid-worker                     | No `/tmp/deno_desktop_worker.log` written (dropped, #8) — the eprintln is best-effort                                        |
+| 10.7  | navigate poll cleanup           | Open desktop, immediately close window                              | No "Server not ready" warnings post-shutdown (navigate JoinHandle aborted, #22)                                              |
+| 10.8  | Panic hook reports              | Force a panic with `error_reporting_url` set to `file:///tmp/r.log` | Report appended to file; process exits                                                                                       |
+| 10.9  | Panic hook with bad URL         | Set `error_reporting_url` to `garbage` or empty                     | Report dropped; warn logged; **does not** write to a local file (#10)                                                        |
+| 10.10 | Panic hook with `http://`       | Set to `http://example.com/r`                                       | Refused (https-only); warn logged                                                                                            |
+| 10.11 | NAPI symbol promotion           | Run a desktop app that loads a NAPI addon (next-swc)                | Addon loads; if `dlopen(self, RTLD_NOLOAD\|RTLD_GLOBAL)` returns null, debug log entry (#12)                                 |
 
 ---
 
@@ -287,13 +299,14 @@ errors aren't from this branch's work; they're a separate cleanup pass.
 
 ---
 
-## 13. wef (`../wef`) build sanity
+## 13. laufey (`../laufey`) build sanity
 
-Quick check that the wef-side commit (`cd25b77` — sync dialog ABI) still builds
-for both backends:
+Quick check that the local laufey checkout still builds for both backends (only
+needed when using `LAUFEY_DEV_DIR`; release builds pull the pinned
+`laufey 0.3.1` archive):
 
 ```bash
-cd ../wef
+cd ../laufey
 make webview && make cef
 ```
 
@@ -316,6 +329,6 @@ If any of the items in §1–§13 don't behave as expected, capture:
 
 1. Exact command + env vars.
 2. Platform + arch (`uname -a` / `ver`).
-3. WEF backend variant (`webview` vs `cef`).
-4. Stderr from both the parent and the WEF subprocess.
+3. laufey backend variant (`webview` vs `cef`).
+4. Stderr from both the parent and the laufey subprocess.
 5. The relevant `desktop_*_issues.md` row number, if applicable.
