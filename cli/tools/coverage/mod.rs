@@ -30,6 +30,7 @@ use self::ignore_directives::lex_comments;
 use self::ignore_directives::parse_next_ignore_directives;
 use self::ignore_directives::parse_range_ignore_directives;
 use crate::args::CliOptions;
+use crate::args::CoverageThresholds;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
@@ -588,6 +589,7 @@ fn filter_coverages(
     .collect::<Vec<cdp::ScriptCoverage>>()
 }
 
+#[allow(clippy::too_many_arguments, reason = "coverage entry point")]
 pub fn cover_files(
   flags: Arc<Flags>,
   files_include: Vec<String>,
@@ -595,6 +597,7 @@ pub fn cover_files(
   include: Vec<String>,
   exclude: Vec<String>,
   output: Option<String>,
+  cli_threshold: Option<f64>,
   reporters: &[&dyn CoverageReporter],
 ) -> Result<(), AnyError> {
   if files_include.is_empty() {
@@ -770,5 +773,109 @@ pub fn cover_files(
     reporter.done(&coverage_root, &file_reports);
   }
 
+  // Layer the `--threshold` CLI flag over per-metric thresholds from deno.json
+  // (the flag wins) and fail the command if any configured threshold is unmet.
+  let config_thresholds = cli_options.resolve_coverage_thresholds()?;
+  let thresholds = CoverageThresholds {
+    lines: cli_threshold.or(config_thresholds.lines),
+    branches: cli_threshold.or(config_thresholds.branches),
+    functions: cli_threshold.or(config_thresholds.functions),
+  };
+  check_coverage_thresholds(&file_reports, thresholds)?;
+
   Ok(())
 }
+
+/// Computes the aggregate line, branch, and function coverage percentages
+/// across all reported files. A metric with no measurable items counts as 100%.
+fn aggregate_coverage_percentages(
+  file_reports: &[(CoverageReport, String)],
+) -> (f64, f64, f64) {
+  let (mut line_hit, mut line_miss) = (0usize, 0usize);
+  let (mut branch_hit, mut branch_miss) = (0usize, 0usize);
+  let (mut fn_hit, mut fn_miss) = (0usize, 0usize);
+  for (report, _) in file_reports {
+    line_hit += report.found_lines.iter().filter(|(_, c)| *c > 0).count();
+    line_miss += report.found_lines.iter().filter(|(_, c)| *c == 0).count();
+    branch_hit += report.branches.iter().filter(|b| b.is_hit).count();
+    branch_miss += report.branches.iter().filter(|b| !b.is_hit).count();
+    fn_hit += report
+      .named_functions
+      .iter()
+      .filter(|f| f.execution_count > 0)
+      .count();
+    fn_miss += report
+      .named_functions
+      .iter()
+      .filter(|f| f.execution_count == 0)
+      .count();
+  }
+  let percent = |hit: usize, miss: usize| -> f64 {
+    let total = hit + miss;
+    if total == 0 {
+      100.0
+    } else {
+      (hit as f64 / total as f64) * 100.0
+    }
+  };
+  (
+    percent(line_hit, line_miss),
+    percent(branch_hit, branch_miss),
+    percent(fn_hit, fn_miss),
+  )
+}
+
+fn check_coverage_thresholds(
+  file_reports: &[(CoverageReport, String)],
+  thresholds: CoverageThresholds,
+) -> Result<(), AnyError> {
+  if thresholds.lines.is_none()
+    && thresholds.branches.is_none()
+    && thresholds.functions.is_none()
+  {
+    return Ok(());
+  }
+
+  let (line_percent, branch_percent, fn_percent) =
+    aggregate_coverage_percentages(file_reports);
+
+  let mut failures = Vec::new();
+  let mut check = |name: &str, actual: f64, threshold: Option<f64>| {
+    if let Some(threshold) = threshold
+      && actual < threshold
+    {
+      failures.push(format!(
+        "  - {name} coverage {actual:.2}% is below the threshold of {threshold:.2}%"
+      ));
+    }
+  };
+  check("Line", line_percent, thresholds.lines);
+  check("Branch", branch_percent, thresholds.branches);
+  check("Function", fn_percent, thresholds.functions);
+
+  if failures.is_empty() {
+    Ok(())
+  } else {
+    Err(
+      CoverageThresholdError(format!(
+        "Coverage threshold not met:\n{}",
+        failures.join("\n")
+      ))
+      .into(),
+    )
+  }
+}
+
+/// Returned when a configured coverage threshold is not met. A distinct type so
+/// `deno test --coverage` can treat it as fatal while still tolerating benign
+/// report-generation errors.
+#[derive(Debug)]
+pub struct CoverageThresholdError(pub String);
+
+impl std::fmt::Display for CoverageThresholdError {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
+
+impl std::error::Error for CoverageThresholdError {}

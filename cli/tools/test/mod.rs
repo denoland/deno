@@ -107,6 +107,7 @@ use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
 
+use crate::tools::coverage::CoverageThresholdError;
 use crate::tools::coverage::cover_files;
 use crate::tools::coverage::reporter;
 use crate::tools::test::channel::ChannelClosedError;
@@ -2006,8 +2007,14 @@ pub async fn run_tests(
           .to_string_lossy()
           .into_owned(),
       ),
+      test_flags.coverage_threshold.map(|t| t as f64),
       &reporters,
     ) {
+      // An unmet coverage threshold is a deliberate failure and must fail the
+      // command; other (best-effort) report errors are only logged.
+      if err.downcast_ref::<CoverageThresholdError>().is_some() {
+        return Err(err);
+      }
       log::info!("Error generating coverage report: {}", err);
     }
   }
