@@ -223,6 +223,63 @@ fn install_global_from_task_with_relative_import_map() {
   assert!(file_path.exists());
 }
 
+// Companion to the regression test above: an absolute `--import-map` path must
+// keep resolving correctly after the fix pre-resolves cwd-relative paths. The
+// round-trip through `resolve_url_or_path` should be a no-op for absolute paths.
+#[test]
+fn install_global_with_absolute_import_map() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write(
+    "imports.json",
+    r#"{
+  "imports": {
+    "@fixture": "./fixture.ts"
+  }
+}
+"#,
+  );
+  temp_dir.write("fixture.ts", "export const value = 1;\n");
+  temp_dir.write(
+    "main.ts",
+    "import { value } from \"@fixture\";\nconsole.log(value);\n",
+  );
+
+  let import_map_path = temp_dir.path().join("imports.json");
+  let output = context
+    .new_command()
+    .args_vec([
+      "install",
+      "-A",
+      "--global",
+      "--root",
+      "./root",
+      "--import-map",
+      import_map_path.to_string().as_str(),
+      "-n",
+      "test",
+      "main.ts",
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
+  assert_contains!(output_text, "✅ Successfully installed test");
+
+  let mut file_path = temp_dir.path().join("root/bin/test");
+  if cfg!(windows) {
+    file_path = file_path.with_extension("cmd");
+  }
+  assert!(file_path.exists());
+
+  // the shim should reference the original absolute import map, not a path
+  // re-anchored under the generated `.test/` install dir.
+  let content = file_path.read_to_string();
+  assert_contains!(content, "imports.json");
+  assert_not_contains!(content, ".test/imports.json");
+}
+
 #[test]
 fn install_custom_dir_env_var() {
   let context = TestContext::with_http_server();
