@@ -454,7 +454,7 @@ impl<'s> ToV8<'s> for String {
   }
 }
 
-impl<'s, 'a> ToV8<'s> for &'a str {
+impl<'s> ToV8<'s> for &str {
   type Error = Infallible;
   #[inline]
   fn to_v8<'i>(
@@ -941,7 +941,7 @@ where
   }
 }
 
-impl<'s, 'a, T> ToV8<'s> for &'a [T]
+impl<'s, T> ToV8<'s> for &[T]
 where
   T: Copy + ToV8<'s>,
 {
