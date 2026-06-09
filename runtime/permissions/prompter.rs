@@ -413,7 +413,7 @@ impl PermissionPrompter for TtyPrompter {
         escape_control_characters(message)
       );
       eprintln!(
-        "❌ Run again with --allow-{} to grant the permission up front, or with -A to skip all prompts.",
+        "❌ Run again with --allow-{} to grant the permission up front, or with -A to allow all permissions.",
         escape_control_characters(name)
       );
       return PromptResponse::Deny;
