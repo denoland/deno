@@ -825,6 +825,9 @@ struct TscRoots {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct TsDirective {
+  // The module specifier as a graph URL string. Recorded from
+  // `deno_graph::Range::specifier` and later matched against
+  // `tsc::Diagnostic::file_name`, which is the same canonical form.
   specifier: String,
   // 0-indexed source line of the directive comment. This must use the same
   // line numbering as both `deno_graph::Range::start::line` (where the
@@ -1386,22 +1389,51 @@ fn is_used_ts_expect_error_diagnostic(
 }
 
 /// Looks for a `@ts-ignore` / `@ts-expect-error` directive suppressing a
-/// diagnostic on `diagnostic_line` (0-indexed).
+/// diagnostic recorded at `diagnostic_line` (0-indexed).
 ///
-/// This mirrors TypeScript's own `markPrecedingCommentDirectiveLine`: starting
-/// on the line above the diagnostic, scan upwards skipping blank lines and any
-/// `//` comment lines, and stop at the first line of actual code. The directive
-/// only needs to be the nearest comment above the diagnostic, not strictly on
-/// the immediately preceding line. Keeping this in sync with tsc matters so a
-/// graph-derived missing-module diagnostic is suppressed in exactly the cases
-/// tsc would suppress its own diagnostics.
+/// The graph records a missing-module diagnostic at the *specifier*, which for
+/// a multi-line `import`/`export ... from "..."` sits below the statement
+/// start. tsc instead reports its own diagnostics at the statement start and
+/// anchors a preceding directive to that line, so we first walk up to the line
+/// that begins the import/export statement.
+///
+/// From there this mirrors TypeScript's own `markPrecedingCommentDirectiveLine`:
+/// starting on the line above the statement, scan upwards skipping blank lines
+/// and any `//` comment lines, and stop at the first line of actual code. The
+/// directive only needs to be the nearest comment above the statement, not
+/// strictly on the immediately preceding line. Keeping this in sync with tsc
+/// matters so a graph-derived missing-module diagnostic is suppressed in
+/// exactly the cases tsc would suppress its own diagnostics.
 fn maybe_ts_suppression_comment(
   specifier: &str,
   source_text: &str,
   diagnostic_line: usize,
 ) -> Option<TsSuppressionComment> {
-  let lines = source_text.lines().collect::<Vec<_>>();
-  let mut line_index = diagnostic_line.checked_sub(1)?;
+  // We only ever scan upward from the diagnostic, so there's no need to
+  // materialize the rest of the file (imports sit near the top).
+  let lines = source_text
+    .lines()
+    .take(diagnostic_line + 1)
+    .collect::<Vec<_>>();
+
+  // Walk up from the specifier to the line that begins its import/export
+  // statement. A bare comment line (e.g. a `/// <reference />`) or anything
+  // that isn't a resolvable multi-line import body falls back to the
+  // diagnostic line, preserving the single-line behavior.
+  let mut anchor = diagnostic_line;
+  loop {
+    let trimmed = lines.get(anchor)?.trim_start();
+    if trimmed.starts_with("import") || trimmed.starts_with("export") {
+      break;
+    }
+    if anchor == 0 || trimmed.is_empty() || trimmed.starts_with("//") {
+      anchor = diagnostic_line;
+      break;
+    }
+    anchor -= 1;
+  }
+
+  let mut line_index = anchor.checked_sub(1)?;
   loop {
     let line = lines.get(line_index)?.trim();
     if let Some(directive) = line.strip_prefix("//").and_then(|line| {
