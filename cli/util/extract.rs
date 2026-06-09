@@ -910,30 +910,6 @@ fn wrap_in_deno_test(
     None => None,
   };
 
-  let test_fn = ast::Expr::Arrow(ast::ArrowExpr {
-    span: DUMMY_SP,
-    params: vec![],
-    body: Box::new(ast::BlockStmtOrExpr::BlockStmt(ast::BlockStmt {
-      span: DUMMY_SP,
-      stmts,
-      ..Default::default()
-    })),
-    is_async: true,
-    is_generator: false,
-    type_params: None,
-    return_type: None,
-    ..Default::default()
-  });
-
-  let args = [Some(string_lit(test_name.as_str())), options, Some(test_fn)]
-    .into_iter()
-    .flatten()
-    .map(|expr| ast::ExprOrSpread {
-      spread: None,
-      expr: Box::new(expr),
-    })
-    .collect();
-
   ast::Stmt::Expr(ast::ExprStmt {
     span: DUMMY_SP,
     expr: Box::new(ast::Expr::Call(ast::CallExpr {
@@ -951,7 +927,31 @@ fn wrap_in_deno_test(
           sym: "test".into(),
         }),
       }))),
-      args,
+      args: [
+        Some(string_lit(test_name.as_str())),
+        options,
+        Some(ast::Expr::Arrow(ast::ArrowExpr {
+          span: DUMMY_SP,
+          params: vec![],
+          body: Box::new(ast::BlockStmtOrExpr::BlockStmt(ast::BlockStmt {
+            span: DUMMY_SP,
+            stmts,
+            ..Default::default()
+          })),
+          is_async: true,
+          is_generator: false,
+          type_params: None,
+          return_type: None,
+          ..Default::default()
+        })),
+      ]
+      .into_iter()
+      .flatten()
+      .map(|expr| ast::ExprOrSpread {
+        spread: None,
+        expr: Box::new(expr),
+      })
+      .collect(),
       type_args: None,
       ..Default::default()
     })),
@@ -966,29 +966,6 @@ fn string_lit(value: &str) -> ast::Expr {
   }))
 }
 
-/// Builds an object literal `{ <name>: <value>, ... }`.
-fn object_lit(
-  props: impl IntoIterator<Item = (&'static str, ast::Expr)>,
-) -> ast::Expr {
-  ast::Expr::Object(ast::ObjectLit {
-    span: DUMMY_SP,
-    props: props
-      .into_iter()
-      .map(|(name, value)| {
-        ast::PropOrSpread::Prop(Box::new(ast::Prop::KeyValue(
-          ast::KeyValueProp {
-            key: ast::PropName::Ident(ast::IdentName {
-              span: DUMMY_SP,
-              sym: name.into(),
-            }),
-            value: Box::new(value),
-          },
-        )))
-      })
-      .collect(),
-  })
-}
-
 /// Builds the `{ permissions: ... }` options object passed to `Deno.test` for a
 /// snippet that declared a shebang.
 ///
@@ -1001,6 +978,17 @@ fn object_lit(
 ///   (revoked), and a shebang without any permission flag becomes
 ///   `{ permissions: "none" }`.
 fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
+  // Builds a `{ <name>: <value> }` object property.
+  let prop = |name: &str, value: ast::Expr| {
+    ast::PropOrSpread::Prop(Box::new(ast::Prop::KeyValue(ast::KeyValueProp {
+      key: ast::PropName::Ident(ast::IdentName {
+        span: DUMMY_SP,
+        sym: name.into(),
+      }),
+      value: Box::new(value),
+    })))
+  };
+
   let value = if permissions.allow_all {
     string_lit("inherit")
   } else {
@@ -1034,18 +1022,24 @@ fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
             .collect(),
         })
       };
-      Some((name, value))
+      Some(prop(name, value))
     })
     .collect::<Vec<_>>();
 
     if props.is_empty() {
       string_lit("none")
     } else {
-      object_lit(props)
+      ast::Expr::Object(ast::ObjectLit {
+        span: DUMMY_SP,
+        props,
+      })
     }
   };
 
-  object_lit([("permissions", value)])
+  ast::Expr::Object(ast::ObjectLit {
+    span: DUMMY_SP,
+    props: vec![prop("permissions", value)],
+  })
 }
 
 #[cfg(test)]
