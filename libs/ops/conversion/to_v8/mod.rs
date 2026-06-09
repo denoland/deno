@@ -106,21 +106,50 @@ fn create_impl(
   generics: &Generics,
   body: TokenStream,
 ) -> TokenStream {
-  // Build impl generics: 'a (the ToV8 scope lifetime) + any generics on the struct.
+  // Collect lifetime names already in use on the struct, to avoid E0403.
+  let used: std::collections::HashSet<String> = generics
+    .lifetimes()
+    .map(|lt| lt.lifetime.ident.to_string())
+    .collect();
+
+  // Pick a scope lifetime ('a preferred, fall back to __scope) that doesn't shadow a struct lt.
+  let scope_lt_name = ["a", "__scope", "__v8scope"]
+    .iter()
+    .copied()
+    .find(|n| !used.contains(*n))
+    .expect("no free lifetime name for ToV8 scope");
+  let scope_lt = syn::Lifetime::new(
+    &format!("'{}", scope_lt_name),
+    proc_macro2::Span::call_site(),
+  );
+
+  // Pick an inner lifetime ('i preferred) that doesn't shadow a struct lt or == scope_lt.
+  let inner_lt_name = ["i", "__inner", "__v8inner"]
+    .iter()
+    .copied()
+    .find(|n| !used.contains(*n) && *n != scope_lt_name)
+    .expect("no free lifetime name for PinScope inner lifetime");
+  let inner_lt = syn::Lifetime::new(
+    &format!("'{}", inner_lt_name),
+    proc_macro2::Span::call_site(),
+  );
+
+  // Build impl generics: scope_lt + any generics on the struct.
+  let lp = syn::LifetimeParam::new(scope_lt.clone());
   let mut all_params = generics.clone();
-  all_params.params.insert(0, syn::parse_quote!('a));
+  all_params.params.insert(0, syn::GenericParam::Lifetime(lp));
 
   let (impl_generics, _, where_clause) = all_params.split_for_impl();
   let (_, ty_generics, _) = generics.split_for_impl();
 
   quote! {
-    impl #impl_generics ::deno_core::convert::ToV8<'a> for #ident #ty_generics #where_clause {
+    impl #impl_generics ::deno_core::convert::ToV8<#scope_lt> for #ident #ty_generics #where_clause {
       type Error = ::deno_error::JsErrorBox;
 
-      fn to_v8<'i>(
+      fn to_v8<#inner_lt>(
         self,
-        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
-      ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error>
+        __scope: &mut ::deno_core::v8::PinScope<#scope_lt, #inner_lt>,
+      ) -> Result<::deno_core::v8::Local<#scope_lt, ::deno_core::v8::Value>, Self::Error>
       {
         #body
       }
