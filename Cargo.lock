@@ -2838,6 +2838,7 @@ dependencies = [
  "tokio",
  "x25519-dalek",
  "x509-parser",
+ "yasna",
  "yoke 0.7.4",
 ]
 

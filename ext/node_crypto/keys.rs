@@ -20,7 +20,11 @@ use hmac::Mac;
 use num_bigint::BigInt;
 use num_traits::FromPrimitive as _;
 use p12::AlgorithmIdentifier as Pkcs12AlgorithmIdentifier;
+use p12::CertBag as Pkcs12CertBag;
+use p12::ContentInfo as Pkcs12ContentInfo;
 use p12::PFX as Pkcs12;
+use p12::SafeBag as Pkcs12SafeBag;
+use p12::SafeBagKind as Pkcs12SafeBagKind;
 use pkcs8::DecodePrivateKey as _;
 use pkcs8::Document;
 use pkcs8::EncodePrivateKey as _;
@@ -4268,6 +4272,11 @@ pub enum PfxLoadError {
   #[error("PFX contains no usable private key")]
   NoKey,
   #[class(generic)]
+  #[error(
+    "failed to decrypt PFX private key (wrong passphrase or unsupported encryption)"
+  )]
+  KeyDecryptFailed,
+  #[class(generic)]
   #[error("failed to encode PFX contents: {0}")]
   Encode(String),
 }
@@ -4298,15 +4307,28 @@ fn der_to_pem(label: &str, der: &[u8]) -> String {
   out
 }
 
-// Cap on the iteration count for the PKCS#12 MAC PBKDF, since an attacker
-// who controls the PFX bytes also controls this field (`mac_data.iterations`
-// is a u32, up to ~4 billion, which would tie up CPU for tens of seconds).
-// Matches the limit Mozilla NSS uses for the same KDF; well above any
-// realistic legitimate value — OpenSSL defaults to 2048 on creation, and
-// hardened producers rarely go beyond ~100k. OpenSSL itself doesn't cap
-// here, but Node trusts the caller's PFX; in Deno the PFX often comes
-// from untrusted input (e.g. server config), so capping is defensive.
-const PFX_MAC_ITERATIONS_CAP: u64 = 600_000;
+// Cap on the PBKDF iteration count for any PFX-controlled KDF — the
+// PKCS#12 MAC PBKDF and any PBES2/PBKDF2 inside a SafeContents or shrouded
+// key bag envelope. An attacker who controls the PFX bytes also controls
+// the iteration count (a u32, up to ~4 billion), which would otherwise tie
+// up CPU for tens of seconds per call. Matches the limit Mozilla NSS uses
+// for the MAC KDF; well above any realistic legitimate value — OpenSSL
+// defaults to 2048 on creation, and hardened producers rarely go beyond
+// ~100k. OpenSSL itself doesn't cap here, but Node trusts the caller's
+// PFX; in Deno the PFX often comes from untrusted input (e.g. server
+// config), so capping is defensive.
+const PFX_PBKDF_ITERATIONS_CAP: u64 = 600_000;
+
+// Cap on the working-set memory of a PFX-controlled scrypt KDF. PBES2 also
+// permits scrypt (RFC 7914), whose cost is attacker-controlled the same way
+// as a PBKDF2 iteration count but is memory-hard rather than iteration-hard,
+// so the iteration cap above does not bound it. scrypt's working set is
+// `128 * N * r` bytes; cap it at 1 GiB so a crafted PFX cannot force a
+// multi-gigabyte allocation. OpenSSL/Node never emit scrypt for PKCS#12
+// (this is well above any value a legitimate producer would use — the
+// OWASP-recommended N=2^17, r=8 needs ~128 MiB), but pkcs5 will decrypt it,
+// so the bound is defensive.
+const PFX_SCRYPT_MEMORY_CAP: u128 = 1 << 30;
 
 #[op2]
 #[serde]
@@ -4321,7 +4343,7 @@ pub fn op_node_load_pfx(
   // OpenSSL/Node behaviour).
   if let Some(mac_data) = &parsed.mac_data {
     let iterations = u64::from(mac_data.iterations);
-    if iterations > PFX_MAC_ITERATIONS_CAP {
+    if iterations > PFX_PBKDF_ITERATIONS_CAP {
       return Err(PfxLoadError::MacVerifyFailure);
     }
     let data = parsed
@@ -4342,12 +4364,33 @@ pub fn op_node_load_pfx(
     }
   }
 
-  let cert_ders = parsed
-    .cert_bags(password)
-    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
-  let key_ders = parsed
-    .key_bags(password)
-    .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+  let safe_bags = pfx_safe_bags(&parsed, password, &bmp_password)?;
+
+  let mut cert_ders: Vec<Vec<u8>> = Vec::new();
+  let mut key_ders: Vec<Vec<u8>> = Vec::new();
+  for bag in &safe_bags {
+    match &bag.bag {
+      Pkcs12SafeBagKind::CertBag(Pkcs12CertBag::X509(der)) => {
+        cert_ders.push(der.clone());
+      }
+      Pkcs12SafeBagKind::Pkcs8ShroudedKeyBag(epki) => {
+        let der = decrypt_pfx_blob(
+          &epki.encryption_algorithm,
+          &epki.encrypted_data,
+          password,
+          &bmp_password,
+        )
+        .ok_or(PfxLoadError::KeyDecryptFailed)?;
+        key_ders.push(der);
+      }
+      // Unencrypted KeyBags and other bag kinds are ignored, matching the
+      // upstream `p12` behaviour this replaces: `SafeBagKind::get_key` only
+      // extracts `Pkcs8ShroudedKeyBag`, and an unencrypted PKCS#8 KeyBag
+      // parses as `OtherBagKind`. TLS PFX bundles always shroud the key, so
+      // this is not a shape we need to support.
+      _ => {}
+    }
+  }
 
   if cert_ders.is_empty() {
     return Err(PfxLoadError::NoCert);
@@ -4364,10 +4407,133 @@ pub fn op_node_load_pfx(
   let ca: Vec<String> =
     iter.map(|der| der_to_pem("CERTIFICATE", &der)).collect();
 
-  // p12 returns PKCS#8 DER for shrouded key bags.
+  // Shrouded key bags decrypt to PKCS#8 DER.
   let key = der_to_pem("PRIVATE KEY", &key_ders[0]);
 
   Ok(LoadPfxResult { cert, key, ca })
+}
+
+// PBES2 OID (id-PBES2) arcs from RFC 8018, compared against the parsed
+// algorithm OID directly so we do not allocate a fresh `ObjectIdentifier`
+// for every bag.
+const PBES2_OID_ARCS: [u64; 7] = [1, 2, 840, 113_549, 1, 5, 13];
+
+// Decrypt a PFX blob (the SafeContents body of an EncryptedData ContentInfo,
+// or the EncryptedPrivateKeyInfo body of a shrouded key bag), dispatching
+// by algorithm:
+//
+// - PKCS#12 PBE (RC2-40 / 3DES with SHA-1 KDF): the only schemes the `p12`
+//   crate handles natively. These take the password as a BMPString.
+// - PBES2 (PBKDF2 + AES-CBC, and the other PBES2-supported ciphers): the
+//   shape every modern `openssl pkcs12 -export` invocation emits. Handled
+//   here via `pkcs8::pkcs5::EncryptionScheme`. PBES2 within PKCS#12 takes
+//   the password as raw UTF-8 (no BMPString conversion); this matches
+//   what OpenSSL and Node accept.
+fn decrypt_pfx_blob(
+  alg: &Pkcs12AlgorithmIdentifier,
+  ciphertext: &[u8],
+  utf8_password: &str,
+  bmp_password: &[u8],
+) -> Option<Vec<u8>> {
+  match alg {
+    Pkcs12AlgorithmIdentifier::PbewithSHAAnd40BitRC2CBC(params)
+    | Pkcs12AlgorithmIdentifier::PbeWithSHAAnd3KeyTripleDESCBC(params) => {
+      // The legacy PKCS#12 PBE iteration count is attacker-controlled too
+      // (`Pkcs12PbeParams::iterations`), and `p12::decrypt_pbe` does not cap
+      // it; apply the same cap as the MAC and PBES2 paths.
+      if params.iterations > PFX_PBKDF_ITERATIONS_CAP {
+        return None;
+      }
+      alg.decrypt_pbe(ciphertext, bmp_password)
+    }
+    Pkcs12AlgorithmIdentifier::OtherAlg(other)
+      if other.algorithm_type.components().as_slice()
+        == PBES2_OID_ARCS.as_slice() =>
+    {
+      // `p12` keeps `OtherAlg` as a partial parse (just the raw params
+      // bytes), so round-trip the whole AlgorithmIdentifier back to DER to
+      // let the pkcs8/pkcs5 crate parse the PBES2 parameters.
+      let alg_der = yasna::construct_der(|w| alg.write(w));
+      let scheme = pkcs8::pkcs5::EncryptionScheme::from_der(&alg_der).ok()?;
+      // Apply the same PBKDF iteration cap used for the MAC. The PBKDF2
+      // iteration count here is attacker-controlled in the same way
+      // (parsed straight out of the PFX bytes), and
+      // `pkcs8::pkcs5::EncryptionScheme::decrypt` does not cap on its own.
+      if let Some(pbkdf2) = scheme.pbes2().and_then(|p| p.kdf.pbkdf2())
+        && u64::from(pbkdf2.iteration_count) > PFX_PBKDF_ITERATIONS_CAP
+      {
+        return None;
+      }
+      // PBES2 may also use a scrypt KDF, which the iteration cap above does
+      // not cover; bound its working-set memory (`128 * N * r`) instead.
+      if let Some(scrypt) = scheme.pbes2().and_then(|p| p.kdf.scrypt()) {
+        let working_set = u128::from(scrypt.cost_parameter)
+          .saturating_mul(u128::from(scrypt.block_size))
+          .saturating_mul(128);
+        if working_set > PFX_SCRYPT_MEMORY_CAP {
+          return None;
+        }
+      }
+      scheme.decrypt(utf8_password.as_bytes(), ciphertext).ok()
+    }
+    _ => None,
+  }
+}
+
+// Walk a PFX and return the flat list of SafeBags, decrypting EncryptedData
+// envelopes along the way. This is a reimplementation of `p12::PFX::bags`
+// that adds PBES2 support; the p12 crate only handles the legacy PKCS#12
+// PBE algorithms (RC2-40 and 3DES with the SHA-1 KDF). Without PBES2 we
+// cannot read PFX files produced by `openssl pkcs12 -export` on OpenSSL 3,
+// which is the default shape Node also produces and consumes.
+fn pfx_safe_bags(
+  parsed: &Pkcs12,
+  utf8_password: &str,
+  bmp_password: &[u8],
+) -> Result<Vec<Pkcs12SafeBag>, PfxLoadError> {
+  let outer = pfx_content_data(&parsed.auth_safe, utf8_password, bmp_password)?;
+  let safe_contents: Vec<Pkcs12ContentInfo> = yasna::parse_der(&outer, |r| {
+    r.collect_sequence_of(Pkcs12ContentInfo::parse)
+  })
+  .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+  let mut bags: Vec<Pkcs12SafeBag> = Vec::new();
+  for content in &safe_contents {
+    let bytes = pfx_content_data(content, utf8_password, bmp_password)?;
+    let parsed: Vec<Pkcs12SafeBag> =
+      yasna::parse_der(&bytes, |r| r.collect_sequence_of(Pkcs12SafeBag::parse))
+        .map_err(|e| PfxLoadError::Encode(e.to_string()))?;
+    bags.extend(parsed);
+  }
+  Ok(bags)
+}
+
+fn pfx_content_data(
+  ci: &Pkcs12ContentInfo,
+  utf8_password: &str,
+  bmp_password: &[u8],
+) -> Result<Vec<u8>, PfxLoadError> {
+  match ci {
+    Pkcs12ContentInfo::Data(d) => Ok(d.clone()),
+    Pkcs12ContentInfo::EncryptedData(e) => decrypt_pfx_blob(
+      &e.encrypted_content_info.content_encryption_algorithm,
+      &e.encrypted_content_info.encrypted_content,
+      utf8_password,
+      bmp_password,
+    )
+    .ok_or_else(|| {
+      // A `None` here is either a wrong passphrase or an algorithm pkcs5
+      // cannot decrypt; we cannot tell which apart, so report both rather
+      // than blaming the algorithm (which misleads on the common case of a
+      // bad passphrase against an encrypted cert bag).
+      PfxLoadError::Encode(
+        "failed to decrypt PFX contents (wrong passphrase or unsupported encryption)"
+          .into(),
+      )
+    }),
+    Pkcs12ContentInfo::OtherContext(_) => {
+      Err(PfxLoadError::Encode("unsupported PFX content info".into()))
+    }
+  }
 }
 
 // Convert a UTF-8 password to the PKCS#12 BMPString form (RFC 7292
