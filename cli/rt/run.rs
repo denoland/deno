@@ -74,7 +74,6 @@ use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::create_host_defined_options;
-use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
@@ -1059,10 +1058,14 @@ pub async fn run(
   }
   let main_module = match child_entrypoint {
     // Only honor the override for a genuine fork() child, which always wires up
-    // an IPC channel (NODE_CHANNEL_FD). This keeps a stray external env var from
-    // redirecting a sealed compiled binary to run an arbitrary module with its
-    // baked-in permissions; the entrypoint is otherwise immutable. NODE_CHANNEL_FD
-    // is still present here because node_ipc_init() consumes it later.
+    // an IPC channel (NODE_CHANNEL_FD). This is defense in depth against an
+    // accidental collision with a stray DENO_INTERNAL_CHILD_ENTRYPOINT, not a
+    // security boundary: an attacker who can set one env var can set both, and
+    // resolve_child_entrypoint's cwd-relative fallback will then run an on-disk
+    // module with the binary's baked-in permissions. That on-disk fallback is
+    // intentional (it matches fork() semantics outside a compiled binary), so a
+    // hostile environment is out of scope here. NODE_CHANNEL_FD is still present
+    // because node_ipc_init() consumes it later.
     Some(module_path) if std::env::var("NODE_CHANNEL_FD").is_ok() => {
       resolve_child_entrypoint(&module_path, &entrypoint, &vfs, &sys)
     }
@@ -1376,7 +1379,7 @@ pub async fn run(
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
-    node_ipc_init: node_ipc_init()?,
+    node_ipc_init: deno_lib::args::node_ipc_init()?,
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
@@ -1473,6 +1476,14 @@ fn resolve_child_entrypoint(
   // Falling back to the entrypoint silently would re-run the parent's
   // entrypoint, i.e. the very symptom of #26304. Warn so the failure is
   // diagnosable instead of looking like a successful fork.
+  //
+  // Re-running the entrypoint risks a re-fork loop if the entrypoint
+  // unconditionally fork()s the same bad path. In practice this almost never
+  // fires: the common "missing module" case takes the cwd branch below, where
+  // resolve_path() builds a URL without an existence check, so the bad path
+  // surfaces as a module load error rather than reaching here. fallback() only
+  // triggers on an unparseable path or an unreadable cwd, which a re-fork would
+  // hit identically (and thus surface) rather than spinning silently.
   let fallback = || {
     log::warn!(
       "Could not resolve module {:?} passed to child_process.fork(); running the compiled entrypoint instead.",
@@ -1506,37 +1517,6 @@ fn resolve_child_entrypoint(
       deno_core::resolve_path(module_path, &cwd).unwrap_or_else(|_| fallback())
     }
     Err(_) => fallback(),
-  }
-}
-
-/// Sets up the node IPC channel for a process spawned by
-/// `node:child_process.fork()`. The parent passes the channel fd (and
-/// serialization mode) via env vars; mirror the CLI's `node_ipc_init()` here so
-/// that process.send()/process.on("message") work in a compiled binary's child
-/// (see issue #26304). Without this a fork()ed child never wires up IPC.
-fn node_ipc_init() -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
-  let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
-  let maybe_serialization = if let Ok(serialization) =
-    std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
-  {
-    Some(serialization.parse::<ChildIpcSerialization>()?)
-  } else {
-    None
-  };
-  if let Some(node_channel_fd) = maybe_node_channel_fd {
-    // Remove so that grandchild processes don't inherit these env vars.
-    // SAFETY: single-threaded at this point in startup.
-    unsafe {
-      std::env::remove_var("NODE_CHANNEL_FD");
-      std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
-    }
-    let node_channel_fd = node_channel_fd.parse::<i64>()?;
-    Ok(Some((
-      node_channel_fd,
-      maybe_serialization.unwrap_or(ChildIpcSerialization::Json),
-    )))
-  } else {
-    Ok(None)
   }
 }
 
