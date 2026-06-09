@@ -3203,6 +3203,10 @@ impl TranslateOptions {
   /// `node --require ./x.cjs main.cjs` expects the preload to actually run, and
   /// emits the extra `--unstable-sloppy-imports`/`--unstable-unsafe-proto` flags
   /// the previous hand-rolled `NodeCommand` always passed.
+  ///
+  /// Eval source still follows Deno's `deno eval` CJS auto-detection instead of
+  /// exactly matching Node's `node -e` CommonJS default. This is a pragmatic
+  /// lifecycle-script compatibility shim, not full Node CLI fidelity.
   /// Kept distinct from `for_shell_command` (used by `child_process` exec-style
   /// spawning) so emission doesn't change `child_process`'s long-standing
   /// behavior of dropping preloads it can't resolve like Node (e.g.
@@ -3395,8 +3399,7 @@ pub fn translate_to_deno_args(
       deno_args.push("--unstable-detect-cjs".to_string());
     }
     if options.add_task_unstable_flags {
-      deno_args.push("--unstable-sloppy-imports".to_string());
-      deno_args.push("--unstable-unsafe-proto".to_string());
+      add_task_unstable_flags(deno_args);
     }
     if options.add_standalone_config {
       deno_args.push("--node-modules-dir=manual".to_string());
@@ -3482,8 +3485,7 @@ pub fn translate_to_deno_args(
       deno_args.push("--unstable-detect-cjs".to_string());
     }
     if options.add_task_unstable_flags {
-      deno_args.push("--unstable-sloppy-imports".to_string());
-      deno_args.push("--unstable-unsafe-proto".to_string());
+      add_task_unstable_flags(deno_args);
     }
     if options.add_standalone_config {
       deno_args.push("--node-modules-dir=manual".to_string());
@@ -3533,8 +3535,7 @@ pub fn translate_to_deno_args(
     deno_args.push("--unstable-detect-cjs".to_string());
   }
   if options.add_task_unstable_flags {
-    deno_args.push("--unstable-sloppy-imports".to_string());
-    deno_args.push("--unstable-unsafe-proto".to_string());
+    add_task_unstable_flags(deno_args);
   }
   if options.add_standalone_config {
     deno_args.push("--node-modules-dir=manual".to_string());
@@ -3661,6 +3662,11 @@ fn add_preload_modules(
     deno_args.push("--import".to_string());
     deno_args.push(module.clone());
   }
+}
+
+fn add_task_unstable_flags(deno_args: &mut Vec<String>) {
+  deno_args.push("--unstable-sloppy-imports".to_string());
+  deno_args.push("--unstable-unsafe-proto".to_string());
 }
 
 fn add_conditions(deno_args: &mut Vec<String>, env_opts: &EnvironmentOptions) {

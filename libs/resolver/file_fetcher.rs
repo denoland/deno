@@ -638,6 +638,10 @@ impl<
     specifier: &Url,
     options: deno_graph::source::LoadOptions,
   ) -> LoadFuture {
+    // Explicit graph file overrides are used for synthetic in-memory sources
+    // such as `deno eval`'s `$deno$eval.*`. Let them win before npm package
+    // externalization below, because these URLs can intentionally sit under a
+    // `node_modules` cwd while not existing as physical package files.
     if let Some(overrides) = &self.file_content_overrides
       && let Some(content) = overrides.get(specifier)
     {
