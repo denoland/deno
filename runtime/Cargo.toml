@@ -76,7 +76,6 @@ log.workspace = true
 node_resolver = { workspace = true, features = ["sync"] }
 notify.workspace = true
 once_cell.workspace = true
-rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file.workspace = true
 serde.workspace = true
 sys_traits.workspace = true
@@ -93,7 +92,7 @@ unicode-normalization.workspace = true
 windows-sys = { workspace = true, features = ["Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [target.'cfg(unix)'.dependencies]
-nix.workspace = true
+nix = { workspace = true, features = ["term"] }
 
 [dev-dependencies]
 # Used in benchmark

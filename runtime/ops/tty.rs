@@ -5,6 +5,8 @@ use std::cell::RefCell;
 #[cfg(unix)]
 use std::collections::HashMap;
 use std::io::Error;
+use std::io::Read;
+use std::io::Write;
 #[cfg(windows)]
 use std::sync::Arc;
 
@@ -15,19 +17,10 @@ use deno_core::op2;
 #[cfg(windows)]
 use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
-use deno_error::JsErrorClass;
-use deno_error::builtin_classes::GENERIC_ERROR;
 #[cfg(windows)]
 use deno_io::WinTtyState;
 #[cfg(unix)]
 use nix::sys::termios;
-use rustyline::Cmd;
-use rustyline::Editor;
-use rustyline::KeyCode;
-use rustyline::KeyEvent;
-use rustyline::Modifiers;
-use rustyline::config::Configurer;
-use rustyline::error::ReadlineError;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]
@@ -456,43 +449,160 @@ mod tests {
   }
 }
 
-deno_error::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
-  match err {
-    ReadlineError::Io(e) => e.get_class(),
-    ReadlineError::Eof => GENERIC_ERROR.into(),
-    ReadlineError::Interrupted => GENERIC_ERROR.into(),
+struct PromptRawModeGuard {
+  #[cfg(unix)]
+  original_mode: termios::Termios,
+  #[cfg(windows)]
+  handle: std::os::windows::io::RawHandle,
+  #[cfg(windows)]
+  original_mode: u32,
+}
+
+impl PromptRawModeGuard {
+  fn new() -> Result<Self, TtyError> {
     #[cfg(unix)]
-    ReadlineError::Errno(e) => JsNixError(*e).get_class(),
-    _ => GENERIC_ERROR.into(),
+    {
+      // SAFETY: The standard input file descriptor is valid for this process.
+      let stdin_fd =
+        unsafe { std::os::fd::BorrowedFd::borrow_raw(libc::STDIN_FILENO) };
+      let original_mode = termios::tcgetattr(stdin_fd)
+        .map_err(|e| TtyError::Nix(JsNixError(e)))?;
+      let mut raw = original_mode.clone();
+
+      raw.input_flags &= !(termios::InputFlags::BRKINT
+        | termios::InputFlags::ICRNL
+        | termios::InputFlags::INPCK
+        | termios::InputFlags::ISTRIP
+        | termios::InputFlags::IXON);
+      raw.control_flags |= termios::ControlFlags::CS8;
+      raw.local_flags &= !(termios::LocalFlags::ECHO
+        | termios::LocalFlags::ICANON
+        | termios::LocalFlags::IEXTEN
+        | termios::LocalFlags::ISIG);
+      raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
+      raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
+
+      termios::tcsetattr(stdin_fd, termios::SetArg::TCSADRAIN, &raw)
+        .map_err(|e| TtyError::Nix(JsNixError(e)))?;
+      Ok(Self { original_mode })
+    }
+    #[cfg(windows)]
+    {
+      use windows_sys::Win32::Foundation::FALSE;
+
+      // SAFETY: GetStdHandle with STD_INPUT_HANDLE returns the process stdin handle.
+      let handle = unsafe { wincon::GetStdHandle(wincon::STD_INPUT_HANDLE) };
+      let mut original_mode = 0;
+      // SAFETY: Win32 call.
+      if unsafe { wincon::GetConsoleMode(handle, &mut original_mode) } == FALSE
+      {
+        return Err(TtyError::Io(Error::last_os_error()));
+      }
+      // SAFETY: Win32 call.
+      if unsafe {
+        wincon::SetConsoleMode(handle, mode_raw_input_on(original_mode))
+      } == FALSE
+      {
+        return Err(TtyError::Io(Error::last_os_error()));
+      }
+      Ok(Self {
+        handle,
+        original_mode,
+      })
+    }
   }
-});
+}
+
+impl Drop for PromptRawModeGuard {
+  fn drop(&mut self) {
+    #[cfg(unix)]
+    {
+      // SAFETY: The standard input file descriptor is valid for this process.
+      let stdin_fd =
+        unsafe { std::os::fd::BorrowedFd::borrow_raw(libc::STDIN_FILENO) };
+      let _ = termios::tcsetattr(
+        stdin_fd,
+        termios::SetArg::TCSADRAIN,
+        &self.original_mode,
+      );
+    }
+    #[cfg(windows)]
+    {
+      // SAFETY: Win32 call restoring a mode read from the same console handle.
+      let _ =
+        unsafe { wincon::SetConsoleMode(self.handle, self.original_mode) };
+    }
+  }
+}
 
 #[op2]
 #[string]
 pub fn op_read_line_prompt(
   #[string] prompt_text: &str,
   #[string] default_value: &str,
-) -> Result<Option<String>, JsReadlineError> {
+) -> Result<Option<String>, TtyError> {
   let _terminal_input_guard = deno_permissions::prompter::lock_terminal_input();
-  let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
-    .expect("Failed to create editor.");
 
-  editor.set_keyseq_timeout(Some(1));
-  editor
-    .bind_sequence(KeyEvent(KeyCode::Esc, Modifiers::empty()), Cmd::Interrupt);
+  let mut stdout = std::io::stdout();
+  stdout.write_all(prompt_text.as_bytes())?;
+  stdout.write_all(default_value.as_bytes())?;
+  stdout.flush()?;
 
-  let read_result =
-    editor.readline_with_initial(prompt_text, (default_value, ""));
-  match read_result {
-    Ok(line) => Ok(Some(line)),
-    Err(ReadlineError::Interrupted) => {
-      // SAFETY: Disable raw mode and raise SIGINT.
-      unsafe {
-        libc::raise(libc::SIGINT);
-      }
-      Ok(None)
+  let raw_mode_guard = PromptRawModeGuard::new()?;
+  let mut stdin = std::io::stdin();
+  let mut line = default_value.to_string();
+  let mut pending_utf8 = Vec::new();
+
+  loop {
+    let mut byte = [0];
+    match stdin.read(&mut byte) {
+      Ok(0) => return Ok(None),
+      Ok(_) => {}
+      Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+      Err(err) => return Err(TtyError::Io(err)),
     }
-    Err(ReadlineError::Eof) => Ok(None),
-    Err(err) => Err(JsReadlineError(err)),
+
+    match byte[0] {
+      b'\r' | b'\n' => {
+        stdout.write_all(b"\n")?;
+        stdout.flush()?;
+        return Ok(Some(line));
+      }
+      0x03 | 0x1b => {
+        drop(raw_mode_guard);
+        // SAFETY: Raise SIGINT to match rustyline's interrupted prompt result.
+        unsafe {
+          libc::raise(libc::SIGINT);
+        }
+        return Ok(None);
+      }
+      0x04 if line.is_empty() => return Ok(None),
+      0x08 | 0x7f => {
+        if let Some((idx, _)) = line.char_indices().next_back() {
+          line.truncate(idx);
+          stdout.write_all(b"\x08 \x08")?;
+          stdout.flush()?;
+        }
+        pending_utf8.clear();
+      }
+      byte if byte.is_ascii_control() => {
+        pending_utf8.clear();
+      }
+      byte if byte.is_ascii() => {
+        let ch = byte as char;
+        line.push(ch);
+        stdout.write_all(&[byte])?;
+        stdout.flush()?;
+      }
+      byte => {
+        pending_utf8.push(byte);
+        if let Ok(text) = std::str::from_utf8(&pending_utf8) {
+          line.push_str(text);
+          stdout.write_all(&pending_utf8)?;
+          stdout.flush()?;
+          pending_utf8.clear();
+        }
+      }
+    }
   }
 }

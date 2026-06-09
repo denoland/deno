@@ -14,43 +14,42 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
 
-/// Rustyline uses synchronous methods in its interfaces, but we need to call
-/// async methods. To get around this, we communicate with async code by using
-/// a channel and blocking on the result.
-pub fn rustyline_channel()
--> (RustylineSyncMessageSender, RustylineSyncMessageHandler) {
+/// The line editor needs synchronous completions, but completion data comes
+/// from async runtime methods. To get around this, we communicate with async
+/// code by using a channel and blocking on the result.
+pub fn editor_channel() -> (EditorSyncMessageSender, EditorSyncMessageHandler) {
   let (message_tx, message_rx) = channel(1);
   let (response_tx, response_rx) = unbounded_channel();
 
   (
-    RustylineSyncMessageSender {
+    EditorSyncMessageSender {
       message_tx,
       response_rx: RefCell::new(response_rx),
     },
-    RustylineSyncMessageHandler {
+    EditorSyncMessageHandler {
       response_tx,
       message_rx,
     },
   )
 }
 
-pub enum RustylineSyncMessage {
+pub enum EditorSyncMessage {
   PostMessage {
     method: String,
     params: Option<Value>,
   },
 }
 
-pub enum RustylineSyncResponse {
+pub enum EditorSyncResponse {
   PostMessage(Value),
 }
 
-pub struct RustylineSyncMessageSender {
-  message_tx: Sender<RustylineSyncMessage>,
-  response_rx: RefCell<UnboundedReceiver<RustylineSyncResponse>>,
+pub struct EditorSyncMessageSender {
+  message_tx: Sender<EditorSyncMessage>,
+  response_rx: RefCell<UnboundedReceiver<EditorSyncResponse>>,
 }
 
-impl RustylineSyncMessageSender {
+impl EditorSyncMessageSender {
   pub fn post_message<T: serde::Serialize>(
     &self,
     method: &str,
@@ -58,7 +57,7 @@ impl RustylineSyncMessageSender {
   ) -> Result<Value, JsErrorBox> {
     match self
       .message_tx
-      .blocking_send(RustylineSyncMessage::PostMessage {
+      .blocking_send(EditorSyncMessage::PostMessage {
         method: method.to_string(),
         params: params
           .map(|params| serde_json::to_value(params))
@@ -67,23 +66,23 @@ impl RustylineSyncMessageSender {
       }) {
       Err(err) => Err(JsErrorBox::from_err(err)),
       _ => match self.response_rx.borrow_mut().blocking_recv().unwrap() {
-        RustylineSyncResponse::PostMessage(result) => Ok(result),
+        EditorSyncResponse::PostMessage(result) => Ok(result),
       },
     }
   }
 }
 
-pub struct RustylineSyncMessageHandler {
-  message_rx: Receiver<RustylineSyncMessage>,
-  response_tx: UnboundedSender<RustylineSyncResponse>,
+pub struct EditorSyncMessageHandler {
+  message_rx: Receiver<EditorSyncMessage>,
+  response_tx: UnboundedSender<EditorSyncResponse>,
 }
 
-impl RustylineSyncMessageHandler {
-  pub async fn recv(&mut self) -> Option<RustylineSyncMessage> {
+impl EditorSyncMessageHandler {
+  pub async fn recv(&mut self) -> Option<EditorSyncMessage> {
     self.message_rx.recv().await
   }
 
-  pub fn send(&self, response: RustylineSyncResponse) -> Result<(), AnyError> {
+  pub fn send(&self, response: EditorSyncResponse) -> Result<(), AnyError> {
     self
       .response_tx
       .send(response)

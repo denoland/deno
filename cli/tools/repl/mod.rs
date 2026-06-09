@@ -10,7 +10,6 @@ use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::WorkerExecutionMode;
-use rustyline::error::ReadlineError;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -25,11 +24,12 @@ mod channel;
 mod editor;
 mod session;
 
-use channel::RustylineSyncMessage;
-use channel::RustylineSyncMessageHandler;
-use channel::RustylineSyncResponse;
-use channel::rustyline_channel;
+use channel::EditorSyncMessage;
+use channel::EditorSyncMessageHandler;
+use channel::EditorSyncResponse;
+use channel::editor_channel;
 use editor::EditorHelper;
+use editor::ReadlineError;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
@@ -39,7 +39,7 @@ use super::test::create_single_test_event_channel;
 struct Repl {
   session: ReplSession,
   editor: ReplEditor,
-  message_handler: RustylineSyncMessageHandler,
+  message_handler: EditorSyncMessageHandler,
 }
 
 #[allow(clippy::print_stdout, reason = "repl")]
@@ -95,7 +95,7 @@ impl Repl {
 #[allow(clippy::print_stdout, reason = "repl")]
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
-  message_handler: &mut RustylineSyncMessageHandler,
+  message_handler: &mut EditorSyncMessageHandler,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
   let mut line_fut = spawn_blocking(move || editor.readline());
@@ -110,11 +110,11 @@ async fn read_line_and_poll(
       }
       result = message_handler.recv() => {
         match result {
-          Some(RustylineSyncMessage::PostMessage { method, params }) => {
+          Some(EditorSyncMessage::PostMessage { method, params }) => {
             let result = repl_session
               .post_message_with_event_loop(&method, params)
               .await;
-            message_handler.send(RustylineSyncResponse::PostMessage(result)).unwrap();
+            message_handler.send(EditorSyncResponse::PostMessage(result)).unwrap();
           },
           None => {}, // channel closed
         }
@@ -199,11 +199,11 @@ pub async fn run(
     return run_json(session).await;
   }
 
-  let rustyline_channel = rustyline_channel();
+  let editor_channel = editor_channel();
 
   let helper = EditorHelper {
     context_id: session.context_id,
-    sync_sender: rustyline_channel.0,
+    sync_sender: editor_channel.0,
   };
 
   let history_file_path = factory
@@ -215,7 +215,7 @@ pub async fn run(
   let mut repl = Repl {
     session,
     editor,
-    message_handler: rustyline_channel.1,
+    message_handler: editor_channel.1,
   };
 
   if let Some(eval_files) = repl_flags.eval_files {

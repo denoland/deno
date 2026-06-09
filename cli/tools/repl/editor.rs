@@ -1,11 +1,19 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::io::BufRead;
+use std::io::IsTerminal;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering::Relaxed;
 
+use crossterm::event::Event;
+use crossterm::event::KeyCode;
+use crossterm::event::KeyEvent;
+use crossterm::event::KeyEventKind;
+use crossterm::event::KeyModifiers;
 use deno_ast::swc::parser::error::SyntaxError;
 use deno_ast::swc::parser::token::BinOpToken;
 use deno_ast::swc::parser::token::Token;
@@ -15,38 +23,43 @@ use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use rustyline::Cmd;
-use rustyline::CompletionType;
-use rustyline::ConditionalEventHandler;
-use rustyline::Config;
-use rustyline::Context;
-use rustyline::Editor;
-use rustyline::Event;
-use rustyline::EventContext;
-use rustyline::EventHandler;
-use rustyline::KeyCode;
-use rustyline::KeyEvent;
-use rustyline::Modifiers;
-use rustyline::RepeatCount;
-use rustyline::completion::Completer;
-use rustyline::error::ReadlineError;
-use rustyline::highlight::Highlighter;
-use rustyline::validate::ValidationContext;
-use rustyline::validate::ValidationResult;
-use rustyline::validate::Validator;
-use rustyline_derive::Helper;
-use rustyline_derive::Hinter;
+use unicode_width::UnicodeWidthStr;
 
-use super::channel::RustylineSyncMessageSender;
+use super::channel::EditorSyncMessageSender;
 use crate::cdp;
 use crate::colors;
+use crate::util::console::RawMode;
+
+const PROMPT: &str = "> ";
+const DISPLAY_ALL_COMPLETIONS_THRESHOLD: usize = 100;
+const MULTILINE_HISTORY_PREFIX: &str = "# deno-repl-history-json:";
+
+#[derive(Debug)]
+pub enum ReadlineError {
+  Interrupted,
+  Eof,
+  #[allow(dead_code, reason = "the inner error is kept for diagnostics")]
+  Io(std::io::Error),
+}
+
+impl From<std::io::Error> for ReadlineError {
+  fn from(err: std::io::Error) -> Self {
+    Self::Io(err)
+  }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ValidationResult {
+  Valid(Option<String>),
+  Invalid(Option<String>),
+  Incomplete,
+}
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
-#[derive(Helper, Hinter)]
 pub struct EditorHelper {
   pub context_id: u64,
-  pub sync_sender: RustylineSyncMessageSender,
+  pub sync_sender: EditorSyncMessageSender,
 }
 
 impl EditorHelper {
@@ -185,6 +198,105 @@ impl EditorHelper {
       .ok()?;
     serde_json::from_value(evaluate_response).ok()
   }
+
+  fn complete(&self, line: &str, pos: usize) -> (usize, Vec<String>) {
+    let expr = get_expr_from_line_at_pos(line, pos);
+
+    // check if the expression is in the form `obj.prop`
+    if let Some(index) = expr.rfind('.') {
+      let sub_expr = &expr[..index];
+      let prop_name = &expr[index + 1..];
+      let candidates = self
+        .get_expression_property_names(sub_expr)
+        .into_iter()
+        .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
+        .collect();
+
+      (pos - prop_name.len(), candidates)
+    } else {
+      // combine results of declarations and globalThis properties
+      let mut candidates = self
+        .get_expression_property_names("globalThis")
+        .into_iter()
+        .chain(self.get_global_lexical_scope_names())
+        .filter(|n| n.starts_with(expr))
+        .collect::<Vec<_>>();
+
+      // sort and remove duplicates
+      candidates.sort();
+      candidates.dedup(); // make sure to sort first
+
+      (pos - expr.len(), candidates)
+    }
+  }
+
+  fn highlight<'l>(&self, line: &'l str) -> Cow<'l, str> {
+    let mut out_line = String::from(line);
+
+    let mut lexed_items = deno_ast::lex(line, deno_ast::MediaType::TypeScript)
+      .into_iter()
+      .peekable();
+    while let Some(item) = lexed_items.next() {
+      // Adding color adds more bytes to the string,
+      // so an offset is needed to stop spans falling out of sync.
+      let offset = out_line.len() - line.len();
+      let range = item.range;
+
+      out_line.replace_range(
+        range.start + offset..range.end + offset,
+        &match item.inner {
+          deno_ast::TokenOrComment::Token(token) => match token {
+            Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
+              colors::green(&line[range]).to_string()
+            }
+            Token::Regex(_, _) => colors::red(&line[range]).to_string(),
+            Token::Num { .. } | Token::BigInt { .. } => {
+              colors::yellow(&line[range]).to_string()
+            }
+            Token::Word(word) => match word {
+              Word::True | Word::False | Word::Null => {
+                colors::yellow(&line[range]).to_string()
+              }
+              Word::Keyword(_) => colors::cyan(&line[range]).to_string(),
+              Word::Ident(ident) => match ident.as_ref() {
+                "undefined" => colors::gray(&line[range]).to_string(),
+                "Infinity" | "NaN" => colors::yellow(&line[range]).to_string(),
+                "async" | "of" => colors::cyan(&line[range]).to_string(),
+                _ => {
+                  let next = lexed_items.peek().map(|item| &item.inner);
+                  if matches!(
+                    next,
+                    Some(deno_ast::TokenOrComment::Token(Token::LParen))
+                  ) {
+                    // We're looking for something that looks like a function
+                    // We use a simple heuristic: 'ident' followed by 'LParen'
+                    colors::intense_blue(&line[range]).to_string()
+                  } else if ident.as_ref() == "from"
+                    && matches!(
+                      next,
+                      Some(deno_ast::TokenOrComment::Token(Token::Str { .. }))
+                    )
+                  {
+                    // When ident 'from' is followed by a string literal, highlight it
+                    // E.g. "export * from 'something'" or "import a from 'something'"
+                    colors::cyan(&line[range]).to_string()
+                  } else {
+                    line[range].to_string()
+                  }
+                }
+              },
+            },
+            _ => line[range].to_string(),
+          },
+          deno_ast::TokenOrComment::Comment { .. } => {
+            colors::gray(&line[range]).to_string()
+          }
+        },
+      );
+    }
+
+    out_line.into()
+  }
 }
 
 /// V8 aborts evaluations that look side-effecting (under `throwOnSideEffect`)
@@ -210,55 +322,6 @@ fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
   let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
   let word = &line[start..cursor_pos];
   word.strip_prefix(is_word_boundary).unwrap_or(word)
-}
-
-impl Completer for EditorHelper {
-  type Candidate = String;
-
-  fn complete(
-    &self,
-    line: &str,
-    pos: usize,
-    _ctx: &Context<'_>,
-  ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let expr = get_expr_from_line_at_pos(line, pos);
-
-    // check if the expression is in the form `obj.prop`
-    if let Some(index) = expr.rfind('.') {
-      let sub_expr = &expr[..index];
-      let prop_name = &expr[index + 1..];
-      let candidates = self
-        .get_expression_property_names(sub_expr)
-        .into_iter()
-        .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
-        .collect();
-
-      Ok((pos - prop_name.len(), candidates))
-    } else {
-      // combine results of declarations and globalThis properties
-      let mut candidates = self
-        .get_expression_property_names("globalThis")
-        .into_iter()
-        .chain(self.get_global_lexical_scope_names())
-        .filter(|n| n.starts_with(expr))
-        .collect::<Vec<_>>();
-
-      // sort and remove duplicates
-      candidates.sort();
-      candidates.dedup(); // make sure to sort first
-
-      Ok((pos - expr.len(), candidates))
-    }
-  }
-}
-
-impl Validator for EditorHelper {
-  fn validate(
-    &self,
-    ctx: &mut ValidationContext,
-  ) -> Result<ValidationResult, ReadlineError> {
-    Ok(validate(ctx.input()))
-  }
 }
 
 fn validate(input: &str) -> ValidationResult {
@@ -342,110 +405,22 @@ fn validate(input: &str) -> ValidationResult {
   }
 }
 
-impl Highlighter for EditorHelper {
-  fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
-    hint.into()
-  }
+#[derive(Default)]
+struct CompletionState {
+  line: String,
+  cursor: usize,
+  start: usize,
+  candidates: Vec<String>,
+}
 
-  fn highlight_candidate<'c>(
-    &self,
-    candidate: &'c str,
-    completion: rustyline::CompletionType,
-  ) -> Cow<'c, str> {
-    if completion == CompletionType::List {
-      candidate.into()
-    } else {
-      self.highlight(candidate, 0)
-    }
-  }
-
-  fn highlight_char(
-    &self,
-    line: &str,
-    _: usize,
-    _: rustyline::highlight::CmdKind,
-  ) -> bool {
-    !line.is_empty()
-  }
-
-  fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
-    let mut out_line = String::from(line);
-
-    let mut lexed_items = deno_ast::lex(line, deno_ast::MediaType::TypeScript)
-      .into_iter()
-      .peekable();
-    while let Some(item) = lexed_items.next() {
-      // Adding color adds more bytes to the string,
-      // so an offset is needed to stop spans falling out of sync.
-      let offset = out_line.len() - line.len();
-      let range = item.range;
-
-      out_line.replace_range(
-        range.start + offset..range.end + offset,
-        &match item.inner {
-          deno_ast::TokenOrComment::Token(token) => match token {
-            Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
-              colors::green(&line[range]).to_string()
-            }
-            Token::Regex(_, _) => colors::red(&line[range]).to_string(),
-            Token::Num { .. } | Token::BigInt { .. } => {
-              colors::yellow(&line[range]).to_string()
-            }
-            Token::Word(word) => match word {
-              Word::True | Word::False | Word::Null => {
-                colors::yellow(&line[range]).to_string()
-              }
-              Word::Keyword(_) => colors::cyan(&line[range]).to_string(),
-              Word::Ident(ident) => {
-                match ident.as_ref() {
-                  "undefined" => colors::gray(&line[range]).to_string(),
-                  "Infinity" | "NaN" => {
-                    colors::yellow(&line[range]).to_string()
-                  }
-                  "async" | "of" => colors::cyan(&line[range]).to_string(),
-                  _ => {
-                    let next = lexed_items.peek().map(|item| &item.inner);
-                    if matches!(
-                      next,
-                      Some(deno_ast::TokenOrComment::Token(Token::LParen))
-                    ) {
-                      // We're looking for something that looks like a function
-                      // We use a simple heuristic: 'ident' followed by 'LParen'
-                      colors::intense_blue(&line[range]).to_string()
-                    } else if ident.as_ref() == "from"
-                      && matches!(
-                        next,
-                        Some(deno_ast::TokenOrComment::Token(
-                          Token::Str { .. }
-                        ))
-                      )
-                    {
-                      // When ident 'from' is followed by a string literal, highlight it
-                      // E.g. "export * from 'something'" or "import a from 'something'"
-                      colors::cyan(&line[range]).to_string()
-                    } else {
-                      line[range].to_string()
-                    }
-                  }
-                }
-              }
-            },
-            _ => line[range].to_string(),
-          },
-          deno_ast::TokenOrComment::Comment { .. } => {
-            colors::gray(&line[range]).to_string()
-          }
-        },
-      );
-    }
-
-    out_line.into()
-  }
+struct EditorState {
+  helper: EditorHelper,
+  history: Vec<String>,
 }
 
 #[derive(Clone)]
 pub struct ReplEditor {
-  inner: Arc<Mutex<Editor<EditorHelper, rustyline::history::FileHistory>>>,
+  inner: Arc<Mutex<EditorState>>,
   history_file_path: Option<PathBuf>,
   errored_on_history_save: Arc<AtomicBool>,
   should_exit_on_interrupt: Arc<AtomicBool>,
@@ -456,31 +431,13 @@ impl ReplEditor {
     helper: EditorHelper,
     history_file_path: Option<PathBuf>,
   ) -> Result<Self, AnyError> {
-    let editor_config = Config::builder()
-      .completion_type(CompletionType::List)
-      .build();
-
-    let mut editor =
-      Editor::with_config(editor_config).expect("Failed to create editor.");
-    editor.set_helper(Some(helper));
-    if let Some(history_file_path) = &history_file_path {
-      editor.load_history(history_file_path).unwrap_or(());
-    }
-    editor.bind_sequence(
-      KeyEvent(KeyCode::Char('s'), Modifiers::CTRL),
-      EventHandler::Simple(Cmd::Newline),
-    );
-    editor.bind_sequence(
-      KeyEvent(KeyCode::Tab, Modifiers::NONE),
-      EventHandler::Conditional(Box::new(TabEventHandler)),
-    );
-    let should_exit_on_interrupt = Arc::new(AtomicBool::new(false));
-    editor.bind_sequence(
-      KeyEvent(KeyCode::Char('r'), Modifiers::CTRL),
-      EventHandler::Conditional(Box::new(ReverseSearchHistoryEventHandler {
-        should_exit_on_interrupt: should_exit_on_interrupt.clone(),
-      })),
-    );
+    let history = history_file_path
+      .as_ref()
+      .and_then(|history_file_path| {
+        std::fs::read_to_string(history_file_path).ok()
+      })
+      .map(|text| text.lines().map(decode_history_entry).collect::<Vec<_>>())
+      .unwrap_or_default();
 
     if let Some(history_file_path) = &history_file_path {
       let history_file_dir = history_file_path.parent().unwrap();
@@ -493,28 +450,395 @@ impl ReplEditor {
     }
 
     Ok(ReplEditor {
-      inner: Arc::new(Mutex::new(editor)),
+      inner: Arc::new(Mutex::new(EditorState { helper, history })),
       history_file_path,
       errored_on_history_save: Arc::new(AtomicBool::new(false)),
-      should_exit_on_interrupt,
+      should_exit_on_interrupt: Arc::new(AtomicBool::new(false)),
     })
   }
 
   pub fn readline(&self) -> Result<String, ReadlineError> {
-    self.inner.lock().readline("> ")
+    if !std::io::stdin().is_terminal() {
+      return self.read_line_without_tty();
+    }
+
+    let _raw_mode = RawMode::enable()?;
+    let mut stdout = std::io::stdout();
+    let mut line = String::new();
+    let mut cursor = 0;
+    let mut history_index = None;
+    let mut completion_state = CompletionState::default();
+    let mut pending_completion_confirmation: Option<Vec<String>> = None;
+
+    write!(stdout, "{PROMPT}")?;
+    stdout.flush()?;
+
+    loop {
+      let event = crossterm::event::read()?;
+      let Event::Key(key_event) = event else {
+        continue;
+      };
+      if key_event.kind == KeyEventKind::Release {
+        continue;
+      }
+
+      if let Some(candidates) = pending_completion_confirmation.take() {
+        match key_event.code {
+          KeyCode::Char('y') | KeyCode::Char('Y') => {
+            write!(stdout, "y")?;
+            self.write_completions(&mut stdout, &candidates)?;
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          _ => {
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+        }
+        stdout.flush()?;
+        continue;
+      }
+
+      match key_event {
+        KeyEvent {
+          code: KeyCode::Char('c'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        } => {
+          writeln!(stdout)?;
+          stdout.flush()?;
+          return Err(ReadlineError::Interrupted);
+        }
+        KeyEvent {
+          code: KeyCode::Char('d'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        } if line.is_empty() => {
+          writeln!(stdout)?;
+          stdout.flush()?;
+          return Err(ReadlineError::Eof);
+        }
+        KeyEvent {
+          code: KeyCode::Char('s'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        } => {
+          insert_str(&mut line, &mut cursor, "\n");
+          writeln!(stdout)?;
+          stdout.flush()?;
+        }
+        KeyEvent {
+          code: KeyCode::Char('r'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        } => {
+          self.should_exit_on_interrupt.store(false, Relaxed);
+        }
+        KeyEvent {
+          code: KeyCode::Char('\n' | '\r'),
+          ..
+        }
+        | KeyEvent {
+          code: KeyCode::Char('j' | 'm'),
+          modifiers: KeyModifiers::CONTROL,
+          ..
+        }
+        | KeyEvent {
+          code: KeyCode::Enter,
+          ..
+        } => match validate(&line) {
+          ValidationResult::Incomplete => {
+            insert_str(&mut line, &mut cursor, "\n");
+            writeln!(stdout)?;
+            stdout.flush()?;
+          }
+          _ => {
+            writeln!(stdout)?;
+            stdout.flush()?;
+            return Ok(line);
+          }
+        },
+        KeyEvent {
+          code: KeyCode::Tab, ..
+        } => {
+          self.handle_tab(
+            &mut stdout,
+            &mut line,
+            &mut cursor,
+            &mut completion_state,
+            &mut pending_completion_confirmation,
+          )?;
+          history_index = None;
+        }
+        KeyEvent {
+          code: KeyCode::Backspace,
+          ..
+        } => {
+          if cursor > 0 {
+            let previous = previous_char_boundary(&line, cursor);
+            line.replace_range(previous..cursor, "");
+            cursor = previous;
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          history_index = None;
+          completion_state = CompletionState::default();
+        }
+        KeyEvent {
+          code: KeyCode::Delete,
+          ..
+        } => {
+          if cursor < line.len() {
+            let next = next_char_boundary(&line, cursor);
+            line.replace_range(cursor..next, "");
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          history_index = None;
+          completion_state = CompletionState::default();
+        }
+        KeyEvent {
+          code: KeyCode::Left,
+          ..
+        } if cursor > 0 => {
+          cursor = previous_char_boundary(&line, cursor);
+          self.redraw(&mut stdout, &line, cursor)?;
+        }
+        KeyEvent {
+          code: KeyCode::Right,
+          ..
+        } if cursor < line.len() => {
+          cursor = next_char_boundary(&line, cursor);
+          self.redraw(&mut stdout, &line, cursor)?;
+        }
+        KeyEvent {
+          code: KeyCode::Home,
+          ..
+        } => {
+          cursor = 0;
+          self.redraw(&mut stdout, &line, cursor)?;
+        }
+        KeyEvent {
+          code: KeyCode::End, ..
+        } => {
+          cursor = line.len();
+          self.redraw(&mut stdout, &line, cursor)?;
+        }
+        KeyEvent {
+          code: KeyCode::Up, ..
+        } => {
+          let history = &self.inner.lock().history;
+          if !history.is_empty() {
+            let next_index = history_index
+              .map(|index: usize| index.saturating_sub(1))
+              .unwrap_or_else(|| history.len() - 1);
+            history_index = Some(next_index);
+            line = history[next_index].clone();
+            cursor = line.len();
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          completion_state = CompletionState::default();
+        }
+        KeyEvent {
+          code: KeyCode::Down,
+          ..
+        } => {
+          if let Some(index) = history_index {
+            let history = &self.inner.lock().history;
+            if index + 1 < history.len() {
+              let next_index = index + 1;
+              history_index = Some(next_index);
+              line = history[next_index].clone();
+            } else {
+              history_index = None;
+              line.clear();
+            }
+            cursor = line.len();
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          completion_state = CompletionState::default();
+        }
+        KeyEvent {
+          code: KeyCode::Char(ch),
+          modifiers,
+          ..
+        } if modifiers.is_empty() || modifiers == KeyModifiers::SHIFT => {
+          insert_str(&mut line, &mut cursor, &ch.to_string());
+          if line.contains('\n') {
+            write!(stdout, "{ch}")?;
+          } else {
+            self.redraw(&mut stdout, &line, cursor)?;
+          }
+          history_index = None;
+          completion_state = CompletionState::default();
+        }
+        _ => {}
+      }
+
+      stdout.flush()?;
+    }
+  }
+
+  fn read_line_without_tty(&self) -> Result<String, ReadlineError> {
+    let mut stdin = std::io::stdin().lock();
+    let mut line = String::new();
+
+    loop {
+      let mut current_line = String::new();
+      if stdin.read_line(&mut current_line)? == 0 {
+        if line.is_empty() {
+          return Err(ReadlineError::Eof);
+        } else {
+          return Ok(line);
+        }
+      }
+
+      let current_line = current_line.trim_end_matches(['\r', '\n']);
+      if !line.is_empty() {
+        line.push('\n');
+      }
+      line.push_str(current_line);
+
+      if validate(&line) != ValidationResult::Incomplete {
+        return Ok(line);
+      }
+    }
+  }
+
+  fn handle_tab(
+    &self,
+    stdout: &mut std::io::Stdout,
+    line: &mut String,
+    cursor: &mut usize,
+    completion_state: &mut CompletionState,
+    pending_completion_confirmation: &mut Option<Vec<String>>,
+  ) -> Result<(), ReadlineError> {
+    if line.is_empty()
+      || line[..*cursor]
+        .chars()
+        .next_back()
+        .filter(|c| c.is_whitespace())
+        .is_some()
+    {
+      if cfg!(target_os = "windows") {
+        insert_str(line, cursor, "    ");
+      } else {
+        insert_str(line, cursor, "\t");
+      }
+      if line.contains('\n') {
+        if cfg!(target_os = "windows") {
+          write!(stdout, "    ")?;
+        } else {
+          write!(stdout, "\t")?;
+        }
+      } else {
+        self.redraw(stdout, line, *cursor)?;
+      }
+      *completion_state = CompletionState::default();
+      return Ok(());
+    }
+
+    let (start, mut candidates) =
+      self.inner.lock().helper.complete(line, *cursor);
+    candidates.sort();
+    candidates.dedup();
+    if candidates.is_empty() {
+      *completion_state = CompletionState::default();
+      return Ok(());
+    }
+
+    if candidates.len() == 1 {
+      line.replace_range(start..*cursor, &candidates[0]);
+      *cursor = start + candidates[0].len();
+      self.redraw(stdout, line, *cursor)?;
+      *completion_state = CompletionState::default();
+      return Ok(());
+    }
+
+    let repeated_tab = completion_state.line == *line
+      && completion_state.cursor == *cursor
+      && completion_state.start == start
+      && completion_state.candidates == candidates;
+
+    if !repeated_tab
+      && let Some(prefix) = common_prefix(&candidates)
+      && prefix.len() > *cursor - start
+    {
+      line.replace_range(start..*cursor, &prefix);
+      *cursor = start + prefix.len();
+      self.redraw(stdout, line, *cursor)?;
+      *completion_state = CompletionState::default();
+      return Ok(());
+    }
+
+    *completion_state = CompletionState {
+      line: line.clone(),
+      cursor: *cursor,
+      start,
+      candidates: candidates.clone(),
+    };
+
+    if repeated_tab {
+      if candidates.len() > DISPLAY_ALL_COMPLETIONS_THRESHOLD {
+        write!(
+          stdout,
+          "\r\nDisplay all {} possibilities? (y or n)",
+          candidates.len()
+        )?;
+        *pending_completion_confirmation = Some(candidates);
+      } else {
+        self.write_completions(stdout, &candidates)?;
+        self.redraw(stdout, line, *cursor)?;
+      }
+    }
+
+    Ok(())
+  }
+
+  fn write_completions(
+    &self,
+    stdout: &mut std::io::Stdout,
+    candidates: &[String],
+  ) -> Result<(), ReadlineError> {
+    writeln!(stdout)?;
+    for candidate in candidates {
+      writeln!(stdout, "{candidate}")?;
+    }
+    Ok(())
+  }
+
+  fn redraw(
+    &self,
+    stdout: &mut std::io::Stdout,
+    line: &str,
+    cursor: usize,
+  ) -> Result<(), ReadlineError> {
+    if line.contains('\n') {
+      return Ok(());
+    }
+
+    let highlighted = self.inner.lock().helper.highlight(line);
+    write!(stdout, "\r\x1b[2K{PROMPT}{highlighted}")?;
+    let suffix_width = UnicodeWidthStr::width(&line[cursor..]);
+    if suffix_width > 0 {
+      write!(stdout, "\x1b[{suffix_width}D")?;
+    }
+    Ok(())
   }
 
   pub fn update_history(&self, entry: String) {
-    let _ = self.inner.lock().add_history_entry(entry);
-    if let Some(history_file_path) = &self.history_file_path
-      && let Err(e) = self.inner.lock().append_history(history_file_path)
-    {
-      if self.errored_on_history_save.load(Relaxed) {
-        return;
-      }
+    self.inner.lock().history.push(entry.clone());
+    if let Some(history_file_path) = &self.history_file_path {
+      let history_line = encode_history_entry(&entry);
+      let result = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(history_file_path)
+        .and_then(|mut file| writeln!(file, "{history_line}"));
+      if let Err(e) = result {
+        if self.errored_on_history_save.load(Relaxed) {
+          return;
+        }
 
-      self.errored_on_history_save.store(true, Relaxed);
-      log::warn!("Unable to save history file: {}", e);
+        self.errored_on_history_save.store(true, Relaxed);
+        log::warn!("Unable to save history file: {}", e);
+      }
     }
   }
 
@@ -527,65 +851,73 @@ impl ReplEditor {
   }
 }
 
-/// Command to reverse search history , same as rustyline default C-R but that resets repl should_exit flag to false
-struct ReverseSearchHistoryEventHandler {
-  should_exit_on_interrupt: Arc<AtomicBool>,
+fn insert_str(line: &mut String, cursor: &mut usize, value: &str) {
+  line.insert_str(*cursor, value);
+  *cursor += value.len();
 }
-impl ConditionalEventHandler for ReverseSearchHistoryEventHandler {
-  fn handle(
-    &self,
-    _: &Event,
-    _: RepeatCount,
-    _: bool,
-    _: &EventContext,
-  ) -> Option<Cmd> {
-    self.should_exit_on_interrupt.store(false, Relaxed);
-    Some(Cmd::ReverseSearchHistory)
+
+fn previous_char_boundary(line: &str, cursor: usize) -> usize {
+  line[..cursor]
+    .char_indices()
+    .next_back()
+    .map(|(index, _)| index)
+    .unwrap_or(0)
+}
+
+fn next_char_boundary(line: &str, cursor: usize) -> usize {
+  line[cursor..]
+    .char_indices()
+    .nth(1)
+    .map(|(index, _)| cursor + index)
+    .unwrap_or(line.len())
+}
+
+fn common_prefix(candidates: &[String]) -> Option<String> {
+  let first = candidates.first()?;
+  let mut end = first.len();
+
+  for candidate in &candidates[1..] {
+    while !candidate.is_char_boundary(end)
+      || !first[..end].is_char_boundary(end)
+      || !candidate.starts_with(&first[..end])
+    {
+      end = previous_char_boundary(first, end);
+      if end == 0 {
+        return Some(String::new());
+      }
+    }
+  }
+
+  Some(first[..end].to_string())
+}
+
+fn encode_history_entry(entry: &str) -> Cow<'_, str> {
+  if entry.contains(['\r', '\n']) {
+    format!(
+      "{}{}",
+      MULTILINE_HISTORY_PREFIX,
+      serde_json::to_string(entry).unwrap()
+    )
+    .into()
+  } else {
+    entry.into()
   }
 }
 
-/// A custom tab key event handler
-/// It uses a heuristic to determine if the user is requesting completion or if they want to insert an actual tab
-/// The heuristic goes like this:
-///   - If the last character before the cursor is whitespace, the user wants to insert a tab
-///   - Else the user is requesting completion
-struct TabEventHandler;
-impl ConditionalEventHandler for TabEventHandler {
-  fn handle(
-    &self,
-    evt: &Event,
-    n: RepeatCount,
-    _: bool,
-    ctx: &EventContext,
-  ) -> Option<Cmd> {
-    debug_assert_eq!(
-      *evt,
-      Event::from(KeyEvent(KeyCode::Tab, Modifiers::NONE))
-    );
-    if ctx.line().is_empty()
-      || ctx.line()[..ctx.pos()]
-        .chars()
-        .next_back()
-        .filter(|c| c.is_whitespace())
-        .is_some()
-    {
-      if cfg!(target_os = "windows") {
-        // Inserting a tab is broken in windows with rustyline
-        // use 4 spaces as a workaround for now
-        Some(Cmd::Insert(n, "    ".into()))
-      } else {
-        Some(Cmd::Insert(n, "\t".into()))
-      }
-    } else {
-      None // default complete
-    }
-  }
+fn decode_history_entry(entry: &str) -> String {
+  entry
+    .strip_prefix(MULTILINE_HISTORY_PREFIX)
+    .and_then(|entry| serde_json::from_str(entry).ok())
+    .unwrap_or_else(|| entry.to_string())
 }
 
 #[cfg(test)]
 mod test {
-  use rustyline::validate::ValidationResult;
-
+  use super::ValidationResult;
+  use super::common_prefix;
+  use super::decode_history_entry;
+  use super::encode_history_entry;
+  use super::get_expr_from_line_at_pos;
   use super::validate;
 
   #[test]
@@ -600,5 +932,37 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
   fn validate_regex_looking_code() {
     let code = r#"/testing/;"#;
     assert!(matches!(validate(code), ValidationResult::Valid(_)));
+  }
+
+  #[test]
+  fn completion_expr_at_cursor() {
+    assert_eq!(get_expr_from_line_at_pos("console.lo", 10), "console.lo");
+    assert_eq!(
+      get_expr_from_line_at_pos("await Promise.al", 16),
+      "Promise.al"
+    );
+    assert_eq!(get_expr_from_line_at_pos("foo + bar", 9), "bar");
+  }
+
+  #[test]
+  fn completion_common_prefix() {
+    assert_eq!(
+      common_prefix(&["console".to_string(), "const".to_string()]),
+      Some("cons".to_string())
+    );
+    assert_eq!(
+      common_prefix(&["åbc".to_string(), "åbd".to_string()]),
+      Some("åb".to_string())
+    );
+  }
+
+  #[test]
+  fn history_entry_encoding_preserves_multiline_entries() {
+    assert_eq!(decode_history_entry("1 + 2"), "1 + 2");
+
+    let entry = "(\n1 + 2\n)";
+    let encoded = encode_history_entry(entry);
+    assert!(!encoded.contains('\n'));
+    assert_eq!(decode_history_entry(&encoded), entry);
   }
 }

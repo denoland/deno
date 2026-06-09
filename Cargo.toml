@@ -278,8 +278,6 @@ rustls = { version = "=0.23.40", default-features = false, features = ["logging"
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.8.0"
 rustls-webpki = "0.103"
-rustyline = { version = "=17.0.0", features = ["custom-bindings"] }
-rustyline-derive = "=0.11.1"
 same-file = "1.0.6"
 scopeguard = "1.2.0"
 semver = "=1.0.25"

@@ -74,8 +74,6 @@ pub fn init(options: InitLoggingOptions) {
       .filter_or("DENO_LOG", log_level.to_level_filter().to_string())
       .write_style("DENO_LOG_STYLE"),
   )
-  // https://github.com/denoland/deno/issues/6641
-  .filter_module("rustyline", log::LevelFilter::Off)
   // wgpu crates (gfx_backend), have a lot of useless INFO and WARN logs
   .filter_module("wgpu", log::LevelFilter::Error)
   .filter_module("gfx", log::LevelFilter::Error)
