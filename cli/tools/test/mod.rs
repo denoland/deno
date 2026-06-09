@@ -602,6 +602,9 @@ struct TestSpecifiersOptions {
   reporter: TestReporterConfig,
   junit_path: Option<String>,
   hide_stacktraces: bool,
+  /// `(index, count)` with a 1-based index, from `--shard`. Selects a subset
+  /// of test files so a run can be split across machines.
+  shard: Option<(usize, usize)>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1471,6 +1474,24 @@ async fn run_tests_for_worker_inner(
 static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
+/// Selects the test files belonging to shard `index` of `count` (1-based).
+/// The files are sorted for a stable order, then split into `count`
+/// consecutive, balanced groups. Assumes `1 <= index <= count` (validated at
+/// flag-parse time).
+fn shard_specifiers(
+  mut specifiers: Vec<ModuleSpecifier>,
+  index: usize,
+  count: usize,
+) -> Vec<ModuleSpecifier> {
+  specifiers.sort();
+  let total = specifiers.len();
+  // Balanced split: shard i covers [total*(i-1)/count, total*i/count). This
+  // partitions every file into exactly one shard with sizes differing by <= 1.
+  let start = total * (index - 1) / count;
+  let end = total * index / count;
+  specifiers.into_iter().take(end).skip(start).collect()
+}
+
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   cli_options: &Arc<CliOptions>,
@@ -1480,6 +1501,14 @@ async fn test_specifiers(
   require_modules: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
+  // Select this shard's files first (on a stable sorted order) so the split is
+  // deterministic across machines regardless of any later shuffling.
+  let specifiers = if let Some((index, count)) = options.shard {
+    shard_specifiers(specifiers, index, count)
+  } else {
+    specifiers
+  };
+
   let specifiers = if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers = specifiers;
@@ -1973,6 +2002,7 @@ pub async fn run_tests(
       reporter: workspace_test_options.reporter,
       junit_path: workspace_test_options.junit_path,
       hide_stacktraces: workspace_test_options.hide_stacktraces,
+      shard: workspace_test_options.shard,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
@@ -2223,6 +2253,7 @@ pub async fn run_tests_with_watch(
             reporter: workspace_test_options.reporter,
             junit_path: workspace_test_options.junit_path,
             hide_stacktraces: workspace_test_options.hide_stacktraces,
+            shard: workspace_test_options.shard,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
