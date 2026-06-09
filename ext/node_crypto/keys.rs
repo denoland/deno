@@ -1632,7 +1632,10 @@ impl KeyObjectHandle {
 
     let public_key = match spki.algorithm.oid {
       RSA_ENCRYPTION_OID => {
-        let der = spki.subject_public_key.as_bytes().unwrap();
+        let der = spki
+          .subject_public_key
+          .as_bytes()
+          .ok_or(AsymmetricPublicKeyError::InvalidSpkiPublicKey)?;
         let public_key = RsaPublicKey::from_pkcs1_der(der).or_else(|err| {
           RsaPublicKey::from_pkcs1_der_lenient(der).ok_or(err)
         })?;
@@ -1640,7 +1643,10 @@ impl KeyObjectHandle {
       }
       RSASSA_PSS_OID => {
         let details = parse_rsa_pss_params(spki.algorithm.parameters)?;
-        let der = spki.subject_public_key.as_bytes().unwrap();
+        let der = spki
+          .subject_public_key
+          .as_bytes()
+          .ok_or(AsymmetricPublicKeyError::InvalidSpkiPublicKey)?;
         let public_key = RsaPublicKey::from_pkcs1_der(der).or_else(|err| {
           RsaPublicKey::from_pkcs1_der_lenient(der).ok_or(err)
         })?;

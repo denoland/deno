@@ -362,12 +362,16 @@ Deno.test("createPublicKey() accepts non-canonical RSA SPKI (long-form lengths)"
 
 Deno.test("createPublicKey() rejects malformed non-canonical RSA SPKI", () => {
   const spki = Buffer.from(nonCanonicalRsaSpki, "base64");
-  // Extend the outer SEQUENCE, inner BIT STRING, and inner SEQUENCE lengths
-  // by 2 each, then append a trailing NULL inside the inner SEQUENCE. The
-  // lenient parser must still reject when pos != sequence_end.
+  // Append a trailing NULL inside the inner RSAPublicKey SEQUENCE, growing the
+  // enclosing lengths by 2 to keep the outer SPKI structurally valid so it
+  // reaches the lenient parser (rather than being rejected earlier by the SPKI
+  // decoder). The lenient parser must then reject it via its pos != sequence_end
+  // check. Offsets in this fixture: [1] outer SEQUENCE length, [18] BIT STRING
+  // length, [21] inner SEQUENCE length (byte [19] is the BIT STRING unused-bits
+  // count and byte [22] is the modulus INTEGER tag, so neither is a length).
   spki[1] += 2;
-  spki[19] += 2;
-  spki[22] += 2;
+  spki[18] += 2;
+  spki[21] += 2;
   const malformed = Buffer.concat([spki, Buffer.from([0x05, 0x00])]);
 
   assertThrows(
