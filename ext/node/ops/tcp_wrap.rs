@@ -417,6 +417,12 @@ impl TCPWrap {
         .borrow_mut()
         .borrow_mut::<deno_io::FdTable>()
         .remove(fd);
+      // Clear the cached fd so the removal is one-shot. `close_handle()`
+      // guards against double frees of the libuv handle, but a second
+      // `close()` would still re-run this TCP-specific removal and could
+      // drop an unrelated FdTable entry if the OS has since reused the fd
+      // number.
+      self.base.set_fd(-1);
     }
     self.base.clear_js_handle();
     self
