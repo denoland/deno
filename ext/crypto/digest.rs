@@ -220,11 +220,23 @@ fn parse_xof_dict<'a, 'b>(
     }),
     "TurboSHAKE128" => Ok(SubtleDigestXof::TurboShake128 {
       output_length,
-      domain_separation: read_optional_u8(scope, obj, "domainSeparation")?,
+      domain_separation: read_optional_u8(
+        scope,
+        obj,
+        "domainSeparation",
+        prefix.clone(),
+        &context,
+      )?,
     }),
     "TurboSHAKE256" => Ok(SubtleDigestXof::TurboShake256 {
       output_length,
-      domain_separation: read_optional_u8(scope, obj, "domainSeparation")?,
+      domain_separation: read_optional_u8(
+        scope,
+        obj,
+        "domainSeparation",
+        prefix.clone(),
+        &context,
+      )?,
     }),
     _ => unreachable!(),
   }
@@ -257,10 +269,12 @@ fn read_required_u32<'a, 'b>(
   })
 }
 
-fn read_optional_u8<'a>(
+fn read_optional_u8<'a, 'b>(
   scope: &mut v8::PinScope<'a, '_>,
   obj: v8::Local<'a, v8::Object>,
   key: &'static str,
+  prefix: Cow<'static, str>,
+  context: &ContextFn<'b>,
 ) -> Result<Option<u8>, WebIdlError> {
   let key_v8 = v8_str(scope, key);
   let val = obj
@@ -275,11 +289,9 @@ fn read_optional_u8<'a>(
   let u = val.uint32_value(scope).unwrap_or(0);
   if u > u8::MAX as u32 {
     return Err(WebIdlError::other(
-      Cow::Borrowed(""),
-      Default::default(),
-      JsErrorBox::type_error(format!(
-        "'{key}' must be in the range [0, 0xFF]"
-      )),
+      prefix,
+      context.borrowed(),
+      JsErrorBox::type_error(format!("'{key}' must be in the range [0, 0xFF]")),
     ));
   }
   Ok(Some(u as u8))
