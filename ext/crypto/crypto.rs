@@ -72,7 +72,7 @@ impl Crypto {
     typed_array: v8::Local<'s, v8::Value>,
   ) -> Result<v8::Local<'s, v8::Value>, CryptoError> {
     let view = v8::Local::<v8::ArrayBufferView>::try_from(typed_array)
-      .map_err(|_| CryptoError::NotArrayBufferView)?;
+      .map_err(|_| CryptoError::TypedArrayNotInteger)?;
     if !(view.is_int8_array()
       || view.is_uint8_array()
       || view.is_uint8_clamped_array()
