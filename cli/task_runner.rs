@@ -377,6 +377,31 @@ impl ShellCommand for DenoCommand {
 
 pub struct NodeCommand;
 
+fn should_defer_node_command_to_real_node(
+  node_args: &[String],
+  parsed: &node_shim::ParseResult,
+) -> bool {
+  let Some(first_arg) = node_args.first() else {
+    return true;
+  };
+  if !first_arg.starts_with('-') {
+    return false;
+  }
+
+  let opts = &parsed.options;
+  let env_opts = &opts.per_isolate.per_env;
+
+  // The old task runner deferred all flag-first `node ...` commands to a real
+  // node binary. Keep doing that except for the task/lifecycle-script cases
+  // this shim explicitly supports without node on PATH.
+  env_opts.preload_cjs_modules.is_empty()
+    && env_opts.preload_esm_modules.is_empty()
+    && !env_opts.has_eval_string
+    && !env_opts.print_eval
+    && !env_opts.test_runner
+    && opts.run.is_empty()
+}
+
 impl ShellCommand for NodeCommand {
   fn execute(
     &self,
@@ -394,11 +419,15 @@ impl ShellCommand for NodeCommand {
       .iter()
       .map(|arg| arg.to_string_lossy().into_owned())
       .collect::<Vec<_>>();
-    let Ok(parsed) = node_shim::parse_args(node_args) else {
+    let Ok(parsed) = node_shim::parse_args(node_args.clone()) else {
       // Unsupported flag: defer to the real `node` binary.
       return ExecutableCommand::new("node".to_string(), PathBuf::from("node"))
         .execute(context);
     };
+    if should_defer_node_command_to_real_node(&node_args, &parsed) {
+      return ExecutableCommand::new("node".to_string(), PathBuf::from("node"))
+        .execute(context);
+    }
 
     let translated = node_shim::translate_to_deno_args(
       parsed,
@@ -796,5 +825,40 @@ mod test {
       let argv: Vec<String> = argv.iter().map(|s| s.to_string()).collect();
       assert_eq!(get_script_with_args("echo", &argv), *expected);
     }
+  }
+
+  fn node_command_defer_for(args: &[&str]) -> bool {
+    let node_args = args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>();
+    let parsed = node_shim::parse_args(node_args.clone()).unwrap();
+    should_defer_node_command_to_real_node(&node_args, &parsed)
+  }
+
+  #[test]
+  fn node_command_defers_flag_first_commands_to_real_node() {
+    assert!(node_command_defer_for(&["--version"]));
+    assert!(node_command_defer_for(&["--check", "script.js"]));
+    assert!(node_command_defer_for(&["--inspect-brk", "script.js"]));
+    // Unknown options parse as potential V8 flags in node_shim, but the task
+    // shim must still defer them to real node unless they accompany a supported
+    // task/lifecycle-script shape such as `node -e`.
+    assert!(node_command_defer_for(&[
+      "--unknown-option-that-does-not-exist",
+    ]));
+  }
+
+  #[test]
+  fn node_command_translates_supported_task_shapes() {
+    assert!(!node_command_defer_for(&["script.js"]));
+    assert!(!node_command_defer_for(&["-e", "require('node:fs')"]));
+    assert!(!node_command_defer_for(&[
+      "--no-warnings",
+      "-e",
+      "require('node:fs')",
+    ]));
+    assert!(!node_command_defer_for(&[
+      "--require",
+      "./helper.cjs",
+      "script.js",
+    ]));
   }
 }
