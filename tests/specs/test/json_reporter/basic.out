@@ -1,0 +1,64 @@
+{
+  "numTotalTestSuites": 1,
+  "numPassedTestSuites": 0,
+  "numFailedTestSuites": 1,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 3,
+  "numPassedTests": 1,
+  "numFailedTests": 1,
+  "numPendingTests": 1,
+  "numTodoTests": 0,
+  "startTime": [WILDLINE]
+  "success": false,
+  "wasInterrupted": false,
+  "testResults": [
+    {
+      "name": "./basic.ts",
+      "status": "failed",
+      "startTime": [WILDLINE]
+      "endTime": [WILDLINE]
+      "message": [WILDLINE]
+      "assertionResults": [
+        {
+          "ancestorTitles": [],
+          "fullName": "alpha",
+          "title": "alpha",
+          "status": "passed",
+          "duration": [WILDLINE]
+          "failureMessages": [],
+          "location": {
+            "line": 1,
+            "column": 6
+          }
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "beta fails",
+          "title": "beta fails",
+          "status": "failed",
+          "duration": [WILDLINE]
+          "failureMessages": [
+[WILDLINE]
+          ],
+          "location": {
+            "line": 2,
+            "column": 6
+          }
+        },
+        {
+          "ancestorTitles": [],
+          "fullName": "gamma ignored",
+          "title": "gamma ignored",
+          "status": "skipped",
+          "duration": [WILDLINE]
+          "failureMessages": [],
+          "location": {
+            "line": 5,
+            "column": 6
+          }
+        }
+      ]
+    }
+  ]
+}
+error: Test failed
