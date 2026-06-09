@@ -250,9 +250,7 @@ fn ffi_call(
         cif.call::<()>(fun_ptr, &call_args);
         FfiValue::Null
       }
-      NativeType::Bool => {
-        FfiValue::Bool(cif.call::<bool>(fun_ptr, &call_args))
-      }
+      NativeType::Bool => FfiValue::Bool(cif.call::<bool>(fun_ptr, &call_args)),
       NativeType::U8 => {
         FfiValue::Number(cif.call::<u8>(fun_ptr, &call_args) as f64)
       }
@@ -286,9 +284,7 @@ fn ffi_call(
       NativeType::F32 => {
         FfiValue::Number(cif.call::<f32>(fun_ptr, &call_args) as f64)
       }
-      NativeType::F64 => {
-        FfiValue::Number(cif.call::<f64>(fun_ptr, &call_args))
-      }
+      NativeType::F64 => FfiValue::Number(cif.call::<f64>(fun_ptr, &call_args)),
       NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
         FfiValue::External(ExternalPointer::from(
           cif.call::<*mut c_void>(fun_ptr, &call_args),
