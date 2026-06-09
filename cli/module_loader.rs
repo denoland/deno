@@ -602,6 +602,38 @@ pub enum CliModuleLoaderError {
   ResolveReferrer(#[from] ResolveReferrerError),
 }
 
+/// Applies `deno_resolver::patch_react_cves` to JavaScript module source,
+/// handling both string and (valid UTF-8) byte representations without
+/// allocating when no patch is needed.
+fn patch_react_cves_source(
+  specifier: &ModuleSpecifier,
+  code: ModuleSourceCode,
+) -> ModuleSourceCode {
+  // Borrow the source as `&str` and compute the patched output (if any) in an
+  // inner scope so the borrow of `code` ends before we move it below.
+  let patched: Option<String> = {
+    let src = match &code {
+      ModuleSourceCode::String(s) => s.as_str(),
+      ModuleSourceCode::Bytes(b) => match std::str::from_utf8(b.as_bytes()) {
+        Ok(s) => s,
+        // Non UTF-8 source can't contain the ASCII patterns we look for.
+        Err(_) => return code,
+      },
+    };
+    match deno_resolver::patch_react_cves(
+      specifier.as_str(),
+      Cow::Borrowed(src),
+    ) {
+      Cow::Borrowed(_) => None,
+      Cow::Owned(s) => Some(s),
+    }
+  };
+  match patched {
+    Some(s) => ModuleSourceCode::String(s.into()),
+    None => code,
+  }
+}
+
 impl<TGraphContainer: ModuleGraphContainer>
   CliModuleLoaderInner<TGraphContainer>
 {
@@ -636,6 +668,17 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       // v8 is slower when source maps are present, so we strip them
       code_without_source_map(code_source.code)
+    };
+
+    // Apply load-time security mitigations for known React Server Components
+    // CVEs to JavaScript source. Opt in via `DENO_PATCH_REACT_CVE`. See
+    // `deno_resolver::patch_react_cves`.
+    let code = if code_source.module_type == ModuleType::JavaScript
+      && deno_resolver::is_react_cve_patch_enabled(&self.shared.sys)
+    {
+      patch_react_cves_source(specifier, code)
+    } else {
+      code
     };
 
     let code_cache = if code_source.module_type == ModuleType::JavaScript {
@@ -775,11 +818,16 @@ impl<TGraphContainer: ModuleGraphContainer>
       .file_fetcher
       .fetch_with_options(
         specifier,
+        // Always check against this worker's own permissions, never the
+        // broader `parent_permissions`. Dynamic `import()` of a text/bytes
+        // asset (`with { type: "text" | "bytes" }`) returns the file's raw
+        // contents to the caller and therefore requires read access; routing
+        // it through `parent_permissions` would let a worker created with
+        // restricted permissions read files its parent can but it cannot.
+        // For statically analyzable imports `check_specifier` skips the read
+        // check entirely, so the chosen container does not matter there.
         FetchPermissionsOptionRef::Restricted(
-          match check_specifier_kind {
-            CheckSpecifierKind::Static => &self.permissions,
-            CheckSpecifierKind::Dynamic => &self.parent_permissions,
-          },
+          &self.permissions,
           check_specifier_kind,
         ),
         FetchOptions {
@@ -1082,6 +1130,12 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     self.0.inner_resolve(specifier, referrer, kind, false)
   }
 
+  fn pump_event_loop_during_load(&self) -> bool {
+    // Load hooks respond through the async bridge, so the event loop must be
+    // pumped during the recursive load or the load deadlocks.
+    self.0.hook_registry.load_active.get()
+  }
+
   fn import_meta_resolve(
     &self,
     specifier: &str,
@@ -1260,11 +1314,51 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
-    // When ESM hooks are active, skip graph preparation — hooked modules
-    // may be virtual and can't be fetched by the module graph builder.
+    // When ESM hooks are active, attempt graph preparation best-effort.
+    // A user hook may have resolved this specifier to a virtual URL the
+    // graph builder cannot fetch; in that case the load itself will be
+    // serviced entirely by hooks, so failure here is fine and must not
+    // abort the load.
     if self.0.hook_registry.load_active.get() {
       self.0.shared.has_js_execution_started_flag.raise();
-      return Box::pin(deno_core::futures::future::ready(Ok(())));
+      let specifier = specifier.clone();
+      let inner = self.0.clone();
+      let is_dynamic_import = options.is_dynamic_import;
+      return Box::pin(async move {
+        let graph_container = &inner.graph_container;
+        let module_load_preparer = &inner.shared.module_load_preparer;
+        let permissions = if is_dynamic_import {
+          &inner.permissions
+        } else {
+          &inner.parent_permissions
+        };
+        let is_dynamic = is_dynamic_import || inner.is_worker;
+        let mut update_permit = graph_container.acquire_update_permit().await;
+        let graph = update_permit.graph_mut();
+        let _ = module_load_preparer
+          .prepare_module_load(
+            graph,
+            &[specifier],
+            PrepareModuleLoadOptions {
+              is_dynamic,
+              lib: inner.lib,
+              permissions: permissions.clone(),
+              ext_overwrite: None,
+              allow_unknown_media_types: false,
+              skip_graph_roots_validation: true,
+              file_content_overrides: HashMap::new(),
+            },
+          )
+          .await;
+        // Ignore prepare failures: a hook may have resolved this specifier to
+        // a virtual URL the graph builder cannot fetch, in which case the load
+        // is serviced entirely by hooks. Committing a possibly-partial graph
+        // here is intentional and harmless, since the hooks (not this graph)
+        // satisfy the load.
+        graph.prune_types();
+        update_permit.commit();
+        Ok(())
+      });
     }
 
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
@@ -1664,6 +1758,16 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<bool, PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
+  }
+
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, PackageJsonLoadError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self
+      .cjs_tracker
+      .is_maybe_cjs_from_require(specifier, media_type)
   }
 
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {

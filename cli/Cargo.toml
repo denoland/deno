@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.8.1"
+version = "2.8.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -54,7 +54,6 @@ flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
-winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
@@ -115,7 +114,6 @@ dprint-plugin-jupyter.workspace = true
 dprint-plugin-markdown.workspace = true
 dprint-plugin-typescript.workspace = true
 esbuild_client = { version = "0.7.1", features = ["serde"] }
-fancy-regex.workspace = true
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
 flate2.workspace = true
@@ -180,14 +178,13 @@ typed-arena.workspace = true
 unicode-width.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
-wasm-encoder = { version = "0.244.0", features = ["wasmparser"] }
+wasm_dep_analyzer = "0.4.0"
 wasmparser = "0.244.0"
-weak-table.workspace = true
 zip = { workspace = true, features = ["deflate-flate2"] }
 zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["consoleapi", "knownfolders", "mswsock", "objbase", "processenv", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_RestartManager", "Win32_System_Threading"] }
 deno_subprocess_windows.workspace = true
 
 [target.'cfg(unix)'.dependencies]

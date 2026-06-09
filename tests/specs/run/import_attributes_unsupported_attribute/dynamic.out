@@ -1,0 +1,4 @@
+error: Uncaught (in promise) TypeError: "BABEL_8_BREAKING" attribute is not supported.
+await import("./mod.ts", { with: { BABEL_8_BREAKING: "false" } });
+^
+    at [WILDCARD]dynamic.ts:1:1

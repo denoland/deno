@@ -67,6 +67,12 @@ pub trait NodeRequireLoader {
   fn is_maybe_cjs(&self, specifier: &Url)
   -> Result<bool, PackageJsonLoadError>;
 
+  /// Get if a module loaded via `require()` should first be compiled as CJS.
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError>;
+
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     default_resolve_require_node_module_paths(from)
   }
@@ -208,7 +214,7 @@ deno_core::extension!(deno_node,
     ops::buffer::op_node_buffer_compare,
     ops::buffer::op_node_buffer_compare_offset,
     ops::constant::op_node_fs_constants,
-    ops::buffer::op_node_decode,
+    ops::buffer::op_node_encoding_slice,
     ops::dns::op_node_getaddrinfo,
     ops::dns::op_node_getnameinfo,
     ops::fs::op_node_fs_exists_sync,
@@ -352,7 +358,7 @@ deno_core::extension!(deno_node,
     ops::require::op_require_stat<TSys>,
     ops::require::op_require_path_resolve,
     ops::require::op_require_path_basename,
-    ops::require::op_require_read_file,
+    ops::require::op_require_read_file<TSys>,
     ops::require::op_require_as_file_path,
     ops::require::op_require_resolve_exports<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_read_package_scope<TSys>,
@@ -494,6 +500,7 @@ deno_core::extension!(deno_node,
     "node:_http_common" = "_http_common.js",
     "node:_http_incoming" = "_http_incoming.js",
     "node:_http_outgoing" = "_http_outgoing.ts",
+    "node:_http_proxy" = "_http_proxy.js",
     "node:_http_server" = "_http_server.js",
     "node:path" = "path.ts",
     "node:path/posix" = "path/posix.ts",

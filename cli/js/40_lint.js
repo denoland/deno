@@ -1621,4 +1621,10 @@ function runLintPlugin(plugin, fileName, sourceText) {
   return diagnostics;
 }
 
-Deno.lint.runPlugin = runLintPlugin;
+// `op_lint_create_serialized_ast` is only available in the `deno test`
+// subcommand. In other subcommands that load this module (e.g. the REPL) the op
+// is missing, so keep the stub `Deno.lint.runPlugin` from 99_main.js which
+// throws a helpful error instead of a cryptic "op is not a function".
+if (op_lint_create_serialized_ast) {
+  Deno.lint.runPlugin = runLintPlugin;
+}

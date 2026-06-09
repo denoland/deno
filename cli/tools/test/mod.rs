@@ -40,7 +40,6 @@ use deno_core::futures::StreamExt;
 use deno_core::futures::future;
 use deno_core::futures::stream;
 use deno_core::located_script_name;
-use deno_core::serde_v8;
 use deno_core::unsync::spawn;
 use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
@@ -81,6 +80,7 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -484,11 +484,11 @@ impl TestFailure {
 }
 
 #[allow(clippy::derive_partial_eq_without_eq, reason = "not important")]
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, PartialEq, deno_core::FromV8)]
 pub enum TestResult {
   Ok,
   Ignored,
+  #[from_v8(serde)]
   Failed(TestFailure),
   Cancelled,
 }
@@ -1003,7 +1003,7 @@ pub enum RunTestsForWorkerErr {
   Core(#[from] CoreError),
   #[class(inherit)]
   #[error(transparent)]
-  SerdeV8(#[from] serde_v8::Error),
+  JsErrorBox(#[from] deno_error::JsErrorBox),
 }
 
 /// Single watchdog thread for an entire test specifier. Reused across all
@@ -1373,7 +1373,7 @@ async fn run_tests_for_worker_inner(
           Ok(r) => {
             deno_core::scope!(scope, &mut worker.js_runtime);
             let result = v8::Local::new(scope, r);
-            serde_v8::from_v8::<TestResult>(scope, result)?
+            <TestResult as deno_core::FromV8>::from_v8(scope, result)?
           }
           Err(error) => match error.into_kind() {
             CoreErrorKind::Js(js_error) => {
@@ -2068,14 +2068,9 @@ pub async fn run_tests_with_watch(
           cli_options.resolve_test_options_for_members(&test_flags)?;
         let watch_paths = members_with_test_options
           .iter()
-          .filter_map(|(_, test_options)| {
-            test_options
-              .files
-              .include
-              .as_ref()
-              .map(|set| set.base_paths())
+          .flat_map(|(_, test_options)| {
+            file_watcher::watch_paths_for_file_patterns(&test_options.files)
           })
-          .flatten()
           .collect::<Vec<_>>();
         let _ = watcher_communicator.watch_paths(watch_paths);
         let test_modules = members_with_test_options
@@ -2102,11 +2097,23 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
+        // Markdown (and other non-script) doc-test files cannot be parsed
+        // by the module graph, so split them out and track reloads for
+        // them by path instead of by graph dependency. With `--doc`, the
+        // collector accepts extensions like `.md` that `is_script_ext`
+        // rejects.
+        let (graph_modules, doc_only_modules): (Vec<_>, Vec<_>) =
+          test_modules.into_iter().partition(|specifier| {
+            deno_path_util::url_to_file_path(specifier)
+              .map(|p| is_script_ext(&p))
+              .unwrap_or(true)
+          });
+
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules, NpmCachingStrategy::Eager)
+          .create_graph(graph_kind, graph_modules, NpmCachingStrategy::Eager)
           .await?;
         module_graph_creator.graph_valid(&graph)?;
-        let test_modules = &graph.roots;
+        let graph_modules = graph.roots.clone();
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -2117,10 +2124,15 @@ pub async fn run_tests_with_watch(
             .possible_env_file_paths_for_watch()
             .any(|path| changed_paths.contains(&path));
           if env_file_changed {
-            test_modules.clone()
+            graph_modules
+              .into_iter()
+              .chain(doc_only_modules)
+              .collect::<IndexSet<_>>()
           } else {
-            let mut result = IndexSet::with_capacity(test_modules.len());
-            for test_module_specifier in test_modules {
+            let mut result = IndexSet::with_capacity(
+              graph_modules.len() + doc_only_modules.len(),
+            );
+            for test_module_specifier in &graph_modules {
               if has_graph_root_local_dependent_changed(
                 &graph,
                 test_module_specifier,
@@ -2129,10 +2141,21 @@ pub async fn run_tests_with_watch(
                 result.insert(test_module_specifier.clone());
               }
             }
+            for specifier in &doc_only_modules {
+              if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+                && let Ok(path) = canonicalize_path(&path)
+                && changed_paths.contains(&path)
+              {
+                result.insert(specifier.clone());
+              }
+            }
             result
           }
         } else {
-          test_modules.clone()
+          graph_modules
+            .into_iter()
+            .chain(doc_only_modules)
+            .collect::<IndexSet<_>>()
         };
 
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
