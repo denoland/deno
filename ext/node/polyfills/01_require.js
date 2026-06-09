@@ -868,7 +868,7 @@ function _startEsmLoadLoop() {
       };
       try {
         const chainResult = executeEsmLoadHookChain(fileUrl, context);
-        const result = chainResult?.result;
+        const result = chainResult?.result ?? null;
         const effectiveUrl = chainResult?.effectiveUrl ?? null;
         if (result?.format === "builtin") {
           op_module_hooks_respond_load(id, null, "builtin", null, null);
