@@ -249,17 +249,14 @@ impl LibUvStreamWrap {
     self.stream.get() as *mut uv_stream_t
   }
 
-  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
   pub(crate) fn set_fd(&self, fd: i32) {
     self.fd.set(fd);
   }
 
-  #[cfg(windows)]
   pub(crate) fn get_fd(&self) -> i32 {
     self.fd.get()
   }
 
-  #[allow(dead_code, reason = "used by upcoming TCPWrap/TLSWrap")]
   pub(crate) fn handle_wrap(&self) -> &HandleWrap {
     &self.base
   }
