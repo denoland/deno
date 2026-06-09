@@ -792,6 +792,10 @@ struct TscRoots {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct TsDirective {
   specifier: String,
+  // 0-indexed source line of the directive comment. This must use the same
+  // line numbering as both `deno_graph::Range::start::line` (where the
+  // directive is recorded) and `tsc::Position::line` (where the TS2578 lookup
+  // happens) so the two sides match. Both are 0-indexed.
   line: u64,
 }
 
@@ -1206,6 +1210,10 @@ fn is_used_ts_expect_error_diagnostic(
   let Some(file_name) = &diagnostic.file_name else {
     return false;
   };
+  // Prefer `original_source_start`: `apply_fast_check_source_maps` may have
+  // rewritten `start` to point into generated fast-check output, whereas the
+  // directive was recorded against the original source position. This mirrors
+  // how the diagnostic's own display picks its position.
   let Some(position) = diagnostic
     .original_source_start
     .as_ref()
@@ -1219,6 +1227,16 @@ fn is_used_ts_expect_error_diagnostic(
   })
 }
 
+/// Looks for a `@ts-ignore` / `@ts-expect-error` directive suppressing a
+/// diagnostic on `diagnostic_line` (0-indexed).
+///
+/// This mirrors TypeScript's own `markPrecedingCommentDirectiveLine`: starting
+/// on the line above the diagnostic, scan upwards skipping blank lines and any
+/// `//` comment lines, and stop at the first line of actual code. The directive
+/// only needs to be the nearest comment above the diagnostic, not strictly on
+/// the immediately preceding line. Keeping this in sync with tsc matters so a
+/// graph-derived missing-module diagnostic is suppressed in exactly the cases
+/// tsc would suppress its own diagnostics.
 fn maybe_ts_suppression_comment(
   specifier: &str,
   source_text: &str,

@@ -10,6 +10,11 @@
       "output": "",
       "exitCode": 0
     },
+    "ts_expect_error_separated": {
+      "args": "check --quiet ts_expect_error_separated.ts",
+      "output": "",
+      "exitCode": 0
+    },
     "ts_expect_error_unused": {
       "args": "check --quiet ts_expect_error_unused.ts",
       "output": "ts_expect_error_unused.out",
