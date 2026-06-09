@@ -392,7 +392,12 @@ impl DenoPeriodicReader {
     let interval = sys
       .env_var(METRIC_EXPORT_INTERVAL_NAME)
       .ok()
-      .and_then(|v| v.parse().map(Duration::from_millis).ok())
+      .and_then(|v| {
+        v.parse()
+          .map(Duration::from_millis)
+          .ok()
+          .filter(|d| !d.is_zero())
+      })
       .unwrap_or(DEFAULT_INTERVAL);
 
     let (tx, mut rx) = tokio::sync::mpsc::channel(256);
