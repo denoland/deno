@@ -1,6 +1,5 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-use std::cell::RefCell;
 use std::thread;
 
 use deno_core::ModuleSpecifier;
@@ -8,7 +7,6 @@ use deno_core::v8;
 use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
-use serde::Serialize;
 
 /// The execution mode for this worker. Some modes may have implicit behaviour.
 #[derive(Copy, Clone)]
@@ -163,92 +161,112 @@ impl Default for BootstrapOptions {
   }
 }
 
-/// This is a struct that we use to serialize the contents of the `BootstrapOptions`
-/// struct above to a V8 form. While `serde_v8` is not as fast as hand-coding this,
-/// it's "fast enough" while serializing a large tuple like this that it doesn't appear
-/// on flamegraphs.
-///
-/// Note that a few fields in here are derived from the process and environment and
-/// are not sourced from the underlying `BootstrapOptions`.
-///
-/// Keep this in sync with `99_main.js`.
-#[derive(Serialize)]
-struct BootstrapV8<'a>(
-  // deno version
-  &'a str,
-  // location
-  Option<&'a str>,
-  // granular unstable flags
-  &'a [i32],
-  // inspect
-  bool,
-  // enable_testing_features
-  bool,
-  // has_node_modules_dir
-  bool,
-  // argv0
-  Option<&'a str>,
-  // node_debug
-  Option<&'a str>,
-  // mode
-  i32,
-  // serve port
-  u16,
-  // serve host
-  Option<&'a str>,
-  // serve is main
-  bool,
-  // serve worker count
-  Option<usize>,
-  // OTEL config
-  Box<[u8]>,
-  // close on idle
-  bool,
-  // is_standalone
-  bool,
-  // auto serve
-  bool,
-  // node cluster unique id (NODE_UNIQUE_ID)
-  Option<&'a str>,
-  // node cluster scheduling policy (NODE_CLUSTER_SCHED_POLICY)
-  Option<&'a str>,
-);
-
 impl BootstrapOptions {
   /// Return the v8 equivalent of this structure.
+  ///
+  /// Produces a JS array whose indices match what `99_main.js` destructures.
+  /// Keep this in sync with `99_main.js`.
   pub fn as_v8<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Value> {
-    let scope = RefCell::new(scope);
-    let ser = deno_core::serde_v8::Serializer::new(&scope);
+    use deno_core::convert::ToV8 as _;
 
-    let bootstrap = BootstrapV8(
-      &self.deno_version,
-      self.location.as_ref().map(|l| l.as_str()),
-      self.unstable_features.as_ref(),
-      self.inspect,
-      self.enable_testing_features,
-      self.has_node_modules_dir,
-      self.argv0.as_deref(),
-      self.node_debug.as_deref(),
-      self.mode.discriminant() as _,
-      self.serve_port.unwrap_or_default(),
-      self.serve_host.as_deref(),
+    // 0: denoVersion
+    let v0: v8::Local<v8::Value> =
+      v8::String::new(scope, &self.deno_version).unwrap().into();
+    // 1: location
+    let v1: v8::Local<v8::Value> =
+      match self.location.as_ref().map(|l| l.as_str()) {
+        Some(s) => v8::String::new(scope, s).unwrap().into(),
+        None => v8::null(scope).into(),
+      };
+    // 2: unstableFeatures — array of i32
+    let mut unstable_elems: Vec<v8::Local<v8::Value>> =
+      Vec::with_capacity(self.unstable_features.len());
+    for &n in &self.unstable_features {
+      unstable_elems.push(v8::Integer::new(scope, n).into());
+    }
+    let v2: v8::Local<v8::Value> =
+      v8::Array::new_with_elements(scope, &unstable_elems).into();
+    // 3: inspect
+    let v3: v8::Local<v8::Value> = v8::Boolean::new(scope, self.inspect).into();
+    // 4: enableTestingFeatures
+    let v4: v8::Local<v8::Value> =
+      v8::Boolean::new(scope, self.enable_testing_features).into();
+    // 5: hasNodeModulesDir
+    let v5: v8::Local<v8::Value> =
+      v8::Boolean::new(scope, self.has_node_modules_dir).into();
+    // 6: argv0
+    let v6: v8::Local<v8::Value> = match self.argv0.as_deref() {
+      Some(s) => v8::String::new(scope, s).unwrap().into(),
+      None => v8::null(scope).into(),
+    };
+    // 7: nodeDebug
+    let v7: v8::Local<v8::Value> = match self.node_debug.as_deref() {
+      Some(s) => v8::String::new(scope, s).unwrap().into(),
+      None => v8::null(scope).into(),
+    };
+    // 8: mode (discriminant as integer)
+    let v8_val: v8::Local<v8::Value> =
+      v8::Integer::new(scope, self.mode.discriminant() as i32).into();
+    // 9: servePort (u16 → unsigned integer)
+    let v9: v8::Local<v8::Value> = v8::Integer::new_from_unsigned(
+      scope,
+      self.serve_port.unwrap_or_default() as u32,
+    )
+    .into();
+    // 10: serveHost
+    let v10: v8::Local<v8::Value> = match self.serve_host.as_deref() {
+      Some(s) => v8::String::new(scope, s).unwrap().into(),
+      None => v8::null(scope).into(),
+    };
+    // 11: serveIsMain
+    let v11: v8::Local<v8::Value> = v8::Boolean::new(
+      scope,
       matches!(self.mode, WorkerExecutionMode::ServeMain { .. }),
-      match self.mode {
-        WorkerExecutionMode::ServeMain { worker_count } => Some(worker_count),
-        WorkerExecutionMode::ServeWorker { worker_index } => Some(worker_index),
-        _ => None,
-      },
-      self.otel_config.as_v8(),
-      self.close_on_idle,
-      self.is_standalone,
-      self.auto_serve,
-      self.node_cluster_unique_id.as_deref(),
-      self.node_cluster_sched_policy.as_deref(),
-    );
+    )
+    .into();
+    // 12: serveWorkerCountOrIndex (null when not in serve mode)
+    let v12: v8::Local<v8::Value> = match self.mode {
+      WorkerExecutionMode::ServeMain { worker_count } => {
+        v8::Number::new(scope, worker_count as f64).into()
+      }
+      WorkerExecutionMode::ServeWorker { worker_index } => {
+        v8::Number::new(scope, worker_index as f64).into()
+      }
+      _ => v8::null(scope).into(),
+    };
+    // 13: otelConfig as Uint8Array
+    let v13 = deno_core::convert::Uint8Array(self.otel_config.as_v8())
+      .to_v8(scope)
+      .unwrap();
+    // 14: closeOnIdle
+    let v14: v8::Local<v8::Value> =
+      v8::Boolean::new(scope, self.close_on_idle).into();
+    // 15: standalone
+    let v15: v8::Local<v8::Value> =
+      v8::Boolean::new(scope, self.is_standalone).into();
+    // 16: autoServe
+    let v16: v8::Local<v8::Value> =
+      v8::Boolean::new(scope, self.auto_serve).into();
+    // 17: nodeClusterUniqueId
+    let v17: v8::Local<v8::Value> = match self.node_cluster_unique_id.as_deref()
+    {
+      Some(s) => v8::String::new(scope, s).unwrap().into(),
+      None => v8::null(scope).into(),
+    };
+    // 18: nodeClusterSchedPolicy
+    let v18: v8::Local<v8::Value> =
+      match self.node_cluster_sched_policy.as_deref() {
+        Some(s) => v8::String::new(scope, s).unwrap().into(),
+        None => v8::null(scope).into(),
+      };
 
-    bootstrap.serialize(ser).unwrap()
+    let elements: [v8::Local<v8::Value>; 19] = [
+      v0, v1, v2, v3, v4, v5, v6, v7, v8_val, v9, v10, v11, v12, v13, v14, v15,
+      v16, v17, v18,
+    ];
+    v8::Array::new_with_elements(scope, &elements).into()
   }
 }
