@@ -5,6 +5,7 @@
 import { assertIsError, assertMatch, assertRejects } from "@std/assert";
 import { Buffer, type Reader } from "@std/io";
 import { delay } from "@std/async/delay";
+import * as http2 from "node:http2";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -1172,6 +1173,42 @@ createUrlTest(
 
 Deno.test(
   { permissions: { net: true } },
+  async function httpServerHttp2RequestUrl() {
+    const url = Promise.withResolvers<string>();
+    const listening = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: (request: Request) => {
+        url.resolve(request.url);
+        return new Response("");
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listening.resolve),
+      onError: createOnErrorCb(ac),
+    });
+    await listening.promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    await writeHttp2ClientPreface(conn);
+    await writeHttp2Headers(conn, [
+      [":method", "GET"],
+      [":path", "/path?query=1"],
+      [":scheme", "http"],
+      [":authority", "deno.land:1234"],
+    ], true);
+
+    assertEquals(await url.promise, "http://deno.land:1234/path?query=1");
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   async function httpServerGetRequestBody() {
     const deferred = Promise.withResolvers<void>();
     const ac = new AbortController();
@@ -1205,6 +1242,45 @@ Deno.test(
 
     conn.close();
     await deferred.promise;
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp2RequestTextBody() {
+    const requestBody = Promise.withResolvers<string>();
+    const listening = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: async (request: Request) => {
+        requestBody.resolve(await request.text());
+        return new Response("");
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listening.resolve),
+      onError: createOnErrorCb(ac),
+    });
+    await listening.promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    const body = new TextEncoder().encode("hello from h2");
+    await writeHttp2ClientPreface(conn);
+    await writeHttp2Headers(conn, [
+      [":method", "POST"],
+      [":path", "/"],
+      [":scheme", "http"],
+      [":authority", `localhost:${servePort}`],
+      ["content-length", `${body.length}`],
+    ], false);
+    await writeHttp2Data(conn, body, true);
+
+    assertEquals(await requestBody.promise, "hello from h2");
+
+    conn.close();
     ac.abort();
     await server.finished;
   },
@@ -3165,6 +3241,62 @@ for (const testCase of compressionTestCases) {
 }
 
 Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp2Compression() {
+    const body = "a".repeat(1000);
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+
+    await using server = Deno.serve({
+      handler: () => {
+        return new Response(body, {
+          headers: { "content-type": "text/plain" },
+        });
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningDeferred.promise;
+    const client = http2.connect(`http://localhost:${servePort}`);
+    try {
+      const req = client.request({
+        ":path": "/",
+        "accept-encoding": "br",
+      });
+      let headers: http2.IncomingHttpHeaders | undefined;
+      let compressedLength = 0;
+      req.on("response", (responseHeaders) => {
+        headers = responseHeaders;
+      });
+      req.on("data", (chunk) => {
+        compressedLength += chunk.length;
+      });
+
+      req.end();
+      await new Promise<void>((resolve, reject) => {
+        req.on("end", resolve);
+        req.on("error", reject);
+        client.on("error", reject);
+      });
+
+      assert(headers);
+      assertEquals(Number(headers[":status"]), 200);
+      assertEquals(headers["content-encoding"], "br");
+      assertEquals(headers["vary"], "Accept-Encoding");
+      assertEquals(headers["content-length"], `${compressedLength}`);
+      assert(compressedLength < body.length);
+    } finally {
+      client.close();
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+Deno.test(
   { permissions: { net: true, write: true, read: true } },
   async function httpServerPostFile() {
     const deferred = Promise.withResolvers<void>();
@@ -3827,6 +3959,73 @@ async function writeAll(conn: Deno.Conn, bytes: Uint8Array): Promise<void> {
   while (written < bytes.length) {
     written += await conn.write(bytes.subarray(written));
   }
+}
+
+function http2LiteralHeader(name: string, value: string): number[] {
+  const encoder = new TextEncoder();
+  const encodedName = encoder.encode(name);
+  const encodedValue = encoder.encode(value);
+  return [
+    0x00,
+    encodedName.length,
+    ...encodedName,
+    encodedValue.length,
+    ...encodedValue,
+  ];
+}
+
+function http2Frame(
+  type: number,
+  flags: number,
+  streamId: number,
+  payload: number[] | Uint8Array,
+): Uint8Array {
+  const length = payload.length;
+  return new Uint8Array([
+    (length >> 16) & 0xff,
+    (length >> 8) & 0xff,
+    length & 0xff,
+    type,
+    flags,
+    (streamId >> 24) & 0x7f,
+    (streamId >> 16) & 0xff,
+    (streamId >> 8) & 0xff,
+    streamId & 0xff,
+    ...payload,
+  ]);
+}
+
+async function writeHttp2ClientPreface(conn: Deno.Conn): Promise<void> {
+  const encoder = new TextEncoder();
+  await writeAll(conn, encoder.encode("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"));
+  await writeAll(conn, http2Frame(0x04, 0, 0, [])); // SETTINGS
+}
+
+async function writeHttp2Headers(
+  conn: Deno.Conn,
+  headers: [string, string][],
+  endStream: boolean,
+): Promise<void> {
+  const block = headers.flatMap(([name, value]) =>
+    http2LiteralHeader(name, value)
+  );
+  await writeAll(
+    conn,
+    http2Frame(
+      0x01,
+      endStream ? 0x05 : 0x04, // END_STREAM? | END_HEADERS
+      1,
+      block,
+    ),
+  );
+}
+
+async function writeHttp2Data(
+  conn: Deno.Conn,
+  bytes: Uint8Array,
+  endStream: boolean,
+): Promise<void> {
+  await writeAll(conn, http2Frame(0x00, endStream ? 0x01 : 0, 1, bytes));
 }
 
 async function readAtLeast(
