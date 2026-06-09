@@ -102,6 +102,7 @@ use fmt::format_sanitizer_diff;
 pub use fmt::format_test_error;
 use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
+use reporters::JsonTestReporter;
 use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
@@ -687,6 +688,13 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
       options.cwd.clone(),
       options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
       failure_format_options,
+    )),
+    TestReporterConfig::Json => Box::new(JsonTestReporter::new(
+      options.cwd.clone(),
+      TestFailureFormatOptions {
+        strip_ascii_color: true,
+        ..failure_format_options
+      },
     )),
   };
 
