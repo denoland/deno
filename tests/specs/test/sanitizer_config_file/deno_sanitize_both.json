@@ -1,0 +1,6 @@
+{
+  "test": {
+    "sanitizeOps": true,
+    "sanitizeResources": true
+  }
+}

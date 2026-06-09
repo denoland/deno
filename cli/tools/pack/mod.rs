@@ -1,14 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_ast::swc::ast as swc_ast;
-use deno_ast::swc::ecma_visit::Visit;
-use deno_ast::swc::ecma_visit::VisitWith;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::anyhow::Context;
 use deno_core::anyhow::bail;
@@ -165,16 +161,9 @@ pub async fn pack(
       format!("Failed to process modules for package '{}'", package.name)
     })?;
 
-    // Detect Deno API usage
-    let uses_deno_api = detect_deno_api_usage(&processed_files);
-
     // Generate package.json
-    let package_json = generate_package_json(
-      &package.config_file,
-      &version,
-      &processed_files,
-      uses_deno_api && !pack_flags.no_shim,
-    )?;
+    let package_json =
+      generate_package_json(&package.config_file, &version, &processed_files)?;
 
     // Create tarball
     let tarball_path = create_npm_tarball(
@@ -399,167 +388,15 @@ pub struct ProcessedFile {
   pub js_content: String,
   /// Generated .d.ts content (if available)
   pub dts_content: Option<String>,
-  /// Whether this file uses Deno APIs
-  pub uses_deno: bool,
   /// Extracted dependencies (package name -> version). BTreeMap so the
   /// merged dependencies in package.json come out in sorted order across
   /// runs (reproducibility).
   pub dependencies: BTreeMap<String, String>,
 }
 
-/// Result of Deno API detection
-#[derive(Debug, Default)]
-struct DenoUsageInfo {
-  /// Whether any Deno API usage was detected
-  uses_deno: bool,
-  /// Specific APIs used (e.g., "readFile", "env", "serve")
-  apis_used: HashSet<String>,
-  /// Whether import.meta.main is used
-  uses_import_meta_main: bool,
-}
-
-/// Visitor to detect Deno API usage in AST
-struct DenoUsageVisitor {
-  info: DenoUsageInfo,
-  /// Track locally-declared identifiers named "Deno" to avoid false positives
-  local_deno_bindings: HashSet<String>,
-}
-
-impl DenoUsageVisitor {
-  fn new() -> Self {
-    Self {
-      info: DenoUsageInfo::default(),
-      local_deno_bindings: HashSet::new(),
-    }
-  }
-
-  fn is_local_deno(&self, ident: &swc_ast::Ident) -> bool {
-    self
-      .local_deno_bindings
-      .contains(&ident.to_id().0.to_string())
-  }
-}
-
-impl Visit for DenoUsageVisitor {
-  // Detect Deno.* member expressions
-  fn visit_member_expr(&mut self, node: &swc_ast::MemberExpr) {
-    // Check if this is accessing a property of Deno
-    if let swc_ast::Expr::Ident(ident) = node.obj.as_ref()
-      && ident.sym.as_ref() == "Deno"
-      && !self.is_local_deno(ident)
-    {
-      self.info.uses_deno = true;
-
-      // Try to extract the specific API being accessed
-      match &node.prop {
-        swc_ast::MemberProp::Ident(prop_ident) => {
-          self.info.apis_used.insert(prop_ident.sym.to_string());
-        }
-        swc_ast::MemberProp::Computed(computed) => {
-          // Handle Deno["readFile"] style access
-          if let swc_ast::Expr::Lit(swc_ast::Lit::Str(str_lit)) =
-            computed.expr.as_ref()
-          {
-            self
-              .info
-              .apis_used
-              .insert(str_lit.value.to_string_lossy().to_string());
-          }
-        }
-        _ => {}
-      }
-    }
-
-    // Check for import.meta.main
-    if let swc_ast::Expr::MetaProp(meta) = node.obj.as_ref()
-      && meta.kind == swc_ast::MetaPropKind::ImportMeta
-      && let swc_ast::MemberProp::Ident(prop) = &node.prop
-      && prop.sym.as_ref() == "main"
-    {
-      self.info.uses_import_meta_main = true;
-    }
-
-    // Detect globalThis.Deno / globalThis["Deno"] access. The standalone
-    // `Deno` ident path is handled by visit_ident, but here the `Deno`
-    // token is a member property (MemberProp::Ident / a string literal),
-    // not an Ident node, so visit_ident never sees it.
-    if let swc_ast::Expr::Ident(obj) = node.obj.as_ref()
-      && obj.sym.as_ref() == "globalThis"
-    {
-      let accesses_deno = match &node.prop {
-        swc_ast::MemberProp::Ident(prop) => prop.sym.as_ref() == "Deno",
-        swc_ast::MemberProp::Computed(computed) => {
-          if let swc_ast::Expr::Lit(swc_ast::Lit::Str(s)) =
-            computed.expr.as_ref()
-          {
-            s.value.to_string_lossy() == "Deno"
-          } else {
-            false
-          }
-        }
-        _ => false,
-      };
-      if accesses_deno {
-        self.info.uses_deno = true;
-      }
-    }
-
-    node.visit_children_with(self);
-  }
-
-  // Detect standalone Deno references (e.g., typeof Deno, const d = Deno)
-  fn visit_ident(&mut self, node: &swc_ast::Ident) {
-    if node.sym.as_ref() == "Deno" && !self.is_local_deno(node) {
-      self.info.uses_deno = true;
-    }
-  }
-
-  // Track local Deno declarations to avoid false positives
-  fn visit_var_declarator(&mut self, node: &swc_ast::VarDeclarator) {
-    if let swc_ast::Pat::Ident(ident) = &node.name
-      && ident.id.sym.as_ref() == "Deno"
-    {
-      self
-        .local_deno_bindings
-        .insert(ident.id.to_id().0.to_string());
-    }
-    node.visit_children_with(self);
-  }
-
-  // Track function parameters named Deno
-  fn visit_param(&mut self, node: &swc_ast::Param) {
-    if let swc_ast::Pat::Ident(ident) = &node.pat
-      && ident.id.sym.as_ref() == "Deno"
-    {
-      self
-        .local_deno_bindings
-        .insert(ident.id.to_id().0.to_string());
-    }
-    node.visit_children_with(self);
-  }
-
-  // Track import declarations that bind Deno (e.g., import { Deno } from "...")
-  fn visit_import_decl(&mut self, node: &swc_ast::ImportDecl) {
-    for specifier in &node.specifiers {
-      let local_ident = match specifier {
-        swc_ast::ImportSpecifier::Named(named) => &named.local,
-        swc_ast::ImportSpecifier::Default(default) => &default.local,
-        swc_ast::ImportSpecifier::Namespace(ns) => &ns.local,
-      };
-      if local_ident.sym.as_ref() == "Deno" {
-        self
-          .local_deno_bindings
-          .insert(local_ident.to_id().0.to_string());
-      }
-    }
-    node.visit_children_with(self);
-  }
-}
-
 /// Split a leading shebang line off the source so we can preserve it as
 /// the first line of the emitted JS file without it interfering with
-/// transpilation or the shim-import injection. Returns
-/// `(shebang_with_newline, rest_of_source)`.
+/// transpilation. Returns `(shebang_with_newline, rest_of_source)`.
 fn split_shebang(source: &str) -> (Option<&str>, &str) {
   if !source.starts_with("#!") {
     return (None, source);
@@ -569,37 +406,6 @@ fn split_shebang(source: &str) -> (Option<&str>, &str) {
     None => (Some(source), ""),
   }
 }
-
-/// Detect Deno API usage in a parsed source file using AST traversal
-fn detect_deno_usage(parsed: &deno_ast::ParsedSource) -> DenoUsageInfo {
-  let mut visitor = DenoUsageVisitor::new();
-  let program = parsed.program_ref();
-  program.visit_with(&mut visitor);
-  visitor.info
-}
-
-/// APIs that are known to be unsupported or have limited support in @deno/shim-deno
-const UNSUPPORTED_DENO_APIS: &[(&str, &str)] = &[
-  ("dlopen", "FFI is not supported on Node.js"),
-  (
-    "bench",
-    "benchmarking is Deno-specific; use a cross-runtime framework instead",
-  ),
-  (
-    "test",
-    "testing is Deno-specific; use a cross-runtime testing framework instead",
-  ),
-];
-
-/// APIs that have partial support in @deno/shim-deno
-const PARTIAL_SUPPORT_DENO_APIS: &[(&str, &str)] = &[
-  ("serve", "has limited support; some features may not work"),
-  ("listen", "has limited support; some features may not work"),
-  (
-    "listenTls",
-    "has limited support; some features may not work",
-  ),
-];
 
 /// Create transpile options from deno.json compiler options
 fn create_transpile_options(
@@ -678,32 +484,6 @@ fn create_transpile_options(
   })
 }
 
-/// Emit warnings for unsupported or partially supported APIs
-fn warn_about_deno_apis(
-  file_path: &str,
-  apis_used: &HashSet<String>,
-  uses_import_meta_main: bool,
-) {
-  for (api, reason) in UNSUPPORTED_DENO_APIS {
-    if apis_used.contains(*api) {
-      log::warn!("Deno.{} is used in {} but {}", api, file_path, reason);
-    }
-  }
-
-  for (api, reason) in PARTIAL_SUPPORT_DENO_APIS {
-    if apis_used.contains(*api) {
-      log::warn!("Deno.{} is used in {} and {}", api, file_path, reason);
-    }
-  }
-
-  if uses_import_meta_main {
-    log::warn!(
-      "import.meta.main is used in {} but will always be undefined on Node.js",
-      file_path
-    );
-  }
-}
-
 fn process_modules(
   graph: &ModuleGraph,
   paths: &[CollectedPath],
@@ -759,44 +539,12 @@ fn process_single_module(
     source_text.into(),
   )?;
 
-  // Detect Deno API usage using AST-based analysis
-  let deno_usage = detect_deno_usage(&parsed);
-
-  // Warn about unsupported APIs
-  if !pack_flags.no_shim {
-    warn_about_deno_apis(
-      &path.relative_path,
-      &deno_usage.apis_used,
-      deno_usage.uses_import_meta_main,
-    );
-  }
-
-  // Phase 1: Collect AST-based text changes (specifier rewriting + shim injection)
+  // Phase 1: Collect AST-based text changes (specifier rewriting)
   // This happens BEFORE transpilation so source maps stay accurate.
   let (source_to_transpile, dependencies) =
     if media_type.is_emittable() || media_type == MediaType::JavaScript {
       let unfurl_result = unfurl_specifiers(&parsed, &path.specifier, graph);
-      let mut text_changes = unfurl_result.text_changes;
-
-      // Inject Deno shim import at the top of the (shebang-stripped)
-      // source. Module-level `"use strict"` directives and triple-slash
-      // references are rare in Deno code; treating those would require
-      // a statement-level scan and is not worth the complexity for the
-      // common case. The shebang has already been split off above and
-      // is re-prepended after transpilation.
-      if deno_usage.uses_deno && !pack_flags.no_shim {
-        // Insert at the front so the shim import sorts before any
-        // unfurl text change that also targets position 0 (e.g. a
-        // rewritten leading import). `apply_text_changes` is
-        // stable-sorted by range start, so earlier entries win ties.
-        text_changes.insert(
-          0,
-          deno_ast::TextChange {
-            range: 0..0,
-            new_text: "import { Deno } from \"@deno/shim-deno\";\n".to_string(),
-          },
-        );
-      }
+      let text_changes = unfurl_result.text_changes;
 
       if text_changes.is_empty() {
         (source_text.to_string(), unfurl_result.dependencies)
@@ -871,7 +619,6 @@ fn process_single_module(
     output_path,
     js_content,
     dts_content,
-    uses_deno: deno_usage.uses_deno,
     dependencies,
   })
 }
@@ -970,153 +717,4 @@ fn extract_dts(
     js_module.specifier
   );
   None
-}
-
-fn detect_deno_api_usage(files: &[ProcessedFile]) -> bool {
-  files.iter().any(|f| f.uses_deno)
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn parse_source(code: &str) -> deno_ast::ParsedSource {
-    deno_ast::parse_module(deno_ast::ParseParams {
-      specifier: deno_ast::ModuleSpecifier::parse("file:///test.ts").unwrap(),
-      text: code.into(),
-      media_type: deno_ast::MediaType::TypeScript,
-      capture_tokens: false,
-      scope_analysis: false,
-      maybe_syntax: None,
-    })
-    .unwrap()
-  }
-
-  #[test]
-  fn test_detect_deno_member_access() {
-    let code = r#"
-      const value = Deno.env.get("KEY");
-      Deno.readTextFileSync("file.txt");
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(info.uses_deno);
-    assert!(info.apis_used.contains("env"));
-    assert!(info.apis_used.contains("readTextFileSync"));
-  }
-
-  #[test]
-  fn test_no_false_positive_comment() {
-    let code = r#"
-      // Visit Deno.land for more info
-      const url = "https://deno.land";
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(!info.uses_deno);
-  }
-
-  #[test]
-  fn test_no_false_positive_string() {
-    let code = r#"
-      const message = "Deno.land is great";
-      console.log("Check out Deno.env");
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(!info.uses_deno);
-  }
-
-  #[test]
-  fn test_detect_standalone_reference() {
-    let code = r#"
-      const runtime = Deno;
-      if (typeof Deno !== "undefined") {
-        console.log("Running on Deno");
-      }
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(info.uses_deno);
-  }
-
-  #[test]
-  fn test_no_detect_local_binding() {
-    let code = r#"
-      const Deno = { custom: "object" };
-      Deno.custom.toUpperCase();
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(!info.uses_deno);
-  }
-
-  #[test]
-  fn test_detect_computed_property() {
-    let code = r#"
-      const api = "readFile";
-      Deno[api]("test.txt");
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(info.uses_deno);
-  }
-
-  #[test]
-  fn test_detect_import_meta_main() {
-    let code = r#"
-      if (import.meta.main) {
-        console.log("Main module");
-      }
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(info.uses_import_meta_main);
-  }
-
-  #[test]
-  fn test_no_detect_import_binding() {
-    let code = r#"
-      import { Deno } from "some-module";
-      Deno.something();
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(!info.uses_deno);
-  }
-
-  #[test]
-  fn test_detect_global_this_deno() {
-    let code = r#"
-      const has = typeof globalThis.Deno !== "undefined";
-      globalThis["Deno"].readTextFileSync("a");
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(info.uses_deno);
-  }
-
-  #[test]
-  fn test_no_false_positive_global_this_other() {
-    let code = r#"
-      const x = globalThis.fetch;
-      const y = globalThis["console"];
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(!info.uses_deno);
-  }
-
-  #[test]
-  fn test_nested_member_access() {
-    let code = r#"
-      const value = Deno.env.get("KEY");
-      const cwd = Deno.cwd();
-    "#;
-    let parsed = parse_source(code);
-    let info = detect_deno_usage(&parsed);
-    assert!(info.uses_deno);
-    assert!(info.apis_used.contains("env"));
-    assert!(info.apis_used.contains("cwd"));
-  }
 }

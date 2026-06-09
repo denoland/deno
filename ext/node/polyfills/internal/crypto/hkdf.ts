@@ -1,11 +1,20 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  SafeSet,
+  SetPrototypeHas,
+  StringPrototypeToLowerCase,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  Uint8Array,
+} = primordials;
 const {
   op_node_get_hash_size,
   op_node_hkdf,
@@ -32,7 +41,9 @@ const {
 const {
   createSecretKey,
 } = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
-const { kMaxLength } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { kMaxLength } = core.loadExtScript(
+  "ext:deno_node/internal/buffer.mjs",
+);
 const {
   isAnyArrayBuffer,
   isArrayBufferView,
@@ -49,6 +60,7 @@ const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 function toRawBytes(x: unknown): Buffer {
   if (isArrayBufferView(x)) {
     const v = x as ArrayBufferView;
+    // deno-lint-ignore prefer-primordials -- v is ArrayBufferView (TypedArray | DataView); buffer/byteOffset/byteLength getters are polymorphic
     return Buffer.from(v.buffer, v.byteOffset, v.byteLength);
   }
   if (isAnyArrayBuffer(x)) {
@@ -58,40 +70,42 @@ function toRawBytes(x: unknown): Buffer {
   return Buffer.from(toBuf(x as unknown as string));
 }
 
-const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
-  validateString(hash, "digest");
-  key = prepareKey(key);
-  validateByteSource(salt, "salt");
-  validateByteSource(info, "info");
+const validateParameters = hideStackFrames(
+  (hash, key, salt, info, length) => {
+    validateString(hash, "digest");
+    key = prepareKey(key);
+    validateByteSource(salt, "salt");
+    validateByteSource(info, "info");
 
-  salt = toRawBytes(toBuf(salt));
-  info = toRawBytes(toBuf(info));
+    salt = toRawBytes(toBuf(salt));
+    info = toRawBytes(toBuf(info));
 
-  validateInteger(length, "length", 0, kMaxLength);
+    validateInteger(length, "length", 0, kMaxLength);
 
-  if (info.byteLength > 1024) {
-    throw new ERR_OUT_OF_RANGE(
-      "info",
-      "must not contain more than 1024 bytes",
-      info.byteLength,
-    );
-  }
+    if (TypedArrayPrototypeGetByteLength(info) > 1024) {
+      throw new ERR_OUT_OF_RANGE(
+        "info",
+        "must not contain more than 1024 bytes",
+        TypedArrayPrototypeGetByteLength(info),
+      );
+    }
 
-  validateAlgorithm(hash);
+    validateAlgorithm(hash);
 
-  const size = op_node_get_hash_size(hash);
-  if (typeof size === "number" && size * 255 < length) {
-    throw new ERR_CRYPTO_INVALID_KEYLEN();
-  }
+    const size = op_node_get_hash_size(hash);
+    if (typeof size === "number" && size * 255 < length) {
+      throw new ERR_CRYPTO_INVALID_KEYLEN();
+    }
 
-  return {
-    hash,
-    key,
-    salt,
-    info,
-    length,
-  };
-});
+    return {
+      hash,
+      key,
+      salt,
+      info,
+      length,
+    };
+  },
+);
 
 function prepareKey(key: any) {
   if (isKeyObject(key)) {
@@ -140,11 +154,15 @@ function hkdf(
 
   validateFunction(callback, "callback");
 
-  hash = hash.toLowerCase();
+  hash = StringPrototypeToLowerCase(hash);
 
-  op_node_hkdf_async(hash, key[kHandle], salt, info, length)
-    .then((okm) => callback(null, okm.buffer))
-    .catch((err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined));
+  PromisePrototypeCatch(
+    PromisePrototypeThen(
+      op_node_hkdf_async(hash, key[kHandle], salt, info, length),
+      (okm) => callback(null, TypedArrayPrototypeGetBuffer(okm)),
+    ),
+    (err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined),
+  );
 }
 
 function hkdfSync(
@@ -162,7 +180,7 @@ function hkdfSync(
     length,
   ));
 
-  hash = hash.toLowerCase();
+  hash = StringPrototypeToLowerCase(hash);
 
   const okm = new Uint8Array(length);
   try {
@@ -171,16 +189,16 @@ function hkdfSync(
     throw new ERR_CRYPTO_INVALID_DIGEST(e);
   }
 
-  return okm.buffer;
+  return TypedArrayPrototypeGetBuffer(okm);
 }
 
 let hashes: Set<string> | null = null;
 function validateAlgorithm(algorithm: string) {
   if (hashes === null) {
-    hashes = new Set(getHashes());
+    hashes = new SafeSet(getHashes());
   }
 
-  if (!hashes.has(algorithm)) {
+  if (!SetPrototypeHas(hashes, algorithm)) {
     throw new ERR_CRYPTO_INVALID_DIGEST(algorithm);
   }
 }

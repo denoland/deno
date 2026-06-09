@@ -10,7 +10,7 @@
 // deno-lint-ignore-file no-explicit-any prefer-primordials
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const lazyPath = core.createLazyLoader("node:path");
 const lazyProcess = core.createLazyLoader("node:process");
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");

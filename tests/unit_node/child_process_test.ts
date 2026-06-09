@@ -730,6 +730,43 @@ Deno.test({
 
 Deno.test({
   name:
+    "[node/child_process spawn] AbortSignal aborts the child and emits AbortError",
+  async fn() {
+    const ac = new AbortController();
+    const cp = spawn(
+      Deno.execPath(),
+      ["eval", "setInterval(() => {}, 1000)"],
+      { signal: ac.signal },
+    );
+    const error = withTimeout<Error>();
+    const exit = withTimeout<void>();
+    cp.on("error", (err) => error.resolve(err));
+    cp.on("exit", () => exit.resolve());
+    cp.on("spawn", () => ac.abort());
+    const err = await error.promise;
+    assertEquals(err.name, "AbortError");
+    await exit.promise;
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process] kill() on an exited process returns false and does not throw",
+  async fn() {
+    // Regression for https://github.com/denoland/deno/issues/28882 — killing
+    // a process that has already exited must not surface a spurious error
+    // (PermissionError on Windows / ESRCH on Unix), it should just return
+    // false like Node.js does.
+    const cp = spawn(Deno.execPath(), ["eval", "Deno.exit(0)"]);
+    const exit = withTimeout<void>();
+    cp.on("exit", () => exit.resolve());
+    await exit.promise;
+    assertEquals(cp.kill("SIGTERM"), false);
+  },
+});
+
+Deno.test({
+  name:
     "[node/child_process spawn] child inherits Deno.env when options.env is not provided",
   async fn() {
     const deferred = withTimeout<string>();

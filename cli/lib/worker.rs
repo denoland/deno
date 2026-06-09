@@ -40,7 +40,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
@@ -61,6 +61,8 @@ use crate::util::checksum;
 pub struct CreateModuleLoaderResult {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub node_require_loader: Rc<dyn NodeRequireLoader>,
+  pub hook_registry:
+    Option<deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry>,
 }
 
 pub trait ModuleLoaderFactory: Send + Sync {
@@ -283,7 +285,7 @@ pub struct LibWorkerFactoryRoots {
 }
 
 struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
-  blob_store: Arc<BlobStore>,
+  blob_store: Arc<dyn BlobStoreTrait>,
   broadcast_channel: InMemoryBroadcastChannel,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
@@ -341,6 +343,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
       let CreateModuleLoaderResult {
         module_loader,
         node_require_loader,
+        hook_registry,
       } = shared.module_loader_factory.create_for_worker(
         args.parent_permissions.clone(),
         args.permissions.clone(),
@@ -512,6 +515,13 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
 
       worker.bootstrap(&bootstrap_options);
 
+      // Wire the module hook registry into OpState after bootstrap so
+      // `module.registerHooks()` in worker scripts shares state with the
+      // worker's module loader (same pattern as the main worker).
+      if let Some(registry) = hook_registry {
+        worker.js_runtime.op_state().borrow_mut().put(registry);
+      }
+
       // When resource limits are set, install a near-heap-limit callback
       // that terminates the worker's isolate gracefully instead of
       // crashing the entire process with a V8 fatal OOM.
@@ -539,7 +549,7 @@ pub struct LibMainWorkerFactory<TSys: DenoLibSys> {
 impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
-    blob_store: Arc<BlobStore>,
+    blob_store: Arc<dyn BlobStoreTrait>,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
     feature_checker: Arc<FeatureChecker>,
@@ -621,6 +631,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
+      hook_registry,
     } = shared
       .module_loader_factory
       .create_for_main(permissions.clone());
@@ -735,6 +746,11 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     let mut worker =
       MainWorker::bootstrap_from_options(&main_module, services, options);
     worker.setup_memory_trim_handler();
+
+    // Wire module hook registry into OpState so JS ops share it with the loader
+    if let Some(registry) = hook_registry {
+      worker.js_runtime.op_state().borrow_mut().put(registry);
+    }
 
     // Store the main inspector session sender for worker debugging
     let inspector = worker.js_runtime.inspector();

@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const { internalRidSymbol } = core;
 const {
   op_net_accept_tls,
@@ -160,7 +160,7 @@ function loadTlsKeyPair(api, {
 }
 
 function listenTls({
-  port,
+  port = 0,
   hostname = "0.0.0.0",
   transport = "tcp",
   alpnProtocols = undefined,
@@ -170,7 +170,7 @@ function listenTls({
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  port = validatePort(port);
+  port = validatePort(port, true);
 
   if (!hasTlsKeyPairOptions(arguments[0])) {
     throw new TypeError(
