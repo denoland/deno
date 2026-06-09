@@ -302,6 +302,47 @@ async fn lint_watch_without_args_test() {
   drop(t);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28437
+#[test(flaky)]
+async fn lint_watch_picks_up_new_file_test() {
+  let t = TempDir::new();
+  let badly_linted_fixed1 =
+    util::testdata_path().join("lint/watch/badly_linted_fixed1.js");
+
+  // Start with a single file present. No path args are passed, so the watcher
+  // must fall back to watching the base directory rather than the resolved
+  // file list.
+  let existing = t.path().join("existing.js");
+  badly_linted_fixed1.copy(&existing);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("lint")
+    .arg("--watch")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Lint started");
+  assert_contains!(
+    wait_contains("Checked", &mut stderr_lines).await,
+    "Checked 1 file"
+  );
+
+  // Create a new file *after* the watcher started. The watcher should notice it
+  // and include it in the next run even though it wasn't initially resolved.
+  let new_file = t.path().join("new_file.js");
+  badly_linted_fixed1.copy(&new_file);
+
+  assert_contains!(
+    wait_contains("Checked", &mut stderr_lines).await,
+    "Checked 2 files"
+  );
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn lint_all_files_on_each_change_test() {
   let t = TempDir::new();
@@ -453,6 +494,50 @@ async fn fmt_watch_without_args_test() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/28437
+#[test(flaky)]
+async fn fmt_watch_picks_up_new_file_test() {
+  let fmt_testdata_path = util::testdata_path().join("fmt");
+  let t = TempDir::new();
+  let fixed = fmt_testdata_path.join("badly_formatted_fixed.js");
+  let badly_formatted_original = fmt_testdata_path.join("badly_formatted.mjs");
+
+  // Start with a single, already-formatted file so the initial run is clean.
+  let existing = t.path().join("existing.js");
+  fixed.copy(&existing);
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("fmt")
+    .arg("--watch")
+    .arg(".")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Fmt started");
+  wait_contains("Fmt finished.", &mut stderr_lines).await;
+
+  // Create a new badly-formatted file *after* the watcher started. The watcher
+  // should notice it even though it wasn't part of the initially resolved set.
+  let new_file = t.path().join("new_file.js");
+  badly_formatted_original.copy(&new_file);
+
+  assert_contains!(
+    wait_contains("new_file.js", &mut stderr_lines).await,
+    "new_file.js"
+  );
+  wait_contains("Fmt finished.", &mut stderr_lines).await;
+
+  // The newly created file should have been formatted by the watcher.
+  let expected = fixed.read_to_string();
+  let actual = new_file.read_to_string();
+  assert_eq!(actual, expected);
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn fmt_check_all_files_on_each_change_test() {
   let t = TempDir::new();
@@ -516,6 +601,76 @@ async fn check_watch_test() {
   file_to_check.write("const x: number = 42;\nconsole.log(x);\n");
 
   wait_contains("Check finished.", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
+#[test(flaky)]
+async fn compile_watch_test() {
+  let t = TempDir::new();
+  let main = t.path().join("main.ts");
+  let message = t.path().join("message.ts");
+  let data = t.path().join("data.txt");
+  let exe = if cfg!(windows) {
+    t.path().join("app.exe")
+  } else {
+    t.path().join("app")
+  };
+
+  main.write(
+    r#"import { message } from "./message.ts";
+console.log(message);
+console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
+"#,
+  );
+  message.write(r#"export const message = "before";"#);
+  data.write("included before");
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("compile")
+    .arg("--watch")
+    .arg("--no-clear-screen")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-read")
+    .arg("--include")
+    .arg(&data)
+    .arg("--output")
+    .arg(&exe)
+    .arg(&main)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_, mut stderr_lines) = child_lines(&mut child);
+
+  wait_for_watcher("data.txt", &mut stderr_lines).await;
+  wait_for_watcher("message.ts", &mut stderr_lines).await;
+  wait_contains("Compile finished", &mut stderr_lines).await;
+
+  let output = std::process::Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "before");
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
+
+  message.write(r#"export const message = "after";"#);
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Compile finished", &mut stderr_lines).await;
+
+  let output = std::process::Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
+
+  data.write("included after");
+  wait_contains("File change detected", &mut stderr_lines).await;
+  wait_contains("Compile finished", &mut stderr_lines).await;
+
+  let output = std::process::Command::new(&exe).output().unwrap();
+  assert!(output.status.success());
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
+  assert_contains!(String::from_utf8_lossy(&output.stdout), "included after");
 
   check_alive_then_kill(child);
 }
@@ -670,6 +825,109 @@ async fn serve_watch_all() {
   );
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+// Regression test for https://github.com/denoland/deno/issues/30382.
+// Ensures that `deno serve --watch` applies the import map from deno.json when
+// resolving the main module, so a bare specifier entrypoint resolves the same
+// way it does without `--watch`.
+#[test(flaky)]
+async fn serve_watch_with_import_map() {
+  let t = TempDir::new();
+
+  let server_file = t.path().join("server.js");
+  server_file.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"hello\");
+      },
+    };",
+  );
+
+  t.path().join("deno.json").write(
+    "{
+      \"imports\": {
+        \"app\": \"./server.js\"
+      }
+    }",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch=.")
+    .arg("--port")
+    .arg("0")
+    .arg("app")
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // The bare specifier "app" only resolves if the import map is applied. Before
+  // the fix this failed with `Module not found "file://.../app"` and the server
+  // never started listening.
+  wait_contains("Listening on", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+// Regression test for https://github.com/denoland/deno/issues/30046
+// `deno serve` used to ignore `--watch-exclude` entirely, so writing to an
+// excluded file that's part of the module graph would trigger a restart.
+#[test(flaky)]
+async fn serve_watch_with_excluded_paths() {
+  let t = TempDir::new();
+
+  let excluded_file = t.path().join("excluded.js");
+  excluded_file.write("export const foo = 0;");
+
+  let main_file = t.path().join("main_file_to_watch.js");
+  main_file.write(
+    "import { foo } from './excluded.js';
+    console.log('ran', foo);
+    export default { fetch: () => new Response('ok') };",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch")
+    .arg("--watch-exclude=excluded.js")
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-net")
+    .arg(&main_file)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("ran", &mut stdout_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
+
+  // Writing the excluded file must not trigger a restart. Writing the watched
+  // main file must, and the first restart we observe must be for the main file
+  // rather than the excluded one.
+  excluded_file.write("export const foo = 42;");
+  main_file.write(
+    "import { foo } from './excluded.js';
+    console.log('ran2', foo);
+    export default { fetch: () => new Response('ok') };",
+  );
+
+  let restart = wait_contains("File change detected", &mut stderr_lines).await;
+  assert!(
+    restart.contains("main_file_to_watch.js"),
+    "unexpected file triggered restart: {restart}"
+  );
+  assert!(
+    !restart.contains("excluded.js"),
+    "excluded file triggered a restart: {restart}"
+  );
+  wait_contains("ran2", &mut stdout_lines).await;
   check_alive_then_kill(child);
 }
 
@@ -1290,6 +1548,84 @@ async fn test_watch_doc() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/24558:
+// `deno test --doc --watch` panicked with a parse error on Markdown files
+// because the watcher passed them to the module graph builder as roots.
+#[test(flaky)]
+async fn test_watch_doc_markdown() {
+  let t = TempDir::new();
+
+  let readme = t.path().join("README.md");
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+console.log("Hello world");
+```
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg("--config")
+    .arg(util::deno_config_path())
+    .arg("--watch")
+    .arg("--doc")
+    .arg(t.path())
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Edit the markdown file to introduce a failing assertion in its doc test.
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+assertEquals(1, 2);
+```
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("FAILED | 0 passed | 1 failed", &mut stdout_lines).await;
+  wait_contains("Test failed", &mut stderr_lines).await;
+
+  // Fix it again.
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+assertEquals(1, 1);
+```
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn test_watch_module_graph_error_referrer() {
   let t = TempDir::new();
@@ -1568,6 +1904,188 @@ async fn run_watch_process_exit_on_restart() {
   // The process exit handler should fire before the process restarts
   wait_contains("process exit fired", &mut stdout_lines).await;
   wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Wait, in either order, for the watcher to both report the requested exit
+/// code and start watching `file_name`.
+///
+/// The "Process finished with exit code N" line (printed by the watcher when
+/// the run ends) and the "Watching paths" line (emitted asynchronously by the
+/// watcher thread) race on stderr, so a fixed-order wait is flaky. Waiting for
+/// both before touching files ensures the exit code was surfaced and the
+/// watcher is ready, so a subsequent edit is not missed.
+async fn wait_for_exit_code_and_watcher<R>(
+  exit_code: i32,
+  file_name: &str,
+  stderr_lines: &mut LoggingLines<R>,
+) where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  let finished = format!("Process finished with exit code {exit_code}");
+  let saw_finished = std::cell::Cell::new(false);
+  let saw_watching = std::cell::Cell::new(false);
+  let result = tokio::time::timeout(
+    tokio::time::Duration::from_secs(60),
+    wait_for(
+      |line| {
+        if line.contains(finished.as_str()) {
+          saw_finished.set(true);
+        }
+        if line.contains("Watching paths") && line.contains(file_name) {
+          saw_watching.set(true);
+        }
+        saw_finished.get() && saw_watching.get()
+      },
+      stderr_lines,
+    ),
+  )
+  .await;
+  match result {
+    Ok(Some(_)) => {}
+    Ok(None) => panic!(
+      "output ended before the watcher reported exit code {exit_code} and started watching \"{file_name}\""
+    ),
+    Err(_) => panic!(
+      "watcher did not report exit code {exit_code} and start watching \"{file_name}\" within 60 seconds"
+    ),
+  }
+}
+
+/// Shared body for the `Deno.exit()` / `process.exit()` under-watch tests: the
+/// exit call ends the current run with the requested code, the `unload` event
+/// still fires, code after the exit call does not run, and the watcher stays
+/// alive and restarts on the next file change.
+/// See https://github.com/denoland/deno/issues/7590.
+async fn run_watch_exit_keeps_watcher_alive(watch_flag: &str, exit_call: &str) {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(format!(
+    r#"
+      import process from "node:process";
+      globalThis.addEventListener("unload", () => {{
+        console.log("unload event fired");
+      }});
+      console.log("started");
+      {exit_call};
+      console.log("not reached");
+    "#
+  ));
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg(watch_flag)
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("started", &mut stdout_lines).await;
+  // The exit call still dispatches the `unload` event, and code after it does
+  // not run.
+  wait_contains("unload event fired", &mut stdout_lines).await;
+  // The watcher must survive the exit instead of terminating the process, and
+  // the requested exit code is surfaced in the finished message.
+  wait_for_exit_code_and_watcher(42, "file_to_watch.js", &mut stderr_lines)
+    .await;
+
+  // Editing the file restarts the run, proving the watcher is still alive.
+  file_to_watch.write("console.log('restarted');");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("restarted", &mut stdout_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that a script calling `Deno.exit()` under `--watch` ends the current
+/// run without killing the watcher, which keeps watching and restarts the
+/// script on the next file change. See https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn run_watch_deno_exit() {
+  run_watch_exit_keeps_watcher_alive("--watch", "Deno.exit(42)").await;
+}
+
+/// Like [`run_watch_deno_exit`], but using `process.exit()` from `node:process`,
+/// which routes through the same `op_exit` chokepoint.
+#[test(flaky)]
+async fn run_watch_process_exit() {
+  run_watch_exit_keeps_watcher_alive("--watch", "process.exit(42)").await;
+}
+
+/// Like [`run_watch_deno_exit`], but for HMR mode (`--watch-hmr`), which runs
+/// through `worker.run()` rather than `run_for_watcher`. A script calling
+/// `Deno.exit()` must still keep the watcher alive. See
+/// https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn run_watch_hmr_deno_exit() {
+  run_watch_exit_keeps_watcher_alive("--watch-hmr", "Deno.exit(42)").await;
+}
+
+/// Test that a served module calling `Deno.exit()` under `deno serve --watch`
+/// ends the current run without killing the watcher, which keeps watching and
+/// restarts on the next file change. `deno serve --watch` shares the same exit
+/// handling as `deno run --watch`. See https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn serve_watch_deno_exit() {
+  let t = TempDir::new();
+  let main_file_to_watch = t.path().join("main_file_to_watch.js");
+  main_file_to_watch.write(
+    r#"
+      console.log("started");
+      Deno.exit(42);
+      export default {
+        fetch(_request) {
+          return new Response("not reached");
+        },
+      };
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg(&main_file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("started", &mut stdout_lines).await;
+  // The watcher must survive `Deno.exit()` instead of terminating the process,
+  // and the requested exit code is surfaced in the finished message.
+  wait_for_exit_code_and_watcher(
+    42,
+    "main_file_to_watch.js",
+    &mut stderr_lines,
+  )
+  .await;
+
+  // Editing the file restarts the run with a working server, proving the
+  // watcher is still alive.
+  main_file_to_watch.write(
+    r#"
+      export default {
+        fetch(_request) {
+          return new Response("ok");
+        },
+      };
+    "#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
   check_alive_then_kill(child);
 }
 

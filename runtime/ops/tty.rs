@@ -53,9 +53,7 @@ impl TtyModeStore {
 #[cfg(unix)]
 use deno_process::JsNixError;
 #[cfg(windows)]
-use winapi::shared::minwindef::DWORD;
-#[cfg(windows)]
-use winapi::um::wincon;
+use windows_sys::Win32::System::Console as wincon;
 
 deno_core::extension!(
   deno_tty,
@@ -95,7 +93,7 @@ pub enum TtyError {
 
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
 #[cfg(windows)]
-const COOKED_MODE: DWORD =
+const COOKED_MODE: u32 =
   // enable line-by-line input (returns input only after CR is read)
   wincon::ENABLE_LINE_INPUT
   // enables real-time character echo to console display (requires ENABLE_LINE_INPUT)
@@ -104,12 +102,12 @@ const COOKED_MODE: DWORD =
   | wincon::ENABLE_PROCESSED_INPUT;
 
 #[cfg(windows)]
-fn mode_raw_input_on(original_mode: DWORD) -> DWORD {
+fn mode_raw_input_on(original_mode: u32) -> u32 {
   original_mode & !COOKED_MODE | wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
 }
 
 #[cfg(windows)]
-fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
+fn mode_raw_input_off(original_mode: u32) -> u32 {
   original_mode & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT | COOKED_MODE
 }
 
@@ -130,8 +128,7 @@ fn op_set_raw(
   #[cfg(windows)]
   {
     use deno_error::JsErrorBox;
-    use winapi::shared::minwindef::FALSE;
-    use winapi::um::consoleapi;
+    use windows_sys::Win32::Foundation::FALSE;
 
     let handle = handle_or_fd;
 
@@ -139,11 +136,9 @@ fn op_set_raw(
       return Err(TtyError::Other(JsErrorBox::not_supported()));
     }
 
-    let mut original_mode: DWORD = 0;
-    // SAFETY: winapi call
-    if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
-      == FALSE
-    {
+    let mut original_mode: u32 = 0;
+    // SAFETY: Win32 call
+    if unsafe { wincon::GetConsoleMode(handle, &mut original_mode) } == FALSE {
       return Err(TtyError::Io(Error::last_os_error()));
     }
 
@@ -164,55 +159,57 @@ fn op_set_raw(
       if original_mode & COOKED_MODE != 0 && !stdin_state.cancelled {
         // SAFETY: Write enter key event to force the console wait to return.
         let record = unsafe {
+          use windows_sys::Win32::UI::Input::KeyboardAndMouse::MAPVK_VK_TO_VSC;
+          use windows_sys::Win32::UI::Input::KeyboardAndMouse::MapVirtualKeyW;
+          use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_RETURN;
+
           let mut record: wincon::INPUT_RECORD = std::mem::zeroed();
-          record.EventType = wincon::KEY_EVENT;
-          record.Event.KeyEvent_mut().wVirtualKeyCode =
-            winapi::um::winuser::VK_RETURN as u16;
-          record.Event.KeyEvent_mut().bKeyDown = 1;
-          record.Event.KeyEvent_mut().wRepeatCount = 1;
-          *record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() = '\r' as u16;
-          record.Event.KeyEvent_mut().dwControlKeyState = 0;
-          record.Event.KeyEvent_mut().wVirtualScanCode =
-            winapi::um::winuser::MapVirtualKeyW(
-              winapi::um::winuser::VK_RETURN as u32,
-              winapi::um::winuser::MAPVK_VK_TO_VSC,
-            ) as u16;
+          record.EventType = wincon::KEY_EVENT as u16;
+          record.Event.KeyEvent.wVirtualKeyCode = VK_RETURN;
+          record.Event.KeyEvent.bKeyDown = 1;
+          record.Event.KeyEvent.wRepeatCount = 1;
+          record.Event.KeyEvent.uChar.UnicodeChar = '\r' as u16;
+          record.Event.KeyEvent.dwControlKeyState = 0;
+          record.Event.KeyEvent.wVirtualScanCode =
+            MapVirtualKeyW(VK_RETURN as u32, MAPVK_VK_TO_VSC) as u16;
           record
         };
         stdin_state.cancelled = true;
 
-        // SAFETY: winapi call to open conout$ and save screen state.
+        // SAFETY: Win32 call to open conout$ and save screen state.
         let active_screen_buffer = unsafe {
+          use windows_sys::Win32::Foundation::GENERIC_READ;
+          use windows_sys::Win32::Foundation::GENERIC_WRITE;
+          use windows_sys::Win32::Storage::FileSystem::CreateFileW;
+          use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+          use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE;
+          use windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING;
+
           /* Save screen state before sending the VK_RETURN event */
-          let handle = winapi::um::fileapi::CreateFileW(
+          let handle = CreateFileW(
             "conout$"
               .encode_utf16()
               .chain(Some(0))
               .collect::<Vec<_>>()
               .as_ptr(),
-            winapi::um::winnt::GENERIC_READ | winapi::um::winnt::GENERIC_WRITE,
-            winapi::um::winnt::FILE_SHARE_READ
-              | winapi::um::winnt::FILE_SHARE_WRITE,
-            std::ptr::null_mut(),
-            winapi::um::fileapi::OPEN_EXISTING,
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null(),
+            OPEN_EXISTING,
             0,
             std::ptr::null_mut(),
           );
 
           let mut active_screen_buffer = std::mem::zeroed();
-          winapi::um::wincon::GetConsoleScreenBufferInfo(
-            handle,
-            &mut active_screen_buffer,
-          );
-          winapi::um::handleapi::CloseHandle(handle);
+          wincon::GetConsoleScreenBufferInfo(handle, &mut active_screen_buffer);
+          windows_sys::Win32::Foundation::CloseHandle(handle);
           active_screen_buffer
         };
         stdin_state.screen_buffer_info = Some(active_screen_buffer);
 
-        // SAFETY: winapi call to write the VK_RETURN event.
-        if unsafe {
-          winapi::um::wincon::WriteConsoleInputW(handle, &record, 1, &mut 0)
-        } == FALSE
+        // SAFETY: Win32 call to write the VK_RETURN event.
+        if unsafe { wincon::WriteConsoleInputW(handle, &record, 1, &mut 0) }
+          == FALSE
         {
           return Err(TtyError::Io(Error::last_os_error()));
         }
@@ -226,8 +223,8 @@ fn op_set_raw(
       }
     }
 
-    // SAFETY: winapi call
-    if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
+    // SAFETY: Win32 call
+    if unsafe { wincon::SetConsoleMode(handle, new_mode) } == FALSE {
       return Err(TtyError::Io(Error::last_os_error()));
     }
 
@@ -376,10 +373,8 @@ pub fn console_size(
 pub fn console_size_of_stderr() -> Result<ConsoleSize, std::io::Error> {
   #[cfg(windows)]
   {
-    use winapi::um::processenv::GetStdHandle;
-    use winapi::um::winbase;
     // SAFETY: GetStdHandle with STD_ERROR_HANDLE always returns a valid handle.
-    let handle = unsafe { GetStdHandle(winbase::STD_ERROR_HANDLE) };
+    let handle = unsafe { wincon::GetStdHandle(wincon::STD_ERROR_HANDLE) };
     console_size_from_fd(handle)
   }
   #[cfg(unix)]
@@ -392,13 +387,11 @@ pub fn console_size_of_stderr() -> Result<ConsoleSize, std::io::Error> {
 fn console_size_from_fd(
   handle: std::os::windows::io::RawHandle,
 ) -> Result<ConsoleSize, std::io::Error> {
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   unsafe {
-    let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-      std::mem::zeroed();
+    let mut bufinfo: wincon::CONSOLE_SCREEN_BUFFER_INFO = std::mem::zeroed();
 
-    if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo) == 0
-    {
+    if wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo) == 0 {
       return Err(Error::last_os_error());
     }
 
@@ -480,6 +473,7 @@ pub fn op_read_line_prompt(
   #[string] prompt_text: &str,
   #[string] default_value: &str,
 ) -> Result<Option<String>, JsReadlineError> {
+  let _terminal_input_guard = deno_permissions::prompter::lock_terminal_input();
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 

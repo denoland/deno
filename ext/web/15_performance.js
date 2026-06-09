@@ -390,26 +390,31 @@ class PerformanceMeasure extends PerformanceEntry {
 webidl.configureInterface(PerformanceMeasure);
 const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
 
+function scheduleObserverCallback(observer) {
+  if (observer[_scheduled]) {
+    return;
+  }
+  observer[_scheduled] = true;
+  queueMicrotask(() => {
+    observer[_scheduled] = false;
+    const entries = observer[_buffer];
+    observer[_buffer] = [];
+    if (entries.length > 0) {
+      const entryList = new PerformanceObserverEntryList(
+        entries,
+        illegalConstructorKey,
+      );
+      observer[_callback](entryList, observer);
+    }
+  });
+}
+
 function queuePerformanceEntry(entry) {
   for (let i = 0; i < performanceObservers.length; i++) {
     const observer = performanceObservers[i];
     if (ArrayPrototypeIncludes(observer[_entryTypes], entry.entryType)) {
       ArrayPrototypePush(observer[_buffer], entry);
-      if (!observer[_scheduled]) {
-        observer[_scheduled] = true;
-        queueMicrotask(() => {
-          observer[_scheduled] = false;
-          const entries = observer[_buffer];
-          observer[_buffer] = [];
-          if (entries.length > 0) {
-            const entryList = new PerformanceObserverEntryList(
-              entries,
-              illegalConstructorKey,
-            );
-            observer[_callback](entryList, observer);
-          }
-        });
-      }
+      scheduleObserverCallback(observer);
     }
   }
 }
@@ -542,6 +547,23 @@ class PerformanceObserver {
 
     if (!ArrayPrototypeIncludes(performanceObservers, this)) {
       ArrayPrototypePush(performanceObservers, this);
+    }
+
+    // Per https://w3c.github.io/performance-timeline/#dom-performanceobserver-observe,
+    // when the single-type form is used with buffered=true, prepend any
+    // already-recorded entries of that type to the observer's buffer.
+    if (type !== undefined && options.buffered === true) {
+      let appended = false;
+      for (let i = 0; i < performanceEntries.length; i++) {
+        const entry = performanceEntries[i];
+        if (entry.entryType === type) {
+          ArrayPrototypePush(this[_buffer], entry);
+          appended = true;
+        }
+      }
+      if (appended) {
+        scheduleObserverCallback(this);
+      }
     }
   }
 
