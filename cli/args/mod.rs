@@ -2028,7 +2028,13 @@ mod test {
       "{error_text}"
     );
     assert!(error_text.contains("Invalid version"), "{error_text}");
-    assert!(error_text.contains("Unexpected character"), "{error_text}");
+    assert!(
+      error_text.contains(
+        "Missing patch version. Versions must be in the form \
+         MAJOR.MINOR.PATCH (ex. 1.0.0)."
+      ),
+      "{error_text}"
+    );
   }
 
   #[test]
