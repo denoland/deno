@@ -36,9 +36,11 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
         },
       )
     }
-    Data::Enum(data) => {
-      create_impl(&ident, &generics, r#enum::get_body(span, input.attrs, data)?)
-    }
+    Data::Enum(data) => create_impl(
+      &ident,
+      &generics,
+      r#enum::get_body(span, input.attrs, data)?,
+    ),
     Data::Union(_) => return Err(Error::new(span, "Unions are not supported")),
   };
 
