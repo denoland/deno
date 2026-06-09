@@ -3,11 +3,8 @@
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_bootstrap_unstable_args,
   op_node_child_ipc_pipe,
@@ -57,15 +54,34 @@ const { kNeedsNpmProcessState } = core.loadExtScript(
 
 const {
   ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeIncludes,
   ArrayPrototypeJoin,
+  ArrayPrototypeLastIndexOf,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  Error,
   ObjectAssign,
+  ObjectDefineProperty,
+  Promise,
   PromiseWithResolvers,
+  SafeArrayIterator,
+  SafeSet,
+  SetPrototypeHas,
+  String,
   StringPrototypeSlice,
 } = primordials;
 
 const MAX_BUFFER = 1024 * 1024;
+
+// `Buffer.prototype.slice` is Buffer-specific (not the Array/String primordial),
+// so the lint match on `.slice` and the spread are false positives here.
+function bufferSlice(buf: string | Buffer, ...args: number[]) {
+  // deno-lint-ignore prefer-primordials
+  return buf.slice(...args);
+}
 
 type ForkOptions = ChildProcessOptions;
 
@@ -94,7 +110,7 @@ function fork(
   } = { __proto__: null } as typeof options;
   let args: string[] = [];
   let pos = 1;
-  if (pos < arguments.length && Array.isArray(arguments[pos])) {
+  if (pos < arguments.length && ArrayIsArray(arguments[pos])) {
     args = arguments[pos++];
   }
 
@@ -103,7 +119,7 @@ function fork(
   }
 
   if (pos < arguments.length && arguments[pos] != null) {
-    if (typeof arguments[pos] !== "object" || Array.isArray(arguments[pos])) {
+    if (typeof arguments[pos] !== "object" || ArrayIsArray(arguments[pos])) {
       throw new ERR_INVALID_ARG_TYPE(
         `arguments[${pos}]`,
         "object",
@@ -128,10 +144,13 @@ function fork(
   }
 
   // Validate null bytes in execArgv
-  if (options.execArgv != null && Array.isArray(options.execArgv)) {
+  if (options.execArgv != null && ArrayIsArray(options.execArgv)) {
     for (let i = 0; i < options.execArgv.length; i++) {
       if (typeof options.execArgv[i] === "string") {
-        validateNullByteNotInArg(options.execArgv[i], `options.execArgv[${i}]`);
+        validateNullByteNotInArg(
+          options.execArgv[i],
+          `options.execArgv[${i}]`,
+        );
       }
     }
   }
@@ -140,16 +159,23 @@ function fork(
   execArgv = options.execArgv || process.execArgv;
 
   if (execArgv === process.execArgv && process._eval != null) {
-    const index = execArgv.lastIndexOf(process._eval);
+    const index = ArrayPrototypeLastIndexOf(execArgv, process._eval);
     if (index > 0) {
       // Remove the -e switch to avoid fork bombing ourselves.
-      execArgv = execArgv.slice(0);
-      execArgv.splice(index - 1, 2);
+      execArgv = ArrayPrototypeSlice(execArgv, 0);
+      ArrayPrototypeSplice(execArgv, index - 1, 2);
     }
   }
 
   // Combine execArgv (Node CLI flags), modulePath (script), and args (script args)
-  const nodeArgs = [...(execArgv || []), modulePath, ...args].map(String);
+  const nodeArgs = ArrayPrototypeMap(
+    [
+      ...new SafeArrayIterator(execArgv || []),
+      modulePath,
+      ...new SafeArrayIterator(args),
+    ],
+    String,
+  );
 
   if (Deno.build.standalone) {
     // In standalone (compiled) binaries, skip Node-to-Deno arg translation.
@@ -161,7 +187,7 @@ function fork(
     // Use the Rust parser to translate Node.js CLI args to Deno args
     // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged
     const result = op_node_translate_cli_args(nodeArgs, false, true);
-    const denoArgs = result.deno_args;
+    const denoArgs = result.denoArgs;
     const bootstrapArgs = op_bootstrap_unstable_args();
 
     // Insert bootstrap unstable args after "run" but before other args.
@@ -169,20 +195,30 @@ function fork(
     // (e.g. --unstable-bare-node-builtins).
     // denoArgs is like ["run", "-A", "--unstable-...", "script.js", ...]
     // We need ["run", ...uniqueBootstrapArgs, "-A", "--unstable-...", "script.js", ...]
-    const denoArgSet = new Set(denoArgs);
-    const uniqueBootstrapArgs = bootstrapArgs.filter((a) => !denoArgSet.has(a));
+    const denoArgSet = new SafeSet(denoArgs);
+    const uniqueBootstrapArgs = ArrayPrototypeFilter(
+      bootstrapArgs,
+      (a) => !SetPrototypeHas(denoArgSet, a),
+    );
     if (
       denoArgs.length > 0 && denoArgs[0] === "run" &&
       uniqueBootstrapArgs.length > 0
     ) {
-      args = [denoArgs[0], ...uniqueBootstrapArgs, ...denoArgs.slice(1)];
+      args = [
+        denoArgs[0],
+        ...new SafeArrayIterator(uniqueBootstrapArgs),
+        ...new SafeArrayIterator(ArrayPrototypeSlice(denoArgs, 1)),
+      ];
     } else {
-      args = [...uniqueBootstrapArgs, ...denoArgs];
+      args = [
+        ...new SafeArrayIterator(uniqueBootstrapArgs),
+        ...new SafeArrayIterator(denoArgs),
+      ];
     }
 
     // Handle NODE_OPTIONS if the parser returned any
-    if (result.node_options.length > 0) {
-      const nodeOptionsStr = result.node_options.join(" ");
+    if (result.nodeOptions.length > 0) {
+      const nodeOptionsStr = ArrayPrototypeJoin(result.nodeOptions, " ");
       if (options.env) {
         options.env.NODE_OPTIONS = options.env.NODE_OPTIONS
           ? options.env.NODE_OPTIONS + " " + nodeOptionsStr
@@ -191,13 +227,13 @@ function fork(
         options.env = { ...process.env, NODE_OPTIONS: nodeOptionsStr };
       }
     }
-    if (result.ca_stores?.length) {
+    if (result.caStores?.length) {
       options.env = {
         ...(options.env ?? process.env),
-        DENO_TLS_CA_STORE: result.ca_stores.join(","),
+        DENO_TLS_CA_STORE: ArrayPrototypeJoin(result.caStores, ","),
       };
     }
-    if (result.use_openssl_ca) {
+    if (result.useOpensslCa) {
       options.env = {
         ...(options.env ?? process.env),
         DENO_NODE_USE_OPENSSL_CA: "1",
@@ -205,18 +241,24 @@ function fork(
     } else if (options.env?.DENO_NODE_USE_OPENSSL_CA) {
       delete options.env.DENO_NODE_USE_OPENSSL_CA;
     }
+    if (result.traceEventCategories) {
+      options.env = {
+        ...(options.env ?? process.env),
+        DENO_NODE_TRACE_EVENT_CATEGORIES: result.traceEventCategories,
+      };
+    }
   }
 
   if (typeof options.stdio === "string") {
     options.stdio = stdioStringToArray(options.stdio, "ipc");
-  } else if (!Array.isArray(options.stdio)) {
+  } else if (!ArrayIsArray(options.stdio)) {
     // Use a separate fd=3 for the IPC channel. Inherit stdin, stdout,
     // and stderr from the parent if silent isn't set.
     options.stdio = stdioStringToArray(
       options.silent ? "pipe" : "inherit",
       "ipc",
     );
-  } else if (!options.stdio.includes("ipc")) {
+  } else if (!ArrayPrototypeIncludes(options.stdio, "ipc")) {
     throw new ERR_CHILD_PROCESS_IPC_REQUIRED("options.stdio");
   }
 
@@ -234,8 +276,8 @@ function spawn(
   argsOrOptions?: string[] | SpawnOptions,
   maybeOptions?: SpawnOptions,
 ): ChildProcess {
-  const args = Array.isArray(argsOrOptions) ? argsOrOptions : [];
-  let options = !Array.isArray(argsOrOptions) && argsOrOptions != null
+  const args = ArrayIsArray(argsOrOptions) ? argsOrOptions : [];
+  let options = !ArrayIsArray(argsOrOptions) && argsOrOptions != null
     ? argsOrOptions
     : maybeOptions as SpawnOptions;
 
@@ -295,8 +337,8 @@ function spawnSync(
   argsOrOptions?: string[] | SpawnSyncOptions,
   maybeOptions?: SpawnSyncOptions,
 ): SpawnSyncResult {
-  const args = Array.isArray(argsOrOptions) ? argsOrOptions : [];
-  let options = !Array.isArray(argsOrOptions) && argsOrOptions
+  const args = ArrayIsArray(argsOrOptions) ? argsOrOptions : [];
+  let options = !ArrayIsArray(argsOrOptions) && argsOrOptions
     ? argsOrOptions
     : maybeOptions as SpawnSyncOptions;
 
@@ -402,24 +444,32 @@ const customPromiseExecFunction = (orig: typeof exec) => {
   const fn = (...args: [command: string, options: ExecOptions]) => {
     const { promise, resolve, reject } = PromiseWithResolvers();
 
-    promise.child = orig(...args, (err, stdout, stderr) => {
-      if (err !== null) {
-        const _err: ExecExceptionForPromisify = err;
-        _err.stdout = stdout;
-        _err.stderr = stderr;
-        reject && reject(_err);
-      } else {
-        resolve && resolve({ stdout, stderr });
-      }
-    });
+    promise.child = orig(
+      ...new SafeArrayIterator(args),
+      (err, stdout, stderr) => {
+        if (err !== null) {
+          const _err: ExecExceptionForPromisify = err;
+          _err.stdout = stdout;
+          _err.stderr = stderr;
+          reject && reject(_err);
+        } else {
+          resolve && resolve({ stdout, stderr });
+        }
+      },
+    );
 
     return promise;
   };
-  Object.defineProperty(fn, "name", { value: orig.name, configurable: true });
+  ObjectDefineProperty(fn, "name", {
+    __proto__: null,
+    value: orig.name,
+    configurable: true,
+  });
   return fn;
 };
 
-Object.defineProperty(exec, promisify.custom, {
+ObjectDefineProperty(exec, promisify.custom, {
+  __proto__: null,
   enumerable: false,
   value: customPromiseExecFunction(exec),
 });
@@ -459,9 +509,9 @@ function execFile(
   let options: ExecFileOptions = {};
   let callback: ExecFileCallback | undefined;
 
-  if (Array.isArray(argsOrOptionsOrCallback)) {
+  if (ArrayIsArray(argsOrOptionsOrCallback)) {
     args = argsOrOptionsOrCallback;
-  } else if (argsOrOptionsOrCallback instanceof Function) {
+  } else if (typeof argsOrOptionsOrCallback === "function") {
     callback = argsOrOptionsOrCallback;
     // When second arg is callback, ignore remaining args
   } else if (argsOrOptionsOrCallback != null) {
@@ -476,12 +526,12 @@ function execFile(
   }
   // Only process subsequent args if callback wasn't set from second arg
   if (callback === undefined) {
-    if (optionsOrCallback instanceof Function) {
+    if (typeof optionsOrCallback === "function") {
       callback = optionsOrCallback;
     } else if (optionsOrCallback != null) {
       if (
         typeof optionsOrCallback !== "object" ||
-        Array.isArray(optionsOrCallback)
+        ArrayIsArray(optionsOrCallback)
       ) {
         throw new ERR_INVALID_ARG_TYPE(
           "options",
@@ -523,7 +573,7 @@ function execFile(
     shell: execOptions.shell,
     signal: execOptions.signal,
     uid: execOptions.uid,
-    windowsHide: !!execOptions.windowsHide,
+    windowsHide: execOptions.windowsHide !== false,
     windowsVerbatimArguments: !!execOptions.windowsVerbatimArguments,
   };
 
@@ -533,7 +583,8 @@ function execFile(
   const _stdout: (string | Uint8Array)[] = [];
   const _stderr: (string | Uint8Array)[] = [];
   if (
-    execOptions.encoding !== "buffer" && Buffer.isEncoding(execOptions.encoding)
+    execOptions.encoding !== "buffer" &&
+    Buffer.isEncoding(execOptions.encoding)
   ) {
     encoding = execOptions.encoding;
   } else {
@@ -570,8 +621,9 @@ function execFile(
         child.stdout.readableEncoding
       )
     ) {
-      stdout = _stdout.join("");
+      stdout = ArrayPrototypeJoin(_stdout, "");
     } else {
+      // deno-lint-ignore prefer-primordials
       stdout = Buffer.concat(_stdout as Buffer[]);
     }
     if (
@@ -581,8 +633,9 @@ function execFile(
         child.stderr.readableEncoding
       )
     ) {
-      stderr = _stderr.join("");
+      stderr = ArrayPrototypeJoin(_stderr, "");
     } else {
+      // deno-lint-ignore prefer-primordials
       stderr = Buffer.concat(_stderr as Buffer[]);
     }
 
@@ -592,7 +645,7 @@ function execFile(
     }
 
     if (args?.length) {
-      cmd += ` ${args.join(" ")}`;
+      cmd += ` ${ArrayPrototypeJoin(args, " ")}`;
     }
 
     if (!ex) {
@@ -665,9 +718,7 @@ function execFile(
       const length = encoding
         ? Buffer.byteLength(chunk, encoding)
         : chunk.length;
-      const slice = encoding
-        ? StringPrototypeSlice
-        : (buf: string | Buffer, ...args: number[]) => buf.slice(...args);
+      const slice = encoding ? StringPrototypeSlice : bufferSlice;
       stdoutLen += length;
 
       if (stdoutLen > execOptions.maxBuffer) {
@@ -698,9 +749,7 @@ function execFile(
       const length = encoding
         ? Buffer.byteLength(chunk, encoding)
         : chunk.length;
-      const slice = encoding
-        ? StringPrototypeSlice
-        : (buf: string | Buffer, ...args: number[]) => buf.slice(...args);
+      const slice = encoding ? StringPrototypeSlice : bufferSlice;
       stderrLen += length;
 
       if (stderrLen > execOptions.maxBuffer) {
@@ -740,24 +789,32 @@ const customPromiseExecFileFunction = (
   ) => {
     const { promise, resolve, reject } = PromiseWithResolvers();
 
-    promise.child = orig(...args, (err, stdout, stderr) => {
-      if (err !== null) {
-        const _err: ExecFileExceptionForPromisify = err;
-        _err.stdout = stdout;
-        _err.stderr = stderr;
-        reject && reject(_err);
-      } else {
-        resolve && resolve({ stdout, stderr });
-      }
-    });
+    promise.child = orig(
+      ...new SafeArrayIterator(args),
+      (err, stdout, stderr) => {
+        if (err !== null) {
+          const _err: ExecFileExceptionForPromisify = err;
+          _err.stdout = stdout;
+          _err.stderr = stderr;
+          reject && reject(_err);
+        } else {
+          resolve && resolve({ stdout, stderr });
+        }
+      },
+    );
 
     return promise;
   };
-  Object.defineProperty(fn, "name", { value: orig.name, configurable: true });
+  ObjectDefineProperty(fn, "name", {
+    __proto__: null,
+    value: orig.name,
+    configurable: true,
+  });
   return fn;
 };
 
-Object.defineProperty(execFile, promisify.custom, {
+ObjectDefineProperty(execFile, promisify.custom, {
+  __proto__: null,
   enumerable: false,
   value: customPromiseExecFileFunction(execFile),
 });
@@ -775,6 +832,7 @@ function checkExecSyncError(
     let msg = "Command failed: ";
     msg += cmd || ArrayPrototypeJoin(args, " ");
     if (ret.stderr && ret.stderr.length > 0) {
+      // deno-lint-ignore prefer-primordials
       msg += `\n${ret.stderr.toString()}`;
     }
     err = genericNodeError(msg, ret);
@@ -867,7 +925,10 @@ function execFileSync(
     process.stderr.write(ret.stderr);
   }
 
-  const errArgs: string[] = [options.argv0 || file, ...(args as string[])];
+  const errArgs: string[] = [
+    options.argv0 || file,
+    ...new SafeArrayIterator(args as string[]),
+  ];
   const err = checkExecSyncError(ret, errArgs);
 
   if (err) {
@@ -880,7 +941,8 @@ function execFileSync(
 function setupChildProcessIpcChannel() {
   const maybePipe = op_node_child_ipc_pipe();
   if (!maybePipe) return;
-  const [fd, serialization] = maybePipe;
+  const fd = maybePipe[0];
+  const serialization = maybePipe[1];
   const serializationMode = serialization === 0 ? "json" : "advanced";
   if (typeof fd != "number" || fd < 0) return;
   const control = setupChannel(process, fd, serializationMode);

@@ -35,6 +35,30 @@
       "args": "run -A server_main.mjs advanced",
       "output": "server_main.out",
       "exitCode": 0
+    },
+    "unlistened_server_json": {
+      "if": "unix",
+      "args": "run -A unlistened_server_main.mjs json",
+      "output": "unlistened_server_main.out",
+      "exitCode": 0
+    },
+    "unlistened_server_advanced": {
+      "if": "unix",
+      "args": "run -A unlistened_server_main.mjs advanced",
+      "output": "unlistened_server_main.out",
+      "exitCode": 0
+    },
+    "pipe_server_json": {
+      "if": "unix",
+      "args": "run -A pipe_server_main.mjs json",
+      "output": "pipe_server_main.out",
+      "exitCode": 0
+    },
+    "pipe_server_advanced": {
+      "if": "unix",
+      "args": "run -A pipe_server_main.mjs advanced",
+      "output": "pipe_server_main.out",
+      "exitCode": 0
     }
   }
 }

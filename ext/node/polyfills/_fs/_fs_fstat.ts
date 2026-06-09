@@ -1,11 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_node_fs_fstat, op_node_fs_fstat_sync } = core.ops;
+
+const {
+  Date,
+  Error,
+  Promise,
+  PromisePrototypeThen,
+} = primordials;
 
 const lazyStatUtils = core.createLazyLoader(
   "ext:deno_node/internal/fs/stat_utils.ts",
@@ -58,7 +62,8 @@ function fstat(
 
   if (!callback) throw new Error("No callback function supplied");
 
-  op_node_fs_fstat(fd).then(
+  PromisePrototypeThen(
+    op_node_fs_fstat(fd),
     (stat) =>
       callback(
         null,

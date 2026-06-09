@@ -1,0 +1,7 @@
+runInThisContext ok {"code":"ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING","name":"TypeError","msg":"A dynamic import callback was not specified."}
+runInContext ok {"code":"ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING","name":"TypeError","msg":"A dynamic import callback was not specified."}
+runInNewContext ok {"code":"ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING","name":"TypeError","msg":"A dynamic import callback was not specified."}
+Script.runInThisContext ok {"code":"ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING","name":"TypeError","msg":"A dynamic import callback was not specified."}
+compileFunction ok {"code":"ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING","name":"TypeError","msg":"A dynamic import callback was not specified."}
+SourceTextModule ok {"code":"ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING","name":"TypeError","msg":"A dynamic import callback was not specified."}
+USE_MAIN_CONTEXT_DEFAULT_LOADER ok

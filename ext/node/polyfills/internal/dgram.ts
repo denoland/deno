@@ -21,7 +21,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const lazyDns = core.createLazyLoader("node:dns");
 const { ERR_SOCKET_BAD_TYPE } = core.loadExtScript(
   "ext:deno_node/internal/errors.ts",

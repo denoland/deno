@@ -1,0 +1,2 @@
+Download http://localhost:4545/skypack/swagger-client?dts
+Download http://localhost:4545/skypack/-/swagger-client@v3.18.5/dist=es2019,mode=types/index.d.ts

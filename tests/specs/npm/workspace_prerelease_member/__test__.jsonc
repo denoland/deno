@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run -A npm:@denotest/prerelease-member",
+      "cwd": "app",
+      "output": "run.out"
+    }
+  ]
+}

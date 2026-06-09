@@ -463,7 +463,9 @@ fn check_local_by_default2() {
 }
 
 #[test]
-fn show_prefix_hint_on_global_install() {
+fn unprefixed_global_install_defaults_to_npm() {
+  // Unprefixed package names in `deno install -g` default to the npm
+  // registry, matching `deno add` and local `deno install`.
   let context = TestContextBuilder::new()
     .add_npm_env_vars()
     .add_jsr_env_vars()
@@ -479,45 +481,27 @@ fn show_prefix_hint_on_global_install() {
     ("DENO_INSTALL_ROOT", ""),
   ];
 
-  for pkg_req in ["npm:@denotest/bin", "jsr:@denotest/add"] {
-    let name = pkg_req.split_once('/').unwrap().1;
-    let pkg = pkg_req.split_once(':').unwrap().1;
+  // Bare npm name (no prefix) installs successfully from npm.
+  context
+    .new_command()
+    .args_vec(["install", "-g", "--name", "bin", "@denotest/bin"])
+    .envs(env_vars)
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
 
-    // try with prefix and ensure that the installation succeeds
-    context
-      .new_command()
-      .args_vec(["install", "-g", "--name", name, pkg_req])
-      .envs(env_vars)
-      .run()
-      .skip_output_check()
-      .assert_exit_code(0);
-
-    // try without the prefix and ensure that the installation fails with the appropriate error
-    // message
-    let output = context
-      .new_command()
-      .args_vec(["install", "-g", "--name", name, pkg])
-      .envs(env_vars)
-      .run();
-    output.assert_exit_code(1);
-
-    let output_text = output.combined_output();
-    let expected_text = format!(
-      "error: {pkg} is missing a prefix. Did you mean `deno install -g {pkg_req}`?"
-    );
-    assert_contains!(output_text, &expected_text);
-  }
-
-  // try a pckage not in npm and jsr to make sure the appropriate error message still appears
+  // A package that doesn't exist on npm produces the npm "does not exist"
+  // error rather than the legacy "missing a prefix" hint.
   let output = context
     .new_command()
     .args_vec(["install", "-g", "package-that-does-not-exist"])
     .envs(env_vars)
     .run();
   output.assert_exit_code(1);
-
-  let output_text = output.combined_output();
-  assert_contains!(output_text, "error: Module not found");
+  assert_contains!(
+    output.combined_output(),
+    "npm package 'package-that-does-not-exist' does not exist"
+  );
 }
 
 #[test]
@@ -550,14 +534,16 @@ fn installer_second_module_looks_like_script_argument() {
     .use_http_server()
     .use_temp_cwd()
     .build();
-  // in Deno < 3.0, we didn't require `--` before script arguments, so we try to provide a helpful
-  // error message for people migrating
+  // in Deno < 3.0, we didn't require `--` before script arguments, so we try
+  // to provide a helpful error message for people migrating. Validation
+  // happens up-front for the whole entry list, so the migration error fires
+  // before any entry is installed.
   context
     .new_command()
     .args("install --root ./root -g http://localhost:4545/echo.ts non_existent")
     .run()
     .assert_matches_text(concat!(
-      "[WILDCARD]Successfully installed echo[WILDCARD]error: non_existent is missing a prefix. ",
+      "error: non_existent is missing a prefix. ",
       "Deno 3.0 requires `--` before script arguments in `deno install -g`. ",
       "Did you mean `deno install -g http://localhost:4545/echo.ts -- non_existent`? ",
       "Or maybe provide a `jsr:` or `npm:` prefix?\n"

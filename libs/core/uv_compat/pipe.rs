@@ -482,6 +482,50 @@ pub unsafe fn uv_pipe_open(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
   0
 }
 
+/// Open `pipe` from an fd that should be used as a *listening* socket
+/// (typically a unix-socket `net.Server` received via IPC handle passing).
+///
+/// Unlike [`uv_pipe_open`], this does NOT eagerly create an `AsyncFd`. The
+/// tokio `UnixListener` that [`uv_pipe_listen`] registers is the sole reactor
+/// registration for the fd; pre-registering an `AsyncFd` here would make
+/// `uv_pipe_listen`'s `epoll_ctl(EPOLL_CTL_ADD)` fail with `EEXIST`. This
+/// mirrors the TCP split between [`uv_tcp_open`] and [`uv_tcp_open_listener`].
+///
+/// # Safety
+/// `pipe` must be a valid pointer to an initialized `uv_pipe_t`. `fd` must be
+/// a valid socket fd whose ownership the caller is transferring.
+#[cfg(unix)]
+pub unsafe fn uv_pipe_open_listener(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
+  if fd < 0 {
+    return UV_EBADF;
+  }
+  unsafe {
+    // Set non-blocking mode (tokio's `from_std` requires it).
+    let flags = libc::fcntl(fd, libc::F_GETFL);
+    if flags == -1 {
+      return UV_EBADF;
+    }
+    if libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) == -1 {
+      return UV_EBADF;
+    }
+    // Record the fd so uv_pipe_listen can adopt it. Crucially, do not create
+    // an AsyncFd here (see the doc comment above).
+    (*pipe).internal_fd = Some(fd);
+  }
+  0
+}
+
+/// Windows has no SCM_RIGHTS-style fd passing for unix sockets, so the IPC
+/// listener-transfer path is never exercised there. Fall back to the regular
+/// open to keep the API uniform across platforms.
+///
+/// # Safety
+/// See [`uv_pipe_open`].
+#[cfg(windows)]
+pub unsafe fn uv_pipe_open_listener(pipe: *mut uv_pipe_t, fd: c_int) -> c_int {
+  unsafe { uv_pipe_open(pipe, fd) }
+}
+
 /// Build a `sockaddr_un` from a path, handling both abstract sockets
 /// (path starts with `\0`, Linux-only) and filesystem sockets.
 ///

@@ -20,11 +20,16 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypeMap,
+  FunctionPrototypeBind,
+  ObjectCreate,
+  ObjectDefineProperty,
+  Promise,
+  ReflectApply,
+} = primordials;
 const {
   validateBoolean,
   validateNumber,
@@ -35,7 +40,6 @@ const {
 const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 const {
   dnsOrderToNumber,
-  emitInvalidHostnameWarning,
   getDefaultDnsOrder,
   getDefaultResolver,
   isFamily,
@@ -110,9 +114,11 @@ function createLookupPromise(
 ): Promise<void | LookupAddress | LookupAddress[]> {
   return new Promise((resolve, reject) => {
     if (!hostname) {
-      emitInvalidHostnameWarning(hostname);
-      resolve(all ? [] : { address: null, family: family === 6 ? 6 : 4 });
-
+      if (all) {
+        resolve([]);
+      } else {
+        resolve({ address: null, family: family === 6 ? 6 : 4 });
+      }
       return;
     }
 
@@ -243,10 +249,13 @@ function onresolve(
   }
 
   const parsedRecords = ttls && this.ttl
-    ? (records as string[]).map((address: string, index: number) => ({
-      address,
-      ttl: ttls[index],
-    }))
+    ? ArrayPrototypeMap(
+      records as string[],
+      (address: string, index: number) => ({
+        address,
+        ttl: ttls[index],
+      }),
+    )
     : records;
 
   this.resolve(parsedRecords);
@@ -335,12 +344,15 @@ function resolver(bindingName: string) {
     return createResolverPromise(this, bindingName, name, ttl);
   }
 
-  Object.defineProperty(query, "name", { value: bindingName });
+  ObjectDefineProperty(query, "name", {
+    __proto__: null,
+    value: bindingName,
+  });
 
   return query;
 }
 
-const resolveMap = Object.create(null);
+const resolveMap = ObjectCreate(null);
 
 class Resolver extends CallbackResolver {
   // deno-lint-ignore no-explicit-any
@@ -385,7 +397,7 @@ function _resolve(
     resolver = resolveMap.A;
   }
 
-  return Reflect.apply(resolver, this, [hostname]);
+  return ReflectApply(resolver, this, [hostname]);
 }
 
 // The Node implementation uses `bindDefaultResolver` to set the follow methods
@@ -395,13 +407,19 @@ function _resolve(
 // called.
 
 function getServers(): string[] {
-  return Resolver.prototype.getServers.bind(getDefaultResolver())();
+  return FunctionPrototypeBind(
+    Resolver.prototype.getServers,
+    getDefaultResolver(),
+  )();
 }
 
 function resolveAny(
   hostname: string,
 ) {
-  return Resolver.prototype.resolveAny.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolveAny,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
@@ -418,7 +436,10 @@ function resolve4(
   options: ResolveOptions,
 ): Promise<void>;
 function resolve4(hostname: string, options?: unknown) {
-  return Resolver.prototype.resolve4.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolve4,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
     options,
   );
@@ -434,7 +455,10 @@ function resolve6(
   options: ResolveOptions,
 ): Promise<void>;
 function resolve6(hostname: string, options?: unknown) {
-  return Resolver.prototype.resolve6.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolve6,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
     options,
   );
@@ -443,7 +467,10 @@ function resolve6(hostname: string, options?: unknown) {
 function resolveCaa(
   hostname: string,
 ) {
-  return Resolver.prototype.resolveCaa.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolveCaa,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
@@ -451,7 +478,10 @@ function resolveCaa(
 function resolveCname(
   hostname: string,
 ) {
-  return Resolver.prototype.resolveCname.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolveCname,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
@@ -459,49 +489,73 @@ function resolveCname(
 function resolveMx(
   hostname: string,
 ) {
-  return Resolver.prototype.resolveMx.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolveMx,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
 
 function resolveNs(hostname: string) {
-  return Resolver.prototype.resolveNs.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolveNs,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
 
 function resolveTxt(hostname: string) {
-  return Resolver.prototype.resolveTxt.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolveTxt,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
 
 function resolveSrv(hostname: string) {
-  return Resolver.prototype.resolveSrv.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolveSrv,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
 
 function resolvePtr(hostname: string) {
-  return Resolver.prototype.resolvePtr.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolvePtr,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
 
 function resolveNaptr(hostname: string) {
-  return Resolver.prototype.resolveNaptr.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolveNaptr,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
 
 function resolveSoa(hostname: string) {
-  return Resolver.prototype.resolveSoa.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolveSoa,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
   );
 }
 
 function reverse(ip: string) {
-  return Resolver.prototype.reverse.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.reverse,
+    getDefaultResolver() as Resolver,
+  )(
     ip,
   );
 }
@@ -558,7 +612,10 @@ function resolve(
   rrtype: string,
 ): Promise<void>;
 function resolve(hostname: string, rrtype?: string) {
-  return Resolver.prototype.resolve.bind(getDefaultResolver() as Resolver)(
+  return FunctionPrototypeBind(
+    Resolver.prototype.resolve,
+    getDefaultResolver() as Resolver,
+  )(
     hostname,
     rrtype,
   );

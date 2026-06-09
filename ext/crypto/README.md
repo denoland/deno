@@ -10,7 +10,9 @@ From javascript, include the extension's source, and assign `CryptoKey`,
 `crypto`, `Crypto`, and `SubtleCrypto` to the global scope:
 
 ```javascript
-import * as crypto from "ext:deno_crypto/00_crypto.js";
+import { core } from "ext:core/mod.js";
+
+const crypto = core.loadExtScript("ext:deno_crypto/00_crypto.js");
 
 Object.defineProperty(globalThis, "CryptoKey", {
   value: crypto.CryptoKey,
@@ -65,15 +67,28 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - op_crypto_encrypt
 - op_crypto_decrypt
 - op_crypto_subtle_digest
+- op_crypto_subtle_digest_xof
 - op_crypto_random_uuid
 - op_crypto_wrap_key
 - op_crypto_unwrap_key
 - op_crypto_base64url_decode
 - op_crypto_base64url_encode
+- key_store::op_crypto_key_store_insert
+- key_store::op_crypto_key_store_get
 - x25519::op_crypto_generate_x25519_keypair
+- x25519::op_crypto_x25519_public_key
 - x25519::op_crypto_derive_bits_x25519
 - x25519::op_crypto_import_spki_x25519
 - x25519::op_crypto_import_pkcs8_x25519
+- x25519::op_crypto_export_spki_x25519
+- x25519::op_crypto_export_pkcs8_x25519
+- x448::op_crypto_generate_x448_keypair
+- x448::op_crypto_derive_bits_x448
+- x448::op_crypto_import_spki_x448
+- x448::op_crypto_import_pkcs8_x448
+- x448::op_crypto_x448_public_key
+- x448::op_crypto_export_spki_x448
+- x448::op_crypto_export_pkcs8_x448
 - ed25519::op_crypto_generate_ed25519_keypair
 - ed25519::op_crypto_import_spki_ed25519
 - ed25519::op_crypto_import_pkcs8_ed25519
@@ -82,5 +97,19 @@ Following ops are provided, which can be accessed through `Deno.ops`:
 - ed25519::op_crypto_export_spki_ed25519
 - ed25519::op_crypto_export_pkcs8_ed25519
 - ed25519::op_crypto_jwk_x_ed25519
-- x25519::op_crypto_export_spki_x25519
-- x25519::op_crypto_export_pkcs8_x25519
+- mldsa::op_crypto_mldsa_from_seed
+- mldsa::op_crypto_mldsa_from_pkcs8
+- mldsa::op_crypto_mldsa_from_spki
+- mldsa::op_crypto_mldsa_export_pkcs8
+- mldsa::op_crypto_mldsa_export_spki
+- mldsa::op_crypto_sign_mldsa
+- mldsa::op_crypto_verify_mldsa
+- mlkem::op_crypto_ml_kem_from_seed
+- mlkem::op_crypto_ml_kem_encapsulate
+- mlkem::op_crypto_ml_kem_decapsulate
+- mlkem::op_crypto_ml_kem_import_spki
+- mlkem::op_crypto_ml_kem_import_pkcs8
+- mlkem::op_crypto_ml_kem_export_spki
+- mlkem::op_crypto_ml_kem_export_pkcs8
+- mlkem::op_crypto_ml_kem_get_public_key
+- mlkem::op_crypto_ml_kem_validate_public_key
