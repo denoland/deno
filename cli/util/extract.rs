@@ -317,38 +317,85 @@ fn strip_markdown_blockquote_marker(line: &str) -> &str {
 
 enum Shebang {
   Permissions(Box<PermissionFlags>),
-  /// Whether the shebang could not be parsed as a `deno` command.
+  /// Message describing why the shebang could not be parsed as a `deno`
+  /// command. The generated test is made to throw with this message.
   Invalid(String),
 }
 
 /// Parses a shebang line like `#!/usr/bin/env -S deno run --allow-read`.
 ///
-/// The flags are parsed using the current parser for cli args and permissions
-/// are kept in memory so they can be forwarded to `Deno.test`.
+/// The flags are parsed using deno's own CLI argument parser and the resulting
+/// permissions are forwarded to `Deno.test`.
+///
+/// Known limitations:
+/// - The `deno` executable is matched by file name, so custom-named binaries
+///   (e.g. `deno-canary`) are not recognized and yield an invalid shebang.
+/// - `--deny-*` flags parse but cannot be represented in the `Deno.test`
+///   permissions object, so they are ignored (with a warning).
 fn parse_shebang(shebang: &str) -> Shebang {
-  let invalid = || {
-    Shebang::Invalid(format!("invalid doc test shebang: {}", shebang.trim()))
+  let invalid = |reason: &str| {
+    Shebang::Invalid(format!(
+      "invalid doc test shebang: {} ({reason})",
+      shebang.trim()
+    ))
   };
   let Some(line) = shebang.trim_start().strip_prefix("#!") else {
-    return invalid();
+    return invalid("not a shebang");
   };
-  let tokens = line.split_whitespace().collect::<Vec<_>>();
-  // Find the `deno` executable in the shebang (e.g. `deno`, `/usr/bin/deno`, etc.).
+  // Tokenize like a POSIX shell so quoted arguments (e.g. a path containing
+  // spaces) are split the same way `env -S` would. `None` means the quoting
+  // was unbalanced.
+  let Some(tokens) = shlex::split(line) else {
+    return invalid("could not be tokenized");
+  };
+  // Find the `deno` executable in the shebang (e.g. `deno`, `/usr/bin/deno`).
   let Some(deno_index) = tokens.iter().position(|token| {
     std::path::Path::new(token)
       .file_stem()
       .and_then(|stem| stem.to_str())
       == Some("deno")
   }) else {
-    return invalid();
+    return invalid("not a deno command");
   };
   let mut args = vec![OsString::from("deno")];
-  args.extend(tokens[deno_index + 1..].iter().map(OsString::from));
+  args.extend(tokens[deno_index + 1..].iter().cloned().map(OsString::from));
   args.push(OsString::from("./__doctest_shebang__.ts"));
   match flags_from_vec(args) {
-    Ok(flags) => Shebang::Permissions(Box::new(flags.permissions)),
-    Err(_) => invalid(),
+    Ok(flags) => {
+      if has_deny_flags(&flags.permissions) {
+        log::warn!(
+          "{} `--deny-*` flags aren't handled in doc test shebangs and are treated as if they were not specified",
+          crate::colors::yellow("Warning")
+        );
+      }
+      Shebang::Permissions(Box::new(flags.permissions))
+    }
+    // Surface the offending flag so a typo can be told apart from a genuinely
+    // non-deno shebang. The arg is pulled from clap's error context to avoid
+    // embedding the (potentially colored, multi-line) rendered error.
+    Err(err) => match err.get(clap::error::ContextKind::InvalidArg) {
+      Some(clap::error::ContextValue::String(arg)) => {
+        invalid(&format!("could not parse flag {arg}"))
+      }
+      Some(clap::error::ContextValue::Strings(args)) => {
+        invalid(&format!("could not parse flags {}", args.join(", ")))
+      }
+      _ => invalid("could not parse flags"),
+    },
   }
+}
+
+/// Returns `true` if any `--deny-*` permission flag was specified. These cannot
+/// be expressed in the `Deno.test` permissions object and are dropped.
+fn has_deny_flags(permissions: &PermissionFlags) -> bool {
+  permissions.deny_env.is_some()
+    || permissions.deny_ffi.is_some()
+    || permissions.deny_net.is_some()
+    || permissions.deny_read.is_some()
+    || permissions.deny_run.is_some()
+    || permissions.deny_sys.is_some()
+    || permissions.deny_write.is_some()
+    || permissions.deny_import.is_some()
 }
 
 #[derive(Default)]
@@ -1011,6 +1058,8 @@ fn string_lit(value: &str) -> ast::Expr {
 /// - Permissions not mentioned in the shebang are left at their default
 ///   (revoked), and a shebang without any permission flag becomes
 ///   `{ permissions: "none" }`.
+/// - `--deny-*` flags have no representation here and are dropped (a warning is
+///   emitted while parsing the shebang).
 fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
   // Builds a `{ <name>: <value> }` object property.
   let prop = |name: &str, value: ast::Expr| {
@@ -1718,7 +1767,7 @@ Deno.test("file:///main.ts$3-7.ts", {
           media_type: MediaType::TypeScript,
         }],
       },
-      // Unparseable shebang fails the test.
+      // Unparseable shebang fails the test, naming the reason.
       Test {
         input: Input {
           source: r#"
@@ -1735,7 +1784,36 @@ export function foo() {}
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-7.ts", async ()=>{
-    throw new Error("invalid doc test shebang: #!/bin/sh");
+    throw new Error("invalid doc test shebang: #!/bin/sh (not a deno command)");
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // `--deny-*` flags are dropped (and warned about); the allow is still
+      // forwarded.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read --deny-read=/etc
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", {
+    permissions: {
+        read: "inherit"
+    }
+}, async ()=>{
     foo();
 });
 "#,

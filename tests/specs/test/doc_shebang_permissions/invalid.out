@@ -7,8 +7,8 @@ running 1 test from ./invalid.ts$5-9.ts
  ERRORS 
 
 [WILDCARD]/invalid.ts$5-9.ts => ./invalid.ts$5-9.ts:1:6
-error: Error: invalid doc test shebang: #!/bin/sh
-    throw new Error("invalid doc test shebang: #!/bin/sh");
+error: Error: invalid doc test shebang: #!/bin/sh (not a deno command)
+    throw new Error("invalid doc test shebang: #!/bin/sh (not a deno command)");
 [WILDCARD]
 
  FAILURES 

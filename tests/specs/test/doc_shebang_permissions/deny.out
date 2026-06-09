@@ -1,0 +1,9 @@
+Warning `--deny-*` flags aren't handled in doc test shebangs and are treated as if they were not specified
+Check [WILDCARD]deny.ts
+Check [WILDCARD]deny.ts$5-9.ts
+running 0 tests from ./deny.ts
+running 1 test from ./deny.ts$5-9.ts
+[WILDCARD]/deny.ts$5-9.ts ... ok ([WILDLINE])
+
+ok | 1 passed | 0 failed ([WILDLINE])
+

@@ -9,6 +9,11 @@
       "args": "test --doc --reload invalid.ts",
       "exitCode": 1,
       "output": "invalid.out"
+    },
+    "deny_flag_warns": {
+      "args": "test --doc --allow-read --reload deny.ts",
+      "exitCode": 0,
+      "output": "deny.out"
     }
   }
 }
