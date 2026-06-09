@@ -21,6 +21,7 @@ use std::sync::atomic::Ordering;
 
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
+use deno_config::deno_json::NewLineKind;
 use deno_config::deno_json::VueComponentCase as DenoVueComponentCase;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
@@ -96,8 +97,11 @@ pub async fn format(
             resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
 
           for paths_with_options in &mut paths_with_options_batches {
-            let _ = watcher_communicator
-              .watch_paths(paths_with_options.paths.clone());
+            let _ = watcher_communicator.watch_paths(
+              file_watcher::watch_paths_for_file_patterns(
+                &paths_with_options.options.files,
+              ),
+            );
             let files = std::mem::take(&mut paths_with_options.paths);
             paths_with_options.paths = if let Some(paths) = &changed_paths {
               if fmt_flags.check {
@@ -1486,16 +1490,46 @@ fn get_resolved_markdown_config(
     });
   }
 
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(match new_line_kind {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    });
+  }
+
   builder.build()
 }
 
 fn get_resolved_json_config(
   options: &FmtOptionsConfig,
 ) -> dprint_plugin_json::configuration::Configuration {
+  use deno_config::deno_json::JsonTrailingCommaKind;
+  use dprint_plugin_json::configuration::TrailingCommaKind;
+
   let mut builder =
     dprint_plugin_json::configuration::ConfigurationBuilder::new();
 
   builder.deno();
+  if let Some(json_trailing_commas) = options.json_trailing_commas {
+    builder.trailing_commas(match json_trailing_commas {
+      JsonTrailingCommaKind::Always => TrailingCommaKind::Always,
+      JsonTrailingCommaKind::Jsonc => TrailingCommaKind::Jsonc,
+      JsonTrailingCommaKind::Maintain => TrailingCommaKind::Maintain,
+      JsonTrailingCommaKind::Never => TrailingCommaKind::Never,
+    });
+  }
 
   if let Some(use_tabs) = options.use_tabs {
     builder.use_tabs(use_tabs);
@@ -1507,6 +1541,25 @@ fn get_resolved_json_config(
 
   if let Some(indent_width) = options.indent_width {
     builder.indent_width(indent_width);
+  }
+
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(match new_line_kind {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    });
   }
 
   builder.build()
@@ -1837,6 +1890,7 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
 
 #[cfg(test)]
 mod test {
+  use deno_config::deno_json::JsonTrailingCommaKind;
   use test_util::assert_starts_with;
 
   use super::*;
@@ -2018,5 +2072,103 @@ mod test {
     .unwrap()
     .unwrap();
     assert_eq!(file_text, "let a = 1;\n",);
+  }
+
+  #[test]
+  fn test_jsonc_does_not_add_trailing_commas_by_default() {
+    let file_text = format_file(
+      Path::new("test.jsonc"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap();
+    assert_eq!(file_text, None);
+  }
+
+  #[test]
+  fn test_json_does_not_add_trailing_commas() {
+    let file_text = format_file(
+      Path::new("test.json"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap();
+    assert_eq!(file_text, None);
+  }
+
+  #[test]
+  fn test_jsonc_trailing_commas_can_be_disabled() {
+    let file_text = format_file(
+      Path::new("test.jsonc"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig {
+        json_trailing_commas: Some(JsonTrailingCommaKind::Never),
+        ..Default::default()
+      },
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap();
+    assert_eq!(file_text, None);
+  }
+
+  #[test]
+  fn test_json_trailing_commas_can_be_enabled() {
+    let file_text = format_file(
+      Path::new("test.json"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig {
+        json_trailing_commas: Some(JsonTrailingCommaKind::Always),
+        ..Default::default()
+      },
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+      file_text,
+      r#"{
+  "a": 1,
+  "b": 2,
+}
+"#
+    );
   }
 }

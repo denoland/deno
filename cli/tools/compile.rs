@@ -35,11 +35,42 @@ use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::standalone::binary::WriteBinOptions;
 use crate::standalone::binary::is_standalone_binary;
+use crate::util::file_watcher;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::temp::create_temp_node_modules_dir;
 
 pub async fn compile(
+  flags: Flags,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  if let Some(watch_flags) = &compile_flags.watch {
+    let no_clear_screen = watch_flags.no_clear_screen;
+    file_watcher::watch_func(
+      Arc::new(flags),
+      file_watcher::PrintConfig::new("Compile", !no_clear_screen),
+      move |flags, watcher_communicator, changed_paths| {
+        let compile_flags = compile_flags.clone();
+        watcher_communicator.show_path_changed(changed_paths);
+        Ok(async move {
+          compile_inner(
+            Arc::unwrap_or_clone(flags),
+            compile_flags,
+            Some(watcher_communicator),
+          )
+          .await
+        })
+      },
+    )
+    .await
+  } else {
+    compile_inner(flags, compile_flags, None).await
+  }
+}
+
+async fn compile_inner(
   mut flags: Flags,
   mut compile_flags: CompileFlags,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 ) -> Result<(), AnyError> {
   // Framework detection: when the source is a directory, detect the
   // framework and generate an entrypoint automatically.
@@ -242,9 +273,13 @@ pub async fn compile(
   let flags = Arc::new(flags);
   // boxed_local() is to avoid large futures
   if compile_flags.eszip {
-    compile_eszip(flags, compile_flags).boxed_local().await
+    compile_eszip(flags, compile_flags, watcher_communicator)
+      .boxed_local()
+      .await
   } else {
-    compile_binary(flags, compile_flags).boxed_local().await
+    compile_binary(flags, compile_flags, watcher_communicator)
+      .boxed_local()
+      .await
   }
 }
 
@@ -618,8 +653,14 @@ function __internalResolveBundlePath(rel) {
 async fn compile_binary(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = if let Some(watcher_communicator) = watcher_communicator.clone()
+  {
+    CliFactory::from_flags_for_watcher(flags, watcher_communicator)
+  } else {
+    CliFactory::from_flags(flags)
+  };
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let binary_writer = factory.create_compile_binary_writer().await?;
@@ -650,6 +691,12 @@ async fn compile_binary(
     &effective_exclude,
     cli_options,
   )?;
+  watch_compile_paths(
+    watcher_communicator.as_ref(),
+    &roots,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  );
 
   let graph =
     build_compile_graph(module_graph_creator, cli_options, &roots).await?;
@@ -756,8 +803,14 @@ async fn compile_binary(
 async fn compile_eszip(
   flags: Arc<Flags>,
   compile_flags: CompileFlags,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
+  let factory = if let Some(watcher_communicator) = watcher_communicator.clone()
+  {
+    CliFactory::from_flags_for_watcher(flags, watcher_communicator)
+  } else {
+    CliFactory::from_flags(flags)
+  };
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache()?;
@@ -793,6 +846,12 @@ async fn compile_eszip(
     &effective_exclude,
     cli_options,
   )?;
+  watch_compile_paths(
+    watcher_communicator.as_ref(),
+    &roots,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  );
 
   let graph =
     build_compile_graph(module_graph_creator, cli_options, &roots).await?;
@@ -958,6 +1017,44 @@ async fn build_compile_graph(
       .create_graph(GraphKind::CodeOnly, all_roots, NpmCachingStrategy::Eager)
       .await
   }
+}
+
+fn watch_compile_paths(
+  watcher_communicator: Option<&Arc<WatcherCommunicator>>,
+  roots: &CompileModuleRoots,
+  compile_flags: &CompileFlags,
+  initial_cwd: &Path,
+) {
+  let Some(watcher_communicator) = watcher_communicator else {
+    return;
+  };
+
+  let paths = compile_watch_paths(roots, compile_flags, initial_cwd);
+
+  if !paths.is_empty() {
+    let _ = watcher_communicator.watch_paths(paths);
+  }
+}
+
+fn compile_watch_paths(
+  roots: &CompileModuleRoots,
+  compile_flags: &CompileFlags,
+  initial_cwd: &Path,
+) -> Vec<PathBuf> {
+  let mut paths = roots
+    .include_paths
+    .iter()
+    .filter_map(|specifier| url_to_file_path(specifier).ok())
+    .collect::<Vec<_>>();
+
+  if let Some(icon) = compile_flags.icon.as_ref()
+    && let Ok(specifier) = resolve_url_or_path(icon, initial_cwd)
+    && let Ok(path) = url_to_file_path(&specifier)
+  {
+    paths.push(path);
+  }
+
+  paths
 }
 
 fn get_module_roots_and_include_paths(
@@ -1147,6 +1244,38 @@ mod test {
   use crate::http_util::HttpClientProvider;
   use crate::util::env::resolve_cwd;
 
+  #[test]
+  fn compile_watch_paths_include_includes_and_icon() {
+    let initial_cwd = resolve_cwd(None).unwrap();
+    let included_path = initial_cwd.join("data.txt");
+    let roots = CompileModuleRoots {
+      strict: vec![],
+      include: vec![],
+      include_paths: vec![url_from_file_path(&included_path).unwrap()],
+    };
+    let paths = compile_watch_paths(
+      &roots,
+      &CompileFlags {
+        source_file: "mod.ts".to_string(),
+        output: None,
+        args: Vec::new(),
+        target: None,
+        watch: None,
+        no_terminal: false,
+        icon: Some("favicon.ico".to_string()),
+        include: Default::default(),
+        exclude: Default::default(),
+        eszip: false,
+        self_extracting: false,
+        bundle: false,
+        minify: false,
+        exclude_unused_npm: false,
+      },
+      &initial_cwd,
+    );
+    assert_eq!(paths, vec![included_path, initial_cwd.join("favicon.ico")]);
+  }
+
   #[tokio::test]
   async fn resolve_compile_executable_output_path_target_linux() {
     let http_client = HttpClientProvider::new(None, None);
@@ -1161,6 +1290,7 @@ mod test {
         output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-unknown-linux-gnu".to_string()),
+        watch: None,
         no_terminal: false,
         icon: None,
         include: Default::default(),
@@ -1169,6 +1299,7 @@ mod test {
         self_extracting: false,
         bundle: false,
         minify: false,
+        exclude_unused_npm: false,
       },
       &resolve_cwd(None).unwrap(),
     )
@@ -1195,6 +1326,7 @@ mod test {
         output: Some(String::from("./file")),
         args: Vec::new(),
         target: Some("x86_64-pc-windows-msvc".to_string()),
+        watch: None,
         include: Default::default(),
         exclude: Default::default(),
         icon: None,
@@ -1203,6 +1335,7 @@ mod test {
         self_extracting: false,
         bundle: false,
         minify: false,
+        exclude_unused_npm: false,
       },
       &resolve_cwd(None).unwrap(),
     )

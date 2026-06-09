@@ -325,8 +325,18 @@ impl PipeWrap {
     if pipe.is_null() {
       return uv_compat::UV_EBADF;
     }
-    // SAFETY: pipe is valid (null-checked above).
-    let ret = unsafe { uv_compat::uv_pipe_open(pipe, fd) };
+    // A wrap constructed with `new Pipe(SERVER)` opens the fd as a listening
+    // socket. Like the TCP split (see TCPWrap::open), the listener path must
+    // not pre-register an AsyncFd, or uv_pipe_listen's reactor registration
+    // would fail with EEXIST. This is hit when a unix-socket net.Server is
+    // transferred over IPC (ChildProcess.send).
+    let ret = if self.pipe_type.get() == PipeType::Server {
+      // SAFETY: pipe is valid (null-checked above).
+      unsafe { uv_compat::uv_pipe_open_listener(pipe, fd) }
+    } else {
+      // SAFETY: pipe is valid (null-checked above).
+      unsafe { uv_compat::uv_pipe_open(pipe, fd) }
+    };
     if ret == 0 {
       // Register as UvOwned - the native handle owns the fd.
       state.borrow_mut::<deno_io::FdTable>().register_uv_owned(fd);

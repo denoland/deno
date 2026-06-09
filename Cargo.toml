@@ -43,6 +43,7 @@ members = [
   "libs/dcore",
   "libs/dotenv",
   "libs/eszip",
+  "libs/http_h1",
   "libs/inspector_server",
   "libs/lockfile",
   "libs/maybe_sync",
@@ -92,7 +93,7 @@ deno_ast = { version = "=0.53.2", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.199.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.108.2", default-features = false }
+deno_graph = { version = "=0.108.4", default-features = false }
 deno_lint = "=0.84.1"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -102,7 +103,7 @@ deno_task_shell = "=0.33.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "149.2.0", default-features = false, features = ["simdutf"] }
+v8 = { version = "149.3.0", default-features = false, features = ["simdutf"] }
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -148,6 +149,7 @@ deno_core_testing = { path = "./libs/core_testing" }
 deno_crypto_provider = { version = "0.44.0", path = "./libs/crypto" }
 deno_dotenv = { version = "0.19.0", path = "./libs/dotenv" }
 deno_features = { version = "0.47.0", path = "./runtime/features" }
+deno_http_h1 = { version = "0.1.0", path = "./libs/http_h1" }
 deno_inspector_server = { version = "0.24.0", path = "./libs/inspector_server" }
 deno_lib = { version = "0.68.0", path = "./cli/lib" }
 deno_lockfile = { version = "0.52.0", path = "./libs/lockfile" }
@@ -225,6 +227,7 @@ http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
 httparse = "1.8.0"
+httpdate = "1.0.3"
 hyper = { version = "1.6.0", features = ["full"] }
 hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "aws-lc-rs"] }
 hyper-util = { version = "0.1.17", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
@@ -274,15 +277,13 @@ rusqlite = { version = "0.37.0", features = ["unlock_notify", "bundled", "sessio
 rustls = { version = "=0.23.40", default-features = false, features = ["logging", "std", "tls12", "aws_lc_rs"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.8.0"
-rustls-webpki = "0.102"
+rustls-webpki = "0.103"
 rustyline = { version = "=17.0.0", features = ["custom-bindings"] }
 rustyline-derive = "=0.11.1"
-saffron = "=0.1.0"
 same-file = "1.0.6"
 scopeguard = "1.2.0"
 semver = "=1.0.25"
 serde = { version = "1.0.149", features = ["derive"] }
-serde-value = "0.7"
 serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.19"
@@ -308,7 +309,6 @@ tokio-rustls = { version = "0.26.0", default-features = false, features = ["aws_
 tokio-socks = "0.5.3"
 tokio-util = "0.7.16"
 tower = { version = "0.5.2", default-features = false, features = ["retry", "util"] }
-tower-http = { version = "0.6.1", features = ["decompression-br", "decompression-gzip"] }
 tower-lsp = { package = "deno_tower_lsp", version = "=0.5.0", features = ["proposed"] }
 tower-service = "0.3.2"
 tracing = "0.1"
@@ -352,7 +352,7 @@ dprint-plugin-json = "=0.21.3"
 dprint-plugin-jupyter = "=0.2.2"
 dprint-plugin-markdown = "=0.20.0"
 dprint-plugin-typescript = "=0.96.1"
-env_logger = "=0.11.6"
+env_logger = { version = "=0.11.6", default-features = false, features = ["regex"] }
 imara-diff = "=0.2.0"
 libsui = "0.12.6"
 malva = "=0.15.2"
@@ -388,6 +388,7 @@ ecdsa = "0.16.9"
 ed25519-dalek = "2.1.1"
 ed448-goldilocks = "0.14.0-pre.10"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
+fips203 = "0.4.3"
 hkdf = "0.12.3"
 hmac = "0.12.1"
 k256 = { version = "0.13.1", features = ["ecdh", "jwk", "pem"] }
@@ -431,8 +432,8 @@ cssparser = "0.36.0"
 
 # webgpu
 raw-window-handle = "0.6.0"
-wgpu-core = "28.0.0"
-wgpu-types = "28.0.0"
+wgpu-core = "=29.0.1"
+wgpu-types = "=29.0.1"
 
 # macros
 quote = "1"
@@ -518,6 +519,8 @@ opt-level = 3
 [profile.release.package.deno_ffi]
 opt-level = 3
 [profile.release.package.deno_http]
+opt-level = 3
+[profile.release.package.deno_http_h1]
 opt-level = 3
 [profile.release.package.deno_napi]
 opt-level = 3

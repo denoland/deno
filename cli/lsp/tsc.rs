@@ -6260,14 +6260,18 @@ impl UserPreferences {
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+// `Serialize` is retained because the whole `TscRequest` is serialized to a
+// JSON performance-trace via `Performance::mark_with_args`; `ToV8` is what
+// actually crosses the V8 boundary in `into_server_request`.
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItemsOptions {
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub trigger_reason: Option<SignatureHelpTriggerReason>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 pub enum SignatureHelpTriggerKind {
   #[serde(rename = "characterTyped")]
   CharacterTyped,
@@ -6290,11 +6294,12 @@ impl From<lsp::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, deno_core::ToV8)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpTriggerReason {
   pub kind: SignatureHelpTriggerKind,
   #[serde(skip_serializing_if = "Option::is_none")]
+  #[to_v8(skip_if = Option::is_none)]
   pub trigger_character: Option<String>,
 }
 
@@ -6570,9 +6575,9 @@ impl TscRequest {
         "getEncodedSemanticClassifications",
         Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
       ),
-      TscRequest::GetSignatureHelpItems(args) => (
+      TscRequest::GetSignatureHelpItems((specifier, position, options)) => (
         "getSignatureHelpItems",
-        Some(serde_v8::to_v8(scope, args).map_err(JsErrorBox::from_err)?),
+        Some((specifier, Number(position), options).to_v8(scope)?),
       ),
       TscRequest::GetNavigateToItems((search, max_result_count, file)) => (
         "getNavigateToItems",
