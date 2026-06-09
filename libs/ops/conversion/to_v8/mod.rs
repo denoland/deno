@@ -12,6 +12,7 @@ use syn::Data;
 use syn::DeriveInput;
 use syn::Error;
 use syn::Fields;
+use syn::Generics;
 use syn::parse2;
 use syn::spanned::Spanned;
 
@@ -19,6 +20,7 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
   let input = parse2::<DeriveInput>(item)?;
   let span = input.span();
   let ident = input.ident;
+  let generics = input.generics;
 
   let out = match input.data {
     Data::Struct(data) => {
@@ -26,7 +28,8 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
       let body = r#struct::get_body(span, data)?;
 
       create_impl(
-        ident,
+        &ident,
+        &generics,
         quote! {
           let Self #fields = self;
           #body
@@ -34,7 +37,7 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
       )
     }
     Data::Enum(data) => {
-      create_impl(ident, r#enum::get_body(span, input.attrs, data)?)
+      create_impl(&ident, &generics, r#enum::get_body(span, input.attrs, data)?)
     }
     Data::Union(_) => return Err(Error::new(span, "Unions are not supported")),
   };
@@ -98,9 +101,20 @@ fn convert_or_serde<T: quote::ToTokens>(
   }
 }
 
-fn create_impl(ident: impl ToTokens, body: TokenStream) -> TokenStream {
+fn create_impl(
+  ident: impl ToTokens,
+  generics: &Generics,
+  body: TokenStream,
+) -> TokenStream {
+  // Build impl generics: 'a (the ToV8 scope lifetime) + any generics on the struct.
+  let mut all_params = generics.clone();
+  all_params.params.insert(0, syn::parse_quote!('a));
+
+  let (impl_generics, _, where_clause) = all_params.split_for_impl();
+  let (_, ty_generics, _) = generics.split_for_impl();
+
   quote! {
-    impl<'a> ::deno_core::convert::ToV8<'a> for #ident {
+    impl #impl_generics ::deno_core::convert::ToV8<'a> for #ident #ty_generics #where_clause {
       type Error = ::deno_error::JsErrorBox;
 
       fn to_v8<'i>(

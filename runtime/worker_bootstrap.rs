@@ -168,13 +168,13 @@ impl Default for BootstrapOptions {
 /// Each element maps to the corresponding index destructured in `99_main.js`.
 /// Keep in sync with `99_main.js`.
 #[derive(ToV8)]
-struct BootstrapV8(
+struct BootstrapV8<'a>(
   // 0: deno version
-  String,
+  &'a str,
   // 1: location
-  Option<String>,
+  Option<&'a str>,
   // 2: granular unstable flags
-  Vec<i32>,
+  &'a [i32],
   // 3: inspect
   bool,
   // 4: enable_testing_features
@@ -182,15 +182,15 @@ struct BootstrapV8(
   // 5: has_node_modules_dir
   bool,
   // 6: argv0
-  Option<String>,
+  Option<&'a str>,
   // 7: node_debug
-  Option<String>,
+  Option<&'a str>,
   // 8: mode
   i32,
   // 9: serve port
   u16,
   // 10: serve host
-  Option<String>,
+  Option<&'a str>,
   // 11: serve is main
   bool,
   // 12: serve worker count
@@ -204,9 +204,9 @@ struct BootstrapV8(
   // 16: auto serve
   bool,
   // 17: node cluster unique id (NODE_UNIQUE_ID)
-  Option<String>,
+  Option<&'a str>,
   // 18: node cluster scheduling policy (NODE_CLUSTER_SCHED_POLICY)
-  Option<String>,
+  Option<&'a str>,
 );
 
 impl BootstrapOptions {
@@ -216,17 +216,17 @@ impl BootstrapOptions {
     scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Value> {
     BootstrapV8(
-      self.deno_version.clone(),
-      self.location.as_ref().map(|l| l.to_string()),
-      self.unstable_features.clone(),
+      &self.deno_version,
+      self.location.as_ref().map(|l| l.as_str()),
+      &self.unstable_features,
       self.inspect,
       self.enable_testing_features,
       self.has_node_modules_dir,
-      self.argv0.clone(),
-      self.node_debug.clone(),
+      self.argv0.as_deref(),
+      self.node_debug.as_deref(),
       self.mode.discriminant() as i32,
       self.serve_port.unwrap_or_default(),
-      self.serve_host.clone(),
+      self.serve_host.as_deref(),
       matches!(self.mode, WorkerExecutionMode::ServeMain { .. }),
       match self.mode {
         WorkerExecutionMode::ServeMain { worker_count } => Some(worker_count),
@@ -237,8 +237,8 @@ impl BootstrapOptions {
       self.close_on_idle,
       self.is_standalone,
       self.auto_serve,
-      self.node_cluster_unique_id.clone(),
-      self.node_cluster_sched_policy.clone(),
+      self.node_cluster_unique_id.as_deref(),
+      self.node_cluster_sched_policy.as_deref(),
     )
     .to_v8(scope)
     .expect("BootstrapV8::to_v8 failed")
