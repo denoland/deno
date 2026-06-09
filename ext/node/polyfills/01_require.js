@@ -780,7 +780,12 @@ function esmResolveHookCallback(specifier, referrer) {
 }
 
 // ESM load hook chain: runs hooks in LIFO order.
-// Returns { source } if hooks provided source, or null for fallthrough.
+// Returns `null` when no load hooks are registered, otherwise
+// `{ result, effectiveUrl }` where `result` is the hook chain's return value
+// and `effectiveUrl` is the URL the chain ultimately delegated to via
+// `nextLoad(newUrl)`: used by the load loop when falling through to Rust
+// default loading so the source comes from the URL the user redirected to,
+// not the original.
 function executeEsmLoadHookChain(fileUrl, context) {
   const loadHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
@@ -792,8 +797,10 @@ function executeEsmLoadHookChain(fileUrl, context) {
 
   let index = 0;
   let currentContext = context;
+  let effectiveUrl = fileUrl;
 
   function nextLoad(loadUrl, ctx) {
+    effectiveUrl = loadUrl;
     if (ctx !== undefined && ctx !== null) {
       currentContext = { ...currentContext, ...ctx };
     }
@@ -841,7 +848,8 @@ function executeEsmLoadHookChain(fileUrl, context) {
     return result;
   }
 
-  return nextLoad(fileUrl, context);
+  const result = nextLoad(fileUrl, context);
+  return { result, effectiveUrl };
 }
 
 function _startEsmLoadLoop() {
@@ -860,19 +868,24 @@ function _startEsmLoadLoop() {
         importAttributes: { __proto__: null },
       };
       try {
-        const result = executeEsmLoadHookChain(fileUrl, context);
+        const chainResult = executeEsmLoadHookChain(fileUrl, context);
+        const result = chainResult?.result ?? null;
+        const effectiveUrl = chainResult?.effectiveUrl ?? null;
         if (result?.format === "builtin") {
-          op_module_hooks_respond_load(id, null, "builtin", null);
+          op_module_hooks_respond_load(id, null, "builtin", null, null);
         } else if (result !== null && result.source != null) {
           const source = loadHookSourceToString(result.source);
           const format = result.format || null;
-          op_module_hooks_respond_load(id, source, format, null);
+          op_module_hooks_respond_load(id, source, format, null, null);
         } else {
-          // Fallthrough: tell Rust to use default loading
-          op_module_hooks_respond_load(id, null, null, null);
+          // Fallthrough: tell Rust to use default loading. Pass the URL the
+          // hook chain ultimately delegated to (may differ from the original
+          // when a hook called `nextLoad(newUrl)`) so source is fetched from
+          // there while the module keeps the original URL as its identity.
+          op_module_hooks_respond_load(id, null, null, null, effectiveUrl);
         }
       } catch (e) {
-        op_module_hooks_respond_load(id, null, null, String(e));
+        op_module_hooks_respond_load(id, null, null, String(e), null);
       }
     }
   })();
