@@ -95,11 +95,11 @@ const ML_DSA_87_PARAMS: MlDsaParams = MlDsaParams {
   sig_len: 4627,
 };
 
-fn params(variant: u8) -> Result<MlDsaParams, MlDsaError> {
-  match variant {
-    0 => Ok(ML_DSA_44_PARAMS),
-    1 => Ok(ML_DSA_65_PARAMS),
-    2 => Ok(ML_DSA_87_PARAMS),
+fn params(name: &str) -> Result<MlDsaParams, MlDsaError> {
+  match name {
+    "ML-DSA-44" => Ok(ML_DSA_44_PARAMS),
+    "ML-DSA-65" => Ok(ML_DSA_65_PARAMS),
+    "ML-DSA-87" => Ok(ML_DSA_87_PARAMS),
     _ => Err(MlDsaError::UnknownVariant),
   }
 }
@@ -122,10 +122,10 @@ pub struct MlDsaImportedKeys {
 #[op2]
 #[serde]
 pub fn op_crypto_mldsa_from_seed(
-  variant: u8,
+  #[string] name: &str,
   #[buffer] seed: &[u8],
 ) -> Result<MlDsaKeys, MlDsaError> {
-  let p = params(variant)?;
+  let p = params(name)?;
   let key_pair = PqdsaKeyPair::from_seed(p.signing, seed)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
   let private_key = key_pair
@@ -142,10 +142,10 @@ pub fn op_crypto_mldsa_from_seed(
 #[op2]
 #[serde]
 pub fn op_crypto_mldsa_from_pkcs8(
-  variant: u8,
+  #[string] name: &str,
   #[buffer] pkcs8: &[u8],
 ) -> Result<MlDsaImportedKeys, MlDsaError> {
-  let p = params(variant)?;
+  let p = params(name)?;
 
   // Classify the inner `ML-DSA-PrivateKey` CHOICE before handing the DER to
   // aws-lc, so we can return the spec-mandated error types:
@@ -209,9 +209,7 @@ enum Pkcs8Inner {
 /// for anything that is not a well-formed `ML-DSA-PrivateKey` CHOICE; the
 /// caller then defers to aws-lc for authoritative validation.
 fn classify_pkcs8_inner(pkcs8: &[u8]) -> Option<Pkcs8Inner> {
-  use rsa::pkcs1::der::Decode;
-  let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(pkcs8).ok()?;
-  let inner = pk_info.private_key;
+  let inner = pkcs8_inner_private_key(pkcs8)?;
   match inner.first().copied()? {
     // `seed [0] IMPLICIT OCTET STRING (SIZE(32))`. aws-lc emits the primitive
     // context tag `0x80` (like ML-KEM); tolerate the constructed `0xA0` too.
@@ -248,9 +246,7 @@ fn classify_pkcs8_inner(pkcs8: &[u8]) -> Option<Pkcs8Inner> {
 /// 32-byte seed, otherwise `None`. Used to recover the seed for
 /// round-tripping; signing and verifying still work without it.
 fn extract_seed_from_pkcs8(pkcs8: &[u8]) -> Option<Vec<u8>> {
-  use rsa::pkcs1::der::Decode;
-  let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(pkcs8).ok()?;
-  let inner = pk_info.private_key;
+  let inner = pkcs8_inner_private_key(pkcs8)?;
   // Case 1: `seed [0] IMPLICIT OCTET STRING` -> primitive tag 0x80 (the form
   // aws-lc emits, like ML-KEM); tolerate the constructed 0xA0 too.
   if let Some(tag @ (0x80 | 0xA0)) = inner.first().copied() {
@@ -305,12 +301,28 @@ fn parse_tlv(buf: &[u8], tag: u8) -> Option<(&[u8], &[u8])> {
   Some((&body_start[..len], &body_start[len..]))
 }
 
+/// Returns the bytes of the `privateKey` OCTET STRING inside a PKCS#8
+/// `PrivateKeyInfo`, without pulling in a typed PKCS#8 decoder. Parsing is
+/// kept self-contained on the file's own DER helpers (matching how the SPKI
+/// paths use `spki::der`) and is best-effort: anything that is not a
+/// well-formed `PrivateKeyInfo` returns `None` and the caller defers to aws-lc.
+///
+/// `PrivateKeyInfo ::= SEQUENCE { version INTEGER, privateKeyAlgorithm
+/// AlgorithmIdentifier, privateKey OCTET STRING, attributes [0] OPTIONAL }`.
+fn pkcs8_inner_private_key(pkcs8: &[u8]) -> Option<&[u8]> {
+  let (seq, _) = parse_tlv(pkcs8, 0x30)?;
+  let (_version, after_version) = parse_tlv(seq, 0x02)?;
+  let (_algorithm, after_algorithm) = parse_tlv(after_version, 0x30)?;
+  let (private_key, _) = parse_tlv(after_algorithm, 0x04)?;
+  Some(private_key)
+}
+
 #[op2]
 pub fn op_crypto_mldsa_from_spki(
-  variant: u8,
+  #[string] name: &str,
   #[buffer] spki: &[u8],
 ) -> Result<Uint8Array, MlDsaError> {
-  let p = params(variant)?;
+  let p = params(name)?;
   let pk_info = spki::SubjectPublicKeyInfoRef::try_from(spki)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
   if pk_info.algorithm.oid != p.oid {
@@ -326,6 +338,21 @@ pub fn op_crypto_mldsa_from_spki(
   Ok(raw.to_vec().into())
 }
 
+/// Validates a raw ML-DSA public key against the variant's expected length
+/// (FIPS 204 Table 2) and returns a fresh copy. Keeping the length here makes
+/// the Rust `params` table the single source of truth for key sizes.
+#[op2]
+pub fn op_crypto_mldsa_from_raw_public(
+  #[string] name: &str,
+  #[buffer] public_key_bytes: &[u8],
+) -> Result<Uint8Array, MlDsaError> {
+  let p = params(name)?;
+  if public_key_bytes.len() != p.pub_key_len {
+    return Err(MlDsaError::InvalidKeyData);
+  }
+  Ok(public_key_bytes.to_vec().into())
+}
+
 /// PKCS#8 v1 export for ML-DSA encodes the seed-only form
 /// (`[0] (CONTEXT_SPECIFIC) OCTET STRING seed`), per the
 /// `draft-ietf-lamps-dilithium-certificates` proposal that aws-lc
@@ -334,10 +361,10 @@ pub fn op_crypto_mldsa_from_spki(
 /// cannot be re-exported as PKCS#8.
 #[op2]
 pub fn op_crypto_mldsa_export_pkcs8(
-  variant: u8,
+  #[string] name: &str,
   #[buffer] seed: &[u8],
 ) -> Result<Uint8Array, MlDsaError> {
-  let p = params(variant)?;
+  let p = params(name)?;
   let key_pair = PqdsaKeyPair::from_seed(p.signing, seed)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
   let pkcs8 = key_pair.to_pkcs8().map_err(|_| MlDsaError::FailedExport)?;
@@ -346,10 +373,10 @@ pub fn op_crypto_mldsa_export_pkcs8(
 
 #[op2]
 pub fn op_crypto_mldsa_export_spki(
-  variant: u8,
+  #[string] name: &str,
   #[buffer] public_key_bytes: &[u8],
 ) -> Result<Uint8Array, MlDsaError> {
-  let p = params(variant)?;
+  let p = params(name)?;
   if public_key_bytes.len() != p.pub_key_len {
     return Err(MlDsaError::InvalidKeyData);
   }
@@ -366,13 +393,13 @@ pub fn op_crypto_mldsa_export_spki(
 
 #[op2]
 pub fn op_crypto_sign_mldsa(
-  variant: u8,
+  #[string] name: &str,
   #[cppgc] key: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] context: Option<&[u8]>,
 ) -> Result<Uint8Array, MlDsaError> {
   let private_key_bytes = key.data().expanded_private_key();
-  let p = params(variant)?;
+  let p = params(name)?;
   // aws-lc-rs 1.16 does not expose a way to set the FIPS 204 §5.2 context
   // parameter for ML-DSA. The empty context is signed by default; reject
   // non-empty contexts until the underlying API supports them.
@@ -391,24 +418,26 @@ pub fn op_crypto_sign_mldsa(
 
 #[op2]
 pub fn op_crypto_verify_mldsa(
-  variant: u8,
+  #[string] name: &str,
   #[cppgc] key: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] signature: &[u8],
   #[buffer] context: Option<&[u8]>,
-) -> bool {
-  let public_key_bytes = key.data().bytes();
-  let Ok(p) = params(variant) else {
-    return false;
-  };
+) -> Result<bool, MlDsaError> {
+  let p = params(name)?;
   // Match the limitation in op_crypto_sign_mldsa: only empty context is
-  // currently supported.
+  // currently supported. Reject a non-empty context with the same
+  // NotSupportedError that signing raises, rather than silently returning
+  // false, so the two paths stay symmetric.
   if context.is_some_and(|c| !c.is_empty()) {
-    return false;
+    return Err(MlDsaError::ContextNotSupported);
   }
-  UnparsedPublicKey::new(p.verifying, public_key_bytes)
-    .verify(data, signature)
-    .is_ok()
+  let public_key_bytes = key.data().bytes();
+  Ok(
+    UnparsedPublicKey::new(p.verifying, public_key_bytes)
+      .verify(data, signature)
+      .is_ok(),
+  )
 }
 
 trait AsRawBytesVec {

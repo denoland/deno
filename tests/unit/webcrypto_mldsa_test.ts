@@ -115,7 +115,7 @@ for (const [name, pubLen, _privLen, sigLen] of variants) {
   });
 
   Deno.test(`webcrypto ${name} non-empty context unsupported`, async () => {
-    const { privateKey } = await crypto.subtle.generateKey(
+    const { publicKey, privateKey } = await crypto.subtle.generateKey(
       { name } as AnyAlg,
       true,
       ["sign", "verify"],
@@ -126,6 +126,21 @@ for (const [name, pubLen, _privLen, sigLen] of variants) {
         await crypto.subtle.sign(
           { name, context: new Uint8Array([1, 2, 3]) } as AnyAlg,
           privateKey,
+          data,
+        );
+      },
+      DOMException,
+    );
+
+    // verify must reject a non-empty context too, rather than silently
+    // returning false, so it stays symmetric with sign.
+    const sig = await crypto.subtle.sign({ name } as AnyAlg, privateKey, data);
+    await assertRejects(
+      async () => {
+        await crypto.subtle.verify(
+          { name, context: new Uint8Array([1, 2, 3]) } as AnyAlg,
+          publicKey,
+          sig,
           data,
         );
       },

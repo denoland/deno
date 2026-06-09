@@ -49,6 +49,7 @@ const {
   op_crypto_mldsa_export_pkcs8,
   op_crypto_mldsa_export_spki,
   op_crypto_mldsa_from_pkcs8,
+  op_crypto_mldsa_from_raw_public,
   op_crypto_mldsa_from_seed,
   op_crypto_mldsa_from_spki,
   op_crypto_random_uuid,
@@ -638,32 +639,6 @@ function getKeyData(handle) {
 
 /** @type {WeakMap<CryptoKey, CryptoKey>} */
 const MLDSA_PUBLIC_FROM_PRIVATE = new SafeWeakMap();
-
-function mldsaVariantId(name) {
-  switch (name) {
-    case "ML-DSA-44":
-      return 0;
-    case "ML-DSA-65":
-      return 1;
-    case "ML-DSA-87":
-      return 2;
-    default:
-      throw new TypeError(`Unknown ML-DSA variant: ${name}`);
-  }
-}
-
-function mldsaPublicKeyLen(variant) {
-  switch (variant) {
-    case 0:
-      return 1312;
-    case 1:
-      return 1952;
-    case 2:
-      return 2592;
-    default:
-      throw new TypeError("Unknown ML-DSA variant");
-  }
-}
 
 function bytesEqual(a, b) {
   const len = TypedArrayPrototypeGetByteLength(a);
@@ -1288,10 +1263,9 @@ class SubtleCrypto {
             "InvalidAccessError",
           );
         }
-        const variant = mldsaVariantId(normalizedAlgorithm.name);
         const context = normalizedAlgorithm.context;
         const signature = op_crypto_sign_mldsa(
-          variant,
+          normalizedAlgorithm.name,
           handle.cppgc,
           data,
           context !== undefined ? context : null,
@@ -1722,10 +1696,9 @@ class SubtleCrypto {
             "InvalidAccessError",
           );
         }
-        const variant = mldsaVariantId(normalizedAlgorithm.name);
         const context = normalizedAlgorithm.context;
         return op_crypto_verify_mldsa(
-          variant,
+          normalizedAlgorithm.name,
           handle.cppgc,
           data,
           signature,
@@ -3393,11 +3366,10 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
         throw new DOMException("Invalid key usage", "SyntaxError");
       }
 
-      const variant = mldsaVariantId(algorithmName);
       const seed = new Uint8Array(32);
       op_crypto_get_random_values(seed);
       const { privateKey: privateKeyBytes, publicKey: publicKeyBytes } =
-        op_crypto_mldsa_from_seed(variant, seed);
+        op_crypto_mldsa_from_seed(algorithmName, seed);
 
       const handle = {};
       setKeyData(handle, {
@@ -5616,7 +5588,6 @@ function importKeyMlDsa(
   keyUsages,
 ) {
   const algorithmName = normalizedAlgorithm.name;
-  const variant = mldsaVariantId(algorithmName);
 
   const makePublicKey = (publicBytes) => {
     const handle = {};
@@ -5666,7 +5637,7 @@ function importKeyMlDsa(
       }
       let res;
       try {
-        res = op_crypto_mldsa_from_seed(variant, keyData);
+        res = op_crypto_mldsa_from_seed(algorithmName, keyData);
       } catch (_) {
         throw new DOMException("Invalid key data", "DataError");
       }
@@ -5682,11 +5653,13 @@ function importKeyMlDsa(
       ) {
         throw new DOMException("Invalid key usage", "SyntaxError");
       }
-      const expected = mldsaPublicKeyLen(variant);
-      if (TypedArrayPrototypeGetByteLength(keyData) !== expected) {
+      let rawPub;
+      try {
+        rawPub = op_crypto_mldsa_from_raw_public(algorithmName, keyData);
+      } catch (_) {
         throw new DOMException("Invalid key data", "DataError");
       }
-      return makePublicKey(TypedArrayPrototypeSlice(keyData));
+      return makePublicKey(rawPub);
     }
     case "pkcs8": {
       if (
@@ -5699,7 +5672,7 @@ function importKeyMlDsa(
       }
       let res;
       try {
-        res = op_crypto_mldsa_from_pkcs8(variant, keyData);
+        res = op_crypto_mldsa_from_pkcs8(algorithmName, keyData);
       } catch (e) {
         // The expanded-key-only form must be rejected with NotSupportedError;
         // malformed DER and a `both`-form seed/expandedKey mismatch are
@@ -5731,7 +5704,7 @@ function importKeyMlDsa(
       }
       let pub;
       try {
-        pub = op_crypto_mldsa_from_spki(variant, keyData);
+        pub = op_crypto_mldsa_from_spki(algorithmName, keyData);
       } catch (_) {
         throw new DOMException("Invalid key data", "DataError");
       }
@@ -5824,7 +5797,7 @@ function importKeyMlDsa(
         }
         let res;
         try {
-          res = op_crypto_mldsa_from_seed(variant, seed);
+          res = op_crypto_mldsa_from_seed(algorithmName, seed);
         } catch (_) {
           throw new DOMException("Invalid private key data", "DataError");
         }
@@ -5849,12 +5822,13 @@ function importKeyMlDsa(
         } catch (_) {
           throw new DOMException("Invalid public key data", "DataError");
         }
-        if (
-          TypedArrayPrototypeGetByteLength(pub) !== mldsaPublicKeyLen(variant)
-        ) {
+        let rawPub;
+        try {
+          rawPub = op_crypto_mldsa_from_raw_public(algorithmName, pub);
+        } catch (_) {
           throw new DOMException("Invalid public key data", "DataError");
         }
-        return makePublicKey(pub);
+        return makePublicKey(rawPub);
       }
     }
     default:
@@ -5864,7 +5838,6 @@ function importKeyMlDsa(
 
 function exportKeyMlDsa(format, key, innerKey) {
   const algorithmName = key[_algorithm].name;
-  const variant = mldsaVariantId(algorithmName);
 
   switch (format) {
     case "raw-seed": {
@@ -5907,7 +5880,7 @@ function exportKeyMlDsa(format, key, innerKey) {
           "OperationError",
         );
       }
-      const der = op_crypto_mldsa_export_pkcs8(variant, seed);
+      const der = op_crypto_mldsa_export_pkcs8(algorithmName, seed);
       return TypedArrayPrototypeGetBuffer(der);
     }
     case "spki": {
@@ -5917,7 +5890,7 @@ function exportKeyMlDsa(format, key, innerKey) {
           "InvalidAccessError",
         );
       }
-      const der = op_crypto_mldsa_export_spki(variant, innerKey);
+      const der = op_crypto_mldsa_export_spki(algorithmName, innerKey);
       return TypedArrayPrototypeGetBuffer(der);
     }
     case "jwk": {
@@ -8431,7 +8404,7 @@ function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
       case "ML-DSA-65":
       case "ML-DSA-87":
         data = op_crypto_mldsa_export_spki(
-          mldsaVariantId(algorithmName),
+          algorithmName,
           innerKey,
         );
         break;
@@ -8490,7 +8463,7 @@ function cryptoKeyExportNodeKeyMaterial(cryptoKey) {
         );
       }
       data = op_crypto_mldsa_export_pkcs8(
-        mldsaVariantId(algorithmName),
+        algorithmName,
         innerKey.seed,
       );
       break;
