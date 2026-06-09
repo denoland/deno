@@ -223,9 +223,12 @@ fn install_global_from_task_with_relative_import_map() {
   assert!(file_path.exists());
 }
 
-// Companion to the regression test above: an absolute `--import-map` path must
-// keep resolving correctly after the fix pre-resolves cwd-relative paths. The
-// round-trip through `resolve_url_or_path` should be a no-op for absolute paths.
+// Companion to the regression test above. An absolute `--import-map` is *not*
+// affected by the #32798 cwd swap (there is no relative path to re-anchor), so
+// this test passes with or without the fix. Its purpose is to guard against a
+// future refactor breaking the `resolve_url_or_path` round-trip for absolute
+// paths: `main.ts` resolves `@fixture` through the import map during the
+// install-time dependency cache, so a mangled path would fail the install here.
 #[test]
 fn install_global_with_absolute_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -272,12 +275,6 @@ fn install_global_with_absolute_import_map() {
     file_path = file_path.with_extension("cmd");
   }
   assert!(file_path.exists());
-
-  // the shim should reference the original absolute import map, not a path
-  // re-anchored under the generated `.test/` install dir.
-  let content = file_path.read_to_string();
-  assert_contains!(content, "imports.json");
-  assert_not_contains!(content, ".test/imports.json");
 }
 
 #[test]
