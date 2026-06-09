@@ -106,6 +106,22 @@ openssl pkcs12 -export \
 
 - `localhost_modern_nomac.pfx` — passphrase `secret`, PBES2 shrouded key, no MAC
 
+A bundle carrying a CA chain (`-certfile RootCA.pem`) has more than one cert
+bag, so it exercises the leaf-vs-CA split in `op_node_load_pfx` (first bag is
+the leaf, the rest become the `ca` chain) and decrypting an EncryptedData
+envelope that holds multiple cert bags. Generated with:
+
+```shell
+openssl pkcs12 -export \
+  -inkey localhost.key -in localhost.crt \
+  -certfile RootCA.pem \
+  -passout pass:secret \
+  -out localhost_modern_chain.pfx
+```
+
+- `localhost_modern_chain.pfx` — passphrase `secret`, leaf `localhost.crt` +
+  `RootCA` chain, PBES2/AES-256-CBC bags
+
 A separate self-signed bundle exercises the `DEPTH_ZERO_SELF_SIGNED_CERT` path
 in the TLS handshake. Generated with:
 

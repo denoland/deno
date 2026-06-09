@@ -1182,3 +1182,23 @@ Deno.test("tls.createSecureContext reports key decrypt failure on bad passphrase
     "failed to decrypt PFX private key",
   );
 });
+
+// A PFX bundling a chain (`-certfile RootCA.pem`) carries more than one cert
+// bag. The first bag is taken as the leaf and the rest become the CA chain,
+// so `ca` must hold exactly the RootCA cert and the leaf must not leak into
+// it. This also exercises decrypting an EncryptedData envelope that holds
+// multiple cert bags.
+Deno.test("tls.createSecureContext extracts the CA chain from a pfx", () => {
+  const pfx = Buffer.from(
+    Deno.readFileSync(join(tlsTestdataDir, "localhost_modern_chain.pfx")),
+  );
+  const ctx = tls.createSecureContext({ pfx, passphrase: "secret" });
+  // deno-lint-ignore no-explicit-any
+  const context = (ctx as any).context;
+  assert(typeof context.cert === "string" && context.cert.length > 0);
+  assert(globalThis.Array.isArray(context.ca));
+  assertEquals(context.ca.length, 1);
+  // The chained CA cert landed in `ca`, distinct from the leaf cert.
+  assert(context.ca[0].includes("BEGIN CERTIFICATE"));
+  assert(context.ca[0] !== context.cert);
+});

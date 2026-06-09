@@ -4221,6 +4221,17 @@ fn der_to_pem(label: &str, der: &[u8]) -> String {
 // config), so capping is defensive.
 const PFX_PBKDF_ITERATIONS_CAP: u64 = 600_000;
 
+// Cap on the working-set memory of a PFX-controlled scrypt KDF. PBES2 also
+// permits scrypt (RFC 7914), whose cost is attacker-controlled the same way
+// as a PBKDF2 iteration count but is memory-hard rather than iteration-hard,
+// so the iteration cap above does not bound it. scrypt's working set is
+// `128 * N * r` bytes; cap it at 1 GiB so a crafted PFX cannot force a
+// multi-gigabyte allocation. OpenSSL/Node never emit scrypt for PKCS#12
+// (this is well above any value a legitimate producer would use — the
+// OWASP-recommended N=2^17, r=8 needs ~128 MiB), but pkcs5 will decrypt it,
+// so the bound is defensive.
+const PFX_SCRYPT_MEMORY_CAP: u128 = 1 << 30;
+
 #[op2]
 #[serde]
 pub fn op_node_load_pfx(
@@ -4355,6 +4366,16 @@ fn decrypt_pfx_blob(
       {
         return None;
       }
+      // PBES2 may also use a scrypt KDF, which the iteration cap above does
+      // not cover; bound its working-set memory (`128 * N * r`) instead.
+      if let Some(scrypt) = scheme.pbes2().and_then(|p| p.kdf.scrypt()) {
+        let working_set = u128::from(scrypt.cost_parameter)
+          .saturating_mul(u128::from(scrypt.block_size))
+          .saturating_mul(128);
+        if working_set > PFX_SCRYPT_MEMORY_CAP {
+          return None;
+        }
+      }
       scheme.decrypt(utf8_password.as_bytes(), ciphertext).ok()
     }
     _ => None,
@@ -4402,7 +4423,14 @@ fn pfx_content_data(
       bmp_password,
     )
     .ok_or_else(|| {
-      PfxLoadError::Encode("unsupported PFX encryption algorithm".into())
+      // A `None` here is either a wrong passphrase or an algorithm pkcs5
+      // cannot decrypt; we cannot tell which apart, so report both rather
+      // than blaming the algorithm (which misleads on the common case of a
+      // bad passphrase against an encrypted cert bag).
+      PfxLoadError::Encode(
+        "failed to decrypt PFX contents (wrong passphrase or unsupported encryption)"
+          .into(),
+      )
     }),
     Pkcs12ContentInfo::OtherContext(_) => {
       Err(PfxLoadError::Encode("unsupported PFX content info".into()))
