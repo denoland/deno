@@ -2493,6 +2493,8 @@ impl Inner {
               }
             })?
           }
+          code_action.command =
+            refactor_edit_info.to_rename_command(&module, &snapshot);
           code_action.edit = refactor_edit_info
             .to_workspace_edit(&module, &snapshot, token)
             .map_err(|err| {
