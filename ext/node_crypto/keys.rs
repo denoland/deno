@@ -805,36 +805,40 @@ pub enum AsymmetricPublicKeyError {
   UnsupportedPrivateKeyOid,
 }
 
-// Node/OpenSSL accept RSAPublicKey DER whose INTEGER payloads omit the
-// leading 0x00 byte that strict DER requires for positive values with the
-// high bit set. The `rsa` crate's parser rejects those as malformed. When
-// the strict parse fails, fall back to a narrow walk that re-parses
-// `SEQUENCE { INTEGER n, INTEGER e }` and treats the INTEGER payload bytes
-// as unsigned. The length encoding is still validated as strict DER; only
-// the signed/unsigned interpretation of the integer payload is relaxed.
-fn rsa_public_key_from_pkcs1_der_lenient(
-  der: &[u8],
-) -> Result<RsaPublicKey, rsa::pkcs1::Error> {
-  match RsaPublicKey::from_pkcs1_der(der) {
-    Ok(key) => Ok(key),
-    Err(strict_err) => parse_lenient_rsa_public_key(der).ok_or(strict_err),
-  }
+trait RsaPublicKeyExt: Sized {
+  /// Parse `RSAPublicKey` DER (`SEQUENCE { INTEGER n, INTEGER e }`) the way
+  /// Node/OpenSSL do, treating the INTEGER payloads as unsigned. This accepts
+  /// moduli that omit the leading `0x00` byte strict DER requires for positive
+  /// values with the high bit set, which the `rsa` crate rejects as malformed.
+  /// The length encoding is still validated as strict DER; only the
+  /// signed/unsigned interpretation of the integer payload is relaxed.
+  ///
+  /// Returns `None` for input malformed by any other rule. Intended as a
+  /// fallback once the strict parser has already rejected the input:
+  ///
+  /// ```ignore
+  /// RsaPublicKey::from_pkcs1_der(der)
+  ///   .or_else(|err| RsaPublicKey::from_pkcs1_der_lenient(der).ok_or(err))
+  /// ```
+  fn from_pkcs1_der_lenient(der: &[u8]) -> Option<Self>;
 }
 
-fn parse_lenient_rsa_public_key(der: &[u8]) -> Option<RsaPublicKey> {
-  let mut pos = 0;
-  let sequence_end = read_der_tag_and_len(der, &mut pos, 0x30)?;
-  if sequence_end != der.len() {
-    return None;
-  }
+impl RsaPublicKeyExt for RsaPublicKey {
+  fn from_pkcs1_der_lenient(der: &[u8]) -> Option<Self> {
+    let mut pos = 0;
+    let sequence_end = read_der_tag_and_len(der, &mut pos, 0x30)?;
+    if sequence_end != der.len() {
+      return None;
+    }
 
-  let n = read_lenient_positive_integer(der, &mut pos, sequence_end)?;
-  let e = read_lenient_positive_integer(der, &mut pos, sequence_end)?;
-  if pos != sequence_end {
-    return None;
-  }
+    let n = read_lenient_positive_integer(der, &mut pos, sequence_end)?;
+    let e = read_lenient_positive_integer(der, &mut pos, sequence_end)?;
+    if pos != sequence_end {
+      return None;
+    }
 
-  RsaPublicKey::new(n, e).ok()
+    RsaPublicKey::new(n, e).ok()
+  }
 }
 
 fn read_lenient_positive_integer(
@@ -1628,16 +1632,18 @@ impl KeyObjectHandle {
 
     let public_key = match spki.algorithm.oid {
       RSA_ENCRYPTION_OID => {
-        let public_key = rsa_public_key_from_pkcs1_der_lenient(
-          spki.subject_public_key.as_bytes().unwrap(),
-        )?;
+        let der = spki.subject_public_key.as_bytes().unwrap();
+        let public_key = RsaPublicKey::from_pkcs1_der(der).or_else(|err| {
+          RsaPublicKey::from_pkcs1_der_lenient(der).ok_or(err)
+        })?;
         AsymmetricPublicKey::Rsa(public_key)
       }
       RSASSA_PSS_OID => {
         let details = parse_rsa_pss_params(spki.algorithm.parameters)?;
-        let public_key = rsa_public_key_from_pkcs1_der_lenient(
-          spki.subject_public_key.as_bytes().unwrap(),
-        )?;
+        let der = spki.subject_public_key.as_bytes().unwrap();
+        let public_key = RsaPublicKey::from_pkcs1_der(der).or_else(|err| {
+          RsaPublicKey::from_pkcs1_der_lenient(der).ok_or(err)
+        })?;
         AsymmetricPublicKey::RsaPss(RsaPssPublicKey {
           key: public_key,
           details,
