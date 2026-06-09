@@ -46,7 +46,10 @@ const {
   SafeSetIterator,
   String,
   StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
   StringPrototypeSplit,
+  StringPrototypeStartsWith,
   Symbol,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
@@ -899,6 +902,20 @@ function updateOutgoingData(socket, state, delta) {
 // ---- parserOnIncoming: creates ServerResponse, emits 'request' ----
 
 function parserOnIncoming(server, socket, state, req, keepAlive) {
+  // Connections accepted via the DENO_SERVE_ADDRESS override carry
+  // absolute-form request targets (the control plane forwards the full
+  // public URL, which is how Deno.serve() reconstructs request.url).
+  // Node applications expect origin-form, so strip scheme and authority.
+  if (
+    socket.isDenoServeAddressOverride &&
+    (StringPrototypeStartsWith(req.url, "http://") ||
+      StringPrototypeStartsWith(req.url, "https://"))
+  ) {
+    const schemeEnd = StringPrototypeIndexOf(req.url, "://") + 3;
+    const pathStart = StringPrototypeIndexOf(req.url, "/", schemeEnd);
+    req.url = pathStart === -1 ? "/" : StringPrototypeSlice(req.url, pathStart);
+  }
+
   resetSocketTimeout(server, socket, state, !req.upgrade);
 
   // Headers have been fully parsed; clear the headersTimeout watchdog and
