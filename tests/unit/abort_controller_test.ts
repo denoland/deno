@@ -62,3 +62,12 @@ Deno.test(function abortReason() {
   assertEquals(signal.aborted, true);
   assertEquals(signal.reason, "hey!");
 });
+
+// Regression test for https://github.com/denoland/deno/issues/32858: a very
+// large timeout (larger than the maximum 32-bit signed integer) must not abort
+// the signal almost immediately.
+Deno.test(async function timeoutLargeDelayDoesNotAbortImmediately() {
+  const signal = AbortSignal.timeout(2 ** 53 - 1);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assertEquals(signal.aborted, false);
+});

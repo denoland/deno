@@ -342,7 +342,12 @@
     } else {
       after *= 1;
     }
-    if (!(after >= 1 && after <= TIMEOUT_MAX)) {
+    if (after > TIMEOUT_MAX) {
+      // Values larger than the maximum 32-bit signed integer (e.g. from
+      // `AbortSignal.timeout()`, which takes an `unsigned long long`) are
+      // clamped to the maximum delay rather than firing immediately.
+      after = TIMEOUT_MAX;
+    } else if (!(after >= 1)) {
       after = 1;
     }
 
