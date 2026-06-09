@@ -1,10 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-process-global
+// deno-lint-ignore-file no-process-global
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { AssertionError } = core.loadExtScript(
   "ext:deno_node/internal/assert/assertion_error.js",
 );
@@ -44,6 +43,8 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypePush,
   ArrayPrototypeSlice,
+  Error,
+  ErrorPrototype,
   NumberIsNaN,
   ObjectAssign,
   ObjectDefineProperty,
@@ -51,7 +52,9 @@ const {
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ReflectApply,
+  ReflectHas,
   RegExpPrototypeExec,
+  SafeArrayIterator,
   StringPrototypeIndexOf,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -100,7 +103,7 @@ Assert.prototype.fail = fail;
 // Duplicate of the `ok` function below so we don't inherit
 // the extra assigned properties from `assert` function later on.
 Assert.prototype.ok = function ok(...args) {
-  innerOk(ok, args.length, ...args);
+  innerOk(ok, args.length, ...new SafeArrayIterator(args));
 };
 Assert.prototype.equal = equal;
 Assert.prototype.notEqual = notEqual;
@@ -120,7 +123,7 @@ Assert.prototype.match = match;
 Assert.prototype.doesNotMatch = doesNotMatch;
 
 function innerFail(obj) {
-  if (obj.message instanceof Error) {
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, obj.message)) {
     throw obj.message;
   }
 
@@ -135,14 +138,14 @@ function innerFail(obj) {
 }
 
 function assert(...args) {
-  innerOk(ok, args.length, ...args);
+  innerOk(ok, args.length, ...new SafeArrayIterator(args));
 }
 const ok = assert;
 
 class Comparison {
   constructor(obj, keys, actual) {
-    for (const key of keys) {
-      if (key in obj) {
+    for (const key of new SafeArrayIterator(keys)) {
+      if (ReflectHas(obj, key)) {
         if (
           actual !== undefined &&
           typeof actual[key] === "string" &&
@@ -166,7 +169,9 @@ function compareExceptionKey(
   keys,
   fn,
 ) {
-  if (!(key in actual) || !isDeepStrictEqual(actual[key], expected[key])) {
+  if (
+    !ReflectHas(actual, key) || !isDeepStrictEqual(actual[key], expected[key])
+  ) {
     if (!message) {
       // Create placeholder objects to create a nice output.
       const a = new Comparison(actual, keys);
@@ -235,7 +240,7 @@ function expectedException(
       const keys = ObjectKeys(expected);
       // Special handle errors to make sure the name and the message are
       // compared as well.
-      if (expected instanceof Error) {
+      if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, expected)) {
         ArrayPrototypePush(keys, "name", "message");
       } else if (keys.length === 0) {
         throw new ERR_INVALID_ARG_VALUE(
@@ -244,7 +249,7 @@ function expectedException(
           "may not be an empty object",
         );
       }
-      for (const key of keys) {
+      for (const key of new SafeArrayIterator(keys)) {
         if (
           typeof actual[key] === "string" &&
           isRegExp(expected[key]) &&
@@ -258,7 +263,10 @@ function expectedException(
     }
     // Guard instanceof against arrow functions as they don't have a prototype.
     // Check for matching Error classes.
-  } else if (expected.prototype !== undefined && actual instanceof expected) {
+  } else if (
+    expected.prototype !== undefined &&
+    ObjectPrototypeIsPrototypeOf(expected.prototype, actual)
+  ) {
     return;
   } else if (ObjectPrototypeIsPrototypeOf(Error, expected)) {
     if (!message) {
@@ -446,7 +454,10 @@ function hasMatchingError(actual, expected) {
     );
   }
   // Guard instanceof against arrow functions as they don't have a prototype.
-  if (expected.prototype !== undefined && actual instanceof expected) {
+  if (
+    expected.prototype !== undefined &&
+    ObjectPrototypeIsPrototypeOf(expected.prototype, actual)
+  ) {
     return true;
   }
   if (ObjectPrototypeIsPrototypeOf(Error, expected)) {
@@ -490,14 +501,14 @@ function throws(
   fn,
   ...args
 ) {
-  expectsError(throws, getActual(fn), ...args);
+  expectsError(throws, getActual(fn), ...new SafeArrayIterator(args));
 }
 
 function doesNotThrow(
   fn,
   ...args
 ) {
-  expectsNoError(doesNotThrow, getActual(fn), ...args);
+  expectsNoError(doesNotThrow, getActual(fn), ...new SafeArrayIterator(args));
 }
 
 function equal(
@@ -509,7 +520,9 @@ function equal(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
-  if (actual != expected && (!NumberIsNaN(actual) || !NumberIsNaN(expected))) {
+  if (
+    actual != expected && (!NumberIsNaN(actual) || !NumberIsNaN(expected))
+  ) {
     innerFail({
       actual,
       expected,
@@ -721,7 +734,7 @@ function fail(
     }
   }
 
-  if (message instanceof Error) throw message;
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, message)) throw message;
 
   // IMPORTANT: When adding new references to `this`, ensure they use optional chaining
   // (this?.[kOptions]?.diff) to handle cases where the method is destructured from an
@@ -760,7 +773,7 @@ function internalMatch(
     typeof string !== "string" ||
     RegExpPrototypeExec(regexp, string) !== null !== matchFn
   ) {
-    if (message instanceof Error) {
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, message)) {
       throw message;
     }
 
@@ -800,21 +813,29 @@ function doesNotMatch(
 }
 
 function strict(...args) {
-  innerOk(strict, args.length, ...args);
+  innerOk(strict, args.length, ...new SafeArrayIterator(args));
 }
 
 async function rejects(
   asyncFn,
   ...args
 ) {
-  expectsError(rejects, await waitForActual(asyncFn), ...args);
+  expectsError(
+    rejects,
+    await waitForActual(asyncFn),
+    ...new SafeArrayIterator(args),
+  );
 }
 
 async function doesNotReject(
   asyncFn,
   ...args
 ) {
-  expectsNoError(doesNotReject, await waitForActual(asyncFn), ...args);
+  expectsNoError(
+    doesNotReject,
+    await waitForActual(asyncFn),
+    ...new SafeArrayIterator(args),
+  );
 }
 
 /**
@@ -860,7 +881,7 @@ function ifError(err) {
         );
         // Filter all frames existing in err.stack.
         let newFrames = StringPrototypeSplit(newErr.stack, "\n");
-        for (const errFrame of originalFrames) {
+        for (const errFrame of new SafeArrayIterator(originalFrames)) {
           // Find the first occurrence of the frame.
           const pos = ArrayPrototypeIndexOf(newFrames, errFrame);
           if (pos !== -1) {
@@ -917,7 +938,7 @@ ArrayPrototypeForEach([
   setOwnProperty(assert, name, Assert.prototype[name]);
 });
 
-Object.assign(strict, {
+ObjectAssign(strict, {
   Assert,
   AssertionError,
   CallTracker: CallTracker_,
@@ -942,7 +963,7 @@ Object.assign(strict, {
   throws,
 });
 
-const default_ = Object.assign(assert, {
+const default_ = ObjectAssign(assert, {
   Assert,
   AssertionError,
   CallTracker: CallTracker_,

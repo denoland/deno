@@ -1,9 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { primordials } = globalThis.__bootstrap;
+const { primordials } = __bootstrap;
 const { ObjectFreeze } = primordials;
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { op_node_build_os, op_node_fs_constants } = core.ops;
 
 let os: {

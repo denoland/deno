@@ -1,0 +1,9 @@
+{
+  "tempDir": true,
+  "tests": {
+    "add_with_remote_import_alias": {
+      "args": "add --allow-import=localhost:4545 npm:@denotest/esm-basic",
+      "output": "add.out"
+    }
+  }
+}

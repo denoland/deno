@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   op_fetch,
   op_fetch_promise_is_settled,
@@ -14,6 +14,7 @@ const {
   ArrayPrototypeSplice,
   ArrayPrototypeFilter,
   ArrayPrototypeIncludes,
+  DateNow,
   Error,
   ObjectPrototypeIsPrototypeOf,
   Promise,
@@ -23,9 +24,14 @@ const {
   SafePromisePrototypeFinally,
   String,
   StringPrototypeEndsWith,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
+  StringPrototypeTrim,
   TypeError,
+  TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
@@ -79,6 +85,255 @@ const REDIRECT_SENSITIVE_HEADER_NAMES = [
   "cookie",
 ];
 
+// https://fetch.spec.whatwg.org/#bad-port
+// "bad ports" that fetch must block before any network I/O occurs. Keys are
+// the (leading-zero-free) port strings produced by `URL.prototype.port`, so a
+// lookup is a single `BAD_PORTS[url.port]` with no parsing. `__proto__: null`
+// keeps the lookup safe from prototype pollution.
+const BAD_PORTS = {
+  __proto__: null,
+  "0": true, // (port 0)
+  "1": true, // tcpmux
+  "7": true, // echo
+  "9": true, // discard
+  "11": true, // systat
+  "13": true, // daytime
+  "15": true, // netstat
+  "17": true, // qotd
+  "19": true, // chargen
+  "20": true, // ftp-data
+  "21": true, // ftp
+  "22": true, // ssh
+  "23": true, // telnet
+  "25": true, // smtp
+  "37": true, // time
+  "42": true, // name
+  "43": true, // nicname
+  "53": true, // domain
+  "69": true, // tftp
+  "77": true, // priv-rjs
+  "79": true, // finger
+  "87": true, // ttylink
+  "95": true, // supdup
+  "101": true, // hostname
+  "102": true, // iso-tsap
+  "103": true, // gppitnp
+  "104": true, // acr-nema
+  "109": true, // pop2
+  "110": true, // pop3
+  "111": true, // sunrpc
+  "113": true, // auth
+  "115": true, // sftp
+  "117": true, // uucp-path
+  "119": true, // nntp
+  "123": true, // ntp
+  "135": true, // loc-srv / epmap
+  "137": true, // netbios-ns
+  "139": true, // netbios-ssn
+  "143": true, // imap2
+  "161": true, // snmp
+  "179": true, // bgp
+  "389": true, // ldap
+  "427": true, // svrloc
+  "465": true, // submissions
+  "512": true, // exec
+  "513": true, // login
+  "514": true, // shell
+  "515": true, // printer
+  "526": true, // tempo
+  "530": true, // courier
+  "531": true, // chat
+  "532": true, // netnews
+  "540": true, // uucp
+  "548": true, // afp
+  "554": true, // rtsp
+  "556": true, // remotefs
+  "563": true, // nntp+ssl
+  "587": true, // submission
+  "601": true, // syslog-conn
+  "636": true, // ldap+ssl
+  "989": true, // ftps-data
+  "990": true, // ftps
+  "993": true, // imap+ssl
+  "995": true, // pop3+ssl
+  "1719": true, // h323gatestat
+  "1720": true, // h323hostcall
+  "1723": true, // pptp
+  "2049": true, // nfs
+  "3659": true, // apple-sasl
+  "4045": true, // lockd
+  "4190": true, // sieve
+  "5060": true, // sip
+  "5061": true, // sips
+  "6000": true, // x11
+  "6566": true, // sane-port
+  "6665": true, // ircu
+  "6666": true, // ircu
+  "6667": true, // ircu
+  "6668": true, // ircu
+  "6669": true, // ircu
+  "6679": true, // osaut
+  "6697": true, // ircs-u
+  "10080": true, // amanda
+};
+
+// ============================================================================
+// Inspector Network domain instrumentation (Chrome DevTools Protocol).
+//
+// When `node:inspector` has been loaded and `--inspect` is active, fetch()
+// emits `Network.requestWillBeSent` / `responseReceived` / `dataReceived` /
+// `loadingFinished` / `loadingFailed` events. The actual emitters and a
+// monotonic requestId generator are installed by `ext/node/polyfills/
+// inspector.js` onto `internals.__inspectorNetwork` so this layer doesn't
+// have to depend on ext/node.
+// ============================================================================
+
+function getInspectorNetwork() {
+  const ins = internals.__inspectorNetwork;
+  if (ins && ins.isEnabled()) return ins;
+  return null;
+}
+
+// Inspector emission is purely observational - if anything goes wrong
+// (inspector detached mid-flight, payload validation in
+// `op_inspector_emit_protocol_event`, etc.) we never want it to surface
+// as a fetch error to user code. Centralized so the call sites stay
+// straight-line.
+function safeEmit(fn, params) {
+  try {
+    fn(params);
+  } catch {
+    // swallow
+  }
+}
+
+// Join repeated header values according to Chrome DevTools conventions:
+// cookies use `; `, set-cookie uses `\n`, everything else uses `, `.
+//
+// Response header names are typically lowercased on the wire by hyper, but
+// CDP / Node frontends conventionally key `Set-Cookie` with its canonical
+// case (the test suite asserts `headers['Set-Cookie']`). Apply a small
+// canonicalization for the names that conventionally carry case.
+function joinHeaderValuesForCdp(headerList, lowerCaseNames) {
+  const out = { __proto__: null };
+  for (let i = 0; i < headerList.length; i++) {
+    const rawName = headerList[i][0];
+    const value = String(headerList[i][1]);
+    const lower = byteLowerCase(rawName);
+    let name;
+    if (lowerCaseNames) {
+      name = lower;
+    } else if (lower === "set-cookie") {
+      name = "Set-Cookie";
+    } else {
+      name = rawName;
+    }
+    let separator;
+    if (lower === "cookie") {
+      separator = "; ";
+    } else if (lower === "set-cookie") {
+      separator = "\n";
+    } else {
+      separator = ", ";
+    }
+    if (out[name] === undefined) {
+      out[name] = value;
+    } else {
+      out[name] = out[name] + separator + value;
+    }
+  }
+  return out;
+}
+
+// Parse Content-Type into { mimeType, charset } for `response.mimeType` and
+// `response.charset` (and to decide whether `getResponseBody` returns the
+// body as a utf-8 string or base64).
+function parseContentTypeForCdp(headerList) {
+  let raw = null;
+  for (let i = 0; i < headerList.length; i++) {
+    if (byteLowerCase(headerList[i][0]) === "content-type") {
+      raw = String(headerList[i][1]);
+      break;
+    }
+  }
+  if (raw === null) return { mimeType: "", charset: "" };
+  const semi = StringPrototypeIndexOf(raw, ";");
+  const mimeType = semi === -1
+    ? StringPrototypeTrim(raw)
+    : StringPrototypeTrim(StringPrototypeSlice(raw, 0, semi));
+  let charset = "";
+  if (semi !== -1) {
+    const rest = StringPrototypeSlice(raw, semi + 1);
+    const parts = StringPrototypeSplit(rest, ";");
+    for (let i = 0; i < parts.length; i++) {
+      const p = StringPrototypeTrim(parts[i]);
+      if (
+        StringPrototypeStartsWith(StringPrototypeToLowerCase(p), "charset=")
+      ) {
+        charset = StringPrototypeTrim(StringPrototypeSlice(p, 8));
+        // Strip optional surrounding quotes.
+        if (
+          charset.length >= 2 && charset[0] === '"' &&
+          charset[charset.length - 1] === '"'
+        ) {
+          charset = StringPrototypeSlice(charset, 1, charset.length - 1);
+        }
+        break;
+      }
+    }
+  }
+  return { mimeType, charset };
+}
+
+// Run a background drain of the inspector branch of a tee'd response stream,
+// emitting `Network.dataReceived` per chunk and `Network.loadingFinished` /
+// `loadingFailed` when the stream ends. Errors from this drain are swallowed
+// so they can't surface as unhandled rejections to user code.
+function drainResponseForInspector(inspectorStream, requestId, ins) {
+  const reader = inspectorStream.getReader();
+  let totalLength = 0;
+  (async () => {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          const len = TypedArrayPrototypeGetByteLength(value);
+          if (len > 0) {
+            totalLength += len;
+            safeEmit(ins.dataReceived, {
+              requestId,
+              timestamp: DateNow() / 1000,
+              dataLength: len,
+              encodedDataLength: len,
+              data: value,
+            });
+          }
+        }
+      }
+      safeEmit(ins.loadingFinished, {
+        requestId,
+        timestamp: DateNow() / 1000,
+        encodedDataLength: totalLength,
+      });
+    } catch (err) {
+      safeEmit(ins.loadingFailed, {
+        requestId,
+        timestamp: DateNow() / 1000,
+        type: "Fetch",
+        errorText: err && err.message ? String(err.message) : String(err),
+      });
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // releaseLock can throw if the stream errored mid-read; swallowing
+        // matches what the wrapping `safeEmit` calls do above.
+      }
+    }
+  })();
+}
+
 /**
  * @param {number} rid
  * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number, error: [string, string]? }>}
@@ -112,7 +367,25 @@ function createResponseBodyStream(responseBodyRid, terminator) {
  * @param {AbortSignal} terminator
  * @returns {Promise<InnerResponse>}
  */
-async function mainFetch(req, recursive, terminator) {
+async function mainFetch(req, recursive, terminator, inspectorCtx = null) {
+  // https://fetch.spec.whatwg.org/#main-fetch step 5: if the request should be
+  // blocked due to a bad port, return a network error before any network I/O
+  // occurs. This applies to every hop, including those reached via redirects.
+  //
+  // Per https://fetch.spec.whatwg.org/#block-bad-port the check only applies
+  // when the URL's scheme is an HTTP(S) scheme, so https bad ports (e.g.
+  // https://example.com:22) are blocked too, while non-HTTP(S) schemes are
+  // left alone. The spec's ALPN note covers *new* protocols negotiated over
+  // TLS; it does not exempt https fetch from the list. This matches Node's
+  // undici (`requestBadPort` gates on `urlIsHttpHttpsScheme`).
+  const url = new URL(req.currentUrl());
+  if (
+    (url.protocol === "http:" || url.protocol === "https:") &&
+    url.port !== "" && BAD_PORTS[url.port] === true
+  ) {
+    return networkError(`Requests to port ${url.port} are blocked`);
+  }
+
   if (req.blobUrlEntry !== null) {
     if (req.method !== "GET") {
       throw new TypeError("Blob URL fetch only supports GET method");
@@ -175,6 +448,96 @@ async function mainFetch(req, recursive, terminator) {
     reqRid,
   );
 
+  // ---- Inspector: Network.requestWillBeSent ------------------------------
+  // Only fires when `node:inspector` is loaded AND the inspector is currently
+  // attached, so the cost is one method call (`isEnabled()`) otherwise.
+  //
+  // For redirect chains the recursive call carries an `inspectorCtx` with the
+  // original requestId plus the previous hop's response, so DevTools sees:
+  //   requestWillBeSent(URL_A)
+  //   requestWillBeSent(URL_B, redirectResponse=<URL_A's 30x>)
+  //   responseReceived(URL_B)
+  // with the same requestId throughout, matching Chrome's contract.
+  const inspectorNetwork = getInspectorNetwork();
+  let inspectorRequestId = inspectorCtx?.requestId ?? null;
+  const inspectorRedirectResponse = inspectorCtx?.redirectResponse ?? null;
+  if (
+    inspectorNetwork !== null && inspectorRequestId === null && !recursive
+  ) {
+    inspectorRequestId = inspectorNetwork.nextRequestId();
+  }
+  // If the inspector detached between the initial request and a redirect
+  // hop, drop the requestId so we stop emitting half-events for it.
+  if (inspectorRequestId !== null && inspectorNetwork === null) {
+    inspectorRequestId = null;
+  }
+  if (inspectorRequestId !== null) {
+    // hasPostData reflects whether the request carries a body at all,
+    // including streamed bodies (reqRid !== null). The Rust capture uses
+    // it to initialize `is_request_finished = !has_post_data`, so getting
+    // this right is what keeps streaming-body requests un-finished until
+    // a chunked `dataSent` path actually flushes them.
+    const hasPostData = reqBody !== null || reqRid !== null;
+    let postDataText;
+    if (
+      reqBody !== null &&
+      TypedArrayPrototypeGetSymbolToStringTag(reqBody) === "Uint8Array"
+    ) {
+      try {
+        postDataText = core.decode(reqBody);
+      } catch {
+        postDataText = undefined;
+      }
+    }
+    const requestHeadersForCdp = joinHeaderValuesForCdp(
+      req.headerList,
+      /* lowerCaseNames */ true,
+    );
+    // The buffer's request_charset gates `Network.getRequestPostData`
+    // (utf-8 only). Prefer an explicit charset from Content-Type; fall
+    // back to utf-8 when we successfully decoded the body as a JS string,
+    // since fetch encodes string bodies as utf-8 over the wire.
+    let requestCharset = parseContentTypeForCdp(req.headerList).charset ||
+      undefined;
+    if (requestCharset === undefined && postDataText !== undefined) {
+      requestCharset = "utf-8";
+    }
+    const requestWillBeSentParams = {
+      requestId: inspectorRequestId,
+      timestamp: DateNow() / 1000,
+      wallTime: DateNow() / 1000,
+      type: "Fetch",
+      request: {
+        url: req.currentUrl(),
+        method: req.method,
+        headers: requestHeadersForCdp,
+        hasPostData,
+        postData: postDataText,
+      },
+      // initiator: filled in by `op_inspector_emit_protocol_event` using
+      // V8's current stack trace, so the user-code frame at the fetch()
+      // call site is preserved.
+      charset: requestCharset,
+    };
+    if (inspectorRedirectResponse !== null) {
+      requestWillBeSentParams.redirectResponse = inspectorRedirectResponse;
+    }
+    safeEmit(inspectorNetwork.requestWillBeSent, requestWillBeSentParams);
+    // When we supplied the entire request body inline via
+    // `request.postData`, flip the buffer's `is_request_finished` flag
+    // immediately so `Network.getRequestPostData` doesn't reject with
+    // "Request data is not finished yet". Streaming bodies (reqRid !==
+    // null, where postDataText stays undefined) take the chunked
+    // `Network.dataSent` path instead and aren't covered here; keeping
+    // them un-finished is the desired outcome until that lands.
+    if (postDataText !== undefined) {
+      safeEmit(inspectorNetwork.dataSent, {
+        requestId: inspectorRequestId,
+        finished: true,
+      });
+    }
+  }
+
   function onAbort() {
     if (cancelHandleRid !== null) {
       core.tryClose(cancelHandleRid);
@@ -185,6 +548,14 @@ async function mainFetch(req, recursive, terminator) {
   try {
     resp = await opFetchSend(requestRid);
   } catch (err) {
+    if (inspectorRequestId !== null) {
+      safeEmit(inspectorNetwork.loadingFailed, {
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        type: "Fetch",
+        errorText: err && err.message ? String(err.message) : String(err),
+      });
+    }
     if (terminator.aborted) return abortedNetworkError();
     throw err;
   } finally {
@@ -194,6 +565,14 @@ async function mainFetch(req, recursive, terminator) {
   }
   // Re-throw any body errors
   if (resp.error !== null) {
+    if (inspectorRequestId !== null) {
+      safeEmit(inspectorNetwork.loadingFailed, {
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        type: "Fetch",
+        errorText: resp.error[0],
+      });
+    }
     const { 0: message, 1: cause } = resp.error;
     throw new TypeError(message, { cause: new Error(cause) });
   }
@@ -222,16 +601,64 @@ async function mainFetch(req, recursive, terminator) {
     },
     urlList: req.urlListProcessed,
   };
+
+  // ---- Inspector: Network.responseReceived -------------------------------
+  // Skip when we're about to follow a redirect: the 30x response becomes
+  // the `redirectResponse` on the next hop's `requestWillBeSent` instead
+  // of its own `responseReceived`, matching Chrome DevTools' contract.
+  const willFollowRedirect = redirectStatus(resp.status) &&
+    req.redirectMode === "follow";
+  let cdpResponse = null;
+  if (inspectorRequestId !== null) {
+    const { mimeType, charset } = parseContentTypeForCdp(resp.headers);
+    const responseHeadersForCdp = joinHeaderValuesForCdp(
+      resp.headers,
+      /* lowerCaseNames */ false,
+    );
+    cdpResponse = {
+      url: resp.url || req.currentUrl(),
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: responseHeadersForCdp,
+      mimeType,
+      charset,
+    };
+    if (!willFollowRedirect) {
+      safeEmit(inspectorNetwork.responseReceived, {
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        type: "Fetch",
+        response: cdpResponse,
+      });
+    }
+  }
+
   if (redirectStatus(resp.status)) {
     switch (req.redirectMode) {
       case "error":
         core.close(resp.responseRid);
+        if (inspectorRequestId !== null) {
+          safeEmit(inspectorNetwork.loadingFailed, {
+            requestId: inspectorRequestId,
+            timestamp: DateNow() / 1000,
+            type: "Fetch",
+            errorText:
+              "Encountered redirect while redirect mode is set to 'error'",
+          });
+        }
         return networkError(
           "Encountered redirect while redirect mode is set to 'error'",
         );
       case "follow":
         core.close(resp.responseRid);
-        return httpRedirectFetch(req, response, terminator);
+        return httpRedirectFetch(
+          req,
+          response,
+          terminator,
+          inspectorRequestId !== null
+            ? { requestId: inspectorRequestId, redirectResponse: cdpResponse }
+            : null,
+        );
       case "manual":
         break;
     }
@@ -239,14 +666,43 @@ async function mainFetch(req, recursive, terminator) {
 
   if (nullBodyStatus(response.status)) {
     core.close(resp.responseRid);
+    if (inspectorRequestId !== null) {
+      safeEmit(inspectorNetwork.loadingFinished, {
+        requestId: inspectorRequestId,
+        timestamp: DateNow() / 1000,
+        encodedDataLength: 0,
+      });
+    }
   } else {
     if (req.method === "HEAD" || req.method === "CONNECT") {
       response.body = null;
       core.close(resp.responseRid);
+      if (inspectorRequestId !== null) {
+        safeEmit(inspectorNetwork.loadingFinished, {
+          requestId: inspectorRequestId,
+          timestamp: DateNow() / 1000,
+          encodedDataLength: 0,
+        });
+      }
     } else {
-      response.body = new InnerBody(
-        createResponseBodyStream(resp.responseRid, terminator),
-      );
+      let bodyStream = createResponseBodyStream(resp.responseRid, terminator);
+      // Tee the response body so the inspector can drain a copy in the
+      // background for `Network.dataReceived` + `loadingFinished` /
+      // `getResponseBody`, while the user still consumes the original.
+      if (inspectorRequestId !== null) {
+        try {
+          const tee = bodyStream.tee();
+          bodyStream = tee[0];
+          drainResponseForInspector(
+            tee[1],
+            inspectorRequestId,
+            inspectorNetwork,
+          );
+        } catch {
+          // tee failed; leave bodyStream untouched, no inspector data
+        }
+      }
+      response.body = new InnerBody(bodyStream);
     }
   }
 
@@ -264,9 +720,13 @@ async function mainFetch(req, recursive, terminator) {
  * @param {InnerRequest} request
  * @param {InnerResponse} response
  * @param {AbortSignal} terminator
+ * @param {?{requestId: string, redirectResponse: object}} inspectorCtx
+ *   When present, carries the inspector requestId across the redirect so
+ *   the next hop's `requestWillBeSent` keeps the same id and gets the
+ *   previous response attached as `redirectResponse`.
  * @returns {Promise<InnerResponse>}
  */
-function httpRedirectFetch(request, response, terminator) {
+function httpRedirectFetch(request, response, terminator, inspectorCtx = null) {
   const locationHeaders = ArrayPrototypeFilter(
     response.headerList,
     (entry) => byteLowerCase(entry[0]) === "location",
@@ -347,7 +807,7 @@ function httpRedirectFetch(request, response, terminator) {
     request.body = res.body;
   }
   ArrayPrototypePush(request.urlList, () => locationURL.href);
-  return mainFetch(request, true, terminator);
+  return mainFetch(request, true, terminator, inspectorCtx);
 }
 
 /**

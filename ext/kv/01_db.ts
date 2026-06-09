@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, internals, primordials } = globalThis.__bootstrap;
+const { core, internals, primordials } = __bootstrap;
 const {
   isPromise,
 } = core;
@@ -26,6 +26,7 @@ const {
   BigInt,
   BigIntPrototypeToString,
   Error,
+  NumberIsInteger,
   NumberIsNaN,
   Object,
   ObjectFreeze,
@@ -46,6 +47,8 @@ const {
 } = primordials;
 
 const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+
+const cloneableDeserializers = core.getCloneableDeserializers();
 
 const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
@@ -71,6 +74,18 @@ function validateQueueDelay(delay: number) {
   }
   if (NumberIsNaN(delay)) {
     throw new TypeError("Delay cannot be NaN");
+  }
+}
+
+function validateExpireIn(expireIn: number | undefined) {
+  if (expireIn === undefined) return;
+  // Reject NaN, Infinity, fractional and negative values. A non-finite
+  // expireIn otherwise reaches the native layer and overflows when computing
+  // the absolute expiry, panicking the process.
+  if (!NumberIsInteger(expireIn) || expireIn < 0) {
+    throw new TypeError(
+      `expireIn must be a non-negative integer: received ${expireIn}`,
+    );
   }
 }
 
@@ -190,6 +205,7 @@ class Kv {
   }
 
   async set(key: Deno.KvKey, value: unknown, options?: { expireIn?: number }) {
+    validateExpireIn(options?.expireIn);
     const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
       [],
@@ -220,12 +236,21 @@ class Kv {
       consistency?: Deno.KvConsistencyLevel;
     } = { __proto__: null },
   ): KvListIterator {
-    if (options.limit !== undefined && options.limit <= 0) {
-      throw new Error(`Limit must be positive: received ${options.limit}`);
+    if (
+      options.limit !== undefined &&
+      (!NumberIsInteger(options.limit) || options.limit <= 0)
+    ) {
+      throw new Error(
+        `Limit must be a positive integer: received ${options.limit}`,
+      );
     }
 
     let batchSize = options.batchSize ?? (options.limit ?? 100);
-    if (batchSize <= 0) throw new Error("batchSize must be positive");
+    if (!NumberIsInteger(batchSize) || batchSize <= 0) {
+      throw new Error(
+        `batchSize must be a positive integer: received ${batchSize}`,
+      );
+    }
     if (options.batchSize === undefined && batchSize > 500) batchSize = 500;
 
     return new KvListIterator({
@@ -316,6 +341,7 @@ class Kv {
       const { 0: payload, 1: handleId } = next;
       const deserializedPayload = core.deserialize(payload, {
         forStorage: true,
+        deserializers: cloneableDeserializers,
       });
 
       // Dispatch the payload.
@@ -463,6 +489,7 @@ class AtomicOperation {
           if (typeof mutation.expireIn === "number") {
             expireIn = mutation.expireIn;
           }
+          validateExpireIn(expireIn);
           /* falls through */
         case "sum":
         case "min":
@@ -516,6 +543,7 @@ class AtomicOperation {
     value: unknown,
     options?: { expireIn?: number },
   ): this {
+    validateExpireIn(options?.expireIn);
     ArrayPrototypePush(this.#mutations, [
       key,
       "set",
@@ -608,7 +636,10 @@ class AtomicOperation {
           } else {
             switch (rawValue.kind) {
               case "v8":
-                value = core.deserialize(rawValue.value, { forStorage: true });
+                value = core.deserialize(rawValue.value, {
+                  forStorage: true,
+                  deserializers: cloneableDeserializers,
+                });
                 break;
               case "bytes":
                 value = rawValue.value;
@@ -649,7 +680,10 @@ class AtomicOperation {
       // Deserialize message for display
       let message;
       try {
-        message = core.deserialize(serializedMessage, { forStorage: true });
+        message = core.deserialize(serializedMessage, {
+          forStorage: true,
+          deserializers: cloneableDeserializers,
+        });
       } catch {
         message = "[serialized message]";
       }
@@ -736,7 +770,10 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
     case "v8":
       return {
         ...entry,
-        value: core.deserialize(value, { forStorage: true }),
+        value: core.deserialize(value, {
+          forStorage: true,
+          deserializers: cloneableDeserializers,
+        }),
       };
     case "bytes":
       return {

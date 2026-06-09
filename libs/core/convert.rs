@@ -4,6 +4,7 @@ use std::convert::Infallible;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::sync::Arc;
 
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
@@ -333,6 +334,7 @@ impl_number_types!(
   u8, i8, u16, i16, u32, i32, u64, i64, usize, isize, f32, f64
 );
 
+#[derive(Debug)]
 pub struct BigInt {
   pub sign_bit: bool,
   pub words: Vec<u64>,
@@ -365,6 +367,37 @@ impl<'s> FromV8<'s> for BigInt {
     let (sign_bit, _) = bigint.to_words_array(&mut words);
 
     Ok(BigInt { sign_bit, words })
+  }
+}
+
+impl From<num_bigint::BigInt> for BigInt {
+  fn from(big_int: num_bigint::BigInt) -> Self {
+    let (sign, words) = big_int.to_u64_digits();
+    Self {
+      sign_bit: sign == num_bigint::Sign::Minus,
+      words,
+    }
+  }
+}
+
+impl From<BigInt> for num_bigint::BigInt {
+  fn from(big_int: BigInt) -> Self {
+    // SAFETY: Because the alignment of u64 is 8, the alignment of u32 is 4, and
+    // the size of u64 is 8, the size of u32 is 4, the alignment of u32 is a
+    // factor of the alignment of u64, and the size of u32 is a factor of the
+    // size of u64, we can safely transmute the slice of u64 to a slice of u32.
+    let (prefix, slice, suffix) = unsafe { big_int.words.align_to::<u32>() };
+    assert!(prefix.is_empty());
+    assert!(suffix.is_empty());
+    assert_eq!(slice.len(), big_int.words.len() * 2);
+    Self::from_slice(
+      if big_int.sign_bit {
+        num_bigint::Sign::Minus
+      } else {
+        num_bigint::Sign::Plus
+      },
+      slice,
+    )
   }
 }
 
@@ -429,6 +462,28 @@ impl<'s> ToV8<'s> for &'static str {
     scope: &mut v8::PinScope<'s, 'i>,
   ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
     Ok(v8::String::new(scope, self).unwrap().into()) // TODO
+  }
+}
+
+impl<'s> ToV8<'s> for Box<str> {
+  type Error = Infallible;
+  #[inline]
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    Ok(v8::String::new(scope, &self).unwrap().into()) // TODO
+  }
+}
+
+impl<'s> ToV8<'s> for Arc<str> {
+  type Error = Infallible;
+  #[inline]
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    Ok(v8::String::new(scope, &self).unwrap().into()) // TODO
   }
 }
 
@@ -1041,6 +1096,34 @@ where
       Some(value) => value.to_v8(scope),
       None => Ok(v8::null(scope).into()),
     }
+  }
+}
+
+impl<'s, T> ToV8<'s> for Box<T>
+where
+  T: ToV8<'s>,
+{
+  type Error = T::Error;
+
+  fn to_v8<'i>(
+    self,
+    scope: &mut v8::PinScope<'s, 'i>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    (*self).to_v8(scope)
+  }
+}
+
+impl<'s, T> FromV8<'s> for Box<T>
+where
+  T: FromV8<'s>,
+{
+  type Error = T::Error;
+
+  fn from_v8<'i>(
+    scope: &mut v8::PinScope<'s, 'i>,
+    value: v8::Local<'s, v8::Value>,
+  ) -> Result<Self, Self::Error> {
+    T::from_v8(scope, value).map(Box::new)
   }
 }
 
@@ -1995,6 +2078,29 @@ function equal(a, b) {
 
     let from = ToV8::to_v8(TupleSingle(1), scope).unwrap();
     assert_eq!(from.number_value(scope).unwrap(), 1.0);
+  }
+
+  #[test]
+  fn test_box_roundtrip() {
+    let mut runtime = JsRuntime::new(Default::default());
+    deno_core::scope!(scope, runtime);
+
+    // Box<T> forwards to T's ToV8/FromV8 — JS sees the inner shape, never
+    // a wrapper.
+    let inner: Box<String> = Box::new("hello".to_string());
+    let v = inner.clone().to_v8(scope).unwrap();
+    let s = v8::Local::<v8::String>::try_from(v).unwrap();
+    assert_eq!(s.to_rust_string_lossy(scope), "hello");
+
+    let back: Box<String> = FromV8::from_v8(scope, v).unwrap();
+    assert_eq!(back, inner);
+
+    // Box<Box<T>> collapses on the wire.
+    let nested: Box<Box<u32>> = Box::new(Box::new(42));
+    let v = nested.clone().to_v8(scope).unwrap();
+    assert_eq!(v.number_value(scope).unwrap(), 42.0);
+    let back: Box<Box<u32>> = FromV8::from_v8(scope, v).unwrap();
+    assert_eq!(back, nested);
   }
 
   #[test]

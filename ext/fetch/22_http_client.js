@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_fetch_custom_client } = core.ops;
 const { loadTlsKeyPair } = core.loadExtScript("ext:deno_net/02_tls.js");
 

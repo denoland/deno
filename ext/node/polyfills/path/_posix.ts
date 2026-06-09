@@ -3,7 +3,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { CHAR_DOT, CHAR_FORWARD_SLASH } = core.loadExtScript(
   "ext:deno_node/path/_constants.ts",
 );

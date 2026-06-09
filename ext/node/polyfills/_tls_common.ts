@@ -1,11 +1,48 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
+const {
+  ArrayBufferPrototype,
+  ArrayIsArray,
+  ArrayPrototypeFilter,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  Boolean,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  Error,
+  JSONParse,
+  NumberIsNaN,
+  NumberParseInt,
+  ObjectDefineProperty,
+  ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeExec,
+  RegExpPrototypeTest,
+  SafeArrayIterator,
+  SafeRegExp,
+  SafeSet,
+  SafeWeakSet,
+  SetPrototypeHas,
+  String,
+  StringPrototypeCharCodeAt,
+  StringPrototypeIncludes,
+  StringPrototypeReplace,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  TypeError,
+  Uint8Array,
+  WeakSetPrototypeHas,
+} = primordials;
 const {
   ERR_CRYPTO_CUSTOM_ENGINE_NOT_SUPPORTED,
   ERR_INVALID_ARG_TYPE,
@@ -16,13 +53,13 @@ const {
 const { getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",
 );
-const { isArrayBufferView } = core.loadExtScript(
+const { isArrayBufferView, isTypedArray } = core.loadExtScript(
   "ext:deno_node/internal/util/types.ts",
 );
 const { validateString } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
-const { op_node_validate_crl, op_node_validate_pfx } = core.ops;
+const { op_node_validate_crl, op_node_load_pfx } = core.ops;
 const { createPrivateKey } = core.loadExtScript(
   "ext:deno_node/internal/crypto/keys.ts",
 );
@@ -32,8 +69,10 @@ const { createPrivateKey } = core.loadExtScript(
 // "AECDH-NULL-SHA", "@SECLEVEL=2". Meta-keywords like "ALL", "HIGH",
 // "DEFAULT" also match. We reject strings where no colon-separated entry
 // looks like a valid cipher name, which catches typos like "no-such-cipher".
-const CIPHER_NAME_RE = /^[!+\-@]?[A-Z0-9][A-Z0-9_=\-]*(?:@[A-Z0-9_=\-]+)?$/;
-const CIPHER_META_NAMES = new Set([
+const CIPHER_NAME_RE = new SafeRegExp(
+  "^[!+\\-@]?[A-Z0-9][A-Z0-9_=\\-]*(?:@[A-Z0-9_=\\-]+)?$",
+);
+const CIPHER_META_NAMES = new SafeSet([
   "ALL",
   "COMPLEMENTOFALL",
   "COMPLEMENTOFDEFAULT",
@@ -48,20 +87,24 @@ const CIPHER_META_NAMES = new Set([
 ]);
 
 function validateCipherList(ciphers: string): void {
-  const entries = ciphers.split(":");
+  const entries = StringPrototypeSplit(ciphers, ":");
   let hasValidEntry = false;
-  for (const entry of entries) {
+  for (const entry of new SafeArrayIterator(entries)) {
     if (entry === "") continue;
-    if (!CIPHER_NAME_RE.test(entry)) {
+    if (!RegExpPrototypeTest(CIPHER_NAME_RE, entry)) {
       continue;
     }
-    const normalized = entry.replace(/^[!+\-]/, "");
-    const name = normalized.split("@", 1)[0];
+    const normalized = StringPrototypeReplace(
+      entry,
+      new SafeRegExp("^[!+\\-]"),
+      "",
+    );
+    const name = StringPrototypeSplit(normalized, "@", 1)[0];
     if (
-      normalized.startsWith("@SECLEVEL=") ||
-      CIPHER_META_NAMES.has(name) ||
-      name.startsWith("TLS_") ||
-      name.includes("-")
+      StringPrototypeStartsWith(normalized, "@SECLEVEL=") ||
+      SetPrototypeHas(CIPHER_META_NAMES, name) ||
+      StringPrototypeStartsWith(name, "TLS_") ||
+      StringPrototypeIncludes(name, "-")
     ) {
       hasValidEntry = true;
       break;
@@ -81,11 +124,11 @@ function validateCipherList(ciphers: string): void {
 // defaulting to 2 here so small RSA keys are rejected when no level is given.
 function parseSecLevel(ciphers: unknown): number {
   if (typeof ciphers !== "string") return 2;
-  const re = /(?:^|:)@SECLEVEL=(\d+)(?=$|:)/;
-  const match = re.exec(ciphers);
+  const re = new SafeRegExp("(?:^|:)@SECLEVEL=(\\d+)(?=$|:)");
+  const match = RegExpPrototypeExec(re, ciphers);
   if (!match) return 2;
-  const n = globalThis.parseInt(match[1], 10);
-  if (Number.isNaN(n) || n < 0) return 2;
+  const n = NumberParseInt(match[1], 10);
+  if (NumberIsNaN(n) || n < 0) return 2;
   return n;
 }
 
@@ -143,16 +186,14 @@ function validateKeyStrength(options: any): void {
   const level = parseSecLevel(options.ciphers);
   if (level <= 0) return;
 
-  const keys = globalThis.Array.isArray(options.key)
-    ? options.key
-    : [options.key];
-  for (const k of keys) {
+  const keys = ArrayIsArray(options.key) ? options.key : [options.key];
+  for (const k of new SafeArrayIterator(keys)) {
     if (!k) continue;
     let keyData: any = k;
     let passphrase: any = options.passphrase;
     if (
       typeof k === "object" && !isArrayBufferView(k) &&
-      !(k instanceof globalThis.ArrayBuffer)
+      !ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, k)
     ) {
       keyData = (k as any).pem ?? (k as any).key;
       passphrase = (k as any).passphrase ?? passphrase;
@@ -211,7 +252,7 @@ const kProtocolMap: Record<string, [string, string]> = {
   "TLS_server_method": ["TLSv1", "TLSv1.3"],
 };
 
-const kValidVersions: Set<string> = new Set([
+const kValidVersions: Set<string> = new SafeSet([
   "TLSv1",
   "TLSv1.1",
   "TLSv1.2",
@@ -221,7 +262,10 @@ const kValidVersions: Set<string> = new Set([
 function toStringOrUndefined(val: any): string | undefined {
   if (val == null) return undefined;
   if (typeof val === "string") return val;
-  if (isArrayBufferView(val) || val instanceof globalThis.ArrayBuffer) {
+  if (
+    isArrayBufferView(val) ||
+    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, val)
+  ) {
     return new TextDecoder().decode(val);
   }
   return `${val}`;
@@ -231,9 +275,10 @@ function normalizeCertValue(
   val: any,
 ): string | string[] | undefined {
   if (val == null) return undefined;
-  if (globalThis.Array.isArray(val)) {
-    return val.map((v: any) => toStringOrUndefined(v)!).filter(
-      globalThis.Boolean,
+  if (ArrayIsArray(val)) {
+    return ArrayPrototypeFilter(
+      ArrayPrototypeMap(val, (v: any) => toStringOrUndefined(v)!),
+      Boolean,
     );
   }
   return toStringOrUndefined(val);
@@ -276,10 +321,11 @@ function getProtocolRange(
       );
     }
 
-    [minVersion, maxVersion] = range;
+    minVersion = range[0];
+    maxVersion = range[1];
   } else {
     if (options.minVersion) {
-      if (!kValidVersions.has(options.minVersion)) {
+      if (!SetPrototypeHas(kValidVersions, options.minVersion)) {
         throw new ERR_TLS_INVALID_PROTOCOL_VERSION(
           options.minVersion,
           "minVersion",
@@ -288,7 +334,7 @@ function getProtocolRange(
       minVersion = options.minVersion;
     }
     if (options.maxVersion) {
-      if (!kValidVersions.has(options.maxVersion)) {
+      if (!SetPrototypeHas(kValidVersions, options.maxVersion)) {
         throw new ERR_TLS_INVALID_PROTOCOL_VERSION(
           options.maxVersion,
           "maxVersion",
@@ -318,7 +364,7 @@ function getDefaultMaxVersion(): string {
 function isValidKeyCertValue(val: any): boolean {
   return typeof val === "string" ||
     isArrayBufferView(val) ||
-    val instanceof globalThis.ArrayBuffer;
+    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, val);
 }
 
 function validateKeyCertOption(
@@ -328,7 +374,7 @@ function validateKeyCertOption(
 ) {
   if (!val) return; // falsy values (false, null, undefined, 0, '') are skipped
   if (isValidKeyCertValue(val)) return;
-  if (globalThis.Array.isArray(val)) {
+  if (ArrayIsArray(val)) {
     for (let i = 0; i < val.length; i++) {
       const item = val[i];
       if (!item) continue;
@@ -356,16 +402,90 @@ function toUint8Array(val: any): Uint8Array {
   if (typeof val === "string") {
     return new TextEncoder().encode(val);
   }
-  if (val instanceof globalThis.ArrayBuffer) {
+  if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, val)) {
     return new Uint8Array(val);
   }
   if (isArrayBufferView(val)) {
-    return new Uint8Array(val.buffer, val.byteOffset, val.byteLength);
+    const buffer = isTypedArray(val)
+      ? TypedArrayPrototypeGetBuffer(val)
+      : DataViewPrototypeGetBuffer(val);
+    const byteOffset = isTypedArray(val)
+      ? TypedArrayPrototypeGetByteOffset(val)
+      : DataViewPrototypeGetByteOffset(val);
+    const byteLength = isTypedArray(val)
+      ? TypedArrayPrototypeGetByteLength(val)
+      : DataViewPrototypeGetByteLength(val);
+    return new Uint8Array(buffer, byteOffset, byteLength);
   }
   return new TextEncoder().encode(String(val));
 }
 
-const secureContextBrand = new WeakSet<object>();
+// Node accepts `cert` as <string>|<Buffer>|<Array<string|Buffer>>. Multiple PEM
+// blocks can be concatenated in a single string, so flatten array forms into
+// one PEM-encoded string for the rustls path. Anything that can't be coerced
+// to a PEM string is skipped.
+function normalizeCertPem(val: any): string | undefined {
+  if (val == null) return undefined;
+  if (ArrayIsArray(val)) {
+    const parts: string[] = [];
+    for (const item of new SafeArrayIterator(val)) {
+      if (item == null) continue;
+      const s = toStringOrUndefined(item);
+      if (s !== undefined && s !== "") ArrayPrototypePush(parts, s);
+    }
+    if (parts.length === 0) return undefined;
+    return ArrayPrototypeJoin(parts, "\n");
+  }
+  return toStringOrUndefined(val);
+}
+
+// Node accepts `key` as <string>|<Buffer>|<Array<string|Buffer|Object>> where
+// the object form is `{ pem, passphrase? }`. rustls_pemfile cannot read
+// encrypted PKCS#1/PKCS#8 blocks, so decrypt any passphrase-protected entries
+// via `createPrivateKey` and re-export as unencrypted PKCS#8 PEM before
+// concatenating.
+function normalizeKeyPem(
+  val: any,
+  defaultPassphrase: any,
+): string | undefined {
+  if (val == null) return undefined;
+  const items = ArrayIsArray(val) ? val : [val];
+  const parts: string[] = [];
+  for (const item of new SafeArrayIterator(items)) {
+    if (item == null) continue;
+    let pem: string | undefined;
+    let passphrase = defaultPassphrase;
+    if (
+      typeof item === "object" && !isArrayBufferView(item) &&
+      !ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, item)
+    ) {
+      pem = toStringOrUndefined((item as any).pem ?? (item as any).key);
+      if ((item as any).passphrase != null) {
+        passphrase = (item as any).passphrase;
+      }
+    } else {
+      pem = toStringOrUndefined(item);
+    }
+    if (pem === undefined || pem === "") continue;
+    if (passphrase != null) {
+      try {
+        const keyObject = createPrivateKey({
+          key: pem,
+          passphrase: String(passphrase),
+        });
+        pem = keyObject.export({ format: "pem", type: "pkcs8" }) as string;
+      } catch {
+        // Fall through with the original PEM; the TLS layer will surface a
+        // proper error if it really is unreadable.
+      }
+    }
+    ArrayPrototypePush(parts, pem);
+  }
+  if (parts.length === 0) return undefined;
+  return ArrayPrototypeJoin(parts, "\n");
+}
+
+const secureContextBrand = new SafeWeakSet<object>();
 
 class SecureContext {
   context: {
@@ -381,7 +501,7 @@ class SecureContext {
     ecdhCurve?: string;
   };
 
-  constructor(options: any = {}) {
+  constructor(options: any = { __proto__: null }) {
     if (options.ciphers != null) {
       validateString(options.ciphers, "options.ciphers");
       validateCipherList(options.ciphers);
@@ -431,21 +551,55 @@ class SecureContext {
     validateKeyCertOption(options.key, "options.key", true);
     validateKeyCertOption(options.ca, "options.ca", false);
 
-    // Validate PFX / PKCS#12 data.
+    // Load PFX / PKCS#12 data: extract the cert + private key so they can
+    // be used by the underlying TLS implementation. Any additional certs
+    // present in the PFX are merged into `ca`. Caller-supplied `cert`/`key`
+    // (and `ca`) take precedence, matching Node, which loads PFX first and
+    // then layers explicit cert/key on top.
+    //
+    // Node accepts both a single <string>|<Buffer> and an
+    // <Array<string|Buffer|{ buf, passphrase? }>>; an empty array (which
+    // playwright passes when no PFX is configured) must be a no-op rather
+    // than feeding an empty buffer to the parser.
+    let pfxCert: string | undefined;
+    let pfxKey: string | undefined;
+    let pfxCa: string[] | undefined;
     if (options.pfx != null) {
-      const pfxData = toUint8Array(options.pfx);
-      const pfxPassphrase = options.passphrase != null
-        ? String(options.passphrase)
-        : null;
-      op_node_validate_pfx(pfxData, pfxPassphrase);
+      const pfxItems = ArrayIsArray(options.pfx) ? options.pfx : [options.pfx];
+      for (const item of new SafeArrayIterator(pfxItems)) {
+        if (item == null) continue;
+        let buf: any = item;
+        let passphrase: any = options.passphrase;
+        if (
+          typeof item === "object" && !isArrayBufferView(item) &&
+          !ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, item) &&
+          ((item as any).buf !== undefined ||
+            (item as any).passphrase !== undefined)
+        ) {
+          buf = (item as any).buf;
+          if ((item as any).passphrase != null) {
+            passphrase = (item as any).passphrase;
+          }
+        }
+        if (buf == null) continue;
+        const pfxData = toUint8Array(buf);
+        const pfxPassphrase = passphrase != null ? String(passphrase) : null;
+        const loaded = op_node_load_pfx(pfxData, pfxPassphrase);
+        if (pfxCert === undefined) {
+          pfxCert = loaded.cert;
+          pfxKey = loaded.key;
+        }
+        if (loaded.ca?.length) {
+          if (pfxCa === undefined) pfxCa = [];
+          ArrayPrototypePush(pfxCa, ...new SafeArrayIterator(loaded.ca));
+        }
+      }
     }
 
     // Validate CRL data.
     if (options.crl != null) {
-      const crls = globalThis.Array.isArray(options.crl)
-        ? options.crl
-        : [options.crl];
-      for (const crl of crls) {
+      const crls = ArrayIsArray(options.crl) ? options.crl : [options.crl];
+      for (const crl of new SafeArrayIterator(crls)) {
         op_node_validate_crl(toUint8Array(crl));
       }
     }
@@ -458,12 +612,13 @@ class SecureContext {
 
     const { minVersion, maxVersion } = getProtocolRange(options);
 
-    const useDefaultCA = !options.ca;
+    const effectiveCa = options.ca != null ? options.ca : pfxCa;
+    const useDefaultCA = !effectiveCa;
     this.context = {
-      ca: useDefaultCA ? undefined : normalizeCertValue(options.ca),
+      ca: useDefaultCA ? undefined : normalizeCertValue(effectiveCa),
       useDefaultCA,
-      cert: toStringOrUndefined(options.cert),
-      key: toStringOrUndefined(options.key),
+      cert: normalizeCertPem(options.cert) ?? pfxCert,
+      key: normalizeKeyPem(options.key, options.passphrase) ?? pfxKey,
       minVersion,
       maxVersion,
       ciphers: options.ciphers,
@@ -472,12 +627,12 @@ class SecureContext {
       ecdhCurve: options.ecdhCurve,
     };
     secureContextBrand.add(this.context);
-    Object.defineProperty(this.context, "_external", {
+    ObjectDefineProperty(this.context, "_external", {
       __proto__: null,
       configurable: true,
       enumerable: false,
       get(this: object) {
-        if (!secureContextBrand.has(this)) {
+        if (!WeakSetPrototypeHas(secureContextBrand, this)) {
           throw new TypeError("Illegal invocation");
         }
         return this;
@@ -487,7 +642,7 @@ class SecureContext {
       this: object,
       _options?: number,
     ) {
-      if (!secureContextBrand.has(this)) {
+      if (!WeakSetPrototypeHas(secureContextBrand, this)) {
         throw new TypeError("Illegal invocation");
       }
     };
@@ -495,7 +650,7 @@ class SecureContext {
       this: any,
       cert: any,
     ) {
-      if (!secureContextBrand.has(this)) {
+      if (!WeakSetPrototypeHas(secureContextBrand, this)) {
         throw new TypeError("Illegal invocation");
       }
       validateKeyCertOption(cert, "cert", false);
@@ -505,8 +660,8 @@ class SecureContext {
       }
       if (this.ca === undefined) {
         this.ca = normalized;
-      } else if (globalThis.Array.isArray(this.ca)) {
-        this.ca.push(normalized);
+      } else if (ArrayIsArray(this.ca)) {
+        ArrayPrototypePush(this.ca, normalized);
       } else {
         this.ca = [this.ca, normalized];
       }
@@ -525,7 +680,7 @@ class SecureContext {
   }
 }
 
-function createSecureContext(options: any = {}) {
+function createSecureContext(options: any = { __proto__: null }) {
   return new SecureContext(options);
 }
 
@@ -548,14 +703,15 @@ function translatePeerCertificate(c: any) {
     const info = c.infoAccess;
     c.infoAccess = { __proto__: null };
 
-    info.replace(
-      /([^\n:]*):([^\n]*)(?:\n|$)/g,
+    StringPrototypeReplace(
+      info,
+      new SafeRegExp("([^\\n:]*):([^\\n]*)(?:\\n|$)", "g"),
       (_all: string, key: string, value: string) => {
-        const normalized = value.charCodeAt(0) === 0x22
-          ? JSON.parse(value)
+        const normalized = StringPrototypeCharCodeAt(value, 0) === 0x22
+          ? JSONParse(value)
           : value;
-        if (key in c.infoAccess) {
-          c.infoAccess[key].push(normalized);
+        if (ObjectHasOwn(c.infoAccess, key)) {
+          ArrayPrototypePush(c.infoAccess[key], normalized);
         } else {
           c.infoAccess[key] = [normalized];
         }

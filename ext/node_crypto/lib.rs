@@ -161,7 +161,7 @@ deno_core::extension!(
     keys::op_node_get_symmetric_key_size,
     keys::op_node_key_equals,
     keys::op_node_key_type,
-    keys::op_node_validate_pfx,
+    keys::op_node_load_pfx,
     keys::op_node_validate_crl,
     x509::op_node_x509_parse,
     x509::op_node_x509_ca,

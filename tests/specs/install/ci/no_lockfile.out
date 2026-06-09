@@ -1,0 +1,2 @@
+error: deno ci requires a lockfile, but none was found.
+  hint: run `deno install` to create one.

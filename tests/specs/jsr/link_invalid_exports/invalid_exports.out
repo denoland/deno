@@ -1,0 +1,3 @@
+[WILDCARD]Warning Invalid "exports" field in configuration file. The 'add' export must start with './'. Did you mean './add'?
+    at [WILDLINE]
+[WILDCARD]3

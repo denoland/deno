@@ -13,6 +13,10 @@ use deno_ast::SourceRanged;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::TranspileModuleOptions;
 use deno_ast::TranspileResult;
+use deno_ast::swc::ast::Decorator;
+use deno_ast::swc::ecma_visit::Visit;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_ast::swc::ecma_visit::noop_visit_type;
 use deno_error::JsErrorBox;
 use deno_graph::MediaType;
 use deno_graph::Module;
@@ -533,6 +537,29 @@ fn transpile(
   emit_options: &deno_ast::EmitOptions,
 ) -> Result<EmittedSourceText, EmitParsedSourceHelperError> {
   ensure_no_import_assertion(&parsed_source)?;
+  if let Some(diagnostics) = invalid_syntax_parse_diagnostics(&parsed_source) {
+    return Err(deno_ast::TranspileError::ParseErrors(diagnostics).into());
+  }
+  // Skip the decorator transform when the module has no decorators. The
+  // swc decorator pass otherwise hoists every computed class-member key into
+  // a `var _computedKey; _computedKey = ...;` pair at module scope, which
+  // looks like a side effect and blocks downstream tree-shaking (e.g. in
+  // `deno bundle`). See denoland/deno#30817.
+  let owned_options;
+  let transpile_options = if !matches!(
+    transpile_options.decorators,
+    deno_ast::DecoratorsTranspileOption::None
+  ) && !program_has_decorators(
+    parsed_source.program_ref(),
+  ) {
+    owned_options = deno_ast::TranspileOptions {
+      decorators: deno_ast::DecoratorsTranspileOption::None,
+      ..transpile_options.clone()
+    };
+    &owned_options
+  } else {
+    transpile_options
+  };
   let transpile_result = parsed_source.transpile(
     transpile_options,
     &TranspileModuleOptions {
@@ -540,14 +567,103 @@ fn transpile(
     },
     emit_options,
   )?;
-  let transpiled_source = match transpile_result {
+  let mut transpiled_source = match transpile_result {
     TranspileResult::Owned(source) => source,
     TranspileResult::Cloned(source) => {
       debug_assert!(false, "Transpile owned failed.");
       source
     }
   };
+  patch_public_decorator_access_has(&mut transpiled_source.text);
   Ok(transpiled_source)
+}
+
+pub fn patch_public_decorator_access_has(source: &mut String) {
+  if !source.contains("_apply_decs_2203_r") {
+    return;
+  }
+
+  const OLD_EMITTED_ACCESS_OBJECT: &str = concat!(
+    "    ctx.access = get && set ? {\n",
+    "      get: get,\n",
+    "      set: set\n",
+    "    } : get ? {\n",
+    "      get: get\n",
+    "    } : {\n",
+    "      set: set\n",
+    "    };\n",
+  );
+  const NEW_EMITTED_ACCESS_OBJECT: &str = concat!(
+    "    if (isPrivate) {\n",
+    "      ctx.access = get && set ? { get: get, set: set } : get ? { get: get } : { set: set };\n",
+    "    } else {\n",
+    "      if (get) { var originalGet = get; get = function(target) { if (arguments.length === 0) target = this; return originalGet.call(target); }; }\n",
+    "      if (set) { var originalSet = set; set = function(target, value) { if (arguments.length === 1) { value = target; target = this; } return originalSet.call(target, value); }; }\n",
+    "      var has = function(target) { return name in target; };\n",
+    "      ctx.access = get && set ? { has: has, get: get, set: set } : get ? { has: has, get: get } : { has: has, set: set };\n",
+    "    }\n",
+  );
+  *source =
+    source.replace(OLD_EMITTED_ACCESS_OBJECT, NEW_EMITTED_ACCESS_OBJECT);
+}
+
+fn program_has_decorators(program: deno_ast::ProgramRef<'_>) -> bool {
+  #[derive(Default)]
+  struct DecoratorDetector {
+    found: bool,
+  }
+
+  impl Visit for DecoratorDetector {
+    noop_visit_type!();
+
+    fn visit_decorator(&mut self, _: &Decorator) {
+      self.found = true;
+    }
+  }
+
+  let mut detector = DecoratorDetector::default();
+  program.visit_with(&mut detector);
+  detector.found
+}
+
+/// When `swc` recovers from a syntax error it leaves an `Invalid` placeholder
+/// node in the AST. The code generator emits these as the literal text
+/// `<invalid>`, which then surfaces downstream as a misleading
+/// `Uncaught SyntaxError: Unexpected token '<'` once the emitted output is
+/// executed. If any such node is present, return the (otherwise non-fatal)
+/// parse diagnostics so a precise syntax error can be reported instead of
+/// emitting broken JavaScript. See denoland/deno#19457.
+pub fn invalid_syntax_parse_diagnostics(
+  parsed_source: &ParsedSource,
+) -> Option<deno_ast::ParseDiagnosticsError> {
+  let diagnostics = parsed_source.diagnostics();
+  // Fast path: well-formed sources have no recovered-from diagnostics, and
+  // `swc` only ever inserts an `Invalid` node alongside one, so there's no
+  // need to walk the AST.
+  if diagnostics.is_empty() {
+    return None;
+  }
+
+  #[derive(Default)]
+  struct InvalidNodeDetector {
+    found: bool,
+  }
+
+  impl Visit for InvalidNodeDetector {
+    noop_visit_type!();
+
+    fn visit_invalid(&mut self, _: &deno_ast::swc::ast::Invalid) {
+      self.found = true;
+    }
+  }
+
+  let mut detector = InvalidNodeDetector::default();
+  parsed_source.program_ref().visit_with(&mut detector);
+  if !detector.found {
+    return None;
+  }
+
+  Some(deno_ast::ParseDiagnosticsError(diagnostics.clone()))
 }
 
 // todo(dsherret): this is a temporary measure until we have swc erroring for this

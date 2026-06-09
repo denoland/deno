@@ -2,7 +2,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { ArrayPrototypeSlice, ArrayPrototypeSort } = primordials;
 
 const {
@@ -13,6 +13,8 @@ const {
 const { ClientRequest } = core.createLazyLoader("node:_http_client")();
 const httpAgent = core.createLazyLoader("node:_http_agent")();
 const { Agent } = httpAgent;
+const httpProxy = core.createLazyLoader("node:_http_proxy")();
+const { setGlobalProxyFromEnv } = httpProxy;
 const { IncomingMessage } = core.createLazyLoader("node:_http_incoming")();
 const {
   _connectionListener,
@@ -96,6 +98,7 @@ return {
   Server: ServerImpl,
   ServerImpl,
   ServerResponse,
+  setGlobalProxyFromEnv,
   setMaxIdleHTTPParsers,
   STATUS_CODES,
   validateHeaderName,
