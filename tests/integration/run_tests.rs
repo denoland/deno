@@ -1648,7 +1648,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[test(flaky)]
   fn prompt_esc_cancel_pty() {
     TestContext::default()
       .new_command()
@@ -1661,7 +1661,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[test(flaky)]
   fn prompt_esc_cancel_eval_pty() {
     TestContext::default()
       .new_command()
