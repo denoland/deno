@@ -1,0 +1,16 @@
+running 1 test from ./repeats_fail.ts
+repeated with failure ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+repeated with failure => ./repeats_fail.ts:[WILDCARD]
+error: Error: second run fails
+[WILDCARD]
+
+ FAILURES 
+
+repeated with failure => ./repeats_fail.ts:[WILDCARD]
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

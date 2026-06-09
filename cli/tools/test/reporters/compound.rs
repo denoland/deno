@@ -54,6 +54,17 @@ impl TestReporter for CompoundTestReporter {
     }
   }
 
+  fn report_retry(
+    &mut self,
+    description: &TestDescription,
+    attempt: u32,
+    failure: &TestFailure,
+  ) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_retry(description, attempt, failure);
+    }
+  }
+
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
     for reporter in &mut self.test_reporters {
       reporter.report_uncaught_error(origin, error.clone());

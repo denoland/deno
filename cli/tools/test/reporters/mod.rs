@@ -27,6 +27,17 @@ pub trait TestReporter {
     result: &TestResult,
     elapsed: u64,
   );
+  /// Called when a test attempt failed but will be retried (`retry` option).
+  /// `attempt` is the zero-based index of the attempt that failed. This is
+  /// informational; the test's terminal result is still delivered via
+  /// [`Self::report_result`]. Defaults to a no-op.
+  fn report_retry(
+    &mut self,
+    _description: &TestDescription,
+    _attempt: u32,
+    _failure: &TestFailure,
+  ) {
+  }
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
   fn report_step_register(&mut self, description: &TestStepDescription);
   fn report_step_wait(&mut self, description: &TestStepDescription);

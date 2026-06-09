@@ -439,6 +439,10 @@ impl TestRun {
                 );
               }
             }
+            test::TestEvent::Retry(..) => {
+              // Informational only; the test's terminal result is reported via
+              // `TestEvent::Result`.
+            }
             test::TestEvent::Completed => {
               reporter.report_completed();
             }

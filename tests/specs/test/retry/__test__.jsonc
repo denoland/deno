@@ -1,0 +1,35 @@
+{
+  "tempDir": true,
+  "tests": {
+    "retry_pass": {
+      "args": "test --quiet retry_pass.ts",
+      "exitCode": 0,
+      "output": "retry_pass.out"
+    },
+    "retry_exhausted": {
+      "args": "test --quiet retry_exhausted.ts",
+      "exitCode": 1,
+      "output": "retry_exhausted.out"
+    },
+    "repeats_pass": {
+      "args": "test --quiet repeats_pass.ts",
+      "exitCode": 0,
+      "output": "repeats_pass.out"
+    },
+    "repeats_fail": {
+      "args": "test --quiet repeats_fail.ts",
+      "exitCode": 1,
+      "output": "repeats_fail.out"
+    },
+    "retry_steps": {
+      "args": "test --quiet retry_steps.ts",
+      "exitCode": 0,
+      "output": "retry_steps.out"
+    },
+    "validation_negative": {
+      "args": "test --quiet validation_negative.ts",
+      "exitCode": 1,
+      "output": "validation_negative.out"
+    }
+  }
+}
