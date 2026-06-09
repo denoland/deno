@@ -656,6 +656,14 @@ fn split_authority(authority: &str) -> (&str, Option<u16>) {
   (address, Some(port))
 }
 
+fn request_header_value_separator(name: &[u8]) -> &'static [u8] {
+  if name.eq_ignore_ascii_case(COOKIE.as_ref()) {
+    b"; "
+  } else {
+    b", "
+  }
+}
+
 fn raw_request_header_to_v8<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
   headers: &RawRequestHeaders,
@@ -672,11 +680,7 @@ fn raw_request_header_to_v8<'scope>(
     .unwrap()
     .into();
   }
-  let separator = if name.eq_ignore_ascii_case(b"cookie") {
-    b"; ".as_slice()
-  } else {
-    b", ".as_slice()
-  };
+  let separator = request_header_value_separator(name);
   let mut first = None::<&[u8]>;
   let mut out = None::<Vec<u8>>;
   for header in headers.iter() {
@@ -2134,6 +2138,7 @@ pub fn op_http_get_request_header<'scope>(
       let Ok(name) = HeaderName::from_bytes(&name) else {
         return v8::null(scope).into();
       };
+      let separator = request_header_value_separator(name.as_ref());
       let request_parts = http.request_parts();
       let mut values = request_parts.headers.get_all(name).iter();
       let Some(first) = values.next() else {
@@ -2148,12 +2153,14 @@ pub fn op_http_get_request_header<'scope>(
         .unwrap()
         .into();
       };
-      let mut value = Vec::with_capacity(first.as_bytes().len() + 2);
+      let mut value = Vec::with_capacity(
+        first.as_bytes().len() + separator.len() + next.as_bytes().len(),
+      );
       value.extend_from_slice(first.as_bytes());
-      value.extend_from_slice(b", ");
+      value.extend_from_slice(separator);
       value.extend_from_slice(next.as_bytes());
       for next in values {
-        value.extend_from_slice(b", ");
+        value.extend_from_slice(separator);
         value.extend_from_slice(next.as_bytes());
       }
       v8::String::new_from_one_byte(scope, &value, v8::NewStringType::Normal)
@@ -2221,7 +2228,9 @@ pub fn op_http_get_request_headers<'scope>(
       vec.push(
         v8::String::new_from_one_byte(
           scope,
-          cookies.join(b"; ".as_slice()).as_ref(),
+          cookies
+            .join(request_header_value_separator(COOKIE.as_ref()))
+            .as_ref(),
           v8::NewStringType::Normal,
         )
         .unwrap()
@@ -2274,8 +2283,6 @@ pub fn op_http_get_request_headers<'scope>(
   // semicolons.
   // TODO(mmastrac): This should probably happen on the JS side on-demand
   if let Some(cookies) = cookies {
-    let cookie_sep = "; ".as_bytes();
-
     vec.push(
       v8::String::new_external_onebyte_static(scope, COOKIE.as_ref())
         .unwrap()
@@ -2284,7 +2291,9 @@ pub fn op_http_get_request_headers<'scope>(
     vec.push(
       v8::String::new_from_one_byte(
         scope,
-        cookies.join(cookie_sep).as_ref(),
+        cookies
+          .join(request_header_value_separator(COOKIE.as_ref()))
+          .as_ref(),
         v8::NewStringType::Normal,
       )
       .unwrap()
