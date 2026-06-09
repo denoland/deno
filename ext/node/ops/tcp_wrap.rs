@@ -169,7 +169,7 @@ unsafe extern "C" fn connect_cb(req: *mut UvConnect, status: i32) {
 #[repr(C)]
 pub struct TCPWrap {
   base: LibUvStreamWrap,
-  handle: Option<OwnedPtr<UvTcp>>,
+  handle: Cell<Option<OwnedPtr<UvTcp>>>,
   socket_type: Cell<SocketType>,
   /// Permission token from DNS lookup. When set, connect() checks
   /// permissions against the original hostname instead of the resolved IP.
@@ -229,7 +229,7 @@ impl TCPWrap {
 
       Self {
         base,
-        handle: Some(tcp),
+        handle: Cell::new(Some(tcp)),
         socket_type: Cell::new(socket_type),
         net_perm_hostname: RefCell::new(None),
       }
@@ -258,7 +258,7 @@ impl TCPWrap {
           -1,
           std::ptr::null(),
         ),
-        handle: None,
+        handle: Cell::new(None),
         socket_type: Cell::new(socket_type),
         net_perm_hostname: RefCell::new(None),
       }
@@ -266,8 +266,27 @@ impl TCPWrap {
   }
 
   fn tcp_ptr(&self) -> *mut UvTcp {
-    match &self.handle {
-      Some(h) => h.as_mut_ptr(),
+    // Briefly take the `OwnedPtr` out of the cell to read its raw address, then
+    // put it straight back so ownership is unchanged.
+    match self.handle.take() {
+      Some(h) => {
+        let ptr = h.as_mut_ptr();
+        self.handle.set(Some(h));
+        ptr
+      }
+      None => std::ptr::null_mut(),
+    }
+  }
+
+  /// Detach the underlying TCP handle, transferring ownership of the `UvTcp`
+  /// allocation to the caller. After this the `TCPWrap` no longer owns or
+  /// frees the handle, so exactly one owner (the caller) remains responsible
+  /// for freeing it. Returns null if the handle was already detached or never
+  /// allocated.
+  pub fn detach(&self) -> *mut UvTcp {
+    self.base.detach_stream();
+    match self.handle.take() {
+      Some(h) => h.into_raw(),
       None => std::ptr::null_mut(),
     }
   }
