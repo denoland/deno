@@ -542,6 +542,41 @@ impl RawRequestHeaders {
     Some(&self.bytes[header.value_start..header.value_start + header.value_len])
   }
 
+  /// Removes all headers with the given (lowercase) name, returning the
+  /// value of the first removed header.
+  fn remove(&mut self, name: &[u8]) -> Option<Vec<u8>> {
+    let mut value = None;
+    let mut i = 0;
+    while i < self.entries.len() {
+      let header = &self.entries[i];
+      let header_name =
+        &self.bytes[header.name_start..header.name_start + header.name_len];
+      if header_name.eq_ignore_ascii_case(name) {
+        if value.is_none() {
+          value = Some(
+            self.bytes
+              [header.value_start..header.value_start + header.value_len]
+              .to_vec(),
+          );
+        }
+        self.entries.remove(i);
+        if let Some(index) = self.host_index
+          && index > i
+        {
+          self.host_index = Some(index - 1);
+        }
+        if let Some(index) = self.authorization_index
+          && index > i
+        {
+          self.authorization_index = Some(index - 1);
+        }
+      } else {
+        i += 1;
+      }
+    }
+    value
+  }
+
   fn get_joined(&self, name: &[u8], separator: &[u8]) -> Option<Vec<u8>> {
     let mut out = None::<Vec<u8>>;
     for header in self.iter() {
@@ -975,6 +1010,7 @@ enum RawRequestBody {
 
 struct RawHttpRecordInner {
   request_info: HttpConnectionProperties,
+  client_addr: Option<Vec<u8>>,
   method: RawMethod,
   path: String,
   headers: RawRequestHeaders,
@@ -1003,11 +1039,16 @@ impl RawHttpRecord {
     request_info: HttpConnectionProperties,
     method: RawMethod,
     path: String,
-    headers: RawRequestHeaders,
+    mut headers: RawRequestHeaders,
     request_body: Option<RawRequestBody>,
     upgrade: Option<Rc<RawUpgrade>>,
     request_size: u64,
   ) -> Rc<Self> {
+    let client_addr = if crate::service::trust_proxy_headers() {
+      headers.remove(b"x-deno-client-address")
+    } else {
+      None
+    };
     let otel_info = deno_telemetry::OTEL_GLOBALS
       .get()
       .filter(|o| o.has_metrics())
@@ -1022,6 +1063,7 @@ impl RawHttpRecord {
       });
     Rc::new(Self(RefCell::new(RawHttpRecordInner {
       request_info,
+      client_addr,
       method,
       path,
       headers,
@@ -1099,7 +1141,12 @@ impl RawHttpRecord {
         if inner.request_cancelled {
           return Poll::Ready(true);
         }
-        if inner.response_ready {
+        // Resolve only once the response body has been fully written, not
+        // when the response is merely dispatched: in legacy-abort mode the
+        // JS side aborts `Request.signal` as soon as this future resolves,
+        // which would tear down anything tied to the signal (e.g. a proxied
+        // `fetch` whose body is still streaming as the response).
+        if inner.response_body_finished {
           return Poll::Ready(false);
         }
         inner.request_cancel_waker = Some(cx.waker().clone());
@@ -1272,6 +1319,9 @@ impl RawHttpRecord {
     if let Some(waker) = inner.response_body_waker.take() {
       waker.wake();
     }
+    if let Some(waker) = inner.request_cancel_waker.take() {
+      waker.wake();
+    }
   }
 
   fn add_otel_response_size(&self, size: usize) {
@@ -1340,7 +1390,12 @@ impl RawHttpRecordCancelGuard {
   }
 
   fn disarm(&mut self) {
-    self.0 = None;
+    if let Some(record) = self.0.take() {
+      // The response (including its body, if any) has been written. Mark the
+      // body finished so `request_cancelled()` resolves; flat-response paths
+      // don't go through `RawResponseBodyFinishGuard`.
+      record.finish_response_body(false);
+    }
   }
 }
 
@@ -1994,14 +2049,25 @@ fn raw_request_remote_addr<'scope>(
   http: &RawHttpRecord,
 ) -> v8::Local<'scope, v8::Array> {
   let inner = http.0.borrow();
+  let (peer_ip, peer_port) = match &inner.client_addr {
+    Some(client_addr) => {
+      let addr: std::net::SocketAddr =
+        std::str::from_utf8(client_addr).unwrap().parse().unwrap();
+      (Rc::from(format!("{}", addr.ip())), Some(addr.port() as u32))
+    }
+    _ => (
+      inner.request_info.peer_address.clone(),
+      inner.request_info.peer_port,
+    ),
+  };
   let peer_ip: v8::Local<v8::Value> = v8::String::new_from_utf8(
     scope,
-    inner.request_info.peer_address.as_bytes(),
+    peer_ip.as_bytes(),
     v8::NewStringType::Normal,
   )
   .unwrap()
   .into();
-  let peer_port: v8::Local<v8::Value> = match inner.request_info.peer_port {
+  let peer_port: v8::Local<v8::Value> = match peer_port {
     Some(port) => v8::Number::new(scope, port.into()).into(),
     None => v8::undefined(scope).into(),
   };
@@ -3788,6 +3854,9 @@ where
     .await?;
     match event {
       RawResponseBodyEvent::PeerClosed => {
+        // The client went away mid-response; treat it as a cancellation so
+        // `Request.signal` aborts, like the hyper path does.
+        finish.record.cancel_request();
         abort_raw_response_body(&mut body);
         finish.finish(false);
         return Ok(());
@@ -3924,6 +3993,9 @@ where
     .await?;
     match event {
       RawResponseBodyEvent::PeerClosed => {
+        // The client went away mid-response; treat it as a cancellation so
+        // `Request.signal` aborts, like the hyper path does.
+        finish.record.cancel_request();
         abort_raw_response_body(&mut body);
         finish.finish(false);
         return Ok(());

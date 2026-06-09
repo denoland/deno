@@ -1,7 +1,8 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   DOMMatrix,
   DOMMatrixReadOnly,
   DOMPoint,
@@ -12,7 +13,7 @@ import {
   op_geometry_get_enable_css_parser_features,
   op_geometry_matrix_set_matrix_value,
   op_geometry_matrix_to_string,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -180,7 +181,7 @@ if (op_geometry_get_enable_css_parser_features()) {
 webidl.configureInterface(DOMMatrix);
 webidl.configureInterface(DOMMatrixReadOnly);
 
-export {
+return {
   DOMMatrix,
   DOMMatrixPrototype,
   DOMMatrixReadOnly,
@@ -196,3 +197,4 @@ export {
   DOMRectReadOnly,
   DOMRectReadOnlyPrototype,
 };
+})();

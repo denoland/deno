@@ -80,27 +80,29 @@ impl DebouncedReceiver {
   }
 }
 
+/// Runs a single watched operation, returning its exit code on success or
+/// `None` if the operation errored (after logging the error).
 async fn error_handler<F>(
   watch_future: F,
   initial_cwd_url: Option<&Url>,
-) -> bool
+) -> Option<i32>
 where
-  F: Future<Output = Result<(), AnyError>>,
+  F: Future<Output = Result<i32, AnyError>>,
 {
-  let result = watch_future.await;
-  if let Err(err) = result {
-    let error_string = match js_error_downcast_ref(&err) {
-      Some(e) => format_js_error(e, initial_cwd_url),
-      None => format!("{err:?}"),
-    };
-    log::error!(
-      "{}: {}",
-      colors::red_bold("error"),
-      error_string.trim_start_matches("error: ")
-    );
-    false
-  } else {
-    true
+  match watch_future.await {
+    Ok(exit_code) => Some(exit_code),
+    Err(err) => {
+      let error_string = match js_error_downcast_ref(&err) {
+        Some(e) => format_js_error(e, initial_cwd_url),
+        None => format!("{err:?}"),
+      };
+      log::error!(
+        "{}: {}",
+        colors::red_bold("error"),
+        error_string.trim_start_matches("error: ")
+      );
+      None
+    }
   }
 }
 
@@ -255,7 +257,7 @@ impl WatcherCommunicator {
 pub async fn watch_func<O, F>(
   flags: Arc<Flags>,
   print_config: PrintConfig,
-  operation: O,
+  mut operation: O,
 ) -> Result<(), AnyError>
 where
   O: FnMut(
@@ -269,7 +271,13 @@ where
     flags,
     print_config,
     WatcherRestartMode::Automatic,
-    operation,
+    move |flags, communicator, changed_paths| {
+      // Tools driven by `watch_func` have no meaningful per-run exit code, so
+      // report 0 to `watch_recv`. Only `deno run` / `deno serve` surface a
+      // real exit code (e.g. one set via `Deno.exit()`).
+      let operation_future = operation(flags, communicator, changed_paths)?;
+      Ok(async move { operation_future.await.map(|()| 0) })
+    },
   )
   .boxed_local();
 
@@ -303,7 +311,7 @@ where
     Arc<WatcherCommunicator>,
     Option<Vec<PathBuf>>,
   ) -> Result<F, AnyError>,
-  F: Future<Output = Result<(), AnyError>>,
+  F: Future<Output = Result<i32, AnyError>>,
 {
   let initial_cwd = crate::util::env::resolve_cwd(flags.initial_cwd.as_deref())
     .map(|cwd| cwd.into_owned())
@@ -456,19 +464,19 @@ where
         print_after_restart();
         continue;
       },
-      success = &mut operation_future => {
+      exit_code = &mut operation_future => {
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_rx, &exclude_set);
         if print_finished {
-          // TODO(bartlomieju): print exit code here?
+          let status = match exit_code {
+            Some(0) => Cow::Borrowed("finished"),
+            Some(code) => Cow::Owned(format!("finished with exit code {code}")),
+            None => Cow::Borrowed("failed"),
+          };
           info!(
             "{} {} {}. Restarting on file change...",
             colors::intense_blue(banner),
             job_name,
-            if success {
-              "finished"
-            } else {
-              "failed"
-            }
+            status,
           );
         }
       },
