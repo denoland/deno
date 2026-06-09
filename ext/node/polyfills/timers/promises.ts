@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const timers = core.loadExtScript("ext:deno_node/timers.ts");
 
 const setTimeout = timers.promises.setTimeout;

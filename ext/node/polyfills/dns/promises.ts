@@ -21,7 +21,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const { promises } = core.loadExtScript("ext:deno_node/dns.ts");
 
 return {

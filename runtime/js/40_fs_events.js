@@ -1,7 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { op_fs_events_open, op_fs_events_poll } = core.ops;
 const {
   BadResourcePrototype,
@@ -18,6 +18,7 @@ const {
 class FsWatcher {
   #rid = 0;
   #promise;
+  #closed = false;
 
   constructor(paths, options) {
     const { recursive } = options;
@@ -33,12 +34,16 @@ class FsWatcher {
   }
 
   async next() {
+    if (this.#closed) {
+      return { value: undefined, done: true };
+    }
     try {
       this.#promise = op_fs_events_poll(this.#rid);
       const value = await this.#promise;
       return value ? { value, done: false } : { value: undefined, done: true };
     } catch (error) {
       if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+        this.#closed = true;
         return { value: undefined, done: true };
       } else if (
         ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)
@@ -50,12 +55,12 @@ class FsWatcher {
   }
 
   return(value) {
-    core.close(this.#rid);
+    this.#close();
     return PromiseResolve({ value, done: true });
   }
 
   close() {
-    core.close(this.#rid);
+    this.#close();
   }
 
   [SymbolAsyncIterator]() {
@@ -63,7 +68,14 @@ class FsWatcher {
   }
 
   [SymbolDispose]() {
-    core.tryClose(this.#rid);
+    this.#close();
+  }
+
+  #close() {
+    if (!this.#closed) {
+      this.#closed = true;
+      core.tryClose(this.#rid);
+    }
   }
 }
 

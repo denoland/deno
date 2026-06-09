@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 const { getExecArgvOptionValue, getOptionValue } = core.loadExtScript(
   "ext:deno_node/internal/options.ts",

@@ -25,7 +25,7 @@
 (function () {
 "use strict";
 
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   ArrayBuffer,
   MathMax,
@@ -500,8 +500,9 @@ function processChunkSync(self, chunk, flushFlag) {
       availInBefore, // in_len
       buffer, // out
       offset, // out_off
-      availOutBefore,
-    ); // out_len
+      availOutBefore, // out_len
+      state,
+    );
     if (error) {
       throw error;
     } else if (self[kError]) {
@@ -584,8 +585,9 @@ function processChunk(self, chunk, flushFlag, cb) {
       handle.availInBefore, // in_len
       self._outBuffer, // out
       self._outOffset, // out_off
-      handle.availOutBefore,
-    ); // out_len
+      handle.availOutBefore, // out_len
+      self._writeState,
+    );
   } catch (err) {
     // Set appropriate error code for zstd errors
     if (err.message && err.message.includes("Src size is incorrect")) {
@@ -679,8 +681,9 @@ function processCallback() {
           handle.availInBefore, // in_len
           self._outBuffer, // out
           self._outOffset, // out_off
-          self._chunkSize,
-        ); // out_len
+          self._chunkSize, // out_len
+          self._writeState,
+        );
         if (handle._callbackPending) {
           processCallback.call(this);
         }
@@ -703,8 +706,9 @@ function processCallback() {
             handle.availInBefore, // in_len
             self._outBuffer, // out
             self._outOffset, // out_off
-            self._chunkSize,
-          ); // out_len
+            self._chunkSize, // out_len
+            self._writeState,
+          );
           if (handle._callbackPending && !self[kError]) {
             processCallback.call(this);
           }
@@ -841,7 +845,6 @@ function Zlib(opts, mode) {
     level,
     memLevel,
     strategy,
-    this._writeState,
     processCallback,
     dictionary,
   );
@@ -1010,7 +1013,6 @@ function Brotli(opts, mode) {
   this._writeState = new Uint32Array(2);
   const success = handle.init(
     brotliInitParamsArray,
-    this._writeState,
     processCallback,
   );
   if (!success) {
@@ -1084,7 +1086,6 @@ class Zstd extends ZlibBase {
         : -1;
     const success = handle.init(
       initParamsArray,
-      writeState,
       processCallback,
       pledgedSrcSize,
     );

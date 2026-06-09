@@ -12,6 +12,7 @@ import { dirname, fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
+import { Buffer } from "node:buffer";
 import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
@@ -576,6 +577,134 @@ Deno.test("mTLS client certificate authentication", async () => {
   await new Promise<void>((resolve) => server.on("close", resolve));
 });
 
+Deno.test(
+  "requestCert + rejectUnauthorized:false: no client cert => authorized=false",
+  async () => {
+    const server = tls.createServer({
+      key,
+      cert,
+      ca: [rootCaCert],
+      requestCert: true,
+      rejectUnauthorized: false,
+    }, (socket) => {
+      // deno-lint-ignore no-explicit-any
+      const s = socket as any;
+      socket.write(
+        JSON.stringify({
+          authorized: s.authorized,
+          authorizationError: s.authorizationError?.code ??
+            s.authorizationError,
+          peerCertSubject: socket.getPeerCertificate()?.subject,
+        }),
+      );
+      socket.end();
+    });
+
+    const { promise, resolve, reject } = Promise.withResolvers<string>();
+
+    server.listen(0, () => {
+      // deno-lint-ignore no-explicit-any
+      const port = (server.address() as any)?.port;
+
+      const client = tls.connect({
+        host: "localhost",
+        port,
+        ca: rootCaCert,
+      });
+
+      client.setEncoding("utf8");
+      let data = "";
+      client.on("data", (chunk) => {
+        data += chunk;
+      });
+      client.on("end", () => {
+        client.destroy();
+        resolve(data);
+      });
+      client.on("error", (err) => reject(err));
+    });
+
+    const result = JSON.parse(await promise);
+    assertEquals(result.authorized, false);
+    assertEquals(result.authorizationError, "UNABLE_TO_GET_ISSUER_CERT");
+    assertEquals(result.peerCertSubject, undefined);
+    server.close();
+    await new Promise<void>((resolve) => server.on("close", resolve));
+  },
+);
+
+Deno.test(
+  "tls PFX: cert+key from pfx are used for handshake",
+  async () => {
+    // Regression test for https://github.com/denoland/deno/issues/34202:
+    // the cert/key embedded in PFX must be extracted into the SecureContext
+    // so the TLS handshake doesn't fail with no-server-cert.
+    const pfx = Buffer.from(
+      Deno.readFileSync(join(tlsTestdataDir, "localhost.pfx")),
+    );
+
+    const server = tls.createServer({
+      pfx,
+      passphrase: "testpass",
+      requestCert: true,
+      rejectUnauthorized: false,
+    }, (socket) => {
+      // deno-lint-ignore no-explicit-any
+      const s = socket as any;
+      socket.write(JSON.stringify({
+        authorized: s.authorized,
+        authorizationError: s.authorizationError?.code ?? s.authorizationError,
+      }));
+      socket.end();
+    });
+
+    const { promise, resolve, reject } = Promise.withResolvers<string>();
+
+    server.listen(0, () => {
+      // deno-lint-ignore no-explicit-any
+      const port = (server.address() as any)?.port;
+      const client = tls.connect({
+        host: "localhost",
+        port,
+        pfx,
+        passphrase: "testpass",
+        rejectUnauthorized: false,
+      });
+      client.setEncoding("utf8");
+      let data = "";
+      client.on("data", (chunk) => {
+        data += chunk;
+      });
+      client.on("end", () => {
+        // deno-lint-ignore no-explicit-any
+        const ce = (client as any).authorizationError;
+        client.destroy();
+        resolve(JSON.stringify({
+          server: JSON.parse(data),
+          // deno-lint-ignore no-explicit-any
+          clientAuthorized: (client as any).authorized,
+          clientAuthorizationError: ce?.code ?? ce,
+        }));
+      });
+      client.on("error", reject);
+    });
+
+    const result = JSON.parse(await promise);
+    assertEquals(result.server.authorized, false);
+    assertEquals(
+      result.server.authorizationError,
+      "DEPTH_ZERO_SELF_SIGNED_CERT",
+    );
+    assertEquals(result.clientAuthorized, false);
+    assertEquals(
+      result.clientAuthorizationError,
+      "DEPTH_ZERO_SELF_SIGNED_CERT",
+    );
+    server.close();
+    await new Promise<void>((resolve) => server.on("close", resolve));
+  },
+);
+
 Deno.test("tls.getCACertificates returns bundled certificates", () => {
   const certs = tls.getCACertificates("bundled");
   assert(Array.isArray(certs));
@@ -941,4 +1070,65 @@ Deno.test("TLSSocket.setServername throws Node-compatible coded errors", () => {
     "ERR_TLS_SNI_FROM_SERVER",
   );
   serverSocket.destroy();
+});
+
+// Regression: tls.createSecureContext must accept the documented array forms
+// of `cert`, `key` and `pfx`. An empty `pfx: []` (as produced by playwright's
+// APIRequestContext) used to throw "not enough data", and array forms of
+// cert/key were silently coerced via String() into unusable values.
+Deno.test("[node/tls] createSecureContext accepts array cert/key/pfx", () => {
+  // Empty pfx array is a no-op (regression test for #34371).
+  const ctx1 = tls.createSecureContext({ pfx: [] });
+  assert(ctx1);
+
+  // Cert as Buffer[] is concatenated into a single PEM string
+  // (regression test for #34367).
+  const ctx2 = tls.createSecureContext({
+    cert: [cert],
+    key: [{ pem: key }],
+  });
+  assertStringIncludes(ctx2.context.cert as string, "BEGIN CERTIFICATE");
+  assertStringIncludes(ctx2.context.key as string, "PRIVATE KEY");
+
+  // Multiple PEM blocks via array stay parseable: both certs are present.
+  const ctx3 = tls.createSecureContext({ cert: [cert, cert] });
+  const certBlocks =
+    (ctx3.context.cert as string).match(/BEGIN CERTIFICATE/g) ?? [];
+  assertEquals(certBlocks.length, 2);
+
+  // A malformed pfx still throws.
+  assertThrows(
+    () => tls.createSecureContext({ pfx: "short" }),
+    Error,
+    "not enough data",
+  );
+  assertThrows(
+    () => tls.createSecureContext({ pfx: ["short"] }),
+    Error,
+    "not enough data",
+  );
+});
+
+// https://github.com/denoland/deno/issues/34336
+// Default OpenSSL 3 PFX bundles use a SHA-256 MAC, and Node accepts them.
+// Older bundles can use SHA-1, SHA-384, or SHA-512.
+for (const alg of ["sha1", "sha256", "sha384", "sha512"] as const) {
+  Deno.test(`tls.createSecureContext accepts pfx with ${alg} MAC`, () => {
+    const pfx = Buffer.from(
+      Deno.readFileSync(join(tlsTestdataDir, `localhost_${alg}.pfx`)),
+    );
+    const ctx = tls.createSecureContext({ pfx, passphrase: "secret" });
+    assert(ctx);
+  });
+}
+
+Deno.test("tls.createSecureContext rejects pfx with wrong passphrase", () => {
+  const pfx = Buffer.from(
+    Deno.readFileSync(join(tlsTestdataDir, "localhost_sha256.pfx")),
+  );
+  assertThrows(
+    () => tls.createSecureContext({ pfx, passphrase: "wrong" }),
+    Error,
+    "mac verify failure",
+  );
 });

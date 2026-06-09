@@ -1,9 +1,14 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
+const {
+  Error,
+  MathFloor,
+  ObjectDefineProperty,
+  ObjectKeys,
+  SafeArrayIterator,
+  StringPrototypeStartsWith,
+} = primordials;
 const asyncWrap = core.loadExtScript(
   "ext:deno_node/internal_binding/async_wrap.ts",
 );
@@ -54,16 +59,20 @@ const httpParser = core.loadExtScript(
 const http2Binding = core.loadExtScript(
   "ext:deno_node/internal_binding/http2.ts",
 );
+const inspectorBinding = core.loadExtScript(
+  "ext:deno_node/internal_binding/inspector.js",
+);
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap
 // `errname` with a deprecation warning when --pending-deprecation is set).
 // Match Node's C++ binding: UV_* error code constants are read-only and
 // non-deletable. See `Initialize` in `src/uv.cc`.
 const uv: Record<string, unknown> = {};
-for (const key of Object.keys(uvNamespace)) {
+for (const key of new SafeArrayIterator(ObjectKeys(uvNamespace))) {
   const value = (uvNamespace as Record<string, unknown>)[key];
-  if (key.startsWith("UV_")) {
-    Object.defineProperty(uv, key, {
+  if (StringPrototypeStartsWith(key, "UV_")) {
+    ObjectDefineProperty(uv, key, {
+      __proto__: null,
       value,
       writable: false,
       enumerable: true,
@@ -92,7 +101,7 @@ const modules = {
   "http_parser": httpParser,
   "http2": http2Binding,
   icu: {},
-  inspector: {},
+  inspector: inspectorBinding,
   "js_stream": {},
   messaging: {},
   "module_wrap": {},
@@ -118,7 +127,7 @@ const modules = {
   "tcp_wrap": tcpWrap,
   timers: {
     getLibuvNow() {
-      return Math.floor(performance.now());
+      return MathFloor(performance.now());
     },
   },
   "tls_wrap": {},
