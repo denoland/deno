@@ -6,7 +6,6 @@ const {
   ArrayIsArray,
   ArrayPrototypePush,
   ArrayPrototypeSort,
-  ArrayPrototypeJoin,
   ArrayPrototypeSplice,
   ObjectFromEntries,
   ObjectHasOwn,
@@ -39,7 +38,13 @@ const _lowerNames = Symbol("lowercase header names");
 const _iterableHeaders = Symbol("iterable headers");
 const _iterableHeadersCache = Symbol("iterable headers cache");
 const _guard = Symbol("guard");
+const _headerListGetter = Symbol("header list getter");
+const _headerGet = Symbol("header get");
+const _headerTarget = Symbol("header target");
 const _brand = webidl.brand;
+const webidlConverterByteString = webidl.converters.ByteString;
+const webidlConverterSequenceByteString =
+  webidl.converters["sequence<ByteString>"];
 
 /**
  * Returns a parallel array to `headers[_headerList]` whose i-th entry is the
@@ -55,7 +60,7 @@ const _brand = webidl.brand;
  */
 function ensureLowerNames(headers) {
   let lower = headers[_lowerNames];
-  const list = headers[_headerList];
+  const list = headerListFromHeaders(headers);
   if (lower === null || lower.length !== list.length) {
     lower = [];
     for (let i = 0; i < list.length; i++) {
@@ -121,6 +126,15 @@ function checkForInvalidValueChars(value) {
   return true;
 }
 
+function isByteString(value) {
+  for (let i = 0; i < value.length; i++) {
+    if (StringPrototypeCharCodeAt(value, i) > 0xff) {
+      return false;
+    }
+  }
+  return true;
+}
+
 let HEADER_NAME_CACHE = { __proto__: null };
 let HEADER_CACHE_SIZE = 0;
 const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
@@ -166,7 +180,7 @@ function appendHeader(headers, name, value) {
   }
 
   // 7.
-  const list = headers[_headerList];
+  const list = headerListFromHeaders(headers);
   const lowerNames = ensureLowerNames(headers);
   const lowercaseName = byteLowerCase(name);
   for (let i = 0; i < lowerNames.length; i++) {
@@ -179,6 +193,77 @@ function appendHeader(headers, name, value) {
   ArrayPrototypePush(lowerNames, lowercaseName);
 }
 
+function appendHeaderToList(list, name, value) {
+  value = normalizeHeaderValue(value);
+  if (!checkHeaderNameForHttpTokenCodePoint(name)) {
+    throw new TypeError(`Invalid header name: "${name}"`);
+  }
+  if (!checkForInvalidValueChars(value)) {
+    throw new TypeError(`Invalid header value: "${value}"`);
+  }
+
+  if (list.length !== 0) {
+    const lowercaseName = byteLowerCase(name);
+    for (let i = 0; i < list.length; i++) {
+      if (byteLowerCase(list[i][0]) === lowercaseName) {
+        name = list[i][0];
+        break;
+      }
+    }
+  }
+  ArrayPrototypePush(list, [name, value]);
+}
+
+// Used by constructors to initialize a fresh list. This intentionally appends
+// directly to `list`; callers must not use it to mutate guarded Headers.
+function fillHeaderList(list, object, prefix, context, opts) {
+  if (ArrayIsArray(object)) {
+    for (let i = 0; i < object.length; ++i) {
+      const header = webidlConverterSequenceByteString(
+        object[i],
+        prefix,
+        `${context}, index ${i}`,
+        opts,
+      );
+      if (header.length !== 2) {
+        throw new TypeError(
+          `Invalid header: length must be 2, but is ${header.length}`,
+        );
+      }
+      appendHeaderToList(list, header[0], header[1]);
+    }
+    return;
+  }
+
+  if (
+    typeof object === "object" && object !== null &&
+    object[SymbolIterator] === undefined && !core.isProxy(object)
+  ) {
+    for (const key in object) {
+      if (!ObjectHasOwn(object, key)) {
+        continue;
+      }
+      const value = object[key];
+      appendHeaderToList(
+        list,
+        key,
+        typeof value === "string" && isByteString(value)
+          ? value
+          : webidlConverterByteString(value, prefix, context, opts),
+      );
+    }
+    return;
+  }
+
+  fillHeaderList(
+    list,
+    webidlConverterHeadersInit(object, prefix, context, opts),
+    prefix,
+    context,
+    opts,
+  );
+}
+
 /**
  * https://fetch.spec.whatwg.org/#concept-header-list-get
  * @param {HeaderList} list
@@ -186,18 +271,13 @@ function appendHeader(headers, name, value) {
  */
 function getHeader(list, name) {
   const lowercaseName = byteLowerCase(name);
-  const entries = [];
+  let value = null;
   for (let i = 0; i < list.length; i++) {
     if (byteLowerCase(list[i][0]) === lowercaseName) {
-      ArrayPrototypePush(entries, list[i][1]);
+      value = value === null ? list[i][1] : value + "\x2C\x20" + list[i][1];
     }
   }
-
-  if (entries.length === 0) {
-    return null;
-  } else {
-    return ArrayPrototypeJoin(entries, "\x2C\x20");
-  }
+  return value;
 }
 
 /**
@@ -251,11 +331,14 @@ class Headers {
   [_headerList] = [];
   /** @type {string[] | null} parallel to _headerList, lazily populated */
   [_lowerNames] = null;
+  [_headerListGetter] = null;
+  [_headerGet] = null;
+  [_headerTarget] = null;
   /** @type {"immutable" | "request" | "request-no-cors" | "response" | "none"} */
   [_guard];
 
   get [_iterableHeaders]() {
-    const list = this[_headerList];
+    const list = headerListFromHeaders(this);
 
     if (
       this[_guard] === "immutable" &&
@@ -361,7 +444,7 @@ class Headers {
       throw new TypeError("Cannot change headers: headers are immutable");
     }
 
-    const list = this[_headerList];
+    const list = headerListFromHeaders(this);
     const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);
     let writeIdx = 0;
@@ -385,16 +468,40 @@ class Headers {
     webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'get' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
+    if (
+      name === "authorization" || name === "content-type" ||
+      name === "accept" || name === "host"
+    ) {
+      const headerGet = this[_headerGet];
+      if (headerGet !== null) {
+        return headerGet(name);
+      }
+      const headerTarget = this[_headerTarget];
+      if (headerTarget !== null) {
+        return headerTarget.header(name);
+      }
+      const list = headerListFromHeaders(this);
+      return getHeader(list, name);
+    }
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
     if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError(`Invalid header name: "${name}"`);
     }
 
+    const headerGet = this[_headerGet];
+    if (headerGet !== null) {
+      return headerGet(name);
+    }
+    const headerTarget = this[_headerTarget];
+    if (headerTarget !== null) {
+      return headerTarget.header(name);
+    }
+
+    const list = headerListFromHeaders(this);
     // Inline `getHeader` so we can use the cached lower names and build the
     // joined value directly. For the dominant single-value case this also
     // skips the intermediate entries array and the trailing join.
-    const list = this[_headerList];
     const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);
     let value = null;
@@ -408,7 +515,7 @@ class Headers {
 
   getSetCookie() {
     webidl.assertBranded(this, HeadersPrototype);
-    const list = this[_headerList];
+    const list = headerListFromHeaders(this);
     const lowerNames = ensureLowerNames(this);
 
     const entries = [];
@@ -469,7 +576,7 @@ class Headers {
       throw new TypeError("Cannot change headers: headers are immutable");
     }
 
-    const list = this[_headerList];
+    const list = headerListFromHeaders(this);
     const lowerNames = ensureLowerNames(this);
     const lowercaseName = byteLowerCase(name);
     let writeIdx = 0;
@@ -541,6 +648,7 @@ webidl.converters["HeadersInit"] = (V, prefix, context, opts) => {
     context,
   );
 };
+const webidlConverterHeadersInit = webidl.converters.HeadersInit;
 webidl.converters["Headers"] = webidl.createInterfaceConverter(
   "Headers",
   Headers.prototype,
@@ -554,6 +662,29 @@ webidl.converters["Headers"] = webidl.createInterfaceConverter(
 function headersFromHeaderList(list, guard) {
   const headers = new Headers(_brand);
   headers[_headerList] = list;
+  headers[_lowerNames] = null;
+  headers[_guard] = guard;
+  return headers;
+}
+
+function headersFromHeaderListLazy(headerList, guard, getHeader) {
+  const headers = new Headers(_brand);
+  headers[_headerList] = null;
+  headers[_lowerNames] = null;
+  headers[_headerListGetter] = headerList;
+  headers[_headerGet] = getHeader;
+  headers[_headerTarget] = null;
+  headers[_guard] = guard;
+  return headers;
+}
+
+function headersFromHeaderListLazyTarget(target, guard) {
+  const headers = new Headers(_brand);
+  headers[_headerList] = null;
+  headers[_lowerNames] = null;
+  headers[_headerListGetter] = null;
+  headers[_headerGet] = null;
+  headers[_headerTarget] = target;
   headers[_guard] = guard;
   return headers;
 }
@@ -575,7 +706,17 @@ function headersFromHeaderList(list, guard) {
  * @returns {HeaderList}
  */
 function headerListFromHeaders(headers) {
-  return headers[_headerList];
+  let list = headers[_headerList];
+  if (list === null) {
+    const target = headers[_headerTarget];
+    list = target === null ? headers[_headerListGetter]() : target.headerList;
+    headers[_headerList] = list;
+    headers[_lowerNames] = null;
+    headers[_headerListGetter] = null;
+    headers[_headerGet] = null;
+    headers[_headerTarget] = null;
+  }
+  return list;
 }
 
 /**
@@ -595,6 +736,7 @@ function headersEntries(headers) {
 }
 
 return {
+  fillHeaderList,
   ensureLowerNames,
   fillHeaders,
   getDecodeSplitHeader,
@@ -604,5 +746,7 @@ return {
   Headers,
   headersEntries,
   headersFromHeaderList,
+  headersFromHeaderListLazy,
+  headersFromHeaderListLazyTarget,
 };
 })();

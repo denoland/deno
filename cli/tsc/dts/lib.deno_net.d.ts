@@ -219,7 +219,7 @@ declare namespace Deno {
      *
      * Set to `0` to listen on any available port.
      */
-    port: number;
+    port?: number;
     /** A literal IP address or host name that can be resolved to an IP address.
      *
      * __Note about `0.0.0.0`__ While listening `0.0.0.0` works on all platforms,

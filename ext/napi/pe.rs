@@ -59,10 +59,10 @@ fn dll_names<Nt: ImageNtHeaders>(bytes: &[u8]) -> Option<Vec<Vec<u8>>> {
 mod tests {
   use super::*;
 
-  /// Builds a minimal but well-formed PE32+ image whose import directory
+  /// Builds a minimal but well-formed PE image whose import directory
   /// references each of `dlls`. A single section maps RVA == file offset
   /// (both based at 0x1000) to keep the fixture simple.
-  fn build_pe(dlls: &[&str]) -> Vec<u8> {
+  fn build_pe(is_pe64: bool, dlls: &[&str]) -> Vec<u8> {
     let mut buf = vec![0u8; 0x2000];
     // DOS header.
     buf[0..2].copy_from_slice(b"MZ");
@@ -73,21 +73,25 @@ mod tests {
     buf[pe..pe + 4].copy_from_slice(b"PE\0\0");
 
     let coff = pe + 4;
-    // Machine = IMAGE_FILE_MACHINE_AMD64.
-    buf[coff..coff + 2].copy_from_slice(&0x8664u16.to_le_bytes());
+    // Machine = IMAGE_FILE_MACHINE_AMD64 or IMAGE_FILE_MACHINE_I386.
+    let machine = if is_pe64 { 0x8664u16 } else { 0x14cu16 };
+    buf[coff..coff + 2].copy_from_slice(&machine.to_le_bytes());
     // NumberOfSections = 1.
     buf[coff + 2..coff + 4].copy_from_slice(&1u16.to_le_bytes());
-    // SizeOfOptionalHeader (PE32+ standard/windows fields + 16 data dirs).
-    let size_opt: u16 = 0xF0;
+    // SizeOfOptionalHeader (standard/windows fields + 16 data dirs).
+    let size_opt: u16 = if is_pe64 { 0xF0 } else { 0xE0 };
     buf[coff + 16..coff + 18].copy_from_slice(&size_opt.to_le_bytes());
 
     let opt = coff + 20;
-    // Magic = PE32+.
-    buf[opt..opt + 2].copy_from_slice(&0x20bu16.to_le_bytes());
+    // Magic = PE32+ or PE32.
+    let magic = if is_pe64 { 0x20bu16 } else { 0x10bu16 };
+    buf[opt..opt + 2].copy_from_slice(&magic.to_le_bytes());
     // NumberOfRvaAndSizes = 16 (so the import data directory is valid).
-    buf[opt + 108..opt + 112].copy_from_slice(&16u32.to_le_bytes());
+    let number_of_rva_and_sizes = if is_pe64 { opt + 108 } else { opt + 92 };
+    buf[number_of_rva_and_sizes..number_of_rva_and_sizes + 4]
+      .copy_from_slice(&16u32.to_le_bytes());
 
-    let data_dir = opt + 112;
+    let data_dir = if is_pe64 { opt + 112 } else { opt + 96 };
     let import_rva: u32 = 0x1000;
     let descriptors_size = ((dlls.len() + 1) * 20) as u32;
     buf[data_dir + 8..data_dir + 12].copy_from_slice(&import_rva.to_le_bytes());
@@ -117,7 +121,7 @@ mod tests {
 
   #[test]
   fn detects_regular_node_exe_import() {
-    let pe = build_pe(&["node.exe", "KERNEL32.dll", "WS2_32.dll"]);
+    let pe = build_pe(true, &["node.exe", "KERNEL32.dll", "WS2_32.dll"]);
     assert!(imports_node_executable(&pe));
     let names = imported_dll_names(&pe).unwrap();
     assert_eq!(
@@ -131,14 +135,21 @@ mod tests {
   }
 
   #[test]
+  fn detects_regular_node_exe_import_pe32() {
+    let pe = build_pe(false, &["NoDe.ExE"]);
+    assert!(imports_node_executable(&pe));
+  }
+
+  #[test]
   fn node_exe_match_is_case_insensitive() {
-    assert!(imports_node_executable(&build_pe(&["NODE.EXE"])));
-    assert!(imports_node_executable(&build_pe(&["Node.Exe"])));
+    assert!(imports_node_executable(&build_pe(true, &["NODE.EXE"])));
+    assert!(imports_node_executable(&build_pe(true, &["Node.Exe"])));
   }
 
   #[test]
   fn ignores_addons_without_node_exe_import() {
-    let pe = build_pe(&["KERNEL32.dll", "WS2_32.dll", "VCRUNTIME140.dll"]);
+    let pe =
+      build_pe(true, &["KERNEL32.dll", "WS2_32.dll", "VCRUNTIME140.dll"]);
     assert!(!imports_node_executable(&pe));
   }
 

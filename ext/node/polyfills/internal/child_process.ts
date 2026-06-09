@@ -26,6 +26,7 @@ const {
   RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeArrayIterator,
+  SafeMap,
   SafePromiseAll,
   SafeRegExp,
   SafeSet,
@@ -160,6 +161,7 @@ const pipePrefixRe = new SafeRegExp("^\\s*\\|\\s*");
 const shellVarMatchRe = new SafeRegExp(
   '^(?:"\\$\\{([^}]+)\\}"|"\\$([A-Za-z_][A-Za-z0-9_]*)"|\\$\\{([^}]+)\\}|\\$([A-Za-z_][A-Za-z0-9_]*))',
 );
+const shellCompoundOperatorRe = new SafeRegExp("^(.*?)\\s*(&&|\\|\\||;)\\s*");
 
 function mapValues(
   record,
@@ -213,6 +215,8 @@ function stdioStringToArray(
 const kClosesNeeded = Symbol("_closesNeeded");
 const kClosesReceived = Symbol("_closesReceived");
 const kCanDisconnect = Symbol("_canDisconnect");
+const kChildStdioUsedAsInput = Symbol("childStdioUsedAsInput");
+const childStdioStreamsByFd = new SafeMap();
 let emittedShellDeprecation = false;
 
 // We only want to emit a close event for the child process when all of
@@ -233,6 +237,9 @@ function flushStdio(subprocess) {
   for (let i = 0; i < stdio.length; i++) {
     const stream = stdio[i];
     if (!stream || !stream.readable) {
+      continue;
+    }
+    if (stream[kChildStdioUsedAsInput]) {
       continue;
     }
     stream.resume();
@@ -561,6 +568,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stdout);
         this.stdout.on("close", () => {
           maybeClose(this);
         });
@@ -575,6 +583,7 @@ class ChildProcess extends EventEmitter {
           writable: false,
           readable: true,
         });
+        registerChildStdioStream(this.stderr);
         this.stderr.on("close", () => {
           maybeClose(this);
         });
@@ -601,6 +610,7 @@ class ChildProcess extends EventEmitter {
               handle: pipe,
             },
           );
+          registerChildStdioStream(this.stdio[fd]);
           this.stdio[fd]?.on("close", () => {
             maybeClose(this);
           });
@@ -729,50 +739,67 @@ class ChildProcess extends EventEmitter {
         childProcessSpawnChannel.error.publish({ process: this, error: e });
       }
 
-      // Set up stdio streams even when spawn fails (Node.js creates pipes
-      // before the OS spawn call, so they exist regardless of spawn outcome).
-      if (stdin === "pipe") {
-        this.stdin = new Writable({
-          write(_chunk, _enc, cb) {
-            cb(new Error("spawn failed"));
-          },
-        });
-      }
-      if (stdout === "pipe") {
-        this.stdout = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stdout.on("close", () => {
-          maybeClose(this);
-        });
-      }
-      if (stderr === "pipe") {
-        this.stderr = new Readable({ read() {} });
-        this[kClosesNeeded]++;
-        this.stderr.on("close", () => {
-          maybeClose(this);
-        });
-      }
+      // When spawn fails due to EMFILE/ENFILE, the OS couldn't create pipes
+      // so stdio must remain undefined (matching Node.js behavior).
+      const isResourceError = e && (e.code === "EMFILE" || e.code === "ENFILE");
 
-      this.stdio[0] = this.stdin;
-      this.stdio[1] = this.stdout;
-      this.stdio[2] = this.stderr;
+      if (isResourceError) {
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdin = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdout = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stderr = undefined;
+        // deno-lint-ignore no-explicit-any
+        (this as any).stdio = undefined;
+      } else {
+        // Set up stdio streams even when spawn fails (Node.js creates pipes
+        // before the OS spawn call, so they exist regardless of spawn outcome).
+        if (stdin === "pipe") {
+          this.stdin = new Writable({
+            write(_chunk, _enc, cb) {
+              cb(new Error("spawn failed"));
+            },
+          });
+        }
+        if (stdout === "pipe") {
+          this.stdout = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stdout.on("close", () => {
+            maybeClose(this);
+          });
+        }
+        if (stderr === "pipe") {
+          this.stderr = new Readable({ read() {} });
+          this[kClosesNeeded]++;
+          this.stderr.on("close", () => {
+            maybeClose(this);
+          });
+        }
+
+        this.stdio[0] = this.stdin;
+        this.stdio[1] = this.stdout;
+        this.stdio[2] = this.stderr;
+      }
 
       this.#_handleError(e);
 
-      // Destroy stdio streams and emit close (matching Node.js behavior
-      // where failed spawns still trigger 'close' but not 'exit').
-      nextTick(() => {
-        if (this.stdout) {
-          this.stdout.destroy();
-        }
-        if (this.stderr) {
-          this.stderr.destroy();
-        }
-        if (this.stdin) {
-          this.stdin.destroy();
-        }
-        maybeClose(this);
-      });
+      if (!isResourceError) {
+        // Destroy stdio streams and emit close (matching Node.js behavior
+        // where failed spawns still trigger 'close' but not 'exit').
+        nextTick(() => {
+          if (this.stdout) {
+            this.stdout.destroy();
+          }
+          if (this.stderr) {
+            this.stderr.destroy();
+          }
+          if (this.stdin) {
+            this.stdin.destroy();
+          }
+          maybeClose(this);
+        });
+      }
     }
   }
 
@@ -813,6 +840,10 @@ class ChildProcess extends EventEmitter {
           const alreadyClosed =
             ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err2) ||
             ObjectPrototypeIsPrototypeOf(
+              Deno.errors.NotFound.prototype,
+              err2,
+            ) ||
+            ObjectPrototypeIsPrototypeOf(
               Deno.errors.PermissionDenied.prototype,
               err2,
             );
@@ -824,6 +855,10 @@ class ChildProcess extends EventEmitter {
       } else {
         const alreadyClosed =
           ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err) ||
+          ObjectPrototypeIsPrototypeOf(
+            Deno.errors.NotFound.prototype,
+            err,
+          ) ||
           ObjectPrototypeIsPrototypeOf(
             Deno.errors.PermissionDenied.prototype,
             err,
@@ -909,6 +944,29 @@ function streamHandleFd(stream) {
   return -1;
 }
 
+function registerChildStdioStream(stream) {
+  const fd = streamHandleFd(stream);
+  if (fd < 0) {
+    return;
+  }
+
+  childStdioStreamsByFd.set(fd, stream);
+  stream.on("close", () => {
+    if (childStdioStreamsByFd.get(fd) === stream) {
+      childStdioStreamsByFd.delete(fd);
+    }
+  });
+}
+
+function markChildStdioUsedAsInput(fd) {
+  const stream = childStdioStreamsByFd.get(fd);
+  if (stream) {
+    stream[kChildStdioUsedAsInput] = true;
+    stream.pause();
+    stream._handle?.readStop?.();
+  }
+}
+
 function toDenoStdio(
   pipe,
 ) {
@@ -921,6 +979,9 @@ function toDenoStdio(
     // another child's stdin shares the underlying OS pipe.
     const fd = streamHandleFd(pipe);
     if (fd >= 0) {
+      pipe[kChildStdioUsedAsInput] = true;
+      pipe.pause();
+      pipe._handle?.readStop?.();
       return fd;
     }
     // For streams without a usable fd, create a pipe and set up JS-level
@@ -928,6 +989,7 @@ function toDenoStdio(
     return "piped";
   }
   if (typeof pipe === "number") {
+    markChildStdioUsedAsInput(pipe);
     return pipe;
   }
   switch (pipe) {
@@ -1358,6 +1420,11 @@ function normalizeSpawnArguments(
 }
 
 function waitForReadableToClose(readable) {
+  if (readable[kChildStdioUsedAsInput]) {
+    const closePromise = waitForStreamToClose(readable);
+    readable.destroy();
+    return closePromise;
+  }
   readable.resume(); // Ensure buffered data will be consumed.
   return waitForStreamToClose(readable);
 }
@@ -1468,6 +1535,26 @@ function transformDenoShellCommand(
   }
 
   if (!startsWithDeno) {
+    // The command doesn't start with deno, but it may contain a deno
+    // invocation after a shell compound operator (&&, ||, ;).
+    // Split on the first operator and try to transform the remainder.
+    // NOTE: This regex doesn't handle quoted strings, so an operator
+    // inside quotes (e.g. `echo "foo && bar"`) would be matched.
+    // This is safe because if no real `deno` invocation follows, the
+    // `transformedRest !== rest` guard returns the original command.
+    const operatorMatch = StringPrototypeMatch(
+      command,
+      shellCompoundOperatorRe,
+    );
+    if (operatorMatch) {
+      const prefix = operatorMatch[1];
+      const operator = operatorMatch[2];
+      const rest = StringPrototypeSlice(command, operatorMatch[0].length);
+      const transformedRest = transformDenoShellCommand(rest, env, isCmdExe);
+      if (transformedRest !== rest) {
+        return prefix + " " + operator + " " + transformedRest;
+      }
+    }
     return command;
   }
 
@@ -1877,13 +1964,18 @@ function spawnSync(
       input: input_,
       timeout,
       killSignal,
+      maxBuffer,
     });
 
     const status = output.signal ? null : output.code;
     let stdout = output.stdout ? Buffer.from(output.stdout) : null;
     let stderr = output.stderr ? Buffer.from(output.stderr) : null;
 
+    // Defensive: if Rust didn't kill on overflow (e.g. maxBuffer was
+    // unlimited but the JS layer somehow still has a longer buffer), fall
+    // back to the post-hoc length check.
     if (
+      output.killedByMaxBuffer ||
       (stdout && stdout.length > maxBuffer) ||
       (stderr && stderr.length > maxBuffer)
     ) {
@@ -1902,11 +1994,13 @@ function spawnSync(
     }
 
     result.pid = output.pid;
-    // When killed by timeout, report the killSignal (matching Node.js behavior).
-    // On Windows there are no real Unix signals, but Node still reports the
-    // configured killSignal so callers can detect the timeout.
-    result.status = output.killedByTimeout ? null : status;
-    result.signal = output.killedByTimeout
+    // When killed by timeout or maxBuffer, report the killSignal (matching
+    // Node.js behavior). On Windows there are no real Unix signals, but
+    // Node still reports the configured killSignal so callers can detect
+    // why the child was terminated.
+    const killedByDeno = output.killedByTimeout || output.killedByMaxBuffer;
+    result.status = killedByDeno ? null : status;
+    result.signal = killedByDeno
       ? _resolveKillSignalName(killSignal)
       : output.signal;
     result.stdout = stdout;
@@ -2018,14 +2112,26 @@ function getIpcHandleInfo(handle, options) {
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
   if (ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)) {
-    if (!ObjectPrototypeIsPrototypeOf(TCP.prototype, handle._handle)) {
+    const inner = handle._handle;
+    // Match Node's handleConversion["net.Socket"].send, which returns the
+    // socket's native handle. A socket without an underlying handle (e.g.
+    // already destroyed) yields null; Node then strips the handle and sends
+    // the message alone instead of throwing.
+    if (!inner) {
+      return null;
+    }
+    const isTcp = ObjectPrototypeIsPrototypeOf(TCP.prototype, inner);
+    const isPipe = ObjectPrototypeIsPrototypeOf(Pipe.prototype, inner);
+    if (!isTcp && !isPipe) {
       notImplemented("ChildProcess.send with non-TCP net.Socket handle");
     }
     return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
+      rawFd: rawFdFromTcpHandle(inner),
       message: {
         cmd: "NODE_HANDLE",
         type: IPC_HANDLE_NET_SOCKET,
+        // Distinguishes the wrap type the receiver should reconstruct.
+        nativeKind: isTcp ? "tcp" : "pipe",
         msg: undefined,
       },
       closeAfterSend: options.keepOpen !== true,
@@ -2038,14 +2144,26 @@ function getIpcHandleInfo(handle, options) {
   }
 
   if (ObjectPrototypeIsPrototypeOf(NetServer.prototype, handle)) {
-    if (!ObjectPrototypeIsPrototypeOf(TCP.prototype, handle._handle)) {
+    const inner = handle._handle;
+    // Match Node's handleConversion["net.Server"].send, which returns
+    // server._handle. A server that hasn't started listening (or was
+    // already closed) has a null handle; Node then strips the handle and
+    // sends the message alone instead of throwing.
+    if (!inner) {
+      return null;
+    }
+    const isTcp = ObjectPrototypeIsPrototypeOf(TCP.prototype, inner);
+    const isPipe = ObjectPrototypeIsPrototypeOf(Pipe.prototype, inner);
+    if (!isTcp && !isPipe) {
       notImplemented("ChildProcess.send with non-TCP net.Server handle");
     }
     return {
-      rawFd: rawFdFromTcpHandle(handle._handle),
+      rawFd: rawFdFromTcpHandle(inner),
       message: {
         cmd: "NODE_HANDLE",
         type: IPC_HANDLE_NET_SERVER,
+        // Distinguishes the wrap type the receiver should reconstruct.
+        nativeKind: isTcp ? "tcp" : "pipe",
         msg: undefined,
       },
       // Match Node's handleConversion["net.Server"].postSend, which calls
@@ -2120,25 +2238,29 @@ function createIpcHandle(message, rawFd) {
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
   if (message.type === IPC_HANDLE_NET_SOCKET) {
-    const tcp = new TCP(tcpSocketType.SOCKET);
-    const err = tcp.open(rawFd);
+    const inner = message.nativeKind === "pipe"
+      ? new Pipe(socketType.SOCKET)
+      : new TCP(tcpSocketType.SOCKET);
+    const err = inner.open(rawFd);
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
     }
     try {
       return new Socket({
-        handle: tcp,
+        handle: inner,
         readable: true,
         writable: true,
       });
     } catch (err) {
-      tcp.close();
+      inner.close();
       throw err;
     }
   }
   if (message.type === IPC_HANDLE_NET_SERVER) {
-    const tcp = new TCP(tcpSocketType.SERVER);
-    const err = tcp.open(rawFd);
+    const inner = message.nativeKind === "pipe"
+      ? new Pipe(socketType.SERVER)
+      : new TCP(tcpSocketType.SERVER);
+    const err = inner.open(rawFd);
     if (err !== 0) {
       throw errnoException(codeMap.get(err), "open");
     }
@@ -2148,10 +2270,10 @@ function createIpcHandle(message, rawFd) {
     // detects an already-listening fd and skips the bind/listen syscalls.
     const server = new NetServer();
     try {
-      server.listen(tcp);
+      server.listen(inner);
       return server;
     } catch (err) {
-      tcp.close();
+      inner.close();
       throw err;
     }
   }
@@ -2553,7 +2675,12 @@ function setupChannel(
     let handleInfo = null;
     if (handle !== undefined) {
       handleInfo = getIpcHandleInfo(handle, options);
-      handleInfo.message.msg = message;
+      // `getIpcHandleInfo` returns null when the handle has no underlying
+      // native handle (e.g. a server that never started listening). Match
+      // Node, which strips the handle and sends the plain message instead.
+      if (handleInfo !== null) {
+        handleInfo.message.msg = message;
+      }
     }
 
     return enqueueOrDispatch(message, handleInfo, callback);
