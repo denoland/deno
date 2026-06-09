@@ -780,11 +780,12 @@ function esmResolveHookCallback(specifier, referrer) {
 }
 
 // ESM load hook chain: runs hooks in LIFO order.
-// Returns `{ result, effectiveUrl }` where `result` is the hook chain's
-// return value (or null when no hooks are registered) and `effectiveUrl`
-// is the URL the chain ultimately delegated to via `nextLoad(newUrl)`:
-// used by the load loop when falling through to Rust default loading so
-// the source comes from the URL the user redirected to, not the original.
+// Returns `null` when no load hooks are registered, otherwise
+// `{ result, effectiveUrl }` where `result` is the hook chain's return value
+// and `effectiveUrl` is the URL the chain ultimately delegated to via
+// `nextLoad(newUrl)`: used by the load loop when falling through to Rust
+// default loading so the source comes from the URL the user redirected to,
+// not the original.
 function executeEsmLoadHookChain(fileUrl, context) {
   const loadHooks = [];
   for (let i = hookEntries.length - 1; i >= 0; i--) {
