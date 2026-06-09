@@ -621,6 +621,12 @@ struct TestSpecifiersOptions {
 pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,
+  /// Default number of retries applied to tests that don't set their own
+  /// `retry` option (from the `--retry` flag).
+  pub retry: u32,
+  /// Default number of repeats applied to tests that don't set their own
+  /// `repeats` option (from the `--repeats` flag).
+  pub repeats: u32,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
@@ -1396,6 +1402,18 @@ async fn run_tests_for_worker_inner(
     event_tracker.wait(desc)?;
 
     let timeout_ms = desc.timeout_ms.filter(|&t| t > 0);
+    // A test's own `retry`/`repeats` option takes precedence; otherwise fall
+    // back to the `--retry`/`--repeats` flag defaults.
+    let retry = if desc.retry > 0 {
+      desc.retry
+    } else {
+      options.retry
+    };
+    let repeats = if desc.repeats > 0 {
+      desc.repeats
+    } else {
+      options.repeats
+    };
     let earlier = Instant::now();
 
     // The terminal result of the test once all repetitions/attempts settle.
@@ -1404,10 +1422,10 @@ async fn run_tests_for_worker_inner(
 
     // `repeats` requires every repetition to pass; `retry` allows each
     // repetition up to `1 + retry` attempts and passes on the first success.
-    'repetitions: for _repetition in 0..=desc.repeats {
+    'repetitions: for _repetition in 0..=repeats {
       let mut repetition_result = TestResult::Ok;
 
-      'attempts: for attempt in 0..=desc.retry {
+      'attempts: for attempt in 0..=retry {
         // Poll event loop once, to allow all ops that are already resolved, but
         // haven't responded, to settle.
         // TODO(mmastrac): we should provide an API to poll the event loop until
@@ -1528,7 +1546,7 @@ async fn run_tests_for_worker_inner(
         }
 
         match attempt_result {
-          TestResult::Failed(failure) if attempt < desc.retry => {
+          TestResult::Failed(failure) if attempt < retry => {
             // Attempts remain: surface the retry and try this repetition again.
             event_tracker.retry(desc, attempt, failure)?;
             continue 'attempts;
@@ -2087,6 +2105,8 @@ pub async fn run_tests(
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&workspace_test_options.filter),
         shuffle: workspace_test_options.shuffle,
+        retry: workspace_test_options.retry,
+        repeats: workspace_test_options.repeats,
         trace_leaks: workspace_test_options.trace_leaks,
         sanitize_ops: workspace_test_options.sanitize_ops,
         sanitize_resources: workspace_test_options.sanitize_resources,
@@ -2337,6 +2357,8 @@ pub async fn run_tests_with_watch(
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&workspace_test_options.filter),
               shuffle: workspace_test_options.shuffle,
+              retry: workspace_test_options.retry,
+              repeats: workspace_test_options.repeats,
               trace_leaks: workspace_test_options.trace_leaks,
               sanitize_ops: workspace_test_options.sanitize_ops,
               sanitize_resources: workspace_test_options.sanitize_resources,

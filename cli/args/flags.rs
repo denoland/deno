@@ -636,6 +636,8 @@ pub struct TestFlags {
   pub permit_no_files: bool,
   pub filter: Option<String>,
   pub shuffle: Option<u64>,
+  pub retry: u32,
+  pub repeats: u32,
   pub trace_leaks: bool,
   pub sanitize_ops: bool,
   pub sanitize_resources: bool,
@@ -4876,6 +4878,22 @@ or <c>**/__tests__/**</>:
           .help_heading(TEST_HEADING),
       )
       .arg(
+        Arg::new("retry")
+          .long("retry")
+          .value_name("NUMBER")
+          .help("Re-run failing tests up to NUMBER times. A test passes if any attempt passes. Tests that set their own `retry` option take precedence")
+          .value_parser(value_parser!(u32))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
+        Arg::new("repeats")
+          .long("repeats")
+          .value_name("NUMBER")
+          .help("Run each test NUMBER additional times. Every repetition must pass. Tests that set their own `repeats` option take precedence")
+          .value_parser(value_parser!(u32))
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
         Arg::new("coverage")
           .long("coverage")
           .value_name("DIR")
@@ -8353,6 +8371,8 @@ fn test_parse(
     files: FileFlags { include, ignore },
     filter,
     shuffle,
+    retry: matches.remove_one::<u32>("retry").unwrap_or(0),
+    repeats: matches.remove_one::<u32>("repeats").unwrap_or(0),
     permit_no_files: permit_no_files_parse(matches),
     parallel: matches.get_flag("parallel"),
     trace_leaks,
@@ -12772,6 +12792,8 @@ mod tests {
             ignore: vec![],
           },
           shuffle: None,
+          retry: 0,
+          repeats: 0,
           parallel: false,
           trace_leaks: true,
           sanitize_ops: false,
@@ -12877,6 +12899,8 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -12923,6 +12947,8 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13063,6 +13089,49 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: Some(1),
+          retry: 0,
+          repeats: 0,
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          parallel: false,
+          trace_leaks: false,
+          sanitize_ops: false,
+          sanitize_resources: false,
+          coverage_dir: None,
+          coverage_raw_data_only: false,
+          clean: false,
+          watch: Default::default(),
+          reporter: Default::default(),
+          junit_path: None,
+          hide_stacktraces: false,
+        }),
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_retry_and_repeats() {
+    let r = flags_from_vec(svec!["deno", "test", "--retry=3", "--repeats=2"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          permit_no_files: false,
+          shuffle: None,
+          retry: 3,
+          repeats: 2,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13102,6 +13171,8 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -13140,6 +13211,8 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
           files: FileFlags {
             include: vec!["./".to_string()],
             ignore: vec![],
@@ -13180,6 +13253,8 @@ mod tests {
           filter: None,
           permit_no_files: false,
           shuffle: None,
+          retry: 0,
+          repeats: 0,
           files: FileFlags {
             include: vec![],
             ignore: vec![],

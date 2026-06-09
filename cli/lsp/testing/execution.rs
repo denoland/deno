@@ -330,6 +330,8 @@ impl TestRun {
             test::TestSpecifierOptions {
               filter,
               shuffle: None,
+              retry: 0,
+              repeats: 0,
               trace_leaks: false,
               // LSP-driven test runs intentionally disable sanitizers — the
               // LSP UI doesn't surface op/resource leak failures usefully

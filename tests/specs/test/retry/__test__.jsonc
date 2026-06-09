@@ -26,6 +26,11 @@
       "exitCode": 0,
       "output": "retry_steps.out"
     },
+    "cli_retry_flag": {
+      "args": "test --quiet --retry=2 cli_retry_flag.ts",
+      "exitCode": 0,
+      "output": "cli_retry_flag.out"
+    },
     "validation_negative": {
       "args": "test --quiet validation_negative.ts",
       "exitCode": 1,
