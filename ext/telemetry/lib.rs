@@ -952,6 +952,7 @@ pub struct OtelGlobals {
   pub builtin_instrumentation_scope: InstrumentationScope,
   pub span_event_count_limit: usize,
   pub span_attribute_count_limit: usize,
+  pub span_attribute_value_length_limit: Option<usize>,
   pub sampler: Sampler,
   pub config: OtelConfig,
 }
@@ -1023,6 +1024,61 @@ fn attribute_count_limit() -> usize {
     .get()
     .map(|g| g.span_attribute_count_limit)
     .unwrap_or(DEFAULT_ATTRIBUTE_COUNT_LIMIT)
+}
+
+/// Resolve the maximum attribute value length from the environment, honoring
+/// `OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` and falling back to the general
+/// `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`. The default is no limit, and per the
+/// spec non-positive values are invalid and treated as no limit.
+///
+/// See <https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/#attribute-limits>
+fn span_attribute_value_length_limit_from_env(
+  sys: &impl TelemetrySys,
+) -> Option<usize> {
+  [
+    "OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+    "OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT",
+  ]
+  .into_iter()
+  .find_map(|name| sys.env_var(name).ok().map(|v| v.trim().to_string()))
+  .and_then(|v| v.parse::<usize>().ok())
+  .filter(|&limit| limit > 0)
+}
+
+/// The effective attribute value length limit from the initialized globals.
+/// Returns `None` (no limit) when unset or telemetry is not yet initialized.
+fn attribute_value_length_limit() -> Option<usize> {
+  OTEL_GLOBALS
+    .get()
+    .and_then(|g| g.span_attribute_value_length_limit)
+}
+
+/// Truncate a single string attribute value to at most `limit` characters,
+/// per `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT`.
+fn truncate_string_value(value: &mut StringValue, limit: usize) {
+  if value.as_str().chars().count() > limit {
+    let truncated: String = value.as_str().chars().take(limit).collect();
+    *value = StringValue::from(truncated);
+  }
+}
+
+/// Apply the configured attribute value length limit to a built attribute
+/// value. String values and the elements of string-array values are truncated
+/// to `limit` characters; other value types are unaffected. A `None` limit is
+/// a no-op.
+fn truncate_attr_value(value: &mut Value, limit: Option<usize>) {
+  let Some(limit) = limit else {
+    return;
+  };
+  match value {
+    Value::String(s) => truncate_string_value(s, limit),
+    Value::Array(Array::String(arr)) => {
+      for s in arr.iter_mut() {
+        truncate_string_value(s, limit);
+      }
+    }
+    _ => {}
+  }
 }
 
 /// Head-based trace sampler configured via the `OTEL_TRACES_SAMPLER` and
@@ -1336,6 +1392,8 @@ pub fn init(
 
   let span_event_count_limit = span_event_count_limit_from_env(sys);
   let span_attribute_count_limit = span_attribute_count_limit_from_env(sys);
+  let span_attribute_value_length_limit =
+    span_attribute_value_length_limit_from_env(sys);
   let sampler = Sampler::from_env(sys)?;
 
   OTEL_GLOBALS
@@ -1347,6 +1405,7 @@ pub fn init(
       builtin_instrumentation_scope,
       span_event_count_limit,
       span_attribute_count_limit,
+      span_attribute_value_length_limit,
       sampler,
       config,
     })
@@ -1654,13 +1713,16 @@ macro_rules! attr_raw {
 }
 
 macro_rules! attr {
-  ($scope:ident, $attributes:expr => $dropped_attributes_count:expr, $limit:expr, $name:expr, $value:expr) => {
+  ($scope:ident, $attributes:expr => $dropped_attributes_count:expr, $limit:expr, $value_length_limit:expr, $name:expr, $value:expr) => {
     // Enforce the configured per-element attribute count limit
     // (`OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`): once the limit is reached, further
     // attributes are dropped and counted, matching the OpenTelemetry SDK spec.
     if $attributes.len() >= $limit {
       $dropped_attributes_count += 1;
-    } else if let Some(kv) = attr_raw!($scope, $name, $value) {
+    } else if let Some(mut kv) = attr_raw!($scope, $name, $value) {
+      // Enforce `OTEL_(SPAN_)ATTRIBUTE_VALUE_LENGTH_LIMIT`: string values (and
+      // string-array elements) longer than the limit are truncated.
+      truncate_attr_value(&mut kv.value, $value_length_limit);
       $attributes.push(kv);
     } else {
       $dropped_attributes_count += 1;
@@ -2292,6 +2354,7 @@ fn op_otel_span_attribute1<'s>(
     return;
   };
   let limit = attribute_count_limit();
+  let value_length_limit = attribute_value_length_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
@@ -2299,7 +2362,7 @@ fn op_otel_span_attribute1<'s>(
     else {
       return;
     };
-    attr!(scope, attributes => *dropped_attributes_count, limit, key, value);
+    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key, value);
   }
 }
 
@@ -2319,6 +2382,7 @@ fn op_otel_span_attribute2<'s>(
     return;
   };
   let limit = attribute_count_limit();
+  let value_length_limit = attribute_value_length_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
@@ -2326,8 +2390,8 @@ fn op_otel_span_attribute2<'s>(
     else {
       return;
     };
-    attr!(scope, attributes => *dropped_attributes_count, limit, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, limit, key2, value2);
+    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key2, value2);
   }
 }
 
@@ -2350,6 +2414,7 @@ fn op_otel_span_attribute3<'s>(
     return;
   };
   let limit = attribute_count_limit();
+  let value_length_limit = attribute_value_length_limit();
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
     let Some((attributes, dropped_attributes_count)) =
@@ -2357,9 +2422,9 @@ fn op_otel_span_attribute3<'s>(
     else {
       return;
     };
-    attr!(scope, attributes => *dropped_attributes_count, limit, key1, value1);
-    attr!(scope, attributes => *dropped_attributes_count, limit, key2, value2);
-    attr!(scope, attributes => *dropped_attributes_count, limit, key3, value3);
+    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key1, value1);
+    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key2, value2);
+    attr!(scope, attributes => *dropped_attributes_count, limit, value_length_limit, key3, value3);
   }
 }
 
