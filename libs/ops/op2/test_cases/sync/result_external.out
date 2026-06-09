@@ -105,8 +105,7 @@ pub const fn op_external_with_result() -> ::deno_core::_ops::OpDecl {
                         fast_api_callback_options) }
                     );
                     let mut scope = scope.init();
-                    let exception = deno_core::error::to_v8_error(&mut scope, &err);
-                    scope.throw_exception(exception);
+                    deno_core::error::throw_js_error_class(&mut scope, &err);
                     return unsafe { std::mem::zeroed() };
                 }
             };
