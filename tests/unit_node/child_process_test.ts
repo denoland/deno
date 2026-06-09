@@ -668,6 +668,42 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "[node/child_process spawn] Deno child fd 3 stays claimable by net.Socket",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const cmdFinished = Promise.withResolvers<void>();
+    let output = "";
+    let stderr = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_extra_stdio_fd3_socket.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script], {
+      stdio: ["ignore", "ignore", "pipe", "pipe"],
+    });
+    const extra = cp.stdio[3];
+    if (!extra) {
+      throw new Error("missing fd 3 pipe");
+    }
+    extra.on("data", (data) => {
+      output += data;
+    });
+    cp.stderr?.on("data", (data) => {
+      stderr += data;
+    });
+    cp.on("close", (code) => {
+      assertEquals(code, 0, stderr);
+      assertEquals(stderr, "");
+      assertEquals(output, "hello from fd 3 and from fd 3 socket");
+      cmdFinished.resolve();
+    });
+    await cmdFinished.promise;
+  },
+});
+
+Deno.test({
   name: "[node/child_process spawn] supports SIGIOT signal",
   ignore: Deno.build.os === "windows",
   async fn() {

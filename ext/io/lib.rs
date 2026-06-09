@@ -80,6 +80,12 @@ pub use pipe::PipeWrite;
 pub use pipe::RawPipeHandle;
 pub use pipe::pipe;
 
+/// Env var used by the Node `child_process` spawn path to tell a Deno child
+/// which extra numeric stdio fd slots it inherited. Both `deno_process` (which
+/// sets it) and `deno_io` (which consumes it at startup) reference this single
+/// constant so the name has one source of truth.
+pub const DENO_EXTRA_STDIO_FDS_ENV_VAR: &str = "DENO_EXTRA_STDIO_FDS";
+
 /// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
 pub trait AsRawIoHandle {
   fn as_raw_io_handle(&self) -> RawIoHandle;
@@ -204,6 +210,11 @@ fn inherited_extra_stdio_fd(fd: i32) -> Option<StdFile> {
   // SAFETY: dup validates the descriptor and gives FdTable its own handle.
   let dup_fd = unsafe { libc::dup(fd) };
   if dup_fd == -1 {
+    log::debug!(
+      "dup() failed for inherited extra stdio fd {}: {}",
+      fd,
+      std::io::Error::last_os_error()
+    );
     return None;
   }
   // SAFETY: dup_fd is a fresh descriptor owned by the returned file.
@@ -212,9 +223,18 @@ fn inherited_extra_stdio_fd(fd: i32) -> Option<StdFile> {
 
 #[cfg(unix)]
 fn register_inherited_extra_stdio_fds(fd_table: &mut FdTable) {
-  let Ok(fds) = std::env::var("DENO_EXTRA_STDIO_FDS") else {
+  let Ok(fds) = std::env::var(DENO_EXTRA_STDIO_FDS_ENV_VAR) else {
     return;
   };
+  // Consume the marker so it does not leak into the child's own environment
+  // (`Deno.env.toObject()`) and get inherited by grandchildren spawned through
+  // paths that bypass `create_command` (FFI exec, embedders, native modules),
+  // where the stale fd numbers would no longer be valid.
+  // SAFETY: extension init runs before user code or other threads can observe
+  // the process environment.
+  unsafe {
+    std::env::remove_var(DENO_EXTRA_STDIO_FDS_ENV_VAR);
+  }
   for fd in fds.split(',').filter_map(|fd| fd.parse::<i32>().ok()) {
     if fd_table.contains(fd) {
       continue;

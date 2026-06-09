@@ -64,7 +64,7 @@ use ipc::IpcRefTracker;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 #[cfg(unix)]
-const DENO_EXTRA_STDIO_FDS_ENV_VAR: &str = "DENO_EXTRA_STDIO_FDS";
+use deno_io::DENO_EXTRA_STDIO_FDS_ENV_VAR;
 
 /// Read CRT errno and map it to a Win32 error code for std::io::Error.
 ///
