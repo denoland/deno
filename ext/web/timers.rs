@@ -38,8 +38,14 @@ fn expose_time(duration: Duration, out: &mut [u8]) {
 
 #[op2(fast)]
 pub fn op_now(state: &mut OpState, #[buffer] buf: &mut [u8]) {
-  let start_time = state.borrow::<StartTime>();
-  let elapsed = start_time.elapsed();
+  // `StartTime` is absent while building the startup snapshot, since extension
+  // `state` setup does not run then. `Event` construction during snapshot
+  // warmup reaches here, so fall back to a zero elapsed time instead of
+  // panicking.
+  let elapsed = match state.try_borrow::<StartTime>() {
+    Some(start_time) => start_time.elapsed(),
+    None => Duration::default(),
+  };
   expose_time(elapsed, buf);
 }
 
