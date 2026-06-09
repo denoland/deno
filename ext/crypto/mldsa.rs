@@ -18,6 +18,8 @@ use serde::Serialize;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
+use crate::key_store::CryptoKeyHandle;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MlDsaError {
   #[class("DOMExceptionDataError")]
@@ -32,6 +34,9 @@ pub enum MlDsaError {
   #[class("DOMExceptionNotSupportedError")]
   #[error("Non-empty context is not supported")]
   ContextNotSupported,
+  #[class("DOMExceptionNotSupportedError")]
+  #[error("unsupported ML-DSA PKCS#8 private key format")]
+  UnsupportedPkcs8Format,
   #[class("DOMExceptionDataError")]
   #[error("Unknown ML-DSA variant")]
   UnknownVariant,
@@ -136,32 +141,37 @@ pub fn op_crypto_mldsa_from_seed(
 
 #[op2]
 #[serde]
-pub fn op_crypto_mldsa_from_raw_private(
-  variant: u8,
-  #[buffer] private_key_bytes: &[u8],
-) -> Result<MlDsaKeys, MlDsaError> {
-  let p = params(variant)?;
-  let key_pair =
-    PqdsaKeyPair::from_raw_private_key(p.signing, private_key_bytes)
-      .map_err(|_| MlDsaError::InvalidKeyData)?;
-  let private_key = key_pair
-    .private_key()
-    .as_raw_bytes_vec()
-    .map_err(|_| MlDsaError::FailedExport)?;
-  let public_key = key_pair.public_key().as_ref().to_vec();
-  Ok(MlDsaKeys {
-    private_key: private_key.into(),
-    public_key: public_key.into(),
-  })
-}
-
-#[op2]
-#[serde]
 pub fn op_crypto_mldsa_from_pkcs8(
   variant: u8,
   #[buffer] pkcs8: &[u8],
 ) -> Result<MlDsaImportedKeys, MlDsaError> {
   let p = params(variant)?;
+
+  // Classify the inner `ML-DSA-PrivateKey` CHOICE before handing the DER to
+  // aws-lc, so we can return the spec-mandated error types:
+  //   - expanded-key-only         -> NotSupportedError
+  //   - both, seed mismatch        -> DataError
+  //   - seed-only / consistent both -> ok
+  match classify_pkcs8_inner(pkcs8) {
+    // The expanded-key-only form is explicitly unsupported.
+    Some(Pkcs8Inner::Expanded) => {
+      return Err(MlDsaError::UnsupportedPkcs8Format);
+    }
+    // For the `both` form, the seed must regenerate exactly the expanded key.
+    Some(Pkcs8Inner::Both { seed, expanded }) => {
+      let derived = PqdsaKeyPair::from_seed(p.signing, &seed)
+        .ok()
+        .and_then(|kp| kp.private_key().as_raw_bytes_vec().ok());
+      match derived {
+        Some(d) if d == expanded => {}
+        _ => return Err(MlDsaError::InvalidKeyData),
+      }
+    }
+    // Seed-only (or an inner shape we don't classify) falls through to the
+    // aws-lc parse below, which is authoritative for validity.
+    Some(Pkcs8Inner::Seed(_)) | None => {}
+  }
+
   let key_pair = PqdsaKeyPair::from_pkcs8(p.signing, pkcs8)
     .map_err(|_| MlDsaError::InvalidKeyData)?;
   let private_key = key_pair
@@ -181,6 +191,59 @@ pub fn op_crypto_mldsa_from_pkcs8(
   })
 }
 
+/// The recognised shapes of the `ML-DSA-PrivateKey` CHOICE inside a PKCS#8
+/// `privateKey` OCTET STRING (draft-ietf-lamps-dilithium-certificates).
+enum Pkcs8Inner {
+  /// `seed [0] IMPLICIT OCTET STRING (SIZE(32))` -> tag `0x80` (or `0xA0`). The seed is
+  /// re-extracted by `extract_seed_from_pkcs8` after aws-lc validates the key,
+  /// so it is not read here; carried for parity/documentation.
+  #[allow(dead_code, reason = "seed re-extracted post-validation")]
+  Seed(Vec<u8>),
+  /// `both SEQUENCE { OCTET STRING seed, OCTET STRING expandedKey }`.
+  Both { seed: Vec<u8>, expanded: Vec<u8> },
+  /// `expandedKey OCTET STRING` -> tag `0x04`.
+  Expanded,
+}
+
+/// Classify the DER inside the PKCS#8 `privateKey` OCTET STRING. Returns `None`
+/// for anything that is not a well-formed `ML-DSA-PrivateKey` CHOICE; the
+/// caller then defers to aws-lc for authoritative validation.
+fn classify_pkcs8_inner(pkcs8: &[u8]) -> Option<Pkcs8Inner> {
+  use rsa::pkcs1::der::Decode;
+  let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(pkcs8).ok()?;
+  let inner = pk_info.private_key;
+  match inner.first().copied()? {
+    // `seed [0] IMPLICIT OCTET STRING (SIZE(32))`. aws-lc emits the primitive
+    // context tag `0x80` (like ML-KEM); tolerate the constructed `0xA0` too.
+    tag @ (0x80 | 0xA0) => {
+      let body = parse_tag_and_length(inner, tag)?;
+      if body.len() != 32 {
+        return None;
+      }
+      Some(Pkcs8Inner::Seed(body.to_vec()))
+    }
+    // `SEQUENCE { OCTET STRING seed, OCTET STRING expandedKey }`.
+    0x30 => {
+      let seq_body = parse_tag_and_length(inner, 0x30)?;
+      let (seed, after_seed) = parse_tlv(seq_body, 0x04)?;
+      if seed.len() != 32 {
+        return None;
+      }
+      let (expanded, after_expanded) = parse_tlv(after_seed, 0x04)?;
+      if !after_expanded.is_empty() {
+        return None;
+      }
+      Some(Pkcs8Inner::Both {
+        seed: seed.to_vec(),
+        expanded: expanded.to_vec(),
+      })
+    }
+    // A bare `OCTET STRING` is the expanded-key-only form.
+    0x04 => Some(Pkcs8Inner::Expanded),
+    _ => None,
+  }
+}
+
 /// Returns `Some(seed)` if the PKCS#8 v1 ML-DSA encoding contains a
 /// 32-byte seed, otherwise `None`. Used to recover the seed for
 /// round-tripping; signing and verifying still work without it.
@@ -188,9 +251,10 @@ fn extract_seed_from_pkcs8(pkcs8: &[u8]) -> Option<Vec<u8>> {
   use rsa::pkcs1::der::Decode;
   let pk_info = rsa::pkcs8::PrivateKeyInfo::from_der(pkcs8).ok()?;
   let inner = pk_info.private_key;
-  // Case 1: `[0] IMPLICIT OCTET STRING seed` -> tag 0xA0
-  if inner.first().copied() == Some(0xA0) {
-    let body = parse_tag_and_length(inner, 0xA0)?;
+  // Case 1: `seed [0] IMPLICIT OCTET STRING` -> primitive tag 0x80 (the form
+  // aws-lc emits, like ML-KEM); tolerate the constructed 0xA0 too.
+  if let Some(tag @ (0x80 | 0xA0)) = inner.first().copied() {
+    let body = parse_tag_and_length(inner, tag)?;
     if body.len() == 32 {
       return Some(body.to_vec());
     }
@@ -210,6 +274,12 @@ fn extract_seed_from_pkcs8(pkcs8: &[u8]) -> Option<Vec<u8>> {
 /// Parses a DER tag-length-value where `tag` is the expected first byte
 /// and returns the value slice on success.
 fn parse_tag_and_length(buf: &[u8], tag: u8) -> Option<&[u8]> {
+  Some(parse_tlv(buf, tag)?.0)
+}
+
+/// Parses a single DER tag-length-value where the first byte must equal `tag`.
+/// Returns `(value, rest)` where `rest` is the bytes following the value.
+fn parse_tlv(buf: &[u8], tag: u8) -> Option<(&[u8], &[u8])> {
   let (first, rest) = buf.split_first()?;
   if *first != tag {
     return None;
@@ -232,7 +302,7 @@ fn parse_tag_and_length(buf: &[u8], tag: u8) -> Option<&[u8]> {
   if body_start.len() < len {
     return None;
   }
-  Some(&body_start[..len])
+  Some((&body_start[..len], &body_start[len..]))
 }
 
 #[op2]
@@ -297,10 +367,11 @@ pub fn op_crypto_mldsa_export_spki(
 #[op2]
 pub fn op_crypto_sign_mldsa(
   variant: u8,
-  #[buffer] private_key_bytes: &[u8],
+  #[cppgc] key: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] context: Option<&[u8]>,
 ) -> Result<Uint8Array, MlDsaError> {
+  let private_key_bytes = key.data().expanded_private_key();
   let p = params(variant)?;
   // aws-lc-rs 1.16 does not expose a way to set the FIPS 204 §5.2 context
   // parameter for ML-DSA. The empty context is signed by default; reject
@@ -321,11 +392,12 @@ pub fn op_crypto_sign_mldsa(
 #[op2]
 pub fn op_crypto_verify_mldsa(
   variant: u8,
-  #[buffer] public_key_bytes: &[u8],
+  #[cppgc] key: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] signature: &[u8],
   #[buffer] context: Option<&[u8]>,
 ) -> bool {
+  let public_key_bytes = key.data().bytes();
   let Ok(p) = params(variant) else {
     return false;
   };

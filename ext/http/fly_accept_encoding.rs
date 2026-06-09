@@ -99,6 +99,14 @@ pub fn encodings_iter_http_1(
   encodings_iter_inner(iter)
 }
 
+/// Parse a set of Accept-Encoding header values into an iterator containing
+/// tuples of options containing encodings and their corresponding q-values.
+pub fn encodings_iter_str<'s>(
+  headers: impl Iterator<Item = &'s str> + 's,
+) -> impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>> + 's {
+  encodings_iter_inner(headers.map(Ok))
+}
+
 /// Parse a set of HTTP headers into an iterator containing tuples of options containing encodings and their corresponding q-values.
 fn encodings_iter_inner<'s>(
   headers: impl Iterator<Item = Result<&'s str, EncodingError>> + 's,

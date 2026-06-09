@@ -237,6 +237,7 @@ interface OtelTracer {
   startSpanForeign(
     parentTraceId: string,
     parentSpanId: string,
+    parentTraceFlags: number,
     name: string,
     spanKind: SpanKind,
     startTime: number | undefined,
@@ -413,6 +414,7 @@ class Tracer {
       otelSpan = this.#tracer.startSpanForeign(
         spanContext.traceId,
         spanContext.spanId,
+        spanContext.traceFlags ?? 0,
         name,
         options?.kind ?? 0,
         startTime,

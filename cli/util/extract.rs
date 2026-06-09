@@ -298,10 +298,37 @@ fn strip_markdown_blockquote_marker(line: &str) -> &str {
 #[derive(Default)]
 struct ExportCollector {
   named_exports: BTreeSet<Atom>,
+  /// Subset of `named_exports` whose declaration was a TypeScript-only
+  /// construct (`type` alias, `interface`, or an explicit `export type {}`
+  /// re-export). When generating injected imports for doc tests we emit
+  /// these with the per-specifier `type` modifier so projects with
+  /// `verbatimModuleSyntax: true` don't fail type-checking
+  /// (denoland/deno#31385).
+  named_type_only_exports: BTreeSet<Atom>,
   default_export: Option<Atom>,
 }
 
 impl ExportCollector {
+  /// Record `name` as a value export. A value export always wins over a
+  /// type-only export of the same identifier (e.g. a `const` and an
+  /// `interface` sharing a name via declaration merging), so this clears any
+  /// prior type-only marking to keep the injected import a value import.
+  fn add_value_export(&mut self, name: Atom) {
+    self.named_type_only_exports.remove(&name);
+    self.named_exports.insert(name);
+  }
+
+  /// Record `name` as a type-only export, unless it is already known to be a
+  /// value export (in which case the value import must be preserved).
+  fn add_type_only_export(&mut self, name: Atom) {
+    let already_value = self.named_exports.contains(&name)
+      && !self.named_type_only_exports.contains(&name);
+    if !already_value {
+      self.named_type_only_exports.insert(name.clone());
+    }
+    self.named_exports.insert(name);
+  }
+
   fn to_import_specifiers(
     &self,
     symbols_to_exclude: &rustc_hash::FxHashSet<Atom>,
@@ -343,7 +370,7 @@ impl ExportCollector {
             optional: false,
           },
           imported: None,
-          is_type_only: false,
+          is_type_only: self.named_type_only_exports.contains(named_export),
         },
       ));
     }
@@ -364,19 +391,20 @@ impl Visit for ExportCollector {
   fn visit_export_decl(&mut self, export_decl: &ast::ExportDecl) {
     match &export_decl.decl {
       ast::Decl::Class(class) => {
-        self.named_exports.insert(class.ident.sym.clone());
+        self.add_value_export(class.ident.sym.clone());
       }
       ast::Decl::Fn(func) => {
-        self.named_exports.insert(func.ident.sym.clone());
+        self.add_value_export(func.ident.sym.clone());
       }
       ast::Decl::Var(var) => {
         for var_decl in &var.decls {
-          let atoms = extract_sym_from_pat(&var_decl.name);
-          self.named_exports.extend(atoms);
+          for atom in extract_sym_from_pat(&var_decl.name) {
+            self.add_value_export(atom);
+          }
         }
       }
       ast::Decl::TsEnum(ts_enum) => {
-        self.named_exports.insert(ts_enum.id.sym.clone());
+        self.add_value_export(ts_enum.id.sym.clone());
       }
       ast::Decl::TsModule(ts_module) => {
         if ts_module.declare {
@@ -385,20 +413,18 @@ impl Visit for ExportCollector {
 
         match &ts_module.id {
           ast::TsModuleName::Ident(ident) => {
-            self.named_exports.insert(ident.sym.clone());
+            self.add_value_export(ident.sym.clone());
           }
           ast::TsModuleName::Str(s) => {
-            self
-              .named_exports
-              .insert(s.value.to_atom_lossy().into_owned());
+            self.add_value_export(s.value.to_atom_lossy().into_owned());
           }
         }
       }
       ast::Decl::TsTypeAlias(ts_type_alias) => {
-        self.named_exports.insert(ts_type_alias.id.sym.clone());
+        self.add_type_only_export(ts_type_alias.id.sym.clone());
       }
       ast::Decl::TsInterface(ts_interface) => {
-        self.named_exports.insert(ts_interface.id.sym.clone());
+        self.add_type_only_export(ts_interface.id.sym.clone());
       }
       ast::Decl::Using(_) => {}
     }
@@ -434,10 +460,7 @@ impl Visit for ExportCollector {
     }
   }
 
-  fn visit_export_named_specifier(
-    &mut self,
-    export_named_specifier: &ast::ExportNamedSpecifier,
-  ) {
+  fn visit_named_export(&mut self, named_export: &ast::NamedExport) {
     fn get_atom(export_name: &ast::ModuleExportName) -> Atom {
       match export_name {
         ast::ModuleExportName::Ident(ident) => ident.sym.clone(),
@@ -445,25 +468,36 @@ impl Visit for ExportCollector {
       }
     }
 
-    match &export_named_specifier.exported {
-      Some(exported) => {
-        self.named_exports.insert(get_atom(exported));
+    // For re-exports of the form `export { foo } from "./other.ts"` the names
+    // listed in the specifiers are still part of *this* module's export
+    // surface, so doc-test snippets should be able to use them without an
+    // explicit import (denoland/deno#30550). Namespace re-exports are
+    // `ExportSpecifier::Namespace` and skipped below.
+    let is_reexport = named_export.src.is_some();
+
+    for specifier in &named_export.specifiers {
+      let ast::ExportSpecifier::Named(named) = specifier else {
+        continue;
+      };
+      let name = match &named.exported {
+        Some(exported) => get_atom(exported),
+        None => get_atom(&named.orig),
+      };
+      // `export { default } from "./other.ts"` re-exports the default through
+      // this module — there's no new *named* export surface to inject.
+      if is_reexport && name.as_ref() == "default" {
+        continue;
       }
-      None => {
-        self
-          .named_exports
-          .insert(get_atom(&export_named_specifier.orig));
+      // `export type { Foo }` (`named_export.type_only`) and
+      // `export { type Foo }` (`named.is_type_only`) both make the binding
+      // type-only.
+      let is_type_only = named_export.type_only || named.is_type_only;
+      if is_type_only {
+        self.add_type_only_export(name);
+      } else {
+        self.add_value_export(name);
       }
     }
-  }
-
-  fn visit_named_export(&mut self, named_export: &ast::NamedExport) {
-    // ExportCollector does not handle re-exports
-    if named_export.src.is_some() {
-      return;
-    }
-
-    named_export.visit_children_with(self);
   }
 }
 
@@ -963,7 +997,7 @@ export type Args = { a: number };
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
-          source: r#"import { Args, foo } from "file:///main.ts";
+          source: r#"import { type Args, foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-7.ts", async ()=>{
     const input = {
         a: 42
@@ -972,6 +1006,34 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
 });
 "#,
           specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * Documentation of my function.
+ *
+ * @example Usage
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read
+ * foo("bar")
+ * ```
+ */
+export function foo(s: string) {
+  return s;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$6-10.ts", async ()=>{
+    foo("bar");
+});
+"#,
+          specifier: "file:///main.ts$6-10.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1360,6 +1422,63 @@ Deno.test("file:///main.ts$3-8.ts", async ()=>{
 });
 "#,
           specifier: "file:///main.ts$3-8.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Regression test for https://github.com/denoland/deno/issues/31385
+      // Type-only exports must be injected with the per-specifier `type`
+      // modifier so doc tests don't fail under `verbatimModuleSyntax: true`.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+export type Foo = string;
+export interface Bar { x: number }
+export class Quux {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { type Bar, type Foo, Quux, useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts$3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A name that is both a value export and a type export via declaration
+      // merging (here `const Foo` + `interface Foo`) must be injected as a
+      // value import, otherwise the value binding is dropped under
+      // `verbatimModuleSyntax: true`. The order of the value/type
+      // declarations must not matter.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * doSomething();
+ * ```
+ */
+export function doSomething() {}
+export interface Foo { x: number }
+export const Foo = 1;
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { Foo, doSomething } from "file:///main.ts";
+Deno.test("file:///main.ts$3-6.ts", async ()=>{
+    doSomething();
+});
+"#,
+          specifier: "file:///main.ts$3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1798,11 +1917,12 @@ export function foo(a: number | boolean): boolean | string {
         named_expected: atom_set!("foo"),
         default_expected: None,
       },
-      // The collector deliberately does not handle re-exports, because from
-      // doc reader's perspective, an example code would become hard to follow
-      // if it uses re-exported items (as opposed to normal, non-re-exported
-      // items that would look verbose if an example code explicitly imports
-      // them).
+      // Re-exports of the form `export { name } from "./other.ts"` are
+      // collected so doc-test snippets that reference them resolve
+      // (denoland/deno#30550). Namespace re-exports (`export *`,
+      // `export * as ns`) and `export { default }` re-exports are still
+      // skipped because we'd have to follow the re-export chain to know
+      // their actual exported names.
       Test {
         input: r#"
 export * from "./module1.ts";
@@ -1811,7 +1931,7 @@ export { name2, name3 as N3 } from "./module3.js";
 export { default } from "./module4.ts";
 export { default as myDefault } from "./module5.ts";
 "#,
-        named_expected: atom_set!(),
+        named_expected: atom_set!("name2", "N3", "myDefault"),
         default_expected: None,
       },
       Test {

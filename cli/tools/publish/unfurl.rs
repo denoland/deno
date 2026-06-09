@@ -526,16 +526,19 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   None => None,
                 }
               }
-              PackageJsonDepValue::Workspace(workspace_version_req) => {
-                let version_req = match workspace_version_req {
+              PackageJsonDepValue::Workspace { name, version_req } => {
+                // The member is looked up by its own package name, which for
+                // pnpm-style aliases differs from the import alias (the key).
+                let target_name = name.as_deref().unwrap_or(alias);
+                let version_req = match version_req {
                   PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
                     Cow::Borrowed(version_req)
                   }
                   PackageJsonDepWorkspaceReq::Caret => {
                     let version = self
-                      .find_workspace_npm_dep_version(alias)
+                      .find_workspace_npm_dep_version(target_name)
                       .map_err(|err| UnfurlSpecifierError::Workspace {
-                        package_name: alias.to_string(),
+                        package_name: target_name.to_string(),
                         reason: err.to_string(),
                       })?;
                     // version was validated, so ok to unwrap
@@ -546,9 +549,9 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   }
                   PackageJsonDepWorkspaceReq::Tilde => {
                     let version = self
-                      .find_workspace_npm_dep_version(alias)
+                      .find_workspace_npm_dep_version(target_name)
                       .map_err(|err| UnfurlSpecifierError::Workspace {
-                        package_name: alias.to_string(),
+                        package_name: target_name.to_string(),
                         reason: err.to_string(),
                       })?;
                     // version was validated, so ok to unwrap
@@ -562,7 +565,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                 // people to map the specifiers in the import map
                 ModuleSpecifier::parse(&format!(
                   "npm:{}@{}{}",
-                  alias,
+                  target_name,
                   version_req,
                   sub_path
                     .as_ref()

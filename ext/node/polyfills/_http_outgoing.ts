@@ -717,6 +717,7 @@ ObjectDefineProperties(
         if (this.outputData.length) {
           this._flushOutput(conn);
         }
+        this._recordRetryData?.(data, encoding, callback);
         // Directly write to socket.
         return conn.write(data, encoding, callback);
       }
