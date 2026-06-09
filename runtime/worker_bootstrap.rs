@@ -3,6 +3,8 @@
 use std::thread;
 
 use deno_core::ModuleSpecifier;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use deno_core::v8;
 use deno_node::ops::ipc::ChildIpcSerialization;
 use deno_telemetry::OtelConfig;
@@ -161,112 +163,84 @@ impl Default for BootstrapOptions {
   }
 }
 
+/// Serialized form of `BootstrapOptions` passed to JS as a positional array.
+///
+/// Each element maps to the corresponding index destructured in `99_main.js`.
+/// Keep in sync with `99_main.js`.
+#[derive(ToV8)]
+struct BootstrapV8(
+  // 0: deno version
+  String,
+  // 1: location
+  Option<String>,
+  // 2: granular unstable flags
+  Vec<i32>,
+  // 3: inspect
+  bool,
+  // 4: enable_testing_features
+  bool,
+  // 5: has_node_modules_dir
+  bool,
+  // 6: argv0
+  Option<String>,
+  // 7: node_debug
+  Option<String>,
+  // 8: mode
+  i32,
+  // 9: serve port
+  u16,
+  // 10: serve host
+  Option<String>,
+  // 11: serve is main
+  bool,
+  // 12: serve worker count
+  Option<usize>,
+  // 13: OTEL config
+  Uint8Array,
+  // 14: close on idle
+  bool,
+  // 15: is_standalone
+  bool,
+  // 16: auto serve
+  bool,
+  // 17: node cluster unique id (NODE_UNIQUE_ID)
+  Option<String>,
+  // 18: node cluster scheduling policy (NODE_CLUSTER_SCHED_POLICY)
+  Option<String>,
+);
+
 impl BootstrapOptions {
   /// Return the v8 equivalent of this structure.
-  ///
-  /// Produces a JS array whose indices match what `99_main.js` destructures.
-  /// Keep this in sync with `99_main.js`.
   pub fn as_v8<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
   ) -> v8::Local<'s, v8::Value> {
-    use deno_core::convert::ToV8 as _;
-
-    // 0: denoVersion
-    let v0: v8::Local<v8::Value> =
-      v8::String::new(scope, &self.deno_version).unwrap().into();
-    // 1: location
-    let v1: v8::Local<v8::Value> =
-      match self.location.as_ref().map(|l| l.as_str()) {
-        Some(s) => v8::String::new(scope, s).unwrap().into(),
-        None => v8::null(scope).into(),
-      };
-    // 2: unstableFeatures — array of i32
-    let mut unstable_elems: Vec<v8::Local<v8::Value>> =
-      Vec::with_capacity(self.unstable_features.len());
-    for &n in &self.unstable_features {
-      unstable_elems.push(v8::Integer::new(scope, n).into());
-    }
-    let v2: v8::Local<v8::Value> =
-      v8::Array::new_with_elements(scope, &unstable_elems).into();
-    // 3: inspect
-    let v3: v8::Local<v8::Value> = v8::Boolean::new(scope, self.inspect).into();
-    // 4: enableTestingFeatures
-    let v4: v8::Local<v8::Value> =
-      v8::Boolean::new(scope, self.enable_testing_features).into();
-    // 5: hasNodeModulesDir
-    let v5: v8::Local<v8::Value> =
-      v8::Boolean::new(scope, self.has_node_modules_dir).into();
-    // 6: argv0
-    let v6: v8::Local<v8::Value> = match self.argv0.as_deref() {
-      Some(s) => v8::String::new(scope, s).unwrap().into(),
-      None => v8::null(scope).into(),
-    };
-    // 7: nodeDebug
-    let v7: v8::Local<v8::Value> = match self.node_debug.as_deref() {
-      Some(s) => v8::String::new(scope, s).unwrap().into(),
-      None => v8::null(scope).into(),
-    };
-    // 8: mode (discriminant as integer)
-    let v8_val: v8::Local<v8::Value> =
-      v8::Integer::new(scope, self.mode.discriminant() as i32).into();
-    // 9: servePort (u16 → unsigned integer)
-    let v9: v8::Local<v8::Value> = v8::Integer::new_from_unsigned(
-      scope,
-      self.serve_port.unwrap_or_default() as u32,
-    )
-    .into();
-    // 10: serveHost
-    let v10: v8::Local<v8::Value> = match self.serve_host.as_deref() {
-      Some(s) => v8::String::new(scope, s).unwrap().into(),
-      None => v8::null(scope).into(),
-    };
-    // 11: serveIsMain
-    let v11: v8::Local<v8::Value> = v8::Boolean::new(
-      scope,
+    BootstrapV8(
+      self.deno_version.clone(),
+      self.location.as_ref().map(|l| l.to_string()),
+      self.unstable_features.clone(),
+      self.inspect,
+      self.enable_testing_features,
+      self.has_node_modules_dir,
+      self.argv0.clone(),
+      self.node_debug.clone(),
+      self.mode.discriminant() as i32,
+      self.serve_port.unwrap_or_default(),
+      self.serve_host.clone(),
       matches!(self.mode, WorkerExecutionMode::ServeMain { .. }),
+      match self.mode {
+        WorkerExecutionMode::ServeMain { worker_count } => Some(worker_count),
+        WorkerExecutionMode::ServeWorker { worker_index } => Some(worker_index),
+        _ => None,
+      },
+      self.otel_config.as_v8().into(),
+      self.close_on_idle,
+      self.is_standalone,
+      self.auto_serve,
+      self.node_cluster_unique_id.clone(),
+      self.node_cluster_sched_policy.clone(),
     )
-    .into();
-    // 12: serveWorkerCountOrIndex (null when not in serve mode)
-    let v12: v8::Local<v8::Value> = match self.mode {
-      WorkerExecutionMode::ServeMain { worker_count } => {
-        v8::Number::new(scope, worker_count as f64).into()
-      }
-      WorkerExecutionMode::ServeWorker { worker_index } => {
-        v8::Number::new(scope, worker_index as f64).into()
-      }
-      _ => v8::null(scope).into(),
-    };
-    // 13: otelConfig as Uint8Array
-    let v13 = deno_core::convert::Uint8Array(self.otel_config.as_v8())
-      .to_v8(scope)
-      .unwrap();
-    // 14: closeOnIdle
-    let v14: v8::Local<v8::Value> =
-      v8::Boolean::new(scope, self.close_on_idle).into();
-    // 15: standalone
-    let v15: v8::Local<v8::Value> =
-      v8::Boolean::new(scope, self.is_standalone).into();
-    // 16: autoServe
-    let v16: v8::Local<v8::Value> =
-      v8::Boolean::new(scope, self.auto_serve).into();
-    // 17: nodeClusterUniqueId
-    let v17: v8::Local<v8::Value> = match self.node_cluster_unique_id.as_deref()
-    {
-      Some(s) => v8::String::new(scope, s).unwrap().into(),
-      None => v8::null(scope).into(),
-    };
-    // 18: nodeClusterSchedPolicy
-    let v18: v8::Local<v8::Value> =
-      match self.node_cluster_sched_policy.as_deref() {
-        Some(s) => v8::String::new(scope, s).unwrap().into(),
-        None => v8::null(scope).into(),
-      };
-
-    let elements: [v8::Local<v8::Value>; 19] = [
-      v0, v1, v2, v3, v4, v5, v6, v7, v8_val, v9, v10, v11, v12, v13, v14, v15,
-      v16, v17, v18,
-    ];
-    v8::Array::new_with_elements(scope, &elements).into()
+    .to_v8(scope)
+    .expect("BootstrapV8::to_v8 failed")
   }
 }
