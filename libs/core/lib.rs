@@ -137,6 +137,7 @@ pub use crate::module_specifier::resolve_url;
 pub use crate::modules::CustomModuleEvaluationKind;
 pub use crate::modules::ExtCodeCache;
 pub use crate::modules::FsModuleLoader;
+pub use crate::modules::ImportAttributesContext;
 pub use crate::modules::ModuleCodeBytes;
 pub use crate::modules::ModuleCodeString;
 pub use crate::modules::ModuleId;

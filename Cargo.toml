@@ -93,7 +93,7 @@ deno_ast = { version = "=0.53.2", features = ["transpiling"] }
 deno_core_icudata = "0.77.0"
 deno_doc = "=0.199.0"
 deno_error = "=0.7.1"
-deno_graph = { version = "=0.108.2", default-features = false }
+deno_graph = { version = "=0.108.4", default-features = false }
 deno_lint = "=0.84.1"
 deno_media_type = { version = "=0.4.0", features = ["module_specifier"] }
 deno_native_certs = "0.3.0"
@@ -103,7 +103,7 @@ deno_task_shell = "=0.33.0"
 deno_terminal = "=0.2.3"
 deno_unsync = { version = "0.4.4", default-features = false }
 deno_whoami = "0.1.0"
-v8 = { version = "149.2.0", default-features = false, features = ["simdutf"] }
+v8 = { version = "149.3.0", default-features = false, features = ["simdutf"] }
 
 denokv_proto = "0.13.0"
 denokv_remote = "0.13.0"
@@ -432,8 +432,8 @@ cssparser = "0.36.0"
 
 # webgpu
 raw-window-handle = "0.6.0"
-wgpu-core = "28.0.0"
-wgpu-types = "28.0.0"
+wgpu-core = "=29.0.1"
+wgpu-types = "=29.0.1"
 
 # macros
 quote = "1"

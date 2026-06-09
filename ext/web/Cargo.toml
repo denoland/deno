@@ -45,3 +45,7 @@ harness = false
 [[bench]]
 name = "url_ops"
 harness = false
+
+[[bench]]
+name = "text_decoder_stream"
+harness = false

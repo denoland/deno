@@ -3110,6 +3110,7 @@
     "parallel/test-require-invalid-package.js": {},
     "parallel/test-require-json.js": {},
     "parallel/test-require-long-path.js": {},
+    "parallel/test-require-node-prefix.js": {},
     "parallel/test-require-nul.js": {},
     "parallel/test-require-process.js": {},
     "parallel/test-require-resolve.js": {},
@@ -4880,10 +4881,7 @@
     "parallel/test-fastutf8stream-write.js": {},
     "parallel/test-file-write-stream.js": {},
     "parallel/test-file-write-stream4.js": {},
-    "parallel/test-fileurltopathbuffer.js": {
-      "linux": false,
-      "reason": "fileURLToPathBuffer is not a function"
-    },
+    "parallel/test-fileurltopathbuffer.js": {},
     "parallel/test-fs-read-position-validation.mjs": {},
     "parallel/test-fs-read-promises-position-validation.mjs": {},
     "parallel/test-fs-readdir-ucs2.js": {
@@ -4947,8 +4945,8 @@
     "parallel/test-http-client-timeout-on-connect.js": {},
     "parallel/test-http-client-with-create-connection.js": {},
     "parallel/test-http-keep-alive-empty-line.mjs": {
-      "windows": false,
-      "reason": "error: Uncaught Error: read ECONNRESET"
+      "ignore": true,
+      "reason": "keepAliveTimeout via socket.setTimeout doesn't fire on a consumed HTTP socket; test previously passed by accident because ConnectionsList headersTimeout incorrectly fired (fixed in #34356)"
     },
     "parallel/test-http-localaddress.js": {},
     "parallel/test-http-parser-timeout-reset.js": {},
@@ -5263,7 +5261,10 @@
       "darwin": false,
       "reason": "Mismatched <anonymous> function calls. Expected exactly 1, actual 0."
     },
-    "parallel/test-watch-mode-kill-signal-default.mjs": {},
+    "parallel/test-watch-mode-kill-signal-default.mjs": {
+      "ignore": true,
+      "reason": "Node runs --watch in a separate child process, so the test kills the watcher with SIGTERM while the script's own process.exit() stays independent. Deno runs --watch in the same process and, per #7590, process.exit()/Deno.exit() under --watch terminates the isolate so the watcher survives; the watcher process therefore never exits and the test times out"
+    },
     "parallel/test-watch-mode-kill-signal-invalid.mjs": {
       "linux": false,
       "darwin": false,
@@ -5382,11 +5383,7 @@
     "sea/test-single-executable-application-snapshot.js": {},
     "sea/test-single-executable-application-use-code-cache.js": {},
     "sea/test-single-executable-application.js": {},
-    "sequential/test-child-process-emfile.js": {
-      "linux": false,
-      "darwin": false,
-      "reason": "Expected values to be strictly equal"
-    },
+    "sequential/test-child-process-emfile.js": {},
     "sequential/test-child-process-pass-fd.js": {
       "windows": false,
       "darwin": false,

@@ -75,7 +75,7 @@ use crate::glob::PathOrPatternSet;
 mod discovery;
 
 #[allow(clippy::disallowed_types, reason = "definition")]
-type UrlRc = deno_maybe_sync::MaybeArc<Url>;
+pub type UrlRc = deno_maybe_sync::MaybeArc<Url>;
 #[allow(clippy::disallowed_types, reason = "definition")]
 pub type WorkspaceRc = deno_maybe_sync::MaybeArc<Workspace>;
 #[allow(clippy::disallowed_types, reason = "definition")]
@@ -135,6 +135,66 @@ impl NpmPackageConfig {
       RangeSetOrTag::RangeSet(set) => set.satisfies(&self.nv.version),
       RangeSetOrTag::Tag(tag) => tag == "workspace",
     }
+  }
+
+  /// Like [`Self::matches_req`], but also matches prerelease versions that fall
+  /// within the requirement's range bounds (see
+  /// [`version_req_matches_including_pre`]). Used when resolving a local
+  /// workspace member, which is provided explicitly by the user.
+  pub fn matches_req_including_pre(&self, req: &PackageReq) -> bool {
+    self.matches_name_and_version_req_including_pre(&req.name, &req.version_req)
+  }
+
+  /// Like [`Self::matches_name_and_version_req`], but prerelease-inclusive.
+  pub fn matches_name_and_version_req_including_pre(
+    &self,
+    name: &str,
+    version_req: &VersionReq,
+  ) -> bool {
+    if name != self.nv.name {
+      return false;
+    }
+    version_req_matches_including_pre(version_req, &self.nv.version)
+      || matches!(version_req.inner(), RangeSetOrTag::Tag(tag) if tag == "workspace")
+  }
+
+  pub fn matches_name(&self, name: &str) -> bool {
+    name == self.nv.name
+  }
+}
+
+/// Like [`VersionReq::matches`], but also matches prerelease versions that fall
+/// within the requirement's range bounds.
+///
+/// npm's default semver rules exclude prereleases from ranges like `*` or
+/// `^1.0.0` to avoid silently selecting an unstable version from the registry,
+/// but a locally provided package (a pnpm/npm workspace member, or a package
+/// already installed in `node_modules`) is there because the user put it there,
+/// so a member with a prerelease version (e.g. `0.40.0-pre`) should still
+/// satisfy a bare `npm:<pkg>` (`*`) requirement instead of being rejected.
+///
+/// This is intentionally a touch more permissive than npm's `includePrerelease`
+/// (e.g. `^1.0.0` matches `2.0.0-pre` here, whereas npm excludes it because
+/// `2.0.0-pre >= 2.0.0-0`); that is acceptable because it only applies to
+/// explicitly provided local packages.
+///
+/// Unlike [`VersionReq::matches`], a tag requirement never matches here (rather
+/// than panicking), since a local package has no dist-tags to compare against.
+///
+/// `deno_npm`'s `link_version_req_satisfies` keeps an identical copy of this
+/// fallback for the npm graph resolver (it can't depend on this crate). Keep
+/// the two in sync.
+pub fn version_req_matches_including_pre(
+  version_req: &VersionReq,
+  version: &Version,
+) -> bool {
+  match version_req.inner() {
+    RangeSetOrTag::RangeSet(set) => {
+      set.satisfies(version)
+        || (!version.pre.is_empty()
+          && set.0.iter().any(|range| range.intersects_version(version)))
+    }
+    RangeSetOrTag::Tag(_) => false,
   }
 }
 
@@ -774,23 +834,24 @@ impl Workspace {
                         req: package_req.clone(),
                       }))
                     }
-                    PackageJsonDepValue::Workspace(workspace_req) => {
-                      Some(Dep::Req(JsrDepPackageReq {
-                        kind: PackageKind::Npm,
-                        req: PackageReq {
-                          name: k.clone(),
-                          version_req: match workspace_req {
-                            PackageJsonDepWorkspaceReq::VersionReq(
-                              version_req,
-                            ) => version_req.clone(),
-                            PackageJsonDepWorkspaceReq::Tilde
-                            | PackageJsonDepWorkspaceReq::Caret => {
-                              VersionReq::parse_from_npm("*").unwrap()
-                            }
-                          },
+                    PackageJsonDepValue::Workspace {
+                      name,
+                      version_req: workspace_req,
+                    } => Some(Dep::Req(JsrDepPackageReq {
+                      kind: PackageKind::Npm,
+                      req: PackageReq {
+                        name: name.clone().unwrap_or_else(|| k.clone()),
+                        version_req: match workspace_req {
+                          PackageJsonDepWorkspaceReq::VersionReq(
+                            version_req,
+                          ) => version_req.clone(),
+                          PackageJsonDepWorkspaceReq::Tilde
+                          | PackageJsonDepWorkspaceReq::Caret => {
+                            VersionReq::parse_from_npm("*").unwrap()
+                          }
                         },
-                      }))
-                    }
+                      },
+                    })),
                     PackageJsonDepValue::Catalog(catalog_name) => catalogs
                       .get(catalog_name.as_str())
                       .and_then(|catalog| catalog.get(k.as_str()))
@@ -2240,6 +2301,10 @@ impl WorkspaceDirectory {
           .options
           .trailing_commas
           .or(root_config.options.trailing_commas),
+        json_trailing_commas: member_config
+          .options
+          .json_trailing_commas
+          .or(root_config.options.json_trailing_commas),
         operator_position: member_config
           .options
           .operator_position
@@ -3003,6 +3068,7 @@ pub mod test {
   use crate::deno_json::BracePosition;
   use crate::deno_json::BracketPosition;
   use crate::deno_json::DenoJsonCache;
+  use crate::deno_json::JsonTrailingCommaKind;
   use crate::deno_json::MultiLineParens;
   use crate::deno_json::NewLineKind;
   use crate::deno_json::NextControlFlowPosition;
@@ -3055,6 +3121,32 @@ pub mod test {
     } else {
       PathBuf::from("/home/user")
     }
+  }
+
+  #[test]
+  fn version_req_matches_including_pre_cases() {
+    fn matches(req: &str, version: &str) -> bool {
+      version_req_matches_including_pre(
+        &VersionReq::parse_from_npm(req).unwrap(),
+        &Version::parse_from_npm(version).unwrap(),
+      )
+    }
+
+    // a prerelease version satisfies a wildcard, unlike plain npm semver
+    assert!(matches("*", "0.40.0-pre"));
+    // ... and an explicit prerelease range that contains it
+    assert!(matches("^0.40.0-pre", "0.40.0-pre"));
+    // but not a range whose lower bound is above the prerelease
+    assert!(!matches("^0.40.0", "0.40.0-pre"));
+    // an exact version does not match a lower prerelease of itself
+    assert!(!matches("1.3.6", "1.3.6-beta"));
+    // a prerelease below the exclusive upper bound is included
+    assert!(matches("^1.0.0", "2.0.0-pre"));
+    // non-prerelease behaviour is unchanged
+    assert!(matches("^1.0.0", "1.5.0"));
+    assert!(!matches("^1.0.0", "2.0.0"));
+    // a tag never matches a local package (and does not panic)
+    assert!(!matches("latest", "1.0.0"));
   }
 
   #[test]
@@ -3980,6 +4072,7 @@ pub mod test {
           "singleBodyPosition": "sameLine",
           "nextControlFlowPosition": "nextLine",
           "trailingCommas": "always",
+          "json.trailingCommas": "never",
           "operatorPosition": "sameLine",
           "jsx.bracketPosition": "sameLine",
           "jsx.forceNewLinesSurroundingContent": false,
@@ -4005,6 +4098,7 @@ pub mod test {
           "singleBodyPosition": "maintain",
           "nextControlFlowPosition": "maintain",
           "trailingCommas": "onlyMultiLine",
+          "json.trailingCommas": "maintain",
           "operatorPosition": "nextLine",
           "jsx.bracketPosition": "nextLine",
           "jsx.forceNewLinesSurroundingContent": true,
@@ -4036,6 +4130,7 @@ pub mod test {
           single_body_position: Some(SingleBodyPosition::Maintain),
           next_control_flow_position: Some(NextControlFlowPosition::Maintain),
           trailing_commas: Some(TrailingCommas::OnlyMultiLine),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Maintain),
           operator_position: Some(OperatorPosition::NextLine),
           jsx_bracket_position: Some(BracketPosition::NextLine),
           jsx_force_new_lines_surrounding_content: Some(true),
@@ -4080,6 +4175,7 @@ pub mod test {
           single_body_position: Some(SingleBodyPosition::SameLine),
           next_control_flow_position: Some(NextControlFlowPosition::NextLine),
           trailing_commas: Some(TrailingCommas::Always),
+          json_trailing_commas: Some(JsonTrailingCommaKind::Never),
           operator_position: Some(OperatorPosition::SameLine),
           jsx_bracket_position: Some(BracketPosition::SameLine),
           jsx_force_new_lines_surrounding_content: Some(false),

@@ -270,12 +270,12 @@ impl EmbeddedModuleLoader {
               url_or_path.into_url().map_err(JsErrorBox::from_err)
             })?,
         ),
-        PackageJsonDepValue::Workspace(version_req) => {
+        PackageJsonDepValue::Workspace { name, version_req } => {
           let pkg_folder = self
             .shared
             .workspace_resolver
             .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-              alias,
+              name.as_deref().unwrap_or(alias),
               version_req,
             )
             .map_err(JsErrorBox::from_err)?;
@@ -628,6 +628,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
       return ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err);
     }
     self.resolve_inner(raw_specifier, referrer, kind)
+  }
+
+  fn pump_event_loop_during_load(&self) -> bool {
+    // Load hooks respond through the async bridge, so the event loop must be
+    // pumped during the recursive load or the load deadlocks.
+    self.hook_registry.load_active.get()
   }
 
   fn get_host_defined_options<'s>(
