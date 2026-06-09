@@ -7,16 +7,15 @@ use std::rc::Rc;
 
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::ToV8;
+use deno_core::convert::BigInt as ConvertBigInt;
+use deno_core::convert::ExternalPointer;
 use deno_core::op2;
-use deno_core::serde_json::Value;
-use deno_core::serde_v8::BigInt as V8BigInt;
-use deno_core::serde_v8::ExternalPointer;
 use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_permissions::PermissionsContainer;
 use libffi::middle::Arg;
 use num_bigint::BigInt;
-use serde::Serialize;
 
 use crate::ForeignFunction;
 use crate::callback::PtrSymbol;
@@ -216,11 +215,13 @@ where
   }
 }
 
-#[derive(Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum FfiValue {
-  Value(Value),
-  BigInt(V8BigInt),
+  Null,
+  Bool(bool),
+  Number(f64),
+  BigInt(ConvertBigInt),
   External(ExternalPointer),
 }
 
@@ -247,46 +248,46 @@ fn ffi_call(
     match result_type {
       NativeType::Void => {
         cif.call::<()>(fun_ptr, &call_args);
-        FfiValue::Value(Value::from(()))
+        FfiValue::Null
       }
       NativeType::Bool => {
-        FfiValue::Value(Value::from(cif.call::<bool>(fun_ptr, &call_args)))
+        FfiValue::Bool(cif.call::<bool>(fun_ptr, &call_args))
       }
       NativeType::U8 => {
-        FfiValue::Value(Value::from(cif.call::<u8>(fun_ptr, &call_args)))
+        FfiValue::Number(cif.call::<u8>(fun_ptr, &call_args) as f64)
       }
       NativeType::I8 => {
-        FfiValue::Value(Value::from(cif.call::<i8>(fun_ptr, &call_args)))
+        FfiValue::Number(cif.call::<i8>(fun_ptr, &call_args) as f64)
       }
       NativeType::U16 => {
-        FfiValue::Value(Value::from(cif.call::<u16>(fun_ptr, &call_args)))
+        FfiValue::Number(cif.call::<u16>(fun_ptr, &call_args) as f64)
       }
       NativeType::I16 => {
-        FfiValue::Value(Value::from(cif.call::<i16>(fun_ptr, &call_args)))
+        FfiValue::Number(cif.call::<i16>(fun_ptr, &call_args) as f64)
       }
       NativeType::U32 => {
-        FfiValue::Value(Value::from(cif.call::<u32>(fun_ptr, &call_args)))
+        FfiValue::Number(cif.call::<u32>(fun_ptr, &call_args) as f64)
       }
       NativeType::I32 => {
-        FfiValue::Value(Value::from(cif.call::<i32>(fun_ptr, &call_args)))
+        FfiValue::Number(cif.call::<i32>(fun_ptr, &call_args) as f64)
       }
-      NativeType::U64 => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+      NativeType::U64 => FfiValue::BigInt(ConvertBigInt::from(BigInt::from(
         cif.call::<u64>(fun_ptr, &call_args),
       ))),
-      NativeType::I64 => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+      NativeType::I64 => FfiValue::BigInt(ConvertBigInt::from(BigInt::from(
         cif.call::<i64>(fun_ptr, &call_args),
       ))),
-      NativeType::USize => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+      NativeType::USize => FfiValue::BigInt(ConvertBigInt::from(BigInt::from(
         cif.call::<usize>(fun_ptr, &call_args),
       ))),
-      NativeType::ISize => FfiValue::BigInt(V8BigInt::from(BigInt::from(
+      NativeType::ISize => FfiValue::BigInt(ConvertBigInt::from(BigInt::from(
         cif.call::<isize>(fun_ptr, &call_args),
       ))),
       NativeType::F32 => {
-        FfiValue::Value(Value::from(cif.call::<f32>(fun_ptr, &call_args)))
+        FfiValue::Number(cif.call::<f32>(fun_ptr, &call_args) as f64)
       }
       NativeType::F64 => {
-        FfiValue::Value(Value::from(cif.call::<f64>(fun_ptr, &call_args)))
+        FfiValue::Number(cif.call::<f64>(fun_ptr, &call_args))
       }
       NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
         FfiValue::External(ExternalPointer::from(
@@ -295,14 +296,13 @@ fn ffi_call(
       }
       NativeType::Struct(_) => {
         ffi_call_rtype_struct(cif, &fun_ptr, call_args, out_buffer.unwrap().0);
-        FfiValue::Value(Value::Null)
+        FfiValue::Null
       }
     }
   }
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_ffi_call_ptr_nonblocking(
   scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
@@ -356,7 +356,6 @@ where
 
 /// A non-blocking FFI call.
 #[op2]
-#[serde]
 pub fn op_ffi_call_nonblocking(
   scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
@@ -417,7 +416,6 @@ pub fn op_ffi_call_nonblocking(
 }
 
 #[op2(reentrant, stack_trace)]
-#[serde]
 pub fn op_ffi_call_ptr(
   scope: &mut v8::PinScope<'_, '_>,
   state: Rc<RefCell<OpState>>,
