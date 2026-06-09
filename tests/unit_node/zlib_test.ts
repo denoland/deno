@@ -419,3 +419,44 @@ Deno.test("zlib writeSync populates _writeState per call", () => {
     assert(state[1] <= input.length, "avail_in out of range");
   }
 });
+
+// Same regression as the writeSync detach test above, but for the async
+// `handle.write` op. That op is a separately duplicated native function which
+// also writes the result pair back into `_writeState`, so it carries its own
+// copy of the bounds check and needs its own coverage. The op is invoked
+// directly (rather than through the stream) so the detach is observed against
+// the freed backing store before any other state mutates. brotli/zstd run
+// `processCallback` synchronously from the op, which then reads the now-detached
+// state and throws downstream; that throw is unrelated to the native result
+// write under test and is swallowed. Surviving the call with the buffer still
+// detached is the assertion.
+Deno.test("zlib write does not write through a detached _writeState", () => {
+  const output = new Uint8Array(128);
+
+  for (const [factory, input] of writeStateCases) {
+    // deno-lint-ignore no-explicit-any
+    const stream = factory() as any;
+    const handle = stream._handle;
+    const state = stream._writeState;
+    // Detach the underlying ArrayBuffer, freeing the backing store.
+    structuredClone(state.buffer, { transfer: [state.buffer] });
+    assertEquals(state.buffer.byteLength, 0);
+    try {
+      handle.write(
+        0,
+        input,
+        0,
+        input.length,
+        output,
+        0,
+        output.length,
+        state,
+      );
+    } catch {
+      // Expected for the engines whose op runs processCallback synchronously:
+      // it reads the detached state and throws. The native result write (the
+      // thing under test) already happened as a no-op before the callback.
+    }
+    assertEquals(state.buffer.byteLength, 0);
+  }
+});
