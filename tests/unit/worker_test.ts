@@ -884,6 +884,38 @@ Deno.test({
 });
 
 Deno.test({
+  name: "worker onmessage re-armed between two queued messages (sync drain)",
+  fn: async function () {
+    // Regression test (mirrors WPT workers/Worker-structure-message.html): the
+    // worker replies with two messages in one turn and the host re-arms
+    // `onmessage` between them via a `.then`. The main-side sync drain must run
+    // a microtask checkpoint between the two queued messages so the second one
+    // reaches the re-armed handler instead of being delivered to the stale one.
+    const worker = new Worker(
+      resolveWorker("structure_message.ts"),
+      { type: "module" },
+    );
+    const first = await new Promise<MessageEvent>((resolve) => {
+      worker.onmessage = resolve;
+      worker.postMessage({
+        operation: "find-edges",
+        input: new ArrayBuffer(20),
+        threshold: 0.6,
+      });
+    });
+    assertEquals(first.data, "PASS");
+    const second = await new Promise<MessageEvent>((resolve) => {
+      worker.onmessage = resolve;
+    });
+    assertEquals(second.data.operation, "find-edges");
+    assert(second.data.input instanceof ArrayBuffer);
+    assertEquals(second.data.input.byteLength, 20);
+    assertEquals(second.data.threshold, 0.6);
+    worker.terminate();
+  },
+});
+
+Deno.test({
   name: "worker Deno.memoryUsage",
   fn: async function () {
     const w = new Worker(

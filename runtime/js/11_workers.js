@@ -17,6 +17,8 @@ const {
   Error,
   JSONStringify,
   ObjectPrototypeIsPrototypeOf,
+  Promise,
+  queueMicrotask,
   String,
   StringPrototypeStartsWith,
   Symbol,
@@ -287,14 +289,24 @@ class Worker extends EventTarget {
         return;
       }
       if (!this.#dispatchWorkerMessage(data)) return;
-      // Sync drain: process a limited batch of already-queued messages
-      // without going through the async op machinery, mirroring the worker
-      // global (99_main.js) and node:worker_threads receive loops. The batch
-      // limit prevents starvation of the event loop when message handlers
-      // synchronously post new messages (e.g. ping-pong patterns).
+      // Drain messages already queued on the host side instead of taking the
+      // async op + Promise path for each, mirroring the worker global
+      // (99_main.js) and node:worker_threads receive loops. The whole burst is
+      // processed within this event-loop turn; the batch limit prevents
+      // starving the event loop under a sustained flood.
       for (let i = 0; i < 1000 && this.#status !== "TERMINATED"; i++) {
         const syncData = op_host_recv_message_sync(this.#id);
         if (syncData === null) break;
+        // Each message dispatch is its own task. Yield a microtask before
+        // delivering this already-dequeued message so a handler that re-armed
+        // itself in a microtask after the previous dispatch (e.g. reassigning
+        // `onmessage` inside a `.then`, as WPT
+        // workers/Worker-structure-message.html does) is installed first --
+        // otherwise the message reaches the stale handler and is lost. A
+        // synchronous checkpoint can't help here: V8 won't run microtasks
+        // reentrantly while we are already inside one.
+        await new Promise((resolve) => queueMicrotask(() => resolve()));
+        if (this.#status === "TERMINATED") return;
         if (!this.#dispatchWorkerMessage(syncData)) return;
       }
     }
