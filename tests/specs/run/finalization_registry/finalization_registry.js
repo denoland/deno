@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 "use strict";
 
 function assertEquals(a, b) {
@@ -12,9 +12,9 @@ const registry = new FinalizationRegistry((value) => {
 });
 
 (function () {
-  let x = {};
-  registry.register(x, "called!");
-  x = null;
+let x = {};
+registry.register(x, "called!");
+x = null;
 })();
 
 gc();

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -21,7 +21,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // deno-lint-ignore-file
-
+(function () {
 const {
   DTRACE_HTTP_CLIENT_REQUEST = (..._args: any[]) => {},
   DTRACE_HTTP_CLIENT_RESPONSE = (..._args: any[]) => {},
@@ -31,7 +31,7 @@ const {
   DTRACE_NET_STREAM_END = (..._args: any[]) => {},
 } = {};
 
-export {
+return {
   DTRACE_HTTP_CLIENT_REQUEST,
   DTRACE_HTTP_CLIENT_RESPONSE,
   DTRACE_HTTP_SERVER_REQUEST,
@@ -39,3 +39,4 @@ export {
   DTRACE_NET_SERVER_CONNECTION,
   DTRACE_NET_STREAM_END,
 };
+})();

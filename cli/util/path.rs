@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -180,9 +180,108 @@ pub fn to_percent_decoded_str(s: &str) -> String {
   }
 }
 
+/// Normalizes a user provided file path the same way the Windows file system
+/// APIs do when opening a file: trailing spaces and dots are stripped from the
+/// final path component.
+///
+/// Without this, `deno info ".\foo.tsx "` resolves to a `foo.tsx%20` specifier.
+/// The file still loads on Windows (the OS trims the trailing space when
+/// opening it), but the trailing `%20` causes the media type to be misdetected
+/// (e.g. as TypeScript instead of TSX), leading to a confusing parse error.
+/// See https://github.com/denoland/deno/issues/30585.
+///
+/// This is a no-op on non-Windows platforms, where trailing whitespace and dots
+/// in a file name are significant.
+///
+/// `\\?\` extended-length paths *can* preserve trailing spaces/dots, so this
+/// would diverge there, but such a path as a CLI argument is vanishingly rare
+/// and intentionally out of scope.
+#[cfg(windows)]
+pub fn strip_windows_trailing_chars(path: &str) -> Cow<'_, str> {
+  let (dir, name) = match path.rfind(['/', '\\']) {
+    Some(i) => path.split_at(i + 1),
+    None => ("", path),
+  };
+  // Leave drive specifiers (e.g. "C:") alone. Relative directory references
+  // ("." / "..") are handled by the `trimmed.is_empty()` check below, since
+  // they trim away entirely.
+  if name.ends_with(':') {
+    return Cow::Borrowed(path);
+  }
+  let trimmed = name.trim_end_matches([' ', '.']);
+  if trimmed.is_empty() || trimmed.len() == name.len() {
+    Cow::Borrowed(path)
+  } else {
+    Cow::Owned(format!("{dir}{trimmed}"))
+  }
+}
+
+#[cfg(not(windows))]
+pub fn strip_windows_trailing_chars(path: &str) -> Cow<'_, str> {
+  Cow::Borrowed(path)
+}
+
+/// Like [`deno_path_util::resolve_url_or_path`], but first normalizes a file
+/// path argument the way the Windows file system would (see
+/// [`strip_windows_trailing_chars`]). URL arguments (anything with a URI
+/// scheme) are passed through unchanged.
+pub fn resolve_url_or_path_normalized(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<ModuleSpecifier, deno_path_util::ResolveUrlOrPathError> {
+  if deno_path_util::specifier_has_uri_scheme(specifier) {
+    deno_path_util::resolve_url_or_path(specifier, current_dir)
+  } else {
+    deno_path_util::resolve_url_or_path(
+      &strip_windows_trailing_chars(specifier),
+      current_dir,
+    )
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
+
+  #[cfg(windows)]
+  #[test]
+  fn test_strip_windows_trailing_chars() {
+    // trailing space/dot stripped from the final component
+    assert_eq!(strip_windows_trailing_chars(".\\foo.tsx "), ".\\foo.tsx");
+    assert_eq!(strip_windows_trailing_chars("foo.tsx "), "foo.tsx");
+    assert_eq!(strip_windows_trailing_chars("foo.tsx."), "foo.tsx");
+    assert_eq!(strip_windows_trailing_chars("foo.tsx. "), "foo.tsx");
+    assert_eq!(
+      strip_windows_trailing_chars("C:\\a\\foo.tsx  "),
+      "C:\\a\\foo.tsx"
+    );
+    assert_eq!(strip_windows_trailing_chars("a/b/foo.tsx "), "a/b/foo.tsx");
+    // nothing to strip -> unchanged
+    assert_eq!(strip_windows_trailing_chars("foo.tsx"), "foo.tsx");
+    assert_eq!(strip_windows_trailing_chars(".\\foo.tsx"), ".\\foo.tsx");
+    // intermediate components and trailing space within them are left alone
+    assert_eq!(strip_windows_trailing_chars("a /b/foo.tsx"), "a /b/foo.tsx");
+    // relative dir references and drive specifiers are left alone
+    assert_eq!(strip_windows_trailing_chars("."), ".");
+    assert_eq!(strip_windows_trailing_chars(".."), "..");
+    assert_eq!(strip_windows_trailing_chars("C:"), "C:");
+    assert_eq!(strip_windows_trailing_chars("a\\.."), "a\\..");
+    // an all-trailing-chars name is left alone (avoid producing an empty name)
+    assert_eq!(strip_windows_trailing_chars("a\\   "), "a\\   ");
+  }
+
+  #[test]
+  fn test_resolve_url_or_path_normalized_url_passthrough() {
+    // URL arguments must bypass the Windows trailing-char normalization. The
+    // scheme guard is what prevents the strip from mangling URLs (e.g. turning
+    // `.../foo.tsx.` into `.../foo.tsx` on Windows), so lock that in here. The
+    // current dir is unused for URL inputs, so a dummy is fine.
+    let cwd = Path::new("/");
+    let url =
+      resolve_url_or_path_normalized("http://example.com/foo.tsx.", cwd)
+        .unwrap();
+    assert_eq!(url.as_str(), "http://example.com/foo.tsx.");
+  }
 
   #[test]
   fn test_is_script_ext() {

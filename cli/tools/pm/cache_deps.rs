@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -13,6 +13,7 @@ use deno_graph::JsrPackageReqNotFoundError;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
+use deno_resolver::npm::version_req_matches_including_pre;
 use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -20,7 +21,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::BuildGraphRequest;
 use crate::graph_util::BuildGraphWithNpmOptions;
 
 pub struct CacheTopLevelDepsOptions {
@@ -167,7 +167,10 @@ pub async fn cache_top_level_deps(
               continue;
             };
             let version_req = &req_ref.req().version_req;
-            if version_req.tag().is_none() && version_req.matches(&version) {
+            // match prereleases too: a workspace member is provided explicitly
+            // by the user, so e.g. `0.40.0-pre` should still resolve to it
+            // instead of being fetched from the registry.
+            if version_req_matches_including_pre(version_req, &version) {
               // if version req matches the workspace package's version, use that
               // (so it doesn't need to be installed)
               continue;
@@ -205,10 +208,10 @@ pub async fn cache_top_level_deps(
 
     let graph_builder = factory.module_graph_builder().await?;
     graph_builder
-      .build_graph_with_npm_resolution(
+      .build_graph_roots_with_npm_resolution(
         graph,
+        roots.clone(),
         BuildGraphWithNpmOptions {
-          request: BuildGraphRequest::Roots(roots.clone()),
           loader: None,
           is_dynamic: false,
           npm_caching: NpmCachingStrategy::Manual,

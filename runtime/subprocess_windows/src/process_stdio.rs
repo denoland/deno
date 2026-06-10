@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /* Copyright Joyent, Inc. and other Node contributors. All rights reserved.
  *
@@ -92,7 +92,7 @@ unsafe fn child_stdio_crt_flags(buffer: *mut u8, fd: i32) -> *mut u8 {
   unsafe { buffer.add(size_of::<c_int>() + fd as usize) }.cast()
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "kept for parity with libuv")]
 unsafe fn uv_stdio_verify(buffer: *mut u8, size: u16) -> bool {
   if buffer.is_null() {
     return false;
@@ -140,7 +140,7 @@ fn uv_create_nul_handle(access: u32) -> Result<HANDLE, std::io::Error> {
   Ok(handle)
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "kept for parity with libuv")]
 unsafe fn uv_stdio_noinherit(buffer: *mut u8) {
   let count = unsafe { child_stdio_count(buffer) };
   for i in 0..count {

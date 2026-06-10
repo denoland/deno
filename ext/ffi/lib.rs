@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::mem::size_of;
 use std::os::raw::c_char;
@@ -80,7 +80,7 @@ deno_core::extension!(deno_ffi,
     op_ffi_unsafe_callback_ref,
     op_ffi_get_turbocall_target,
   ],
-  esm = [ "00_ffi.js" ],
+  lazy_loaded_js = [ "00_ffi.js" ],
   options = {
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   },

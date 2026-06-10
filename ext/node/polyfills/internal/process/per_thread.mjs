@@ -1,7 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
-
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { primordials } = __bootstrap;
 const {
   ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
@@ -26,7 +26,7 @@ const trailingValuesRegex = new SafeRegExp(/=.*$/);
 
 // This builds the initial process.allowedNodeEnvironmentFlags
 // from data in the config binding.
-export function buildAllowedFlags() {
+function buildAllowedFlags() {
   const allowedNodeEnvironmentFlags = [
     "--track-heap-objects",
     "--no-track-heap-objects",
@@ -131,6 +131,8 @@ export function buildAllowedFlags() {
     "--no-insecure-http-parser",
     "--use-openssl-ca",
     "--no-use-openssl-ca",
+    "--use-system-ca",
+    "--no-use-system-ca",
     "--tls-cipher-list",
     "--experimental-top-level-await",
     "--no-experimental-top-level-await",
@@ -183,30 +185,30 @@ export function buildAllowedFlags() {
   ];
 
   /*
-  function isAccepted(to) {
-    if (!to.startsWith("-") || to === "--") return true;
-    const recursiveExpansion = aliases.get(to);
-    if (recursiveExpansion) {
-      if (recursiveExpansion[0] === to) {
-        recursiveExpansion.splice(0, 1);
+    function isAccepted(to) {
+      if (!to.startsWith("-") || to === "--") return true;
+      const recursiveExpansion = aliases.get(to);
+      if (recursiveExpansion) {
+        if (recursiveExpansion[0] === to) {
+          recursiveExpansion.splice(0, 1);
+        }
+        return recursiveExpansion.every(isAccepted);
       }
-      return recursiveExpansion.every(isAccepted);
+      return options.get(to).envVarSettings === kAllowedInEnvironment;
     }
-    return options.get(to).envVarSettings === kAllowedInEnvironment;
-  }
-  for (const { 0: from, 1: expansion } of aliases) {
-    if (expansion.every(isAccepted)) {
-      let canonical = from;
-      if (canonical.endsWith("=")) {
-        canonical = canonical.slice(0, canonical.length - 1);
+    for (const { 0: from, 1: expansion } of aliases) {
+      if (expansion.every(isAccepted)) {
+        let canonical = from;
+        if (canonical.endsWith("=")) {
+          canonical = canonical.slice(0, canonical.length - 1);
+        }
+        if (canonical.endsWith(" <arg>")) {
+          canonical = canonical.slice(0, canonical.length - 4);
+        }
+        allowedNodeEnvironmentFlags.push(canonical);
       }
-      if (canonical.endsWith(" <arg>")) {
-        canonical = canonical.slice(0, canonical.length - 4);
-      }
-      allowedNodeEnvironmentFlags.push(canonical);
     }
-  }
-  */
+    */
 
   const trimLeadingDashes = (flag) =>
     StringPrototypeReplace(flag, leadingDashesRegex, "");
@@ -295,3 +297,8 @@ export function buildAllowedFlags() {
     ),
   );
 }
+
+return {
+  buildAllowedFlags,
+};
+})();

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -19,14 +19,20 @@ use deno_semver::npm::NpmPackageReqReference;
 
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use crate::npm::CliNpmResolver;
 
 pub struct GraphDiagnosticsCollector {
+  npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
 }
 
 impl GraphDiagnosticsCollector {
-  pub fn new(parsed_source_cache: Arc<ParsedSourceCache>) -> Self {
+  pub fn new(
+    npm_resolver: CliNpmResolver,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+  ) -> Self {
     Self {
+      npm_resolver,
       parsed_source_cache,
     }
   }
@@ -75,18 +81,16 @@ impl GraphDiagnosticsCollector {
               skip_specifiers.insert(resolution.specifier.clone());
 
               // check for a missing version constraint
-              if let Ok(jsr_req_ref) =
+              if let Ok(npm_req_ref) =
                 NpmPackageReqReference::from_specifier(&resolution.specifier)
-                && jsr_req_ref.req().version_req.version_text() == "*"
+                && npm_req_ref.req().version_req.version_text() == "*"
               {
-                let maybe_version = graph
-                  .get(&resolution.specifier)
-                  .and_then(|m| m.npm())
-                  .map(|n| {
-                    // TODO(dsherret): ok to use for now, but we should use the req in the future
-                    #[allow(deprecated)]
-                    let nv = n.nv_reference.nv();
-                    nv.version.clone()
+                let maybe_version =
+                  self.npm_resolver.as_managed().and_then(|managed| {
+                    managed
+                      .resolve_pkg_id_from_deno_module_req(npm_req_ref.req())
+                      .ok()
+                      .map(|id| id.nv.version.clone())
                   });
                 diagnostics_collector.push(
                   PublishDiagnostic::MissingConstraint {
@@ -162,12 +166,15 @@ impl GraphDiagnosticsCollector {
       );
 
       for (specifier_text, dep) in &module.dependencies {
-        for asset_import in
-          dep.imports.iter().filter(|i| i.attributes.has_asset())
+        // text imports are stable, but bytes imports are not yet
+        for bytes_import in dep
+          .imports
+          .iter()
+          .filter(|i| i.attributes.get("type") == Some("bytes"))
         {
           diagnostics_collector.push(PublishDiagnostic::UnstableRawImport {
             text_info: parsed_source.text_info_lazy().clone(),
-            referrer: asset_import.specifier_range.clone(),
+            referrer: bytes_import.specifier_range.clone(),
           });
         }
 
@@ -202,10 +209,11 @@ fn check_for_banned_triple_slash_directives(
     r#"^/\s+<reference\s+(no-default-lib\s*=\s*"true"|lib\s*=\s*("[^"]+"|'[^']+'))\s*/>\s*$"#
   );
 
-  let Some(comments) = parsed_source.get_leading_comments() else {
-    return;
-  };
-  for comment in comments {
+  // Scan all comments, not just the ones leading the first statement. The
+  // registry rejects these directives wherever they appear in the file, so a
+  // directive placed after other code (e.g. after an import) must also be
+  // reported during a dry run instead of only failing at publish time.
+  for comment in parsed_source.comments().get_vec() {
     if comment.kind != CommentKind::Line {
       continue;
     }

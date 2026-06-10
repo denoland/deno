@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -14,6 +14,7 @@ use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 
 use crate::Instance;
+use crate::error::GPUError;
 use crate::error::GPUGenericError;
 
 pub struct GPUComputePassEncoder {
@@ -52,6 +53,7 @@ impl GPUComputePassEncoder {
     // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
   }
 
+  #[undefined]
   fn set_pipeline(
     &self,
     #[webidl] pipeline: Ref<crate::compute_pipeline::GPUComputePipeline>,
@@ -66,6 +68,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn dispatch_workgroups(
     &self,
     #[webidl(options(enforce_range = true))] work_group_count_x: u32,
@@ -86,6 +89,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn dispatch_workgroups_indirect(
     &self,
     #[webidl] indirect_buffer: Ref<crate::buffer::GPUBuffer>,
@@ -103,6 +107,7 @@ impl GPUComputePassEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn end(&self) {
     let err = self
       .instance
@@ -111,6 +116,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn push_debug_group(&self, #[webidl] group_label: String) {
     let err = self
       .instance
@@ -124,6 +130,7 @@ impl GPUComputePassEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn pop_debug_group(&self) {
     let err = self
       .instance
@@ -132,6 +139,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn insert_debug_marker(&self, #[webidl] marker_label: String) {
     let err = self
       .instance
@@ -144,6 +152,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn set_bind_group<'a>(
     &self,
     scope: &mut v8::PinScope<'a, '_>,
@@ -178,15 +187,39 @@ impl GPUComputePassEncoder {
         },
       )? as usize;
 
+      let view_byte_offset = uint_32.byte_offset();
+      let view_len = uint_32.length();
+
+      // Validate `start..start+len` against the **view** length, not the
+      // backing buffer's length. Without this check, `&data[start..end]`
+      // below would panic on out-of-range input; the panic crosses the
+      // op's `extern "C"` boundary and aborts the process. See #33956.
+      let Some(end) = start.checked_add(len).filter(|end| *end <= view_len)
+      else {
+        self.error_handler.push_error(Some(GPUError::Validation(format!(
+          "{PREFIX}: dynamicOffsetsDataStart + dynamicOffsetsDataLength ({start} + {len}) is outside the bounds of dynamicOffsetsData (length {view_len})",
+        ))));
+        return Ok(());
+      };
+
       let ab = uint_32.buffer(scope).unwrap();
       let ptr = ab.data().unwrap();
-      let ab_len = ab.byte_length() / 4;
 
-      // SAFETY: compute_pass_set_bind_group internally calls extend_from_slice with this slice
-      let data =
-        unsafe { std::slice::from_raw_parts(ptr.as_ptr() as _, ab_len) };
+      // SAFETY: `ptr` is the start of the backing ArrayBuffer's data; the
+      // Uint32Array constructor guarantees `byte_offset + view_len * 4`
+      // fits within `byte_length`, so the resulting slice covers exactly
+      // the view's window. `data` is dropped at the end of this call;
+      // `ab` keeps the backing buffer alive for that duration.
+      // compute_pass_set_bind_group internally calls extend_from_slice
+      // with this slice.
+      let data = unsafe {
+        std::slice::from_raw_parts(
+          (ptr.as_ptr() as *const u8).add(view_byte_offset) as *const u32,
+          view_len,
+        )
+      };
 
-      let offsets = &data[start..(start + len)];
+      let offsets = &data[start..end];
 
       self
         .instance

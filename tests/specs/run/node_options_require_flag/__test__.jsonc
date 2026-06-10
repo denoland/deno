@@ -1,0 +1,7 @@
+{
+  "args": "run -A --require require3.cjs main.ts",
+  "envs": {
+    "NODE_OPTIONS": "--require require1.cjs -r require2.cjs"
+  },
+  "output": "main.out"
+}

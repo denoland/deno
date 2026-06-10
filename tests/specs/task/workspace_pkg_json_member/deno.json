@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "build": "echo root"
+  },
+  "workspace": ["./package"]
+}

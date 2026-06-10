@@ -1,18 +1,30 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { ERR_CRYPTO_FIPS_FORCED } from "ext:deno_node/internal/errors.ts";
-import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  Error,
+  ObjectDefineProperty,
+  ReflectHas,
+  SafeArrayIterator,
+  StringPrototypeToLowerCase,
+} = primordials;
+const { ERR_CRYPTO_FIPS_FORCED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { crypto: constants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
+const {
   getFipsCrypto,
   setFipsCrypto,
   timingSafeEqual,
-} from "ext:deno_node/internal_binding/crypto.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal_binding/crypto.ts");
+const {
   checkPrime,
   checkPrimeSync,
   generatePrime,
@@ -22,153 +34,84 @@ import {
   randomFillSync,
   randomInt,
   randomUUID,
-} from "ext:deno_node/internal/crypto/random.ts";
-import type {
-  CheckPrimeOptions,
-  GeneratePrimeOptions,
-  GeneratePrimeOptionsArrayBuffer,
-  GeneratePrimeOptionsBigInt,
-  LargeNumberLike,
-} from "ext:deno_node/internal/crypto/random.ts";
-import { pbkdf2, pbkdf2Sync } from "ext:deno_node/internal/crypto/pbkdf2.ts";
-import type {
-  Algorithms,
-  NormalizedAlgorithms,
-} from "ext:deno_node/internal/crypto/pbkdf2.ts";
-import { scrypt, scryptSync } from "ext:deno_node/internal/crypto/scrypt.ts";
-import { hkdf, hkdfSync } from "ext:deno_node/internal/crypto/hkdf.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/random.ts");
+const { pbkdf2, pbkdf2Sync } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/pbkdf2.ts",
+);
+const { scrypt, scryptSync } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/scrypt.ts",
+);
+const { hkdf, hkdfSync } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/hkdf.ts",
+);
+const {
   generateKey,
   generateKeyPair,
   generateKeyPairSync,
   generateKeySync,
-} from "ext:deno_node/internal/crypto/keygen.ts";
-import type {
-  BasePrivateKeyEncodingOptions,
-  DSAKeyPairKeyObjectOptions,
-  DSAKeyPairOptions,
-  ECKeyPairKeyObjectOptions,
-  ECKeyPairOptions,
-  ED25519KeyPairKeyObjectOptions,
-  ED25519KeyPairOptions,
-  ED448KeyPairKeyObjectOptions,
-  ED448KeyPairOptions,
-  KeyPairKeyObjectResult,
-  KeyPairSyncResult,
-  RSAKeyPairKeyObjectOptions,
-  RSAKeyPairOptions,
-  RSAPSSKeyPairKeyObjectOptions,
-  RSAPSSKeyPairOptions,
-  X25519KeyPairKeyObjectOptions,
-  X25519KeyPairOptions,
-  X448KeyPairKeyObjectOptions,
-  X448KeyPairOptions,
-} from "ext:deno_node/internal/crypto/keygen.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/keygen.ts");
+const {
   createPrivateKey,
   createPublicKey,
   createSecretKey,
   KeyObject,
-} from "ext:deno_node/internal/crypto/keys.ts";
-import type {
-  AsymmetricKeyDetails,
-  JsonWebKeyInput,
-  JwkKeyExportOptions,
-  KeyExportOptions,
-  KeyObjectType,
-} from "ext:deno_node/internal/crypto/keys.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/keys.ts");
+const {
   DiffieHellman,
   diffieHellman,
   DiffieHellmanGroup,
   ECDH,
-} from "ext:deno_node/internal/crypto/diffiehellman.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/diffiehellman.ts");
+const {
   Cipheriv,
   Decipheriv,
   privateDecrypt,
   privateEncrypt,
   publicDecrypt,
   publicEncrypt,
-} from "ext:deno_node/internal/crypto/cipher.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/cipher.ts");
+const {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "ext:deno_node/internal/errors.ts";
-import type {
-  Cipher,
-  CipherCCM,
-  CipherCCMOptions,
-  CipherCCMTypes,
-  CipherGCM,
-  CipherGCMOptions,
-  CipherGCMTypes,
-  CipherKey,
-  CipherOCB,
-  CipherOCBOptions,
-  CipherOCBTypes,
-  Decipher,
-  DecipherCCM,
-  DecipherGCM,
-  DecipherOCB,
-} from "ext:deno_node/internal/crypto/cipher.ts";
-import type {
-  BinaryLike,
-  BinaryToTextEncoding,
-  CharacterEncoding,
-  ECDHKeyFormat,
-  Encoding,
-  HASH_DATA,
-  KeyFormat,
-  KeyType,
-  LegacyCharacterEncoding,
-  PrivateKeyInput,
-  PublicKeyInput,
-} from "ext:deno_node/internal/crypto/types.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   Sign,
   signOneShot,
   Verify,
   verifyOneShot,
-} from "ext:deno_node/internal/crypto/sig.ts";
-import type {
-  DSAEncoding,
-  KeyLike,
-  SigningOptions,
-  SignKeyObjectInput,
-  SignPrivateKeyInput,
-  VerifyKeyObjectInput,
-  VerifyPublicKeyInput,
-} from "ext:deno_node/internal/crypto/sig.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/crypto/sig.ts");
+const {
   createHash,
   getHashes,
-  Hash as Hash_,
-  Hmac as Hmac_,
-} from "ext:deno_node/internal/crypto/hash.ts";
-import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
-import type {
-  PeerCertificate,
-  X509CheckOptions,
-} from "ext:deno_node/internal/crypto/x509.ts";
-import {
+  Hash: Hash_,
+  Hmac: Hmac_,
+} = core.loadExtScript("ext:deno_node/internal/crypto/hash.ts");
+const { X509Certificate } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/x509.ts",
+);
+const {
   getCipherInfo,
   getCiphers,
   getCurves,
   secureHeapUsed,
   setEngine,
-} from "ext:deno_node/internal/crypto/util.ts";
-import type { SecureHeapUsage } from "ext:deno_node/internal/crypto/util.ts";
-import Certificate from "ext:deno_node/internal/crypto/certificate.ts";
-import type {
-  TransformOptions,
-  WritableOptions,
-} from "ext:deno_node/_stream.d.ts";
-import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
-import { deprecate } from "node:util";
+} = core.loadExtScript("ext:deno_node/internal/crypto/util.ts");
+const { default: Certificate } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/certificate.ts",
+);
+const { normalizeEncoding } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const { isArrayBufferView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { validateString } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const { crypto: webcrypto } = core.loadExtScript(
+  "ext:deno_crypto/00_crypto.js",
+);
+const { deprecate } = core.loadExtScript("ext:deno_node/util.ts");
 
 const subtle = webcrypto.subtle;
 const fipsForced = getOptionValue("--force-fips");
@@ -191,7 +134,10 @@ function getRandomValues(typedArray) {
 function hash(
   algorithm: string,
   data: BinaryLike,
-  outputEncoding: BinaryToTextEncoding = "hex",
+  outputEncodingOrOptions: BinaryToTextEncoding | {
+    outputEncoding?: BinaryToTextEncoding;
+    outputLength?: number;
+  } = "hex",
 ) {
   validateString(algorithm, "algorithm");
   if (typeof data !== "string" && !isArrayBufferView(data)) {
@@ -202,6 +148,17 @@ function hash(
       "string",
     ], data);
   }
+
+  let outputEncoding: string;
+  let outputLength: number | undefined;
+
+  if (typeof outputEncodingOrOptions === "object") {
+    outputEncoding = outputEncodingOrOptions.outputEncoding ?? "hex";
+    outputLength = outputEncodingOrOptions.outputLength;
+  } else {
+    outputEncoding = outputEncodingOrOptions;
+  }
+
   let normalized = outputEncoding;
   // Fast case: if it's 'hex', we don't need to validate it further.
   if (outputEncoding !== "hex") {
@@ -210,16 +167,73 @@ function hash(
     // If the encoding is invalid, normalizeEncoding() returns undefined.
     if (normalized === undefined) {
       // normalizeEncoding() doesn't handle 'buffer'.
-      if (outputEncoding.toLowerCase() === "buffer") {
+      if (StringPrototypeToLowerCase(outputEncoding) === "buffer") {
         normalized = "buffer";
       } else {
         throw new ERR_INVALID_ARG_VALUE("outputEncoding", outputEncoding);
       }
     }
   }
-  const hash = createHash(algorithm);
-  hash.update(data);
-  return hash.digest(outputEncoding);
+
+  const algoLower = StringPrototypeToLowerCase(algorithm);
+  const isXof = algoLower === "shake128" || algoLower === "shake256";
+
+  if (outputLength != null && !isXof) {
+    // For non-XOF hashes, outputLength must match the algorithm's digest size.
+    const testHash = createHash(algorithm);
+    testHash.update("");
+    const expectedLen = testHash.digest().length;
+    if (outputLength !== expectedLen) {
+      throw new Error(
+        `Output length ${outputLength} is invalid for ${algoLower}, which does not support XOF`,
+      );
+    }
+  }
+
+  const h = createHash(
+    algorithm,
+    outputLength != null ? { outputLength } : undefined,
+  );
+  h.update(data);
+
+  if (outputLength === 0) {
+    return normalized === "buffer" ? globalThis.Buffer.alloc(0) : "";
+  }
+
+  return h.digest(outputEncoding);
+}
+
+function validateCipherivArgs(
+  cipher: unknown,
+  key: unknown,
+  iv: unknown,
+) {
+  if (typeof cipher !== "string") {
+    throw new ERR_INVALID_ARG_TYPE(
+      "cipher",
+      "string",
+      cipher,
+    );
+  }
+  if (
+    typeof key !== "string" && !isArrayBufferView(key) &&
+    !(key && typeof key === "object" && ReflectHas(key, "type"))
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "key",
+      ["string", "ArrayBufferView", "Buffer", "KeyObject"],
+      key,
+    );
+  }
+  if (
+    iv !== null && typeof iv !== "string" && !isArrayBufferView(iv)
+  ) {
+    throw new ERR_INVALID_ARG_TYPE(
+      "iv",
+      ["string", "ArrayBufferView", "Buffer", "null"],
+      iv,
+    );
+  }
 }
 
 function createCipheriv(
@@ -252,7 +266,8 @@ function createCipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Cipher {
-  return new Cipheriv(cipher, key, iv, options);
+  validateCipherivArgs(cipher, key, iv);
+  return Cipheriv(cipher, key, iv, options);
 }
 
 function createDecipheriv(
@@ -279,7 +294,8 @@ function createDecipheriv(
   iv: BinaryLike | null,
   options?: TransformOptions,
 ): Decipher {
-  return new Decipheriv(algorithm, key, iv, options);
+  validateCipherivArgs(algorithm, key, iv);
+  return Decipheriv(algorithm, key, iv, options);
 }
 
 function createDiffieHellman(
@@ -352,7 +368,8 @@ function getFipsForced() {
   return 1;
 }
 
-Object.defineProperty(constants, "defaultCipherList", {
+ObjectDefineProperty(constants, "defaultCipherList", {
+  __proto__: null,
   value: getOptionValue("--tls-cipher-list"),
 });
 
@@ -367,7 +384,7 @@ const verify = verifyOneShot;
 /* Deprecated in Node.js, alias of randomBytes */
 const pseudoRandomBytes = randomBytes;
 
-export default {
+const defaultExport = {
   Certificate,
   checkPrime,
   checkPrimeSync,
@@ -416,7 +433,6 @@ export default {
   publicDecrypt,
   publicEncrypt,
   randomBytes,
-  pseudoRandomBytes,
   randomFill,
   randomFillSync,
   randomInt,
@@ -436,77 +452,46 @@ export default {
   X509Certificate,
 };
 
-export type {
-  Algorithms,
-  AsymmetricKeyDetails,
-  BasePrivateKeyEncodingOptions,
-  BinaryLike,
-  BinaryToTextEncoding,
-  CharacterEncoding,
-  CheckPrimeOptions,
-  Cipher,
-  CipherCCM,
-  CipherCCMOptions,
-  CipherCCMTypes,
-  CipherGCM,
-  CipherGCMOptions,
-  CipherGCMTypes,
-  CipherKey,
-  CipherOCB,
-  CipherOCBOptions,
-  CipherOCBTypes,
-  Decipher,
-  DecipherCCM,
-  DecipherGCM,
-  DecipherOCB,
-  DSAEncoding,
-  DSAKeyPairKeyObjectOptions,
-  DSAKeyPairOptions,
-  ECDHKeyFormat,
-  ECKeyPairKeyObjectOptions,
-  ECKeyPairOptions,
-  ED25519KeyPairKeyObjectOptions,
-  ED25519KeyPairOptions,
-  ED448KeyPairKeyObjectOptions,
-  ED448KeyPairOptions,
-  Encoding,
-  GeneratePrimeOptions,
-  GeneratePrimeOptionsArrayBuffer,
-  GeneratePrimeOptionsBigInt,
-  HASH_DATA,
-  JsonWebKeyInput,
-  JwkKeyExportOptions,
-  KeyExportOptions,
-  KeyFormat,
-  KeyLike,
-  KeyObjectType,
-  KeyPairKeyObjectResult,
-  KeyPairSyncResult,
-  KeyType,
-  LargeNumberLike,
-  LegacyCharacterEncoding,
-  NormalizedAlgorithms,
-  PeerCertificate,
-  PrivateKeyInput,
-  PublicKeyInput,
-  RSAKeyPairKeyObjectOptions,
-  RSAKeyPairOptions,
-  RSAPSSKeyPairKeyObjectOptions,
-  RSAPSSKeyPairOptions,
-  SecureHeapUsage,
-  SigningOptions,
-  SignKeyObjectInput,
-  SignPrivateKeyInput,
-  VerifyKeyObjectInput,
-  VerifyPublicKeyInput,
-  X25519KeyPairKeyObjectOptions,
-  X25519KeyPairOptions,
-  X448KeyPairKeyObjectOptions,
-  X448KeyPairOptions,
-  X509CheckOptions,
-};
+// Aliases for randomBytes are deprecated; defined as non-enumerable lazy
+// getters to mirror Node's lib/crypto.js getRandomBytesAlias(). With
+// --pending-deprecation, accessing them prints DEP0115.
+function defineRandomBytesAlias(target: object, key: string) {
+  ObjectDefineProperty(target, key, {
+    __proto__: null,
+    enumerable: false,
+    configurable: true,
+    get() {
+      const value = getOptionValue("--pending-deprecation")
+        ? deprecate(randomBytes, `crypto.${key} is deprecated.`, "DEP0115")
+        : randomBytes;
+      ObjectDefineProperty(this, key, {
+        __proto__: null,
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value,
+      });
+      return value;
+    },
+    set(value) {
+      ObjectDefineProperty(this, key, {
+        __proto__: null,
+        enumerable: false,
+        configurable: true,
+        writable: true,
+        value,
+      });
+    },
+  });
+}
+for (
+  const key of new SafeArrayIterator(["pseudoRandomBytes", "prng", "rng"])
+) {
+  defineRandomBytesAlias(defaultExport, key);
+}
 
-export {
+return {
+  default: defaultExport,
   Certificate,
   checkPrime,
   checkPrimeSync,
@@ -575,3 +560,4 @@ export {
   webcrypto,
   X509Certificate,
 };
+})();

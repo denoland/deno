@@ -48,7 +48,8 @@
             "mac",
             "linux",
             "windows",
-            "unix"
+            "unix",
+            "notMacIntel"
           ]
         },
         "output": {
@@ -103,11 +104,16 @@
               "mac",
               "linux",
               "windows",
-              "unix"
+              "unix",
+              "notMacIntel"
             ]
           },
           "repeat": {
             "type": "number"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
           },
           "steps": {
             "type": "array",
@@ -152,6 +158,10 @@
             },
             "repeat": {
               "type": "number"
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
             }
           }
         }, {
@@ -176,6 +186,10 @@
         },
         "repeat": {
           "type": "number"
+        },
+        "timeout": {
+          "type": "number",
+          "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
         },
         "tests": {
           "type": "object",

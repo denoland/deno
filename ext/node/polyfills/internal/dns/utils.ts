@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -20,35 +20,48 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import { emitWarning } from "node:process";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypeForEach,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ArrayPrototypeToString,
+  NumberParseInt,
+  SafeRegExp,
+  StringPrototypeMatch,
+  StringPrototypeReplace,
+} = primordials;
+const { getOptionValue } = core.loadExtScript(
+  "ext:deno_node/internal/options.ts",
+);
+const {
   AI_ADDRCONFIG,
   AI_ALL,
   AI_V4MAPPED,
-} from "ext:deno_node/internal_binding/ares.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal_binding/ares.ts");
+const {
   ChannelWrap,
+  DNS_ORDER_IPV4_FIRST,
+  DNS_ORDER_IPV6_FIRST,
+  DNS_ORDER_VERBATIM,
   strerror,
-} from "ext:deno_node/internal_binding/cares_wrap.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal_binding/cares_wrap.ts");
+const {
   ERR_DNS_SET_SERVERS_FAILED,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_IP_ADDRESS,
-} from "ext:deno_node/internal/errors.ts";
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateArray,
   validateInt32,
   validateOneOf,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { isIP } from "ext:deno_node/internal/net.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 
-export interface LookupOptions {
+interface LookupOptions {
   family?: number | undefined;
   hints?: number | undefined;
   all?: boolean | undefined;
@@ -60,57 +73,57 @@ export interface LookupOptions {
   port?: number | undefined;
 }
 
-export interface LookupOneOptions extends LookupOptions {
+interface LookupOneOptions extends LookupOptions {
   all?: false | undefined;
 }
 
-export interface LookupAllOptions extends LookupOptions {
+interface LookupAllOptions extends LookupOptions {
   all: true;
 }
 
-export interface LookupAddress {
+interface LookupAddress {
   address: string | null;
   family: number;
 }
 
-export function isLookupOptions(
+function isLookupOptions(
   options: unknown,
 ): options is LookupOptions | undefined {
   return typeof options === "object" || typeof options === "undefined";
 }
 
-export function isLookupCallback(
+function isLookupCallback(
   options: unknown,
 ): options is (...args: unknown[]) => void {
   return typeof options === "function";
 }
 
-export function isFamily(options: unknown): options is number {
+function isFamily(options: unknown): options is number {
   return typeof options === "number";
 }
 
-export interface ResolveOptions {
+interface ResolveOptions {
   ttl?: boolean;
 }
 
-export interface ResolveWithTtlOptions extends ResolveOptions {
+interface ResolveWithTtlOptions extends ResolveOptions {
   ttl: true;
 }
 
-export interface RecordWithTtl {
+interface RecordWithTtl {
   address: string;
   ttl: number;
 }
 
-export interface AnyARecord extends RecordWithTtl {
+interface AnyARecord extends RecordWithTtl {
   type: "A";
 }
 
-export interface AnyAaaaRecord extends RecordWithTtl {
+interface AnyAaaaRecord extends RecordWithTtl {
   type: "AAAA";
 }
 
-export interface CaaRecord {
+interface CaaRecord {
   critial: number;
   issue?: string | undefined;
   issuewild?: string | undefined;
@@ -119,16 +132,16 @@ export interface CaaRecord {
   contactphone?: string | undefined;
 }
 
-export interface MxRecord {
+interface MxRecord {
   priority: number;
   exchange: string;
 }
 
-export interface AnyMxRecord extends MxRecord {
+interface AnyMxRecord extends MxRecord {
   type: "MX";
 }
 
-export interface NaptrRecord {
+interface NaptrRecord {
   flags: string;
   service: string;
   regexp: string;
@@ -137,11 +150,11 @@ export interface NaptrRecord {
   preference: number;
 }
 
-export interface AnyNaptrRecord extends NaptrRecord {
+interface AnyNaptrRecord extends NaptrRecord {
   type: "NAPTR";
 }
 
-export interface SoaRecord {
+interface SoaRecord {
   nsname: string;
   hostmaster: string;
   serial: number;
@@ -151,42 +164,42 @@ export interface SoaRecord {
   minttl: number;
 }
 
-export interface AnySoaRecord extends SoaRecord {
+interface AnySoaRecord extends SoaRecord {
   type: "SOA";
 }
 
-export interface SrvRecord {
+interface SrvRecord {
   priority: number;
   weight: number;
   port: number;
   name: string;
 }
 
-export interface AnySrvRecord extends SrvRecord {
+interface AnySrvRecord extends SrvRecord {
   type: "SRV";
 }
 
-export interface AnyTxtRecord {
+interface AnyTxtRecord {
   type: "TXT";
   entries: string[];
 }
 
-export interface AnyNsRecord {
+interface AnyNsRecord {
   type: "NS";
   value: string;
 }
 
-export interface AnyPtrRecord {
+interface AnyPtrRecord {
   type: "PTR";
   value: string;
 }
 
-export interface AnyCnameRecord {
+interface AnyCnameRecord {
   type: "CNAME";
   value: string;
 }
 
-export type AnyRecord =
+type AnyRecord =
   | AnyARecord
   | AnyAaaaRecord
   | AnyCnameRecord
@@ -198,7 +211,7 @@ export type AnyRecord =
   | AnySrvRecord
   | AnyTxtRecord;
 
-export type Records =
+type Records =
   | string[]
   | AnyRecord[]
   | MxRecord[]
@@ -207,39 +220,48 @@ export type Records =
   | SrvRecord[]
   | string[];
 
-export type ResolveCallback = (
+type ResolveCallback = (
   err: ErrnoException | null,
   addresses: Records,
 ) => void;
 
-export function isResolveCallback(
+function isResolveCallback(
   callback: unknown,
 ): callback is ResolveCallback {
   return typeof callback === "function";
 }
 
 const IANA_DNS_PORT = 53;
-const IPv6RE = /^\[([^[\]]*)\]/;
-const addrSplitRE = /(^.+?)(?::(\d+))?$/;
+const IPv6RE = new SafeRegExp("^\\[([^[\\]]*)\\]");
+const addrSplitRE = new SafeRegExp("(^.+?)(?::(\\d+))?$");
 
-export function validateTimeout(options?: { timeout?: number }) {
+function validateTimeout(options?: { timeout?: number }) {
   const { timeout = -1 } = { ...options };
   validateInt32(timeout, "options.timeout", -1, 2 ** 31 - 1);
   return timeout;
 }
 
-export function validateTries(options?: { tries?: number }) {
+function validateTries(options?: { tries?: number }) {
   const { tries = 4 } = { ...options };
   validateInt32(tries, "options.tries", 1, 2 ** 31 - 1);
   return tries;
 }
 
-export interface ResolverOptions {
+function validateMaxTimeout(
+  options?: { maxTimeout?: number },
+): number {
+  if (options?.maxTimeout === undefined) return -1; // no cap
+  validateInt32(options.maxTimeout, "options.maxTimeout", 0, 2 ** 31 - 1);
+  return options.maxTimeout;
+}
+
+interface ResolverOptions {
   timeout?: number | undefined;
   /**
    * @default 4
    */
   tries?: number;
+  maxTimeout?: number | undefined;
 }
 
 /**
@@ -279,13 +301,14 @@ export interface ResolverOptions {
  * - `resolver.reverse()`
  * - `resolver.setServers()`
  */
-export class Resolver {
+class Resolver {
   _handle!: ChannelWrap;
 
   constructor(options?: ResolverOptions) {
     const timeout = validateTimeout(options);
     const tries = validateTries(options);
-    this._handle = new ChannelWrap(timeout, tries);
+    const maxTimeout = validateMaxTimeout(options);
+    this._handle = new ChannelWrap(timeout, tries, maxTimeout);
   }
 
   cancel() {
@@ -293,7 +316,8 @@ export class Resolver {
   }
 
   getServers(): string[] {
-    return this._handle.getServers().map((val: [string, number]) => {
+    const servers = this._handle.getServers() || [];
+    return ArrayPrototypeMap(servers, (val: [string, number]) => {
       if (!val[1] || val[1] === IANA_DNS_PORT) {
         return val[0];
       }
@@ -312,30 +336,31 @@ export class Resolver {
     const orig = this._handle.getServers();
     const newSet: [number, string, number][] = [];
 
-    servers.forEach((serv, index) => {
+    ArrayPrototypeForEach(servers, (serv, index) => {
       validateString(serv, `servers[${index}]`);
       let ipVersion = isIP(serv);
 
       if (ipVersion !== 0) {
-        return newSet.push([ipVersion, serv, IANA_DNS_PORT]);
+        return ArrayPrototypePush(newSet, [ipVersion, serv, IANA_DNS_PORT]);
       }
 
-      const match = serv.match(IPv6RE);
+      const match = StringPrototypeMatch(serv, IPv6RE);
 
       // Check for an IPv6 in brackets.
       if (match) {
         ipVersion = isIP(match[1]);
 
         if (ipVersion !== 0) {
-          const port = Number.parseInt(serv.replace(addrSplitRE, "$2")) ||
+          const port =
+            NumberParseInt(StringPrototypeReplace(serv, addrSplitRE, "$2")) ||
             IANA_DNS_PORT;
 
-          return newSet.push([ipVersion, match[1], port]);
+          return ArrayPrototypePush(newSet, [ipVersion, match[1], port]);
         }
       }
 
       // addr::port
-      const addrSplitMatch = serv.match(addrSplitRE);
+      const addrSplitMatch = StringPrototypeMatch(serv, addrSplitRE);
 
       if (addrSplitMatch) {
         const hostIP = addrSplitMatch[1];
@@ -344,7 +369,11 @@ export class Resolver {
         ipVersion = isIP(hostIP);
 
         if (ipVersion !== 0) {
-          return newSet.push([ipVersion, hostIP, Number.parseInt(port)]);
+          return ArrayPrototypePush(newSet, [
+            ipVersion,
+            hostIP,
+            NumberParseInt(port),
+          ]);
         }
       }
 
@@ -355,10 +384,13 @@ export class Resolver {
 
     if (errorNumber !== 0) {
       // Reset the servers to the old servers, because ares probably unset them.
-      this._handle.setServers(orig.join(","));
+      this._handle.setServers(ArrayPrototypeJoin(orig, ","));
       const err = strerror(errorNumber);
 
-      throw new ERR_DNS_SET_SERVERS_FAILED(err, servers.toString());
+      throw new ERR_DNS_SET_SERVERS_FAILED(
+        err,
+        ArrayPrototypeToString(servers),
+      );
     }
   }
 
@@ -390,75 +422,78 @@ export class Resolver {
 
 let defaultResolver = new Resolver();
 
-export function getDefaultResolver(): Resolver {
+function getDefaultResolver(): Resolver {
   return defaultResolver;
 }
 
-export function setDefaultResolver<T extends Resolver>(resolver: T) {
+function setDefaultResolver<T extends Resolver>(resolver: T) {
   defaultResolver = resolver;
 }
 
-export function validateHints(hints: number) {
+function validateHints(hints: number) {
   if ((hints & ~(AI_ADDRCONFIG | AI_ALL | AI_V4MAPPED)) !== 0) {
     throw new ERR_INVALID_ARG_VALUE("hints", hints, "is invalid");
   }
 }
 
-let invalidHostnameWarningEmitted = false;
+let dnsOrder: string | undefined;
 
-export function emitInvalidHostnameWarning(hostname: string) {
-  if (invalidHostnameWarningEmitted) {
-    return;
+function ensureDnsOrder(): string {
+  if (dnsOrder === undefined) {
+    dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
   }
-
-  invalidHostnameWarningEmitted = true;
-
-  emitWarning(
-    `The provided hostname "${hostname}" is not a valid ` +
-      "hostname, and is supported in the dns module solely for compatibility.",
-    "DeprecationWarning",
-    "DEP0118",
-  );
+  return dnsOrder;
 }
 
-let dnsOrder = getOptionValue("--dns-result-order") || "ipv4first";
+function getDefaultDnsOrder(): string {
+  return ensureDnsOrder();
+}
 
-export function getDefaultVerbatim() {
-  switch (dnsOrder) {
-    case "verbatim": {
-      return true;
-    }
-    case "ipv4first": {
-      return false;
-    }
-    default: {
-      return false;
-    }
+const validDnsOrders = ["verbatim", "ipv4first", "ipv6first"];
+
+function dnsOrderToNumber(order: string): number {
+  switch (order) {
+    case "verbatim":
+      return DNS_ORDER_VERBATIM;
+    case "ipv4first":
+      return DNS_ORDER_IPV4_FIRST;
+    case "ipv6first":
+      return DNS_ORDER_IPV6_FIRST;
+    default:
+      throw new ERR_INVALID_ARG_VALUE("order", order);
   }
 }
 
-/**
- * Set the default value of `verbatim` in `lookup` and `dnsPromises.lookup()`.
- * The value could be:
- *
- * - `ipv4first`: sets default `verbatim` `false`.
- * - `verbatim`: sets default `verbatim` `true`.
- *
- * The default is `ipv4first` and `setDefaultResultOrder` have higher
- * priority than `--dns-result-order`. When using `worker threads`,
- * `setDefaultResultOrder` from the main thread won't affect the default
- * dns orders in workers.
- *
- * @param order must be `'ipv4first'` or `'verbatim'`.
- */
-export function setDefaultResultOrder(order: "ipv4first" | "verbatim") {
-  validateOneOf(order, "dnsOrder", ["verbatim", "ipv4first"]);
+function setDefaultResultOrder(
+  order: "ipv4first" | "verbatim" | "ipv6first",
+) {
+  validateOneOf(order, "dnsOrder", ["verbatim", "ipv4first", "ipv6first"]);
   dnsOrder = order;
 }
 
-export function defaultResolverSetServers(servers: string[]) {
+function defaultResolverSetServers(servers: string[]) {
   const resolver = new Resolver();
 
   resolver.setServers(servers);
   setDefaultResolver(resolver);
 }
+
+return {
+  isLookupOptions,
+  isLookupCallback,
+  isFamily,
+  isResolveCallback,
+  validateTimeout,
+  validateTries,
+  validateMaxTimeout,
+  Resolver,
+  getDefaultResolver,
+  setDefaultResolver,
+  validateHints,
+  getDefaultDnsOrder,
+  validDnsOrders,
+  dnsOrderToNumber,
+  setDefaultResultOrder,
+  defaultResolverSetServers,
+};
+})();

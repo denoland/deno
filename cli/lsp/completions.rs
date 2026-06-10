@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;
@@ -12,9 +12,17 @@ use deno_core::url::Position;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use import_map::ImportMap;
 use indexmap::IndexSet;
+use jsonc_parser::CollectOptions;
+use jsonc_parser::CommentCollectionStrategy;
+use jsonc_parser::ParseOptions;
+use jsonc_parser::ast::Object;
+use jsonc_parser::ast::StringLit;
+use jsonc_parser::ast::Value as JsoncValue;
+use jsonc_parser::common::Ranged;
 use lsp_types::CompletionList;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -34,8 +42,11 @@ use super::npm::CliNpmSearchApi;
 use super::registries::ModuleRegistry;
 use super::resolver::LspResolver;
 use super::search::PackageSearchApi;
+use super::text::LineIndex;
 use super::tsc;
 use crate::jsr::JsrFetchResolver;
+use crate::lsp::registries::DocumentationCompletionItemData;
+use crate::util::env::resolve_cwd;
 use crate::util::path::is_importable_ext;
 use crate::util::path::relative_specifier;
 
@@ -49,11 +60,27 @@ pub(crate) const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CompletionItemData {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub documentation: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub tsc: Option<tsc::CompletionItemData>,
+pub enum CompletionItemData {
+  Documentation(DocumentationCompletionItemData),
+  TsJs(tsc::TsJsCompletionItemData),
+}
+
+/// The set of LSP services used to compute import completions.
+///
+/// These services act on document data but don't belong to any single
+/// document, so rather than threading each of them through the completion
+/// functions individually (horizontal movement), they're grouped here and
+/// passed as a single argument. This keeps the completion entry points from
+/// accumulating service parameters as new functionality is added. See
+/// https://github.com/denoland/deno/issues/26847.
+pub struct CompletionContext<'a> {
+  pub config: &'a Config,
+  pub client: &'a Client,
+  pub module_registry: &'a ModuleRegistry,
+  pub jsr_search_api: &'a CliJsrSearchApi,
+  pub npm_search_api: &'a CliNpmSearchApi,
+  pub document_modules: &'a DocumentModules,
+  pub resolver: &'a LspResolver,
 }
 
 /// Check if the origin can be auto-configured for completions, and if so, send
@@ -123,14 +150,21 @@ fn to_narrow_lsp_range(
     })
     .as_byte_index(text_info.range().start);
   let text_bytes = text_info.text_str().as_bytes();
-  let is_empty = end_byte_index - 1 == start_byte_index;
-  let has_trailing_quote =
-    !is_empty && matches!(text_bytes[end_byte_index - 1], b'"' | b'\'');
+  let has_leading_quote = text_bytes
+    .get(start_byte_index)
+    .is_some_and(|b| matches!(b, b'"' | b'\''));
+  let has_trailing_quote = end_byte_index > start_byte_index
+    && text_bytes
+      .get(end_byte_index - 1)
+      .is_some_and(|b| matches!(b, b'"' | b'\''));
   lsp::Range {
     start: lsp::Position {
       line: range.start.line as u32,
-      // skip the leading quote
-      character: (range.start.character + 1) as u32,
+      character: if has_leading_quote {
+        range.start.character + 1 // skip the leading quote
+      } else {
+        range.start.character
+      } as u32,
     },
     end: lsp::Position {
       line: range.end.line as u32,
@@ -146,19 +180,19 @@ fn to_narrow_lsp_range(
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
-#[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
 pub async fn get_import_completions(
   module: &DocumentModule,
   position: &lsp::Position,
-  config: &Config,
-  client: &Client,
-  module_registries: &ModuleRegistry,
-  jsr_search_api: &CliJsrSearchApi,
-  npm_search_api: &CliNpmSearchApi,
-  document_modules: &DocumentModules,
-  resolver: &LspResolver,
+  cx: &CompletionContext<'_>,
 ) -> Option<lsp::CompletionResponse> {
+  let config = cx.config;
+  let client = cx.client;
+  let module_registries = cx.module_registry;
+  let jsr_search_api = cx.jsr_search_api;
+  let npm_search_api = cx.npm_search_api;
+  let document_modules = cx.document_modules;
+  let resolver = cx.resolver;
   let maybe_import_map = resolver
     .get_scoped_resolver(module.scope.as_deref())
     .as_workspace_resolver()
@@ -433,7 +467,7 @@ fn get_local_completions(
     .ok()?;
   let resolved_parent_path = url_to_file_path(&resolved_parent).ok()?;
   if resolved_parent_path.is_dir() {
-    let cwd = std::env::current_dir().ok()?;
+    let cwd = resolve_cwd(None).ok()?;
     let entries = std::fs::read_dir(resolved_parent_path).ok()?;
     let items = entries
       .filter_map(|de| {
@@ -682,7 +716,71 @@ async fn get_npm_completions(
   range: &lsp::Range,
   npm_search_api: &impl PackageSearchApi,
 ) -> Option<CompletionList> {
-  // First try to match `npm:some-package@<version-to-complete>`.
+  // First try to match `npm:some-package@some-version/<export-to-complete>`.
+  let req_ref = NpmPackageReqReference::from_str(specifier).ok();
+  if let Some(req_ref) = req_ref
+    && (req_ref.sub_path().is_some() || specifier.ends_with('/'))
+  {
+    let export_prefix = req_ref.sub_path().unwrap_or("");
+    let req = req_ref.req();
+    let versions = npm_search_api.versions(req.name.as_str()).await.ok()?;
+    let version = versions
+      .iter()
+      .find(|version| req.version_req.matches(version))?;
+    let nv = PackageNv {
+      name: req.name.clone(),
+      version: version.clone(),
+    };
+    let exports = npm_search_api.exports(&nv).await.ok()?;
+    let items = exports
+      .iter()
+      .enumerate()
+      .filter_map(|(idx, export)| {
+        if export == "." {
+          return None;
+        }
+        let export = export.strip_prefix("./").unwrap_or(export.as_str());
+        if !export.starts_with(export_prefix) {
+          return None;
+        }
+        let specifier = format!(
+          "{}/{export}",
+          specifier.strip_suffix(export_prefix)?.trim_end_matches('/')
+        );
+        let command = Some(lsp::Command {
+          title: "".to_string(),
+          command: "deno.cache".to_string(),
+          arguments: Some(vec![
+            json!([&specifier]),
+            json!(referrer),
+            json!({ "forceGlobalCache": true }),
+          ]),
+        });
+        let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range: *range,
+          new_text: specifier.clone(),
+        }));
+        Some(lsp::CompletionItem {
+          label: specifier,
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some(format!("{:0>10}", idx + 1)),
+          text_edit,
+          command,
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+          ),
+          ..Default::default()
+        })
+      })
+      .collect();
+    return Some(CompletionList {
+      is_incomplete: false,
+      items,
+    });
+  }
+
+  // Then try to match `npm:some-package@<version-to-complete>`.
   let bare_specifier = specifier.strip_prefix("npm:")?;
   if let Some(v_index) = parse_bare_specifier_version_index(bare_specifier) {
     let package_name = &bare_specifier[..v_index];
@@ -854,6 +952,176 @@ fn get_remote_completions(
       }
     })
     .collect()
+}
+
+/// Returns true if the given file URL points to a Deno configuration file
+/// (`deno.json` or `deno.jsonc`).
+pub fn is_deno_config_url(url: &ModuleSpecifier) -> bool {
+  if url.scheme() != "file" {
+    return false;
+  }
+  let Some(name) = url.path_segments().and_then(|mut s| s.next_back()) else {
+    return false;
+  };
+  name == "deno.json" || name == "deno.jsonc"
+}
+
+/// Walk a `jsonc_parser` AST looking for the innermost string literal whose
+/// quoted range contains the given byte offset.
+fn find_string_at<'a, 'b>(
+  object: &'b Object<'a>,
+  offset: usize,
+  path: &mut Vec<String>,
+) -> Option<&'b StringLit<'a>> {
+  for prop in &object.properties {
+    let prop_range = prop.range();
+    if offset < prop_range.start || offset > prop_range.end {
+      continue;
+    }
+    let key = prop.name.as_str().to_string();
+    path.push(key);
+    match &prop.value {
+      JsoncValue::StringLit(s) => {
+        let range = s.range();
+        if offset >= range.start && offset <= range.end {
+          return Some(s);
+        }
+      }
+      JsoncValue::Object(o) => {
+        if let Some(found) = find_string_at(o, offset, path) {
+          return Some(found);
+        }
+      }
+      _ => {}
+    }
+    path.pop();
+  }
+  None
+}
+
+/// Determine whether a path inside a deno config file corresponds to an
+/// import-map value position (i.e. the value of an `imports.<key>` entry or a
+/// `scopes.<scope>.<key>` entry).
+fn is_import_value_path(path: &[String]) -> bool {
+  match path {
+    [first, _] => first == "imports",
+    [first, _, _] => first == "scopes",
+    _ => false,
+  }
+}
+
+/// Same as [`to_narrow_lsp_range`] but driven by jsonc-parser byte ranges and
+/// the document's [`LineIndex`].
+fn jsonc_string_to_narrow_lsp_range(
+  text: &str,
+  line_index: &LineIndex,
+  range: jsonc_parser::common::Range,
+) -> Option<lsp::Range> {
+  let bytes = text.as_bytes();
+  let mut start = range.start;
+  let mut end = range.end;
+  if bytes.get(start).is_some_and(|b| matches!(b, b'"' | b'\'')) {
+    start += 1;
+  }
+  if end > start
+    && bytes
+      .get(end - 1)
+      .is_some_and(|b| matches!(b, b'"' | b'\''))
+  {
+    end -= 1;
+  }
+  let start_pos = line_index.position_utf16(start.try_into().ok()?);
+  let end_pos = line_index.position_utf16(end.try_into().ok()?);
+  Some(lsp::Range {
+    start: start_pos,
+    end: end_pos,
+  })
+}
+
+/// Provide jsr:/npm:/node: import-specifier completions for the value of an
+/// `imports` (or `scopes.<scope>.<key>`) entry inside a Deno configuration
+/// file. Returns `None` if the position isn't inside such a value, so the
+/// caller can fall through to other completion providers.
+pub async fn get_deno_json_import_completions(
+  referrer: &ModuleSpecifier,
+  text: &str,
+  line_index: &LineIndex,
+  position: &lsp::Position,
+  cx: &CompletionContext<'_>,
+) -> Option<lsp::CompletionResponse> {
+  let jsr_search_api = cx.jsr_search_api;
+  let npm_search_api = cx.npm_search_api;
+  if !is_deno_config_url(referrer) {
+    return None;
+  }
+  let offset_u32: u32 = line_index.offset(*position).ok()?.into();
+  let offset = offset_u32 as usize;
+  let parse_result = jsonc_parser::parse_to_ast(
+    text,
+    &CollectOptions {
+      comments: CommentCollectionStrategy::Off,
+      tokens: false,
+    },
+    &ParseOptions {
+      allow_comments: true,
+      allow_trailing_commas: true,
+      allow_loose_object_property_names: false,
+      ..Default::default()
+    },
+  )
+  .ok()?;
+  let root_object = parse_result.value?.as_object()?.clone();
+  let mut path = Vec::new();
+  let string_lit = find_string_at(&root_object, offset, &mut path)?;
+  if !is_import_value_path(&path) {
+    return None;
+  }
+  let specifier_text = string_lit.value.as_ref();
+  let range =
+    jsonc_string_to_narrow_lsp_range(text, line_index, string_lit.range())?;
+  if let Some(list) = get_jsr_completions(
+    referrer,
+    specifier_text,
+    &range,
+    None,
+    jsr_search_api,
+    Some(jsr_search_api.get_resolver()),
+  )
+  .await
+  {
+    return Some(lsp::CompletionResponse::List(list));
+  }
+  if let Some(list) =
+    get_npm_completions(referrer, specifier_text, &range, npm_search_api).await
+  {
+    return Some(lsp::CompletionResponse::List(list));
+  }
+  if let Some(list) = get_node_completions(specifier_text, &range) {
+    return Some(lsp::CompletionResponse::List(list));
+  }
+  // For an empty specifier, propose the available registry prefixes so users
+  // discover them.
+  if specifier_text.is_empty() {
+    let items = ["jsr:", "npm:", "node:"]
+      .into_iter()
+      .map(|s| lsp::CompletionItem {
+        label: s.to_string(),
+        kind: Some(lsp::CompletionItemKind::FIELD),
+        detail: Some("(registry)".to_string()),
+        sort_text: Some(s.to_string()),
+        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range,
+          new_text: s.to_string(),
+        })),
+        ..Default::default()
+      })
+      .collect();
+    return Some(lsp::CompletionResponse::List(CompletionList {
+      is_incomplete: true,
+      items,
+    }));
+  }
+  None
 }
 
 #[cfg(test)]
@@ -1631,6 +1899,63 @@ mod tests {
             ..Default::default()
           },
         ],
+      }
+    );
+  }
+
+  #[tokio::test]
+  async fn test_get_npm_completions_for_exports() {
+    let npm_search_api = TestPackageSearchApi::default().with_package_version(
+      "@denotest/routes",
+      "1.0.0",
+      &[".", "./client", "./constants", "./server"],
+    );
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 23,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 50,
+      },
+    };
+    let referrer = ModuleSpecifier::parse("file:///referrer.ts").unwrap();
+    let actual = get_npm_completions(
+      &referrer,
+      "npm:@denotest/routes@1/co",
+      &range,
+      &npm_search_api,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+      actual,
+      CompletionList {
+        is_incomplete: false,
+        items: vec![lsp::CompletionItem {
+          label: "npm:@denotest/routes@1/constants".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000003".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:@denotest/routes@1/constants".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![
+              json!(["npm:@denotest/routes@1/constants"]),
+              json!(&referrer),
+              json!({ "forceGlobalCache": true }),
+            ])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        }],
       }
     );
   }

@@ -1,8 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
-import { core, primordials } from "ext:core/mod.js";
+import { core, internals, primordials } from "ext:core/mod.js";
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -30,6 +30,8 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSome,
+  DateNow,
+  decodeURIComponent,
   Error,
   ErrorPrototypeToString,
   ObjectDefineProperties,
@@ -49,13 +51,17 @@ const {
   TypeError,
 } = primordials;
 
-import { URL } from "ext:deno_web/00_url.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_web/01_console.js";
-import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
-import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
-import {
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { HTTP_TOKEN_CODE_POINT_RE, byteLowerCase, forgivingBase64Encode } = core
+  .loadExtScript(
+    "ext:deno_web/00_infra.js",
+  );
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const {
   CloseEvent,
   defineEventHandler,
   dispatch,
@@ -64,15 +70,24 @@ import {
   EventTarget,
   MessageEvent,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import {
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const { Blob, BlobPrototype } = core.loadExtScript("ext:deno_web/09_file.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const {
   fillHeaders,
   headerListFromHeaders,
   headersFromHeaderList,
-} from "ext:deno_fetch/20_headers.js";
-import { HttpClientPrototype } from "ext:deno_fetch/22_http_client.js";
+} = core.loadExtScript("ext:deno_fetch/20_headers.js");
+const { HttpClientPrototype } = core.loadExtScript(
+  "ext:deno_fetch/22_http_client.js",
+);
+
+const kNodeUndiciDispatcherOptions = SymbolFor(
+  "Deno.internal.node.undici.dispatcherOptions",
+);
+const kNodeUndiciGlobalDispatcher = SymbolFor(
+  "Deno.internal.node.undici.globalDispatcher",
+);
 
 webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
   "WebSocketInit",
@@ -86,6 +101,7 @@ webidl.converters["WebSocketInit"] = webidl.createDictionaryConverter(
       converter: webidl.converters["sequence<DOMString>"],
     },
     { key: "client", converter: webidl.converters.any },
+    { key: "dispatcher", converter: webidl.converters.any },
   ],
 );
 
@@ -150,6 +166,89 @@ const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
 const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
 
+// Inspector Network domain instrumentation. The bridge is installed by
+// `ext/node/polyfills/inspector.js` on `internals.__inspectorNetwork` when
+// `node:inspector` is loaded; it stays null in normal runs so the cost is
+// one method call per WebSocket lifecycle.
+const _inspectorRequestId = Symbol("[[inspectorRequestId]]");
+
+function getInspectorNetwork() {
+  const ins = internals.__inspectorNetwork;
+  if (ins && ins.isEnabled()) return ins;
+  return null;
+}
+
+function emitWebSocketClosed(ws) {
+  const ins = getInspectorNetwork();
+  const requestId = ws[_inspectorRequestId];
+  if (ins === null || requestId === undefined) return;
+  try {
+    ins.webSocketClosed({
+      requestId,
+      timestamp: DateNow() / 1000,
+    });
+  } catch {
+    // never let inspector instrumentation break a real WebSocket
+  }
+  ws[_inspectorRequestId] = undefined;
+}
+
+// Opcodes per RFC 6455 / CDP `WebSocketFrame.opcode`:
+// 1 = text, 2 = binary. Per RFC 6455 client-to-server frames are masked,
+// server-to-client are not - so the `mask` flag depends on direction and
+// role: a CLIENT socket masks what it sends, a SERVER socket sees masked
+// frames coming in.
+function emitWebSocketFrame(ws, eventName, opcode, payloadData) {
+  const ins = getInspectorNetwork();
+  const requestId = ws[_inspectorRequestId];
+  if (ins === null || requestId === undefined) return;
+  const sent = eventName === "frameSent";
+  const mask = ws[_role] === SERVER ? !sent : sent;
+  try {
+    const params = {
+      requestId,
+      timestamp: DateNow() / 1000,
+      response: { opcode, mask, payloadData },
+    };
+    if (sent) ins.webSocketFrameSent(params);
+    else ins.webSocketFrameReceived(params);
+  } catch {
+    // never let inspector instrumentation break a real WebSocket
+  }
+}
+
+// Called by ext/http's `upgradeWebSocket` after a successful handshake, so
+// server-accepted sockets show up in the inspector's Network panel and
+// the frame emitters in `_eventLoop` / `send` start firing for them.
+// Handshake events (`willSendHandshakeRequest`, `handshakeResponseReceived`)
+// are intentionally skipped here - those are client-side concepts.
+function installServerInspector(ws, url) {
+  const ins = getInspectorNetwork();
+  if (ins === null) return;
+  const requestId = ins.nextRequestId();
+  ws[_inspectorRequestId] = requestId;
+  try {
+    ins.webSocketCreated({ requestId, url });
+  } catch {
+    // never let inspector instrumentation break a real WebSocket
+  }
+}
+
+function emitWebSocketFrameError(ws, errorMessage) {
+  const ins = getInspectorNetwork();
+  const requestId = ws[_inspectorRequestId];
+  if (ins === null || requestId === undefined) return;
+  try {
+    ins.webSocketFrameError({
+      requestId,
+      timestamp: DateNow() / 1000,
+      errorMessage,
+    });
+  } catch {
+    // never let inspector instrumentation break a real WebSocket
+  }
+}
+
 class WebSocket extends EventTarget {
   constructor(url, initOrProtocols) {
     super();
@@ -204,12 +303,30 @@ class WebSocket extends EventTarget {
       );
     }
 
+    // WHATWG WebSocket: credentials in the URL userinfo are sent as an
+    // `Authorization: Basic` header during the handshake and then stripped
+    // from the URL exposed via `url`. This matches browser behavior.
+    let urlCredentials = null;
+    if (wsURL.username !== "" || wsURL.password !== "") {
+      urlCredentials = forgivingBase64Encode(
+        core.encode(
+          `${decodeURIComponent(wsURL.username)}:${
+            decodeURIComponent(wsURL.password)
+          }`,
+        ),
+      );
+      wsURL.username = "";
+      wsURL.password = "";
+    }
+
     this[_url] = wsURL.href;
     this[_role] = CLIENT;
 
     let protocols;
     let headers = null;
     let clientRid = null;
+    let caCerts = null;
+    let unsafelyIgnoreCertificateErrors = false;
 
     if (typeof initOrProtocols === "string") {
       protocols = [initOrProtocols];
@@ -240,6 +357,35 @@ class WebSocket extends EventTarget {
           );
         }
         clientRid = initOrProtocols.client?.[internalRidSymbol] ?? null;
+      }
+
+      let dispatcher = initOrProtocols.dispatcher;
+      if (
+        dispatcher === undefined &&
+        internals[kNodeUndiciGlobalDispatcher] !== undefined
+      ) {
+        dispatcher = internals[kNodeUndiciGlobalDispatcher];
+      }
+
+      if (clientRid === null && dispatcher !== undefined) {
+        clientRid = dispatcher?.client?.[internalRidSymbol] ?? null;
+        const dispatcherOptions = dispatcher?.[kNodeUndiciDispatcherOptions];
+        if (dispatcherOptions !== undefined) {
+          caCerts = dispatcherOptions.caCerts ?? null;
+          unsafelyIgnoreCertificateErrors =
+            dispatcherOptions.unsafelyIgnoreCertificateErrors === true;
+        }
+      }
+    }
+
+    // Apply URL-derived Basic credentials. An explicit `Authorization` header
+    // in `init.headers` takes precedence over the URL userinfo.
+    if (urlCredentials !== null) {
+      if (headers === null) {
+        headers = headersFromHeaderList([], "request");
+      }
+      if (headers.get("Authorization") === null) {
+        headers.set("Authorization", `Basic ${urlCredentials}`);
       }
     }
 
@@ -278,6 +424,64 @@ class WebSocket extends EventTarget {
 
     this[_cancelHandle] = cancelRid;
 
+    // Inspector: emit `Network.webSocketCreated` before initiating the
+    // handshake. The op call itself reaches deep into Rust async work, so
+    // we want the "we're attempting this URL" notification to fire even if
+    // the handshake later fails.
+    const inspectorNetwork = getInspectorNetwork();
+    if (inspectorNetwork !== null) {
+      const requestId = inspectorNetwork.nextRequestId();
+      this[_inspectorRequestId] = requestId;
+      try {
+        inspectorNetwork.webSocketCreated({
+          requestId,
+          url: this[_url],
+          // initiator is filled in by the inspector op using V8's stack.
+        });
+      } catch {
+        // ignore
+      }
+      // `Network.webSocketWillSendHandshakeRequest` populates DevTools'
+      // "Headers" panel for the request side. Tungstenite-generated headers
+      // (Sec-WebSocket-Key, Sec-WebSocket-Version, Upgrade, Connection) are
+      // produced in Rust and not visible here; we surface what JS knows -
+      // user-supplied headers via `init.headers` plus the negotiated
+      // Sec-WebSocket-Protocol. That's enough for the panel to show the
+      // intent of the request; the response panel still gets the real
+      // server-sent headers via `webSocketHandshakeResponseReceived`.
+      const requestHeaders = { __proto__: null };
+      if (headers !== null) {
+        const list = headerListFromHeaders(headers);
+        for (let i = 0; i < list.length; i++) {
+          const name = byteLowerCase(list[i][0]);
+          const value = list[i][1];
+          if (requestHeaders[name] === undefined) {
+            requestHeaders[name] = value;
+          } else {
+            requestHeaders[name] = requestHeaders[name] + ", " + value;
+          }
+        }
+      }
+      if (protocols.length > 0) {
+        requestHeaders["sec-websocket-protocol"] = ArrayPrototypeJoin(
+          protocols,
+          ", ",
+        );
+      }
+      try {
+        inspectorNetwork.webSocketWillSendHandshakeRequest({
+          requestId,
+          timestamp: DateNow() / 1000,
+          wallTime: DateNow() / 1000,
+          request: {
+            headers: requestHeaders,
+          },
+        });
+      } catch {
+        // ignore
+      }
+    }
+
     PromisePrototypeThen(
       op_ws_create(
         "new WebSocket()",
@@ -285,12 +489,48 @@ class WebSocket extends EventTarget {
         ArrayPrototypeJoin(protocols, ", "),
         cancelRid,
         headers ? headerListFromHeaders(headers) : null,
+        caCerts,
+        unsafelyIgnoreCertificateErrors,
         clientRid,
       ),
       (create) => {
         this[_rid] = create.rid;
         this[_extensions] = create.extensions;
         this[_protocol] = create.protocol;
+
+        // Inspector: emit `Network.webSocketHandshakeResponseReceived` with
+        // the real upgrade response (status, statusText, headers) returned
+        // by the Rust op.
+        const reqId = this[_inspectorRequestId];
+        if (reqId !== undefined) {
+          const ins = getInspectorNetwork();
+          if (ins !== null) {
+            const responseHeaders = { __proto__: null };
+            for (let i = 0; i < create.headers.length; i++) {
+              const name = byteLowerCase(create.headers[i][0]);
+              const value = create.headers[i][1];
+              if (responseHeaders[name] === undefined) {
+                responseHeaders[name] = value;
+              } else {
+                // Connection, Upgrade etc. shouldn't repeat, but be defensive.
+                responseHeaders[name] = responseHeaders[name] + ", " + value;
+              }
+            }
+            try {
+              ins.webSocketHandshakeResponseReceived({
+                requestId: reqId,
+                timestamp: DateNow() / 1000,
+                response: {
+                  status: create.status,
+                  statusText: create.statusText,
+                  headers: responseHeaders,
+                },
+              });
+            } catch {
+              // ignore
+            }
+          }
+        }
 
         if (this[_readyState] === CLOSING) {
           PromisePrototypeThen(
@@ -301,6 +541,7 @@ class WebSocket extends EventTarget {
               const errEvent = new ErrorEvent("error");
               this.dispatchEvent(errEvent);
 
+              emitWebSocketClosed(this);
               const event = new CloseEvent("close");
               this.dispatchEvent(event);
               core.tryClose(this[_rid]);
@@ -329,6 +570,7 @@ class WebSocket extends EventTarget {
           this[_cancelHandle] = undefined;
         }
 
+        emitWebSocketClosed(this);
         const closeEv = new CloseEvent("close");
         this.dispatchEvent(closeEv);
       },
@@ -416,8 +658,10 @@ class WebSocket extends EventTarget {
       // data is being sent.
       if (ArrayBufferIsView(data)) {
         op_ws_send_binary(this[_rid], data);
+        emitWebSocketFrame(this, "frameSent", 2, data);
       } else if (isArrayBuffer(data)) {
         op_ws_send_binary_ab(this[_rid], data);
+        emitWebSocketFrame(this, "frameSent", 2, data);
       } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
         this[_queueSend](data);
       } else {
@@ -426,6 +670,7 @@ class WebSocket extends EventTarget {
           this[_rid],
           string,
         );
+        emitWebSocketFrame(this, "frameSent", 1, string);
       }
     } else {
       // Slower path if the send queue is not empty, for example when sending
@@ -497,6 +742,7 @@ class WebSocket extends EventTarget {
           });
           this.dispatchEvent(errorEv);
 
+          emitWebSocketClosed(this);
           const closeEv = new CloseEvent("close");
           this.dispatchEvent(closeEv);
           core.tryClose(this[_rid]);
@@ -516,6 +762,7 @@ class WebSocket extends EventTarget {
       ) {
         this[_readyState] = CLOSED;
 
+        emitWebSocketClosed(this);
         const event = new CloseEvent("close");
         this.dispatchEvent(event);
         core.tryClose(rid);
@@ -531,6 +778,7 @@ class WebSocket extends EventTarget {
           }
 
           this[_serverHandleIdleTimeout]();
+          emitWebSocketFrame(this, "frameReceived", 1, data);
           const event = new MessageEvent("message", {
             data,
             origin: this[_url],
@@ -549,6 +797,7 @@ class WebSocket extends EventTarget {
           this[_serverHandleIdleTimeout]();
           // deno-lint-ignore prefer-primordials
           const buffer = d.buffer;
+          emitWebSocketFrame(this, "frameReceived", 2, buffer);
           let data;
           if (this.binaryType === "blob") {
             data = new Blob([buffer]);
@@ -574,6 +823,7 @@ class WebSocket extends EventTarget {
           this[_readyState] = CLOSED;
 
           const message = op_ws_get_error(rid);
+          emitWebSocketFrameError(this, message);
           const error = new Error(message);
           const errorEv = new ErrorEvent("error", {
             error,
@@ -581,6 +831,7 @@ class WebSocket extends EventTarget {
           });
           this.dispatchEvent(errorEv);
 
+          emitWebSocketClosed(this);
           const closeEv = new CloseEvent("close");
           this.dispatchEvent(closeEv);
           core.tryClose(rid);
@@ -592,7 +843,9 @@ class WebSocket extends EventTarget {
           const reason = code == 1005 ? "" : op_ws_get_error(rid);
           const prevState = this[_readyState];
           this[_readyState] = CLOSED;
-          clearTimeout(this[_idleTimeoutTimeout]);
+          if (this[_idleTimeoutTimeout]) {
+            core.cancelTimer(this[_idleTimeoutTimeout]);
+          }
 
           if (prevState === OPEN) {
             try {
@@ -606,6 +859,7 @@ class WebSocket extends EventTarget {
             }
           }
 
+          emitWebSocketClosed(this);
           const event = new CloseEvent("close", {
             wasClean: true,
             code: code,
@@ -634,18 +888,22 @@ class WebSocket extends EventTarget {
       const data = queue[0];
       if (ArrayBufferIsView(data)) {
         op_ws_send_binary(this[_rid], data);
+        emitWebSocketFrame(this, "frameSent", 2, data);
       } else if (isArrayBuffer(data)) {
         op_ws_send_binary_ab(this[_rid], data);
+        emitWebSocketFrame(this, "frameSent", 2, data);
       } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
         // deno-lint-ignore prefer-primordials
         const ab = await data.slice().arrayBuffer();
         op_ws_send_binary_ab(this[_rid], ab);
+        emitWebSocketFrame(this, "frameSent", 2, ab);
       } else {
         const string = String(data);
         op_ws_send_text(
           this[_rid],
           string,
         );
+        emitWebSocketFrame(this, "frameSent", 1, string);
       }
       ArrayPrototypeShift(queue);
     }
@@ -653,40 +911,54 @@ class WebSocket extends EventTarget {
 
   [_serverHandleIdleTimeout]() {
     if (this[_idleTimeoutDuration]) {
-      clearTimeout(this[_idleTimeoutTimeout]);
-      this[_idleTimeoutTimeout] = setTimeout(async () => {
-        if (this[_readyState] === OPEN) {
-          await PromisePrototypeCatch(op_ws_send_ping(this[_rid]), () => {});
-          this[_idleTimeoutTimeout] = setTimeout(async () => {
-            if (this[_readyState] === OPEN) {
-              this[_readyState] = CLOSING;
-              const reason = "No response from ping frame.";
-              await PromisePrototypeCatch(
-                op_ws_close(this[_rid], 1001, reason),
-                () => {},
-              );
-              this[_readyState] = CLOSED;
+      if (this[_idleTimeoutTimeout]) {
+        core.cancelTimer(this[_idleTimeoutTimeout]);
+      }
+      this[_idleTimeoutTimeout] = core.createSystemTimer(
+        async () => {
+          if (this[_readyState] === OPEN) {
+            await PromisePrototypeCatch(op_ws_send_ping(this[_rid]), () => {});
+            this[_idleTimeoutTimeout] = core.createSystemTimer(
+              async () => {
+                if (this[_readyState] === OPEN) {
+                  this[_readyState] = CLOSING;
+                  const reason = "No response from ping frame.";
+                  await PromisePrototypeCatch(
+                    op_ws_close(this[_rid], 1001, reason),
+                    () => {},
+                  );
+                  this[_readyState] = CLOSED;
 
-              const errEvent = new ErrorEvent("error", {
-                message: reason,
-              });
-              this.dispatchEvent(errEvent);
+                  const errEvent = new ErrorEvent("error", {
+                    message: reason,
+                  });
+                  this.dispatchEvent(errEvent);
 
-              const event = new CloseEvent("close", {
-                wasClean: false,
-                code: 1001,
-                reason,
-              });
-              this.dispatchEvent(event);
-              core.tryClose(this[_rid]);
-            } else {
-              clearTimeout(this[_idleTimeoutTimeout]);
+                  const event = new CloseEvent("close", {
+                    wasClean: false,
+                    code: 1001,
+                    reason,
+                  });
+                  this.dispatchEvent(event);
+                  core.tryClose(this[_rid]);
+                } else {
+                  if (this[_idleTimeoutTimeout]) {
+                    core.cancelTimer(this[_idleTimeoutTimeout]);
+                  }
+                }
+              },
+              (this[_idleTimeoutDuration] / 2) * 1000,
+              true,
+            );
+          } else {
+            if (this[_idleTimeoutTimeout]) {
+              core.cancelTimer(this[_idleTimeoutTimeout]);
             }
-          }, (this[_idleTimeoutDuration] / 2) * 1000);
-        } else {
-          clearTimeout(this[_idleTimeoutTimeout]);
-        }
-      }, (this[_idleTimeoutDuration] / 2) * 1000);
+          }
+        },
+        (this[_idleTimeoutDuration] / 2) * 1000,
+        true,
+      );
     }
   }
 
@@ -770,6 +1042,8 @@ export {
   _serverHandleIdleTimeout,
   CLIENT,
   createWebSocketBranded,
+  emitWebSocketClosed,
+  installServerInspector,
   SERVER,
   WebSocket,
 };

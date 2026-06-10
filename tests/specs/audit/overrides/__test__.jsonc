@@ -1,0 +1,16 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/32871
+  // Audit should respect package.json overrides: when an override
+  // forces a patched version, the advisory should be filtered out.
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "audit",
+      "output": "audit.out"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { closeSync, openSync, write, writeSync } from "node:fs";
 import { open } from "node:fs/promises";

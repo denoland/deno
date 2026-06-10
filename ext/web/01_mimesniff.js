@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -6,7 +6,8 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeIncludes,
   MapPrototypeGet,
@@ -24,7 +25,7 @@ const {
   TypedArrayPrototypeIncludes,
 } = primordials;
 
-import {
+const {
   assert,
   collectHttpQuotedString,
   collectSequenceOfCodepoints,
@@ -33,7 +34,7 @@ import {
   HTTP_WHITESPACE,
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
-} from "./00_infra.js";
+} = core.loadExtScript("ext:deno_web/00_infra.js");
 
 /**
  * @typedef MimeType
@@ -441,10 +442,11 @@ function sniffImage(mimeTypeString, byteSequence) {
   return mimeTypeString;
 }
 
-export {
+return {
   essence,
   extractMimeType,
   parseMimeType,
   serializeMimeType,
   sniffImage,
 };
+})();

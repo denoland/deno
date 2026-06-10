@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use super::*;
 
@@ -50,6 +50,20 @@ pub trait TestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );
+  /// Called when a test calls `Deno.exit()` while the exit sanitizer is
+  /// disabled (`sanitizeExit: false`). The test run is being aborted and the
+  /// process will exit with `exit_code`.
+  fn report_exit(
+    &mut self,
+    exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  );
+  /// Called when a test isolate called `Deno.exit()` from outside any test
+  /// function (top-level code or an `unload` listener). The isolate is
+  /// terminated; the test runner continues with any remaining specifiers.
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32);
   fn report_completed(&mut self);
   fn flush_report(
     &mut self,

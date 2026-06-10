@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -18,8 +18,10 @@ use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmRegistryDefaultTarballUrlProvider;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_semver::VersionReq;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use futures::TryStreamExt;
 use futures::stream::FuturesOrdered;
 use indexmap::IndexMap;
@@ -33,7 +35,7 @@ pub trait NpmRegistryApiEx: NpmRegistryApi + MaybeSend + MaybeSync {}
 
 impl<T> NpmRegistryApiEx for T where T: NpmRegistryApi + MaybeSend + MaybeSync {}
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 type NpmRegistryApiRc = deno_maybe_sync::MaybeArc<dyn NpmRegistryApiEx>;
 
 pub struct LockfileNpmPackageInfoApiAdapter {
@@ -148,6 +150,7 @@ pub struct LockfileReadFromPathOptions {
 pub trait LockfileSys:
   deno_path_util::fs::AtomicWriteFileWithRetriesSys
   + sys_traits::FsRead
+  + sys_traits::FsCanonicalize
   + std::fmt::Debug
 {
 }
@@ -190,7 +193,7 @@ pub enum LockfileWriteError {
   Io(#[source] std::io::Error),
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type LockfileLockRc<TSys> = deno_maybe_sync::MaybeArc<LockfileLock<TSys>>;
 
 #[derive(Debug)]
@@ -257,16 +260,23 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     let Some(bytes) = lockfile.resolve_write_bytes() else {
       return Ok(()); // nothing to do
     };
+    // If the lockfile path is a symlink, resolve it to its target so the
+    // atomic write below replaces the target file rather than clobbering the
+    // symlink with a freshly created regular file. This matches how the
+    // deno.json/package.json writes follow symlinks (they write in place).
+    let write_path = if self.sys.fs_is_symlink_no_err(&lockfile.filename) {
+      self
+        .sys
+        .fs_canonicalize(&lockfile.filename)
+        .unwrap_or_else(|_| lockfile.filename.clone())
+    } else {
+      lockfile.filename.clone()
+    };
     // do an atomic write to reduce the chance of multiple deno
     // processes corrupting the file
     const CACHE_PERM: u32 = 0o644;
-    atomic_write_file_with_retries(
-      &self.sys,
-      &lockfile.filename,
-      &bytes,
-      CACHE_PERM,
-    )
-    .map_err(LockfileWriteError::Io)?;
+    atomic_write_file_with_retries(&self.sys, &write_path, &bytes, CACHE_PERM)
+      .map_err(LockfileWriteError::Io)?;
     lockfile.has_content_changed = false;
     Ok(())
   }
@@ -280,6 +290,7 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
   ) -> Result<Option<Self>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
+      catalogs: &IndexMap<String, IndexMap<String, String>>,
     ) -> HashSet<JsrDepPackageReq> {
       let Some(pkg_json) = maybe_pkg_json else {
         return Default::default();
@@ -288,10 +299,10 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
 
       deps
         .dependencies
-        .values()
-        .chain(deps.dev_dependencies.values())
-        .filter_map(|dep| dep.as_ref().ok())
-        .filter_map(|dep| match dep {
+        .iter()
+        .chain(deps.dev_dependencies.iter())
+        .filter_map(|(alias, dep)| dep.as_ref().ok().map(|d| (alias, d)))
+        .filter_map(|(alias, dep)| match dep {
           PackageJsonDepValue::File(_) => {
             // ignored because this will have its own separate lockfile
             None
@@ -299,14 +310,17 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
-          PackageJsonDepValue::JsrReq(req) => {
-            // TODO: remove once we support JSR specifiers in package.json
-            log::warn!(
-              "JSR specifiers are not yet supported in package.json: {req}"
-            );
-            None
+          PackageJsonDepValue::Workspace { .. } => None,
+          PackageJsonDepValue::Catalog(catalog_name) => {
+            let catalog = catalogs.get(catalog_name.as_str())?;
+            let version_req_str = catalog.get(alias.as_str())?;
+            let version_req =
+              VersionReq::parse_from_npm(version_req_str).ok()?;
+            Some(JsrDepPackageReq::npm(PackageReq {
+              name: alias.clone(),
+              version_req,
+            }))
           }
-          PackageJsonDepValue::Workspace(_) => None,
         })
         .collect()
     }
@@ -342,9 +356,13 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
     let root_url = workspace.root_dir_url();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
-        package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
+        package_json_deps: pkg_json_deps(
+          root_folder.pkg_json.as_deref(),
+          workspace.catalogs(),
+        ),
         dependencies: if let Some(map) = maybe_external_import_map {
-          deno_config::import_map::import_map_deps(map)
+          deno_config::import_map::import_map_deps_from_value(map)
+            .collect::<HashSet<_>>()
         } else {
           root_folder
             .deno_json
@@ -371,7 +389,10 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
             },
             {
               let config = WorkspaceMemberConfig {
-                package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
+                package_json_deps: pkg_json_deps(
+                  folder.pkg_json.as_deref(),
+                  workspace.catalogs(),
+                ),
                 dependencies: folder
                   .deno_json
                   .as_deref()
@@ -405,8 +426,8 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
                     }
                     // not supported
                     PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_)
-                    | PackageJsonDepValue::JsrReq(_) => None,
+                    | PackageJsonDepValue::Workspace { .. }
+                    | PackageJsonDepValue::Catalog(_) => None,
                   })
                   .collect()
               })
@@ -461,6 +482,9 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
           Some((key, value))
         }))
         .collect(),
+      npm_overrides: workspace
+        .npm_overrides()
+        .map(|m| serde_json::Value::Object(m.clone())),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,
@@ -519,8 +543,19 @@ impl<TSys: LockfileSys> LockfileLock<TSys> {
       let diff = crate::display::diff(&contents, &new_contents);
       // has an extra newline at the end
       let diff = diff.trim_end();
+      const MAX_DIFF_LINES: usize = 50;
+      let truncated_diff = {
+        let lines: Vec<&str> = diff.lines().collect();
+        if lines.len() > MAX_DIFF_LINES {
+          let shown: String = lines[..MAX_DIFF_LINES].join("\n");
+          let remaining = lines.len() - MAX_DIFF_LINES;
+          format!("{shown}\n... {remaining} more lines omitted ...")
+        } else {
+          diff.to_string()
+        }
+      };
       Err(JsErrorBox::generic(format!(
-        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
+        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{truncated_diff}"
       )))
     } else {
       Ok(())

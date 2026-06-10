@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,7 +23,11 @@
 // This module ports:
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.h
+(function () {
+const { core } = __bootstrap;
+const { HandleWrap } = core.ops;
 
-import { HandleWrap } from "ext:core/ops";
-
-export { HandleWrap };
+return {
+  HandleWrap,
+};
+})();

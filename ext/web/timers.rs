@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! This module helps deno implement timers and performance APIs.
 
@@ -52,6 +52,6 @@ pub fn op_time_origin(state: &mut OpState, #[buffer] buf: &mut [u8]) {
   expose_time(epoch, buf);
 }
 
-#[allow(clippy::unused_async)]
+#[allow(clippy::unused_async, reason = "op specifically for this purpose")]
 #[op2(async(lazy), fast)]
 pub async fn op_defer() {}

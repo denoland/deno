@@ -1,7 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayFrom,
   Boolean,
@@ -33,35 +33,36 @@ const {
   WeakMapPrototypeSet,
   WeakRefPrototypeDeref,
 } = primordials;
-import {
+const {
   ERR_EVENT_RECURSION,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import { emitWarning } from "node:process";
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import {
-  Event as WebEvent,
-  EventTarget as WebEventTarget,
-} from "ext:deno_web/02_event.js";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const lazyProcess = core.createLazyLoader("node:process");
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const {
+  Event: WebEvent,
+  EventTarget: WebEventTarget,
+} = core.loadExtScript("ext:deno_web/02_event.js");
 
-import {
+const {
   customInspectSymbol,
   kEmptyObject,
   kEnumerableProperty,
-} from "ext:deno_node/internal/util.mjs";
-import { inspect } from "node:util";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const { inspect } = core.loadExtScript("ext:deno_node/util.ts");
 
 const kIsEventTarget = SymbolFor("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
-import { kEvents } from "ext:deno_node/_events.mjs";
-import { EventEmitter } from "node:events";
+const { kEvents, EventEmitter } = core.loadExtScript(
+  "ext:deno_node/_events.mjs",
+);
 const {
   kMaxEventTargetListeners,
   kMaxEventTargetListenersWarned,
@@ -522,14 +523,15 @@ class EventTarget extends WebEventTarget {
       const w = new Error(
         "Possible EventTarget memory leak detected. " +
           `${size} ${type} listeners ` +
-          `added to ${inspect(this, { depth: -1 })}. Use ` +
-          "events.setMaxListeners() to increase limit",
+          `added to ${inspect(this, { depth: -1 })}. ` +
+          `MaxListeners is ${this[kMaxEventTargetListeners]}. ` +
+          "Use events.setMaxListeners() to increase limit",
       );
       w.name = "MaxListenersExceededWarning";
       w.target = this;
       w.type = type;
       w.count = size;
-      emitWarning(w);
+      lazyProcess().default.emitWarning(w);
     }
   }
   [kRemoveListener](_size, _type, _listener, _capture) {}
@@ -583,7 +585,7 @@ class EventTarget extends WebEventTarget {
       w.name = "AddEventListenerArgumentTypeWarning";
       w.target = this;
       w.type = type;
-      emitWarning(w);
+      lazyProcess().default.emitWarning(w);
       return;
     }
     type = String(type);

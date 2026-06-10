@@ -1,0 +1,25 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "node_compat_tests"
+version = "0.0.0"
+authors.workspace = true
+autotests = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[test]]
+name = "node_compat"
+path = "mod.rs"
+harness = false
+
+[dev-dependencies]
+chrono = { workspace = true, features = ["now"] }
+deno_terminal.workspace = true
+file_test_runner.workspace = true
+jsonc-parser.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+test_util.workspace = true

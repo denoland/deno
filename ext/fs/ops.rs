@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -15,10 +15,11 @@ use boxed_error::Boxed;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::FastString;
-use deno_core::JsBuffer;
+use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use deno_core::ToJsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_error::JsErrorBox;
@@ -33,8 +34,6 @@ use deno_permissions::PermissionCheckError;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::OpenOptions;
 use crate::interface::FileSystemRc;
@@ -94,6 +93,9 @@ impl From<FsError> for FsOpsError {
         FsOpsErrorKind::Other(JsErrorBox::not_supported())
       }
       FsError::PermissionCheck(err) => FsOpsErrorKind::Permission(err),
+      FsError::JoinError(err) => {
+        FsOpsErrorKind::Other(JsErrorBox::from_err(err))
+      }
     }
     .into_box()
   }
@@ -146,16 +148,21 @@ where
   state.borrow::<FileSystemRc>().umask(mask).context("umask")
 }
 
-#[derive(Deserialize, Default, Debug, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
+#[derive(FromV8, Default, Debug, Clone, Copy)]
 struct FsOpenOptions {
+  #[from_v8(default)]
   read: bool,
+  #[from_v8(default)]
   write: bool,
+  #[from_v8(default)]
   create: bool,
+  #[from_v8(default)]
   truncate: bool,
+  #[from_v8(default)]
   append: bool,
+  #[from_v8(default)]
   create_new: bool,
+  #[from_v8(default)]
   mode: Option<u32>,
 }
 
@@ -179,7 +186,7 @@ impl From<FsOpenOptions> for OpenOptions {
 pub fn op_fs_open_sync(
   state: &mut OpState,
   #[string] path: &str,
-  #[serde] options: Option<FsOpenOptions>,
+  #[scoped] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError> {
   let options = match options {
     Some(options) => OpenOptions::from(options),
@@ -202,12 +209,12 @@ pub fn op_fs_open_sync(
   Ok(rid)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[smi]
 pub async fn op_fs_open_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
-  #[serde] options: Option<FsOpenOptions>,
+  #[scoped] options: Option<FsOpenOptions>,
 ) -> Result<ResourceId, FsOpsError> {
   let options = match options {
     Some(options) => OpenOptions::from(options),
@@ -264,7 +271,7 @@ pub fn op_fs_mkdir_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_mkdir_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -331,7 +338,7 @@ pub fn op_fs_chmod_sync(
 }
 
 #[cfg(unix)]
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_chmod_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -355,7 +362,7 @@ pub async fn op_fs_chmod_async(
 }
 
 #[cfg(not(unix))]
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_chmod_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -398,7 +405,7 @@ pub fn op_fs_chown_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_chown_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -434,7 +441,7 @@ pub fn op_fs_fchmod_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_fchmod_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -459,7 +466,7 @@ pub fn op_fs_fchown_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_fchown_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -500,7 +507,7 @@ pub fn op_fs_remove_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_remove_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -559,7 +566,7 @@ pub fn op_fs_copy_file_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_copy_file_async(
   state: Rc<RefCell<OpState>>,
   #[string] from: String,
@@ -608,8 +615,7 @@ pub fn op_fs_stat_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_fs_stat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -652,8 +658,7 @@ pub fn op_fs_lstat_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_fs_lstat_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -697,7 +702,7 @@ pub fn op_fs_realpath_sync(
   Ok(path_string)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_fs_realpath_async(
   state: Rc<RefCell<OpState>>,
@@ -725,7 +730,6 @@ pub async fn op_fs_realpath_async(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_fs_read_dir_sync(
   state: &mut OpState,
   #[string] path: &str,
@@ -744,8 +748,7 @@ pub fn op_fs_read_dir_sync(
   Ok(entries)
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_fs_read_dir_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -796,7 +799,7 @@ pub fn op_fs_rename_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_rename_async(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
@@ -852,7 +855,7 @@ pub fn op_fs_link_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_link_async(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
@@ -882,6 +885,36 @@ pub async fn op_fs_link_async(
   Ok(())
 }
 
+// Symlink permissions cannot be path-scoped. A symlink's target (`oldpath`) is
+// just a string stored in the link: it may be relative, absolute, or not yet
+// exist, and it is only resolved when the link is later traversed. There is no
+// concrete path to validate against an allow-list at creation time, so we
+// require unscoped read+write rather than give a false sense of containment.
+// The generic "Requires write access" message does not convey that scoping is
+// the problem, so we replace it with a clearer one.
+fn check_symlink_permissions(
+  permissions: &deno_permissions::PermissionsContainer,
+  api_name: &str,
+) -> Result<(), FsOpsError> {
+  permissions
+    .check_write_all(api_name)
+    .and_then(|()| permissions.check_read_all(api_name))
+    .map_err(|err| {
+      let err = match err {
+        PermissionCheckError::PermissionDenied(mut denied)
+          if denied.custom_message.is_none() =>
+        {
+          denied.custom_message = Some(format!(
+            "{api_name} requires unscoped --allow-read and --allow-write permissions; path-scoped grants (e.g. --allow-write=<path>) are not supported because a symlink's target is only resolved when the link is traversed"
+          ));
+          PermissionCheckError::PermissionDenied(denied)
+        }
+        other => other,
+      };
+      FsOpsErrorKind::Permission(err).into_box()
+    })
+}
+
 #[op2(stack_trace)]
 pub fn op_fs_symlink_sync(
   state: &mut OpState,
@@ -891,8 +924,7 @@ pub fn op_fs_symlink_sync(
 ) -> Result<(), FsOpsError> {
   let permissions =
     state.borrow_mut::<deno_permissions::PermissionsContainer>();
-  permissions.check_write_all("Deno.symlinkSync()")?;
-  permissions.check_read_all("Deno.symlinkSync()")?;
+  check_symlink_permissions(permissions, "Deno.symlinkSync()")?;
 
   // PERMISSIONS: ok because we verified --allow-write and --allow-read above
   let oldpath = CheckedPath::unsafe_new(Cow::Borrowed(Path::new(oldpath)));
@@ -905,7 +937,7 @@ pub fn op_fs_symlink_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_symlink_async(
   state: Rc<RefCell<OpState>>,
   #[string] oldpath: String,
@@ -916,8 +948,7 @@ pub async fn op_fs_symlink_async(
     let mut state = state.borrow_mut();
     let permissions =
       state.borrow_mut::<deno_permissions::PermissionsContainer>();
-    permissions.check_write_all("Deno.symlink()")?;
-    permissions.check_read_all("Deno.symlink()")?;
+    check_symlink_permissions(permissions, "Deno.symlink()")?;
     state.borrow::<FileSystemRc>().clone()
   };
 
@@ -957,7 +988,7 @@ pub fn op_fs_read_link_sync(
   Ok(target_string)
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_fs_read_link_async(
   state: Rc<RefCell<OpState>>,
@@ -1004,7 +1035,7 @@ pub fn op_fs_truncate_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_truncate_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1053,7 +1084,7 @@ pub fn op_fs_utime_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 pub async fn op_fs_utime_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1126,7 +1157,7 @@ pub fn op_fs_make_temp_dir_sync(
   .context("tmpdir")
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_fs_make_temp_dir_async(
   state: Rc<RefCell<OpState>>,
@@ -1214,7 +1245,7 @@ pub fn op_fs_make_temp_file_sync(
   .context("tmpfile")
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[string]
 pub async fn op_fs_make_temp_file_async(
   state: Rc<RefCell<OpState>>,
@@ -1340,7 +1371,7 @@ fn make_temp_check_async<'a>(
 /// files.
 fn validate_temporary_filename_component(
   component: &str,
-  #[allow(unused_variables)] suffix: bool,
+  _suffix: bool,
 ) -> Result<(), FsOpsError> {
   // Ban ASCII and Unicode control characters: these will often fail
   if let Some(c) = component.matches(|c: char| c.is_control()).next() {
@@ -1367,7 +1398,7 @@ fn validate_temporary_filename_component(
 
   // This check is only for Windows
   #[cfg(windows)]
-  if suffix && component.ends_with(|c: char| ". ".contains(c)) {
+  if _suffix && component.ends_with(|c: char| ". ".contains(c)) {
     return Err(FsOpsErrorKind::InvalidTrailingCharacter.into_box());
   }
 
@@ -1387,11 +1418,8 @@ fn tmp_name(
 
   // If we use a 32-bit number, we only need ~70k temp files before we have a 50%
   // chance of collision. By bumping this up to 64-bits, we require ~5 billion
-  // before hitting a 50% chance. We also base32-encode this value so the entire
-  // thing is 1) case insensitive and 2) slightly shorter than the equivalent hex
-  // value.
+  // before hitting a 50% chance.
   let unique = rng.r#gen::<u64>();
-  base32::encode(base32::Alphabet::Crockford, &unique.to_le_bytes());
   let path = dir.join(format!("{prefix}{unique:08x}{suffix}"));
 
   Ok(path)
@@ -1405,7 +1433,7 @@ pub fn op_fs_write_file_sync(
   append: bool,
   create: bool,
   create_new: bool,
-  #[buffer] data: JsBuffer,
+  data: Uint8Array,
 ) -> Result<(), FsOpsError> {
   let path = Path::new(path);
 
@@ -1425,8 +1453,8 @@ pub fn op_fs_write_file_sync(
   Ok(())
 }
 
-#[op2(async, stack_trace)]
-#[allow(clippy::too_many_arguments)]
+#[op2(stack_trace)]
+#[allow(clippy::too_many_arguments, reason = "op")]
 pub async fn op_fs_write_file_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1434,7 +1462,7 @@ pub async fn op_fs_write_file_async(
   append: bool,
   create: bool,
   create_new: bool,
-  #[buffer] data: JsBuffer,
+  data: Uint8Array,
   #[smi] cancel_rid: Option<ResourceId>,
 ) -> Result<(), FsOpsError> {
   let path = PathBuf::from(path);
@@ -1455,7 +1483,7 @@ pub async fn op_fs_write_file_async(
     (state.borrow::<FileSystemRc>().clone(), cancel_handle, path)
   };
 
-  let fut = fs.write_file_async(path.as_owned(), options, data.to_vec());
+  let fut = fs.write_file_async(path.as_owned(), options, data.0);
 
   if let Some(cancel_handle) = cancel_handle {
     let res = fut.or_cancel(cancel_handle).await;
@@ -1475,12 +1503,11 @@ pub async fn op_fs_write_file_async(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_fs_read_file_sync(
   state: &mut OpState,
   #[string] path: &str,
   #[smi] flags: Option<i32>,
-) -> Result<ToJsBuffer, FsOpsError> {
+) -> Result<Uint8Array, FsOpsError> {
   let path = Path::new(path);
   let options = if let Some(flags) = flags {
     OpenOptions::from(flags)
@@ -1502,17 +1529,16 @@ pub fn op_fs_read_file_sync(
     .context_path("readfile", &path)?;
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
-  Ok(buf.into_owned().into_boxed_slice().into())
+  Ok(buf.into_owned().to_vec().into())
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_fs_read_file_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
   #[smi] flags: Option<i32>,
-) -> Result<ToJsBuffer, FsOpsError> {
+) -> Result<Uint8Array, FsOpsError> {
   let path = PathBuf::from(path);
   let options = if let Some(flags) = flags {
     OpenOptions::from(flags)
@@ -1551,11 +1577,10 @@ pub async fn op_fs_read_file_async(
   };
 
   // todo(https://github.com/denoland/deno/issues/27107): do not clone here
-  Ok(buf.into_owned().into_boxed_slice().into())
+  Ok(buf.into_owned().to_vec().into())
 }
 
 #[op2(stack_trace)]
-#[to_v8]
 pub fn op_fs_read_file_text_sync(
   state: &mut OpState,
   #[string] path: &str,
@@ -1579,8 +1604,7 @@ pub fn op_fs_read_file_text_sync(
   })
 }
 
-#[op2(async, stack_trace)]
-#[to_v8]
+#[op2(stack_trace)]
 pub async fn op_fs_read_file_text_async(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
@@ -1651,7 +1675,7 @@ pub fn op_fs_seek_sync(
   Ok(cursor)
 }
 
-#[op2(async)]
+#[op2]
 #[number]
 pub async fn op_fs_seek_async(
   state: Rc<RefCell<OpState>>,
@@ -1677,7 +1701,7 @@ pub fn op_fs_file_sync_data_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_file_sync_data_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1699,7 +1723,7 @@ pub fn op_fs_file_sync_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_file_sync_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1733,8 +1757,7 @@ pub fn op_fs_file_stat_sync(
   Ok(())
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_fs_file_stat_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1767,7 +1790,7 @@ pub fn op_fs_flock_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_flock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1777,6 +1800,28 @@ pub async fn op_fs_flock_async(
     .map_err(FsOpsErrorKind::Resource)?;
   file.lock_async(exclusive).await?;
   Ok(())
+}
+
+#[op2(fast)]
+pub fn op_fs_flock_try_sync(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  exclusive: bool,
+) -> Result<bool, FsOpsError> {
+  let file =
+    FileResource::get_file(state, rid).map_err(FsOpsErrorKind::Resource)?;
+  Ok(file.try_lock_sync(exclusive)?)
+}
+
+#[op2]
+pub async fn op_fs_flock_try_async(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  exclusive: bool,
+) -> Result<bool, FsOpsError> {
+  let file = FileResource::get_file(&state.borrow(), rid)
+    .map_err(FsOpsErrorKind::Resource)?;
+  Ok(file.try_lock_async(exclusive).await?)
 }
 
 #[op2(fast)]
@@ -1790,7 +1835,7 @@ pub fn op_fs_funlock_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_funlock_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1813,7 +1858,7 @@ pub fn op_fs_ftruncate_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_file_truncate_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1849,7 +1894,7 @@ pub fn op_fs_futime_sync(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_fs_futime_async(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -2005,7 +2050,7 @@ macro_rules! create_struct_writer {
           let value = self.$field as u64;
           buf[offset] = value as u32;
           buf[offset + 1] = (value >> 32) as u32;
-          #[allow(unused_assignments)]
+          #[allow(unused_assignments, reason = "last assignment is unused")]
           {
             offset += 2;
           }
@@ -2013,8 +2058,7 @@ macro_rules! create_struct_writer {
       }
     }
 
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
+    #[derive(ToV8)]
     pub struct $name {
       $($field: $type),*
     }

@@ -1,0 +1,19 @@
+impl<'a> ::deno_core::convert::ToV8<'a> for Tuple {
+    type Error = ::deno_error::JsErrorBox;
+    fn to_v8<'i>(
+        self,
+        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
+    ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error> {
+        let Self { 0: __0, 1: __1 } = self;
+        let __value = &[
+            ::deno_core::serde_v8::to_v8(__scope, __0)
+                .map_err(::deno_error::JsErrorBox::from_err)?,
+            ::deno_core::convert::ToV8::to_v8(__1, __scope)
+                .map_err(::deno_error::JsErrorBox::from_err)?,
+        ];
+        Ok::<
+            _,
+            ::deno_error::JsErrorBox,
+        >(::deno_core::v8::Array::new_with_elements(__scope, __value).into())
+    }
+}

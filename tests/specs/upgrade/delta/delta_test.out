@@ -1,0 +1,8 @@
+=== Test 1: Adjacent version triggers delta path ===
+PASS: [WILDCARD]
+
+=== Test 2: Non-adjacent version skips delta ===
+PASS: delta skipped for non-adjacent version
+
+=== Test 3: --no-delta flag disables delta ===
+PASS: --no-delta disables delta path

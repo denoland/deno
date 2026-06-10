@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_config::deno_json::NodeModulesLinkerMode;
 use deno_error::JsErrorBox;
 use deno_npm::NpmSystemInfo;
 use deno_npm::registry::NpmPackageInfo;
@@ -23,6 +24,7 @@ mod flag;
 mod fs;
 mod global;
 pub mod graph;
+mod hoisted;
 pub mod initializer;
 pub mod lifecycle_scripts;
 mod local;
@@ -32,7 +34,6 @@ pub mod resolution;
 mod rt;
 
 pub use bin_entries::BinEntries;
-pub use bin_entries::BinEntriesError;
 use deno_terminal::colors;
 use deno_unsync::sync::AtomicFlag;
 use deno_unsync::sync::TaskQueue;
@@ -48,13 +49,17 @@ pub use self::factory::NpmInstallerFactory;
 pub use self::factory::NpmInstallerFactoryOptions;
 pub use self::factory::NpmInstallerFactorySys;
 use self::global::GlobalNpmPackageInstaller;
+use self::hoisted::HoistedNpmPackageInstaller;
 use self::initializer::NpmResolutionInitializer;
 use self::lifecycle_scripts::LifecycleScriptsExecutor;
 use self::local::LocalNpmInstallSys;
 use self::local::LocalNpmPackageInstaller;
+use self::local::LocalNpmPackageInstallerOptions;
 pub use self::local::LocalSetupCache;
+pub use self::local::node_modules_package_actual_dir_to_name;
+pub use self::local::remove_unused_node_modules_symlinks;
+use self::package_json::EnsurePackageJsonDepsError;
 use self::package_json::NpmInstallDepsProvider;
-use self::package_json::PackageJsonDepValueParseWithLocationError;
 use self::resolution::AddPkgReqsResult;
 use self::resolution::NpmResolutionInstaller;
 use self::resolution::NpmResolutionInstallerSys;
@@ -99,9 +104,7 @@ pub trait InstallProgressReporter:
 
   fn deprecated_message(&self, message: String);
 }
-pub trait Reporter:
-  std::fmt::Debug + Send + Sync + 'static + dyn_clone::DynClone
-{
+pub trait Reporter: std::fmt::Debug + Send + Sync + Clone + 'static {
   type Guard;
   type ClearGuard;
 
@@ -146,8 +149,10 @@ pub trait NpmInstallerSys:
 }
 
 pub struct NpmInstallerOptions<TSys: NpmInstallerSys> {
+  pub clean_on_install: bool,
   pub maybe_lockfile: Option<Arc<LockfileLock<TSys>>>,
   pub maybe_node_modules_path: Option<PathBuf>,
+  pub linker_mode: NodeModulesLinkerMode,
   pub lifecycle_scripts: Arc<LifecycleScriptsConfig>,
   pub system_info: NpmSystemInfo,
   pub workspace_link_packages: WorkspaceNpmLinkPackagesRc,
@@ -173,7 +178,7 @@ pub struct NpmInstaller<
 impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   NpmInstaller<TNpmCacheHttpClient, TSys>
 {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new<TReporter: Reporter>(
     install_reporter: Option<Arc<dyn InstallReporter>>,
     lifecycle_scripts_executor: Arc<dyn LifecycleScriptsExecutor>,
@@ -194,24 +199,53 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
   ) -> Self {
     let fs_installer: Arc<dyn NpmPackageFsInstaller> =
       match options.maybe_node_modules_path {
-        Some(node_modules_folder) => Arc::new(LocalNpmPackageInstaller::new(
-          lifecycle_scripts_executor,
-          npm_cache.clone(),
-          Arc::new(NpmPackageExtraInfoProvider::new(
+        Some(node_modules_folder) => {
+          let extra_info_provider = Arc::new(NpmPackageExtraInfoProvider::new(
             npm_registry_info_provider,
             Arc::new(sys.clone()),
             options.workspace_link_packages,
-          )),
-          npm_install_deps_provider.clone(),
-          dyn_clone::clone(reporter),
-          npm_resolution.clone(),
-          sys,
-          tarball_cache,
-          node_modules_folder,
-          options.lifecycle_scripts,
-          options.system_info,
-          install_reporter,
-        )),
+          ));
+          match options.linker_mode {
+            NodeModulesLinkerMode::Hoisted => {
+              Arc::new(HoistedNpmPackageInstaller::new(
+                lifecycle_scripts_executor,
+                npm_cache.clone(),
+                extra_info_provider,
+                npm_install_deps_provider.clone(),
+                (*reporter).clone(),
+                npm_resolution.clone(),
+                sys,
+                tarball_cache,
+                LocalNpmPackageInstallerOptions {
+                  clean_on_install: options.clean_on_install,
+                  lifecycle_scripts: options.lifecycle_scripts,
+                  system_info: options.system_info,
+                  reporter: install_reporter,
+                  node_modules_folder,
+                },
+              ))
+            }
+            NodeModulesLinkerMode::Isolated => {
+              Arc::new(LocalNpmPackageInstaller::new(
+                lifecycle_scripts_executor,
+                npm_cache.clone(),
+                extra_info_provider,
+                npm_install_deps_provider.clone(),
+                (*reporter).clone(),
+                npm_resolution.clone(),
+                sys,
+                tarball_cache,
+                LocalNpmPackageInstallerOptions {
+                  clean_on_install: options.clean_on_install,
+                  lifecycle_scripts: options.lifecycle_scripts,
+                  system_info: options.system_info,
+                  reporter: install_reporter,
+                  node_modules_folder,
+                },
+              ))
+            }
+          }
+        }
         None => Arc::new(GlobalNpmPackageInstaller::new(
           npm_cache,
           tarball_cache,
@@ -330,6 +364,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
     };
 
     if uncached.is_empty() {
+      // Even when every requested package is already cached we still need to
+      // sync the node_modules directory for a full install (e.g. after
+      // `deno remove`), otherwise stale packages are left on disk. Only do this
+      // for `All` caching so the hot path of running a script (which caches a
+      // specific subset) keeps short-circuiting.
+      if matches!(caching, PackageCaching::All) {
+        return self.fs_installer.cache_packages(caching).await;
+      }
       return Ok(());
     }
     let result = self.fs_installer.cache_packages(caching).await;
@@ -340,32 +382,6 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
       }
     }
     result
-  }
-
-  pub async fn inject_synthetic_types_node_package(
-    &self,
-    cache_strategy: graph::NpmCachingStrategy,
-  ) -> Result<(), JsErrorBox> {
-    self.npm_resolution_initializer.ensure_initialized().await?;
-
-    // don't inject this if it's already been added
-    let reqs = &[PackageReq::from_str("@types/node").unwrap()];
-    if self
-      .npm_resolution
-      .any_top_level_package(|id| id.nv.name == "@types/node")
-    {
-      // ensure it's cached though
-      if let Some(caching) = cache_strategy.as_package_caching(reqs) {
-        self.maybe_cache_packages(reqs, caching).await?;
-      }
-      return Ok(());
-    }
-
-    self
-      .add_package_reqs(reqs, PackageCaching::Only(reqs.into()))
-      .await?;
-
-    Ok(())
   }
 
   pub async fn cache_package_info(
@@ -392,24 +408,18 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
   pub fn ensure_no_pkg_json_dep_errors(
     &self,
-  ) -> Result<(), Box<PackageJsonDepValueParseWithLocationError>> {
+  ) -> Result<(), EnsurePackageJsonDepsError> {
     for err in self.npm_install_deps_provider.pkg_json_dep_errors() {
       match err.source.as_kind() {
-        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq(_)
-        | deno_package_json::PackageJsonDepValueParseErrorKind::JsrVersionReq(
-          _,
-        ) => {
-          return Err(Box::new(err.clone()));
-        }
-        deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
-          scheme,
-        } if scheme == "jsr" => {
-          return Err(Box::new(err.clone()));
+        deno_package_json::PackageJsonDepValueParseErrorKind::JsrRequiresScope { .. } |
+        deno_package_json::PackageJsonDepValueParseErrorKind::VersionReq { .. } => {
+          return Err(Box::new(err.clone()).into());
         }
         deno_package_json::PackageJsonDepValueParseErrorKind::Unsupported {
           ..
-        } => {
-          // only warn for this one
+        }
+        | deno_package_json::PackageJsonDepValueParseErrorKind::EmptyName => {
+          // only warn for these
           log::warn!(
             "{} {}\n    at {}",
             colors::yellow("Warning"),
@@ -418,6 +428,16 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
           )
         }
       }
+    }
+    // A `workspace:<range>` whose member version doesn't satisfy the range is
+    // always a hard error, the same way `deno run` rejects it during
+    // resolution.
+    if let Some(err) = self
+      .npm_install_deps_provider
+      .workspace_member_version_errors()
+      .first()
+    {
+      return Err(Box::new(err.clone()).into());
     }
     Ok(())
   }
@@ -442,12 +462,14 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmInstallerSys>
 
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)
-    if pkg_json_remote_pkgs.iter().all(|pkg| {
-      self
-        .npm_resolution
-        .resolve_pkg_id_from_pkg_req(&pkg.req)
-        .is_ok()
-    }) {
+    if !self.npm_resolution.is_pending()
+      && pkg_json_remote_pkgs.iter().all(|pkg| {
+        self
+          .npm_resolution
+          .resolve_pkg_id_from_pkg_req(&pkg.req)
+          .is_ok()
+      })
+    {
       log::debug!(
         "All package.json deps resolvable. Skipping top level install."
       );

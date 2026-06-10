@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -75,7 +75,9 @@ use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_permissions::CheckSpecifierKind;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use eszip::EszipV2;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
@@ -106,6 +108,7 @@ use crate::sys::CliSys;
 use crate::type_checker::CheckError;
 use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
+use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -151,10 +154,11 @@ pub struct PrepareModuleLoadOptions<'a> {
   /// for when you want to defer doing this until later (ex. get the
   /// graph back, reload some specifiers in it, then do graph validation).
   pub skip_graph_roots_validation: bool,
+  pub file_content_overrides: HashMap<ModuleSpecifier, Arc<[u8]>>,
 }
 
 impl ModuleLoadPreparer {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     options: Arc<CliOptions>,
     lockfile: Option<Arc<CliLockfile>>,
@@ -189,12 +193,16 @@ impl ModuleLoadPreparer {
       ext_overwrite,
       allow_unknown_media_types,
       skip_graph_roots_validation,
+      file_content_overrides,
     } = options;
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
     let mut loader = self
       .module_graph_builder
       .create_graph_loader_with_permissions(permissions);
+    if !file_content_overrides.is_empty() {
+      loader.set_file_content_overrides(file_content_overrides);
+    }
     if let Some(ext) = ext_overwrite {
       let maybe_content_type = match ext.as_str() {
         "ts" => Some("text/typescript"),
@@ -220,12 +228,12 @@ impl ModuleLoadPreparer {
 
     self
       .module_graph_builder
-      .build_graph_with_npm_resolution(
+      .build_graph_roots_with_npm_resolution(
         graph,
+        roots.to_vec(),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          request: BuildGraphRequest::Roots(roots.to_vec()),
-          loader: Some(&mut loader),
+          loader: Some(&loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
@@ -282,17 +290,17 @@ impl ModuleLoadPreparer {
     );
     let _pb_clear_guard = self.progress_bar.deferred_keep_initialize_alive();
 
-    let mut loader = self
+    let loader = self
       .module_graph_builder
       .create_graph_loader_with_permissions(permissions);
     self
       .module_graph_builder
       .build_graph_with_npm_resolution(
         graph,
+        BuildGraphRequest::Reload(specifiers),
         BuildGraphWithNpmOptions {
           is_dynamic,
-          request: BuildGraphRequest::Reload(specifiers),
-          loader: Some(&mut loader),
+          loader: Some(&loader),
           npm_caching: self.options.default_npm_caching_strategy(),
         },
       )
@@ -346,6 +354,7 @@ struct SharedCliModuleLoaderState {
   sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
   maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
+  watcher_communicator: Option<Arc<WatcherCommunicator>>,
 }
 
 struct InFlightModuleLoadsTracker {
@@ -388,7 +397,7 @@ pub struct CliModuleLoaderFactory {
 }
 
 impl CliModuleLoaderFactory {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     options: &CliOptions,
     cjs_tracker: Arc<CliCjsTracker>,
@@ -409,6 +418,7 @@ impl CliModuleLoaderFactory {
     resolver: Arc<CliResolver>,
     sys: CliSys,
     maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
+    watcher_communicator: Option<Arc<WatcherCommunicator>>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -442,6 +452,7 @@ impl CliModuleLoaderFactory {
           cleanup_task_handle: Arc::new(Mutex::new(None)),
         },
         maybe_eszip_loader,
+        watcher_communicator,
       }),
     }
   }
@@ -454,6 +465,8 @@ impl CliModuleLoaderFactory {
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
+    let hook_registry =
+      deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry::default();
     let module_loader =
       Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
         lib,
@@ -463,7 +476,24 @@ impl CliModuleLoaderFactory {
         graph_container: graph_container.clone(),
         shared: self.shared.clone(),
         loaded_files: Default::default(),
+        hook_registry: hook_registry.clone(),
       })));
+    {
+      let inner = module_loader.0.clone();
+      hook_registry.set_default_resolve(Rc::new(
+        move |specifier: &str, referrer: &str| {
+          inner
+            .inner_resolve(
+              specifier,
+              referrer,
+              deno_core::ResolutionKind::Import,
+              false,
+            )
+            .map(|s| s.to_string())
+            .map_err(|e| JsErrorBox::generic(e.to_string()))
+        },
+      ));
+    }
     let node_require_loader = Rc::new(CliNodeRequireLoader {
       cjs_tracker: self.shared.cjs_tracker.clone(),
       emitter: self.shared.emitter.clone(),
@@ -480,6 +510,7 @@ impl CliModuleLoaderFactory {
     CreateModuleLoaderResult {
       module_loader,
       node_require_loader,
+      hook_registry: Some(hook_registry),
     }
   }
 }
@@ -533,6 +564,7 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   shared: Arc<SharedCliModuleLoaderState>,
   graph_container: TGraphContainer,
   loaded_files: RefCell<HashSet<ModuleSpecifier>>,
+  hook_registry: deno_runtime::deno_node::ops::module_hooks::LoaderHookRegistry,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -570,15 +602,98 @@ pub enum CliModuleLoaderError {
   ResolveReferrer(#[from] ResolveReferrerError),
 }
 
+/// Applies `deno_resolver::patch_react_cves` to JavaScript module source,
+/// handling both string and (valid UTF-8) byte representations without
+/// allocating when no patch is needed.
+fn patch_react_cves_source(
+  specifier: &ModuleSpecifier,
+  code: ModuleSourceCode,
+) -> ModuleSourceCode {
+  // Borrow the source as `&str` and compute the patched output (if any) in an
+  // inner scope so the borrow of `code` ends before we move it below.
+  let patched: Option<String> = {
+    let src = match &code {
+      ModuleSourceCode::String(s) => s.as_str(),
+      ModuleSourceCode::Bytes(b) => match std::str::from_utf8(b.as_bytes()) {
+        Ok(s) => s,
+        // Non UTF-8 source can't contain the ASCII patterns we look for.
+        Err(_) => return code,
+      },
+    };
+    match deno_resolver::patch_react_cves(
+      specifier.as_str(),
+      Cow::Borrowed(src),
+    ) {
+      Cow::Borrowed(_) => None,
+      Cow::Owned(s) => Some(s),
+    }
+  };
+  match patched {
+    Some(s) => ModuleSourceCode::String(s.into()),
+    None => code,
+  }
+}
+
 impl<TGraphContainer: ModuleGraphContainer>
   CliModuleLoaderInner<TGraphContainer>
 {
+  /// Best-effort prepare a specifier through the module graph when ESM
+  /// hooks are active. Used both for the initial load preparation and for
+  /// redirects introduced by a load hook calling `nextLoad(newUrl)`.
+  /// Failures are intentionally swallowed: a user hook may resolve to a
+  /// virtual URL the graph builder cannot fetch, in which case the load
+  /// is serviced entirely by hooks.
+  async fn prepare_hooked_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+    is_dynamic_import: bool,
+  ) {
+    let permissions = if is_dynamic_import {
+      &self.permissions
+    } else {
+      &self.parent_permissions
+    };
+    let is_dynamic = is_dynamic_import || self.is_worker;
+    let mut update_permit = self.graph_container.acquire_update_permit().await;
+    let graph = update_permit.graph_mut();
+    let _ = self
+      .shared
+      .module_load_preparer
+      .prepare_module_load(
+        graph,
+        std::slice::from_ref(specifier),
+        PrepareModuleLoadOptions {
+          is_dynamic,
+          lib: self.lib,
+          permissions: permissions.clone(),
+          ext_overwrite: None,
+          allow_unknown_media_types: false,
+          skip_graph_roots_validation: true,
+          file_content_overrides: HashMap::new(),
+        },
+      )
+      .await;
+    graph.prune_types();
+    update_permit.commit();
+  }
+
   async fn load_inner(
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: &RequestedModuleType,
   ) -> Result<ModuleSource, ModuleLoaderError> {
+    if specifier.path().ends_with(".node") {
+      return Err(JsErrorBox::type_error(format!(
+        "Cannot import native Node.js addon \"{specifier}\" via ESM. \
+         Native `.node` addons can only be loaded through `require()`. \
+         Use `createRequire()` from `node:module`, e.g.:\n  \
+         import {{ createRequire }} from \"node:module\";\n  \
+         const require = createRequire(import.meta.url);\n  \
+         const addon = require(\"./addon.node\");"
+      )));
+    }
+
     let code_source = self
       .load_code_source(specifier, maybe_referrer, requested_module_type)
       .await
@@ -593,6 +708,17 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else {
       // v8 is slower when source maps are present, so we strip them
       code_without_source_map(code_source.code)
+    };
+
+    // Apply load-time security mitigations for known React Server Components
+    // CVEs to JavaScript source. Opt in via `DENO_PATCH_REACT_CVE`. See
+    // `deno_resolver::patch_react_cves`.
+    let code = if code_source.module_type == ModuleType::JavaScript
+      && deno_resolver::is_react_cve_patch_enabled(&self.shared.sys)
+    {
+      patch_react_cves_source(specifier, code)
+    } else {
+      code
     };
 
     let code_cache = if code_source.module_type == ModuleType::JavaScript {
@@ -732,11 +858,16 @@ impl<TGraphContainer: ModuleGraphContainer>
       .file_fetcher
       .fetch_with_options(
         specifier,
+        // Always check against this worker's own permissions, never the
+        // broader `parent_permissions`. Dynamic `import()` of a text/bytes
+        // asset (`with { type: "text" | "bytes" }`) returns the file's raw
+        // contents to the caller and therefore requires read access; routing
+        // it through `parent_permissions` would let a worker created with
+        // restricted permissions read files its parent can but it cannot.
+        // For statically analyzable imports `check_specifier` skips the read
+        // check entirely, so the chosen container does not matter there.
         FetchPermissionsOptionRef::Restricted(
-          match check_specifier_kind {
-            CheckSpecifierKind::Static => &self.permissions,
-            CheckSpecifierKind::Dynamic => &self.parent_permissions,
-          },
+          &self.permissions,
           check_specifier_kind,
         ),
         FetchOptions {
@@ -752,14 +883,22 @@ impl<TGraphContainer: ModuleGraphContainer>
       )
       .await?;
 
+    let module_type = match requested_module_type {
+      RequestedModuleType::Text => ModuleType::Text,
+      RequestedModuleType::Bytes => ModuleType::Bytes,
+      RequestedModuleType::None => {
+        match file.resolve_media_type_and_charset().0 {
+          MediaType::Wasm => ModuleType::Wasm,
+          _ => ModuleType::JavaScript,
+        }
+      }
+      t => unreachable!("{t}"),
+    };
+
     Ok(ModuleCodeStringSource {
       code: ModuleSourceCode::Bytes(file.source.into()),
       found_url: file.url,
-      module_type: match requested_module_type {
-        RequestedModuleType::Text => ModuleType::Text,
-        RequestedModuleType::Bytes => ModuleType::Bytes,
-        _ => unreachable!(),
-      },
+      module_type,
     })
   }
 
@@ -864,7 +1003,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       .and_then(|metadata| metadata.modified().ok())
   }
 
-  #[allow(clippy::result_large_err)]
+  #[allow(clippy::result_large_err, reason = "TODO: investigate")]
   fn resolve_referrer(
     &self,
     referrer: &str,
@@ -884,12 +1023,15 @@ impl<TGraphContainer: ModuleGraphContainer>
       deno_path_util::resolve_path(referrer, &self.shared.initial_cwd)?
     } else {
       // this cwd check is slow, so try to avoid it
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "ok, actually needs the current cwd"
+      )]
       let cwd = std::env::current_dir().map_err(UnableToGetCwdError)?;
       deno_path_util::resolve_path(referrer, &cwd)?
     })
   }
 
-  #[allow(clippy::result_large_err)]
   fn inner_resolve(
     &self,
     raw_specifier: &str,
@@ -980,8 +1122,58 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     specifier: &str,
     referrer: &str,
     kind: deno_core::ResolutionKind,
-  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
+  ) -> deno_core::ModuleResolveResponse {
     self.0.inner_resolve(specifier, referrer, kind, false)
+  }
+
+  fn resolve_with_scope(
+    &self,
+    scope: &mut deno_core::v8::PinScope,
+    specifier: &str,
+    referrer: &str,
+    kind: deno_core::ResolutionKind,
+  ) -> deno_core::ModuleResolveResponse {
+    // CJS modules generated by Deno import `node:module` internally. Node does
+    // not expose that implementation detail to resolve hooks, so only bypass
+    // hooks for CJS referrers. User ESM imports of `node:module` still go
+    // through hooks.
+    if specifier == "node:module"
+      && let Ok(referrer) = ModuleSpecifier::parse(referrer)
+      && self.0.shared.cjs_tracker.get_referrer_kind(&referrer)
+        == ResolutionMode::Require
+    {
+      return self
+        .0
+        .inner_resolve(specifier, referrer.as_str(), kind, false);
+    }
+    if specifier == "node:module"
+      && let Ok(referrer) = ModuleSpecifier::parse(referrer)
+    {
+      let media_type = MediaType::from_specifier(&referrer);
+      if self
+        .0
+        .shared
+        .cjs_tracker
+        .is_maybe_cjs(&referrer, media_type)
+        .unwrap_or(false)
+      {
+        return self
+          .0
+          .inner_resolve(specifier, referrer.as_str(), kind, false);
+      }
+    }
+    if let Some(url) =
+      self.0.hook_registry.resolve(scope, specifier, referrer)?
+    {
+      return ModuleSpecifier::parse(&url).map_err(JsErrorBox::from_err);
+    }
+    self.0.inner_resolve(specifier, referrer, kind, false)
+  }
+
+  fn pump_event_loop_during_load(&self) -> bool {
+    // Load hooks respond through the async bridge, so the event loop must be
+    // pumped during the recursive load or the load deadlocks.
+    self.0.hook_registry.load_active.get()
   }
 
   fn import_meta_resolve(
@@ -1026,6 +1218,98 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     let specifier = specifier.clone();
     let maybe_referrer = maybe_referrer.cloned();
+
+    // When load hooks are active, delegate to JS hooks first.
+    // The hook function itself is synchronous, but this load path has no V8
+    // scope. The async bridge lets the JS event loop run the hook; blocking
+    // here waiting for JS would deadlock the same runtime.
+    // Skip the hook bridge for CJS modules — they go through the
+    // default loader which invokes the sync load hook chain
+    // (executeLoadHookChain) in Module._load. Going through both
+    // the ESM bridge AND the CJS path would call hooks twice.
+    if self.0.hook_registry.load_active.get()
+      && !options.is_synchronous
+      && !{
+        let media_type = deno_media_type::MediaType::from_specifier(&specifier);
+        self
+          .0
+          .shared
+          .cjs_tracker
+          .is_maybe_cjs(&specifier, media_type)
+          .unwrap_or(false)
+      }
+    {
+      let receiver = self.0.hook_registry.push_load(specifier.to_string());
+      return deno_core::ModuleLoadResponse::Async(
+        async move {
+          let hook_result = match receiver.await {
+            Ok(r) => r,
+            Err(_) => {
+              return Err(JsErrorBox::generic("module load hook cancelled"));
+            }
+          };
+          match hook_result {
+            Ok((Some(source), _format, _effective_url)) => {
+              Ok(deno_core::ModuleSource::new(
+                deno_core::ModuleType::JavaScript,
+                deno_core::ModuleSourceCode::String(source.into()),
+                &specifier,
+                None,
+              ))
+            }
+            Ok((None, Some(format), _effective_url))
+              if format == "builtin" && specifier.scheme() == "node" =>
+            {
+              Ok(deno_core::ModuleSource::new(
+                deno_core::ModuleType::JavaScript,
+                deno_core::ModuleSourceCode::String("".to_string().into()),
+                &specifier,
+                None,
+              ))
+            }
+            Ok((None, _, effective_url)) => {
+              // Fallthrough: hooks didn't intercept. If the user's load hook
+              // chain delegated via `nextLoad(newUrl)`, fetch source from
+              // that URL but keep the module's identity at the original
+              // specifier (matches Node's hook semantics).
+              let fetch_specifier = effective_url
+                .as_deref()
+                .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
+                .filter(|u| u != &specifier);
+              if let Some(redirect) = fetch_specifier.as_ref() {
+                // The redirect target wasn't seen by the initial graph
+                // preparation pass; prepare it now so load_inner can find
+                // it in the graph.
+                inner
+                  .prepare_hooked_specifier(redirect, options.is_dynamic_import)
+                  .await;
+              }
+              let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
+              let source = inner
+                .load_inner(
+                  load_url,
+                  maybe_referrer.as_ref().map(|r| &r.specifier),
+                  &options.requested_module_type,
+                )
+                .await?;
+              if fetch_specifier.is_some() {
+                Ok(deno_core::ModuleSource::new(
+                  source.module_type,
+                  source.code,
+                  &specifier,
+                  source.code_cache,
+                ))
+              } else {
+                Ok(source)
+              }
+            }
+            Err(err) => Err(JsErrorBox::generic(err)),
+          }
+        }
+        .boxed_local(),
+      );
+    }
+
     deno_core::ModuleLoadResponse::Async(
       async move {
         inner
@@ -1063,10 +1347,15 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     )
   }
 
+  fn should_load_synthetic_esm(&self, specifier: &str) -> bool {
+    self.0.hook_registry.load_active.get() && specifier.starts_with("node:")
+  }
+
   fn prepare_load(
     &self,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
+    maybe_code: Option<String>,
     options: ModuleLoadOptions,
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     // always call this first unconditionally because it will be
@@ -1077,7 +1366,38 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       options.requested_module_type,
       RequestedModuleType::Text | RequestedModuleType::Bytes
     ) {
+      // Text/Bytes imports skip graph preparation, so the file watcher's
+      // graph reporter never sees them. For dynamic imports, register the
+      // file directly with the watcher so editing it triggers a reload.
+      // (Static text/bytes imports are picked up by the initial graph
+      // build via deno_graph's asset/text edge analysis.)
+      if options.is_dynamic_import
+        && let Some(watcher_communicator) =
+          self.0.shared.watcher_communicator.as_ref()
+        && specifier.scheme() == "file"
+        && let Ok(file_path) = specifier.to_file_path()
+      {
+        let _ = watcher_communicator.watch_paths(vec![file_path]);
+      }
       return Box::pin(deno_core::futures::future::ready(Ok(())));
+    }
+
+    // When ESM hooks are active, attempt graph preparation best-effort.
+    // A user hook may have resolved this specifier to a virtual URL the
+    // graph builder cannot fetch; in that case the load itself will be
+    // serviced entirely by hooks, so failure here is fine and must not
+    // abort the load.
+    if self.0.hook_registry.load_active.get() {
+      self.0.shared.has_js_execution_started_flag.raise();
+      let specifier = specifier.clone();
+      let inner = self.0.clone();
+      let is_dynamic_import = options.is_dynamic_import;
+      return Box::pin(async move {
+        inner
+          .prepare_hooked_specifier(&specifier, is_dynamic_import)
+          .await;
+        Ok(())
+      });
     }
 
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
@@ -1092,8 +1412,9 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
 
     let specifier = specifier.clone();
     let inner = self.0.clone();
+    let is_synchronous = options.is_synchronous;
 
-    async move {
+    let future = async move {
       let graph_container = &inner.graph_container;
       let module_load_preparer = &inner.shared.module_load_preparer;
       let permissions = if options.is_dynamic_import {
@@ -1135,6 +1456,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let is_dynamic = options.is_dynamic_import || inner.is_worker; // consider workers as dynamic for permissions
       let lib = inner.lib;
       let mut update_permit = graph_container.acquire_update_permit().await;
+      let file_overrides = maybe_code
+        .map(|code| {
+          HashMap::from([(specifier.clone(), Arc::from(code.into_bytes()))])
+        })
+        .unwrap_or_default();
       let specifiers = &[specifier];
       {
         let graph = update_permit.graph_mut();
@@ -1149,6 +1475,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
               ext_overwrite: None,
               allow_unknown_media_types: false,
               skip_graph_roots_validation: is_dynamic,
+              file_content_overrides: file_overrides,
             },
           )
           .await
@@ -1177,8 +1504,16 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       }
 
       Ok(())
+    };
+
+    // when is_synchronous is true, the caller is only polling the future
+    // without a tokio runtime, so we need to run it in a new runtime
+    if is_synchronous {
+      let result = run_future_in_new_runtime(future);
+      Box::pin(std::future::ready(result))
+    } else {
+      Box::pin(future)
     }
-    .boxed_local()
   }
 
   fn finish_load(&self) {
@@ -1246,6 +1581,25 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     }
 
     None
+  }
+
+  // todo(dsherret): this method is actually only to determine whether
+  // to show the filename in the stack traces so we should rename it
+  // to something more clear that reflects that (since we skip checking
+  // this for non-npm packages)
+  fn source_map_source_exists(&self, source_url: &str) -> Option<bool> {
+    let specifier = resolve_url(source_url).ok()?;
+
+    // some npm packages rely on the file existing or not to end up in
+    // the stack trace, so for backwards compat reasons only check this
+    // for npm packages because we don't want the perf hit otherwise
+    if self.0.shared.in_npm_pkg_checker.in_npm_package(&specifier)
+      && let Ok(path) = deno_path_util::url_to_file_path(&specifier)
+    {
+      return Some(path.is_file());
+    }
+
+    Some(true)
   }
 
   fn get_source_mapped_source_line(
@@ -1445,6 +1799,16 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
   }
 
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<bool, PackageJsonLoadError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self
+      .cjs_tracker
+      .is_maybe_cjs_from_require(specifier, media_type)
+  }
+
   fn resolve_require_node_module_paths(&self, from: &Path) -> Vec<String> {
     let is_global_resolver_and_from_in_global_cache = self
       .npm_resolver
@@ -1458,6 +1822,20 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     } else {
       deno_runtime::deno_node::default_resolve_require_node_module_paths(from)
     }
+  }
+
+  fn resolve_package_folder_from_name(
+    &self,
+    package_name: &str,
+  ) -> Option<PathBuf> {
+    // Only meaningful in global-cache mode: when a local node_modules
+    // directory exists, byonm-style walking handles the lookup.
+    let managed = self
+      .npm_resolver
+      .as_managed()
+      .filter(|r| r.root_node_modules_path().is_none())?;
+    let req = PackageReq::from_str(package_name).ok()?;
+    managed.resolve_pkg_folder_from_deno_module_req(&req).ok()
   }
 }
 
@@ -1542,6 +1920,35 @@ impl EszipModuleLoader {
       ))),
     }
   }
+}
+
+/// Runs the future to completion in a new tokio runtime.
+///
+/// This is used for synchronous module loading (require ESM) where deno_core is blocking
+/// the main thread and polling the future. In this case, tasks in the current runtime
+/// aren't being processed, so we can get around this by creating a new runtime.
+fn run_future_in_new_runtime<F, R>(future: F) -> R
+where
+  F: Future<Output = R> + 'static,
+  R: Send + 'static,
+{
+  // SAFETY: few points here...
+  // 1. The future is moved entirely to the new thread before any execution
+  // 2. The future executes exclusively on that single thread
+  // 3. The original thread waits (joins) until completion
+  // 4. No concurrent access to the future's captured state occurs
+  // 5. HOWEVER: Any thread local state won't work properly... which could
+  //    possibly cause issues.
+  let masked = unsafe { deno_core::unsync::MaskFutureAsSend::new(future) };
+
+  std::thread::scope(|s| {
+    s.spawn(move || {
+      let rt = create_basic_runtime();
+      rt.block_on(masked).into_inner()
+    })
+    .join()
+    .unwrap()
+  })
 }
 
 #[cfg(test)]

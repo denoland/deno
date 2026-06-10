@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -125,6 +125,41 @@ impl EditorHelper {
   }
 
   fn evaluate_expression(&self, expr: &str) -> Option<cdp::EvaluateResponse> {
+    // First evaluate with side-effect protection so that pressing <Tab> never
+    // runs code with observable side effects.
+    let response = self.post_evaluate(expr, true)?;
+
+    // Some globals are exposed through lazily-loaded getters whose bytecode
+    // calls native ops the first time they are accessed (e.g. `navigator.gpu`
+    // loads the webgpu extension). V8's side-effect analysis is static, so it
+    // flags such getters as side-effecting and aborts the evaluation, leaving
+    // completion with nothing to inspect. Completion expressions are always
+    // plain member-access chains -- the expression extractor treats `(`, `[`,
+    // etc. as word boundaries -- so the only possible side effect here is a
+    // property getter. Retry once without the protection so completion still
+    // works for these. See https://github.com/denoland/deno/issues/24917
+    let response = if response
+      .exception_details
+      .as_ref()
+      .is_some_and(is_side_effect_error)
+    {
+      self.post_evaluate(expr, false)?
+    } else {
+      response
+    };
+
+    if response.exception_details.is_some() {
+      None
+    } else {
+      Some(response)
+    }
+  }
+
+  fn post_evaluate(
+    &self,
+    expr: &str,
+    throw_on_side_effect: bool,
+  ) -> Option<cdp::EvaluateResponse> {
     let evaluate_response = self
       .sync_sender
       .post_message(
@@ -139,7 +174,7 @@ impl EditorHelper {
           generate_preview: None,
           user_gesture: None,
           await_promise: None,
-          throw_on_side_effect: Some(true),
+          throw_on_side_effect: Some(throw_on_side_effect),
           timeout: Some(200),
           disable_breaks: None,
           repl_mode: None,
@@ -148,15 +183,19 @@ impl EditorHelper {
         }),
       )
       .ok()?;
-    let evaluate_response: cdp::EvaluateResponse =
-      serde_json::from_value(evaluate_response).ok()?;
-
-    if evaluate_response.exception_details.is_some() {
-      None
-    } else {
-      Some(evaluate_response)
-    }
+    serde_json::from_value(evaluate_response).ok()
   }
+}
+
+/// V8 aborts evaluations that look side-effecting (under `throwOnSideEffect`)
+/// with `EvalError: Possible side-effect in debug-evaluate`.
+fn is_side_effect_error(details: &cdp::ExceptionDetails) -> bool {
+  details.text.contains("side-effect")
+    || details
+      .exception
+      .as_ref()
+      .and_then(|ex| ex.description.as_deref())
+      .is_some_and(|desc| desc.contains("side-effect"))
 }
 
 fn is_word_boundary(c: char) -> bool {
@@ -169,15 +208,8 @@ fn is_word_boundary(c: char) -> bool {
 
 fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
   let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
-  let end = line[cursor_pos..]
-    .rfind(is_word_boundary)
-    .map(|i| cursor_pos + i)
-    .unwrap_or(cursor_pos);
-
-  let word = &line[start..end];
-  let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
-
-  (word.strip_suffix(is_word_boundary).unwrap_or(word)) as _
+  let word = &line[start..cursor_pos];
+  word.strip_prefix(is_word_boundary).unwrap_or(word)
 }
 
 impl Completer for EditorHelper {
@@ -189,15 +221,6 @@ impl Completer for EditorHelper {
     pos: usize,
     _ctx: &Context<'_>,
   ) -> Result<(usize, Vec<String>), ReadlineError> {
-    let lsp_completions = self.sync_sender.lsp_completions(line, pos);
-    if !lsp_completions.is_empty() {
-      // assumes all lsp completions have the same start position
-      return Ok((
-        lsp_completions[0].range.start,
-        lsp_completions.into_iter().map(|c| c.new_text).collect(),
-      ));
-    }
-
     let expr = get_expr_from_line_at_pos(line, pos);
 
     // check if the expression is in the form `obj.prop`
@@ -336,7 +359,12 @@ impl Highlighter for EditorHelper {
     }
   }
 
-  fn highlight_char(&self, line: &str, _: usize, _: bool) -> bool {
+  fn highlight_char(
+    &self,
+    line: &str,
+    _: usize,
+    _: rustyline::highlight::CmdKind,
+  ) -> bool {
     !line.is_empty()
   }
 

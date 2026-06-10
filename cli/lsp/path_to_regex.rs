@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // The logic of this module is heavily influenced by path-to-regexp at:
 // https://github.com/pillarjs/path-to-regexp/ which is licensed as follows:
@@ -33,9 +33,9 @@ use std::iter::Peekable;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use fancy_regex::Regex as FancyRegex;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use regex::RegexBuilder;
 
 static ESCAPE_STRING_RE: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"([.+*?=^!:${}()\[\]|/\\])");
@@ -366,6 +366,108 @@ pub struct PathToRegexOptions {
   token_to_regex_options: Option<TokensToRegexOptions>,
 }
 
+#[cfg(test)]
+#[derive(Debug)]
+struct RouteMatch<'a> {
+  path: &'a str,
+  start: usize,
+  end: usize,
+}
+
+#[cfg(test)]
+impl<'a> RouteMatch<'a> {
+  fn as_str(&self) -> &'a str {
+    &self.path[self.start..self.end]
+  }
+
+  fn start(&self) -> usize {
+    self.start
+  }
+
+  fn end(&self) -> usize {
+    self.end
+  }
+}
+
+#[derive(Debug, Clone)]
+struct Boundary {
+  allowed: String,
+  allow_end: bool,
+  trim_trailing: String,
+}
+
+impl Boundary {
+  fn checked_end(&self, path: &str, end: usize) -> Option<usize> {
+    if self.matches(path, end) {
+      return Some(end);
+    }
+    let (trimmed_end, c) = path[..end].char_indices().next_back()?;
+    if self.trim_trailing.contains(c) && self.matches(path, trimmed_end) {
+      Some(trimmed_end)
+    } else {
+      None
+    }
+  }
+
+  fn matches(&self, path: &str, end: usize) -> bool {
+    if end == path.len() {
+      return self.allow_end;
+    }
+    path[end..]
+      .chars()
+      .next()
+      .is_some_and(|c| self.allowed.contains(c))
+  }
+}
+
+#[derive(Debug)]
+pub struct RouteRegex {
+  re: Regex,
+  boundary: Option<Boundary>,
+}
+
+impl RouteRegex {
+  fn new(
+    pattern: &str,
+    sensitive: bool,
+    boundary: Option<Boundary>,
+  ) -> Result<Self, AnyError> {
+    Ok(Self {
+      re: RegexBuilder::new(pattern)
+        .case_insensitive(!sensitive)
+        .build()?,
+      boundary,
+    })
+  }
+
+  #[cfg(test)]
+  fn find<'a>(&self, path: &'a str) -> Option<RouteMatch<'a>> {
+    self.re.find_iter(path).find_map(|m| {
+      self
+        .boundary
+        .as_ref()
+        .map_or(Some(m.end()), |boundary| {
+          boundary.checked_end(path, m.end())
+        })
+        .map(|end| RouteMatch {
+          path,
+          start: m.start(),
+          end,
+        })
+    })
+  }
+
+  fn captures<'a>(&self, path: &'a str) -> Option<regex::Captures<'a>> {
+    self.re.captures_iter(path).find(|caps| {
+      let m = caps.get(0).unwrap();
+      self
+        .boundary
+        .as_ref()
+        .is_none_or(|boundary| boundary.checked_end(path, m.end()).is_some())
+    })
+  }
+}
+
 fn try_consume(
   token_type: &TokenType,
   it: &mut Peekable<impl Iterator<Item = LexToken>>,
@@ -536,7 +638,7 @@ pub fn parse(
 pub fn tokens_to_regex(
   tokens: &[Token],
   maybe_options: Option<TokensToRegexOptions>,
-) -> Result<(FancyRegex, Option<Vec<Key>>), AnyError> {
+) -> Result<(RouteRegex, Option<Vec<Key>>), AnyError> {
   let TokensToRegexOptions {
     sensitive,
     strict,
@@ -546,9 +648,9 @@ pub fn tokens_to_regex(
     ends_with,
   } = maybe_options.unwrap_or_default();
   let has_ends_with = ends_with.is_some();
-  let ends_with = format!(r"[{}]|$", ends_with.unwrap_or_default());
-  let delimiter =
-    format!(r"[{}]", delimiter.unwrap_or_else(|| "/#?".to_string()));
+  let ends_with = ends_with.unwrap_or_default();
+  let delimiter = delimiter.unwrap_or_else(|| "/#?".to_string());
+  let delimiter_pattern = format!(r"[{}]", escape_string(&delimiter));
   let mut route = if start {
     "^".to_string()
   } else {
@@ -619,13 +721,22 @@ pub fn tokens_to_regex(
 
   if end {
     if !strict {
-      write!(route, r"{delimiter}?").unwrap();
+      write!(route, r"{delimiter_pattern}?").unwrap();
     }
-    if has_ends_with {
-      write!(route, r"(?={ends_with})").unwrap();
+    let boundary = if has_ends_with {
+      Some(Boundary {
+        allowed: ends_with,
+        allow_end: true,
+        trim_trailing: delimiter,
+      })
     } else {
       route.push('$');
-    }
+      None
+    };
+    let re = RouteRegex::new(&route, sensitive, boundary)?;
+    let maybe_keys = if keys.is_empty() { None } else { Some(keys) };
+
+    Ok((re, maybe_keys))
   } else {
     let is_end_delimited = match maybe_end_token {
       Some(Token::String(mut s)) => {
@@ -639,20 +750,22 @@ pub fn tokens_to_regex(
       None => true,
     };
 
-    if !strict {
-      write!(route, r"(?:{delimiter}(?={ends_with}))?").unwrap();
-    }
+    let mut allowed = delimiter;
+    allowed.push_str(&ends_with);
+    let boundary = if !is_end_delimited {
+      Some(Boundary {
+        allowed,
+        allow_end: true,
+        trim_trailing: String::new(),
+      })
+    } else {
+      None
+    };
+    let re = RouteRegex::new(&route, sensitive, boundary)?;
+    let maybe_keys = if keys.is_empty() { None } else { Some(keys) };
 
-    if !is_end_delimited {
-      write!(route, r"(?={delimiter}|{ends_with})").unwrap();
-    }
+    Ok((re, maybe_keys))
   }
-
-  let flags = if sensitive { "" } else { "(?i)" };
-  let re = FancyRegex::new(&format!("{flags}{route}"))?;
-  let maybe_keys = if keys.is_empty() { None } else { Some(keys) };
-
-  Ok((re, maybe_keys))
 }
 
 /// Convert a path-like string into a regular expression, returning the regular
@@ -660,7 +773,7 @@ pub fn tokens_to_regex(
 pub fn string_to_regex(
   path: &str,
   maybe_options: Option<PathToRegexOptions>,
-) -> Result<(FancyRegex, Option<Vec<Key>>), AnyError> {
+) -> Result<(RouteRegex, Option<Vec<Key>>), AnyError> {
   let (parse_options, tokens_to_regex_options) =
     if let Some(options) = maybe_options {
       (options.parse_options, options.token_to_regex_options)
@@ -807,7 +920,7 @@ impl MatchResult {
 #[derive(Debug)]
 pub struct Matcher {
   maybe_keys: Option<Vec<Key>>,
-  re: FancyRegex,
+  re: RouteRegex,
 }
 
 impl Matcher {
@@ -821,7 +934,7 @@ impl Matcher {
 
   /// Match a string path, optionally returning the match result.
   pub fn matches(&self, path: &str) -> Option<MatchResult> {
-    let caps = self.re.captures(path).ok()??;
+    let caps = self.re.captures(path)?;
     let mut params = HashMap::new();
     if let Some(keys) = &self.maybe_keys {
       for (i, key) in keys.iter().enumerate() {
@@ -868,11 +981,7 @@ mod tests {
     let (re, _) = result.unwrap();
     for (fixture, expected) in fixtures {
       let result = re.find(fixture);
-      assert!(
-        result.is_ok(),
-        "Find failure for path \"{path}\" and fixture \"{fixture}\""
-      );
-      let actual = result.unwrap();
+      let actual = result;
       if let Some((text, start, end)) = *expected {
         assert!(
           actual.is_some(),
@@ -993,6 +1102,36 @@ mod tests {
         }),
       }),
       &[("/TEST", Some(("/TEST", 0, 5))), ("/test", None)],
+    );
+    test_path(
+      "/test",
+      Some(PathToRegexOptions {
+        parse_options: None,
+        token_to_regex_options: Some(TokensToRegexOptions {
+          end: false,
+          ..Default::default()
+        }),
+      }),
+      &[
+        ("/test/route", Some(("/test", 0, 5))),
+        ("/testing", None),
+        ("/test", Some(("/test", 0, 5))),
+      ],
+    );
+    test_path(
+      "/test",
+      Some(PathToRegexOptions {
+        parse_options: None,
+        token_to_regex_options: Some(TokensToRegexOptions {
+          ends_with: Some("#?".to_string()),
+          ..Default::default()
+        }),
+      }),
+      &[
+        ("/test#section", Some(("/test", 0, 5))),
+        ("/test?query", Some(("/test", 0, 5))),
+        ("/test/route", None),
+      ],
     );
   }
 }

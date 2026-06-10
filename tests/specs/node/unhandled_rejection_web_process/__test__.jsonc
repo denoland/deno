@@ -1,0 +1,4 @@
+{
+  "args": "run -A unhandled_rejection_web_process.ts",
+  "output": "unhandled_rejection_web_process.ts.out"
+}

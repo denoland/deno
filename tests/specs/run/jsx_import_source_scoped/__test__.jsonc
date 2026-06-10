@@ -1,0 +1,12 @@
+{
+  "tests": {
+    "jsx_import_source_import_map_scoped": {
+      "args": "run --allow-import --reload --import-map import-map-scoped.json --no-lock --config deno-jsx-import-map.jsonc jsx_import_source_no_pragma.tsx",
+      "output": "jsx.out"
+    },
+    "jsx_import_source_import_map_scoped_dev": {
+      "args": "run --allow-import --reload --import-map import-map-scoped.json --no-lock --config deno-jsxdev-import-map.jsonc jsx_import_source_no_pragma.tsx",
+      "output": "jsxdev.out"
+    }
+  }
+}

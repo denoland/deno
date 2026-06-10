@@ -1,9 +1,4 @@
 Check [WILDCARD]main.js
-TS2580 [ERROR]: Cannot find name 'module'.
-module.exports.add = function (a, b) {
-~~~~~~
-    at file:///[WILDLINE]
-
 TS7006 [ERROR]: Parameter 'a' implicitly has an 'any' type.
 module.exports.add = function (a, b) {
                                ^
@@ -14,6 +9,6 @@ module.exports.add = function (a, b) {
                                   ^
     at file:///[WILDLINE]
 
-Found 3 errors.
+Found 2 errors.
 
 error: Type checking failed.

@@ -1,15 +1,19 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import imported1 from "ext:deno_node/internal/errors.ts";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const imported1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   isNodeStream,
   isWebStream,
   kControllerErrorFunction,
-} from "ext:deno_node/internal/streams/utils.js";
-import eos from "ext:deno_node/internal/streams/end-of-stream.js";
-import * as _mod2 from "ext:deno_node/internal/events/abort_listener.mjs";
+} = core.loadExtScript("ext:deno_node/internal/streams/utils.js");
+const eos =
+  core.loadExtScript("ext:deno_node/internal/streams/end-of-stream.js").default;
+const _mod2 = core.loadExtScript(
+  "ext:deno_node/internal/events/abort_listener.mjs",
+);
 
 const {
   AbortError,
@@ -17,8 +21,6 @@ const {
     ERR_INVALID_ARG_TYPE,
   },
 } = imported1;
-
-"use strict";
 
 const {
   SymbolDispose,
@@ -50,8 +52,6 @@ const addAbortSignal = function addAbortSignal(signal, stream) {
   return addAbortSignalNoValidate(signal, stream);
 };
 
-export { addAbortSignal };
-
 const addAbortSignalNoValidate = function (signal, stream) {
   if (typeof signal !== "object" || !("aborted" in signal)) {
     return stream;
@@ -75,9 +75,9 @@ const addAbortSignalNoValidate = function (signal, stream) {
   return stream;
 };
 
-export { addAbortSignalNoValidate };
-
-export default {
+return {
   addAbortSignal,
   addAbortSignalNoValidate,
+  default: { addAbortSignal, addAbortSignalNoValidate },
 };
+})();

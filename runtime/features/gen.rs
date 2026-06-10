@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// Don't modify this file manually.
 ///
@@ -154,7 +154,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
   UnstableFeatureDefinition {
     name: "raw-imports",
     flag_name: "unstable-raw-imports",
-    help_text: "Enable unstable 'bytes' and 'text' imports.",
+    help_text: "Enable unstable 'bytes' imports.",
     show_in_help: true,
     id: 18,
     kind: UnstableFeatureKind::Runtime,
@@ -179,7 +179,7 @@ pub static UNSTABLE_FEATURES: &[UnstableFeatureDefinition] = &[
     name: "temporal",
     flag_name: "unstable-temporal",
     help_text: "Enable unstable Temporal API",
-    show_in_help: true,
+    show_in_help: false,
     id: 21,
     kind: UnstableFeatureKind::Runtime,
   },

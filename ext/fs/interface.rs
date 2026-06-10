@@ -1,31 +1,38 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use core::str;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::FromV8;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_io::fs::FsStatFs;
 use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
 use deno_permissions::CheckedPathBuf;
 use serde::Deserialize;
-use serde::Serialize;
 
-#[derive(Deserialize, Default, Debug, Clone, Copy)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
+#[derive(FromV8, Default, Debug, Clone, Copy)]
 pub struct OpenOptions {
+  #[from_v8(default)]
   pub read: bool,
+  #[from_v8(default)]
   pub write: bool,
+  #[from_v8(default)]
   pub create: bool,
+  #[from_v8(default)]
   pub truncate: bool,
+  #[from_v8(default)]
   pub append: bool,
+  #[from_v8(default)]
   pub create_new: bool,
+  #[from_v8(default)]
   pub custom_flags: Option<i32>,
+  #[from_v8(default)]
   pub mode: Option<u32>,
 }
 
@@ -79,7 +86,8 @@ impl From<i32> for OpenOptions {
     }
     if (flags & libc::O_EXCL) == libc::O_EXCL {
       options.create_new = true;
-      options.write = true;
+      // Note: O_EXCL only controls create_new semantics. The write access
+      // mode is determined separately by O_WRONLY or O_RDWR flags.
       flags &= !libc::O_EXCL;
     }
     if (flags & libc::O_RDWR) == libc::O_RDWR {
@@ -125,8 +133,7 @@ pub enum FsFileType {
 }
 
 /// WARNING: This is part of the public JS Deno API.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, deno_core::ToV8)]
 pub struct FsDirEntry {
   pub name: String,
   pub is_file: bool,
@@ -134,7 +141,7 @@ pub struct FsDirEntry {
   pub is_symlink: bool,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type FileSystemRc = deno_maybe_sync::MaybeArc<dyn FileSystem>;
 
 #[async_trait::async_trait(?Send)]
@@ -240,6 +247,14 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat>;
   async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat>;
 
+  fn statfs_sync(&self, path: &CheckedPath, bigint: bool)
+  -> FsResult<FsStatFs>;
+  async fn statfs_async(
+    &self,
+    path: CheckedPathBuf,
+    bigint: bool,
+  ) -> FsResult<FsStatFs>;
+
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf>;
   async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf>;
 
@@ -259,6 +274,9 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     oldpath: CheckedPathBuf,
     newpath: CheckedPathBuf,
   ) -> FsResult<()>;
+
+  fn rmdir_sync(&self, path: &CheckedPath) -> FsResult<()>;
+  async fn rmdir_async(&self, path: CheckedPathBuf) -> FsResult<()>;
 
   fn link_sync(
     &self,
@@ -345,7 +363,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &'a self,
     path: CheckedPathBuf,
     options: OpenOptions,
-    data: Vec<u8>,
+    data: Box<[u8]>,
   ) -> FsResult<()> {
     let file = self.open_async(path, options).await?;
     if let Some(mode) = options.mode {

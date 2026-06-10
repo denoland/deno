@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -8,11 +8,11 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 
 use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
-use ipnetwork::IpNetwork;
-use ipnetwork::Ipv4Network;
-use ipnetwork::Ipv6Network;
-use serde::Serialize;
+use ipnet::IpNet;
+use ipnet::Ipv4Net;
+use ipnet::Ipv6Net;
 
 pub struct BlockListResource {
   blocklist: RefCell<BlockList>,
@@ -27,7 +27,7 @@ unsafe impl deno_core::GarbageCollected for BlockListResource {
   }
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 struct SocketAddressSerialization(String, String);
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -36,7 +36,7 @@ pub enum BlocklistError {
   #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),
   #[error("{0}")]
-  IpNetwork(#[from] ipnetwork::IpNetworkError),
+  PrefixLen(#[from] ipnet::PrefixLenError),
   #[error("Invalid address")]
   InvalidAddress,
   #[error("IP version mismatch between start and end addresses")]
@@ -73,7 +73,6 @@ pub fn op_socket_address_parse(
 }
 
 #[op2]
-#[serde]
 pub fn op_socket_address_get_serialization(
   state: &mut OpState,
 ) -> SocketAddressSerialization {
@@ -125,7 +124,7 @@ pub fn op_blocklist_check(
 }
 
 struct BlockList {
-  rules: HashSet<IpNetwork>,
+  rules: HashSet<IpNet>,
 }
 
 impl BlockList {
@@ -145,26 +144,26 @@ impl BlockList {
         let ipv4_prefix = prefix.unwrap_or(32);
         self
           .rules
-          .insert(IpNetwork::V4(Ipv4Network::new(addr, ipv4_prefix)?));
+          .insert(IpNet::V4(Ipv4Net::new(addr, ipv4_prefix)?));
 
         let ipv6_mapped = addr.to_ipv6_mapped();
         let ipv6_prefix = 96 + ipv4_prefix; // IPv4-mapped IPv6 address prefix starts at 96
         self
           .rules
-          .insert(IpNetwork::V6(Ipv6Network::new(ipv6_mapped, ipv6_prefix)?));
+          .insert(IpNet::V6(Ipv6Net::new(ipv6_mapped, ipv6_prefix)?));
       }
       IpAddr::V6(addr) => {
         if let Some(ipv4_mapped) = addr.to_ipv4_mapped() {
           let ipv4_prefix = prefix.map(|v| v.clamp(96, 128) - 96).unwrap_or(32);
           self
             .rules
-            .insert(IpNetwork::V4(Ipv4Network::new(ipv4_mapped, ipv4_prefix)?));
+            .insert(IpNet::V4(Ipv4Net::new(ipv4_mapped, ipv4_prefix)?));
         }
 
         let ipv6_prefix = prefix.unwrap_or(128);
         self
           .rules
-          .insert(IpNetwork::V6(Ipv6Network::new(addr, ipv6_prefix)?));
+          .insert(IpNet::V6(Ipv6Net::new(addr, ipv6_prefix)?));
       }
     };
     Ok(())
@@ -233,7 +232,7 @@ impl BlockList {
     let family = r#type.to_lowercase();
     if family == "ipv4" && addr.is_ipv4() || family == "ipv6" && addr.is_ipv6()
     {
-      Ok(self.rules.iter().any(|net| net.contains(addr)))
+      Ok(self.rules.iter().any(|net| net.contains(&addr)))
     } else {
       Err(BlocklistError::InvalidAddress)
     }

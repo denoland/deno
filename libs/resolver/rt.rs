@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #[cfg(not(target_arch = "wasm32"))]
 use deno_unsync::JoinHandle;

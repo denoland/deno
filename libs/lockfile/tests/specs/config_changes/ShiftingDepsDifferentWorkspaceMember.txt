@@ -1,0 +1,110 @@
+# original
+{
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "jsr:@dsherret/dax": "jsr:@dsherret/dax@0.0.1",
+      "jsr:@dsherret/which@0.0.1": "jsr:@dsherret/which@0.0.1"
+    },
+    "jsr": {
+      "@dsherret/dax@0.0.1": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+        "dependencies": [
+          "jsr:@dsherret/which@0.0.1"
+        ]
+      },
+      "@dsherret/which@0.0.1": {
+        "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+      }
+    }
+  },
+  "remote": {
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@dsherret/dax"
+    ]
+  }
+}
+
+# move to workspace member
+{
+  "dependencies": [],
+  "members": {
+    "package_a": {
+      "dependencies": [
+        "jsr:@dsherret/dax"
+      ]
+    }
+  }
+}
+
+# output
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@dsherret/dax@*": "0.0.1",
+    "jsr:@dsherret/which@0.0.1": "0.0.1"
+  },
+  "jsr": {
+    "@dsherret/dax@0.0.1": {
+      "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+      "dependencies": [
+        "jsr:@dsherret/which"
+      ]
+    },
+    "@dsherret/which@0.0.1": {
+      "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+    }
+  },
+  "workspace": {
+    "members": {
+      "package_a": {
+        "dependencies": [
+          "jsr:@dsherret/dax@*"
+        ]
+      }
+    }
+  }
+}
+
+# change to be in a different package
+{
+  "dependencies": [],
+  "members": {
+    "package_b": {
+      "dependencies": [
+        "jsr:@dsherret/dax"
+      ]
+    }
+  }
+}
+
+# output
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@dsherret/dax@*": "0.0.1",
+    "jsr:@dsherret/which@0.0.1": "0.0.1"
+  },
+  "jsr": {
+    "@dsherret/dax@0.0.1": {
+      "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045",
+      "dependencies": [
+        "jsr:@dsherret/which"
+      ]
+    },
+    "@dsherret/which@0.0.1": {
+      "integrity": "09154a97e18c4d6a1692e3b3c8a3b1ec2934f00b7c1caf7491d762d963ada045"
+    }
+  },
+  "workspace": {
+    "members": {
+      "package_b": {
+        "dependencies": [
+          "jsr:@dsherret/dax@*"
+        ]
+      }
+    }
+  }
+}

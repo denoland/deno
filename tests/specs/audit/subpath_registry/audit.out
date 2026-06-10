@@ -1,0 +1,2 @@
+[# This output is different than the expected output for the other audit related tests to guarantee that the subpath route was correctly hit ]
+No known vulnerabilities found

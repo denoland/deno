@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,11 +24,17 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file-inl.h
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_node_fs_seek_sync, op_node_fs_write_sync } = core.ops;
 
-import { assert } from "ext:deno_node/_util/asserts.ts";
-import * as io from "ext:deno_io/12_io.js";
-import { op_fs_seek_sync } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
+let assert: typeof nodeAssert.default;
+const lazyLoadAssert = () => {
+  return core.createLazyLoader<typeof nodeAssert>(
+    "node:assert",
+  )().default;
+};
+
 const {
   ErrorPrototype,
   ObjectPrototypeIsPrototypeOf,
@@ -50,7 +56,7 @@ const {
  * @param position if integer, position to write at in the file. if null, write from the current position
  * @param context context object for passing error number
  */
-export function writeBuffer(
+function writeBuffer(
   fd: number,
   buffer: Uint8Array,
   offset: number,
@@ -58,6 +64,7 @@ export function writeBuffer(
   position: number | null,
   ctx: { errno?: number },
 ) {
+  assert ??= lazyLoadAssert();
   assert(offset >= 0, "offset should be greater or equal to 0");
   assert(
     offset + length <= TypedArrayPrototypeGetByteLength(buffer),
@@ -70,13 +77,13 @@ export function writeBuffer(
   );
 
   if (position) {
-    op_fs_seek_sync(fd, position, io.SeekMode.Current);
+    op_node_fs_seek_sync(fd, position, 1); // SeekMode.Current = 1
   }
 
   const subarray = TypedArrayPrototypeSubarray(buffer, offset, offset + length);
 
   try {
-    return io.writeSync(fd, subarray);
+    return op_node_fs_write_sync(fd, subarray, -1);
   } catch (e) {
     ctx.errno = extractOsErrorNumberFromErrorMessage(e);
     return 0;
@@ -94,3 +101,8 @@ function extractOsErrorNumberFromErrorMessage(e: unknown): number {
 
   return 255; // Unknown error
 }
+
+return {
+  writeBuffer,
+};
+})();

@@ -1,0 +1,105 @@
+# original
+{
+  "version": "5",
+  "specifiers": {
+    "npm:package@*": "1.0.0"
+  },
+  "npm": {
+    "package-a@1.0.0": {
+      "integrity": "sha512-dbDtVdEAncKctzrVZ+Nr7kHpHkv+0JDJb2MjjpBaj8bFeCkePU9rHfMklmhuLFnpeq/EJZk2IhStY6NzqgjOkg=="
+    },
+    "package-optional-peer@1.0.0": {
+      "integrity": "sha512-dbDtVdEAncKctzrVZ+Nr7kHpHkv+0JDJb2MjjpBaj8bFeCkePU9rHfMklmhuLFnpeq/EJZk2IhStY6NzqgjOkg=="
+    },
+    "package-optional@1.0.0": {
+      "integrity": "sha512-dbDtVdEAncKctzrVZ+Nr7kHpHkv+0JDJb2MjjpBaj8bFeCkePU9rHfMklmhuLFnpeq/EJZk2IhStY6NzqgjOkg=="
+    },
+    "package@1.0.0": {
+      "integrity": "sha512-dbDtVdEAncKctzrVZ+Nr7kHpHkv+0JDJb2MjjpBaj8bFeCkePU9rHfMklmhuLFnpeq/EJZk2IhStY6NzqgjOkg==",
+      "dependencies": [
+        "package-a",
+        "package-optional-peer"
+      ],
+      "optionalDependencies": [
+        "package-optional"
+      ],
+      "optionalPeers": [
+        "package-optional-peer"
+      ]
+    }
+  }
+}
+
+# set with the same structure should maintain
+{
+  "links": {
+    "npm:package@1.0.0": {
+      "dependencies": [
+        "npm:package-a@*"
+      ],
+      "optionalDependencies": [
+        "npm:package-optional@1.0.0"
+      ],
+      "peerDependencies": [
+        "npm:package-optional-peer@1"
+      ],
+      "peerDependenciesMeta": {
+        "npm:package-optional-peer": {
+          "optional": true
+        }
+      }
+    }
+  }
+}
+
+# output
+{
+  "version": "5",
+  "specifiers": {
+    "npm:package@*": "1.0.0"
+  },
+  "npm": {
+    "package-a@1.0.0": {
+      "integrity": "sha512-dbDtVdEAncKctzrVZ+Nr7kHpHkv+0JDJb2MjjpBaj8bFeCkePU9rHfMklmhuLFnpeq/EJZk2IhStY6NzqgjOkg=="
+    },
+    "package-optional-peer@1.0.0": {
+      "integrity": "sha512-dbDtVdEAncKctzrVZ+Nr7kHpHkv+0JDJb2MjjpBaj8bFeCkePU9rHfMklmhuLFnpeq/EJZk2IhStY6NzqgjOkg=="
+    },
+    "package-optional@1.0.0": {
+      "integrity": "sha512-dbDtVdEAncKctzrVZ+Nr7kHpHkv+0JDJb2MjjpBaj8bFeCkePU9rHfMklmhuLFnpeq/EJZk2IhStY6NzqgjOkg=="
+    },
+    "package@1.0.0": {
+      "integrity": "sha512-dbDtVdEAncKctzrVZ+Nr7kHpHkv+0JDJb2MjjpBaj8bFeCkePU9rHfMklmhuLFnpeq/EJZk2IhStY6NzqgjOkg==",
+      "dependencies": [
+        "package-a",
+        "package-optional-peer"
+      ],
+      "optionalDependencies": [
+        "package-optional"
+      ],
+      "optionalPeers": [
+        "package-optional-peer"
+      ]
+    }
+  },
+  "workspace": {
+    "links": {
+      "npm:package@1.0.0": {
+        "dependencies": [
+          "npm:package-a@*"
+        ],
+        "optionalDependencies": [
+          "npm:package-optional@1.0.0"
+        ],
+        "peerDependencies": [
+          "npm:package-optional-peer@1"
+        ],
+        "peerDependenciesMeta": {
+          "npm:package-optional-peer": {
+            "optional": true
+          }
+        }
+      }
+    }
+  }
+}

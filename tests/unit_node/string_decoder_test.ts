@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals } from "@std/assert";
 import { Buffer } from "node:buffer";
 import { StringDecoder } from "node:string_decoder";
@@ -35,6 +35,29 @@ Deno.test({
     assertEquals(decoder.write(Buffer.from("F1", "hex")), "");
     assertEquals(decoder.write(Buffer.from("41F2", "hex")), "\ufffdA");
     assertEquals(decoder.end(), "\ufffd");
+  },
+});
+
+Deno.test({
+  name:
+    "String decoder replaces invalid utf8 bytes the same way as Node (#34930)",
+  fn() {
+    // A lone continuation byte (0x92) in the middle of an otherwise complete
+    // buffer must be replaced with a single U+FFFD, matching Node.js. The
+    // trailing bytes are ASCII so no bytes are buffered for the next write.
+    const decoder = new StringDecoder("utf8");
+    const buffer = Buffer.from([0x47, 0x40, 0x01, 0x92, 0x01, 0x01]);
+    assertEquals(
+      decoder.write(buffer),
+      "G@\x01\ufffd\x01\x01",
+    );
+    assertEquals(decoder.end(), "");
+
+    // Buffer.prototype.toString('utf8') must produce the same replacement.
+    assertEquals(
+      buffer.toString("utf8"),
+      "G@\x01\ufffd\x01\x01",
+    );
   },
 });
 

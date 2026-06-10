@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-var
 
@@ -152,7 +152,7 @@ declare function createImageBitmap(
  *   console.error("Failed to create ImageBitmap:", error);
  * }
  * ```
- * @see https://developer.mozilla.org/en-US/docs/Web/API/createImageBitmap/createImageBitmap
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/createImageBitmap
  */
 declare function createImageBitmap(
   image: ImageBitmapSource,
@@ -191,4 +191,143 @@ interface ImageBitmap {
 declare var ImageBitmap: {
   prototype: ImageBitmap;
   new (): ImageBitmap;
+};
+
+/** @category Canvas */
+type OffscreenRenderingContextId = "bitmaprenderer" | "webgpu";
+/** @category Canvas */
+type OffscreenRenderingContext = ImageBitmapRenderingContext | GPUCanvasContext;
+
+/** @category Canvas */
+interface ImageEncodeOptions {
+  quality?: number;
+  type?: string;
+}
+
+/** @category Canvas */
+type GPUCanvasAlphaMode = "opaque" | "premultiplied";
+
+/** @category Canvas */
+type GPUPresentMode =
+  | "auto-vsync"
+  | "auto-no-vsync"
+  | "fifo"
+  | "fifo-relaxed"
+  | "immediate"
+  | "mailbox";
+
+/** @category Canvas */
+interface GPUCanvasConfiguration {
+  device: GPUDevice;
+  format: GPUTextureFormat;
+  usage?: GPUTextureUsageFlags;
+  viewFormats?: GPUTextureFormat[];
+  colorSpace?: "srgb" | "display-p3";
+  alphaMode?: GPUCanvasAlphaMode;
+
+  // extended from spec
+  presentMode?: GPUPresentMode;
+}
+
+/** The rendering context that presents WebGPU-rendered images on an
+ * {@linkcode OffscreenCanvas}. Obtained from
+ * {@linkcode OffscreenCanvas.getContext} with the `"webgpu"` context id.
+ *
+ * @category Canvas */
+interface GPUCanvasContext {
+  /** The canvas that this context is bound to. */
+  readonly canvas: OffscreenCanvas;
+
+  configure(configuration: GPUCanvasConfiguration): undefined;
+  getConfiguration(): GPUCanvasConfiguration | null;
+  unconfigure(): undefined;
+  getCurrentTexture(): GPUTexture;
+}
+/** The constructor object for {@linkcode GPUCanvasContext}.
+ *
+ * A `GPUCanvasContext` is obtained from
+ * {@linkcode OffscreenCanvas.getContext} with the `"webgpu"` context id rather
+ * than constructed directly.
+ *
+ * @category Canvas */
+declare var GPUCanvasContext: {
+  prototype: GPUCanvasContext;
+};
+
+/** A rendering context that displays the contents of an {@linkcode ImageBitmap}
+ * on an {@linkcode OffscreenCanvas}. Obtained from
+ * {@linkcode OffscreenCanvas.getContext} with the `"bitmaprenderer"` context
+ * id.
+ *
+ * @category Canvas */
+interface ImageBitmapRenderingContext {
+  /** The canvas that this context is bound to. */
+  readonly canvas: OffscreenCanvas;
+
+  transferFromImageBitmap(bitmap: ImageBitmap | null): undefined;
+}
+/** The constructor object for {@linkcode ImageBitmapRenderingContext}.
+ *
+ * An `ImageBitmapRenderingContext` is obtained from
+ * {@linkcode OffscreenCanvas.getContext} with the `"bitmaprenderer"` context id
+ * rather than constructed directly.
+ *
+ * @category Canvas */
+declare var ImageBitmapRenderingContext: {
+  prototype: ImageBitmapRenderingContext;
+};
+
+/** A canvas that can be rendered to off the main thread and without being
+ * attached to the DOM. It exposes drawing contexts via
+ * {@linkcode OffscreenCanvas.getContext} and can produce a {@linkcode Blob} or
+ * {@linkcode ImageBitmap} from its contents.
+ *
+ * @category Canvas
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
+ */
+interface OffscreenCanvas extends EventTarget {
+  /** The height of the canvas. */
+  height: number;
+  /** The width of the canvas. */
+  width: number;
+
+  /** Create a Blob object representing the image contained in the canvas. */
+  convertToBlob(options?: ImageEncodeOptions): Promise<Blob>;
+
+  /**
+   * Get a drawing context for the canvas.
+   * If this was previously called, it will return the same context.
+   */
+  getContext(
+    contextId: "bitmaprenderer",
+    options?: any,
+  ): ImageBitmapRenderingContext | null;
+  getContext(contextId: "webgpu", options?: any): GPUCanvasContext | null;
+  getContext(
+    contextId: OffscreenRenderingContextId,
+    options?: any,
+  ): OffscreenRenderingContext | null;
+  // Spec also defines "2d", "webgl", and "webgl2" context ids; Deno does
+  // not implement those and getContext returns null for them.
+  getContext(
+    contextId: "2d" | "webgl" | "webgl2",
+    options?: any,
+  ): null;
+
+  /**
+   * Create an ImageBitmap object representing the image contained in the canvas.
+   */
+  transferToImageBitmap(): ImageBitmap;
+}
+
+/** The constructor object for {@linkcode OffscreenCanvas}, used to create a new
+ * offscreen canvas with the given `width` and `height` that can be rendered to
+ * without being attached to the DOM.
+ *
+ * @category Canvas
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas
+ */
+declare var OffscreenCanvas: {
+  prototype: OffscreenCanvas;
+  new (width: number, height: number): OffscreenCanvas;
 };
