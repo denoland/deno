@@ -46,29 +46,42 @@ Deno.test("WebTransport", async () => {
     }
   })();
 
-  const ipv4Client = new WebTransport(
-    `https://127.0.0.1:${server.addr.port}/path`,
-    {
-      serverCertificateHashes: [{
-        algorithm: "sha-256",
-        value: certHash,
-      }],
-    },
-  );
-  await ipv4Client.ready;
-  ipv4Client.close();
+  // Connecting with a literal IP host must work for both IPv4 and IPv6. A
+  // bracketed IPv6 URL host (e.g. https://[::1]/) needs its brackets stripped
+  // before being handed to the QUIC connector. Each check uses its own endpoint
+  // bound to the matching address family, since "localhost" only resolves to
+  // one of them.
+  async function checkConnect(hostname: string) {
+    const endpoint = new Deno.QuicEndpoint({ hostname, port: 0 });
+    const listener = endpoint.listen({
+      cert,
+      key: Deno.readTextFileSync("../../../testdata/tls/localhost.key"),
+      alpnProtocols: ["h3"],
+    });
+    (async () => {
+      for await (const incoming of listener) {
+        const conn = await incoming.accept();
+        await Deno.upgradeWebTransport(conn);
+      }
+    })();
 
-  const ipv6Client = new WebTransport(
-    `https://[::1]:${server.addr.port}/path`,
-    {
-      serverCertificateHashes: [{
-        algorithm: "sha-256",
-        value: certHash,
-      }],
-    },
-  );
-  await ipv6Client.ready;
-  ipv6Client.close();
+    const host = hostname.includes(":") ? `[${hostname}]` : hostname;
+    const client = new WebTransport(
+      `https://${host}:${endpoint.addr.port}/path`,
+      {
+        serverCertificateHashes: [{
+          algorithm: "sha-256",
+          value: certHash,
+        }],
+      },
+    );
+    await client.ready;
+    client.close();
+    endpoint.close();
+  }
+
+  await checkConnect("127.0.0.1");
+  await checkConnect("::1");
 
   const client = new WebTransport(
     `https://localhost:${server.addr.port}/path`,
