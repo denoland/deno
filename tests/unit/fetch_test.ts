@@ -1405,37 +1405,36 @@ Deno.test(
   // A streamed body that produces fewer bytes than the declared Content-Length
   // should make the fetch fail loudly.
   async function fetchStreamBodyShorterThanContentLength() {
-    const addr = `127.0.0.1:${listenPort}`;
-    const listener = Deno.listen({
-      hostname: "127.0.0.1",
-      port: listenPort,
-    });
-    const serverDone = listener.accept().then(async (conn) => {
-      try {
-        await conn.readable.pipeTo(new WritableStream());
-      } catch {
-        // ignore - the connection may be reset when the body mismatch errors
-      }
-      try {
-        listener.close();
-      } catch {
-        // already closed
-      }
-    });
+    const ac = new AbortController();
+    const server = Deno.serve(
+      { port: listenPort, signal: ac.signal, onListen() {} },
+      async (req) => {
+        // Drain the body so the server doesn't respond before the client's
+        // length mismatch surfaces. The read errors when the connection is
+        // reset; swallow it.
+        try {
+          await req.arrayBuffer();
+        } catch {
+          // expected
+        }
+        return new Response("ok");
+      },
+    );
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     writer.write(new TextEncoder().encode("hello"));
     writer.close();
     await assertRejects(
       () =>
-        fetch(`http://${addr}/blah`, {
+        fetch(`http://127.0.0.1:${listenPort}/blah`, {
           method: "POST",
           headers: [["content-length", "100"]],
           body: stream.readable,
         }),
       TypeError,
     );
-    await serverDone;
+    ac.abort();
+    await server.finished;
   },
 );
 
@@ -1446,37 +1445,33 @@ Deno.test(
   // A streamed body that produces more bytes than the declared Content-Length
   // should make the fetch fail loudly.
   async function fetchStreamBodyLongerThanContentLength() {
-    const addr = `127.0.0.1:${listenPort}`;
-    const listener = Deno.listen({
-      hostname: "127.0.0.1",
-      port: listenPort,
-    });
-    const serverDone = listener.accept().then(async (conn) => {
-      try {
-        await conn.readable.pipeTo(new WritableStream());
-      } catch {
-        // ignore
-      }
-      try {
-        listener.close();
-      } catch {
-        // already closed
-      }
-    });
+    const ac = new AbortController();
+    const server = Deno.serve(
+      { port: listenPort, signal: ac.signal, onListen() {} },
+      async (req) => {
+        try {
+          await req.arrayBuffer();
+        } catch {
+          // expected
+        }
+        return new Response("ok");
+      },
+    );
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
     writer.write(new TextEncoder().encode("hello world"));
     writer.close();
     await assertRejects(
       () =>
-        fetch(`http://${addr}/blah`, {
+        fetch(`http://127.0.0.1:${listenPort}/blah`, {
           method: "POST",
           headers: [["content-length", "2"]],
           body: stream.readable,
         }),
       TypeError,
     );
-    await serverDone;
+    ac.abort();
+    await server.finished;
   },
 );
 
