@@ -507,7 +507,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         CliNpmResolver::Managed(managed) => {
           if graph.modules().any(|m| m.npm().is_some()) {
             let snapshot = managed.resolution().snapshot();
-            let snapshot = if self.cli_options.unstable_npm_lazy_caching() {
+            // When the user opts in (or via the existing unstable lazy-caching
+            // path), prune the resolution snapshot to packages reachable from
+            // npm specifiers in the graph. Otherwise embed the full snapshot
+            // so non-statically-analyzable dynamic imports keep working.
+            let snapshot = if compile_flags.exclude_unused_npm
+              || self.cli_options.unstable_npm_lazy_caching()
+            {
               let reqs = graph
                 .specifiers()
                 .filter_map(|(s, _)| {

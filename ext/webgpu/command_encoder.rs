@@ -25,7 +25,6 @@ use crate::command_buffer::GPUCommandBuffer;
 use crate::compute_pass::GPUComputePassEncoder;
 use crate::error::GPUGenericError;
 use crate::queue::GPUTexelCopyTextureInfo;
-use crate::render_pass::GPULoadOp;
 use crate::render_pass::GPURenderPassEncoder;
 use crate::webidl::GPUExtent3D;
 
@@ -104,39 +103,26 @@ impl GPUCommandEncoder {
         .collect::<Vec<_>>(),
     );
 
-    let depth_stencil_attachment = descriptor
-            .depth_stencil_attachment
-            .map(|attachment| {
-                if attachment
-                    .depth_load_op
-                    .as_ref()
-                    .is_some_and(|op| matches!(op, GPULoadOp::Clear))
-                    && attachment.depth_clear_value.is_none()
-                {
-                    return Err(JsErrorBox::type_error(
-                        r#"'depthClearValue' must be specified when 'depthLoadOp' is "clear""#,
-                    ));
-                }
-
-                Ok(wgpu_core::command::RenderPassDepthStencilAttachment {
-                    view: attachment.view.to_view_id(),
-                    depth: PassChannel {
-                        load_op: attachment
-                            .depth_load_op
-                            .map(|load_op| load_op.with_value(attachment.depth_clear_value)),
-                        store_op: attachment.depth_store_op.map(Into::into),
-                        read_only: attachment.depth_read_only,
-                    },
-                    stencil: PassChannel {
-                        load_op: attachment.stencil_load_op.map(|load_op| {
-                            load_op.with_value(Some(attachment.stencil_clear_value))
-                        }),
-                        store_op: attachment.stencil_store_op.map(Into::into),
-                        read_only: attachment.stencil_read_only,
-                    },
-                })
-            })
-            .transpose()?;
+    let depth_stencil_attachment =
+      descriptor.depth_stencil_attachment.map(|attachment| {
+        wgpu_core::command::RenderPassDepthStencilAttachment {
+          view: attachment.view.to_view_id(),
+          depth: PassChannel {
+            load_op: attachment
+              .depth_load_op
+              .map(|load_op| load_op.with_value(attachment.depth_clear_value)),
+            store_op: attachment.depth_store_op.map(Into::into),
+            read_only: attachment.depth_read_only,
+          },
+          stencil: PassChannel {
+            load_op: attachment.stencil_load_op.map(|load_op| {
+              load_op.with_value(Some(attachment.stencil_clear_value))
+            }),
+            store_op: attachment.stencil_store_op.map(Into::into),
+            read_only: attachment.stencil_read_only,
+          },
+        }
+      });
 
     let timestamp_writes =
       descriptor.timestamp_writes.map(|timestamp_writes| {

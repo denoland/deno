@@ -40,7 +40,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
+use deno_runtime::deno_web::BlobStoreTrait;
 use deno_runtime::deno_web::InMemoryBroadcastChannel;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
@@ -286,7 +286,7 @@ pub struct LibWorkerFactoryRoots {
 }
 
 struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
-  blob_store: Arc<BlobStore>,
+  blob_store: Arc<dyn BlobStoreTrait>,
   broadcast_channel: InMemoryBroadcastChannel,
   code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
   compiled_wasm_module_store: CompiledWasmModuleStore,
@@ -550,7 +550,7 @@ pub struct LibMainWorkerFactory<TSys: DenoLibSys> {
 impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
   #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
-    blob_store: Arc<BlobStore>,
+    blob_store: Arc<dyn BlobStoreTrait>,
     code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
     deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
     feature_checker: Arc<FeatureChecker>,

@@ -53,6 +53,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use indexmap::IndexSet;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolverOptions;
@@ -117,6 +118,18 @@ fn scope_has_bundler_module_resolution(
     }
   }
   false
+}
+
+/// Information about how a specifier was resolved through an import map,
+/// surfaced in hover tooltips.
+#[derive(Debug, Clone)]
+pub struct ImportMapHover {
+  /// The matched key as written in the import map.
+  pub key: String,
+  /// The value the key maps to, as written in the import map.
+  pub value: String,
+  /// The location of the import map (e.g. the `deno.json`).
+  pub base_url: Url,
 }
 
 #[derive(Debug, Clone)]
@@ -332,6 +345,114 @@ impl LspScopedResolver {
     req_ref: &JsrPackageReqReference,
   ) -> Option<ModuleSpecifier> {
     self.jsr_resolver.as_ref()?.jsr_to_resource_url(req_ref)
+  }
+
+  /// If `specifier` (as written at `referrer`) was remapped by the import map
+  /// to `code`, returns the import map entry that was responsible. Used to
+  /// surface import map resolution details in hover tooltips.
+  ///
+  /// This mirrors [`import_map::ImportMap::lookup`]: an entry is responsible for
+  /// a resolution when its address equals (literal mapping) or is a prefix of
+  /// (`/`-suffixed mapping) the resolved specifier. We additionally require that
+  /// the entry reconstructs the exact specifier that was written, so we don't
+  /// report an import map for e.g. a relative import that merely happens to land
+  /// in a mapped directory.
+  pub fn import_map_hover(
+    &self,
+    specifier: &str,
+    code: &Url,
+    referrer: &Url,
+  ) -> Option<ImportMapHover> {
+    let import_map = self.workspace_resolver.maybe_import_map()?;
+    let code_str = code.as_str();
+    for entry in import_map.entries_for_referrer(referrer) {
+      let Some(address) = entry.value else {
+        continue;
+      };
+      let address_str = address.as_str();
+      let reconstructed = if address_str == code_str {
+        entry.raw_key.to_string()
+      } else if address_str.ends_with('/') && code_str.starts_with(address_str)
+      {
+        code_str.replace(address_str, entry.raw_key)
+      } else {
+        continue;
+      };
+      if reconstructed != specifier {
+        continue;
+      }
+      let value = entry.raw_value.unwrap_or(address_str).to_string();
+      return Some(ImportMapHover {
+        key: entry.raw_key.to_string(),
+        value,
+        base_url: import_map.base_url().clone(),
+      });
+    }
+    None
+  }
+
+  pub fn configured_auto_import_roots(&self) -> Vec<ModuleSpecifier> {
+    let mut roots = IndexSet::new();
+    if let Some(import_map) = self.workspace_resolver.maybe_import_map() {
+      for entry in import_map.imports().entries().chain(
+        import_map
+          .scopes()
+          .flat_map(|scope| scope.imports.entries()),
+      ) {
+        let Some(value) = entry.value else {
+          continue;
+        };
+        match value.scheme() {
+          "jsr" => {
+            if let Ok(req_ref) = JsrPackageReqReference::from_specifier(value) {
+              roots.insert(value.clone());
+              if let Some(jsr_resolver) = &self.jsr_resolver {
+                roots.extend(jsr_resolver.auto_import_resource_urls(&req_ref));
+              }
+            }
+          }
+          "npm" => {
+            roots.insert(value.clone());
+          }
+          "file" => {
+            if entry.key.ends_with('/') && value.as_str().ends_with('/') {
+              continue;
+            }
+            if let Ok(path) = value.to_file_path()
+              && !path.is_file()
+            {
+              continue;
+            }
+            roots.insert(value.clone());
+          }
+          "http" | "https" => {
+            if entry.key.ends_with('/') && value.as_str().ends_with('/') {
+              continue;
+            }
+            roots.insert(value.clone());
+          }
+          _ => {}
+        }
+      }
+    }
+    if let Some(package_json) =
+      self.config_data.as_ref().and_then(|d| d.maybe_pkg_json())
+      && let Some(dependencies) = package_json.dependencies.as_ref()
+    {
+      for name in dependencies.keys() {
+        if let Ok(specifier) = ModuleSpecifier::parse(&format!("npm:{name}")) {
+          roots.insert(specifier);
+        }
+      }
+    }
+    roots.extend(
+      self
+        .configured_dep_resolutions
+        .deps_by_resolution
+        .keys()
+        .cloned(),
+    );
+    roots.into_iter().collect()
   }
 
   pub fn jsr_lookup_bare_specifier_for_workspace_file(
@@ -768,10 +889,10 @@ impl ConfiguredDepResolutions {
             );
           }
         }
-        if let Some(key_prefix) = entry.key.strip_suffix('/')
-          && req_ref.sub_path().is_none()
+        if req_ref.sub_path().is_none()
           && let Some(dep_package_json) = &dep_package_json
         {
+          let key_prefix = entry.key.strip_suffix('/').unwrap_or(entry.key);
           insert_export_resolutions(
             key_prefix,
             &req_ref.req().to_string(),
@@ -967,9 +1088,10 @@ impl<'a> ResolverFactory<'a> {
         link_packages.clone(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
-            NpmResolverManagedSnapshotOption::ResolveFromLockfile(
-              lockfile.clone(),
-            )
+            NpmResolverManagedSnapshotOption::ResolveFromLockfile {
+              lockfile: lockfile.clone(),
+              dedup_equivalent_peer_variants: false,
+            }
           }
           None => NpmResolverManagedSnapshotOption::Specified(None),
         },

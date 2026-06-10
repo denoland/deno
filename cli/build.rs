@@ -443,10 +443,8 @@ fn main() {
   {
     let mut res = winres::WindowsResource::new();
     res.set_icon("deno.ico");
-    res.set_language(winapi::um::winnt::MAKELANGID(
-      winapi::um::winnt::LANG_ENGLISH,
-      winapi::um::winnt::SUBLANG_ENGLISH_US,
-    ));
+    // 0x0409 == MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)
+    res.set_language(0x0409);
     res.compile().unwrap();
   }
 }

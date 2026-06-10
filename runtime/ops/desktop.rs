@@ -790,7 +790,7 @@ impl BrowserWindow {
       // lifetime.
       let surface_id = unsafe {
         instance
-          .instance_create_surface(display_handle, win_handle, None)
+          .instance_create_surface(Some(display_handle), win_handle, None)
           .map_err(|e| {
             deno_error::JsErrorBox::generic(format!(
               "failed to create wgpu surface: {e}"

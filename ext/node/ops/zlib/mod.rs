@@ -50,7 +50,6 @@ struct ZlibInner {
   write_in_progress: bool,
   pending_close: bool,
   gzib_id_bytes_read: u32,
-  result_buffer: Option<*mut u32>,
   callback: Option<v8::Global<v8::Function>>,
   strm: StreamWrapper,
 }
@@ -380,7 +379,6 @@ impl Zlib {
     #[smi] level: i32,
     #[smi] mem_level: i32,
     #[smi] strategy: i32,
-    #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
     #[buffer] dictionary: Option<&[u8]>,
   ) -> Result<i32, ZlibError> {
@@ -418,7 +416,6 @@ impl Zlib {
 
     zlib.dictionary = dictionary.map(|buf| buf.to_vec());
 
-    zlib.result_buffer = Some(write_result.as_mut_ptr());
     zlib.callback = Some(callback);
 
     Ok(zlib.err)
@@ -437,6 +434,7 @@ impl Zlib {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), ZlibError> {
     let err_info = {
       let mut zlib = self.inner.borrow_mut();
@@ -446,12 +444,10 @@ impl Zlib {
       zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
       zlib.do_write(flush)?;
 
-      // SAFETY: `zlib.result_buffer` is a valid pointer to a mutable slice of u32 of length 2.
-      let result = unsafe {
-        std::slice::from_raw_parts_mut(zlib.result_buffer.unwrap(), 2)
-      };
-      result[0] = zlib.strm.avail_out;
-      result[1] = zlib.strm.avail_in;
+      if write_result.len() >= 2 {
+        write_result[0] = zlib.strm.avail_out;
+        write_result[1] = zlib.strm.avail_in;
+      }
       zlib.get_error_info()
     };
 
@@ -472,6 +468,7 @@ impl Zlib {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), ZlibError> {
     let err_info = {
       let mut zlib = self.inner.borrow_mut();
@@ -481,12 +478,10 @@ impl Zlib {
       zlib.start_write(input, in_off, in_len, out, out_off, out_len, flush)?;
       zlib.do_write(flush)?;
 
-      // SAFETY: `zlib.result_buffer` is a valid pointer to a mutable slice of u32 of length 2.
-      let result = unsafe {
-        std::slice::from_raw_parts_mut(zlib.result_buffer.unwrap(), 2)
-      };
-      result[0] = zlib.strm.avail_out;
-      result[1] = zlib.strm.avail_in;
+      if write_result.len() >= 2 {
+        write_result[0] = zlib.strm.avail_out;
+        write_result[1] = zlib.strm.avail_in;
+      }
       zlib.get_error_info()
     };
 
@@ -565,7 +560,6 @@ pub fn op_zlib_close_if_pending(
 
 struct BrotliEncoderCtx {
   inst: BrotliEncoderStateStruct<StandardAlloc>,
-  write_result: *mut u32,
   callback: v8::Global<v8::Function>,
 }
 
@@ -606,13 +600,8 @@ impl BrotliEncoder {
   fn init(
     &self,
     #[buffer] params: &[u32],
-    #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
   ) -> bool {
-    if write_result.len() < 2 {
-      return false;
-    }
-
     let inst = {
       let mut state = BrotliEncoderStateStruct::new(StandardAlloc::default());
 
@@ -628,11 +617,10 @@ impl BrotliEncoder {
       state
     };
 
-    self.ctx.borrow_mut().replace(BrotliEncoderCtx {
-      inst,
-      write_result: write_result.as_mut_ptr(),
-      callback,
-    });
+    self
+      .ctx
+      .borrow_mut()
+      .replace(BrotliEncoderCtx { inst, callback });
     true
   }
 
@@ -657,6 +645,7 @@ impl BrotliEncoder {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
     let mut avail_in = in_len as usize;
     let mut avail_out = out_len as usize;
@@ -677,10 +666,10 @@ impl BrotliEncoder {
         &mut |_, _, _, _| (),
       );
 
-      // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
-      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
-      result[0] = avail_out as u32;
-      result[1] = avail_in as u32;
+      if write_result.len() >= 2 {
+        write_result[0] = avail_out as u32;
+        write_result[1] = avail_in as u32;
+      }
 
       v8::Local::new(scope, &ctx.callback)
     };
@@ -700,6 +689,7 @@ impl BrotliEncoder {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("BrotliEncoder not initialized");
@@ -719,12 +709,12 @@ impl BrotliEncoder {
         &mut None,
         &mut |_, _, _, _| (),
       );
-
-      // SAFETY: `ctx.write_result` is a valid pointer to a mutable slice of u32 of length 2.
-      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
-      result[0] = avail_out as u32;
-      result[1] = avail_in as u32;
     };
+
+    if write_result.len() >= 2 {
+      write_result[0] = avail_out as u32;
+      write_result[1] = avail_in as u32;
+    }
 
     Ok(())
   }
@@ -740,7 +730,6 @@ impl BrotliEncoder {
 
 struct BrotliDecoderCtx {
   inst: *mut ffi::decompressor::ffi::BrotliDecoderState,
-  write_result: *mut u32,
   callback: v8::Global<v8::Function>,
 }
 
@@ -788,13 +777,8 @@ impl BrotliDecoder {
   fn init(
     &self,
     #[buffer] params: &[u32],
-    #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
   ) -> bool {
-    if write_result.len() < 2 {
-      return false;
-    }
-
     // SAFETY: creates new brotli decoder instance. `params` is a valid slice of u32 values.
     let inst = unsafe {
       let state = ffi::decompressor::ffi::BrotliDecoderCreateInstance(
@@ -813,11 +797,10 @@ impl BrotliDecoder {
       state
     };
 
-    self.ctx.borrow_mut().replace(BrotliDecoderCtx {
-      inst,
-      write_result: write_result.as_mut_ptr(),
-      callback,
-    });
+    self
+      .ctx
+      .borrow_mut()
+      .replace(BrotliDecoderCtx { inst, callback });
     true
   }
 
@@ -842,6 +825,7 @@ impl BrotliDecoder {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
     let (error_info, callback) = {
       let ctx = self.ctx.borrow();
@@ -870,10 +854,10 @@ impl BrotliDecoder {
           std::ptr::null_mut(),
         );
 
-        // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
-        let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
-        result[0] = avail_out as u32;
-        result[1] = avail_in as u32;
+        if write_result.len() >= 2 {
+          write_result[0] = avail_out as u32;
+          write_result[1] = avail_in as u32;
+        }
 
         if matches!(
           res,
@@ -930,6 +914,7 @@ impl BrotliDecoder {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
     let mut ctx = self.ctx.borrow_mut();
     let ctx = ctx.as_mut().expect("BrotliDecoder not initialized");
@@ -956,11 +941,11 @@ impl BrotliDecoder {
         &mut next_out,
         std::ptr::null_mut(),
       );
+    }
 
-      // SAFETY: `ctx.write_result` is a valid pointer to a mutable slice of u32 of length 2.
-      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
-      result[0] = avail_out as u32;
-      result[1] = avail_in as u32;
+    if write_result.len() >= 2 {
+      write_result[0] = avail_out as u32;
+      write_result[1] = avail_in as u32;
     }
 
     Ok(())
@@ -985,7 +970,6 @@ use zstd::stream::raw::Operation; // Trait for run/flush/finish methods
 
 struct ZstdCompressCtx {
   encoder: ZstdRawEncoder<'static>,
-  write_result: *mut u32,
   callback: v8::Global<v8::Function>,
 }
 
@@ -1015,14 +999,9 @@ impl ZstdCompress {
   fn init(
     &self,
     #[buffer] params: &[u32],
-    #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
     pledged_src_size: f64,
   ) -> bool {
-    if write_result.len() < 2 {
-      return false;
-    }
-
     // Default compression level is 3
     let Ok(mut encoder) = ZstdRawEncoder::new(3) else {
       return false;
@@ -1088,11 +1067,10 @@ impl ZstdCompress {
       }
     }
 
-    self.ctx.borrow_mut().replace(ZstdCompressCtx {
-      encoder,
-      write_result: write_result.as_mut_ptr(),
-      callback,
-    });
+    self
+      .ctx
+      .borrow_mut()
+      .replace(ZstdCompressCtx { encoder, callback });
     true
   }
 
@@ -1122,6 +1100,7 @@ impl ZstdCompress {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
     use zstd::stream::raw::InBuffer;
     use zstd::stream::raw::OutBuffer;
@@ -1186,11 +1165,9 @@ impl ZstdCompress {
       let avail_in = in_len as usize - in_buffer.pos();
       let avail_out = out_len as usize - out_buffer.pos();
 
-      // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
-      unsafe {
-        let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
-        result[0] = avail_out as u32;
-        result[1] = avail_in as u32;
+      if write_result.len() >= 2 {
+        write_result[0] = avail_out as u32;
+        write_result[1] = avail_in as u32;
       }
 
       v8::Local::new(scope, &ctx.callback)
@@ -1212,6 +1189,7 @@ impl ZstdCompress {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
     use zstd::stream::raw::InBuffer;
     use zstd::stream::raw::OutBuffer;
@@ -1275,11 +1253,9 @@ impl ZstdCompress {
     let avail_in = in_len as usize - in_buffer.pos();
     let avail_out = out_len as usize - out_buffer.pos();
 
-    // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
-    unsafe {
-      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
-      result[0] = avail_out as u32;
-      result[1] = avail_in as u32;
+    if write_result.len() >= 2 {
+      write_result[0] = avail_out as u32;
+      write_result[1] = avail_in as u32;
     }
 
     Ok(())
@@ -1294,7 +1270,6 @@ impl ZstdCompress {
 
 struct ZstdDecompressCtx {
   decoder: ZstdRawDecoder<'static>,
-  write_result: *mut u32,
   callback: v8::Global<v8::Function>,
 }
 
@@ -1324,14 +1299,9 @@ impl ZstdDecompress {
   fn init(
     &self,
     #[buffer] params: &[u32],
-    #[buffer] write_result: &mut [u32],
     #[scoped] callback: v8::Global<v8::Function>,
     _pledged_src_size: f64, // Unused for decompression, but needed for API consistency
   ) -> bool {
-    if write_result.len() < 2 {
-      return false;
-    }
-
     use zstd::zstd_safe::DParameter;
 
     let Ok(mut decoder) = ZstdRawDecoder::new() else {
@@ -1353,11 +1323,10 @@ impl ZstdDecompress {
       }
     }
 
-    self.ctx.borrow_mut().replace(ZstdDecompressCtx {
-      decoder,
-      write_result: write_result.as_mut_ptr(),
-      callback,
-    });
+    self
+      .ctx
+      .borrow_mut()
+      .replace(ZstdDecompressCtx { decoder, callback });
     true
   }
 
@@ -1387,6 +1356,7 @@ impl ZstdDecompress {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
     use zstd::stream::raw::InBuffer;
     use zstd::stream::raw::OutBuffer;
@@ -1415,11 +1385,9 @@ impl ZstdDecompress {
       let avail_in = in_len as usize - in_buffer.pos();
       let avail_out = out_len as usize - out_buffer.pos();
 
-      // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
-      unsafe {
-        let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
-        result[0] = avail_out as u32;
-        result[1] = avail_in as u32;
+      if write_result.len() >= 2 {
+        write_result[0] = avail_out as u32;
+        write_result[1] = avail_in as u32;
       }
 
       v8::Local::new(scope, &ctx.callback)
@@ -1441,6 +1409,7 @@ impl ZstdDecompress {
     #[buffer] out: &mut [u8],
     #[smi] out_off: u32,
     #[smi] out_len: u32,
+    #[buffer] write_result: &mut [u32],
   ) -> Result<(), JsErrorBox> {
     use zstd::stream::raw::InBuffer;
     use zstd::stream::raw::OutBuffer;
@@ -1468,11 +1437,9 @@ impl ZstdDecompress {
     let avail_in = in_len as usize - in_buffer.pos();
     let avail_out = out_len as usize - out_buffer.pos();
 
-    // SAFETY: `write_result` is a valid pointer to a mutable slice of u32 of length 2.
-    unsafe {
-      let result = std::slice::from_raw_parts_mut(ctx.write_result, 2);
-      result[0] = avail_out as u32;
-      result[1] = avail_in as u32;
+    if write_result.len() >= 2 {
+      write_result[0] = avail_out as u32;
+      write_result[1] = avail_in as u32;
     }
 
     Ok(())

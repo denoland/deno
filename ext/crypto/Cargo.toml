@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.263.0"
+version = "0.264.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -28,6 +28,7 @@ deno_error.workspace = true
 ecdsa.workspace = true
 ed448-goldilocks = { workspace = true }
 elliptic-curve = { workspace = true, features = ["std", "pem", "arithmetic"] }
+fips203 = { workspace = true, features = ["ml-kem-512", "ml-kem-768", "ml-kem-1024"] }
 hmac.workspace = true
 num-traits.workspace = true
 ocb3.workspace = true

@@ -52,7 +52,7 @@ use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::BlobStore;
+use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use deno_web::JsMessageData;
 use deno_web::MessagePort;
@@ -346,7 +346,7 @@ pub struct WebWorkerServiceOptions<
   TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TExtNodeSys: ExtNodeSys + 'static,
 > {
-  pub blob_store: Arc<BlobStore>,
+  pub blob_store: Arc<dyn BlobStoreTrait>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,

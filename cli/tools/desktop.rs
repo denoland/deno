@@ -383,6 +383,7 @@ async fn compile_desktop(
       .or_else(|| desktop_flags.output.clone()),
     args: desktop_flags.args.clone(),
     target: desktop_flags.target.clone(),
+    watch: None,
     no_terminal: false,
     icon: match &desktop_flags.icon {
       Some(crate::args::IconConfig::Single(s)) => Some(s.clone()),
@@ -393,6 +394,8 @@ async fn compile_desktop(
     eszip: false,
     self_extracting,
     bundle: false,
+    minify: false,
+    exclude_unused_npm: false,
   };
 
   let mut temp_flags = flags.clone();
@@ -400,8 +403,13 @@ async fn compile_desktop(
   temp_flags.internal.is_desktop = true;
 
   let output_path =
-    super::compile::compile_binary(Arc::new(temp_flags), compile_flags, true)
-      .await?;
+    super::compile::compile_binary(
+      Arc::new(temp_flags),
+      compile_flags,
+      true,
+      None,
+    )
+    .await?;
 
   // The temp entrypoint is embedded in the compiled dylib's VFS now; nothing
   // downstream reads it from disk. Remove it deterministically here so the

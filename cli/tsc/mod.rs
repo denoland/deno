@@ -1362,7 +1362,9 @@ pub static TYPES_NODE_IGNORABLE_NAMES: &[&str] = &[
   "ReadableStreamDefaultReader",
   "ReadonlyArray",
   "Request",
+  "RequestInit",
   "Response",
+  "ResponseInit",
   "Storage",
   "SubtleCrypto",
   "TextDecoder",
@@ -1386,7 +1388,5 @@ pub static NODE_ONLY_GLOBALS: &[&str] = &[
   "crypto",
   "gc",
   "localStorage",
-  "RequestInit",
-  "ResponseInit",
   "sessionStorage",
 ];

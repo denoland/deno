@@ -18,7 +18,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_telemetry::deno_telemetry::init(),
     deno_webidl::deno_webidl::init(),
     deno_web::deno_web::init(
-      Default::default(),
+      deno_web::BlobStore::default_arc(),
       Default::default(),
       Default::default(),
       deno_web::InMemoryBroadcastChannel::default(),

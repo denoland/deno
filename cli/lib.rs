@@ -373,6 +373,10 @@ async fn run_subcommand(
                     )
                     .with_cmd(&cmd);
                   error.insert(
+                    clap::error::ContextKind::InvalidSubcommand,
+                    clap::error::ContextValue::String(run_flags.script.clone()),
+                  );
+                  error.insert(
                     clap::error::ContextKind::SuggestedSubcommand,
                     clap::error::ContextValue::Strings(suggestions),
                   );

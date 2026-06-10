@@ -20,7 +20,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// deno-lint-ignore-file prefer-primordials no-process-global
+// deno-lint-ignore-file no-process-global
 
 (function () {
 const { core, primordials } = __bootstrap;
@@ -46,9 +46,18 @@ const { denoErrorToNodeSystemError } = core.loadExtScript(
 );
 
 const {
+  ArrayBuffer,
+  ArrayPrototypePush,
+  DataView,
+  DataViewPrototypeSetInt16,
+  Error,
+  Int16Array,
   ObjectDefineProperties,
+  SafeArrayIterator,
   StringPrototypeEndsWith,
   StringPrototypeSlice,
+  StringPrototypeStartsWith,
+  SymbolToPrimitive,
 } = primordials;
 
 const constants = os;
@@ -57,20 +66,20 @@ function arch() {
   return process.arch;
 }
 
-availableParallelism[Symbol.toPrimitive] = () => availableParallelism();
-arch[Symbol.toPrimitive] = () => process.arch;
-endianness[Symbol.toPrimitive] = () => endianness();
-freemem[Symbol.toPrimitive] = () => freemem();
-homedir[Symbol.toPrimitive] = () => homedir();
-hostname[Symbol.toPrimitive] = () => hostname();
-platform[Symbol.toPrimitive] = () => platform();
-release[Symbol.toPrimitive] = () => release();
-version[Symbol.toPrimitive] = () => version();
-totalmem[Symbol.toPrimitive] = () => totalmem();
-type[Symbol.toPrimitive] = () => type();
-uptime[Symbol.toPrimitive] = () => uptime();
-machine[Symbol.toPrimitive] = () => machine();
-tmpdir[Symbol.toPrimitive] = () => tmpdir();
+availableParallelism[SymbolToPrimitive] = () => availableParallelism();
+arch[SymbolToPrimitive] = () => process.arch;
+endianness[SymbolToPrimitive] = () => endianness();
+freemem[SymbolToPrimitive] = () => freemem();
+homedir[SymbolToPrimitive] = () => homedir();
+hostname[SymbolToPrimitive] = () => hostname();
+platform[SymbolToPrimitive] = () => platform();
+release[SymbolToPrimitive] = () => release();
+version[SymbolToPrimitive] = () => version();
+totalmem[SymbolToPrimitive] = () => totalmem();
+type[SymbolToPrimitive] = () => type();
+uptime[SymbolToPrimitive] = () => uptime();
+machine[SymbolToPrimitive] = () => machine();
+tmpdir[SymbolToPrimitive] = () => tmpdir();
 
 function cpus() {
   return op_cpus();
@@ -78,7 +87,12 @@ function cpus() {
 
 function endianness() {
   const buffer = new ArrayBuffer(2);
-  new DataView(buffer).setInt16(0, 256, true /* littleEndian */);
+  DataViewPrototypeSetInt16(
+    new DataView(buffer),
+    0,
+    256,
+    true, /* littleEndian */
+  );
   return new Int16Array(buffer)[0] === 256 ? "LE" : "BE";
 }
 
@@ -117,8 +131,10 @@ function loadavg() {
 function networkInterfaces() {
   const interfaces = {};
   for (
-    const { name, address, netmask, family, mac, scopeid, cidr } of Deno
-      .networkInterfaces()
+    const { name, address, netmask, family, mac, scopeid, cidr }
+      of new SafeArrayIterator(
+        Deno.networkInterfaces(),
+      )
   ) {
     const addresses = interfaces[name] ||= [];
     const networkAddress = {
@@ -133,13 +149,13 @@ function networkInterfaces() {
     if (family === "IPv6") {
       networkAddress.scopeid = scopeid;
     }
-    addresses.push(networkAddress);
+    ArrayPrototypePush(addresses, networkAddress);
   }
   return interfaces;
 }
 
 function isIPv4LoopbackAddr(addr) {
-  return addr.startsWith("127");
+  return StringPrototypeStartsWith(addr, "127");
 }
 
 function isIPv6LoopbackAddr(addr) {
@@ -231,7 +247,7 @@ function uptime() {
 }
 
 function userInfo(
-  options = { encoding: "utf-8" },
+  options = { __proto__: null, encoding: "utf-8" },
 ) {
   let uid = Deno.uid();
   let gid = Deno.gid();
