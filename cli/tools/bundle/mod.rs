@@ -555,6 +555,16 @@ fn flatten_declarations(
   let mut inlined_files: std::collections::HashSet<String> =
     std::collections::HashSet::new();
 
+  // The set of files whose declarations actually get inlined into the output,
+  // i.e. everything transitively reachable from the entry via `export ... from`
+  // chains. An `import ... from "./relative"` line may only be dropped when its
+  // target is in this set; otherwise the imported symbol would have no
+  // declaration in the rolled-up output. (Membership in `dts_by_source` is not
+  // enough: a module can be emitted yet never inlined because nothing
+  // re-exports it.)
+  let reexport_closure =
+    collect_reexport_closure(entry_dts_content, entry_dir, dts_by_source);
+
   let joined = join_multiline_statements(entry_dts_content);
 
   for line in joined.lines() {
@@ -580,6 +590,7 @@ fn flatten_declarations(
             referenced_dts,
             &resolved,
             dts_by_source,
+            &reexport_closure,
             &mut output_lines,
             &mut inlined_files,
           );
@@ -591,10 +602,57 @@ fn flatten_declarations(
       // (it might be an external package reference)
     }
 
+    // Drop an `import ... from "./relative"` whose target is inlined into the
+    // output (its declarations are already present). A target that is not in
+    // the closure is left as-is rather than deleted, so we never strip an
+    // import whose symbol has no inlined declaration.
+    if let Some(import_path) = extract_import_path(trimmed) {
+      let resolved = resolve_relative_dts_path(entry_dir, &import_path);
+      let resolved_str = resolved.to_string_lossy().to_string();
+      if reexport_closure.contains(&resolved_str) {
+        continue;
+      }
+    }
+
     output_lines.push(line.to_string());
   }
 
   output_lines.join("\n") + "\n"
+}
+
+/// Collect the set of `.d.ts` files (keyed as in `dts_by_source`) that are
+/// transitively reachable from the entry through `export ... from "./relative"`
+/// re-export chains. These are exactly the files whose declarations get inlined
+/// into the rolled-up output by [`inline_declarations`].
+fn collect_reexport_closure(
+  entry_dts_content: &str,
+  entry_dir: &Path,
+  dts_by_source: &std::collections::HashMap<String, String>,
+) -> std::collections::HashSet<String> {
+  let mut closure = std::collections::HashSet::new();
+  let mut stack: Vec<(String, PathBuf)> =
+    vec![(entry_dts_content.to_string(), entry_dir.to_path_buf())];
+
+  while let Some((content, dir)) = stack.pop() {
+    let joined = join_multiline_statements(&content);
+    for line in joined.lines() {
+      let trimmed = line.trim();
+      if let Some(from_path) = extract_reexport_path(trimmed) {
+        let resolved = resolve_relative_dts_path(&dir, &from_path);
+        let resolved_str = resolved.to_string_lossy().to_string();
+        if !closure.contains(&resolved_str)
+          && let Some(referenced_dts) = dts_by_source.get(&resolved_str)
+        {
+          closure.insert(resolved_str.clone());
+          let child_dir =
+            resolved.parent().unwrap_or(Path::new("")).to_path_buf();
+          stack.push((referenced_dts.clone(), child_dir));
+        }
+      }
+    }
+  }
+
+  closure
 }
 
 /// Extract the relative path from an `export ... from "..."` line.
@@ -662,6 +720,7 @@ fn inline_declarations(
   dts_content: &str,
   source_path: &Path,
   dts_by_source: &std::collections::HashMap<String, String>,
+  reexport_closure: &std::collections::HashSet<String>,
   output_lines: &mut Vec<String>,
   inlined_files: &mut std::collections::HashSet<String>,
 ) {
@@ -689,6 +748,7 @@ fn inline_declarations(
             referenced_dts,
             &resolved,
             dts_by_source,
+            reexport_closure,
             output_lines,
             inlined_files,
           );
@@ -697,16 +757,17 @@ fn inline_declarations(
       }
     }
 
-    // Strip `import type ... from "./relative"` lines when the referenced
-    // file's declarations have been (or will be) inlined. The types are
-    // available directly in the flattened output.
-    if (trimmed.starts_with("import type ") || trimmed.starts_with("import {"))
-      && let Some(import_path) = extract_import_path(trimmed)
-    {
+    // Strip `import type ... from "./relative"` / `import { ... } from
+    // "./relative"` lines only when the referenced file is actually inlined
+    // into this rolled-up output (it's in the re-export closure). The imported
+    // symbol's declaration is then present directly. A target that is emitted
+    // but never inlined is intentionally left untouched, so we don't delete an
+    // import whose symbol would otherwise vanish.
+    if let Some(import_path) = extract_import_path(trimmed) {
       let resolved = resolve_relative_dts_path(source_dir, &import_path);
       let resolved_str = resolved.to_string_lossy().to_string();
-      if dts_by_source.contains_key(&resolved_str) {
-        continue; // skip - types will be inlined
+      if reexport_closure.contains(&resolved_str) {
+        continue; // skip - declarations are inlined
       }
     }
 
@@ -2757,4 +2818,82 @@ fn print_finished_message(
   log::info!("{}", output);
 
   Ok(())
+}
+
+#[cfg(test)]
+mod declaration_flatten_tests {
+  use std::collections::HashMap;
+  use std::path::Path;
+
+  use super::flatten_declarations;
+  use super::resolve_relative_dts_path;
+
+  fn dts_key(dir: &Path, rel: &str) -> String {
+    resolve_relative_dts_path(dir, rel)
+      .to_string_lossy()
+      .to_string()
+  }
+
+  // A re-export chain is inlined into a single self-contained file: the
+  // referenced declarations are pulled in and the now-redundant relative
+  // `import type` / re-export lines are removed.
+  #[test]
+  fn flatten_inlines_reexport_chain_and_strips_import() {
+    let entry = Path::new("/proj/mod.ts");
+    let dir = entry.parent().unwrap();
+    let mut map = HashMap::new();
+    map.insert(
+      dts_key(dir, "./lib.ts"),
+      "import type { Config } from \"./types.ts\";\n\
+       export declare class Client {\n}\n"
+        .to_string(),
+    );
+    map.insert(
+      dts_key(dir, "./types.ts"),
+      "export interface Config {\n}\n".to_string(),
+    );
+    let entry_dts = "export { Client } from \"./lib.ts\";\n\
+                     export type { Config } from \"./types.ts\";\n";
+
+    let out = flatten_declarations(entry_dts, entry, &map);
+
+    assert!(out.contains("declare class Client"));
+    assert!(out.contains("interface Config"));
+    assert!(
+      !out.contains("from \"./"),
+      "flattened output should have no relative imports:\n{out}"
+    );
+  }
+
+  // Regression for the over-strip bug: a bare `import` of an in-graph module
+  // that is emitted but never re-exported (so its declarations are NOT inlined)
+  // must be left intact. Stripping it on the mere presence of the file in the
+  // emitted set would leave the imported symbol undefined in the output.
+  #[test]
+  fn flatten_keeps_import_of_non_reexported_module() {
+    let entry = Path::new("/proj/mod.ts");
+    let dir = entry.parent().unwrap();
+    let mut map = HashMap::new();
+    map.insert(
+      dts_key(dir, "./lib.ts"),
+      "import { Widget } from \"./internal.ts\";\n\
+       export declare class Client {\n    widget(): Widget;\n}\n"
+        .to_string(),
+    );
+    // Emitted but only imported (for a return type), never re-exported.
+    map.insert(
+      dts_key(dir, "./internal.ts"),
+      "export declare class Widget {\n}\n".to_string(),
+    );
+    let entry_dts = "export { Client } from \"./lib.ts\";\n";
+
+    let out = flatten_declarations(entry_dts, entry, &map);
+
+    assert!(out.contains("declare class Client"));
+    assert!(
+      out.contains("import { Widget }"),
+      "import of a non-re-exported module must be preserved so the symbol \
+       still resolves:\n{out}"
+    );
+  }
 }
