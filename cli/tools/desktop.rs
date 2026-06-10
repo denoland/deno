@@ -43,6 +43,11 @@ pub async fn desktop(
   flags: Flags,
   mut desktop_flags: DesktopFlags,
 ) -> Result<(), AnyError> {
+  log::warn!(
+    "{}",
+    colors::yellow_bold("⚠ deno desktop is experimental and subject to change")
+  );
+
   let all_targets = desktop_flags.all_targets;
 
   let config_flags = flags.clone();
