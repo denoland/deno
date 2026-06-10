@@ -328,6 +328,18 @@ deno_core::extension!(deno_node,
     ops::internal_binding::op_node_internal_binding_tty_wrap,
     ops::internal_binding::op_node_internal_binding_types,
     ops::internal_binding::op_node_ares_strerror,
+    ops::internal_binding_constants::op_node_internal_binding_constants,
+    ops::internal_binding_crypto::op_node_crypto_get_fips,
+    ops::internal_binding_crypto::op_node_crypto_set_fips,
+    ops::internal_binding_crypto::op_node_crypto_timing_safe_equal,
+    ops::internal_binding_crypto::op_node_internal_binding_crypto,
+    ops::internal_binding_crypto::op_node_internal_binding_timing_safe_equal,
+    ops::internal_binding_uv::op_node_internal_binding_uv,
+    ops::internal_binding_uv::op_node_uv_errname,
+    ops::internal_binding_uv::op_node_uv_get_code_map,
+    ops::internal_binding_uv::op_node_uv_get_error_map,
+    ops::internal_binding_uv::op_node_uv_get_error_message,
+    ops::internal_binding_uv::op_node_uv_map_sys_errno_to_uv_errno,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
@@ -883,6 +895,9 @@ deno_core::extension!(deno_node,
     ];
 
     ext.external_references.to_mut().extend(external_references);
+    ext.external_references.to_mut().extend(
+      ops::internal_binding_crypto::external_references(),
+    );
   },
 );
 

@@ -243,18 +243,14 @@ fn common_unix_fs_constants() -> FsConstants {
 }
 
 #[cfg(target_os = "macos")]
-#[op2]
-#[serde]
-pub fn op_node_fs_constants() -> FsConstants {
+pub fn node_fs_constants() -> FsConstants {
   let mut constants = common_unix_fs_constants();
   constants.o_symlink = Some(libc::O_SYMLINK);
   constants
 }
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
-#[op2]
-#[serde]
-pub fn op_node_fs_constants() -> FsConstants {
+pub fn node_fs_constants() -> FsConstants {
   let mut constants = common_unix_fs_constants();
   constants.o_noatime = Some(libc::O_NOATIME);
   constants.o_direct = Some(libc::O_DIRECT);
@@ -262,9 +258,7 @@ pub fn op_node_fs_constants() -> FsConstants {
 }
 
 #[cfg(windows)]
-#[op2]
-#[serde]
-pub fn op_node_fs_constants() -> FsConstants {
+pub fn node_fs_constants() -> FsConstants {
   let mut constants = FsConstants::default();
   // https://github.com/nodejs/node/blob/4dafa7747f7d2804aed3f3400d04f1ec6af24160/deps/uv/include/uv/win.h#L65-L68
   // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/ntifs/ns-ntifs-_file_stat_lx_information
@@ -292,4 +286,10 @@ pub fn op_node_fs_constants() -> FsConstants {
   constants.s_iflnk = Some(S_IFLNK);
   constants.s_ififo = Some(S_IFIFO);
   constants
+}
+
+#[op2]
+#[serde]
+pub fn op_node_fs_constants() -> FsConstants {
+  node_fs_constants()
 }
