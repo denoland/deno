@@ -1,210 +1,280 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::op2;
-use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use super::error::WebGpuResult;
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
+use deno_core::cppgc::Ref;
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::webidl::IntOptions;
+use deno_core::webidl::Nullable;
+use deno_core::webidl::WebIdlConverter;
+use deno_core::webidl::WebIdlError;
 
-pub(crate) struct WebGpuComputePass(
-  pub(crate) RefCell<wgpu_core::command::ComputePass>,
-);
-impl Resource for WebGpuComputePass {
-  fn name(&self) -> Cow<str> {
-    "webGPUComputePass".into()
+use crate::Instance;
+use crate::error::GPUError;
+use crate::error::GPUGenericError;
+
+pub struct GPUComputePassEncoder {
+  pub instance: Instance,
+  pub error_handler: super::error::ErrorHandler,
+
+  pub compute_pass: RefCell<wgpu_core::command::ComputePass>,
+  pub label: String,
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUComputePassEncoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUComputePassEncoder"
   }
 }
 
 #[op2]
-#[serde]
-pub fn op_webgpu_compute_pass_set_pipeline(
-  state: &mut OpState,
-  #[smi] compute_pass_rid: ResourceId,
-  #[smi] pipeline: ResourceId,
-) -> Result<WebGpuResult, AnyError> {
-  let compute_pipeline_resource =
-    state
-      .resource_table
-      .get::<super::pipeline::WebGpuComputePipeline>(pipeline)?;
-  let compute_pass_resource = state
-    .resource_table
-    .get::<WebGpuComputePass>(compute_pass_rid)?;
+impl GPUComputePassEncoder {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUComputePassEncoder, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
 
-  wgpu_core::command::compute_commands::wgpu_compute_pass_set_pipeline(
-    &mut compute_pass_resource.0.borrow_mut(),
-    compute_pipeline_resource.1,
-  );
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
-  Ok(WebGpuResult::empty())
-}
+  #[undefined]
+  fn set_pipeline(
+    &self,
+    #[webidl] pipeline: Ref<crate::compute_pipeline::GPUComputePipeline>,
+  ) {
+    let err = self
+      .instance
+      .compute_pass_set_pipeline(
+        &mut self.compute_pass.borrow_mut(),
+        pipeline.id,
+      )
+      .err();
+    self.error_handler.push_error(err);
+  }
 
-#[op2]
-#[serde]
-pub fn op_webgpu_compute_pass_dispatch_workgroups(
-  state: &mut OpState,
-  #[smi] compute_pass_rid: ResourceId,
-  x: u32,
-  y: u32,
-  z: u32,
-) -> Result<WebGpuResult, AnyError> {
-  let compute_pass_resource = state
-    .resource_table
-    .get::<WebGpuComputePass>(compute_pass_rid)?;
+  #[undefined]
+  fn dispatch_workgroups(
+    &self,
+    #[webidl(options(enforce_range = true))] work_group_count_x: u32,
+    #[webidl(default = 1, options(enforce_range = true))]
+    work_group_count_y: u32,
+    #[webidl(default = 1, options(enforce_range = true))]
+    work_group_count_z: u32,
+  ) {
+    let err = self
+      .instance
+      .compute_pass_dispatch_workgroups(
+        &mut self.compute_pass.borrow_mut(),
+        work_group_count_x,
+        work_group_count_y,
+        work_group_count_z,
+      )
+      .err();
+    self.error_handler.push_error(err);
+  }
 
-  wgpu_core::command::compute_commands::wgpu_compute_pass_dispatch_workgroups(
-    &mut compute_pass_resource.0.borrow_mut(),
-    x,
-    y,
-    z,
-  );
-
-  Ok(WebGpuResult::empty())
-}
-
-#[op2]
-#[serde]
-pub fn op_webgpu_compute_pass_dispatch_workgroups_indirect(
-  state: &mut OpState,
-  #[smi] compute_pass_rid: ResourceId,
-  #[smi] indirect_buffer: ResourceId,
-  #[number] indirect_offset: u64,
-) -> Result<WebGpuResult, AnyError> {
-  let buffer_resource = state
-    .resource_table
-    .get::<super::buffer::WebGpuBuffer>(indirect_buffer)?;
-  let compute_pass_resource = state
-    .resource_table
-    .get::<WebGpuComputePass>(compute_pass_rid)?;
-
-  wgpu_core::command::compute_commands::wgpu_compute_pass_dispatch_workgroups_indirect(
-        &mut compute_pass_resource.0.borrow_mut(),
-        buffer_resource.1,
+  #[undefined]
+  fn dispatch_workgroups_indirect(
+    &self,
+    #[webidl] indirect_buffer: Ref<crate::buffer::GPUBuffer>,
+    #[webidl(options(enforce_range = true))] indirect_offset: u64,
+  ) {
+    let err = self
+      .instance
+      .compute_pass_dispatch_workgroups_indirect(
+        &mut self.compute_pass.borrow_mut(),
+        indirect_buffer.id,
         indirect_offset,
-    );
+      )
+      .err();
+    self.error_handler.push_error(err);
+  }
 
-  Ok(WebGpuResult::empty())
+  #[fast]
+  #[undefined]
+  fn end(&self) {
+    let err = self
+      .instance
+      .compute_pass_end(&mut self.compute_pass.borrow_mut())
+      .err();
+    self.error_handler.push_error(err);
+  }
+
+  #[undefined]
+  fn push_debug_group(&self, #[webidl] group_label: String) {
+    let err = self
+      .instance
+      .compute_pass_push_debug_group(
+        &mut self.compute_pass.borrow_mut(),
+        &group_label,
+        0, // wgpu#975
+      )
+      .err();
+    self.error_handler.push_error(err);
+  }
+
+  #[fast]
+  #[undefined]
+  fn pop_debug_group(&self) {
+    let err = self
+      .instance
+      .compute_pass_pop_debug_group(&mut self.compute_pass.borrow_mut())
+      .err();
+    self.error_handler.push_error(err);
+  }
+
+  #[undefined]
+  fn insert_debug_marker(&self, #[webidl] marker_label: String) {
+    let err = self
+      .instance
+      .compute_pass_insert_debug_marker(
+        &mut self.compute_pass.borrow_mut(),
+        &marker_label,
+        0, // wgpu#975
+      )
+      .err();
+    self.error_handler.push_error(err);
+  }
+
+  #[undefined]
+  fn set_bind_group<'a>(
+    &self,
+    scope: &mut v8::PinScope<'a, '_>,
+    #[webidl(options(enforce_range = true))] index: u32,
+    #[webidl] bind_group: Nullable<Ref<crate::bind_group::GPUBindGroup>>,
+    dynamic_offsets: v8::Local<'a, v8::Value>,
+    dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
+    dynamic_offsets_data_length: v8::Local<'a, v8::Value>,
+  ) -> Result<(), WebIdlError> {
+    const PREFIX: &str =
+      "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder'";
+    let err = if let Ok(uint_32) = dynamic_offsets.try_cast::<v8::Uint32Array>()
+    {
+      let start = u64::convert(
+        scope,
+        dynamic_offsets_data_start,
+        Cow::Borrowed(PREFIX),
+        (|| Cow::Borrowed("Argument 4")).into(),
+        &IntOptions {
+          clamp: false,
+          enforce_range: true,
+        },
+      )? as usize;
+      let len = u32::convert(
+        scope,
+        dynamic_offsets_data_length,
+        Cow::Borrowed(PREFIX),
+        (|| Cow::Borrowed("Argument 5")).into(),
+        &IntOptions {
+          clamp: false,
+          enforce_range: true,
+        },
+      )? as usize;
+
+      let view_byte_offset = uint_32.byte_offset();
+      let view_len = uint_32.length();
+
+      // Validate `start..start+len` against the **view** length, not the
+      // backing buffer's length. Without this check, `&data[start..end]`
+      // below would panic on out-of-range input; the panic crosses the
+      // op's `extern "C"` boundary and aborts the process. See #33956.
+      let Some(end) = start.checked_add(len).filter(|end| *end <= view_len)
+      else {
+        self.error_handler.push_error(Some(GPUError::Validation(format!(
+          "{PREFIX}: dynamicOffsetsDataStart + dynamicOffsetsDataLength ({start} + {len}) is outside the bounds of dynamicOffsetsData (length {view_len})",
+        ))));
+        return Ok(());
+      };
+
+      let ab = uint_32.buffer(scope).unwrap();
+      let ptr = ab.data().unwrap();
+
+      // SAFETY: `ptr` is the start of the backing ArrayBuffer's data; the
+      // Uint32Array constructor guarantees `byte_offset + view_len * 4`
+      // fits within `byte_length`, so the resulting slice covers exactly
+      // the view's window. `data` is dropped at the end of this call;
+      // `ab` keeps the backing buffer alive for that duration.
+      // compute_pass_set_bind_group internally calls extend_from_slice
+      // with this slice.
+      let data = unsafe {
+        std::slice::from_raw_parts(
+          (ptr.as_ptr() as *const u8).add(view_byte_offset) as *const u32,
+          view_len,
+        )
+      };
+
+      let offsets = &data[start..end];
+
+      self
+        .instance
+        .compute_pass_set_bind_group(
+          &mut self.compute_pass.borrow_mut(),
+          index,
+          bind_group.into_option().map(|bind_group| bind_group.id),
+          offsets,
+        )
+        .err()
+    } else {
+      let offsets = <Option<Vec<u32>>>::convert(
+        scope,
+        dynamic_offsets,
+        Cow::Borrowed(PREFIX),
+        (|| Cow::Borrowed("Argument 3")).into(),
+        &IntOptions {
+          clamp: false,
+          enforce_range: true,
+        },
+      )?
+      .unwrap_or_default();
+
+      self
+        .instance
+        .compute_pass_set_bind_group(
+          &mut self.compute_pass.borrow_mut(),
+          index,
+          bind_group.into_option().map(|bind_group| bind_group.id),
+          &offsets,
+        )
+        .err()
+    };
+
+    self.error_handler.push_error(err);
+
+    Ok(())
+  }
 }
 
-#[op2]
-#[serde]
-pub fn op_webgpu_compute_pass_end(
-  state: &mut OpState,
-  #[smi] command_encoder_rid: ResourceId,
-  #[smi] compute_pass_rid: ResourceId,
-) -> Result<WebGpuResult, AnyError> {
-  let command_encoder_resource = state
-    .resource_table
-    .get::<super::command_encoder::WebGpuCommandEncoder>(
-    command_encoder_rid,
-  )?;
-  let command_encoder = command_encoder_resource.1;
-  let compute_pass_resource = state
-    .resource_table
-    .take::<WebGpuComputePass>(compute_pass_rid)?;
-  let compute_pass = &compute_pass_resource.0.borrow();
-  let instance = state.borrow::<super::Instance>();
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+pub(crate) struct GPUComputePassDescriptor {
+  #[webidl(default = String::new())]
+  pub label: String,
 
-  gfx_ok!(command_encoder => instance.command_encoder_run_compute_pass(
-    command_encoder,
-    compute_pass
-  ))
+  pub timestamp_writes: Option<GPUComputePassTimestampWrites>,
 }
 
-#[op2]
-#[serde]
-pub fn op_webgpu_compute_pass_set_bind_group(
-  state: &mut OpState,
-  #[smi] compute_pass_rid: ResourceId,
-  index: u32,
-  #[smi] bind_group: ResourceId,
-  #[buffer] dynamic_offsets_data: &[u32],
-  #[number] dynamic_offsets_data_start: usize,
-  #[number] dynamic_offsets_data_length: usize,
-) -> Result<WebGpuResult, AnyError> {
-  let bind_group_resource =
-    state
-      .resource_table
-      .get::<super::binding::WebGpuBindGroup>(bind_group)?;
-  let compute_pass_resource = state
-    .resource_table
-    .get::<WebGpuComputePass>(compute_pass_rid)?;
-
-  let start = dynamic_offsets_data_start;
-  let len = dynamic_offsets_data_length;
-
-  // Assert that length and start are both in bounds
-  assert!(start <= dynamic_offsets_data.len());
-  assert!(len <= dynamic_offsets_data.len() - start);
-
-  let dynamic_offsets_data: &[u32] = &dynamic_offsets_data[start..start + len];
-
-  wgpu_core::command::compute_commands::wgpu_compute_pass_set_bind_group(
-    &mut compute_pass_resource.0.borrow_mut(),
-    index,
-    bind_group_resource.1,
-    dynamic_offsets_data,
-  );
-
-  Ok(WebGpuResult::empty())
-}
-
-#[op2]
-#[serde]
-pub fn op_webgpu_compute_pass_push_debug_group(
-  state: &mut OpState,
-  #[smi] compute_pass_rid: ResourceId,
-  #[string] group_label: &str,
-) -> Result<WebGpuResult, AnyError> {
-  let compute_pass_resource = state
-    .resource_table
-    .get::<WebGpuComputePass>(compute_pass_rid)?;
-
-  wgpu_core::command::compute_commands::wgpu_compute_pass_push_debug_group(
-    &mut compute_pass_resource.0.borrow_mut(),
-    group_label,
-    0, // wgpu#975
-  );
-
-  Ok(WebGpuResult::empty())
-}
-
-#[op2]
-#[serde]
-pub fn op_webgpu_compute_pass_pop_debug_group(
-  state: &mut OpState,
-  #[smi] compute_pass_rid: ResourceId,
-) -> Result<WebGpuResult, AnyError> {
-  let compute_pass_resource = state
-    .resource_table
-    .get::<WebGpuComputePass>(compute_pass_rid)?;
-
-  wgpu_core::command::compute_commands::wgpu_compute_pass_pop_debug_group(
-    &mut compute_pass_resource.0.borrow_mut(),
-  );
-
-  Ok(WebGpuResult::empty())
-}
-
-#[op2]
-#[serde]
-pub fn op_webgpu_compute_pass_insert_debug_marker(
-  state: &mut OpState,
-  #[smi] compute_pass_rid: ResourceId,
-  #[string] marker_label: &str,
-) -> Result<WebGpuResult, AnyError> {
-  let compute_pass_resource = state
-    .resource_table
-    .get::<WebGpuComputePass>(compute_pass_rid)?;
-
-  wgpu_core::command::compute_commands::wgpu_compute_pass_insert_debug_marker(
-    &mut compute_pass_resource.0.borrow_mut(),
-    marker_label,
-    0, // wgpu#975
-  );
-
-  Ok(WebGpuResult::empty())
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+pub(crate) struct GPUComputePassTimestampWrites {
+  pub query_set: Ref<crate::query_set::GPUQuerySet>,
+  #[options(enforce_range = true)]
+  pub beginning_of_pass_write_index: Option<u32>,
+  #[options(enforce_range = true)]
+  pub end_of_pass_write_index: Option<u32>,
 }

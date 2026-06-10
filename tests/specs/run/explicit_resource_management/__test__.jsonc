@@ -1,4 +1,16 @@
 {
-  "args": "run --quiet --check explicit_resource_management/main.ts",
-  "output": "explicit_resource_management/main.out"
+  "tests": {
+    "js": {
+      "args": "run --quiet --check js/main.js",
+      "output": "js/main.out"
+    },
+    "ts": {
+      "args": "run --quiet --check ts/main.ts",
+      "output": "ts/main.out"
+    },
+    "api": {
+      "args": "run --quiet --check api/main.ts",
+      "output": "api/main.out"
+    }
+  }
 }

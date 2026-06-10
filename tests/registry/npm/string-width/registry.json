@@ -165,6 +165,5 @@
   "bugs": {
     "url": "https://github.com/sindresorhus/string-width/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

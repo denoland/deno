@@ -1,0 +1,13 @@
+Compile [WILDCARD]
+
+Embedded Files
+
+main[WILDLINE]
+├── index.js ([WILDLINE])
+├── link.js --> index.js
+└── setup.js ([WILDLINE])
+
+Files: [WILDLINE]
+Metadata: [WILDLINE]
+Remote modules: [WILDLINE]
+

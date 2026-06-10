@@ -1,0 +1,7 @@
+{
+  "name": "@types/denotest__index-export-no-types",
+  "version": "0.5.0",
+  "main": "",
+  "types": "index.d.ts",
+  "type": "module"
+}

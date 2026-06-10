@@ -70,7 +70,7 @@ contextual awareness, it is the author's opinion that it is best to spend the
    - Revert/merge any changes to lib files that provide forward support. This is
      the "hardest" thing, because you need to assess if the updated version of
      TypeScript now includes the type definitions that we forward support.
-     Currently there are three:
+     Currently there the following:
 
      - `lib.esnext.array.d.ts` contains additional array APIs. These likely will
        be moved to ES2022 at some point, but currently only the
@@ -107,7 +107,7 @@ contextual awareness, it is the author's opinion that it is best to spend the
    maps `esnext.*` values to the ratified version of them to ensure they are
    less "breaking" so you will want to make sure, like for `esnext.array` that
    it points at `lib.esnext.array.d.ts`. You will also want to revert the
-   deletion of `dom.asynciterables` and `dom.extras`.
+   deletion of `dom.asynciterable` and `dom.extras`.
 
 8. For any new lib files that were added, but not included in the snapshot (e.g.
    `lib.es####.full.d.ts`) add them to `STATIC_ASSETS` in `deno/cli/tsc.rs`.

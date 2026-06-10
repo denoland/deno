@@ -2,7 +2,5 @@
   "lint": {
     "report": "compact"
   },
-  "compilerOptions": {
-    "strict": true
-  }
+  "lock": false
 }

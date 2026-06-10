@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "tests": {
+    "bundle_in_worker": {
+      "steps": [
+        {
+          "args": "run --unstable-bundle --quiet --allow-read=./worker.ts main.ts",
+          "output": "main.ts.out"
+        }
+      ]
+    }
+  }
+}

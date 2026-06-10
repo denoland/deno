@@ -1,5 +1,7 @@
 Check [WILDCARD]/bench/no_run.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const _value: string = 1;
       ~~~~~~
     at [WILDCARD]/bench/no_run.ts:1:7
+
+error: Type checking failed.

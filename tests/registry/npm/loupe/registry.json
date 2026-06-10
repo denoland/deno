@@ -169,6 +169,5 @@
   "bugs": {
     "url": "https://github.com/chaijs/loupe/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

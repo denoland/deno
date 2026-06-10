@@ -11,6 +11,8 @@ http://localhost:4260/ via the `./registry` folder.
 
 1. Set the `DENO_TEST_UTIL_UPDATE_NPM=1` environment variable
 2. Run the test and it should download the packages.
+3. If the package does not update, find it in `tests/registry/npm/` and download
+   related `registry.json` file.
 
 ### Using a custom npm package
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -130,6 +130,53 @@ for (const { name, value } of VALUE_CASES) {
     assertEquals(result.value, value);
   });
 }
+
+dbTest("set and get Blob value", async (db) => {
+  const blob = new Blob(["Hello, world!"], { type: "text/plain" });
+  await db.set(["a"], blob);
+  const result = await db.get<Blob>(["a"]);
+  assert(result.value instanceof Blob);
+  assertEquals(result.value.type, "text/plain");
+  assertEquals(await result.value.text(), "Hello, world!");
+});
+
+dbTest("set and get File value", async (db) => {
+  const file = new File(["contents"], "name.txt", {
+    type: "text/plain",
+    lastModified: 12345,
+  });
+  await db.set(["a"], file);
+  const result = await db.get<File>(["a"]);
+  assert(result.value instanceof File);
+  assertEquals(result.value.name, "name.txt");
+  assertEquals(result.value.type, "text/plain");
+  assertEquals(result.value.lastModified, 12345);
+  assertEquals(await result.value.text(), "contents");
+});
+
+dbTest("set and get DOMException value", async (db) => {
+  const ex = new DOMException("oops", "DataCloneError");
+  await db.set(["a"], ex);
+  const result = await db.get<DOMException>(["a"]);
+  assert(result.value instanceof DOMException);
+  assertEquals(result.value.name, "DataCloneError");
+  assertEquals(result.value.message, "oops");
+});
+
+dbTest("set and get CryptoKey value", async (db) => {
+  const key = await crypto.subtle.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  await db.set(["a"], key);
+  const result = await db.get<CryptoKey>(["a"]);
+  assert(result.value instanceof CryptoKey);
+  assertEquals(result.value.type, "secret");
+  const algorithm = result.value.algorithm as AesKeyAlgorithm;
+  assertEquals(algorithm.name, "AES-GCM");
+  assertEquals(algorithm.length, 256);
+});
 
 dbTest("set and get recursive object", async (db) => {
   // deno-lint-ignore no-explicit-any
@@ -857,6 +904,70 @@ dbTest("list prefix with small batch size reverse", async (db) => {
     { key: ["a", "a"], value: 0, versionstamp },
   ]);
 });
+
+dbTest("list prefix with non-integer batch size throws", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"] }, { batchSize: 2.3 })),
+    Error,
+    "batchSize must be a positive integer",
+  );
+});
+
+dbTest("list prefix with non-integer limit throws", async (db) => {
+  await setupData(db);
+  await assertRejects(
+    async () => await collect(db.list({ prefix: ["a"] }, { limit: 2.3 })),
+    Error,
+    "Limit must be a positive integer",
+  );
+});
+
+dbTest("set with invalid expireIn throws", async (db) => {
+  // A non-finite expireIn (notably Infinity) used to panic the process when
+  // the native layer computed the absolute expiry; these must be rejected.
+  for (const expireIn of [-1, 1.5, NaN, Infinity]) {
+    await assertRejects(
+      () => db.set(["a"], 1, { expireIn }),
+      TypeError,
+      "expireIn must be a non-negative integer",
+    );
+    assertThrows(
+      () => db.atomic().set(["a"], 1, { expireIn }),
+      TypeError,
+      "expireIn must be a non-negative integer",
+    );
+    assertThrows(
+      () => db.atomic().mutate({ type: "set", key: ["a"], value: 1, expireIn }),
+      TypeError,
+      "expireIn must be a non-negative integer",
+    );
+  }
+  // A valid expireIn still works.
+  const res = await db.set(["a"], 1, { expireIn: 1000 });
+  assert(res.ok);
+});
+
+dbTest(
+  "set with too-large expireIn throws instead of panicking",
+  async (db) => {
+    // A large but valid integer passes the JS integer check, but computing the
+    // absolute expiry overflows in the native layer. It must surface as an
+    // error rather than panic the process.
+    await assertRejects(
+      () => db.set(["a"], 1, { expireIn: Number.MAX_SAFE_INTEGER }),
+      TypeError,
+      "expireIn is too large",
+    );
+    await assertRejects(
+      () =>
+        db.atomic().set(["a"], 1, { expireIn: Number.MAX_SAFE_INTEGER })
+          .commit(),
+      TypeError,
+      "expireIn is too large",
+    );
+  },
+);
 
 dbTest("list prefix with small batch size and limit", async (db) => {
   const versionstamp = await setupData(db);
@@ -1951,14 +2062,14 @@ dbTest("Invalid backoffSchedule", async (db) => {
       await db.enqueue("foo", { backoffSchedule: [1, 1, 1, 1, 1, 1] });
     },
     TypeError,
-    "Invalid backoffSchedule",
+    "Invalid backoffSchedule, max 5 intervals allowed",
   );
   await assertRejects(
     async () => {
       await db.enqueue("foo", { backoffSchedule: [3600001] });
     },
     TypeError,
-    "Invalid backoffSchedule",
+    "Invalid backoffSchedule, interval at index 0 is invalid",
   );
 });
 
@@ -2318,4 +2429,146 @@ Deno.test({
 
     await completion;
   },
+});
+
+// AtomicOperation custom inspect tests
+dbTest("AtomicOperation custom inspect - empty operation", (db) => {
+  const atomic = db.atomic();
+  const inspected = Deno.inspect(atomic);
+  assertEquals(inspected, "AtomicOperation (empty)");
+});
+
+dbTest("AtomicOperation custom inspect - with check operations", (db) => {
+  const atomic = db.atomic()
+    .check({ key: ["users", "alice"], versionstamp: "version123" })
+    .check({ key: ["posts", 42], versionstamp: null });
+
+  const inspected = Deno.inspect(atomic);
+  assert(inspected.includes("AtomicOperation"));
+  assert(
+    inspected.includes(
+      'check({ key: [ "users", "alice" ], versionstamp: "version123" })',
+    ),
+  );
+  assert(
+    inspected.includes('check({ key: [ "posts", 42 ], versionstamp: null })'),
+  );
+});
+
+dbTest("AtomicOperation custom inspect - with mutations", (db) => {
+  const atomic = db.atomic()
+    .set(["users", "bob"], { name: "Bob", age: 30 })
+    .set(["temp", "data"], "temporary", { expireIn: 60000 })
+    .delete(["old", "record"])
+    .sum(["counters", "visits"], 5n);
+
+  const inspected = Deno.inspect(atomic);
+  assert(inspected.includes("AtomicOperation"));
+  assert(
+    inspected.includes('set([ "users", "bob" ], { name: "Bob", age: 30 })'),
+  );
+  assert(
+    inspected.includes(
+      'set([ "temp", "data" ], "temporary", { expireIn: 60000 })',
+    ),
+  );
+  assert(inspected.includes('delete([ "old", "record" ])'));
+  assert(inspected.includes('sum([ "counters", "visits" ], [Deno.KvU64: 5n])'));
+});
+
+dbTest("AtomicOperation custom inspect - with enqueue operations", (db) => {
+  const atomic = db.atomic()
+    .enqueue({ type: "email", to: "user@example.com" })
+    .enqueue({ type: "reminder" }, { delay: 3600000 })
+    .enqueue(
+      { type: "notification" },
+      { keysIfUndelivered: [["failed_notifications", "batch1"]] },
+    )
+    .enqueue(
+      { type: "retry_task" },
+      {
+        delay: 1000,
+        backoffSchedule: [1000, 2000, 4000],
+        keysIfUndelivered: [["failed_tasks"]],
+      },
+    );
+
+  const inspected = Deno.inspect(atomic);
+  assert(inspected.includes("AtomicOperation"));
+  assert(
+    inspected.includes('enqueue({ type: "email", to: "user@example.com" })'),
+  );
+  assert(
+    inspected.includes('enqueue({ type: "reminder" }, { delay: 3600000 })'),
+  );
+  assert(
+    inspected.includes(
+      'keysIfUndelivered: [ [ "failed_notifications", "batch1" ] ]',
+    ),
+  );
+  assert(inspected.includes("backoffSchedule: [ 1000, 2000, 4000 ]"));
+});
+
+dbTest("AtomicOperation custom inspect - complex operation", (db) => {
+  const atomic = db.atomic()
+    .check({ key: ["users", "alice"], versionstamp: "v1" })
+    .set(["users", "alice"], { name: "Alice Updated", version: 2 })
+    .sum(["stats", "user_updates"], 1n)
+    .delete(["cache", "user_alice"])
+    .enqueue({ type: "user_updated", userId: "alice" });
+
+  const inspected = Deno.inspect(atomic);
+
+  // Verify the output contains all expected operations
+  assert(inspected.includes("AtomicOperation"));
+  assert(inspected.includes("check("));
+  assert(inspected.includes("set("));
+  assert(inspected.includes("sum("));
+  assert(inspected.includes("delete("));
+  assert(inspected.includes("enqueue("));
+
+  // Verify operations appear in the correct format
+  assert(
+    inspected.includes(
+      'check({ key: [ "users", "alice" ], versionstamp: "v1" })',
+    ),
+  );
+  assert(
+    inspected.includes(
+      'set([ "users", "alice" ], { name: "Alice Updated", version: 2 })',
+    ),
+  );
+  assert(
+    inspected.includes('sum([ "stats", "user_updates" ], [Deno.KvU64: 1n])'),
+  );
+  assert(inspected.includes('delete([ "cache", "user_alice" ])'));
+  assert(
+    inspected.includes('enqueue({ type: "user_updated", userId: "alice" })'),
+  );
+
+  // Verify the structure - should start with "AtomicOperation" and have operations indented
+  const lines = inspected.split("\n");
+  assertEquals(lines[0], "AtomicOperation");
+  // Each operation should be indented with 2 spaces
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim()) { // Skip empty lines
+      assert(lines[i].startsWith("  ")); // Should start with indentation
+    }
+  }
+});
+
+dbTest("AtomicOperation custom inspect - handles special values", (db) => {
+  const uint8Array = new Uint8Array([1, 2, 3, 4]);
+  const atomic = db.atomic()
+    .set(["bytes"], uint8Array)
+    .set(["null"], null)
+    .set(["undefined"], undefined)
+    .set(["bigint"], 9007199254740991n);
+
+  const inspected = Deno.inspect(atomic);
+  assert(inspected.includes("AtomicOperation"));
+  assert(inspected.includes('set([ "bytes" ], Uint8Array(4) [ 1, 2, 3, 4 ])'));
+  assert(inspected.includes('set([ "null" ], null)'));
+  assert(inspected.includes('set([ "undefined" ], undefined)'));
+  assert(inspected.includes('set([ "bigint" ], 9007199254740991n)'));
 });

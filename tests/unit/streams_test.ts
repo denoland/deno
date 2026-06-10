@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assertEquals,
   assertRejects,
@@ -6,6 +6,10 @@ import {
   fail,
 } from "./test_util.ts";
 
+// `resourceForReadableStream` is registered on the internals object only when
+// `ext:deno_web/06_streams.js` first evaluates, which is now lazy. Touch the
+// lazy `ReadableStream` global so the polyfill loads before we read it below.
+const { ReadableStream: _ReadableStream } = globalThis;
 const {
   core,
   resourceForReadableStream,
@@ -71,7 +75,7 @@ function longStream() {
 
 // Long stream with Lorem Ipsum text.
 function longAsyncStream(cancelResolve?: (value: unknown) => void) {
-  let currentTimeout: number | undefined = undefined;
+  let currentTimeout: NodeJS.Timeout | undefined = undefined;
   return new ReadableStream({
     async start(controller) {
       for (let i = 0; i < 100; i++) {
@@ -487,6 +491,7 @@ Deno.test(async function compressionStreamWritableMayBeAborted() {
     new CompressionStream("gzip").writable.getWriter().abort(),
     new CompressionStream("deflate").writable.getWriter().abort(),
     new CompressionStream("deflate-raw").writable.getWriter().abort(),
+    new CompressionStream("brotli").writable.getWriter().abort(),
   ]);
 });
 
@@ -495,6 +500,7 @@ Deno.test(async function compressionStreamReadableMayBeCancelled() {
     new CompressionStream("gzip").readable.getReader().cancel(),
     new CompressionStream("deflate").readable.getReader().cancel(),
     new CompressionStream("deflate-raw").readable.getReader().cancel(),
+    new CompressionStream("brotli").readable.getReader().cancel(),
   ]);
 });
 
@@ -503,6 +509,7 @@ Deno.test(async function decompressionStreamWritableMayBeAborted() {
     new DecompressionStream("gzip").writable.getWriter().abort(),
     new DecompressionStream("deflate").writable.getWriter().abort(),
     new DecompressionStream("deflate-raw").writable.getWriter().abort(),
+    new DecompressionStream("brotli").writable.getWriter().abort(),
   ]);
 });
 
@@ -511,6 +518,7 @@ Deno.test(async function decompressionStreamReadableMayBeCancelled() {
     new DecompressionStream("gzip").readable.getReader().cancel(),
     new DecompressionStream("deflate").readable.getReader().cancel(),
     new DecompressionStream("deflate-raw").readable.getReader().cancel(),
+    new DecompressionStream("brotli").readable.getReader().cancel(),
   ]);
 });
 
@@ -527,6 +535,37 @@ Deno.test(async function decompressionStreamValidGzipDoesNotThrow() {
     result = new Uint8Array([...result, ...chunk]);
   }
   assertEquals(result, new Uint8Array([1]));
+});
+
+Deno.test(async function decompressionStreamValidBrotliDoesNotThrow() {
+  const cs = new CompressionStream("brotli");
+  const ds = new DecompressionStream("brotli");
+  cs.readable.pipeThrough(ds);
+  const writer = cs.writable.getWriter();
+  await writer.write(new Uint8Array([1]));
+  writer.releaseLock();
+  await cs.writable.close();
+  let result = new Uint8Array();
+  for await (const chunk of ds.readable.values()) {
+    result = new Uint8Array([...result, ...chunk]);
+  }
+  assertEquals(result, new Uint8Array([1]));
+});
+
+Deno.test(async function brotliCompressionDecompressionRoundTrip() {
+  const original = new TextEncoder().encode(LOREM);
+  const cs = new CompressionStream("brotli");
+  const ds = new DecompressionStream("brotli");
+  cs.readable.pipeThrough(ds);
+  const writer = cs.writable.getWriter();
+  await writer.write(original);
+  writer.releaseLock();
+  await cs.writable.close();
+  let result = new Uint8Array();
+  for await (const chunk of ds.readable.values()) {
+    result = new Uint8Array([...result, ...chunk]);
+  }
+  assertEquals(result, original);
 });
 
 Deno.test(async function decompressionStreamInvalidGzipStillReported() {
@@ -547,3 +586,341 @@ Deno.test(function readableStreamFromWithStringThrows() {
     "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async iterable.",
   );
 });
+
+Deno.test(async function readableStreamFromWithStringThrows() {
+  const serverPort = 4592;
+  const upstreamServerPort = 4593;
+
+  const stopSignal = new AbortController();
+  const promise = Promise.withResolvers();
+  // Response transforming server that crashes with an uncaught AbortError.
+  function startServer() {
+    Deno.serve({ port: serverPort, signal: stopSignal.signal }, async (req) => {
+      const upstreamResponse = await fetch(
+        `http://localhost:${upstreamServerPort}`,
+        req,
+      );
+
+      // Use a TransformStream to convert the response body to uppercase.
+      const transformStream = new TransformStream({
+        transform(chunk, controller) {
+          const decoder = new TextDecoder();
+          const encoder = new TextEncoder();
+          const chunk2 = encoder.encode(decoder.decode(chunk).toUpperCase());
+          controller.enqueue(chunk2);
+        },
+      });
+
+      upstreamResponse.body?.pipeTo(transformStream.writable).catch(() => {});
+
+      return new Response(transformStream.readable);
+    });
+  }
+
+  // ==== THE ISSUE IS NOT IN THE CODE BELOW ====
+
+  // Upstream server that sends a response with a body that never ends.
+  // This is not where the error happens (it handlers the cancellation correctly).
+  function startUpstreamServer() {
+    Deno.serve({ port: upstreamServerPort, signal: stopSignal.signal }, (_) => {
+      // Create an infinite readable stream that emits 'a'
+      let pushTimeout: NodeJS.Timeout | null = null;
+      const readableStream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          const chunk = encoder.encode("a");
+
+          function push() {
+            controller.enqueue(chunk);
+            pushTimeout = setTimeout(push, 100);
+          }
+
+          push();
+        },
+
+        cancel(reason) {
+          assertEquals(reason, "resource closed");
+          promise.resolve(undefined);
+          clearTimeout(pushTimeout!);
+        },
+      });
+
+      return new Response(readableStream, {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+  }
+
+  // The client is just there to simulate a client that cancels a request.
+  async function startClient() {
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    try {
+      const response = await fetch(`http://localhost:${serverPort}`, {
+        signal,
+      });
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("client: failed to get reader from response");
+      }
+
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        received += value.length;
+
+        if (received >= 5) {
+          controller.abort();
+          break;
+        }
+      }
+    } catch (_) {
+      //
+    }
+  }
+
+  startUpstreamServer();
+  startServer();
+  const p = startClient();
+
+  await promise.promise;
+  stopSignal.abort();
+  await p;
+});
+
+Deno.test(async function readableStreamEmittingManyChunks() {
+  const code = `
+    const serverPort = 4594;
+    const stopSignal = new AbortController();
+    let count = 0;
+    let before = 0;
+    let after = 0;
+
+    function startServer() {
+      Deno.serve({ port: serverPort, signal: stopSignal.signal }, (_) => {
+        return new Response(
+          new ReadableStream({
+            start() {
+              before = Deno.memoryUsage().heapUsed;
+            },
+            pull(controller) {
+              const used = Deno.memoryUsage().heapUsed;
+
+              if (used > after) {
+                after = used;
+              }
+
+              if (count < 30_000) {
+                controller.enqueue(new Uint8Array([0]));
+              } else {
+                controller.close();
+              }
+
+              count += 1;
+            },
+          }),
+        );
+      });
+    }
+
+    async function startClient() {
+      const response = await fetch(\`http://localhost:\${serverPort}\`);
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("client: failed to get reader from response");
+      }
+
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    }
+
+    startServer();
+    await startClient();
+    stopSignal.abort();
+    console.log(\`\${after} / \${before} = \${after / before}\`);
+    if (after / before > 1.5) {
+      Deno.exit(1);
+    }
+  `;
+  const command = new Deno.Command(Deno.execPath(), {
+    args: ["run", "-N", "-"],
+    stdin: "piped",
+  });
+
+  await using child = command.spawn();
+  await ReadableStream.from([code])
+    .pipeThrough(new TextEncoderStream())
+    .pipeTo(child.stdin);
+
+  assertEquals((await child.status).code, 0, "memory leak");
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33476
+// `ReadableStreamBYOBRequest.view` is always constructed as a Uint8Array
+// (matching whatwg/streams#1367), so its type should be narrowed from
+// `ArrayBufferView | null` to `Uint8Array<ArrayBuffer> | null`. The runtime
+// check verifies the actual value, and the variable annotation acts as a
+// compile-time check via `deno check`.
+Deno.test("ReadableStreamBYOBRequest.view is a Uint8Array", async () => {
+  let viewIsUint8Array = false;
+  const stream = new ReadableStream({
+    type: "bytes",
+    pull(controller) {
+      const byobReq = controller.byobRequest;
+      if (byobReq === null) return;
+      // Compile-time type check: this assignment must succeed against the
+      // narrowed signature.
+      const view: Uint8Array<ArrayBuffer> | null = byobReq.view;
+      viewIsUint8Array = view instanceof Uint8Array;
+      view![0] = 42;
+      byobReq.respond(1);
+    },
+  });
+  const reader = stream.getReader({ mode: "byob" });
+  const result = await reader.read(new Uint8Array(8));
+  reader.releaseLock();
+  assertEquals(viewIsUint8Array, true);
+  assertEquals(result.value!.byteLength, 1);
+  assertEquals(result.value![0], 42);
+});
+
+// https://github.com/denoland/deno/issues/22381
+// Resource-backed writable streams (e.g. `Deno.connect().writable`,
+// `Deno.open().writable`) should accept any ArrayBuffer / ArrayBufferView,
+// not only Uint8Array.
+Deno.test(
+  { permissions: { net: true } },
+  async function writableStreamForRidAcceptsAnyArrayBufferView() {
+    const listener = Deno.listen({ port: 0, hostname: "127.0.0.1" });
+    const port = (listener.addr as Deno.NetAddr).port;
+
+    const serverConnPromise = (async () => {
+      const conn = await listener.accept();
+      const chunks: Uint8Array[] = [];
+      const buf = new Uint8Array(64);
+      while (true) {
+        const n = await conn.read(buf);
+        if (n === null) break;
+        chunks.push(buf.slice(0, n));
+      }
+      conn.close();
+      let total = 0;
+      for (const c of chunks) total += c.byteLength;
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) {
+        out.set(c, off);
+        off += c.byteLength;
+      }
+      return out;
+    })();
+
+    const client = await Deno.connect({ hostname: "127.0.0.1", port });
+    const writer = client.writable.getWriter();
+
+    // Uint8Array (existing behavior)
+    await writer.write(new Uint8Array([0x01]));
+    // Other typed-array views — all backed by raw bytes 0x02..
+    const u16 = new Uint16Array(1);
+    new Uint8Array(u16.buffer).set([0x02, 0x03]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(u16 as any);
+    const u32 = new Uint32Array(1);
+    new Uint8Array(u32.buffer).set([0x04, 0x05, 0x06, 0x07]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(u32 as any);
+    const big = new BigUint64Array(1);
+    new Uint8Array(big.buffer).set([
+      0x08,
+      0x09,
+      0x0a,
+      0x0b,
+      0x0c,
+      0x0d,
+      0x0e,
+      0x0f,
+    ]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(big as any);
+    // Bare ArrayBuffer
+    const ab = new ArrayBuffer(2);
+    new Uint8Array(ab).set([0x10, 0x11]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(ab as any);
+    // DataView with non-zero byteOffset
+    const backing = new ArrayBuffer(8);
+    new Uint8Array(backing).set([
+      0xaa,
+      0xbb,
+      0x20,
+      0x21,
+      0x22,
+      0xcc,
+      0xdd,
+      0xee,
+    ]);
+    // deno-lint-ignore no-explicit-any
+    await writer.write(new DataView(backing, 2, 3) as any);
+    await writer.close();
+
+    const got = await serverConnPromise;
+    listener.close();
+    assertEquals(
+      got,
+      new Uint8Array([
+        0x01,
+        0x02,
+        0x03,
+        0x04,
+        0x05,
+        0x06,
+        0x07,
+        0x08,
+        0x09,
+        0x0a,
+        0x0b,
+        0x0c,
+        0x0d,
+        0x0e,
+        0x0f,
+        0x10,
+        0x11,
+        0x20,
+        0x21,
+        0x22,
+      ]),
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function writableStreamForRidRejectsNonBufferChunk() {
+    const listener = Deno.listen({ port: 0, hostname: "127.0.0.1" });
+    const port = (listener.addr as Deno.NetAddr).port;
+    const acceptPromise = (async () => {
+      const conn = await listener.accept();
+      const buf = new Uint8Array(16);
+      while ((await conn.read(buf)) !== null) { /* drain */ }
+      conn.close();
+    })();
+
+    const client = await Deno.connect({ hostname: "127.0.0.1", port });
+    const writer = client.writable.getWriter();
+    await assertRejects(
+      // deno-lint-ignore no-explicit-any
+      () => writer.write("not a buffer" as any),
+      TypeError,
+      "ArrayBuffer or ArrayBufferView",
+    );
+    // The failed write closes the underlying connection via the sink's
+    // controller-error path, so the server's read returns null.
+    await acceptPromise;
+    listener.close();
+  },
+);

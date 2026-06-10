@@ -1,5 +1,5 @@
 // Copyright 2018 Yoshua Wuyts. All rights reserved. MIT license.
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Forked from https://github.com/superfly/accept-encoding/blob/1cded757ec7ff3916e5bfe7441db76cdc48170dc/
 // Forked to support both http 0.3 and http 1.0 crates.
 
@@ -54,6 +54,7 @@ impl Encoding {
 }
 
 /// Select the encoding with the largest qval or the first with qval ~= 1
+#[cfg(test)]
 pub fn preferred(
   encodings: impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>>,
 ) -> Result<Option<Encoding>, EncodingError> {
@@ -75,12 +76,12 @@ pub fn preferred(
 
 /// Parse a set of HTTP headers into an iterator containing tuples of options containing encodings and their corresponding q-values.
 ///
-/// Compatible with `http` crate for version 0.2.x.
-pub fn encodings_iter_http_02(
-  headers: &http_v02::HeaderMap,
+/// Compatible with the `http` crate header map.
+pub fn encodings_iter_http(
+  headers: &http::HeaderMap,
 ) -> impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>> + '_ {
   let iter = headers
-    .get_all(http_v02::header::ACCEPT_ENCODING)
+    .get_all(http::header::ACCEPT_ENCODING)
     .iter()
     .map(|hval| hval.to_str().map_err(|_| EncodingError::InvalidEncoding));
   encodings_iter_inner(iter)
@@ -97,6 +98,14 @@ pub fn encodings_iter_http_1(
     .iter()
     .map(|hval| hval.to_str().map_err(|_| EncodingError::InvalidEncoding));
   encodings_iter_inner(iter)
+}
+
+/// Parse a set of Accept-Encoding header values into an iterator containing
+/// tuples of options containing encodings and their corresponding q-values.
+pub fn encodings_iter_str<'s>(
+  headers: impl Iterator<Item = &'s str> + 's,
+) -> impl Iterator<Item = Result<(Option<Encoding>, f32), EncodingError>> + 's {
+  encodings_iter_inner(headers.map(Ok))
 }
 
 /// Parse a set of HTTP headers into an iterator containing tuples of options containing encodings and their corresponding q-values.
@@ -124,19 +133,20 @@ fn encodings_iter_inner<'s>(
 
 #[cfg(test)]
 mod tests {
+  use http::HeaderMap;
+  use http::HeaderValue;
+  use http::header::ACCEPT_ENCODING;
+
   use super::*;
-  use http_v02::header::ACCEPT_ENCODING;
-  use http_v02::HeaderMap;
-  use http_v02::HeaderValue;
 
   fn encodings(
     headers: &HeaderMap,
   ) -> Result<Vec<(Option<Encoding>, f32)>, EncodingError> {
-    encodings_iter_http_02(headers).collect()
+    encodings_iter_http(headers).collect()
   }
 
   fn parse(headers: &HeaderMap) -> Result<Option<Encoding>, EncodingError> {
-    preferred(encodings_iter_http_02(headers))
+    preferred(encodings_iter_http(headers))
   }
 
   #[test]

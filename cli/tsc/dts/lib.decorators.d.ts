@@ -7,14 +7,12 @@ License at http://www.apache.org/licenses/LICENSE-2.0
 THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
 WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
-MERCHANTABLITY OR NON-INFRINGEMENT.
+MERCHANTABILITY OR NON-INFRINGEMENT.
 
 See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-/// <reference no-default-lib="true"/>
 
 /**
  * The decorator context types provided to class element decorators.
@@ -110,9 +108,9 @@ interface ClassMethodDecoratorContext<
     };
 
     /**
-     * Adds a callback to be invoked either before static initializers are run (when
-     * decorating a `static` element), or before instance initializers are run (when
-     * decorating a non-`static` element).
+     * Adds a callback to be invoked either after static methods are defined but before
+     * static initializers are run (when decorating a `static` element), or before instance
+     * initializers are run (when decorating a non-`static` element).
      *
      * @example
      * ```ts
@@ -176,9 +174,9 @@ interface ClassGetterDecoratorContext<
     };
 
     /**
-     * Adds a callback to be invoked either before static initializers are run (when
-     * decorating a `static` element), or before instance initializers are run (when
-     * decorating a non-`static` element).
+     * Adds a callback to be invoked either after static methods are defined but before
+     * static initializers are run (when decorating a `static` element), or before instance
+     * initializers are run (when decorating a non-`static` element).
      */
     addInitializer(initializer: (this: This) => void): void;
 
@@ -223,9 +221,9 @@ interface ClassSetterDecoratorContext<
     };
 
     /**
-     * Adds a callback to be invoked either before static initializers are run (when
-     * decorating a `static` element), or before instance initializers are run (when
-     * decorating a non-`static` element).
+     * Adds a callback to be invoked either after static methods are defined but before
+     * static initializers are run (when decorating a `static` element), or before instance
+     * initializers are run (when decorating a non-`static` element).
      */
     addInitializer(initializer: (this: This) => void): void;
 
@@ -279,9 +277,8 @@ interface ClassAccessorDecoratorContext<
     };
 
     /**
-     * Adds a callback to be invoked either before static initializers are run (when
-     * decorating a `static` element), or before instance initializers are run (when
-     * decorating a non-`static` element).
+     * Adds a callback to be invoked immediately after the auto `accessor` being
+     * decorated is initialized (regardless if the `accessor` is `static` or not).
      */
     addInitializer(initializer: (this: This) => void): void;
 
@@ -376,9 +373,8 @@ interface ClassFieldDecoratorContext<
     };
 
     /**
-     * Adds a callback to be invoked either before static initializers are run (when
-     * decorating a `static` element), or before instance initializers are run (when
-     * decorating a non-`static` element).
+     * Adds a callback to be invoked immediately after the field being decorated
+     * is initialized (regardless if the field is `static` or not).
      */
     addInitializer(initializer: (this: This) => void): void;
 

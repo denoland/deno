@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "default": {
+      "args": "fmt --check --ignore=./",
+      "output": "error: No target files found.\n",
+      "exitCode": 1
+    },
+    "permitted": {
+      "args": "fmt --permit-no-files --check --ignore=./",
+      "output": "Checked 0 files\n",
+      "exitCode": 0
+    }
+  }
+}

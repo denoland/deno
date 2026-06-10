@@ -1,4 +1,4 @@
-Check [WILDCARD]/ops_sanitizer_tcp.ts
+Check [WILDCARD]ops_sanitizer_tcp.ts
 running 1 test from [WILDCARD]/ops_sanitizer_tcp.ts
 testLeakTcpOps ... FAILED ([WILDCARD])
 

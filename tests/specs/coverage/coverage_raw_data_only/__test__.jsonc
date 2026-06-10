@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "test --doc --coverage --coverage-raw-data-only",
+      "output": "main.out",
+      "exitCode": 0
+    }
+  ]
+}

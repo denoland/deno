@@ -75,6 +75,5 @@
   "bugs": {
     "url": "https://github.com/jprichardson/node-fs-extra/issues"
   },
-  "readmeFilename": "README.md",
   "license": "MIT"
 }

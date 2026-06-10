@@ -1,0 +1,31 @@
+Check [WILDCARD]aftereach_error.ts
+running 2 tests from ./aftereach_error.ts
+first test ... FAILED ([WILDCARD])
+second test ... ok ([WILDCARD])
+------- post-test output -------
+[
+  "beforeEach executed for test 1",
+  "first test executed",
+  "afterEach executed for test 1",
+  "beforeEach executed for test 2",
+  "second test executed",
+  "afterEach executed for test 2",
+  "afterEach2 executed for test 2"
+]
+----- post-test output end -----
+
+ ERRORS 
+
+first test => ./aftereach_error.ts:21:6
+error: Error: afterEach hook failed on second test
+    throw new Error("afterEach hook failed on second test");
+          ^
+    at [WILDCARD]aftereach_error.ts:17:11
+
+ FAILURES 
+
+first test => ./aftereach_error.ts:21:6
+
+FAILED | 1 passed | 1 failed ([WILDCARD])
+
+error: Test failed

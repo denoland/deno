@@ -1,0 +1,6 @@
+{
+  "workspace": ["member"],
+  "lint": {
+    "plugins": ["plugin.ts"]
+  }
+}

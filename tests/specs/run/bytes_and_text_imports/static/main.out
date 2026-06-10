@@ -1,0 +1,11 @@
+hello
+Uint8Array(5) [ 104, 101, 108, 108, 111 ]
+bom 3
+Uint8Array(6) [ 239, 187, 191, 98, 111, 109 ]
+fo�o
+Uint8Array(4) [ 102, 111, 128, 111 ]
+export function add(a: number, b: number): number {
+  console.log("fo�o");
+  return a + b;
+}
+

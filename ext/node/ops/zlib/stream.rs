@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use super::mode::Flush;
-use super::mode::Mode;
 use std::ffi::c_int;
 use std::ops::Deref;
 use std::ops::DerefMut;
+
+use super::mode::Flush;
+use super::mode::Mode;
 
 pub struct StreamWrapper {
   pub strm: zlib::z_stream,
@@ -120,6 +121,11 @@ impl StreamWrapper {
   pub fn inflate(&mut self, flush: Flush) -> c_int {
     // SAFETY: `self.strm` is an initialized `zlib::z_stream`.
     unsafe { zlib::inflate(&mut self.strm, flush as _) }
+  }
+
+  pub fn deflate_params(&mut self, level: c_int, strategy: c_int) -> c_int {
+    // SAFETY: `self.strm` is an initialized `zlib::z_stream`.
+    unsafe { zlib::deflateParams(&mut self.strm, level, strategy) }
   }
 
   pub fn inflate_set_dictionary(&mut self, dictionary: &[u8]) -> c_int {

@@ -1,8 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = __bootstrap;
 const { internalRidSymbol } = core;
-import {
+const {
   op_net_accept_tls,
   op_net_connect_tls,
   op_net_listen_tls,
@@ -13,15 +14,21 @@ import {
   op_tls_handshake,
   op_tls_key_null,
   op_tls_key_static,
+  op_tls_peer_certificate,
   op_tls_start,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ObjectDefineProperty,
   TypeError,
+  Symbol,
   SymbolFor,
 } = primordials;
 
-import { Conn, Listener, validatePort } from "ext:deno_net/01_net.js";
+const { Conn, Listener, validatePort } = core.loadExtScript(
+  "ext:deno_net/01_net.js",
+);
+
+const _getPeerCertificate = Symbol("getPeerCertificate");
 
 class TlsConn extends Conn {
   #rid = 0;
@@ -39,6 +46,10 @@ class TlsConn extends Conn {
   handshake() {
     return op_tls_handshake(this.#rid);
   }
+
+  [_getPeerCertificate](detailed = false) {
+    return op_tls_peer_certificate(this.#rid, detailed);
+  }
 }
 
 async function connectTls({
@@ -50,6 +61,7 @@ async function connectTls({
   keyFormat = undefined,
   cert = undefined,
   key = undefined,
+  unsafelyDisableHostnameVerification = false,
 }) {
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
@@ -65,7 +77,7 @@ async function connectTls({
   const serverName = arguments[0][serverNameSymbol] ?? null;
   const { 0: rid, 1: localAddr, 2: remoteAddr } = await op_net_connect_tls(
     { hostname, port },
-    { caCerts, alpnProtocols, serverName },
+    { caCerts, alpnProtocols, serverName, unsafelyDisableHostnameVerification },
     keyPair,
   );
   localAddr.transport = "tcp";
@@ -148,16 +160,17 @@ function loadTlsKeyPair(api, {
 }
 
 function listenTls({
-  port,
+  port = 0,
   hostname = "0.0.0.0",
   transport = "tcp",
   alpnProtocols = undefined,
   reusePort = false,
+  tcpBacklog = 511,
 }) {
   if (transport !== "tcp") {
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
-  port = validatePort(port);
+  port = validatePort(port, true);
 
   if (!hasTlsKeyPairOptions(arguments[0])) {
     throw new TypeError(
@@ -167,7 +180,7 @@ function listenTls({
   const keyPair = loadTlsKeyPair("Deno.listenTls", arguments[0]);
   const { 0: rid, 1: localAddr } = op_net_listen_tls(
     { hostname, port },
-    { alpnProtocols, reusePort },
+    { alpnProtocols, reusePort, tcpBacklog },
     keyPair,
   );
   return new TlsListener(rid, localAddr);
@@ -180,14 +193,36 @@ async function startTls(
     hostname = "127.0.0.1",
     caCerts = [],
     alpnProtocols = undefined,
+    unsafelyDisableHostnameVerification = false,
   } = { __proto__: null },
+) {
+  return startTlsInternal(conn, {
+    hostname,
+    caCerts,
+    alpnProtocols,
+    unsafelyDisableHostnameVerification,
+  });
+}
+
+function startTlsInternal(
+  conn,
+  {
+    hostname = "127.0.0.1",
+    caCerts = [],
+    alpnProtocols = undefined,
+    keyPair = null,
+    rejectUnauthorized,
+    unsafelyDisableHostnameVerification,
+  },
 ) {
   const { 0: rid, 1: localAddr, 2: remoteAddr } = op_tls_start({
     rid: conn[internalRidSymbol],
     hostname,
     caCerts,
     alpnProtocols,
-  });
+    rejectUnauthorized,
+    unsafelyDisableHostnameVerification,
+  }, keyPair);
   return new TlsConn(rid, remoteAddr, localAddr);
 }
 
@@ -221,13 +256,16 @@ function createTlsKeyResolver(callback) {
 internals.resolverSymbol = resolverSymbol;
 internals.serverNameSymbol = serverNameSymbol;
 internals.createTlsKeyResolver = createTlsKeyResolver;
+internals.getPeerCertificate = _getPeerCertificate;
 
-export {
+return {
   connectTls,
   hasTlsKeyPairOptions,
   listenTls,
   loadTlsKeyPair,
   startTls,
+  startTlsInternal,
   TlsConn,
   TlsListener,
 };
+})();

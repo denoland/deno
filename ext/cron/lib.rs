@@ -1,43 +1,51 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+mod cron;
+mod handler_impl;
 mod interface;
 pub mod local;
+mod socket;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
-pub use crate::interface::*;
-use deno_core::error::get_custom_error_class;
-use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::op2;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
+use deno_features::FeatureChecker;
+pub use handler_impl::CronHandlerImpl;
+pub use socket::SocketCronHandle;
+pub use socket::SocketCronHandler;
+
+pub use crate::interface::*;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "cron";
 
 deno_core::extension!(deno_cron,
-  deps = [ deno_console ],
-  parameters = [ C: CronHandler ],
   ops = [
-    op_cron_create<C>,
-    op_cron_next<C>,
+    op_cron_create,
+    op_cron_next,
   ],
-  esm = [ "01_cron.ts" ],
+  lazy_loaded_js = [ "01_cron.ts" ],
   options = {
-    cron_handler: C,
+    cron_handler: Box<dyn CronHandler>,
   },
   state = |state, options| {
-    state.put(Rc::new(options.cron_handler));
+    state.put::<Rc<dyn CronHandler>>(Rc::from(options.cron_handler));
   }
 );
 
-struct CronResource<EH: CronHandle + 'static> {
-  handle: Rc<EH>,
+struct CronResource {
+  handle: Rc<dyn CronHandle>,
 }
 
-impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
-  fn name(&self) -> Cow<str> {
+impl Resource for CronResource {
+  fn name(&self) -> Cow<'_, str> {
     "cron".into()
   }
 
@@ -46,45 +54,59 @@ impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CronError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(type)]
   #[error("Cron name cannot exceed 64 characters: current length {0}")]
   NameExceeded(usize),
-  #[error("Invalid cron name: only alphanumeric characters, whitespace, hyphens, and underscores are allowed")]
+  #[class(type)]
+  #[error(
+    "Invalid cron name: only alphanumeric characters, whitespace, hyphens, and underscores are allowed"
+  )]
   NameInvalid,
+  #[class(type)]
   #[error("Cron with this name already exists")]
   AlreadyExists,
+  #[class(type)]
   #[error("Too many crons")]
   TooManyCrons,
+  #[class(type)]
   #[error("Invalid cron schedule")]
   InvalidCron,
+  #[class(type)]
   #[error("Invalid backoff schedule")]
   InvalidBackoff,
+  #[class(generic)]
   #[error(transparent)]
   AcquireError(#[from] tokio::sync::AcquireError),
+  #[class(generic)]
+  #[error("Cron socket error: {0}")]
+  SocketError(String),
+  #[class(generic)]
+  #[error("Error registering cron: {0}")]
+  RejectedError(String),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(JsErrorBox),
 }
 
 #[op2]
 #[smi]
-fn op_cron_create<C>(
+fn op_cron_create(
   state: Rc<RefCell<OpState>>,
   #[string] name: String,
   #[string] cron_schedule: String,
-  #[serde] backoff_schedule: Option<Vec<u32>>,
-) -> Result<ResourceId, CronError>
-where
-  C: CronHandler + 'static,
-{
+  #[scoped] backoff_schedule: Option<Vec<u32>>,
+) -> Result<ResourceId, CronError> {
   let cron_handler = {
     let state = state.borrow();
     state
-      .feature_checker
+      .borrow::<Arc<FeatureChecker>>()
       .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.cron");
-    state.borrow::<Rc<C>>().clone()
+    state.borrow::<Rc<dyn CronHandler>>().clone()
   };
 
   validate_cron_name(&name)?;
@@ -97,29 +119,28 @@ where
 
   let handle_rid = {
     let mut state = state.borrow_mut();
-    state.resource_table.add(CronResource {
-      handle: Rc::new(handle),
-    })
+    state.resource_table.add(CronResource { handle })
   };
   Ok(handle_rid)
 }
 
-#[op2(async)]
-async fn op_cron_next<C>(
+#[op2]
+#[serde]
+async fn op_cron_next(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   prev_success: bool,
-) -> Result<bool, CronError>
-where
-  C: CronHandler + 'static,
-{
-  let cron_handler = {
+) -> Result<CronNextResult, CronError> {
+  let cron_handle = {
     let state = state.borrow();
-    let resource = match state.resource_table.get::<CronResource<C::EH>>(rid) {
+    let resource = match state.resource_table.get::<CronResource>(rid) {
       Ok(resource) => resource,
       Err(err) => {
-        if get_custom_error_class(&err) == Some("BadResource") {
-          return Ok(false);
+        if err.get_class() == "BadResource" {
+          return Ok(CronNextResult {
+            active: false,
+            traceparent: None,
+          });
         } else {
           return Err(CronError::Resource(err));
         }
@@ -128,7 +149,7 @@ where
     resource.handle.clone()
   };
 
-  cron_handler.next(prev_success).await
+  cron_handle.next(prev_success).await
 }
 
 fn validate_cron_name(name: &str) -> Result<(), CronError> {

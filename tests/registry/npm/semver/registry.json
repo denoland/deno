@@ -107,6 +107,5 @@
   "homepage": "https://github.com/npm/node-semver#readme",
   "bugs": {
     "url": "https://github.com/npm/node-semver/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

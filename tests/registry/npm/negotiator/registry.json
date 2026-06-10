@@ -55,6 +55,5 @@
   "bugs": {
     "url": "https://github.com/jshttp/negotiator/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

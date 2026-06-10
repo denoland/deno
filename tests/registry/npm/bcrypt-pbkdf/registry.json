@@ -41,7 +41,6 @@
     }
   },
   "license": "BSD-3-Clause",
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/joyent/node-bcrypt-pbkdf#readme",
   "repository": {
     "type": "git",

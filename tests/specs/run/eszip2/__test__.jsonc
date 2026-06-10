@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "compile --eszip-internal-do-not-use --import-map ./src/import_map.json ./src/a.js",
+      "exitCode": 0,
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "run --eszip-internal-do-not-use --import-map import_map.json a.js#a.eszip",
+      "exitCode": 0,
+      "output": "./a.out"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
-Check file:///[WILDLINE]/package-a/mod.test.ts
-Check file:///[WILDLINE]/package-b/mod.test.ts
+Check [WILDCARD]mod.test.ts
+Check [WILDCARD]mod.test.ts
 running 1 test from ./package-a/mod.test.ts
 add ... ok ([WILDLINE])
 running 2 tests from ./package-b/mod.test.ts

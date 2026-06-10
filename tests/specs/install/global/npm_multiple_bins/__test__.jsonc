@@ -1,0 +1,52 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    "args": "install -g --allow-read --root ./bins npm:@denotest/multi-bin@1.0.0",
+    "output": "install.out"
+  }, {
+    "if": "unix",
+    "commandName": "./bins/bin/multi-bin",
+    "args": ["hello"],
+    "output": "run_cli.out",
+    "exitCode": 0
+  }, {
+    "if": "unix",
+    "commandName": "./bins/bin/multi-bin-server",
+    "args": ["world"],
+    "output": "run_server.out",
+    "exitCode": 0
+  }, {
+    "if": "unix",
+    "args": "uninstall -g --root ./bins multi-bin",
+    "output": "uninstall.out"
+  }, {
+    "if": "unix",
+    "args": "run -A assert_uninstalled.js",
+    "output": ""
+  }, {
+    "if": "windows",
+    "args": "install -g --allow-read --root ./bins npm:@denotest/multi-bin@1.0.0",
+    "output": "install.out"
+  }, {
+    "if": "windows",
+    "commandName": "./bins/bin/multi-bin.cmd",
+    "args": ["hello"],
+    "output": "run_cli.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "commandName": "./bins/bin/multi-bin-server.cmd",
+    "args": ["world"],
+    "output": "run_server.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "uninstall -g --root ./bins multi-bin",
+    "output": "uninstall.out"
+  }, {
+    "if": "windows",
+    "args": "run -A assert_uninstalled.js",
+    "output": ""
+  }]
+}

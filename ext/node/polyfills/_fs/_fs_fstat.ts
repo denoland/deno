@@ -1,82 +1,98 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_node_fs_fstat, op_node_fs_fstat_sync } = core.ops;
 
-import {
-  BigIntStats,
-  CFISBIS,
-  statCallback,
-  statCallbackBigInt,
-  statOptions,
-  Stats,
-} from "ext:deno_node/_fs/_fs_stat.ts";
-import { FsFile } from "ext:deno_fs/30_fs.js";
+const {
+  Date,
+  Error,
+  Promise,
+  PromisePrototypeThen,
+} = primordials;
 
-export function fstat(fd: number, callback: statCallback): void;
-export function fstat(
-  fd: number,
-  options: { bigint: false },
-  callback: statCallback,
-): void;
-export function fstat(
-  fd: number,
-  options: { bigint: true },
-  callback: statCallbackBigInt,
-): void;
-export function fstat(
-  fd: number,
-  optionsOrCallback: statCallback | statCallbackBigInt | statOptions,
-  maybeCallback?: statCallback | statCallbackBigInt,
+const lazyStatUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/stat_utils.ts",
+);
+const lazyFsUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
+const { denoErrorToNodeError } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+
+function nodeFsStatToFileInfo(stat) {
+  return {
+    isFile: stat.isFile,
+    isDirectory: stat.isDirectory,
+    isSymlink: stat.isSymlink,
+    size: stat.size,
+    mtime: stat.mtimeMs != null ? new Date(stat.mtimeMs) : null,
+    atime: stat.atimeMs != null ? new Date(stat.atimeMs) : null,
+    birthtime: stat.birthtimeMs != null ? new Date(stat.birthtimeMs) : null,
+    ctime: stat.ctimeMs != null ? new Date(stat.ctimeMs) : null,
+    dev: stat.dev,
+    ino: stat.ino ?? 0,
+    mode: stat.mode,
+    nlink: stat.nlink ?? 0,
+    uid: stat.uid,
+    gid: stat.gid,
+    rdev: stat.rdev,
+    blksize: stat.blksize,
+    blocks: stat.blocks ?? 0,
+    isBlockDevice: stat.isBlockDevice,
+    isCharDevice: stat.isCharDevice,
+    isFifo: stat.isFifo,
+    isSocket: stat.isSocket,
+  };
+}
+
+function fstat(
+  fd,
+  optionsOrCallback,
+  maybeCallback,
 ) {
-  const callback =
-    (typeof optionsOrCallback === "function"
-      ? optionsOrCallback
-      : maybeCallback) as (
-        ...args: [Error] | [null, BigIntStats | Stats]
-      ) => void;
+  fd = lazyFsUtils().getValidatedFd(fd);
+  const callback = typeof optionsOrCallback === "function"
+    ? optionsOrCallback
+    : maybeCallback;
   const options = typeof optionsOrCallback === "object"
     ? optionsOrCallback
     : { bigint: false };
 
   if (!callback) throw new Error("No callback function supplied");
 
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).stat().then(
-    (stat) => callback(null, CFISBIS(stat, options.bigint)),
-    (err) => callback(err),
+  PromisePrototypeThen(
+    op_node_fs_fstat(fd),
+    (stat) =>
+      callback(
+        null,
+        lazyStatUtils().CFISBIS(nodeFsStatToFileInfo(stat), options.bigint),
+      ),
+    (err) => callback(denoErrorToNodeError(err, { syscall: "fstat" })),
   );
 }
 
-export function fstatSync(fd: number): Stats;
-export function fstatSync(
-  fd: number,
-  options: { bigint: false },
-): Stats;
-export function fstatSync(
-  fd: number,
-  options: { bigint: true },
-): BigIntStats;
-export function fstatSync(
-  fd: number,
-  options?: statOptions,
-): Stats | BigIntStats {
-  const origin = new FsFile(fd, Symbol.for("Deno.internal.FsFile")).statSync();
-  return CFISBIS(origin, options?.bigint || false);
+function fstatSync(
+  fd,
+  options,
+) {
+  fd = lazyFsUtils().getValidatedFd(fd);
+  try {
+    const stat = op_node_fs_fstat_sync(fd);
+    return lazyStatUtils().CFISBIS(
+      nodeFsStatToFileInfo(stat),
+      options?.bigint || false,
+    );
+  } catch (err) {
+    throw denoErrorToNodeError(err, { syscall: "fstat" });
+  }
 }
 
-export function fstatPromise(fd: number): Promise<Stats>;
-export function fstatPromise(
-  fd: number,
-  options: { bigint: false },
-): Promise<Stats>;
-export function fstatPromise(
-  fd: number,
-  options: { bigint: true },
-): Promise<BigIntStats>;
-export function fstatPromise(
-  fd: number,
-  options?: statOptions,
-): Stats | BigIntStats {
+function fstatPromise(
+  fd,
+  options,
+) {
   return new Promise((resolve, reject) => {
     fstat(fd, options, (err, stats) => {
       if (err) reject(err);
@@ -84,3 +100,6 @@ export function fstatPromise(
     });
   });
 }
+
+return { fstat, fstatSync, fstatPromise };
+})();

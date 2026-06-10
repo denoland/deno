@@ -1,0 +1,12 @@
+[WILDCARD]
+
+Embedded Files
+
+main[WILDLINE]
+├── main.ts ([WILDLINE])
+└── node_modules/* ([WILDLINE])
+
+Files: [WILDLINE]
+Metadata: [WILDLINE]
+Remote modules: [WILDLINE]
+

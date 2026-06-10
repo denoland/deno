@@ -1,36 +1,47 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+(function () {
+const { core, primordials } = __bootstrap;
+const { ERR_INVALID_URI } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const {
+  Array,
+  Int8Array,
+  NumberPrototypeToString,
+  StringPrototypeCharCodeAt,
+  StringPrototypeSlice,
+  StringPrototypeToUpperCase,
+} = primordials;
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { ERR_INVALID_URI } from "ext:deno_node/internal/errors.ts";
-
-export const hexTable = new Array(256);
+const hexTable = new Array(256);
 for (let i = 0; i < 256; ++i) {
-  hexTable[i] = "%" + ((i < 16 ? "0" : "") + i.toString(16)).toUpperCase();
+  hexTable[i] = "%" +
+    StringPrototypeToUpperCase(
+      (i < 16 ? "0" : "") + NumberPrototypeToString(i, 16),
+    );
 }
 
 // deno-fmt-ignore
-export const isHexTable = new Int8Array([
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0 - 15
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 16 - 31
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 32 - 47
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, // 48 - 63
-  0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 64 - 79
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 80 - 95
-  0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 96 - 111
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 112 - 127
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 128 ...
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // ... 256
-]);
+const isHexTable = new Int8Array([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0 - 15
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 16 - 31
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 32 - 47
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, // 48 - 63
+    0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 64 - 79
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 80 - 95
+    0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 96 - 111
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 112 - 127
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 128 ...
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  // ... 256
+  ]);
 
-export function encodeStr(
+function encodeStr(
   str: string,
   noEscapeTable: Int8Array,
   hexTable: string[],
@@ -42,17 +53,17 @@ export function encodeStr(
   let lastPos = 0;
 
   for (let i = 0; i < len; i++) {
-    let c = str.charCodeAt(i);
+    let c = StringPrototypeCharCodeAt(str, i);
     // ASCII
     if (c < 0x80) {
       if (noEscapeTable[c] === 1) continue;
-      if (lastPos < i) out += str.slice(lastPos, i);
+      if (lastPos < i) out += StringPrototypeSlice(str, lastPos, i);
       lastPos = i + 1;
       out += hexTable[c];
       continue;
     }
 
-    if (lastPos < i) out += str.slice(lastPos, i);
+    if (lastPos < i) out += StringPrototypeSlice(str, lastPos, i);
 
     // Multi-byte characters ...
     if (c < 0x800) {
@@ -75,7 +86,7 @@ export function encodeStr(
     // completion's sake anyway.
     if (i >= len) throw new ERR_INVALID_URI();
 
-    const c2 = str.charCodeAt(i) & 0x3ff;
+    const c2 = StringPrototypeCharCodeAt(str, i) & 0x3ff;
 
     lastPos = i + 1;
     c = 0x10000 + (((c & 0x3ff) << 10) | c2);
@@ -85,12 +96,20 @@ export function encodeStr(
       hexTable[0x80 | (c & 0x3f)];
   }
   if (lastPos === 0) return str;
-  if (lastPos < len) return out + str.slice(lastPos);
+  if (lastPos < len) return out + StringPrototypeSlice(str, lastPos);
   return out;
 }
 
-export default {
+const _defaultExport = {
   hexTable,
   encodeStr,
   isHexTable,
 };
+
+return {
+  encodeStr,
+  hexTable,
+  isHexTable,
+  default: _defaultExport,
+};
+})();

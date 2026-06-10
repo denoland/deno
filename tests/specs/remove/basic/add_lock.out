@@ -1,15 +1,15 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "jsr:@std/assert@1": "1.0.0",
     "jsr:@std/http@1": "1.0.0"
   },
   "jsr": {
     "@std/assert@1.0.0": {
-      "integrity": "[WILDLINE]"
+      "integrity": "a97ea1edad7304e14441068d2b6e1959bbdeb27172449e062fd8f4eb1b3cccc9"
     },
     "@std/http@1.0.0": {
-      "integrity": "[WILDLINE]"
+      "integrity": "ffffe0fca38c6e05fec33e24eba08b225fa7af0fdfedc58a686aeb4a0ca5ff46"
     }
   },
   "workspace": {

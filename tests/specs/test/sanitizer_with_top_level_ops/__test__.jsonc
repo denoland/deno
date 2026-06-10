@@ -1,4 +1,5 @@
 {
-  "args": "test --quiet --allow-net main.js",
-  "output": "main.out"
+  "args": "test --sanitize-ops --sanitize-resources --quiet --allow-net main.js",
+  "output": "main.out",
+  "flaky": true
 }

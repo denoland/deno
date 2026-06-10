@@ -1,0 +1,11 @@
+Compile main.ts to [WILDCARD]
+
+Embedded Files
+
+[WILDCARD]
+├── deno.json ([WILDCARD])
+└── main.ts ([WILDCARD])
+
+Files: [WILDCARD]
+Metadata: [WILDCARD]
+Remote modules: [WILDCARD]

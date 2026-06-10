@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,28 +24,78 @@
 // - https://github.com/nodejs/node/blob/master/src/cares_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/cares_wrap.h
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isIPv4 } from "ext:deno_node/internal/net.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  ArrayPrototypeFilter,
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ArrayPrototypeReverse,
+  ArrayPrototypeSort,
+  Error,
+  MathMin,
+  MathPow,
+  Number,
+  NumberParseInt,
+  NumberPrototypeToString,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+  SafeArrayIterator,
+  SafeRegExp,
+  SafeSet,
+  SafeSetIterator,
+  SetPrototypeAdd,
+  SetPrototypeClear,
+  SetPrototypeDelete,
+  SetPrototypeHas,
+  StringPrototypeIncludes,
+  StringPrototypePadStart,
+  StringPrototypeReplace,
+  StringPrototypeSplit,
+} = primordials;
+const {
+  op_dns_resolve,
+  op_net_get_ips_from_perm_token,
+  op_net_get_system_dns_servers,
+  op_node_getaddrinfo,
+  op_node_getnameinfo,
+} = core.ops;
+const { isIPv4, isIPv6 } = core.loadExtScript(
+  "ext:deno_node/internal/net.ts",
+);
+const { codeMap } = core.loadExtScript(
+  "ext:deno_node/internal_binding/uv.ts",
+);
+const {
   AsyncWrap,
   providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
-import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
+} = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
+const { ares_strerror } = core.loadExtScript(
+  "ext:deno_node/internal_binding/ares.ts",
+);
+const { notImplemented } = core.loadExtScript("ext:deno_node/_utils.ts");
 
 interface LookupAddress {
   address: string;
   family: number;
 }
 
-export class GetAddrInfoReqWrap extends AsyncWrap {
+interface ErrnoException extends Error {
+  errno?: number;
+  code?: string;
+  path?: string;
+  syscall?: string;
+}
+
+const DNS_ORDER_VERBATIM = 0;
+const DNS_ORDER_IPV4_FIRST = 1;
+const DNS_ORDER_IPV6_FIRST = 2;
+
+class GetAddrInfoReqWrap extends AsyncWrap {
   family!: number;
   hostname!: string;
+  port: number | undefined;
 
   callback!: (
     err: ErrnoException | null,
@@ -54,49 +104,66 @@ export class GetAddrInfoReqWrap extends AsyncWrap {
   ) => void;
   resolve!: (addressOrAddresses: LookupAddress | LookupAddress[]) => void;
   reject!: (err: ErrnoException | null) => void;
-  oncomplete!: (err: number | null, addresses: string[]) => void;
+  oncomplete!: (
+    err: number | null,
+    addresses: string[],
+    netPermToken: object | undefined,
+  ) => void;
 
   constructor() {
     super(providerType.GETADDRINFOREQWRAP);
   }
 }
 
-export function getaddrinfo(
+function getaddrinfo(
   req: GetAddrInfoReqWrap,
   hostname: string,
   family: number,
   _hints: number,
-  verbatim: boolean,
+  order: 0 | 1 | 2,
 ): number {
   let addresses: string[] = [];
 
   // TODO(cmorten): use hints
   // REF: https://nodejs.org/api/dns.html#dns_supported_getaddrinfo_flags
 
-  const recordTypes: ("A" | "AAAA")[] = [];
-
-  if (family === 0 || family === 4) {
-    recordTypes.push("A");
-  }
-  if (family === 0 || family === 6) {
-    recordTypes.push("AAAA");
-  }
-
   (async () => {
-    await Promise.allSettled(
-      recordTypes.map((recordType) =>
-        Deno.resolveDns(hostname, recordType).then((records) => {
-          records.forEach((record) => addresses.push(record));
-        })
-      ),
-    );
+    let error = 0;
+    let netPermToken: object | undefined;
+    try {
+      netPermToken = await op_node_getaddrinfo(
+        hostname,
+        req.port || undefined,
+        family,
+      );
+      ArrayPrototypePush(
+        addresses,
+        ...new SafeArrayIterator(
+          op_net_get_ips_from_perm_token(netPermToken),
+        ),
+      );
+      if (addresses.length === 0) {
+        error = codeMap.get("EAI_NODATA")!;
+      }
+    } catch (e) {
+      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
+        error = codeMap.get("EPERM")!;
+      } else if (
+        typeof (e as { uv_errcode?: number })?.uv_errcode === "number" &&
+        (e as { uv_errcode: number }).uv_errcode !== 0
+      ) {
+        // Propagate the real libuv error code reported by `getaddrinfo`
+        // (e.g. `EAI_NONAME`/`ENOTFOUND`) instead of flattening every failure
+        // to `EAI_NODATA`, so the resulting error matches Node.js.
+        error = (e as { uv_errcode: number }).uv_errcode;
+      } else {
+        error = codeMap.get("EAI_NODATA")!;
+      }
+    }
 
-    const error = addresses.length ? 0 : codeMap.get("EAI_NODATA")!;
-
-    // TODO(cmorten): needs work
-    // REF: https://github.com/nodejs/node/blob/master/src/cares_wrap.cc#L1444
-    if (!verbatim) {
-      addresses.sort((a: string, b: string): number => {
+    // REF: https://github.com/nodejs/node/blob/0e157b6cd8694424ea9d8a1c1854fd1d08cbb064/src/cares_wrap.cc#L1739
+    if (order === DNS_ORDER_IPV4_FIRST) {
+      ArrayPrototypeSort(addresses, (a: string, b: string): number => {
         if (isIPv4(a)) {
           return -1;
         } else if (isIPv4(b)) {
@@ -105,22 +172,68 @@ export function getaddrinfo(
 
         return 0;
       });
+    } else if (order === DNS_ORDER_IPV6_FIRST) {
+      ArrayPrototypeSort(addresses, (a: string, b: string): number => {
+        if (isIPv6(a)) {
+          return -1;
+        } else if (isIPv6(b)) {
+          return 1;
+        }
+        return 0;
+      });
     }
 
-    // TODO(@bartlomieju): Forces IPv4 as a workaround for Deno not
-    // aligning with Node on implicit binding on Windows
-    // REF: https://github.com/denoland/deno/issues/10762
-    if (isWindows && hostname === "localhost") {
-      addresses = addresses.filter((address) => isIPv4(address));
+    if (family === 4) {
+      addresses = ArrayPrototypeFilter(addresses, (addr) => isIPv4(addr));
+    } else if (family === 6) {
+      addresses = ArrayPrototypeFilter(addresses, (addr) => isIPv6(addr));
     }
 
-    req.oncomplete(error, addresses);
+    req.oncomplete(error, addresses, netPermToken);
   })();
 
   return 0;
 }
 
-export class QueryReqWrap extends AsyncWrap {
+class GetNameInfoReqWrap extends AsyncWrap {
+  address!: string;
+  port!: number;
+
+  callback?: (
+    err: ErrnoException | null,
+    hostname?: string,
+    service?: string,
+  ) => void;
+  resolve!: (result: { hostname: string; service: string }) => void;
+  reject!: (err: ErrnoException | null) => void;
+  oncomplete!: (
+    err: Error | null,
+    hostname?: string,
+    service?: string,
+  ) => void;
+
+  constructor() {
+    super(providerType.GETNAMEINFOREQWRAP);
+  }
+}
+
+function getnameinfo(
+  req: GetNameInfoReqWrap,
+  address: string,
+  port: number,
+): number {
+  (async () => {
+    try {
+      const result = await op_node_getnameinfo(address, port);
+      req.oncomplete(null, result[0], result[1]);
+    } catch (err) {
+      req.oncomplete(err as Error);
+    }
+  })();
+  return 0;
+}
+
+class QueryReqWrap extends AsyncWrap {
   bindingName!: string;
   hostname!: string;
   ttl!: boolean;
@@ -145,7 +258,7 @@ export class QueryReqWrap extends AsyncWrap {
   }
 }
 
-export interface ChannelWrapQuery {
+interface ChannelWrapQuery {
   queryAny(req: QueryReqWrap, name: string): number;
   queryA(req: QueryReqWrap, name: string): number;
   queryAaaa(req: QueryReqWrap, name: string): number;
@@ -161,47 +274,52 @@ export interface ChannelWrapQuery {
   getHostByAddr(req: QueryReqWrap, name: string): number;
 }
 
+const trailingDotRegExp = new SafeRegExp(/\.$/);
+
 function fqdnToHostname(fqdn: string): string {
-  return fqdn.replace(/\.$/, "");
+  return StringPrototypeReplace(fqdn, trailingDotRegExp, "");
 }
 
-function compressIPv6(address: string): string {
-  const formatted = address.replace(/\b(?:0+:){2,}/, ":");
-  const finalAddress = formatted
-    .split(":")
-    .map((octet) => {
-      if (octet.match(/^\d+\.\d+\.\d+\.\d+$/)) {
-        // decimal
-        return Number(octet.replaceAll(".", "")).toString(16);
-      }
+let systemDnsServers: [string, number][] | null = null;
 
-      return octet.replace(/\b0+/g, "");
-    })
-    .join(":");
+function getSystemDnsServers(): [string, number][] {
+  if (systemDnsServers !== null) {
+    return systemDnsServers;
+  }
 
-  return finalAddress;
+  systemDnsServers = op_net_get_system_dns_servers();
+  return systemDnsServers;
 }
 
-export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
-  #servers: [string, number][] = [];
+class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
+  #servers: [string, number][] | null = null;
   #timeout: number;
   #tries: number;
+  #maxTimeout: number;
+  #pendingQueries: Set<QueryReqWrap> = new SafeSet();
+  #cancelRids: Set<number> = new SafeSet();
 
-  constructor(timeout: number, tries: number) {
+  constructor(timeout: number, tries: number, maxTimeout: number) {
     super(providerType.DNSCHANNEL);
 
     this.#timeout = timeout;
     this.#tries = tries;
+    this.#maxTimeout = maxTimeout;
   }
 
-  async #query(query: string, recordType: Deno.RecordType) {
-    // TODO(@bartlomieju): TTL logic.
-
-    let code: number;
+  async #query(
+    query: string,
+    recordType: Deno.RecordType,
+    ttl?: boolean,
+  ) {
+    // deno-lint-ignore no-explicit-any
+    let code: any;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
 
-    if (this.#servers.length) {
-      for (const [ipAddr, port] of this.#servers) {
+    if (this.#servers !== null && this.#servers.length) {
+      for (const server of new SafeArrayIterator(this.#servers)) {
+        const ipAddr = server[0];
+        const port = server[1];
         const resolveOptions = {
           nameServer: {
             ipAddr,
@@ -213,14 +331,18 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
           query,
           recordType,
           resolveOptions,
+          ttl,
         ));
 
-        if (code === 0 || code === codeMap.get("EAI_NODATA")!) {
+        if (
+          code === 0 || code === codeMap.get("EAI_NODATA")! ||
+          code === "ETIMEOUT"
+        ) {
           break;
         }
       }
     } else {
-      ({ code, ret } = await this.#resolve(query, recordType));
+      ({ code, ret } = await this.#resolve(query, recordType, null, ttl));
     }
 
     return { code: code!, ret: ret! };
@@ -230,155 +352,248 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     query: string,
     recordType: Deno.RecordType,
     resolveOptions?: Deno.ResolveDnsOptions,
+    ttl?: boolean,
   ): Promise<{
-    code: number;
-    ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
+    // deno-lint-ignore no-explicit-any
+    code: any;
+    // deno-lint-ignore no-explicit-any
+    ret: any[];
   }> {
-    let ret: Awaited<ReturnType<typeof Deno.resolveDns>> = [];
-    let code = 0;
+    const tries = this.#tries > 0 ? this.#tries : 1;
 
-    try {
-      ret = await Deno.resolveDns(query, recordType, resolveOptions);
-    } catch (e) {
-      if (e instanceof Deno.errors.NotFound) {
-        code = codeMap.get("EAI_NODATA")!;
-      } else {
-        // TODO(cmorten): map errors to appropriate error codes.
-        code = codeMap.get("UNKNOWN")!;
+    for (let attempt = 0; attempt < tries; attempt++) {
+      let ret = [];
+      // deno-lint-ignore no-explicit-any
+      let code: any = 0;
+
+      // Always create a cancel handle so cancel() can abort in-flight ops.
+      const cancelRid = core.createCancelHandle();
+      this.#cancelRids.add(cancelRid);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+
+      try {
+        if (this.#timeout >= 0) {
+          // c-ares doubles timeout on each retry, capped by maxTimeout
+          let currentTimeout = this.#timeout * MathPow(2, attempt);
+          if (this.#maxTimeout >= 0) {
+            currentTimeout = MathMin(currentTimeout, this.#maxTimeout);
+          }
+          timer = setTimeout(() => {
+            this.#cancelRids.delete(cancelRid);
+            core.tryClose(cancelRid);
+          }, currentTimeout);
+        }
+
+        const res = await op_dns_resolve({
+          query,
+          recordType,
+          options: resolveOptions,
+          cancelRid,
+        }, /* useEdns0 */ false);
+        if (ttl) {
+          ret = res;
+        } else {
+          ret = ArrayPrototypeMap(res, (recordWithTtl) => recordWithTtl.data);
+        }
+        return { code, ret };
+      } catch (e) {
+        if (
+          ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e)
+        ) {
+          // Interrupted means explicit cancel - don't retry
+          code = "ETIMEOUT";
+        } else if (
+          ObjectPrototypeIsPrototypeOf(Deno.errors.TimedOut.prototype, e)
+        ) {
+          // TimedOut from hickory - retry if attempts remain
+          if (attempt < tries - 1) continue;
+          code = "ETIMEOUT";
+        } else if (
+          ObjectPrototypeIsPrototypeOf(Deno.errors.NotFound.prototype, e)
+        ) {
+          code = codeMap.get("EAI_NODATA")!;
+        } else {
+          // TODO(cmorten): map errors to appropriate error codes.
+          code = codeMap.get("UNKNOWN")!;
+        }
+        return { code, ret };
+      } finally {
+        if (timer !== undefined) clearTimeout(timer);
+        this.#cancelRids.delete(cancelRid);
+        core.tryClose(cancelRid);
       }
     }
 
-    return { code, ret };
+    return { code: codeMap.get("UNKNOWN")!, ret: [] };
   }
 
   queryAny(req: QueryReqWrap, name: string): number {
-    // TODO(@bartlomieju): implemented temporary measure to allow limited usage of
-    // `resolveAny` like APIs.
-    //
-    // Ideally we move to using the "ANY" / "*" DNS query in future
-    // REF: https://github.com/denoland/deno/issues/14492
-    (async () => {
-      const records: { type: Deno.RecordType; [key: string]: unknown }[] = [];
+    SetPrototypeAdd(this.#pendingQueries, req);
 
-      await Promise.allSettled([
-        this.#query(name, "A").then(({ ret }) => {
-          ret.forEach((record) => records.push({ type: "A", address: record }));
-        }),
-        this.#query(name, "AAAA").then(({ ret }) => {
-          (ret as string[]).forEach((record) =>
-            records.push({ type: "AAAA", address: compressIPv6(record) })
-          );
-        }),
-        this.#query(name, "CAA").then(({ ret }) => {
-          (ret as Deno.CaaRecord[]).forEach(({ critical, tag, value }) =>
-            records.push({
-              type: "CAA",
-              [tag]: value,
-              critical: +critical && 128,
-            })
-          );
-        }),
-        this.#query(name, "CNAME").then(({ ret }) => {
-          ret.forEach((record) =>
-            records.push({ type: "CNAME", value: record })
-          );
-        }),
-        this.#query(name, "MX").then(({ ret }) => {
-          (ret as Deno.MxRecord[]).forEach(({ preference, exchange }) =>
-            records.push({
-              type: "MX",
-              priority: preference,
-              exchange: fqdnToHostname(exchange),
-            })
-          );
-        }),
-        this.#query(name, "NAPTR").then(({ ret }) => {
-          (ret as Deno.NaptrRecord[]).forEach(
-            ({ order, preference, flags, services, regexp, replacement }) =>
-              records.push({
-                type: "NAPTR",
-                order,
-                preference,
-                flags,
-                service: services,
-                regexp,
-                replacement,
-              }),
-          );
-        }),
-        this.#query(name, "NS").then(({ ret }) => {
-          (ret as string[]).forEach((record) =>
-            records.push({ type: "NS", value: fqdnToHostname(record) })
-          );
-        }),
-        this.#query(name, "PTR").then(({ ret }) => {
-          (ret as string[]).forEach((record) =>
-            records.push({ type: "PTR", value: fqdnToHostname(record) })
-          );
-        }),
-        this.#query(name, "SOA").then(({ ret }) => {
-          (ret as Deno.SoaRecord[]).forEach(
-            ({ mname, rname, serial, refresh, retry, expire, minimum }) =>
-              records.push({
+    PromisePrototypeThen(
+      // deno-lint-ignore no-explicit-any
+      this.#query(name, "ANY" as any, true),
+      ({ code, ret }) => {
+        if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+        SetPrototypeDelete(this.#pendingQueries, req);
+
+        if (code !== 0) {
+          req.oncomplete(code, []);
+          return;
+        }
+
+        const records: { type: string; [key: string]: unknown }[] = [];
+        for (const entry of new SafeArrayIterator(ret)) {
+          const data = entry?.data ?? entry;
+          const ttl = entry?.ttl ?? 0;
+          const rt = entry?.recordType;
+
+          switch (rt) {
+            case "A":
+              ArrayPrototypePush(records, { type: "A", address: data, ttl });
+              break;
+            case "AAAA":
+              ArrayPrototypePush(records, {
+                type: "AAAA",
+                address: data,
+                ttl,
+              });
+              break;
+            case "MX":
+              ArrayPrototypePush(records, {
+                type: "MX",
+                priority: data.preference,
+                exchange: fqdnToHostname(data.exchange),
+              });
+              break;
+            case "NS":
+              ArrayPrototypePush(records, {
+                type: "NS",
+                value: fqdnToHostname(data),
+              });
+              break;
+            case "TXT":
+              ArrayPrototypePush(records, { type: "TXT", entries: data });
+              break;
+            case "PTR":
+              ArrayPrototypePush(records, {
+                type: "PTR",
+                value: fqdnToHostname(data),
+              });
+              break;
+            case "SOA":
+              ArrayPrototypePush(records, {
                 type: "SOA",
-                nsname: fqdnToHostname(mname),
-                hostmaster: fqdnToHostname(rname),
-                serial,
-                refresh,
-                retry,
-                expire,
-                minttl: minimum,
-              }),
-          );
-        }),
-        this.#query(name, "SRV").then(({ ret }) => {
-          (ret as Deno.SrvRecord[]).forEach(
-            ({ priority, weight, port, target }) =>
-              records.push({
+                nsname: fqdnToHostname(data.mname),
+                hostmaster: fqdnToHostname(data.rname),
+                serial: data.serial,
+                refresh: data.refresh,
+                retry: data.retry,
+                expire: data.expire,
+                minttl: data.minimum,
+              });
+              break;
+            case "CAA":
+              ArrayPrototypePush(records, {
+                type: "CAA",
+                [data.tag]: data.value,
+                critical: +data.critical && 128,
+              });
+              break;
+            case "CNAME":
+              ArrayPrototypePush(records, { type: "CNAME", value: data });
+              break;
+            case "NAPTR":
+              ArrayPrototypePush(records, {
+                type: "NAPTR",
+                order: data.order,
+                preference: data.preference,
+                flags: data.flags,
+                service: data.services,
+                regexp: data.regexp,
+                replacement: data.replacement,
+              });
+              break;
+            case "SRV":
+              ArrayPrototypePush(records, {
                 type: "SRV",
-                priority,
-                weight,
-                port,
-                name: target,
-              }),
-          );
-        }),
-        this.#query(name, "TXT").then(({ ret }) => {
-          ret.forEach((record) =>
-            records.push({ type: "TXT", entries: record })
-          );
-        }),
-      ]);
+                priority: data.priority,
+                weight: data.weight,
+                port: data.port,
+                name: fqdnToHostname(data.target),
+              });
+              break;
+          }
+        }
 
-      const err = records.length ? 0 : codeMap.get("EAI_NODATA")!;
-
-      req.oncomplete(err, records);
-    })();
+        const err = records.length ? 0 : codeMap.get("EAI_NODATA")!;
+        req.oncomplete(err, records);
+      },
+    );
 
     return 0;
   }
 
   queryA(req: QueryReqWrap, name: string): number {
-    this.#query(name, "A").then(({ code, ret }) => {
-      req.oncomplete(code, ret);
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "A", req.ttl), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
+      let recordsWithTtl;
+      if (req.ttl) {
+        recordsWithTtl = ArrayPrototypeMap(
+          ret as Deno.RecordWithTtl[],
+          (val) => ({
+            address: val?.data,
+            ttl: val?.ttl,
+          }),
+        );
+      }
+
+      req.oncomplete(code, recordsWithTtl ?? ret);
     });
 
     return 0;
   }
 
   queryAaaa(req: QueryReqWrap, name: string): number {
-    this.#query(name, "AAAA").then(({ code, ret }) => {
-      const records = (ret as string[]).map((record) => compressIPv6(record));
+    SetPrototypeAdd(this.#pendingQueries, req);
 
-      req.oncomplete(code, records);
-    });
+    PromisePrototypeThen(
+      this.#query(name, "AAAA", req.ttl),
+      ({ code, ret }) => {
+        if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+        SetPrototypeDelete(this.#pendingQueries, req);
+
+        let recordsWithTtl;
+        if (req.ttl) {
+          recordsWithTtl = ArrayPrototypeMap(
+            ret as Deno.RecordWithTtl[],
+            (val) => ({
+              address: val?.data as string,
+              ttl: val?.ttl,
+            }),
+          );
+        }
+
+        req.oncomplete(code, recordsWithTtl ?? ret);
+      },
+    );
 
     return 0;
   }
 
   queryCaa(req: QueryReqWrap, name: string): number {
-    this.#query(name, "CAA").then(({ code, ret }) => {
-      const records = (ret as Deno.CaaRecord[]).map(
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "CAA"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
+      const records = ArrayPrototypeMap(
+        ret as Deno.CaaRecord[],
         ({ critical, tag, value }) => ({
           [tag]: value,
           critical: +critical && 128,
@@ -392,7 +607,12 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryCname(req: QueryReqWrap, name: string): number {
-    this.#query(name, "CNAME").then(({ code, ret }) => {
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "CNAME"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
       req.oncomplete(code, ret);
     });
 
@@ -400,8 +620,14 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryMx(req: QueryReqWrap, name: string): number {
-    this.#query(name, "MX").then(({ code, ret }) => {
-      const records = (ret as Deno.MxRecord[]).map(
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "MX"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
+      const records = ArrayPrototypeMap(
+        ret as Deno.MxRecord[],
         ({ preference, exchange }) => ({
           priority: preference,
           exchange: fqdnToHostname(exchange),
@@ -415,8 +641,14 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryNaptr(req: QueryReqWrap, name: string): number {
-    this.#query(name, "NAPTR").then(({ code, ret }) => {
-      const records = (ret as Deno.NaptrRecord[]).map(
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "NAPTR"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
+      const records = ArrayPrototypeMap(
+        ret as Deno.NaptrRecord[],
         ({ order, preference, flags, services, regexp, replacement }) => ({
           flags,
           service: services,
@@ -434,8 +666,16 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryNs(req: QueryReqWrap, name: string): number {
-    this.#query(name, "NS").then(({ code, ret }) => {
-      const records = (ret as string[]).map((record) => fqdnToHostname(record));
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "NS"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
+      const records = ArrayPrototypeMap(
+        ret as string[],
+        (record) => fqdnToHostname(record),
+      );
 
       req.oncomplete(code, records);
     });
@@ -444,8 +684,16 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryPtr(req: QueryReqWrap, name: string): number {
-    this.#query(name, "PTR").then(({ code, ret }) => {
-      const records = (ret as string[]).map((record) => fqdnToHostname(record));
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "PTR"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
+      const records = ArrayPrototypeMap(
+        ret as string[],
+        (record) => fqdnToHostname(record),
+      );
 
       req.oncomplete(code, records);
     });
@@ -454,7 +702,12 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   querySoa(req: QueryReqWrap, name: string): number {
-    this.#query(name, "SOA").then(({ code, ret }) => {
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "SOA"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
       let record = {};
 
       if (ret.length) {
@@ -479,13 +732,19 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   querySrv(req: QueryReqWrap, name: string): number {
-    this.#query(name, "SRV").then(({ code, ret }) => {
-      const records = (ret as Deno.SrvRecord[]).map(
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "SRV"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
+      const records = ArrayPrototypeMap(
+        ret as Deno.SrvRecord[],
         ({ priority, weight, port, target }) => ({
           priority,
           weight,
           port,
-          name: target,
+          name: fqdnToHostname(target),
         }),
       );
 
@@ -496,19 +755,95 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryTxt(req: QueryReqWrap, name: string): number {
-    this.#query(name, "TXT").then(({ code, ret }) => {
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(name, "TXT"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
       req.oncomplete(code, ret);
     });
 
     return 0;
   }
 
-  getHostByAddr(_req: QueryReqWrap, _name: string): number {
-    // TODO(@bartlomieju): https://github.com/denoland/deno/issues/14432
-    notImplemented("cares.ChannelWrap.prototype.getHostByAddr");
+  getHostByAddr(req: QueryReqWrap, name: string): number {
+    let reverseName: string;
+
+    if (isIPv4(name)) {
+      const octets = StringPrototypeSplit(name, ".");
+      reverseName = ArrayPrototypeJoin(ArrayPrototypeReverse(octets), ".") +
+        ".in-addr.arpa";
+    } else if (isIPv6(name)) {
+      // Expand the IPv6 address to full form
+      const parts = StringPrototypeSplit(name, ":");
+      const expanded: string[] = [];
+      let emptyFound = false;
+      for (const part of new SafeArrayIterator(parts)) {
+        if (part === "" && !emptyFound) {
+          emptyFound = true;
+          const missing = 8 -
+            ArrayPrototypeFilter(parts, (p) => p !== "").length;
+          for (let j = 0; j < missing; j++) {
+            ArrayPrototypePush(expanded, "0000");
+          }
+        } else if (part !== "" && StringPrototypeIncludes(part, ".")) {
+          // IPv4-mapped IPv6 (e.g. ::ffff:1.2.3.4) - convert dotted
+          // quad to two 16-bit hex groups
+          const octets = ArrayPrototypeMap(
+            StringPrototypeSplit(part, "."),
+            Number,
+          );
+          ArrayPrototypePush(
+            expanded,
+            StringPrototypePadStart(
+              NumberPrototypeToString((octets[0] << 8) | octets[1], 16),
+              4,
+              "0",
+            ),
+          );
+          ArrayPrototypePush(
+            expanded,
+            StringPrototypePadStart(
+              NumberPrototypeToString((octets[2] << 8) | octets[3], 16),
+              4,
+              "0",
+            ),
+          );
+        } else if (part !== "") {
+          ArrayPrototypePush(expanded, StringPrototypePadStart(part, 4, "0"));
+        }
+      }
+      const fullHex = ArrayPrototypeJoin(expanded, "");
+      reverseName = ArrayPrototypeJoin(
+        ArrayPrototypeReverse(StringPrototypeSplit(fullHex, "")),
+        ".",
+      ) + ".ip6.arpa";
+    } else {
+      req.oncomplete(codeMap.get("EINVAL")!, []);
+      return 0;
+    }
+
+    SetPrototypeAdd(this.#pendingQueries, req);
+
+    PromisePrototypeThen(this.#query(reverseName, "PTR"), ({ code, ret }) => {
+      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+      SetPrototypeDelete(this.#pendingQueries, req);
+
+      const records = ArrayPrototypeMap(
+        ret as string[],
+        (record) => fqdnToHostname(record),
+      );
+      req.oncomplete(code, records);
+    });
+
+    return 0;
   }
 
   getServers(): [string, number][] {
+    if (this.#servers === null) {
+      return getSystemDnsServers();
+    }
     return this.#servers;
   }
 
@@ -517,12 +852,18 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
       const tuples: [string, number][] = [];
 
       for (let i = 0; i < servers.length; i += 2) {
-        tuples.push([servers[i], parseInt(servers[i + 1])]);
+        ArrayPrototypePush(tuples, [
+          servers[i],
+          NumberParseInt(servers[i + 1]),
+        ]);
       }
 
       this.#servers = tuples;
     } else {
-      this.#servers = servers.map(([_ipVersion, ip, port]) => [ip, port]);
+      this.#servers = ArrayPrototypeMap(
+        servers,
+        (server) => [server[1], server[2]],
+      );
     }
 
     return 0;
@@ -533,15 +874,49 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   cancel() {
-    notImplemented("cares.ChannelWrap.prototype.cancel");
+    for (const req of new SafeSetIterator(this.#pendingQueries)) {
+      req.oncomplete("ECANCELLED", []);
+    }
+    SetPrototypeClear(this.#pendingQueries);
+
+    // Abort in-flight DNS operations so the process can exit.
+    for (const rid of new SafeSetIterator(this.#cancelRids)) {
+      core.tryClose(rid);
+    }
+    SetPrototypeClear(this.#cancelRids);
   }
 }
 
 const DNS_ESETSRVPENDING = -1000;
 const EMSG_ESETSRVPENDING = "There are pending queries.";
 
-export function strerror(code: number) {
+function strerror(code: number) {
   return code === DNS_ESETSRVPENDING
     ? EMSG_ESETSRVPENDING
     : ares_strerror(code);
 }
+
+return {
+  DNS_ORDER_VERBATIM,
+  DNS_ORDER_IPV4_FIRST,
+  DNS_ORDER_IPV6_FIRST,
+  GetAddrInfoReqWrap,
+  getaddrinfo,
+  GetNameInfoReqWrap,
+  getnameinfo,
+  QueryReqWrap,
+  ChannelWrap,
+  strerror,
+  default: {
+    DNS_ORDER_VERBATIM,
+    DNS_ORDER_IPV4_FIRST,
+    DNS_ORDER_IPV6_FIRST,
+    GetAddrInfoReqWrap,
+    getaddrinfo,
+    getnameinfo,
+    QueryReqWrap,
+    ChannelWrap,
+    strerror,
+  },
+};
+})();

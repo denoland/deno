@@ -1,7 +1,8 @@
-warn: Unterminated string constant at [WILDCARD]script.ts:1:13
-
-  const foo = 'bar
-              ~~~~
+warn: SyntaxError: Unterminated string constant
+  |
+1 | const foo = 'bar
+  |             ~~~~
+    at file:///[WILDCARD]script.ts:1:13
 error[no-unused-vars]: `foo` is never used
  --> [WILDCARD]script.ts:1:7
   | 
@@ -9,7 +10,7 @@ error[no-unused-vars]: `foo` is never used
   |       ^^^
   = hint: If this is intentional, prefix it with an underscore like `_foo`
 
-  docs: https://lint.deno.land/rules/no-unused-vars
+  docs: https://docs.deno.com/lint/rules/no-unused-vars
 
 
 Found 1 problem

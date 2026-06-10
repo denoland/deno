@@ -1,0 +1,14 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "fmt --check --unstable-raw-imports",
+    "output": "check.out",
+    "exitCode": 1
+  }, {
+    "args": "fmt .",
+    "output": "format.out"
+  }, {
+    "args": "run -R --unstable-raw-imports verify.ts",
+    "output": "3\n"
+  }]
+}

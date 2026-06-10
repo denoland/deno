@@ -11,7 +11,9 @@ From javascript, include the extension's source, and assign the following to the
 global scope:
 
 ```javascript
-import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { core } from "ext:core/mod.js";
+
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
 Object.defineProperty(globalThis, webidl.brand, {
   value: webidl.brand,
   enumerable: false,
@@ -20,5 +22,5 @@ Object.defineProperty(globalThis, webidl.brand, {
 });
 ```
 
-Then from rust, provide `init_webidl::init_webidl::init_ops_and_esm()` in the
-`extensions` field of your `RuntimeOptions`
+Then from rust, provide `deno_webidl::deno_webidl::init()` in the `extensions`
+field of your `RuntimeOptions`

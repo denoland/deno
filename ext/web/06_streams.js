@@ -1,19 +1,20 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="./06_streams_types.d.ts" />
-/// <reference path="./lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
-import { core, internals, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
   isSharedArrayBuffer,
   isTypedArray,
 } = core;
-import {
+const {
   // TODO(mmastrac): use readAll
   op_read_all,
   op_readable_stream_resource_allocate,
@@ -24,7 +25,7 @@ import {
   op_readable_stream_resource_write_buf,
   op_readable_stream_resource_write_error,
   op_readable_stream_resource_write_sync,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBuffer,
   ArrayBufferIsView,
@@ -34,7 +35,6 @@ const {
   ArrayBufferPrototypeTransferToFixedLength,
   ArrayPrototypeMap,
   ArrayPrototypePush,
-  ArrayPrototypeShift,
   AsyncGeneratorPrototype,
   BigInt64Array,
   BigUint64Array,
@@ -60,6 +60,7 @@ const {
   PromisePrototypeThen,
   PromiseReject,
   PromiseResolve,
+  PromiseWithResolvers,
   RangeError,
   ReflectHas,
   SafeFinalizationRegistry,
@@ -89,18 +90,24 @@ const {
   queueMicrotask,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { structuredClone } from "./02_structured_clone.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { structuredClone } = core.loadExtScript(
+  "ext:deno_web/02_structured_clone.js",
+);
+const {
   AbortSignalPrototype,
   add,
   newSignal,
   remove,
   signalAbort,
-} from "./03_abort_signal.js";
+} = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { assert, AssertionError } from "./00_infra.js";
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { assert, AssertionError } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
 
 /** @template T */
 class Deferred {
@@ -164,8 +171,7 @@ function resolvePromiseWith(value) {
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
     queueMicrotask(() => {
-      // deno-lint-ignore no-console
-      console.error(`Internal Error: ${e.stack}`);
+      core.print(`[error]: Internal Error: ${e.stack}\n`, true);
     });
   }
 }
@@ -220,10 +226,31 @@ function uponRejection(promise, onRejected) {
  * @returns {void}
  */
 function uponPromise(promise, onFulfilled, onRejected) {
+  // Optimized: single .then() instead of double promise chain.
+  // The original code was:
+  //   PromisePrototypeThen(
+  //     PromisePrototypeThen(promise, onFulfilled, onRejected),
+  //     undefined, rethrowAssertionErrorRejection);
+  // This created 2 promises per call. We collapse it into 1 by wrapping
+  // the handlers with try/catch to catch assertion errors thrown by them.
   PromisePrototypeThen(
-    PromisePrototypeThen(promise, onFulfilled, onRejected),
-    undefined,
-    rethrowAssertionErrorRejection,
+    promise,
+    onFulfilled && ((v) => {
+      try {
+        onFulfilled(v);
+      } catch (e) {
+        rethrowAssertionErrorRejection(e);
+      }
+    }),
+    onRejected
+      ? (e) => {
+        try {
+          onRejected(e);
+        } catch (err) {
+          rethrowAssertionErrorRejection(err);
+        }
+      }
+      : rethrowAssertionErrorRejection,
   );
 }
 
@@ -335,6 +362,61 @@ function cloneAsUint8Array(O) {
     );
   }
 }
+
+/**
+ * Coerce an ArrayBuffer or ArrayBufferView into a Uint8Array view over the
+ * same underlying memory (no copy). Used by resource-backed underlying sinks
+ * which need to forward bytes to a native op regardless of the user-provided
+ * view type. Throws TypeError for anything else.
+ * @param {unknown} O
+ * @returns {Uint8Array}
+ */
+function bufferSourceAsUint8Array(O) {
+  if (isTypedArray(O)) {
+    return new Uint8Array(
+      TypedArrayPrototypeGetBuffer(/** @type {Uint8Array} */ (O)),
+      TypedArrayPrototypeGetByteOffset(/** @type {Uint8Array} */ (O)),
+      TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (O)),
+    );
+  }
+  if (ArrayBufferIsView(O)) {
+    return new Uint8Array(
+      DataViewPrototypeGetBuffer(/** @type {DataView} */ (O)),
+      DataViewPrototypeGetByteOffset(/** @type {DataView} */ (O)),
+      DataViewPrototypeGetByteLength(/** @type {DataView} */ (O)),
+    );
+  }
+  if (isAnyArrayBuffer(O)) {
+    return new Uint8Array(/** @type {ArrayBuffer} */ (O));
+  }
+  throw new TypeError(
+    "Expected ArrayBuffer or ArrayBufferView for write chunk",
+  );
+}
+
+/**
+ * Byte length of an ArrayBuffer or ArrayBufferView. Throws TypeError otherwise.
+ * @param {unknown} O
+ * @returns {number}
+ */
+function bufferSourceByteLength(O) {
+  if (isTypedArray(O)) {
+    return TypedArrayPrototypeGetByteLength(/** @type {Uint8Array} */ (O));
+  }
+  if (ArrayBufferIsView(O)) {
+    return DataViewPrototypeGetByteLength(/** @type {DataView} */ (O));
+  }
+  if (isAnyArrayBuffer(O)) {
+    return ArrayBufferPrototypeGetByteLength(/** @type {ArrayBuffer} */ (O));
+  }
+  throw new TypeError(
+    "Expected ArrayBuffer or ArrayBufferView for write chunk",
+  );
+}
+
+// Using SymbolFor to make globally available. This is used by `node:stream`
+// to interop with the web streams API.
+const _isClosedPromise = SymbolFor("nodejs.webstream.isClosedPromise");
 
 const _abortAlgorithm = Symbol("[[abortAlgorithm]]");
 const _abortSteps = Symbol("[[AbortSteps]]");
@@ -606,6 +688,7 @@ function initializeReadableStream(stream) {
   stream[_state] = "readable";
   stream[_reader] = stream[_storedError] = undefined;
   stream[_disturbed] = false;
+  stream[_isClosedPromise] = new Deferred();
 }
 
 /**
@@ -683,8 +766,9 @@ function initializeWritableStream(stream) {
     stream[_inFlightCloseRequest] =
     stream[_pendingAbortRequest] =
       undefined;
-  stream[_writeRequests] = [];
+  stream[_writeRequests] = new Queue();
   stream[_backpressure] = false;
+  stream[_isClosedPromise] = new Deferred();
 }
 
 /**
@@ -779,37 +863,37 @@ class ResourceStreamResourceSink {
  * @param {any} sink
  * @param {Uint8Array} chunk
  */
-function readableStreamWriteChunkFn(reader, sink, chunk) {
+async function readableStreamWriteChunkFn(reader, sink, chunk) {
   // Empty chunk. Re-read.
   if (chunk.length == 0) {
-    readableStreamReadFn(reader, sink);
-    return;
+    return true;
   }
 
   const res = op_readable_stream_resource_write_sync(sink.external, chunk);
   if (res == 0) {
     // Closed
-    reader.cancel("resource closed");
+    await reader.cancel("resource closed");
     sink.close();
+
+    return false;
   } else if (res == 1) {
-    // Successfully written (synchronous). Re-read.
-    readableStreamReadFn(reader, sink);
+    return true;
   } else if (res == 2) {
     // Full. If the channel is full, we perform an async await until we can write, and then return
     // to a synchronous loop.
-    (async () => {
-      if (
-        await op_readable_stream_resource_write_buf(
-          sink.external,
-          chunk,
-        )
-      ) {
-        readableStreamReadFn(reader, sink);
-      } else {
-        reader.cancel("resource closed");
-        sink.close();
-      }
-    })();
+    if (
+      await op_readable_stream_resource_write_buf(
+        sink.external,
+        chunk,
+      )
+    ) {
+      return true;
+    } else {
+      await reader.cancel("resource closed");
+      sink.close();
+
+      return false;
+    }
   }
 }
 
@@ -817,39 +901,65 @@ function readableStreamWriteChunkFn(reader, sink, chunk) {
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader
  * @param {any} sink
  */
-function readableStreamReadFn(reader, sink) {
-  // The ops here look like op_write_all/op_close, but we're not actually writing to a
-  // real resource.
-  let reentrant = true;
-  let gotChunk = undefined;
-  readableStreamDefaultReaderRead(reader, {
-    chunkSteps(chunk) {
-      // If the chunk has non-zero length, write it
-      if (reentrant) {
-        gotChunk = chunk;
-      } else {
-        readableStreamWriteChunkFn(reader, sink, chunk);
-      }
-    },
-    closeSteps() {
-      sink.close();
-    },
-    errorSteps(error) {
-      const success = op_readable_stream_resource_write_error(
-        sink.external,
-        extractStringErrorFromError(error),
+async function readableStreamReadFn(reader, sink) {
+  let loop = true;
+
+  while (loop) {
+    // The ops here look like op_write_all/op_close, but we're not actually writing to a
+    // real resource.
+    let reentrant = true;
+    let gotChunk = undefined;
+    const promise = new Deferred();
+
+    readableStreamDefaultReaderRead(reader, {
+      chunkSteps(chunk) {
+        // If the chunk has non-zero length, write it
+        if (reentrant) {
+          gotChunk = chunk;
+        } else {
+          PromisePrototypeThen(
+            readableStreamWriteChunkFn(reader, sink, chunk),
+            (loop) => promise.resolve(loop),
+            (e) => promise.reject(e),
+          );
+        }
+      },
+      closeSteps() {
+        sink.close();
+        promise.resolve(false);
+      },
+      errorSteps(error) {
+        const success = op_readable_stream_resource_write_error(
+          sink.external,
+          extractStringErrorFromError(error),
+        );
+        // We don't cancel the reader if there was an error reading. We'll let the downstream
+        // consumer close the resource after it receives the error.
+        if (!success) {
+          PromisePrototypeThen(
+            reader.cancel("resource closed"),
+            () => {
+              sink.close();
+              promise.resolve(false);
+            },
+            (e) => promise.reject(e),
+          );
+        } else {
+          sink.close();
+          promise.resolve(false);
+        }
+      },
+    });
+    reentrant = false;
+    if (gotChunk) {
+      PromisePrototypeThen(
+        readableStreamWriteChunkFn(reader, sink, gotChunk),
+        (loop) => promise.resolve(loop),
+        (e) => promise.reject(e),
       );
-      // We don't cancel the reader if there was an error reading. We'll let the downstream
-      // consumer close the resource after it receives the error.
-      if (!success) {
-        reader.cancel("resource closed");
-      }
-      sink.close();
-    },
-  });
-  reentrant = false;
-  if (gotChunk) {
-    readableStreamWriteChunkFn(reader, sink, gotChunk);
+    }
+
+    loop = await promise.promise;
   }
 }
 
@@ -873,7 +983,9 @@ function resourceForReadableStream(stream, length) {
   PromisePrototypeCatch(
     PromisePrototypeThen(
       op_readable_stream_resource_await_close(rid),
-      () => reader.cancel("resource closed"),
+      () => {
+        PromisePrototypeCatch(reader.cancel("resource closed"), () => {});
+      },
     ),
     () => {},
   );
@@ -884,7 +996,9 @@ function resourceForReadableStream(stream, length) {
   );
 
   // Trigger the first read
-  readableStreamReadFn(reader, sink);
+  PromisePrototypeCatch(readableStreamReadFn(reader, sink), (err) => {
+    PromisePrototypeCatch(reader.cancel(err), () => {});
+  });
 
   return rid;
 }
@@ -898,24 +1012,46 @@ const RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
 
 const _readAll = Symbol("[[readAll]]");
 const _original = Symbol("[[original]]");
+
 /**
- * Create a new ReadableStream object that is backed by a Resource that
- * implements `Resource::read_return`. This object contains enough metadata to
- * allow callers to bypass the JavaScript ReadableStream implementation and
- * read directly from the underlying resource if they so choose (FastStream).
+ * If the error thrown while reading from / writing to a resource-backed stream
+ * is a terse "Bad resource ID" error, replace it with a clearer message
+ * explaining that the stream's underlying resource was closed or consumed.
+ *
+ * @param {unknown} e The error thrown by the underlying read/write op.
+ * @returns {unknown} The (possibly annotated) error to surface to the stream.
+ */
+function annotateResourceStreamError(e) {
+  if (
+    ObjectPrototypeIsPrototypeOf(core.BadResourcePrototype, e) &&
+    e.message === "Bad resource ID"
+  ) {
+    e.message = "The stream's underlying resource was closed or consumed";
+  }
+  return e;
+}
+
+/**
+ * Create a new ReadableStream object that is backed by a resource that
+ * implements reading operations. This object contains enough metadata to
+ * allow callers to access the underlying resource if needed.
  *
  * @param {number} rid The resource ID to read from.
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
  * @returns {ReadableStream<Uint8Array>}
  */
-function readableStreamForRid(rid, autoClose = true) {
-  const stream = new ReadableStream(_brand);
+function readableStreamForRid(rid, autoClose = true, cfn, onError) {
+  const stream = cfn ? cfn(_brand) : new ReadableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
     if (!autoClose) return;
     RESOURCE_REGISTRY.unregister(stream);
     core.tryClose(rid);
+  };
+
+  const cancelRead = () => {
+    core.cancelRead(rid);
   };
 
   if (autoClose) {
@@ -947,11 +1083,17 @@ function readableStreamForRid(rid, autoClose = true) {
           controller.byobRequest.respond(bytesRead);
         }
       } catch (e) {
-        controller.error(e);
+        const error = annotateResourceStreamError(e);
+        if (onError) {
+          onError(controller, error);
+        } else {
+          controller.error(error);
+        }
         tryClose();
       }
     },
     cancel() {
+      cancelRead();
       tryClose();
     },
     autoAllocateChunkSize: DEFAULT_CHUNK_SIZE,
@@ -969,17 +1111,18 @@ function readableStreamForRid(rid, autoClose = true) {
 const promiseSymbol = SymbolFor("__promise");
 const _isUnref = Symbol("isUnref");
 /**
- * Create a new ReadableStream object that is backed by a Resource that
- * implements `Resource::read_return`. This readable stream supports being
+ * Create a new ReadableStream object that is backed by a resource that
+ * implements reading operations. This readable stream supports being
  * refed and unrefed by calling `readableStreamForRidUnrefableRef` and
  * `readableStreamForRidUnrefableUnref` on it. Unrefable streams are not
- * FastStream compatible.
+ * compatible with fast-path resource-backed streams.
  *
  * @param {number} rid The resource ID to read from.
+ * @param constructor A class that extends ReadableStream.
  * @returns {ReadableStream<Uint8Array>}
  */
-function readableStreamForRidUnrefable(rid) {
-  const stream = new ReadableStream(_brand);
+function readableStreamForRidUnrefable(rid, constructor = ReadableStream) {
+  const stream = new constructor(_brand);
   stream[promiseSymbol] = undefined;
   stream[_isUnref] = false;
   stream[_resourceBackingUnrefable] = { rid, autoClose: true };
@@ -1001,7 +1144,7 @@ function readableStreamForRidUnrefable(rid) {
           controller.byobRequest.respond(bytesRead);
         }
       } catch (e) {
-        controller.error(e);
+        controller.error(annotateResourceStreamError(e));
         core.tryClose(rid);
       }
     },
@@ -1124,14 +1267,14 @@ async function readableStreamCollectIntoUint8Array(stream) {
  * `Resource::write` / `Resource::write_all`. This object contains enough
  * metadata to allow callers to bypass the JavaScript WritableStream
  * implementation and write directly to the underlying resource if they so
- * choose (FastStream).
+ * choose.
  *
  * @param {number} rid The resource ID to write to.
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
  * @returns {ReadableStream<Uint8Array>}
  */
-function writableStreamForRid(rid, autoClose = true) {
-  const stream = new WritableStream(_brand);
+function writableStreamForRid(rid, autoClose = true, cfn, options) {
+  const stream = cfn ? cfn(_brand) : new WritableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
@@ -1144,29 +1287,82 @@ function writableStreamForRid(rid, autoClose = true) {
     RESOURCE_REGISTRY.register(stream, rid, stream);
   }
 
+  const bufferSize = options?.bufferSize ?? 0;
+  let buffer = null;
+  let bufferOffset = 0;
+
+  async function flushBuffer() {
+    if (bufferOffset > 0) {
+      const toWrite = TypedArrayPrototypeSlice(buffer, 0, bufferOffset);
+      bufferOffset = 0;
+      await core.writeAll(rid, toWrite);
+    }
+  }
+
   const underlyingSink = {
     async write(chunk, controller) {
       try {
-        await core.writeAll(rid, chunk);
+        const view = bufferSourceAsUint8Array(chunk);
+        if (bufferSize > 0) {
+          const chunkLen = TypedArrayPrototypeGetByteLength(view);
+          // Large chunks: flush buffer then write directly
+          if (chunkLen >= bufferSize) {
+            await flushBuffer();
+            await core.writeAll(rid, view);
+            return;
+          }
+
+          // Lazily allocate buffer
+          if (buffer === null) {
+            buffer = new Uint8Array(bufferSize);
+          }
+
+          // If chunk won't fit, flush first
+          if (bufferOffset + chunkLen > bufferSize) {
+            await flushBuffer();
+          }
+
+          // Copy chunk into buffer
+          TypedArrayPrototypeSet(buffer, view, bufferOffset);
+          bufferOffset += chunkLen;
+        } else {
+          await core.writeAll(rid, view);
+        }
       } catch (e) {
-        controller.error(e);
+        controller.error(annotateResourceStreamError(e));
         tryClose();
+        // Re-throw so writer.write() rejects with this specific error
+        // rather than resolving successfully and only failing subsequent
+        // writes via the now-errored controller.
+        throw e;
       }
     },
-    close() {
+    async close() {
+      try {
+        await flushBuffer();
+      } catch {
+        // ignore errors on flush during close
+      }
       tryClose();
     },
     abort() {
+      bufferOffset = 0;
       tryClose();
     },
   };
+
+  const highWaterMark = bufferSize > 0 ? bufferSize : 1;
+  const sizeAlgorithm = bufferSize > 0
+    ? (chunk) => bufferSourceByteLength(chunk)
+    : () => 1;
+
   initializeWritableStream(stream);
   setUpWritableStreamDefaultControllerFromUnderlyingSink(
     stream,
     underlyingSink,
     underlyingSink,
-    1,
-    () => 1,
+    highWaterMark,
+    sizeAlgorithm,
   );
   return stream;
 }
@@ -1235,20 +1431,18 @@ function readableByteStreamControllerCallPullIfNeeded(controller) {
   controller[_pulling] = true;
   /** @type {Promise<void>} */
   const pullPromise = controller[_pullAlgorithm](controller);
-  setPromiseIsHandledToTrue(
-    PromisePrototypeThen(
-      pullPromise,
-      () => {
-        controller[_pulling] = false;
-        if (controller[_pullAgain]) {
-          controller[_pullAgain] = false;
-          readableByteStreamControllerCallPullIfNeeded(controller);
-        }
-      },
-      (e) => {
-        readableByteStreamControllerError(controller, e);
-      },
-    ),
+  uponPromise(
+    pullPromise,
+    () => {
+      controller[_pulling] = false;
+      if (controller[_pullAgain]) {
+        controller[_pullAgain] = false;
+        readableByteStreamControllerCallPullIfNeeded(controller);
+      }
+    },
+    (e) => {
+      readableByteStreamControllerError(controller, e);
+    },
   );
 }
 
@@ -1283,7 +1477,7 @@ function readableByteStreamControllerError(controller, e) {
  */
 function readableByteStreamControllerClearPendingPullIntos(controller) {
   readableByteStreamControllerInvalidateBYOBRequest(controller);
-  controller[_pendingPullIntos] = [];
+  controller[_pendingPullIntos] = new Queue();
 }
 
 /**
@@ -1300,8 +1494,8 @@ function readableByteStreamControllerClose(controller) {
     controller[_closeRequested] = true;
     return;
   }
-  if (controller[_pendingPullIntos].length !== 0) {
-    const firstPendingPullInto = controller[_pendingPullIntos][0];
+  if (controller[_pendingPullIntos].size !== 0) {
+    const firstPendingPullInto = controller[_pendingPullIntos].peek();
     if (
       firstPendingPullInto.bytesFilled % firstPendingPullInto.elementSize !== 0
     ) {
@@ -1325,7 +1519,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   const stream = controller[_stream];
   if (
     controller[_closeRequested] ||
-    controller[_stream][_state] !== "readable"
+    stream[_state] !== "readable"
   ) {
     return;
   }
@@ -1355,8 +1549,8 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
     );
   }
   const transferredBuffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
-  if (controller[_pendingPullIntos].length !== 0) {
-    const firstPendingPullInto = controller[_pendingPullIntos][0];
+  if (controller[_pendingPullIntos].size !== 0) {
+    const firstPendingPullInto = controller[_pendingPullIntos].peek();
     // deno-lint-ignore prefer-primordials
     if (isDetachedBuffer(firstPendingPullInto.buffer)) {
       throw new TypeError(
@@ -1378,7 +1572,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
   if (readableStreamHasDefaultReader(stream)) {
     readableByteStreamControllerProcessReadRequestsUsingQueue(controller);
     if (readableStreamGetNumReadRequests(stream) === 0) {
-      assert(controller[_pendingPullIntos].length === 0);
+      assert(controller[_pendingPullIntos].size === 0);
       readableByteStreamControllerEnqueueChunkToQueue(
         controller,
         transferredBuffer,
@@ -1387,8 +1581,8 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
       );
     } else {
       assert(controller[_queue].size === 0);
-      if (controller[_pendingPullIntos].length !== 0) {
-        assert(controller[_pendingPullIntos][0].readerType === "default");
+      if (controller[_pendingPullIntos].size !== 0) {
+        assert(controller[_pendingPullIntos].peek().readerType === "default");
         readableByteStreamControllerShiftPendingPullInto(controller);
       }
       const transferredView = new Uint8Array(
@@ -1504,9 +1698,9 @@ function readableByteStreamControllerEnqueueDetachedPullIntoToQueue(
 function readableByteStreamControllerGetBYOBRequest(controller) {
   if (
     controller[_byobRequest] === null &&
-    controller[_pendingPullIntos].length !== 0
+    controller[_pendingPullIntos].size !== 0
   ) {
-    const firstDescriptor = controller[_pendingPullIntos][0];
+    const firstDescriptor = controller[_pendingPullIntos].peek();
     const view = new Uint8Array(
       // deno-lint-ignore prefer-primordials
       firstDescriptor.buffer,
@@ -1614,7 +1808,7 @@ function readableStreamAddReadRequest(stream, readRequest) {
 function readableStreamAddReadIntoRequest(stream, readRequest) {
   assert(isReadableStreamBYOBReader(stream[_reader]));
   assert(stream[_state] === "readable" || stream[_state] === "closed");
-  ArrayPrototypePush(stream[_reader][_readIntoRequests], readRequest);
+  stream[_reader][_readIntoRequests].enqueue(readRequest);
 }
 
 /**
@@ -1625,20 +1819,20 @@ function readableStreamAddReadIntoRequest(stream, readRequest) {
  */
 function readableStreamCancel(stream, reason) {
   stream[_disturbed] = true;
-  if (stream[_state] === "closed") {
+  const state = stream[_state];
+  if (state === "closed") {
     return PromiseResolve(undefined);
   }
-  if (stream[_state] === "errored") {
+  if (state === "errored") {
     return PromiseReject(stream[_storedError]);
   }
   readableStreamClose(stream);
   const reader = stream[_reader];
   if (reader !== undefined && isReadableStreamBYOBReader(reader)) {
     const readIntoRequests = reader[_readIntoRequests];
-    reader[_readIntoRequests] = [];
-    for (let i = 0; i < readIntoRequests.length; ++i) {
-      const readIntoRequest = readIntoRequests[i];
-      readIntoRequest.closeSteps(undefined);
+    reader[_readIntoRequests] = new Queue();
+    while (readIntoRequests.size !== 0) {
+      readIntoRequests.dequeue().closeSteps(undefined);
     }
   }
   /** @type {Promise<void>} */
@@ -1654,6 +1848,7 @@ function readableStreamCancel(stream, reason) {
 function readableStreamClose(stream) {
   assert(stream[_state] === "readable");
   stream[_state] = "closed";
+  stream[_isClosedPromise].resolve(undefined);
   /** @type {ReadableStreamDefaultReader<R> | undefined} */
   const reader = stream[_reader];
   if (!reader) {
@@ -1696,16 +1891,19 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
   assert(controller[_pullAgain] === false);
   controller[_pulling] = true;
   const pullPromise = controller[_pullAlgorithm](controller);
-  uponFulfillment(pullPromise, () => {
-    controller[_pulling] = false;
-    if (controller[_pullAgain] === true) {
-      controller[_pullAgain] = false;
-      readableStreamDefaultControllerCallPullIfNeeded(controller);
-    }
-  });
-  uponRejection(pullPromise, (e) => {
-    readableStreamDefaultControllerError(controller, e);
-  });
+  uponPromise(
+    pullPromise,
+    () => {
+      controller[_pulling] = false;
+      if (controller[_pullAgain] === true) {
+        controller[_pullAgain] = false;
+        readableStreamDefaultControllerCallPullIfNeeded(controller);
+      }
+    },
+    (e) => {
+      readableStreamDefaultControllerError(controller, e);
+    },
+  );
 }
 
 /**
@@ -1896,11 +2094,11 @@ function readableByteStreamControllerProcessPullIntoDescriptorsUsingQueue(
   controller,
 ) {
   assert(!controller[_closeRequested]);
-  while (controller[_pendingPullIntos].length !== 0) {
+  while (controller[_pendingPullIntos].size !== 0) {
     if (controller[_queueTotalSize] === 0) {
       return;
     }
-    const pullIntoDescriptor = controller[_pendingPullIntos][0];
+    const pullIntoDescriptor = controller[_pendingPullIntos].peek();
     if (
       readableByteStreamControllerFillPullIntoDescriptorFromQueue(
         controller,
@@ -2043,8 +2241,8 @@ function readableByteStreamControllerPullInto(
     readerType: "byob",
   };
 
-  if (controller[_pendingPullIntos].length !== 0) {
-    ArrayPrototypePush(controller[_pendingPullIntos], pullIntoDescriptor);
+  if (controller[_pendingPullIntos].size !== 0) {
+    controller[_pendingPullIntos].enqueue(pullIntoDescriptor);
     readableStreamAddReadIntoRequest(stream, readIntoRequest);
     return;
   }
@@ -2082,7 +2280,7 @@ function readableByteStreamControllerPullInto(
       return;
     }
   }
-  ArrayPrototypePush(controller[_pendingPullIntos], pullIntoDescriptor);
+  controller[_pendingPullIntos].enqueue(pullIntoDescriptor);
   readableStreamAddReadIntoRequest(stream, readIntoRequest);
   readableByteStreamControllerCallPullIfNeeded(controller);
 }
@@ -2093,8 +2291,8 @@ function readableByteStreamControllerPullInto(
  * @returns {void}
  */
 function readableByteStreamControllerRespond(controller, bytesWritten) {
-  assert(controller[_pendingPullIntos].length !== 0);
-  const firstDescriptor = controller[_pendingPullIntos][0];
+  assert(controller[_pendingPullIntos].size !== 0);
+  const firstDescriptor = controller[_pendingPullIntos].peek();
   const state = controller[_stream][_state];
   if (state === "closed") {
     if (bytesWritten !== 0) {
@@ -2192,7 +2390,7 @@ function readableByteStreamControllerRespondInternal(
   controller,
   bytesWritten,
 ) {
-  const firstDescriptor = controller[_pendingPullIntos][0];
+  const firstDescriptor = controller[_pendingPullIntos].peek();
   // deno-lint-ignore prefer-primordials
   assert(canTransferArrayBuffer(firstDescriptor.buffer));
   readableByteStreamControllerInvalidateBYOBRequest(controller);
@@ -2286,7 +2484,7 @@ function readableByteStreamControllerCommitPullIntoDescriptor(
  * @param {ArrayBufferView} view
  */
 function readableByteStreamControllerRespondWithNewView(controller, view) {
-  assert(controller[_pendingPullIntos].length !== 0);
+  assert(controller[_pendingPullIntos].size !== 0);
 
   let buffer, byteLength, byteOffset;
   if (isTypedArray(view)) {
@@ -2304,7 +2502,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
   }
 
   assert(!isDetachedBuffer(buffer));
-  const firstDescriptor = controller[_pendingPullIntos][0];
+  const firstDescriptor = controller[_pendingPullIntos].peek();
   const state = controller[_stream][_state];
   if (state === "closed") {
     if (byteLength !== 0) {
@@ -2347,7 +2545,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
  */
 function readableByteStreamControllerShiftPendingPullInto(controller) {
   assert(controller[_byobRequest] === null);
-  return ArrayPrototypeShift(controller[_pendingPullIntos]);
+  return controller[_pendingPullIntos].dequeue();
 }
 
 /**
@@ -2462,8 +2660,8 @@ function readableByteStreamControllerFillHeadPullIntoDescriptor(
   pullIntoDescriptor,
 ) {
   assert(
-    controller[_pendingPullIntos].length === 0 ||
-      controller[_pendingPullIntos][0] === pullIntoDescriptor,
+    controller[_pendingPullIntos].size === 0 ||
+      controller[_pendingPullIntos].peek() === pullIntoDescriptor,
   );
   assert(controller[_byobRequest] === null);
   pullIntoDescriptor.bytesFilled += size;
@@ -2503,12 +2701,13 @@ function readableStreamDefaultReaderRead(reader, readRequest) {
   const stream = reader[_stream];
   assert(stream);
   stream[_disturbed] = true;
-  if (stream[_state] === "closed") {
+  const state = stream[_state];
+  if (state === "closed") {
     readRequest.closeSteps();
-  } else if (stream[_state] === "errored") {
+  } else if (state === "errored") {
     readRequest.errorSteps(stream[_storedError]);
   } else {
-    assert(stream[_state] === "readable");
+    assert(state === "readable");
     stream[_controller][_pullSteps](readRequest);
   }
 }
@@ -2532,6 +2731,8 @@ function readableStreamError(stream, e) {
   assert(stream[_state] === "readable");
   stream[_state] = "errored";
   stream[_storedError] = e;
+  stream[_isClosedPromise].reject(e);
+  setPromiseIsHandledToTrue(stream[_isClosedPromise].promise);
   /** @type {ReadableStreamDefaultReader<R> | undefined} */
   const reader = stream[_reader];
   if (reader === undefined) {
@@ -2559,9 +2760,9 @@ function readableStreamFulfillReadIntoRequest(stream, chunk, done) {
   assert(readableStreamHasBYOBReader(stream));
   /** @type {ReadableStreamDefaultReader<R>} */
   const reader = stream[_reader];
-  assert(reader[_readIntoRequests].length !== 0);
+  assert(reader[_readIntoRequests].size !== 0);
   /** @type {ReadIntoRequest} */
-  const readIntoRequest = ArrayPrototypeShift(reader[_readIntoRequests]);
+  const readIntoRequest = reader[_readIntoRequests].dequeue();
   if (done) {
     readIntoRequest.closeSteps(chunk);
   } else {
@@ -2595,7 +2796,7 @@ function readableStreamFulfillReadRequest(stream, chunk, done) {
  */
 function readableStreamGetNumReadIntoRequests(stream) {
   assert(readableStreamHasBYOBReader(stream) === true);
-  return stream[_reader][_readIntoRequests].length;
+  return stream[_reader][_readIntoRequests].size;
 }
 
 /**
@@ -2944,13 +3145,14 @@ function readableStreamReaderGenericCancel(reader, reason) {
 function readableStreamReaderGenericInitialize(reader, stream) {
   reader[_stream] = stream;
   stream[_reader] = reader;
-  if (stream[_state] === "readable") {
+  const state = stream[_state];
+  if (state === "readable") {
     reader[_closedPromise] = new Deferred();
-  } else if (stream[_state] === "closed") {
+  } else if (state === "closed") {
     reader[_closedPromise] = new Deferred();
     reader[_closedPromise].resolve(undefined);
   } else {
-    assert(stream[_state] === "errored");
+    assert(state === "errored");
     reader[_closedPromise] = new Deferred();
     reader[_closedPromise].reject(stream[_storedError]);
     setPromiseIsHandledToTrue(reader[_closedPromise].promise);
@@ -2991,10 +3193,9 @@ function readableStreamReaderGenericRelease(reader) {
  */
 function readableStreamBYOBReaderErrorReadIntoRequests(reader, e) {
   const readIntoRequests = reader[_readIntoRequests];
-  reader[_readIntoRequests] = [];
-  for (let i = 0; i < readIntoRequests.length; ++i) {
-    const readIntoRequest = readIntoRequests[i];
-    readIntoRequest.errorSteps(e);
+  reader[_readIntoRequests] = new Queue();
+  while (readIntoRequests.size !== 0) {
+    readIntoRequests.dequeue().errorSteps(e);
   }
 }
 
@@ -3237,7 +3438,7 @@ function readableByteStreamTee(stream) {
 
   function pullWithDefaultReader() {
     if (isReadableStreamBYOBReader(reader)) {
-      assert(reader[_readIntoRequests].length === 0);
+      assert(reader[_readIntoRequests].size === 0);
       readableStreamBYOBReaderRelease(reader);
       reader = acquireReadableStreamDefaultReader(stream);
       forwardReaderError(reader);
@@ -3283,10 +3484,10 @@ function readableByteStreamTee(stream) {
         if (!canceled2) {
           readableByteStreamControllerClose(branch2[_controller]);
         }
-        if (branch1[_controller][_pendingPullIntos].length !== 0) {
+        if (branch1[_controller][_pendingPullIntos].size !== 0) {
           readableByteStreamControllerRespond(branch1[_controller], 0);
         }
-        if (branch2[_controller][_pendingPullIntos].length !== 0) {
+        if (branch2[_controller][_pendingPullIntos].size !== 0) {
           readableByteStreamControllerRespond(branch2[_controller], 0);
         }
         if (!canceled1 || !canceled2) {
@@ -3382,7 +3583,7 @@ function readableByteStreamTee(stream) {
           }
           if (
             !otherCanceled &&
-            otherBranch[_controller][_pendingPullIntos].length !== 0
+            otherBranch[_controller][_pendingPullIntos].size !== 0
           ) {
             readableByteStreamControllerRespond(otherBranch[_controller], 0);
           }
@@ -3508,23 +3709,21 @@ function setUpReadableByteStreamController(
   controller[_pullAlgorithm] = pullAlgorithm;
   controller[_cancelAlgorithm] = cancelAlgorithm;
   controller[_autoAllocateChunkSize] = autoAllocateChunkSize;
-  controller[_pendingPullIntos] = [];
+  controller[_pendingPullIntos] = new Queue();
   stream[_controller] = controller;
   const startResult = startAlgorithm();
   const startPromise = PromiseResolve(startResult);
-  setPromiseIsHandledToTrue(
-    PromisePrototypeThen(
-      startPromise,
-      () => {
-        controller[_started] = true;
-        assert(controller[_pulling] === false);
-        assert(controller[_pullAgain] === false);
-        readableByteStreamControllerCallPullIfNeeded(controller);
-      },
-      (r) => {
-        readableByteStreamControllerError(controller, r);
-      },
-    ),
+  uponPromise(
+    startPromise,
+    () => {
+      controller[_started] = true;
+      assert(controller[_pulling] === false);
+      assert(controller[_pullAgain] === false);
+      readableByteStreamControllerCallPullIfNeeded(controller);
+    },
+    (r) => {
+      readableByteStreamControllerError(controller, r);
+    },
   );
 }
 
@@ -3721,7 +3920,7 @@ function setUpReadableStreamBYOBReader(reader, stream) {
     throw new TypeError("Cannot use a BYOB reader with a non-byte stream");
   }
   readableStreamReaderGenericInitialize(reader, stream);
-  reader[_readIntoRequests] = [];
+  reader[_readIntoRequests] = new Queue();
 }
 
 /**
@@ -4058,7 +4257,12 @@ function transformStreamDefaultControllerError(controller, e) {
  * @returns {Promise<void>}
  */
 function transformStreamDefaultControllerPerformTransform(controller, chunk) {
-  const transformPromise = controller[_transformAlgorithm](chunk, controller);
+  const transformAlgorithm = controller[_transformAlgorithm];
+  if (transformAlgorithm === undefined) {
+    // Algorithms were cleared by a concurrent cancel/abort/close.
+    return PromiseResolve(undefined);
+  }
+  const transformPromise = transformAlgorithm(chunk, controller);
   return transformPromiseWith(transformPromise, undefined, (r) => {
     transformStreamError(controller[_stream], r);
     throw r;
@@ -4265,11 +4469,12 @@ function transformStreamUnblockWrite(stream) {
  * @returns {Promise<void>}
  */
 function writableStreamAbort(stream, reason) {
-  const state = stream[_state];
+  let state = stream[_state];
   if (state === "closed" || state === "errored") {
     return PromiseResolve(undefined);
   }
   stream[_controller][_signal][signalAbort](reason);
+  state = stream[_state];
   if (state === "closed" || state === "errored") {
     return PromiseResolve(undefined);
   }
@@ -4282,7 +4487,7 @@ function writableStreamAbort(stream, reason) {
     wasAlreadyErroring = true;
     reason = undefined;
   }
-  /** Deferred<void> */
+  /** @type {Deferred<void>} */
   const deferred = new Deferred();
   stream[_pendingAbortRequest] = {
     deferred,
@@ -4304,7 +4509,7 @@ function writableStreamAddWriteRequest(stream) {
   assert(stream[_state] === "writable");
   /** @type {Deferred<void>} */
   const deferred = new Deferred();
-  ArrayPrototypePush(stream[_writeRequests], deferred);
+  stream[_writeRequests].enqueue(deferred);
   return deferred.promise;
 }
 
@@ -4691,11 +4896,10 @@ function writableStreamFinishErroring(stream) {
   stream[_controller][_errorSteps]();
   const storedError = stream[_storedError];
   const writeRequests = stream[_writeRequests];
-  for (let i = 0; i < writeRequests.length; ++i) {
-    const writeRequest = writeRequests[i];
-    writeRequest.reject(storedError);
+  stream[_writeRequests] = new Queue();
+  while (writeRequests.size !== 0) {
+    writeRequests.dequeue().reject(storedError);
   }
-  stream[_writeRequests] = [];
   if (stream[_pendingAbortRequest] === undefined) {
     writableStreamRejectCloseAndClosedPromiseIfNeeded(stream);
     return;
@@ -4736,6 +4940,7 @@ function writableStreamFinishInFlightClose(stream) {
   if (writer !== undefined) {
     writer[_closedPromise].resolve(undefined);
   }
+  stream[_isClosedPromise].resolve?.();
   assert(stream[_pendingAbortRequest] === undefined);
   assert(stream[_storedError] === undefined);
 }
@@ -4803,8 +5008,8 @@ function writableStreamMarkCloseRequestInFlight(stream) {
  */
 function writableStreamMarkFirstWriteRequestInFlight(stream) {
   assert(stream[_inFlightWriteRequest] === undefined);
-  assert(stream[_writeRequests].length);
-  const writeRequest = ArrayPrototypeShift(stream[_writeRequests]);
+  assert(stream[_writeRequests].size);
+  const writeRequest = stream[_writeRequests].dequeue();
   stream[_inFlightWriteRequest] = writeRequest;
 }
 
@@ -4816,6 +5021,10 @@ function writableStreamRejectCloseAndClosedPromiseIfNeeded(stream) {
     stream[_closeRequest].reject(stream[_storedError]);
     stream[_closeRequest] = undefined;
   }
+
+  stream[_isClosedPromise].reject(stream[_storedError]);
+  setPromiseIsHandledToTrue(stream[_isClosedPromise].promise);
+
   const writer = stream[_writer];
   if (writer !== undefined) {
     writer[_closedPromise].reject(stream[_storedError]);
@@ -5107,6 +5316,10 @@ class ReadableStream {
   [_storedError];
   /** @type {{ rid: number, autoClose: boolean } | null} */
   [_resourceBacking] = null;
+  /** @type {Deferred<void>} */
+  [_isClosedPromise];
+
+  [core.hostObjectBrand] = "ReadableStream";
 
   /**
    * @param {UnderlyingSource<R>=} underlyingSource
@@ -5370,14 +5583,29 @@ class ReadableStream {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    const isBranded = ObjectPrototypeIsPrototypeOf(
+      ReadableStreamPrototype,
+      this,
+    );
+    const view = {
+      locked: isBranded ? this.locked : undefined,
+      state: isBranded ? this[_state] : undefined,
+      supportsBYOB: isBranded
+        ? ObjectPrototypeIsPrototypeOf(
+          ReadableByteStreamControllerPrototype,
+          this[_controller],
+        )
+        : undefined,
+    };
+    ObjectDefineProperty(view, "constructor", {
+      __proto__: null,
+      value: { name: this.constructor?.name ?? "ReadableStream" },
+    });
     return inspect(
       createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(
-          ReadableStreamPrototype,
-          this,
-        ),
-        keys: ["locked"],
+        object: view,
+        evaluate: true,
+        keys: ["locked", "state", "supportsBYOB"],
       }),
       inspectOptions,
     );
@@ -5429,10 +5657,32 @@ class ReadableStreamDefaultReader {
     } catch (err) {
       return PromiseReject(err);
     }
-    if (this[_stream] === undefined) {
+    const stream = this[_stream];
+    if (stream === undefined) {
       return PromiseReject(
         new TypeError("Reader has no associated stream."),
       );
+    }
+    // Sync fast path: stream is readable, controller is the default (not
+    // byte) variant, and there's already a chunk queued. Skips allocating a
+    // Deferred, a ReadRequest object literal, three closures, and avoids
+    // the chunkSteps indirection.
+    if (stream[_state] === "readable") {
+      const controller = stream[_controller];
+      if (
+        controller[_pendingPullIntos] === undefined &&
+        controller[_queue].size !== 0
+      ) {
+        stream[_disturbed] = true;
+        const chunk = dequeueValue(controller);
+        if (controller[_closeRequested] && controller[_queue].size === 0) {
+          readableStreamDefaultControllerClearAlgorithms(controller);
+          readableStreamClose(stream);
+        } else {
+          readableStreamDefaultControllerCallPullIfNeeded(controller);
+        }
+        return PromiseResolve({ value: chunk, done: false });
+      }
     }
     /** @type {Deferred<ReadableStreamReadResult<R>>} */
     const promise = new Deferred();
@@ -5683,10 +5933,10 @@ const ReadableStreamBYOBReaderPrototype = ReadableStreamBYOBReader.prototype;
 class ReadableStreamBYOBRequest {
   /** @type {ReadableByteStreamController} */
   [_controller];
-  /** @type {ArrayBufferView | null} */
+  /** @type {Uint8Array<ArrayBuffer> | null} */
   [_view];
 
-  /** @returns {ArrayBufferView | null} */
+  /** @returns {Uint8Array<ArrayBuffer> | null} */
   get view() {
     webidl.assertBranded(this, ReadableStreamBYOBRequestPrototype);
     return this[_view];
@@ -5948,18 +6198,20 @@ class ReadableByteStreamController {
         viewConstructor: Uint8Array,
         readerType: "default",
       };
-      ArrayPrototypePush(this[_pendingPullIntos], pullIntoDescriptor);
+      this[_pendingPullIntos].enqueue(pullIntoDescriptor);
     }
     readableStreamAddReadRequest(stream, readRequest);
     readableByteStreamControllerCallPullIfNeeded(this);
   }
 
   [_releaseSteps]() {
-    if (this[_pendingPullIntos].length !== 0) {
+    if (this[_pendingPullIntos].size !== 0) {
       /** @type {PullIntoDescriptor} */
-      const firstPendingPullInto = this[_pendingPullIntos][0];
+      const firstPendingPullInto = this[_pendingPullIntos].peek();
       firstPendingPullInto.readerType = "none";
-      this[_pendingPullIntos] = [firstPendingPullInto];
+      const newQueue = new Queue();
+      newQueue.enqueue(firstPendingPullInto);
+      this[_pendingPullIntos] = newQueue;
     }
   }
 }
@@ -6115,6 +6367,8 @@ class TransformStream {
   /** @type {WritableStream<I>} */
   [_writable];
 
+  [core.hostObjectBrand] = "TransformStream";
+
   /**
    * @param {Transformer<I, O>} transformer
    * @param {QueuingStrategy<I>} writableStrategy
@@ -6125,6 +6379,10 @@ class TransformStream {
     writableStrategy = { __proto__: null },
     readableStrategy = { __proto__: null },
   ) {
+    if (transformer === _brand) {
+      this[_brand] = _brand;
+      return;
+    }
     const prefix = "Failed to construct 'TransformStream'";
     if (transformer !== undefined) {
       transformer = webidl.converters.object(transformer, prefix, "Argument 1");
@@ -6324,6 +6582,8 @@ class WritableStream {
   [_writer];
   /** @type {Deferred<void>[]} */
   [_writeRequests];
+
+  [core.hostObjectBrand] = "WritableStream";
 
   /**
    * @param {UnderlyingSink<W>=} underlyingSink
@@ -6691,6 +6951,283 @@ function createProxy(stream) {
   return stream.pipeThrough(new TransformStream());
 }
 
+function packAndPostMessage(port, type, value) {
+  port.postMessage({ type, value, __proto__: null });
+}
+
+function crossRealmTransformSendError(port, error) {
+  packAndPostMessage(port, "error", error);
+}
+
+function packAndPostMessageHandlingError(port, type, value) {
+  try {
+    packAndPostMessage(port, type, value);
+  } catch (e) {
+    crossRealmTransformSendError(port, e);
+    throw e;
+  }
+}
+
+/**
+ * @param stream {ReadableStream<any>}
+ * @param port {MessagePort}
+ */
+function setUpCrossRealmTransformReadable(stream, port) {
+  initializeReadableStream(stream);
+  const controller = new ReadableStreamDefaultController(_brand);
+  port.addEventListener("message", (event) => {
+    if (event.data.type === "chunk") {
+      readableStreamDefaultControllerEnqueue(controller, event.data.value);
+    } else if (event.data.type === "close") {
+      readableStreamDefaultControllerClose(controller);
+      port.close();
+    } else if (event.data.type === "error") {
+      readableStreamDefaultControllerError(controller, event.data.value);
+      port.close();
+    }
+  });
+  port.addEventListener("messageerror", (event) => {
+    crossRealmTransformSendError(port, event.error);
+    readableStreamDefaultControllerError(controller, event.error);
+    port.close();
+  });
+  port.start();
+  const startAlgorithm = () => undefined;
+  const pullAlgorithm = () => {
+    packAndPostMessage(port, "pull", undefined);
+    return PromiseResolve(undefined);
+  };
+  const cancelAlgorithm = (reason) => {
+    try {
+      packAndPostMessageHandlingError(port, "error", reason);
+    } catch (e) {
+      return PromiseReject(e);
+    } finally {
+      port.close();
+    }
+    return PromiseResolve(undefined);
+  };
+  const sizeAlgorithm = () => 1;
+  setUpReadableStreamDefaultController(
+    stream,
+    controller,
+    startAlgorithm,
+    pullAlgorithm,
+    cancelAlgorithm,
+    0,
+    sizeAlgorithm,
+  );
+}
+
+/**
+ * @param stream {WritableStream<any>}
+ * @param port {MessagePort}
+ */
+function setUpCrossRealmTransformWritable(stream, port) {
+  initializeWritableStream(stream);
+  const controller = new WritableStreamDefaultController(_brand);
+  let backpressurePromise = PromiseWithResolvers();
+  port.addEventListener("message", (event) => {
+    if (event.data.type === "pull") {
+      if (backpressurePromise) {
+        backpressurePromise.resolve();
+        backpressurePromise = undefined;
+      }
+    } else if (event.data.type === "error") {
+      writableStreamDefaultControllerErrorIfNeeded(
+        controller,
+        event.data.value,
+      );
+      if (backpressurePromise) {
+        backpressurePromise.resolve();
+        backpressurePromise = undefined;
+      }
+    }
+  });
+  port.addEventListener("messageerror", (event) => {
+    crossRealmTransformSendError(port, event.error);
+    writableStreamDefaultControllerErrorIfNeeded(controller, event.error);
+    port.close();
+  });
+  port.start();
+  const startAlgorithm = () => undefined;
+  const writeAlgorithm = (chunk) => {
+    if (!backpressurePromise) {
+      backpressurePromise = PromiseWithResolvers();
+      backpressurePromise.resolve();
+    }
+    return PromisePrototypeThen(backpressurePromise.promise, () => {
+      backpressurePromise = PromiseWithResolvers();
+      try {
+        packAndPostMessageHandlingError(port, "chunk", chunk);
+      } catch (e) {
+        port.close();
+        throw e;
+      }
+    });
+  };
+  const closeAlgorithm = () => {
+    packAndPostMessage(port, "close", undefined);
+    port.close();
+    return PromiseResolve(undefined);
+  };
+  const abortAlgorithm = (reason) => {
+    try {
+      packAndPostMessageHandlingError(port, "error", reason);
+      return PromiseResolve(undefined);
+    } catch (error) {
+      return PromiseReject(error);
+    } finally {
+      port.close();
+    }
+  };
+  const sizeAlgorithm = () => 1;
+  setUpWritableStreamDefaultController(
+    stream,
+    controller,
+    startAlgorithm,
+    writeAlgorithm,
+    closeAlgorithm,
+    abortAlgorithm,
+    1,
+    sizeAlgorithm,
+  );
+}
+
+/**
+ * @param value {ReadableStream<any>}
+ * @param port {MessagePort}
+ */
+function readableStreamTransferSteps(value, port) {
+  if (isReadableStreamLocked(value)) {
+    throw new DOMException(
+      "Cannot transfer a locked ReadableStream",
+      "DataCloneError",
+    );
+  }
+  const writable = new WritableStream(_brand);
+  setUpCrossRealmTransformWritable(writable, port);
+  const promise = readableStreamPipeTo(value, writable, false, false, false);
+  setPromiseIsHandledToTrue(promise);
+}
+
+/**
+ * @param port {MessagePort}
+ * @returns {ReadableStream<any>}
+ */
+function readableStreamTransferReceivingSteps(port) {
+  const stream = new ReadableStream(_brand);
+  setUpCrossRealmTransformReadable(stream, port);
+  return stream;
+}
+
+/**
+ * @param value {WritableStream<any>}
+ * @param port {MessagePort}
+ */
+function writableStreamTransferSteps(value, port) {
+  if (isWritableStreamLocked(value)) {
+    throw new DOMException(
+      "Cannot transfer a locked WritableStream",
+      "DataCloneError",
+    );
+  }
+  const readable = new ReadableStream(_brand);
+  setUpCrossRealmTransformReadable(readable, port);
+  const promise = readableStreamPipeTo(readable, value, false, false, false);
+  setPromiseIsHandledToTrue(promise);
+}
+
+/**
+ * @param port {MessagePort}
+ * @returns {WritableStream<any>}
+ */
+function writableStreamTransferReceivingSteps(port) {
+  const stream = new WritableStream(_brand);
+  setUpCrossRealmTransformWritable(stream, port);
+  return stream;
+}
+
+/**
+ * @param value {TransformStream<any>}
+ * @param portR {MessagePort}
+ * @param portW {MessagePort}
+ */
+function transformStreamTransferSteps(value, portR, portW) {
+  if (isReadableStreamLocked(value.readable)) {
+    throw new DOMException(
+      "Cannot transfer a locked ReadableStream",
+      "DataCloneError",
+    );
+  }
+  if (isWritableStreamLocked(value.writable)) {
+    throw new DOMException(
+      "Cannot transfer a locked WritableStream",
+      "DataCloneError",
+    );
+  }
+  readableStreamTransferSteps(value.readable, portR);
+  writableStreamTransferSteps(value.writable, portW);
+}
+
+/**
+ * @param portR {MessagePort}
+ * @param portW {MessagePort}
+ * @returns {TransformStream<any>}
+ */
+function transformStreamTransferReceivingSteps(portR, portW) {
+  const stream = new TransformStream(_brand);
+  stream[_readable] = new ReadableStream(_brand);
+  setUpCrossRealmTransformReadable(stream[_readable], portR);
+  stream[_writable] = new WritableStream(_brand);
+  setUpCrossRealmTransformWritable(stream[_writable], portW);
+  return stream;
+}
+
+core.registerTransferableResource(
+  "ReadableStream",
+  (value) => {
+    const { port1, port2 } = new MessageChannel();
+    readableStreamTransferSteps(value, port1);
+    return core.getTransferableResource("MessagePort").send(port2);
+  },
+  (rid) => {
+    const port = core.getTransferableResource("MessagePort").receive(rid);
+    return readableStreamTransferReceivingSteps(port);
+  },
+);
+
+core.registerTransferableResource(
+  "WritableStream",
+  (value) => {
+    const { port1, port2 } = new MessageChannel();
+    writableStreamTransferSteps(value, port1);
+    return core.getTransferableResource("MessagePort").send(port2);
+  },
+  (rid) => {
+    const port = core.getTransferableResource("MessagePort").receive(rid);
+    return writableStreamTransferReceivingSteps(port);
+  },
+);
+
+core.registerTransferableResource(
+  "TransformStream",
+  (value) => {
+    const { port1: portR1, port2: portR2 } = new MessageChannel();
+    const { port1: portW1, port2: portW2 } = new MessageChannel();
+    transformStreamTransferSteps(value, portR1, portW1);
+    return [
+      core.getTransferableResource("MessagePort").send(portR2),
+      core.getTransferableResource("MessagePort").send(portW2),
+    ];
+  },
+  (rids) => {
+    const portR = core.getTransferableResource("MessagePort").receive(rids[0]);
+    const portW = core.getTransferableResource("MessagePort").receive(rids[1]);
+    return transformStreamTransferReceivingSteps(portR, portW);
+  },
+);
+
 webidl.converters.ReadableStream = webidl
   .createInterfaceConverter("ReadableStream", ReadableStream.prototype);
 webidl.converters.WritableStream = webidl
@@ -6864,37 +7401,385 @@ webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
 );
 
 internals.resourceForReadableStream = resourceForReadableStream;
+internals.readableStreamForRid = readableStreamForRid;
+internals.writableStreamForRid = writableStreamForRid;
 
-export {
+// Register stream prototypes with the structured clone allowlist.
+// 13_message_port used to do this from its own module body, but doing it
+// there pulled this 208 KB module into the snapshot. Inverting the import
+// keeps message_port snapshot-light.
+{
+  const { markNotSerializable } = core.loadExtScript(
+    "ext:deno_web/13_message_port.js",
+  );
+  markNotSerializable(ReadableStream.prototype);
+  markNotSerializable(WritableStream.prototype);
+  markNotSerializable(TransformStream.prototype);
+}
+
+const kNodeWebStreamsState = SymbolFor("nodejs.webstreams.kState");
+const kNodeWebStreamsType = SymbolFor("nodejs.webstreams.kType");
+const kNodeMessagingTransfer = SymbolFor("nodejs.messaging.kTransfer");
+
+function createReadableStreamStateView(stream) {
+  return {
+    get disturbed() {
+      return stream[_disturbed];
+    },
+    get reader() {
+      return stream[_reader];
+    },
+    get state() {
+      return stream[_state];
+    },
+    get storedError() {
+      return stream[_storedError];
+    },
+    get controller() {
+      return stream[_controller];
+    },
+  };
+}
+
+function createReadableStreamDefaultReaderStateView(reader) {
+  return {
+    get closedPromise() {
+      return reader[_closedPromise]?.promise;
+    },
+    get readRequests() {
+      return reader[_readRequests];
+    },
+    get stream() {
+      return reader[_stream];
+    },
+  };
+}
+
+function createReadableStreamBYOBReaderStateView(reader) {
+  return {
+    get closedPromise() {
+      return reader[_closedPromise]?.promise;
+    },
+    get readIntoRequests() {
+      return reader[_readIntoRequests];
+    },
+    get stream() {
+      return reader[_stream];
+    },
+  };
+}
+
+function createReadableStreamDefaultControllerStateView(controller) {
+  return {
+    get cancelAlgorithm() {
+      return controller[_cancelAlgorithm];
+    },
+    get closeRequested() {
+      return controller[_closeRequested];
+    },
+    get desiredSize() {
+      return readableStreamDefaultControllerGetDesiredSize(controller);
+    },
+    get pullAlgorithm() {
+      return controller[_pullAlgorithm];
+    },
+    get pulling() {
+      return controller[_pulling];
+    },
+    get pullAgain() {
+      return controller[_pullAgain];
+    },
+    get queue() {
+      return controller[_queue];
+    },
+    get queueTotalSize() {
+      return controller[_queueTotalSize];
+    },
+    get sizeAlgorithm() {
+      return controller[_strategySizeAlgorithm];
+    },
+    get started() {
+      return controller[_started];
+    },
+    get stream() {
+      return controller[_stream];
+    },
+  };
+}
+
+function createReadableByteStreamControllerStateView(controller) {
+  return {
+    get autoAllocateChunkSize() {
+      return controller[_autoAllocateChunkSize];
+    },
+    get byobRequest() {
+      return controller[_byobRequest];
+    },
+    get cancelAlgorithm() {
+      return controller[_cancelAlgorithm];
+    },
+    get closeRequested() {
+      return controller[_closeRequested];
+    },
+    get desiredSize() {
+      return readableByteStreamControllerGetDesiredSize(controller);
+    },
+    get pendingPullIntos() {
+      return controller[_pendingPullIntos];
+    },
+    set pendingPullIntos(value) {
+      controller[_pendingPullIntos] = value;
+    },
+    get pullAlgorithm() {
+      return controller[_pullAlgorithm];
+    },
+    get pulling() {
+      return controller[_pulling];
+    },
+    get pullAgain() {
+      return controller[_pullAgain];
+    },
+    get queue() {
+      return controller[_queue];
+    },
+    get queueTotalSize() {
+      return controller[_queueTotalSize];
+    },
+    get started() {
+      return controller[_started];
+    },
+    get stream() {
+      return controller[_stream];
+    },
+  };
+}
+
+function isReadableStreamBYOBRequest(value) {
+  return !(typeof value !== "object" || value === null || !value[_view]);
+}
+
+function isReadableByteStreamController(value) {
+  return !(typeof value !== "object" || value === null ||
+    !ReflectHas(value, _pendingPullIntos));
+}
+
+function readableStreamDefaultControllerHasBackpressure(controller) {
+  return readableStreamDefaultControllerGetDesiredSize(controller) <= 0;
+}
+
+function readableStreamDefaultControllerShouldCallPull(controller) {
+  const stream = controller[_stream];
+  if (!readableStreamDefaultControllerCanCloseOrEnqueue(controller)) {
+    return false;
+  }
+  if (!controller[_started]) {
+    return false;
+  }
+  if (
+    isReadableStreamLocked(stream) &&
+    readableStreamGetNumReadRequests(stream) > 0
+  ) {
+    return true;
+  }
+  return readableStreamDefaultControllerGetDesiredSize(controller) > 0;
+}
+
+const setUpReadableByteStreamControllerFromSource =
+  setUpReadableByteStreamControllerFromUnderlyingSource;
+const setUpReadableStreamDefaultControllerFromSource =
+  setUpReadableStreamDefaultControllerFromUnderlyingSource;
+
+ObjectDefineProperty(ReadableStreamPrototype, kNodeWebStreamsState, {
+  __proto__: null,
+  configurable: true,
+  get() {
+    return createReadableStreamStateView(this);
+  },
+});
+ObjectDefineProperty(ReadableStreamPrototype, kNodeWebStreamsType, {
+  __proto__: null,
+  configurable: true,
+  value: "ReadableStream",
+});
+ObjectDefineProperty(ReadableStreamPrototype, kNodeMessagingTransfer, {
+  __proto__: null,
+  configurable: true,
+  value() {
+    if (!isReadableStream(this)) {
+      const error = new TypeError(
+        'Value of "this" must be of type ReadableStream',
+      );
+      error.code = "ERR_INVALID_THIS";
+      throw error;
+    }
+  },
+});
+ObjectDefineProperty(
+  ReadableStreamDefaultReaderPrototype,
+  kNodeWebStreamsState,
+  {
+    __proto__: null,
+    configurable: true,
+    get() {
+      return createReadableStreamDefaultReaderStateView(this);
+    },
+  },
+);
+ObjectDefineProperty(
+  ReadableStreamDefaultReaderPrototype,
+  kNodeWebStreamsType,
+  {
+    __proto__: null,
+    configurable: true,
+    value: "ReadableStreamDefaultReader",
+  },
+);
+ObjectDefineProperty(ReadableStreamBYOBReaderPrototype, kNodeWebStreamsState, {
+  __proto__: null,
+  configurable: true,
+  get() {
+    return createReadableStreamBYOBReaderStateView(this);
+  },
+});
+ObjectDefineProperty(ReadableStreamBYOBReaderPrototype, kNodeWebStreamsType, {
+  __proto__: null,
+  configurable: true,
+  value: "ReadableStreamBYOBReader",
+});
+ObjectDefineProperty(
+  ReadableStreamDefaultControllerPrototype,
+  kNodeWebStreamsState,
+  {
+    __proto__: null,
+    configurable: true,
+    get() {
+      return createReadableStreamDefaultControllerStateView(this);
+    },
+  },
+);
+ObjectDefineProperty(
+  ReadableStreamDefaultControllerPrototype,
+  kNodeWebStreamsType,
+  {
+    __proto__: null,
+    configurable: true,
+    value: "ReadableStreamDefaultController",
+  },
+);
+ObjectDefineProperty(
+  ReadableByteStreamControllerPrototype,
+  kNodeWebStreamsState,
+  {
+    __proto__: null,
+    configurable: true,
+    get() {
+      return createReadableByteStreamControllerStateView(this);
+    },
+  },
+);
+ObjectDefineProperty(
+  ReadableByteStreamControllerPrototype,
+  kNodeWebStreamsType,
+  {
+    __proto__: null,
+    configurable: true,
+    value: "ReadableByteStreamController",
+  },
+);
+ObjectDefineProperty(ReadableStreamBYOBRequestPrototype, kNodeWebStreamsType, {
+  __proto__: null,
+  configurable: true,
+  value: "ReadableStreamBYOBRequest",
+});
+
+return {
+  _isClosedPromise,
   // Non-Public
   _state,
+  kNodeWebStreamsState,
+  kNodeWebStreamsType,
+  kNodeMessagingTransfer,
   // Exposed in global runtime scope
   ByteLengthQueuingStrategy,
   CountQueuingStrategy,
   createProxy,
+  createReadableByteStream,
+  createReadableStream,
   Deferred,
   errorReadableStream,
   getReadableStreamResourceBacking,
   getWritableStreamResourceBacking,
+  isReadableByteStreamController,
+  isReadableStream,
+  isReadableStreamBYOBReader,
+  isReadableStreamBYOBRequest,
   isDetachedBuffer,
   isReadableStreamDisturbed,
+  isReadableStreamLocked,
+  isReadableStreamDefaultReader,
   ReadableByteStreamController,
   ReadableStream,
   ReadableStreamBYOBReader,
   ReadableStreamBYOBRequest,
+  readableByteStreamControllerClearAlgorithms,
+  readableByteStreamControllerClearPendingPullIntos,
+  readableByteStreamControllerClose,
+  readableByteStreamControllerCommitPullIntoDescriptor,
+  readableByteStreamControllerConvertPullIntoDescriptor,
+  readableByteStreamControllerEnqueue,
+  readableByteStreamControllerEnqueueChunkToQueue,
+  readableByteStreamControllerError,
+  readableByteStreamControllerFillHeadPullIntoDescriptor,
+  readableByteStreamControllerFillPullIntoDescriptorFromQueue,
+  readableByteStreamControllerGetDesiredSize,
+  readableByteStreamControllerHandleQueueDrain,
+  readableByteStreamControllerInvalidateBYOBRequest,
+  readableByteStreamControllerProcessPullIntoDescriptorsUsingQueue,
+  readableByteStreamControllerPullInto,
+  readableByteStreamControllerRespond,
+  readableByteStreamControllerRespondInClosedState,
+  readableByteStreamControllerRespondInReadableState,
+  readableByteStreamControllerRespondInternal,
+  readableByteStreamControllerRespondWithNewView,
+  readableByteStreamControllerShiftPendingPullInto,
+  readableByteStreamControllerShouldCallPull,
+  readableByteStreamControllerCallPullIfNeeded,
+  readableStreamCancel,
   readableStreamClose,
   readableStreamCollectIntoUint8Array,
+  readableStreamDefaultControllerCallPullIfNeeded,
+  readableStreamDefaultControllerCanCloseOrEnqueue,
+  readableStreamDefaultControllerClearAlgorithms,
   ReadableStreamDefaultController,
+  readableStreamDefaultControllerClose,
+  readableStreamDefaultControllerEnqueue,
+  readableStreamDefaultControllerError,
+  readableStreamDefaultControllerGetDesiredSize,
+  readableStreamDefaultControllerHasBackpressure,
+  readableStreamDefaultControllerShouldCallPull,
   ReadableStreamDefaultReader,
   readableStreamDisturb,
   readableStreamForRid,
   readableStreamForRidUnrefable,
   readableStreamForRidUnrefableRef,
   readableStreamForRidUnrefableUnref,
+  readableStreamGetNumReadIntoRequests,
+  readableStreamGetNumReadRequests,
+  readableStreamHasBYOBReader,
+  readableStreamHasDefaultReader,
   ReadableStreamPrototype,
+  readableStreamReaderGenericCancel,
+  readableStreamReaderGenericRelease,
+  readableStreamPipeTo,
   readableStreamTee,
   readableStreamThrowIfErrored,
   resourceForReadableStream,
+  setUpReadableByteStreamController,
+  setUpReadableByteStreamControllerFromSource,
+  setUpReadableStreamBYOBReader,
+  setUpReadableStreamDefaultController,
+  setUpReadableStreamDefaultControllerFromSource,
+  setUpReadableStreamDefaultReader,
   TransformStream,
   TransformStreamDefaultController,
   WritableStream,
@@ -6903,3 +7788,4 @@ export {
   WritableStreamDefaultWriter,
   writableStreamForRid,
 };
+})();

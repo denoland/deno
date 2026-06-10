@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -25,10 +25,16 @@
 // - https://github.com/nodejs/node/blob/master/src/async_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/async_wrap.h
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+(function () {
+const { core, primordials } = __bootstrap;
+const { AsyncWrap, op_node_new_async_id } = core.ops;
+const {
+  Float64Array,
+  ObjectKeys,
+  Uint32Array,
+} = primordials;
 
-export function registerDestroyHook(
+function registerDestroyHook(
   // deno-lint-ignore no-explicit-any
   _target: any,
   _asyncId: number,
@@ -37,7 +43,7 @@ export function registerDestroyHook(
   // TODO(kt3k): implement actual procedures
 }
 
-export enum constants {
+enum constants {
   kInit,
   kBefore,
   kAfter,
@@ -53,28 +59,21 @@ export enum constants {
   kStackLength,
 }
 
-const asyncHookFields = new Uint32Array(Object.keys(constants).length);
-
-export { asyncHookFields as async_hook_fields };
+const asyncHookFields = new Uint32Array(ObjectKeys(constants).length);
 
 // Increment the internal id counter and return the value.
-export function newAsyncId() {
-  return ++asyncIdFields[constants.kAsyncIdCounter];
+function newAsyncId() {
+  return op_node_new_async_id();
 }
 
-export enum UidFields {
+enum UidFields {
   kExecutionAsyncId,
   kTriggerAsyncId,
-  kAsyncIdCounter,
   kDefaultTriggerAsyncId,
   kUidFieldsCount,
 }
 
-const asyncIdFields = new Float64Array(Object.keys(UidFields).length);
-
-// `kAsyncIdCounter` should start at `1` because that'll be the id the execution
-// context during bootstrap.
-asyncIdFields[UidFields.kAsyncIdCounter] = 1;
+const asyncIdFields = new Float64Array(ObjectKeys(UidFields).length);
 
 // `kDefaultTriggerAsyncId` should be `-1`, this indicates that there is no
 // specified default value and it should fallback to the executionAsyncId.
@@ -82,9 +81,7 @@ asyncIdFields[UidFields.kAsyncIdCounter] = 1;
 // context which is different from a default context.
 asyncIdFields[UidFields.kDefaultTriggerAsyncId] = -1;
 
-export { asyncIdFields };
-
-export enum providerType {
+enum providerType {
   NONE,
   DIRHANDLE,
   DNSCHANNEL,
@@ -130,26 +127,14 @@ export enum providerType {
   ZLIB,
 }
 
-const kInvalidAsyncId = -1;
-
-export class AsyncWrap {
-  provider: providerType = providerType.NONE;
-  asyncId = kInvalidAsyncId;
-
-  constructor(provider: providerType) {
-    this.provider = provider;
-    this.getAsyncId();
-  }
-
-  getAsyncId(): number {
-    this.asyncId = this.asyncId === kInvalidAsyncId
-      ? newAsyncId()
-      : this.asyncId;
-
-    return this.asyncId;
-  }
-
-  getProviderType() {
-    return this.provider;
-  }
-}
+return {
+  async_hook_fields: asyncHookFields,
+  asyncIdFields,
+  AsyncWrap,
+  registerDestroyHook,
+  newAsyncId,
+  constants,
+  UidFields,
+  providerType,
+};
+})();

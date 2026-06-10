@@ -77,6 +77,5 @@
   "homepage": "https://github.com/npm/unique-slug#readme",
   "bugs": {
     "url": "https://github.com/npm/unique-slug/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

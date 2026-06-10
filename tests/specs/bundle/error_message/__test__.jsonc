@@ -1,0 +1,15 @@
+{
+  "tempDir": true,
+  "tests": {
+    "imports_css_no_output": {
+      "args": "bundle imports-css.tsx",
+      "exitCode": 1,
+      "output": "imports_css.out"
+    },
+    "imports_fake": {
+      "args": "bundle -I imports-fake.ts -o bundle.js",
+      "exitCode": 1,
+      "output": "imports_fake.out"
+    }
+  }
+}

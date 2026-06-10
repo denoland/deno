@@ -76,6 +76,5 @@
   "bugs": {
     "url": "https://github.com/facebook/react/issues"
   },
-  "license": "MIT",
-  "readmeFilename": ""
+  "license": "MIT"
 }

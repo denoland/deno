@@ -59,7 +59,6 @@
     "url": "git+https://github.com/isaacs/node-mkdirp.git"
   },
   "license": "MIT",
-  "readmeFilename": "",
   "homepage": "https://github.com/isaacs/node-mkdirp#readme",
   "bugs": {
     "url": "https://github.com/isaacs/node-mkdirp/issues"

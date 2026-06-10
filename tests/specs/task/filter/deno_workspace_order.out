@@ -1,4 +1,6 @@
-Task dev echo '@foo/bar'
-@foo/bar
-Task dev echo '@foo/baz'
-@foo/baz
+[UNORDERED_START]
+Task dev (@foo/bar) echo '@foo/bar'
+Task dev (@foo/baz) echo '@foo/baz'
+[@foo/bar#dev] @foo/bar
+[@foo/baz#dev] @foo/baz
+[UNORDERED_END]

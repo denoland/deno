@@ -1,7 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   Uint8ArrayPrototype,
   Error,
@@ -13,21 +13,42 @@ const {
   ObjectPrototypeIsPrototypeOf,
 } = primordials;
 
-import { Buffer } from "node:buffer";
-import {
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import { Duplex, Readable, Writable } from "node:stream";
-import * as io from "ext:deno_io/12_io.js";
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const lazyStream = core.createLazyLoader("node:stream");
+// `node:tty`'s module body calls `setReadStream(...)` to register the TTY
+// ReadStream class with this file. We used to rely on `node:tty` being
+// loaded eagerly at snapshot from 01_require.js; now it's lazy, so the TTY
+// branch of `initStdin` has to force-load it before using `readStream`.
+const lazyTty = core.createLazyLoader("node:tty");
+const io = core.loadExtScript("ext:deno_io/12_io.js");
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+import { op_bootstrap_color_depth } from "ext:core/ops";
+const { validateInteger } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name, warmup = false) {
+  const Writable = lazyStream().Writable;
   const stream = new Writable({
     emitClose: false,
+    // Store the WritableState bitfield behind an accessor for the stdio
+    // streams. They are long lived and, under test runners like Jest that run
+    // each test file in its own module realm, get exercised across a large
+    // number of realms; a synchronous write could otherwise read back a stale
+    // `kState` in `onwrite()` and throw a spurious `ERR_MULTIPLE_CALLBACK`.
+    // See denoland/deno#24646.
+    [Writable.kForceStableState]: true,
     write(buf, enc, cb) {
       if (!writer) {
         this.destroy(
@@ -35,16 +56,47 @@ export function createWritableStdioStream(writer, name, warmup = false) {
         );
         return;
       }
-      writer.writeSync(
-        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+      // TODO(fraidev): This try/catch is a workaround. When process.stdout
+      // is a pipe (not a TTY), Node.js backs it with a real fd-based net.Socket
+      // so BrokenPipe flows naturally through stream_wrap.ts as EPIPE. Deno
+      // always uses createWritableStdioStream(io.stdout) regardless of pipe/TTY,
+      // so BrokenPipe throws synchronously here instead. Once net.Socket supports
+      // being created from a raw fd (new Socket({ fd: 1 })), process.stdout/stderr
+      // should be switched to net.Socket for non-TTY cases and this can be removed.
+      try {
+        let data = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
           ? buf
-          : Buffer.from(buf, enc),
-      );
+          : Buffer.from(buf, enc);
+        // Handle partial writes - writeSync may not write all bytes at once
+        // (e.g., when stdout is a pipe and the pipe buffer is near capacity).
+        // deno-lint-ignore prefer-primordials
+        while (data.byteLength > 0) {
+          const nwritten = writer.writeSync(data);
+          // deno-lint-ignore prefer-primordials
+          if (nwritten >= data.byteLength) break;
+          data = TypedArrayPrototypeSlice(data, nwritten);
+        }
+      } catch (e) {
+        if (
+          ObjectPrototypeIsPrototypeOf(Deno.errors.BrokenPipe.prototype, e)
+        ) {
+          const err = new Error("write EPIPE");
+          err.code = "EPIPE";
+          err.errno = codeMap.get("EPIPE");
+          err.syscall = "write";
+          cb(err);
+          return;
+        }
+        throw e;
+      }
       cb();
     },
     destroy(err, cb) {
       cb(err);
       this._undestroy();
+
+      // We need to emit 'close' anyway so that the closing
+      // of the stream is observable.
       if (!this._writableState.emitClose) {
         nextTick(() => this.emit("close"));
       }
@@ -62,7 +114,6 @@ export function createWritableStdioStream(writer, name, warmup = false) {
   stream.fd = fd;
   stream.destroySoon = stream.destroy;
   stream._isStdio = true;
-  stream.once("close", () => writer?.close());
 
   // We cannot call `writer?.isTerminal()` eagerly here
   let getIsTTY = () => writer?.isTerminal();
@@ -103,15 +154,39 @@ export function createWritableStdioStream(writer, name, warmup = false) {
       value: () =>
         writer?.isTerminal() ? ObjectValues(Deno.consoleSize?.()) : undefined,
     },
+    getColorDepth: {
+      __proto__: null,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+      value: () => op_bootstrap_color_depth(),
+    },
+    hasColors: {
+      __proto__: null,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+      value: (count, env) => {
+        if (
+          env === undefined &&
+          (count === undefined || typeof count === "object" && count !== null)
+        ) {
+          env = count;
+          count = 16;
+        } else {
+          validateInteger(count, "count", 2);
+        }
+
+        const depth = op_bootstrap_color_depth();
+        return count <= 2 ** depth;
+      },
+    },
   });
 
-  // If we're warming up, create a stdout/stderr stream that assumes a terminal (the most likely case).
-  // If we're wrong at boot time, we'll recreate it.
+  // If we're warming up, add TTY-like methods so snapshot-time code works.
+  // The warmup stream is replaced at boot time with a proper tty.WriteStream
+  // (for TTY) or a fresh Writable (for non-TTY).
   if (warmup || writer?.isTerminal()) {
-    // These belong on tty.WriteStream(), but the TTY streams currently have
-    // following problems:
-    // 1. Using them here introduces a circular dependency.
-    // 2. Creating a net.Socket() from a fd is not currently supported.
     stream.cursorTo = function (x, y, callback) {
       return cursorTo(this, x, y, callback);
     };
@@ -138,6 +213,7 @@ function _guessStdinType(fd) {
 }
 
 const _read = function (size) {
+  io.stdin?.[io.REF]();
   const p = Buffer.alloc(size || 16 * 1024);
   PromisePrototypeThen(io.stdin?.read(p), (length) => {
     // deno-lint-ignore prefer-primordials
@@ -167,7 +243,7 @@ export const initStdin = (warmup = false) => {
       // use `Readable` instead.
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L200
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/fs/streams.js#L148
-      stdin = new Readable({
+      stdin = new (lazyStream().Readable)({
         highWaterMark: 64 * 1024,
         autoDestroy: false,
         read: _read,
@@ -175,11 +251,15 @@ export const initStdin = (warmup = false) => {
       break;
     }
     case "TTY": {
-      // If it's a TTY, we know that the stdin we created during warmup is the correct one and
-      // just return null to re-use it.
-      if (!warmup) {
+      // FIXME: We should be able to create stdin handle during warmup and re-use it but
+      // cppgc object wraps crash in snapshot mode.
+      //
+      // To reproduce crash, change the condition to `if (!warmup)` below:
+      if (warmup) {
         return null;
       }
+      // Force `node:tty` to evaluate so its body runs `setReadStream`.
+      lazyTty();
       stdin = new readStream(fd);
       break;
     }
@@ -191,7 +271,7 @@ export const initStdin = (warmup = false) => {
       // 2. Creating a net.Socket() from a fd is not currently supported.
       // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L206
       // https://github.com/nodejs/node/blob/v18.12.1/lib/net.js#L329
-      stdin = new Duplex({
+      stdin = new (lazyStream().Duplex)({
         readable: stdinType === "TTY" ? undefined : true,
         writable: stdinType === "TTY" ? undefined : false,
         readableHighWaterMark: stdinType === "TTY" ? 0 : undefined,
@@ -206,12 +286,34 @@ export const initStdin = (warmup = false) => {
         // Make sure the stdin can't be `.end()`-ed
         stdin._writableState.ended = true;
       }
+
+      // Provide a minimal _handle so code that checks process.stdin._handle
+      // (e.g. test-stdout-close-unref.js) works. We intentionally omit
+      // readStart/readStop/reading so the onpause handler takes the simple
+      // io.stdin UNREF path - adding those methods causes _readableState.reading
+      // to be reset, which triggers duplicate _read() calls and orphaned
+      // reffed promises that prevent process exit.
+      stdin._handle = {
+        close(cb) {
+          io.stdin?.close();
+          if (typeof cb === "function") cb();
+        },
+        ref() {
+          io.stdin?.[io.REF]();
+        },
+        unref() {
+          io.stdin?.[io.UNREF]();
+        },
+        getAsyncId() {
+          return -1;
+        },
+      };
       break;
     }
     default: {
       // Provide a dummy contentless input for e.g. non-console
       // Windows applications.
-      stdin = new Readable({ read() {} });
+      stdin = new (lazyStream().Readable)({ read() {} });
       // deno-lint-ignore prefer-primordials
       stdin.push(null);
     }
@@ -219,17 +321,53 @@ export const initStdin = (warmup = false) => {
 
   stdin.on("close", () => io.stdin?.close());
   stdin.fd = io.stdin ? io.STDIN_RID : -1;
+
+  // `stdin` starts out life in a paused state. Explicitly to readStop() it to put it in the
+  // not-reading state.
+  if (stdin._handle?.readStop) {
+    stdin._handle.reading = false;
+    stdin._readableState.reading = false;
+    stdin._handle.readStop();
+  }
+
+  function onpause() {
+    if (!stdin._handle || !stdin._handle.readStop) {
+      // This allows the process to exit when stdin is paused.
+      io.stdin?.[io.UNREF]();
+      return;
+    }
+
+    if (stdin._handle.reading && !stdin.readableFlowing) {
+      stdin._readableState.reading = false;
+      stdin._handle.reading = false;
+      stdin._handle.readStop();
+    }
+  }
+
+  // If the user calls stdin.pause(), then we need to stop reading
+  // once the stream implementation does so (one nextTick later),
+  // so that the process can close down.
+  stdin.on("pause", () => nextTick(onpause));
+
+  // Allow users to overwrite isTTY for test isolation and terminal mocking.
+  // This mirrors the stdout/stderr behavior added in #26130.
+  let getStdinIsTTY = () => io.stdin?.isTerminal();
   ObjectDefineProperty(stdin, "isTTY", {
     __proto__: null,
     enumerable: true,
     configurable: true,
     get() {
-      return io.stdin.isTerminal();
+      return getStdinIsTTY();
+    },
+    set(value) {
+      getStdinIsTTY = () => value;
     },
   });
   stdin._isRawMode = false;
   stdin.setRawMode = (enable) => {
-    io.stdin?.setRaw?.(enable);
+    if (io.stdin?.isTerminal()) {
+      io.stdin.setRaw(enable);
+    }
     stdin._isRawMode = enable;
     return stdin;
   };

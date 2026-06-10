@@ -1,0 +1,86 @@
+{
+  "name": "playwright-core",
+  "dist-tags": {
+    "latest": "1.49.1"
+  },
+  "versions": {
+    "1.49.1": {
+      "name": "playwright-core",
+      "version": "1.49.1",
+      "author": {
+        "name": "Microsoft Corporation"
+      },
+      "license": "Apache-2.0",
+      "_id": "playwright-core@1.49.1",
+      "bugs": {
+        "url": "https://github.com/microsoft/playwright/issues"
+      },
+      "bin": {
+        "playwright-core": "cli.js"
+      },
+      "dist": {
+        "shasum": "32c62f046e950f586ff9e35ed490a424f2248015",
+        "tarball": "http://localhost:4260/playwright-core/playwright-core-1.49.1.tgz",
+        "fileCount": 337,
+        "integrity": "sha512-BzmpVcs4kE2CH15rWfzpjzVGhWERJfmnXmniSyKeRZUs9Ws65m+RGIi7mjJK/euCegfn3i7jvqWeWyHe9y3Vgg==",
+        "attestations": {
+          "url": "https://registry.npmjs.org/-/npm/v1/attestations/playwright-core@1.49.1",
+          "provenance": {
+            "predicateType": "https://slsa.dev/provenance/v1"
+          }
+        },
+        "unpackedSize": 7966574
+      },
+      "types": "types/types.d.ts",
+      "engines": {
+        "node": ">=18"
+      },
+      "exports": {
+        ".": {
+          "types": "./index.d.ts",
+          "import": "./index.mjs",
+          "default": "./index.js",
+          "require": "./index.js"
+        },
+        "./lib/utils": "./lib/utils/index.js",
+        "./lib/server": "./lib/server/index.js",
+        "./package.json": "./package.json",
+        "./lib/zipBundle": "./lib/zipBundle.js",
+        "./types/structs": "./types/structs.d.ts",
+        "./types/protocol": "./types/protocol.d.ts",
+        "./lib/cli/program": "./lib/cli/program.js",
+        "./lib/utilsBundle": "./lib/utilsBundle.js",
+        "./lib/outofprocess": "./lib/outofprocess.js",
+        "./lib/image_tools/stats": "./lib/image_tools/stats.js",
+        "./lib/image_tools/compare": "./lib/image_tools/compare.js",
+        "./lib/server/registry/index": "./lib/server/registry/index.js",
+        "./lib/image_tools/colorUtils": "./lib/image_tools/colorUtils.js",
+        "./lib/remote/playwrightServer": "./lib/remote/playwrightServer.js",
+        "./lib/image_tools/imageChannel": "./lib/image_tools/imageChannel.js"
+      },
+      "gitHead": "88bc8afc78ea6ff13d2bbb312b99eb924962766c",
+      "repository": {
+        "url": "git+https://github.com/microsoft/playwright.git",
+        "type": "git"
+      },
+      "_npmVersion": "10.8.2",
+      "description": "A high-level API to automate web browsers",
+      "directories": {},
+      "_nodeVersion": "18.20.5",
+      "_hasShrinkwrap": false
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/microsoft/playwright/issues"
+  },
+  "author": {
+    "name": "Microsoft Corporation"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://playwright.dev",
+  "repository": {
+    "url": "git+https://github.com/microsoft/playwright.git",
+    "type": "git"
+  },
+  "description": "A high-level API to automate web browsers"
+}

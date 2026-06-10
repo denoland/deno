@@ -1,7 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { AsyncLocalStorage, AsyncResource } from "node:async_hooks";
+// Copyright 2018-2026 the Deno authors. MIT license.
+import { AsyncLocalStorage, AsyncResource, createHook } from "node:async_hooks";
 import process from "node:process";
-import { setImmediate } from "node:timers";
+import { clearImmediate, setImmediate } from "node:timers";
 import { assert, assertEquals } from "@std/assert";
 
 Deno.test(async function foo() {
@@ -138,6 +138,54 @@ Deno.test(function emitDestroyStub() {
   assert(typeof resource.emitDestroy === "function");
 });
 
+Deno.test(function runInAsyncScopeFiresBeforeAndAfter() {
+  const events: string[] = [];
+  const resource = new AsyncResource("MYRES");
+  const targetId = resource.asyncId();
+  const hook = createHook({
+    before(asyncId) {
+      if (asyncId === targetId) events.push("before");
+    },
+    after(asyncId) {
+      if (asyncId === targetId) events.push("after");
+    },
+  });
+  hook.enable();
+  try {
+    resource.runInAsyncScope(() => {
+      events.push("fn");
+    }, null);
+  } finally {
+    hook.disable();
+  }
+  assertEquals(events, ["before", "fn", "after"]);
+});
+
+Deno.test(function clearImmediateEmitsDestroy() {
+  let immediateAsyncId: number | undefined;
+  const destroyed: number[] = [];
+  const hook = createHook({
+    init(asyncId, type) {
+      if (type === "Immediate") {
+        immediateAsyncId = asyncId;
+      }
+    },
+    destroy(asyncId) {
+      destroyed.push(asyncId);
+    },
+  });
+
+  hook.enable();
+  try {
+    const immediate = setImmediate(() => {});
+    assert(typeof immediateAsyncId === "number");
+    clearImmediate(immediate);
+    assert(destroyed.includes(immediateAsyncId!));
+  } finally {
+    hook.disable();
+  }
+});
+
 Deno.test(async function worksWithAsyncAPIs() {
   const store = new AsyncLocalStorage();
   const test = () => assertEquals(store.getStore(), "data");
@@ -171,4 +219,42 @@ Deno.test(async function worksWithDynamicImports() {
     const { data } = await import(dataUrl);
     assertEquals(data, "data");
   });
+});
+
+Deno.test(async function asyncLocalStoragePreservedInStreamFinished() {
+  const http = await import("node:http");
+  const { finished } = await import("node:stream");
+  const als = new AsyncLocalStorage();
+  const store = { foo: "bar" };
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  const server = http.createServer((_req, res) => {
+    als.run(store, () => {
+      finished(res, () => {
+        try {
+          assertEquals(als.getStore(), store);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    setTimeout(() => res.end(), 0);
+  });
+
+  server.listen(0, () => {
+    const addr = server.address()!;
+    const port = typeof addr === "string" ? addr : addr.port;
+    http.get(`http://127.0.0.1:${port}`, (res) => {
+      res.resume();
+      res.on("end", () => {
+        server.close();
+        http.globalAgent.destroy();
+      });
+    });
+  });
+
+  await promise;
 });

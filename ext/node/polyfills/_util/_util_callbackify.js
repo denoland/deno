@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //
 // Adapted from Node.js. Copyright Joyent, Inc. and other Node contributors.
 //
@@ -22,8 +22,8 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 // These are simplified versions of the "real" errors in Node.
-
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypePop,
   Error,
@@ -36,8 +36,10 @@ const {
   PromisePrototypeThen,
 } = primordials;
 
-import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
+const { validateFunction } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
 class NodeFalsyValueRejectionError extends Error {
   code = "ERR_FALSY_VALUE_REJECTION";
@@ -88,4 +90,7 @@ function callbackify(original) {
   return callbackified;
 }
 
-export { callbackify };
+return {
+  callbackify,
+};
+})();

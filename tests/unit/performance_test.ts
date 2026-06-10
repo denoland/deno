@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -72,6 +72,29 @@ Deno.test(function clearMeasures() {
   performance.clearMarks();
 });
 
+Deno.test(function clearResourceTimings() {
+  // clearResourceTimings should exist and not throw
+  // Since Deno doesn't currently track resource timings, this is effectively a no-op
+  performance.clearResourceTimings();
+  // After clearing, there should be no resource entries
+  assertEquals(performance.getEntriesByType("resource").length, 0);
+});
+
+Deno.test(function setResourceTimingBufferSize() {
+  // setResourceTimingBufferSize should exist and not throw
+  // Since Deno doesn't currently track resource timings, this is effectively a no-op
+  performance.setResourceTimingBufferSize(100);
+  performance.setResourceTimingBufferSize(0);
+  // Verify it requires an argument
+  assertThrows(
+    () => {
+      // @ts-expect-error: testing missing argument
+      performance.setResourceTimingBufferSize();
+    },
+    TypeError,
+  );
+});
+
 Deno.test(function performanceMark() {
   const mark = performance.mark("test");
   assert(mark instanceof PerformanceMark);
@@ -118,7 +141,7 @@ Deno.test(function performanceMeasure() {
   const mark1 = performance.mark(markName1);
   // Measure against the inaccurate-but-known-good wall clock
   const now = new Date().valueOf();
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     setTimeout(() => {
       try {
         const later = new Date().valueOf();
@@ -167,7 +190,7 @@ Deno.test(function performanceMeasureUseMostRecentMark() {
   const markName1 = "mark1";
   const measureName1 = "measure1";
   const mark1 = performance.mark(markName1);
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     setTimeout(() => {
       try {
         const laterMark1 = performance.mark(markName1);
@@ -229,7 +252,7 @@ Deno.test(function performanceMeasureIllegalConstructor() {
 Deno.test(function performanceIsEventTarget() {
   assert(performance instanceof EventTarget);
 
-  return new Promise((resolve) => {
+  return new Promise<void>((resolve) => {
     const handler = () => {
       resolve();
     };

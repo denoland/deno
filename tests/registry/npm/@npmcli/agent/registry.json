@@ -93,6 +93,5 @@
   "homepage": "https://github.com/npm/agent#readme",
   "bugs": {
     "url": "https://github.com/npm/agent/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

@@ -1,25 +1,25 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use rand::thread_rng;
-use rand::RngCore;
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::io;
 use std::os::windows::io::RawHandle;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
-use winapi::shared::minwindef::DWORD;
-use winapi::um::errhandlingapi::GetLastError;
-use winapi::um::fileapi::CreateFileA;
-use winapi::um::fileapi::OPEN_EXISTING;
-use winapi::um::handleapi::CloseHandle;
-use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-use winapi::um::minwinbase::SECURITY_ATTRIBUTES;
-use winapi::um::winbase::CreateNamedPipeA;
-use winapi::um::winbase::FILE_FLAG_FIRST_PIPE_INSTANCE;
-use winapi::um::winbase::FILE_FLAG_OVERLAPPED;
-use winapi::um::winbase::PIPE_ACCESS_DUPLEX;
-use winapi::um::winbase::PIPE_READMODE_BYTE;
-use winapi::um::winbase::PIPE_TYPE_BYTE;
-use winapi::um::winnt::GENERIC_READ;
-use winapi::um::winnt::GENERIC_WRITE;
+
+use rand::RngCore;
+use rand::thread_rng;
+use windows_sys::Win32::Foundation::CloseHandle;
+use windows_sys::Win32::Foundation::GENERIC_READ;
+use windows_sys::Win32::Foundation::GENERIC_WRITE;
+use windows_sys::Win32::Foundation::GetLastError;
+use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
+use windows_sys::Win32::Storage::FileSystem::CreateFileA;
+use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_FIRST_PIPE_INSTANCE;
+use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OVERLAPPED;
+use windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING;
+use windows_sys::Win32::Storage::FileSystem::PIPE_ACCESS_DUPLEX;
+use windows_sys::Win32::System::Pipes::CreateNamedPipeA;
+use windows_sys::Win32::System::Pipes::PIPE_READMODE_BYTE;
+use windows_sys::Win32::System::Pipes::PIPE_TYPE_BYTE;
 
 /// Create a pair of file descriptors for a named pipe with non-inheritable handles. We cannot use
 /// the anonymous pipe from `os_pipe` because that does not support OVERLAPPED (aka async) I/O.
@@ -44,8 +44,8 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
   );
 
   // Create security attributes to make the pipe handles non-inheritable
-  let mut security_attributes = SECURITY_ATTRIBUTES {
-    nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as DWORD,
+  let security_attributes = SECURITY_ATTRIBUTES {
+    nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
     lpSecurityDescriptor: std::ptr::null_mut(),
     bInheritHandle: 0,
   };
@@ -53,7 +53,7 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
   // SAFETY: Create the pipe server with non-inheritable handle
   let server_handle = unsafe {
     CreateNamedPipeA(
-      pipe_name.as_ptr() as *const i8,
+      pipe_name.as_ptr(),
       PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
       // Read and write bytes, not messages
       PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
@@ -66,7 +66,7 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
       // Each instance of a named pipe must specify the same value. A value of zero will result in a default time-out of
       // 50 milliseconds."
       0,
-      &mut security_attributes,
+      &security_attributes,
     )
   };
 
@@ -85,10 +85,10 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
   // SAFETY: Create the pipe client with non-inheritable handle
   let client_handle = unsafe {
     CreateFileA(
-      pipe_name.as_ptr() as *const i8,
+      pipe_name.as_ptr(),
       GENERIC_READ | GENERIC_WRITE,
       0,
-      &mut security_attributes,
+      &security_attributes,
       OPEN_EXISTING,
       FILE_FLAG_OVERLAPPED,
       std::ptr::null_mut(),
@@ -116,13 +116,14 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::fs::File;
   use std::io::Read;
   use std::io::Write;
   use std::os::windows::io::FromRawHandle;
   use std::sync::Arc;
   use std::sync::Barrier;
+
+  use super::*;
 
   #[test]
   fn make_named_pipe() {

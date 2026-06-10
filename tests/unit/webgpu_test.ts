@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
@@ -36,68 +36,98 @@ Deno.test({
     code: shaderCode,
   });
 
-  const size = new Uint32Array(numbers).byteLength;
+  const size = new Float32Array(numbers).byteLength;
 
-  const stagingBuffer = device.createBuffer({
+  const inputDataBuffer = device.createBuffer({
+    label: "Input Data Buffer",
     size: size,
-    usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-  });
-
-  const storageBuffer = device.createBuffer({
-    label: "Storage Buffer",
-    size: size,
-    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST |
-      GPUBufferUsage.COPY_SRC,
+    usage: GPUBufferUsage.STORAGE,
     mappedAtCreation: true,
   });
-
-  const buf = new Uint32Array(storageBuffer.getMappedRange());
-
+  const buf = new Float32Array(inputDataBuffer.getMappedRange());
   buf.set(numbers);
+  inputDataBuffer.unmap();
 
-  storageBuffer.unmap();
-
-  const computePipeline = device.createComputePipeline({
-    layout: "auto",
-    compute: {
-      module: shaderModule,
-      entryPoint: "main",
-    },
+  const outputDataBuffer = device.createBuffer({
+    label: "Output Data Buffer",
+    size: size,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
   });
-  const bindGroupLayout = computePipeline.getBindGroupLayout(0);
 
+  const downloadBuffer = device.createBuffer({
+    label: "Download Buffer",
+    size: size,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const bindGroupLayout = device.createBindGroupLayout({
+    entries: [
+      // input buffer
+      {
+        binding: 0,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+          type: "read-only-storage",
+          minBindingSize: 4,
+        },
+      },
+      // output buffer
+      {
+        binding: 1,
+        visibility: GPUShaderStage.COMPUTE,
+        buffer: {
+          type: "storage",
+          minBindingSize: 4,
+        },
+      },
+    ],
+  });
   const bindGroup = device.createBindGroup({
     layout: bindGroupLayout,
     entries: [
       {
         binding: 0,
         resource: {
-          buffer: storageBuffer,
+          buffer: inputDataBuffer,
+        },
+      },
+      {
+        binding: 1,
+        resource: {
+          buffer: outputDataBuffer,
         },
       },
     ],
   });
-
+  const pipelineLayout = device.createPipelineLayout({
+    bindGroupLayouts: [bindGroupLayout],
+  });
+  const computePipeline = device.createComputePipeline({
+    layout: pipelineLayout,
+    compute: {
+      module: shaderModule,
+      entryPoint: "doubleMe",
+    },
+  });
   const encoder = device.createCommandEncoder();
 
   const computePass = encoder.beginComputePass();
   computePass.setPipeline(computePipeline);
   computePass.setBindGroup(0, bindGroup);
-  computePass.insertDebugMarker("compute collatz iterations");
   computePass.dispatchWorkgroups(numbers.length);
   computePass.end();
 
-  encoder.copyBufferToBuffer(storageBuffer, 0, stagingBuffer, 0, size);
+  encoder.copyBufferToBuffer(outputDataBuffer, 0, downloadBuffer, 0, size);
 
   device.queue.submit([encoder.finish()]);
 
-  await stagingBuffer.mapAsync(1);
+  await downloadBuffer.mapAsync(GPUMapMode.READ);
 
-  const data = stagingBuffer.getMappedRange();
+  const data = downloadBuffer.getMappedRange();
 
-  assertEquals(new Uint32Array(data), new Uint32Array([0, 2, 7, 55]));
+  assertEquals(new Float32Array(data), new Float32Array([2, 8, 6, 590]));
 
-  stagingBuffer.unmap();
+  downloadBuffer.unmap();
 
   device.destroy();
 });
@@ -199,8 +229,7 @@ Deno.test({
     dimensions,
   );
 
-  const bundle = encoder.finish();
-  device.queue.submit([bundle]);
+  device.queue.submit([encoder.finish()]);
 
   await outputBuffer.mapAsync(1);
   const data = new Uint8Array(outputBuffer.getMappedRange());
@@ -553,6 +582,90 @@ Deno.test({
   device.destroy();
 });
 
+// Regression test for https://github.com/denoland/deno/issues/24821.
+//
+// Using a `"2d-array"` view of a single-layered 2D texture as a color
+// attachment used to invalidate the command encoder, causing every command
+// recorded after the render pass (including a compute pass writing to an
+// unrelated storage buffer) to silently no-op. The storage buffer was returned
+// in its zero-initialized state.
+Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
+}, async function renderPass2dArrayColorAttachmentDoesNotCorruptComputePass() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const texture = device.createTexture({
+    format: "bgra8unorm",
+    size: { width: 4, height: 4, depthOrArrayLayers: 1 },
+    usage: GPUTextureUsage.RENDER_ATTACHMENT,
+  });
+  const view = texture.createView({ dimension: "2d-array" });
+
+  const encoder = device.createCommandEncoder();
+  const renderPass = encoder.beginRenderPass({
+    colorAttachments: [{
+      view,
+      loadOp: "load",
+      storeOp: "discard",
+    }],
+  });
+  renderPass.end();
+
+  const shaderModule = device.createShaderModule({
+    code: `
+      @group(0) @binding(0) var<storage, read_write> output: array<u32, 4>;
+      @compute @workgroup_size(1)
+      fn main() {
+        output[0] = 0xdeadbeefu;
+        output[1] = 0xcafebabeu;
+        output[2] = 0xfeedfaceu;
+        output[3] = 0x12345678u;
+      }
+    `,
+  });
+  const pipeline = device.createComputePipeline({
+    layout: "auto",
+    compute: { module: shaderModule, entryPoint: "main" },
+  });
+
+  const storageBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  });
+  const readBuffer = device.createBuffer({
+    size: 16,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const bindGroup = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [{ binding: 0, resource: { buffer: storageBuffer } }],
+  });
+
+  const computePass = encoder.beginComputePass();
+  computePass.setPipeline(pipeline);
+  computePass.setBindGroup(0, bindGroup);
+  computePass.dispatchWorkgroups(1);
+  computePass.end();
+
+  encoder.copyBufferToBuffer(storageBuffer, 0, readBuffer, 0, 16);
+  device.queue.submit([encoder.finish()]);
+
+  await readBuffer.mapAsync(GPUMapMode.READ);
+  const result = new Uint32Array(readBuffer.getMappedRange().slice(0));
+  readBuffer.unmap();
+
+  assertEquals(
+    result,
+    new Uint32Array([0xdeadbeef, 0xcafebabe, 0xfeedface, 0x12345678]),
+  );
+
+  device.destroy();
+});
+
 Deno.test({
   ignore: isWsl || isCIWithoutGPU,
 }, async function adapterLimitsAreNumbers() {
@@ -576,7 +689,6 @@ Deno.test({
     "maxVertexBuffers",
     "maxVertexAttributes",
     "maxVertexBufferArrayStride",
-    "maxInterStageShaderComponents",
     "maxComputeWorkgroupStorageSize",
     "maxComputeInvocationsPerWorkgroup",
     "maxComputeWorkgroupSizeX",
@@ -591,7 +703,7 @@ Deno.test({
   for (const limitName of limitNames) {
     // deno-lint-ignore ban-ts-comment
     // @ts-ignore
-    assertEquals(typeof adapter.limits[limitName], "number");
+    assertEquals(typeof adapter.limits[limitName], "number", limitName);
   }
 
   const device = await adapter.requestDevice({
@@ -600,6 +712,159 @@ Deno.test({
     requiredLimits: adapter.limits,
   });
   assert(device);
+
+  device.destroy();
+});
+
+Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
+}, async function testOnSubmittedWorkDone() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const encoder = device.createCommandEncoder();
+  const fut = device.queue.onSubmittedWorkDone();
+  device.queue.submit([encoder.finish()]);
+  await fut;
+
+  device.destroy();
+});
+
+Deno.test({
+  permissions: { read: true, env: true },
+  ignore: isWsl || isCIWithoutGPU,
+}, async function webgpuWriteBufferTypedArrayElementOffsets() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const source = new Float32Array([1.0, 2.0, 3.0, 4.0]);
+  const gpuBuffer = device.createBuffer({
+    size: 2 * Float32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  });
+
+  // dataOffset=1 and size=2 should be in elements for a Float32Array
+  device.queue.writeBuffer(gpuBuffer, 0, source, 1, 2);
+
+  const readBuffer = device.createBuffer({
+    size: 2 * Float32Array.BYTES_PER_ELEMENT,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const encoder = device.createCommandEncoder();
+  encoder.copyBufferToBuffer(
+    gpuBuffer,
+    0,
+    readBuffer,
+    0,
+    2 * Float32Array.BYTES_PER_ELEMENT,
+  );
+  device.queue.submit([encoder.finish()]);
+
+  await readBuffer.mapAsync(GPUMapMode.READ);
+  const result = new Float32Array(readBuffer.getMappedRange());
+  assertEquals(result, new Float32Array([2.0, 3.0]));
+
+  readBuffer.unmap();
+  device.destroy();
+});
+
+Deno.test({
+  permissions: { env: true },
+  ignore: isWsl || isCIWithoutGPU,
+}, async function writeBufferAcceptsArrayBuffer() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+  assert(device);
+
+  const source = new ArrayBuffer(4 * Float32Array.BYTES_PER_ELEMENT);
+  new Float32Array(source).set([1.0, 2.0, 3.0, 4.0]);
+
+  const gpuBuffer = device.createBuffer({
+    size: source.byteLength,
+    usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+  });
+
+  device.queue.writeBuffer(gpuBuffer, 0, source);
+
+  const readBuffer = device.createBuffer({
+    size: source.byteLength,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+  });
+
+  const encoder = device.createCommandEncoder();
+  encoder.copyBufferToBuffer(gpuBuffer, 0, readBuffer, 0, source.byteLength);
+  device.queue.submit([encoder.finish()]);
+
+  await readBuffer.mapAsync(GPUMapMode.READ);
+  const result = new Float32Array(readBuffer.getMappedRange());
+  assertEquals(result, new Float32Array([1.0, 2.0, 3.0, 4.0]));
+
+  readBuffer.unmap();
+  device.destroy();
+});
+
+// Regression test for https://github.com/denoland/deno/issues/33956.
+// Before the fix, the Uint32Array fast path of setBindGroup sliced the
+// backing ArrayBuffer with an unchecked `&data[start..start+len]`. An
+// out-of-range length panicked inside the op's `extern "C"` callback,
+// which crosses the C ABI as a process abort. After the fix, the
+// bounds-check surfaces a GPUValidationError instead.
+Deno.test({
+  permissions: { read: true, env: true },
+  ignore: isWsl || isCIWithoutGPU,
+}, async function webgpuSetBindGroupBoundsCheck() {
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+  const device = await adapter.requestDevice();
+
+  const layout = device.createBindGroupLayout({ entries: [] });
+  const bg = device.createBindGroup({ layout, entries: [] });
+
+  // ComputePass.setBindGroup: out-of-range len pushes a validation
+  // error instead of aborting the process.
+  {
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    device.pushErrorScope("validation");
+    pass.setBindGroup(0, bg, new Uint32Array(4), 0, 1_000_000);
+    pass.end();
+    const err = await device.popErrorScope();
+    assert(err, "expected GPUValidationError on out-of-range setBindGroup");
+  }
+
+  // RenderBundleEncoder.setBindGroup: same input shape, different code
+  // path (returns the validation as a thrown JS error, since there is
+  // no error_handler.push_error at this site).
+  {
+    const bundleEncoder = device.createRenderBundleEncoder({
+      colorFormats: ["rgba8unorm"],
+    });
+    let threw = false;
+    try {
+      bundleEncoder.setBindGroup(0, bg, new Uint32Array(4), 0, 1_000_000);
+    } catch (_) {
+      threw = true;
+    }
+    assert(
+      threw,
+      "expected setBindGroup on a RenderBundleEncoder to throw on out-of-range args",
+    );
+  }
+
+  // Sanity: valid args still work (no regression on the happy path).
+  {
+    const encoder = device.createCommandEncoder();
+    const pass = encoder.beginComputePass();
+    pass.setBindGroup(0, bg, new Uint32Array(4), 0, 0);
+    pass.end();
+  }
 
   device.destroy();
 });

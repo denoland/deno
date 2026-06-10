@@ -1,0 +1,6 @@
+{
+  "type": "module",
+  "imports": {
+    "#/*": "./src/*.js"
+  }
+}

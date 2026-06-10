@@ -1,0 +1,16 @@
+{
+  "idlharness.https.any.html": {
+    "expectedFailures": [
+      "CompressionStream interface: existence and properties of interface object",
+      "DecompressionStream interface: existence and properties of interface object"
+    ]
+  },
+  "idlharness.https.any.worker.html": {
+    "expectedFailures": [
+      "CompressionStream interface: existence and properties of interface object",
+      "DecompressionStream interface: existence and properties of interface object"
+    ]
+  },
+  "compression-large-flush-output.any.html": true,
+  "compression-large-flush-output.any.worker.html": true
+}

@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "install -g --root ./folder --config deno.json --name my-cli main.ts",
+  "output": "install.out"
+}

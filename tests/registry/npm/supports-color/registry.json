@@ -65,6 +65,5 @@
   "bugs": {
     "url": "https://github.com/chalk/supports-color/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

@@ -5,7 +5,7 @@ error[no-empty]: Empty block statement
   |              ^^
   = hint: Add code or comment to the empty block
 
-  docs: https://lint.deno.land/rules/no-empty
+  docs: https://docs.deno.com/lint/rules/no-empty
 
 
 Found 1 problem

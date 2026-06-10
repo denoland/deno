@@ -59,7 +59,6 @@
     "name": "Rich Harris"
   },
   "license": "MIT",
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/Rich-Harris/estree-walker#readme",
   "repository": {
     "type": "git",

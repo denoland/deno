@@ -62,6 +62,5 @@
   "bugs": {
     "url": "https://github.com/sindresorhus/path-key/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

@@ -1,5 +1,5 @@
 [WILDCARD]
-error: TS2552 [ERROR]: Cannot find name 'consol'. Did you mean 'console'?
+TS2552 [ERROR]: Cannot find name 'consol'. Did you mean 'console'?
 consol.log("hello world!");
 ~~~~~~
     at [WILDCARD]/038_checkjs.js:2:1
@@ -20,3 +20,8 @@ const foo = new Foo();
         at [WILDCARD]/038_checkjs.js:5:7
 
 Found 2 errors.
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

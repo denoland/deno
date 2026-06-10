@@ -1,1 +1,1 @@
-error: Relative import path [WILDCARD] not prefixed with / or ./ or ../ and not in import map [WILDCARD]
+error: Import [WILDCARD] not a dependency and not in import map [WILDCARD]

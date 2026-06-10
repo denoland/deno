@@ -1,29 +1,48 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { Buffer } from "node:buffer";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-import * as io from "ext:deno_io/12_io.js";
-import { ReadOptions } from "ext:deno_node/_fs/_fs_common.ts";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_VALUE,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   arrayBufferViewToUint8Array,
+  getValidatedFd,
   validateOffsetLengthRead,
   validatePosition,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const {
   validateBuffer,
+  validateFunction,
   validateInteger,
-} from "ext:deno_node/internal/validators.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
+  validateObject,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView, isDataView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+import { op_node_fs_read_deferred, op_node_fs_read_sync } from "ext:core/ops";
+const {
+  customPromisifyArgs,
+  kEmptyObject,
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const lazyProcess = core.createLazyLoader("node:process");
 
-type readSyncOptions = {
-  offset: number;
-  length: number;
-  position: number | null;
-};
+const {
+  BigInt,
+  DataViewPrototypeGetByteLength,
+  ObjectDefineProperty,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
+
+function getByteLength(buffer: ArrayBufferView): number {
+  return isDataView(buffer)
+    ? DataViewPrototypeGetByteLength(buffer)
+    : TypedArrayPrototypeGetByteLength(buffer);
+}
+
+const validateOptionArgs = { __proto__: null, nullable: true };
 
 type BinaryCallback = (
   err: Error | null,
@@ -35,7 +54,13 @@ type Callback = BinaryCallback;
 export function read(fd: number, callback: Callback): void;
 export function read(
   fd: number,
-  options: ReadOptions,
+  options: ReadAsyncOptions<NodeJS.ArrayBufferView>,
+  callback: Callback,
+): void;
+export function read(
+  fd: number,
+  buffer: ArrayBufferView,
+  options: ReadSyncOptions,
   callback: Callback,
 ): void;
 export function read(
@@ -48,102 +73,119 @@ export function read(
 ): void;
 export function read(
   fd: number,
-  optOrBufferOrCb?: ArrayBufferView | ReadOptions | Callback,
-  offsetOrCallback?: number | Callback,
-  length?: number,
+  optOrBufferOrCb?:
+    | ArrayBufferView
+    | ReadAsyncOptions<NodeJS.ArrayBufferView>
+    | Callback,
+  offsetOrOpt?:
+    | number
+    | ReadAsyncOptions<NodeJS.ArrayBufferView>
+    | Callback,
+  lengthOrCb?: number | Callback,
   position?: number | null,
   callback?: Callback,
 ) {
-  let cb: Callback | undefined;
-  let offset = 0,
-    buffer: ArrayBufferView;
+  fd = getValidatedFd(fd);
 
-  if (typeof fd !== "number") {
-    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
-  }
-
-  if (length == null) {
-    length = 0;
-  }
-
-  if (typeof offsetOrCallback === "function") {
-    cb = offsetOrCallback;
-  } else if (typeof optOrBufferOrCb === "function") {
-    cb = optOrBufferOrCb;
-  } else {
-    offset = offsetOrCallback as number;
-    validateInteger(offset, "offset", 0);
-    cb = callback;
-  }
-
-  if (
-    isArrayBufferView(optOrBufferOrCb)
-  ) {
-    buffer = optOrBufferOrCb;
-  } else if (typeof optOrBufferOrCb === "function") {
-    offset = 0;
-    buffer = Buffer.alloc(16384);
-    length = buffer.byteLength;
-    position = null;
-  } else {
-    const opt = optOrBufferOrCb as ReadOptions;
-    if (
-      !isArrayBufferView(opt.buffer)
-    ) {
-      throw new ERR_INVALID_ARG_TYPE("buffer", [
-        "Buffer",
-        "TypedArray",
-        "DataView",
-      ], optOrBufferOrCb);
-    }
-    if (opt.buffer === undefined) {
-      buffer = Buffer.alloc(16384);
+  let offset = offsetOrOpt;
+  let buffer = optOrBufferOrCb;
+  let length = lengthOrCb;
+  let params = null;
+  if (arguments.length <= 4) {
+    if (arguments.length === 4) {
+      // This is fs.read(fd, buffer, options, callback)
+      validateObject(offsetOrOpt, "options", validateOptionArgs);
+      callback = length as Callback;
+      params = offsetOrOpt;
+    } else if (arguments.length === 3) {
+      // This is fs.read(fd, bufferOrParams, callback)
+      if (!isArrayBufferView(buffer)) {
+        // This is fs.read(fd, params, callback)
+        params = buffer;
+        ({ buffer = Buffer.alloc(16384) } = params ?? kEmptyObject);
+      }
+      callback = offsetOrOpt as Callback;
     } else {
-      buffer = opt.buffer;
+      // This is fs.read(fd, callback)
+      callback = buffer as Callback;
+      buffer = Buffer.alloc(16384);
     }
-    offset = opt.offset ?? 0;
-    length = opt.length ?? buffer.byteLength - offset;
-    position = opt.position ?? null;
+
+    if (params !== undefined) {
+      validateObject(params, "options", validateOptionArgs);
+    }
+    ({
+      offset = 0,
+      length = (buffer ? getByteLength(buffer as ArrayBufferView) : undefined) -
+        (offset as number),
+      position = null,
+    } = params ?? kEmptyObject);
   }
+
+  validateBuffer(buffer);
+  validateFunction(callback, "cb");
+
+  if (offset == null) {
+    offset = 0;
+  } else {
+    validateInteger(offset, "offset", 0);
+  }
+
+  (length as number) |= 0;
+
+  if (length === 0) {
+    return lazyProcess().default.nextTick(function tick() {
+      callback!(null, 0, buffer);
+    });
+  }
+
+  if (getByteLength(buffer as ArrayBufferView) === 0) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
+  }
+
+  validateOffsetLengthRead(
+    offset,
+    length,
+    getByteLength(buffer as ArrayBufferView),
+  );
 
   if (position == null) {
     position = -1;
+  } else {
+    validatePosition(position, "position", length as number);
   }
 
-  validatePosition(position);
-  validateOffsetLengthRead(offset, length, buffer.byteLength);
-
-  if (!cb) throw new ERR_INVALID_ARG_TYPE("cb", "Callback", cb);
-
-  (async () => {
-    try {
-      let nread: number | null;
-      if (typeof position === "number" && position >= 0) {
-        const currentPosition = await op_fs_seek_async(
-          fd,
-          0,
-          io.SeekMode.Current,
-        );
-        // We use sync calls below to avoid being affected by others during
-        // these calls.
-        op_fs_seek_sync(fd, position, io.SeekMode.Start);
-        nread = io.readSync(
-          fd,
-          arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
-        );
-        op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
-      } else {
-        nread = await io.read(
-          fd,
-          arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
-        );
-      }
-      cb(null, nread ?? 0, buffer);
-    } catch (error) {
-      cb(error as Error, null);
-    }
-  })();
+  // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
+  const readPos = position != null && position >= 0
+    ? BigInt(position as number | bigint)
+    : -1n;
+  PromisePrototypeThen(
+    op_node_fs_read_deferred(
+      fd,
+      arrayBufferViewToUint8Array(buffer).subarray(
+        offset,
+        offset + (length as number),
+      ),
+      readPos,
+    ),
+    (nread: number) => {
+      callback!(null, nread ?? 0, buffer);
+    },
+    (error: Error) => {
+      callback!(denoErrorToNodeError(error, { syscall: "read" }), null);
+    },
+  );
 }
+
+ObjectDefineProperty(read, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesRead", "buffer"],
+  enumerable: false,
+});
 
 export function readSync(
   fd: number,
@@ -155,58 +197,73 @@ export function readSync(
 export function readSync(
   fd: number,
   buffer: ArrayBufferView,
-  opt: readSyncOptions,
+  opt: ReadSyncOptions,
 ): number;
 export function readSync(
   fd: number,
   buffer: ArrayBufferView,
-  offsetOrOpt?: number | readSyncOptions,
+  offsetOrOpt?: number | ReadSyncOptions,
   length?: number,
   position?: number | null,
 ): number {
-  let offset = 0;
-
-  if (typeof fd !== "number") {
-    throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
-  }
+  fd = getValidatedFd(fd);
 
   validateBuffer(buffer);
 
-  if (length == null) {
-    length = buffer.byteLength;
+  let offset = offsetOrOpt;
+  if (arguments.length <= 3 || typeof offsetOrOpt === "object") {
+    if (offsetOrOpt !== undefined) {
+      validateObject(offsetOrOpt, "options", validateOptionArgs);
+    }
+
+    ({
+      offset = 0,
+      length = getByteLength(buffer) - (offset as number),
+      position = null,
+    } = offsetOrOpt ?? kEmptyObject);
   }
 
-  if (typeof offsetOrOpt === "number") {
-    offset = offsetOrOpt;
+  if (offset === undefined) {
+    offset = 0;
+  } else {
     validateInteger(offset, "offset", 0);
-  } else if (offsetOrOpt !== undefined) {
-    const opt = offsetOrOpt as readSyncOptions;
-    offset = opt.offset ?? 0;
-    length = opt.length ?? buffer.byteLength - offset;
-    position = opt.position ?? null;
   }
+
+  length! |= 0;
+
+  if (length === 0) {
+    return 0;
+  }
+
+  if (getByteLength(buffer) === 0) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
+  }
+
+  validateOffsetLengthRead(offset, length, getByteLength(buffer));
 
   if (position == null) {
     position = -1;
+  } else {
+    validatePosition(position, "position", length);
   }
 
-  validatePosition(position);
-  validateOffsetLengthRead(offset, length, buffer.byteLength);
+  // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
+  const pos = position != null && position >= 0
+    ? BigInt(position as number | bigint)
+    : -1n;
+  try {
+    const numberOfBytesRead = op_node_fs_read_sync(
+      fd,
+      arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
+      pos,
+    );
 
-  let currentPosition = 0;
-  if (typeof position === "number" && position >= 0) {
-    currentPosition = op_fs_seek_sync(fd, 0, io.SeekMode.Current);
-    op_fs_seek_sync(fd, position, io.SeekMode.Start);
+    return numberOfBytesRead ?? 0;
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "read" });
   }
-
-  const numberOfBytesRead = io.readSync(
-    fd,
-    arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length),
-  );
-
-  if (typeof position === "number" && position >= 0) {
-    op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
-  }
-
-  return numberOfBytesRead ?? 0;
 }

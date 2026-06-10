@@ -1,0 +1,10 @@
+[UNORDERED_START]
+Download http://localhost:4260/@denotest/breaking-change-between-versions/2.0.0.tgz
+Download http://127.0.0.1:4250/@denotest/multiple-exports/1.0.0_meta.json
+Download http://127.0.0.1:4250/@denotest/multiple-exports/1.0.0/data.json
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+[UNORDERED_END]
+Updated 3 dependencies:
+ - jsr:@denotest/add                              ^0.2.0 -> ^1.0.0
+ - jsr:@denotest/multiple-exports                  0.2.0 ->  1.0.0
+ - npm:@denotest/breaking-change-between-versions  1.0.0 ->  2.0.0

@@ -1,0 +1,8 @@
+┌────────────────────────────────┬─────────┬────────┬────────┐
+│ Package                        │ Current │ Update │ Latest │
+├────────────────────────────────┼─────────┼────────┼────────┤
+│ jsr:@denotest/multiple-exports │ 0.7.0   │ 0.7.1  │ 1.0.0  │
+└────────────────────────────────┴─────────┴────────┴────────┘
+
+Run deno update --latest to update to the latest available versions,
+or deno outdated --help for more information.

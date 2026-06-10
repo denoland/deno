@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod config;
 pub mod dynamic;
@@ -10,18 +10,13 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
-use std::time::Duration;
+use std::sync::Arc;
 
-use base64::prelude::BASE64_URL_SAFE;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE;
 use boxed_error::Boxed;
 use chrono::DateTime;
 use chrono::Utc;
-use deno_core::error::get_custom_error_class;
-use deno_core::futures::StreamExt;
-use deno_core::op2;
-use deno_core::serde_v8::AnyValue;
-use deno_core::serde_v8::BigInt;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
@@ -32,8 +27,14 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
-use denokv_proto::decode_key;
-use denokv_proto::encode_key;
+use deno_core::convert::Uint8Array;
+use deno_core::futures::StreamExt;
+use deno_core::op2;
+use deno_core::serde_v8::AnyValue;
+use deno_core::serde_v8::BigInt;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
+use deno_features::FeatureChecker;
 use denokv_proto::AtomicWrite;
 use denokv_proto::Check;
 use denokv_proto::Consistency;
@@ -50,6 +51,10 @@ use denokv_proto::ReadRange;
 use denokv_proto::SnapshotReadOptions;
 use denokv_proto::WatchKeyOutput;
 use denokv_proto::WatchStream;
+use denokv_proto::decode_key;
+use denokv_proto::encode_key;
+use dynamic::DynamicDbHandler;
+use dynamic::RcDynamicDb;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
@@ -60,36 +65,35 @@ pub use crate::interface::*;
 pub const UNSTABLE_FEATURE_NAME: &str = "kv";
 
 deno_core::extension!(deno_kv,
-  deps = [ deno_console, deno_web ],
-  parameters = [ DBH: DatabaseHandler ],
+  deps = [ deno_web ],
   ops = [
-    op_kv_database_open<DBH>,
-    op_kv_snapshot_read<DBH>,
-    op_kv_atomic_write<DBH>,
+    op_kv_database_open,
+    op_kv_snapshot_read,
+    op_kv_atomic_write,
     op_kv_encode_cursor,
-    op_kv_dequeue_next_message<DBH>,
-    op_kv_finish_dequeued_message<DBH>,
-    op_kv_watch<DBH>,
+    op_kv_dequeue_next_message,
+    op_kv_finish_dequeued_message,
+    op_kv_watch,
     op_kv_watch_next,
   ],
-  esm = [ "01_db.ts" ],
+  lazy_loaded_js = [ "01_db.ts" ],
   options = {
-    handler: DBH,
+    handler: Box<dyn DynamicDbHandler>,
     config: KvConfig,
   },
   state = |state, options| {
     state.put(Rc::new(options.config));
-    state.put(Rc::new(options.handler));
+    state.put::<Rc<dyn DynamicDbHandler>>(Rc::from(options.handler));
   }
 );
 
-struct DatabaseResource<DB: Database + 'static> {
-  db: DB,
+struct DatabaseResource {
+  db: RcDynamicDb,
   cancel_handle: Rc<CancelHandle>,
 }
 
-impl<DB: Database + 'static> Resource for DatabaseResource<DB> {
-  fn name(&self) -> Cow<str> {
+impl Resource for DatabaseResource {
+  fn name(&self) -> Cow<'_, str> {
     "database".into()
   }
 
@@ -106,7 +110,7 @@ struct DatabaseWatcherResource {
 }
 
 impl Resource for DatabaseWatcherResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "databaseWatcher".into()
   }
 
@@ -115,87 +119,112 @@ impl Resource for DatabaseWatcherResource {
   }
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, deno_error::JsError)]
 pub struct KvError(pub Box<KvErrorKind>);
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
-  DatabaseHandler(deno_core::error::AnyError),
+  DatabaseHandler(JsErrorBox),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(type)]
   #[error("Too many ranges (max {0})")]
   TooManyRanges(usize),
+  #[class(type)]
   #[error("Too many entries (max {0})")]
   TooManyEntries(usize),
+  #[class(type)]
   #[error("Too many checks (max {0})")]
   TooManyChecks(usize),
+  #[class(type)]
   #[error("Too many mutations (max {0})")]
   TooManyMutations(usize),
+  #[class(type)]
   #[error("Too many keys (max {0})")]
   TooManyKeys(usize),
+  #[class(type)]
   #[error("limit must be greater than 0")]
   InvalidLimit,
+  #[class(type)]
   #[error("Invalid boundary key")]
   InvalidBoundaryKey,
+  #[class(type)]
   #[error("Key too large for read (max {0} bytes)")]
   KeyTooLargeToRead(usize),
+  #[class(type)]
   #[error("Key too large for write (max {0} bytes)")]
   KeyTooLargeToWrite(usize),
+  #[class(type)]
   #[error("Total mutation size too large (max {0} bytes)")]
   TotalMutationTooLarge(usize),
+  #[class(type)]
   #[error("Total key size too large (max {0} bytes)")]
   TotalKeyTooLarge(usize),
+  #[class(inherit)]
   #[error(transparent)]
-  Kv(deno_core::error::AnyError),
+  Kv(JsErrorBox),
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class(type)]
   #[error("Queue message not found")]
   QueueMessageNotFound,
+  #[class(type)]
   #[error("Start key is not in the keyspace defined by prefix")]
   StartKeyNotInKeyspace,
+  #[class(type)]
   #[error("End key is not in the keyspace defined by prefix")]
   EndKeyNotInKeyspace,
+  #[class(type)]
   #[error("Start key is greater than end key")]
   StartKeyGreaterThanEndKey,
+  #[class(inherit)]
   #[error("Invalid check")]
   InvalidCheck(#[source] KvCheckError),
-  #[error("Invalid mutation")]
+  #[class(inherit)]
+  #[error("Invalid mutation: {0}")]
   InvalidMutation(#[source] KvMutationError),
+  #[class(inherit)]
   #[error("Invalid enqueue")]
   InvalidEnqueue(#[source] std::io::Error),
+  #[class(type)]
   #[error("key cannot be empty")]
-  EmptyKey, // TypeError
+  EmptyKey,
+  #[class(type)]
   #[error("Value too large (max {0} bytes)")]
-  ValueTooLarge(usize), // TypeError
+  ValueTooLarge(usize),
+  #[class(type)]
   #[error("enqueue payload too large (max {0} bytes)")]
-  EnqueuePayloadTooLarge(usize), // TypeError
+  EnqueuePayloadTooLarge(usize),
+  #[class(type)]
   #[error("invalid cursor")]
   InvalidCursor,
+  #[class(type)]
   #[error("cursor out of bounds")]
   CursorOutOfBounds,
+  #[class(type)]
   #[error("Invalid range")]
   InvalidRange,
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[smi]
-async fn op_kv_database_open<DBH>(
+async fn op_kv_database_open(
   state: Rc<RefCell<OpState>>,
   #[string] path: Option<String>,
-) -> Result<ResourceId, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<ResourceId, KvError> {
   let handler = {
     let state = state.borrow();
     state
-      .feature_checker
+      .borrow::<Arc<FeatureChecker>>()
       .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.openKv");
-    state.borrow::<Rc<DBH>>().clone()
+    state.borrow::<Rc<dyn DynamicDbHandler>>().clone()
   };
   let db = handler
-    .open(state.clone(), path)
+    .dyn_open(state.clone(), path)
     .await
     .map_err(KvErrorKind::DatabaseHandler)?;
   let rid = state.borrow_mut().resource_table.add(DatabaseResource {
@@ -317,22 +346,19 @@ type SnapshotReadRange = (
   Option<ByteString>,
 );
 
-#[op2(async)]
+#[op2]
 #[serde]
-async fn op_kv_snapshot_read<DBH>(
+async fn op_kv_snapshot_read(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[serde] ranges: Vec<SnapshotReadRange>,
   #[serde] consistency: V8Consistency,
-) -> Result<Vec<Vec<ToV8KvEntry>>, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<Vec<Vec<ToV8KvEntry>>, KvError> {
   let db = {
     let state = state.borrow();
     let resource = state
       .resource_table
-      .get::<DatabaseResource<DBH::DB>>(rid)
+      .get::<DatabaseResource>(rid)
       .map_err(KvErrorKind::Resource)?;
     resource.db.clone()
   };
@@ -393,38 +419,33 @@ where
   Ok(output_ranges)
 }
 
-struct QueueMessageResource<QPH: QueueMessageHandle + 'static> {
-  handle: QPH,
+struct QueueMessageResource {
+  handle: Box<dyn QueueMessageHandle>,
 }
 
-impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
-  fn name(&self) -> Cow<str> {
+impl Resource for QueueMessageResource {
+  fn name(&self) -> Cow<'_, str> {
     "queueMessage".into()
   }
 }
 
-#[op2(async)]
-#[serde]
-async fn op_kv_dequeue_next_message<DBH>(
+#[op2]
+async fn op_kv_dequeue_next_message(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<Option<(ToJsBuffer, ResourceId)>, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<Option<(Uint8Array, ResourceId)>, KvError> {
   let db = {
     let state = state.borrow();
-    let resource =
-      match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
-        Ok(resource) => resource,
-        Err(err) => {
-          if get_custom_error_class(&err) == Some("BadResource") {
-            return Ok(None);
-          } else {
-            return Err(KvErrorKind::Resource(err).into_box());
-          }
+    let resource = match state.resource_table.get::<DatabaseResource>(rid) {
+      Ok(resource) => resource,
+      Err(err) => {
+        if err.get_class() == "BadResource" {
+          return Ok(None);
+        } else {
+          return Err(KvErrorKind::Resource(err).into_box());
         }
-      };
+      }
+    };
     resource.db.clone()
   };
 
@@ -443,17 +464,14 @@ where
 
 #[op2]
 #[smi]
-fn op_kv_watch<DBH>(
+fn op_kv_watch(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[serde] keys: Vec<KvKey>,
-) -> Result<ResourceId, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<ResourceId, KvError> {
   let resource = state
     .resource_table
-    .get::<DatabaseResource<DBH::DB>>(rid)
+    .get::<DatabaseResource>(rid)
     .map_err(KvErrorKind::Resource)?;
   let config = state.borrow::<Rc<KvConfig>>().clone();
 
@@ -488,7 +506,7 @@ enum WatchEntry {
   Unchanged,
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_kv_watch_next(
   state: Rc<RefCell<OpState>>,
@@ -541,20 +559,17 @@ async fn op_kv_watch_next(
   Ok(Some(entries))
 }
 
-#[op2(async)]
-async fn op_kv_finish_dequeued_message<DBH>(
+#[op2]
+async fn op_kv_finish_dequeued_message(
   state: Rc<RefCell<OpState>>,
   #[smi] handle_rid: ResourceId,
   success: bool,
-) -> Result<(), KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<(), KvError> {
   let handle = {
     let mut state = state.borrow_mut();
     let handle = state
       .resource_table
-      .take::<QueueMessageResource<<<DBH>::DB as Database>::QMH>>(handle_rid)
+      .take::<QueueMessageResource>(handle_rid)
       .map_err(|_| KvErrorKind::QueueMessageNotFound)?;
     Rc::try_unwrap(handle)
       .map_err(|_| KvErrorKind::QueueMessageNotFound)?
@@ -568,10 +583,12 @@ where
   Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvCheckError {
+  #[class(type)]
   #[error("invalid versionstamp")]
   InvalidVersionstamp,
+  #[class(inherit)]
   #[error(transparent)]
   Io(std::io::Error),
 }
@@ -597,16 +614,27 @@ fn check_from_v8(value: V8KvCheck) -> Result<Check, KvCheckError> {
   })
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvMutationError {
+  #[class(generic)]
   #[error(transparent)]
   BigInt(#[from] num_bigint::TryFromBigIntError<num_bigint::BigInt>),
+  #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
+  #[class(type)]
   #[error("Invalid mutation '{0}' with value")]
   InvalidMutationWithValue(String),
+  #[class(type)]
   #[error("Invalid mutation '{0}' without value")]
   InvalidMutationWithoutValue(String),
+  #[class(type)]
+  #[error("expireIn is too large: {0}")]
+  InvalidExpireAt(u64),
 }
 
 type V8KvMutation = (KvKey, String, Option<FromV8Value>, Option<u64>);
@@ -630,18 +658,32 @@ fn mutation_from_v8(
       MutationKind::SetSuffixVersionstampedKey(value.try_into()?)
     }
     (op, Some(_)) => {
-      return Err(KvMutationError::InvalidMutationWithValue(op.to_string()))
+      return Err(KvMutationError::InvalidMutationWithValue(op.to_string()));
     }
     (op, None) => {
-      return Err(KvMutationError::InvalidMutationWithoutValue(op.to_string()))
+      return Err(KvMutationError::InvalidMutationWithoutValue(op.to_string()));
+    }
+  };
+  let expire_at = match value.3 {
+    None => None,
+    Some(expire_in) => {
+      // Compute the absolute expiry with checked arithmetic so an
+      // out-of-range expireIn surfaces as an error instead of panicking the
+      // process on overflow.
+      let expire_at = i64::try_from(expire_in)
+        .ok()
+        .and_then(chrono::TimeDelta::try_milliseconds)
+        .and_then(|delta| current_timstamp.checked_add_signed(delta));
+      match expire_at {
+        Some(expire_at) => Some(expire_at),
+        None => return Err(KvMutationError::InvalidExpireAt(expire_in)),
+      }
     }
   };
   Ok(Mutation {
     key,
     kind,
-    expire_at: value
-      .3
-      .map(|expire_in| current_timstamp + Duration::from_millis(expire_in)),
+    expire_at,
   })
 }
 
@@ -828,39 +870,36 @@ fn decode_selector_and_cursor(
   }
 
   // Defend against out-of-bounds reading
-  if let Some(start) = selector.start() {
-    if &first_key[..] < start {
-      return Err(KvErrorKind::CursorOutOfBounds.into_box());
-    }
+  if let Some(start) = selector.start()
+    && &first_key[..] < start
+  {
+    return Err(KvErrorKind::CursorOutOfBounds.into_box());
   }
 
-  if let Some(end) = selector.end() {
-    if &last_key[..] > end {
-      return Err(KvErrorKind::CursorOutOfBounds.into_box());
-    }
+  if let Some(end) = selector.end()
+    && &last_key[..] > end
+  {
+    return Err(KvErrorKind::CursorOutOfBounds.into_box());
   }
 
   Ok((first_key, last_key))
 }
 
-#[op2(async)]
+#[op2]
 #[string]
-async fn op_kv_atomic_write<DBH>(
+async fn op_kv_atomic_write(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[serde] checks: Vec<V8KvCheck>,
   #[serde] mutations: Vec<V8KvMutation>,
   #[serde] enqueues: Vec<V8Enqueue>,
-) -> Result<Option<String>, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<Option<String>, KvError> {
   let current_timestamp = chrono::Utc::now();
   let db = {
     let state = state.borrow();
     let resource = state
       .resource_table
-      .get::<DatabaseResource<DBH::DB>>(rid)
+      .get::<DatabaseResource>(rid)
       .map_err(KvErrorKind::Resource)?;
     resource.db.clone()
   };

@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "root": {
+      "args": "check package-a/mod.ts package-b/mod.ts package-c/mod.ts",
+      "output": "root.out",
+      "exitCode": 1
+    }
+  }
+}

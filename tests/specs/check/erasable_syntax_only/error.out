@@ -1,0 +1,7 @@
+Check [WILDCARD]main.ts
+TS1294 [ERROR]: This syntax is not allowed when 'erasableSyntaxOnly' is enabled.
+namespace Test {
+          ~~~~
+    at file:///[WILDLINE]/main.ts:1:11
+
+error: Type checking failed.

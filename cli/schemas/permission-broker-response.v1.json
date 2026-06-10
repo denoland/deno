@@ -1,0 +1,25 @@
+{
+  "$id": "https://deno.land/x/deno/cli/schemas/permission-broker.v1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Schema for DENO_PERMISSION_BROKER_PATH",
+  "description": "The schema of a single line of the DENO_PERMISSION_BROKER_PATH response.",
+  "type": "object",
+  "$defs": {
+    "id": {
+      "type": "number",
+      "description": "The numeric ID of the request this is a response to."
+    },
+    "result": {
+      "description": "The result of the check, tells Deno if the request should be granted or rejected",
+      "enum": [
+        "allow",
+        "deny"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "description": "Optional message to display to the user on deny. This will override the default error message text."
+    }
+  },
+  "required": ["id", "result"]
+}

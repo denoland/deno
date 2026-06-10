@@ -1,32 +1,33 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+#[cfg(unix)]
+use std::cell::RefCell;
+#[cfg(unix)]
+use std::collections::HashMap;
 use std::io::Error;
+#[cfg(windows)]
+use std::sync::Arc;
 
-use deno_core::op2;
 use deno_core::OpState;
-use rustyline::config::Configurer;
-use rustyline::error::ReadlineError;
+#[cfg(unix)]
+use deno_core::ResourceId;
+use deno_core::op2;
+#[cfg(windows)]
+use deno_core::parking_lot::Mutex;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
+use deno_error::builtin_classes::GENERIC_ERROR;
+#[cfg(windows)]
+use deno_io::WinTtyState;
+#[cfg(unix)]
+use nix::sys::termios;
 use rustyline::Cmd;
 use rustyline::Editor;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
-
-#[cfg(windows)]
-use deno_core::parking_lot::Mutex;
-#[cfg(windows)]
-use deno_io::WinTtyState;
-#[cfg(windows)]
-use std::sync::Arc;
-
-#[cfg(unix)]
-use deno_core::ResourceId;
-#[cfg(unix)]
-use nix::sys::termios;
-#[cfg(unix)]
-use std::cell::RefCell;
-#[cfg(unix)]
-use std::collections::HashMap;
+use rustyline::config::Configurer;
+use rustyline::error::ReadlineError;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]
@@ -49,10 +50,10 @@ impl TtyModeStore {
   }
 }
 
+#[cfg(unix)]
+use deno_process::JsNixError;
 #[cfg(windows)]
-use winapi::shared::minwindef::DWORD;
-#[cfg(windows)]
-use winapi::um::wincon;
+use windows_sys::Win32::System::Console as wincon;
 
 deno_core::extension!(
   deno_tty,
@@ -60,25 +61,39 @@ deno_core::extension!(
   state = |state| {
     #[cfg(unix)]
     state.put(TtyModeStore::default());
+    #[cfg(not(unix))]
+    let _ = state;
   },
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TtyError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    Error,
+  ),
   #[cfg(unix)]
+  #[class(inherit)]
   #[error(transparent)]
-  Nix(nix::Error),
+  Nix(#[inherit] JsNixError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[inherit] JsErrorBox),
 }
 
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
 #[cfg(windows)]
-const COOKED_MODE: DWORD =
+const COOKED_MODE: u32 =
   // enable line-by-line input (returns input only after CR is read)
   wincon::ENABLE_LINE_INPUT
   // enables real-time character echo to console display (requires ENABLE_LINE_INPUT)
@@ -87,12 +102,12 @@ const COOKED_MODE: DWORD =
   | wincon::ENABLE_PROCESSED_INPUT;
 
 #[cfg(windows)]
-fn mode_raw_input_on(original_mode: DWORD) -> DWORD {
+fn mode_raw_input_on(original_mode: u32) -> u32 {
   original_mode & !COOKED_MODE | wincon::ENABLE_VIRTUAL_TERMINAL_INPUT
 }
 
 #[cfg(windows)]
-fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
+fn mode_raw_input_off(original_mode: u32) -> u32 {
   original_mode & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT | COOKED_MODE
 }
 
@@ -103,10 +118,7 @@ fn op_set_raw(
   is_raw: bool,
   cbreak: bool,
 ) -> Result<(), TtyError> {
-  let handle_or_fd = state
-    .resource_table
-    .get_fd(rid)
-    .map_err(TtyError::Resource)?;
+  let handle_or_fd = state.resource_table.get_fd(rid)?;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -115,21 +127,18 @@ fn op_set_raw(
   // Copyright (c) 2019 Timon. MIT license.
   #[cfg(windows)]
   {
-    use winapi::shared::minwindef::FALSE;
-
-    use winapi::um::consoleapi;
+    use deno_error::JsErrorBox;
+    use windows_sys::Win32::Foundation::FALSE;
 
     let handle = handle_or_fd;
 
     if cbreak {
-      return Err(TtyError::Other(deno_core::error::not_supported()));
+      return Err(TtyError::Other(JsErrorBox::not_supported()));
     }
 
-    let mut original_mode: DWORD = 0;
-    // SAFETY: winapi call
-    if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
-      == FALSE
-    {
+    let mut original_mode: u32 = 0;
+    // SAFETY: Win32 call
+    if unsafe { wincon::GetConsoleMode(handle, &mut original_mode) } == FALSE {
       return Err(TtyError::Io(Error::last_os_error()));
     }
 
@@ -150,55 +159,57 @@ fn op_set_raw(
       if original_mode & COOKED_MODE != 0 && !stdin_state.cancelled {
         // SAFETY: Write enter key event to force the console wait to return.
         let record = unsafe {
+          use windows_sys::Win32::UI::Input::KeyboardAndMouse::MAPVK_VK_TO_VSC;
+          use windows_sys::Win32::UI::Input::KeyboardAndMouse::MapVirtualKeyW;
+          use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_RETURN;
+
           let mut record: wincon::INPUT_RECORD = std::mem::zeroed();
-          record.EventType = wincon::KEY_EVENT;
-          record.Event.KeyEvent_mut().wVirtualKeyCode =
-            winapi::um::winuser::VK_RETURN as u16;
-          record.Event.KeyEvent_mut().bKeyDown = 1;
-          record.Event.KeyEvent_mut().wRepeatCount = 1;
-          *record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() = '\r' as u16;
-          record.Event.KeyEvent_mut().dwControlKeyState = 0;
-          record.Event.KeyEvent_mut().wVirtualScanCode =
-            winapi::um::winuser::MapVirtualKeyW(
-              winapi::um::winuser::VK_RETURN as u32,
-              winapi::um::winuser::MAPVK_VK_TO_VSC,
-            ) as u16;
+          record.EventType = wincon::KEY_EVENT as u16;
+          record.Event.KeyEvent.wVirtualKeyCode = VK_RETURN;
+          record.Event.KeyEvent.bKeyDown = 1;
+          record.Event.KeyEvent.wRepeatCount = 1;
+          record.Event.KeyEvent.uChar.UnicodeChar = '\r' as u16;
+          record.Event.KeyEvent.dwControlKeyState = 0;
+          record.Event.KeyEvent.wVirtualScanCode =
+            MapVirtualKeyW(VK_RETURN as u32, MAPVK_VK_TO_VSC) as u16;
           record
         };
         stdin_state.cancelled = true;
 
-        // SAFETY: winapi call to open conout$ and save screen state.
+        // SAFETY: Win32 call to open conout$ and save screen state.
         let active_screen_buffer = unsafe {
+          use windows_sys::Win32::Foundation::GENERIC_READ;
+          use windows_sys::Win32::Foundation::GENERIC_WRITE;
+          use windows_sys::Win32::Storage::FileSystem::CreateFileW;
+          use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
+          use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE;
+          use windows_sys::Win32::Storage::FileSystem::OPEN_EXISTING;
+
           /* Save screen state before sending the VK_RETURN event */
-          let handle = winapi::um::fileapi::CreateFileW(
+          let handle = CreateFileW(
             "conout$"
               .encode_utf16()
               .chain(Some(0))
               .collect::<Vec<_>>()
               .as_ptr(),
-            winapi::um::winnt::GENERIC_READ | winapi::um::winnt::GENERIC_WRITE,
-            winapi::um::winnt::FILE_SHARE_READ
-              | winapi::um::winnt::FILE_SHARE_WRITE,
-            std::ptr::null_mut(),
-            winapi::um::fileapi::OPEN_EXISTING,
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            std::ptr::null(),
+            OPEN_EXISTING,
             0,
             std::ptr::null_mut(),
           );
 
           let mut active_screen_buffer = std::mem::zeroed();
-          winapi::um::wincon::GetConsoleScreenBufferInfo(
-            handle,
-            &mut active_screen_buffer,
-          );
-          winapi::um::handleapi::CloseHandle(handle);
+          wincon::GetConsoleScreenBufferInfo(handle, &mut active_screen_buffer);
+          windows_sys::Win32::Foundation::CloseHandle(handle);
           active_screen_buffer
         };
         stdin_state.screen_buffer_info = Some(active_screen_buffer);
 
-        // SAFETY: winapi call to write the VK_RETURN event.
-        if unsafe {
-          winapi::um::wincon::WriteConsoleInputW(handle, &record, 1, &mut 0)
-        } == FALSE
+        // SAFETY: Win32 call to write the VK_RETURN event.
+        if unsafe { wincon::WriteConsoleInputW(handle, &record, 1, &mut 0) }
+          == FALSE
         {
           return Err(TtyError::Io(Error::last_os_error()));
         }
@@ -212,8 +223,8 @@ fn op_set_raw(
       }
     }
 
-    // SAFETY: winapi call
-    if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
+    // SAFETY: Win32 call
+    if unsafe { wincon::SetConsoleMode(handle, new_mode) } == FALSE {
       return Err(TtyError::Io(Error::last_os_error()));
     }
 
@@ -267,8 +278,8 @@ fn op_set_raw(
         Some(mode) => mode,
         None => {
           // Save original mode.
-          let original_mode =
-            termios::tcgetattr(raw_fd).map_err(TtyError::Nix)?;
+          let original_mode = termios::tcgetattr(raw_fd)
+            .map_err(|e| TtyError::Nix(JsNixError(e)))?;
           tty_mode_store.set(rid, original_mode.clone());
           original_mode
         }
@@ -291,12 +302,12 @@ fn op_set_raw(
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)
-        .map_err(TtyError::Nix)?;
+        .map_err(|e| TtyError::Nix(JsNixError(e)))?;
     } else {
       // Try restore saved mode.
       if let Some(mode) = tty_mode_store.take(rid) {
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)
-          .map_err(TtyError::Nix)?;
+          .map_err(|e| TtyError::Nix(JsNixError(e)))?;
       }
     }
 
@@ -314,27 +325,24 @@ fn op_console_size(
     result: &mut [u32],
     rid: u32,
   ) -> Result<(), TtyError> {
-    let fd = state
-      .resource_table
-      .get_fd(rid)
-      .map_err(TtyError::Resource)?;
+    let fd = state.resource_table.get_fd(rid)?;
     let size = console_size_from_fd(fd)?;
     result[0] = size.cols;
     result[1] = size.rows;
     Ok(())
   }
 
-  let mut last_result = Ok(());
   // Since stdio might be piped we try to get the size of the console for all
   // of them and return the first one that succeeds.
   for rid in [0, 1, 2] {
-    last_result = check_console_size(state, result, rid);
-    if last_result.is_ok() {
-      return last_result;
+    if check_console_size(state, result, rid).is_ok() {
+      return Ok(());
     }
   }
 
-  last_result
+  Err(TtyError::Other(JsErrorBox::generic(
+    "Could not get console size: stdin, stdout, and stderr are not connected to a terminal",
+  )))
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -360,17 +368,30 @@ pub fn console_size(
   }
 }
 
+/// Get the console size from stderr (fd 2) directly, without needing
+/// a StdFile handle.
+pub fn console_size_of_stderr() -> Result<ConsoleSize, std::io::Error> {
+  #[cfg(windows)]
+  {
+    // SAFETY: GetStdHandle with STD_ERROR_HANDLE always returns a valid handle.
+    let handle = unsafe { wincon::GetStdHandle(wincon::STD_ERROR_HANDLE) };
+    console_size_from_fd(handle)
+  }
+  #[cfg(unix)]
+  {
+    console_size_from_fd(2)
+  }
+}
+
 #[cfg(windows)]
 fn console_size_from_fd(
   handle: std::os::windows::io::RawHandle,
 ) -> Result<ConsoleSize, std::io::Error> {
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   unsafe {
-    let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-      std::mem::zeroed();
+    let mut bufinfo: wincon::CONSOLE_SCREEN_BUFFER_INFO = std::mem::zeroed();
 
-    if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo) == 0
-    {
+    if wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo) == 0 {
       return Err(Error::last_os_error());
     }
 
@@ -435,16 +456,28 @@ mod tests {
   }
 }
 
+deno_error::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
+  match err {
+    ReadlineError::Io(e) => e.get_class(),
+    ReadlineError::Eof => GENERIC_ERROR.into(),
+    ReadlineError::Interrupted => GENERIC_ERROR.into(),
+    #[cfg(unix)]
+    ReadlineError::Errno(e) => JsNixError(*e).get_class(),
+    _ => GENERIC_ERROR.into(),
+  }
+});
+
 #[op2]
 #[string]
 pub fn op_read_line_prompt(
   #[string] prompt_text: &str,
   #[string] default_value: &str,
-) -> Result<Option<String>, ReadlineError> {
+) -> Result<Option<String>, JsReadlineError> {
+  let _terminal_input_guard = deno_permissions::prompter::lock_terminal_input();
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 
-  editor.set_keyseq_timeout(1);
+  editor.set_keyseq_timeout(Some(1));
   editor
     .bind_sequence(KeyEvent(KeyCode::Esc, Modifiers::empty()), Cmd::Interrupt);
 
@@ -460,6 +493,6 @@ pub fn op_read_line_prompt(
       Ok(None)
     }
     Err(ReadlineError::Eof) => Ok(None),
-    Err(err) => Err(err),
+    Err(err) => Err(JsReadlineError(err)),
   }
 }

@@ -1,0 +1,9 @@
+running 3 tests from ./test.js
+a suite ...
+  a test ... ok ([WILDCARD])
+a suite ... ok ([WILDCARD])
+a test only ... ok ([WILDCARD])
+an it only ... ok ([WILDCARD])
+
+ok | 3 passed (1 step) | 0 failed | 1 filtered out ([WILDCARD])
+

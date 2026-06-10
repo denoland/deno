@@ -1,16 +1,35 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+(function () {
+const { core, primordials } = __bootstrap;
 // deno-lint-ignore camelcase
-import * as async_wrap from "ext:deno_node/internal_binding/async_wrap.ts";
-import { ERR_ASYNC_CALLBACK } from "ext:deno_node/internal/errors.ts";
-export {
-  asyncIdSymbol,
-  ownerSymbol,
-} from "ext:deno_node/internal_binding/symbols.ts";
+const async_wrap = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
+);
+const { ERR_ASYNC_CALLBACK } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { asyncIdSymbol, ownerSymbol } = core.loadExtScript(
+  "ext:deno_node/internal_binding/symbols.ts",
+);
+const {
+  ArrayPrototypeIncludes,
+  ArrayPrototypeIndexOf,
+  ArrayPrototypePush,
+  ArrayPrototypePop,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplice,
+  FunctionPrototypeApply,
+  ObjectKeys,
+  Symbol,
+} = primordials;
+const {
+  AsyncVariable,
+  getAsyncContext,
+  kNoAsyncContextRestore,
+  setAsyncContext,
+} = core;
 
 interface ActiveHooks {
   array: AsyncHook[];
@@ -52,7 +71,7 @@ const active_hooks: ActiveHooks = {
   tmp_fields: null,
 };
 
-export const registerDestroyHook = async_wrap.registerDestroyHook;
+const registerDestroyHook = async_wrap.registerDestroyHook;
 const {
   async_hook_fields,
   // deno-lint-ignore camelcase
@@ -60,7 +79,116 @@ const {
   newAsyncId,
   constants,
 } = async_wrap;
-export { newAsyncId };
+
+// Track execution context
+const executionAsyncIdStack: number[] = [0];
+
+function executionAsyncId(): number {
+  return executionAsyncIdStack[executionAsyncIdStack.length - 1] || 0;
+}
+
+// Per-async-context "current resource" tracked via the AsyncVariable
+// machinery (V8 ContinuationPreservedEmbedderData). This propagates across
+// promises and await transitions automatically. The top-level resource is a
+// shared singleton used before any specific resource has been entered.
+// deno-lint-ignore no-explicit-any
+const topLevelResource: any = { __proto__: null };
+// deno-lint-ignore no-explicit-any
+const executionResourceVariable: any = new AsyncVariable();
+
+// deno-lint-ignore no-explicit-any
+function executionAsyncResource(): any {
+  const r = executionResourceVariable.get();
+  return r === undefined ? topLevelResource : r;
+}
+
+// Enter a new "current resource" scope. The returned value is the previous
+// async context snapshot that must be restored by exitAsyncResource.
+// deno-lint-ignore no-explicit-any
+function enterAsyncResource(resource: any): any {
+  return executionResourceVariable.enter(resource);
+}
+
+// deno-lint-ignore no-explicit-any
+function exitAsyncResource(previousContext: any): void {
+  setAsyncContext(previousContext);
+}
+
+// deno-lint-ignore no-explicit-any
+function enterAsyncResourceIfActive(resource: any): any {
+  if (active_hooks.array.length > 0) {
+    return executionResourceVariable.enter(resource);
+  }
+  return executionResourceVariable.enterIfActive(resource);
+}
+
+// deno-lint-ignore no-explicit-any
+function exitAsyncResourceIfActive(previousContext: any): void {
+  if (previousContext !== kNoAsyncContextRestore) {
+    setAsyncContext(previousContext);
+    return;
+  }
+
+  const currentContext = getAsyncContext();
+  if (
+    currentContext !== null &&
+    currentContext !== undefined &&
+    ObjectKeys(currentContext).length > 0
+  ) {
+    setAsyncContext(undefined);
+  }
+}
+
+// Emit functions that work with the internal hook system
+function emitBefore(asyncId: number): void {
+  ArrayPrototypePush(executionAsyncIdStack, asyncId);
+
+  // Call hooks if they exist
+  const hooks = active_hooks.array;
+  try {
+    for (let i = 0; i < hooks.length; i++) {
+      const hook = hooks[i];
+      if (hook[before_symbol]) {
+        hook[before_symbol](asyncId);
+      }
+    }
+  } catch (e) {
+    // Clean up stack corruption on hook errors (Node.js pattern)
+    if (executionAsyncIdStack.length > 1) {
+      ArrayPrototypePop(executionAsyncIdStack);
+    }
+    throw e;
+  }
+}
+
+function emitAfter(asyncId: number): void {
+  // Call hooks if they exist
+  const hooks = active_hooks.array;
+  try {
+    for (let i = 0; i < hooks.length; i++) {
+      const hook = hooks[i];
+      if (hook[after_symbol]) {
+        hook[after_symbol](asyncId);
+      }
+    }
+  } finally {
+    // Always pop stack even if hooks throw (Node.js pattern)
+    if (executionAsyncIdStack.length > 1) {
+      ArrayPrototypePop(executionAsyncIdStack);
+    }
+  }
+}
+
+function emitDestroy(asyncId: number): void {
+  // Call hooks if they exist
+  const hooks = active_hooks.array;
+  for (let i = 0; i < hooks.length; i++) {
+    const hook = hooks[i];
+    if (hook[destroy_symbol]) {
+      hook[destroy_symbol](asyncId);
+    }
+  }
+}
 const {
   kInit,
   kBefore,
@@ -75,22 +203,26 @@ const {
 
 // deno-lint-ignore camelcase
 const resource_symbol = Symbol("resource");
+// Alias to the same symbol used by `internal_binding/symbols.ts` so that
+// `socket[asyncIdSymbol]` (set in net.ts/dgram.ts) and
+// `socket[require('internal/async_hooks').symbols.async_id_symbol]`
+// (read by Node test fixtures) refer to the same slot on objects.
 // deno-lint-ignore camelcase
-export const async_id_symbol = Symbol("trigger_async_id");
+const async_id_symbol = asyncIdSymbol;
 // deno-lint-ignore camelcase
-export const trigger_async_id_symbol = Symbol("trigger_async_id");
+const trigger_async_id_symbol = Symbol("trigger_async_id");
 // deno-lint-ignore camelcase
-export const init_symbol = Symbol("init");
+const init_symbol = Symbol("init");
 // deno-lint-ignore camelcase
-export const before_symbol = Symbol("before");
+const before_symbol = Symbol("before");
 // deno-lint-ignore camelcase
-export const after_symbol = Symbol("after");
+const after_symbol = Symbol("after");
 // deno-lint-ignore camelcase
-export const destroy_symbol = Symbol("destroy");
+const destroy_symbol = Symbol("destroy");
 // deno-lint-ignore camelcase
-export const promise_resolve_symbol = Symbol("promiseResolve");
+const promise_resolve_symbol = Symbol("promiseResolve");
 
-export const symbols = {
+const symbols = {
   // deno-lint-ignore camelcase
   async_id_symbol,
   // deno-lint-ignore camelcase
@@ -174,7 +306,7 @@ function getHookArrays(): [AsyncHook[], number[] | Uint32Array] {
 }
 
 function storeActiveHooks() {
-  active_hooks.tmp_array = active_hooks.array.slice();
+  active_hooks.tmp_array = ArrayPrototypeSlice(active_hooks.array);
   // Don't want to make the assumption that kInit to kDestroy are indexes 0 to
   // 4. So do this the long way.
   active_hooks.tmp_fields = [];
@@ -228,7 +360,7 @@ function disableHooks() {
 // Return the triggerAsyncId meant for the constructor calling it. It's up to
 // the user to safeguard this call and make sure it's zero'd out when the
 // constructor is complete.
-export function getDefaultTriggerAsyncId() {
+function getDefaultTriggerAsyncId() {
   const defaultTriggerAsyncId =
     async_id_fields[async_wrap.UidFields.kDefaultTriggerAsyncId];
   // If defaultTriggerAsyncId isn't set, use the executionAsyncId
@@ -238,14 +370,14 @@ export function getDefaultTriggerAsyncId() {
   return defaultTriggerAsyncId;
 }
 
-export function defaultTriggerAsyncIdScope(
+function defaultTriggerAsyncIdScope(
   triggerAsyncId: number | undefined,
   // deno-lint-ignore no-explicit-any
   block: (...arg: any[]) => void,
   ...args: unknown[]
 ) {
   if (triggerAsyncId === undefined) {
-    return block.apply(null, args);
+    return FunctionPrototypeApply(block, null, args);
   }
   // CHECK(NumberIsSafeInteger(triggerAsyncId))
   // CHECK(triggerAsyncId > 0)
@@ -253,7 +385,7 @@ export function defaultTriggerAsyncIdScope(
   async_id_fields[kDefaultTriggerAsyncId] = triggerAsyncId;
 
   try {
-    return block.apply(null, args);
+    return FunctionPrototypeApply(block, null, args);
   } finally {
     async_id_fields[kDefaultTriggerAsyncId] = oldDefaultTriggerAsyncId;
   }
@@ -263,57 +395,17 @@ function hasHooks(key: number) {
   return async_hook_fields[key] > 0;
 }
 
-export function enabledHooksExist() {
-  return hasHooks(kCheck);
+function enabledHooksExist() {
+  return active_hooks.array.length > 0;
 }
 
-export function initHooksExist() {
-  return hasHooks(kInit);
-}
-
-export function afterHooksExist() {
-  return hasHooks(kAfter);
-}
-
-export function destroyHooksExist() {
-  return hasHooks(kDestroy);
-}
-
-export function promiseResolveHooksExist() {
-  return hasHooks(kPromiseResolve);
-}
-
-function emitInitScript(
-  asyncId: number,
-  // deno-lint-ignore no-explicit-any
-  type: any,
-  triggerAsyncId: number,
-  // deno-lint-ignore no-explicit-any
-  resource: any,
-) {
-  // Short circuit all checks for the common case. Which is that no hooks have
-  // been set. Do this to remove performance impact for embedders (and core).
-  if (!hasHooks(kInit)) {
-    return;
-  }
-
-  if (triggerAsyncId === null) {
-    triggerAsyncId = getDefaultTriggerAsyncId();
-  }
-
-  emitInitNative(asyncId, type, triggerAsyncId, resource);
-}
-export { emitInitScript as emitInit };
-
-export function hasAsyncIdStack() {
+function hasAsyncIdStack() {
   return hasHooks(kStackLength);
 }
 
-export { constants };
-
 type Fn = (...args: unknown[]) => unknown;
 
-export class AsyncHook {
+class AsyncHook {
   [init_symbol]: Fn;
   [before_symbol]: Fn;
   [after_symbol]: Fn;
@@ -365,7 +457,7 @@ export class AsyncHook {
     const { 0: hooks_array, 1: hook_fields } = getHookArrays();
 
     // Each hook is only allowed to be added once.
-    if (hooks_array.includes(this)) {
+    if (ArrayPrototypeIncludes(hooks_array, this)) {
       return this;
     }
 
@@ -381,7 +473,7 @@ export class AsyncHook {
     hook_fields[kTotals] += hook_fields[kDestroy] += +!!this[destroy_symbol];
     hook_fields[kTotals] += hook_fields[kPromiseResolve] +=
       +!!this[promise_resolve_symbol];
-    hooks_array.push(this);
+    ArrayPrototypePush(hooks_array, this);
 
     if (prev_kTotals === 0 && hook_fields[kTotals] > 0) {
       enableHooks();
@@ -397,7 +489,7 @@ export class AsyncHook {
     // deno-lint-ignore camelcase
     const { 0: hooks_array, 1: hook_fields } = getHookArrays();
 
-    const index = hooks_array.indexOf(this);
+    const index = ArrayPrototypeIndexOf(hooks_array, this);
     if (index === -1) {
       return this;
     }
@@ -411,7 +503,7 @@ export class AsyncHook {
     hook_fields[kTotals] += hook_fields[kDestroy] -= +!!this[destroy_symbol];
     hook_fields[kTotals] += hook_fields[kPromiseResolve] -=
       +!!this[promise_resolve_symbol];
-    hooks_array.splice(index, 1);
+    ArrayPrototypeSplice(hooks_array, index, 1);
 
     if (prev_kTotals > 0 && hook_fields[kTotals] === 0) {
       disableHooks();
@@ -420,3 +512,35 @@ export class AsyncHook {
     return this;
   }
 }
+
+return {
+  asyncIdSymbol,
+  ownerSymbol,
+  newAsyncId,
+  emitInit: emitInitNative,
+  constants,
+  executionAsyncId,
+  executionAsyncResource,
+  enterAsyncResource,
+  exitAsyncResource,
+  enterAsyncResourceIfActive,
+  exitAsyncResourceIfActive,
+  emitBefore,
+  emitAfter,
+  emitDestroy,
+  getDefaultTriggerAsyncId,
+  defaultTriggerAsyncIdScope,
+  enabledHooksExist,
+  hasAsyncIdStack,
+  AsyncHook,
+  registerDestroyHook,
+  async_id_symbol,
+  trigger_async_id_symbol,
+  init_symbol,
+  before_symbol,
+  after_symbol,
+  destroy_symbol,
+  promise_resolve_symbol,
+  symbols,
+};
+})();

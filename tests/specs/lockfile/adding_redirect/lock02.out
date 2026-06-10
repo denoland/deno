@@ -1,5 +1,5 @@
 {
-  "version": "4",
+  "version": "5",
   "redirects": {
     "http://localhost:4546/welcome.ts": "http://localhost:4545/welcome.ts"
   },

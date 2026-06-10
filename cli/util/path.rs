@@ -1,8 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
-use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
@@ -45,23 +44,10 @@ pub fn is_importable_ext(path: &Path) -> bool {
 
 /// Get the extension of a file in lowercase.
 pub fn get_extension(file_path: &Path) -> Option<String> {
-  return file_path
+  file_path
     .extension()
     .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
-}
-
-pub fn get_atomic_file_path(file_path: &Path) -> PathBuf {
-  let rand = gen_rand_path_component();
-  let extension = format!("{rand}.tmp");
-  file_path.with_extension(extension)
-}
-
-fn gen_rand_path_component() -> String {
-  (0..4).fold(String::new(), |mut output, _| {
-    output.push_str(&format!("{:02x}", rand::random::<u8>()));
-    output
-  })
+    .map(|e| e.to_lowercase())
 }
 
 /// TypeScript figures out the type of file based on the extension, but we take
@@ -80,7 +66,7 @@ pub fn mapped_specifier_for_tsc(
       && specifier
         .path()
         .split('/')
-        .last()
+        .next_back()
         .map(|last| last.contains(".d."))
         .unwrap_or(false)
     {
@@ -113,25 +99,9 @@ pub fn relative_specifier(
     return Some("./".to_string());
   }
 
-  // workaround using parent directory until https://github.com/servo/rust-url/pull/754 is merged
-  let from = if !from.path().ends_with('/') {
-    if let Some(end_slash) = from.path().rfind('/') {
-      let mut new_from = from.clone();
-      new_from.set_path(&from.path()[..end_slash + 1]);
-      Cow::Owned(new_from)
-    } else {
-      Cow::Borrowed(from)
-    }
-  } else {
-    Cow::Borrowed(from)
-  };
-
   // workaround for url crate not adding a trailing slash for a directory
   // it seems to be fixed once a version greater than 2.2.2 is released
-  let mut text = from.make_relative(to)?;
-  if is_dir && !text.ends_with('/') && to.query().is_none() {
-    text.push('/');
-  }
+  let text = from.make_relative(to)?;
 
   let text = if text.starts_with("../") || text.starts_with("./") {
     text
@@ -141,9 +111,23 @@ pub fn relative_specifier(
   Some(to_percent_decoded_str(&text))
 }
 
-#[cfg_attr(windows, allow(dead_code))]
-pub fn relative_path(from: &Path, to: &Path) -> Option<PathBuf> {
-  pathdiff::diff_paths(to, from)
+pub fn relative_specifier_path_for_display(
+  from: &ModuleSpecifier,
+  to: &ModuleSpecifier,
+) -> String {
+  if to.scheme() == "file" && from.scheme() == "file" {
+    let relative_specifier = relative_specifier(from, to)
+      .map(Cow::Owned)
+      .unwrap_or_else(|| Cow::Borrowed(to.as_str()));
+    let relative_specifier = if relative_specifier.starts_with("../../../") {
+      to.as_str()
+    } else {
+      relative_specifier.trim_start_matches("./")
+    };
+    to_percent_decoded_str(relative_specifier)
+  } else {
+    to_percent_decoded_str(to.as_str())
+  }
 }
 
 /// Slightly different behaviour than the default matching
@@ -196,9 +180,108 @@ pub fn to_percent_decoded_str(s: &str) -> String {
   }
 }
 
+/// Normalizes a user provided file path the same way the Windows file system
+/// APIs do when opening a file: trailing spaces and dots are stripped from the
+/// final path component.
+///
+/// Without this, `deno info ".\foo.tsx "` resolves to a `foo.tsx%20` specifier.
+/// The file still loads on Windows (the OS trims the trailing space when
+/// opening it), but the trailing `%20` causes the media type to be misdetected
+/// (e.g. as TypeScript instead of TSX), leading to a confusing parse error.
+/// See https://github.com/denoland/deno/issues/30585.
+///
+/// This is a no-op on non-Windows platforms, where trailing whitespace and dots
+/// in a file name are significant.
+///
+/// `\\?\` extended-length paths *can* preserve trailing spaces/dots, so this
+/// would diverge there, but such a path as a CLI argument is vanishingly rare
+/// and intentionally out of scope.
+#[cfg(windows)]
+pub fn strip_windows_trailing_chars(path: &str) -> Cow<'_, str> {
+  let (dir, name) = match path.rfind(['/', '\\']) {
+    Some(i) => path.split_at(i + 1),
+    None => ("", path),
+  };
+  // Leave drive specifiers (e.g. "C:") alone. Relative directory references
+  // ("." / "..") are handled by the `trimmed.is_empty()` check below, since
+  // they trim away entirely.
+  if name.ends_with(':') {
+    return Cow::Borrowed(path);
+  }
+  let trimmed = name.trim_end_matches([' ', '.']);
+  if trimmed.is_empty() || trimmed.len() == name.len() {
+    Cow::Borrowed(path)
+  } else {
+    Cow::Owned(format!("{dir}{trimmed}"))
+  }
+}
+
+#[cfg(not(windows))]
+pub fn strip_windows_trailing_chars(path: &str) -> Cow<'_, str> {
+  Cow::Borrowed(path)
+}
+
+/// Like [`deno_path_util::resolve_url_or_path`], but first normalizes a file
+/// path argument the way the Windows file system would (see
+/// [`strip_windows_trailing_chars`]). URL arguments (anything with a URI
+/// scheme) are passed through unchanged.
+pub fn resolve_url_or_path_normalized(
+  specifier: &str,
+  current_dir: &Path,
+) -> Result<ModuleSpecifier, deno_path_util::ResolveUrlOrPathError> {
+  if deno_path_util::specifier_has_uri_scheme(specifier) {
+    deno_path_util::resolve_url_or_path(specifier, current_dir)
+  } else {
+    deno_path_util::resolve_url_or_path(
+      &strip_windows_trailing_chars(specifier),
+      current_dir,
+    )
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
+
+  #[cfg(windows)]
+  #[test]
+  fn test_strip_windows_trailing_chars() {
+    // trailing space/dot stripped from the final component
+    assert_eq!(strip_windows_trailing_chars(".\\foo.tsx "), ".\\foo.tsx");
+    assert_eq!(strip_windows_trailing_chars("foo.tsx "), "foo.tsx");
+    assert_eq!(strip_windows_trailing_chars("foo.tsx."), "foo.tsx");
+    assert_eq!(strip_windows_trailing_chars("foo.tsx. "), "foo.tsx");
+    assert_eq!(
+      strip_windows_trailing_chars("C:\\a\\foo.tsx  "),
+      "C:\\a\\foo.tsx"
+    );
+    assert_eq!(strip_windows_trailing_chars("a/b/foo.tsx "), "a/b/foo.tsx");
+    // nothing to strip -> unchanged
+    assert_eq!(strip_windows_trailing_chars("foo.tsx"), "foo.tsx");
+    assert_eq!(strip_windows_trailing_chars(".\\foo.tsx"), ".\\foo.tsx");
+    // intermediate components and trailing space within them are left alone
+    assert_eq!(strip_windows_trailing_chars("a /b/foo.tsx"), "a /b/foo.tsx");
+    // relative dir references and drive specifiers are left alone
+    assert_eq!(strip_windows_trailing_chars("."), ".");
+    assert_eq!(strip_windows_trailing_chars(".."), "..");
+    assert_eq!(strip_windows_trailing_chars("C:"), "C:");
+    assert_eq!(strip_windows_trailing_chars("a\\.."), "a\\..");
+    // an all-trailing-chars name is left alone (avoid producing an empty name)
+    assert_eq!(strip_windows_trailing_chars("a\\   "), "a\\   ");
+  }
+
+  #[test]
+  fn test_resolve_url_or_path_normalized_url_passthrough() {
+    // URL arguments must bypass the Windows trailing-char normalization. The
+    // scheme guard is what prevents the strip from mangling URLs (e.g. turning
+    // `.../foo.tsx.` into `.../foo.tsx` on Windows), so lock that in here. The
+    // current dir is unused for URL inputs, so a dummy is fine.
+    let cwd = Path::new("/");
+    let url =
+      resolve_url_or_path_normalized("http://example.com/foo.tsx.", cwd)
+        .unwrap();
+    assert_eq!(url.as_str(), "http://example.com/foo.tsx.");
+  }
 
   #[test]
   fn test_is_script_ext() {

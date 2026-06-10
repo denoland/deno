@@ -66,6 +66,5 @@
   "bugs": {
     "url": "https://github.com/jprichardson/node-jsonfile/issues"
   },
-  "readmeFilename": "README.md",
   "license": "MIT"
 }

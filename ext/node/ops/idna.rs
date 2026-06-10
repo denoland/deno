@@ -1,23 +1,28 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-use deno_core::op2;
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+
+use deno_core::op2;
 
 // map_domain, to_ascii and to_unicode are based on the punycode implementation in node.js
 // https://github.com/nodejs/node/blob/73025c4dec042e344eeea7912ed39f7b7c4a3991/lib/punycode.js
 
 const PUNY_PREFIX: &str = "xn--";
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum IdnaError {
+  #[class(range)]
   #[error("Invalid input")]
   InvalidInput,
+  #[class(generic)]
   #[error("Input would take more than 63 characters to encode")]
   InputTooLong,
+  #[class(range)]
   #[error("Illegal input >= 0x80 (not a basic code point)")]
   IllegalInput,
 }
+
+deno_error::js_error_wrapper!(idna::Errors, JsIdnaErrors, "Error");
 
 /// map a domain by mapping each label with the given function
 fn map_domain(
@@ -109,12 +114,12 @@ pub fn op_node_idna_punycode_to_unicode(
 
 /// Converts a domain to ASCII as per the IDNA spec
 /// (specifically UTS #46)
+///
+/// Returns an empty string if the domain is invalid, matching Node.js behavior
 #[op2]
 #[string]
-pub fn op_node_idna_domain_to_ascii(
-  #[string] domain: String,
-) -> Result<String, idna::Errors> {
-  idna::domain_to_ascii(&domain)
+pub fn op_node_idna_domain_to_ascii(#[string] domain: String) -> String {
+  idna::domain_to_ascii(&domain).unwrap_or_default()
 }
 
 /// Converts a domain to Unicode as per the IDNA spec

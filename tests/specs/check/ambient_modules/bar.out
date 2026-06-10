@@ -1,0 +1,5 @@
+Check [WILDCARD]bar.ts
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]logo.svg'.
+    at file:///[WILDLINE]/ambient_modules/bar.ts:1:18
+
+error: Type checking failed.

@@ -1,0 +1,13 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "bundle -o add.cjs --format=cjs npm:@denotest/add@1.0.0",
+      "output": "bundle.out"
+    },
+    {
+      "args": "run -A main.ts",
+      "output": "3\n"
+    }
+  ]
+}

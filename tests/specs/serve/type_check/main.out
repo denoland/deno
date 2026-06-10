@@ -1,5 +1,10 @@
 Check [WILDCARD]
-error: TS2353 [ERROR]: Object literal may only specify known properties, and 'bad' does not exist in type 'ServeDefaultExport'.
+TS2353 [ERROR]: Object literal may only specify known properties, and 'bad' does not exist in type 'ServeDefaultExport'.
   bad() {
   ~~~
     at [WILDCARD]main.ts:2:3
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

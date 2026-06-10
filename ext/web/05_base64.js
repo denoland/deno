@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../../core/internal.d.ts" />
@@ -6,15 +6,16 @@
 /// <reference path="../web/internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { primordials } from "ext:core/mod.js";
-import { op_base64_atob, op_base64_btoa } from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_base64_atob, op_base64_btoa } = core.ops;
 const {
   ObjectPrototypeIsPrototypeOf,
   TypeErrorPrototype,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "./01_dom_exception.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 
 /**
  * @param {string} data
@@ -58,4 +59,5 @@ function btoa(data) {
   }
 }
 
-export { atob, btoa };
+return { atob, btoa };
+})();

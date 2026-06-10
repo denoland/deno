@@ -36,6 +36,9 @@
         "flaky": {
           "type": "boolean"
         },
+        "canonicalizedTempDir": {
+          "type": "boolean"
+        },
         "symlinkedTempDir": {
           "type": "boolean"
         },
@@ -45,7 +48,8 @@
             "mac",
             "linux",
             "windows",
-            "unix"
+            "unix",
+            "notMacIntel"
           ]
         },
         "output": {
@@ -56,6 +60,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     },
@@ -64,6 +78,15 @@
         "required": ["steps"],
         "properties": {
           "tempDir": {
+            "type": "boolean"
+          },
+          "canonicalizedTempDir": {
+            "type": "boolean"
+          },
+          "flaky": {
+            "type": "boolean"
+          },
+          "symlinkedTempDir": {
             "type": "boolean"
           },
           "base": {
@@ -75,8 +98,22 @@
               "type": "string"
             }
           },
+          "if": {
+            "type": "string",
+            "examples": [
+              "mac",
+              "linux",
+              "windows",
+              "unix",
+              "notMacIntel"
+            ]
+          },
           "repeat": {
             "type": "number"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
           },
           "steps": {
             "type": "array",
@@ -86,12 +123,28 @@
           },
           "ignore": {
             "type": "boolean"
+          },
+          "variants": {
+            "type": "object",
+            "patternProperties": {
+              ".*": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+              }
+            },
+            "additionalProperties": false
           }
         }
       }, {
         "allOf": [{
           "properties": {
             "tempDir": {
+              "type": "boolean"
+            },
+            "canonicalizedTempDir": {
+              "type": "boolean"
+            },
+            "symlinkedTempDir": {
               "type": "boolean"
             },
             "base": {
@@ -105,6 +158,10 @@
             },
             "repeat": {
               "type": "number"
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
             }
           }
         }, {
@@ -130,6 +187,10 @@
         "repeat": {
           "type": "number"
         },
+        "timeout": {
+          "type": "number",
+          "description": "Timeout in seconds for each step. Defaults to 300 (5 minutes)."
+        },
         "tests": {
           "type": "object",
           "additionalProperties": {
@@ -138,6 +199,16 @@
         },
         "ignore": {
           "type": "boolean"
+        },
+        "variants": {
+          "type": "object",
+          "patternProperties": {
+            ".*": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "additionalProperties": false
         }
       }
     }

@@ -1,0 +1,72 @@
+{
+  "name": "bufferutil",
+  "dist-tags": {
+    "latest": "4.0.9"
+  },
+  "versions": {
+    "4.0.9": {
+      "name": "bufferutil",
+      "version": "4.0.9",
+      "description": "WebSocket buffer utils",
+      "main": "index.js",
+      "engines": {
+        "node": ">=6.14.2"
+      },
+      "scripts": {
+        "install": "node-gyp-build",
+        "prebuild": "prebuildify --napi --strip --target=8.11.2",
+        "prebuild-darwin-x64+arm64": "prebuildify --arch x64+arm64 --napi --strip --target=8.11.2",
+        "test": "mocha"
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/websockets/bufferutil.git"
+      },
+      "author": {
+        "name": "Einar Otto Stangvik",
+        "email": "einaros@gmail.com",
+        "url": "http://2x.io"
+      },
+      "license": "MIT",
+      "bugs": {
+        "url": "https://github.com/websockets/bufferutil/issues"
+      },
+      "dependencies": {
+        "node-gyp-build": "^4.3.0"
+      },
+      "devDependencies": {
+        "mocha": "^11.0.1",
+        "node-gyp": "^11.0.0",
+        "prebuildify": "^6.0.0"
+      },
+      "_id": "bufferutil@4.0.9",
+      "gitHead": "35e2eb6a14a8d58b87bc1f9ff2ddff67e2f1fa97",
+      "_nodeVersion": "23.5.0",
+      "_npmVersion": "10.9.2",
+      "dist": {
+        "integrity": "sha512-WDtdLmJvAuNNPzByAYpRo2rF1Mmradw6gvWsQKf63476DDXmomT9zUiGypLcG4ibIM67vhAj8jJRdbmEws2Aqw==",
+        "shasum": "6e81739ad48a95cad45a279588e13e95e24a800a",
+        "tarball": "http://localhost:4260/bufferutil/bufferutil-4.0.9.tgz",
+        "fileCount": 11,
+        "unpackedSize": 371859
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "bugs": {
+    "url": "https://github.com/websockets/bufferutil/issues"
+  },
+  "author": {
+    "name": "Einar Otto Stangvik",
+    "email": "einaros@gmail.com",
+    "url": "http://2x.io"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/websockets/bufferutil",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/websockets/bufferutil.git"
+  },
+  "description": "WebSocket buffer utils"
+}

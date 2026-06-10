@@ -5,7 +5,7 @@ error[no-explicit-any]: `any` type is not allowed
   |         ^^^
   = hint: Use a specific type other than `any`
 
-  docs: https://lint.deno.land/rules/no-explicit-any
+  docs: https://docs.deno.com/lint/rules/no-explicit-any
 
 
 Found 1 problem

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -20,29 +20,34 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { lookup as defaultLookup } from "node:dns";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const lazyDns = core.createLazyLoader("node:dns");
+const { ERR_SOCKET_BAD_TYPE } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { UDP } = core.loadExtScript(
+  "ext:deno_node/internal_binding/udp_wrap.ts",
+);
+const { guessHandleType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/util.ts",
+);
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const {
   isInt32,
   validateFunction,
-} from "ext:deno_node/internal/validators.mjs";
-import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { ERR_SOCKET_BAD_TYPE } from "ext:deno_node/internal/errors.ts";
-import { UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
-import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { FunctionPrototypeBind, MapPrototypeGet, Symbol } = primordials;
 
-export type SocketType = "udp4" | "udp6";
+type SocketType = "udp4" | "udp6";
 
-export const kStateSymbol: unique symbol = Symbol("kStateSymbol");
+const kStateSymbol: unique symbol = Symbol("kStateSymbol");
 
 function lookup4(
-  lookup: typeof defaultLookup,
+  lookup: (...args: unknown[]) => void,
   address: string,
   callback: (
-    err: ErrnoException | null,
+    err: unknown,
     address: string,
     family: number,
   ) => void,
@@ -51,10 +56,10 @@ function lookup4(
 }
 
 function lookup6(
-  lookup: typeof defaultLookup,
+  lookup: (...args: unknown[]) => void,
   address: string,
   callback: (
-    err: ErrnoException | null,
+    err: unknown,
     address: string,
     family: number,
   ) => void,
@@ -62,12 +67,12 @@ function lookup6(
   return lookup(address || "::1", 6, callback);
 }
 
-export function newHandle(
+function newHandle(
   type: SocketType,
-  lookup?: typeof defaultLookup,
-): UDP {
+  lookup?: (...args: unknown[]) => void,
+): InstanceType<typeof UDP> {
   if (lookup === undefined) {
-    lookup = defaultLookup;
+    lookup = lazyDns().default.lookup;
   } else {
     validateFunction(lookup, "lookup");
   }
@@ -75,7 +80,7 @@ export function newHandle(
   if (type === "udp4") {
     const handle = new UDP();
 
-    handle.lookup = lookup4.bind(handle, lookup);
+    handle.lookup = FunctionPrototypeBind(lookup4, handle, lookup);
 
     return handle;
   }
@@ -83,7 +88,7 @@ export function newHandle(
   if (type === "udp6") {
     const handle = new UDP();
 
-    handle.lookup = lookup6.bind(handle, lookup);
+    handle.lookup = FunctionPrototypeBind(lookup6, handle, lookup);
     handle.bind = handle.bind6;
     handle.connect = handle.connect6;
     handle.send = handle.send6;
@@ -94,7 +99,7 @@ export function newHandle(
   throw new ERR_SOCKET_BAD_TYPE();
 }
 
-export function _createSocketHandle(
+function _createSocketHandle(
   address: string,
   port: number,
   addressType: SocketType,
@@ -108,11 +113,12 @@ export function _createSocketHandle(
     const type = guessHandleType(fd);
 
     if (type !== "UDP") {
-      err = codeMap.get("EINVAL")!;
+      err = MapPrototypeGet(codeMap, "EINVAL")!;
     } else {
       err = handle.open(fd);
     }
   } else if (port || address) {
+    // deno-lint-ignore prefer-primordials
     err = handle.bind(address, port || 0, flags);
   }
 
@@ -125,8 +131,14 @@ export function _createSocketHandle(
   return handle;
 }
 
-export default {
+return {
+  default: {
+    kStateSymbol,
+    newHandle,
+    _createSocketHandle,
+  },
   kStateSymbol,
   newHandle,
   _createSocketHandle,
 };
+})();

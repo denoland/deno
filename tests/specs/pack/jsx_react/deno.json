@@ -1,0 +1,13 @@
+{
+  "name": "@test/jsx-react",
+  "version": "1.0.0",
+  "exports": "./mod.tsx",
+  "imports": {
+    "preact": "npm:preact@^10.19"
+  },
+  "compilerOptions": {
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment"
+  }
+}

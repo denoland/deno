@@ -1,6 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util as util;
+use test_util::test;
 use util::assert_contains;
 
 #[test]

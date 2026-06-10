@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::rc::Rc;
 
-use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
+use deno_core::op2;
 use deno_http::http_create_conn_resource;
 use deno_net::io::TcpStreamResource;
 use deno_net::ops_tls::TlsStreamResource;
@@ -13,23 +14,34 @@ pub const UNSTABLE_FEATURE_NAME: &str = "http";
 
 deno_core::extension!(deno_http_runtime, ops = [op_http_start],);
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpStartError {
+  #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamInUse,
+  #[class("Busy")]
   #[error("TLS stream is currently in use")]
   TlsStreamInUse,
+  #[class("Busy")]
   #[error("Unix socket is currently in use")]
   UnixSocketInUse,
+  #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
   #[cfg(unix)]
+  #[class(generic)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Resource(#[inherit] ResourceError),
 }
 
 #[op2(fast)]
@@ -62,8 +74,7 @@ fn op_http_start(
     // See also: https://github.com/denoland/deno/pull/16242
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| HttpStartError::TlsStreamInUse)?;
-    let (read_half, write_half) = resource.into_inner();
-    let tls_stream = read_half.unsplit(write_half);
+    let tls_stream = resource.into_tls_stream();
     let addr = tls_stream.local_addr()?;
     return Ok(http_create_conn_resource(state, tls_stream, addr, "https"));
   }
@@ -89,5 +100,5 @@ fn op_http_start(
     ));
   }
 
-  Err(HttpStartError::Other(deno_core::error::bad_resource_id()))
+  Err(HttpStartError::Resource(ResourceError::BadResourceId))
 }

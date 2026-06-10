@@ -1,12 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   isDate,
   internalRidSymbol,
   createCancelHandle,
 } = core;
-import {
+const {
   op_fs_chdir,
   op_fs_chmod_async,
   op_fs_chmod_sync,
@@ -24,6 +25,8 @@ import {
   op_fs_file_truncate_async,
   op_fs_flock_async,
   op_fs_flock_sync,
+  op_fs_flock_try_async,
+  op_fs_flock_try_sync,
   op_fs_ftruncate_sync,
   op_fs_funlock_async,
   op_fs_funlock_sync,
@@ -69,7 +72,7 @@ import {
   op_fs_write_file_async,
   op_fs_write_file_sync,
   op_set_raw,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFilter,
   Date,
@@ -77,6 +80,7 @@ const {
   Error,
   Function,
   MathTrunc,
+  Number,
   ObjectEntries,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
@@ -84,20 +88,26 @@ const {
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolIterator,
   SymbolFor,
   TypeError,
   Uint32Array,
 } = primordials;
 
-import { read, readSync, write, writeSync } from "ext:deno_io/12_io.js";
-import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import {
-  readableStreamForRid,
-  ReadableStreamPrototype,
-  writableStreamForRid,
-} from "ext:deno_web/06_streams.js";
-import { pathFromURL, SymbolDispose } from "ext:deno_web/00_infra.js";
+const { read, readSync, write, writeSync } = core.loadExtScript(
+  "ext:deno_io/12_io.js",
+);
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+// Defer loading the 208 KB `06_streams.js` polyfill: these helpers are only
+// used inside File class methods and writeFile-family functions, so pay
+// the parse cost on first use rather than at every startup.
+let _streamsImpl;
+function lazyStreams() {
+  return _streamsImpl ??
+    (_streamsImpl = core.loadExtScript("ext:deno_web/06_streams.js"));
+}
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 
 function chmodSync(path, mode) {
   op_fs_chmod_sync(pathFromURL(path), mode);
@@ -276,7 +286,7 @@ async function rename(oldpath, newpath) {
 // Extract the FsStat object from the encoded buffer.
 // See `runtime/ops/fs.rs` for the encoder.
 //
-// This is not a general purpose decoder. There are 4 types:
+// This is not a general purpose decoder. There are 5 types:
 //
 // 1. date
 //  offset += 4
@@ -293,6 +303,14 @@ async function rename(oldpath, newpath) {
 //
 // 4. ?u64 converts a zero u64 value to JS null on Windows.
 //    ?bool converts a false bool value to JS null on Windows.
+//
+// 5. !u64 persists the u64 value even if it's zero,
+//    only if the corresponding "_set" field is set to true.
+//    Unlike ?u64, this is OS agnostic.
+//    offset += 4
+//    1/0 | extra padding | high u32 | low u32
+//    if value[0] == 1, u64 else null
+//
 function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
   let offset = 0;
@@ -302,18 +320,24 @@ function createByteStruct(types) {
   for (let i = 0; i < typeEntries.length; ++i) {
     let { 0: name, 1: type } = typeEntries[i];
 
-    const optional = StringPrototypeStartsWith(type, "?");
-    if (optional) type = StringPrototypeSlice(type, 1);
+    const optionalLoose = StringPrototypeStartsWith(type, "?");
+    const optionalStrict = StringPrototypeStartsWith(type, "!");
+    if (optionalLoose || optionalStrict) type = StringPrototypeSlice(type, 1);
 
     if (type == "u64") {
-      if (!optional) {
+      if (!optionalLoose && !optionalStrict) {
         str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
-      } else {
+      } else if (optionalLoose) {
         str += `${name}: (unix ? (view[${offset}] + view[${
           offset + 1
         }] * 2**32) : (view[${offset}] + view[${
           offset + 1
         }] * 2**32) || null),`;
+      } else {
+        str += `${name}: (view[${offset}] === 1 ? (view[${offset + 2}] + view[${
+          offset + 3
+        }] * 2**32) : null),`;
+        offset += 2;
       }
     } else if (type == "date") {
       str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
@@ -321,7 +345,7 @@ function createByteStruct(types) {
       }] + view[${offset + 3}] * 2**32),`;
       offset += 2;
     } else {
-      if (!optional) {
+      if (!optionalLoose) {
         str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
       } else {
         str += `${name}: (unix ? !!((view[${offset}] + view[${
@@ -348,14 +372,14 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   birthtime: "date",
   ctime: "date",
   dev: "u64",
-  ino: "?u64",
+  ino: "!u64",
   mode: "u64",
-  nlink: "?u64",
+  nlink: "!u64",
   uid: "?u64",
   gid: "?u64",
   rdev: "?u64",
   blksize: "?u64",
-  blocks: "?u64",
+  blocks: "!u64",
   isBlockDevice: "?bool",
   isCharDevice: "?bool",
   isFifo: "?bool",
@@ -373,21 +397,21 @@ function parseFileInfo(response) {
     isDirectory: response.isDirectory,
     isSymlink: response.isSymlink,
     size: response.size,
-    mtime: response.mtimeSet === true ? new Date(response.mtime) : null,
-    atime: response.atimeSet === true ? new Date(response.atime) : null,
+    mtime: response.mtimeSet === true ? new Date(Number(response.mtime)) : null,
+    atime: response.atimeSet === true ? new Date(Number(response.atime)) : null,
     birthtime: response.birthtimeSet === true
       ? new Date(response.birthtime)
       : null,
-    ctime: response.ctimeSet === true ? new Date(response.ctime) : null,
+    ctime: response.ctimeSet === true ? new Date(Number(response.ctime)) : null,
     dev: response.dev,
     mode: response.mode,
-    ino: unix ? response.ino : null,
-    nlink: unix ? response.nlink : null,
+    ino: response.inoSet ? Number(response.ino) : null,
+    nlink: response.nlinkSet ? response.nlink : null,
     uid: unix ? response.uid : null,
     gid: unix ? response.gid : null,
     rdev: unix ? response.rdev : null,
     blksize: unix ? response.blksize : null,
-    blocks: unix ? response.blocks : null,
+    blocks: response.blocksSet ? response.blocks : null,
     isBlockDevice: unix ? response.isBlockDevice : null,
     isCharDevice: unix ? response.isCharDevice : null,
     isFifo: unix ? response.isFifo : null,
@@ -638,14 +662,19 @@ class FsFile {
 
   get readable() {
     if (this.#readable === undefined) {
-      this.#readable = readableStreamForRid(this.#rid);
+      this.#readable = lazyStreams().readableStreamForRid(this.#rid);
     }
     return this.#readable;
   }
 
   get writable() {
     if (this.#writable === undefined) {
-      this.#writable = writableStreamForRid(this.#rid);
+      this.#writable = lazyStreams().writableStreamForRid(
+        this.#rid,
+        true,
+        undefined,
+        { bufferSize: 64 * 1024 },
+      );
     }
     return this.#writable;
   }
@@ -691,6 +720,14 @@ class FsFile {
 
   async lock(exclusive = false) {
     await op_fs_flock_async(this.#rid, exclusive);
+  }
+
+  tryLockSync(exclusive = false) {
+    return op_fs_flock_try_sync(this.#rid, exclusive);
+  }
+
+  async tryLock(exclusive = false) {
+    return await op_fs_flock_try_async(this.#rid, exclusive);
   }
 
   unlockSync() {
@@ -825,7 +862,9 @@ async function writeFile(
     options.signal[abortSignal.add](abortHandler);
   }
   try {
-    if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
+    if (
+      ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)
+    ) {
       const file = await open(path, {
         mode: options.mode,
         append: options.append ?? false,
@@ -872,7 +911,9 @@ function writeTextFile(
   data,
   options = { __proto__: null },
 ) {
-  if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, data)) {
+  if (
+    ObjectPrototypeIsPrototypeOf(lazyStreams().ReadableStreamPrototype, data)
+  ) {
     return writeFile(
       path,
       data.pipeThrough(new TextEncoderStream()),
@@ -884,7 +925,7 @@ function writeTextFile(
   }
 }
 
-export {
+return {
   chdir,
   chmod,
   chmodSync,
@@ -936,3 +977,4 @@ export {
   writeTextFile,
   writeTextFileSync,
 };
+})();

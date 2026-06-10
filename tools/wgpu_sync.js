@@ -1,11 +1,11 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-write --allow-run --config=tests/config/deno.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { join, ROOT_PATH } from "./util.js";
 
-const COMMIT = "4521502da69bcf4f92c8350042c268573ef216d4";
+const COMMIT = "ae87ffe28041a7ebd82d8d3c2fa0e2343f0f0234";
 const REPO = "gfx-rs/wgpu";
-const V_WGPU = "0.20";
+const V_WGPU = "29.0.1";
 const TARGET_DIR = join(ROOT_PATH, "ext", "webgpu");
 
 async function bash(subcmd, opts = {}) {
@@ -51,6 +51,34 @@ async function patchFile(path, patcher) {
   await Deno.writeTextFile(path, patched);
 }
 
+async function patchReadme() {
+  const sourceSection = `## Source
+
+The canonical source is considered to be https://github.com/gfx-rs/wgpu@trunk/deno_webgpu,
+even though they are maintained separately but synced occasionally using the script
+https://github.com/denoland/deno/blob/main/tools/wgpu_sync.js
+`;
+
+  await patchFile(
+    join(TARGET_DIR, "README.md"),
+    (data) => {
+      // Drop any existing Source section so re-runs stay idempotent.
+      const stripped = data.replace(
+        /\n## Source\n[\s\S]*?(?=\n## |\n*$)/,
+        "",
+      );
+      // Insert before the first subsequent "## " heading, or append.
+      const headingMatch = stripped.match(/\n## /);
+      if (headingMatch) {
+        const idx = headingMatch.index + 1;
+        return stripped.slice(0, idx) + sourceSection + "\n" +
+          stripped.slice(idx);
+      }
+      return stripped.replace(/\n*$/, "\n\n") + sourceSection;
+    },
+  );
+}
+
 async function patchCargo() {
   const vDenoWebgpu = await denoWebgpuVersion();
   await patchFile(
@@ -58,10 +86,9 @@ async function patchCargo() {
     (data) =>
       data
         .replace(/^version = .*/m, `version = "${vDenoWebgpu}"`)
-        .replace(
-          /^repository.workspace = true/m,
-          `repository = "https://github.com/gfx-rs/wgpu"`,
-        )
+        .replace(/^authors = .*/m, `authors.workspace = true`)
+        .replace(/^license = .*/m, `license.workspace = true`)
+        .replace(/^repository = .*/m, `repository.workspace = true`)
         .replace(
           /^serde = { workspace = true, features = ["derive"] }/m,
           `serde.workspace = true`,
@@ -85,6 +112,7 @@ async function main() {
   await clearTargetDir();
   await checkoutUpstream();
   await patchCargo();
+  await patchReadme();
   await bash(join(ROOT_PATH, "tools", "format.js"));
 }
 

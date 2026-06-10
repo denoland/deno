@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assert, assertEquals, fail } from "@std/assert";
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { Dir as DirOrig, type Dirent } from "node:fs";
@@ -203,3 +203,87 @@ Deno.test(
     });
   },
 );
+
+Deno.test({
+  name: "Dir.readSync throws ERR_DIR_CLOSED after closeSync",
+  fn() {
+    const testDir: string = Deno.makeTempDirSync();
+    try {
+      const dir = new Dir(testDir);
+      dir.closeSync();
+      try {
+        dir.readSync();
+        fail("Expected ERR_DIR_CLOSED to be thrown");
+      } catch (e) {
+        // deno-lint-ignore no-explicit-any
+        assertEquals((e as any).code, "ERR_DIR_CLOSED");
+      }
+    } finally {
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name: "Dir.read rejects with ERR_DIR_CLOSED after close",
+  async fn() {
+    const testDir: string = Deno.makeTempDirSync();
+    try {
+      const dir = new Dir(testDir);
+      await dir.close();
+      try {
+        await dir.read();
+        fail("Expected ERR_DIR_CLOSED to be thrown");
+      } catch (e) {
+        // deno-lint-ignore no-explicit-any
+        assertEquals((e as any).code, "ERR_DIR_CLOSED");
+      }
+    } finally {
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name: "Dir.readSync throws ERR_DIR_CLOSED after async close",
+  async fn() {
+    const testDir: string = Deno.makeTempDirSync();
+    try {
+      const dir = new Dir(testDir);
+      await dir.close();
+      try {
+        dir.readSync();
+        fail("Expected ERR_DIR_CLOSED to be thrown");
+      } catch (e) {
+        // deno-lint-ignore no-explicit-any
+        assertEquals((e as any).code, "ERR_DIR_CLOSED");
+      }
+    } finally {
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  },
+});
+
+Deno.test({
+  name: "Dir.read callback receives ERR_DIR_CLOSED after close",
+  async fn() {
+    const testDir: string = Deno.makeTempDirSync();
+    try {
+      const dir = new Dir(testDir);
+      await dir.close();
+      await new Promise<void>((resolve, reject) => {
+        // deno-lint-ignore no-explicit-any
+        dir.read((err: any) => {
+          try {
+            assertEquals(err.code, "ERR_DIR_CLOSED");
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+    } finally {
+      Deno.removeSync(testDir, { recursive: true });
+    }
+  },
+});

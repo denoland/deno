@@ -1,0 +1,20 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_snapshots"
+version = "0.65.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "v8 snapshot used by the Deno CLI"
+
+[lib]
+path = "lib.rs"
+
+[features]
+disable = []
+
+[build-dependencies]
+deno_runtime = { workspace = true, features = ["snapshot"] }

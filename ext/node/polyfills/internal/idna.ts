@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -43,18 +43,19 @@
 
 // Adapted from https://github.com/mathiasbynens/punycode.js
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 // TODO(cmorten): migrate punycode logic to "icu" internal binding and/or "url"
 // internal module so there can be re-use within the "url" module etc.
-
+(function () {
 "use strict";
-
-import {
-  op_node_idna_domain_to_ascii,
-  op_node_idna_domain_to_unicode,
-} from "ext:core/ops";
+const { core, primordials } = __bootstrap;
+const { op_node_idna_domain_to_ascii, op_node_idna_domain_to_unicode } =
+  core.ops;
+const {
+  ArrayPrototypePush,
+  SafeArrayIterator,
+  StringFromCodePoint,
+  StringPrototypeCharCodeAt,
+} = primordials;
 
 /**
  * Creates an array containing the numeric code points of each Unicode
@@ -72,22 +73,25 @@ function ucs2decode(str: string) {
   const length = str.length;
 
   while (counter < length) {
-    const value = str.charCodeAt(counter++);
+    const value = StringPrototypeCharCodeAt(str, counter++);
 
     if (value >= 0xD800 && value <= 0xDBFF && counter < length) {
       // It's a high surrogate, and there is a next character.
-      const extra = str.charCodeAt(counter++);
+      const extra = StringPrototypeCharCodeAt(str, counter++);
 
       if ((extra & 0xFC00) == 0xDC00) { // Low surrogate.
-        output.push(((value & 0x3FF) << 10) + (extra & 0x3FF) + 0x10000);
+        ArrayPrototypePush(
+          output,
+          ((value & 0x3FF) << 10) + (extra & 0x3FF) + 0x10000,
+        );
       } else {
         // It's an unmatched surrogate; only append this code unit, in case the
         // next code unit is the high surrogate of a surrogate pair.
-        output.push(value);
+        ArrayPrototypePush(output, value);
         counter--;
       }
     } else {
-      output.push(value);
+      ArrayPrototypePush(output, value);
     }
   }
 
@@ -103,24 +107,32 @@ function ucs2decode(str: string) {
  * @returns The new Unicode string (UCS-2).
  */
 function ucs2encode(array: number[]) {
-  return String.fromCodePoint(...array);
+  return StringFromCodePoint(...new SafeArrayIterator(array));
 }
 
-export const ucs2 = {
+const ucs2 = {
   decode: ucs2decode,
   encode: ucs2encode,
 };
 
 /**
  *  Converts a domain to ASCII as per the IDNA spec
+ *  Returns an empty string if the domain is invalid
  */
-export function domainToASCII(domain: string) {
+function domainToASCII(domain: string) {
   return op_node_idna_domain_to_ascii(domain);
 }
 
 /**
  *  Converts a domain to Unicode as per the IDNA spec
  */
-export function domainToUnicode(domain: string) {
+function domainToUnicode(domain: string) {
   return op_node_idna_domain_to_unicode(domain);
 }
+
+return {
+  domainToASCII,
+  domainToUnicode,
+  ucs2,
+};
+})();

@@ -1,16 +1,32 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { Buffer } from "node:buffer";
-import { assert, libSuffix } from "./common.js";
+import { assert, assertThrows, libSuffix } from "./common.js";
 import { Worker } from "node:worker_threads";
-
 const ops = Deno[Deno.internal].core.ops;
+const noop = () => {};
+
+// Use noops for async hooks -- this test only validates module
+// initialization, not async context propagation.
+const emitInit = noop;
+const emitBefore = noop;
+const emitAfter = noop;
+const emitDestroy = noop;
 
 Deno.test("ctr initialization (napi_module_register)", {
   ignore: Deno.build.os == "windows",
 }, function () {
   const path = new URL(`./module.${libSuffix}`, import.meta.url).pathname;
-  const obj = ops.op_napi_open(path, {}, Buffer, reportError);
+  const obj = ops.op_napi_open(
+    path,
+    {},
+    Buffer.from,
+    reportError,
+    emitInit,
+    emitBefore,
+    emitAfter,
+    emitDestroy,
+  );
   assert(obj != null);
   assert(typeof obj === "object");
 });
@@ -19,19 +35,31 @@ Deno.test("ctr initialization by multiple threads (napi_module_register)", {
   ignore: Deno.build.os == "windows",
 }, async function () {
   const path = new URL(`./module.${libSuffix}`, import.meta.url).pathname;
-  const obj = ops.op_napi_open(path, {}, Buffer, reportError);
-  const common = import.meta.resolve("./common.js");
+  const obj = ops.op_napi_open(
+    path,
+    {},
+    Buffer.from,
+    reportError,
+    emitInit,
+    emitBefore,
+    emitAfter,
+    emitDestroy,
+  );
   assert(obj != null);
   assert(typeof obj === "object");
 
   const worker = new Worker(
     `
-    import { Buffer } from "node:buffer";
-    import { parentPort } from "node:worker_threads";
-    import { assert } from "${common}";
-    
+    const { Buffer } = require("node:buffer");
+    const { parentPort } = require("node:worker_threads");
+    const assert = require("node:assert");
+
     const ops = Deno[Deno.internal].core.ops;
-    const obj = ops.op_napi_open("${path}", {}, Buffer, reportError);
+    const noop = () => {};
+    const obj = ops.op_napi_open(
+      "${path}", {}, Buffer.from, reportError,
+      noop, noop, noop, noop,
+    );
     assert(obj != null);
     assert(typeof obj === "object");
     parentPort.postMessage("ok");
@@ -47,4 +75,31 @@ Deno.test("ctr initialization by multiple threads (napi_module_register)", {
   });
 
   await p.promise;
+});
+
+// A legacy V8/nan addon (registered via `node_module_register` with a
+// `nm_version` that is not the Node-API version) must be rejected with a clear
+// error instead of crashing with a cryptic `dyld: missing symbol called` abort.
+// See denoland/deno#26656.
+Deno.test("legacy V8 addon is rejected with a clear error", {
+  ignore: Deno.build.os == "windows",
+}, function () {
+  const path =
+    new URL(`./module_legacy.${libSuffix}`, import.meta.url).pathname;
+  assertThrows(
+    () => {
+      ops.op_napi_open(
+        path,
+        {},
+        Buffer.from,
+        reportError,
+        emitInit,
+        emitBefore,
+        emitAfter,
+        emitDestroy,
+      );
+    },
+    TypeError,
+    "legacy Node.js native addon API",
+  );
 });

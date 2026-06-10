@@ -1,4 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+// deno-lint-ignore-file no-explicit-any
 /*
 MIT License
 
@@ -23,53 +24,43 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  BigInt,
+  MathLog2,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetBuffer,
+} = primordials;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { op_node_scrypt_async, op_node_scrypt_sync } = core.ops;
+const {
+  validateFunction,
+  validateInt32,
+  validateInteger,
+  validateUint32,
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
+  ERR_CRYPTO_INVALID_SCRYPT_PARAMS,
+  ERR_INCOMPATIBLE_OPTION_PAIR,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { getArrayBufferOrView } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+);
 
-import { Buffer } from "node:buffer";
-import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
-import { op_node_scrypt_async, op_node_scrypt_sync } from "ext:core/ops";
-
-type Opts = Partial<{
-  N: number;
-  cost: number;
-  p: number;
-  parallelization: number;
-  r: number;
-  blockSize: number;
-  maxmem: number;
-}>;
-
-const fixOpts = (opts?: Opts) => {
-  const out = { N: 16384, p: 1, r: 8, maxmem: 32 << 20 };
-  if (!opts) return out;
-
-  if (opts.N) out.N = opts.N;
-  else if (opts.cost) out.N = opts.cost;
-
-  if (opts.p) out.p = opts.p;
-  else if (opts.parallelization) out.p = opts.parallelization;
-
-  if (opts.r) out.r = opts.r;
-  else if (opts.blockSize) out.r = opts.blockSize;
-
-  if (opts.maxmem) out.maxmem = opts.maxmem;
-
-  return out;
-};
-
-export function scryptSync(
-  password: HASH_DATA,
-  salt: HASH_DATA,
+function scryptSync(
+  password: any,
+  salt: any,
   keylen: number,
-  _opts?: Opts,
+  _opts?: any,
 ): Buffer {
-  const { N, r, p, maxmem } = fixOpts(_opts);
+  const options = check(password, salt, keylen, _opts);
+  const { N, r, p, maxmem } = options;
+  validateScryptParams(N, r, p, maxmem);
 
-  const blen = p * 128 * r;
-
-  if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("exceeds max memory");
+  if (keylen === 0) {
+    return Buffer.alloc(0);
   }
 
   const buf = Buffer.alloc(keylen);
@@ -77,56 +68,148 @@ export function scryptSync(
     password,
     salt,
     keylen,
-    Math.log2(N),
+    MathLog2(N),
     r,
     p,
     maxmem,
-    buf.buffer,
+    TypedArrayPrototypeGetBuffer(buf),
   );
 
   return buf;
 }
 
-type Callback = (err: unknown, result?: Buffer) => void;
-
-export function scrypt(
-  password: HASH_DATA,
-  salt: HASH_DATA,
+function scrypt(
+  password: any,
+  salt: any,
   keylen: number,
-  _opts: Opts | null | Callback,
-  cb?: Callback,
+  _opts: any,
+  cb?: any,
 ) {
   if (!cb) {
-    cb = _opts as Callback;
+    cb = _opts;
     _opts = null;
   }
-  const { N, r, p, maxmem } = fixOpts(_opts as Opts);
+  const options = check(password, salt, keylen, _opts);
+  const { N, r, p, maxmem } = options;
 
-  const blen = p * 128 * r;
-  if (32 * r * (N + 2) * 4 + blen > maxmem) {
-    throw new Error("exceeds max memory");
+  validateFunction(cb, "callback");
+  validateScryptParams(N, r, p, maxmem);
+
+  if (keylen === 0) {
+    cb(null, Buffer.alloc(0));
+    return;
   }
 
-  try {
-    op_node_scrypt_async(
-      password,
-      salt,
-      keylen,
-      Math.log2(N),
-      r,
-      p,
-      maxmem,
-    ).then(
+  PromisePrototypeCatch(
+    PromisePrototypeThen(
+      op_node_scrypt_async(
+        password,
+        salt,
+        keylen,
+        MathLog2(N),
+        r,
+        p,
+        maxmem,
+      ),
       (buf: Uint8Array) => {
-        cb(null, Buffer.from(buf.buffer));
+        cb(null, Buffer.from(TypedArrayPrototypeGetBuffer(buf)));
       },
+    ),
+    (err: unknown) => cb(err),
+  );
+}
+
+const defaults = {
+  N: 16384,
+  r: 8,
+  p: 1,
+  maxmem: 32 << 20, // 32 MiB, matches SCRYPT_MAX_MEM.
+};
+
+function check(password, salt, keylen, options) {
+  password = getArrayBufferOrView(password, "password");
+  salt = getArrayBufferOrView(salt, "salt");
+  validateInt32(keylen, "keylen", 0);
+
+  let { N, r, p, maxmem } = defaults;
+  if (options && options !== defaults) {
+    const hasN = options.N !== undefined;
+    if (hasN) {
+      N = options.N;
+      validateUint32(N, "N");
+    }
+    if (options.cost !== undefined) {
+      if (hasN) throw new ERR_INCOMPATIBLE_OPTION_PAIR("N", "cost");
+      N = options.cost;
+      validateUint32(N, "cost");
+    }
+    const hasR = options.r !== undefined;
+    if (hasR) {
+      r = options.r;
+      validateUint32(r, "r");
+    }
+    if (options.blockSize !== undefined) {
+      if (hasR) throw new ERR_INCOMPATIBLE_OPTION_PAIR("r", "blockSize");
+      r = options.blockSize;
+      validateUint32(r, "blockSize");
+    }
+    const hasP = options.p !== undefined;
+    if (hasP) {
+      p = options.p;
+      validateUint32(p, "p");
+    }
+    if (options.parallelization !== undefined) {
+      if (hasP) {
+        throw new ERR_INCOMPATIBLE_OPTION_PAIR("p", "parallelization");
+      }
+      p = options.parallelization;
+      validateUint32(p, "parallelization");
+    }
+    if (options.maxmem !== undefined) {
+      maxmem = options.maxmem;
+      validateInteger(maxmem, "maxmem", 0);
+    }
+    if (N === 0) N = defaults.N;
+    if (r === 0) r = defaults.r;
+    if (p === 0) p = defaults.p;
+    if (maxmem === 0) maxmem = defaults.maxmem;
+  }
+
+  return { password, salt, keylen, N, r, p, maxmem };
+}
+
+function validateScryptParams(
+  N: number,
+  r: number,
+  p: number,
+  maxmem: number,
+) {
+  if (N < 2 || (N & (N - 1)) !== 0) {
+    throw new ERR_CRYPTO_INVALID_SCRYPT_PARAMS();
+  }
+
+  const NBig = BigInt(N);
+  const rBig = BigInt(r);
+  const pBig = BigInt(p);
+  const maxmemBig = BigInt(maxmem);
+  const rTimes16 = rBig * 16n;
+  if (
+    (rTimes16 <= 32n && NBig >= (1n << rTimes16)) ||
+    pBig * rBig > ((1n << 30n) - 1n) ||
+    128n * NBig * rBig >= maxmemBig
+  ) {
+    throw new ERR_CRYPTO_INVALID_SCRYPT_PARAMS(
+      "error:030000AC:digital envelope routines::memory limit exceeded",
     );
-  } catch (err: unknown) {
-    return cb(err);
   }
 }
 
-export default {
+return {
   scrypt,
   scryptSync,
+  default: {
+    scrypt,
+    scryptSync,
+  },
 };
+})();

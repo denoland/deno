@@ -1,48 +1,106 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { op_preview_entries } from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  op_get_env_no_permission_check,
+  op_preview_entries,
+} = core.ops;
+const lazyProcess = core.createLazyLoader("node:process");
+const {
+  ArrayIsArray,
+  ArrayFrom,
+  ArrayPrototypeForEach,
+  ArrayPrototypePush,
+  ArrayPrototypeUnshift,
+  Boolean,
+  ErrorCaptureStackTrace,
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
+  MapPrototypeDelete,
+  MapPrototypeGet,
+  MapPrototypeHas,
+  MapPrototypeSet,
+  MathFloor,
+  Number,
+  NumberPOSITIVE_INFINITY,
+  NumberPrototypeToFixed,
+  ObjectCreate,
+  ObjectDefineProperties,
+  ObjectDefineProperty,
+  ObjectKeys,
+  ObjectHasOwn,
+  ObjectValues,
+  ReflectApply,
+  ReflectConstruct,
+  ReflectOwnKeys,
+  SafeArrayIterator,
+  SafeMap,
+  SafeMapIterator,
+  SafeRegExp,
+  SafeSetIterator,
+  SafeWeakMap,
+  StringPrototypeIncludes,
+  StringPrototypePadStart,
+  StringPrototypeRepeat,
+  StringPrototypeReplace,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  Symbol,
+  SymbolHasInstance,
+  SymbolToStringTag,
+  WeakMapPrototypeGet,
+  WeakMapPrototypeSet,
+} = primordials;
 
 // Mock trace for now
 const trace = () => {};
-import {
+const { channel: createDiagnosticsChannel } = core.loadExtScript(
+  "ext:deno_node/diagnostics_channel.js",
+);
+const onConsoleLog = createDiagnosticsChannel("console.log");
+const onConsoleInfo = createDiagnosticsChannel("console.info");
+const onConsoleDebug = createDiagnosticsChannel("console.debug");
+const onConsoleWarn = createDiagnosticsChannel("console.warn");
+const onConsoleError = createDiagnosticsChannel("console.error");
+const {
   ERR_CONSOLE_WRITABLE_STREAM,
   ERR_INCOMPATIBLE_OPTION_PAIR,
   ERR_INVALID_ARG_VALUE,
   isStackOverflowError,
-} from "ext:deno_node/internal/errors.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
   validateArray,
   validateInteger,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { Buffer } from "node:buffer";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { isBuffer } = Buffer;
-import {
+const {
   formatWithOptions,
   inspect,
-} from "ext:deno_node/internal/util/inspect.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/inspect.mjs");
+const {
   isMap,
   isMapIterator,
   isSet,
   isSetIterator,
   isTypedArray,
-} from "ext:deno_node/internal/util/types.ts";
-import {
-  CHAR_LOWERCASE_B as kTraceBegin,
-  CHAR_LOWERCASE_E as kTraceEnd,
-  CHAR_LOWERCASE_N as kTraceInstant,
-  CHAR_UPPERCASE_C as kTraceCount,
-} from "ext:deno_node/internal/constants.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const {
+  CHAR_LOWERCASE_B: kTraceBegin,
+  CHAR_LOWERCASE_E: kTraceEnd,
+  CHAR_LOWERCASE_N: kTraceInstant,
+  CHAR_UPPERCASE_C: kTraceCount,
+} = core.loadExtScript("ext:deno_node/internal/constants.ts");
+const {
   clearScreenDown,
   cursorTo,
-} from "ext:deno_node/internal/readline/callbacks.mjs";
-import cliTable from "ext:deno_node/internal/cli_table.ts";
+} = core.loadExtScript("ext:deno_node/internal/readline/callbacks.mjs");
+const { default: cliTable } = core.loadExtScript(
+  "ext:deno_node/internal/cli_table.ts",
+);
 const kCounts = Symbol("counts");
 
 const kTraceConsoleCategory = "node,node.console";
@@ -67,14 +125,14 @@ const kBindStreamsLazy = Symbol("kBindStreamsLazy");
 const kUseStdout = Symbol("kUseStdout");
 const kUseStderr = Symbol("kUseStderr");
 
-const optionsMap = new WeakMap();
+const optionsMap = new SafeWeakMap();
 
 function Console(options /* or: stdout, stderr, ignoreErrors = true */) {
   // We have to test new.target here to see if this function is called
   // with new, because we need to define a custom instanceof to accommodate
   // the global console.
   if (!new.target) {
-    return Reflect.construct(Console, arguments);
+    return ReflectConstruct(Console, arguments);
   }
 
   if (!options || typeof options.write === "function") {
@@ -102,7 +160,13 @@ function Console(options /* or: stdout, stderr, ignoreErrors = true */) {
   }
 
   if (typeof colorMode !== "boolean" && colorMode !== "auto") {
-    throw new ERR_INVALID_ARG_VALUE("colorMode", colorMode);
+    // Match Node: reason lists the accepted values (see
+    // lib/internal/console/constructor.js).
+    throw new ERR_INVALID_ARG_VALUE(
+      "colorMode",
+      colorMode,
+      "must be one of: 'auto', true, false",
+    );
   }
 
   if (groupIndentation !== undefined) {
@@ -126,16 +190,17 @@ function Console(options /* or: stdout, stderr, ignoreErrors = true */) {
         "colorMode",
       );
     }
-    optionsMap.set(this, inspectOptions);
+    WeakMapPrototypeSet(optionsMap, this, inspectOptions);
   }
 
   // Bind the prototype functions to this Console instance
-  Object.keys(Console.prototype).forEach((key) => {
+  ArrayPrototypeForEach(ObjectKeys(Console.prototype), (key) => {
     // We have to bind the methods grabbed from the instance instead of from
     // the prototype so that users extending the Console can override them
     // from the prototype chain of the subclass.
-    this[key] = this[key].bind(this);
-    Object.defineProperty(this[key], "name", {
+    this[key] = FunctionPrototypeBind(this[key], this);
+    ObjectDefineProperty(this[key], "name", {
+      __proto__: null,
       value: key,
     });
   });
@@ -151,7 +216,8 @@ const consolePropAttributes = {
 };
 
 // Fixup global.console instanceof global.console.Console
-Object.defineProperty(Console, Symbol.hasInstance, {
+ObjectDefineProperty(Console, SymbolHasInstance, {
+  __proto__: null,
   value(instance) {
     return instance === console || instance[kIsConsole];
   },
@@ -160,26 +226,29 @@ Object.defineProperty(Console, Symbol.hasInstance, {
 const kColorInspectOptions = { colors: true };
 const kNoColorInspectOptions = {};
 
-Object.defineProperties(Console.prototype, {
+ObjectDefineProperties(Console.prototype, {
   [kBindStreamsEager]: {
+    __proto__: null,
     ...consolePropAttributes,
     // Eager version for the Console constructor
     value: function (stdout, stderr) {
-      Object.defineProperties(this, {
-        "_stdout": { ...consolePropAttributes, value: stdout },
-        "_stderr": { ...consolePropAttributes, value: stderr },
+      ObjectDefineProperties(this, {
+        "_stdout": { __proto__: null, ...consolePropAttributes, value: stdout },
+        "_stderr": { __proto__: null, ...consolePropAttributes, value: stderr },
       });
     },
   },
   [kBindStreamsLazy]: {
+    __proto__: null,
     ...consolePropAttributes,
     // Lazily load the stdout and stderr from an object so we don't
     // create the stdio streams when they are not even accessed
     value: function (object) {
       let stdout;
       let stderr;
-      Object.defineProperties(this, {
+      ObjectDefineProperties(this, {
         "_stdout": {
+          __proto__: null,
           enumerable: false,
           configurable: true,
           get() {
@@ -191,6 +260,7 @@ Object.defineProperties(Console.prototype, {
           },
         },
         "_stderr": {
+          __proto__: null,
           enumerable: false,
           configurable: true,
           get() {
@@ -205,32 +275,58 @@ Object.defineProperties(Console.prototype, {
     },
   },
   [kBindProperties]: {
+    __proto__: null,
     ...consolePropAttributes,
     value: function (ignoreErrors, colorMode, groupIndentation = 2) {
-      Object.defineProperties(this, {
+      ObjectDefineProperties(this, {
         "_stdoutErrorHandler": {
+          __proto__: null,
           ...consolePropAttributes,
           value: createWriteErrorHandler(this, kUseStdout),
         },
         "_stderrErrorHandler": {
+          __proto__: null,
           ...consolePropAttributes,
           value: createWriteErrorHandler(this, kUseStderr),
         },
         "_ignoreErrors": {
+          __proto__: null,
           ...consolePropAttributes,
           value: Boolean(ignoreErrors),
         },
-        "_times": { ...consolePropAttributes, value: new Map() },
+        "_times": {
+          __proto__: null,
+          ...consolePropAttributes,
+          value: new SafeMap(),
+        },
         // Corresponds to https://console.spec.whatwg.org/#count-map
-        [kCounts]: { ...consolePropAttributes, value: new Map() },
-        [kColorMode]: { ...consolePropAttributes, value: colorMode },
-        [kIsConsole]: { ...consolePropAttributes, value: true },
-        [kGroupIndent]: { ...consolePropAttributes, value: "" },
+        [kCounts]: {
+          __proto__: null,
+          ...consolePropAttributes,
+          value: new SafeMap(),
+        },
+        [kColorMode]: {
+          __proto__: null,
+          ...consolePropAttributes,
+          value: colorMode,
+        },
+        [kIsConsole]: {
+          __proto__: null,
+          ...consolePropAttributes,
+          value: true,
+        },
+        [kGroupIndent]: {
+          __proto__: null,
+          ...consolePropAttributes,
+          value: "",
+        },
         [kGroupIndentationWidth]: {
+          __proto__: null,
           ...consolePropAttributes,
           value: groupIndentation,
         },
-        [Symbol.toStringTag]: {
+        [SymbolToStringTag]: {
+          __proto__: null,
           writable: false,
           enumerable: false,
           configurable: true,
@@ -240,6 +336,7 @@ Object.defineProperties(Console.prototype, {
     },
   },
   [kWriteToConsole]: {
+    __proto__: null,
     ...consolePropAttributes,
     value: function (streamSymbol, string) {
       const ignoreErrors = this._ignoreErrors;
@@ -252,8 +349,12 @@ Object.defineProperties(Console.prototype, {
         : this._stderrErrorHandler;
 
       if (groupIndent.length !== 0) {
-        if (string.includes("\n")) {
-          string = string.replace(/\n/g, `\n${groupIndent}`);
+        if (StringPrototypeIncludes(string, "\n")) {
+          string = StringPrototypeReplace(
+            string,
+            new SafeRegExp(/\n/g),
+            `\n${groupIndent}`,
+          );
         }
         string = groupIndent + string;
       }
@@ -285,6 +386,7 @@ Object.defineProperties(Console.prototype, {
     },
   },
   [kGetInspectOptions]: {
+    __proto__: null,
     ...consolePropAttributes,
     value: function (stream) {
       let color = this[kColorMode];
@@ -296,7 +398,7 @@ Object.defineProperties(Console.prototype, {
         );
       }
 
-      const options = optionsMap.get(this);
+      const options = WeakMapPrototypeGet(optionsMap, this);
       if (options) {
         if (options.colors === undefined) {
           options.colors = color;
@@ -308,19 +410,21 @@ Object.defineProperties(Console.prototype, {
     },
   },
   [kFormatForStdout]: {
+    __proto__: null,
     ...consolePropAttributes,
     value: function (args) {
       const opts = this[kGetInspectOptions](this._stdout);
-      args.unshift(opts);
-      return Reflect.apply(formatWithOptions, null, args);
+      ArrayPrototypeUnshift(args, opts);
+      return ReflectApply(formatWithOptions, null, args);
     },
   },
   [kFormatForStderr]: {
+    __proto__: null,
     ...consolePropAttributes,
     value: function (args) {
       const opts = this[kGetInspectOptions](this._stderr);
-      args.unshift(opts);
-      return Reflect.apply(formatWithOptions, null, args);
+      ArrayPrototypeUnshift(args, opts);
+      return ReflectApply(formatWithOptions, null, args);
     },
   },
 });
@@ -349,10 +453,37 @@ function createWriteErrorHandler(instance, streamSymbol) {
 
 const consoleMethods = {
   log(...args) {
+    if (onConsoleLog.hasSubscribers) {
+      onConsoleLog.publish(args);
+    }
+    this[kWriteToConsole](kUseStdout, this[kFormatForStdout](args));
+  },
+
+  info(...args) {
+    if (onConsoleInfo.hasSubscribers) {
+      onConsoleInfo.publish(args);
+    }
+    this[kWriteToConsole](kUseStdout, this[kFormatForStdout](args));
+  },
+
+  debug(...args) {
+    if (onConsoleDebug.hasSubscribers) {
+      onConsoleDebug.publish(args);
+    }
     this[kWriteToConsole](kUseStdout, this[kFormatForStdout](args));
   },
 
   warn(...args) {
+    if (onConsoleWarn.hasSubscribers) {
+      onConsoleWarn.publish(args);
+    }
+    this[kWriteToConsole](kUseStderr, this[kFormatForStderr](args));
+  },
+
+  error(...args) {
+    if (onConsoleError.hasSubscribers) {
+      onConsoleError.publish(args);
+    }
     this[kWriteToConsole](kUseStderr, this[kFormatForStderr](args));
   },
 
@@ -370,12 +501,14 @@ const consoleMethods = {
   time(label = "default") {
     // Coerces everything other than Symbol to a string
     label = `${label}`;
-    if (this._times.has(label)) {
-      emitWarning(`Label '${label}' already exists for console.time()`);
+    if (MapPrototypeHas(this._times, label)) {
+      lazyProcess().emitWarning(
+        `Label '${label}' already exists for console.time()`,
+      );
       return;
     }
     trace(kTraceBegin, kTraceConsoleCategory, `time::${label}`, 0);
-    this._times.set(label, process.hrtime());
+    MapPrototypeSet(this._times, label, process.hrtime());
   },
 
   timeEnd(label = "default") {
@@ -384,7 +517,7 @@ const consoleMethods = {
     const found = timeLogImpl(this, "timeEnd", label);
     trace(kTraceEnd, kTraceConsoleCategory, `time::${label}`, 0);
     if (found) {
-      this._times.delete(label);
+      MapPrototypeDelete(this._times, label);
     }
   },
 
@@ -400,7 +533,7 @@ const consoleMethods = {
       name: "Trace",
       message: this[kFormatForStderr](args),
     };
-    Error.captureStackTrace(err, trace);
+    ErrorCaptureStackTrace(err, trace);
     this.error(err.stack);
   },
 
@@ -408,7 +541,7 @@ const consoleMethods = {
     if (!expression) {
       args[0] = `Assertion failed${args.length === 0 ? "" : `: ${args[0]}`}`;
       // The arguments will be formatted in warn() again
-      Reflect.apply(this.warn, this, args);
+      ReflectApply(this.warn, this, args);
     }
   },
 
@@ -416,7 +549,9 @@ const consoleMethods = {
   clear() {
     // It only makes sense to clear if _stdout is a TTY.
     // Otherwise, do nothing.
-    if (this._stdout.isTTY && process.env.TERM !== "dumb") {
+    if (
+      this._stdout.isTTY && op_get_env_no_permission_check("TERM") !== "dumb"
+    ) {
       cursorTo(this._stdout, 0, 0);
       clearScreenDown(this._stdout);
     }
@@ -428,13 +563,13 @@ const consoleMethods = {
     // coerced to strings. e.g. Symbol is not allowed
     label = `${label}`;
     const counts = this[kCounts];
-    let count = counts.get(label);
+    let count = MapPrototypeGet(counts, label);
     if (count === undefined) {
       count = 1;
     } else {
       count++;
     }
-    counts.set(label, count);
+    MapPrototypeSet(counts, label, count);
     trace(kTraceCount, kTraceConsoleCategory, `count::${label}`, 0, count);
     this.log(`${label}: ${count}`);
   },
@@ -442,23 +577,27 @@ const consoleMethods = {
   // Defined by: https://console.spec.whatwg.org/#countreset
   countReset(label = "default") {
     const counts = this[kCounts];
-    if (!counts.has(label)) {
-      emitWarning(`Count for '${label}' does not exist`);
+    if (!MapPrototypeHas(counts, label)) {
+      lazyProcess().emitWarning(`Count for '${label}' does not exist`);
       return;
     }
     trace(kTraceCount, kTraceConsoleCategory, `count::${label}`, 0, 0);
-    counts.delete(`${label}`);
+    MapPrototypeDelete(counts, `${label}`);
   },
 
   group(...data) {
     if (data.length > 0) {
-      Reflect.apply(this.log, this, data);
+      ReflectApply(this.log, this, data);
     }
-    this[kGroupIndent] += " ".repeat(this[kGroupIndentationWidth]);
+    this[kGroupIndent] += StringPrototypeRepeat(
+      " ",
+      this[kGroupIndentationWidth],
+    );
   },
 
   groupEnd() {
-    this[kGroupIndent] = this[kGroupIndent].slice(
+    this[kGroupIndent] = StringPrototypeSlice(
+      this[kGroupIndent],
       0,
       this[kGroupIndent].length - this[kGroupIndentationWidth],
     );
@@ -480,19 +619,19 @@ const consoleMethods = {
       const depth = v !== null &&
           typeof v === "object" &&
           !isArray(v) &&
-          Object.keys(v).length > 2
+          ObjectKeys(v).length > 2
         ? -1
         : 0;
       const opt = {
         depth,
         maxArrayLength: 3,
-        breakLength: Infinity,
+        breakLength: NumberPOSITIVE_INFINITY,
         ...this[kGetInspectOptions](this._stdout),
       };
       return inspect(v, opt);
     };
     const getIndexArray = (length) =>
-      Array.from(
+      ArrayFrom(
         { length },
         (_, i) => _inspect(i),
       );
@@ -512,14 +651,14 @@ const consoleMethods = {
       let length = 0;
       if (mapIter) {
         for (; i < tabularData.length / 2; ++i) {
-          keys.push(_inspect(tabularData[i * 2]));
-          values.push(_inspect(tabularData[i * 2 + 1]));
+          ArrayPrototypePush(keys, _inspect(tabularData[i * 2]));
+          ArrayPrototypePush(values, _inspect(tabularData[i * 2 + 1]));
           length++;
         }
       } else {
-        for (const { 0: k, 1: v } of tabularData) {
-          keys.push(_inspect(k));
-          values.push(_inspect(v));
+        for (const { 0: k, 1: v } of new SafeMapIterator(tabularData)) {
+          ArrayPrototypePush(keys, _inspect(k));
+          ArrayPrototypePush(values, _inspect(v));
           length++;
         }
       }
@@ -543,18 +682,22 @@ const consoleMethods = {
     if (setlike) {
       const values = [];
       let length = 0;
-      console.log("tabularData", tabularData);
-      for (const v of tabularData) {
-        values.push(_inspect(v));
+      const setlikeIterator = isSet(tabularData)
+        ? new SafeSetIterator(tabularData)
+        : new SafeArrayIterator(tabularData);
+      // Ignoring lint. `setlikeIterator` has a safe primordial value.
+      // deno-lint-ignore prefer-primordials
+      for (const v of setlikeIterator) {
+        ArrayPrototypePush(values, _inspect(v));
         length++;
       }
       return final([iterKey, valuesKey], [getIndexArray(length), values]);
     }
 
-    const map = Object.create(null);
+    const map = ObjectCreate(null);
     let hasPrimitives = false;
     const valuesKeyArray = [];
-    const indexKeyArray = Object.keys(tabularData);
+    const indexKeyArray = ObjectKeys(tabularData);
 
     for (; i < indexKeyArray.length; i++) {
       const item = tabularData[indexKeyArray[i]];
@@ -564,14 +707,14 @@ const consoleMethods = {
         hasPrimitives = true;
         valuesKeyArray[i] = _inspect(item);
       } else {
-        const keys = properties || Object.keys(item);
-        for (const key of keys) {
+        const keys = properties || ObjectKeys(item);
+        for (const key of new SafeArrayIterator(keys)) {
           if (map[key] === undefined) {
             map[key] = [];
           }
           if (
             (primitive && properties) ||
-            !Object.hasOwn(item, key)
+            !ObjectHasOwn(item, key)
           ) {
             map[key][i] = "";
           } else {
@@ -581,14 +724,14 @@ const consoleMethods = {
       }
     }
 
-    const keys = Object.keys(map);
-    const values = Object.values(map);
+    const keys = ObjectKeys(map);
+    const values = ObjectValues(map);
     if (hasPrimitives) {
-      keys.push(valuesKey);
-      values.push(valuesKeyArray);
+      ArrayPrototypePush(keys, valuesKey);
+      ArrayPrototypePush(values, valuesKeyArray);
     }
-    keys.unshift(indexKey);
-    values.unshift(indexKeyArray);
+    ArrayPrototypeUnshift(keys, indexKey);
+    ArrayPrototypeUnshift(values, indexKeyArray);
 
     return final(keys, values);
   },
@@ -596,9 +739,9 @@ const consoleMethods = {
 
 // Returns true if label was found
 function timeLogImpl(self, name, label, data) {
-  const time = self._times.get(label);
+  const time = MapPrototypeGet(self._times, label);
   if (time === undefined) {
-    emitWarning(`No such label '${label}' for console.${name}()`);
+    lazyProcess().emitWarning(`No such label '${label}' for console.${name}()`);
     return false;
   }
   const duration = process.hrtime(time);
@@ -609,13 +752,13 @@ function timeLogImpl(self, name, label, data) {
   if (data === undefined) {
     self.log("%s: %s", label, formatted);
   } else {
-    self.log("%s: %s", label, formatted, ...data);
+    self.log("%s: %s", label, formatted, ...new SafeArrayIterator(data));
   }
   return true;
 }
 
 function pad(value) {
-  return `${value}`.padStart(2, "0");
+  return StringPrototypePadStart(`${value}`, 2, "0");
 }
 
 function formatTime(ms) {
@@ -626,26 +769,29 @@ function formatTime(ms) {
   if (ms >= kSecond) {
     if (ms >= kMinute) {
       if (ms >= kHour) {
-        hours = Math.floor(ms / kHour);
+        hours = MathFloor(ms / kHour);
         ms = ms % kHour;
       }
-      minutes = Math.floor(ms / kMinute);
+      minutes = MathFloor(ms / kMinute);
       ms = ms % kMinute;
     }
     seconds = ms / kSecond;
   }
 
   if (hours !== 0 || minutes !== 0) {
-    ({ 0: seconds, 1: ms } = seconds.toFixed(3).split("."));
+    ({ 0: seconds, 1: ms } = StringPrototypeSplit(
+      NumberPrototypeToFixed(seconds, 3),
+      ".",
+    ));
     const res = hours !== 0 ? `${hours}:${pad(minutes)}` : minutes;
     return `${res}:${pad(seconds)}.${ms} (${hours !== 0 ? "h:m" : ""}m:ss.mmm)`;
   }
 
   if (seconds !== 0) {
-    return `${seconds.toFixed(3)}s`;
+    return `${NumberPrototypeToFixed(seconds, 3)}s`;
   }
 
-  return `${Number(ms.toFixed(3))}ms`;
+  return `${Number(NumberPrototypeToFixed(ms, 3))}ms`;
 }
 
 const keyKey = "Key";
@@ -653,29 +799,33 @@ const valuesKey = "Values";
 const indexKey = "(index)";
 const iterKey = "(iteration index)";
 
-const isArray = (v) => Array.isArray(v) || isTypedArray(v) || isBuffer(v);
+const isArray = (v) => ArrayIsArray(v) || isTypedArray(v) || isBuffer(v);
 
 function noop() {}
 
-for (const method of Reflect.ownKeys(consoleMethods)) {
+for (const method of new SafeArrayIterator(ReflectOwnKeys(consoleMethods))) {
   Console.prototype[method] = consoleMethods[method];
 }
 
-Console.prototype.debug = Console.prototype.log;
-Console.prototype.info = Console.prototype.log;
 Console.prototype.dirxml = Console.prototype.log;
-Console.prototype.error = Console.prototype.warn;
 Console.prototype.groupCollapsed = Console.prototype.group;
 
-export function bindStreamsLazy(console, object) {
-  Console.prototype[kBindStreamsLazy].call(console, object);
+function bindStreamsLazy(console, object) {
+  FunctionPrototypeCall(Console.prototype[kBindStreamsLazy], console, object);
 }
 
-export { Console, formatTime, kBindProperties, kBindStreamsLazy };
-export default {
+return {
   Console,
-  kBindStreamsLazy,
-  kBindProperties,
   formatTime,
+  kBindProperties,
+  kBindStreamsLazy,
   bindStreamsLazy,
+  default: {
+    Console,
+    kBindStreamsLazy,
+    kBindProperties,
+    formatTime,
+    bindStreamsLazy,
+  },
 };
+})();

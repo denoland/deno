@@ -1,0 +1,16 @@
+[UNORDERED_START]
+Download http://localhost:4262/@denotest2%2fbasic
+Download http://localhost:4261/@denotest%2fbasic
+Download http://localhost:4262/@denotest2/basic/1.0.0.tgz
+Download http://localhost:4261/@denotest/basic/1.0.0.tgz
+Initialize @denotest2/basic@1.0.0
+Initialize @denotest/basic@1.0.0
+[UNORDERED_END]
+Installed [WILDLINE] packages in [WILDCARD]
+Reused [WILDLINE] packages from cache
+Downloaded [WILDLINE] packages from JSR
+Downloaded [WILDLINE] packages from npm
+[WILDLINE]
+
+Dependencies:
+[WILDCARD]

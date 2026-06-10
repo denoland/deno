@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "if": "unix",
+    // notice how the math folder is not included
+    "args": "compile --allow-read=data --include src --output main main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./main",
+    "args": [],
+    "output": "output.out",
+    "exitCode": 0
+  }, {
+    "if": "windows",
+    "args": "compile --allow-read=data --include src --output main.exe main.js",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./main.exe",
+    "args": [],
+    "output": "output.out",
+    "exitCode": 0
+  }]
+}

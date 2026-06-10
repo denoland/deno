@@ -1,36 +1,52 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::mem::MaybeUninit;
 
-use crate::NodePermissions;
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::ToV8;
+use deno_core::op2;
+use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionsContainer;
+use sys_traits::EnvHomeDir;
 
 mod cpus;
 pub mod priority;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum OsError {
+  #[class(inherit)]
   #[error(transparent)]
-  Priority(priority::PriorityError),
+  Priority(#[inherit] priority::PriorityError),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
-  #[error("Failed to get cpu info")]
-  FailedToGetCpuInfo,
+  Permission(
+    #[from]
+    #[inherit]
+    PermissionCheckError,
+  ),
+  #[class(inherit)]
   #[error("Failed to get user info")]
-  FailedToGetUserInfo(#[source] std::io::Error),
+  FailedToGetUserInfo(
+    #[source]
+    #[inherit]
+    std::io::Error,
+  ),
+  #[class(inherit)]
+  #[error("Failed to get groups")]
+  FailedToGetGroups(
+    #[source]
+    #[inherit]
+    std::io::Error,
+  ),
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_node_os_get_priority<P>(
+pub fn op_node_os_get_priority(
   state: &mut OpState,
   pid: u32,
-) -> Result<i32, OsError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<i32, OsError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("getPriority", "node:os.getPriority()")?;
   }
 
@@ -38,23 +54,20 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_node_os_set_priority<P>(
+pub fn op_node_os_set_priority(
   state: &mut OpState,
   pid: u32,
   priority: i32,
-) -> Result<(), OsError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<(), OsError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("setPriority", "node:os.setPriority()")?;
   }
 
   priority::set_priority(pid, priority).map_err(OsError::Priority)
 }
 
-#[derive(serde::Serialize)]
+#[derive(ToV8)]
 pub struct UserInfo {
   username: String,
   homedir: String,
@@ -124,8 +137,8 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
   use std::os::windows::ffi::OsStringExt;
 
   use windows_sys::Win32::Foundation::CloseHandle;
-  use windows_sys::Win32::Foundation::GetLastError;
   use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+  use windows_sys::Win32::Foundation::GetLastError;
   use windows_sys::Win32::Foundation::HANDLE;
   use windows_sys::Win32::System::Threading::GetCurrentProcess;
   use windows_sys::Win32::System::Threading::OpenProcessToken;
@@ -194,16 +207,12 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
 }
 
 #[op2(stack_trace)]
-#[serde]
-pub fn op_node_os_user_info<P>(
+pub fn op_node_os_user_info(
   state: &mut OpState,
   #[smi] uid: u32,
-) -> Result<UserInfo, OsError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<UserInfo, OsError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions
       .check_sys("userInfo", "node:os.userInfo()")
       .map_err(OsError::Permission)?;
@@ -213,14 +222,9 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_geteuid<P>(
-  state: &mut OpState,
-) -> Result<u32, deno_core::error::AnyError>
-where
-  P: NodePermissions + 'static,
-{
+pub fn op_geteuid(state: &mut OpState) -> Result<u32, PermissionCheckError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("uid", "node:os.geteuid()")?;
   }
 
@@ -234,14 +238,9 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_getegid<P>(
-  state: &mut OpState,
-) -> Result<u32, deno_core::error::AnyError>
-where
-  P: NodePermissions + 'static,
-{
+pub fn op_getegid(state: &mut OpState) -> Result<u32, PermissionCheckError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("getegid", "node:os.getegid()")?;
   }
 
@@ -256,30 +255,64 @@ where
 
 #[op2(stack_trace)]
 #[serde]
-pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError>
-where
-  P: NodePermissions + 'static,
-{
+pub fn op_getgroups(state: &mut OpState) -> Result<Vec<u32>, OsError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
+    permissions.check_sys("gid", "node:process.getgroups()")?;
+  }
+
+  #[cfg(windows)]
+  {
+    Ok(vec![])
+  }
+  #[cfg(unix)]
+  {
+    // SAFETY: Call to libc getgroups with 0/null to query group count.
+    let ngroups = unsafe { libc::getgroups(0, std::ptr::null_mut()) };
+    if ngroups < 0 {
+      return Err(OsError::FailedToGetGroups(std::io::Error::last_os_error()));
+    }
+    if ngroups == 0 {
+      return Ok(vec![]);
+    }
+    let mut groups: Vec<libc::gid_t> = vec![0; ngroups as usize];
+    // SAFETY: Call to libc getgroups with properly sized buffer.
+    let ngroups = unsafe { libc::getgroups(ngroups, groups.as_mut_ptr()) };
+    if ngroups < 0 {
+      return Err(OsError::FailedToGetGroups(std::io::Error::last_os_error()));
+    }
+    groups.truncate(ngroups as usize);
+    #[allow(
+      clippy::unnecessary_cast,
+      reason = "gid_t may not be u32 on all platforms"
+    )]
+    Ok(groups.iter().map(|&g| g as u32).collect())
+  }
+}
+
+#[op2(stack_trace)]
+pub fn op_cpus(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError> {
+  {
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("cpus", "node:os.cpus()")?;
   }
 
-  cpus::cpu_info().ok_or(OsError::FailedToGetCpuInfo)
+  Ok(cpus::cpu_info().unwrap_or_default())
 }
 
 #[op2(stack_trace)]
 #[string]
-pub fn op_homedir<P>(
+pub fn op_homedir(
   state: &mut OpState,
-) -> Result<Option<String>, deno_core::error::AnyError>
-where
-  P: NodePermissions + 'static,
-{
+) -> Result<Option<String>, PermissionCheckError> {
   {
-    let permissions = state.borrow_mut::<P>();
+    let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions.check_sys("homedir", "node:os.homedir()")?;
   }
 
-  Ok(home::home_dir().map(|path| path.to_string_lossy().to_string()))
+  Ok(
+    sys_traits::impls::RealSys
+      .env_home_dir()
+      .map(|path| path.to_string_lossy().into_owned()),
+  )
 }

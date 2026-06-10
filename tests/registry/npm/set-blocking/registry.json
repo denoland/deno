@@ -65,6 +65,5 @@
   "bugs": {
     "url": "https://github.com/yargs/set-blocking/issues"
   },
-  "license": "ISC",
-  "readmeFilename": "README.md"
+  "license": "ISC"
 }

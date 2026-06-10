@@ -111,6 +111,5 @@
   "bugs": {
     "url": "https://github.com/chaijs/get-func-name/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

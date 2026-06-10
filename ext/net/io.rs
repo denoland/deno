@@ -1,6 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_core::futures::TryFutureExt;
+use std::borrow::Cow;
+use std::rc::Rc;
+
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -8,15 +10,14 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::futures::TryFutureExt;
+use deno_error::JsErrorBox;
 use socket2::SockRef;
-use std::borrow::Cow;
-use std::rc::Rc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp;
-
 #[cfg(unix)]
 use tokio::net::unix;
 
@@ -90,10 +91,12 @@ where
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MapError {
+  #[class(inherit)]
   #[error("{0}")]
   Io(std::io::Error),
+  #[class(generic)]
   #[error("Unable to get resources")]
   NoResources,
 }
@@ -105,12 +108,12 @@ impl Resource for TcpStreamResource {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "tcpStream".into()
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(Into::into))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 
   fn close(self: Rc<Self>) {
@@ -119,6 +122,21 @@ impl Resource for TcpStreamResource {
 }
 
 impl TcpStreamResource {
+  pub fn dup_raw_fd(self: &Rc<Self>) -> Option<i32> {
+    let wr = RcRef::map(self, |r| &r.wr).try_borrow()?;
+    let sock = SockRef::from(wr.as_ref().as_ref()).try_clone().ok()?;
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::IntoRawFd;
+      Some(sock.into_raw_fd())
+    }
+    #[cfg(windows)]
+    {
+      use std::os::windows::io::IntoRawSocket;
+      i32::try_from(sock.into_raw_socket()).ok()
+    }
+  }
+
   pub fn set_nodelay(self: Rc<Self>, nodelay: bool) -> Result<(), MapError> {
     self.map_socket(Box::new(move |socket| socket.set_nodelay(nodelay)))
   }
@@ -130,7 +148,7 @@ impl TcpStreamResource {
     self.map_socket(Box::new(move |socket| socket.set_keepalive(keepalive)))
   }
 
-  #[allow(clippy::type_complexity)]
+  #[allow(clippy::type_complexity, reason = "internal code")]
   fn map_socket(
     self: Rc<Self>,
     map: Box<dyn FnOnce(SockRef) -> Result<(), std::io::Error>>,
@@ -161,10 +179,8 @@ impl UnixStreamResource {
   fn write(self: Rc<Self>, _data: &[u8]) -> AsyncResult<usize> {
     unreachable!()
   }
-  #[allow(clippy::unused_async)]
-  pub async fn shutdown(
-    self: Rc<Self>,
-  ) -> Result<(), deno_core::error::AnyError> {
+  #[allow(clippy::unused_async, reason = "not supported")]
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), JsErrorBox> {
     unreachable!()
   }
   pub fn cancel_read_ops(&self) {
@@ -176,12 +192,61 @@ impl Resource for UnixStreamResource {
   deno_core::impl_readable_byob!();
   deno_core::impl_writable!();
 
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "unixStream".into()
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(Into::into))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel_read_ops();
+  }
+}
+
+#[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+pub type VsockStreamResource =
+  FullDuplexResource<tokio_vsock::OwnedReadHalf, tokio_vsock::OwnedWriteHalf>;
+
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
+pub struct VsockStreamResource;
+
+#[cfg(not(any(
+  target_os = "android",
+  target_os = "linux",
+  target_os = "macos"
+)))]
+impl VsockStreamResource {
+  fn read(self: Rc<Self>, _data: &mut [u8]) -> AsyncResult<usize> {
+    unreachable!()
+  }
+  fn write(self: Rc<Self>, _data: &[u8]) -> AsyncResult<usize> {
+    unreachable!()
+  }
+  #[allow(clippy::unused_async, reason = "not supported")]
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), JsErrorBox> {
+    unreachable!()
+  }
+  pub fn cancel_read_ops(&self) {
+    unreachable!()
+  }
+}
+
+impl Resource for VsockStreamResource {
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
+  fn name(&self) -> Cow<'_, str> {
+    "vsockStream".into()
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 
   fn close(self: Rc<Self>) {

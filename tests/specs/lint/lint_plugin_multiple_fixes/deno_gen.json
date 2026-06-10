@@ -1,0 +1,5 @@
+{
+  "lint": {
+    "plugins": ["./plugin_gen.ts"]
+  }
+}

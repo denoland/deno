@@ -11,7 +11,8 @@
     },
     "broken": {
       "args": "fmt broken.html",
-      "output": "broken.out"
+      "output": "broken.out",
+      "exitCode": 1
     },
     "with_js": {
       "args": "fmt --check with_js.html",

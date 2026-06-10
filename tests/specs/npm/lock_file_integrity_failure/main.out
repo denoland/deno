@@ -1,12 +1,6 @@
 Download [WILDCARD]
-error: Integrity check failed for package: "npm:@babel/parser@7.19.0". Unable to verify that the package
-is the same as when the lockfile was generated.
-
-Actual: sha512-74bEXKX2h+8rrfQUfsBfuZZHzsEs6Eql4pqy/T4Nn6Y9wNPggQOqD6z6pn5Bl8ZfysKouFZT/UXEH94ummEeQw==
-Expected: sha512-foobar!
-
-This could be caused by:
-  * the lock file may be corrupt
-  * the source itself may be corrupt
-
-Investigate the lockfile; delete it to regenerate the lockfile at "[WILDCARD]lock.json".
+error: Failed caching npm package '@babel/parser@7.19.0'
+    0: Tarball checksum did not match what was provided by npm registry for @babel/parser@7.19.0.
+       
+       Expected: foobar!
+       Actual: 74bEXKX2h+8rrfQUfsBfuZZHzsEs6Eql4pqy/T4Nn6Y9wNPggQOqD6z6pn5Bl8ZfysKouFZT/UXEH94ummEeQw==

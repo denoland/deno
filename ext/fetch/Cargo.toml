@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_fetch"
-version = "0.205.0"
+version = "0.274.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,15 +14,19 @@ description = "Fetch API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
+async-compression = { workspace = true, features = ["tokio", "brotli", "gzip"] }
 base64.workspace = true
 bytes.workspace = true
 data-url.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
+deno_fs.workspace = true
+deno_io.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
-dyn-clone = "1"
-error_reporter = "1"
+error_reporter.workspace = true
+h2.workspace = true
 hickory-resolver.workspace = true
 http.workspace = true
 http-body-util.workspace = true
@@ -32,7 +36,6 @@ hyper-util.workspace = true
 ipnet.workspace = true
 percent-encoding.workspace = true
 rustls-webpki.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -40,8 +43,22 @@ tokio-rustls.workspace = true
 tokio-socks.workspace = true
 tokio-util = { workspace = true, features = ["io"] }
 tower.workspace = true
-tower-http.workspace = true
 tower-service.workspace = true
 
+[target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]
+tokio-vsock.workspace = true
+
 [dev-dependencies]
+deno_bench_util.workspace = true
+deno_web.workspace = true
+deno_webidl.workspace = true
 fast-socks5.workspace = true
+rustls.workspace = true
+
+[[bench]]
+name = "headers_methods"
+harness = false
+
+[[bench]]
+name = "body"
+harness = false

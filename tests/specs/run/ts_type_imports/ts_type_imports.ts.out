@@ -1,6 +1,11 @@
 Check [WILDCARD]ts_type_imports.ts
-error: TS2322 [ERROR]: Type 'Map<string, string>' is not assignable to type 'Foo'.
+TS2322 [ERROR]: Type 'Map<string, string>' is not assignable to type 'Foo'.
   Type 'string' is not assignable to type 'number'.
 const foo: Foo = new Map<string, string>();
       ~~~
     at [WILDCARD]ts_type_imports.ts:5:7
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

@@ -1,10 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import process from "node:process";
-import { EventEmitter } from "node:events";
-import { primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  op_base64_encode_from_buffer,
   op_get_extras_binding_object,
   op_inspector_close,
   op_inspector_connect,
@@ -15,15 +15,18 @@ import {
   op_inspector_open,
   op_inspector_url,
   op_inspector_wait,
-} from "ext:core/ops";
-import {
+} = core.ops;
+const lazyProcess = core.createLazyLoader("node:process");
+const lazyWorkerThreads = core.createLazyLoader("node:worker_threads");
+const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
+const {
   isUint32,
   validateFunction,
   validateInt32,
   validateObject,
   validateString,
-} from "ext:deno_node/internal/validators.mjs";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const {
   ERR_INSPECTOR_ALREADY_ACTIVATED,
   ERR_INSPECTOR_ALREADY_CONNECTED,
   ERR_INSPECTOR_CLOSED,
@@ -31,35 +34,100 @@ import {
   ERR_INSPECTOR_NOT_ACTIVE,
   ERR_INSPECTOR_NOT_CONNECTED,
   ERR_INSPECTOR_NOT_WORKER,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+
+const process = lazyProcess().default;
+
+function isLoopback(host) {
+  const hostLower = StringPrototypeToLowerCase(host);
+
+  return (
+    hostLower === "localhost" ||
+    StringPrototypeStartsWith(hostLower, "127.") ||
+    hostLower === "[::1]" ||
+    hostLower === "[0:0:0:0:0:0:0:1]"
+  );
+}
 
 const {
+  ArrayBufferPrototype,
+  ArrayPrototypePush,
+  ArrayPrototypeShift,
+  ObjectAssign,
+  ObjectPrototypeIsPrototypeOf,
   SymbolDispose,
   JSONParse,
   JSONStringify,
   SafeMap,
+  SafeMapIterator,
+  StringPrototypeStartsWith,
+  StringPrototypeToLowerCase,
+  TypeError,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
+  Uint8Array,
 } = primordials;
+
+function encodeNetworkData(data) {
+  if (data == null) return undefined;
+  if (typeof data === "string") {
+    // Encode UTF-8 string as base64.
+    const buf = core.encode(data);
+    return op_base64_encode_from_buffer(
+      buf,
+      0,
+      TypedArrayPrototypeGetByteLength(buf),
+    );
+  }
+  if (TypedArrayPrototypeGetSymbolToStringTag(data) === "Uint8Array") {
+    return op_base64_encode_from_buffer(
+      data,
+      0,
+      TypedArrayPrototypeGetByteLength(data),
+    );
+  }
+  if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
+    const view = new Uint8Array(data);
+    return op_base64_encode_from_buffer(
+      view,
+      0,
+      TypedArrayPrototypeGetByteLength(view),
+    );
+  }
+  throw new TypeError(
+    "Expected data to be a string, Buffer, Uint8Array, or ArrayBuffer",
+  );
+}
 
 class Session extends EventEmitter {
   #connection = null;
   #nextId = 1;
   #messageCallbacks = new SafeMap();
+  #pendingMessages = [];
+  #drainScheduled = false;
+  #isDraining = false;
 
   connect() {
     if (this.#connection) {
       throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
     }
-    this.#connection = op_inspector_connect(false, (m) => this.#onMessage(m));
+    this.#connection = op_inspector_connect(
+      false,
+      (m) => this.#enqueueMessage(m),
+    );
   }
 
   connectToMainThread() {
-    if (isMainThread) {
+    if (lazyWorkerThreads().isMainThread) {
       throw new ERR_INSPECTOR_NOT_WORKER();
     }
     if (this.#connection) {
       throw new ERR_INSPECTOR_ALREADY_CONNECTED("The inspector session");
     }
-    this.#connection = op_inspector_connect(true, (m) => this.#onMessage(m));
+    this.#connection = op_inspector_connect(
+      true,
+      (m) => this.#enqueueMessage(m),
+    );
   }
 
   #onMessage(message) {
@@ -86,6 +154,28 @@ class Session extends EventEmitter {
       }
     } catch (error) {
       process.emitWarning(error);
+    }
+  }
+
+  #enqueueMessage(message) {
+    ArrayPrototypePush(this.#pendingMessages, message);
+    if (this.#isDraining) return;
+    if (!this.#drainScheduled) {
+      this.#drainScheduled = true;
+      process.nextTick(() => this.#drainMessages());
+    }
+  }
+
+  #drainMessages() {
+    this.#drainScheduled = false;
+    this.#isDraining = true;
+    try {
+      while (this.#pendingMessages.length > 0) {
+        const nextMessage = ArrayPrototypeShift(this.#pendingMessages);
+        this.#onMessage(nextMessage);
+      }
+    } finally {
+      this.#isDraining = false;
     }
   }
 
@@ -122,12 +212,16 @@ class Session extends EventEmitter {
     }
     op_inspector_disconnect(this.#connection);
     this.#connection = null;
-    // deno-lint-ignore prefer-primordials
-    for (const callback of this.#messageCallbacks.values()) {
+    for (
+      const { 1: callback } of new SafeMapIterator(this.#messageCallbacks)
+    ) {
       process.nextTick(callback, new ERR_INSPECTOR_CLOSED());
     }
     this.#messageCallbacks.clear();
     this.#nextId = 1;
+    this.#pendingMessages.length = 0;
+    this.#drainScheduled = false;
+    this.#isDraining = false;
   }
 }
 
@@ -149,15 +243,22 @@ function open(port, host, wait) {
     // equiv of handling args[1]->IsString()
     host = undefined;
   }
-  op_inspector_open(port, host);
-  if (wait) {
-    op_inspector_wait();
+
+  if (host && !isLoopback(host)) {
+    process.emitWarning(
+      "Binding the inspector to a public IP with an open port is insecure, " +
+        "as it allows external hosts to connect to the inspector " +
+        "and perform a remote code execution attack.",
+      "SecurityWarning",
+    );
   }
+
+  op_inspector_open(port, host, !!wait);
 
   return {
     __proto__: null,
     [SymbolDispose]() {
-      _debugEnd();
+      op_inspector_close();
     },
   };
 }
@@ -167,7 +268,11 @@ function close() {
 }
 
 function url() {
-  return op_inspector_url();
+  const u = op_inspector_url();
+  if (u === null) {
+    return undefined;
+  }
+  return u;
 }
 
 function waitForDebugger() {
@@ -184,6 +289,16 @@ function broadcastToFrontend(eventName, params) {
   op_inspector_emit_protocol_event(eventName, JSONStringify(params ?? {}));
 }
 
+function broadcastNetworkData(eventName, params) {
+  if (params && params.data !== undefined) {
+    const encoded = encodeNetworkData(params.data);
+    if (encoded !== params.data) {
+      params = ObjectAssign({ __proto__: null }, params, { data: encoded });
+    }
+  }
+  broadcastToFrontend(eventName, params);
+}
+
 const Network = {
   requestWillBeSent: (params) =>
     broadcastToFrontend("Network.requestWillBeSent", params),
@@ -193,18 +308,40 @@ const Network = {
     broadcastToFrontend("Network.loadingFinished", params),
   loadingFailed: (params) =>
     broadcastToFrontend("Network.loadingFailed", params),
+  dataReceived: (params) =>
+    broadcastNetworkData("Network.dataReceived", params),
+  dataSent: (params) => broadcastNetworkData("Network.dataSent", params),
+  webSocketCreated: (params) =>
+    broadcastToFrontend("Network.webSocketCreated", params),
+  webSocketHandshakeResponseReceived: (params) =>
+    broadcastToFrontend("Network.webSocketHandshakeResponseReceived", params),
+  webSocketClosed: (params) =>
+    broadcastToFrontend("Network.webSocketClosed", params),
 };
 
-const console = op_get_extras_binding_object().console;
+const DOMStorage = {
+  domStorageItemAdded: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemAdded", params),
+  domStorageItemRemoved: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemRemoved", params),
+  domStorageItemUpdated: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemUpdated", params),
+  domStorageItemsCleared: (params) =>
+    broadcastToFrontend("DOMStorage.domStorageItemsCleared", params),
+  registerStorage: (params) =>
+    broadcastToFrontend("DOMStorage.registerStorage", params),
+};
 
-export { close, console, Network, open, Session, url, waitForDebugger };
+const inspectorConsole = op_get_extras_binding_object().console;
 
-export default {
-  open,
+return {
   close,
+  console: inspectorConsole,
+  DOMStorage,
+  Network,
+  open,
+  Session,
   url,
   waitForDebugger,
-  console,
-  Session,
-  Network,
 };
+})();

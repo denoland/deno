@@ -1,4 +1,6 @@
-error: TS2304 [ERROR]: Cannot find name 'nothing'.
+TS2304 [ERROR]: Cannot find name 'nothing'.
 export { nothing };
          ~~~~~~~
     at [WILDCARD]
+
+error: Type checking failed.

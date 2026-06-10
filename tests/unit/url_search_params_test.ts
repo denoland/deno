@@ -1,5 +1,28 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assert, assertEquals } from "./test_util.ts";
+
+// Regression test: set/delete on a list with many entries that share a name
+// must run in linear time. A quadratic implementation would take many seconds
+// (or minutes) at this size; the linear implementation finishes in
+// milliseconds. The 5s bound is intentionally loose to avoid CI flakes.
+Deno.test(function urlSearchParamsSetDeleteManyDuplicatesIsLinear() {
+  const N = 20_000;
+  const init: [string, string][] = [];
+  for (let i = 0; i < N; i++) init.push(["dup", String(i)]);
+
+  const a = new URLSearchParams(init);
+  const t1 = performance.now();
+  a.delete("dup");
+  assert(performance.now() - t1 < 5_000);
+  assertEquals(a.get("dup"), null);
+
+  const b = new URLSearchParams(init);
+  const t2 = performance.now();
+  b.set("dup", "final");
+  assert(performance.now() - t2 < 5_000);
+  assertEquals(b.get("dup"), "final");
+  assertEquals(b.getAll("dup").length, 1);
+});
 
 Deno.test(function urlSearchParamsWithMultipleSpaces() {
   const init = { str: "this string has spaces in it" };
@@ -304,7 +327,9 @@ Deno.test(function urlSearchParamsDeletingAppendedMultiple() {
 // ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-constructor.any.js#L176-L182
 Deno.test(function urlSearchParamsCustomSymbolIterator() {
   const params = new URLSearchParams();
-  params[Symbol.iterator] = function* (): IterableIterator<[string, string]> {
+  params[Symbol.iterator] = function* (): URLSearchParamsIterator<
+    [string, string]
+  > {
     yield ["a", "b"];
   };
   const params1 = new URLSearchParams((params as unknown) as string[][]);
@@ -345,7 +370,7 @@ Deno.test(
 
 Deno.test(function urlSearchParamsOverridingEntriesNotChangeForEach() {
   class CustomSearchParams extends URLSearchParams {
-    override *entries(): IterableIterator<[string, string]> {
+    override *entries(): URLSearchParamsIterator<[string, string]> {
       yield* [];
     }
   }

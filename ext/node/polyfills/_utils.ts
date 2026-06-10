@@ -1,11 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
 const {
   Error,
   PromisePrototypeThen,
   ArrayPrototypePop,
-  StringPrototypeToLowerCase,
   NumberIsInteger,
   ObjectGetOwnPropertyNames,
   ReflectGetOwnPropertyDescriptor,
@@ -14,14 +14,21 @@ const {
   FunctionPrototypeApply,
   SafeArrayIterator,
 } = primordials;
-import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { errorMap } from "ext:deno_node/internal_binding/uv.ts";
-import { codes } from "ext:deno_node/internal/error_codes.ts";
-import { ERR_NOT_IMPLEMENTED } from "ext:deno_node/internal/errors.ts";
+const { TextDecoder, TextEncoder } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
+const { errorMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
+const { codes } = core.loadExtScript("ext:deno_node/internal/error_codes.ts");
+const { ERR_NOT_IMPLEMENTED } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const { validateNumber } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
-export type BinaryEncodings = "binary";
+type BinaryEncodings = "binary";
 
-export type TextEncodings =
+type TextEncodings =
   | "ascii"
   | "utf8"
   | "utf-8"
@@ -29,16 +36,17 @@ export type TextEncodings =
   | "ucs2"
   | "ucs-2"
   | "base64"
+  | "base64url"
   | "latin1"
   | "hex";
 
-export type Encodings = BinaryEncodings | TextEncodings;
+type Encodings = BinaryEncodings | TextEncodings;
 
-export function notImplemented(msg: string): never {
+function notImplemented(msg: string): never {
   throw new ERR_NOT_IMPLEMENTED(msg);
 }
 
-export function warnNotImplemented(msg?: string) {
+function warnNotImplemented(msg?: string) {
   const message = msg
     ? `Warning: Not implemented: ${msg}`
     : "Warning: Not implemented";
@@ -46,19 +54,19 @@ export function warnNotImplemented(msg?: string) {
   console.warn(message);
 }
 
-export type _TextDecoder = typeof TextDecoder.prototype;
-export const _TextDecoder = TextDecoder;
+type _TextDecoder = typeof TextDecoder.prototype;
+const _TextDecoder = TextDecoder;
 
-export type _TextEncoder = typeof TextEncoder.prototype;
-export const _TextEncoder = TextEncoder;
+type _TextEncoder = typeof TextEncoder.prototype;
+const _TextEncoder = TextEncoder;
 
 // API helpers
 
-export type MaybeNull<T> = T | null;
-export type MaybeDefined<T> = T | undefined;
-export type MaybeEmpty<T> = T | null | undefined;
+type MaybeNull<T> = T | null;
+type MaybeDefined<T> = T | undefined;
+type MaybeEmpty<T> = T | null | undefined;
 
-export function intoCallbackAPI<T>(
+function intoCallbackAPI<T>(
   // deno-lint-ignore no-explicit-any
   func: (...args: any[]) => Promise<T>,
   cb: MaybeEmpty<(err: MaybeNull<Error>, value?: MaybeEmpty<T>) => void>,
@@ -72,7 +80,7 @@ export function intoCallbackAPI<T>(
   );
 }
 
-export function intoCallbackAPIWithIntercept<T1, T2>(
+function intoCallbackAPIWithIntercept<T1, T2>(
   // deno-lint-ignore no-explicit-any
   func: (...args: any[]) => Promise<T1>,
   interceptor: (v: T1) => T2,
@@ -87,86 +95,14 @@ export function intoCallbackAPIWithIntercept<T1, T2>(
   );
 }
 
-export function spliceOne(list: string[], index: number) {
+function spliceOne(list: string[], index: number) {
   for (; index + 1 < list.length; index++) {
     list[index] = list[index + 1];
   }
   ArrayPrototypePop(list);
 }
 
-// Taken from: https://github.com/nodejs/node/blob/ba684805b6c0eded76e5cd89ee00328ac7a59365/lib/internal/util.js#L125
-// Return undefined if there is no match.
-// Move the "slow cases" to a separate function to make sure this function gets
-// inlined properly. That prioritizes the common case.
-export function normalizeEncoding(
-  enc: string | null,
-): TextEncodings | undefined {
-  if (enc == null || enc === "utf8" || enc === "utf-8") return "utf8";
-  return slowCases(enc);
-}
-
-// https://github.com/nodejs/node/blob/ba684805b6c0eded76e5cd89ee00328ac7a59365/lib/internal/util.js#L130
-function slowCases(enc: string): TextEncodings | undefined {
-  switch (enc.length) {
-    case 4:
-      if (enc === "UTF8") return "utf8";
-      if (enc === "ucs2" || enc === "UCS2") return "utf16le";
-      enc = StringPrototypeToLowerCase(enc);
-      if (enc === "utf8") return "utf8";
-      if (enc === "ucs2") return "utf16le";
-      break;
-    case 3:
-      if (
-        enc === "hex" || enc === "HEX" ||
-        StringPrototypeToLowerCase(enc) === "hex"
-      ) {
-        return "hex";
-      }
-      break;
-    case 5:
-      if (enc === "ascii") return "ascii";
-      if (enc === "ucs-2") return "utf16le";
-      if (enc === "UTF-8") return "utf8";
-      if (enc === "ASCII") return "ascii";
-      if (enc === "UCS-2") return "utf16le";
-      enc = StringPrototypeToLowerCase(enc);
-      if (enc === "utf-8") return "utf8";
-      if (enc === "ascii") return "ascii";
-      if (enc === "ucs-2") return "utf16le";
-      break;
-    case 6:
-      if (enc === "base64") return "base64";
-      if (enc === "latin1" || enc === "binary") return "latin1";
-      if (enc === "BASE64") return "base64";
-      if (enc === "LATIN1" || enc === "BINARY") return "latin1";
-      enc = StringPrototypeToLowerCase(enc);
-      if (enc === "base64") return "base64";
-      if (enc === "latin1" || enc === "binary") return "latin1";
-      break;
-    case 7:
-      if (
-        enc === "utf16le" ||
-        enc === "UTF16LE" ||
-        StringPrototypeToLowerCase(enc) === "utf16le"
-      ) {
-        return "utf16le";
-      }
-      break;
-    case 8:
-      if (
-        enc === "utf-16le" ||
-        enc === "UTF-16LE" ||
-        StringPrototypeToLowerCase(enc) === "utf-16le"
-      ) {
-        return "utf16le";
-      }
-      break;
-    default:
-      if (enc === "") return "utf8";
-  }
-}
-
-export function validateIntegerRange(
+function validateIntegerRange(
   value: number,
   name: string,
   min = -2147483648,
@@ -187,7 +123,7 @@ export function validateIntegerRange(
 type OptionalSpread<T> = T extends undefined ? []
   : [T];
 
-export function once<T = undefined>(
+function once<T = undefined>(
   callback: (...args: OptionalSpread<T>) => void,
 ) {
   let called = false;
@@ -198,7 +134,7 @@ export function once<T = undefined>(
   };
 }
 
-export function makeMethodsEnumerable(klass: { new (): unknown }) {
+function makeMethodsEnumerable(klass: { new (): unknown }) {
   const proto = klass.prototype;
   const names = ObjectGetOwnPropertyNames(proto);
   for (let i = 0; i < names.length; i++) {
@@ -218,12 +154,46 @@ export function makeMethodsEnumerable(klass: { new (): unknown }) {
  * Returns a system error name from an error code number.
  * @param code error code number
  */
-export function getSystemErrorName(code: number): string | undefined {
-  if (typeof code !== "number") {
-    throw new codes.ERR_INVALID_ARG_TYPE("err", "number", code);
-  }
+function getSystemErrorName(code: number): string | undefined {
+  validateNumber(code, "err");
   if (code >= 0 || !NumberIsSafeInteger(code)) {
     throw new codes.ERR_OUT_OF_RANGE("err", "a negative integer", code);
   }
   return errorMap.get(code)?.[0];
 }
+
+/**
+ * Returns a system error message from an error code number.
+ * @param code error code number
+ */
+function getSystemErrorMessage(code: number): string | undefined {
+  validateNumber(code, "err");
+  if (code >= 0 || !NumberIsSafeInteger(code)) {
+    throw new codes.ERR_OUT_OF_RANGE("err", "a negative integer", code);
+  }
+  return errorMap.get(code)?.[1];
+}
+
+/**
+ * Returns the map of all system error codes available from the Node.js API.
+ */
+function getSystemErrorMap(): Map<number, [string, string]> {
+  return errorMap;
+}
+
+return {
+  notImplemented,
+  warnNotImplemented,
+  _TextDecoder,
+  _TextEncoder,
+  intoCallbackAPI,
+  intoCallbackAPIWithIntercept,
+  spliceOne,
+  validateIntegerRange,
+  once,
+  makeMethodsEnumerable,
+  getSystemErrorMap,
+  getSystemErrorMessage,
+  getSystemErrorName,
+};
+})();

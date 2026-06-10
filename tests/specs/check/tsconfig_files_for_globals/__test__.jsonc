@@ -1,0 +1,5 @@
+{
+  "args": "check main.deno.ts main.dom.ts --quiet",
+  "output": "main.out",
+  "exitCode": 1
+}

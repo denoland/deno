@@ -1,31 +1,32 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::error::Error;
+use std::future::Future;
+use std::io;
+use std::io::Write;
+use std::mem::replace;
+use std::mem::take;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::task::Context;
+use std::task::Poll;
+use std::task::ready;
+
+use async_compression::Level;
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
-use async_compression::Level;
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use cache_control::CacheControl;
-use deno_core::futures::channel::mpsc;
-use deno_core::futures::channel::oneshot;
-use deno_core::futures::future::pending;
-use deno_core::futures::future::select;
-use deno_core::futures::future::Either;
-use deno_core::futures::future::Pending;
-use deno_core::futures::future::RemoteHandle;
-use deno_core::futures::future::Shared;
-use deno_core::futures::never::Never;
-use deno_core::futures::ready;
-use deno_core::futures::stream::Peekable;
-use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
-use deno_core::futures::TryFutureExt;
-use deno_core::op2;
-use deno_core::unsync::spawn;
+use base64::prelude::BASE64_STANDARD;
+use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -35,47 +36,60 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
+use deno_core::convert::ByteString;
+use deno_core::futures::FutureExt;
+use deno_core::futures::Stream;
+use deno_core::futures::StreamExt;
+use deno_core::futures::TryFutureExt;
+use deno_core::futures::channel::mpsc;
+use deno_core::futures::channel::oneshot;
+use deno_core::futures::future::RemoteHandle;
+use deno_core::futures::future::Shared;
+use deno_core::futures::stream::Peekable;
+use deno_core::op2;
+use deno_core::unsync::spawn;
+use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
+use deno_telemetry::Histogram;
+use deno_telemetry::MeterProvider;
+use deno_telemetry::OTEL_GLOBALS;
+use deno_telemetry::UpDownCounter;
 use deno_websocket::ws_create_server_stream;
-use flate2::write::GzEncoder;
 use flate2::Compression;
+use flate2::write::GzEncoder;
+use http_body_util::Channel;
+use hyper::Request;
+use hyper::Response;
+use hyper::body::Body;
+use hyper::body::Frame;
+use hyper::body::Incoming;
+use hyper::body::SizeHint;
+use hyper::header::CONTENT_ENCODING;
+use hyper::header::CONTENT_LENGTH;
+use hyper::header::CONTENT_RANGE;
+use hyper::header::CONTENT_TYPE;
+use hyper::header::COOKIE;
+use hyper::header::HeaderMap;
+use hyper::header::HeaderName;
+use hyper::header::HeaderValue;
 use hyper::server::conn::http1;
 use hyper::server::conn::http2;
+use hyper::service::Service;
 use hyper_util::rt::TokioIo;
-use hyper_v014::body::Bytes;
-use hyper_v014::body::HttpBody;
-use hyper_v014::body::SizeHint;
-use hyper_v014::header::HeaderName;
-use hyper_v014::header::HeaderValue;
-use hyper_v014::server::conn::Http;
-use hyper_v014::service::Service;
-use hyper_v014::Body;
-use hyper_v014::HeaderMap;
-use hyper_v014::Request;
-use hyper_v014::Response;
-use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::cmp::min;
-use std::error::Error;
-use std::future::Future;
-use std::io;
-use std::io::Write;
-use std::mem::replace;
-use std::mem::take;
-use std::pin::pin;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
+use once_cell::sync::OnceCell;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+use tokio::sync::Notify;
 
 use crate::network_buffered_stream::NetworkBufferedStream;
+use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::reader_stream::ExternallyAbortableReaderStream;
 use crate::reader_stream::ShutdownHandle;
+use crate::request_body::BufferedIncoming;
+use crate::request_body::HttpRequestBody;
+use crate::response_body::brotli_compressor;
 
 pub mod compressible;
 mod fly_accept_encoding;
@@ -86,7 +100,7 @@ mod request_body;
 mod request_properties;
 mod response_body;
 mod service;
-mod websocket_upgrade;
+mod v8_util;
 
 use fly_accept_encoding::Encoding;
 pub use http_next::HttpNextError;
@@ -96,7 +110,75 @@ pub use request_properties::HttpListenProperties;
 pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
-pub use websocket_upgrade::WebSocketUpgradeError;
+
+fn preferred_supported_encoding(
+  encodings: impl Iterator<
+    Item = Result<(Option<Encoding>, f32), fly_accept_encoding::EncodingError>,
+  >,
+) -> Encoding {
+  let mut best_brotli_qval = 0.0;
+  let mut best_gzip_qval = 0.0;
+  let mut best_identity_qval = 0.0;
+
+  for encoding in encodings {
+    let Ok((encoding, qval)) = encoding else {
+      continue;
+    };
+    match encoding {
+      Some(Encoding::Brotli) if qval > best_brotli_qval => {
+        best_brotli_qval = qval;
+      }
+      Some(Encoding::Gzip) if qval > best_gzip_qval => {
+        best_gzip_qval = qval;
+      }
+      Some(Encoding::Identity) if qval > best_identity_qval => {
+        best_identity_qval = qval;
+      }
+      _ => {}
+    }
+  }
+
+  if best_brotli_qval >= best_gzip_qval
+    && best_brotli_qval >= best_identity_qval
+    && best_brotli_qval > 0.0
+  {
+    Encoding::Brotli
+  } else if best_gzip_qval >= best_identity_qval && best_gzip_qval > 0.0 {
+    Encoding::Gzip
+  } else {
+    Encoding::Identity
+  }
+}
+
+fn cache_control_has_no_transform(value: &str) -> Option<bool> {
+  let mut no_transform = false;
+  for token in value.split(',') {
+    let (key, val) = {
+      let mut split = token.split('=').map(|s| s.trim());
+      (split.next().unwrap(), split.next())
+    };
+
+    match key {
+      "max-age" | "max-stale" | "min-fresh" => {
+        val.and_then(|v| v.parse::<u64>().ok())?;
+      }
+      "no-transform" => no_transform = true,
+      _ => (),
+    }
+  }
+  Some(no_transform)
+}
+
+struct OtelCollectors {
+  duration: Histogram<f64>,
+  active_requests: UpDownCounter<i64>,
+  request_size: Histogram<u64>,
+  response_size: Histogram<u64>,
+}
+
+static OTEL_COLLECTORS: OnceCell<OtelCollectors> = OnceCell::new();
+
+const HTTP2_PREFIX: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Options {
@@ -108,15 +190,12 @@ pub struct Options {
   /// that the default configuration is subject to change in future versions.
   pub http2_builder_hook:
     Option<fn(http2::Builder<LocalExecutor>) -> http2::Builder<LocalExecutor>>,
-  /// By passing a hook function, the caller can customize various configuration
-  /// options for the HTTP/1 server.
-  /// See [`http1::Builder`] for what parameters can be customized.
-  ///
-  /// If `None`, the default configuration provided by hyper will be used. Note
-  /// that the default configuration is subject to change in future versions.
-  pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
+
+  /// If `false`, the server will abort the request when the response is dropped.
+  pub no_legacy_abort: bool,
 }
 
+#[cfg(not(feature = "default_property_extractor"))]
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],
@@ -124,6 +203,7 @@ deno_core::extension!(
   ops = [
     op_http_accept,
     op_http_headers,
+    op_http_serve_address_override,
     op_http_shutdown,
     op_http_upgrade_websocket,
     op_http_websocket_accept_header,
@@ -134,28 +214,45 @@ deno_core::extension!(
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
     http_next::op_http_request_on_cancel,
+    http_next::op_http_get_request_method<HTTP>,
+    http_next::op_http_get_request_url<HTTP>,
     http_next::op_http_get_request_method_and_url<HTTP>,
+    http_next::op_http_get_request_remote_addr<HTTP>,
     http_next::op_http_get_request_cancelled,
+    http_next::op_http_is_raw_request,
     http_next::op_http_read_request_body,
+    http_next::op_http_try_take_full_request_body,
+    http_next::op_http_try_take_full_request_body_text,
     http_next::op_http_serve_on<HTTP>,
     http_next::op_http_serve<HTTP>,
     http_next::op_http_set_promise_complete,
+    http_next::op_http_drop_response_native,
+    http_next::op_http_new_response_native_headers,
+    http_next::op_http_new_response_native_static,
+    http_next::op_http_set_response_native,
     http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_bytes_with_headers,
     http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_static_with_content_type,
+    http_next::op_http_set_response_body_static_with_default_header,
+    http_next::op_http_set_response_body_static_with_header,
     http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_body_text_with_headers,
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
     http_next::op_http_set_response_trailers,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
+    http_next::op_http_ws_create_from_stream_resource,
     http_next::op_raw_write_vectored,
     http_next::op_can_write_vectored,
-    http_next::op_http_try_wait,
     http_next::op_http_wait,
     http_next::op_http_close,
     http_next::op_http_cancel,
+    http_next::op_http_metric_handle_otel_error,
+    http_next::op_http_copy_span_to_otel_info,
   ],
-  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  lazy_loaded_js = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
     options: Options,
   },
@@ -164,36 +261,127 @@ deno_core::extension!(
   }
 );
 
-#[derive(Debug, thiserror::Error)]
+#[cfg(feature = "default_property_extractor")]
+deno_core::extension!(
+  deno_http,
+  deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  ops = [
+    op_http_accept,
+    op_http_headers,
+    op_http_serve_address_override,
+    op_http_shutdown,
+    op_http_upgrade_websocket,
+    op_http_websocket_accept_header,
+    op_http_write_headers,
+    op_http_write_resource,
+    op_http_write,
+    op_http_notify_serving,
+    http_next::op_http_close_after_finish,
+    http_next::op_http_get_request_header,
+    http_next::op_http_get_request_headers,
+    http_next::op_http_request_on_cancel,
+    http_next::op_http_get_request_method<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_url<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_method_and_url<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_remote_addr<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_cancelled,
+    http_next::op_http_is_raw_request,
+    http_next::op_http_read_request_body,
+    http_next::op_http_try_take_full_request_body,
+    http_next::op_http_try_take_full_request_body_text,
+    http_next::op_http_serve_on<DefaultHttpPropertyExtractor>,
+    http_next::op_http_serve<DefaultHttpPropertyExtractor>,
+    http_next::op_http_set_promise_complete,
+    http_next::op_http_drop_response_native,
+    http_next::op_http_new_response_native_headers,
+    http_next::op_http_new_response_native_static,
+    http_next::op_http_set_response_native,
+    http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_bytes_with_headers,
+    http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_static_with_content_type,
+    http_next::op_http_set_response_body_static_with_default_header,
+    http_next::op_http_set_response_body_static_with_header,
+    http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_body_text_with_headers,
+    http_next::op_http_set_response_header,
+    http_next::op_http_set_response_headers,
+    http_next::op_http_set_response_trailers,
+    http_next::op_http_upgrade_websocket_next,
+    http_next::op_http_upgrade_raw,
+    http_next::op_http_ws_create_from_stream_resource,
+    http_next::op_raw_write_vectored,
+    http_next::op_can_write_vectored,
+    http_next::op_http_wait,
+    http_next::op_http_close,
+    http_next::op_http_cancel,
+    http_next::op_http_metric_handle_otel_error,
+    http_next::op_http_copy_span_to_otel_info,
+  ],
+  lazy_loaded_js = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  options = {
+    options: Options,
+  },
+  state = |state, options| {
+    state.put::<Options>(options.options);
+  }
+);
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
+  #[class("Http")]
   #[error("{0}")]
-  HyperV014(#[source] Arc<hyper_v014::Error>),
+  Hyper(#[source] Arc<hyper::Error>),
+  #[class("Http")]
   #[error("{0}")]
-  InvalidHeaderName(#[from] hyper_v014::header::InvalidHeaderName),
-  #[error("{0}")]
-  InvalidHeaderValue(#[from] hyper_v014::header::InvalidHeaderValue),
-  #[error("{0}")]
-  Http(#[from] hyper_v014::http::Error),
+  Connection(#[source] Arc<HttpConnError>),
+  #[class(generic)]
+  #[error(transparent)]
+  InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[class(generic)]
+  #[error(transparent)]
+  InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[class(generic)]
+  #[error(transparent)]
+  Http(#[from] http::Error),
+  #[class("Http")]
   #[error("response headers already sent")]
   ResponseHeadersAlreadySent,
+  #[class("Http")]
   #[error("connection closed while sending response")]
   ConnectionClosedWhileSendingResponse,
+  #[class("Http")]
   #[error("already in use")]
   AlreadyInUse,
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[class("Http")]
   #[error("no response headers")]
   NoResponseHeaders,
+  #[class("Http")]
   #[error("response already completed")]
   ResponseAlreadyCompleted,
+  #[class("Http")]
   #[error("cannot upgrade because request body was used")]
   UpgradeBodyUsed,
+  #[class("Http")]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[from] JsErrorBox),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum HttpConnError {
+  #[error("{0}")]
+  Hyper(#[from] hyper::Error),
+  #[error("{0}")]
+  Io(#[from] io::Error),
 }
 
 pub enum HttpSocketAddr {
@@ -215,11 +403,368 @@ impl From<tokio::net::unix::SocketAddr> for HttpSocketAddr {
   }
 }
 
+struct OtelInfo {
+  attributes: OtelInfoAttributes,
+  duration: Option<std::time::Instant>,
+  request_size: Option<u64>,
+  response_size: Option<u64>,
+}
+
+struct OtelInfoAttributes {
+  http_request_method: Cow<'static, str>,
+  network_protocol_version: &'static str,
+  url_scheme: Cow<'static, str>,
+  server_address: Option<String>,
+  server_port: Option<i64>,
+  error_type: Option<&'static str>,
+  http_route: Option<String>,
+  http_response_status_code: Option<i64>,
+}
+
+impl OtelInfoAttributes {
+  fn method(method: &http::method::Method) -> Cow<'static, str> {
+    use http::method::Method;
+
+    match *method {
+      Method::GET => Cow::Borrowed("GET"),
+      Method::POST => Cow::Borrowed("POST"),
+      Method::PUT => Cow::Borrowed("PUT"),
+      Method::DELETE => Cow::Borrowed("DELETE"),
+      Method::HEAD => Cow::Borrowed("HEAD"),
+      Method::OPTIONS => Cow::Borrowed("OPTIONS"),
+      Method::CONNECT => Cow::Borrowed("CONNECT"),
+      Method::PATCH => Cow::Borrowed("PATCH"),
+      Method::TRACE => Cow::Borrowed("TRACE"),
+      _ => Cow::Owned(method.to_string()),
+    }
+  }
+
+  fn version(version: http::Version) -> &'static str {
+    use http::Version;
+
+    match version {
+      Version::HTTP_09 => "0.9",
+      Version::HTTP_10 => "1.0",
+      Version::HTTP_11 => "1.1",
+      Version::HTTP_2 => "2",
+      Version::HTTP_3 => "3",
+      _ => unreachable!(),
+    }
+  }
+
+  fn for_counter(&self) -> Vec<deno_telemetry::KeyValue> {
+    let mut attributes = vec![
+      deno_telemetry::KeyValue::new(
+        "http.request.method",
+        self.http_request_method.clone(),
+      ),
+      deno_telemetry::KeyValue::new("url.scheme", self.url_scheme.clone()),
+    ];
+
+    if let Some(address) = self.server_address.clone() {
+      attributes.push(deno_telemetry::KeyValue::new("server.address", address));
+    }
+    if let Some(port) = self.server_port {
+      attributes.push(deno_telemetry::KeyValue::new("server.port", port));
+    }
+
+    attributes
+  }
+
+  fn for_histogram(&self) -> Vec<deno_telemetry::KeyValue> {
+    let mut histogram_attributes = vec![
+      deno_telemetry::KeyValue::new(
+        "http.request.method",
+        self.http_request_method.clone(),
+      ),
+      deno_telemetry::KeyValue::new("url.scheme", self.url_scheme.clone()),
+      deno_telemetry::KeyValue::new(
+        "network.protocol.version",
+        self.network_protocol_version,
+      ),
+    ];
+
+    if let Some(address) = self.server_address.clone() {
+      histogram_attributes
+        .push(deno_telemetry::KeyValue::new("server.address", address));
+    }
+    if let Some(port) = self.server_port {
+      histogram_attributes
+        .push(deno_telemetry::KeyValue::new("server.port", port));
+    }
+    if let Some(status_code) = self.http_response_status_code {
+      histogram_attributes.push(deno_telemetry::KeyValue::new(
+        "http.response.status_code",
+        status_code,
+      ));
+    }
+
+    if let Some(error) = self.error_type {
+      histogram_attributes
+        .push(deno_telemetry::KeyValue::new("error.type", error));
+    }
+
+    if let Some(route) = self.http_route.clone() {
+      histogram_attributes
+        .push(deno_telemetry::KeyValue::new("http.route", route));
+    }
+
+    histogram_attributes
+  }
+}
+
+impl OtelInfo {
+  fn new(
+    otel: &deno_telemetry::OtelGlobals,
+    instant: std::time::Instant,
+    request_size: u64,
+    attributes: OtelInfoAttributes,
+  ) -> Self {
+    let collectors = OTEL_COLLECTORS.get_or_init(|| {
+      let meter = otel
+        .meter_provider
+        .meter_with_scope(otel.builtin_instrumentation_scope.clone());
+
+      let duration = meter
+        .f64_histogram("http.server.request.duration")
+        .with_unit("s")
+        .with_description("Duration of HTTP server requests.")
+        .with_boundaries(vec![
+          0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0,
+          7.5, 10.0,
+        ])
+        .build();
+
+      let active_requests = meter
+        .i64_up_down_counter("http.server.active_requests")
+        .with_unit("{request}")
+        .with_description("Number of active HTTP server requests.")
+        .build();
+
+      let request_size = meter
+        .u64_histogram("http.server.request.body.size")
+        .with_unit("By")
+        .with_description("Size of HTTP server request bodies.")
+        .with_boundaries(vec![
+          0.0,
+          100.0,
+          1000.0,
+          10000.0,
+          100000.0,
+          1000000.0,
+          10000000.0,
+          100000000.0,
+          1000000000.0,
+        ])
+        .build();
+
+      let response_size = meter
+        .u64_histogram("http.server.response.body.size")
+        .with_unit("By")
+        .with_description("Size of HTTP server response bodies.")
+        .with_boundaries(vec![
+          0.0,
+          100.0,
+          1000.0,
+          10000.0,
+          100000.0,
+          1000000.0,
+          10000000.0,
+          100000000.0,
+          1000000000.0,
+        ])
+        .build();
+
+      OtelCollectors {
+        duration,
+        active_requests,
+        request_size,
+        response_size,
+      }
+    });
+
+    collectors.active_requests.add(1, &attributes.for_counter());
+
+    Self {
+      attributes,
+      duration: Some(instant),
+      request_size: Some(request_size),
+      response_size: Some(0),
+    }
+  }
+
+  fn handle_duration_and_request_size(&mut self) {
+    let collectors = OTEL_COLLECTORS.get().unwrap();
+    let attributes = self.attributes.for_histogram();
+
+    if let Some(duration) = self.duration.take() {
+      let duration = duration.elapsed();
+      collectors
+        .duration
+        .record(duration.as_secs_f64(), &attributes);
+    }
+
+    if let Some(request_size) = self.request_size.take() {
+      let collectors = OTEL_COLLECTORS.get().unwrap();
+      collectors.request_size.record(request_size, &attributes);
+    }
+  }
+}
+
+impl Drop for OtelInfo {
+  fn drop(&mut self) {
+    let collectors = OTEL_COLLECTORS.get().unwrap();
+
+    self.handle_duration_and_request_size();
+
+    collectors
+      .active_requests
+      .add(-1, &self.attributes.for_counter());
+
+    if let Some(response_size) = self.response_size {
+      collectors
+        .response_size
+        .record(response_size, &self.attributes.for_histogram());
+    }
+  }
+}
+
+fn handle_error_otel(
+  otel: &Option<Rc<RefCell<Option<OtelInfo>>>>,
+  error: &HttpError,
+) {
+  if let Some(otel) = otel.as_ref() {
+    let mut maybe_otel_info = otel.borrow_mut();
+    if let Some(otel_info) = maybe_otel_info.as_mut() {
+      otel_info.attributes.error_type = Some(match error {
+        HttpError::Resource(_) => "resource",
+        HttpError::Canceled(_) => "canceled",
+        HttpError::Hyper(_) => "hyper",
+        HttpError::Connection(err) => match &**err {
+          HttpConnError::Hyper(_) => "hyper",
+          HttpConnError::Io(_) => "io",
+        },
+        HttpError::InvalidHeaderName(_) => "invalid header name",
+        HttpError::InvalidHeaderValue(_) => "invalid header value",
+        HttpError::Http(_) => "http",
+        HttpError::ResponseHeadersAlreadySent => {
+          "response headers already sent"
+        }
+        HttpError::ConnectionClosedWhileSendingResponse => {
+          "connection closed while sending response"
+        }
+        HttpError::AlreadyInUse => "already in use",
+        HttpError::Io(_) => "io",
+        HttpError::NoResponseHeaders => "no response headers",
+        HttpError::ResponseAlreadyCompleted => "response already completed",
+        HttpError::UpgradeBodyUsed => "upgrade body used",
+        HttpError::Other(_) => "unknown",
+      });
+    }
+  }
+}
+
+enum LegacyBody {
+  Full(Option<Bytes>),
+  Stream(Pin<Box<dyn Stream<Item = Result<Bytes, io::Error>>>>),
+  Channel(Channel<Bytes, JsErrorBox>),
+}
+
+impl LegacyBody {
+  fn full(bytes: Bytes) -> Self {
+    if bytes.is_empty() {
+      Self::Full(None)
+    } else {
+      Self::Full(Some(bytes))
+    }
+  }
+}
+
+impl Body for LegacyBody {
+  type Data = Bytes;
+  type Error = JsErrorBox;
+
+  fn poll_frame(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+    let this = self.get_mut();
+    match this {
+      LegacyBody::Full(bytes) => {
+        if let Some(bytes) = bytes.take() {
+          Poll::Ready(Some(Ok(Frame::data(bytes))))
+        } else {
+          Poll::Ready(None)
+        }
+      }
+      LegacyBody::Stream(stream) => match ready!(stream.as_mut().poll_next(cx))
+      {
+        Some(Ok(bytes)) => Poll::Ready(Some(Ok(Frame::data(bytes)))),
+        Some(Err(err)) => Poll::Ready(Some(Err(JsErrorBox::from_err(err)))),
+        None => Poll::Ready(None),
+      },
+      LegacyBody::Channel(body) => Pin::new(body).poll_frame(cx),
+    }
+  }
+
+  fn is_end_stream(&self) -> bool {
+    matches!(self, LegacyBody::Full(None))
+  }
+
+  fn size_hint(&self) -> SizeHint {
+    match self {
+      LegacyBody::Full(Some(bytes)) => SizeHint::with_exact(bytes.len() as u64),
+      LegacyBody::Full(None) => SizeHint::with_exact(0),
+      LegacyBody::Stream(_) | LegacyBody::Channel(_) => SizeHint::default(),
+    }
+  }
+}
+
+fn serve_legacy_http11(
+  io: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
+  svc: HttpService,
+  cancel: Rc<CancelHandle>,
+) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
+  let conn = http1::Builder::new()
+    .keep_alive(true)
+    .serve_connection(TokioIo::new(io), svc)
+    .with_upgrades();
+
+  async {
+    match conn.or_abort(cancel).await {
+      Err(mut conn) => {
+        Pin::new(&mut conn).graceful_shutdown();
+        conn.await
+      }
+      Ok(res) => res,
+    }
+  }
+}
+
+fn serve_legacy_http2(
+  io: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
+  svc: HttpService,
+  cancel: Rc<CancelHandle>,
+) -> impl Future<Output = Result<(), hyper::Error>> + 'static {
+  let conn =
+    http2::Builder::new(LocalExecutor).serve_connection(TokioIo::new(io), svc);
+
+  async {
+    match conn.or_abort(cancel).await {
+      Err(mut conn) => {
+        Pin::new(&mut conn).graceful_shutdown();
+        conn.await
+      }
+      Ok(res) => res,
+    }
+  }
+}
+
 struct HttpConnResource {
   addr: HttpSocketAddr,
   scheme: &'static str,
   acceptors_tx: mpsc::UnboundedSender<HttpAcceptor>,
-  closed_fut: Shared<RemoteHandle<Result<(), Arc<hyper_v014::Error>>>>,
+  closed_fut: Shared<RemoteHandle<Result<(), Arc<HttpConnError>>>>,
   cancel_handle: Rc<CancelHandle>, // Closes gracefully and cancels accept ops.
 }
 
@@ -231,29 +776,33 @@ impl HttpConnResource {
     let (acceptors_tx, acceptors_rx) = mpsc::unbounded::<HttpAcceptor>();
     let service = HttpService::new(acceptors_rx);
 
-    let conn_fut = Http::new()
-      .with_executor(LocalExecutor)
-      .serve_connection(io, service)
-      .with_upgrades();
-
     // When the cancel handle is used, the connection shuts down gracefully.
     // No new HTTP streams will be accepted, but existing streams will be able
     // to continue operating and eventually shut down cleanly.
     let cancel_handle = CancelHandle::new_rc();
-    let shutdown_fut = never().or_cancel(&cancel_handle).fuse();
+    let cancel_handle_for_conn = cancel_handle.clone();
+    let cancel_handle_for_prefix = cancel_handle.clone();
 
     // A local task that polls the hyper connection future to completion.
     let task_fut = async move {
-      let conn_fut = pin!(conn_fut);
-      let shutdown_fut = pin!(shutdown_fut);
-      let result = match select(conn_fut, shutdown_fut).await {
-        Either::Left((result, _)) => result,
-        Either::Right((_, mut conn_fut)) => {
-          conn_fut.as_mut().graceful_shutdown();
-          conn_fut.await
-        }
+      let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
+      let Some((is_http2, io)) = (match prefix
+        .match_prefix_or_shutdown(
+          std::future::pending::<()>().or_cancel(cancel_handle_for_prefix),
+        )
+        .await
+      {
+        Ok(result) => result,
+        Err(err) => return Err(Arc::new(HttpConnError::from(err))),
+      }) else {
+        return Ok(());
       };
-      filter_enotconn(result).map_err(Arc::from)
+      let result = if is_http2 {
+        serve_legacy_http2(io, service, cancel_handle_for_conn).await
+      } else {
+        serve_legacy_http11(io, service, cancel_handle_for_conn).await
+      };
+      filter_enotconn(result.map_err(HttpConnError::from)).map_err(Arc::from)
     };
     let (task_fut, closed_fut) = task_fut.remote_handle();
     let closed_fut = closed_fut.shared();
@@ -284,28 +833,53 @@ impl HttpConnResource {
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
 
+      let otel_instant = OTEL_GLOBALS
+        .get()
+        .filter(|o| o.has_metrics())
+        .map(|_| std::time::Instant::now());
+
       let acceptor = HttpAcceptor::new(request_tx, response_rx);
       self.acceptors_tx.unbounded_send(acceptor).ok()?;
 
       let request = request_rx.await.ok()?;
       let accept_encoding = {
         let encodings =
-          fly_accept_encoding::encodings_iter_http_02(request.headers())
-            .filter(|r| {
-              matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _)))
-            });
-
-        fly_accept_encoding::preferred(encodings)
-          .ok()
-          .flatten()
-          .unwrap_or(Encoding::Identity)
+          fly_accept_encoding::encodings_iter_http(request.headers());
+        preferred_supported_encoding(encodings)
       };
+
+      let otel_info =
+        OTEL_GLOBALS.get().filter(|o| o.has_metrics()).map(|otel| {
+          let size_hint = request.size_hint();
+          Rc::new(RefCell::new(Some(OtelInfo::new(
+            otel,
+            otel_instant.unwrap(),
+            size_hint.upper().unwrap_or(size_hint.lower()),
+            OtelInfoAttributes {
+              http_request_method: OtelInfoAttributes::method(request.method()),
+              url_scheme: Cow::Borrowed(self.scheme),
+              network_protocol_version: OtelInfoAttributes::version(
+                request.version(),
+              ),
+              server_address: request.uri().host().map(|host| host.to_string()),
+              server_port: request.uri().port_u16().map(|port| port as i64),
+              error_type: Default::default(),
+              http_route: None,
+              http_response_status_code: Default::default(),
+            },
+          ))))
+        });
 
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
-      let read_stream = HttpStreamReadResource::new(self, request);
-      let write_stream =
-        HttpStreamWriteResource::new(self, response_tx, accept_encoding);
+      let read_stream =
+        HttpStreamReadResource::new(self, request, otel_info.clone());
+      let write_stream = HttpStreamWriteResource::new(
+        self,
+        response_tx,
+        accept_encoding,
+        otel_info,
+      );
       Some((read_stream, write_stream, method, url))
     };
 
@@ -322,12 +896,12 @@ impl HttpConnResource {
 
   /// A future that completes when this HTTP connection is closed or errors.
   async fn closed(&self) -> Result<(), HttpError> {
-    self.closed_fut.clone().map_err(HttpError::HyperV014).await
+    self.closed_fut.clone().map_err(HttpError::Connection).await
   }
 }
 
 impl Resource for HttpConnResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpConn".into()
   }
 
@@ -354,35 +928,34 @@ where
 /// An object that implements the `hyper::Service` trait, through which Hyper
 /// delivers incoming HTTP requests.
 struct HttpService {
-  acceptors_rx: Peekable<mpsc::UnboundedReceiver<HttpAcceptor>>,
+  acceptors_rx:
+    Rc<AsyncRefCell<Peekable<mpsc::UnboundedReceiver<HttpAcceptor>>>>,
 }
 
 impl HttpService {
   fn new(acceptors_rx: mpsc::UnboundedReceiver<HttpAcceptor>) -> Self {
     let acceptors_rx = acceptors_rx.peekable();
-    Self { acceptors_rx }
+    Self {
+      acceptors_rx: Rc::new(acceptors_rx.into()),
+    }
   }
 }
 
-impl Service<Request<Body>> for HttpService {
-  type Response = Response<Body>;
+impl Service<Request<Incoming>> for HttpService {
+  type Response = Response<LegacyBody>;
   type Error = oneshot::Canceled;
-  type Future = oneshot::Receiver<Response<Body>>;
+  type Future = Pin<
+    Box<dyn Future<Output = Result<Response<LegacyBody>, oneshot::Canceled>>>,
+  >;
 
-  fn poll_ready(
-    &mut self,
-    cx: &mut Context<'_>,
-  ) -> Poll<Result<(), Self::Error>> {
-    let acceptors_rx = Pin::new(&mut self.acceptors_rx);
-    let result = ready!(acceptors_rx.poll_peek(cx))
-      .map(|_| ())
-      .ok_or(oneshot::Canceled);
-    Poll::Ready(result)
-  }
-
-  fn call(&mut self, request: Request<Body>) -> Self::Future {
-    let acceptor = self.acceptors_rx.next().now_or_never().flatten().unwrap();
-    acceptor.call(request)
+  fn call(&self, request: Request<Incoming>) -> Self::Future {
+    let acceptors_rx = self.acceptors_rx.clone();
+    Box::pin(async move {
+      let mut acceptors_rx = acceptors_rx.borrow_mut().await;
+      let acceptor = acceptors_rx.next().await.ok_or(oneshot::Canceled)?;
+      drop(acceptors_rx);
+      acceptor.call(request).await
+    })
   }
 }
 
@@ -390,14 +963,14 @@ impl Service<Request<Body>> for HttpService {
 /// Hyper service to the HttpConn resource, and then take the Response back to
 /// the service.
 struct HttpAcceptor {
-  request_tx: oneshot::Sender<Request<Body>>,
-  response_rx: oneshot::Receiver<Response<Body>>,
+  request_tx: oneshot::Sender<Request<Incoming>>,
+  response_rx: oneshot::Receiver<Response<LegacyBody>>,
 }
 
 impl HttpAcceptor {
   fn new(
-    request_tx: oneshot::Sender<Request<Body>>,
-    response_rx: oneshot::Receiver<Response<Body>>,
+    request_tx: oneshot::Sender<Request<Incoming>>,
+    response_rx: oneshot::Receiver<Response<LegacyBody>>,
   ) -> Self {
     Self {
       request_tx,
@@ -405,7 +978,10 @@ impl HttpAcceptor {
     }
   }
 
-  fn call(self, request: Request<Body>) -> oneshot::Receiver<Response<Body>> {
+  fn call(
+    self,
+    request: Request<Incoming>,
+  ) -> oneshot::Receiver<Response<LegacyBody>> {
     let Self {
       request_tx,
       response_rx,
@@ -422,28 +998,35 @@ pub struct HttpStreamReadResource {
   pub rd: AsyncRefCell<HttpRequestReader>,
   cancel_handle: CancelHandle,
   size: SizeHint,
+  otel_info: Option<Rc<RefCell<Option<OtelInfo>>>>,
 }
 
 pub struct HttpStreamWriteResource {
   conn: Rc<HttpConnResource>,
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: Encoding,
+  otel_info: Option<Rc<RefCell<Option<OtelInfo>>>>,
 }
 
 impl HttpStreamReadResource {
-  fn new(conn: &Rc<HttpConnResource>, request: Request<Body>) -> Self {
+  fn new(
+    conn: &Rc<HttpConnResource>,
+    request: Request<Incoming>,
+    otel_info: Option<Rc<RefCell<Option<OtelInfo>>>>,
+  ) -> Self {
     let size = request.body().size_hint();
     Self {
       _conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       size,
       cancel_handle: CancelHandle::new(),
+      otel_info,
     }
   }
 }
 
 impl Resource for HttpStreamReadResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpReadStream".into()
   }
 
@@ -460,38 +1043,17 @@ impl Resource for HttpStreamReadResource {
         match take(&mut *rd) {
           HttpRequestReader::Headers(request) => {
             let (parts, body) = request.into_parts();
-            *rd = HttpRequestReader::Body(parts.headers, body.peekable());
+            *rd = HttpRequestReader::Body(
+              parts.headers,
+              Rc::new(HttpRequestBody::new(BufferedIncoming::new(body))),
+            );
           }
           _ => unreachable!(),
         };
       };
 
-      let fut = async {
-        let mut body = Pin::new(body);
-        loop {
-          match body.as_mut().peek_mut().await {
-            Some(Ok(chunk)) if !chunk.is_empty() => {
-              let len = min(limit, chunk.len());
-              let buf = chunk.split_to(len);
-              let view = BufView::from(buf);
-              break Ok(view);
-            }
-            // This unwrap is safe because `peek_mut()` returned `Some`, and thus
-            // currently has a peeked value that can be synchronously returned
-            // from `next()`.
-            //
-            // The future returned from `next()` is always ready, so we can
-            // safely call `await` on it without creating a race condition.
-            Some(_) => match body.as_mut().next().await.unwrap() {
-              Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => {
-                break Err(HttpError::HyperV014(Arc::new(err)).into())
-              }
-            },
-            None => break Ok(BufView::empty()),
-          }
-        }
-      };
+      let body = body.clone();
+      let fut = body.read(limit);
 
       let cancel_handle = RcRef::map(&self, |r| &r.cancel_handle);
       fut.try_or_cancel(cancel_handle).await
@@ -510,57 +1072,55 @@ impl Resource for HttpStreamReadResource {
 impl HttpStreamWriteResource {
   fn new(
     conn: &Rc<HttpConnResource>,
-    response_tx: oneshot::Sender<Response<Body>>,
+    response_tx: oneshot::Sender<Response<LegacyBody>>,
     accept_encoding: Encoding,
+    otel_info: Option<Rc<RefCell<Option<OtelInfo>>>>,
   ) -> Self {
     Self {
       conn: conn.clone(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
       accept_encoding,
+      otel_info,
     }
   }
 }
 
 impl Resource for HttpStreamWriteResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     "httpWriteStream".into()
   }
 }
 
 /// The read half of an HTTP stream.
+#[derive(Default)]
 pub enum HttpRequestReader {
-  Headers(Request<Body>),
-  Body(HeaderMap<HeaderValue>, Peekable<Body>),
+  Headers(Request<Incoming>),
+  Body(HeaderMap<HeaderValue>, Rc<HttpRequestBody>),
+  #[default]
   Closed,
 }
 
-impl Default for HttpRequestReader {
-  fn default() -> Self {
-    Self::Closed
-  }
-}
-
 /// The write half of an HTTP stream.
+#[derive(Default)]
 enum HttpResponseWriter {
-  Headers(oneshot::Sender<Response<Body>>),
+  Headers(oneshot::Sender<Response<LegacyBody>>),
   Body {
     writer: Pin<Box<dyn tokio::io::AsyncWrite>>,
     shutdown_handle: ShutdownHandle,
   },
   BodyUncompressed(BodyUncompressedSender),
+  #[default]
   Closed,
 }
 
-impl Default for HttpResponseWriter {
-  fn default() -> Self {
-    Self::Closed
-  }
-}
-
-struct BodyUncompressedSender(Option<hyper_v014::body::Sender>);
+struct BodyUncompressedSender(
+  Option<http_body_util::channel::Sender<Bytes, JsErrorBox>>,
+);
 
 impl BodyUncompressedSender {
-  fn sender(&mut self) -> &mut hyper_v014::body::Sender {
+  fn sender(
+    &mut self,
+  ) -> &mut http_body_util::channel::Sender<Bytes, JsErrorBox> {
     // This is safe because we only ever take the sender out of the option
     // inside of the shutdown method.
     self.0.as_mut().unwrap()
@@ -573,8 +1133,10 @@ impl BodyUncompressedSender {
   }
 }
 
-impl From<hyper_v014::body::Sender> for BodyUncompressedSender {
-  fn from(sender: hyper_v014::body::Sender) -> Self {
+impl From<http_body_util::channel::Sender<Bytes, JsErrorBox>>
+  for BodyUncompressedSender
+{
+  fn from(sender: http_body_util::channel::Sender<Bytes, JsErrorBox>) -> Self {
     BodyUncompressedSender(Some(sender))
   }
 }
@@ -582,14 +1144,13 @@ impl From<hyper_v014::body::Sender> for BodyUncompressedSender {
 impl Drop for BodyUncompressedSender {
   fn drop(&mut self) {
     if let Some(sender) = self.0.take() {
-      sender.abort();
+      sender.abort(JsErrorBox::new("Http", "response body dropped"));
     }
   }
 }
 
 // We use a tuple instead of struct to avoid serialization overhead of the keys.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(deno_core::ToV8)]
 struct NextRequestResponse(
   // read_stream_rid:
   ResourceId,
@@ -603,17 +1164,12 @@ struct NextRequestResponse(
   String,
 );
 
-#[op2(async)]
-#[serde]
+#[op2]
 async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<Option<NextRequestResponse>, HttpError> {
-  let conn = state
-    .borrow()
-    .resource_table
-    .get::<HttpConnResource>(rid)
-    .map_err(HttpError::Resource)?;
+  let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
   match conn.accept().await {
     Ok(Some((read_stream, write_stream, method, url))) => {
@@ -635,11 +1191,11 @@ async fn op_http_accept(
 }
 
 fn req_url(
-  req: &hyper_v014::Request<hyper_v014::Body>,
+  req: &Request<Incoming>,
   scheme: &'static str,
   addr: &HttpSocketAddr,
 ) -> String {
-  let host: Cow<str> = match addr {
+  let host: Cow<'_, str> = match addr {
     HttpSocketAddr::IpSocket(addr) => {
       if let Some(auth) = req.uri().authority() {
         match addr.port() {
@@ -701,7 +1257,7 @@ fn req_headers(
 
   let mut headers = Vec::with_capacity(header_map.len());
   for (name, value) in header_map.iter() {
-    if name == hyper_v014::header::COOKIE {
+    if name == COOKIE {
       cookies.push(value.as_bytes());
     } else {
       let name: &[u8] = name.as_ref();
@@ -717,19 +1273,18 @@ fn req_headers(
   headers
 }
 
-#[op2(async)]
+#[op2]
 async fn op_http_write_headers(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: u32,
   #[smi] status: u16,
-  #[serde] headers: Vec<(ByteString, ByteString)>,
+  #[scoped] headers: Vec<(ByteString, ByteString)>,
   #[serde] data: Option<StringOrBuffer>,
 ) -> Result<(), HttpError> {
   let stream = state
     .borrow_mut()
     .resource_table
-    .get::<HttpStreamWriteResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamWriteResource>(rid)?;
 
   // Track supported encoding
   let encoding = stream.accept_encoding;
@@ -758,10 +1313,10 @@ async fn op_http_write_headers(
   if compressing {
     weaken_etag(hmap);
     // Drop 'content-length' header. Hyper will update it using compressed body.
-    hmap.remove(hyper_v014::header::CONTENT_LENGTH);
+    hmap.remove(CONTENT_LENGTH);
     // Content-Encoding header
     hmap.insert(
-      hyper_v014::header::CONTENT_ENCODING,
+      CONTENT_ENCODING,
       HeaderValue::from_static(match encoding {
         Encoding::Brotli => "br",
         Encoding::Gzip => "gzip",
@@ -772,6 +1327,14 @@ async fn op_http_write_headers(
 
   let (new_wr, body) = http_response(data, compressing, encoding)?;
   let body = builder.status(status).body(body)?;
+
+  if let Some(otel) = stream.otel_info.as_ref() {
+    let mut otel = otel.borrow_mut();
+    if let Some(otel_info) = otel.as_mut() {
+      otel_info.attributes.http_response_status_code = Some(status as _);
+      otel_info.handle_duration_and_request_size();
+    }
+  }
 
   let mut old_wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let response_tx = match replace(&mut *old_wr, new_wr) {
@@ -789,18 +1352,15 @@ async fn op_http_write_headers(
 }
 
 #[op2]
-#[serde]
 fn op_http_headers(
   state: &mut OpState,
   #[smi] rid: u32,
 ) -> Result<Vec<(ByteString, ByteString)>, HttpError> {
-  let stream = state
-    .resource_table
-    .get::<HttpStreamReadResource>(rid)
-    .map_err(HttpError::Resource)?;
+  let stream = state.resource_table.get::<HttpStreamReadResource>(rid)?;
   let rd = RcRef::map(&stream, |r| &r.rd)
     .try_borrow()
-    .ok_or(HttpError::AlreadyInUse)?;
+    .ok_or(HttpError::AlreadyInUse)
+    .inspect_err(|e| handle_error_otel(&stream.otel_info, e))?;
   match &*rd {
     HttpRequestReader::Headers(request) => Ok(req_headers(request.headers())),
     HttpRequestReader::Body(headers, _) => Ok(req_headers(headers)),
@@ -812,7 +1372,7 @@ fn http_response(
   data: Option<StringOrBuffer>,
   compressing: bool,
   encoding: Encoding,
-) -> Result<(HttpResponseWriter, hyper_v014::Body), HttpError> {
+) -> Result<(HttpResponseWriter, LegacyBody), HttpError> {
   // Gzip, after level 1, doesn't produce significant size difference.
   // This default matches nginx default gzip compression level (1):
   // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
@@ -821,14 +1381,12 @@ fn http_response(
   match data {
     Some(data) if compressing => match encoding {
       Encoding::Brotli => {
-        // quality level 6 is based on google's nginx default value for
-        // on-the-fly compression
-        // https://github.com/google/ngx_brotli#brotli_comp_level
-        // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
-        // (~4MB)
-        let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+        let mut writer = brotli_compressor(4096);
         writer.write_all(&data)?;
-        Ok((HttpResponseWriter::Closed, writer.into_inner().into()))
+        Ok((
+          HttpResponseWriter::Closed,
+          LegacyBody::full(writer.into_inner().into()),
+        ))
       }
       Encoding::Gzip => {
         let mut writer = GzEncoder::new(
@@ -836,14 +1394,20 @@ fn http_response(
           Compression::new(GZIP_DEFAULT_COMPRESSION_LEVEL.into()),
         );
         writer.write_all(&data)?;
-        Ok((HttpResponseWriter::Closed, writer.finish()?.into()))
+        Ok((
+          HttpResponseWriter::Closed,
+          LegacyBody::full(writer.finish()?.into()),
+        ))
       }
       _ => unreachable!(), // forbidden by accepts_compression
     },
     Some(data) => {
       // If a buffer was passed, but isn't compressible, we use it to
       // construct a response body.
-      Ok((HttpResponseWriter::Closed, data.to_vec().into()))
+      Ok((
+        HttpResponseWriter::Closed,
+        LegacyBody::full(data.to_vec().into()),
+      ))
     }
     None if compressing => {
       // Create a one way pipe that implements tokio's async io traits. To do
@@ -869,14 +1433,14 @@ fn http_response(
           writer,
           shutdown_handle,
         },
-        Body::wrap_stream(stream),
+        LegacyBody::Stream(Box::pin(stream)),
       ))
     }
     None => {
-      let (body_tx, body_rx) = Body::channel();
+      let (body_tx, body_rx) = Channel::new(1);
       Ok((
         HttpResponseWriter::BodyUncompressed(body_tx.into()),
-        body_rx,
+        LegacyBody::Channel(body_rx),
       ))
     }
   }
@@ -884,14 +1448,14 @@ fn http_response(
 
 // If user provided a ETag header for uncompressed data, we need to
 // ensure it is a Weak Etag header ("W/").
-fn weaken_etag(hmap: &mut hyper_v014::HeaderMap) {
-  if let Some(etag) = hmap.get_mut(hyper_v014::header::ETAG) {
-    if !etag.as_bytes().starts_with(b"W/") {
-      let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
-      v.extend(b"W/");
-      v.extend(etag.as_bytes());
-      *etag = v.try_into().unwrap();
-    }
+fn weaken_etag(hmap: &mut HeaderMap) {
+  if let Some(etag) = hmap.get_mut(hyper::header::ETAG)
+    && !etag.as_bytes().starts_with(b"W/")
+  {
+    let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
+    v.extend(b"W/");
+    v.extend(etag.as_bytes());
+    *etag = v.try_into().unwrap();
   }
 }
 
@@ -899,52 +1463,48 @@ fn weaken_etag(hmap: &mut hyper_v014::HeaderMap) {
 // Note: we set the header irrespective of whether or not we compress the data
 // to make sure cache services do not serve uncompressed data to clients that
 // support compression.
-fn ensure_vary_accept_encoding(hmap: &mut hyper_v014::HeaderMap) {
-  if let Some(v) = hmap.get_mut(hyper_v014::header::VARY) {
-    if let Ok(s) = v.to_str() {
-      if !s.to_lowercase().contains("accept-encoding") {
-        *v = format!("Accept-Encoding, {s}").try_into().unwrap()
-      }
-      return;
+fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
+  if let Some(v) = hmap.get_mut(hyper::header::VARY)
+    && let Ok(s) = v.to_str()
+  {
+    if !s.to_lowercase().contains("accept-encoding") {
+      *v = format!("Accept-Encoding, {s}").try_into().unwrap()
     }
+    return;
   }
   hmap.insert(
-    hyper_v014::header::VARY,
+    hyper::header::VARY,
     HeaderValue::from_static("Accept-Encoding"),
   );
 }
 
-fn should_compress(headers: &hyper_v014::HeaderMap) -> bool {
+fn should_compress(headers: &HeaderMap) -> bool {
   // skip compression if the cache-control header value is set to "no-transform" or not utf8
-  fn cache_control_no_transform(
-    headers: &hyper_v014::HeaderMap,
-  ) -> Option<bool> {
-    let v = headers.get(hyper_v014::header::CACHE_CONTROL)?;
+  fn cache_control_no_transform(headers: &HeaderMap) -> Option<bool> {
+    let v = headers.get(hyper::header::CACHE_CONTROL)?;
     let s = match std::str::from_utf8(v.as_bytes()) {
       Ok(s) => s,
       Err(_) => return Some(true),
     };
-    let c = CacheControl::from_value(s)?;
-    Some(c.no_transform)
+    cache_control_has_no_transform(s)
   }
   // we skip compression if the `content-range` header value is set, as it
   // indicates the contents of the body were negotiated based directly
   // with the user code and we can't compress the response
-  let content_range = headers.contains_key(hyper_v014::header::CONTENT_RANGE);
+  let content_range = headers.contains_key(CONTENT_RANGE);
   // assume body is already compressed if Content-Encoding header present, thus avoid recompressing
-  let is_precompressed =
-    headers.contains_key(hyper_v014::header::CONTENT_ENCODING);
+  let is_precompressed = headers.contains_key(CONTENT_ENCODING);
 
   !content_range
     && !is_precompressed
     && !cache_control_no_transform(headers).unwrap_or_default()
     && headers
-      .get(hyper_v014::header::CONTENT_TYPE)
+      .get(CONTENT_TYPE)
       .map(compressible::is_content_compressible)
       .unwrap_or_default()
 }
 
-#[op2(async)]
+#[op2]
 async fn op_http_write_resource(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -953,30 +1513,21 @@ async fn op_http_write_resource(
   let http_stream = state
     .borrow()
     .resource_table
-    .get::<HttpStreamWriteResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
-  let resource = state
-    .borrow()
-    .resource_table
-    .get_any(stream)
-    .map_err(HttpError::Resource)?;
+  let resource = state.borrow().resource_table.get_any(stream)?;
   loop {
     match *wr {
       HttpResponseWriter::Headers(_) => {
-        return Err(HttpError::NoResponseHeaders)
+        return Err(HttpError::NoResponseHeaders);
       }
       HttpResponseWriter::Closed => {
-        return Err(HttpError::ResponseAlreadyCompleted)
+        return Err(HttpError::ResponseAlreadyCompleted);
       }
       _ => {}
     };
 
-    let view = resource
-      .clone()
-      .read(64 * 1024)
-      .await
-      .map_err(HttpError::Other)?; // 64KB
+    let view = resource.clone().read(64 * 1024).await?; // 64KB
     if view.is_empty() {
       break;
     }
@@ -998,8 +1549,7 @@ async fn op_http_write_resource(
       }
       HttpResponseWriter::BodyUncompressed(body) => {
         let bytes = view.to_vec().into();
-        if let Err(err) = body.sender().send_data(bytes).await {
-          assert!(err.is_closed());
+        if body.sender().send_data(bytes).await.is_err() {
           // Pull up the failure associated with the transport connection instead.
           http_stream.conn.closed().await?;
           // If there was no connection error, drop body_tx.
@@ -1012,7 +1562,7 @@ async fn op_http_write_resource(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1021,9 +1571,17 @@ async fn op_http_write(
   let stream = state
     .borrow()
     .resource_table
-    .get::<HttpStreamWriteResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
+
+  if let Some(otel) = stream.otel_info.as_ref() {
+    let mut maybe_otel_info = otel.borrow_mut();
+    if let Some(otel_info) = maybe_otel_info.as_mut()
+      && let Some(response_size) = otel_info.response_size.as_mut()
+    {
+      *response_size += buf.len() as u64;
+    }
+  }
 
   match &mut *wr {
     HttpResponseWriter::Headers(_) => Err(HttpError::NoResponseHeaders),
@@ -1050,8 +1608,7 @@ async fn op_http_write(
       let bytes = Bytes::from(buf.to_vec());
       match body.sender().send_data(bytes).await {
         Ok(_) => Ok(()),
-        Err(err) => {
-          assert!(err.is_closed());
+        Err(_) => {
           // Pull up the failure associated with the transport connection instead.
           stream.conn.closed().await?;
           // If there was no connection error, drop body_tx.
@@ -1066,7 +1623,7 @@ async fn op_http_write(
 /// Gracefully closes the write half of the HTTP stream. Note that this does not
 /// remove the HTTP stream resource from the resource table; it still has to be
 /// closed with `Deno.core.close()`.
-#[op2(async)]
+#[op2]
 async fn op_http_shutdown(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -1074,8 +1631,7 @@ async fn op_http_shutdown(
   let stream = state
     .borrow()
     .resource_table
-    .get::<HttpStreamWriteResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let wr = take(&mut *wr);
   match wr {
@@ -1105,14 +1661,14 @@ async fn op_http_shutdown(
 #[op2]
 #[string]
 fn op_http_websocket_accept_header(#[string] key: String) -> String {
-  let digest = ring::digest::digest(
-    &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
+  let digest = aws_lc_rs::digest::digest(
+    &aws_lc_rs::digest::SHA1_FOR_LEGACY_USE_ONLY,
     format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
   BASE64_STANDARD.encode(digest)
 }
 
-#[op2(async)]
+#[op2]
 #[smi]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
@@ -1121,19 +1677,22 @@ async fn op_http_upgrade_websocket(
   let stream = state
     .borrow_mut()
     .resource_table
-    .get::<HttpStreamReadResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamReadResource>(rid)?;
   let mut rd = RcRef::map(&stream, |r| &r.rd).borrow_mut().await;
 
   let request = match &mut *rd {
     HttpRequestReader::Headers(request) => request,
-    _ => return Err(HttpError::UpgradeBodyUsed),
+    _ => {
+      return Err(HttpError::UpgradeBodyUsed)
+        .inspect_err(|e| handle_error_otel(&stream.otel_info, e));
+    }
   };
 
   let (transport, bytes) = extract_network_stream(
-    hyper_v014::upgrade::on(request)
+    hyper::upgrade::on(request)
       .await
-      .map_err(|err| HttpError::HyperV014(Arc::new(err)))?,
+      .map_err(|err| HttpError::Hyper(Arc::new(err)))
+      .inspect_err(|e| handle_error_otel(&stream.otel_info, e))?,
   );
   Ok(ws_create_server_stream(
     &mut state.borrow_mut(),
@@ -1145,16 +1704,6 @@ async fn op_http_upgrade_websocket(
 // Needed so hyper can use non Send futures
 #[derive(Clone)]
 pub struct LocalExecutor;
-
-impl<Fut> hyper_v014::rt::Executor<Fut> for LocalExecutor
-where
-  Fut: Future + 'static,
-  Fut::Output: 'static,
-{
-  fn execute(&self, fut: Fut) {
-    deno_core::unsync::spawn(fut);
-  }
-}
 
 impl<Fut> hyper::rt::Executor<Fut> for LocalExecutor
 where
@@ -1168,8 +1717,8 @@ where
 
 /// Filters out the ever-surprising 'shutdown ENOTCONN' errors.
 fn filter_enotconn(
-  result: Result<(), hyper_v014::Error>,
-) -> Result<(), hyper_v014::Error> {
+  result: Result<(), HttpConnError>,
+) -> Result<(), HttpConnError> {
   if result
     .as_ref()
     .err()
@@ -1182,11 +1731,6 @@ fn filter_enotconn(
   } else {
     result
   }
-}
-
-/// Create a future that is forever pending.
-fn never() -> Pending<Never> {
-  pending()
 }
 
 trait CanDowncastUpgrade: Sized {
@@ -1202,15 +1746,6 @@ impl CanDowncastUpgrade for hyper::upgrade::Upgraded {
     let hyper::upgrade::Parts { io, read_buf, .. } =
       self.downcast::<TokioIo<T>>()?;
     Ok((io.into_inner(), read_buf))
-  }
-}
-
-impl CanDowncastUpgrade for hyper_v014::upgrade::Upgraded {
-  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
-    self,
-  ) -> Result<(T, Bytes), Self> {
-    let hyper_v014::upgrade::Parts { io, read_buf, .. } = self.downcast()?;
-    Ok((io, read_buf))
   }
 }
 
@@ -1254,16 +1789,31 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
       Ok(res) => return res,
       Err(x) => x,
     };
-  let upgraded =
-    match maybe_extract_network_stream::<deno_net::ops_tls::TlsStream, _>(
-      upgraded,
-    ) {
-      Ok(res) => return res,
-      Err(x) => x,
-    };
+  let upgraded = match maybe_extract_network_stream::<
+    deno_net::ops_tls::TlsStream<TcpStream>,
+    _,
+  >(upgraded)
+  {
+    Ok(res) => return res,
+    Err(x) => x,
+  };
   #[cfg(unix)]
   let upgraded =
     match maybe_extract_network_stream::<tokio::net::UnixStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
+  let upgraded =
+    match maybe_extract_network_stream::<tokio_vsock::VsockStream, _>(upgraded)
+    {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<deno_net::tunnel::TunnelStream, _>(
+      upgraded,
+    ) {
       Ok(res) => return res,
       Err(x) => x,
     };
@@ -1276,4 +1826,164 @@ fn extract_network_stream<U: CanDowncastUpgrade>(
   // TODO(mmastrac): HTTP/2 websockets may yield an un-downgradable type
   drop(upgraded);
   unreachable!("unexpected stream type");
+}
+
+#[op2]
+pub fn op_http_serve_address_override() -> (u8, String, u32, bool) {
+  if let Ok(val) = std::env::var("DENO_SERVE_ADDRESS") {
+    return parse_serve_address(&val);
+  };
+
+  if deno_net::tunnel::get_tunnel().is_some() {
+    return (4, String::new(), 0, true);
+  }
+
+  (0, String::new(), 0, false)
+}
+
+fn parse_serve_address(input: &str) -> (u8, String, u32, bool) {
+  let (input, duplicate) = match input.strip_prefix("duplicate,") {
+    Some(input) => (input, true),
+    None => (input, false),
+  };
+  match input.split_once(':') {
+    Some(("tcp", addr)) => {
+      // TCP address
+      match addr.parse::<SocketAddr>() {
+        Ok(addr) => {
+          let hostname = match addr {
+            SocketAddr::V4(v4) => v4.ip().to_string(),
+            SocketAddr::V6(v6) => format!("[{}]", v6.ip()),
+          };
+          (1, hostname, addr.port() as u32, duplicate)
+        }
+        Err(_) => {
+          log::error!("DENO_SERVE_ADDRESS: invalid TCP address: {}", addr);
+          (0, String::new(), 0, false)
+        }
+      }
+    }
+    Some(("unix", addr)) => {
+      // Unix socket path
+      if addr.is_empty() {
+        log::error!("DENO_SERVE_ADDRESS: empty unix socket path");
+        return (0, String::new(), 0, duplicate);
+      }
+      (2, addr.to_string(), 0, duplicate)
+    }
+    Some(("vsock", addr)) => {
+      // Vsock address
+      match addr.split_once(':') {
+        Some((cid, port)) => {
+          let cid = if cid == "-1" {
+            "-1".to_string()
+          } else {
+            match cid.parse::<u32>() {
+              Ok(cid) => cid.to_string(),
+              Err(_) => {
+                log::error!("DENO_SERVE_ADDRESS: invalid vsock CID: {}", cid);
+                return (0, String::new(), 0, false);
+              }
+            }
+          };
+          let port = match port.parse::<u32>() {
+            Ok(port) => port,
+            Err(_) => {
+              log::error!("DENO_SERVE_ADDRESS: invalid vsock port: {}", port);
+              return (0, String::new(), 0, false);
+            }
+          };
+          (3, cid, port, duplicate)
+        }
+        None => (0, String::new(), 0, false),
+      }
+    }
+    Some(("tunnel", _)) => (4, String::new(), 0, duplicate),
+    Some((_, _)) | None => {
+      log::error!("DENO_SERVE_ADDRESS: invalid address format: {}", input);
+      (0, String::new(), 0, false)
+    }
+  }
+}
+
+pub static SERVE_NOTIFIER: Notify = Notify::const_new();
+
+#[op2(fast)]
+fn op_http_notify_serving() {
+  static ONCE: AtomicBool = AtomicBool::new(false);
+
+  if ONCE
+    .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+    .is_ok()
+  {
+    SERVE_NOTIFIER.notify_one();
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn cache_control_no_transform_parse_matches_dependency_quirks() {
+    assert_eq!(cache_control_has_no_transform(""), Some(false));
+    assert_eq!(cache_control_has_no_transform("no-transform"), Some(true));
+    assert_eq!(
+      cache_control_has_no_transform("public, no-transform=anything"),
+      Some(true)
+    );
+    assert_eq!(cache_control_has_no_transform("max-age=bad"), None);
+    assert_eq!(
+      cache_control_has_no_transform("no-transform, max-age=bad"),
+      None
+    );
+    assert_eq!(
+      cache_control_has_no_transform("max-age=60=ignored, no-transform"),
+      Some(true)
+    );
+  }
+
+  #[test]
+  fn test_parse_serve_address() {
+    assert_eq!(
+      parse_serve_address("tcp:127.0.0.1:8080"),
+      (1, "127.0.0.1".to_string(), 8080, false)
+    );
+    assert_eq!(
+      parse_serve_address("tcp:[::1]:9000"),
+      (1, "[::1]".to_string(), 9000, false)
+    );
+    assert_eq!(
+      parse_serve_address("duplicate,tcp:[::1]:9000"),
+      (1, "[::1]".to_string(), 9000, true)
+    );
+
+    assert_eq!(
+      parse_serve_address("unix:/var/run/socket.sock"),
+      (2, "/var/run/socket.sock".to_string(), 0, false)
+    );
+    assert_eq!(
+      parse_serve_address("duplicate,unix:/var/run/socket.sock"),
+      (2, "/var/run/socket.sock".to_string(), 0, true)
+    );
+
+    assert_eq!(
+      parse_serve_address("vsock:1234:5678"),
+      (3, "1234".to_string(), 5678, false)
+    );
+    assert_eq!(
+      parse_serve_address("vsock:-1:5678"),
+      (3, "-1".to_string(), 5678, false)
+    );
+    assert_eq!(
+      parse_serve_address("duplicate,vsock:-1:5678"),
+      (3, "-1".to_string(), 5678, true)
+    );
+
+    assert_eq!(parse_serve_address("tcp:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("unix:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("vsock:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("foo:"), (0, String::new(), 0, false));
+    assert_eq!(parse_serve_address("bar"), (0, String::new(), 0, false));
+  }
 }

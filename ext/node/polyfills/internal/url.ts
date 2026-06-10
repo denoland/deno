@@ -1,33 +1,65 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+(function () {
+const { core, primordials } = __bootstrap;
+const lazyUrl = core.createLazyLoader("node:url");
+const { validateObject } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
+const {
+  Boolean,
+  Number,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeSlice,
+  StringPrototypeStartsWith,
+  Symbol,
+  decodeURIComponent,
+} = primordials;
 
-import { fileURLToPath } from "node:url";
-import { Buffer } from "node:buffer";
+interface HttpOptions {
+  protocol: string;
+  hostname: string;
+  hash: string;
+  search: string;
+  pathname: string;
+  path: string;
+  href: string;
+  port?: number;
+  auth?: string;
+}
 
 const searchParams = Symbol("query");
 
-export function toPathIfFileURL(
-  fileURLOrPath: string | Buffer | URL,
-): string | Buffer {
-  if (!(fileURLOrPath instanceof URL)) {
+function isURL(self: unknown): self is URL {
+  return Boolean(
+    // deno-lint-ignore no-explicit-any
+    (self as any)?.href && (self as any).protocol &&
+      // deno-lint-ignore no-explicit-any
+      (self as any).auth === undefined && (self as any).path === undefined,
+  );
+}
+
+function toPathIfFileURL(
+  // deno-lint-ignore no-explicit-any
+  fileURLOrPath: any,
+) {
+  if (!(ObjectPrototypeIsPrototypeOf(URL.prototype, fileURLOrPath))) {
     return fileURLOrPath;
   }
-  return fileURLToPath(fileURLOrPath);
+  return lazyUrl().fileURLToPath(fileURLOrPath);
 }
 
 // Utility function that converts a URL object into an ordinary
 // options object as expected by the http.request and https.request
 // APIs.
-// deno-lint-ignore no-explicit-any
-export function urlToHttpOptions(url: any): any {
-  // deno-lint-ignore no-explicit-any
-  const options: any = {
+function urlToHttpOptions(url: URL): HttpOptions {
+  validateObject(url, "url", { allowArray: true, allowFunction: true });
+  const options: HttpOptions = {
+    ...url, // In case the url object was extended by the user.
     protocol: url.protocol,
     hostname: typeof url.hostname === "string" &&
-        url.hostname.startsWith("[")
-      ? url.hostname.slice(1, -1)
+        StringPrototypeStartsWith(url.hostname, "[")
+      ? StringPrototypeSlice(url.hostname, 1, -1)
       : url.hostname,
     hash: url.hash,
     search: url.search,
@@ -46,8 +78,10 @@ export function urlToHttpOptions(url: any): any {
   return options;
 }
 
-export { searchParams as searchParamsSymbol };
-
-export default {
+return {
+  isURL,
   toPathIfFileURL,
+  urlToHttpOptions,
+  searchParamsSymbol: searchParams,
 };
+})();

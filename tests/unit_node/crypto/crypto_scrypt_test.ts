@@ -1,7 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { scrypt, scryptSync } from "node:crypto";
 import { Buffer } from "node:buffer";
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertThrows } from "@std/assert";
 
 Deno.test("scrypt works correctly", async () => {
   const { promise, resolve } = Promise.withResolvers<boolean>();
@@ -187,4 +187,62 @@ Deno.test("scryptSync with options works correctly", () => {
       71,
     ]),
   );
+});
+
+// Regression test for https://github.com/denoland/deno/issues/27716
+Deno.test("scrypt with 128-byte keylen matches Node", async () => {
+  const expected = "745731af4484f323968969eda289aeee005b5903ac561e64a5aca121" +
+    "797bf7734ef9fd58422e2e22183bcacba9ec87ba0c83b7a2e788f03ce0da06463433cda" +
+    "64176095fbbad7dc98c33fd75955b4b29c94f6e97617bd68d8ff17cf1ed5ad12f3fc6c8" +
+    "eb5b844f2d003ebaf5eaed19e8f665928472a6941f7efc6ebcdd6fd13a";
+
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  scrypt("password", "salt", 128, (err, key) => {
+    if (err) {
+      reject(err);
+      return;
+    }
+    assertEquals(key?.toString("hex"), expected);
+    resolve();
+  });
+  await promise;
+
+  assertEquals(scryptSync("password", "salt", 128).toString("hex"), expected);
+});
+
+Deno.test("scrypt handles concurrent 128-byte keylen calls", async () => {
+  const run = () =>
+    new Promise<string>((resolve, reject) => {
+      scrypt("password", "salt", 128, (err, key) => {
+        if (err) reject(err);
+        else resolve(key!.toString("hex"));
+      });
+    });
+
+  const [a, b] = await Promise.all([run(), run()]);
+  assertEquals(a, b);
+});
+
+Deno.test("scryptSync throws Node-compatible error for invalid params", () => {
+  const error = assertThrows(() => {
+    scryptSync("pass", "salt", 1, { N: 1, p: 1, r: 1 });
+  }) as RangeError & { code?: string };
+  assertEquals(error instanceof RangeError, true);
+  assertEquals(error.code, "ERR_CRYPTO_INVALID_SCRYPT_PARAMS");
+  assertEquals(error.message, "Invalid scrypt params");
+});
+
+Deno.test("scrypt accepts large safe maxmem values", async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+
+  scrypt("", "", 4, { maxmem: 2 ** 52 }, (err, key) => {
+    if (err) {
+      reject(err);
+      return;
+    }
+    assertEquals(key?.toString("hex"), "d72c87d0");
+    resolve();
+  });
+
+  await promise;
 });

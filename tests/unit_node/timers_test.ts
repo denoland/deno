@@ -1,9 +1,76 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { assert, fail } from "@std/assert";
+import { assert, assertRejects, assertThrows, fail } from "@std/assert";
+import * as perfHooks from "node:perf_hooks";
 import * as timers from "node:timers";
 import * as timersPromises from "node:timers/promises";
 import { assertEquals } from "@std/assert";
+import {
+  createHistogram,
+  monitorEventLoopDelay,
+  performance,
+} from "node:perf_hooks";
+
+Deno.test("[node/perf_hooks] performance.timerify()", () => {
+  function sayHello() {
+    return "hello world";
+  }
+
+  const wrapped = performance.timerify(sayHello);
+  const result = wrapped();
+
+  if (result !== "hello world") {
+    throw new Error(`Expected "hello world", got "${result}"`);
+  }
+});
+
+Deno.test("[node/perf_hooks] histogram parity regressions", () => {
+  assertEquals("Histogram" in perfHooks, false);
+  assertEquals("RecordableHistogram" in perfHooks, false);
+
+  const h = createHistogram();
+  assertEquals(h.percentiles, new Map([[100, 0]]));
+
+  h.record(1);
+  h.record(2);
+  assertEquals(
+    h.percentiles,
+    new Map([[0, 1], [50, 1], [75, 2], [100, 2]]),
+  );
+  assertThrows(
+    () => h.record(9223372036854775808n),
+    RangeError,
+    'The value of "val" is out of range',
+  );
+
+  const low = createHistogram({ lowest: 1, highest: 10 });
+  const high = createHistogram({ lowest: 1, highest: 100000 });
+  high.record(1000);
+  low.add(high);
+  assertEquals(low.count, 1);
+  assertEquals(low.exceeds, 0);
+  assertEquals(low.max, 0);
+  assertEquals(low.percentile(100), 0);
+  assertEquals(low.percentiles, new Map([[100, 0]]));
+
+  const eld = monitorEventLoopDelay();
+  assert(
+    eld instanceof Object.getPrototypeOf(Object.getPrototypeOf(h))
+      .constructor,
+  );
+  assertEquals(eld.percentiles, new Map([[100, 0]]));
+});
+
+Deno.test("[node/perf_hooks] timerify requires a real RecordableHistogram", () => {
+  assertThrows(
+    () =>
+      performance.timerify(() => {}, {
+        histogram: { record() {} } as never,
+      }),
+    TypeError,
+    '"options.histogram" property must be an instance of RecordableHistogram',
+  );
+});
 
 Deno.test("[node/timers setTimeout]", () => {
   {
@@ -268,5 +335,25 @@ Deno.test({
         } duration (${delta}ms) should be within ±${DELTA_TOLERANCE_MS}ms of ${INTERVAL_MS}ms`,
       );
     });
+  },
+});
+
+Deno.test({
+  name: "[timers/promises] setTimeout aborted by AbortSignal",
+  async fn() {
+    const timerPromise = new Promise((resolve, reject) => {
+      const abortController = new AbortController();
+      const timer = timersPromises.setTimeout(1000, "foo", {
+        signal: abortController.signal,
+      });
+      abortController.abort();
+      timer.then(resolve).catch(reject);
+    });
+
+    await assertRejects(
+      () => timerPromise,
+      Error,
+      "The operation was aborted",
+    );
   },
 });

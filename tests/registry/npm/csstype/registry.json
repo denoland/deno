@@ -84,7 +84,10 @@
         "type": "git",
         "url": "git+https://github.com/frenic/csstype.git"
       },
-      "author": { "name": "Fredrik Nicol", "email": "fredrik.nicol@gmail.com" },
+      "author": {
+        "name": "Fredrik Nicol",
+        "email": "fredrik.nicol@gmail.com"
+      },
       "license": "MIT",
       "devDependencies": {
         "@types/chokidar": "^2.1.3",
@@ -130,7 +133,9 @@
         "test:dist": "jest dist.*.ts --runInBand"
       },
       "gitHead": "fb448e21733ac5cb52523d3b678fdbbe1f9b42f2",
-      "bugs": { "url": "https://github.com/frenic/csstype/issues" },
+      "bugs": {
+        "url": "https://github.com/frenic/csstype/issues"
+      },
       "_id": "csstype@3.1.3",
       "_nodeVersion": "18.16.0",
       "_npmVersion": "9.5.1",
@@ -139,13 +144,7 @@
         "shasum": "d80ff294d114fb0e6ac500fbf85b60137d7eff81",
         "tarball": "http://localhost:4260/csstype/csstype-3.1.3.tgz",
         "fileCount": 5,
-        "unpackedSize": 1246074,
-        "signatures": [
-          {
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA",
-            "sig": "MEQCIF2zTnkc6R7cr7euidncjKp9gnQSpUmoKPzB/pvL4rsQAiB4E1mDQEtpvu9cjct0kaUbtTAQc+rBLAO65gAk+ykfig=="
-          }
-        ]
+        "unpackedSize": 1246074
       },
       "directories": {},
       "_hasShrinkwrap": false
@@ -156,7 +155,6 @@
     "email": "fredrik.nicol@gmail.com"
   },
   "license": "MIT",
-  "readmeFilename": "README.md",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/frenic/csstype.git"

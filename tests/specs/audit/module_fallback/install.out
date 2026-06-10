@@ -1,0 +1,6 @@
+Download http://localhost:4260/@denotest%2fwith-vuln3
+Download http://localhost:4260/@denotest/with-vuln3/1.0.0.tgz
+
+Dependencies:
++ npm:@denotest/with-vuln3 1.0.0
+

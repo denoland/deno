@@ -1,0 +1,20 @@
+hello world
+[
+  {
+    "scriptId": "[WILDCARD]",
+    "url": "file:///some/path/to/file/users-source-code.js",
+    "functions": [
+      {
+        "functionName": "",
+        "ranges": [
+          {
+            "startOffset": 0,
+            "endOffset": 26,
+            "count": 1
+          }
+        ],
+        "isBlockCoverage": true
+      }
+    ]
+  }
+]

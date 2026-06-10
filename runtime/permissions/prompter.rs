@@ -1,19 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use crate::is_standalone;
-use deno_core::error::JsStackFrame;
-use deno_core::parking_lot::Mutex;
-use deno_terminal::colors;
 use once_cell::sync::Lazy;
-use std::fmt::Write;
-use std::io::BufRead;
-use std::io::IsTerminal;
-use std::io::StderrLock;
-use std::io::StdinLock;
-use std::io::Write as IoWrite;
+use parking_lot::Mutex;
 
 /// Helper function to make control characters visible so users can see the underlying filename.
-fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
+#[cfg(not(target_arch = "wasm32"))]
+fn escape_control_characters(s: &str) -> std::borrow::Cow<'_, str> {
+  use deno_terminal::colors;
+
   if !s.contains(|c: char| c.is_ascii_control() || c.is_control()) {
     return std::borrow::Cow::Borrowed(s);
   }
@@ -34,9 +28,6 @@ fn escape_control_characters(s: &str) -> std::borrow::Cow<str> {
 
 pub const PERMISSION_EMOJI: &str = "⚠️";
 
-// 10kB of permission prompting should be enough for anyone
-const MAX_PERMISSION_PROMPT_LENGTH: usize = 10 * 1024;
-
 #[derive(Debug, Eq, PartialEq)]
 pub enum PromptResponse {
   Allow,
@@ -44,8 +35,16 @@ pub enum PromptResponse {
   AllowAll,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+type DefaultPrompter = TtyPrompter;
+#[cfg(target_arch = "wasm32")]
+type DefaultPrompter = DeniedPrompter;
+
 static PERMISSION_PROMPTER: Lazy<Mutex<Box<dyn PermissionPrompter>>> =
-  Lazy::new(|| Mutex::new(Box::new(TtyPrompter)));
+  Lazy::new(|| Mutex::new(Box::new(DefaultPrompter::default())));
+
+static TERMINAL_INPUT_LOCK: std::sync::OnceLock<std::sync::Mutex<()>> =
+  std::sync::OnceLock::new();
 
 static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
@@ -53,11 +52,12 @@ static MAYBE_BEFORE_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
 static MAYBE_AFTER_PROMPT_CALLBACK: Lazy<Mutex<Option<PromptCallback>>> =
   Lazy::new(|| Mutex::new(None));
 
-static MAYBE_CURRENT_STACKTRACE: Lazy<Mutex<Option<Vec<JsStackFrame>>>> =
-  Lazy::new(|| Mutex::new(None));
+pub(crate) static MAYBE_CURRENT_STACKTRACE: Lazy<
+  Mutex<Option<GetFormattedStackFn>>,
+> = Lazy::new(|| Mutex::new(None));
 
-pub fn set_current_stacktrace(trace: Vec<JsStackFrame>) {
-  *MAYBE_CURRENT_STACKTRACE.lock() = Some(trace);
+pub fn set_current_stacktrace(get_stack: GetFormattedStackFn) {
+  *MAYBE_CURRENT_STACKTRACE.lock() = Some(get_stack);
 }
 
 pub fn permission_prompt(
@@ -91,7 +91,21 @@ pub fn set_prompter(prompter: Box<dyn PermissionPrompter>) {
   *PERMISSION_PROMPTER.lock() = prompter;
 }
 
+/// Guards direct reads from the process terminal input.
+///
+/// Permission prompts also read from stdin directly. Holding this lock around
+/// other terminal reads prevents permission prompts from racing with
+/// user-space interactive prompts and consuming or flushing their input.
+pub fn lock_terminal_input() -> std::sync::MutexGuard<'static, ()> {
+  TERMINAL_INPUT_LOCK
+    .get_or_init(Default::default)
+    .lock()
+    .unwrap_or_else(|err| err.into_inner())
+}
+
 pub type PromptCallback = Box<dyn FnMut() + Send + Sync>;
+
+pub type GetFormattedStackFn = Box<dyn Fn() -> Vec<String> + Send + Sync>;
 
 pub trait PermissionPrompter: Send + Sync {
   fn prompt(
@@ -100,15 +114,30 @@ pub trait PermissionPrompter: Send + Sync {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
-    stack: Option<Vec<JsStackFrame>>,
+    get_stack: Option<GetFormattedStackFn>,
   ) -> PromptResponse;
 }
 
-pub struct TtyPrompter;
+#[derive(Default)]
+pub struct DeniedPrompter;
+
+impl PermissionPrompter for DeniedPrompter {
+  fn prompt(
+    &mut self,
+    _message: &str,
+    _name: &str,
+    _api_name: Option<&str>,
+    _is_unary: bool,
+    _get_stack: Option<GetFormattedStackFn>,
+  ) -> PromptResponse {
+    PromptResponse::Deny
+  }
+}
+
 #[cfg(unix)]
 fn clear_stdin(
-  _stdin_lock: &mut StdinLock,
-  _stderr_lock: &mut StderrLock,
+  _stdin_lock: &mut std::io::StdinLock,
+  _stderr_lock: &mut std::io::StderrLock,
 ) -> Result<(), std::io::Error> {
   use std::mem::MaybeUninit;
 
@@ -124,10 +153,7 @@ fn clear_stdin(
     loop {
       let r = libc::tcflush(STDIN_FD, libc::TCIFLUSH);
       if r != 0 {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "clear_stdin failed (tcflush)",
-        ));
+        return Err(std::io::Error::other("clear_stdin failed (tcflush)"));
       }
 
       // Initialize timeout for select to be 100ms
@@ -147,10 +173,7 @@ fn clear_stdin(
 
       // Check if select returned an error
       if r < 0 {
-        return Err(std::io::Error::new(
-          std::io::ErrorKind::Other,
-          "clear_stdin failed (select)",
-        ));
+        return Err(std::io::Error::other("clear_stdin failed (select)"));
       }
 
       // Check if select returned due to timeout (stdin is quiescent)
@@ -165,28 +188,29 @@ fn clear_stdin(
   Ok(())
 }
 
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(target_arch = "wasm32")))]
 fn clear_stdin(
-  stdin_lock: &mut StdinLock,
-  stderr_lock: &mut StderrLock,
+  stdin_lock: &mut std::io::StdinLock,
+  stderr_lock: &mut std::io::StderrLock,
 ) -> Result<(), std::io::Error> {
-  use winapi::shared::minwindef::TRUE;
-  use winapi::shared::minwindef::UINT;
-  use winapi::shared::minwindef::WORD;
-  use winapi::shared::ntdef::WCHAR;
-  use winapi::um::processenv::GetStdHandle;
-  use winapi::um::winbase::STD_INPUT_HANDLE;
-  use winapi::um::wincon::FlushConsoleInputBuffer;
-  use winapi::um::wincon::PeekConsoleInputW;
-  use winapi::um::wincon::WriteConsoleInputW;
-  use winapi::um::wincontypes::INPUT_RECORD;
-  use winapi::um::wincontypes::KEY_EVENT;
-  use winapi::um::winnt::HANDLE;
-  use winapi::um::winuser::MapVirtualKeyW;
-  use winapi::um::winuser::MAPVK_VK_TO_VSC;
-  use winapi::um::winuser::VK_RETURN;
+  use std::io::BufRead;
+  use std::io::StdinLock;
+  use std::io::Write as IoWrite;
 
-  // SAFETY: winapi calls
+  use windows_sys::Win32::Foundation::HANDLE;
+  use windows_sys::Win32::Foundation::TRUE;
+  use windows_sys::Win32::System::Console::FlushConsoleInputBuffer;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::INPUT_RECORD;
+  use windows_sys::Win32::System::Console::KEY_EVENT;
+  use windows_sys::Win32::System::Console::PeekConsoleInputW;
+  use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+  use windows_sys::Win32::System::Console::WriteConsoleInputW;
+  use windows_sys::Win32::UI::Input::KeyboardAndMouse::MAPVK_VK_TO_VSC;
+  use windows_sys::Win32::UI::Input::KeyboardAndMouse::MapVirtualKeyW;
+  use windows_sys::Win32::UI::Input::KeyboardAndMouse::VK_RETURN;
+
+  // SAFETY: Win32 calls
   unsafe {
     let stdin = GetStdHandle(STD_INPUT_HANDLE);
     // emulate an enter key press to clear any line buffered console characters
@@ -207,15 +231,13 @@ fn clear_stdin(
   return Ok(());
 
   unsafe fn flush_input_buffer(stdin: HANDLE) -> Result<(), std::io::Error> {
-    let success = FlushConsoleInputBuffer(stdin);
+    // SAFETY: Win32 calls
+    let success = unsafe { FlushConsoleInputBuffer(stdin) };
     if success != TRUE {
-      return Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        format!(
-          "Could not flush the console input buffer: {}",
-          std::io::Error::last_os_error()
-        ),
-      ));
+      return Err(std::io::Error::other(format!(
+        "Could not flush the console input buffer: {}",
+        std::io::Error::last_os_error()
+      )));
     }
     Ok(())
   }
@@ -223,27 +245,27 @@ fn clear_stdin(
   unsafe fn emulate_enter_key_press(
     stdin: HANDLE,
   ) -> Result<(), std::io::Error> {
-    // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
-    let mut input_record: INPUT_RECORD = std::mem::zeroed();
-    input_record.EventType = KEY_EVENT;
-    input_record.Event.KeyEvent_mut().bKeyDown = TRUE;
-    input_record.Event.KeyEvent_mut().wRepeatCount = 1;
-    input_record.Event.KeyEvent_mut().wVirtualKeyCode = VK_RETURN as WORD;
-    input_record.Event.KeyEvent_mut().wVirtualScanCode =
-      MapVirtualKeyW(VK_RETURN as UINT, MAPVK_VK_TO_VSC) as WORD;
-    *input_record.Event.KeyEvent_mut().uChar.UnicodeChar_mut() = '\r' as WCHAR;
+    // SAFETY: Win32 calls
+    unsafe {
+      // https://github.com/libuv/libuv/blob/a39009a5a9252a566ca0704d02df8dabc4ce328f/src/win/tty.c#L1121-L1131
+      let mut input_record: INPUT_RECORD = std::mem::zeroed();
+      input_record.EventType = KEY_EVENT as u16;
+      input_record.Event.KeyEvent.bKeyDown = TRUE;
+      input_record.Event.KeyEvent.wRepeatCount = 1;
+      input_record.Event.KeyEvent.wVirtualKeyCode = VK_RETURN;
+      input_record.Event.KeyEvent.wVirtualScanCode =
+        MapVirtualKeyW(VK_RETURN as u32, MAPVK_VK_TO_VSC) as u16;
+      input_record.Event.KeyEvent.uChar.UnicodeChar = '\r' as u16;
 
-    let mut record_written = 0;
-    let success =
-      WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
-    if success != TRUE {
-      return Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        format!(
+      let mut record_written = 0;
+      let success =
+        WriteConsoleInputW(stdin, &input_record, 1, &mut record_written);
+      if success != TRUE {
+        return Err(std::io::Error::other(format!(
           "Could not emulate enter key press: {}",
           std::io::Error::last_os_error()
-        ),
-      ));
+        )));
+      }
     }
     Ok(())
   }
@@ -253,22 +275,21 @@ fn clear_stdin(
   ) -> Result<bool, std::io::Error> {
     let mut buffer = Vec::with_capacity(1);
     let mut events_read = 0;
-    let success =
-      PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read);
+    // SAFETY: Win32 calls
+    let success = unsafe {
+      PeekConsoleInputW(stdin, buffer.as_mut_ptr(), 1, &mut events_read)
+    };
     if success != TRUE {
-      return Err(std::io::Error::new(
-        std::io::ErrorKind::Other,
-        format!(
-          "Could not peek the console input buffer: {}",
-          std::io::Error::last_os_error()
-        ),
-      ));
+      return Err(std::io::Error::other(format!(
+        "Could not peek the console input buffer: {}",
+        std::io::Error::last_os_error()
+      )));
     }
     Ok(events_read == 0)
   }
 
   fn move_cursor_up(
-    stderr_lock: &mut StderrLock,
+    stderr_lock: &mut std::io::StderrLock,
   ) -> Result<(), std::io::Error> {
     write!(stderr_lock, "\x1B[1A")
   }
@@ -281,8 +302,58 @@ fn clear_stdin(
 }
 
 // Clear n-lines in terminal and move cursor to the beginning of the line.
-fn clear_n_lines(stderr_lock: &mut StderrLock, n: usize) {
+#[cfg(not(target_arch = "wasm32"))]
+fn clear_n_lines(stderr_lock: &mut std::io::StderrLock, n: usize) {
+  use std::io::Write;
   write!(stderr_lock, "\x1B[{n}A\x1B[0J").unwrap();
+}
+
+/// Returns true if stdin's terminal line discipline has been put into raw
+/// mode by something else in this process — for example a Node.js library
+/// calling `process.stdin.setRawMode(true)`.
+///
+/// When that has happened our line-oriented `read_line()` prompt loop would
+/// hang forever (Enter delivers `\r` rather than `\n`, and ECHO is off so the
+/// user can't see they're typing), so we bail out instead.
+///
+/// We require *both* canonical input and echo to be disabled, matching what
+/// `setRaw`/`setRawMode` actually does (see `runtime/ops/tty.rs`). Clearing
+/// canonical mode alone does not trigger the hang as long as newlines are
+/// still delivered, and treating that as raw would misfire on setups that
+/// disable only canonical mode (such as the test PTY harness).
+#[cfg(unix)]
+fn stdin_is_raw_mode() -> bool {
+  // SAFETY: tcgetattr on a possibly-invalid fd 0 returns -1; on any failure we
+  // conservatively report not-raw.
+  unsafe {
+    let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
+    if libc::tcgetattr(libc::STDIN_FILENO, termios.as_mut_ptr()) != 0 {
+      return false;
+    }
+    let termios = termios.assume_init();
+    termios.c_lflag & (libc::ICANON | libc::ECHO) == 0
+  }
+}
+
+#[cfg(all(not(unix), not(target_arch = "wasm32")))]
+fn stdin_is_raw_mode() -> bool {
+  use windows_sys::Win32::System::Console::ENABLE_ECHO_INPUT;
+  use windows_sys::Win32::System::Console::ENABLE_LINE_INPUT;
+  use windows_sys::Win32::System::Console::GetConsoleMode;
+  use windows_sys::Win32::System::Console::GetStdHandle;
+  use windows_sys::Win32::System::Console::STD_INPUT_HANDLE;
+
+  // SAFETY: winapi calls. GetConsoleMode returns 0 (FALSE) for non-console
+  // handles (e.g. when stdin is a pipe), in which case we conservatively
+  // return false.
+  unsafe {
+    let handle = GetStdHandle(STD_INPUT_HANDLE);
+    let mut mode = 0u32;
+    if GetConsoleMode(handle, &mut mode) == 0 {
+      return false;
+    }
+    mode & (ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT) == 0
+  }
 }
 
 #[cfg(unix)]
@@ -300,6 +371,11 @@ fn get_stdin_metadata() -> std::io::Result<std::fs::Metadata> {
   }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default)]
+pub struct TtyPrompter;
+
+#[cfg(not(target_arch = "wasm32"))]
 impl PermissionPrompter for TtyPrompter {
   fn prompt(
     &mut self,
@@ -307,22 +383,62 @@ impl PermissionPrompter for TtyPrompter {
     name: &str,
     api_name: Option<&str>,
     is_unary: bool,
-    stack: Option<Vec<JsStackFrame>>,
+    get_stack: Option<GetFormattedStackFn>,
   ) -> PromptResponse {
+    use std::fmt::Write;
+    use std::io::BufRead;
+    use std::io::IsTerminal;
+    use std::io::Write as IoWrite;
+
+    use deno_terminal::colors;
+
+    // 10kB of permission prompting should be enough for anyone
+    const MAX_PERMISSION_PROMPT_LENGTH: usize = 10 * 1024;
+
     if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
     };
 
-    #[allow(clippy::print_stderr)]
+    // If stdin has been put into raw mode (e.g. a Node.js library has called
+    // `process.stdin.setRawMode(true)`) our line-oriented prompt loop would
+    // hang forever waiting for a `\n` that the terminal will never deliver,
+    // and the user wouldn't see what they're typing either. Bail out with a
+    // clear message so the program doesn't appear to freeze.
+    #[allow(clippy::print_stderr, reason = "actually want to print")]
+    if stdin_is_raw_mode() {
+      // Escape the message/name since they can contain user-controlled strings
+      // (env var names, file paths) that could otherwise spoof the terminal.
+      eprintln!(
+        "❌ Cannot prompt for {}: stdin is in raw mode (a library has likely called setRawMode).",
+        escape_control_characters(message)
+      );
+      eprintln!(
+        "❌ Run again with --allow-{} to grant the permission up front, or with -A to allow all permissions.",
+        escape_control_characters(name)
+      );
+      return PromptResponse::Deny;
+    }
+
+    #[allow(clippy::print_stderr, reason = "actually want to print")]
     if message.len() > MAX_PERMISSION_PROMPT_LENGTH {
-      eprintln!("❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.", message.len(), MAX_PERMISSION_PROMPT_LENGTH);
-      eprintln!("❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests.");
-      eprintln!("❌ Run again with --allow-{name} to bypass this check if this is really what you want to do.");
+      eprintln!(
+        "❌ Permission prompt length ({} bytes) was larger than the configured maximum length ({} bytes): denying request.",
+        message.len(),
+        MAX_PERMISSION_PROMPT_LENGTH
+      );
+      eprintln!(
+        "❌ WARNING: This may indicate that code is trying to bypass or hide permission check requests."
+      );
+      eprintln!(
+        "❌ Run again with --allow-{name} to bypass this check if this is really what you want to do."
+      );
       return PromptResponse::Deny;
     }
 
     #[cfg(unix)]
     let metadata_before = get_stdin_metadata().unwrap();
+
+    let terminal_input_guard = lock_terminal_input();
 
     // Lock stdio streams, so no other output is written while the prompt is
     // displayed.
@@ -332,7 +448,7 @@ impl PermissionPrompter for TtyPrompter {
 
     // For security reasons we must consume everything in stdin so that previously
     // buffered data cannot affect the prompt.
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stderr, reason = "actually want to output here")]
     if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
       eprintln!("Error clearing stdin for permission prompt. {err:#}");
       return PromptResponse::Deny; // don't grant permission if this fails
@@ -344,7 +460,9 @@ impl PermissionPrompter for TtyPrompter {
 
     // print to stderr so that if stdout is piped this is still displayed.
     let opts: String = if is_unary {
-      format!("[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)")
+      format!(
+        "[y/n/A] (y = yes, allow; n = no, deny; A = allow all {name} permissions)"
+      )
     } else {
       "[y/n] (y = yes, allow; n = no, deny)".to_string()
     };
@@ -364,16 +482,15 @@ impl PermissionPrompter for TtyPrompter {
         )
         .unwrap();
       }
-      let stack_lines_count = if let Some(stack) = stack {
+      let stack_lines_count = if let Some(get_stack) = get_stack {
+        let stack = get_stack();
         let len = stack.len();
         for (idx, frame) in stack.into_iter().enumerate() {
           writeln!(
             &mut output,
             "┃  {} {}",
             colors::gray(if idx != len - 1 { "├─" } else { "└─" }),
-            colors::gray(deno_core::error::format_frame::<
-              deno_core::error::NoAnsiColors,
-            >(&frame))
+            colors::gray(frame),
           )
           .unwrap();
         }
@@ -393,8 +510,10 @@ impl PermissionPrompter for TtyPrompter {
         ))
       );
       writeln!(&mut output, "┠─ {}", colors::italic(&msg)).unwrap();
-      let msg = if is_standalone() {
-        format!("Specify the required permissions during compile time using `deno compile --allow-{name}`.")
+      let msg = if crate::is_standalone() {
+        format!(
+          "Specify the required permissions during compile time using `deno compile --allow-{name}`."
+        )
       } else {
         format!("Run again with --allow-{name} to bypass this prompt.")
       };
@@ -411,7 +530,10 @@ impl PermissionPrompter for TtyPrompter {
       // Clear stdin each time we loop around in case the user accidentally pasted
       // multiple lines or otherwise did something silly to generate a torrent of
       // input. This doesn't work on Windows because `clear_stdin` has other side-effects.
-      #[allow(clippy::print_stderr)]
+      #[allow(
+        clippy::print_stderr,
+        reason = "force outputting when permission prompt fails to output"
+      )]
       #[cfg(unix)]
       if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
         eprintln!("Error clearing stdin for permission prompt. {err:#}");
@@ -462,6 +584,7 @@ impl PermissionPrompter for TtyPrompter {
     drop(stdout_lock);
     drop(stderr_lock);
     drop(stdin_lock);
+    drop(terminal_input_guard);
 
     // Ensure that stdin has not changed from the beginning to the end of the prompt. We consider
     // it sufficient to check a subset of stat calls. We do not consider the likelihood of a stdin
@@ -489,9 +612,10 @@ impl PermissionPrompter for TtyPrompter {
 
 #[cfg(test)]
 pub mod tests {
-  use super::*;
   use std::sync::atomic::AtomicBool;
   use std::sync::atomic::Ordering;
+
+  use super::*;
 
   pub struct TestPrompter;
 
@@ -502,7 +626,7 @@ pub mod tests {
       _name: &str,
       _api_name: Option<&str>,
       _is_unary: bool,
-      _stack: Option<Vec<JsStackFrame>>,
+      _get_stack: Option<GetFormattedStackFn>,
     ) -> PromptResponse {
       if STUB_PROMPT_VALUE.load(Ordering::SeqCst) {
         PromptResponse::Allow

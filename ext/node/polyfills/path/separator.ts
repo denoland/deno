@@ -1,9 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+(function () {
+const { core, primordials } = __bootstrap;
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+const { SafeRegExp } = primordials;
 
-import { isWindows } from "ext:deno_node/_util/os.ts";
+const SEP = isWindows ? "\\" : "/";
+const SEP_PATTERN = isWindows
+  ? new SafeRegExp("[\\\\/]+")
+  : new SafeRegExp("\/+");
 
-export const SEP = isWindows ? "\\" : "/";
-export const SEP_PATTERN = isWindows ? /[\\/]+/ : /\/+/;
+return {
+  SEP,
+  SEP_PATTERN,
+};
+})();

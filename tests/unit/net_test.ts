@@ -1,7 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
+  assertGreaterOrEqual,
   assertRejects,
   assertThrows,
   delay,
@@ -33,6 +34,21 @@ Deno.test(
   {
     permissions: { net: true },
   },
+  function netTcpListenEphemeralClose() {
+    const listener = Deno.listen({ hostname: "127.0.0.1" });
+    assert(listener.addr.transport === "tcp");
+    assertEquals(listener.addr.hostname, "127.0.0.1");
+    // Ephemeral port range starts at 49152 according to RFC 6335 / IANA, but
+    // many OSes use the lower number below (old OSes also started at 1024)
+    assertGreaterOrEqual(listener.addr.port, 32768);
+    listener.close();
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
   function netUdpListenClose() {
     const socket = Deno.listenDatagram({
       hostname: "127.0.0.1",
@@ -42,6 +58,24 @@ Deno.test(
     assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.hostname, "127.0.0.1");
     assertEquals(socket.addr.port, listenPort);
+    socket.close();
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  function netUdpListenEphemeralClose() {
+    const socket = Deno.listenDatagram({
+      hostname: "127.0.0.1",
+      transport: "udp",
+    });
+    assert(socket.addr.transport === "udp");
+    assertEquals(socket.addr.hostname, "127.0.0.1");
+    // Ephemeral port range starts at 49152 according to RFC 6335 / IANA, but
+    // many OSes use the lower number below (old OSes also started at 1024)
+    assertGreaterOrEqual(socket.addr.port, 32768);
     socket.close();
   },
 );
@@ -76,6 +110,21 @@ Deno.test(
     });
     assert(socket.addr.transport === "unixpacket");
     assertEquals(socket.addr.path, filePath);
+    socket.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true },
+  },
+  function netUnixPacketAnonListenClose() {
+    const socket = Deno.listenDatagram({
+      transport: "unixpacket",
+    });
+    assert(socket.addr.transport === "unixpacket");
+    assertEquals(socket.addr.path, null);
     socket.close();
   },
 );
@@ -120,6 +169,21 @@ Deno.test(
 
 Deno.test(
   {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: false },
+  },
+  function netUnixPacketAnonListenWritePermission() {
+    const socket = Deno.listenDatagram({
+      transport: "unixpacket",
+    });
+    assert(socket.addr.transport === "unixpacket");
+    assertEquals(socket.addr.path, null);
+    socket.close();
+  },
+);
+
+Deno.test(
+  {
     permissions: { net: true },
   },
   async function netTcpCloseWhileAccept() {
@@ -131,6 +195,42 @@ Deno.test(
       Deno.errors.BadResource,
       "Listener has been closed",
     );
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function netTcpListenAfterCloseWhileAcceptSettles() {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const { hostname, port } = listener.addr as Deno.NetAddr;
+    const acceptPromise = listener.accept();
+    listener.close();
+    await assertRejects(
+      () => acceptPromise,
+      Deno.errors.BadResource,
+      "Listener has been closed",
+    );
+
+    const listener2 = Deno.listen({ hostname, port });
+    listener2.close();
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  async function netTcpListenAfterCloseWhileAsyncIteratorSettles() {
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
+    const { hostname, port } = listener.addr as Deno.NetAddr;
+    const nextPromise = listener[Symbol.asyncIterator]().next();
+    listener.close();
+    assertEquals(await nextPromise, { value: undefined, done: true });
+
+    const listener2 = Deno.listen({ hostname, port });
+    listener2.close();
   },
 );
 
@@ -350,12 +450,20 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function netUdpSendReceive() {
-    const alice = Deno.listenDatagram({ port: listenPort, transport: "udp" });
+    const alice = Deno.listenDatagram({
+      port: listenPort,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
     assert(alice.addr.transport === "udp");
     assertEquals(alice.addr.port, listenPort);
     assertEquals(alice.addr.hostname, "127.0.0.1");
 
-    const bob = Deno.listenDatagram({ port: listenPort2, transport: "udp" });
+    const bob = Deno.listenDatagram({
+      port: listenPort2,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
     assert(bob.addr.transport === "udp");
     assertEquals(bob.addr.port, listenPort2);
     assertEquals(bob.addr.hostname, "127.0.0.1");
@@ -374,6 +482,21 @@ Deno.test(
     assertEquals(3, recvd[2]);
     alice.close();
     bob.close();
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/25581
+// `Deno.listenDatagram` with no `hostname` should bind to `0.0.0.0` (matching
+// the documented default and `Deno.listen`/`Deno.serve`), not `127.0.0.1`.
+// Binding to `127.0.0.1` made it impossible to send to a network broadcast
+// address such as `10.x.x.255` (the OS rejected the send with EINVAL/EFAULT).
+Deno.test(
+  { permissions: { net: true } },
+  function netUdpDefaultHostnameIsAnyAddress() {
+    const socket = Deno.listenDatagram({ port: 0, transport: "udp" });
+    assert(socket.addr.transport === "udp");
+    assertEquals(socket.addr.hostname, "0.0.0.0");
+    socket.close();
   },
 );
 
@@ -617,7 +740,11 @@ Deno.test(
 Deno.test(
   { permissions: { net: true } },
   async function netUdpConcurrentSendReceive() {
-    const socket = Deno.listenDatagram({ port: listenPort, transport: "udp" });
+    const socket = Deno.listenDatagram({
+      port: listenPort,
+      transport: "udp",
+      hostname: "127.0.0.1",
+    });
     assert(socket.addr.transport === "udp");
     assertEquals(socket.addr.port, listenPort);
     assertEquals(socket.addr.hostname, "127.0.0.1");
@@ -644,6 +771,7 @@ Deno.test(
     const socket = Deno.listenDatagram({
       port: listenPort,
       transport: "udp",
+      hostname: "127.0.0.1",
     });
     // Panic happened on second send: BorrowMutError
     const a = socket.send(new Uint8Array(), socket.addr);
@@ -939,13 +1067,59 @@ Deno.test(
     ignore: Deno.build.os !== "linux",
     permissions: { read: true, write: true },
   },
-  function netUnixAbstractPathShouldNotPanic() {
+  async function netUnixAbstractPathAddr() {
+    const path = `\0deno-net-test-${crypto.randomUUID()}`;
     const listener = Deno.listen({
-      path: "\0aaa",
+      path,
       transport: "unix",
     });
-    assert("not panic");
+    assertEquals(listener.addr.path, path);
+
+    const acceptPromise = listener.accept();
+    const conn = await Deno.connect({ path, transport: "unix" });
+    assertEquals(conn.remoteAddr.path, path);
+
+    const acceptedConn = await acceptPromise;
+    assertEquals(acceptedConn.localAddr.path, path);
+
+    conn.close();
+    acceptedConn.close();
     listener.close();
+  },
+);
+
+Deno.test(
+  {
+    ignore: Deno.build.os !== "linux",
+    permissions: { read: true, write: true },
+  },
+  async function netUnixPacketAbstractPathAddr() {
+    const alicePath = `\0deno-net-test-${crypto.randomUUID()}`;
+    const alice = Deno.listenDatagram({
+      path: alicePath,
+      transport: "unixpacket",
+    });
+    assert(alice.addr.transport === "unixpacket");
+    assertEquals(alice.addr.path, alicePath);
+
+    const bobPath = `\0deno-net-test-${crypto.randomUUID()}`;
+    const bob = Deno.listenDatagram({
+      path: bobPath,
+      transport: "unixpacket",
+    });
+    assert(bob.addr.transport === "unixpacket");
+    assertEquals(bob.addr.path, bobPath);
+
+    const sent = new Uint8Array([1, 2, 3]);
+    assertEquals(await alice.send(sent, bob.addr), sent.byteLength);
+
+    const [received, remoteAddr] = await bob.receive();
+    assert(remoteAddr.transport === "unixpacket");
+    assertEquals(remoteAddr.path, alicePath);
+    assertEquals(received, sent);
+
+    alice.close();
+    bob.close();
   },
 );
 
@@ -1186,16 +1360,19 @@ Deno.test(
     const sender = Deno.listenDatagram({
       port: 4002,
       transport: "udp",
+      hostname: "127.0.0.1",
     });
     const listener1 = Deno.listenDatagram({
       port: 4000,
       transport: "udp",
       reuseAddress: true,
+      hostname: "127.0.0.1",
     });
     const listener2 = Deno.listenDatagram({
       port: 4000,
       transport: "udp",
       reuseAddress: true,
+      hostname: "127.0.0.1",
     });
 
     const sent = new Uint8Array([1, 2, 3]);
@@ -1276,6 +1453,26 @@ Deno.test({
     await Promise.race([p1, p2]);
   }
 });
+
+Deno.test(
+  { permissions: { net: true }, ignore: true },
+  async function netTcpWithAbortSignal() {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 1_000);
+    const error = await assertRejects(
+      async () => {
+        await Deno.connect({
+          hostname: "deno.com",
+          port: 50000,
+          transport: "tcp",
+          signal: controller.signal,
+        });
+      },
+    );
+    assert(error instanceof DOMException);
+    assertEquals(error.name, "AbortError");
+  },
+);
 
 Deno.test({
   ignore: Deno.build.os === "linux",

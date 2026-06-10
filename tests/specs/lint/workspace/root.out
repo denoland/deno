@@ -5,7 +5,7 @@ error[no-eval]: `eval` call is not allowed
   | ^^^^^^^^
   = hint: Remove the use of `eval`
 
-  docs: https://lint.deno.land/rules/no-eval
+  docs: https://docs.deno.com/lint/rules/no-eval
 
 
 error[no-unused-vars]: `unused` is never used
@@ -15,7 +15,7 @@ error[no-unused-vars]: `unused` is never used
   |       ^^^^^^
   = hint: If this is intentional, prefix it with an underscore like `_unused`
 
-  docs: https://lint.deno.land/rules/no-unused-vars
+  docs: https://docs.deno.com/lint/rules/no-unused-vars
 
 
 error[no-explicit-any]: `any` type is not allowed
@@ -25,7 +25,7 @@ error[no-explicit-any]: `any` type is not allowed
   |                         ^^^
   = hint: Use a specific type other than `any`
 
-  docs: https://lint.deno.land/rules/no-explicit-any
+  docs: https://docs.deno.com/lint/rules/no-explicit-any
 
 
 error[no-eval]: `eval` call is not allowed
@@ -35,7 +35,7 @@ error[no-eval]: `eval` call is not allowed
   | ^^^^^^^^
   = hint: Remove the use of `eval`
 
-  docs: https://lint.deno.land/rules/no-eval
+  docs: https://docs.deno.com/lint/rules/no-eval
 
 
 error[no-await-in-loop]: Unexpected `await` inside a loop.
@@ -45,7 +45,7 @@ error[no-await-in-loop]: Unexpected `await` inside a loop.
   |   ^^^^^^^^^^^^^^^^^^^^^^^
   = hint: Remove `await` in loop body, store all promises generated and then `await Promise.all(storedPromises)` after the loop
 
-  docs: https://lint.deno.land/rules/no-await-in-loop
+  docs: https://docs.deno.com/lint/rules/no-await-in-loop
 
 
 error[no-explicit-any]: `any` type is not allowed
@@ -55,7 +55,7 @@ error[no-explicit-any]: `any` type is not allowed
   |                         ^^^
   = hint: Use a specific type other than `any`
 
-  docs: https://lint.deno.land/rules/no-explicit-any
+  docs: https://docs.deno.com/lint/rules/no-explicit-any
 
 
 error[no-eval]: `eval` call is not allowed
@@ -65,7 +65,7 @@ error[no-eval]: `eval` call is not allowed
   | ^^^^^^^^
   = hint: Remove the use of `eval`
 
-  docs: https://lint.deno.land/rules/no-eval
+  docs: https://docs.deno.com/lint/rules/no-eval
 
 
 error[no-unused-vars]: `unused` is never used
@@ -75,7 +75,7 @@ error[no-unused-vars]: `unused` is never used
   |       ^^^^^^
   = hint: If this is intentional, prefix it with an underscore like `_unused`
 
-  docs: https://lint.deno.land/rules/no-unused-vars
+  docs: https://docs.deno.com/lint/rules/no-unused-vars
 
 
 Found 8 problems

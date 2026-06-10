@@ -1,0 +1,5 @@
+{
+  "args": "check --quiet message_chain_formatting.ts",
+  "output": "message_chain_formatting.out",
+  "exitCode": 1
+}

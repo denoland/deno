@@ -1,5 +1,10 @@
 Check [WILDCARD]type_definitions_for_export.ts
-error: TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'number'.
+TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'number'.
 bar(foo);
     ~~~
     at [WILDCARD]type_definitions_for_export.ts:7:5
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

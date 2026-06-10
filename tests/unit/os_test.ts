@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -46,6 +46,20 @@ Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
   assertThrows(() => Deno.env.delete(""), TypeError);
   assertThrows(() => Deno.env.delete("a=a"), TypeError);
   assertThrows(() => Deno.env.delete("a\0a"), TypeError);
+});
+
+// Regression test for https://github.com/denoland/deno/issues/23443
+// Every key returned by `toObject()` must be one that `get()` accepts.
+// On Windows, cmd.exe injects hidden per-drive cwd variables such as `=C:`
+// that contain `=`, which used to be enumerated but were not gettable.
+Deno.test({ permissions: { env: true } }, function envToObjectKeysAreValid() {
+  for (const key of Object.keys(Deno.env.toObject())) {
+    assert(key.length > 0, "toObject() returned an empty key");
+    assert(!key.includes("="), `toObject() returned an invalid key: ${key}`);
+    assert(!key.includes("\0"), `toObject() returned an invalid key: ${key}`);
+    // Must not throw.
+    Deno.env.get(key);
+  }
 });
 
 Deno.test({ permissions: { env: false } }, function envPerm1() {
@@ -184,18 +198,8 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { read: true } }, function execPath() {
+Deno.test({ permissions: { read: false } }, function execPath() {
   assertNotEquals(Deno.execPath(), "");
-});
-
-Deno.test({ permissions: { read: false } }, function execPathPerm() {
-  assertThrows(
-    () => {
-      Deno.execPath();
-    },
-    Deno.errors.NotCapable,
-    "Requires read access to <exec_path>, run again with the --allow-read flag",
-  );
 });
 
 Deno.test(

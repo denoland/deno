@@ -1,2 +1,2 @@
-Task dev echo 'foo'
+Task dev (foo) echo 'foo'
 foo

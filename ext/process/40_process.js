@@ -1,0 +1,889 @@
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+(function () {
+const { core, internals, primordials } = __bootstrap;
+const {
+  op_kill,
+  op_node_spawn_child,
+  op_run,
+  op_run_status,
+  op_spawn_child,
+  op_spawn_child_ref,
+  op_spawn_child_unref,
+  op_spawn_kill,
+  op_spawn_sync,
+  op_spawn_wait,
+} = core.ops;
+const {
+  ArrayIsArray,
+  ArrayPrototypeMap,
+  ArrayPrototypePush,
+  ArrayPrototypeSlice,
+  TypedArrayPrototypeSubarray,
+  TypedArrayPrototypeSet,
+  Uint8Array,
+  TypeError,
+  NumberIsFinite,
+  ObjectEntries,
+  SafeArrayIterator,
+  String,
+  SymbolAsyncDispose,
+  ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeThen,
+  SafePromiseAll,
+  Symbol,
+  SymbolFor,
+} = primordials;
+
+const { FsFile } = core.loadExtScript("ext:deno_fs/30_fs.js");
+const { readAll } = core.loadExtScript("ext:deno_io/12_io.js");
+const { assert, pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { packageData } = core.loadExtScript("ext:deno_fetch/22_body.js");
+const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
+const {
+  ReadableStream,
+  readableStreamCollectIntoUint8Array,
+  readableStreamForRidUnrefable,
+  readableStreamForRidUnrefableRef,
+  readableStreamForRidUnrefableUnref,
+  ReadableStreamPrototype,
+  writableStreamForRid,
+} = core.loadExtScript("ext:deno_web/06_streams.js");
+
+// The key for private `input` option for `Deno.Command`
+const kInputOption = Symbol("kInputOption");
+// The key for private `timeout` option for `Deno.Command`
+const kTimeoutOption = Symbol("kTimeoutOption");
+// The key for private `killSignal` option for `Deno.Command`
+const kKillSignalOption = Symbol("kKillSignalOption");
+
+function opKill(pid, signo, apiName) {
+  op_kill(pid, signo, apiName);
+}
+
+function kill(pid, signo = "SIGTERM") {
+  opKill(pid, signo, "Deno.kill()");
+}
+
+function opRunStatus(rid) {
+  return op_run_status(rid);
+}
+
+function opRun(request) {
+  assert(request.cmd.length > 0);
+  return op_run(request);
+}
+
+async function runStatus(rid) {
+  const res = await opRunStatus(rid);
+
+  if (res.gotSignal) {
+    const signal = res.exitSignal;
+    return { success: false, code: 128 + signal, signal };
+  } else if (res.exitCode != 0) {
+    return { success: false, code: res.exitCode };
+  } else {
+    return { success: true, code: 0 };
+  }
+}
+
+class Process {
+  constructor(res) {
+    this.rid = res.rid;
+    this.pid = res.pid;
+
+    if (res.stdinRid && res.stdinRid > 0) {
+      this.stdin = new FsFile(res.stdinRid, SymbolFor("Deno.internal.FsFile"));
+    }
+
+    if (res.stdoutRid && res.stdoutRid > 0) {
+      this.stdout = new FsFile(
+        res.stdoutRid,
+        SymbolFor("Deno.internal.FsFile"),
+      );
+    }
+
+    if (res.stderrRid && res.stderrRid > 0) {
+      this.stderr = new FsFile(
+        res.stderrRid,
+        SymbolFor("Deno.internal.FsFile"),
+      );
+    }
+  }
+
+  status() {
+    return runStatus(this.rid);
+  }
+
+  async output() {
+    if (!this.stdout) {
+      throw new TypeError("Cannot collect output: 'stdout' is not piped");
+    }
+    try {
+      return await readAll(this.stdout);
+    } finally {
+      this.stdout.close();
+    }
+  }
+
+  async stderrOutput() {
+    if (!this.stderr) {
+      throw new TypeError("Cannot collect output: 'stderr' is not piped");
+    }
+    try {
+      return await readAll(this.stderr);
+    } finally {
+      this.stderr.close();
+    }
+  }
+
+  close() {
+    core.close(this.rid);
+  }
+
+  kill(signo = "SIGTERM") {
+    opKill(this.pid, signo, "Deno.Process.kill()");
+  }
+}
+
+// Note: This function was soft-removed in Deno 2. Its types have been removed,
+// but its implementation has been kept to avoid breaking changes.
+function run({
+  cmd,
+  cwd = undefined,
+  env = { __proto__: null },
+  stdout = "inherit",
+  stderr = "inherit",
+  stdin = "inherit",
+}) {
+  if (cmd[0] != null) {
+    cmd = [
+      pathFromURL(cmd[0]),
+      ...new SafeArrayIterator(ArrayPrototypeSlice(cmd, 1)),
+    ];
+  }
+  const res = opRun({
+    cmd: ArrayPrototypeMap(cmd, String),
+    cwd,
+    env: ObjectEntries(env),
+    stdin,
+    stdout,
+    stderr,
+  });
+  return new Process(res);
+}
+
+const kExtraStdio = Symbol("extraStdio");
+const kIpc = Symbol("ipc");
+const kNeedsNpmProcessState = Symbol("needsNpmProcessState");
+const kSerialization = Symbol("serialization");
+const kArgv0 = Symbol("argv0");
+
+const illegalConstructorKey = Symbol("illegalConstructorKey");
+
+function spawnChildInner(command, apiName, {
+  args = [],
+  cwd = undefined,
+  clearEnv = false,
+  env = { __proto__: null },
+  uid = undefined,
+  gid = undefined,
+  signal = undefined,
+  stdin = "null",
+  stdout = "piped",
+  stderr = "piped",
+  windowsRawArguments = false,
+  detached = false,
+  [kSerialization]: serialization = "json",
+  [kExtraStdio]: extraStdio = [],
+  [kIpc]: ipc = -1,
+  [kNeedsNpmProcessState]: needsNpmProcessState = false,
+  [kArgv0]: argv0 = undefined,
+} = { __proto__: null }) {
+  const child = op_spawn_child({
+    cmd: pathFromURL(command),
+    args: ArrayPrototypeMap(args, String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    argv0,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    ipc,
+    serialization,
+    extraStdio,
+    detached,
+    needsNpmProcessState,
+  }, apiName);
+  return new ChildProcess(illegalConstructorKey, {
+    ...child,
+    signal,
+  });
+}
+
+function spawnChild(command, options = { __proto__: null }) {
+  return spawnChildInner(
+    command,
+    "Deno.Command().spawn()",
+    options,
+  );
+}
+
+function collectOutput(readableStream) {
+  if (
+    !(ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, readableStream))
+  ) {
+    return null;
+  }
+
+  return readableStreamCollectIntoUint8Array(readableStream);
+}
+
+const READ_PER_ITER = 64 * 1024;
+
+async function readAllRid(rid) {
+  const buffers = [];
+  try {
+    while (true) {
+      const buf = new Uint8Array(READ_PER_ITER);
+      const nread = await core.read(rid, buf);
+      if (nread === 0) break;
+      ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buf, 0, nread));
+    }
+  } finally {
+    core.tryClose(rid);
+  }
+  let totalLen = 0;
+  for (let i = 0; i < buffers.length; i++) totalLen += buffers[i].length;
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (let i = 0; i < buffers.length; i++) {
+    TypedArrayPrototypeSet(result, buffers[i], offset);
+    offset += buffers[i].length;
+  }
+  return result;
+}
+
+const _ipcPipeRid = Symbol("[[ipcPipeRid]]");
+const _extraPipeRids = Symbol("[[_extraPipeRids]]");
+const _stdinRid = Symbol("[[stdinRid]]");
+const _stdoutRid = Symbol("[[stdoutRid]]");
+const _stderrRid = Symbol("[[stderrRid]]");
+
+internals.getIpcPipeRid = (process) => process[_ipcPipeRid];
+internals.getExtraPipeRids = (process) => process[_extraPipeRids];
+internals.kExtraStdio = kExtraStdio;
+
+// Node compat spawn: returns a lightweight object with raw fds for stdio
+// instead of a full Deno.ChildProcess with web streams.
+// The caller (child_process.ts) is responsible for providing all fields.
+function nodeSpawnChild(command, {
+  args = [],
+  cwd,
+  clearEnv = false,
+  argv0,
+  env = { __proto__: null },
+  uid,
+  gid,
+  stdin = "null",
+  stdout = "piped",
+  stderr = "piped",
+  windowsRawArguments = false,
+  windowsHide = false,
+  ipc = -1,
+  serialization = "json",
+  extraStdio = [],
+  detached = false,
+  needsNpmProcessState = false,
+}) {
+  const child = op_node_spawn_child({
+    cmd: pathFromURL(command),
+    args: ArrayPrototypeMap(args, String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    argv0,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    windowsHide,
+    ipc,
+    serialization,
+    extraStdio,
+    detached,
+    needsNpmProcessState,
+  }, "node:child_process");
+
+  const waitPromise = op_spawn_wait(child.rid);
+  let waitComplete = false;
+  const status = PromisePrototypeThen(waitPromise, (res) => {
+    waitComplete = true;
+    return res;
+  });
+
+  return {
+    __proto__: null,
+    rid: child.rid,
+    pid: child.pid,
+    stdinFd: child.stdinFd,
+    stdoutFd: child.stdoutFd,
+    stderrFd: child.stderrFd,
+    ipcPipeRid: child.ipcPipeRid,
+    extraPipeFds: child.extraPipeFds,
+    status,
+    kill(signal) {
+      op_spawn_kill(child.rid, signal);
+    },
+    ref() {
+      core.refOpPromise(waitPromise);
+      if (!waitComplete) {
+        op_spawn_child_ref(child.rid);
+      }
+    },
+    unref() {
+      core.unrefOpPromise(waitPromise);
+      if (!waitComplete) {
+        op_spawn_child_unref(child.rid);
+      }
+    },
+  };
+}
+
+// Node compat sync spawn: calls op_spawn_sync and returns pid/killedByTimeout
+// as normal fields instead of hidden properties on a Deno.CommandOutput.
+function nodeSpawnSyncChild({
+  args,
+  cwd,
+  clearEnv,
+  argv0,
+  env,
+  uid,
+  gid,
+  stdin,
+  stdout,
+  stderr,
+  extraStdio = [],
+  windowsRawArguments,
+  windowsHide = false,
+  needsNpmProcessState,
+  input,
+  timeout,
+  killSignal,
+  maxBuffer,
+}) {
+  const spawnArgs = {
+    cmd: pathFromURL(args[0]),
+    args: ArrayPrototypeMap(ArrayPrototypeSlice(args, 1), String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    windowsHide,
+    extraStdio,
+    detached: false,
+    needsNpmProcessState,
+    input,
+    argv0,
+  };
+  const hasTimeout = timeout != null && timeout > 0;
+  // Only forward a finite, non-negative `maxBuffer` to the op so that
+  // Infinity / missing values map to "no limit" on the Rust side.
+  const hasMaxBuffer = typeof maxBuffer === "number" &&
+    NumberIsFinite(maxBuffer) && maxBuffer >= 0;
+  if (hasTimeout) {
+    spawnArgs.timeout = timeout;
+  }
+  if (hasMaxBuffer) {
+    spawnArgs.maxBuffer = maxBuffer;
+  }
+  // killSignal applies to both `timeout` and `maxBuffer` kills, matching
+  // Node's behavior.
+  if (killSignal != null && (hasTimeout || hasMaxBuffer)) {
+    spawnArgs.killSignal = killSignal;
+  }
+  const result = op_spawn_sync(spawnArgs);
+  return {
+    __proto__: null,
+    success: result.status.success,
+    code: result.status.code,
+    signal: result.status.signal,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    pid: result.pid,
+    killedByTimeout: result.killedByTimeout,
+    killedByMaxBuffer: result.killedByMaxBuffer,
+  };
+}
+
+class ChildProcess {
+  #rid;
+  #waitPromise;
+  #waitComplete = false;
+
+  [_ipcPipeRid];
+  [_extraPipeRids];
+  [_stdinRid];
+  [_stdoutRid];
+  [_stderrRid];
+
+  #pid;
+  get pid() {
+    return this.#pid;
+  }
+
+  #stdin = null;
+  get stdin() {
+    if (this.#stdin == null) {
+      throw new TypeError("Cannot get 'stdin': 'stdin' is not piped");
+    }
+    return this.#stdin;
+  }
+
+  #stdout = null;
+  get stdout() {
+    if (this.#stdout == null) {
+      throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
+    }
+    return this.#stdout;
+  }
+
+  #stderr = null;
+  get stderr() {
+    if (this.#stderr == null) {
+      throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
+    }
+    return this.#stderr;
+  }
+
+  constructor(key = null, {
+    signal,
+    rid,
+    pid,
+    stdinRid,
+    stdoutRid,
+    stderrRid,
+    ipcPipeRid, // internal
+    extraPipeRids,
+  } = null) {
+    if (key !== illegalConstructorKey) {
+      throw new TypeError("Illegal constructor");
+    }
+
+    this.#rid = rid;
+    this.#pid = pid;
+    this[_ipcPipeRid] = ipcPipeRid;
+    this[_extraPipeRids] = extraPipeRids;
+    this[_stdinRid] = stdinRid;
+    this[_stdoutRid] = stdoutRid;
+    this[_stderrRid] = stderrRid;
+
+    if (stdinRid !== null) {
+      this.#stdin = writableStreamForRid(stdinRid);
+    }
+
+    if (stdoutRid !== null) {
+      this.#stdout = readableStreamForRidUnrefable(
+        stdoutRid,
+        ReadableStreamWithCollectors,
+      );
+    }
+
+    if (stderrRid !== null) {
+      this.#stderr = readableStreamForRidUnrefable(
+        stderrRid,
+        ReadableStreamWithCollectors,
+      );
+    }
+
+    const onAbort = () => {
+      try {
+        this.kill("SIGTERM");
+      } catch {
+        // Ignore the error for https://github.com/denoland/deno/issues/27112
+      }
+    };
+    signal?.[abortSignal.add](onAbort);
+    const waitPromise = op_spawn_wait(this.#rid);
+    this.#waitPromise = waitPromise;
+    this.#status = PromisePrototypeThen(waitPromise, (res) => {
+      signal?.[abortSignal.remove](onAbort);
+      this.#waitComplete = true;
+      return res;
+    });
+  }
+
+  #status;
+  get status() {
+    return this.#status;
+  }
+
+  async output() {
+    if (this.#stdout?.locked) {
+      throw new TypeError(
+        "Cannot collect output: 'stdout' is locked",
+      );
+    }
+    if (this.#stderr?.locked) {
+      throw new TypeError(
+        "Cannot collect output: 'stderr' is locked",
+      );
+    }
+
+    const { 0: status, 1: stdout, 2: stderr } = await SafePromiseAll([
+      this.#status,
+      collectOutput(this.#stdout),
+      collectOutput(this.#stderr),
+    ]);
+
+    return {
+      success: status.success,
+      code: status.code,
+      signal: status.signal,
+      get stdout() {
+        if (stdout == null) {
+          throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
+        }
+        return stdout;
+      },
+      get stderr() {
+        if (stderr == null) {
+          throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
+        }
+        return stderr;
+      },
+    };
+  }
+
+  kill(signo = "SIGTERM") {
+    if (this.#waitComplete) {
+      throw new TypeError("Child process has already terminated");
+    }
+    op_spawn_kill(this.#rid, signo);
+  }
+
+  async [SymbolAsyncDispose]() {
+    try {
+      op_spawn_kill(this.#rid, "SIGTERM");
+    } catch {
+      // ignore errors from killing the process (such as ESRCH or BadResource)
+    }
+    await this.#status;
+  }
+
+  ref() {
+    core.refOpPromise(this.#waitPromise);
+    if (this.#stdout) readableStreamForRidUnrefableRef(this.#stdout);
+    if (this.#stderr) readableStreamForRidUnrefableRef(this.#stderr);
+    if (!this.#waitComplete) {
+      op_spawn_child_ref(this.#rid);
+    }
+  }
+
+  unref() {
+    core.unrefOpPromise(this.#waitPromise);
+    if (this.#stdout) readableStreamForRidUnrefableUnref(this.#stdout);
+    if (this.#stderr) readableStreamForRidUnrefableUnref(this.#stderr);
+    if (!this.#waitComplete) {
+      op_spawn_child_unref(this.#rid);
+    }
+  }
+}
+
+class ReadableStreamWithCollectors extends ReadableStream {
+  constructor(underlyingSource = undefined, strategy = undefined) {
+    super(underlyingSource, strategy);
+  }
+
+  async arrayBuffer() {
+    const buffer = await readableStreamCollectIntoUint8Array(this);
+    return packageData(buffer, "ArrayBuffer", null);
+  }
+
+  async bytes() {
+    const buffer = await readableStreamCollectIntoUint8Array(this);
+    return packageData(buffer, "bytes", null);
+  }
+
+  async json() {
+    const buffer = await readableStreamCollectIntoUint8Array(this);
+    return packageData(buffer, "JSON", null);
+  }
+
+  async text() {
+    const buffer = await readableStreamCollectIntoUint8Array(this);
+    return packageData(buffer, "text", null);
+  }
+}
+
+function spawnInner(command, {
+  args = [],
+  cwd = undefined,
+  clearEnv = false,
+  env = { __proto__: null },
+  uid = undefined,
+  gid = undefined,
+  signal = undefined,
+  stdin = "null",
+  stdout = "piped",
+  stderr = "piped",
+  windowsRawArguments = false,
+  [kNeedsNpmProcessState]: needsNpmProcessState = false,
+} = { __proto__: null }) {
+  if (stdin === "piped") {
+    throw new TypeError(
+      "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
+    );
+  }
+  // Bypass ChildProcess and ReadableStream machinery. Creating streams
+  // just to immediately collect all data has significant overhead that
+  // causes RSS growth in tight loops. Reading directly from the resource
+  // IDs avoids that overhead.
+  const child = op_spawn_child({
+    cmd: pathFromURL(command),
+    args: ArrayPrototypeMap(args, String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    argv0: undefined,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    ipc: -1,
+    serialization: "json",
+    extraStdio: [],
+    detached: false,
+    needsNpmProcessState,
+  }, "Deno.Command().output()");
+
+  const stdoutRid = child.stdoutRid;
+  const stderrRid = child.stderrRid;
+
+  let onAbort = null;
+  if (signal !== undefined) {
+    onAbort = () => {
+      try {
+        op_spawn_kill(child.rid, "SIGTERM");
+      } catch {
+        // Ignore the error for https://github.com/denoland/deno/issues/27112
+      }
+    };
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal[abortSignal.add](onAbort);
+    }
+  }
+
+  return PromisePrototypeThen(
+    SafePromiseAll([
+      op_spawn_wait(child.rid),
+      stdoutRid != null ? readAllRid(stdoutRid) : null,
+      stderrRid != null ? readAllRid(stderrRid) : null,
+    ]),
+    ({ 0: status, 1: stdout, 2: stderr }) => {
+      if (onAbort !== null) {
+        signal[abortSignal.remove](onAbort);
+      }
+      return {
+        success: status.success,
+        code: status.code,
+        signal: status.signal,
+        get stdout() {
+          if (stdout == null) {
+            throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
+          }
+          return stdout;
+        },
+        get stderr() {
+          if (stderr == null) {
+            throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
+          }
+          return stderr;
+        },
+      };
+    },
+  );
+}
+
+function spawnSyncInner(command, {
+  args = [],
+  cwd = undefined,
+  clearEnv = false,
+  env = { __proto__: null },
+  uid = undefined,
+  gid = undefined,
+  stdin = "null",
+  stdout = "piped",
+  stderr = "piped",
+  windowsRawArguments = false,
+  [kInputOption]: input,
+  [kNeedsNpmProcessState]: needsNpmProcessState = false,
+  [kTimeoutOption]: timeout,
+  [kKillSignalOption]: killSignal,
+  [kArgv0]: argv0 = undefined,
+} = { __proto__: null }) {
+  if (stdin === "piped") {
+    throw new TypeError(
+      "Piped stdin is not supported for this function, use 'Deno.Command().spawn()' instead",
+    );
+  }
+  const spawnArgs = {
+    cmd: pathFromURL(command),
+    args: ArrayPrototypeMap(args, String),
+    cwd: pathFromURL(cwd),
+    clearEnv,
+    env: ObjectEntries(env),
+    uid,
+    gid,
+    stdin,
+    stdout,
+    stderr,
+    windowsRawArguments,
+    extraStdio: [],
+    detached: false,
+    needsNpmProcessState,
+    input,
+    argv0,
+  };
+  if (timeout != null && timeout > 0) {
+    spawnArgs.timeout = timeout;
+    if (killSignal != null) {
+      spawnArgs.killSignal = killSignal;
+    }
+  }
+  const result = op_spawn_sync(spawnArgs);
+  const output = {
+    success: result.status.success,
+    code: result.status.code,
+    signal: result.status.signal,
+    get stdout() {
+      if (result.stdout == null) {
+        throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
+      }
+      return result.stdout;
+    },
+    get stderr() {
+      if (result.stderr == null) {
+        throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
+      }
+      return result.stderr;
+    },
+  };
+  return output;
+}
+
+class Command {
+  #command;
+  #options;
+
+  constructor(command, options) {
+    this.#command = command;
+    this.#options = options;
+  }
+
+  output() {
+    if (this.#options?.stdin === "piped") {
+      throw new TypeError(
+        "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+      );
+    }
+    return spawnInner(this.#command, this.#options);
+  }
+
+  outputSync() {
+    if (this.#options?.stdin === "piped") {
+      throw new TypeError(
+        "Piped stdin is not supported for this function, use 'Deno.Command.spawn()' instead",
+      );
+    }
+    return spawnSyncInner(this.#command, this.#options);
+  }
+
+  spawn() {
+    const options = {
+      __proto__: null,
+      ...(this.#options ?? {}),
+      stdout: this.#options?.stdout ?? "inherit",
+      stderr: this.#options?.stderr ?? "inherit",
+      stdin: this.#options?.stdin ?? "inherit",
+    };
+    return spawnChild(this.#command, options);
+  }
+}
+
+function spawn(command, argsOrOptions, maybeOptions) {
+  if (ArrayIsArray(argsOrOptions)) {
+    const options = maybeOptions ?? {};
+    if (options.args !== undefined) {
+      throw new TypeError(
+        "Passing 'args' in options is not allowed when args are passed as a separate argument",
+      );
+    }
+    return new Command(command, { ...options, args: argsOrOptions }).spawn();
+  }
+  return new Command(command, argsOrOptions).spawn();
+}
+
+function spawnAndWait(command, argsOrOptions, maybeOptions) {
+  if (ArrayIsArray(argsOrOptions)) {
+    const options = maybeOptions ?? {};
+    if (options.args !== undefined) {
+      throw new TypeError(
+        "Passing 'args' in options is not allowed when args are passed as a separate argument",
+      );
+    }
+    return new Command(command, { ...options, args: argsOrOptions }).output();
+  }
+  return new Command(command, argsOrOptions).output();
+}
+
+function spawnAndWaitSync(command, argsOrOptions, maybeOptions) {
+  if (ArrayIsArray(argsOrOptions)) {
+    const options = maybeOptions ?? {};
+    if (options.args !== undefined) {
+      throw new TypeError(
+        "Passing 'args' in options is not allowed when args are passed as a separate argument",
+      );
+    }
+    return new Command(command, { ...options, args: argsOrOptions })
+      .outputSync();
+  }
+  return new Command(command, argsOrOptions).outputSync();
+}
+
+return {
+  ChildProcess,
+  Command,
+  kArgv0,
+  kExtraStdio,
+  kIpc,
+  kInputOption,
+  kKillSignalOption,
+  kNeedsNpmProcessState,
+  kSerialization,
+  kTimeoutOption,
+  kill,
+  nodeSpawnChild,
+  nodeSpawnSyncChild,
+  Process,
+  run,
+  spawn,
+  spawnAndWait,
+  spawnAndWaitSync,
+};
+})();

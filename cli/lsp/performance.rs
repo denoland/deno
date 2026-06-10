@@ -1,9 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_core::parking_lot::Mutex;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
-use deno_core::serde_json::json;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -11,6 +7,11 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
+
+use deno_core::parking_lot::Mutex;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
 
 use super::logging::lsp_debug;
 
@@ -73,16 +74,15 @@ impl From<PerformanceMark> for PerformanceMeasure {
 
 #[derive(Debug)]
 pub struct PerformanceScopeMark {
-  performance_inner: Arc<Mutex<PerformanceInner>>,
+  performance: Arc<Performance>,
   inner: Option<PerformanceMark>,
 }
 
 impl Drop for PerformanceScopeMark {
   fn drop(&mut self) {
-    self
-      .performance_inner
-      .lock()
-      .measure(self.inner.take().unwrap());
+    if let Some(mark) = self.inner.take() {
+      self.performance.0.lock().measure(mark);
+    }
   }
 }
 
@@ -138,7 +138,7 @@ impl Default for PerformanceInner {
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
 #[derive(Debug, Default)]
-pub struct Performance(Arc<Mutex<PerformanceInner>>);
+pub struct Performance(Mutex<PerformanceInner>);
 
 impl Performance {
   /// Return the count and average duration of a measurement identified by name.
@@ -278,9 +278,12 @@ impl Performance {
   /// // ❌
   /// let _ = self.performance.measure_scope("foo");
   /// ```
-  pub fn measure_scope<S: AsRef<str>>(&self, name: S) -> PerformanceScopeMark {
+  pub fn measure_scope<S: AsRef<str>>(
+    self: &Arc<Self>,
+    name: S,
+  ) -> PerformanceScopeMark {
     PerformanceScopeMark {
-      performance_inner: self.0.clone(),
+      performance: self.clone(),
       inner: Some(self.mark(name)),
     }
   }

@@ -1,5 +1,5 @@
 {
-  "args": "test -A --trace-leaks main.ts",
+  "args": "test --sanitize-ops --sanitize-resources -A --trace-leaks main.ts",
   "output": "main.out",
   "exitCode": 0
 }

@@ -1,0 +1,17 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:@denotest/pre-release-with-nightlies@^1.0.0-beta.13": "1.0.0-beta.13"
+  },
+  "npm": {
+    "@denotest/pre-release-with-nightlies@1.0.0-beta.13": {
+      "integrity": "sha512-QTCqS1ugCX0V+dzR8ZlJbLv7IiaTmvobnxaUWoBTLe2zI1jtYOpNA0DGjcR1z7M5X7Lk6jTHiIjF8aj8B53Tsw==",
+      "tarball": "http://localhost:4260/@denotest/pre-release-with-nightlies/1.0.0-beta.13.tgz"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@denotest/pre-release-with-nightlies@^1.0.0-beta.13"
+    ]
+  }
+}

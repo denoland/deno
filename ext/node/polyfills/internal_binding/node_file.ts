@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -24,14 +24,25 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file-inl.h
 // - https://github.com/nodejs/node/blob/master/src/node_file.cc
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_node_fs_seek_sync, op_node_fs_write_sync } = core.ops;
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+let assert: typeof nodeAssert.default;
+const lazyLoadAssert = () => {
+  return core.createLazyLoader<typeof nodeAssert>(
+    "node:assert",
+  )().default;
+};
 
-import { assert } from "ext:deno_node/_util/asserts.ts";
-import * as io from "ext:deno_io/12_io.js";
-import { op_fs_seek_sync } from "ext:core/ops";
-
+const {
+  ErrorPrototype,
+  ObjectPrototypeIsPrototypeOf,
+  SafeRegExp,
+  StringPrototypeMatch,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeSubarray,
+} = primordials;
 /**
  * Write to the given file from the given buffer synchronously.
  *
@@ -45,7 +56,7 @@ import { op_fs_seek_sync } from "ext:core/ops";
  * @param position if integer, position to write at in the file. if null, write from the current position
  * @param context context object for passing error number
  */
-export function writeBuffer(
+function writeBuffer(
   fd: number,
   buffer: Uint8Array,
   offset: number,
@@ -53,23 +64,26 @@ export function writeBuffer(
   position: number | null,
   ctx: { errno?: number },
 ) {
+  assert ??= lazyLoadAssert();
   assert(offset >= 0, "offset should be greater or equal to 0");
   assert(
-    offset + length <= buffer.byteLength,
-    `buffer doesn't have enough data: byteLength = ${buffer.byteLength}, offset + length = ${
+    offset + length <= TypedArrayPrototypeGetByteLength(buffer),
+    `buffer doesn't have enough data: byteLength = ${
+      TypedArrayPrototypeGetByteLength(buffer)
+    }, offset + length = ${
       offset +
       length
     }`,
   );
 
   if (position) {
-    op_fs_seek_sync(fd, position, io.SeekMode.Current);
+    op_node_fs_seek_sync(fd, position, 1); // SeekMode.Current = 1
   }
 
-  const subarray = buffer.subarray(offset, offset + length);
+  const subarray = TypedArrayPrototypeSubarray(buffer, offset, offset + length);
 
   try {
-    return io.writeSync(fd, subarray);
+    return op_node_fs_write_sync(fd, subarray, -1);
   } catch (e) {
     ctx.errno = extractOsErrorNumberFromErrorMessage(e);
     return 0;
@@ -77,8 +91,8 @@ export function writeBuffer(
 }
 
 function extractOsErrorNumberFromErrorMessage(e: unknown): number {
-  const match = e instanceof Error
-    ? e.message.match(/\(os error (\d+)\)/)
+  const match = ObjectPrototypeIsPrototypeOf(ErrorPrototype, e)
+    ? StringPrototypeMatch(e.message, new SafeRegExp(/\(os error (\d+)\)/))
     : false;
 
   if (match) {
@@ -87,3 +101,8 @@ function extractOsErrorNumberFromErrorMessage(e: unknown): number {
 
   return 255; // Unknown error
 }
+
+return {
+  writeBuffer,
+};
+})();

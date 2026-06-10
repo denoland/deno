@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/reexport-from-non-export",
+  "version": "1.0.0",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "imports": "./index.mjs"
+    }
+  },
+  "dependencies": {
+    "@denotest/types-exports-import-types": "*"
+  }
+}

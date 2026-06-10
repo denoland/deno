@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import crypto, { KeyFormat } from "node:crypto";
 import path from "node:path";
 import { Buffer } from "node:buffer";

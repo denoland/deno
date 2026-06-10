@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import {
   assert,
   assertEquals,
@@ -24,6 +24,14 @@ Deno.test({ permissions: { read: true } }, function readDirSyncSuccess() {
   const files = [...Deno.readDirSync("tests/testdata")];
   assertSameContent(files);
 });
+
+Deno.test(
+  { permissions: { read: true } },
+  function readDirSyncResultHasIteratorHelperMethods() {
+    const iterator = Deno.readDirSync("tests/testdata");
+    assertEquals(typeof iterator.map, "function");
+  },
+);
 
 Deno.test({ permissions: { read: true } }, function readDirSyncWithUrl() {
   const files = [
@@ -83,7 +91,7 @@ Deno.test({ permissions: { read: false } }, async function readDirPerm() {
 });
 
 Deno.test(
-  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
+  { permissions: "inherit", ignore: Deno.build.os == "windows" },
   async function readDirDevFd(): Promise<
     void
   > {
@@ -94,7 +102,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
+  { permissions: "inherit", ignore: Deno.build.os == "windows" },
   function readDirDevFdSync() {
     for (const _ of Deno.readDirSync("/dev/fd")) {
       // We don't actually care whats in here; just that we don't panic on non regular file entries

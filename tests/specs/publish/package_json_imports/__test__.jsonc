@@ -1,0 +1,4 @@
+{
+  "args": "publish --log-level=debug --token 'sadfasdf'",
+  "output": "package_json.out"
+}

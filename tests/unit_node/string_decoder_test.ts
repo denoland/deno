@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { assertEquals } from "@std/assert";
 import { Buffer } from "node:buffer";
 import { StringDecoder } from "node:string_decoder";
@@ -39,6 +39,29 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "String decoder replaces invalid utf8 bytes the same way as Node (#34930)",
+  fn() {
+    // A lone continuation byte (0x92) in the middle of an otherwise complete
+    // buffer must be replaced with a single U+FFFD, matching Node.js. The
+    // trailing bytes are ASCII so no bytes are buffered for the next write.
+    const decoder = new StringDecoder("utf8");
+    const buffer = Buffer.from([0x47, 0x40, 0x01, 0x92, 0x01, 0x01]);
+    assertEquals(
+      decoder.write(buffer),
+      "G@\x01\ufffd\x01\x01",
+    );
+    assertEquals(decoder.end(), "");
+
+    // Buffer.prototype.toString('utf8') must produce the same replacement.
+    assertEquals(
+      buffer.toString("utf8"),
+      "G@\x01\ufffd\x01\x01",
+    );
+  },
+});
+
+Deno.test({
   name: "String decoder is encoding base64 correctly",
   fn() {
     let decoder;
@@ -67,6 +90,41 @@ Deno.test({
     assertEquals(decoder.end(), "4g==");
 
     decoder = new StringDecoder("base64");
+    assertEquals(decoder.write(Buffer.from("F1", "hex")), "");
+    assertEquals(decoder.write(Buffer.from("41F2", "hex")), "8UHy");
+    assertEquals(decoder.end(), "");
+  },
+});
+
+Deno.test({
+  name: "String decoder is encoding base64url correctly",
+  fn() {
+    let decoder;
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(decoder.write(Buffer.from("E1", "hex")), "");
+    assertEquals(decoder.end(), "4Q");
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(decoder.write(Buffer.from("E18B", "hex")), "");
+    assertEquals(decoder.end(), "4Ys");
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(decoder.write(Buffer.from("\ufffd")), "77-9");
+    assertEquals(decoder.end(), "");
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(
+      decoder.write(Buffer.from("\ufffd\ufffd\ufffd")),
+      "77-977-977-9",
+    );
+    assertEquals(decoder.end(), "");
+
+    decoder = new StringDecoder("base64url");
+    assertEquals(decoder.write(Buffer.from("EFBFBDE2", "hex")), "77-9");
+    assertEquals(decoder.end(), "4g");
+
+    decoder = new StringDecoder("base64url");
     assertEquals(decoder.write(Buffer.from("F1", "hex")), "");
     assertEquals(decoder.write(Buffer.from("41F2", "hex")), "8UHy");
     assertEquals(decoder.end(), "");

@@ -1,5 +1,5 @@
 Check file:///[WILDCARD]/type_check.ts
-error: TS2339 [ERROR]: Property 'foo' does not exist on type '{ a: string; c: { d: number; }; }'.
+TS2339 [ERROR]: Property 'foo' does not exist on type '{ a: string; c: { d: number; }; }'.
 console.log(data1.foo);
                   ~~~
     at [WILDCARD]type_check.ts:5:19
@@ -10,3 +10,5 @@ console.log(data2.foo);
     at [WILDCARD]type_check.ts:6:19
 
 Found 2 errors.
+
+error: Type checking failed.

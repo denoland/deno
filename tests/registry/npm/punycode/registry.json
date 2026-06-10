@@ -71,7 +71,6 @@
     "type": "git",
     "url": "git+https://github.com/bestiejs/punycode.js.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "https://mths.be/punycode",
   "bugs": {
     "url": "https://github.com/bestiejs/punycode.js/issues"

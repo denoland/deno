@@ -56,6 +56,5 @@
   "bugs": {
     "url": "https://github.com/inspect-js/has-package-exports/issues"
   },
-  "license": "MIT",
-  "readmeFilename": ""
+  "license": "MIT"
 }

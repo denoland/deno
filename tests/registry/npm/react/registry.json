@@ -59,7 +59,6 @@
     "url": "git+https://github.com/facebook/react.git",
     "directory": "packages/react"
   },
-  "readmeFilename": "",
   "homepage": "https://reactjs.org/",
   "bugs": {
     "url": "https://github.com/facebook/react/issues"

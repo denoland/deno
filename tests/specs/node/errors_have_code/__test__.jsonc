@@ -1,0 +1,10 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "add npm:chalk",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A main.cjs",
+    "output": "ERR_PACKAGE_PATH_NOT_EXPORTED\n"
+  }]
+}

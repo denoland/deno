@@ -67,6 +67,5 @@
   "bugs": {
     "url": "https://github.com/sindresorhus/find-up/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

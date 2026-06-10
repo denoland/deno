@@ -1,0 +1,4 @@
+{
+  "args": "task -q --config deno.json echo .\\dist\\",
+  "output": ".\\dist\\\n"
+}

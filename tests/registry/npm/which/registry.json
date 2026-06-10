@@ -153,6 +153,5 @@
   "homepage": "https://github.com/npm/node-which#readme",
   "bugs": {
     "url": "https://github.com/npm/node-which/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

@@ -31,7 +31,8 @@
     },
     "wrong_file_ignore": {
       "args": "fmt wrong_file_ignore.yaml",
-      "output": "wrong_file_ignore.out"
+      "output": "wrong_file_ignore.out",
+      "exitCode": 1
     }
   }
 }

@@ -1,0 +1,11 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Regression test for https://github.com/denoland/deno/issues/27370
+    "root": {
+      "args": "task test-all",
+      "output": "root.out",
+      "exitCode": 0
+    }
+  }
+}

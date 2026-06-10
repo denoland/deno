@@ -1,0 +1,3 @@
+error: Import "fs" not a dependency
+  hint: If you want to use a built-in Node module, add a "node:" prefix (ex. "node:fs").
+    at file:///[WILDCARD]/main.ts:1:16

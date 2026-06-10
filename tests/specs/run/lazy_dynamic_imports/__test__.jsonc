@@ -1,0 +1,31 @@
+{
+  "tests": {
+    "enabled_flag": {
+      "tempDir": true,
+      "steps": [{
+        "args": "run --unstable-lazy-dynamic-imports main.ts",
+        "output": "enabled.out"
+      }, {
+        "args": [
+          "eval",
+          "console.log(Deno.readTextFileSync('deno.lock').trim());"
+        ],
+        "output": "lock.out"
+      }]
+    },
+    "enabled_check": {
+      // when using --check we don't do this because statically analyzable
+      // dynamic imports might be necessary for type checking
+      "args": "run --no-lock --unstable-lazy-dynamic-imports --check main.ts",
+      "output": "check.out"
+    },
+    "enabled_config": {
+      "args": "run --no-lock --config=deno.enabled.json main.ts",
+      "output": "enabled.out"
+    },
+    "disabled": {
+      "args": "run --no-lock main.ts",
+      "output": "disabled.out"
+    }
+  }
+}

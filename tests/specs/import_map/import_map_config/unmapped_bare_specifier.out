@@ -1,4 +1,4 @@
-error: Uncaught (in promise) TypeError: Relative import path "unmapped" not prefixed with / or ./ or ../ and not in import map from "file://[WILDCARD]/unmapped_bare_specifier.ts"
+error: Uncaught (in promise) TypeError: Import "unmapped" not a dependency and not in import map from "file://[WILDCARD]/unmapped_bare_specifier.ts"
     at file://[WILDCARD]/unmapped_bare_specifier.ts:1:14
 
 await import("unmapped");

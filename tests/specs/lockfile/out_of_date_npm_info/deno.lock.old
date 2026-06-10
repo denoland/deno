@@ -1,0 +1,16 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/add@1.0.0": "1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "3b2e675c1ad7fba2a45bc251992e01aff08a3c974ac09079b11e6a5b95d4bfcb"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@denotest/add@1.0.0"
+    ]
+  }
+}

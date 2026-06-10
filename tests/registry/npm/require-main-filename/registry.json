@@ -60,6 +60,5 @@
   "bugs": {
     "url": "https://github.com/yargs/require-main-filename/issues"
   },
-  "license": "ISC",
-  "readmeFilename": "README.md"
+  "license": "ISC"
 }

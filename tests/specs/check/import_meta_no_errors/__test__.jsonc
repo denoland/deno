@@ -1,0 +1,53 @@
+{
+  "tempDir": true,
+  "tests": {
+    "node_modules_dir_none": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts none",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check --all ./main.ts",
+          "output": "Check [WILDCARD]main.ts\n"
+        }
+      ]
+    },
+    "node_modules_dir_auto": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts auto",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check --all ./main.ts",
+          "output": "Check [WILDCARD]main.ts\n"
+        }
+      ]
+    },
+    "node_modules_dir_manual": {
+      "steps": [
+        {
+          "args": "run -A ./set_node_modules_dir.ts auto",
+          "output": ""
+        },
+        {
+          "args": "install",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "check --all ./main.ts",
+          "output": "Check [WILDCARD]main.ts\n"
+        }
+      ]
+    }
+  }
+}

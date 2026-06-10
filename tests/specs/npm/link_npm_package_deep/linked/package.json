@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/different-nested-dep-child",
+  "version": "1.0.0",
+  "exports": "./main.mjs"
+}

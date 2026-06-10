@@ -1,20 +1,23 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+import { core, primordials } from "ext:core/mod.js";
+const { Promise } = primordials;
+const { Readline } = core.loadExtScript(
+  "ext:deno_node/internal/readline/promises.mjs",
+);
 
-import { Readline } from "ext:deno_node/internal/readline/promises.mjs";
-
-import {
-  Interface as _Interface,
+const {
+  Interface: _Interface,
   kQuestion,
   kQuestionCancel,
-} from "ext:deno_node/internal/readline/interface.mjs";
-import { AbortError } from "ext:deno_node/internal/errors.ts";
-import { validateAbortSignal } from "ext:deno_node/internal/validators.mjs";
+} = core.loadExtScript("ext:deno_node/internal/readline/interface.mjs");
+const { AbortError } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { validateAbortSignal } = core.loadExtScript(
+  "ext:deno_node/internal/validators.mjs",
+);
 
-import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+const { kEmptyObject } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import type {
   AsyncCompleter,

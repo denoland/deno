@@ -1,11 +1,24 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 mod async_flag;
-mod sync_read_async_write_lock;
-mod task_queue;
 
 pub use async_flag::AsyncFlag;
 pub use deno_core::unsync::sync::AtomicFlag;
-pub use sync_read_async_write_lock::SyncReadAsyncWriteLock;
-pub use task_queue::TaskQueue;
-pub use task_queue::TaskQueuePermit;
+
+#[derive(Debug, Default)]
+pub struct RelaxedAtomicCounter {
+  value: AtomicUsize,
+}
+
+impl RelaxedAtomicCounter {
+  pub fn inc(&self) {
+    self.value.fetch_add(1, Ordering::Relaxed);
+  }
+
+  pub fn get(&self) -> usize {
+    self.value.load(Ordering::Relaxed)
+  }
+}

@@ -1,0 +1,12 @@
+Error linting: [WILDLINE]main.ts
+    The 'test-plugin/my-rule' rule caused a syntax error applying 'Fix this test-plugin/my-rule problem'.
+
+    Range: [14, 18]
+    Text: "garbage test test"
+
+    : SyntaxError: Expected a semicolon
+      |
+    1 | const value = garbage test test;
+      |                       ~~~~
+        at file:///[WILDLINE]/main.ts:1:23
+Checked 2 files
