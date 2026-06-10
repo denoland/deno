@@ -1,12 +1,9 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::future::poll_fn;
 use std::rc::Rc;
-use std::task::Context;
-use std::task::Poll;
 
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -18,11 +15,9 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::TransferredResource;
 use deno_core::op2;
-use deno_core::v8;
 use deno_error::JsErrorBox;
 use serde::Deserialize;
 use serde::Serialize;
-use tokio::sync::Notify;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::error::TryRecvError;
@@ -61,59 +56,9 @@ type MessagePortMessage = (DetachedBuffer, Vec<Transferable>);
 pub struct MessagePort {
   pub rx: RefCell<UnboundedReceiver<MessagePortMessage>>,
   pub tx: RefCell<Option<UnboundedSender<MessagePortMessage>>>,
-  // Set once the receiving side has been observed closed (the paired sender was
-  // dropped and `rx` returned `None`). Used by the Rust-driven dispatch path:
-  // the message-pump drains `rx` directly and, on close, flips this flag and
-  // wakes any keep-alive recv op waiting in `closed()` so it can resolve.
-  closed_flag: Cell<bool>,
-  close_notify: Notify,
 }
 
 impl MessagePort {
-  /// Non-blocking drain used by the Rust-driven dispatch pump. Receives up to
-  /// `max` already-queued messages into `out`, registering `cx`'s waker so the
-  /// event loop is re-polled when a new message arrives. Returns `true` if the
-  /// channel has closed (paired sender dropped).
-  pub fn poll_drain(
-    &self,
-    cx: &mut Context,
-    max: usize,
-    out: &mut Vec<MessagePortMessage>,
-  ) -> bool {
-    let mut rx = self.rx.borrow_mut();
-    for _ in 0..max {
-      match rx.poll_recv(cx) {
-        Poll::Ready(Some(msg)) => out.push(msg),
-        Poll::Ready(None) => return true,
-        Poll::Pending => return false,
-      }
-    }
-    // Hit the per-poll drain cap with possibly more queued: wake again so the
-    // event loop re-polls and keeps draining, without starving other work.
-    cx.waker().wake_by_ref();
-    false
-  }
-
-  /// Resolves once the channel is observed closed via [`MessagePort::mark_closed`].
-  /// Used as the keep-alive anchor for the Rust-driven dispatch recv ops.
-  pub async fn closed(&self) {
-    let notified = self.close_notify.notified();
-    let mut notified = std::pin::pin!(notified);
-    // Register interest before checking the flag so a `mark_closed` racing in
-    // between cannot be missed.
-    notified.as_mut().enable();
-    if self.closed_flag.get() {
-      return;
-    }
-    notified.await;
-  }
-
-  /// Marks the channel closed and wakes anything waiting in [`MessagePort::closed`].
-  pub fn mark_closed(&self) {
-    self.closed_flag.set(true);
-    self.close_notify.notify_waiters();
-  }
-
   pub fn send(
     &self,
     state: &mut OpState,
@@ -199,15 +144,11 @@ pub fn create_entangled_message_port() -> (MessagePort, MessagePort) {
   let port1 = MessagePort {
     rx: RefCell::new(port1_rx),
     tx: RefCell::new(Some(port1_tx)),
-    closed_flag: Cell::new(false),
-    close_notify: Notify::new(),
   };
 
   let port2 = MessagePort {
     rx: RefCell::new(port2_rx),
     tx: RefCell::new(Some(port2_tx)),
-    closed_flag: Cell::new(false),
-    close_notify: Notify::new(),
   };
 
   (port1, port2)
@@ -409,93 +350,4 @@ pub fn op_message_port_post_message_raw(
     tx.send((detached, vec![])).ok();
   }
   Ok(())
-}
-
-// ---- Rust-driven message dispatch -------------------------------------------
-//
-// In a latency-bound worker pattern (request/response, ping-pong) the steady
-// state is "one message arrives, dispatch it, wait for the next". The classic
-// JS receive loop pays a fresh async op + JS Promise + microtask checkpoint per
-// message for that. Instead, a receive loop can register its port and a
-// dispatcher function here; the worker event loop (see
-// `deno_runtime::message_dispatch`) then drains the port's queue directly and
-// invokes the dispatcher from Rust, with no per-message Promise.
-//
-// A still-pending recv op (now resolving only on channel close) remains the
-// keep-alive / ref-unref anchor, so worker lifecycle semantics are unchanged.
-
-pub struct MessageDispatchSource {
-  pub port: Rc<MessagePort>,
-  pub dispatcher: v8::Global<v8::Function>,
-}
-
-/// Registry of ports whose message delivery is driven from the Rust event loop.
-/// Stored in `OpState`; consulted each event-loop iteration by the worker
-/// message pump.
-#[derive(Default)]
-pub struct MessageDispatchTable {
-  // Slots are reused on unregister to keep ids stable and small.
-  sources: Vec<Option<MessageDispatchSource>>,
-}
-
-impl MessageDispatchTable {
-  pub fn register(
-    &mut self,
-    port: Rc<MessagePort>,
-    dispatcher: v8::Global<v8::Function>,
-  ) -> u32 {
-    let source = MessageDispatchSource { port, dispatcher };
-    for (i, slot) in self.sources.iter_mut().enumerate() {
-      if slot.is_none() {
-        *slot = Some(source);
-        return i as u32;
-      }
-    }
-    self.sources.push(Some(source));
-    (self.sources.len() - 1) as u32
-  }
-
-  pub fn unregister(&mut self, id: u32) {
-    if let Some(slot) = self.sources.get_mut(id as usize) {
-      *slot = None;
-    }
-  }
-
-  /// Snapshot of currently-registered sources, cloning the cheap handles so the
-  /// pump can drop its borrow of `OpState` before re-entering JS.
-  pub fn snapshot(
-    &self,
-  ) -> Vec<(u32, Rc<MessagePort>, v8::Global<v8::Function>)> {
-    self
-      .sources
-      .iter()
-      .enumerate()
-      .filter_map(|(i, slot)| {
-        slot
-          .as_ref()
-          .map(|s| (i as u32, s.port.clone(), s.dispatcher.clone()))
-      })
-      .collect()
-  }
-}
-
-/// Register a port + dispatcher for Rust-driven message delivery.
-pub fn register_message_dispatch(
-  state: &mut OpState,
-  port: Rc<MessagePort>,
-  dispatcher: v8::Global<v8::Function>,
-) -> u32 {
-  if state.try_borrow::<MessageDispatchTable>().is_none() {
-    state.put(MessageDispatchTable::default());
-  }
-  state
-    .borrow_mut::<MessageDispatchTable>()
-    .register(port, dispatcher)
-}
-
-#[op2(fast)]
-pub fn op_message_dispatch_unregister(state: &mut OpState, #[smi] id: u32) {
-  if let Some(table) = state.try_borrow_mut::<MessageDispatchTable>() {
-    table.unregister(id);
-  }
 }

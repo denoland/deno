@@ -36,7 +36,6 @@ pub use cpu_profiler::CpuProfilerConfig;
 pub use cpu_profiler::cpu_prof_filename;
 pub mod fmt_errors;
 pub mod js;
-pub mod message_dispatch;
 pub mod ops;
 pub mod permissions;
 #[cfg(feature = "snapshot")]

@@ -49,18 +49,15 @@ use crate::blob::op_blob_revoke_object_url;
 use crate::blob::op_blob_slice_part;
 pub use crate::broadcast_channel::InMemoryBroadcastChannel;
 pub use crate::message_port::JsMessageData;
-pub use crate::message_port::MessageDispatchTable;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::Transferable;
 pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::deserialize_js_transferables;
-use crate::message_port::op_message_dispatch_unregister;
 use crate::message_port::op_message_port_create_entangled;
 use crate::message_port::op_message_port_post_message;
 use crate::message_port::op_message_port_post_message_raw;
 use crate::message_port::op_message_port_recv_message;
 use crate::message_port::op_message_port_recv_message_sync;
-pub use crate::message_port::register_message_dispatch;
 pub use crate::message_port::serialize_transferables;
 pub use crate::timers::StartTime;
 use crate::timers::op_defer;
@@ -97,7 +94,6 @@ deno_core::extension!(deno_web,
     op_message_port_post_message_raw,
     op_message_port_recv_message,
     op_message_port_recv_message_sync,
-    op_message_dispatch_unregister,
     compression::op_compression_new,
     compression::op_compression_write,
     compression::op_compression_finish,

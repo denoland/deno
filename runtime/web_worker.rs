@@ -657,10 +657,6 @@ impl WebWorker {
 
     // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
-    // Drive worker / MessagePort message delivery from the event loop (no
-    // per-message async op + Promise). No-op until a receive loop registers.
-    crate::message_dispatch::install_message_dispatch(&mut js_runtime);
-
     if let Some(main_session_tx) = services.main_inspector_session_tx.get() {
       let (main_proxy, worker_proxy) =
         deno_core::create_worker_inspector_session_pair(

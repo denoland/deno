@@ -22,7 +22,6 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
-use deno_core::v8;
 use deno_permissions::ChildPermissionsArg;
 use deno_permissions::PermissionsContainer;
 use deno_web::JsMessageData;
@@ -170,7 +169,6 @@ deno_core::extension!(
     op_host_post_message_raw,
     op_host_recv_message,
     op_host_recv_message_sync,
-    op_host_register_message_dispatch,
     op_host_get_worker_cpu_usage,
     op_current_thread_cpu_usage,
     op_node_worker_thread_register,
@@ -495,40 +493,24 @@ async fn op_host_recv_message(
     }
   };
 
-  // Message delivery is driven from the Rust event loop (see
-  // `deno_runtime::message_dispatch`): the pump drains this port and invokes the
-  // registered dispatcher directly. This op stays pending as the keep-alive /
-  // ref-unref anchor and resolves `null` when the channel closes, preserving the
-  // existing close-channel bookkeeping.
-  let ret = worker_handle.port.closed().or_cancel(cancel_handle).await;
+  let ret = worker_handle
+    .port
+    .recv(state.clone())
+    .or_cancel(cancel_handle)
+    .await;
   match ret {
-    Ok(()) => {
-      close_channel(state, id, WorkerChannel::Messages);
-      Ok(None)
+    Ok(Ok(ret)) => {
+      if ret.is_none() {
+        close_channel(state, id, WorkerChannel::Messages);
+      }
+      Ok(ret)
     }
+    Ok(Err(err)) => Err(err),
     Err(_) => {
       // The worker was terminated.
       Ok(None)
     }
   }
-}
-
-/// Registers a child worker's host-side port + dispatcher for Rust-driven
-/// message delivery. Returns the registration id, or `u32::MAX` if the worker
-/// is already gone (a no-op id for `op_message_dispatch_unregister`).
-#[op2]
-pub fn op_host_register_message_dispatch(
-  state: &mut OpState,
-  scope: &mut v8::PinScope,
-  #[scoped] id: WorkerId,
-  cb: v8::Local<v8::Function>,
-) -> u32 {
-  let port = match state.borrow::<WorkersTable>().get(&id) {
-    Some(thread) => thread.worker_handle.port.clone(),
-    None => return u32::MAX,
-  };
-  let dispatcher = v8::Global::new(scope, cb);
-  deno_web::register_message_dispatch(state, port, dispatcher)
 }
 
 #[op2]

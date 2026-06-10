@@ -10,7 +10,6 @@ use deno_core::DetachedBuffer;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::op2;
-use deno_core::v8;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
 pub use sync_fetch::SyncFetchError;
@@ -27,7 +26,6 @@ deno_core::extension!(
     op_worker_post_message_raw,
     op_worker_recv_message,
     op_worker_recv_message_sync,
-    op_worker_register_message_dispatch,
     // Notify host that guest worker closes.
     op_worker_close,
     op_worker_get_type,
@@ -59,12 +57,6 @@ fn op_worker_post_message_raw(
   Ok(())
 }
 
-// Message delivery is now driven from the Rust event loop (see
-// `deno_runtime::message_dispatch`): the dispatch pump drains the port and
-// invokes the registered dispatcher directly. This op no longer returns
-// individual messages — it stays pending purely as the keep-alive / ref-unref
-// anchor and resolves `null` once the channel closes, so the JS receive loop's
-// lifecycle handling (idle exit, `unrefOpPromise`) is unchanged.
 #[op2(async(lazy), fast)]
 #[serde]
 async fn op_worker_recv_message(
@@ -74,21 +66,11 @@ async fn op_worker_recv_message(
     let state = state.borrow();
     state.borrow::<WebWorkerInternalHandle>().clone()
   };
-  handle.port.closed().or_cancel(handle.cancel).await?;
-  Ok(None)
-}
-
-/// Registers the worker's parent port + a dispatcher for Rust-driven message
-/// delivery. Returns the registration id (passed to `op_message_dispatch_unregister`).
-#[op2(fast)]
-pub fn op_worker_register_message_dispatch(
-  state: &mut OpState,
-  scope: &mut v8::PinScope,
-  cb: v8::Local<v8::Function>,
-) -> u32 {
-  let handle = state.borrow::<WebWorkerInternalHandle>().clone();
-  let dispatcher = v8::Global::new(scope, cb);
-  deno_web::register_message_dispatch(state, handle.port, dispatcher)
+  handle
+    .port
+    .recv(state.clone())
+    .or_cancel(handle.cancel)
+    .await?
 }
 
 #[op2]

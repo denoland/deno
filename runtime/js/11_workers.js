@@ -8,9 +8,7 @@ const {
   op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
-  op_host_register_message_dispatch,
   op_host_terminate_worker,
-  op_message_dispatch_unregister,
 } = core.ops;
 const {
   ArrayPrototypeFilter,
@@ -275,34 +273,16 @@ class Worker extends EventTarget {
   }
 
   #pollMessages = async () => {
-    // Message delivery is driven from the Rust event loop: register this
-    // worker's host port + dispatcher so the runtime drains the queue and calls
-    // `#dispatchWorkerMessage` directly, with no per-message Promise. The recv
-    // op below stays pending as the keep-alive / ref-unref anchor and resolves
-    // `null` only on close.
-    const dispatchId = op_host_register_message_dispatch(
-      this.#id,
-      // Guard against delivery after terminate(): the Rust pump may still hold
-      // already-queued messages, and the old per-iteration TERMINATED check
-      // must be preserved (e.g. "worker terminate busy loop").
-      (data) => {
-        if (this.#status !== "TERMINATED") this.#dispatchWorkerMessage(data);
-      },
-    );
-    try {
-      while (this.#status !== "TERMINATED") {
-        this.#messagePromise = hostRecvMessage(this.#id);
-        if (this.#refCount < 1) {
-          core.unrefOpPromise(this.#messagePromise);
-        }
-        const data = await this.#messagePromise;
-        if (this.#status === "TERMINATED" || data === null) {
-          return;
-        }
-        if (!this.#dispatchWorkerMessage(data)) return;
+    while (this.#status !== "TERMINATED") {
+      this.#messagePromise = hostRecvMessage(this.#id);
+      if (this.#refCount < 1) {
+        core.unrefOpPromise(this.#messagePromise);
       }
-    } finally {
-      op_message_dispatch_unregister(dispatchId);
+      const data = await this.#messagePromise;
+      if (this.#status === "TERMINATED" || data === null) {
+        return;
+      }
+      if (!this.#dispatchWorkerMessage(data)) return;
     }
   };
 

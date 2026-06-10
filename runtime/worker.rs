@@ -612,10 +612,6 @@ impl MainWorker {
     // Register the uv_loop_t (created by deno_node extension state callback)
     // The uv loop is auto-created and registered by JsRuntime::new_inner.
 
-    // Drive worker / MessagePort message delivery from the event loop (no
-    // per-message async op + Promise). No-op until a receive loop registers.
-    crate::message_dispatch::install_message_dispatch(&mut js_runtime);
-
     if let Some(server) = get_inspector_server() {
       let inspector_url = server.register_inspector(
         main_module.to_string(),
