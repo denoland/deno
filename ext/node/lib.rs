@@ -244,6 +244,7 @@ deno_core::extension!(deno_node,
     ops::fs::op_node_fs_write_deferred,
     ops::fs::op_node_fs_seek_sync,
     ops::fs::op_node_file_write_buffer,
+    ops::llhttp::binding::op_node_internal_binding_http_parser,
     ops::fs::op_node_fs_seek,
     ops::fs::op_node_fs_fstat_sync,
     ops::fs::op_node_fs_fstat,
@@ -937,6 +938,9 @@ deno_core::extension!(deno_node,
     );
     ext.external_references.to_mut().extend(
       ops::tls_wrap::internal_binding_external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::llhttp::binding::internal_binding_external_references(),
     );
   },
 );

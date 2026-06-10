@@ -31,6 +31,8 @@ use deno_core::op2;
 use deno_core::uv_compat::uv_buf_t;
 use deno_core::uv_compat::uv_stream_t;
 use deno_core::v8;
+use deno_core::v8::ExternalReference;
+use deno_core::v8::MapFnTo;
 
 use super::sys;
 use crate::ops::stream_wrap::LibUvStreamWrap;
@@ -165,6 +167,794 @@ impl HTTPParser {
   fn inner(&self) -> &mut Inner {
     unsafe { &mut *self.inner.get() }
   }
+}
+
+const METHODS: &[&str] = &[
+  "DELETE",
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "CONNECT",
+  "OPTIONS",
+  "TRACE",
+  "COPY",
+  "LOCK",
+  "MKCOL",
+  "MOVE",
+  "PROPFIND",
+  "PROPPATCH",
+  "SEARCH",
+  "UNLOCK",
+  "BIND",
+  "REBIND",
+  "UNBIND",
+  "ACL",
+  "REPORT",
+  "MKACTIVITY",
+  "CHECKOUT",
+  "MERGE",
+  "M-SEARCH",
+  "NOTIFY",
+  "SUBSCRIBE",
+  "UNSUBSCRIBE",
+  "PATCH",
+  "PURGE",
+  "MKCALENDAR",
+  "LINK",
+  "UNLINK",
+  "SOURCE",
+  "QUERY",
+];
+
+const ALL_METHODS: &[&str] = &[
+  "DELETE",
+  "GET",
+  "HEAD",
+  "POST",
+  "PUT",
+  "CONNECT",
+  "OPTIONS",
+  "TRACE",
+  "COPY",
+  "LOCK",
+  "MKCOL",
+  "MOVE",
+  "PROPFIND",
+  "PROPPATCH",
+  "SEARCH",
+  "UNLOCK",
+  "BIND",
+  "REBIND",
+  "UNBIND",
+  "ACL",
+  "REPORT",
+  "MKACTIVITY",
+  "CHECKOUT",
+  "MERGE",
+  "M-SEARCH",
+  "NOTIFY",
+  "SUBSCRIBE",
+  "UNSUBSCRIBE",
+  "PATCH",
+  "PURGE",
+  "MKCALENDAR",
+  "LINK",
+  "UNLINK",
+  "SOURCE",
+  "PRI",
+  "DESCRIBE",
+  "ANNOUNCE",
+  "SETUP",
+  "PLAY",
+  "PAUSE",
+  "TEARDOWN",
+  "GET_PARAMETER",
+  "SET_PARAMETER",
+  "REDIRECT",
+  "RECORD",
+  "FLUSH",
+  "QUERY",
+];
+
+fn string<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  value: &str,
+) -> v8::Local<'s, v8::String> {
+  v8::String::new(scope, value).unwrap()
+}
+
+fn set_value(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let key = string(scope, name);
+  obj.set(scope, key.into(), value);
+}
+
+fn get_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  name: &str,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let key = string(scope, name);
+  obj.get(scope, key.into())
+}
+
+fn get_function<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  name: &str,
+) -> Option<v8::Local<'s, v8::Function>> {
+  get_value(scope, obj, name)
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+}
+
+fn call_method<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  name: &str,
+  args: &[v8::Local<v8::Value>],
+) -> Option<v8::Local<'s, v8::Value>> {
+  let function = get_function(scope, obj, name)?;
+  function.call(scope, obj.into(), args)
+}
+
+fn data_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  values: &[(&str, v8::Local<'s, v8::Value>)],
+) -> v8::Local<'s, v8::Object> {
+  let obj = v8::Object::new(scope);
+  for (key, value) in values {
+    set_value(scope, obj, key, *value);
+  }
+  obj
+}
+
+fn callback_data_object<'s>(
+  args: &v8::FunctionCallbackArguments<'s>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  v8::Local::<v8::Object>::try_from(args.data()).ok()
+}
+
+fn callback_data_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: &v8::FunctionCallbackArguments<'s>,
+  name: &str,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let data = callback_data_object(args)?;
+  get_value(scope, data, name)
+}
+
+fn function_with_data<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: impl MapFnTo<v8::FunctionCallback>,
+  data: v8::Local<'s, v8::Object>,
+) -> v8::Local<'s, v8::Function> {
+  v8::Function::builder(callback)
+    .data(data.into())
+    .build(scope)
+    .unwrap()
+}
+
+fn function_no_data<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: impl MapFnTo<v8::FunctionCallback>,
+) -> v8::Local<'s, v8::Function> {
+  v8::Function::builder(callback).build(scope).unwrap()
+}
+
+fn parser_constructor_object<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  parser: v8::Local<'s, v8::Object>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  get_value(scope, parser, "constructor")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+}
+
+fn parser_constructor_value<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  parser: v8::Local<'s, v8::Object>,
+  name: &str,
+) -> Option<v8::Local<'s, v8::Value>> {
+  let constructor = parser_constructor_object(scope, parser)?;
+  get_value(scope, constructor, name)
+}
+
+fn create_string_array<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  values: &[&str],
+) -> v8::Local<'s, v8::Array> {
+  let array = v8::Array::new(scope, values.len() as i32);
+  for (index, value) in values.iter().enumerate() {
+    let value = string(scope, value);
+    array.set_index(scope, index as u32, value.into());
+  }
+  array
+}
+
+fn set_int(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  name: &str,
+  value: i32,
+) {
+  let value = v8::Integer::new(scope, value);
+  set_value(scope, obj, name, value.into());
+}
+
+fn get_native<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  parser: v8::Local<'s, v8::Object>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  get_value(scope, parser, "_native")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+}
+
+fn create_uint8_array_view<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  buffer: v8::Local<'s, v8::Value>,
+  offset: usize,
+  length: usize,
+) -> Option<v8::Local<'s, v8::Uint8Array>> {
+  if let Ok(array_buffer) = v8::Local::<v8::ArrayBuffer>::try_from(buffer) {
+    return v8::Uint8Array::new(scope, array_buffer, offset, length);
+  }
+  let view = v8::Local::<v8::ArrayBufferView>::try_from(buffer).ok()?;
+  let array_buffer = view.buffer(scope)?;
+  v8::Uint8Array::new(scope, array_buffer, view.byte_offset() + offset, length)
+}
+
+fn make_body_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  parser: v8::Local<'s, v8::Object>,
+  callback: v8::Local<'s, v8::Value>,
+  buffer: v8::Local<'s, v8::Value>,
+) -> v8::Local<'s, v8::Function> {
+  let data = data_object(
+    scope,
+    &[
+      ("parser", parser.into()),
+      ("callback", callback),
+      ("Buffer", buffer),
+    ],
+  );
+  function_with_data(scope, http_parser_on_body_callback, data)
+}
+
+fn make_parse_error<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  native: v8::Local<'s, v8::Object>,
+) -> v8::Local<'s, v8::Object> {
+  let message = string(scope, "Parse Error");
+  let error = v8::Exception::error(scope, message);
+  let error = v8::Local::<v8::Object>::try_from(error).unwrap();
+  let overflow = call_method(scope, native, "hasHeaderOverflow", &[])
+    .map(|value| value.boolean_value(scope))
+    .unwrap_or(false);
+  if overflow {
+    let code = string(scope, "HPE_HEADER_OVERFLOW");
+    set_value(scope, error, "code", code.into());
+    let reason = string(scope, "Header overflow");
+    set_value(scope, error, "reason", reason.into());
+    let message = string(scope, "Parse Error: Header overflow");
+    set_value(scope, error, "message", message.into());
+  } else {
+    let code = call_method(scope, native, "getLastErrorCode", &[])
+      .unwrap_or_else(|| v8::undefined(scope).into());
+    let reason = call_method(scope, native, "getLastErrorReason", &[])
+      .unwrap_or_else(|| v8::undefined(scope).into());
+    let code = code.to_rust_string_lossy(scope);
+    let code_string = if !code.is_empty() && code != "HPE_OK" {
+      code
+    } else {
+      "HPE_ERROR".to_string()
+    };
+    let reason_string = reason.to_rust_string_lossy(scope);
+    let code = string(scope, &code_string);
+    set_value(scope, error, "code", code.into());
+    let reason_value = string(scope, &reason_string);
+    set_value(scope, error, "reason", reason_value.into());
+    if !reason_string.is_empty() {
+      let message = string(scope, &format!("Parse Error: {reason_string}"));
+      set_value(scope, error, "message", message.into());
+    }
+  }
+  let bytes = call_method(scope, native, "getLastBytesParsed", &[])
+    .unwrap_or_else(|| v8::Integer::new(scope, 0).into());
+  set_value(scope, error, "bytesParsed", bytes);
+  error
+}
+
+fn http_parser_constructor<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let this = args.this();
+  let Some(native_ctor) =
+    parser_constructor_value(scope, this, "_NativeHTTPParser")
+      .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(native) = native_ctor.new_instance(scope, &[]) else {
+    return;
+  };
+  set_value(scope, this, "_native", native.into());
+  if args.length() > 0 && !args.get(0).is_undefined() {
+    let zero = v8::Integer::new(scope, 0);
+    call_method(
+      scope,
+      native,
+      "initialize",
+      &[args.get(0), zero.into(), zero.into()],
+    );
+  }
+}
+
+fn http_parser_initialize<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let this = args.this();
+  let Some(native) = get_native(scope, this) else {
+    return;
+  };
+  if args.length() > 1 && !args.get(1).is_undefined() {
+    let Some(async_resource_ctor) =
+      parser_constructor_value(scope, this, "_AsyncResource")
+        .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+    else {
+      return;
+    };
+    let resource = args.get(1);
+    let resource_type = v8::Local::<v8::Object>::try_from(resource)
+      .ok()
+      .and_then(|resource| get_value(scope, resource, "type"))
+      .filter(|value| !value.is_undefined())
+      .unwrap_or_else(|| string(scope, "HTTPPARSER").into());
+    if let Some(async_resource) =
+      async_resource_ctor.new_instance(scope, &[resource_type])
+    {
+      set_value(scope, this, "_asyncResource", async_resource.into());
+    }
+  }
+
+  let max_header_size = if args.length() > 2 && !args.get(2).is_undefined() {
+    args.get(2)
+  } else {
+    v8::Integer::new(scope, 16384).into()
+  };
+  let lenient_flags = if args.length() > 3 && !args.get(3).is_undefined() {
+    args.get(3)
+  } else {
+    v8::Integer::new(scope, 0).into()
+  };
+  call_method(
+    scope,
+    native,
+    "initialize",
+    &[args.get(0), max_header_size, lenient_flags],
+  );
+}
+
+fn http_parser_do_execute<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  mut rv: v8::ReturnValue<'s>,
+) {
+  let Some(parser) = callback_data_value(scope, &args, "parser")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(native) = get_native(scope, parser) else {
+    return;
+  };
+  let Some(data) = callback_data_value(scope, &args, "data") else {
+    return;
+  };
+  if let Some(result) =
+    call_method(scope, native, "execute", &[parser.into(), data])
+  {
+    rv.set(result);
+  }
+}
+
+fn http_parser_execute<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  mut rv: v8::ReturnValue<'s>,
+) {
+  let parser = args.this();
+  let Some(native) = get_native(scope, parser) else {
+    return;
+  };
+  let Some(buffer_ctor) = parser_constructor_value(scope, parser, "_Buffer")
+  else {
+    return;
+  };
+  let mut data = args.get(0);
+  if args.length() > 2
+    && !args.get(1).is_undefined()
+    && !args.get(2).is_undefined()
+  {
+    let offset = args.get(1).uint32_value(scope).unwrap_or(0) as usize;
+    let length = args.get(2).uint32_value(scope).unwrap_or(0) as usize;
+    if offset != 0
+      || v8::Local::<v8::ArrayBufferView>::try_from(data)
+        .map(|view| view.byte_length() != length)
+        .unwrap_or(false)
+    {
+      if let Some(view) = create_uint8_array_view(scope, data, offset, length) {
+        data = view.into();
+      }
+    }
+  }
+
+  let original_on_body = parser
+    .get_index(scope, K_ON_BODY)
+    .unwrap_or_else(|| v8::undefined(scope).into());
+  if !original_on_body.is_undefined() && !original_on_body.is_null() {
+    let wrapped =
+      make_body_callback(scope, parser, original_on_body, buffer_ctor);
+    parser.set_index(scope, K_ON_BODY, wrapped.into());
+  }
+
+  let exec_data =
+    data_object(scope, &[("parser", parser.into()), ("data", data)]);
+  let do_execute = function_with_data(scope, http_parser_do_execute, exec_data);
+  let result = get_value(scope, parser, "_asyncResource")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+    .and_then(|resource| {
+      let undefined = v8::undefined(scope);
+      call_method(
+        scope,
+        resource,
+        "runInAsyncScope",
+        &[do_execute.into(), undefined.into()],
+      )
+    })
+    .or_else(|| {
+      let undefined = v8::undefined(scope);
+      do_execute.call(scope, undefined.into(), &[])
+    });
+
+  parser.set_index(scope, K_ON_BODY, original_on_body);
+
+  let last_exception = get_value(scope, parser, "__lastException")
+    .unwrap_or_else(|| v8::undefined(scope).into());
+  if !last_exception.is_undefined() {
+    set_value(
+      scope,
+      parser,
+      "__lastException",
+      v8::undefined(scope).into(),
+    );
+    scope.throw_exception(last_exception);
+    return;
+  }
+
+  let Some(result) = result else {
+    return;
+  };
+  if result.int32_value(scope).unwrap_or(0) < 0 {
+    let error = make_parse_error(scope, native);
+    rv.set(error.into());
+  } else {
+    rv.set(result);
+  }
+}
+
+fn http_parser_on_body_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  mut rv: v8::ReturnValue<'s>,
+) {
+  let Some(parser) = callback_data_value(scope, &args, "parser")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(callback) = callback_data_value(scope, &args, "callback")
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+  else {
+    return;
+  };
+  let Some(buffer_ctor) = callback_data_value(scope, &args, "Buffer")
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+  else {
+    return;
+  };
+  let chunk = args.get(0);
+  let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(chunk) else {
+    return;
+  };
+  let Some(array_buffer) = view.buffer(scope) else {
+    return;
+  };
+  let Some(from) = get_function(scope, buffer_ctor, "from") else {
+    return;
+  };
+  let byte_offset =
+    v8::Integer::new_from_unsigned(scope, view.byte_offset() as u32);
+  let byte_length =
+    v8::Integer::new_from_unsigned(scope, view.byte_length() as u32);
+  let Some(buffer) = from.call(
+    scope,
+    buffer_ctor.into(),
+    &[array_buffer.into(), byte_offset.into(), byte_length.into()],
+  ) else {
+    return;
+  };
+  if let Some(result) = callback.call(scope, parser.into(), &[buffer]) {
+    rv.set(result);
+  }
+}
+
+fn http_parser_finish<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  mut rv: v8::ReturnValue<'s>,
+) {
+  let this = args.this();
+  let Some(native) = get_native(scope, this) else {
+    return;
+  };
+  if let Some(result) = call_method(scope, native, "finish", &[this.into()]) {
+    rv.set(result);
+  }
+}
+
+fn http_parser_forward_method<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  method: &str,
+) {
+  let this = args.this();
+  let Some(native) = get_native(scope, this) else {
+    return;
+  };
+  call_method(scope, native, method, &[]);
+}
+
+fn http_parser_pause<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  http_parser_forward_method(scope, args, "pause");
+}
+
+fn http_parser_resume<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  http_parser_forward_method(scope, args, "resume");
+}
+
+fn http_parser_close<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  http_parser_forward_method(scope, args, "close");
+}
+
+fn http_parser_free<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  http_parser_forward_method(scope, args, "free");
+}
+
+fn http_parser_remove<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  http_parser_forward_method(scope, args, "remove");
+}
+
+fn http_parser_get_current_buffer<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  mut rv: v8::ReturnValue<'s>,
+) {
+  let this = args.this();
+  let Some(native) = get_native(scope, this) else {
+    return;
+  };
+  if let Some(result) = call_method(scope, native, "getCurrentBuffer", &[]) {
+    rv.set(result);
+  }
+}
+
+fn http_parser_consume<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let this = args.this();
+  let Some(native) = get_native(scope, this) else {
+    return;
+  };
+  call_method(scope, native, "consume", &[this.into(), args.get(0)]);
+}
+
+fn http_parser_unconsume<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  args: v8::FunctionCallbackArguments<'s>,
+  _rv: v8::ReturnValue<'s>,
+) {
+  let this = args.this();
+  let Some(native) = get_native(scope, this) else {
+    return;
+  };
+  call_method(scope, native, "unconsume", &[]);
+}
+
+fn set_prototype_function<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  prototype: v8::Local<'s, v8::Object>,
+  name: &str,
+  callback: impl MapFnTo<v8::FunctionCallback>,
+) {
+  let function = function_no_data(scope, callback);
+  set_value(scope, prototype, name, function.into());
+}
+
+pub(crate) fn internal_binding_external_references() -> [ExternalReference; 14]
+{
+  [
+    ExternalReference {
+      function: http_parser_constructor.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_initialize.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_execute.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_do_execute.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_on_body_callback.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_finish.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_pause.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_resume.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_close.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_free.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_remove.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_get_current_buffer.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_consume.map_fn_to(),
+    },
+    ExternalReference {
+      function: http_parser_unconsume.map_fn_to(),
+    },
+  ]
+}
+
+#[op2]
+pub fn op_node_internal_binding_http_parser<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  native_http_parser: v8::Local<'s, v8::Value>,
+  buffer: v8::Local<'s, v8::Value>,
+  async_resource: v8::Local<'s, v8::Value>,
+) -> v8::Local<'s, v8::Object> {
+  let constructor = function_no_data(scope, http_parser_constructor);
+  let name = string(scope, "HTTPParser");
+  constructor.set_name(name);
+
+  let prototype_key = string(scope, "prototype");
+  let prototype = constructor
+    .get(scope, prototype_key.into())
+    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
+    .unwrap();
+
+  set_prototype_function(
+    scope,
+    prototype,
+    "initialize",
+    http_parser_initialize,
+  );
+  set_prototype_function(scope, prototype, "execute", http_parser_execute);
+  set_prototype_function(scope, prototype, "finish", http_parser_finish);
+  set_prototype_function(scope, prototype, "pause", http_parser_pause);
+  set_prototype_function(scope, prototype, "resume", http_parser_resume);
+  set_prototype_function(scope, prototype, "close", http_parser_close);
+  set_prototype_function(scope, prototype, "free", http_parser_free);
+  set_prototype_function(scope, prototype, "remove", http_parser_remove);
+  set_prototype_function(
+    scope,
+    prototype,
+    "getCurrentBuffer",
+    http_parser_get_current_buffer,
+  );
+  set_prototype_function(scope, prototype, "consume", http_parser_consume);
+  set_prototype_function(scope, prototype, "unconsume", http_parser_unconsume);
+
+  let constructor_obj: v8::Local<v8::Object> = constructor.into();
+  set_value(
+    scope,
+    constructor_obj,
+    "_NativeHTTPParser",
+    native_http_parser,
+  );
+  set_value(scope, constructor_obj, "_Buffer", buffer);
+  set_value(scope, constructor_obj, "_AsyncResource", async_resource);
+  set_int(scope, constructor_obj, "REQUEST", 1);
+  set_int(scope, constructor_obj, "RESPONSE", 2);
+  set_int(
+    scope,
+    constructor_obj,
+    "kOnMessageBegin",
+    K_ON_MESSAGE_BEGIN as i32,
+  );
+  set_int(scope, constructor_obj, "kOnHeaders", K_ON_HEADERS as i32);
+  set_int(
+    scope,
+    constructor_obj,
+    "kOnHeadersComplete",
+    K_ON_HEADERS_COMPLETE as i32,
+  );
+  set_int(scope, constructor_obj, "kOnBody", K_ON_BODY as i32);
+  set_int(
+    scope,
+    constructor_obj,
+    "kOnMessageComplete",
+    K_ON_MESSAGE_COMPLETE as i32,
+  );
+  set_int(scope, constructor_obj, "kOnExecute", K_ON_EXECUTE as i32);
+  set_int(scope, constructor_obj, "kOnTimeout", 6);
+  set_int(scope, constructor_obj, "kLenientNone", 0);
+  set_int(scope, constructor_obj, "kLenientHeaders", 1);
+  set_int(scope, constructor_obj, "kLenientChunkedLength", 2);
+  set_int(scope, constructor_obj, "kLenientKeepAlive", 4);
+  set_int(scope, constructor_obj, "kLenientTransferEncoding", 8);
+  set_int(scope, constructor_obj, "kLenientVersion", 16);
+  set_int(scope, constructor_obj, "kLenientDataAfterClose", 32);
+  set_int(scope, constructor_obj, "kLenientOptionalLFAfterCR", 64);
+  set_int(
+    scope,
+    constructor_obj,
+    "kLenientOptionalCRLFAfterChunk",
+    128,
+  );
+  set_int(scope, constructor_obj, "kLenientOptionalCRBeforeLF", 256);
+  set_int(scope, constructor_obj, "kLenientSpacesAfterChunkSize", 512);
+  set_int(scope, constructor_obj, "kLenientAll", 1023);
+
+  let obj = v8::Object::new(scope);
+  let methods = create_string_array(scope, METHODS);
+  let all_methods = create_string_array(scope, ALL_METHODS);
+  set_value(scope, obj, "methods", methods.into());
+  set_value(scope, obj, "allMethods", all_methods.into());
+  set_value(scope, obj, "HTTPParser", constructor.into());
+  obj
 }
 
 impl Inner {
