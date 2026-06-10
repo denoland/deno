@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::error::Error;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -1066,6 +1067,76 @@ pub fn op_node_fs_seek_sync(
   };
   let pos = file.seek_sync(seek_from)?;
   Ok(pos)
+}
+
+fn fs_error_errno(error: &FsError) -> i32 {
+  match error {
+    FsError::Io(error) => error.raw_os_error().unwrap_or(255),
+    FsError::Fs(error) => error
+      .source()
+      .and_then(|error| error.downcast_ref::<std::io::Error>())
+      .and_then(std::io::Error::raw_os_error)
+      .unwrap_or(255),
+    _ => 255,
+  }
+}
+
+fn set_ctx_errno(
+  scope: &mut v8::PinScope,
+  ctx: v8::Local<v8::Object>,
+  errno: i32,
+) {
+  let key = v8::String::new(scope, "errno").unwrap();
+  let value = v8::Integer::new(scope, errno);
+  ctx.set(scope, key.into(), value.into());
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_file_write_buffer(
+  state: &mut OpState,
+  scope: &mut v8::PinScope<'_, '_>,
+  fd: i32,
+  buffer: v8::Local<v8::ArrayBufferView>,
+  #[smi] offset: u32,
+  #[smi] length: u32,
+  position: v8::Local<v8::Value>,
+  ctx: v8::Local<v8::Object>,
+) -> Result<u32, FsError> {
+  let offset = offset as usize;
+  let length = length as usize;
+  let byte_length = buffer.byte_length();
+  if offset > byte_length || offset + length > byte_length {
+    return Err(FsError::Io(std::io::Error::new(
+      std::io::ErrorKind::InvalidInput,
+      format!(
+        "buffer doesn't have enough data: byteLength = {byte_length}, offset + length = {}",
+        offset + length
+      ),
+    )));
+  }
+
+  let file = file_for_fd(state, fd)?;
+  if !position.is_null_or_undefined()
+    && !position.is_false()
+    && let Some(position) = position.integer_value(scope)
+    && position != 0
+  {
+    file
+      .clone()
+      .seek_sync(std::io::SeekFrom::Current(position))?;
+  }
+
+  let mut bytes = vec![0; byte_length];
+  let copied = buffer.copy_contents(&mut bytes);
+  debug_assert_eq!(copied, bytes.len());
+  match write_with_position(file, &bytes[offset..offset + length], -1) {
+    Ok(written) => Ok(written),
+    Err(error) => {
+      set_ctx_errno(scope, ctx, fs_error_errno(&error));
+      Ok(0)
+    }
+  }
 }
 
 #[op2]
