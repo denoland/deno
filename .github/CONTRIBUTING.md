@@ -52,6 +52,7 @@ the JS/TS sources are not included in the binary but read at runtime, meaning
 the binary will not have to be rebuilt if they are changed.
 
 ```sh
+
 # cargo build
 cargo build --features hmr
 
@@ -177,6 +178,7 @@ For Apple aarch64 users, `lld` must be installed.
 
 ```console
 brew install llvm lld
+
 # Add /opt/homebrew/opt/llvm/bin/ to $PATH
 ```
 
@@ -251,6 +253,7 @@ the V8 build.
 Build with the `./x` tool or Cargo:
 
 ```shell
+
 # Build:
 ./x build
 
@@ -269,6 +272,7 @@ cargo clean && cargo build -vv
 Use the `./x` tool to run tests:
 
 ```shell
+
 # Run runtime unit tests (requires a filter argument):
 ./x test <filter>
 
@@ -286,6 +290,7 @@ Use the `./x` tool to run tests:
 You can also run tests with cargo directly:
 
 ```shell
+
 # Run all tests (this takes a while):
 cargo test -vv
 
