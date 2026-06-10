@@ -2396,7 +2396,6 @@ dependencies = [
  "libc",
  "nix 0.30.1",
  "rand 0.8.5",
- "rayon",
  "same-file",
  "serde",
  "thiserror 2.0.12",

@@ -269,7 +269,6 @@ proptest = "1"
 prost = "0.13"
 quinn = { version = "0.11.8", default-features = false }
 rand = "=0.8.5"
-rayon = "1.11.0"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 rstest = "0"

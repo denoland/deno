@@ -11,6 +11,8 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Condvar;
+use std::sync::Mutex;
 
 use deno_core::unsync::spawn_blocking;
 use deno_io::StdFileResourceInner;
@@ -733,10 +735,98 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
 }
 
 fn cp(from: &Path, to: &Path) -> FsResult<()> {
-  fn cp_(source_meta: fs::Metadata, from: &Path, to: &Path) -> FsResult<()> {
-    use rayon::prelude::IntoParallelIterator;
-    use rayon::prelude::ParallelIterator;
+  struct CpTask {
+    source_meta: fs::Metadata,
+    from: PathBuf,
+    to: PathBuf,
+  }
 
+  struct CpWorkState {
+    queue: std::collections::VecDeque<CpTask>,
+    active: usize,
+    error: Option<FsError>,
+  }
+
+  struct CpWorkQueue {
+    state: Mutex<CpWorkState>,
+    ready: Condvar,
+  }
+
+  impl CpWorkQueue {
+    fn new(task: CpTask) -> Self {
+      Self {
+        state: Mutex::new(CpWorkState {
+          queue: std::collections::VecDeque::from([task]),
+          active: 0,
+          error: None,
+        }),
+        ready: Condvar::new(),
+      }
+    }
+
+    fn push(&self, task: CpTask) {
+      let mut state = self.state.lock().unwrap();
+      if state.error.is_none() {
+        state.queue.push_back(task);
+        self.ready.notify_one();
+      }
+    }
+
+    fn pop(&self) -> Option<CpTask> {
+      let mut state = self.state.lock().unwrap();
+      loop {
+        if state.error.is_some() {
+          return None;
+        }
+        if let Some(task) = state.queue.pop_front() {
+          state.active += 1;
+          return Some(task);
+        }
+        if state.active == 0 {
+          self.ready.notify_all();
+          return None;
+        }
+        state = self.ready.wait(state).unwrap();
+      }
+    }
+
+    fn finish(&self, result: FsResult<()>) {
+      let mut state = self.state.lock().unwrap();
+      state.active -= 1;
+      if let Err(err) = result
+        && state.error.is_none()
+      {
+        state.error = Some(err);
+      }
+      if state.error.is_some() || state.active == 0 || !state.queue.is_empty() {
+        self.ready.notify_all();
+      }
+    }
+
+    fn take_error(&self) -> Option<FsError> {
+      self.state.lock().unwrap().error.take()
+    }
+  }
+
+  fn wrap_cp_error(err: FsError, from: &Path, to: &Path) -> FsError {
+    io::Error::new(
+      err.kind(),
+      format!(
+        "failed to copy '{}' to '{}': {:?}",
+        from.display(),
+        to.display(),
+        err,
+      ),
+    )
+    .into()
+  }
+
+  fn cp_(
+    source_meta: fs::Metadata,
+    from: &Path,
+    to: &Path,
+    queue: Option<&CpWorkQueue>,
+  ) -> FsResult<()> {
     let ty = source_meta.file_type();
     if ty.is_dir() {
       #[allow(unused_mut, reason = "mutable on unix")]
@@ -756,40 +846,32 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
         return Err(FsError::Io(err));
       }
 
-      let mut entries: Vec<_> = fs::read_dir(from)?
-        .map(|res| res.map(|e| e.file_name()))
-        .collect::<Result<_, _>>()?;
-
-      entries.shrink_to_fit();
-      entries
-        .into_par_iter()
-        .map(|file_name| {
-          let from_path = from.join(&file_name);
-          let to_path = to.join(&file_name);
-          let meta = fs::symlink_metadata(&from_path).map_err(|err| {
-            io::Error::new(
-              err.kind(),
-              format!(
-                "failed to copy '{}' to '{}': {:?}",
-                from_path.display(),
-                to_path.display(),
-                err,
-              ),
-            )
-          })?;
-          cp_(meta, &from_path, &to_path).map_err(|err| {
-            io::Error::new(
-              err.kind(),
-              format!(
-                "failed to copy '{}' to '{}': {:?}",
-                from_path.display(),
-                to_path.display(),
-                err,
-              ),
-            )
-          })
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+      for entry in fs::read_dir(from)? {
+        let file_name = entry?.file_name();
+        let from_path = from.join(&file_name);
+        let to_path = to.join(&file_name);
+        let meta = fs::symlink_metadata(&from_path).map_err(|err| {
+          io::Error::new(
+            err.kind(),
+            format!(
+              "failed to copy '{}' to '{}': {:?}",
+              from_path.display(),
+              to_path.display(),
+              err,
+            ),
+          )
+        })?;
+        if let Some(queue) = queue {
+          queue.push(CpTask {
+            source_meta: meta,
+            from: from_path,
+            to: to_path,
+          });
+        } else {
+          cp_(meta, &from_path, &to_path, None)
+            .map_err(|err| wrap_cp_error(err, &from_path, &to_path))?;
+        }
+      }
 
       return Ok(());
     } else if ty.is_symlink() {
@@ -822,6 +904,44 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     }
 
     copy_file(from, to)
+  }
+
+  fn cp_parallel(
+    source_meta: fs::Metadata,
+    from: &Path,
+    to: &Path,
+  ) -> FsResult<()> {
+    let worker_count = std::thread::available_parallelism()
+      .map(usize::from)
+      .unwrap_or(1);
+    if worker_count <= 1 || !source_meta.is_dir() {
+      return cp_(source_meta, from, to, None);
+    }
+
+    let queue = CpWorkQueue::new(CpTask {
+      source_meta,
+      from: from.to_path_buf(),
+      to: to.to_path_buf(),
+    });
+    std::thread::scope(|scope| {
+      for _ in 0..worker_count {
+        let queue = &queue;
+        scope.spawn(move || {
+          while let Some(task) = queue.pop() {
+            let result =
+              cp_(task.source_meta, &task.from, &task.to, Some(queue))
+                .map_err(|err| wrap_cp_error(err, &task.from, &task.to));
+            queue.finish(result);
+          }
+        });
+      }
+    });
+
+    if let Some(err) = queue.take_error() {
+      Err(err)
+    } else {
+      Ok(())
+    }
   }
 
   #[cfg(target_os = "macos")]
@@ -897,6 +1017,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
             "the source path is not a valid file",
           )
         })?),
+        None,
       );
     }
   }
@@ -913,7 +1034,7 @@ fn cp(from: &Path, to: &Path) -> FsResult<()> {
     );
   }
 
-  cp_(source_meta, from, to)
+  cp_parallel(source_meta, from, to)
 }
 
 #[cfg(not(windows))]
