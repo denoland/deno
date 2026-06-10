@@ -9692,53 +9692,38 @@ mod tests {
 
   #[test]
   #[cfg(windows)]
-  fn check_path_verbatim_prefix() {
-    set_prompter(Box::new(TestPrompter));
-    let parser = TestPermissionDescriptorParser;
-    let perms = Permissions::from_options(
-      &parser,
-      &PermissionsOptions {
-        // Grant via a regular path and via a `\\?\` verbatim path.
-        allow_read: Some(svec!["C:\\Users\\Admin", "\\\\?\\C:\\Data"]),
-        ..Default::default()
-      },
-    )
-    .unwrap();
-    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+  fn path_descriptor_verbatim_prefix_equivalent() {
+    // A `\\?\` verbatim (extended-length) path and its regular form refer to
+    // the same file, so the permission system must treat them as equal
+    // (denoland/deno#18597).
+    let regular =
+      PathDescriptor::new_known_absolute(Cow::Borrowed(Path::new(
+        "C:\\Users\\Admin",
+      )));
+    let verbatim =
+      PathDescriptor::new_known_absolute(Cow::Borrowed(Path::new(
+        "\\\\?\\C:\\Users\\Admin",
+      )));
+    assert_eq!(regular, verbatim);
+    // The stored path is the simplified form, not the verbatim one.
+    assert_eq!(verbatim.path, PathBuf::from("C:\\Users\\Admin"));
 
-    // A `\\?\` verbatim request must match a grant made with a regular path,
-    // since both refer to the same file (denoland/deno#18597).
-    assert!(
-      perms
-        .check_open(
-          Cow::Borrowed(Path::new("\\\\?\\C:\\Users\\Admin\\file.txt")),
-          OpenAccessKind::Read,
-          Some("api"),
-        )
-        .is_ok()
-    );
+    // A `\\?\` query is contained by a grant made with the regular path...
+    let query = PathQueryDescriptor::new_known_absolute(Cow::Borrowed(
+      Path::new("\\\\?\\C:\\Users\\Admin\\file.txt"),
+    ));
+    assert!(query.starts_with(&regular));
+    // ...and a regular query is contained by a grant made with a `\\?\` path.
+    let query = PathQueryDescriptor::new_known_absolute(Cow::Borrowed(
+      Path::new("C:\\Users\\Admin\\file.txt"),
+    ));
+    assert!(query.starts_with(&verbatim));
 
-    // A regular request must likewise match a grant made with a `\\?\` path.
-    assert!(
-      perms
-        .check_open(
-          Cow::Borrowed(Path::new("C:\\Data\\file.txt")),
-          OpenAccessKind::Read,
-          Some("api"),
-        )
-        .is_ok()
-    );
-
-    // An unrelated path must still be denied.
-    assert!(
-      perms
-        .check_open(
-          Cow::Borrowed(Path::new("\\\\?\\C:\\Other\\file.txt")),
-          OpenAccessKind::Read,
-          Some("api"),
-        )
-        .is_err()
-    );
+    // An unrelated verbatim path is not contained.
+    let query = PathQueryDescriptor::new_known_absolute(Cow::Borrowed(
+      Path::new("\\\\?\\C:\\Other\\file.txt"),
+    ));
+    assert!(!query.starts_with(&regular));
   }
 
   #[test]
