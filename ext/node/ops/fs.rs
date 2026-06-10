@@ -1599,6 +1599,7 @@ pub fn op_node_statfs(
 }
 
 #[op2(fast, stack_trace)]
+#[undefined]
 pub fn op_node_lutimes_sync(
   scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
@@ -4362,14 +4363,17 @@ struct ReaddirItem {
 
 // Collect one directory's entries, queueing subdirs when recursive. For
 // recursive walks `name` is the path relative to the root (node semantics).
+// Entries are sorted per directory: libuv's uv_fs_scandir runs alphasort, so
+// node's readdir output is alphabetical (test-fs-readdir-types relies on it).
 fn readdir_collect(
   root: &Path,
   dir: &Path,
   recursive: bool,
-  entries: Vec<deno_fs::FsDirEntry>,
+  mut entries: Vec<deno_fs::FsDirEntry>,
   queue: &mut std::collections::VecDeque<PathBuf>,
   items: &mut Vec<ReaddirItem>,
 ) {
+  entries.sort_by(|a, b| a.name.cmp(&b.name));
   for ent in entries {
     if recursive && ent.is_directory {
       queue.push_back(dir.join(&ent.name));
@@ -4540,10 +4544,18 @@ pub async fn op_node_fs_readdir(
       )?;
       (state.borrow::<FileSystemRc>().clone(), checked.into_owned())
     };
-    let entries = fs
+    let reader = fs
       .read_dir_async(checked)
       .await
       .map_err(|e| readdir_scandir_err(e, &dir))?;
+    let mut entries = Vec::new();
+    while let Some(ent) = reader
+      .next()
+      .await
+      .map_err(|e| readdir_scandir_err(e, &dir))?
+    {
+      entries.push(ent);
+    }
     readdir_collect(&root, &dir, recursive, entries, &mut queue, &mut items);
   }
   Ok(ReaddirOutput {
@@ -5646,56 +5658,109 @@ pub fn op_node_fs_symlink(
 
 // --- copy_file ---
 
+const COPYFILE_EXCL: i64 = 1;
+// COPYFILE_EXCL | COPYFILE_FICLONE | COPYFILE_FICLONE_FORCE
+const COPYFILE_MODE_MAX: i64 = 7;
+
+// node's `getValidMode(mode, "copyFile")` (done in its C++ binding):
+// null/undefined -> 0, otherwise an integer within [0, 7].
+fn validate_copy_mode(
+  scope: &mut v8::PinScope<'_, '_>,
+  mode: v8::Local<v8::Value>,
+) -> Result<i64, FsError> {
+  if mode.is_null_or_undefined() {
+    return Ok(0);
+  }
+  validate_integer(scope, mode, "mode", 0, COPYFILE_MODE_MAX)
+}
+
+fn copyfile_eexist(src: &str, dest: &str) -> FsError {
+  NodeFsError::from_code(
+    "EEXIST",
+    NodeFsErrorContext {
+      syscall: Some("copyfile".to_string()),
+      path: Some(src.to_string()),
+      dest: Some(dest.to_string()),
+      ..Default::default()
+    },
+  )
+  .into()
+}
+
+// `COPYFILE_EXCL` fails with node's EEXIST error when the destination exists;
+// libuv opens the dest O_EXCL, so an existing (even dangling) symlink counts
+// -- hence the lstat probe. The FICLONE flags are validated but treated as
+// hints: the underlying `copy_file` already clones where the platform supports
+// it, and node permits COPYFILE_FICLONE_FORCE to succeed when cloning works.
+
 #[op2(fast, stack_trace)]
+#[undefined]
 pub fn op_node_fs_copy_file_sync(
+  scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
-  #[string] oldpath: &str,
-  #[string] newpath: &str,
+  src: v8::Local<v8::Value>,
+  dest: v8::Local<v8::Value>,
+  mode: v8::Local<v8::Value>,
 ) -> Result<(), FsError> {
+  let srcpath = validate_path_to_string(scope, src, "src")?;
+  let destpath = validate_path_to_string(scope, dest, "dest")?;
+  let mode = validate_copy_mode(scope, mode)?;
   let old = state.borrow_mut::<PermissionsContainer>().check_open(
-    Cow::Borrowed(Path::new(oldpath)),
+    Cow::Borrowed(Path::new(&srcpath)),
     OpenAccessKind::Read,
     Some("node:fs.copyFileSync"),
   )?;
   let new = state.borrow_mut::<PermissionsContainer>().check_open(
-    Cow::Borrowed(Path::new(newpath)),
+    Cow::Borrowed(Path::new(&destpath)),
     OpenAccessKind::WriteNoFollow,
     Some("node:fs.copyFileSync"),
   )?;
   let fs = state.borrow::<FileSystemRc>();
+  if mode & COPYFILE_EXCL != 0 && fs.lstat_sync(&new).is_ok() {
+    return Err(copyfile_eexist(&srcpath, &destpath));
+  }
   fs.copy_file_sync(&old, &new)
-    .map_err(|e| node_fs_err_dest(e, "copyfile", oldpath, newpath))?;
+    .map_err(|e| node_fs_err_dest(e, "copyfile", &srcpath, &destpath))?;
   Ok(())
 }
 
-#[op2(stack_trace)]
-pub async fn op_node_fs_copy_file(
-  state: Rc<RefCell<OpState>>,
-  #[string] oldpath: String,
-  #[string] newpath: String,
-) -> Result<(), FsError> {
-  let (fs, old, new) = {
-    let mut state = state.borrow_mut();
-    let old = state.borrow_mut::<PermissionsContainer>().check_open(
-      Cow::Owned(PathBuf::from(&oldpath)),
+#[op2(async(eager_throw), stack_trace)]
+pub fn op_node_fs_copy_file(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &mut OpState,
+  src: v8::Local<v8::Value>,
+  dest: v8::Local<v8::Value>,
+  mode: v8::Local<v8::Value>,
+) -> Result<impl Future<Output = Result<(), FsError>> + use<>, FsError> {
+  let srcpath = validate_path_to_string(scope, src, "src")?;
+  let destpath = validate_path_to_string(scope, dest, "dest")?;
+  let mode = validate_copy_mode(scope, mode)?;
+  let old = state
+    .borrow_mut::<PermissionsContainer>()
+    .check_open(
+      Cow::Owned(PathBuf::from(&srcpath)),
       OpenAccessKind::Read,
       Some("node:fs.copyFile"),
-    )?;
-    let new = state.borrow_mut::<PermissionsContainer>().check_open(
-      Cow::Owned(PathBuf::from(&newpath)),
+    )?
+    .into_owned();
+  let new = state
+    .borrow_mut::<PermissionsContainer>()
+    .check_open(
+      Cow::Owned(PathBuf::from(&destpath)),
       OpenAccessKind::WriteNoFollow,
       Some("node:fs.copyFile"),
-    )?;
-    (
-      state.borrow::<FileSystemRc>().clone(),
-      old.into_owned(),
-      new.into_owned(),
-    )
-  };
-  fs.copy_file_async(old, new)
-    .await
-    .map_err(|e| node_fs_err_dest(e, "copyfile", &oldpath, &newpath))?;
-  Ok(())
+    )?
+    .into_owned();
+  let fs = state.borrow::<FileSystemRc>().clone();
+  Ok(async move {
+    if mode & COPYFILE_EXCL != 0 && fs.lstat_async(new.clone()).await.is_ok() {
+      return Err(copyfile_eexist(&srcpath, &destpath));
+    }
+    fs.copy_file_async(old, new)
+      .await
+      .map_err(|e| node_fs_err_dest(e, "copyfile", &srcpath, &destpath))?;
+    Ok(())
+  })
 }
 
 // --- utimes ---

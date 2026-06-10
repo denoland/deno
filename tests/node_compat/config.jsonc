@@ -1251,6 +1251,7 @@
       "reason": "Tests Node.js internal `internal/fixed_queue` module which is not exposed in Deno"
     },
     "parallel/test-fs-append-file-sync.js": {},
+    "parallel/test-fs-assert-encoding-error.js": {},
     "parallel/test-fs-buffer.js": {},
     "parallel/test-fs-buffertype-writesync.js": {},
     "parallel/test-fs-chmod-mask.js": {},

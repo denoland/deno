@@ -36,21 +36,9 @@ const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 type statCallback = any;
 type statCallbackBigInt = any;
 type statOptions = any;
-const { copyFile, copyFileSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_copy.ts",
-)();
 const { cp, cpSync } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
-const { exists, existsSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_exists.ts",
-)();
-const { lutimes, lutimesSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_lutimes.ts",
-)();
 const { read, readSync } = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_read.ts",
-)();
-const { readdir, readdirSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_readdir.ts",
 )();
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 type MaybeEmpty<T> = T | null | undefined;
@@ -111,6 +99,10 @@ const {
   op_fs_read_file_async,
   op_node_fs_close,
   op_node_fs_close_async,
+  op_node_fs_copy_file,
+  op_node_fs_copy_file_sync,
+  op_node_fs_exists,
+  op_node_fs_exists_sync,
   op_node_fs_fchmod,
   op_node_fs_fchmod_sync,
   op_node_fs_fchown,
@@ -149,6 +141,8 @@ const {
   op_node_lchmod_sync,
   op_node_lchown,
   op_node_lchown_sync,
+  op_node_lutimes,
+  op_node_lutimes_sync,
   op_node_mkdtemp,
   op_node_mkdtemp_sync,
   op_node_open,
@@ -199,6 +193,7 @@ const { isMacOS, isWindows } = core.loadExtScript(
 );
 const {
   customPromisifyArgs,
+  kCustomPromisifiedSymbol,
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const lazyPath = core.createLazyLoader("node:path");
 const pathModule = lazyPath();
@@ -1277,6 +1272,154 @@ function opendirSync(
   return new Dir(path, recursive);
 }
 
+// -- readdir --
+
+// Names come back utf8 from the native op; re-encode for the rare non-utf8
+// encodings. Only `name` is re-encoded -- node's Dirent keeps `parentPath` a
+// string even with `encoding: "buffer"`.
+function applyReaddirEncoding(
+  result: Array<string | Dirent>,
+  options: { encoding?: string; withFileTypes?: boolean },
+): Array<string | Dirent> {
+  const enc = options.encoding;
+  if (!enc || enc === "utf8" || enc === "utf-8") return result;
+  if (options.withFileTypes) {
+    for (let i = 0; i < result.length; i++) {
+      const d = result[i] as Dirent;
+      d.name = decodeDirentName(d.name as string, enc) as string;
+    }
+  } else {
+    for (let i = 0; i < result.length; i++) {
+      result[i] = decodeDirentName(result[i] as string, enc);
+    }
+  }
+  return result;
+}
+
+function decodeDirentName(str: string, encoding: string): string | Buffer {
+  // "buffer" returns Buffer instances; every other (node-supported) encoding
+  // re-encodes the UTF-8 filename through Buffer to match node's
+  // lib/internal/fs/utils.js getDirent / readdir output.
+  const buf = Buffer.from(str, "utf8");
+  if (encoding === "buffer") return buf;
+  // No primordial exists for Buffer.prototype.toString with an encoding.
+  // deno-lint-ignore prefer-primordials
+  return buf.toString(encoding as BufferEncoding);
+}
+
+// Mirrors node's lib/fs.js readdir() validation order: callback, options
+// (encoding via getOptions), path, recursive. The op walks the tree natively
+// (recursive included) and produces the final node error (scandir + path).
+function readdir(
+  path: string | Buffer | URL,
+  options?:
+    | { encoding?: string; withFileTypes?: boolean; recursive?: boolean }
+    | string
+    | ((err: Error | null, files?: unknown[]) => void),
+  callback?: (err: Error | null, files?: unknown[]) => void,
+) {
+  callback = makeCallback(typeof options === "function" ? options : callback);
+  const opts = getOptions(options);
+  path = getValidatedPathToString(path);
+  if (opts.recursive != null) {
+    validateBoolean(opts.recursive, "options.recursive");
+  }
+  PromisePrototypeThen(
+    op_node_fs_readdir(path, opts.recursive ?? false, !!opts.withFileTypes),
+    (result: Array<string | Dirent>) =>
+      callback(null, applyReaddirEncoding(result, opts)),
+    callback,
+  );
+}
+
+function readdirSync(
+  path: string | Buffer | URL,
+  options?:
+    | { encoding?: string; withFileTypes?: boolean; recursive?: boolean }
+    | string,
+): Array<string | Dirent> {
+  const opts = getOptions(options);
+  path = getValidatedPathToString(path);
+  if (opts.recursive != null) {
+    validateBoolean(opts.recursive, "options.recursive");
+  }
+  return applyReaddirEncoding(
+    op_node_fs_readdir_sync(
+      path,
+      opts.recursive ?? false,
+      !!opts.withFileTypes,
+    ),
+    opts,
+  );
+}
+
+// -- copyFile / lutimes / exists --
+
+// node validates src/dest before the callback and mode after it (in the C++
+// binding); the op's eager validation covers all three, and COPYFILE_EXCL /
+// the FICLONE hints are handled natively.
+const copyFile = callbackifyOpt(op_node_fs_copy_file, 2);
+const copyFileSync = op_node_fs_copy_file_sync;
+
+// node's lutimes validates the callback (positionally, like symlink) before
+// the path/times, which the op then validates eagerly.
+const lutimes = callbackifyOpt(op_node_lutimes, 3, true);
+const lutimesSync = op_node_lutimes_sync;
+
+// Deprecated. node's `exists` swallows every error into a boolean and has a
+// non-standard callback signature (no error argument), hence the custom
+// promisify form below (fs.promises has no `exists`).
+function exists(
+  path: string | Buffer | URL,
+  callback: (exists: boolean) => void,
+) {
+  callback = makeCallback(callback);
+  try {
+    path = getValidatedPathToString(path);
+  } catch {
+    callback(false);
+    return;
+  }
+  PromisePrototypeThen(op_node_fs_exists(path), callback);
+}
+
+// fs.exists' callback has no error argument, so promisify needs a custom
+// implementation (nodejs/node#13316), named `exists` to match node's.
+const existsPromisified = (path: string | Buffer | URL) =>
+  new Promise((resolve) => exists(path, resolve));
+ObjectDefineProperty(existsPromisified, "name", {
+  __proto__: null,
+  value: "exists",
+  configurable: true,
+});
+ObjectDefineProperty(exists, kCustomPromisifiedSymbol, {
+  __proto__: null,
+  value: existsPromisified,
+  enumerable: false,
+  writable: false,
+  configurable: true,
+});
+
+let showExistsDeprecation = true;
+function existsSync(path: string | Buffer | URL): boolean {
+  try {
+    path = getValidatedPathToString(path);
+  } catch (err) {
+    if (
+      showExistsDeprecation && (err as any)?.code === "ERR_INVALID_ARG_TYPE"
+    ) {
+      process.emitWarning(
+        "Passing invalid argument types to fs.existsSync is deprecated",
+        "DeprecationWarning",
+        "DEP0187",
+      );
+      showExistsDeprecation = false;
+    }
+    return false;
+  }
+  return op_node_fs_exists_sync(path);
+}
+
 /**
  * Returns a `Blob` whose data is read from the given file.
  */
@@ -1733,13 +1876,15 @@ function watch(
     : typeof optionsOrListener2 === "function"
     ? optionsOrListener2
     : undefined;
-  const options = typeof optionsOrListener === "object"
-    ? optionsOrListener
-    : typeof optionsOrListener2 === "object"
-    ? optionsOrListener2
-    : undefined;
+  // node's watch(filename, options, listener): when `options` is a function it
+  // is the listener (a third argument is ignored), and a string is
+  // `{ encoding }`. getOptions validates encoding + signal up front, before
+  // the path (test-fs-assert-encoding-error relies on the sync throw).
+  const options = getOptions(
+    typeof optionsOrListener === "function" ? undefined : optionsOrListener,
+  );
 
-  op_node_fs_validate_watch_ignore(options?.ignore, "options.ignore");
+  op_node_fs_validate_watch_ignore(options.ignore, "options.ignore");
 
   // deno-lint-ignore prefer-primordials
   const watchPath = getValidatedPath(filename).toString();

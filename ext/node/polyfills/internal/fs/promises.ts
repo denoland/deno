@@ -7,10 +7,7 @@ import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
-import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 const { cpPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
-import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
-import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
 import { op_node_fs_lstat } from "ext:core/ops";
 // The op is already the promise form: it extracts bigint/throwIfNoEntry from
 // options, validates the path eagerly, and resolves the cppgc Stats.
@@ -141,6 +138,16 @@ function appendFilePromise(
   opts.flag = opts.flag || "a";
   return writeFilePromise(path, data, opts);
 }
+
+// -- copyFile --
+
+// promisify wraps the executor, so the callback form's synchronous validation
+// throws become rejections, matching node's async fsPromises.copyFile.
+const copyFilePromise = lazyPromisifyFs("copyFile", 3) as (
+  src: string | Buffer | URL,
+  dest: string | Buffer | URL,
+  mode?: number,
+) => Promise<void>;
 
 // -- chmod --
 
@@ -332,6 +339,21 @@ const utimesPromise = lazyPromisifyFs("utimes", 3) as (
   atime: number | string | Date,
   mtime: number | string | Date,
 ) => Promise<void>;
+
+const lutimesPromise = lazyPromisifyFs("lutimes", 3) as (
+  path: string | Buffer | URL,
+  atime: number | string | Date,
+  mtime: number | string | Date,
+) => Promise<void>;
+
+// -- readdir --
+
+const readdirPromise = lazyPromisifyFs("readdir", 2) as (
+  path: string | Buffer | URL,
+  options?:
+    | { encoding?: string; withFileTypes?: boolean; recursive?: boolean }
+    | string,
+) => Promise<unknown[]>;
 
 // -- writeFile --
 
