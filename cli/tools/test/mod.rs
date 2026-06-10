@@ -1710,15 +1710,18 @@ pub async fn report_tests(
     );
   }
 
+  // A genuine test failure takes precedence over the `only` notice: if a test
+  // failed on its own, reporting that it failed "because the \"only\" option
+  // was used" is misleading.
+  if failed {
+    return (Err(anyhow!("Test failed")), receiver);
+  }
+
   if used_only {
     return (
       Err(anyhow!("Test failed because the \"only\" option was used",)),
       receiver,
     );
-  }
-
-  if failed {
-    return (Err(anyhow!("Test failed")), receiver);
   }
 
   (Ok(()), receiver)
