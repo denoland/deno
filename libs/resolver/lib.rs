@@ -712,6 +712,10 @@ impl<
     }
     // Only bare specifiers can be remapped; relative/absolute specifiers, URLs
     // and package self-imports (`#...`) keep their normal node resolution.
+    // Note `Url::parse(..).is_ok()` also matches already-qualified specifiers
+    // like `npm:`/`jsr:`/`node:`/`data:`, which is intended: we only want to
+    // remap bare package names (e.g. `loose-envify`), not specifiers that
+    // already name a concrete target.
     if raw_specifier.starts_with('.')
       || raw_specifier.starts_with('/')
       || raw_specifier.starts_with('#')

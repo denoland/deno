@@ -585,7 +585,7 @@
     },
     "scopes": {
       "default": {},
-      "description": "Define a scope which remaps a specifier in only a specified scope",
+      "description": "Define a scope which remaps a specifier in only a specified scope.\n\nA scope key may also be an `npm:` specifier (e.g. `\"npm:react@18.2.0\"`), which remaps the transitive dependencies of that npm package. Note: this currently applies to ESM resolution only — a dependency loaded via CommonJS `require()` is not yet remapped by an `npm:` scope.",
       "type": "object",
       "properties": {},
       "additionalProperties": {
