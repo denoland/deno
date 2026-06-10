@@ -1,8 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 use std::future::Future;
 use std::io;
+use std::net::IpAddr;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::task::Poll;
 use std::task::{self};
@@ -155,31 +157,90 @@ impl Service<Name> for Resolver {
   }
 }
 
-/// `Service<Uri>` adapter that runs the net-deny permission check against the
-/// IP we actually connected to.
+/// `Service<Uri>` adapter that runs the net-deny permission check on every
+/// resolved address *before* a socket is opened.
 ///
-/// hyper-util's `HttpConnector` resolves DNS and then picks one address to
-/// connect to, applying the destination port itself. By wrapping it we can
-/// read the real peer address off the resulting [`TcpStream`] and run the
-/// same post-resolution check that `Deno.connect` performs in
-/// `ext/net/ops.rs`, without smuggling the port to the DNS resolver out of
-/// band.
+/// hyper-util's `HttpConnector` only hands the hostname to its DNS resolver
+/// and applies the destination port after resolution, so the resolver alone
+/// can't run the port-aware deny check. This wrapper sees the full `Uri`
+/// (and thus the real port) and owns the resolver: it resolves the hostname
+/// itself, checks every resolved address (denying before any connection is
+/// made, like `Deno.connect` in `ext/net/ops.rs`), and then hands the vetted
+/// addresses to the inner connector through a pre-resolved resolver, so the
+/// connection goes to exactly the addresses that were checked and no second
+/// DNS query can race with a record change.
 #[derive(Clone, Debug)]
 pub struct PermissionedHttpConnector {
-  inner: HttpConnector<Resolver>,
+  resolver: Resolver,
+  local_address: Option<IpAddr>,
   permissions: Option<PermissionsContainer>,
 }
 
 impl PermissionedHttpConnector {
   pub fn new(
-    inner: HttpConnector<Resolver>,
+    resolver: Resolver,
+    local_address: Option<IpAddr>,
     permissions: Option<PermissionsContainer>,
   ) -> Self {
-    Self { inner, permissions }
+    Self {
+      resolver,
+      local_address,
+      permissions,
+    }
+  }
+
+  fn http_connector(&self, resolver: Resolver) -> HttpConnector<Resolver> {
+    let mut connector = HttpConnector::new_with_resolver(resolver);
+    connector.enforce_http(false);
+    connector.set_local_address(self.local_address);
+    connector
+  }
+}
+
+/// Resolver handing out a fixed, already-permission-checked set of addresses.
+#[derive(Debug)]
+struct PreResolved(Vec<SocketAddr>);
+
+impl Resolve for PreResolved {
+  fn resolve(&self, _name: Name) -> Resolving {
+    let addrs = self.0.clone();
+    Box::pin(async move { Ok(addrs.into_iter()) })
   }
 }
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
+
+/// Mirrors the `ConnectError` shape hyper-util's `HttpConnector` uses for
+/// resolution failures, so error messages keep the same
+/// `client error (Connect): dns error: ...` format now that resolution
+/// happens in [`PermissionedHttpConnector`] instead.
+#[derive(Debug)]
+struct DnsError(io::Error);
+
+impl std::fmt::Display for DnsError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str("dns error")
+  }
+}
+
+impl std::error::Error for DnsError {
+  fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+    Some(&self.0)
+  }
+}
+
+fn check_resolved(
+  permissions: &PermissionsContainer,
+  ip: &IpAddr,
+  port: u16,
+) -> Result<(), BoxError> {
+  permissions
+    .clone()
+    .check_net_resolved(ip, port, "fetch()")
+    .map_err(|e| {
+      io::Error::new(io::ErrorKind::PermissionDenied, e.to_string()).into()
+    })
+}
 
 impl Service<Uri> for PermissionedHttpConnector {
   type Response = TokioIo<TcpStream>;
@@ -189,37 +250,60 @@ impl Service<Uri> for PermissionedHttpConnector {
 
   fn poll_ready(
     &mut self,
-    cx: &mut task::Context<'_>,
+    _cx: &mut task::Context<'_>,
   ) -> Poll<Result<(), Self::Error>> {
-    self.inner.poll_ready(cx).map_err(Into::into)
+    Poll::Ready(Ok(()))
   }
 
   fn call(&mut self, uri: Uri) -> Self::Future {
-    let port = uri.port_u16().unwrap_or_else(|| {
-      if uri.scheme() == Some(&Scheme::HTTPS) {
-        443
-      } else {
-        80
-      }
-    });
-    let permissions = self.permissions.clone();
-    let fut = self.inner.call(uri);
+    let this = self.clone();
     Box::pin(async move {
-      let stream = fut.await?;
-      if let Some(mut permissions) = permissions {
-        // Fail closed: if we can't determine the peer we connected to, deny
-        // rather than letting the connection through unchecked.
-        let peer = stream.inner().peer_addr().map_err(|e| -> BoxError {
-          io::Error::new(io::ErrorKind::PermissionDenied, e.to_string()).into()
-        })?;
-        permissions
-          .check_net_resolved(&peer.ip(), port, "fetch()")
-          .map_err(|e| -> BoxError {
-            io::Error::new(io::ErrorKind::PermissionDenied, e.to_string())
-              .into()
-          })?;
+      let Some(permissions) = &this.permissions else {
+        let mut connector = this.http_connector(this.resolver.clone());
+        return connector.call(uri).await.map_err(Into::into);
+      };
+
+      let host = uri.host().ok_or_else(|| -> BoxError {
+        io::Error::new(io::ErrorKind::InvalidInput, "missing host in URI")
+          .into()
+      })?;
+      let port = uri.port_u16().unwrap_or_else(|| {
+        if uri.scheme() == Some(&Scheme::HTTPS) {
+          443
+        } else {
+          80
+        }
+      });
+
+      let bare_host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+      if let Ok(ip) = bare_host.parse::<IpAddr>() {
+        // IP literal: `HttpConnector` connects to it directly without
+        // consulting the resolver.
+        check_resolved(permissions, &ip, port)?;
+        let mut connector = this.http_connector(this.resolver.clone());
+        return connector.call(uri).await.map_err(Into::into);
       }
-      Ok(stream)
+
+      let name = Name::from_str(bare_host).map_err(|e| -> BoxError {
+        io::Error::new(io::ErrorKind::InvalidInput, e.to_string()).into()
+      })?;
+      let addrs: Vec<SocketAddr> = this
+        .resolver
+        .clone()
+        .call(name)
+        .await
+        .map_err(|e| -> BoxError { DnsError(e).into() })?
+        .collect();
+      for addr in &addrs {
+        check_resolved(permissions, &addr.ip(), port)?;
+      }
+
+      let mut connector =
+        this.http_connector(Resolver::custom(Arc::new(PreResolved(addrs))));
+      connector.call(uri).await.map_err(Into::into)
     })
   }
 }

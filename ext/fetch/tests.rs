@@ -494,6 +494,7 @@ fn create_http_test_client() -> crate::Client {
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      permissions: None,
     },
   )
   .unwrap()

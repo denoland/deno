@@ -90,7 +90,6 @@ use hyper::body::Frame;
 use hyper::body::Incoming;
 use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::client::legacy::connect::Connection;
-use hyper_util::client::legacy::connect::HttpConnector;
 use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioIo;
@@ -1021,17 +1020,19 @@ pub fn create_http_client(
   tls_config.alpn_protocols = alpn_protocols;
   let tls_config = Arc::from(tls_config);
 
-  let mut http_connector =
-    HttpConnector::new_with_resolver(options.dns_resolver.clone());
-  http_connector.enforce_http(false);
-  if let Some(local_address) = options.local_address {
-    let local_addr = local_address
-      .parse::<IpAddr>()
-      .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))?;
-    http_connector.set_local_address(Some(local_addr));
-  }
-  let http_connector =
-    dns::PermissionedHttpConnector::new(http_connector, options.permissions);
+  let local_address = options
+    .local_address
+    .map(|local_address| {
+      local_address
+        .parse::<IpAddr>()
+        .map_err(|_| HttpClientCreateError::InvalidAddress(local_address))
+    })
+    .transpose()?;
+  let http_connector = dns::PermissionedHttpConnector::new(
+    options.dns_resolver.clone(),
+    local_address,
+    options.permissions,
+  );
 
   let user_agent = user_agent.parse::<HeaderValue>().map_err(|_| {
     HttpClientCreateError::InvalidUserAgent(user_agent.to_string())
