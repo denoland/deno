@@ -1015,6 +1015,22 @@ impl<TGraphContainer: ModuleGraphContainer>
       Ok(())
     }
 
+    // The main module specifier is already fully resolved by the time it
+    // reaches here (e.g. an `npm:` package's bin entry resolves to a concrete
+    // path in the global npm cache). Re-resolving such a `file:` URL through
+    // the import map can corrupt it: an `"imports": { "/": "./" }` entry —
+    // as recommended in the docs for project-root absolute imports —
+    // normalizes to a `file:///` => `file:///<project>/` mapping that rewrites
+    // *any* file URL outside the project root (such as the npm cache) to live
+    // underneath the project directory. The main module is chosen explicitly
+    // by the user, so load it verbatim rather than remapping it.
+    if matches!(kind, deno_core::ResolutionKind::MainModule)
+      && let Ok(url) = ModuleSpecifier::parse(raw_specifier)
+      && url.scheme() == "file"
+    {
+      return Ok(url);
+    }
+
     let referrer = self
       .resolve_referrer(raw_referrer)
       .map_err(JsErrorBox::from_err)?;

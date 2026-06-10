@@ -168,8 +168,22 @@ impl EmbeddedModuleLoader {
     &self,
     raw_specifier: &str,
     referrer: &str,
-    _kind: ResolutionKind,
+    kind: ResolutionKind,
   ) -> Result<Url, ModuleLoaderError> {
+    // The main module specifier is already fully resolved (e.g. an `npm:`
+    // package's bin entry resolves to a concrete path in the npm cache).
+    // Re-resolving such a `file:` URL through the import map can corrupt it:
+    // an `"imports": { "/": "./" }` entry normalizes to a `file:///` =>
+    // `file:///<project>/` mapping that rewrites any file URL outside the
+    // project root to live underneath it. The main module is chosen
+    // explicitly by the user, so load it verbatim.
+    if matches!(kind, ResolutionKind::MainModule)
+      && let Ok(url) = Url::parse(raw_specifier)
+      && url.scheme() == "file"
+    {
+      return Ok(url);
+    }
+
     let referrer = if referrer == "." {
       #[allow(
         clippy::disallowed_methods,
