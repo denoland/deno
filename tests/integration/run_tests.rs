@@ -10,7 +10,13 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use hickory_proto::serialize::txt::Parser;
-use hickory_server::authority::AuthorityObject;
+use hickory_server::Server as HickoryServer;
+use hickory_server::net::runtime::TokioRuntimeProvider;
+use hickory_server::store::in_memory::InMemoryZoneHandler;
+use hickory_server::zone_handler::AxfrPolicy;
+use hickory_server::zone_handler::Catalog;
+use hickory_server::zone_handler::ZoneHandler;
+use hickory_server::zone_handler::ZoneType;
 use pretty_assertions::assert_eq;
 use rustls::ClientConnection;
 use rustls_tokio_stream::TlsStream;
@@ -2225,11 +2231,7 @@ fn test_resolve_dns() {
   use std::sync::Arc;
   use std::time::Duration;
 
-  use hickory_server::ServerFuture;
-  use hickory_server::authority::Catalog;
-  use hickory_server::authority::ZoneType;
   use hickory_server::proto::rr::Name;
-  use hickory_server::store::in_memory::InMemoryAuthority;
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
   use tokio::sync::oneshot;
@@ -2252,24 +2254,29 @@ fn test_resolve_dns() {
       panic!("failed to parse: {:?}", records.err())
     }
     let (origin, records) = records.unwrap();
-    let authority: Vec<Arc<dyn AuthorityObject>> = vec![Arc::new(
-      InMemoryAuthority::new(origin, records, ZoneType::Primary, false)
-        .unwrap(),
+    let authority: Vec<Arc<dyn ZoneHandler>> = vec![Arc::new(
+      InMemoryZoneHandler::<TokioRuntimeProvider>::new(
+        origin,
+        records,
+        ZoneType::Primary,
+        AxfrPolicy::Deny,
+      )
+      .unwrap(),
     )];
     let mut catalog: Catalog = Catalog::new();
     catalog.upsert(Name::root().into(), authority);
 
-    let mut server_fut = ServerFuture::new(catalog);
+    let mut server = HickoryServer::new(catalog);
     let socket_addr = SocketAddr::from(([127, 0, 0, 1], DNS_PORT));
     let tcp_listener = TcpListener::bind(socket_addr).await.unwrap();
     let udp_socket = UdpSocket::bind(socket_addr).await.unwrap();
-    server_fut.register_socket(udp_socket);
-    server_fut.register_listener(tcp_listener, Duration::from_secs(2));
+    server.register_socket(udp_socket);
+    server.register_listener(tcp_listener, Duration::from_secs(2), 1024);
 
     // Notifies that the DNS server is ready
     tx.send(()).unwrap();
 
-    server_fut.block_until_done().await.unwrap();
+    server.block_until_done().await.unwrap();
   }
 
   // Create a multi-threaded tokio runtime with 2 worker threads

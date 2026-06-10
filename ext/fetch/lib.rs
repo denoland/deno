@@ -246,7 +246,7 @@ pub enum FetchError {
   Io(#[from] std::io::Error),
   #[class(generic)]
   #[error(transparent)]
-  Dns(hickory_resolver::ResolveError),
+  Dns(hickory_resolver::net::NetError),
   #[class(generic)]
   #[error(transparent)]
   PermissionCheck(PermissionCheckError),

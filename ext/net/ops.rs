@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
@@ -22,16 +23,15 @@ use deno_core::ResourceId;
 use deno_core::ToV8;
 use deno_core::op2;
 use deno_permissions::PermissionsContainer;
-use hickory_proto::ProtoError;
-use hickory_proto::ProtoErrorKind;
-use hickory_proto::rr::record_data::RData;
-use hickory_proto::rr::record_type::RecordType;
-use hickory_resolver::ResolveError;
-use hickory_resolver::ResolveErrorKind;
-use hickory_resolver::config::NameServerConfigGroup;
+use hickory_proto::rr::RData;
+use hickory_proto::rr::RecordType;
+use hickory_resolver::config::ConnectionConfig;
+use hickory_resolver::config::NameServerConfig;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
-use hickory_resolver::name_server::TokioConnectionProvider;
+use hickory_resolver::net::DnsError;
+use hickory_resolver::net::NetError as ResolveError;
+use hickory_resolver::net::runtime::TokioRuntimeProvider;
 use hickory_resolver::system_conf;
 use quinn::rustls;
 use serde::Serialize;
@@ -957,6 +957,34 @@ pub struct NameServer {
   ip_addr: String,
   #[from_v8(default = 53)]
   port: u16,
+  #[from_v8(default = DNSProtocol::Udp)]
+  protocol: DNSProtocol,
+}
+
+#[derive(FromV8, Clone, Copy)]
+pub enum DNSProtocol {
+  Udp,
+  Tcp,
+}
+
+impl From<DNSProtocol> for hickory_resolver::config::ProtocolConfig {
+  fn from(value: DNSProtocol) -> Self {
+    match value {
+      DNSProtocol::Udp => hickory_resolver::config::ProtocolConfig::Udp,
+      DNSProtocol::Tcp => hickory_resolver::config::ProtocolConfig::Tcp,
+    }
+  }
+}
+
+#[cfg(any(target_os = "android", target_os = "windows", target_os = "macos"))]
+fn read_system_dns_conf() -> Result<(ResolverConfig, ResolverOpts), NetError> {
+  system_conf::read_system_conf()
+    .map_err(|e| hickory_resolver::net::NetError::Proto(e).into())
+}
+
+#[cfg(all(unix, not(any(target_os = "android", target_vendor = "apple"))))]
+fn read_system_dns_conf() -> Result<(ResolverConfig, ResolverOpts), NetError> {
+  system_conf::read_system_conf().map_err(Into::into)
 }
 
 #[op2(stack_trace)]
@@ -975,12 +1003,16 @@ pub async fn op_dns_resolve(
   let (config, mut opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
-    let group = NameServerConfigGroup::from_ips_clear(
-      &[name_server.ip_addr.parse()?],
-      name_server.port,
+    let ns_config = NameServerConfig::new(
+      name_server.ip_addr.parse()?,
       true,
+      vec![{
+        let mut c = ConnectionConfig::new(name_server.protocol.into());
+        c.port = name_server.port;
+        c
+      }],
     );
-    (ResolverConfig::from_parts(None, vec![], group), {
+    (ResolverConfig::from_parts(None, vec![], vec![ns_config]), {
       let mut opts = ResolverOpts::default();
       if use_edns {
         opts.edns0 = true;
@@ -988,7 +1020,7 @@ pub async fn op_dns_resolve(
       opts
     })
   } else {
-    system_conf::read_system_conf()?
+    read_system_dns_conf()?
   };
 
   // When a cancel handle is provided, use a short resolver timeout so
@@ -1005,18 +1037,18 @@ pub async fn op_dns_resolve(
 
     // Checks permission against the name servers which will be actually queried.
     for ns in config.name_servers() {
-      let socker_addr = &ns.socket_addr;
-      let ip = socker_addr.ip().to_string();
-      let port = socker_addr.port();
-      perm.check_net(&(&ip, Some(port)), "Deno.resolveDns()")?;
+      let ip = ns.ip.to_string();
+      for conn in &ns.connections {
+        perm.check_net(&(&ip, Some(conn.port)), "Deno.resolveDns()")?;
+      }
     }
   }
 
-  let provider = TokioConnectionProvider::default();
+  let provider = TokioRuntimeProvider::default();
   let resolver =
     hickory_resolver::Resolver::builder_with_config(config, provider)
       .with_options(opts)
-      .build();
+      .build()?;
 
   let lookup_fut = resolver.lookup(query, record_type);
 
@@ -1042,27 +1074,17 @@ pub async fn op_dns_resolve(
     lookup_fut.await
   };
 
+  let lookup = lookup.map_err(|e| match e {
+    ResolveError::Dns(DnsError::NoRecordsFound(_)) => NetError::DnsNotFound(e),
+    ResolveError::NoConnections => NetError::DnsNotConnected(e),
+    ResolveError::Timeout => NetError::DnsTimedOut(e),
+    _ => NetError::Dns(e),
+  })?;
   lookup
-    .map_err(|e| match e.kind() {
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoRecordsFound { .. }) =>
-      {
-        NetError::DnsNotFound(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::NoConnections) =>
-      {
-        NetError::DnsNotConnected(e)
-      }
-      ResolveErrorKind::Proto(ProtoError { kind, .. })
-        if matches!(**kind, ProtoErrorKind::Timeout) =>
-      {
-        NetError::DnsTimedOut(e)
-      }
-      _ => NetError::Dns(e),
-    })?
-    .records()
+    .answers()
     .iter()
+    .chain(lookup.authorities())
+    .chain(lookup.additionals())
     .filter_map(|rec| {
       let is_any = record_type == RecordType::ANY;
       // For ANY queries, use each record's actual type for formatting
@@ -1071,7 +1093,7 @@ pub async fn op_dns_resolve(
       } else {
         record_type
       };
-      let r = format_rdata(effective_type)(rec.data()).transpose();
+      let r = format_rdata(&rec.data, effective_type).transpose();
       r.map(|maybe_data| {
         maybe_data.map(|data| DnsRecordWithTtl {
           data,
@@ -1080,7 +1102,7 @@ pub async fn op_dns_resolve(
           } else {
             None
           },
-          ttl: rec.ttl(),
+          ttl: rec.ttl,
         })
       })
     })
@@ -1095,10 +1117,9 @@ pub fn op_net_get_system_dns_servers() -> Result<Vec<(String, u16)>, NetError> {
   let servers = config
     .name_servers()
     .iter()
-    .map(|ns| {
-      let addr = ns.socket_addr;
-      (addr.ip().to_string(), addr.port())
-    })
+    .flat_map(|ns| ns.connections.iter().map(|c| (ns.ip.to_string(), c.port)))
+    .collect::<HashSet<_>>() // This removes duplicate name_servers sharing the same ip and port.
+    .into_iter()
     .collect();
   Ok(servers)
 }
@@ -1144,63 +1165,53 @@ pub fn op_set_keepalive_inner(
 }
 
 fn format_rdata(
+  r: &RData,
   ty: RecordType,
-) -> impl Fn(&RData) -> Result<Option<DnsRecordData>, NetError> {
-  use RecordType::*;
-  move |r: &RData| -> Result<Option<DnsRecordData>, NetError> {
-    let record = match ty {
-      A => r.as_a().map(ToString::to_string).map(DnsRecordData::A),
-      AAAA => r
-        .as_aaaa()
-        .map(ToString::to_string)
-        .map(DnsRecordData::Aaaa),
-      ANAME => r
-        .as_aname()
-        .map(ToString::to_string)
-        .map(DnsRecordData::Aname),
-      CAA => r.as_caa().map(|caa| {
-        DnsRecordData::Caa {
-          critical: caa.issuer_critical(),
-          tag: caa.tag().to_string(),
-          // hickory_proto now handles CAA records encoding within the CAA struct, we can assume that it's safe to unwrap here
-          value: str::from_utf8(caa.raw_value()).unwrap().to_string(),
-        }
-      }),
-      CNAME => r
-        .as_cname()
-        .map(ToString::to_string)
-        .map(DnsRecordData::Cname),
-      MX => r.as_mx().map(|mx| DnsRecordData::Mx {
-        preference: mx.preference(),
-        exchange: mx.exchange().to_string(),
-      }),
-      NAPTR => r.as_naptr().map(|naptr| DnsRecordData::Naptr {
-        order: naptr.order(),
-        preference: naptr.preference(),
-        flags: String::from_utf8(naptr.flags().to_vec()).unwrap(),
-        services: String::from_utf8(naptr.services().to_vec()).unwrap(),
-        regexp: String::from_utf8(naptr.regexp().to_vec()).unwrap(),
-        replacement: naptr.replacement().to_string(),
-      }),
-      NS => r.as_ns().map(ToString::to_string).map(DnsRecordData::Ns),
-      PTR => r.as_ptr().map(ToString::to_string).map(DnsRecordData::Ptr),
-      SOA => r.as_soa().map(|soa| DnsRecordData::Soa {
-        mname: soa.mname().to_string(),
-        rname: soa.rname().to_string(),
-        serial: soa.serial(),
-        refresh: soa.refresh(),
-        retry: soa.retry(),
-        expire: soa.expire(),
-        minimum: soa.minimum(),
-      }),
-      SRV => r.as_srv().map(|srv| DnsRecordData::Srv {
-        priority: srv.priority(),
-        weight: srv.weight(),
-        port: srv.port(),
-        target: srv.target().to_string(),
-      }),
-      TXT => r.as_txt().map(|txt| {
+) -> Result<Option<DnsRecordData>, NetError> {
+  let res = if r.record_type() == ty {
+    let record = match r {
+      RData::A(a) => DnsRecordData::A(a.to_string()),
+      RData::AAAA(aaaa) => DnsRecordData::Aaaa(aaaa.to_string()),
+      RData::ANAME(aname) => DnsRecordData::Aname(aname.to_string()),
+      RData::CAA(caa) => DnsRecordData::Caa {
+        critical: caa.issuer_critical,
+        tag: caa.tag.to_string(),
+        // hickory_proto now handles CAA records encoding within the CAA struct, we can assume that it's safe to unwrap here
+        value: str::from_utf8(&caa.value).unwrap().to_string(),
+      },
+      RData::CNAME(cname) => DnsRecordData::Cname(cname.to_string()),
+      RData::MX(mx) => DnsRecordData::Mx {
+        preference: mx.preference,
+        exchange: mx.exchange.to_string(),
+      },
+      RData::NAPTR(naptr) => DnsRecordData::Naptr {
+        order: naptr.order,
+        preference: naptr.preference,
+        flags: String::from_utf8(naptr.flags.to_vec()).unwrap(),
+        services: String::from_utf8(naptr.services.to_vec()).unwrap(),
+        regexp: String::from_utf8(naptr.regexp.to_vec()).unwrap(),
+        replacement: naptr.replacement.to_string(),
+      },
+      RData::NS(ns) => DnsRecordData::Ns(ns.to_string()),
+      RData::PTR(ptr) => DnsRecordData::Ptr(ptr.to_string()),
+      RData::SOA(soa) => DnsRecordData::Soa {
+        mname: soa.mname.to_string(),
+        rname: soa.rname.to_string(),
+        serial: soa.serial,
+        refresh: soa.refresh,
+        retry: soa.retry,
+        expire: soa.expire,
+        minimum: soa.minimum,
+      },
+      RData::SRV(srv) => DnsRecordData::Srv {
+        priority: srv.priority,
+        weight: srv.weight,
+        port: srv.port,
+        target: srv.target.to_string(),
+      },
+      RData::TXT(txt) => {
         let texts: Vec<String> = txt
+          .txt_data
           .iter()
           .map(|bytes| {
             // Tries to parse these bytes as Latin-1
@@ -1208,11 +1219,14 @@ fn format_rdata(
           })
           .collect();
         DnsRecordData::Txt(texts)
-      }),
+      }
       _ => return Err(NetError::UnsupportedRecordType),
     };
-    Ok(record)
-  }
+    Some(record)
+  } else {
+    None
+  };
+  Ok(res)
 }
 
 #[cfg(test)]
@@ -1226,6 +1240,7 @@ mod tests {
   use deno_core::RuntimeOptions;
   use deno_core::futures::FutureExt;
   use hickory_proto::rr::Name;
+  use hickory_proto::rr::RData;
   use hickory_proto::rr::rdata::SOA;
   use hickory_proto::rr::rdata::a::A;
   use hickory_proto::rr::rdata::aaaa::AAAA;
@@ -1239,51 +1254,46 @@ mod tests {
   use hickory_proto::rr::rdata::naptr::NAPTR;
   use hickory_proto::rr::rdata::srv::SRV;
   use hickory_proto::rr::rdata::txt::TXT;
-  use hickory_proto::rr::record_data::RData;
   use socket2::SockRef;
 
   use super::*;
 
   #[test]
   fn rdata_to_return_record_a() {
-    let func = format_rdata(RecordType::A);
     let rdata = RData::A(A(Ipv4Addr::new(127, 0, 0, 1)));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::A).unwrap(),
       Some(DnsRecordData::A("127.0.0.1".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_aaaa() {
-    let func = format_rdata(RecordType::AAAA);
     let rdata = RData::AAAA(AAAA(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::AAAA).unwrap(),
       Some(DnsRecordData::Aaaa("::1".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_aname() {
-    let func = format_rdata(RecordType::ANAME);
     let rdata = RData::ANAME(ANAME(Name::new()));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::ANAME).unwrap(),
       Some(DnsRecordData::Aname("".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_caa() {
-    let func = format_rdata(RecordType::CAA);
     let rdata = RData::CAA(CAA::new_issue(
       false,
       Some(Name::parse("example.com", None).unwrap()),
       vec![KeyValue::new("account", "123456")],
     ));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::CAA).unwrap(),
       Some(DnsRecordData::Caa {
         critical: false,
         tag: "issue".to_string(),
@@ -1294,20 +1304,18 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_cname() {
-    let func = format_rdata(RecordType::CNAME);
     let rdata = RData::CNAME(CNAME(Name::new()));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::CNAME).unwrap(),
       Some(DnsRecordData::Cname("".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_mx() {
-    let func = format_rdata(RecordType::MX);
     let rdata = RData::MX(MX::new(10, Name::new()));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::MX).unwrap(),
       Some(DnsRecordData::Mx {
         preference: 10,
         exchange: "".to_string()
@@ -1317,7 +1325,6 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_naptr() {
-    let func = format_rdata(RecordType::NAPTR);
     let rdata = RData::NAPTR(NAPTR::new(
       1,
       2,
@@ -1327,7 +1334,7 @@ mod tests {
       Name::new(),
     ));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::NAPTR).unwrap(),
       Some(DnsRecordData::Naptr {
         order: 1,
         preference: 2,
@@ -1341,27 +1348,24 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_ns() {
-    let func = format_rdata(RecordType::NS);
     let rdata = RData::NS(NS(Name::new()));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::NS).unwrap(),
       Some(DnsRecordData::Ns("".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_ptr() {
-    let func = format_rdata(RecordType::PTR);
     let rdata = RData::PTR(PTR(Name::new()));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::PTR).unwrap(),
       Some(DnsRecordData::Ptr("".to_string()))
     );
   }
 
   #[test]
   fn rdata_to_return_record_soa() {
-    let func = format_rdata(RecordType::SOA);
     let rdata = RData::SOA(SOA::new(
       Name::new(),
       Name::new(),
@@ -1372,7 +1376,7 @@ mod tests {
       0,
     ));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::SOA).unwrap(),
       Some(DnsRecordData::Soa {
         mname: "".to_string(),
         rname: "".to_string(),
@@ -1387,10 +1391,9 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_srv() {
-    let func = format_rdata(RecordType::SRV);
     let rdata = RData::SRV(SRV::new(1, 2, 3, Name::new()));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::SRV).unwrap(),
       Some(DnsRecordData::Srv {
         priority: 1,
         weight: 2,
@@ -1402,7 +1405,6 @@ mod tests {
 
   #[test]
   fn rdata_to_return_record_txt() {
-    let func = format_rdata(RecordType::TXT);
     let rdata = RData::TXT(TXT::from_bytes(vec![
       "foo".as_bytes(),
       "bar".as_bytes(),
@@ -1410,7 +1412,7 @@ mod tests {
       &[0xe3, 0x81, 0x82], // "あ" in UTF-8
     ]));
     assert_eq!(
-      func(&rdata).unwrap(),
+      format_rdata(&rdata, RecordType::TXT).unwrap(),
       Some(DnsRecordData::Txt(vec![
         "foo".to_string(),
         "bar".to_string(),
