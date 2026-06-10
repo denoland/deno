@@ -307,7 +307,13 @@ fn read_required_public_key<'a, 'b>(
     )
   })?;
 
-  let usages = cryptokey.usages_as_vec(scope).unwrap_or_default();
+  let usages = cryptokey.usages_as_vec(scope).ok_or_else(|| {
+    WebIdlError::other(
+      prefix.clone(),
+      context.borrowed(),
+      JsErrorBox::type_error("CryptoKey.usages has been tampered with"),
+    )
+  })?;
   let Some(handle_ptr) = cryptokey.key_handle(scope) else {
     return Err(WebIdlError::other(
       prefix,
