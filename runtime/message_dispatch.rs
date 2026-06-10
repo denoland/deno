@@ -114,12 +114,9 @@ pub fn drive_message_dispatch(
     return Ok(());
   }
 
-  // 3. Dispatch into JS, invoking the dispatcher directly with no per-message
-  //    Promise. A microtask checkpoint runs *between* messages so each is
-  //    observed as a separate task: this preserves listener re-arming patterns
-  //    (e.g. `worker.onmessage = resolve` set again in a `.then()`, or
-  //    `events.once`) that the old per-message async receive relied on. The
-  //    checkpoint is far cheaper than the eliminated Promise + op re-entry.
+  // 3. Dispatch into JS. One microtask checkpoint (run by the subsequent tick
+  //    phases) covers the whole batch instead of one per message. This mirrors
+  //    how `dispatch_event_loop_tick` invokes the resolved-op handler.
   v8::tc_scope!(let tc, scope);
   'dispatch: for d in &drained {
     let dispatcher = v8::Local::new(tc, &d.dispatcher);
@@ -145,10 +142,6 @@ pub fn drive_message_dispatch(
         // correctly handles the terminating case by re-terminating.
         let js_error = deno_core::exception_to_err(tc, exception, false, true);
         return Err(CoreError::from(js_error));
-      }
-      tc.perform_microtask_checkpoint();
-      if tc.has_terminated() || tc.is_execution_terminating() {
-        break 'dispatch;
       }
     }
   }
