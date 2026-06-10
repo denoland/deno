@@ -900,8 +900,9 @@ async function readableStreamWriteChunkFn(reader, sink, chunk) {
 /**
  * @param {ReadableStreamDefaultReader<Uint8Array>} reader
  * @param {any} sink
+ * @param {((error: unknown) => void) | undefined} onError
  */
-async function readableStreamReadFn(reader, sink) {
+async function readableStreamReadFn(reader, sink, onError) {
   let loop = true;
 
   while (loop) {
@@ -929,6 +930,16 @@ async function readableStreamReadFn(reader, sink) {
         promise.resolve(false);
       },
       errorSteps(error) {
+        // Surface the original error (with its stack) to the owner of the
+        // resource before we flatten it to a string for the Rust side. Without
+        // this hook the error is otherwise swallowed: it is converted to a
+        // plain message, pushed into the channel and used only to abort the
+        // underlying transport, so e.g. a throwing `TransformStream` feeding a
+        // `Deno.serve` response body would fail with nothing implicating the
+        // faulty callback. See https://github.com/denoland/deno/issues/19867.
+        if (onError !== undefined) {
+          onError(error);
+        }
         const success = op_readable_stream_resource_write_error(
           sink.external,
           extractStringErrorFromError(error),
@@ -969,9 +980,13 @@ async function readableStreamReadFn(reader, sink) {
  * ReadableStream source.
  * @param {ReadableStream<Uint8Array>} stream
  * @param {number | undefined} length
+ * @param {((error: unknown) => void) | undefined} onError Invoked with the
+ *   original error (including its stack) if the stream errors while being
+ *   drained into the resource. Lets the owner report an otherwise swallowed
+ *   error before it is flattened to a string for the transport.
  * @returns {number}
  */
-function resourceForReadableStream(stream, length) {
+function resourceForReadableStream(stream, length, onError) {
   const reader = acquireReadableStreamDefaultReader(stream);
 
   // Allocate the resource
@@ -996,7 +1011,7 @@ function resourceForReadableStream(stream, length) {
   );
 
   // Trigger the first read
-  PromisePrototypeCatch(readableStreamReadFn(reader, sink), (err) => {
+  PromisePrototypeCatch(readableStreamReadFn(reader, sink, onError), (err) => {
     PromisePrototypeCatch(reader.cancel(err), () => {});
   });
 
