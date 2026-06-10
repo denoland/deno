@@ -299,12 +299,13 @@ pub async fn run(
   // The algorithm-agnostic empty-usages SyntaxError (WPT
   // `failures_*` "Empty usages") only fires AFTER per-algorithm
   // property validation (`NotSupportedError`/`OperationError`) and
-  // per-entry usage validation (`SyntaxError` on bad entries). Keep
-  // the empty flag here so it can be raised once the per-arm body
-  // returns successfully -- this preserves spec ordering against
-  // "Bad algorithm property + empty usages" combos which expect
-  // `OperationError` / `NotSupportedError` to win.
-  let usages_empty = usages.is_empty();
+  // per-entry usage validation (`SyntaxError` on bad entries). The
+  // post-body raise below inspects the *result* (private-half usages
+  // for asymmetric pairs, secret-key usages for symmetric) so a
+  // request whose entries are all valid input but intersect to an
+  // empty private-key set (e.g. `ECDSA generateKey([..., "verify"])`)
+  // still throws -- matching the legacy JS check on
+  // `result.privateKey[_usages].length === 0`.
   let result = match algorithm {
     GenerateKeyAlgorithm::Rsa {
       name,
@@ -553,9 +554,15 @@ pub async fn run(
   // After the per-algorithm body has run cleanly (so any
   // `NotSupportedError`/`OperationError` from a bad algorithm
   // property has already aborted), raise the algorithm-agnostic
-  // empty-usages SyntaxError. Every algorithm dispatched above
-  // produces secret or private key material, for which empty usages
-  // is invalid per the WebCrypto spec.
+  // empty-usages SyntaxError. For symmetric algorithms the resulting
+  // `CryptoKey` uses the input list verbatim; for asymmetric pairs
+  // the spec key is the *private* half, so check `priv_usages` --
+  // catches `generateKey({name: "ECDSA"...}, ["verify"])` whose input
+  // is non-empty but whose private key would have no usages.
+  let usages_empty = match &result {
+    GenerateKeyOutput::Symmetric { usages, .. } => usages.is_empty(),
+    GenerateKeyOutput::Pair { priv_usages, .. } => priv_usages.is_empty(),
+  };
   if usages_empty {
     return Err(CryptoError::Other(JsErrorBox::new(
       "DOMExceptionSyntaxError",
