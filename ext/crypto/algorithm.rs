@@ -273,19 +273,6 @@ pub fn check_support_for_algorithm(
   }
 }
 
-/// Result of the algorithm-registry lookup used by `normalizeAlgorithm` in
-/// JS. `name == ""` is the "not found" sentinel (instead of `Option`, to
-/// keep this a plain ToV8 struct).
-#[derive(deno_core::ToV8)]
-pub struct RegisteredAlgorithm {
-  pub name: String,
-  pub dict: Option<String>,
-}
-
-// AlgorithmIdentifier (string-or-dict) coercion is still performed in JS by
-// `webidl.converters.AlgorithmIdentifier`. Once `normalizeAlgorithm` itself
-// is lifted onto the Rust side that conversion will move here too.
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum GetKeyLengthError {
   #[class("DOMExceptionOperationError")]

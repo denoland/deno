@@ -175,27 +175,6 @@ impl MlKemVariant {
   }
 }
 
-#[derive(deno_core::ToV8)]
-pub struct MlKemEncapsulationOutput {
-  pub ciphertext: Uint8Array,
-  pub shared_secret: Uint8Array,
-}
-
-/// Derived from a FIPS 203 seed: the expanded decapsulation key together with
-/// the encapsulation key.
-#[derive(deno_core::ToV8)]
-pub struct MlKemSeedKeys {
-  pub private_key: Uint8Array,
-  pub public_key: Uint8Array,
-}
-
-#[derive(deno_core::ToV8)]
-pub struct MlKemSpkiImport {
-  #[to_v8(serde)]
-  pub variant: MlKemVariant,
-  pub public_key: Uint8Array,
-}
-
 /// Rust-side callable view of [`op_crypto_ml_kem_from_seed`] for the
 /// `SubtleCrypto.importKey` dispatcher.
 pub fn from_seed(

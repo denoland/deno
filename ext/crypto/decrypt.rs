@@ -33,62 +33,6 @@ use sha3::Sha3_512;
 
 use crate::shared::*;
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DecryptOptions {
-  #[serde(flatten)]
-  algorithm: DecryptAlgorithm,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", tag = "algorithm")]
-pub enum DecryptAlgorithm {
-  #[serde(rename = "RSA-OAEP")]
-  RsaOaep {
-    hash: ShaHash,
-    #[serde(with = "serde_bytes")]
-    label: Vec<u8>,
-  },
-  #[serde(rename = "AES-CBC", rename_all = "camelCase")]
-  AesCbc {
-    #[serde(with = "serde_bytes")]
-    iv: Vec<u8>,
-    length: usize,
-  },
-  #[serde(rename = "AES-CTR", rename_all = "camelCase")]
-  AesCtr {
-    #[serde(with = "serde_bytes")]
-    counter: Vec<u8>,
-    ctr_length: usize,
-    key_length: usize,
-  },
-  #[serde(rename = "AES-GCM", rename_all = "camelCase")]
-  AesGcm {
-    #[serde(with = "serde_bytes")]
-    iv: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    additional_data: Option<Vec<u8>>,
-    length: usize,
-    tag_length: usize,
-  },
-  #[serde(rename = "AES-OCB", rename_all = "camelCase")]
-  AesOcb {
-    #[serde(with = "serde_bytes")]
-    iv: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    additional_data: Option<Vec<u8>>,
-    length: usize,
-    tag_length: usize,
-  },
-  #[serde(rename = "ChaCha20-Poly1305", rename_all = "camelCase")]
-  ChaCha20Poly1305 {
-    #[serde(with = "serde_bytes")]
-    nonce: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    additional_data: Option<Vec<u8>>,
-  },
-}
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecryptError {
   #[class(inherit)]

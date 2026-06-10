@@ -47,26 +47,6 @@ static PUB_EXPONENT_1: Lazy<BigUint> =
 static PUB_EXPONENT_2: Lazy<BigUint> =
   Lazy::new(|| BigUint::from_u64(65537).unwrap());
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", tag = "algorithm")]
-pub enum GenerateKeyOptions {
-  #[serde(rename = "RSA", rename_all = "camelCase")]
-  Rsa {
-    modulus_length: u32,
-    #[serde(with = "serde_bytes")]
-    public_exponent: Vec<u8>,
-  },
-  #[serde(rename = "EC", rename_all = "camelCase")]
-  Ec { named_curve: EcNamedCurve },
-  #[serde(rename = "AES", rename_all = "camelCase")]
-  Aes { length: usize },
-  #[serde(rename = "HMAC", rename_all = "camelCase")]
-  Hmac {
-    hash: ShaHash,
-    length: Option<usize>,
-  },
-}
-
 /// Rust-callable view of the RSA keygen path. Returns raw PKCS#1 DER
 /// bytes ready to feed [`crate::shared::RawKeyData::Private`].
 pub fn generate_rsa(

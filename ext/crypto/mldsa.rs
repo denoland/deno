@@ -100,21 +100,6 @@ fn params(variant: u8) -> Result<MlDsaParams, MlDsaError> {
   }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MlDsaKeys {
-  pub private_key: ToJsBuffer,
-  pub public_key: ToJsBuffer,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MlDsaImportedKeys {
-  private_key: ToJsBuffer,
-  public_key: ToJsBuffer,
-  seed: Option<ToJsBuffer>,
-}
-
 pub(crate) fn mldsa_from_seed(
   variant: u8,
   seed: &[u8],

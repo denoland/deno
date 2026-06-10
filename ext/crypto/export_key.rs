@@ -108,21 +108,9 @@ pub enum ExportKeyResult {
   },
 }
 
-/// Rust-side callable view of [`op_crypto_export_key`]. Used by
-/// `getPublicKey` when round-tripping RSA / EC keys through SPKI without
-/// a JS hop.
-pub fn op_crypto_export_key_inner(
-  opts: ExportKeyOptions,
-  key_data: V8RawKeyData,
-) -> Result<ExportKeyResult, ExportKeyError> {
-  let key_data = v8_raw_to_raw(key_data);
-  export_key_with_raw(opts, &key_data)
-}
-
 /// Rust-side entry that accepts an already-`RawKeyData` and dispatches
 /// per algorithm. Used by `getPublicKey` where the key material is owned
-/// by Rust (the `CryptoKeyHandle` lives in the cppgc heap) so the
-/// `V8RawKeyData` wire round-trip is wasted work.
+/// by Rust (the `CryptoKeyHandle` lives in the cppgc heap).
 pub fn export_key_with_raw(
   opts: ExportKeyOptions,
   key_data: &crate::shared::RawKeyData,
@@ -145,20 +133,6 @@ impl ExportKeyOptions {
   /// Builder used by the Rust-native `getPublicKey` dispatcher.
   pub fn new(format: ExportKeyFormat, algorithm: ExportKeyAlgorithm) -> Self {
     Self { format, algorithm }
-  }
-}
-
-/// Convert the JS-side wire form into the owned `RawKeyData` used by the
-/// per-family export helpers (which now take `&RawKeyData`). The
-/// `RawKeyData::SeededPrivate` and `RawKeyData::Raw` variants never appear
-/// on this path -- the JS shim only ever passes `Secret` / `Private` /
-/// `Public` -- but they are folded into the closest match for the few
-/// `cppgc`-side callers that share this conversion.
-fn v8_raw_to_raw(v: V8RawKeyData) -> RawKeyData {
-  match v {
-    V8RawKeyData::Secret(b) => RawKeyData::Secret(b.as_ref().into()),
-    V8RawKeyData::Private(b) => RawKeyData::Private(b.as_ref().into()),
-    V8RawKeyData::Public(b) => RawKeyData::Public(b.as_ref().into()),
   }
 }
 
