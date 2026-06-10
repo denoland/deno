@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "managed": {
+      "tempDir": true,
+      "args": "run --no-lock --quiet --allow-read main.ts",
+      "output": "1\n",
+      "exitCode": 0
+    },
+    "node_modules_dir": {
+      "tempDir": true,
+      "args": "run --no-lock --quiet --allow-read --node-modules-dir=auto main.ts",
+      "output": "1\n",
+      "exitCode": 0
+    }
+  }
+}
