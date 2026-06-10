@@ -402,14 +402,13 @@ async fn compile_desktop(
   temp_flags.subcommand = DenoSubcommand::Compile(compile_flags.clone());
   temp_flags.internal.is_desktop = true;
 
-  let output_path =
-    super::compile::compile_binary(
-      Arc::new(temp_flags),
-      compile_flags,
-      true,
-      None,
-    )
-    .await?;
+  let output_path = super::compile::compile_binary(
+    Arc::new(temp_flags),
+    compile_flags,
+    true,
+    None,
+  )
+  .await?;
 
   // The temp entrypoint is embedded in the compiled dylib's VFS now; nothing
   // downstream reads it from disk. Remove it deterministically here so the
