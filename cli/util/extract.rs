@@ -333,7 +333,7 @@ enum Shebang {
 /// - A scoped `--deny-*=<path>` cannot be represented in the `Deno.test`
 ///   permissions object yet and yields an invalid shebang to force failure
 /// - A `--ignore-*` cannnot be represented in the `Deno.test` permissions
-///   object either yet, so they are currently ignored 
+///   object either yet, so they are currently ignored
 fn parse_shebang(shebang: &str) -> Shebang {
   let invalid = |reason: &str| {
     Shebang::Invalid(format!(
@@ -1047,12 +1047,12 @@ fn string_lit(value: &str) -> ast::Expr {
 /// - `--allow-*` becomes `{ [*]: "inherit" }`.
 /// - `--allow-*=...` becomes ` { [*]: [...] }`.
 /// - `--deny-*` becomes `{ [*]: false }`.
-/// - `--deny-*=...` is currently unsupported 
+/// - `--deny-*=...` is currently unsupported
 /// - `--permission-set` is currently unsupported
 /// - `--ignore-*` is currently unsupported
 /// - No permissions flags becomes `{ permissions: "none" }`
-/// 
-/// The currently unsupported flags are due to the current 
+///
+/// The currently unsupported flags are due to the current
 /// `Deno.PermissionOptionsObject` not being able to properly model them.
 fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
   let prop = |name: &str, value: ast::Expr| {
