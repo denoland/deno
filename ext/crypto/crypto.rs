@@ -129,6 +129,7 @@ impl Crypto {
 
   #[string]
   #[rename("randomUUID")]
+  #[required(0)]
   fn random_uuid(&self, state: &mut OpState) -> String {
     let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
     let mut bytes = [0u8; 16];

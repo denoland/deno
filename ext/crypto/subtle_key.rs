@@ -88,7 +88,17 @@ impl<'a> WebIdlConverter<'a> for SubtleKey {
     let algorithm_named_curve =
       read_algorithm_field_string(scope, key, "namedCurve");
 
-    let usages = key.usages_as_vec(scope).unwrap_or_default();
+    // Mirrors the `key_handle` check below: a "can't happen on a
+    // spec-conformant instance" tampering case should surface as a
+    // TypeError, not silently coerce to an empty list (which later
+    // produces a less-precise usage-check failure).
+    let usages = key.usages_as_vec(scope).ok_or_else(|| {
+      WebIdlError::other(
+        prefix.clone(),
+        context.borrowed(),
+        JsErrorBox::type_error("CryptoKey.usages has been tampered with"),
+      )
+    })?;
 
     let Some(handle_ptr) = key.key_handle(scope) else {
       return Err(WebIdlError::other(

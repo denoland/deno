@@ -38,6 +38,31 @@ const { createFilteredInspectProxy } = core.loadExtScript(
 );
 const { kKeyObject } = internals;
 
+// op2-generated interface constructors expose the macro's internal
+// new-target signal (`_: bool`) as a formal parameter, giving the
+// constructor's `.length` a value of 1. Per Web IDL, the interface
+// object's `.length` is the minimum-overload required-argument count -- 0
+// for all three classes (`Crypto`, `CryptoKey`, `SubtleCrypto` have no
+// constructor exposed). Also pin the `prototype` slot to non-writable:
+// V8's FunctionTemplate-derived constructors default to a writable
+// prototype, but Web IDL requires
+// `{ writable: false, enumerable: false, configurable: false }`. The
+// `configurable: false` slot is already set, and ECMAScript permits
+// downgrading `writable: true -> false` on a non-configurable property.
+function applyWebIdlInterfaceShape(interface_) {
+  ObjectDefineProperty(interface_, "length", {
+    __proto__: null,
+    value: 0,
+    writable: false,
+    enumerable: false,
+    configurable: true,
+  });
+  ObjectDefineProperty(interface_, "prototype", {
+    __proto__: null,
+    writable: false,
+  });
+}
+
 // `CryptoKey` is the cppgc-wrapped Rust class imported above; the `type`,
 // `extractable`, `usages` and `algorithm` getters and the underlying state
 // all live in Rust (`ext/crypto/crypto_key.rs`). The JS shim only attaches
@@ -69,6 +94,7 @@ ObjectDefineProperty(
   },
 );
 webidl.configureInterface(CryptoKey);
+applyWebIdlInterfaceShape(CryptoKey);
 
 // Structured-clone resurrection. The host-object brand stamped onto every
 // CryptoKey by `make_crypto_key` (`ext/crypto/make_key.rs`) returns a
@@ -194,6 +220,7 @@ ObjectAssign(SubtleCryptoPrototype, {
 });
 
 webidl.configureInterface(SubtleCrypto);
+applyWebIdlInterfaceShape(SubtleCrypto);
 
 // The `SubtleCrypto` singleton (reachable as `globalThis.crypto.subtle`) is
 // minted lazily: `op_create_subtle_crypto` allocates a cppgc-wrapped
@@ -236,6 +263,7 @@ ObjectDefineProperty(CryptoPrototype, SymbolFor("Deno.privateCustomInspect"), {
   writable: true,
 });
 webidl.configureInterface(Crypto);
+applyWebIdlInterfaceShape(Crypto);
 
 let cryptoSingleton;
 function getCryptoSingleton() {

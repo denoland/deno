@@ -10,7 +10,7 @@
 //! /wrap/unwrap/encapsulate/decapsulate/getPublicKey) now that those bodies
 //! live in Rust.
 
-use std::cell::Cell;
+use std::cell::RefCell;
 
 use deno_core::cppgc::make_cppgc_object;
 use deno_core::v8;
@@ -34,7 +34,11 @@ pub struct CryptoSymbols {
 }
 
 thread_local! {
-  static SYMBOLS: Cell<Option<&'static CryptoSymbols>> = const { Cell::new(None) };
+  // Owned (not `Box::leak`ed) so the three `v8::Global<v8::Symbol>` get
+  // dropped when the thread exits, releasing the V8 globals before isolate
+  // teardown.  Each worker (= each isolate = each thread) has its own
+  // instance.
+  static SYMBOLS: RefCell<Option<CryptoSymbols>> = const { RefCell::new(None) };
 }
 
 /// Register the three brand symbols that the JS `constructKey()` used to
@@ -44,22 +48,20 @@ thread_local! {
 /// not always reachable from inside the cppgc methods that need them (the
 /// async dispatcher already holds it mutable).
 pub fn set_symbols(symbols: CryptoSymbols) {
-  let leaked: &'static CryptoSymbols = Box::leak(Box::new(symbols));
-  SYMBOLS.with(|cell| cell.set(Some(leaked)));
+  SYMBOLS.with(|cell| {
+    *cell.borrow_mut() = Some(symbols);
+  });
 }
 
-pub fn symbols<'s>(
-  _scope: &mut v8::PinScope<'s, '_>,
-) -> Option<&'static CryptoSymbols> {
-  SYMBOLS.with(|cell| cell.get())
-}
-
-/// Convenience: drain the symbols cache. Only intended for the runtime
-/// shutdown path used by deno_core's snapshot machinery, where we want to
-/// avoid keeping V8 globals alive past isolate teardown.
-#[allow(dead_code, reason = "kept for future runtime shutdown wiring")]
-pub fn clear_symbols() {
-  SYMBOLS.with(|cell| cell.set(None));
+/// Lend the registered symbols to `f`. Returns `None` if [`set_symbols`]
+/// has not been called on this thread. The borrow scope is short — the
+/// callback only needs scope-local `v8::Local`s built from the cached
+/// `v8::Global<v8::Symbol>`s — so re-entrancy is not a concern.
+pub fn with_symbols<F, R>(_scope: &mut v8::PinScope<'_, '_>, f: F) -> Option<R>
+where
+  F: FnOnce(&CryptoSymbols) -> R,
+{
+  SYMBOLS.with(|cell| cell.borrow().as_ref().map(f))
 }
 
 /// Per-algorithm dictionary slots that get baked into the `CryptoKey`'s
@@ -229,16 +231,31 @@ fn stamp_symbols<'s>(
   k_key_object_val: v8::Local<'s, v8::Value>,
   host_object_snapshot: v8::Local<'s, v8::Value>,
 ) {
-  let Some(syms) = symbols(scope) else {
+  // Clone the three cached `v8::Global<v8::Symbol>`s out while we hold the
+  // thread-local borrow, then materialize them as `v8::Local`s once the
+  // borrow has been released (`v8::Local::new` needs `scope`, which we
+  // can't lend through the closure because the closure can't capture
+  // `scope` while the with-borrow is active).
+  let Some((brand_g, k_key_object_g, host_brand_g)) =
+    with_symbols(scope, |syms| {
+      (
+        syms.webidl_brand.clone(),
+        syms.k_key_object.clone(),
+        syms.host_object_brand.clone(),
+      )
+    })
+  else {
     return;
   };
+  let brand = v8::Local::new(scope, &brand_g);
+  let k_key_object = v8::Local::new(scope, &k_key_object_g);
+  let host_brand_sym = v8::Local::new(scope, &host_brand_g);
   // The brand symbols must be non-enumerable to match the legacy JS
   // `ObjectDefineProperty(key, sym, { value: ... })` shape. Without
   // `DONT_ENUM` the cppgc instance exposes them as plain own properties,
   // which breaks `assert.deepStrictEqual` of two distinct keys with the
   // same material (test/parallel/test-assert-deep.js Crypto subtest) and
   // shows up as `[Symbol(...)]` slots in `Deno.inspect()` output.
-  let brand = v8::Local::new(scope, &syms.webidl_brand);
   let _ = key.define_own_property(
     scope,
     brand.into(),
@@ -246,7 +263,6 @@ fn stamp_symbols<'s>(
     v8::PropertyAttribute::DONT_ENUM,
   );
 
-  let k_key_object = v8::Local::new(scope, &syms.k_key_object);
   let _ = key.define_own_property(
     scope,
     k_key_object.into(),
@@ -256,7 +272,6 @@ fn stamp_symbols<'s>(
 
   // The hostObjectBrand is a function-valued property that the
   // structured-clone serializer calls; replicate the legacy JS shape.
-  let host_brand_sym = v8::Local::new(scope, &syms.host_object_brand);
   // The legacy JS used `ObjectDefineProperty(key, hostObjectBrand, { value:
   // () => snapshot })` -- a closure-bound function. From Rust the same
   // shape is built via a FunctionTemplate whose `data` slot carries the
