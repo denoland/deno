@@ -60,10 +60,7 @@ pub fn cli_table(head: &[String], columns: &[Vec<Option<String>>]) -> String {
       if rows.len() <= j {
         rows.resize_with(j + 1, Vec::new);
       }
-      let value = column
-        .get(j)
-        .and_then(|v| v.clone())
-        .unwrap_or_default();
+      let value = column.get(j).and_then(|v| v.clone()).unwrap_or_default();
       let counted = get_string_width(&value, true);
       column_widths[i] = column_widths[i].max(counted);
       // JS: columnRightAlign[i] &= NumberIsInteger(+value);
@@ -97,7 +94,11 @@ pub fn cli_table(head: &[String], columns: &[Vec<Option<String>>]) -> String {
     // Rows may be shorter than head when a column had no entries.
     let mut padded = row.clone();
     padded.resize_with(head.len(), String::new);
-    result.push_str(&render_row(&padded, &column_widths, Some(&column_right_align)));
+    result.push_str(&render_row(
+      &padded,
+      &column_widths,
+      Some(&column_right_align),
+    ));
     result.push('\n');
   }
 
@@ -127,19 +128,28 @@ fn is_integer_like(value: &str) -> bool {
 
 fn js_string_to_number(s: &str) -> f64 {
   let unsigned = s.strip_prefix(['+', '-']).unwrap_or(s);
-  if let Some(hex) = unsigned.strip_prefix("0x").or_else(|| unsigned.strip_prefix("0X")) {
+  if let Some(hex) = unsigned
+    .strip_prefix("0x")
+    .or_else(|| unsigned.strip_prefix("0X"))
+  {
     return match u128::from_str_radix(hex, 16) {
       Ok(v) => v as f64,
       Err(_) => f64::NAN,
     };
   }
-  if let Some(oct) = unsigned.strip_prefix("0o").or_else(|| unsigned.strip_prefix("0O")) {
+  if let Some(oct) = unsigned
+    .strip_prefix("0o")
+    .or_else(|| unsigned.strip_prefix("0O"))
+  {
     return match u128::from_str_radix(oct, 8) {
       Ok(v) => v as f64,
       Err(_) => f64::NAN,
     };
   }
-  if let Some(bin) = unsigned.strip_prefix("0b").or_else(|| unsigned.strip_prefix("0B")) {
+  if let Some(bin) = unsigned
+    .strip_prefix("0b")
+    .or_else(|| unsigned.strip_prefix("0B"))
+  {
     return match u128::from_str_radix(bin, 2) {
       Ok(v) => v as f64,
       Err(_) => f64::NAN,
@@ -154,10 +164,9 @@ fn js_string_to_number(s: &str) -> f64 {
   }
   // Rust's f64 parser accepts "inf"/"nan" spellings JS does not; restrict to
   // decimal/exponent characters before delegating.
-  if !unsigned
-    .bytes()
-    .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-'))
-  {
+  if !unsigned.bytes().all(|b| {
+    b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-')
+  }) {
     return f64::NAN;
   }
   s.parse::<f64>().unwrap_or(f64::NAN)

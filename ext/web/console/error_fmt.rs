@@ -91,7 +91,7 @@ fn error_proto_to_string<'s, 'i>(
 /// `getStackString(ctx, error)`.
 pub fn get_stack_string<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   error: v8::Local<'s, v8::Object>,
 ) -> R<String> {
@@ -309,7 +309,11 @@ fn get_duplicate_error_frame_ranges(frames: &[String]) -> Vec<usize> {
       for &p in &positions[current..] {
         let mut distance = p - i;
         while distance != 0 {
-          let remainder = if distance == 0 { 0 } else { gcd_range % distance };
+          let remainder = if distance == 0 {
+            0
+          } else {
+            gcd_range % distance
+          };
           if gcd_range != 0 {
             if !steps.contains(&gcd_range) {
               steps.push(gcd_range);
@@ -342,10 +346,8 @@ fn get_duplicate_error_frame_ranges(frames: &[String]) -> Vec<usize> {
         equal_frames += 1;
       }
       if equal_frames != range {
-        let has_extra = extra_steps
-          .as_ref()
-          .map(|s| !s.is_empty())
-          .unwrap_or(false);
+        let has_extra =
+          extra_steps.as_ref().map(|s| !s.is_empty()).unwrap_or(false);
         if !has_extra {
           break;
         }
@@ -410,7 +412,7 @@ fn identical_sequence_range(a: &[String], b: &[String]) -> (usize, usize) {
 /// `getStackFrames(ctx, err, stack)`.
 fn get_stack_frames<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   err: v8::Local<'s, v8::Object>,
   stack: &str,
@@ -426,14 +428,13 @@ fn get_stack_frames<'s, 'i>(
 
   // Remove stack frames identical to frames in cause.
   if let Some(cause) = cause {
-    let is_error = cause.is_native_error()
-      || is_error_instance(scope, intr, cause);
+    let is_error =
+      cause.is_native_error() || is_error_instance(scope, intr, cause);
     if !cause.is_null_or_undefined() && is_error {
       if let Ok(cause_obj) = v8::Local::<v8::Object>::try_from(cause) {
         let cause_stack = get_stack_string(scope, intr, ctx, cause_obj)?;
         if let Some(cause_stack_start) = cause_stack.find("\n    at") {
-          let cause_frames: Vec<String> = cause_stack
-            [cause_stack_start + 1..]
+          let cause_frames: Vec<String> = cause_stack[cause_stack_start + 1..]
             .split('\n')
             .map(|s| s.to_string())
             .collect();
@@ -481,10 +482,11 @@ fn get_stack_frames<'s, 'i>(
 
 fn is_error_instance<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   value: v8::Local<'s, v8::Value>,
 ) -> bool {
-  is_prototype_of(scope, intr.error_prototype.into(), value)
+  let error_prototype = intr.error_prototype(scope);
+  is_prototype_of(scope, error_prototype.into(), value)
 }
 
 /// `markNodeModules(ctx, line)`.
@@ -498,7 +500,8 @@ fn mark_node_modules<'s, 'i>(
   let mut search_from = 0usize;
 
   loop {
-    let Some(rel) = line.get(search_from..).and_then(|s| s.find("node_modules"))
+    let Some(rel) =
+      line.get(search_from..).and_then(|s| s.find("node_modules"))
     else {
       break;
     };
@@ -570,15 +573,17 @@ fn mark_cwd<'s, 'i>(
     cwd_length += 7;
     cwd_start_pos -= 7;
   }
-  let start = if cwd_start_pos > 0
-    && line[..cwd_start_pos].ends_with('(')
-  {
+  let start = if cwd_start_pos > 0 && line[..cwd_start_pos].ends_with('(') {
     cwd_start_pos - 1
   } else {
     cwd_start_pos
   };
   let strip_close = start != cwd_start_pos && line.ends_with(')');
-  let end = if strip_close { line.len() - 1 } else { line.len() };
+  let end = if strip_close {
+    line.len() - 1
+  } else {
+    line.len()
+  };
   let working_directory_end_pos =
     (cwd_start_pos + cwd_length + 1).min(line.len());
   let cwd_slice = &line[start..working_directory_end_pos];
@@ -654,9 +659,7 @@ fn is_filtered_ext_frame(line: &str) -> bool {
     "denoErrorToNodeError",
     "__drainNextTickAndMacrotasks",
   ] {
-    if rest.starts_with(name)
-      && rest[name.len()..].starts_with(' ')
-    {
+    if rest.starts_with(name) && rest[name.len()..].starts_with(' ') {
       return true;
     }
   }
@@ -675,7 +678,7 @@ fn is_filtered_ext_frame(line: &str) -> bool {
 /// `formatError(err, constructor, tag, ctx, keys)`.
 pub fn format_error<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   err: v8::Local<'s, v8::Object>,
   constructor: Option<&str>,
@@ -852,7 +855,9 @@ pub fn format_error<'s, 'i>(
     }
   }
   // Wrap the error in brackets in case it has no stack trace.
-  let stack_start = stack.get(pos..).and_then(|s| s.find("\n    at"))
+  let stack_start = stack
+    .get(pos..)
+    .and_then(|s| s.find("\n    at"))
     .map(|p| pos + p);
   match stack_start {
     None => {
@@ -861,13 +866,15 @@ pub fn format_error<'s, 'i>(
     Some(stack_start) => {
       let mut new_stack = stack[..stack_start].to_string();
       let stack_frame_part = &stack[stack_start + 1..];
-      let lines =
-        get_stack_frames(scope, intr, ctx, err, stack_frame_part)?;
+      let lines = get_stack_frames(scope, intr, ctx, err, stack_frame_part)?;
       if ctx.colors {
         // Highlight userland code and node modules.
         let working_directory = {
           let undef: v8::Local<v8::Value> = v8::undefined(scope).into();
-          let ret = js_call(scope, intr.get_cwd, undef, &[])?;
+          let ret = {
+            let f = intr.get_cwd(scope);
+            js_call(scope, f, undef, &[])
+          }?;
           if ret.is_string() {
             Some(ret.to_rust_string_lossy(scope))
           } else {

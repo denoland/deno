@@ -304,26 +304,66 @@ const intrinsics = {
   // Special-cased builtin prototypes (`wellKnownPrototypes`), as flat
   // [prototype, name, constructor] triples.
   wellKnown: [
-    ArrayPrototype, "Array", Array,
-    ArrayBufferPrototype, "ArrayBuffer", ArrayBuffer,
-    FunctionPrototype, "Function", Function,
-    MapPrototype, "Map", Map,
-    SetPrototype, "Set", Set,
-    ObjectPrototype, "Object", Object,
-    TypedArrayPrototype, "TypedArray", TypedArray,
-    RegExpPrototype, "RegExp", RegExp,
-    DatePrototype, "Date", Date,
-    DataViewPrototype, "DataView", DataView,
-    ErrorPrototype, "Error", Error,
-    AggregateErrorPrototype, "AggregateError", AggregateError,
-    RangeErrorPrototype, "RangeError", RangeError,
-    TypeErrorPrototype, "TypeError", TypeError,
-    BooleanPrototype, "Boolean", Boolean,
-    NumberPrototype, "Number", Number,
-    StringPrototype, "String", String,
-    PromisePrototype, "Promise", Promise,
-    WeakMapPrototype, "WeakMap", WeakMap,
-    WeakSetPrototype, "WeakSet", WeakSet,
+    ArrayPrototype,
+    "Array",
+    Array,
+    ArrayBufferPrototype,
+    "ArrayBuffer",
+    ArrayBuffer,
+    FunctionPrototype,
+    "Function",
+    Function,
+    MapPrototype,
+    "Map",
+    Map,
+    SetPrototype,
+    "Set",
+    Set,
+    ObjectPrototype,
+    "Object",
+    Object,
+    TypedArrayPrototype,
+    "TypedArray",
+    TypedArray,
+    RegExpPrototype,
+    "RegExp",
+    RegExp,
+    DatePrototype,
+    "Date",
+    Date,
+    DataViewPrototype,
+    "DataView",
+    DataView,
+    ErrorPrototype,
+    "Error",
+    Error,
+    AggregateErrorPrototype,
+    "AggregateError",
+    AggregateError,
+    RangeErrorPrototype,
+    "RangeError",
+    RangeError,
+    TypeErrorPrototype,
+    "TypeError",
+    TypeError,
+    BooleanPrototype,
+    "Boolean",
+    Boolean,
+    NumberPrototype,
+    "Number",
+    Number,
+    StringPrototype,
+    "String",
+    String,
+    PromisePrototype,
+    "Promise",
+    Promise,
+    WeakMapPrototype,
+    "WeakMap",
+    WeakMap,
+    WeakSetPrototype,
+    "WeakSet",
+    WeakSet,
   ],
   getURLPrototype,
   getCwd,
@@ -471,19 +511,16 @@ class Console {
 
   constructor(printFunc) {
     this.#printFunc = printFunc;
-    const self = this;
     ObjectDefineProperty(this, "indentLevel", {
       __proto__: null,
-      get() {
-        return self.#wrap === null
-          ? self.#indentLevel
-          : self.#wrap.indentLevel;
+      get: () => {
+        return this.#wrap === null ? this.#indentLevel : this.#wrap.indentLevel;
       },
-      set(value) {
-        if (self.#wrap === null) {
-          self.#indentLevel = value;
+      set: (value) => {
+        if (this.#wrap === null) {
+          this.#indentLevel = value;
         } else {
-          self.#wrap.indentLevel = value;
+          this.#wrap.indentLevel = value;
         }
       },
       enumerable: true,

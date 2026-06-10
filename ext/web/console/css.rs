@@ -184,7 +184,9 @@ fn hex2(s: &str) -> Option<u8> {
 /// `parseCssColor` from 01_console.js. Returns `[r, g, b]` or `None`.
 pub fn parse_css_color(color_string: &str) -> Option<[u8; 3]> {
   let mut color_string = color_string.to_lowercase();
-  if let Some((_, hex)) = COLOR_KEYWORDS.iter().find(|(k, _)| *k == color_string) {
+  if let Some((_, hex)) =
+    COLOR_KEYWORDS.iter().find(|(k, _)| *k == color_string)
+  {
     color_string = (*hex).to_string();
   }
   let s = color_string.as_str();
@@ -192,7 +194,9 @@ pub fn parse_css_color(color_string: &str) -> Option<[u8; 3]> {
   // HASH_PATTERN: #RRGGBB(AA)?
   if let Some(rest) = s.strip_prefix('#') {
     let bytes: Vec<char> = rest.chars().collect();
-    if (bytes.len() == 6 || bytes.len() == 8) && bytes.iter().all(|c| c.is_ascii_hexdigit()) {
+    if (bytes.len() == 6 || bytes.len() == 8)
+      && bytes.iter().all(|c| c.is_ascii_hexdigit())
+    {
       return Some([
         hex2(&rest[0..2])?,
         hex2(&rest[2..4])?,
@@ -200,7 +204,9 @@ pub fn parse_css_color(color_string: &str) -> Option<[u8; 3]> {
       ]);
     }
     // SMALL_HASH_PATTERN: #RGB(A)?
-    if (bytes.len() == 3 || bytes.len() == 4) && bytes.iter().all(|c| c.is_ascii_hexdigit()) {
+    if (bytes.len() == 3 || bytes.len() == 4)
+      && bytes.iter().all(|c| c.is_ascii_hexdigit())
+    {
       let d = |c: char| -> Option<u8> {
         let v = c.to_digit(16)? as u8;
         Some(v * 16 + v)
@@ -315,7 +321,8 @@ fn parse_css_number(s: &str) -> Option<f64> {
     Some((i, f)) => (i, Some(f)),
     None => (rest, None),
   };
-  let digits_ok = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
+  let digits_ok =
+    |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
   match frac_part {
     Some(f) => {
       if !digits_ok(f) || !(int_part.is_empty() || digits_ok(int_part)) {

@@ -18,6 +18,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
 
@@ -37,29 +38,57 @@ const STYLIZE_MARKER: &str = "Deno.privateConsoleStylize";
 // ---------------------------------------------------------------------------
 // intrinsics
 
-fn parse_intrinsics<'s>(
+#[derive(Default)]
+struct IntrinsicsSlot(Option<std::rc::Rc<CachedIntrinsics>>);
+
+/// Parse-and-cache the intrinsics object (one-time per runtime). The OpState
+/// borrow is scoped: the engine re-enters JS (which may need OpState, e.g.
+/// for stack-trace source mapping), so no borrow may be held across the call.
+fn cached_intrinsics<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  state: &std::rc::Rc<RefCell<OpState>>,
+  obj: v8::Local<'s, v8::Object>,
+) -> std::rc::Rc<CachedIntrinsics> {
+  {
+    let state = state.borrow();
+    if let Some(slot) = state.try_borrow::<IntrinsicsSlot>() {
+      if let Some(cached) = &slot.0 {
+        if cached.matches(scope, obj) {
+          return cached.clone();
+        }
+      }
+    }
+  }
+  let parsed = std::rc::Rc::new(parse_intrinsics_global(scope, obj));
+  state.borrow_mut().put(IntrinsicsSlot(Some(parsed.clone())));
+  parsed
+}
+
+fn parse_intrinsics_global<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Object>,
-) -> Intrinsics<'s> {
+) -> CachedIntrinsics {
   fn get_fn<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     obj: v8::Local<'s, v8::Object>,
-    key: &str,
-  ) -> v8::Local<'s, v8::Function> {
+    key: &'static str,
+  ) -> v8::Global<v8::Function> {
     let v = try_get_str(scope, obj, key)
       .unwrap_or_else(|| v8::undefined(scope).into());
-    v8::Local::<v8::Function>::try_from(v)
-      .unwrap_or_else(|_| panic!("intrinsics.{key} must be a function"))
+    let f = v8::Local::<v8::Function>::try_from(v)
+      .unwrap_or_else(|_| panic!("intrinsics.{key} must be a function"));
+    v8::Global::new(scope, f)
   }
   fn get_obj<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     obj: v8::Local<'s, v8::Object>,
-    key: &str,
-  ) -> v8::Local<'s, v8::Object> {
+    key: &'static str,
+  ) -> v8::Global<v8::Object> {
     let v = try_get_str(scope, obj, key)
       .unwrap_or_else(|| v8::undefined(scope).into());
-    v8::Local::<v8::Object>::try_from(v)
-      .unwrap_or_else(|_| panic!("intrinsics.{key} must be an object"))
+    let o = v8::Local::<v8::Object>::try_from(v)
+      .unwrap_or_else(|_| panic!("intrinsics.{key} must be an object"));
+    v8::Global::new(scope, o)
   }
 
   // wellKnown: flat array of [proto, name, constructor, ...] triples.
@@ -80,13 +109,18 @@ fn parse_intrinsics<'s>(
         .get_index(scope, i + 2)
         .and_then(|v| v8::Local::<v8::Function>::try_from(v).ok());
       if let (Some(proto), Some(name), Some(ctor)) = (proto, name, ctor) {
-        well_known.push((proto, name, ctor));
+        well_known.push((
+          v8::Global::new(scope, proto),
+          name,
+          v8::Global::new(scope, ctor),
+        ));
       }
       i += 3;
     }
   }
 
-  Intrinsics {
+  CachedIntrinsics {
+    key: v8::Global::new(scope, obj),
     function_to_string: get_fn(scope, obj, "functionToString"),
     inspect_fn: get_fn(scope, obj, "inspect"),
     stylize_no_color: get_fn(scope, obj, "stylizeNoColor"),
@@ -113,7 +147,7 @@ fn parse_intrinsics<'s>(
 
 fn detect_stylize<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   value: v8::Local<'s, v8::Value>,
 ) -> Option<StylizeKind<'s>> {
   let f = v8::Local::<v8::Function>::try_from(value).ok()?;
@@ -178,13 +212,14 @@ fn default_ctx<'s>() -> Ctx<'s> {
     url_prototype: None,
     circular_error_message: None,
     stylize_js_fn: None,
+    theme_memo: HashMap::new(),
   }
 }
 
 fn opt_num<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Object>,
-  key: &str,
+  key: &'static str,
 ) -> Option<v8::Local<'s, v8::Value>> {
   try_get_str(scope, obj, key).filter(|v| !v.is_undefined())
 }
@@ -202,151 +237,164 @@ fn read_limit<'s>(
 }
 
 /// Apply an options-bag object on top of a ctx (mirrors object spread).
+/// Iterates the object's own enumerable keys once instead of probing every
+/// known option (callers often pass small or empty bags).
 fn apply_options<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   options: v8::Local<'s, v8::Object>,
 ) {
-  if let Some(v) = opt_num(scope, options, "showHidden") {
-    ctx.show_hidden = v.boolean_value(scope);
-  }
-  if let Some(v) = opt_num(scope, options, "depth") {
-    ctx.depth = if v.is_null() {
-      None
-    } else {
-      Some(v.number_value(scope).unwrap_or(f64::NAN))
+  let names = {
+    v8::tc_scope!(tc, scope);
+    options.get_property_names(
+      tc,
+      v8::GetPropertyNamesArgs {
+        mode: v8::KeyCollectionMode::OwnOnly,
+        property_filter: v8::PropertyFilter::ONLY_ENUMERABLE
+          | v8::PropertyFilter::SKIP_SYMBOLS,
+        index_filter: v8::IndexFilter::IncludeIndices,
+        key_conversion: v8::KeyConversionMode::ConvertToString,
+      },
+    )
+  };
+  let Some(names) = names else {
+    return;
+  };
+  for i in 0..names.length() {
+    let Some(key) = names.get_index(scope, i) else {
+      continue;
     };
-  } else if try_get_str(scope, options, "depth")
-    .map(|v| v.is_null())
-    .unwrap_or(false)
-  {
-    ctx.depth = None;
-  }
-  if let Some(v) = opt_num(scope, options, "colors") {
-    ctx.colors = v.boolean_value(scope);
-  }
-  if let Some(v) = opt_num(scope, options, "customInspect") {
-    ctx.custom_inspect = v.boolean_value(scope);
-  }
-  if let Some(v) = opt_num(scope, options, "showProxy") {
-    ctx.show_proxy = v.boolean_value(scope);
-  }
-  if let Some(v) = opt_num(scope, options, "maxArrayLength") {
-    ctx.max_array_length = read_limit(scope, v);
-  }
-  if let Some(v) = opt_num(scope, options, "maxStringLength") {
-    ctx.max_string_length = read_limit(scope, v);
-  }
-  if let Some(v) = opt_num(scope, options, "breakLength") {
-    ctx.break_length = v.number_value(scope).unwrap_or(f64::NAN);
-  }
-  if let Some(v) = opt_num(scope, options, "escapeSequences") {
-    ctx.escape_sequences = v.boolean_value(scope);
-  }
-  if let Some(v) = opt_num(scope, options, "compact") {
-    ctx.compact = if v.is_number() {
-      Compact::Num(v.number_value(scope).unwrap_or(0.0))
-    } else {
-      Compact::Bool(v.is_true())
+    let key_str = key.to_rust_string_lossy(scope);
+    let Some(v) = try_get(scope, options, key) else {
+      continue;
     };
-  }
-  if let Some(v) = opt_num(scope, options, "sorted") {
-    ctx.sorted = if let Ok(f) = v8::Local::<v8::Function>::try_from(v) {
-      Sorted::Comparator(f)
-    } else if v.boolean_value(scope) {
-      Sorted::Yes
-    } else {
-      Sorted::No
-    };
-  }
-  if let Some(v) = opt_num(scope, options, "getters") {
-    ctx.getters = if v.is_string() {
-      match v.to_rust_string_lossy(scope).as_str() {
-        "get" => Getters::Get,
-        "set" => Getters::Set,
-        _ => Getters::No,
+    if v.is_undefined() && key_str != "depth" {
+      continue;
+    }
+    match key_str.as_str() {
+      "showHidden" => ctx.show_hidden = v.boolean_value(scope),
+      "depth" => {
+        if v.is_undefined() {
+          continue;
+        }
+        ctx.depth = if v.is_null() {
+          None
+        } else {
+          Some(v.number_value(scope).unwrap_or(f64::NAN))
+        };
       }
-    } else if v.boolean_value(scope) {
-      Getters::Yes
-    } else {
-      Getters::No
-    };
-  }
-  if let Some(v) = opt_num(scope, options, "quotes") {
-    if let Ok(arr) = v8::Local::<v8::Array>::try_from(v) {
-      let mut quotes = Vec::with_capacity(arr.length() as usize);
-      for i in 0..arr.length() {
-        if let Some(q) = arr.get_index(scope, i) {
-          quotes.push(q.to_rust_string_lossy(scope));
+      "colors" => ctx.colors = v.boolean_value(scope),
+      "customInspect" => ctx.custom_inspect = v.boolean_value(scope),
+      "showProxy" => ctx.show_proxy = v.boolean_value(scope),
+      "maxArrayLength" => ctx.max_array_length = read_limit(scope, v),
+      "maxStringLength" => ctx.max_string_length = read_limit(scope, v),
+      "breakLength" => {
+        ctx.break_length = v.number_value(scope).unwrap_or(f64::NAN);
+      }
+      "escapeSequences" => ctx.escape_sequences = v.boolean_value(scope),
+      "compact" => {
+        ctx.compact = if v.is_number() {
+          Compact::Num(v.number_value(scope).unwrap_or(0.0))
+        } else {
+          Compact::Bool(v.is_true())
+        };
+      }
+      "sorted" => {
+        ctx.sorted = if let Ok(f) = v8::Local::<v8::Function>::try_from(v) {
+          Sorted::Comparator(f)
+        } else if v.boolean_value(scope) {
+          Sorted::Yes
+        } else {
+          Sorted::No
+        };
+      }
+      "getters" => {
+        ctx.getters = if v.is_string() {
+          match v.to_rust_string_lossy(scope).as_str() {
+            "get" => Getters::Get,
+            "set" => Getters::Set,
+            _ => Getters::No,
+          }
+        } else if v.boolean_value(scope) {
+          Getters::Yes
+        } else {
+          Getters::No
+        };
+      }
+      "quotes" => {
+        if let Ok(arr) = v8::Local::<v8::Array>::try_from(v) {
+          let mut quotes = Vec::with_capacity(arr.length() as usize);
+          for i in 0..arr.length() {
+            if let Some(q) = arr.get_index(scope, i) {
+              quotes.push(q.to_rust_string_lossy(scope));
+            }
+          }
+          ctx.quotes = quotes;
         }
       }
-      ctx.quotes = quotes;
-    }
-  }
-  if let Some(v) = opt_num(scope, options, "iterableLimit") {
-    ctx.iterable_limit = v.number_value(scope).unwrap_or(f64::NAN);
-  }
-  if let Some(v) = opt_num(scope, options, "trailingComma") {
-    ctx.trailing_comma = v.boolean_value(scope);
-  }
-  if let Some(v) = opt_num(scope, options, "indentLevel") {
-    ctx.indent_level = v.number_value(scope).unwrap_or(0.0);
-  }
-  if let Some(v) = opt_num(scope, options, "strAbbreviateSize") {
-    ctx.str_abbreviate_size = Some(v.number_value(scope).unwrap_or(f64::NAN));
-  }
-  if let Some(v) = opt_num(scope, options, "indentationLvl") {
-    ctx.indentation_lvl = v.number_value(scope).unwrap_or(0.0).max(0.0) as usize;
-  }
-  if let Some(v) = opt_num(scope, options, "numericSeparator") {
-    ctx.numeric_separator = Some(v);
-  }
-  if let Some(v) = opt_num(scope, options, "userOptions") {
-    ctx.user_options = v8::Local::<v8::Object>::try_from(v).ok();
-  }
-  if let Some(v) = opt_num(scope, options, "inspect") {
-    ctx.ctx_inspect_fn = Some(v);
-  }
-  if let Some(v) = opt_num(scope, options, "stylize") {
-    if let Some(kind) = detect_stylize(scope, intr, v) {
-      ctx.stylize = kind;
-      ctx.stylize_js_fn = v8::Local::<v8::Function>::try_from(v).ok();
-    }
-  }
-  // Shared seen array (custom-inspect hooks pass the live ctx back in).
-  if let Some(v) = opt_num(scope, options, "seen") {
-    if let Ok(arr) = v8::Local::<v8::Array>::try_from(v) {
-      let mut seen = Vec::with_capacity(arr.length() as usize);
-      for i in 0..arr.length() {
-        if let Some(item) = arr.get_index(scope, i) {
-          seen.push(item);
+      "iterableLimit" => {
+        ctx.iterable_limit = v.number_value(scope).unwrap_or(f64::NAN);
+      }
+      "trailingComma" => ctx.trailing_comma = v.boolean_value(scope),
+      "indentLevel" => {
+        ctx.indent_level = v.number_value(scope).unwrap_or(0.0);
+      }
+      "strAbbreviateSize" => {
+        ctx.str_abbreviate_size =
+          Some(v.number_value(scope).unwrap_or(f64::NAN));
+      }
+      "indentationLvl" => {
+        ctx.indentation_lvl =
+          v.number_value(scope).unwrap_or(0.0).max(0.0) as usize;
+      }
+      "numericSeparator" => ctx.numeric_separator = Some(v),
+      "userOptions" => {
+        ctx.user_options = v8::Local::<v8::Object>::try_from(v).ok();
+      }
+      "inspect" => ctx.ctx_inspect_fn = Some(v),
+      "stylize" => {
+        if let Some(kind) = detect_stylize(scope, intr, v) {
+          ctx.stylize = kind;
+          ctx.stylize_js_fn = v8::Local::<v8::Function>::try_from(v).ok();
         }
       }
-      ctx.seen = seen;
-    }
-  }
-  if let Some(v) = opt_num(scope, options, "budget") {
-    if let Ok(budget_obj) = v8::Local::<v8::Object>::try_from(v) {
-      v8::tc_scope!(tc, scope);
-      if let Some(names) =
-        budget_obj.get_own_property_names(tc, Default::default())
-      {
-        for i in 0..names.length() {
-          let Some(key) = names.get_index(tc, i) else {
-            continue;
-          };
-          let key_str = key.to_rust_string_lossy(tc);
-          let Ok(lvl) = key_str.parse::<usize>() else {
-            continue;
-          };
-          let Some(val) = budget_obj.get(tc, key) else {
-            continue;
-          };
-          let n = val.number_value(tc).unwrap_or(0.0).max(0.0) as usize;
-          ctx.budget.insert(lvl, n);
+      "seen" => {
+        // Shared seen array (custom-inspect hooks pass the live ctx back).
+        if let Ok(arr) = v8::Local::<v8::Array>::try_from(v) {
+          let mut seen = Vec::with_capacity(arr.length() as usize);
+          for i in 0..arr.length() {
+            if let Some(item) = arr.get_index(scope, i) {
+              seen.push(item);
+            }
+          }
+          ctx.seen = seen;
         }
       }
+      "budget" => {
+        if let Ok(budget_obj) = v8::Local::<v8::Object>::try_from(v) {
+          v8::tc_scope!(tc, scope);
+          if let Some(names) =
+            budget_obj.get_own_property_names(tc, Default::default())
+          {
+            for i in 0..names.length() {
+              let Some(key) = names.get_index(tc, i) else {
+                continue;
+              };
+              let key_str = key.to_rust_string_lossy(tc);
+              let Ok(lvl) = key_str.parse::<usize>() else {
+                continue;
+              };
+              let Some(val) = budget_obj.get(tc, key) else {
+                continue;
+              };
+              let n = val.number_value(tc).unwrap_or(0.0).max(0.0) as usize;
+              ctx.budget.insert(lvl, n);
+            }
+          }
+        }
+      }
+      _ => {}
     }
   }
 }
@@ -354,7 +402,7 @@ fn apply_options<'s>(
 /// Post-processing shared by `inspect()` and `inspectArgs()`.
 fn finish_options<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   options: Option<v8::Local<'s, v8::Object>>,
 ) {
@@ -368,8 +416,8 @@ fn finish_options<'s>(
   }
   if ctx.colors {
     ctx.stylize = StylizeKind::Theme {
-      styles: intr.styles_obj,
-      colors: intr.colors_obj,
+      styles: intr.styles_obj(scope),
+      colors: intr.colors_obj(scope),
       js_fn: None,
     };
     ctx.stylize_js_fn = None;
@@ -504,10 +552,7 @@ fn js_parse_float(s: &str) -> f64 {
   t[..end].parse::<f64>().unwrap_or(f64::NAN)
 }
 
-fn js_number_to_string<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  n: f64,
-) -> String {
+fn js_number_to_string<'s>(scope: &mut v8::PinScope<'s, '_>, n: f64) -> String {
   let num = v8::Number::new(scope, n);
   num.to_rust_string_lossy(scope)
 }
@@ -569,9 +614,7 @@ fn try_stringify<'s, 'i>(
         let message = try_get_str(scope, obj, "message")?;
         let message = message.to_rust_string_lossy(scope);
         let first_line = message.split('\n').next().unwrap_or("");
-        if Some(first_line)
-          == ctx.circular_error_message.as_deref()
-        {
+        if Some(first_line) == ctx.circular_error_message.as_deref() {
           Some(())
         } else {
           None
@@ -590,7 +633,7 @@ fn try_stringify<'s, 'i>(
 #[allow(clippy::too_many_arguments)]
 fn inspect_args_impl<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   args: &[v8::Local<'s, v8::Value>],
 ) -> R<String> {
@@ -711,10 +754,7 @@ fn inspect_args_impl<'s, 'i>(
 // ---------------------------------------------------------------------------
 // ops
 
-fn rethrow<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  err: JsErr,
-) {
+fn rethrow<'s>(scope: &mut v8::PinScope<'s, '_>, err: JsErr) {
   let exc = v8::Local::new(scope, &err.0);
   scope.throw_exception(exc);
 }
@@ -739,11 +779,13 @@ fn collect_array<'s>(
 #[string]
 pub fn op_console_inspect_args<'s>(
   scope: &mut v8::PinScope<'s, '_>,
+  state: std::rc::Rc<RefCell<OpState>>,
   intrinsics: v8::Local<'s, v8::Object>,
   args: v8::Local<'s, v8::Array>,
   options: v8::Local<'s, v8::Value>,
 ) -> Option<String> {
-  let intr = parse_intrinsics(scope, intrinsics);
+  let cached = cached_intrinsics(scope, &state, intrinsics);
+  let intr = Intrinsics::new(&cached);
   let mut ctx = default_ctx();
   let options_obj = v8::Local::<v8::Object>::try_from(options).ok();
   if let Some(options_obj) = options_obj {
@@ -765,11 +807,13 @@ pub fn op_console_inspect_args<'s>(
 #[string]
 pub fn op_console_inspect<'s>(
   scope: &mut v8::PinScope<'s, '_>,
+  state: std::rc::Rc<RefCell<OpState>>,
   intrinsics: v8::Local<'s, v8::Object>,
   value: v8::Local<'s, v8::Value>,
   options: v8::Local<'s, v8::Value>,
 ) -> Option<String> {
-  let intr = parse_intrinsics(scope, intrinsics);
+  let cached = cached_intrinsics(scope, &state, intrinsics);
+  let intr = Intrinsics::new(&cached);
   let mut ctx = default_ctx();
   let options_obj = v8::Local::<v8::Object>::try_from(options).ok();
   if let Some(options_obj) = options_obj {
@@ -790,12 +834,14 @@ pub fn op_console_inspect<'s>(
 #[string]
 pub fn op_console_format_value<'s>(
   scope: &mut v8::PinScope<'s, '_>,
+  state: std::rc::Rc<RefCell<OpState>>,
   intrinsics: v8::Local<'s, v8::Object>,
   ctx_obj: v8::Local<'s, v8::Value>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
 ) -> Option<String> {
-  let intr = parse_intrinsics(scope, intrinsics);
+  let cached = cached_intrinsics(scope, &state, intrinsics);
+  let intr = Intrinsics::new(&cached);
   let mut ctx = default_ctx();
   if let Ok(ctx_o) = v8::Local::<v8::Object>::try_from(ctx_obj) {
     apply_options(scope, &intr, &mut ctx, ctx_o);
@@ -818,8 +864,7 @@ pub fn op_console_quote_string<'s>(
   #[string] string: String,
   ctx_obj: v8::Local<'s, v8::Value>,
 ) -> String {
-  let mut quotes =
-    vec!["\"".to_string(), "'".to_string(), "`".to_string()];
+  let mut quotes = vec!["\"".to_string(), "'".to_string(), "`".to_string()];
   let mut escape_sequences = true;
   if let Ok(ctx_o) = v8::Local::<v8::Object>::try_from(ctx_obj) {
     if let Some(v) = opt_num(scope, ctx_o, "quotes") {
@@ -882,6 +927,7 @@ pub fn op_console_strip_vt(#[string] s: &str) -> String {
 pub struct Console {
   print_func: v8::TracedReference<v8::Function>,
   intrinsics: v8::TracedReference<v8::Object>,
+  intr_cache: RefCell<Option<std::rc::Rc<CachedIntrinsics>>>,
   no_color_stdout: v8::TracedReference<v8::Function>,
   no_color_stderr: v8::TracedReference<v8::Function>,
   count_map: RefCell<HashMap<String, u64>>,
@@ -924,12 +970,7 @@ impl Console {
     }
   }
 
-  fn print<'s>(
-    &self,
-    scope: &mut v8::PinScope<'s, '_>,
-    msg: &str,
-    level: i32,
-  ) {
+  fn print<'s>(&self, scope: &mut v8::PinScope<'s, '_>, msg: &str, level: i32) {
     let Some(f) = self.print_func.get(scope) else {
       return;
     };
@@ -943,7 +984,7 @@ impl Console {
   fn console_ctx<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
-    intr: &Intrinsics<'s>,
+    intr: &Intrinsics<'_>,
     stderr: bool,
   ) -> Ctx<'s> {
     let no_color = self.no_color(scope, stderr);
@@ -952,8 +993,8 @@ impl Console {
     ctx.indent_level = self.indent_level.get();
     if ctx.colors {
       ctx.stylize = StylizeKind::Theme {
-        styles: intr.styles_obj,
-        colors: intr.colors_obj,
+        styles: intr.styles_obj(scope),
+        colors: intr.colors_obj(scope),
         js_fn: None,
       };
     }
@@ -963,9 +1004,16 @@ impl Console {
   fn intr<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
-  ) -> Option<Intrinsics<'s>> {
+  ) -> Option<std::rc::Rc<CachedIntrinsics>> {
     let obj = self.intrinsics.get(scope)?;
-    Some(parse_intrinsics(scope, obj))
+    if let Some(cached) = self.intr_cache.borrow().as_ref() {
+      if cached.matches(scope, obj) {
+        return Some(cached.clone());
+      }
+    }
+    let parsed = std::rc::Rc::new(parse_intrinsics_global(scope, obj));
+    *self.intr_cache.borrow_mut() = Some(parsed.clone());
+    Some(parsed)
   }
 
   fn log_with_level<'a>(
@@ -975,9 +1023,10 @@ impl Console {
     stderr: bool,
     level: i32,
   ) {
-    let Some(intr) = self.intr(scope) else {
+    let Some(cached) = self.intr(scope) else {
       return;
     };
+    let intr = Intrinsics::new(&cached);
     let mut ctx = self.console_ctx(scope, &intr, stderr);
     let args: Vec<v8::Local<v8::Value>> = match args {
       Some(args) => (0..args.length()).map(|i| args.get(i)).collect(),
@@ -1016,6 +1065,7 @@ impl Console {
     Console {
       print_func: v8::TracedReference::new(scope, print_func),
       intrinsics: v8::TracedReference::new(scope, intrinsics),
+      intr_cache: RefCell::new(None),
       no_color_stdout: v8::TracedReference::new(scope, no_color_stdout),
       no_color_stderr: v8::TracedReference::new(scope, no_color_stderr),
       count_map: RefCell::new(HashMap::new()),
@@ -1092,9 +1142,10 @@ impl Console {
     obj: v8::Local<'a, v8::Value>,
     options: v8::Local<'a, v8::Value>,
   ) {
-    let Some(intr) = self.intr(scope) else {
+    let Some(cached) = self.intr(scope) else {
       return;
     };
+    let intr = Intrinsics::new(&cached);
     let mut ctx = self.console_ctx(scope, &intr, false);
     let options_obj = v8::Local::<v8::Object>::try_from(options).ok();
     if let Some(options_obj) = options_obj {
@@ -1118,9 +1169,10 @@ impl Console {
     if condition {
       return;
     }
-    let Some(intr) = self.intr(scope) else {
+    let Some(cached) = self.intr(scope) else {
       return;
     };
+    let intr = Intrinsics::new(&cached);
     let mut ctx = self.console_ctx(scope, &intr, true);
     let rest: Vec<v8::Local<v8::Value>> = match args {
       // First vararg is the condition itself; skip it.
@@ -1171,11 +1223,7 @@ impl Console {
       return;
     }
     drop(map);
-    self.print(
-      scope,
-      &format!("Count for '{label}' does not exist\n"),
-      2,
-    );
+    self.print(scope, &format!("Count for '{label}' does not exist\n"), 2);
   }
 
   #[nofast]
@@ -1205,9 +1253,10 @@ impl Console {
     };
     let duration = start.elapsed().as_secs_f64() * 1000.0;
     let display = Self::duration_display(duration);
-    let Some(intr) = self.intr(scope) else {
+    let Some(cached) = self.intr(scope) else {
       return;
     };
+    let intr = Intrinsics::new(&cached);
     let mut ctx = self.console_ctx(scope, &intr, false);
     let label_msg = v8_str(scope, &format!("{label}: {display}ms"));
     let mut final_args: Vec<v8::Local<v8::Value>> = vec![label_msg.into()];
@@ -1256,9 +1305,10 @@ impl Console {
     data: v8::Local<'a, v8::Value>,
     properties: v8::Local<'a, v8::Value>,
   ) {
-    let Some(intr) = self.intr(scope) else {
+    let Some(cached) = self.intr(scope) else {
       return;
     };
+    let intr = Intrinsics::new(&cached);
     if let Err(err) = self.table_impl(scope, &intr, data, properties) {
       rethrow(scope, err);
     }
@@ -1269,28 +1319,29 @@ impl Console {
   fn table_impl<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
-    intr: &Intrinsics<'s>,
+    intr: &Intrinsics<'_>,
     data: v8::Local<'s, v8::Value>,
     properties: v8::Local<'s, v8::Value>,
   ) -> R<()> {
     // Validate `properties`.
-    let properties: Option<Vec<v8::Local<'s, v8::Value>>> =
-      if properties.is_undefined() {
-        None
-      } else if properties.is_array() {
-        let arr = v8::Local::<v8::Array>::try_from(properties).unwrap();
-        Some(collect_array(scope, arr))
-      } else {
-        let type_of = properties.type_of(scope).to_rust_string_lossy(scope);
-        let msg = v8_str(
-          scope,
-          &format!(
-            "The 'properties' argument must be of type Array: received type {type_of}"
-          ),
-        );
-        let exc = v8::Exception::error(scope, msg);
-        return Err(JsErr(v8::Global::new(scope, exc)));
-      };
+    let properties: Option<Vec<v8::Local<'s, v8::Value>>> = if properties
+      .is_undefined()
+    {
+      None
+    } else if properties.is_array() {
+      let arr = v8::Local::<v8::Array>::try_from(properties).unwrap();
+      Some(collect_array(scope, arr))
+    } else {
+      let type_of = properties.type_of(scope).to_rust_string_lossy(scope);
+      let msg = v8_str(
+        scope,
+        &format!(
+          "The 'properties' argument must be of type Array: received type {type_of}"
+        ),
+      );
+      let exc = v8::Exception::error(scope, msg);
+      return Err(JsErr(v8::Global::new(scope, exc)));
+    };
 
     if data.is_null() || !(data.is_object() || data.is_function()) {
       // this.log(data)
@@ -1307,8 +1358,8 @@ impl Console {
     sctx.colors = !no_color;
     if sctx.colors {
       sctx.stylize = StylizeKind::Theme {
-        styles: intr.styles_obj,
-        colors: intr.colors_obj,
+        styles: intr.styles_obj(scope),
+        colors: intr.colors_obj(scope),
         js_fn: None,
       };
     }
@@ -1427,11 +1478,9 @@ impl Console {
       MapEntry(v8::Local<'s, v8::Value>, v8::Local<'s, v8::Value>),
     }
 
-    let properties_strs: Option<Vec<String>> = properties.as_ref().map(|p| {
-      p.iter()
-        .map(|v| v.to_rust_string_lossy(scope))
-        .collect()
-    });
+    let properties_strs: Option<Vec<String>> = properties
+      .as_ref()
+      .map(|p| p.iter().map(|v| v.to_rust_string_lossy(scope)).collect());
 
     // objectValues: column name -> rows
     let mut object_values: Vec<(String, Vec<Option<String>>)> = Vec::new();
@@ -1444,45 +1493,40 @@ impl Console {
     let mut values: Vec<Option<String>> = Vec::new();
     let mut has_primitives = false;
 
-    let stringify =
-      |scope: &mut v8::PinScope<'s, '_>,
-       sctx: &mut Ctx<'s>,
-       value: v8::Local<'s, v8::Value>|
-       -> R<String> {
-        // inspectValueWithQuotes
-        if value.is_string() {
-          let s = value.to_rust_string_lossy(scope);
-          let abbreviate_size = sctx
-            .str_abbreviate_size
-            .unwrap_or(STR_ABBREVIATE_SIZE);
-          let len16 = utf16_length(&s);
-          let trunc = if (len16 as f64) > abbreviate_size {
-            let max = abbreviate_size.max(0.0) as usize;
-            let mut out = String::new();
-            let mut count = 0usize;
-            for c in s.chars() {
-              if count >= max {
-                break;
-              }
-              count += c.len_utf16();
-              if count <= max {
-                out.push(c);
-              }
+    let stringify = |scope: &mut v8::PinScope<'s, '_>,
+                     sctx: &mut Ctx<'s>,
+                     value: v8::Local<'s, v8::Value>|
+     -> R<String> {
+      // inspectValueWithQuotes
+      if value.is_string() {
+        let s = value.to_rust_string_lossy(scope);
+        let abbreviate_size =
+          sctx.str_abbreviate_size.unwrap_or(STR_ABBREVIATE_SIZE);
+        let len16 = utf16_length(&s);
+        let trunc = if (len16 as f64) > abbreviate_size {
+          let max = abbreviate_size.max(0.0) as usize;
+          let mut out = String::new();
+          let mut count = 0usize;
+          for c in s.chars() {
+            if count >= max {
+              break;
             }
-            format!("{out}...")
-          } else {
-            s
-          };
-          let quoted = quote::quote_string(
-            &trunc,
-            &sctx.quotes,
-            sctx.escape_sequences,
-          );
-          stylize_with(scope, &sctx.stylize.clone(), &quoted, "string")
+            count += c.len_utf16();
+            if count <= max {
+              out.push(c);
+            }
+          }
+          format!("{out}...")
         } else {
-          format_value(scope, intr, sctx, value, 0.0, false)
-        }
-      };
+          s
+        };
+        let quoted =
+          quote::quote_string(&trunc, &sctx.quotes, sctx.escape_sequences);
+        sctx.stylize(scope, &quoted, "string")
+      } else {
+        format_value(scope, intr, sctx, value, 0.0, false)
+      }
+    };
 
     for (idx, k) in keys.iter().enumerate() {
       let row = get_row_value(scope, idx, k);
@@ -1497,8 +1541,7 @@ impl Console {
       if let Some((mk, mv)) = map_entry {
         // Map rows expose Key/Values columns.
         for (name, cell) in [("Key", mk), (values_key, mv)] {
-          let column = match object_values.iter_mut().find(|(n, _)| n == name)
-          {
+          let column = match object_values.iter_mut().find(|(n, _)| n == name) {
             Some((_, rows)) => rows,
             None => {
               object_values
@@ -1554,17 +1597,17 @@ impl Console {
                 obj.has(tc, key_v8.into()).unwrap_or(false)
               };
               if has {
-                let column =
-                  match object_values.iter_mut().find(|(n, _)| n == rk) {
-                    Some((_, rows)) => rows,
-                    None => {
-                      object_values.push((
-                        rk.clone(),
-                        vec![Some(String::new()); num_rows],
-                      ));
-                      &mut object_values.last_mut().unwrap().1
-                    }
-                  };
+                let column = match object_values
+                  .iter_mut()
+                  .find(|(n, _)| n == rk)
+                {
+                  Some((_, rows)) => rows,
+                  None => {
+                    object_values
+                      .push((rk.clone(), vec![Some(String::new()); num_rows]));
+                    &mut object_values.last_mut().unwrap().1
+                  }
+                };
                 let key_v8 = v8_str(scope, rk);
                 let cell = js_get(scope, obj, key_v8.into())?;
                 column[idx] = Some(stringify(scope, &mut sctx, cell)?);
@@ -1663,10 +1706,7 @@ fn iterate_to_vec<'s, 'i>(
   Ok(out)
 }
 
-fn simple_error<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  msg: &str,
-) -> JsErr {
+fn simple_error<'s>(scope: &mut v8::PinScope<'s, '_>, msg: &str) -> JsErr {
   let msg = v8_str(scope, msg);
   let exc = v8::Exception::type_error(scope, msg);
   JsErr(v8::Global::new(scope, exc))

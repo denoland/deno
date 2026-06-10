@@ -16,7 +16,9 @@ fn ansi_sequence_len(chars: &[char]) -> Option<usize> {
     return None;
   }
   let mut i = 1;
-  while i < chars.len() && matches!(chars[i], '[' | ']' | '(' | ')' | '#' | ';' | '?') {
+  while i < chars.len()
+    && matches!(chars[i], '[' | ']' | '(' | ')' | '#' | ';' | '?')
+  {
     i += 1;
   }
   let body_start = i;
@@ -32,7 +34,10 @@ fn ansi_sequence_len(chars: &[char]) -> Option<usize> {
     let mut j = body_start;
     let is_param_char = |c: char| {
       c.is_ascii_alphanumeric()
-        || matches!(c, '-' | '/' | '#' | '&' | '.' | ':' | '=' | '?' | '%' | '@' | '~' | '_')
+        || matches!(
+          c,
+          '-' | '/' | '#' | '&' | '.' | ':' | '=' | '?' | '%' | '@' | '~' | '_'
+        )
     };
     // (?:;[-…]+)* | [a-zA-Z\d]+(?:;[-…]*)*
     if j < chars.len() && chars[j] == ';' {
@@ -62,7 +67,8 @@ fn ansi_sequence_len(chars: &[char]) -> Option<usize> {
       if chars[j] == '\u{07}' || chars[j] == '\u{9c}' {
         return Some(j + 1);
       }
-      if chars[j] == '\u{1b}' && j + 1 < chars.len() && chars[j + 1] == '\u{5c}' {
+      if chars[j] == '\u{1b}' && j + 1 < chars.len() && chars[j + 1] == '\u{5c}'
+      {
         return Some(j + 2);
       }
     }
@@ -219,7 +225,10 @@ mod tests {
 
   #[test]
   fn strip_ansi() {
-    assert_eq!(strip_vt_control_characters("\u{1b}[4mcake\u{1b}[24m"), "cake");
+    assert_eq!(
+      strip_vt_control_characters("\u{1b}[4mcake\u{1b}[24m"),
+      "cake"
+    );
     assert_eq!(strip_vt_control_characters("no escapes"), "no escapes");
   }
 }

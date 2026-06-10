@@ -86,7 +86,11 @@ pub fn escape_meta_chars(s: &str) -> String {
   let mut out = String::with_capacity(s.len());
   for c in s.chars() {
     let code = c as u32;
-    if code <= 0x1f || code == 0x27 || code == 0x5c || (0x7f..=0x9f).contains(&code) {
+    if code <= 0x1f
+      || code == 0x27
+      || code == 0x5c
+      || (0x7f..=0x9f).contains(&code)
+    {
       if let Some(esc) = meta_escape(c) {
         out.push_str(esc);
         continue;
@@ -127,7 +131,11 @@ pub fn replace_escape_sequences(s: &str) -> String {
 /// `quoteString` from 01_console.js: pick the first quote from `quotes` not
 /// present in the string (else `quotes[0]`), backslash-escape that quote and
 /// backslashes, then optionally escape control sequences.
-pub fn quote_string(string: &str, quotes: &[String], escape_sequences: bool) -> String {
+pub fn quote_string(
+  string: &str,
+  quotes: &[String],
+  escape_sequences: bool,
+) -> String {
   let default_quote = "\"".to_string();
   let quote = quotes
     .iter()

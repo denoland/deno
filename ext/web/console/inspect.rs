@@ -77,31 +77,116 @@ pub enum StylizeKind<'s> {
 }
 
 /// Intrinsic JS values the engine needs, captured by the JS shim at module
-/// initialization (so they are primordial-safe) and passed per call.
-pub struct Intrinsics<'s> {
-  pub function_to_string: v8::Local<'s, v8::Function>,
-  pub inspect_fn: v8::Local<'s, v8::Function>,
-  pub stylize_no_color: v8::Local<'s, v8::Function>,
-  pub create_stylize_with_color: v8::Local<'s, v8::Function>,
-  pub styles_obj: v8::Local<'s, v8::Object>,
-  pub colors_obj: v8::Local<'s, v8::Object>,
-  pub object_prototype: v8::Local<'s, v8::Object>,
-  pub error_prototype: v8::Local<'s, v8::Object>,
+/// initialization (so they are primordial-safe) and passed per call. Fields
+/// are opened from the cached Globals lazily — most calls (primitives) need
+/// none of them.
+pub struct Intrinsics<'c> {
+  cached: &'c CachedIntrinsics,
+}
+
+macro_rules! intr_fn {
+  ($name:ident) => {
+    pub fn $name<'s>(
+      &self,
+      scope: &mut v8::PinScope<'s, '_>,
+    ) -> v8::Local<'s, v8::Function> {
+      v8::Local::new(scope, &self.cached.$name)
+    }
+  };
+}
+macro_rules! intr_obj {
+  ($name:ident) => {
+    pub fn $name<'s>(
+      &self,
+      scope: &mut v8::PinScope<'s, '_>,
+    ) -> v8::Local<'s, v8::Object> {
+      v8::Local::new(scope, &self.cached.$name)
+    }
+  };
+}
+
+impl<'c> Intrinsics<'c> {
+  pub fn new(cached: &'c CachedIntrinsics) -> Self {
+    Intrinsics { cached }
+  }
+
+  intr_fn!(function_to_string);
+  intr_fn!(inspect_fn);
+  intr_fn!(stylize_no_color);
+  intr_fn!(create_stylize_with_color);
+  intr_fn!(get_url_prototype);
+  intr_fn!(get_cwd);
+  intr_fn!(make_cross_context_stylize);
+  intr_fn!(reg_exp_to_string);
+  intr_fn!(number_value_of);
+  intr_fn!(string_value_of);
+  intr_fn!(boolean_value_of);
+  intr_fn!(big_int_value_of);
+  intr_fn!(symbol_value_of);
+  intr_obj!(styles_obj);
+  intr_obj!(colors_obj);
+  intr_obj!(object_prototype);
+  intr_obj!(error_prototype);
+
   /// `[prototype, name, constructor]` triples (`wellKnownPrototypes`).
-  pub well_known: Vec<(
+  pub fn well_known<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> Vec<(
     v8::Local<'s, v8::Object>,
-    String,
+    &'c str,
     v8::Local<'s, v8::Function>,
-  )>,
-  pub get_url_prototype: v8::Local<'s, v8::Function>,
-  pub get_cwd: v8::Local<'s, v8::Function>,
-  pub make_cross_context_stylize: v8::Local<'s, v8::Function>,
-  pub reg_exp_to_string: v8::Local<'s, v8::Function>,
-  pub number_value_of: v8::Local<'s, v8::Function>,
-  pub string_value_of: v8::Local<'s, v8::Function>,
-  pub boolean_value_of: v8::Local<'s, v8::Function>,
-  pub big_int_value_of: v8::Local<'s, v8::Function>,
-  pub symbol_value_of: v8::Local<'s, v8::Function>,
+  )> {
+    self
+      .cached
+      .well_known
+      .iter()
+      .map(|(proto, name, ctor)| {
+        (
+          v8::Local::new(scope, proto),
+          name.as_str(),
+          v8::Local::new(scope, ctor),
+        )
+      })
+      .collect()
+  }
+}
+
+/// Pre-parsed intrinsics as v8 Globals, cached across calls (the intrinsics
+/// object is created once by the JS shim and never changes).
+pub struct CachedIntrinsics {
+  pub key: v8::Global<v8::Object>,
+  pub function_to_string: v8::Global<v8::Function>,
+  pub inspect_fn: v8::Global<v8::Function>,
+  pub stylize_no_color: v8::Global<v8::Function>,
+  pub create_stylize_with_color: v8::Global<v8::Function>,
+  pub styles_obj: v8::Global<v8::Object>,
+  pub colors_obj: v8::Global<v8::Object>,
+  pub object_prototype: v8::Global<v8::Object>,
+  pub error_prototype: v8::Global<v8::Object>,
+  pub well_known:
+    Vec<(v8::Global<v8::Object>, String, v8::Global<v8::Function>)>,
+  pub get_url_prototype: v8::Global<v8::Function>,
+  pub get_cwd: v8::Global<v8::Function>,
+  pub make_cross_context_stylize: v8::Global<v8::Function>,
+  pub reg_exp_to_string: v8::Global<v8::Function>,
+  pub number_value_of: v8::Global<v8::Function>,
+  pub string_value_of: v8::Global<v8::Function>,
+  pub boolean_value_of: v8::Global<v8::Function>,
+  pub big_int_value_of: v8::Global<v8::Function>,
+  pub symbol_value_of: v8::Global<v8::Function>,
+}
+
+impl CachedIntrinsics {
+  pub fn matches<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    obj: v8::Local<'s, v8::Object>,
+  ) -> bool {
+    let key = v8::Local::new(scope, &self.key);
+    let key_val: v8::Local<v8::Value> = key.into();
+    key_val.strict_equals(obj.into())
+  }
 }
 
 pub struct Ctx<'s> {
@@ -148,6 +233,8 @@ pub struct Ctx<'s> {
   pub circular_error_message: Option<String>,
   /// Memoized JS-function form of `stylize` for user hooks.
   pub stylize_js_fn: Option<v8::Local<'s, v8::Function>>,
+  /// Per-call memo of resolved theme escape codes, keyed by flavour.
+  pub theme_memo: HashMap<&'static str, Option<(String, String)>>,
 }
 
 impl<'s> Ctx<'s> {
@@ -155,10 +242,53 @@ impl<'s> Ctx<'s> {
     &mut self,
     scope: &mut v8::PinScope<'s, '_>,
     s: &str,
-    flavour: &str,
+    flavour: &'static str,
   ) -> R<String> {
+    if let StylizeKind::Theme { styles, colors, .. } = self.stylize {
+      // The styles/colors tables are stable for the duration of a single
+      // inspect call; memoize the resolved escape codes per flavour.
+      if let Some(memo) = self.theme_memo.get(flavour) {
+        return Ok(match memo {
+          Some((open, close)) => format!("{open}{s}{close}"),
+          None => s.to_string(),
+        });
+      }
+      let resolved = resolve_theme_codes(scope, styles, colors, flavour);
+      let result = match &resolved {
+        Some((open, close)) => format!("{open}{s}{close}"),
+        None => s.to_string(),
+      };
+      self.theme_memo.insert(flavour, resolved);
+      return Ok(result);
+    }
     stylize_with(scope, &self.stylize, s, flavour)
   }
+}
+
+/// Resolve `styles[flavour]` -> `colors[style]` -> escape codes.
+fn resolve_theme_codes<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  styles: v8::Local<'s, v8::Object>,
+  colors: v8::Local<'s, v8::Object>,
+  flavour: &'static str,
+) -> Option<(String, String)> {
+  let flavour_key = v8_static_key(scope, flavour);
+  let style = styles.get(scope, flavour_key.into())?;
+  if style.is_undefined() {
+    return None;
+  }
+  let style_key = style.to_string(scope)?;
+  let color = colors.get(scope, style_key.into())?;
+  if color.is_undefined() {
+    return None;
+  }
+  let arr = v8::Local::<v8::Object>::try_from(color).ok()?;
+  let open = arr.get_index(scope, 0)?.number_value(scope)?;
+  let close = arr.get_index(scope, 1)?.number_value(scope)?;
+  Some((
+    format!("\u{1b}[{}m", fmt_js_number(open)),
+    format!("\u{1b}[{}m", fmt_js_number(close)),
+  ))
 }
 
 pub fn stylize_with<'s>(
@@ -240,6 +370,21 @@ pub fn v8_str<'s>(
   v8::String::new(scope, s).unwrap()
 }
 
+/// Internalized string for a static property key: property lookups with an
+/// internalized key hit the fast path (no per-access string-table migration
+/// like external strings incur).
+pub fn v8_static_key<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  s: &'static str,
+) -> v8::Local<'s, v8::String> {
+  v8::String::new_from_one_byte(
+    scope,
+    s.as_bytes(),
+    v8::NewStringType::Internalized,
+  )
+  .unwrap_or_else(|| v8_str(scope, s))
+}
+
 pub fn to_rust_string<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   value: v8::Local<'s, v8::Value>,
@@ -299,9 +444,9 @@ pub fn js_get<'s, 'i>(
 pub fn js_get_str<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   obj: v8::Local<'s, v8::Object>,
-  key: &str,
+  key: &'static str,
 ) -> R<v8::Local<'s, v8::Value>> {
-  let key = v8_str(scope, key);
+  let key = v8_static_key(scope, key);
   js_get(scope, obj, key.into())
 }
 
@@ -318,9 +463,9 @@ pub fn try_get<'s, 'i>(
 pub fn try_get_str<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   obj: v8::Local<'s, v8::Object>,
-  key: &str,
+  key: &'static str,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let key = v8_str(scope, key);
+  let key = v8_static_key(scope, key);
   try_get(scope, obj, key.into())
 }
 
@@ -384,19 +529,21 @@ pub fn symbol_for<'s>(
 
 pub fn format_value<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
   typed_array: bool,
 ) -> R<String> {
   // Primitive types cannot have properties.
-  if !value.is_object() && !value.is_function() && !is_undetectable(scope, value)
+  if !value.is_object()
+    && !value.is_function()
+    && !is_undetectable(scope, value)
   {
     if value.is_null() {
       return ctx.stylize(scope, "null", "null");
     }
-    return format_primitive(scope, ctx, value, None);
+    return format_primitive(scope, ctx, value, false);
   }
   if value.is_null() {
     return ctx.stylize(scope, "null", "null");
@@ -453,13 +600,21 @@ pub fn format_value<'s, 'i>(
     return ctx.stylize(scope, &format!("[Circular *{index}]"), "special");
   }
 
-  format_raw(scope, intr, ctx, value, recurse_times, typed_array, proxy_details)
+  format_raw(
+    scope,
+    intr,
+    ctx,
+    value,
+    recurse_times,
+    typed_array,
+    proxy_details,
+  )
 }
 
 /// Returns `Ok(Some(string))` when a custom-inspect hook produced output.
 fn try_custom_inspect<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   context: v8::Local<'s, v8::Value>,
   value: v8::Local<'s, v8::Value>,
@@ -495,12 +650,9 @@ fn try_custom_inspect<'s, 'i>(
       if let Ok(func) = v8::Local::<v8::Function>::try_from(func) {
         // return String(value[customInspect](inspect, ctx));
         let ctx_obj = materialize_ctx(scope, intr, ctx)?;
-        let ret = js_call(
-          scope,
-          func,
-          value,
-          &[intr.inspect_fn.into(), ctx_obj.into()],
-        )?;
+        let inspect_fn = intr.inspect_fn(scope);
+        let ret =
+          js_call(scope, func, value, &[inspect_fn.into(), ctx_obj.into()])?;
         // Read back state the hook may have changed through nested
         // `inspect(..., ctx)` calls (seen/circular are shared in JS).
         readback_ctx(scope, ctx, ctx_obj);
@@ -560,12 +712,13 @@ fn try_custom_inspect<'s, 'i>(
     None => v8::null(scope).into(),
     Some(d) => v8::Number::new(scope, d - recurse_times).into(),
   };
+  let object_prototype = intr.object_prototype(scope);
   let is_cross_context =
-    !is_prototype_of(scope, intr.object_prototype.into(), context);
+    !is_prototype_of(scope, object_prototype.into(), context);
   let user_options = get_user_options(scope, intr, ctx, is_cross_context)?;
   let ctx_inspect: v8::Local<v8::Value> = match ctx.ctx_inspect_fn {
     Some(f) => f,
-    None => intr.inspect_fn.into(),
+    None => intr.inspect_fn(scope).into(),
   };
   let ret = js_call(
     scope,
@@ -580,8 +733,7 @@ fn try_custom_inspect<'s, 'i>(
     return Ok(None);
   }
   if !ret.is_string() {
-    return format_value(scope, intr, ctx, ret, recurse_times, false)
-      .map(Some);
+    return format_value(scope, intr, ctx, ret, recurse_times, false).map(Some);
   }
   let s = to_rust_string(scope, ret);
   let indent = " ".repeat(ctx.indentation_lvl);
@@ -591,7 +743,7 @@ fn try_custom_inspect<'s, 'i>(
 /// `getUserOptions(ctx, isCrossContext)`.
 fn get_user_options<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   is_cross_context: bool,
 ) -> R<v8::Local<'s, v8::Object>> {
@@ -661,10 +813,12 @@ fn get_user_options<'s, 'i>(
         }
       }
     }
+    let make_cross_context_stylize = intr.make_cross_context_stylize(scope);
+    let undef: v8::Local<v8::Value> = v8::undefined(scope).into();
     let wrapped = js_call(
       scope,
-      intr.make_cross_context_stylize,
-      v8::undefined(scope).into(),
+      make_cross_context_stylize,
+      undef,
       &[stylize_fn.into()],
     )?;
     set_prop(scope, ret, "stylize", wrapped);
@@ -744,7 +898,7 @@ fn set_num<'s>(
 /// The JS-function form of `ctx.stylize`, for handing to user hooks.
 pub fn ctx_stylize_js_fn<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
 ) -> R<v8::Local<'s, v8::Function>> {
   if let Some(f) = ctx.stylize_js_fn {
@@ -752,24 +906,24 @@ pub fn ctx_stylize_js_fn<'s, 'i>(
   }
   let f = match ctx.stylize {
     StylizeKind::Js(f) => f,
-    StylizeKind::Theme {
-      js_fn: Some(f), ..
-    } => f,
+    StylizeKind::Theme { js_fn: Some(f), .. } => f,
     StylizeKind::Theme {
       styles,
       colors,
       js_fn: None,
     } => {
+      let create_stylize_with_color = intr.create_stylize_with_color(scope);
+      let undef: v8::Local<v8::Value> = v8::undefined(scope).into();
       let ret = js_call(
         scope,
-        intr.create_stylize_with_color,
-        v8::undefined(scope).into(),
+        create_stylize_with_color,
+        undef,
         &[styles.into(), colors.into()],
       )?;
       v8::Local::<v8::Function>::try_from(ret)
-        .unwrap_or(intr.stylize_no_color)
+        .unwrap_or_else(|_| intr.stylize_no_color(scope))
     }
-    StylizeKind::NoColor => intr.stylize_no_color,
+    StylizeKind::NoColor => intr.stylize_no_color(scope),
   };
   ctx.stylize_js_fn = Some(f);
   Ok(f)
@@ -780,7 +934,7 @@ pub fn ctx_stylize_js_fn<'s, 'i>(
 /// that pass it back into `inspect(value, ctx)`.
 pub fn materialize_ctx<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
 ) -> R<v8::Local<'s, v8::Object>> {
   let obj = get_user_options(scope, intr, ctx, false)?;
@@ -794,11 +948,8 @@ pub fn materialize_ctx<'s, 'i>(
     set_num(scope, obj, "strAbbreviateSize", n);
   }
   // quotes
-  let quote_vals: Vec<v8::Local<v8::Value>> = ctx
-    .quotes
-    .iter()
-    .map(|q| v8_str(scope, q).into())
-    .collect();
+  let quote_vals: Vec<v8::Local<v8::Value>> =
+    ctx.quotes.iter().map(|q| v8_str(scope, q).into()).collect();
   let quotes = v8::Array::new_with_elements(scope, &quote_vals);
   set_prop(scope, obj, "quotes", quotes.into());
   // seen (shared identity matters for circular detection in nested calls)
@@ -813,7 +964,8 @@ pub fn materialize_ctx<'s, 'i>(
     budget.set(scope, key.into(), val.into());
   }
   set_prop(scope, obj, "budget", budget.into());
-  set_prop(scope, obj, "inspect", intr.inspect_fn.into());
+  let inspect_fn = intr.inspect_fn(scope);
+  set_prop(scope, obj, "inspect", inspect_fn.into());
   Ok(obj)
 }
 
@@ -840,28 +992,35 @@ fn readback_ctx<'s>(
 // ---------------------------------------------------------------------------
 // primitives
 
-pub fn format_number<'s>(
+fn number_display<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  stylize: &StylizeKind<'s>,
   value: v8::Local<'s, v8::Value>,
-) -> R<String> {
+) -> String {
   let n = value.number_value(scope).unwrap_or(f64::NAN);
-  let s = if n == 0.0 && n.is_sign_negative() {
+  if n == 0.0 && n.is_sign_negative() {
     "-0".to_string()
   } else {
     let num = v8::Number::new(scope, n);
     num.to_rust_string_lossy(scope)
-  };
-  stylize_with(scope, stylize, &s, "number")
+  }
+}
+
+pub fn format_number<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  ctx: &mut Ctx<'s>,
+  value: v8::Local<'s, v8::Value>,
+) -> R<String> {
+  let s = number_display(scope, value);
+  ctx.stylize(scope, &s, "number")
 }
 
 pub fn format_bigint<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  stylize: &StylizeKind<'s>,
+  ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
 ) -> R<String> {
   let s = value.to_rust_string_lossy(scope);
-  stylize_with(scope, stylize, &format!("{s}n"), "bigint")
+  ctx.stylize(scope, &format!("{s}n"), "bigint")
 }
 
 /// `maybeQuoteSymbol`.
@@ -896,18 +1055,23 @@ fn symbol_to_string<'s>(
   }
 }
 
-/// `formatPrimitive(fn, value, ctx)`. `stylize_override` is used by
-/// `getBoxedBase`, which always formats the inner primitive without color.
+/// `formatPrimitive(fn, value, ctx)`. `no_color` is used by `getBoxedBase`,
+/// which always formats the inner primitive without color.
 pub fn format_primitive<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
-  stylize_override: Option<&StylizeKind<'s>>,
+  no_color: bool,
 ) -> R<String> {
-  let stylize = match stylize_override {
-    Some(s) => *s,
-    None => ctx.stylize,
-  };
+  macro_rules! style {
+    ($scope:expr, $text:expr, $flavour:expr) => {
+      if no_color {
+        Ok::<String, JsErr>($text.to_string())
+      } else {
+        ctx.stylize($scope, &$text, $flavour)
+      }
+    };
+  }
   if value.is_string() {
     let mut s = value.to_rust_string_lossy(scope);
     let mut trailer = String::new();
@@ -946,32 +1110,33 @@ pub fn format_primitive<'s>(
       for line in &parts {
         let quoted =
           quote::quote_string(line, &ctx.quotes, ctx.escape_sequences);
-        out_parts.push(stylize_with(scope, &stylize, &quoted, "string")?);
+        out_parts.push(style!(scope, quoted, "string")?);
       }
-      let joiner =
-        format!(" +\n{}", " ".repeat(ctx.indentation_lvl + 2));
+      let joiner = format!(" +\n{}", " ".repeat(ctx.indentation_lvl + 2));
       return Ok(out_parts.join(&joiner) + &trailer);
     }
     let quoted = quote::quote_string(&s, &ctx.quotes, ctx.escape_sequences);
-    return Ok(stylize_with(scope, &stylize, &quoted, "string")? + &trailer);
+    return Ok(style!(scope, quoted, "string")? + &trailer);
   }
   if value.is_number() {
-    return format_number(scope, &stylize, value);
+    let s = number_display(scope, value);
+    return style!(scope, s, "number");
   }
   if value.is_big_int() {
-    return format_bigint(scope, &stylize, value);
+    let s = format!("{}n", value.to_rust_string_lossy(scope));
+    return style!(scope, s, "bigint");
   }
   if value.is_boolean() {
     let s = if value.is_true() { "true" } else { "false" };
-    return stylize_with(scope, &stylize, s, "boolean");
+    return style!(scope, s, "boolean");
   }
   if value.is_undefined() {
-    return stylize_with(scope, &stylize, "undefined", "undefined");
+    return style!(scope, "undefined", "undefined");
   }
   // es6 symbol primitive
   let sym = v8::Local::<v8::Symbol>::try_from(value).unwrap();
   let s = maybe_quote_symbol(scope, ctx, sym);
-  stylize_with(scope, &stylize, &s, "symbol")
+  style!(scope, s, "symbol")
 }
 
 /// Slice a Rust string by UTF-16 code-unit indices (JS string semantics).
@@ -1051,7 +1216,7 @@ fn get_ctx_style<'s>(
 /// `getKeys(value, showHidden)`. Returns property keys (strings + symbols).
 pub fn get_keys<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   value: v8::Local<'s, v8::Object>,
   show_hidden: bool,
 ) -> Vec<v8::Local<'s, v8::Value>> {
@@ -1146,7 +1311,8 @@ pub fn get_keys<'s, 'i>(
   }
 
   // Errors hide the `cause` property.
-  if is_prototype_of(scope, intr.error_prototype.into(), value.into()) {
+  let error_prototype = intr.error_prototype(scope);
+  if is_prototype_of(scope, error_prototype.into(), value.into()) {
     keys.retain(|key| {
       if !key.is_string() {
         return true;
@@ -1198,9 +1364,7 @@ pub fn get_non_index_property_names<'s, 'i>(
 
 /// `builtInObjects`: own property names of the global object matching
 /// `^[A-Z][a-zA-Z0-9]+$`. Resolved live like the JS module-level snapshot.
-fn built_in_objects<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-) -> Vec<String> {
+fn built_in_objects<'s>(scope: &mut v8::PinScope<'s, '_>) -> Vec<String> {
   let context = scope.get_current_context();
   let global = context.global(scope);
   let mut out = Vec::new();
@@ -1251,7 +1415,7 @@ fn is_instanceof<'s>(
 #[allow(clippy::too_many_arguments)]
 fn add_prototype_properties<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   main: v8::Local<'s, v8::Value>,
   obj_in: v8::Local<'s, v8::Value>,
@@ -1426,7 +1590,7 @@ fn get_own_descriptor<'s, 'i>(
 /// for null-prototype objects.
 fn get_constructor_name<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   obj_in: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -1441,14 +1605,14 @@ fn get_constructor_name<'s, 'i>(
       break;
     }
     // Well-known prototype check.
-    let well_known = intr
-      .well_known
+    let well_known_list = intr.well_known(scope);
+    let well_known = well_known_list
       .iter()
       .find(|(proto, _, _)| {
         let proto_val: v8::Local<v8::Value> = (*proto).into();
         proto_val.strict_equals(cur)
       })
-      .map(|(_, name, ctor)| (name.clone(), *ctor));
+      .map(|(_, name, ctor)| (name.to_string(), *ctor));
     if let Some((name, constructor)) = well_known {
       let is_instance = {
         v8::tc_scope!(tc, scope);
@@ -1476,8 +1640,8 @@ fn get_constructor_name<'s, 'i>(
     }
 
     let cur_obj = v8::Local::<v8::Object>::try_from(cur).ok();
-    let descriptor = cur_obj
-      .and_then(|o| get_own_descriptor(scope, o, "constructor"));
+    let descriptor =
+      cur_obj.and_then(|o| get_own_descriptor(scope, o, "constructor"));
     if let Some(desc) = descriptor {
       let desc_value = try_get_str(scope, desc, "value");
       if let Some(desc_value) = desc_value {
@@ -1489,14 +1653,12 @@ fn get_constructor_name<'s, 'i>(
             .unwrap_or_default();
           if !name.is_empty() {
             let proto = try_get_str(scope, f_obj, "prototype");
-            let is_inst = proto
-              .map(|p| is_instanceof(scope, p, tmp))
-              .unwrap_or(false);
+            let is_inst =
+              proto.map(|p| is_instanceof(scope, p, tmp)).unwrap_or(false);
             if is_inst {
               if proto_props.is_some() {
-                let first_differs = first_proto
-                  .map(|p| !p.strict_equals(cur))
-                  .unwrap_or(true);
+                let first_differs =
+                  first_proto.map(|p| !p.strict_equals(cur)).unwrap_or(true);
                 let builtins = built_in_objects(scope);
                 if first_differs || !builtins.iter().any(|b| *b == name) {
                   let start_obj = first_proto.unwrap_or(tmp);
@@ -1578,9 +1740,11 @@ fn get_constructor_name<'s, 'i>(
         sub_ctx.max_string_length = n;
       }
       if sub_ctx.colors {
+        let styles = intr.styles_obj(scope);
+        let colors = intr.colors_obj(scope);
         sub_ctx.stylize = StylizeKind::Theme {
-          styles: intr.styles_obj,
-          colors: intr.colors_obj,
+          styles,
+          colors,
           js_fn: None,
         };
         sub_ctx.stylize_js_fn = None;
@@ -1628,6 +1792,7 @@ fn fork_ctx<'s>(ctx: &Ctx<'s>) -> Ctx<'s> {
     url_prototype: ctx.url_prototype,
     circular_error_message: ctx.circular_error_message.clone(),
     stylize_js_fn: ctx.stylize_js_fn,
+    theme_memo: ctx.theme_memo.clone(),
   }
 }
 
@@ -1675,7 +1840,7 @@ fn well_known_symbol_iterator<'s>(
 #[allow(clippy::too_many_arguments)]
 fn format_raw<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -1773,12 +1938,8 @@ fn format_raw<'s, 'i>(
     } else if value.is_set() {
       let set = v8::Local::<v8::Set>::try_from(value).unwrap();
       let size = set.size();
-      let prefix = get_prefix(
-        constructor.as_deref(),
-        &tag,
-        "Set",
-        &format!("({size})"),
-      );
+      let prefix =
+        get_prefix(constructor.as_deref(), &tag, "Set", &format!("({size})"));
       keys = get_keys(scope, intr, value_obj, ctx.show_hidden);
       formatter.kind = FormatterId::Set;
       formatter.bound_value = Some(value);
@@ -1789,12 +1950,8 @@ fn format_raw<'s, 'i>(
     } else if value.is_map() {
       let map = v8::Local::<v8::Map>::try_from(value).unwrap();
       let size = map.size();
-      let prefix = get_prefix(
-        constructor.as_deref(),
-        &tag,
-        "Map",
-        &format!("({size})"),
-      );
+      let prefix =
+        get_prefix(constructor.as_deref(), &tag, "Map", &format!("({size})"));
       keys = get_keys(scope, intr, value_obj, ctx.show_hidden);
       formatter.kind = FormatterId::Map;
       formatter.bound_value = Some(value);
@@ -1841,17 +1998,14 @@ fn format_raw<'s, 'i>(
       if value.is_arguments_object() {
         formatter.braces.0 = "[Arguments] {".to_string();
       } else if !tag.is_empty() {
-        formatter.braces.0 = format!(
-          "{}{{",
-          get_prefix(constructor_str, &tag, "Object", "")
-        );
+        formatter.braces.0 =
+          format!("{}{{", get_prefix(constructor_str, &tag, "Object", ""));
       }
       if keys.is_empty() && proto_props.is_none() {
         return Ok(format!("{}}}", formatter.braces.0));
       }
     } else if value.is_function() {
-      base =
-        get_function_base(scope, intr, value, constructor_str, &tag)?;
+      base = get_function_base(scope, intr, value, constructor_str, &tag)?;
       if keys.is_empty() && proto_props.is_none() {
         return ctx.stylize(scope, &base, "special");
       }
@@ -1884,10 +2038,8 @@ fn format_raw<'s, 'i>(
         return ctx.stylize(scope, &base, "date");
       }
     } else if is_intl_locale(scope, value) {
-      formatter.braces.0 = format!(
-        "{}{{",
-        get_prefix(constructor_str, &tag, "Intl.Locale", "")
-      );
+      formatter.braces.0 =
+        format!("{}{{", get_prefix(constructor_str, &tag, "Intl.Locale", ""));
       let extra_keys = [
         "baseName",
         "calendar",
@@ -1900,10 +2052,8 @@ fn format_raw<'s, 'i>(
         "region",
         "script",
       ];
-      let mut new_keys: Vec<v8::Local<'s, v8::Value>> = extra_keys
-        .iter()
-        .map(|k| v8_str(scope, k).into())
-        .collect();
+      let mut new_keys: Vec<v8::Local<'s, v8::Value>> =
+        extra_keys.iter().map(|k| v8_str(scope, k).into()).collect();
       new_keys.extend(keys);
       keys = new_keys;
     } else if is_temporal_object(scope, value) {
@@ -1919,9 +2069,10 @@ fn format_raw<'s, 'i>(
         }
       };
       return ctx.stylize(scope, &s, "temporal");
-    } else if value.is_native_error()
-      || is_prototype_of(scope, intr.error_prototype.into(), value)
-    {
+    } else if value.is_native_error() || {
+      let error_prototype = intr.error_prototype(scope);
+      is_prototype_of(scope, error_prototype.into(), value)
+    } {
       base = super::error_fmt::format_error(
         scope,
         intr,
@@ -1947,7 +2098,7 @@ fn format_raw<'s, 'i>(
       } else if keys.is_empty() && proto_props.is_none() {
         let byte_length = any_array_buffer_byte_length(scope, value);
         let num = v8::Number::new(scope, byte_length as f64);
-        let formatted = format_number(scope, &ctx.stylize.clone_kind(), num.into())?;
+        let formatted = format_number(scope, ctx, num.into())?;
         return Ok(format!("{prefix}{{ byteLength: {formatted} }}"));
       }
       formatter.braces.0 = format!("{prefix}{{");
@@ -1956,10 +2107,8 @@ fn format_raw<'s, 'i>(
       new_keys.extend(keys);
       keys = new_keys;
     } else if value.is_data_view() {
-      formatter.braces.0 = format!(
-        "{}{{",
-        get_prefix(constructor_str, &tag, "DataView", "")
-      );
+      formatter.braces.0 =
+        format!("{}{{", get_prefix(constructor_str, &tag, "DataView", ""));
       // .buffer goes last, it's not a primitive like the others.
       let mut new_keys: Vec<v8::Local<'s, v8::Value>> = vec![
         v8_str(scope, "byteLength").into(),
@@ -1969,17 +2118,13 @@ fn format_raw<'s, 'i>(
       new_keys.extend(keys);
       keys = new_keys;
     } else if value.is_promise() {
-      formatter.braces.0 = format!(
-        "{}{{",
-        get_prefix(constructor_str, &tag, "Promise", "")
-      );
+      formatter.braces.0 =
+        format!("{}{{", get_prefix(constructor_str, &tag, "Promise", ""));
       formatter.kind = FormatterId::Promise;
       formatter.bound_value = Some(value);
     } else if value.is_weak_set() {
-      formatter.braces.0 = format!(
-        "{}{{",
-        get_prefix(constructor_str, &tag, "WeakSet", "")
-      );
+      formatter.braces.0 =
+        format!("{}{{", get_prefix(constructor_str, &tag, "WeakSet", ""));
       formatter.kind = if ctx.show_hidden {
         FormatterId::WeakSet
       } else {
@@ -1987,10 +2132,8 @@ fn format_raw<'s, 'i>(
       };
       formatter.bound_value = Some(value);
     } else if value.is_weak_map() {
-      formatter.braces.0 = format!(
-        "{}{{",
-        get_prefix(constructor_str, &tag, "WeakMap", "")
-      );
+      formatter.braces.0 =
+        format!("{}{{", get_prefix(constructor_str, &tag, "WeakMap", ""));
       formatter.kind = if ctx.show_hidden {
         FormatterId::WeakMap
       } else {
@@ -1998,15 +2141,20 @@ fn format_raw<'s, 'i>(
       };
       formatter.bound_value = Some(value);
     } else if value.is_module_namespace_object() {
-      formatter.braces.0 = format!(
-        "{}{{",
-        get_prefix(constructor_str, &tag, "Module", "")
-      );
+      formatter.braces.0 =
+        format!("{}{{", get_prefix(constructor_str, &tag, "Module", ""));
       formatter.kind = FormatterId::NamespaceObject;
       formatter.bound_value = Some(value);
     } else if is_boxed_primitive(value) {
-      base =
-        get_boxed_base(scope, intr, ctx, value, &mut keys, constructor_str, &tag)?;
+      base = get_boxed_base(
+        scope,
+        intr,
+        ctx,
+        value,
+        &mut keys,
+        constructor_str,
+        &tag,
+      )?;
       if keys.is_empty() && proto_props.is_none() {
         return Ok(base);
       }
@@ -2175,12 +2323,6 @@ fn format_raw<'s, 'i>(
   Ok(res)
 }
 
-impl<'s> StylizeKind<'s> {
-  fn clone_kind(&self) -> StylizeKind<'s> {
-    *self
-  }
-}
-
 fn sort_output<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   ctx: &mut Ctx<'s>,
@@ -2335,7 +2477,7 @@ fn is_temporal_object<'s>(
 
 fn is_url_instance<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
 ) -> R<bool> {
@@ -2343,7 +2485,10 @@ fn is_url_instance<'s, 'i>(
     Some(memo) => memo,
     None => {
       let undef: v8::Local<v8::Value> = v8::undefined(scope).into();
-      let ret = js_call(scope, intr.get_url_prototype, undef, &[])?;
+      let ret = {
+        let f = intr.get_url_prototype(scope);
+        js_call(scope, f, undef, &[])
+      }?;
       let proto = v8::Local::<v8::Object>::try_from(ret).ok();
       ctx.url_prototype = Some(proto);
       proto
@@ -2371,10 +2516,13 @@ fn any_array_buffer_byte_length<'s>(
 
 fn regexp_to_string<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   regexp: v8::Local<'s, v8::Value>,
 ) -> R<String> {
-  let ret = js_call(scope, intr.reg_exp_to_string, regexp, &[])?;
+  let ret = {
+    let f = intr.reg_exp_to_string(scope);
+    js_call(scope, f, regexp, &[])
+  }?;
   Ok(to_rust_string(scope, ret))
 }
 
@@ -2526,12 +2674,15 @@ fn matches_class_regexp(s: &str) -> bool {
 
 fn get_function_base<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   value: v8::Local<'s, v8::Value>,
   constructor: Option<&str>,
   tag: &str,
 ) -> R<String> {
-  let stringified_val = js_call(scope, intr.function_to_string, value, &[])?;
+  let stringified_val = {
+    let f = intr.function_to_string(scope);
+    js_call(scope, f, value, &[])
+  }?;
   let stringified = to_rust_string(scope, stringified_val);
   if stringified.starts_with("class") && stringified.ends_with('}') {
     let slice = &stringified[5..stringified.len() - 1];
@@ -2582,7 +2733,7 @@ fn get_function_base<'s, 'i>(
 
 fn get_boxed_base<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   keys: &mut Vec<v8::Local<'s, v8::Value>>,
@@ -2591,10 +2742,16 @@ fn get_boxed_base<'s, 'i>(
 ) -> R<String> {
   let (ty, primitive): (&str, v8::Local<'s, v8::Value>) =
     if value.is_number_object() {
-      let n = js_call(scope, intr.number_value_of, value, &[])?;
+      let n = {
+        let f = intr.number_value_of(scope);
+        js_call(scope, f, value, &[])
+      }?;
       ("Number", n)
     } else if value.is_string_object() {
-      let s = js_call(scope, intr.string_value_of, value, &[])?;
+      let s = {
+        let f = intr.string_value_of(scope);
+        js_call(scope, f, value, &[])
+      }?;
       // For boxed Strings remove the 0-n indexed entries.
       let len = v8::Local::<v8::String>::try_from(s)
         .map(|s| s.length())
@@ -2603,13 +2760,22 @@ fn get_boxed_base<'s, 'i>(
       keys.drain(0..drain);
       ("String", s)
     } else if value.is_boolean_object() {
-      let b = js_call(scope, intr.boolean_value_of, value, &[])?;
+      let b = {
+        let f = intr.boolean_value_of(scope);
+        js_call(scope, f, value, &[])
+      }?;
       ("Boolean", b)
     } else if value.is_big_int_object() {
-      let b = js_call(scope, intr.big_int_value_of, value, &[])?;
+      let b = {
+        let f = intr.big_int_value_of(scope);
+        js_call(scope, f, value, &[])
+      }?;
       ("BigInt", b)
     } else {
-      let s = js_call(scope, intr.symbol_value_of, value, &[])?;
+      let s = {
+        let f = intr.symbol_value_of(scope);
+        js_call(scope, f, value, &[])
+      }?;
       ("Symbol", s)
     };
 
@@ -2620,8 +2786,7 @@ fn get_boxed_base<'s, 'i>(
       Some(c) => base.push_str(&format!(" ({c})")),
     }
   }
-  let inner =
-    format_primitive(scope, ctx, primitive, Some(&StylizeKind::NoColor))?;
+  let inner = format_primitive(scope, ctx, primitive, true)?;
   base.push_str(&format!(": {inner}]"));
   if !tag.is_empty() && Some(tag) != constructor {
     base.push_str(&format!(" [{tag}]"));
@@ -2629,7 +2794,14 @@ fn get_boxed_base<'s, 'i>(
   if !keys.is_empty() || matches!(ctx.stylize, StylizeKind::NoColor) {
     return Ok(base);
   }
-  ctx.stylize(scope, &base, &ty.to_lowercase())
+  let flavour: &'static str = match ty {
+    "Number" => "number",
+    "String" => "string",
+    "Boolean" => "boolean",
+    "BigInt" => "bigint",
+    _ => "symbol",
+  };
+  ctx.stylize(scope, &base, flavour)
 }
 
 // ---------------------------------------------------------------------------
@@ -2637,7 +2809,7 @@ fn get_boxed_base<'s, 'i>(
 
 fn run_formatter<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   formatter: &FormatterKind<'s>,
   value: v8::Local<'s, v8::Value>,
@@ -2646,12 +2818,20 @@ fn run_formatter<'s, 'i>(
   match formatter.kind {
     FormatterId::None => Ok(Vec::new()),
     FormatterId::Array => format_array(scope, intr, ctx, value, recurse_times),
-    FormatterId::Set => {
-      format_set(scope, intr, ctx, formatter.bound_value.unwrap(), recurse_times)
-    }
-    FormatterId::Map => {
-      format_map(scope, intr, ctx, formatter.bound_value.unwrap(), recurse_times)
-    }
+    FormatterId::Set => format_set(
+      scope,
+      intr,
+      ctx,
+      formatter.bound_value.unwrap(),
+      recurse_times,
+    ),
+    FormatterId::Map => format_map(
+      scope,
+      intr,
+      ctx,
+      formatter.bound_value.unwrap(),
+      recurse_times,
+    ),
     FormatterId::TypedArray => format_typed_array(
       scope,
       intr,
@@ -2663,15 +2843,27 @@ fn run_formatter<'s, 'i>(
     FormatterId::MapIterator | FormatterId::SetIterator => {
       unreachable!("iterators are special-cased before run_formatter")
     }
-    FormatterId::Promise => {
-      format_promise(scope, intr, ctx, formatter.bound_value.unwrap(), recurse_times)
-    }
-    FormatterId::WeakSet => {
-      format_weak_set(scope, intr, ctx, formatter.bound_value.unwrap(), recurse_times)
-    }
-    FormatterId::WeakMap => {
-      format_weak_map(scope, intr, ctx, formatter.bound_value.unwrap(), recurse_times)
-    }
+    FormatterId::Promise => format_promise(
+      scope,
+      intr,
+      ctx,
+      formatter.bound_value.unwrap(),
+      recurse_times,
+    ),
+    FormatterId::WeakSet => format_weak_set(
+      scope,
+      intr,
+      ctx,
+      formatter.bound_value.unwrap(),
+      recurse_times,
+    ),
+    FormatterId::WeakMap => format_weak_map(
+      scope,
+      intr,
+      ctx,
+      formatter.bound_value.unwrap(),
+      recurse_times,
+    ),
     FormatterId::WeakCollection => {
       Ok(vec![ctx.stylize(scope, "<items unknown>", "special")?])
     }
@@ -2695,7 +2887,7 @@ fn more_items(remaining: usize) -> String {
 
 fn format_array<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -2714,7 +2906,14 @@ fn format_array<'s, 'i>(
     };
     if !has_own {
       return format_special_array(
-        scope, intr, ctx, value, recurse_times, len, output, i,
+        scope,
+        intr,
+        ctx,
+        value,
+        recurse_times,
+        len,
+        output,
+        i,
       );
     }
     let key = v8::Number::new(scope, i as f64);
@@ -2739,7 +2938,7 @@ fn format_array<'s, 'i>(
 #[allow(clippy::too_many_arguments)]
 fn format_special_array<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -2826,7 +3025,7 @@ fn format_special_array<'s, 'i>(
 
 fn format_set<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -2853,7 +3052,7 @@ fn format_set<'s, 'i>(
 
 fn format_map<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -2885,7 +3084,7 @@ fn format_map<'s, 'i>(
 
 fn format_typed_array<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   length: usize,
@@ -2897,15 +3096,14 @@ fn format_typed_array<'s, 'i>(
   let mut output = Vec::with_capacity(max_length);
   let is_bigint_array =
     value.is_big_int64_array() || value.is_big_uint64_array();
-  let stylize = ctx.stylize;
   for i in 0..max_length {
     let Some(elem) = value_obj.get_index(scope, i as u32) else {
       continue;
     };
     let s = if is_bigint_array {
-      format_bigint(scope, &stylize, elem)?
+      format_bigint(scope, ctx, elem)?
     } else {
-      format_number(scope, &stylize, elem)?
+      format_number(scope, ctx, elem)?
     };
     output.push(s);
   }
@@ -2943,7 +3141,7 @@ fn iterator_braces_mark_entries(braces0: &str) -> String {
 
 fn format_promise<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -2970,7 +3168,7 @@ fn format_promise<'s, 'i>(
 
 fn format_weak_set<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -2985,7 +3183,7 @@ fn format_weak_set<'s, 'i>(
 
 fn format_weak_map<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -3000,7 +3198,7 @@ fn format_weak_map<'s, 'i>(
 
 fn format_map_iter_inner<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   recurse_times: f64,
   entries: v8::Local<'s, v8::Array>,
@@ -3060,7 +3258,7 @@ fn format_map_iter_inner<'s, 'i>(
 
 fn format_set_iter_inner<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   recurse_times: f64,
   entries: v8::Local<'s, v8::Array>,
@@ -3097,21 +3295,21 @@ fn format_array_buffer<'s, 'i>(
 ) -> R<Vec<String>> {
   let val_len = any_array_buffer_byte_length(scope, value);
   let len = (ctx.max_array_length.max(0.0) as usize).min(val_len);
-  let bytes: Option<Vec<u8>> =
-    if let Ok(ab) = v8::Local::<v8::ArrayBuffer>::try_from(value) {
-      if ab.was_detached() {
-        None
-      } else {
-        Some(read_buffer_bytes(ab.data(), len))
-      }
-    } else if let Ok(sab) = v8::Local::<v8::SharedArrayBuffer>::try_from(value)
-    {
-      let store = sab.get_backing_store();
-      let data = store.data();
-      Some(read_buffer_bytes(data, len))
-    } else {
+  let bytes: Option<Vec<u8>> = if let Ok(ab) =
+    v8::Local::<v8::ArrayBuffer>::try_from(value)
+  {
+    if ab.was_detached() {
       None
-    };
+    } else {
+      Some(read_buffer_bytes(ab.data(), len))
+    }
+  } else if let Ok(sab) = v8::Local::<v8::SharedArrayBuffer>::try_from(value) {
+    let store = sab.get_backing_store();
+    let data = store.data();
+    Some(read_buffer_bytes(data, len))
+  } else {
+    None
+  };
   let Some(bytes) = bytes else {
     return Ok(vec![ctx.stylize(scope, "(detached)", "special")?]);
   };
@@ -3153,7 +3351,7 @@ fn read_buffer_bytes(
 
 fn format_namespace_object<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   keys: &mut Vec<v8::Local<'s, v8::Value>>,
   value: v8::Local<'s, v8::Value>,
@@ -3240,7 +3438,7 @@ pub fn remove_colors(s: &str) -> String {
 #[allow(clippy::too_many_arguments)]
 fn format_property<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
-  intr: &Intrinsics<'s>,
+  intr: &Intrinsics<'_>,
   ctx: &mut Ctx<'s>,
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
@@ -3358,7 +3556,7 @@ fn format_property<'s, 'i>(
               format_value(scope, intr, ctx, tmp, recurse_times, false)?;
             str_ = format!("{lab} {inner}");
           } else {
-            let primitive = format_primitive(scope, ctx, tmp, None)?;
+            let primitive = format_primitive(scope, ctx, tmp, false)?;
             let open = ctx.stylize(scope, &format!("[{label}:"), "special")?;
             let close = ctx.stylize(scope, "]", "special")?;
             str_ = format!("{open} {primitive}{close}");
@@ -3594,18 +3792,20 @@ fn group_array_elements<'s, 'i>(
     && ((total_length as f64) / (actual_max as f64) > 5.0 || max_length <= 6)
   {
     let approx_char_heights = 2.5f64;
-    let average_bias =
-      ((actual_max as f64) - (total_length as f64) / (output.len() as f64))
-        .sqrt();
+    let average_bias = ((actual_max as f64)
+      - (total_length as f64) / (output.len() as f64))
+      .sqrt();
     let biased_max = ((actual_max as f64) - 3.0 - average_bias).max(1.0);
     let compact_num = ctx.compact.as_number().unwrap_or(0.0);
-    let columns_f = ((approx_char_heights * biased_max
-      * (output_length as f64))
-      .sqrt()
-      / biased_max)
-      .round();
+    let columns_f =
+      ((approx_char_heights * biased_max * (output_length as f64)).sqrt()
+        / biased_max)
+        .round();
     let columns = columns_f
-      .min(((ctx.break_length - ctx.indentation_lvl as f64) / (actual_max as f64)).floor())
+      .min(
+        ((ctx.break_length - ctx.indentation_lvl as f64) / (actual_max as f64))
+          .floor(),
+      )
       .min(compact_num * 4.0)
       .min(15.0);
     if columns <= 1.0 {
