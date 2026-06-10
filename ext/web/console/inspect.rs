@@ -1252,10 +1252,17 @@ pub fn get_keys<'s, 'i>(
   if show_hidden {
     // ObjectGetOwnPropertyNames: all own string keys (incl. non-enumerable).
     v8::tc_scope!(tc, scope);
+    let is_module_ns = v8::Local::<v8::Value>::try_from(value)
+      .map(|v| v.is_module_namespace_object())
+      .unwrap_or(false);
     if let Some(arr) = value.get_property_names(
       tc,
       v8::GetPropertyNamesArgs {
-        mode: v8::KeyCollectionMode::OwnOnly,
+        mode: if is_module_ns {
+          v8::KeyCollectionMode::IncludePrototypes
+        } else {
+          v8::KeyCollectionMode::OwnOnly
+        },
         property_filter: v8::PropertyFilter::SKIP_SYMBOLS,
         index_filter: v8::IndexFilter::IncludeIndices,
         key_conversion: v8::KeyConversionMode::ConvertToString,
