@@ -4,20 +4,20 @@ use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
+use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::swc::ast;
 use deno_ast::swc::atoms::Atom;
-use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::common::DUMMY_SP;
-use deno_ast::swc::ecma_visit::visit_mut_pass;
+use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitMut;
 use deno_ast::swc::ecma_visit::VisitWith as _;
+use deno_ast::swc::ecma_visit::visit_mut_pass;
 use deno_ast::swc::utils as swc_utils;
-use deno_ast::MediaType;
-use deno_ast::SourceRangedForSpanned as _;
 use deno_cache_dir::file_fetcher::File;
-use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_core::error::AnyError;
 use regex::Regex;
 
 use crate::file_fetcher::TextDecodedFile;
@@ -172,6 +172,15 @@ fn extract_files_from_source_comments(
   Ok(files)
 }
 
+/// Strips a single blockquote marker, a `>` followed by an optional space or
+/// tab, from the start of `line`. Returns the remainder, or `None` when the
+/// line does not start with a marker.
+fn strip_blockquote_marker(line: &str) -> Option<&str> {
+  line
+    .strip_prefix('>')
+    .map(|rest| rest.strip_prefix(|c| c == ' ' || c == '\t').unwrap_or(rest))
+}
+
 fn extract_files_from_regex_blocks(
   specifier: &ModuleSpecifier,
   source: &str,
@@ -255,11 +264,9 @@ fn extract_files_from_regex_blocks(
       // or tab. A fence that is not inside a blockquote has depth zero.
       let mut blockquote_depth = 0usize;
       let mut rest = fence_prefix;
-      while let Some(after_marker) = rest.strip_prefix('>') {
+      while let Some(after_marker) = strip_blockquote_marker(rest) {
         blockquote_depth += 1;
-        rest = after_marker
-          .strip_prefix(|c| c == ' ' || c == '\t')
-          .unwrap_or(after_marker);
+        rest = after_marker;
       }
 
       // TODO(caspervonb) generate an inline source map
@@ -273,12 +280,10 @@ fn extract_files_from_regex_blocks(
         // normal code line that happens to start with `> ` is preserved.
         let mut stripped = line_text.as_str();
         for _ in 0..blockquote_depth {
-          let Some(after_marker) = stripped.strip_prefix('>') else {
+          let Some(after_marker) = strip_blockquote_marker(stripped) else {
             break;
           };
-          stripped = after_marker
-            .strip_prefix(|c| c == ' ' || c == '\t')
-            .unwrap_or(after_marker);
+          stripped = after_marker;
         }
         writeln!(file_source, "{}", stripped).unwrap();
       }
@@ -1446,6 +1451,29 @@ Deno.test("file:///main.ts$9-12.ts", async ()=>{
             media_type: MediaType::TypeScript,
           },
         ],
+      },
+      // A code block nested two blockquote levels deep (`> > `) must have both
+      // levels of `> ` stripped so the extracted source is valid.
+      Test {
+        input: Input {
+          source: r#"/**
+ * > > ```ts
+ * > > console.log("nested");
+ * > > ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$2-5.ts", async ()=>{
+    console.log("nested");
+});
+"#,
+          specifier: "file:///main.ts$2-5.ts",
+          media_type: MediaType::TypeScript,
+        }],
       },
       // Regression: a code block NOT inside a blockquote that contains a line
       // starting with `> ` (e.g. inside a template literal) must preserve it.
