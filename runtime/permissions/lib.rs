@@ -9696,14 +9696,12 @@ mod tests {
     // A `\\?\` verbatim (extended-length) path and its regular form refer to
     // the same file, so the permission system must treat them as equal
     // (denoland/deno#18597).
-    let regular =
-      PathDescriptor::new_known_absolute(Cow::Borrowed(Path::new(
-        "C:\\Users\\Admin",
-      )));
-    let verbatim =
-      PathDescriptor::new_known_absolute(Cow::Borrowed(Path::new(
-        "\\\\?\\C:\\Users\\Admin",
-      )));
+    let regular = PathDescriptor::new_known_absolute(Cow::Borrowed(Path::new(
+      "C:\\Users\\Admin",
+    )));
+    let verbatim = PathDescriptor::new_known_absolute(Cow::Borrowed(
+      Path::new("\\\\?\\C:\\Users\\Admin"),
+    ));
     assert_eq!(regular, verbatim);
     // The stored path is the simplified form, not the verbatim one.
     assert_eq!(verbatim.path, PathBuf::from("C:\\Users\\Admin"));
