@@ -4,6 +4,8 @@
 //! `formatRaw` and friends). The goal is byte-for-byte identical output with
 //! the JavaScript implementation it replaces.
 
+#![allow(clippy::all, reason = "ported Rust code with pre-existing lints")]
+
 use std::collections::HashMap;
 
 use deno_core::v8;

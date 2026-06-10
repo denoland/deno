@@ -4,6 +4,8 @@
 //! in `ext/web/01_console.js`. The JS file is now a thin shim over the ops
 //! and the cppgc-wrapped `Console` class defined here.
 
+#![allow(clippy::all, reason = "ported Rust code with pre-existing lints")]
+
 mod css;
 mod error_fmt;
 mod inspect;
