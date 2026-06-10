@@ -5177,6 +5177,15 @@ pub fn op_http_cancel(
     join_handle.connection_cancel_handle().cancel();
   }
 
+  // Tell every upgraded server-side WebSocket to close as well. The
+  // connection-cancel handle doesn't reach websockets (the stream was moved
+  // out of the hyper connection at upgrade time), so without this an
+  // abort-signal-only shutdown (which goes through this op, not
+  // `op_http_close`) would still leave `serverWebSocket` resources alive.
+  for ws in join_handle.server_state.active_websockets().snapshot() {
+    ws.server_shutdown();
+  }
+
   Ok(())
 }
 
