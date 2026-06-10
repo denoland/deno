@@ -45,6 +45,8 @@ v8_static_strings!(
   TYPE = "type",
   URL = "url",
   WASM_INSTANCE = "WasmInstance",
+  WASM_INSTANCES = "wasmInstances",
+  WEAK_MAP = "WeakMap",
   WEBASSEMBLY = "WebAssembly",
   ESMODULE = "__esModule",
   HOST_OBJECT = "Deno.core.hostObject",

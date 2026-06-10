@@ -1140,6 +1140,18 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
         return;
       }
     }
+    // Registry of instance exports keyed by module namespace, used so that
+    // Wasm-to-Wasm global imports link against the original
+    // `WebAssembly.Global` object rather than the unwrapped snapshot value.
+    if let Some(m) = state.wasm_instances_map.borrow().as_ref() {
+      let wasm_instances_key = WASM_INSTANCES.v8_string(scope).unwrap();
+      let wasm_instances_val = v8::Local::new(scope, m.clone());
+      meta.create_data_property(
+        scope,
+        wasm_instances_key.into(),
+        wasm_instances_val.into(),
+      );
+    }
   }
 
   let builder =
