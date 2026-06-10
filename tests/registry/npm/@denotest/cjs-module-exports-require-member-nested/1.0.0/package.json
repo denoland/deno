@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/cjs-module-exports-require-member-nested",
+  "version": "1.0.0",
+  "main": "./main.js"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "@denotest/esm-shared-default-types",
+  "version": "1.0.0",
+  "main": "dist/cjs/index.js",
+  "module": "dist/es/index.js",
+  "exports": {
+    "types": "./types/index.d.ts",
+    "import": "./dist/es/index.js",
+    "default": "./dist/cjs/index.js"
+  },
+  "types": "./types/index.d.ts"
+}

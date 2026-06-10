@@ -18,7 +18,13 @@ use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
-  ResolveFromLockfile(Arc<LockfileLock<TSys>>),
+  ResolveFromLockfile {
+    lockfile: Arc<LockfileLock<TSys>>,
+    /// Whether to dedupe equivalent peer-dep variants when loading the
+    /// snapshot. Should be true only on install paths — see
+    /// [`deno_npm::resolution::SnapshotFromLockfileParams`].
+    dedup_equivalent_peer_variants: bool,
+  },
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
 }
 
@@ -135,16 +141,23 @@ fn resolve_snapshot<TSys: LockfileSys>(
   link_packages: &WorkspaceNpmLinkPackagesRc,
 ) -> Result<Option<SnapshotWithPending>, ResolveSnapshotError> {
   match snapshot {
-    NpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
+    NpmResolverManagedSnapshotOption::ResolveFromLockfile {
+      lockfile,
+      dedup_equivalent_peer_variants,
+    } => {
       if !lockfile.overwrite() {
-        let snapshot = snapshot_from_lockfile(lockfile.clone(), link_packages)
-          .map_err(|source| {
-            ResolveSnapshotErrorData {
-              lockfile_path: lockfile.filename.clone(),
-              source,
-            }
-            .into_box()
-          })?;
+        let snapshot = snapshot_from_lockfile(
+          lockfile.clone(),
+          link_packages,
+          dedup_equivalent_peer_variants,
+        )
+        .map_err(|source| {
+          ResolveSnapshotErrorData {
+            lockfile_path: lockfile.filename.clone(),
+            source,
+          }
+          .into_box()
+        })?;
         Ok(Some(snapshot))
       } else {
         Ok(None)
@@ -174,6 +187,7 @@ struct SnapshotWithPending {
 fn snapshot_from_lockfile<TSys: LockfileSys>(
   lockfile: Arc<LockfileLock<TSys>>,
   link_packages: &WorkspaceNpmLinkPackagesRc,
+  dedup_equivalent_peer_variants: bool,
 ) -> Result<SnapshotWithPending, SnapshotFromLockfileError> {
   let lockfile = lockfile.lock();
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
@@ -181,6 +195,7 @@ fn snapshot_from_lockfile<TSys: LockfileSys>(
       link_packages: &link_packages.0,
       lockfile: &lockfile,
       default_tarball_url: Default::default(),
+      dedup_equivalent_peer_variants,
     },
   )?;
 

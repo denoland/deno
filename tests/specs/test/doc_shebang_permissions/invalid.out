@@ -1,0 +1,20 @@
+Check [WILDCARD]invalid.ts
+Check [WILDCARD]invalid.ts$5-9.ts
+running 0 tests from ./invalid.ts
+running 1 test from ./invalid.ts$5-9.ts
+[WILDCARD]/invalid.ts$5-9.ts ... FAILED ([WILDLINE])
+
+ ERRORS 
+
+[WILDCARD]/invalid.ts$5-9.ts => ./invalid.ts$5-9.ts:1:6
+error: Error: invalid doc test hashbang: #!/bin/sh (binary basename needs to be 'deno')
+    throw new Error("invalid doc test hashbang: #!/bin/sh (binary basename needs to be 'deno')");
+[WILDCARD]
+
+ FAILURES 
+
+[WILDCARD]/invalid.ts$5-9.ts => ./invalid.ts$5-9.ts:1:6
+
+FAILED | 0 passed | 1 failed ([WILDLINE])
+
+error: Test failed

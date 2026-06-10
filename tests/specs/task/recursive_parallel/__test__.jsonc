@@ -1,0 +1,16 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/27586.
+  //
+  // Three workspace members each have a `dev` task that depends on a local
+  // `build` task. The dev tasks rendezvous on a filesystem barrier — each
+  // member writes a marker file, then waits until all three markers exist
+  // before exiting. Sequential execution would deadlock on the very first
+  // member, so the test only passes when `deno task -r dev` runs the dev
+  // tasks concurrently across packages.
+  "tempDir": true,
+  "args": "task -r dev",
+  "envs": {
+    "DENO_JOBS": "3"
+  },
+  "output": "task.out"
+}

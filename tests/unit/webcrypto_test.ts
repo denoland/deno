@@ -2412,3 +2412,1261 @@ Deno.test("crypto constructors throw ERR_ILLEGAL_CONSTRUCTOR", () => {
     );
   }
 });
+
+// Tests for WICG "Modern Algorithms in the Web Cryptography API"
+// https://wicg.github.io/webcrypto-modern-algos/
+//
+// The lib.dom.d.ts shipped in Deno reflects the current Web Crypto IDL,
+// which does not yet include the WICG modern-algorithms additions. Until
+// those land upstream, parameter dictionaries for the new algorithms are
+// cast to AlgorithmIdentifier here.
+// deno-lint-ignore no-explicit-any
+type AnyAlg = any;
+
+Deno.test(async function chaCha20Poly1305RoundTrip() {
+  const key = await crypto.subtle.generateKey(
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
+    true,
+    ["encrypt", "decrypt"],
+  ) as unknown as CryptoKey;
+  assertEquals(key.algorithm.name, "ChaCha20-Poly1305");
+  assertEquals(key.type, "secret");
+
+  // Per https://wicg.github.io/webcrypto-modern-algos AEAD parameters use `iv`.
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plaintext = new TextEncoder().encode("Hello, ChaCha20-Poly1305!");
+  const aad = new TextEncoder().encode("authentic-aad");
+
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: "ChaCha20-Poly1305", iv, additionalData: aad } as AnyAlg,
+    key,
+    plaintext,
+  );
+  // Ciphertext includes the 16-byte Poly1305 tag.
+  assertEquals(ciphertext.byteLength, plaintext.byteLength + 16);
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "ChaCha20-Poly1305", iv, additionalData: aad } as AnyAlg,
+    key,
+    ciphertext,
+  );
+  assertEquals(new Uint8Array(decrypted), plaintext);
+});
+
+Deno.test(async function chaCha20Poly1305TamperDetected() {
+  const key = await crypto.subtle.generateKey(
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
+    true,
+    ["encrypt", "decrypt"],
+  ) as unknown as CryptoKey;
+  const iv = new Uint8Array(12);
+  const plaintext = new Uint8Array([1, 2, 3, 4]);
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "ChaCha20-Poly1305", iv } as AnyAlg,
+      key,
+      plaintext,
+    ),
+  );
+  // Flip a bit in the ciphertext to corrupt the tag.
+  ciphertext[ciphertext.length - 1] ^= 1;
+  await assertRejects(() =>
+    crypto.subtle.decrypt(
+      { name: "ChaCha20-Poly1305", iv } as AnyAlg,
+      key,
+      ciphertext,
+    ), DOMException);
+});
+
+Deno.test(async function chaCha20Poly1305RejectsBadIvLength() {
+  const key = await crypto.subtle.generateKey(
+    { name: "ChaCha20-Poly1305" } as AnyAlg,
+    true,
+    ["encrypt", "decrypt"],
+  ) as unknown as CryptoKey;
+  const badIv = new Uint8Array(11); // not 12
+  await assertRejects(() =>
+    crypto.subtle.encrypt(
+      { name: "ChaCha20-Poly1305", iv: badIv } as AnyAlg,
+      key,
+      new Uint8Array(1),
+    ), DOMException);
+});
+
+Deno.test(async function chaCha20Poly1305ImportRawSecretKey() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const raw = new Uint8Array(32).fill(0x42);
+  const key = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const exported = new Uint8Array(await subtle.exportKey("raw-secret", key));
+  assertEquals(exported, raw);
+});
+
+Deno.test(async function chaCha20Poly1305ImportExportJwk() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const raw = new Uint8Array(32).fill(0x42);
+  const imported = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const jwk = await subtle.exportKey("jwk", imported);
+  assertEquals(jwk.kty, "oct");
+  assertEquals(jwk.alg, "C20P");
+
+  const key = await subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  const exported = new Uint8Array(await subtle.exportKey("raw-secret", key));
+  assertEquals(exported, raw);
+});
+
+// deriveKey() must work for modern symmetric algorithms: its internal import
+// step uses "raw-secret", which ChaCha20-Poly1305 accepts.
+Deno.test(async function chaCha20Poly1305DeriveKey() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const baseKey = await subtle.importKey(
+    "raw",
+    new Uint8Array(16),
+    { name: "HKDF" },
+    false,
+    ["deriveKey"],
+  );
+  const derived = await subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new Uint8Array(0),
+      info: new Uint8Array(0),
+    },
+    baseKey,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  assertEquals(derived.algorithm.name, "ChaCha20-Poly1305");
+  assertEquals(derived.type, "secret");
+
+  const iv = new Uint8Array(12);
+  const ct = await subtle.encrypt(
+    { name: "ChaCha20-Poly1305", iv },
+    derived,
+    new Uint8Array([1, 2, 3]),
+  );
+  const pt = await subtle.decrypt(
+    { name: "ChaCha20-Poly1305", iv },
+    derived,
+    ct,
+  );
+  assertEquals(new Uint8Array(pt), new Uint8Array([1, 2, 3]));
+});
+
+// New symmetric algorithms only recognize "raw-secret", not the legacy "raw".
+Deno.test(async function chaCha20Poly1305RejectsRawFormat() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const raw = new Uint8Array(32).fill(0x42);
+  await assertRejects(() =>
+    subtle.importKey(
+      "raw",
+      raw,
+      { name: "ChaCha20-Poly1305" },
+      true,
+      ["encrypt", "decrypt"],
+    ), DOMException);
+
+  const key = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "ChaCha20-Poly1305" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  await assertRejects(() => subtle.exportKey("raw", key), DOMException);
+});
+
+// For existing symmetric algorithms "raw" is an alias of "raw-secret".
+Deno.test(async function rawSecretAliasForExistingSymmetricAlgorithms() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+  const raw = new Uint8Array(16).fill(0x11);
+
+  // AES-GCM round-trips through both "raw" and "raw-secret".
+  const aesKey = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "AES-GCM" },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  assertEquals(new Uint8Array(await subtle.exportKey("raw", aesKey)), raw);
+  assertEquals(
+    new Uint8Array(await subtle.exportKey("raw-secret", aesKey)),
+    raw,
+  );
+
+  // HMAC round-trips through both "raw" and "raw-secret".
+  const hmacKey = await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "HMAC", hash: "SHA-256" },
+    true,
+    ["sign", "verify"],
+  );
+  assertEquals(
+    new Uint8Array(await subtle.exportKey("raw-secret", hmacKey)),
+    raw,
+  );
+
+  // HKDF accepts "raw-secret" as well.
+  await subtle.importKey(
+    "raw-secret",
+    raw,
+    { name: "HKDF" },
+    false,
+    ["deriveBits"],
+  );
+});
+
+// For existing asymmetric algorithms "raw-public" is an alias of "raw".
+// https://wicg.github.io/webcrypto-modern-algos/#subtlecrypto-interface-keyformat
+Deno.test(async function rawPublicAliasForExistingAsymmetricAlgorithms() {
+  // deno-lint-ignore no-explicit-any
+  const subtle = crypto.subtle as any;
+
+  // deno-lint-ignore no-explicit-any
+  const cases: [any, KeyUsage[], KeyUsage[]][] = [
+    [{ name: "ECDSA", namedCurve: "P-256" }, ["sign", "verify"], ["verify"]],
+    [{ name: "ECDH", namedCurve: "P-256" }, ["deriveBits"], []],
+    [{ name: "Ed25519" }, ["sign", "verify"], ["verify"]],
+    [{ name: "X25519" }, ["deriveBits"], []],
+    [{ name: "X448" }, ["deriveBits"], []],
+  ];
+
+  for (const [algorithm, keyUsages, publicKeyUsages] of cases) {
+    const { publicKey, privateKey } = await subtle.generateKey(
+      algorithm,
+      true,
+      keyUsages,
+    );
+
+    // "raw-public" export yields the same bytes as "raw".
+    const raw = new Uint8Array(await subtle.exportKey("raw", publicKey));
+    const rawPublic = new Uint8Array(
+      await subtle.exportKey("raw-public", publicKey),
+    );
+    assertEquals(rawPublic, raw);
+
+    // "raw-public" import round-trips back to the same key bytes.
+    const imported = await subtle.importKey(
+      "raw-public",
+      raw,
+      algorithm,
+      true,
+      publicKeyUsages,
+    );
+    assertEquals(imported.type, "public");
+    assertEquals(
+      new Uint8Array(await subtle.exportKey("raw-public", imported)),
+      raw,
+    );
+
+    // "raw-public" is only valid for public keys.
+    await assertRejects(
+      () => subtle.exportKey("raw-public", privateKey),
+      DOMException,
+    );
+  }
+});
+
+// X448 private keys must be exportable to JWK (kty=OKP, crv=X448, x + d),
+// mirroring X25519. Regression test for the previously-missing private export.
+Deno.test(async function x448JwkExportImportRoundtrip() {
+  const { publicKey, privateKey } = await crypto.subtle.generateKey(
+    { name: "X448" },
+    true,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  // Public JWK export: only x.
+  const pubJwk = await crypto.subtle.exportKey("jwk", publicKey);
+  assertEquals(pubJwk.kty, "OKP");
+  assertEquals(pubJwk.crv, "X448");
+  assert(typeof pubJwk.x === "string" && pubJwk.x.length > 0);
+  assertEquals(pubJwk.d, undefined);
+
+  // Private JWK export: both x (derived public) and d (private scalar).
+  const privJwk = await crypto.subtle.exportKey("jwk", privateKey);
+  assertEquals(privJwk.kty, "OKP");
+  assertEquals(privJwk.crv, "X448");
+  assert(typeof privJwk.x === "string" && privJwk.x.length > 0);
+  assert(typeof privJwk.d === "string" && privJwk.d.length > 0);
+  // The exported public component matches the standalone public key export.
+  assertEquals(privJwk.x, pubJwk.x);
+
+  // Re-import the private JWK and confirm a stable round-trip.
+  const reimported = await crypto.subtle.importKey(
+    "jwk",
+    privJwk,
+    { name: "X448" },
+    true,
+    ["deriveBits"],
+  );
+  assertEquals(reimported.type, "private");
+  const privJwk2 = await crypto.subtle.exportKey("jwk", reimported);
+  assertEquals(privJwk2.d, privJwk.d);
+  assertEquals(privJwk2.x, privJwk.x);
+
+  // Derived bits are identical whether using the original or re-imported key.
+  const bits1 = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: "X448", public: publicKey },
+      privateKey,
+      224,
+    ),
+  );
+  const bits2 = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: "X448", public: publicKey },
+      reimported,
+      224,
+    ),
+  );
+  assertEquals(bits1, bits2);
+});
+
+Deno.test(async function hmacSha3SignVerify() {
+  for (const hash of ["SHA3-256", "SHA3-384", "SHA3-512"]) {
+    const key = await crypto.subtle.generateKey(
+      { name: "HMAC", hash },
+      true,
+      ["sign", "verify"],
+    ) as CryptoKey;
+    const data = new TextEncoder().encode("modern algorithms");
+    const sig = await crypto.subtle.sign("HMAC", key, data);
+    const ok = await crypto.subtle.verify("HMAC", key, sig, data);
+    assert(ok, `HMAC ${hash} verify`);
+  }
+});
+
+Deno.test(async function cshakeDigest() {
+  // cSHAKE with empty function name and empty customization equals SHAKE.
+  // The spec defines no standalone SHAKE algorithm; SHAKE is reachable only
+  // as cSHAKE with empty N and S. Reference vector is SHAKE128("hello", 128).
+  const data = new TextEncoder().encode("hello");
+  const shake = "8eb4b6a932f280335ee1a279f8c208a3";
+  const cshake = new Uint8Array(
+    await crypto.subtle.digest(
+      {
+        name: "cSHAKE128",
+        outputLength: 128,
+        functionName: new Uint8Array(0),
+        customization: new Uint8Array(0),
+      } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(
+    [...cshake].map((b) => b.toString(16).padStart(2, "0")).join(""),
+    shake,
+  );
+
+  // Non-empty customization changes the output.
+  const customized = new Uint8Array(
+    await crypto.subtle.digest(
+      {
+        name: "cSHAKE128",
+        outputLength: 128,
+        customization: new TextEncoder().encode("Email Signature"),
+      } as AnyAlg,
+      data,
+    ),
+  );
+  assert(customized.length === 16);
+  // Must differ from plain SHAKE (cSHAKE with empty customization).
+  const customizedHex = [...customized].map((b) =>
+    b.toString(16).padStart(2, "0")
+  ).join("");
+  assert(customizedHex !== shake);
+});
+
+Deno.test(async function turboShakeDigest() {
+  const data = new TextEncoder().encode("hello");
+  const ts128 = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "TurboSHAKE128", outputLength: 256 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(ts128.length, 32);
+
+  // Different domain separation byte produces different output.
+  const ts128Alt = new Uint8Array(
+    await crypto.subtle.digest(
+      {
+        name: "TurboSHAKE128",
+        outputLength: 256,
+        domainSeparation: 0x06,
+      } as AnyAlg,
+      data,
+    ),
+  );
+  assert(ts128.length === ts128Alt.length);
+  let differs = false;
+  for (let i = 0; i < ts128.length; i++) {
+    if (ts128[i] !== ts128Alt[i]) {
+      differs = true;
+      break;
+    }
+  }
+  assert(differs);
+});
+
+Deno.test(async function shakeFamilyRequiresOutputLength() {
+  // The modern WebCrypto algorithms spec renamed the output length dictionary
+  // member from `length` to `outputLength`. Passing the legacy `length` member
+  // (with no `outputLength`) must be treated as a missing required member.
+  // https://wicg.github.io/webcrypto-modern-algos/#cshake-params
+  const data = new Uint8Array(0);
+  const names = [
+    "cSHAKE128",
+    "cSHAKE256",
+    "TurboSHAKE128",
+    "TurboSHAKE256",
+  ];
+  for (const name of names) {
+    await assertRejects(
+      () => crypto.subtle.digest({ name, length: 256 } as AnyAlg, data),
+      TypeError,
+      "outputLength",
+    );
+  }
+
+  // `outputLength` succeeds.
+  const out = new Uint8Array(
+    await crypto.subtle.digest(
+      { name: "cSHAKE128", outputLength: 256 } as AnyAlg,
+      data,
+    ),
+  );
+  assertEquals(out.length, 32);
+});
+
+// ML-KEM (FIPS 203) — post-quantum key encapsulation.
+// https://wicg.github.io/webcrypto-modern-algos/#ml-kem
+
+// deno-lint-ignore no-explicit-any
+const subtleAny = crypto.subtle as any;
+
+const ML_KEM_VARIANTS = [
+  { name: "ML-KEM-512", pubLen: 800, privLen: 1632, ctLen: 768 },
+  { name: "ML-KEM-768", pubLen: 1184, privLen: 2400, ctLen: 1088 },
+  { name: "ML-KEM-1024", pubLen: 1568, privLen: 3168, ctLen: 1568 },
+] as const;
+
+for (const variant of ML_KEM_VARIANTS) {
+  Deno.test(`mlKemGenerateAndRoundTrip:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      [
+        "encapsulateKey",
+        "encapsulateBits",
+        "decapsulateKey",
+        "decapsulateBits",
+      ],
+    ) as CryptoKeyPair;
+    assertEquals(kp.publicKey.algorithm.name, variant.name);
+    assertEquals(kp.privateKey.algorithm.name, variant.name);
+    assertEquals(kp.publicKey.type, "public");
+    assertEquals(kp.privateKey.type, "private");
+
+    // encapsulateBits / decapsulateBits round trip.
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    assertEquals(enc.ciphertext.byteLength, variant.ctLen);
+    assertEquals(enc.sharedKey.byteLength, 32);
+
+    const decBits = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      kp.privateKey,
+      enc.ciphertext,
+    );
+    assertEquals(decBits.byteLength, 32);
+    assertEquals(new Uint8Array(decBits), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemEncapsulateKeyDecapsulateKey:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      [
+        "encapsulateKey",
+        "decapsulateKey",
+      ],
+    ) as CryptoKeyPair;
+
+    const { ciphertext, sharedKey: senderKey } = await subtleAny.encapsulateKey(
+      { name: variant.name },
+      kp.publicKey,
+      { name: "HMAC", hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    );
+
+    const receiverKey = await subtleAny.decapsulateKey(
+      { name: variant.name },
+      kp.privateKey,
+      ciphertext,
+      { name: "HMAC", hash: "SHA-256" },
+      true,
+      ["sign", "verify"],
+    );
+
+    // Sender signs, receiver verifies — proves both ends derived the same key.
+    const data = new TextEncoder().encode("post-quantum hello");
+    const sig = await crypto.subtle.sign("HMAC", senderKey, data);
+    const ok = await crypto.subtle.verify("HMAC", receiverKey, sig, data);
+    assert(ok, `HMAC verify with decapsulated key for ${variant.name}`);
+  });
+
+  Deno.test(`mlKemImportExportRawPublic:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const exported = new Uint8Array(
+      await subtleAny.exportKey("raw-public", kp.publicKey),
+    );
+    assertEquals(exported.length, variant.pubLen);
+
+    const reimported = await subtleAny.importKey(
+      "raw-public",
+      exported,
+      { name: variant.name },
+      true,
+      ["encapsulateBits"],
+    );
+    assertEquals(reimported.algorithm.name, variant.name);
+    assertEquals(reimported.type, "public");
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      reimported,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      kp.privateKey,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemImportExportPkcs8Spki:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const spki = new Uint8Array(
+      await subtleAny.exportKey("spki", kp.publicKey),
+    );
+    const pkcs8 = new Uint8Array(
+      await subtleAny.exportKey("pkcs8", kp.privateKey),
+    );
+    // PKCS#8 must use the seed-only form (a ~86-byte DER wrapping the 64-byte
+    // seed), not the much larger expanded-key form (privLen + DER overhead)
+    // that older Deno releases emitted.
+    assert(
+      pkcs8.length < 120,
+      `${variant.name} pkcs8 should be seed-form, got ${pkcs8.length} bytes`,
+    );
+
+    const reimportedPub = await subtleAny.importKey(
+      "spki",
+      spki,
+      { name: variant.name },
+      true,
+      ["encapsulateBits"],
+    );
+    const reimportedPriv = await subtleAny.importKey(
+      "pkcs8",
+      pkcs8,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      reimportedPub,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      reimportedPriv,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+  });
+
+  Deno.test(`mlKemImportExportRawSeed:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const seed = new Uint8Array(
+      await subtleAny.exportKey("raw-seed", kp.privateKey),
+    );
+    assertEquals(seed.length, 64);
+
+    // Re-importing the seed must reproduce the same key (the embedded public
+    // key derived from it lets us encapsulate to the original key pair).
+    const reimported = await subtleAny.importKey(
+      "raw-seed",
+      seed,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+    assertEquals(reimported.algorithm.name, variant.name);
+    assertEquals(reimported.type, "private");
+
+    // The reimported key decapsulates ciphertext made for the original public.
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      reimported,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+
+    // The seed re-exports identically.
+    const seed2 = new Uint8Array(
+      await subtleAny.exportKey("raw-seed", reimported),
+    );
+    assertEquals(seed2, seed);
+  });
+
+  Deno.test(`mlKemImportExportJwk:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const privJwk = await subtleAny.exportKey("jwk", kp.privateKey);
+    assertEquals(privJwk.kty, "AKP");
+    assertEquals(privJwk.alg, variant.name);
+    assert(typeof privJwk.pub === "string");
+    assert(typeof privJwk.priv === "string");
+    assertEquals(privJwk.key_ops, ["decapsulateBits"]);
+    assertEquals(privJwk.ext, true);
+
+    const pubJwk = await subtleAny.exportKey("jwk", kp.publicKey);
+    assertEquals(pubJwk.kty, "AKP");
+    assertEquals(pubJwk.alg, variant.name);
+    assert(typeof pubJwk.pub === "string");
+    assertEquals(pubJwk.priv, undefined);
+    assertEquals(pubJwk.key_ops, ["encapsulateBits"]);
+    // The public key embedded in the private JWK matches the public JWK.
+    assertEquals(privJwk.pub, pubJwk.pub);
+
+    const reimportedPriv = await subtleAny.importKey(
+      "jwk",
+      privJwk,
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    );
+    const reimportedPub = await subtleAny.importKey(
+      "jwk",
+      pubJwk,
+      { name: variant.name },
+      true,
+      ["encapsulateBits"],
+    );
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      reimportedPub,
+    );
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      reimportedPriv,
+      enc.ciphertext,
+    );
+    assertEquals(new Uint8Array(dec), new Uint8Array(enc.sharedKey));
+
+    // The seed survives a JWK round-trip.
+    const privJwk2 = await subtleAny.exportKey("jwk", reimportedPriv);
+    assertEquals(privJwk2.priv, privJwk.priv);
+    assertEquals(privJwk2.pub, privJwk.pub);
+  });
+
+  Deno.test(`mlKemRawPrivateNotSupported:${variant.name}`, async () => {
+    // raw-private is not a spec format for ML-KEM (only raw-seed/pkcs8/jwk).
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+    await assertRejects(
+      () => subtleAny.exportKey("raw-private", kp.privateKey),
+      DOMException,
+    );
+    await assertRejects(
+      () =>
+        subtleAny.importKey(
+          "raw-private",
+          new Uint8Array(variant.privLen),
+          { name: variant.name },
+          true,
+          ["decapsulateBits"],
+        ),
+      DOMException,
+    );
+  });
+
+  Deno.test(`mlKemGetPublicKey:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    // getPublicKey lives on SubtleCrypto.prototype, not CryptoKey.prototype.
+    assertEquals(
+      // deno-lint-ignore no-explicit-any
+      typeof (kp.privateKey as any).getPublicKey,
+      "undefined",
+    );
+
+    const derivedPub = await subtleAny.getPublicKey(
+      kp.privateKey,
+      ["encapsulateBits"],
+    ) as CryptoKey;
+    assertEquals(derivedPub.type, "public");
+    assertEquals(derivedPub.algorithm.name, variant.name);
+    assertEquals(derivedPub.usages, ["encapsulateBits"]);
+
+    const originalPubBytes = new Uint8Array(
+      await subtleAny.exportKey("raw-public", kp.publicKey),
+    );
+    const derivedPubBytes = new Uint8Array(
+      await subtleAny.exportKey("raw-public", derivedPub),
+    );
+    assertEquals(derivedPubBytes, originalPubBytes);
+
+    // Invalid public-key usages for the algorithm reject with SyntaxError.
+    await assertRejects(
+      () => subtleAny.getPublicKey(kp.privateKey, ["sign"]),
+      DOMException,
+    );
+
+    // Public keys are not valid input.
+    await assertRejects(
+      () => subtleAny.getPublicKey(kp.publicKey, ["encapsulateBits"]),
+      DOMException,
+    );
+  });
+
+  Deno.test(`mlKemTamperedCiphertextRejected:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["encapsulateBits", "decapsulateBits"],
+    ) as CryptoKeyPair;
+
+    const enc = await subtleAny.encapsulateBits(
+      { name: variant.name },
+      kp.publicKey,
+    );
+    // Flip a bit somewhere in the middle of the ciphertext. ML-KEM uses
+    // implicit rejection: corrupted ciphertexts decapsulate to a pseudo-random
+    // value rather than throwing, so just check that the result differs.
+    const corrupt = new Uint8Array(enc.ciphertext);
+    corrupt[corrupt.length >> 1] ^= 0x01;
+    const dec = await subtleAny.decapsulateBits(
+      { name: variant.name },
+      kp.privateKey,
+      corrupt,
+    );
+    const expected = new Uint8Array(enc.sharedKey);
+    const got = new Uint8Array(dec);
+    let equal = got.length === expected.length;
+    for (let i = 0; equal && i < got.length; i++) {
+      if (got[i] !== expected[i]) equal = false;
+    }
+    assert(!equal, `Tampered ciphertext should yield different shared key`);
+  });
+
+  Deno.test(`mlKemBadCiphertextLengthRejected:${variant.name}`, async () => {
+    const kp = await subtleAny.generateKey(
+      { name: variant.name },
+      true,
+      ["decapsulateBits"],
+    ) as CryptoKeyPair;
+    await assertRejects(() =>
+      subtleAny.decapsulateBits(
+        { name: variant.name },
+        kp.privateKey,
+        new Uint8Array(variant.ctLen - 1),
+      ), DOMException);
+  });
+}
+
+Deno.test(async function mlKemAlgorithmMismatchRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  await assertRejects(() =>
+    subtleAny.encapsulateBits({ name: "ML-KEM-768" }, kp.publicKey)
+  );
+});
+
+Deno.test(async function mlKemRawSeedWrongLengthRejected() {
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "raw-seed",
+        new Uint8Array(32),
+        { name: "ML-KEM-512" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+});
+
+Deno.test(async function mlKemJwkWrongKtyRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const jwk = await subtleAny.exportKey("jwk", kp.privateKey);
+  jwk.kty = "OKP";
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "jwk",
+        jwk,
+        { name: "ML-KEM-512" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+});
+
+Deno.test(async function mlKemJwkMismatchedPubRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const privJwk = await subtleAny.exportKey("jwk", kp.privateKey);
+  // Replace the embedded public key with a different key's public key so it
+  // no longer matches the seed.
+  const other = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const otherJwk = await subtleAny.exportKey("jwk", other.publicKey);
+  privJwk.pub = otherJwk.pub;
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "jwk",
+        privJwk,
+        { name: "ML-KEM-512" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+});
+
+Deno.test(async function mlKemJwkMismatchedAlgRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const jwk = await subtleAny.exportKey("jwk", kp.privateKey);
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "jwk",
+        jwk,
+        { name: "ML-KEM-768" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+});
+
+Deno.test(async function mlKemJwkBadPrivateUsageRejected() {
+  const kp = await subtleAny.generateKey(
+    { name: "ML-KEM-512" },
+    true,
+    ["encapsulateBits", "decapsulateBits"],
+  ) as CryptoKeyPair;
+  const jwk = await subtleAny.exportKey("jwk", kp.privateKey);
+  await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "jwk",
+        jwk,
+        { name: "ML-KEM-512" },
+        true,
+        // A private (seed-bearing) JWK may only carry decapsulate usages.
+        ["encapsulateBits"],
+      ),
+    DOMException,
+  );
+});
+
+// The WICG spec requires PKCS#8 import to reject the (non-seed) expanded-key
+// form with a NotSupportedError; only the seed form is supported.
+Deno.test(async function mlKemPkcs8ExpandedFormRejected() {
+  // The importer classifies a bare OCTET STRING privateKey as the expanded
+  // form by its DER shape, before inspecting the contents, so arbitrary bytes
+  // of the right size suffice. 1632 = ML-KEM-512 expanded private key size.
+  const expanded = new Uint8Array(1632);
+
+  // Build a minimal DER tag-length-value.
+  const tlv = (tag: number, content: number[]): number[] => {
+    let len: number[];
+    if (content.length < 0x80) {
+      len = [content.length];
+    } else {
+      const bytes: number[] = [];
+      let n = content.length;
+      while (n > 0) {
+        bytes.unshift(n & 0xff);
+        n >>= 8;
+      }
+      len = [0x80 | bytes.length, ...bytes];
+    }
+    return [tag, ...len, ...content];
+  };
+  // PrivateKeyInfo with privateKey ::= expandedKey OCTET STRING.
+  const oid = [
+    0x06,
+    0x09,
+    0x60,
+    0x86,
+    0x48,
+    0x01,
+    0x65,
+    0x03,
+    0x04,
+    0x04,
+    0x01,
+  ];
+  const version = [0x02, 0x01, 0x00];
+  const alg = tlv(0x30, oid);
+  const expandedKey = tlv(0x04, Array.from(expanded)); // OCTET STRING expandedKey
+  const privateKey = tlv(0x04, expandedKey); // privateKey OCTET STRING
+  const pkcs8 = new Uint8Array(
+    tlv(0x30, [...version, ...alg, ...privateKey]),
+  );
+
+  const err = await assertRejects(
+    () =>
+      subtleAny.importKey(
+        "pkcs8",
+        pkcs8,
+        { name: "ML-KEM-512" },
+        true,
+        ["decapsulateBits"],
+      ),
+    DOMException,
+  );
+  assertEquals((err as DOMException).name, "NotSupportedError");
+});
+
+// `getPublicKey` lives on SubtleCrypto.prototype and derives a public key from
+// a private key for the classical asymmetric algorithms too.
+Deno.test(async function subtleGetPublicKeyClassical() {
+  const cases = [
+    {
+      genAlg: { name: "ECDSA", namedCurve: "P-256" },
+      usages: ["sign", "verify"],
+      publicUsages: ["verify"],
+      badUsage: "encrypt",
+    },
+    {
+      genAlg: { name: "Ed25519" },
+      usages: ["sign", "verify"],
+      publicUsages: ["verify"],
+      badUsage: "encrypt",
+    },
+    {
+      genAlg: { name: "X25519" },
+      usages: ["deriveBits", "deriveKey"],
+      publicUsages: [],
+      badUsage: "deriveBits",
+    },
+    {
+      genAlg: {
+        name: "RSA-PSS",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([1, 0, 1]),
+        hash: "SHA-256",
+      },
+      usages: ["sign", "verify"],
+      publicUsages: ["verify"],
+      badUsage: "encrypt",
+    },
+  ];
+
+  for (const c of cases) {
+    const kp = await subtleAny.generateKey(
+      c.genAlg,
+      true,
+      c.usages,
+    ) as CryptoKeyPair;
+
+    const derived = await subtleAny.getPublicKey(
+      kp.privateKey,
+      c.publicUsages,
+    ) as CryptoKey;
+    assertEquals(derived.type, "public");
+    assertEquals(derived.algorithm.name, c.genAlg.name);
+    assertEquals(derived.extractable, true);
+    assertEquals(derived.usages, c.publicUsages);
+
+    const originalSpki = new Uint8Array(
+      await subtleAny.exportKey("spki", kp.publicKey),
+    );
+    const derivedSpki = new Uint8Array(
+      await subtleAny.exportKey("spki", derived),
+    );
+    assertEquals(derivedSpki, originalSpki);
+
+    // Requesting an invalid public-key usage rejects with a SyntaxError.
+    await assertRejects(
+      () => subtleAny.getPublicKey(kp.privateKey, [c.badUsage]),
+      DOMException,
+    );
+
+    // A public key is not valid input (must be a private key).
+    await assertRejects(
+      () => subtleAny.getPublicKey(kp.publicKey, c.publicUsages),
+      DOMException,
+    );
+  }
+});
+
+// `getPublicKey` rejects symmetric and key-derivation algorithms with a
+// NotSupportedError.
+Deno.test(async function subtleGetPublicKeyNotSupported() {
+  const aesKey = await subtleAny.generateKey(
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"],
+  );
+  await assertRejects(
+    () => subtleAny.getPublicKey(aesKey, []),
+    DOMException,
+  );
+});
+// supports() -- synchronous feature detection per
+// https://wicg.github.io/webcrypto-modern-algos/#dom-subtlecrypto-supports
+
+// deno-lint-ignore no-explicit-any
+const supports = (SubtleCrypto as any).supports.bind(SubtleCrypto) as (
+  op: string,
+  alg: unknown,
+  lengthOrHash?: unknown,
+) => boolean;
+
+Deno.test(function subtleCryptoSupportsBasic() {
+  // digest
+  assert(supports("digest", "SHA-256"));
+  assert(supports("digest", "SHA3-256"));
+  assert(supports("digest", "SHA3-512"));
+  assert(supports("digest", { name: "cSHAKE128", outputLength: 256 }));
+  // generateKey
+  assert(supports("generateKey", {
+    name: "AES-GCM",
+    length: 256,
+  }));
+  assert(supports("generateKey", "ChaCha20-Poly1305"));
+  assert(supports("generateKey", "Ed25519"));
+  // importKey / exportKey
+  assert(supports("importKey", "HKDF"));
+  assert(supports("exportKey", "AES-CBC"));
+  // sign / verify
+  assert(supports("sign", "Ed25519"));
+  assert(supports("verify", { name: "HMAC" }));
+});
+
+Deno.test(function subtleCryptoSupportsPqcAlgorithms() {
+  // ML-DSA
+  for (const name of ["ML-DSA-44", "ML-DSA-65", "ML-DSA-87"]) {
+    assert(supports("generateKey", name));
+    assert(supports("sign", name));
+    assert(supports("verify", name));
+    assert(supports("importKey", name));
+    assert(supports("exportKey", name));
+    assert(supports("getPublicKey", name));
+  }
+  // ML-KEM
+  for (const name of ["ML-KEM-512", "ML-KEM-768", "ML-KEM-1024"]) {
+    assert(supports("generateKey", name));
+    assert(supports("encapsulateKey", name));
+    assert(supports("encapsulateBits", name));
+    assert(supports("decapsulateKey", name));
+    assert(supports("decapsulateBits", name));
+    assert(supports("importKey", name));
+    assert(supports("exportKey", name));
+    assert(supports("getPublicKey", name));
+  }
+});
+
+Deno.test(function subtleCryptoSupportsModernAlgorithms() {
+  // ChaCha20-Poly1305 encrypt/decrypt + generateKey + importKey
+  assert(supports("encrypt", "ChaCha20-Poly1305"));
+  assert(supports("decrypt", "ChaCha20-Poly1305"));
+  assert(supports("generateKey", "ChaCha20-Poly1305"));
+  assert(supports("importKey", "ChaCha20-Poly1305"));
+  // SHA-3 family digests
+  assert(supports("digest", "SHA3-256"));
+  assert(supports("digest", "SHA3-384"));
+  assert(supports("digest", "SHA3-512"));
+  // cSHAKE / TurboSHAKE XOF digests
+  assert(
+    supports("digest", { name: "cSHAKE128", outputLength: 256 }),
+  );
+  assert(
+    supports("digest", { name: "TurboSHAKE128", outputLength: 256 }),
+  );
+});
+
+Deno.test(function subtleCryptoSupportsRejectsUnknown() {
+  // Unrecognized operation
+  assertEquals(supports("notARealOp", "SHA-256"), false);
+  // Unrecognized algorithm
+  assertEquals(supports("digest", "NOT-AN-ALG"), false);
+  assertEquals(supports("generateKey", "NOT-AN-ALG"), false);
+  // Algorithm not valid for the operation
+  assertEquals(supports("digest", "AES-CBC"), false);
+  assertEquals(supports("encrypt", "Ed25519"), false);
+  assertEquals(supports("sign", "AES-GCM"), false);
+  assertEquals(supports("encapsulateKey", "AES-CBC"), false);
+  // getPublicKey is only supported for asymmetric algorithms; symmetric and
+  // KDF algorithms (and obviously unknown algorithms) report false.
+  assertEquals(supports("getPublicKey", "AES-CBC"), false);
+  assertEquals(supports("getPublicKey", "HKDF"), false);
+  assertEquals(supports("getPublicKey", "NOT-AN-ALG"), false);
+});
+
+Deno.test(function subtleCryptoSupportsCaseInsensitive() {
+  // Algorithm name matching is case-insensitive per
+  // https://w3c.github.io/webcrypto/#dfn-normalize-an-algorithm
+  assert(supports("digest", "sha-256"));
+  assert(supports("generateKey", "ml-dsa-65"));
+  assert(supports("encapsulateBits", "ml-kem-768"));
+});
+
+Deno.test(function subtleCryptoSupportsWrapUnwrap() {
+  // AES-KW supports wrapKey/unwrapKey directly.
+  assert(supports("wrapKey", { name: "AES-KW", length: 256 }));
+  assert(
+    supports("unwrapKey", { name: "AES-KW", length: 256 }),
+  );
+  // wrapKey / unwrapKey also work via the encrypt / decrypt fallback path,
+  // e.g. for AES-GCM and RSA-OAEP.
+  assert(supports("wrapKey", { name: "AES-GCM", length: 256 }));
+  assert(
+    supports("unwrapKey", { name: "AES-GCM", length: 256 }),
+  );
+  assert(supports("wrapKey", {
+    name: "RSA-OAEP",
+    hash: "SHA-256",
+  }));
+  assert(supports("unwrapKey", {
+    name: "RSA-OAEP",
+    hash: "SHA-256",
+  }));
+});
+
+Deno.test(function subtleCryptoSupportsAdditionalAlgorithm() {
+  // deriveKey with target algorithm (the second-overload form).
+  assert(supports("deriveKey", "HKDF", {
+    name: "AES-GCM",
+    length: 256,
+  }));
+  assert(supports("deriveKey", "PBKDF2", {
+    name: "AES-CBC",
+    length: 128,
+  }));
+  // encapsulateKey with a shared-key algorithm.
+  assert(supports("encapsulateKey", "ML-KEM-768", {
+    name: "AES-GCM",
+    length: 256,
+  }));
+  // unwrapKey with target alg.
+  assert(supports(
+    "unwrapKey",
+    { name: "AES-KW", length: 256 },
+    { name: "AES-GCM", length: 256 },
+  ));
+  // Bad shared-key algorithm should fail.
+  assertEquals(
+    supports("encapsulateKey", "ML-KEM-768", "NOT-AN-ALG"),
+    false,
+  );
+  // Bad derived-key alg should fail.
+  assertEquals(
+    supports("deriveKey", "HKDF", "NOT-AN-ALG"),
+    false,
+  );
+});
+
+Deno.test(function subtleCryptoSupportsLengthOverload() {
+  // length is meaningful for deriveBits; for current impl it just doesn't
+  // reject when the algorithm + operation pair is otherwise valid.
+  assert(supports("deriveBits", "HKDF", 256));
+  assert(supports("deriveBits", "PBKDF2", 256));
+  // length on a non-derive operation is simply ignored.
+  assert(supports("digest", "SHA-256", 256));
+});
+
+Deno.test(function subtleCryptoSupportsThrowsOnMissingArgs() {
+  // deno-lint-ignore no-explicit-any
+  const s = supports as any;
+  assertThrows(() => s(), TypeError);
+  assertThrows(() => s("sign"), TypeError);
+});

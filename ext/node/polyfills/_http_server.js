@@ -22,18 +22,38 @@
 
 // Ported from Node.js lib/_http_server.js
 
-// deno-lint-ignore-file prefer-primordials
-
 import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
+  ArrayPrototypePush,
+  ArrayPrototypeShift,
+  ArrayPrototypeSlice,
   Error,
+  ErrorPrototype,
+  FunctionPrototypeApply,
+  FunctionPrototypeBind,
+  FunctionPrototypeCall,
   MathMin,
   NumberIsFinite,
   ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  SafeArrayIterator,
+  SafeMap,
+  SafeMapIterator,
+  SafeSet,
+  SafeSetIterator,
+  String,
+  StringPrototypeIncludes,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeStartsWith,
   Symbol,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
 } = primordials;
 
 import net from "node:net";
@@ -85,12 +105,18 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
 const { nextTick } = core.loadExtScript("ext:deno_node/_next_tick.ts");
 const {
-  enterAsyncResource,
-  exitAsyncResource,
+  enterAsyncResourceIfActive,
+  exitAsyncResourceIfActive,
 } = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
-const { enqueueNodePerformanceEntry } = core.loadExtScript(
-  "ext:deno_node/perf_hooks.js",
-);
+const { enqueueNodePerformanceEntry, hasNodeObserverForType } = core
+  .loadExtScript(
+    "ext:deno_node/perf_hooks.js",
+  );
+import {
+  applyAddressOverride,
+  notifyAddressOverrideServing,
+  startOverrideListener,
+} from "ext:deno_node/internal/http/address_override.js";
 const {
   otelState,
   builtinTracer,
@@ -160,6 +186,7 @@ function getOtelMetrics() {
 const kLenientAll = HTTPParser.kLenientAll | 0;
 const kLenientNone = HTTPParser.kLenientNone | 0;
 const kOnExecute = HTTPParser.kOnExecute | 0;
+const kOnMessageBegin = HTTPParser.kOnMessageBegin | 0;
 const _kOnTimeout = HTTPParser.kOnTimeout | 0;
 
 // JS-based ConnectionsList matching Node's native ConnectionsList.
@@ -167,15 +194,15 @@ const _kOnTimeout = HTTPParser.kOnTimeout | 0;
 // headersTimeout / requestTimeout enforcement.
 class ConnectionsList {
   constructor() {
-    this._all = new Set();
-    this._active = new Map(); // socket -> { headersCompleted, startTime }
+    this._all = new SafeSet();
+    this._active = new SafeMap(); // socket -> { headersCompleted, startTime, req }
   }
 
-  push(socket) {
+  add(socket) {
     this._all.add(socket);
   }
 
-  pop(socket) {
+  remove(socket) {
     this._all.delete(socket);
     this._active.delete(socket);
   }
@@ -184,6 +211,7 @@ class ConnectionsList {
     this._active.set(socket, {
       headersCompleted: false,
       startTime: performance.now(),
+      req: null,
     });
   }
 
@@ -191,10 +219,22 @@ class ConnectionsList {
     this._active.delete(socket);
   }
 
-  markHeadersCompleted(socket) {
+  // For pipelined requests the parser fires kOnMessageBegin for the next
+  // request before the previous response finishes, replacing the active
+  // entry. resOnFinish must only clear the entry if it still tracks the
+  // request whose response just finished, not a pipelined successor.
+  popActiveIfReq(socket, req) {
+    const entry = this._active.get(socket);
+    if (entry && entry.req === req) {
+      this._active.delete(socket);
+    }
+  }
+
+  markHeadersCompleted(socket, req) {
     const entry = this._active.get(socket);
     if (entry) {
       entry.headersCompleted = true;
+      entry.req = req;
     }
   }
 
@@ -202,16 +242,16 @@ class ConnectionsList {
     const now = performance.now();
     const result = [];
 
-    for (const [socket, entry] of this._active) {
+    for (const { 0: socket, 1: entry } of new SafeMapIterator(this._active)) {
       const elapsed = now - entry.startTime;
       if (!entry.headersCompleted && headersTimeout > 0) {
         if (elapsed >= headersTimeout) {
-          result.push({ socket });
+          ArrayPrototypePush(result, { socket });
           continue;
         }
       }
       if (requestTimeout > 0 && elapsed >= requestTimeout) {
-        result.push({ socket });
+        ArrayPrototypePush(result, { socket });
       }
     }
 
@@ -222,7 +262,7 @@ class ConnectionsList {
 function onRequestTimeout(socket) {
   const err = new Error("ERR_HTTP_REQUEST_TIMEOUT");
   err.code = "ERR_HTTP_REQUEST_TIMEOUT";
-  socketOnError.call(socket, err);
+  FunctionPrototypeCall(socketOnError, socket, err);
 }
 
 const STATUS_CODES = {
@@ -294,7 +334,7 @@ const STATUS_CODES = {
 // ---- ServerResponse ----
 
 function ServerResponse(req, options) {
-  OutgoingMessage.call(this, options);
+  FunctionPrototypeCall(OutgoingMessage, this, options);
 
   if (req.method === "HEAD") this._hasBody = false;
 
@@ -497,8 +537,8 @@ function connectionListenerInternal(server, socket) {
   // Track connections via ConnectionsList for timeout enforcement
   if (!server[kConnectionsKey]) server[kConnectionsKey] = new ConnectionsList();
   const connections = server[kConnectionsKey];
-  connections.push(socket);
-  const onConnectionClose = () => connections.pop(socket);
+  connections.add(socket);
+  const onConnectionClose = () => connections.remove(socket);
   socket.on("close", onConnectionClose);
 
   if (server.timeout && typeof socket.setTimeout === "function") {
@@ -540,16 +580,41 @@ function connectionListenerInternal(server, socket) {
     keepAliveTimeoutMsecs: 0,
     keepAliveTimeoutSuspended: false,
   };
-  state.onData = socketOnData.bind(undefined, server, socket, parser, state);
-  state.onEnd = socketOnEnd.bind(undefined, server, socket, parser, state);
-  state.onClose = socketOnClose.bind(undefined, socket, state);
-  state.onDrain = socketOnDrain.bind(undefined, socket, state);
+  state.onData = FunctionPrototypeBind(
+    socketOnData,
+    undefined,
+    server,
+    socket,
+    parser,
+    state,
+  );
+  state.onEnd = FunctionPrototypeBind(
+    socketOnEnd,
+    undefined,
+    server,
+    socket,
+    parser,
+    state,
+  );
+  state.onClose = FunctionPrototypeBind(
+    socketOnClose,
+    undefined,
+    socket,
+    state,
+  );
+  state.onDrain = FunctionPrototypeBind(
+    socketOnDrain,
+    undefined,
+    socket,
+    state,
+  );
   socket.on("data", state.onData);
   socket.on("error", socketOnError);
   socket.on("end", state.onEnd);
   socket.on("close", state.onClose);
   socket.on("drain", state.onDrain);
-  parser.onIncoming = parserOnIncoming.bind(
+  parser.onIncoming = FunctionPrototypeBind(
+    parserOnIncoming,
     undefined,
     server,
     socket,
@@ -568,19 +633,44 @@ function connectionListenerInternal(server, socket) {
     socket._handle._consumed = true;
     parser.consume(socket._handle);
   }
-  parser[kOnExecute] = onParserExecute.bind(
+  parser[kOnExecute] = FunctionPrototypeBind(
+    onParserExecute,
     undefined,
     server,
     socket,
     parser,
     state,
   );
+  // Reset timeout-tracking state at the start of each HTTP message so
+  // headersTimeout/requestTimeout are measured per-request on keepalive
+  // connections (mirrors Node's native on_message_begin behavior).
+  parser[kOnMessageBegin] = FunctionPrototypeBind(
+    onParserMessageBegin,
+    undefined,
+    server,
+    socket,
+  );
 
   socket._paused = false;
 }
 
+function onParserMessageBegin(server, socket) {
+  const connections = server[kConnectionsKey];
+  if (connections) {
+    connections.popActive(socket);
+    connections.pushActive(socket);
+  }
+}
+
 function onParserExecute(server, socket, parser, state, ret, d) {
-  socket._unrefTimer?.();
+  // Don't refresh the socket timeout while the connection is idling in
+  // keep-alive mode (waiting for the next request). Stray bytes like
+  // `\r\n` between requests must not reset keepAliveTimeout. The timer
+  // is reset explicitly via resetSocketTimeout once a new request
+  // actually begins.
+  if (!state.keepAliveTimeoutSet) {
+    socket._unrefTimer?.();
+  }
   // The consume path (parser.consume(handle)) passes `d` as a bare
   // Uint8Array from the C++ binding. onParserExecuteCommon's upgrade
   // branch does `d.slice(bytesParsed).toString()` and expects the
@@ -588,7 +678,11 @@ function onParserExecute(server, socket, parser, state, ret, d) {
   // behavior. Wrap to match the non-consume path where `d` came from
   // `socket.on('data')` as a Buffer.
   if (d !== undefined && !Buffer.isBuffer(d)) {
-    d = Buffer.from(d.buffer, d.byteOffset, d.byteLength);
+    d = Buffer.from(
+      TypedArrayPrototypeGetBuffer(d),
+      TypedArrayPrototypeGetByteOffset(d),
+      TypedArrayPrototypeGetByteLength(d),
+    );
   }
   if (d !== undefined) {
     parser._lastRawPacket = d;
@@ -615,7 +709,7 @@ function socketOnClose(socket, state) {
 
 function abortIncoming(incoming) {
   while (incoming.length) {
-    const req = incoming.shift();
+    const req = ArrayPrototypeShift(incoming);
     req.destroy(connResetException("aborted"));
   }
 }
@@ -623,9 +717,9 @@ function abortIncoming(incoming) {
 function socketOnEnd(server, socket, parser, state) {
   const ret = parser.finish();
 
-  if (ret instanceof Error) {
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, ret)) {
     prepareError(ret, parser, parser._lastRawPacket);
-    socketOnError.call(socket, ret);
+    FunctionPrototypeCall(socketOnError, socket, ret);
     return;
   }
 
@@ -651,15 +745,15 @@ function socketOnData(server, socket, parser, state, d) {
 }
 
 function googLength(d) {
-  return d.length || d.byteLength;
+  return d.length || TypedArrayPrototypeGetByteLength(d);
 }
 
 function onParserExecuteCommon(server, socket, parser, state, ret, d) {
   resetSocketTimeout(server, socket, state);
 
-  if (ret instanceof Error) {
+  if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, ret)) {
     prepareError(ret, parser, d);
-    socketOnError.call(socket, ret);
+    FunctionPrototypeCall(socketOnError, socket, ret);
     return;
   }
 
@@ -685,11 +779,12 @@ function onParserExecuteCommon(server, socket, parser, state, ret, d) {
     socket.removeListener("timeout", socketOnTimeout);
     // Remove from connection tracking (normally done by the close listener)
     const connections = server[kConnectionsKey];
-    if (connections) connections.pop(socket);
+    if (connections) connections.remove(socket);
 
     parser.finish();
     freeParser(parser, req, socket);
 
+    // deno-lint-ignore prefer-primordials -- d is a Node Buffer; Buffer.prototype.slice returns a Buffer view
     const bodyHead = d.slice(bytesParsed);
 
     socket.readableFlowing = null;
@@ -807,7 +902,27 @@ function updateOutgoingData(socket, state, delta) {
 // ---- parserOnIncoming: creates ServerResponse, emits 'request' ----
 
 function parserOnIncoming(server, socket, state, req, keepAlive) {
+  // Connections accepted via the DENO_SERVE_ADDRESS override carry
+  // absolute-form request targets (the control plane forwards the full
+  // public URL, which is how Deno.serve() reconstructs request.url).
+  // Node applications expect origin-form, so strip scheme and authority.
+  if (
+    socket.isDenoServeAddressOverride &&
+    (StringPrototypeStartsWith(req.url, "http://") ||
+      StringPrototypeStartsWith(req.url, "https://"))
+  ) {
+    const schemeEnd = StringPrototypeIndexOf(req.url, "://") + 3;
+    const pathStart = StringPrototypeIndexOf(req.url, "/", schemeEnd);
+    req.url = pathStart === -1 ? "/" : StringPrototypeSlice(req.url, pathStart);
+  }
+
   resetSocketTimeout(server, socket, state, !req.upgrade);
+
+  // Headers have been fully parsed; clear the headersTimeout watchdog and
+  // bind the active entry to this request so resOnFinish can identify it
+  // even if a pipelined successor has already replaced it.
+  const connections = server[kConnectionsKey];
+  if (connections) connections.markHeadersCompleted(socket, req);
 
   if (req.upgrade && req.method !== "CONNECT") {
     if (
@@ -823,8 +938,10 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     if (req.upgrade) return 0;
   }
 
-  state.incoming.push(req);
-  req[kPerfStartTime] = performance.now();
+  ArrayPrototypePush(state.incoming, req);
+  if (hasNodeObserverForType("http")) {
+    req[kPerfStartTime] = performance.now();
+  }
 
   if (!socket._paused) {
     const ws = socket._writableState;
@@ -842,7 +959,12 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   });
   res._keepAliveTimeout = server.keepAliveTimeout;
   res._maxRequestsPerSocket = server.maxRequestsPerSocket;
-  res._onPendingData = updateOutgoingData.bind(undefined, socket, state);
+  res._onPendingData = FunctionPrototypeBind(
+    updateOutgoingData,
+    undefined,
+    socket,
+    state,
+  );
 
   res.shouldKeepAlive = keepAlive;
   res[kUniqueHeaders] = server[kUniqueHeaders];
@@ -856,13 +978,15 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     // Extract trace context from incoming request headers
     let context = ContextManager.active();
     if (otelState.PROPAGATORS.length > 0) {
-      for (const propagator of otelState.PROPAGATORS) {
+      for (
+        const propagator of new SafeArrayIterator(otelState.PROPAGATORS)
+      ) {
         context = propagator.extract(context, req.headers, {
           get(carrier, key) {
             return carrier[key];
           },
           keys(carrier) {
-            return Object.keys(carrier);
+            return ObjectKeys(carrier);
           },
         });
       }
@@ -875,8 +999,13 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
     span.setAttribute("http.request.method", req.method);
     span.setAttribute("url.full", `${scheme}://${host}${url}`);
     span.setAttribute("url.scheme", scheme);
-    span.setAttribute("url.path", url.split("?")[0]);
-    span.setAttribute("url.query", url.includes("?") ? url.split("?")[1] : "");
+    span.setAttribute("url.path", StringPrototypeSplit(url, "?")[0]);
+    span.setAttribute(
+      "url.query",
+      StringPrototypeIncludes(url, "?")
+        ? StringPrototypeSplit(url, "?")[1]
+        : "",
+    );
     res[kOtelSpan] = span;
   }
   if (otelState.METRICS_ENABLED) {
@@ -891,14 +1020,22 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   }
 
   if (socket._httpMessage) {
-    state.outgoing.push(res);
+    ArrayPrototypePush(state.outgoing, res);
   } else {
     res.assignSocket(socket);
   }
 
   res.on(
     "finish",
-    resOnFinish.bind(undefined, req, res, socket, state, server),
+    FunctionPrototypeBind(
+      resOnFinish,
+      undefined,
+      req,
+      res,
+      socket,
+      state,
+      server,
+    ),
   );
 
   if (onServerRequestStartChannel.hasSubscribers) {
@@ -916,7 +1053,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
   // across timers, await transitions, etc. Without this, every request would
   // share the top-level resource and concurrent requests would race on any
   // state stashed there.
-  const prevAsyncResource = enterAsyncResource(req);
+  const prevAsyncResource = enterAsyncResourceIfActive(req);
   try {
     let handled = false;
 
@@ -972,7 +1109,7 @@ function parserOnIncoming(server, socket, state, req, keepAlive) {
       server.emit("request", req, res);
     }
   } finally {
-    exitAsyncResource(prevAsyncResource);
+    exitAsyncResourceIfActive(prevAsyncResource);
   }
 
   return 0;
@@ -1009,7 +1146,7 @@ function resOnFinish(req, res, socket, state, server) {
 
   // Emit HttpRequest perf entry
   const perfStartTime = req[kPerfStartTime];
-  if (perfStartTime !== undefined) {
+  if (perfStartTime !== undefined && hasNodeObserverForType("http")) {
     enqueueNodePerformanceEntry({
       name: "HttpRequest",
       entryType: "http",
@@ -1053,7 +1190,7 @@ function resOnFinish(req, res, socket, state, server) {
     res[kOtelStartTime] = undefined;
   }
 
-  state.incoming.shift();
+  ArrayPrototypeShift(state.incoming);
 
   if (!req._consuming && !req._readableState?.resumeScheduled) {
     req._dump();
@@ -1062,6 +1199,13 @@ function resOnFinish(req, res, socket, state, server) {
   res.detachSocket(socket);
   clearIncoming(req);
   nextTick(emitCloseNT, res);
+
+  // The request is done; stop tracking it for headersTimeout/requestTimeout.
+  // Only pop if the entry still belongs to this completed request: when
+  // requests are pipelined, the parser has already pushed a fresh entry
+  // for the next request via kOnMessageBegin.
+  const connections = server[kConnectionsKey];
+  if (connections) connections.popActiveIfReq(socket, req);
 
   if (res._last) {
     if (typeof socket.destroySoon === "function") {
@@ -1112,7 +1256,7 @@ function resOnFinish(req, res, socket, state, server) {
       }
     }
   } else {
-    const m = state.outgoing.shift();
+    const m = ArrayPrototypeShift(state.outgoing);
     if (m) {
       m.assignSocket(socket);
     }
@@ -1133,7 +1277,9 @@ function clearIncoming(req) {
 }
 
 function Server(options, requestListener) {
-  if (!(this instanceof Server)) return new Server(options, requestListener);
+  if (!ObjectPrototypeIsPrototypeOf(Server.prototype, this)) {
+    return new Server(options, requestListener);
+  }
 
   if (typeof options === "function") {
     requestListener = options;
@@ -1144,9 +1290,9 @@ function Server(options, requestListener) {
     validateObject(options, "options");
   }
 
-  storeHTTPOptions.call(this, options);
+  FunctionPrototypeCall(storeHTTPOptions, this, options);
 
-  net.Server.call(this, {
+  FunctionPrototypeCall(net.Server, this, {
     allowHalfOpen: true,
     noDelay: options.noDelay ?? true,
     keepAlive: options.keepAlive,
@@ -1187,7 +1333,7 @@ function setupConnectionsTracking() {
   const interval = this.connectionsCheckingInterval || 30_000;
   const handle = new ConnectionsCheckingInterval();
   handle._timerId = core.createSystemInterval(
-    checkConnections.bind(this),
+    FunctionPrototypeBind(checkConnections, this),
     interval,
   );
   this[kConnectionsCheckingInterval] = handle;
@@ -1345,6 +1491,64 @@ function storeHTTPOptions(options) {
 ObjectSetPrototypeOf(Server.prototype, net.Server.prototype);
 ObjectSetPrototypeOf(Server, net.Server);
 
+// Applies the DENO_SERVE_ADDRESS override before delegating to
+// net.Server.prototype.listen.
+//
+// TCP overrides rewrite the address passed to listen(). Non-TCP and
+// duplicate overrides spin up a separate Deno listener that feeds
+// synthetic "connection" events into this server.
+Server.prototype.listen = function listen(...args) {
+  const applied = applyAddressOverride();
+
+  switch (applied.mode) {
+    case "none":
+      return FunctionPrototypeApply(net.Server.prototype.listen, this, args);
+
+    case "tcp": {
+      // Rewrite the listen args so the normal net.Server code binds
+      // to the override address instead of what the app requested.
+      let cb;
+      const last = args[args.length - 1];
+      if (typeof last === "function") {
+        cb = last;
+        args = ArrayPrototypeSlice(args, 0, -1);
+      }
+      const rewritten = [{ host: applied.host, port: applied.port }];
+      if (cb) ArrayPrototypePush(rewritten, cb);
+      this.once("listening", notifyAddressOverrideServing);
+      return FunctionPrototypeApply(
+        net.Server.prototype.listen,
+        this,
+        rewritten,
+      );
+    }
+
+    case "override-only": {
+      // Don't bind the app-supplied TCP address at all -- the override
+      // listener is the only way into this server. `listening` on
+      // net.Server is derived from `_handle`, so install a stub that
+      // reports listening without owning a real OS handle.
+      let cb;
+      const last = args[args.length - 1];
+      if (typeof last === "function") cb = last;
+      if (cb) this.once("listening", cb);
+      this._handle = {
+        close() {},
+        ref() {},
+        unref() {},
+      };
+      startOverrideListener(this, applied.override, connectionListener);
+      nextTick(() => this.emit("listening"));
+      return this;
+    }
+
+    case "duplicate": {
+      startOverrideListener(this, applied.override, connectionListener);
+      return FunctionPrototypeApply(net.Server.prototype.listen, this, args);
+    }
+  }
+};
+
 Server.prototype.setTimeout = function setTimeout(msecs, callback) {
   this.timeout = msecs;
   if (callback) {
@@ -1355,13 +1559,13 @@ Server.prototype.setTimeout = function setTimeout(msecs, callback) {
 
 Server.prototype.close = function close(cb) {
   httpServerPreClose(this);
-  return net.Server.prototype.close.call(this, cb);
+  return FunctionPrototypeCall(net.Server.prototype.close, this, cb);
 };
 
 Server.prototype.closeAllConnections = function closeAllConnections() {
   const connections = this[kConnectionsKey];
   if (connections) {
-    for (const socket of connections._all) {
+    for (const socket of new SafeSetIterator(connections._all)) {
       socket.destroy();
     }
   }
@@ -1370,7 +1574,7 @@ Server.prototype.closeAllConnections = function closeAllConnections() {
 Server.prototype.closeIdleConnections = function closeIdleConnections() {
   const connections = this[kConnectionsKey];
   if (connections) {
-    for (const socket of connections._all) {
+    for (const socket of new SafeSetIterator(connections._all)) {
       // A socket is idle if it completed a request-response cycle and
       // currently has no active HTTP response being written. Sockets
       // that have never finished a response (e.g. still receiving

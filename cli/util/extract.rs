@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeSet;
+use std::ffi::OsString;
 use std::fmt::Write as _;
 use std::sync::Arc;
 
@@ -20,6 +21,8 @@ use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use regex::Regex;
 
+use crate::args::PermissionFlags;
+use crate::args::flags_from_vec;
 use crate::file_fetcher::TextDecodedFile;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -51,6 +54,7 @@ enum WrapKind {
 struct TestOrSnippet {
   file: File,
   has_deno_test: bool,
+  shebang: Option<Shebang>,
 }
 
 fn extract_inner(
@@ -98,7 +102,13 @@ fn extract_inner(
       } else {
         wrap_kind
       };
-      generate_pseudo_file(extracted.file, &file.specifier, &exports, wrap_kind)
+      generate_pseudo_file(
+        extracted.file,
+        &file.specifier,
+        &exports,
+        wrap_kind,
+        extracted.shebang.as_ref(),
+      )
     })
     .collect::<Result<_, _>>()
 }
@@ -112,8 +122,9 @@ fn extract_files_from_fenced_blocks(
   // but it stores the latter without any capturing groups. This way, a simple
   // check can be done to see if a block is inside a comment (and skip typechecking)
   // or not by checking for the presence of capturing groups in the matches.
-  let blocks_regex =
-    lazy_regex::regex!(r"(?s)<!--.*?-->|```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let blocks_regex = lazy_regex::regex!(
+    r"(?m)<!--[\S\s]*?-->|^[ \t]*(?P<blockquote>(?:>[ \t]?)*)```(?P<attributes>[^\r\n]*)\r?\n(?P<body>[\S\s]*?)^[ \t]*(?:>[ \t]?)*```"
+  );
   let lines_regex = lazy_regex::regex!(r"(((#!+).*)|(?:# ?)?(.*))");
 
   extract_files_from_regex_blocks(
@@ -140,7 +151,9 @@ fn extract_files_from_source_comments(
     scope_analysis: false,
   })?;
   let comments = parsed_source.comments().get_vec();
-  let blocks_regex = lazy_regex::regex!(r"```([^\r\n]*)\r?\n([\S\s]*?)```");
+  let blocks_regex = lazy_regex::regex!(
+    r"```(?P<attributes>[^\r\n]*)\r?\n(?P<body>[\S\s]*?)```"
+  );
   let lines_regex =
     lazy_regex::regex!(r"(?:\* ?)((#!+).*)|(?:\* ?)(?:\# ?)?(.*)");
 
@@ -182,10 +195,13 @@ fn extract_files_from_regex_blocks(
   let files = blocks_regex
     .captures_iter(source)
     .filter_map(|block| {
-      block.get(1)?;
+      let is_markdown_blockquote = block
+        .name("blockquote")
+        .is_some_and(|blockquote| !blockquote.as_str().is_empty());
+      block.name("attributes")?;
 
       let maybe_attributes: Option<Vec<_>> = block
-        .get(1)
+        .name("attributes")
         .map(|attributes| attributes.as_str().split(' ').collect());
 
       let file_media_type = if let Some(attributes) = maybe_attributes {
@@ -221,14 +237,31 @@ fn extract_files_from_regex_blocks(
 
       let line_count = block.get(0).unwrap().as_str().split('\n').count();
 
-      let body = block.get(2).unwrap();
+      let body = block.name("body").unwrap();
       let text = body.as_str();
 
       // TODO(caspervonb) generate an inline source map
       let mut file_source = String::new();
-      for line in lines_regex.captures_iter(text) {
-        let text = line.get(1).or_else(|| line.get(3)).unwrap();
-        writeln!(file_source, "{}", text.as_str()).unwrap();
+      let mut shebang = None;
+      let mut is_first_line = true;
+      for line in text.lines() {
+        let line = if is_markdown_blockquote {
+          strip_markdown_blockquote_marker(line)
+        } else {
+          line
+        };
+        let Some(line) = lines_regex.captures(line) else {
+          continue;
+        };
+        let text = line.get(1).or_else(|| line.get(3)).unwrap().as_str();
+        // Strip shebang from the very first line to forward it to `Deno.test`.
+        if is_first_line && text.starts_with("#!") {
+          shebang = Some(parse_shebang(text));
+          is_first_line = false;
+          continue;
+        }
+        is_first_line = false;
+        writeln!(file_source, "{}", text).unwrap();
       }
 
       let file_specifier = ModuleSpecifier::parse(&format!(
@@ -253,6 +286,7 @@ fn extract_files_from_regex_blocks(
       Some(TestOrSnippet {
         file,
         has_deno_test,
+        shebang,
       })
     })
     .collect();
@@ -260,13 +294,137 @@ fn extract_files_from_regex_blocks(
   Ok(files)
 }
 
+fn strip_markdown_blockquote_marker(line: &str) -> &str {
+  let mut spaces = 0;
+
+  for (index, ch) in line.char_indices() {
+    match ch {
+      ' ' if spaces < 3 => {
+        spaces += 1;
+      }
+      '>' => {
+        let after_marker = index + ch.len_utf8();
+        return line[after_marker..]
+          .strip_prefix([' ', '\t'])
+          .unwrap_or(&line[after_marker..]);
+      }
+      _ => break,
+    }
+  }
+
+  line
+}
+
+enum Shebang {
+  Permissions(Box<PermissionFlags>),
+  /// Message describing why the shebang could not be parsed as a `deno`
+  /// command. The generated test is made to throw with this message.
+  Invalid(String),
+}
+
+/// Parses a shebang line like `#!/usr/bin/env -S deno run --allow-read`.
+///
+/// The flags are parsed using deno's own CLI argument parser and the resulting
+/// permissions are forwarded to `Deno.test`.
+///
+/// Known limitations:
+/// - The `deno` executable is matched by file name, so custom-named binaries
+///   (e.g. `deno-canary`) are not recognized and yield an invalid shebang.
+/// - A scoped `--deny-*=<path>` cannot be represented in the `Deno.test`
+///   permissions object yet and yields an invalid shebang to force failure
+/// - A `--ignore-*` cannnot be represented in the `Deno.test` permissions
+///   object either yet, so they are currently ignored
+fn parse_shebang(shebang: &str) -> Shebang {
+  let invalid = |reason: &str| {
+    Shebang::Invalid(format!(
+      "invalid doc test hashbang: {} ({reason})",
+      shebang.trim()
+    ))
+  };
+  let Some(line) = shebang.trim_start().strip_prefix("#!") else {
+    return invalid("invalid hashbang");
+  };
+  let Some(tokens) = shlex::split(line) else {
+    return invalid("tokenization failed, possibly due to unterminated quotes");
+  };
+  // Find the `deno` executable in the shebang (e.g. `deno`, `/usr/bin/deno`).
+  let Some(deno_index) = tokens.iter().position(|token| {
+    std::path::Path::new(token)
+      .file_stem()
+      .and_then(|stem| stem.to_str())
+      == Some("deno")
+  }) else {
+    return invalid("binary basename needs to be 'deno'");
+  };
+  let mut args = vec![OsString::from("deno")];
+  args.extend(tokens[deno_index + 1..].iter().cloned().map(OsString::from));
+  args.push(OsString::from("./__doctest_shebang__.ts"));
+  match flags_from_vec(args) {
+    Ok(flags) if has_scoped_deny(&flags.permissions) => invalid(
+      "scoped --deny-* flags aren't supported yet, either remove them or ignore the test",
+    ),
+    Ok(flags) => Shebang::Permissions(Box::new(flags.permissions)),
+    Err(err) => match err.get(clap::error::ContextKind::InvalidArg) {
+      Some(clap::error::ContextValue::String(arg)) => {
+        invalid(&format!("could not parse flag {arg}"))
+      }
+      Some(clap::error::ContextValue::Strings(args)) => {
+        invalid(&format!("could not parse flags {}", args.join(", ")))
+      }
+      _ => invalid("could not parse flags"),
+    },
+  }
+}
+
+fn has_scoped_deny(permissions: &PermissionFlags) -> bool {
+  [
+    &permissions.deny_env,
+    &permissions.deny_ffi,
+    &permissions.deny_import,
+    &permissions.deny_net,
+    &permissions.deny_read,
+    &permissions.deny_run,
+    &permissions.deny_sys,
+    &permissions.deny_write,
+  ]
+  .into_iter()
+  .any(|deny| matches!(deny, Some(list) if !list.is_empty()))
+}
+
 #[derive(Default)]
 struct ExportCollector {
   named_exports: BTreeSet<Atom>,
+  /// Subset of `named_exports` whose declaration was a TypeScript-only
+  /// construct (`type` alias, `interface`, or an explicit `export type {}`
+  /// re-export). When generating injected imports for doc tests we emit
+  /// these with the per-specifier `type` modifier so projects with
+  /// `verbatimModuleSyntax: true` don't fail type-checking
+  /// (denoland/deno#31385).
+  named_type_only_exports: BTreeSet<Atom>,
   default_export: Option<Atom>,
 }
 
 impl ExportCollector {
+  /// Record `name` as a value export. A value export always wins over a
+  /// type-only export of the same identifier (e.g. a `const` and an
+  /// `interface` sharing a name via declaration merging), so this clears any
+  /// prior type-only marking to keep the injected import a value import.
+  fn add_value_export(&mut self, name: Atom) {
+    self.named_type_only_exports.remove(&name);
+    self.named_exports.insert(name);
+  }
+
+  /// Record `name` as a type-only export, unless it is already known to be a
+  /// value export (in which case the value import must be preserved).
+  fn add_type_only_export(&mut self, name: Atom) {
+    let already_value = self.named_exports.contains(&name)
+      && !self.named_type_only_exports.contains(&name);
+    if !already_value {
+      self.named_type_only_exports.insert(name.clone());
+    }
+    self.named_exports.insert(name);
+  }
+
   fn to_import_specifiers(
     &self,
     symbols_to_exclude: &rustc_hash::FxHashSet<Atom>,
@@ -308,7 +466,7 @@ impl ExportCollector {
             optional: false,
           },
           imported: None,
-          is_type_only: false,
+          is_type_only: self.named_type_only_exports.contains(named_export),
         },
       ));
     }
@@ -329,19 +487,20 @@ impl Visit for ExportCollector {
   fn visit_export_decl(&mut self, export_decl: &ast::ExportDecl) {
     match &export_decl.decl {
       ast::Decl::Class(class) => {
-        self.named_exports.insert(class.ident.sym.clone());
+        self.add_value_export(class.ident.sym.clone());
       }
       ast::Decl::Fn(func) => {
-        self.named_exports.insert(func.ident.sym.clone());
+        self.add_value_export(func.ident.sym.clone());
       }
       ast::Decl::Var(var) => {
         for var_decl in &var.decls {
-          let atoms = extract_sym_from_pat(&var_decl.name);
-          self.named_exports.extend(atoms);
+          for atom in extract_sym_from_pat(&var_decl.name) {
+            self.add_value_export(atom);
+          }
         }
       }
       ast::Decl::TsEnum(ts_enum) => {
-        self.named_exports.insert(ts_enum.id.sym.clone());
+        self.add_value_export(ts_enum.id.sym.clone());
       }
       ast::Decl::TsModule(ts_module) => {
         if ts_module.declare {
@@ -350,20 +509,18 @@ impl Visit for ExportCollector {
 
         match &ts_module.id {
           ast::TsModuleName::Ident(ident) => {
-            self.named_exports.insert(ident.sym.clone());
+            self.add_value_export(ident.sym.clone());
           }
           ast::TsModuleName::Str(s) => {
-            self
-              .named_exports
-              .insert(s.value.to_atom_lossy().into_owned());
+            self.add_value_export(s.value.to_atom_lossy().into_owned());
           }
         }
       }
       ast::Decl::TsTypeAlias(ts_type_alias) => {
-        self.named_exports.insert(ts_type_alias.id.sym.clone());
+        self.add_type_only_export(ts_type_alias.id.sym.clone());
       }
       ast::Decl::TsInterface(ts_interface) => {
-        self.named_exports.insert(ts_interface.id.sym.clone());
+        self.add_type_only_export(ts_interface.id.sym.clone());
       }
       ast::Decl::Using(_) => {}
     }
@@ -399,10 +556,7 @@ impl Visit for ExportCollector {
     }
   }
 
-  fn visit_export_named_specifier(
-    &mut self,
-    export_named_specifier: &ast::ExportNamedSpecifier,
-  ) {
+  fn visit_named_export(&mut self, named_export: &ast::NamedExport) {
     fn get_atom(export_name: &ast::ModuleExportName) -> Atom {
       match export_name {
         ast::ModuleExportName::Ident(ident) => ident.sym.clone(),
@@ -410,25 +564,36 @@ impl Visit for ExportCollector {
       }
     }
 
-    match &export_named_specifier.exported {
-      Some(exported) => {
-        self.named_exports.insert(get_atom(exported));
+    // For re-exports of the form `export { foo } from "./other.ts"` the names
+    // listed in the specifiers are still part of *this* module's export
+    // surface, so doc-test snippets should be able to use them without an
+    // explicit import (denoland/deno#30550). Namespace re-exports are
+    // `ExportSpecifier::Namespace` and skipped below.
+    let is_reexport = named_export.src.is_some();
+
+    for specifier in &named_export.specifiers {
+      let ast::ExportSpecifier::Named(named) = specifier else {
+        continue;
+      };
+      let name = match &named.exported {
+        Some(exported) => get_atom(exported),
+        None => get_atom(&named.orig),
+      };
+      // `export { default } from "./other.ts"` re-exports the default through
+      // this module — there's no new *named* export surface to inject.
+      if is_reexport && name.as_ref() == "default" {
+        continue;
       }
-      None => {
-        self
-          .named_exports
-          .insert(get_atom(&export_named_specifier.orig));
+      // `export type { Foo }` (`named_export.type_only`) and
+      // `export { type Foo }` (`named.is_type_only`) both make the binding
+      // type-only.
+      let is_type_only = named_export.type_only || named.is_type_only;
+      if is_type_only {
+        self.add_type_only_export(name);
+      } else {
+        self.add_value_export(name);
       }
     }
-  }
-
-  fn visit_named_export(&mut self, named_export: &ast::NamedExport) {
-    // ExportCollector does not handle re-exports
-    if named_export.src.is_some() {
-      return;
-    }
-
-    named_export.visit_children_with(self);
   }
 }
 
@@ -579,6 +744,7 @@ fn generate_pseudo_file(
   base_file_specifier: &ModuleSpecifier,
   exports: &ExportCollector,
   wrap_kind: WrapKind,
+  shebang: Option<&Shebang>,
 ) -> Result<File, AnyError> {
   let file = TextDecodedFile::decode(file)?;
 
@@ -606,6 +772,7 @@ fn generate_pseudo_file(
         exports_from_base: exports,
         atoms_to_be_excluded_from_import: top_level_atoms,
         wrap_kind,
+        shebang,
       }));
 
   let source = deno_ast::swc::codegen::to_code_with_comments(
@@ -630,6 +797,7 @@ struct Transform<'a> {
   exports_from_base: &'a ExportCollector,
   atoms_to_be_excluded_from_import: rustc_hash::FxHashSet<Atom>,
   wrap_kind: WrapKind,
+  shebang: Option<&'a Shebang>,
 }
 
 impl VisitMut for Transform<'_> {
@@ -719,6 +887,7 @@ impl VisitMut for Transform<'_> {
             transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
               stmts,
               self.specifier.to_string().into(),
+              self.shebang,
             )));
           }
           WrapKind::NoWrap => {
@@ -757,6 +926,7 @@ impl VisitMut for Transform<'_> {
             transformed_items.push(ast::ModuleItem::Stmt(wrap_in_deno_test(
               script.body.clone(),
               self.specifier.to_string().into(),
+              self.shebang,
             )));
           }
           WrapKind::NoWrap => {
@@ -778,7 +948,42 @@ impl VisitMut for Transform<'_> {
   }
 }
 
-fn wrap_in_deno_test(stmts: Vec<ast::Stmt>, test_name: Atom) -> ast::Stmt {
+fn wrap_in_deno_test(
+  mut stmts: Vec<ast::Stmt>,
+  test_name: Atom,
+  shebang: Option<&Shebang>,
+) -> ast::Stmt {
+  // Forward permissions declared by a shebang (if present).
+  // Mark the test as invalid if specified command is unparseable.
+  let options = match shebang {
+    Some(Shebang::Permissions(permissions)) => {
+      Some(permissions_options_object(permissions))
+    }
+    Some(Shebang::Invalid(message)) => {
+      stmts.insert(
+        0,
+        ast::Stmt::Throw(ast::ThrowStmt {
+          span: DUMMY_SP,
+          arg: Box::new(ast::Expr::New(ast::NewExpr {
+            callee: Box::new(ast::Expr::Ident(ast::Ident {
+              span: DUMMY_SP,
+              sym: "Error".into(),
+              optional: false,
+              ..Default::default()
+            })),
+            args: Some(vec![ast::ExprOrSpread {
+              spread: None,
+              expr: Box::new(string_lit(message)),
+            }]),
+            ..Default::default()
+          })),
+        }),
+      );
+      None
+    }
+    None => None,
+  };
+
   ast::Stmt::Expr(ast::ExprStmt {
     span: DUMMY_SP,
     expr: Box::new(ast::Expr::Call(ast::CallExpr {
@@ -796,36 +1001,140 @@ fn wrap_in_deno_test(stmts: Vec<ast::Stmt>, test_name: Atom) -> ast::Stmt {
           sym: "test".into(),
         }),
       }))),
-      args: vec![
-        ast::ExprOrSpread {
-          spread: None,
-          expr: Box::new(ast::Expr::Lit(ast::Lit::Str(ast::Str {
+      args: [
+        Some(string_lit(test_name.as_str())),
+        options,
+        Some(ast::Expr::Arrow(ast::ArrowExpr {
+          span: DUMMY_SP,
+          params: vec![],
+          body: Box::new(ast::BlockStmtOrExpr::BlockStmt(ast::BlockStmt {
             span: DUMMY_SP,
-            value: test_name.into(),
-            raw: None,
-          }))),
-        },
-        ast::ExprOrSpread {
-          spread: None,
-          expr: Box::new(ast::Expr::Arrow(ast::ArrowExpr {
-            span: DUMMY_SP,
-            params: vec![],
-            body: Box::new(ast::BlockStmtOrExpr::BlockStmt(ast::BlockStmt {
-              span: DUMMY_SP,
-              stmts,
-              ..Default::default()
-            })),
-            is_async: true,
-            is_generator: false,
-            type_params: None,
-            return_type: None,
+            stmts,
             ..Default::default()
           })),
-        },
-      ],
+          is_async: true,
+          is_generator: false,
+          type_params: None,
+          return_type: None,
+          ..Default::default()
+        })),
+      ]
+      .into_iter()
+      .flatten()
+      .map(|expr| ast::ExprOrSpread {
+        spread: None,
+        expr: Box::new(expr),
+      })
+      .collect(),
       type_args: None,
       ..Default::default()
     })),
+  })
+}
+
+fn string_lit(value: &str) -> ast::Expr {
+  ast::Expr::Lit(ast::Lit::Str(ast::Str {
+    span: DUMMY_SP,
+    value: value.into(),
+    raw: None,
+  }))
+}
+
+/// Builds the `{ permissions: ... }` options object passed to `Deno.test` for a
+/// snippet that declared a shebang.
+///
+/// - `--allow-all` becomes `{ permissions: "inherit" }`.
+/// - `--allow-*` becomes `{ [*]: "inherit" }`.
+/// - `--allow-*=...` becomes ` { [*]: [...] }`.
+/// - `--deny-*` becomes `{ [*]: false }`.
+/// - `--deny-*=...` is currently unsupported
+/// - `--permission-set` is currently unsupported
+/// - `--ignore-*` is currently unsupported
+/// - No permissions flags becomes `{ permissions: "none" }`
+///
+/// The currently unsupported flags are due to the current
+/// `Deno.PermissionOptionsObject` not being able to properly model them.
+fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
+  let prop = |name: &str, value: ast::Expr| {
+    ast::PropOrSpread::Prop(Box::new(ast::Prop::KeyValue(ast::KeyValueProp {
+      key: ast::PropName::Ident(ast::IdentName {
+        span: DUMMY_SP,
+        sym: name.into(),
+      }),
+      value: Box::new(value),
+    })))
+  };
+  let bool_lit = |value: bool| {
+    ast::Expr::Lit(ast::Lit::Bool(ast::Bool {
+      span: DUMMY_SP,
+      value,
+    }))
+  };
+
+  let perms = [
+    ("env", &permissions.allow_env, &permissions.deny_env),
+    ("ffi", &permissions.allow_ffi, &permissions.deny_ffi),
+    (
+      "import",
+      &permissions.allow_import,
+      &permissions.deny_import,
+    ),
+    ("net", &permissions.allow_net, &permissions.deny_net),
+    ("read", &permissions.allow_read, &permissions.deny_read),
+    ("run", &permissions.allow_run, &permissions.deny_run),
+    ("sys", &permissions.allow_sys, &permissions.deny_sys),
+    ("write", &permissions.allow_write, &permissions.deny_write),
+  ];
+
+  let value = if permissions.allow_all
+    && perms.iter().all(|(_, _, deny)| deny.is_none())
+  {
+    string_lit("inherit")
+  } else {
+    let props = perms
+      .into_iter()
+      .filter_map(|(name, allow, deny)| {
+        let value = if deny.is_some() {
+          bool_lit(false)
+        } else if permissions.allow_all {
+          string_lit("inherit")
+        } else if let Some(allowlist) = allow {
+          if allowlist.is_empty() {
+            string_lit("inherit")
+          } else {
+            ast::Expr::Array(ast::ArrayLit {
+              span: DUMMY_SP,
+              elems: allowlist
+                .iter()
+                .map(|entry| {
+                  Some(ast::ExprOrSpread {
+                    spread: None,
+                    expr: Box::new(string_lit(entry)),
+                  })
+                })
+                .collect(),
+            })
+          }
+        } else {
+          return None;
+        };
+        Some(prop(name, value))
+      })
+      .collect::<Vec<_>>();
+
+    if props.is_empty() {
+      string_lit("none")
+    } else {
+      ast::Expr::Object(ast::ObjectLit {
+        span: DUMMY_SP,
+        props,
+      })
+    }
+  };
+
+  ast::Expr::Object(ast::ObjectLit {
+    span: DUMMY_SP,
+    props: vec![prop("permissions", value)],
   })
 }
 
@@ -928,7 +1237,7 @@ export type Args = { a: number };
           specifier: "file:///main.ts",
         },
         expected: vec![Expected {
-          source: r#"import { Args, foo } from "file:///main.ts";
+          source: r#"import { type Args, foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-7.ts", async ()=>{
     const input = {
         a: 42
@@ -937,6 +1246,38 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
 });
 "#,
           specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * Documentation of my function.
+ *
+ * @example Usage
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read
+ * foo("bar")
+ * ```
+ */
+export function foo(s: string) {
+  return s;
+}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$6-10.ts", {
+    permissions: {
+        read: "inherit"
+    }
+}, async ()=>{
+    foo("bar");
+});
+"#,
+          specifier: "file:///main.ts$6-10.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1169,6 +1510,30 @@ Deno.test("file:///README.md$6-12.js", async ()=>{
           media_type: MediaType::JavaScript,
         }],
       },
+      // https://github.com/denoland/deno/issues/24164
+      Test {
+        input: Input {
+          source: r#"
+# Header
+
+> ```ts
+> import { assertEquals } from "@std/assert/equals";
+>
+> assertEquals(1 + 2, 3);
+> ```
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![Expected {
+          source: r#"import { assertEquals } from "@std/assert/equals";
+Deno.test("file:///README.md$4-9.ts", async ()=>{
+    assertEquals(1 + 2, 3);
+});
+"#,
+          specifier: "file:///README.md$4-9.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
       // https://github.com/denoland/deno/issues/26009
       Test {
         input: Input {
@@ -1301,6 +1666,312 @@ Deno.test("file:///main.ts$3-8.ts", async ()=>{
 });
 "#,
           specifier: "file:///main.ts$3-8.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Shebang with `--allow-all` inherits everything.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run -A
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", {
+    permissions: "inherit"
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Shebang without any permission flag runs with no permissions.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", {
+    permissions: "none"
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Shebang with bare permissions flags inherits.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", {
+    permissions: {
+        read: "inherit"
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Shebang with scoped permissions flag forwards the allow-list.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read=/tmp,/var
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", {
+    permissions: {
+        read: [
+            "/tmp",
+            "/var"
+        ]
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Unparseable shebang fails the test, naming the reason.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/bin/sh
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    throw new Error("invalid doc test hashbang: #!/bin/sh (binary basename needs to be 'deno')");
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A scoped `--deny-*` can't be modelled, so the test is made to fail
+      // rather than run with broader permissions than the shebang declares.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read --deny-read=/etc
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    throw new Error("invalid doc test hashbang: #!/usr/bin/env -S deno run --allow-read --deny-read=/etc (scoped --deny-* flags aren't supported yet, either remove them or ignore the test)");
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A bare `--deny-*` becomes `false`; only the flags present in the
+      // shebang end up in the permissions object.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read --deny-env
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", {
+    permissions: {
+        env: false,
+        read: "inherit"
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A quoted allow-list path (with a space) is tokenized by `shlex`.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read="/tmp/with space"
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", {
+    permissions: {
+        read: [
+            "/tmp/with space"
+        ]
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A markdown code block (not a JSDoc comment) also supports shebangs.
+      Test {
+        input: Input {
+          source: r#"# Title
+
+```ts
+#!/usr/bin/env -S deno run --allow-net=example.com
+foo();
+```
+"#,
+          specifier: "file:///README.md",
+        },
+        expected: vec![Expected {
+          source: r#"Deno.test("file:///README.md$3-7.ts", {
+    permissions: {
+        net: [
+            "example.com"
+        ]
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///README.md$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // Regression test for https://github.com/denoland/deno/issues/31385
+      // Type-only exports must be injected with the per-specifier `type`
+      // modifier so doc tests don't fail under `verbatimModuleSyntax: true`.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * useFoo();
+ * ```
+ */
+export function useFoo() {}
+export type Foo = string;
+export interface Bar { x: number }
+export class Quux {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { type Bar, type Foo, Quux, useFoo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-6.ts", async ()=>{
+    useFoo();
+});
+"#,
+          specifier: "file:///main.ts$3-6.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A name that is both a value export and a type export via declaration
+      // merging (here `const Foo` + `interface Foo`) must be injected as a
+      // value import, otherwise the value binding is dropped under
+      // `verbatimModuleSyntax: true`. The order of the value/type
+      // declarations must not matter.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * doSomething();
+ * ```
+ */
+export function doSomething() {}
+export interface Foo { x: number }
+export const Foo = 1;
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { Foo, doSomething } from "file:///main.ts";
+Deno.test("file:///main.ts$3-6.ts", async ()=>{
+    doSomething();
+});
+"#,
+          specifier: "file:///main.ts$3-6.ts",
           media_type: MediaType::TypeScript,
         }],
       },
@@ -1739,11 +2410,12 @@ export function foo(a: number | boolean): boolean | string {
         named_expected: atom_set!("foo"),
         default_expected: None,
       },
-      // The collector deliberately does not handle re-exports, because from
-      // doc reader's perspective, an example code would become hard to follow
-      // if it uses re-exported items (as opposed to normal, non-re-exported
-      // items that would look verbose if an example code explicitly imports
-      // them).
+      // Re-exports of the form `export { name } from "./other.ts"` are
+      // collected so doc-test snippets that reference them resolve
+      // (denoland/deno#30550). Namespace re-exports (`export *`,
+      // `export * as ns`) and `export { default }` re-exports are still
+      // skipped because we'd have to follow the re-export chain to know
+      // their actual exported names.
       Test {
         input: r#"
 export * from "./module1.ts";
@@ -1752,7 +2424,7 @@ export { name2, name3 as N3 } from "./module3.js";
 export { default } from "./module4.ts";
 export { default as myDefault } from "./module5.ts";
 "#,
-        named_expected: atom_set!(),
+        named_expected: atom_set!("name2", "N3", "myDefault"),
         default_expected: None,
       },
       Test {
