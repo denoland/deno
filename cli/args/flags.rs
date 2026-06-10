@@ -3097,10 +3097,11 @@ fn desktop_subcommand() -> Command {
   <p(245)>deno desktop main.tsx</>
   <p(245)>deno desktop --hmr main.tsx</>
   <p(245)>deno desktop --output MyApp.app main.tsx</>
+  <p(245)>deno desktop</>
 
 Compiles the given script into a desktop application using a backend for the UI
-layer. The entrypoint can be a file or <c>.</> to auto-detect a supported
-framework (Next.js, Astro, etc.).
+layer. The entrypoint can be a file, or omitted (or <c>.</>) to auto-detect a
+supported framework (Next.js, Astro, etc.) in the current directory.
 
 <y>Read more:</> <c>https://docs.deno.com/go/desktop</>
 "),
@@ -3195,9 +3196,10 @@ framework (Next.js, Astro, etc.).
       .arg(executable_ext_arg())
       .arg(env_file_arg())
       .arg(
-        script_arg()
-          .required_unless_present("help")
-          .trailing_var_arg(true),
+        // Optional: when omitted, defaults to "." so framework detection
+        // runs against the current directory (`deno desktop` ==
+        // `deno desktop .`).
+        script_arg().trailing_var_arg(true),
       )
   })
 }
@@ -7100,8 +7102,14 @@ fn desktop_parse(
     );
   }
 
-  let mut script = matches.remove_many::<String>("script_arg").unwrap();
-  let source_file = script.next().unwrap();
+  // The entrypoint is optional: a bare `deno desktop` defaults to "." so
+  // framework detection runs against the current directory.
+  let mut script = matches
+    .remove_many::<String>("script_arg")
+    .map(|s| s.collect::<Vec<_>>())
+    .unwrap_or_default()
+    .into_iter();
+  let source_file = script.next().unwrap_or_else(|| ".".to_string());
   let args = script.collect();
   let output = matches.remove_one::<String>("output");
   let target = matches.remove_one::<String>("target");
