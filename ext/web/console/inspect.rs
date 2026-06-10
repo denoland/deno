@@ -1279,17 +1279,20 @@ pub fn get_keys<'s, 'i>(
     }
     // Filter out Symbol.toStringTag for module namespaces
     if is_module_namespace {
-      for sym in symbols {
-        if let Ok(s) = v8::Local::<v8::Symbol>::try_from(sym) {
-          let desc = s.description(scope);
-          if !desc.is_undefined() {
-            let desc_str = desc.to_rust_string_lossy(scope);
-            if desc_str == "Symbol.toStringTag" {
-              continue;
+      {
+        v8::tc_scope!(tc2, scope);
+        for sym in symbols {
+          if let Ok(s) = v8::Local::<v8::Symbol>::try_from(sym) {
+            let desc = s.description(tc2);
+            if !desc.is_undefined() {
+              let desc_str = desc.to_rust_string_lossy(tc2);
+              if desc_str == "Symbol.toStringTag" {
+                continue;
+              }
             }
           }
+          keys.push(sym);
         }
-        keys.push(sym);
       }
     } else {
       keys.extend(symbols.iter().copied());
