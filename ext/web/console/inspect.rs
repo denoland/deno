@@ -1255,17 +1255,11 @@ pub fn get_keys<'s, 'i>(
 
   if show_hidden {
     // ObjectGetOwnPropertyNames: all own string keys (incl. non-enumerable).
-    // For module namespaces, use IncludePrototypes to find exported names.
     v8::tc_scope!(tc, scope);
-    let key_mode = if is_module_namespace {
-      v8::KeyCollectionMode::IncludePrototypes
-    } else {
-      v8::KeyCollectionMode::OwnOnly
-    };
     if let Some(arr) = value.get_property_names(
       tc,
       v8::GetPropertyNamesArgs {
-        mode: key_mode,
+        mode: v8::KeyCollectionMode::OwnOnly,
         property_filter: v8::PropertyFilter::SKIP_SYMBOLS,
         index_filter: v8::IndexFilter::IncludeIndices,
         key_conversion: v8::KeyConversionMode::ConvertToString,
@@ -1282,15 +1276,10 @@ pub fn get_keys<'s, 'i>(
     // ObjectKeys: own enumerable string keys.
     {
       v8::tc_scope!(tc, scope);
-      let key_mode = if is_module_namespace {
-        v8::KeyCollectionMode::IncludePrototypes
-      } else {
-        v8::KeyCollectionMode::OwnOnly
-      };
       if let Some(arr) = value.get_property_names(
         tc,
         v8::GetPropertyNamesArgs {
-          mode: key_mode,
+          mode: v8::KeyCollectionMode::OwnOnly,
           property_filter: v8::PropertyFilter::ONLY_ENUMERABLE
             | v8::PropertyFilter::SKIP_SYMBOLS,
           index_filter: v8::IndexFilter::IncludeIndices,
