@@ -322,7 +322,10 @@ impl V8CoverageConnection {
       .post_message::<()>(self.next_id(), "Profiler.disable", None);
   }
 
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "coverage files are written to the user-provided NODE_V8_COVERAGE dir, no permission check needed"
+  )]
   fn write_coverage(&self, response: &str) {
     let Ok(message) = serde_json::from_str::<serde_json::Value>(response)
     else {
@@ -385,23 +388,25 @@ impl V8CoverageConnection {
 }
 
 /// Called during bootstrap to start coverage collection
-/// if NODE_V8_COVERAGE env var is set.
+/// if NODE_V8_COVERAGE env var is set. Returns `true` if coverage
+/// collection was started (or was already running).
 #[op2(fast)]
-pub fn op_v8_start_coverage(state: &mut OpState) {
+pub fn op_v8_start_coverage(state: &mut OpState) -> bool {
   if state.has::<V8CoverageConnection>() {
-    return;
+    return true;
   }
   let coverage_dir = match std::env::var("NODE_V8_COVERAGE") {
     Ok(dir) if !dir.is_empty() => std::path::PathBuf::from(dir),
-    _ => return,
+    _ => return false,
   };
   let Some(inspector) = state.try_borrow::<Rc<JsRuntimeInspector>>() else {
-    return;
+    return false;
   };
   let inspector = inspector.clone();
   let mut connection = V8CoverageConnection::new(inspector, coverage_dir);
   connection.start();
   state.put(connection);
+  true
 }
 
 #[op2(fast)]
