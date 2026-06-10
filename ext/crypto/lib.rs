@@ -944,7 +944,8 @@ pub(crate) fn fast_uuid_v4(bytes: &mut [u8; 16]) -> String {
 
 #[test]
 fn test_fast_uuid_v4_correctness() {
-  let mut rng = thread_rng();
+  use rand::Rng;
+  let mut rng = rand::thread_rng();
   let mut bytes = [0u8; 16];
   rng.fill(&mut bytes);
   let uuid = fast_uuid_v4(&mut bytes.clone());
