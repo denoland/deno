@@ -544,7 +544,7 @@ fn create_pty(
 
   // SAFETY: Posix APIs
   unsafe {
-    #[allow(clippy::zombie_processes)]
+    #[allow(clippy::zombie_processes, reason = "necessary for pty")]
     let cmd = std::process::Command::new(program)
       .current_dir(cwd)
       .args(args)
@@ -699,35 +699,35 @@ mod windows {
   use std::ptr;
   use std::time::Duration;
 
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::minwindef::LPVOID;
-  use winapi::shared::minwindef::TRUE;
-  use winapi::shared::winerror::S_OK;
-  use winapi::um::consoleapi::ClosePseudoConsole;
-  use winapi::um::consoleapi::CreatePseudoConsole;
-  use winapi::um::fileapi::FlushFileBuffers;
-  use winapi::um::fileapi::ReadFile;
-  use winapi::um::fileapi::WriteFile;
-  use winapi::um::handleapi::DuplicateHandle;
-  use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-  use winapi::um::namedpipeapi::CreatePipe;
-  use winapi::um::namedpipeapi::PeekNamedPipe;
-  use winapi::um::processthreadsapi::CreateProcessW;
-  use winapi::um::processthreadsapi::DeleteProcThreadAttributeList;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::processthreadsapi::InitializeProcThreadAttributeList;
-  use winapi::um::processthreadsapi::LPPROC_THREAD_ATTRIBUTE_LIST;
-  use winapi::um::processthreadsapi::PROCESS_INFORMATION;
-  use winapi::um::processthreadsapi::UpdateProcThreadAttribute;
-  use winapi::um::synchapi::WaitForSingleObject;
-  use winapi::um::winbase::CREATE_UNICODE_ENVIRONMENT;
-  use winapi::um::winbase::EXTENDED_STARTUPINFO_PRESENT;
-  use winapi::um::winbase::INFINITE;
-  use winapi::um::winbase::STARTUPINFOEXW;
-  use winapi::um::wincontypes::COORD;
-  use winapi::um::wincontypes::HPCON;
-  use winapi::um::winnt::DUPLICATE_SAME_ACCESS;
-  use winapi::um::winnt::HANDLE;
+  use windows_sys::Win32::Foundation::CloseHandle;
+  use windows_sys::Win32::Foundation::DUPLICATE_SAME_ACCESS;
+  use windows_sys::Win32::Foundation::DuplicateHandle;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::Foundation::HANDLE;
+  use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+  use windows_sys::Win32::Foundation::S_OK;
+  use windows_sys::Win32::Foundation::TRUE;
+  use windows_sys::Win32::Storage::FileSystem::FlushFileBuffers;
+  use windows_sys::Win32::Storage::FileSystem::ReadFile;
+  use windows_sys::Win32::Storage::FileSystem::WriteFile;
+  use windows_sys::Win32::System::Console::COORD;
+  use windows_sys::Win32::System::Console::ClosePseudoConsole;
+  use windows_sys::Win32::System::Console::CreatePseudoConsole;
+  use windows_sys::Win32::System::Console::HPCON;
+  use windows_sys::Win32::System::Pipes::CreatePipe;
+  use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+  use windows_sys::Win32::System::Threading::CREATE_UNICODE_ENVIRONMENT;
+  use windows_sys::Win32::System::Threading::CreateProcessW;
+  use windows_sys::Win32::System::Threading::DeleteProcThreadAttributeList;
+  use windows_sys::Win32::System::Threading::EXTENDED_STARTUPINFO_PRESENT;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+  use windows_sys::Win32::System::Threading::INFINITE;
+  use windows_sys::Win32::System::Threading::InitializeProcThreadAttributeList;
+  use windows_sys::Win32::System::Threading::LPPROC_THREAD_ATTRIBUTE_LIST;
+  use windows_sys::Win32::System::Threading::PROCESS_INFORMATION;
+  use windows_sys::Win32::System::Threading::STARTUPINFOEXW;
+  use windows_sys::Win32::System::Threading::UpdateProcThreadAttribute;
+  use windows_sys::Win32::System::Threading::WaitForSingleObject;
 
   use super::PTY_ROWS_COLS;
   use super::SystemPty;
@@ -769,12 +769,12 @@ mod windows {
     ) -> Self {
       // https://docs.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session
       // SAFETY:
-      // Generous use of winapi to create a PTY (thus large unsafe block).
+      // Generous use of Win32 to create a PTY (thus large unsafe block).
       unsafe {
         let mut size: COORD = std::mem::zeroed();
         size.Y = PTY_ROWS_COLS.0 as i16;
         size.X = PTY_ROWS_COLS.1 as i16;
-        let mut console_handle = std::ptr::null_mut();
+        let mut console_handle: HPCON = 0;
         let (stdin_read_handle, stdin_write_handle) = create_pipe();
         let (stdout_read_handle, stdout_write_handle) = create_pipe();
 
@@ -820,10 +820,10 @@ mod windows {
           EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
           environment_vars
             .as_mut()
-            .map(|v| v.as_mut_ptr() as LPVOID)
+            .map(|v| v.as_mut_ptr() as *mut core::ffi::c_void)
             .unwrap_or(ptr::null_mut()),
           cwd.as_mut_ptr(),
-          &mut startup_info.StartupInfo,
+          &startup_info.StartupInfo,
           &mut proc_info,
         ));
 
@@ -835,14 +835,14 @@ mod windows {
         let thread_handle = WinHandle::new(proc_info.hThread);
         spawn_thread({
           let thread_handle = thread_handle.duplicate();
-          let console_handle = WinHandle::new(console_handle);
+          let console_handle = WinHandle::new(console_handle as HANDLE);
           move || {
             WaitForSingleObject(thread_handle.as_raw_handle(), INFINITE);
             // wait for the reading thread to catch up
             std::thread::sleep(Duration::from_millis(200));
             // close the console handle which will close the
             // stdout pipe for the reader
-            ClosePseudoConsole(console_handle.into_raw_handle());
+            ClosePseudoConsole(console_handle.into_raw_handle() as HPCON);
           }
         });
 
@@ -861,7 +861,7 @@ mod windows {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
       // don't do a blocking read in order to support timing out
       let mut bytes_available = 0;
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       handle_err!(unsafe {
         PeekNamedPipe(
           self.stdout_read_handle.as_raw_handle(),
@@ -877,7 +877,7 @@ mod windows {
       }
 
       let mut bytes_read = 0;
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       handle_err!(unsafe {
         ReadFile(
           self.stdout_read_handle.as_raw_handle(),
@@ -912,12 +912,12 @@ mod windows {
       cwd: &Path,
       maybe_env_vars: Option<HashMap<String, String>>,
     ) -> Self {
-      // SAFETY: Generous use of winapi to create a PTY
+      // SAFETY: Generous use of Win32 to create a PTY
       unsafe {
         let mut size: COORD = std::mem::zeroed();
         size.Y = super::PTY_ROWS_COLS.0 as i16;
         size.X = super::PTY_ROWS_COLS.1 as i16;
-        let mut console_handle = std::ptr::null_mut();
+        let mut console_handle: HPCON = 0;
         let (stdin_read_handle, stdin_write_handle) = create_pipe();
         let (stdout_read_handle, stdout_write_handle) = create_pipe();
 
@@ -963,10 +963,10 @@ mod windows {
           EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
           environment_vars
             .as_mut()
-            .map(|v| v.as_mut_ptr() as LPVOID)
+            .map(|v| v.as_mut_ptr() as *mut core::ffi::c_void)
             .unwrap_or(ptr::null_mut()),
           cwd_vec.as_mut_ptr(),
-          &mut startup_info.StartupInfo,
+          &startup_info.StartupInfo,
           &mut proc_info,
         ));
 
@@ -980,7 +980,7 @@ mod windows {
           process_handle: WinHandle::new(proc_info.hProcess),
           _thread_handle: WinHandle::new(proc_info.hThread),
           _attribute_list: attribute_list,
-          console_handle: WinHandle::new(console_handle),
+          console_handle: WinHandle::new(console_handle as HANDLE),
         }
       }
     }
@@ -988,11 +988,11 @@ mod windows {
     /// Try to get the exit code if the process has finished.
     /// Returns None if the process is still running.
     pub fn try_get_exit_code(&self) -> Option<i32> {
-      use winapi::um::minwinbase::STILL_ACTIVE;
-      use winapi::um::processthreadsapi::GetExitCodeProcess;
-      use winapi::um::winbase::WAIT_OBJECT_0;
+      use windows_sys::Win32::Foundation::STILL_ACTIVE;
+      use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+      use windows_sys::Win32::System::Threading::GetExitCodeProcess;
 
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       unsafe {
         let result =
           WaitForSingleObject(self.process_handle.as_raw_handle(), 0);
@@ -1002,7 +1002,7 @@ mod windows {
             self.process_handle.as_raw_handle(),
             &mut exit_code,
           ) != 0
-            && exit_code != STILL_ACTIVE
+            && exit_code != STILL_ACTIVE as u32
           {
             return Some(exit_code as i32);
           }
@@ -1014,9 +1014,9 @@ mod windows {
 
   impl Drop for WinPseudoConsoleWithWait {
     fn drop(&mut self) {
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       unsafe {
-        ClosePseudoConsole(self.console_handle.as_raw_handle());
+        ClosePseudoConsole(self.console_handle.as_raw_handle() as HPCON);
       }
     }
   }
@@ -1024,7 +1024,7 @@ mod windows {
   impl Read for WinPseudoConsoleWithWait {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
       let mut bytes_available = 0;
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       handle_err!(unsafe {
         PeekNamedPipe(
           self.stdout_read_handle.as_raw_handle(),
@@ -1040,7 +1040,7 @@ mod windows {
       }
 
       let mut bytes_read = 0;
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       handle_err!(unsafe {
         ReadFile(
           self.stdout_read_handle.as_raw_handle(),
@@ -1059,7 +1059,7 @@ mod windows {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
       let mut bytes_written = 0;
       // SAFETY:
-      // winapi call
+      // Win32 call
       handle_err!(unsafe {
         WriteFile(
           self.stdin_write_handle.as_raw_handle(),
@@ -1073,7 +1073,7 @@ mod windows {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       handle_err!(unsafe {
         FlushFileBuffers(self.stdin_write_handle.as_raw_handle())
       });
@@ -1091,10 +1091,10 @@ mod windows {
     }
 
     pub fn duplicate(&self) -> WinHandle {
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       let process_handle = unsafe { GetCurrentProcess() };
       let mut duplicate_handle = ptr::null_mut();
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       assert_win_success!(unsafe {
         DuplicateHandle(
           process_handle,
@@ -1130,9 +1130,9 @@ mod windows {
   impl Drop for WinHandle {
     fn drop(&mut self) {
       if !self.inner.is_null() && self.inner != INVALID_HANDLE_VALUE {
-        // SAFETY: winapi call
+        // SAFETY: Win32 call
         unsafe {
-          winapi::um::handleapi::CloseHandle(self.inner);
+          CloseHandle(self.inner);
         }
       }
     }
@@ -1145,7 +1145,7 @@ mod windows {
   impl ProcThreadAttributeList {
     pub fn new(console_handle: HPCON) -> Self {
       // SAFETY:
-      // Generous use of unsafe winapi calls to create a ProcThreadAttributeList.
+      // Generous use of unsafe Win32 calls to create a ProcThreadAttributeList.
       unsafe {
         // discover size required for the list
         let mut size = 0;
@@ -1175,7 +1175,7 @@ mod windows {
           attribute_list_ptr,
           0,
           PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-          console_handle,
+          console_handle as *const core::ffi::c_void,
           std::mem::size_of::<HPCON>(),
           ptr::null_mut(),
           ptr::null_mut(),
@@ -1192,7 +1192,7 @@ mod windows {
 
   impl Drop for ProcThreadAttributeList {
     fn drop(&mut self) {
-      // SAFETY: winapi call
+      // SAFETY: Win32 call
       unsafe { DeleteProcThreadAttributeList(self.as_mut_ptr()) };
     }
   }
@@ -1201,7 +1201,7 @@ mod windows {
     let mut read_handle = std::ptr::null_mut();
     let mut write_handle = std::ptr::null_mut();
 
-    // SAFETY: Creating an anonymous pipe with winapi.
+    // SAFETY: Creating an anonymous pipe with Win32.
     assert_win_success!(unsafe {
       CreatePipe(&mut read_handle, &mut write_handle, ptr::null_mut(), 0)
     });

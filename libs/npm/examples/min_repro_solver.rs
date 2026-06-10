@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
-#![allow(clippy::print_stderr)]
+#![allow(clippy::print_stderr, reason = "example binary")]
+#![allow(clippy::disallowed_methods, reason = "example binary")]
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -65,7 +66,7 @@ async fn main() {
   eprintln!("Test code");
   eprintln!("===========================");
   let test_code = solver.get_test_code();
-  #[allow(clippy::print_stdout)]
+  #[allow(clippy::print_stdout, reason = "example binary")]
   {
     println!("{}", test_code);
   }

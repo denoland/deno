@@ -1,22 +1,28 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use ed448_goldilocks::Scalar;
-use ed448_goldilocks::curve::MontgomeryPoint;
+use ed448_goldilocks::EdwardsScalar;
+use ed448_goldilocks::MontgomeryPoint;
+use ed448_goldilocks::subtle::ConstantTimeEq;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
-use elliptic_curve::subtle::ConstantTimeEq;
 use rand::RngCore;
 use rand::rngs::OsRng;
 use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 
+use crate::key_store::CryptoKeyHandle;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X448Error {
   #[class("DOMExceptionOperationError")]
   #[error("Failed to export key")]
   FailedExport,
+  #[class("DOMExceptionDataError")]
+  #[error("Invalid key data")]
+  InvalidKeyLength,
   #[class(generic)]
   #[error(transparent)]
   Der(#[from] spki::der::Error),
@@ -31,35 +37,66 @@ pub fn op_crypto_generate_x448_keypair(
   rng.fill_bytes(pkey);
 
   // x448(pkey, 5)
-  let point = &MontgomeryPoint::generator()
-    * &Scalar::from_bytes(pkey.try_into().unwrap());
+  let mut scalar_bytes = [0u8; 57];
+  scalar_bytes[..56].copy_from_slice(pkey);
+  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
+  let point = &MontgomeryPoint::GENERATOR * &scalar;
   pubkey.copy_from_slice(&point.0);
 }
 
-const MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 56]);
+static MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 56]);
 
 #[op2(fast)]
 pub fn op_crypto_derive_bits_x448(
-  #[buffer] k: &[u8],
-  #[buffer] u: &[u8],
+  #[cppgc] k: &CryptoKeyHandle,
+  #[cppgc] u: &CryptoKeyHandle,
   #[buffer] secret: &mut [u8],
-) -> bool {
-  let k: [u8; 56] = k.try_into().expect("Expected byteLength 56");
-  let u: [u8; 56] = u.try_into().expect("Expected byteLength 56");
+) -> Result<bool, X448Error> {
+  let k: [u8; 56] = k
+    .data()
+    .bytes()
+    .try_into()
+    .map_err(|_| X448Error::InvalidKeyLength)?;
+  let u: [u8; 56] = u
+    .data()
+    .bytes()
+    .try_into()
+    .map_err(|_| X448Error::InvalidKeyLength)?;
 
   // x448(k, u)
-  let point = &MontgomeryPoint(u) * &Scalar::from_bytes(k);
+  let mut scalar_bytes = [0u8; 57];
+  scalar_bytes[..56].copy_from_slice(&k);
+  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
+  let point = &MontgomeryPoint(u) * &scalar;
   if point.ct_eq(&MONTGOMERY_IDENTITY).unwrap_u8() == 1 {
-    return true;
+    return Ok(true);
   }
 
   secret.copy_from_slice(&point.0);
-  false
+  Ok(false)
 }
 
 // id-X448 OBJECT IDENTIFIER ::= { 1 3 101 111 }
 const X448_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.111");
+
+#[op2]
+#[string]
+pub fn op_crypto_x448_public_key(
+  #[buffer] private_key: &[u8],
+) -> Result<String, X448Error> {
+  use base64::Engine;
+
+  let private_key: [u8; 56] = private_key
+    .try_into()
+    .map_err(|_| X448Error::InvalidKeyLength)?;
+  // x448(pkey, 5), identical derivation to op_crypto_generate_x448_keypair.
+  let mut scalar_bytes = [0u8; 57];
+  scalar_bytes[..56].copy_from_slice(&private_key);
+  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
+  let point = &MontgomeryPoint::GENERATOR * &scalar;
+  Ok(BASE64_URL_SAFE_NO_PAD.encode(point.0))
+}
 
 #[op2]
 pub fn op_crypto_export_spki_x448(
@@ -144,7 +181,7 @@ pub fn op_crypto_import_pkcs8_x448(
   }
   // 6.
   // CurvePrivateKey ::= OCTET STRING
-  if pk_info.private_key.len() != 56 {
+  if pk_info.private_key.len() != 58 {
     return false;
   }
   out.copy_from_slice(&pk_info.private_key[2..]);

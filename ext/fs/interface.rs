@@ -9,6 +9,7 @@ use deno_core::FromV8;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use deno_io::fs::FsStatFs;
 use deno_maybe_sync::MaybeSend;
 use deno_maybe_sync::MaybeSync;
 use deno_permissions::CheckedPath;
@@ -85,7 +86,8 @@ impl From<i32> for OpenOptions {
     }
     if (flags & libc::O_EXCL) == libc::O_EXCL {
       options.create_new = true;
-      options.write = true;
+      // Note: O_EXCL only controls create_new semantics. The write access
+      // mode is determined separately by O_WRONLY or O_RDWR flags.
       flags &= !libc::O_EXCL;
     }
     if (flags & libc::O_RDWR) == libc::O_RDWR {
@@ -139,7 +141,7 @@ pub struct FsDirEntry {
   pub is_symlink: bool,
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type FileSystemRc = deno_maybe_sync::MaybeArc<dyn FileSystem>;
 
 #[async_trait::async_trait(?Send)]
@@ -244,6 +246,14 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
 
   fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat>;
   async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat>;
+
+  fn statfs_sync(&self, path: &CheckedPath, bigint: bool)
+  -> FsResult<FsStatFs>;
+  async fn statfs_async(
+    &self,
+    path: CheckedPathBuf,
+    bigint: bool,
+  ) -> FsResult<FsStatFs>;
 
   fn realpath_sync(&self, path: &CheckedPath) -> FsResult<PathBuf>;
   async fn realpath_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf>;

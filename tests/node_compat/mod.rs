@@ -81,15 +81,35 @@ struct ExpectedFailure {
 struct TestConfig {
   #[serde(default)]
   flaky: bool,
+  /// When `true`, the test is skipped on all platforms. Requires `reason`.
+  #[serde(default)]
+  ignore: bool,
   windows: Option<PlatformExpectation>,
   darwin: Option<PlatformExpectation>,
   linux: Option<PlatformExpectation>,
+  #[serde(rename = "linuxAarch64")]
+  linux_aarch64: Option<PlatformExpectation>,
+  #[serde(rename = "linuxX86_64")]
+  linux_x86_64: Option<PlatformExpectation>,
   reason: Option<String>,
   /// Expected exit code for all platforms (overridden by per-platform config)
   #[serde(rename = "exitCode")]
   exit_code: Option<i32>,
   /// Expected output pattern (with [WILDCARD] support) for all platforms
   output: Option<String>,
+  /// Per-test environment variables, layered on top of the runner's defaults.
+  /// Used when a single Node test exercises a code path that needs a config
+  /// override (e.g. `node_shared_openssl=1`) which would regress other tests
+  /// if applied globally.
+  env: Option<HashMap<String, String>>,
+  /// Extra `deno run`/`deno test` CLI flags to append for this test only,
+  /// appearing after the standard `RUN_ARGS`/`TEST_ARGS` and after any
+  /// flags derived from the test source's `// Flags:` directive. Use
+  /// sparingly - typically for security knobs like
+  /// `--unsafely-ignore-certificate-errors` that one specific test
+  /// requires and that we explicitly do not want every test to inherit.
+  #[serde(rename = "extraDenoArgs", default)]
+  extra_deno_args: Vec<String>,
 }
 
 /// The full config.json structure
@@ -137,6 +157,14 @@ fn main() {
       _ => true,
     });
   }
+
+  // Apply sharding if CI_SHARD_INDEX / CI_SHARD_TOTAL are set
+  let category =
+    if let Some(shard) = test_util::test_runner::ShardConfig::from_env() {
+      test_util::test_runner::filter_to_shard(category, &shard)
+    } else {
+      category
+    };
 
   if category.is_empty() {
     return;
@@ -258,11 +286,8 @@ fn parse_cli_args() -> CliArgs {
 fn load_config() -> NodeCompatConfig {
   let config_path = tests_path().join("node_compat").join("config.jsonc");
   let config_content = std::fs::read_to_string(&config_path).unwrap();
-  let value =
-    jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
-      .unwrap()
-      .unwrap();
-  serde_json::from_value(value).unwrap()
+  jsonc_parser::parse_to_serde_value(&config_content, &Default::default())
+    .unwrap()
 }
 
 // Directories that don't contain runnable tests
@@ -286,12 +311,12 @@ const IGNORED_TEST_DIRS: &[&str] = &[
   "tick-processor",
   "tools",
   "v8-updates",
-  "wasi",
   "wpt",
 ];
 
 /// Collect all test files from the suite directory.
 fn collect_all_tests() -> CollectedTestCategory<NodeCompatTestData> {
+  ensure_dir_fixtures();
   let suite_dir = suite_test_dir();
   let mut children = Vec::new();
 
@@ -377,6 +402,21 @@ fn suite_test_dir() -> std::path::PathBuf {
     .to_path_buf()
 }
 
+/// Restore directory-only fixtures that git can't track.
+///
+/// The vendored Node.js suite contains a few empty directories that the
+/// individual tests rely on (e.g. `test/fixtures/wasi/subdir` is asserted
+/// by `test-wasi-readdir.js`). Git does not preserve empty directories on
+/// checkout, so we recreate them here before the runner enumerates tests.
+fn ensure_dir_fixtures() {
+  let suite = suite_test_dir();
+  // Extend this when more directory-only fixtures are needed.
+  let p = suite.join("fixtures/wasi/subdir");
+  if !p.exists() {
+    let _ = std::fs::create_dir_all(&p);
+  }
+}
+
 fn create_collected_test(
   test_name: &str,
 ) -> CollectedCategoryOrTest<NodeCompatTestData> {
@@ -405,15 +445,32 @@ fn wrap_in_category(
 
 fn platform_expectation(config: &TestConfig) -> Option<&PlatformExpectation> {
   let os = std::env::consts::OS;
-  match os {
-    "windows" => config.windows.as_ref(),
-    "linux" => config.linux.as_ref(),
-    "macos" => config.darwin.as_ref(),
-    _ => None,
+  let arch = std::env::consts::ARCH;
+  match (os, arch) {
+    ("linux", "aarch64") => {
+      config.linux_aarch64.as_ref().or(config.linux.as_ref())
+    }
+    ("linux", "x86_64") => {
+      config.linux_x86_64.as_ref().or(config.linux.as_ref())
+    }
+    _ => match os {
+      "windows" => config.windows.as_ref(),
+      "linux" => config.linux.as_ref(),
+      "macos" => config.darwin.as_ref(),
+      _ => None,
+    },
   }
 }
 
 fn should_ignore(config: &TestConfig) -> Option<&str> {
+  if config.ignore {
+    return Some(
+      config
+        .reason
+        .as_deref()
+        .expect("tests with `ignore: true` must have a `reason`"),
+    );
+  }
   if let Some(PlatformExpectation::Enabled(false)) =
     platform_expectation(config)
   {
@@ -456,17 +513,26 @@ fn uses_node_test_module(source: &str) -> bool {
   source.contains("'node:test'") || source.contains("\"node:test\"")
 }
 
-fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
+fn parse_flags(source: &str) -> (Vec<String>, Vec<String>, Vec<String>) {
   let mut v8_flags = Vec::new();
   let mut node_options = Vec::new();
+  let mut deno_args = Vec::new();
 
   let re = Regex::new(r"^// Flags: (.+)$").unwrap();
   for line in source.lines() {
     if let Some(captures) = re.captures(line) {
       let flags_str = captures.get(1).unwrap().as_str();
       for flag in flags_str.split_whitespace() {
-        match flag {
-          "--expose_externalize_string" => {
+        // V8 treats `--foo-bar` and `--foo_bar` as the same flag, and Node's
+        // test suite uses both spellings interchangeably. Normalize underscores
+        // to hyphens before matching so we don't have to enumerate both forms.
+        let normalized = if flag.starts_with("--") {
+          flag.replace('_', "-")
+        } else {
+          flag.to_string()
+        };
+        match normalized.as_str() {
+          "--expose-externalize-string" => {
             v8_flags.push("--expose-externalize-string".to_string());
           }
           "--expose-gc" => {
@@ -481,8 +547,49 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
           "--pending-deprecation" => {
             node_options.push("--pending-deprecation".to_string());
           }
+          "--expose-internals" | "--expose_internals" => {
+            node_options.push("--expose-internals".to_string());
+          }
+          "--tls-min-v1.0"
+          | "--tls-min-v1.1"
+          | "--tls-min-v1.2"
+          | "--tls-min-v1.3"
+          | "--tls-max-v1.2"
+          | "--tls-max-v1.3"
+          | "--use-bundled-ca"
+          | "--no-use-bundled-ca"
+          | "--use-openssl-ca"
+          | "--no-use-openssl-ca"
+          | "--use-system-ca"
+          | "--no-use-system-ca" => {
+            node_options.push(flag.to_string());
+          }
+          n if n.starts_with("--dns-result-order=") => {
+            node_options.push(flag.to_string());
+          }
           "--allow-natives-syntax" => {
             v8_flags.push("--allow-natives-syntax".to_string());
+          }
+          n if n.starts_with("--title=") => {
+            node_options.push(flag.to_string());
+          }
+          // Inspector tests opt in to the inspector via `--inspect=PORT`
+          // (commonly `--inspect=0` to pick a random port). Forward to
+          // Deno, normalizing the bare port form to `127.0.0.1:PORT` since
+          // Deno's CLI expects `host:port`.
+          n if n == "--inspect" || n.starts_with("--inspect=") => {
+            let mapped = match n.strip_prefix("--inspect=") {
+              None | Some("") => "--inspect=127.0.0.1:0".to_string(),
+              Some(rest) if rest.chars().all(|c| c.is_ascii_digit()) => {
+                format!("--inspect=127.0.0.1:{}", rest)
+              }
+              Some(rest) => format!("--inspect={}", rest),
+            };
+            deno_args.push(mapped);
+          }
+          "--experimental-network-inspection" => {
+            // Deno emits Network.* events when the inspector is attached;
+            // no separate opt-in flag.
           }
           _ => {}
         }
@@ -491,12 +598,12 @@ fn parse_flags(source: &str) -> (Vec<String>, Vec<String>) {
     }
   }
 
-  (v8_flags, node_options)
+  (v8_flags, node_options, deno_args)
 }
 
 fn truncate_output(output: &str, max_len: usize) -> String {
   if output.len() > max_len {
-    format!("{} ...", &output[..max_len])
+    format!("{} ...", &output[..output.floor_char_boundary(max_len)])
   } else {
     output.to_string()
   }
@@ -512,14 +619,18 @@ struct TestSetup {
 }
 
 impl TestSetup {
-  fn new(cli_args: &CliArgs, data: &NodeCompatTestData) -> Self {
+  fn new(
+    cli_args: &CliArgs,
+    data: &NodeCompatTestData,
+    test_config: Option<&TestConfig>,
+  ) -> Self {
     let test_suite_path = tests_path().join("node_compat/runner/suite");
     let test_path = format!("test/{}", data.test_path);
     let full_test_path = test_suite_path.join(&test_path);
 
     let source = full_test_path.read_to_string();
     let uses_node_test = uses_node_test_module(&source);
-    let (v8_flags, node_options) = parse_flags(&source);
+    let (v8_flags, node_options, extra_deno_args) = parse_flags(&source);
 
     let mut args: Vec<String> = if uses_node_test {
       TEST_ARGS.iter().map(|s| s.to_string()).collect()
@@ -529,6 +640,16 @@ impl TestSetup {
 
     if !v8_flags.is_empty() {
       args.push(format!("--v8-flags={}", v8_flags.join(",")));
+    }
+    for arg in &extra_deno_args {
+      args.push(arg.clone());
+    }
+    // Per-test extra args from config.jsonc, e.g. security knobs that
+    // only one specific test needs.
+    if let Some(extra) = test_config {
+      for arg in &extra.extra_deno_args {
+        args.push(arg.clone());
+      }
     }
     if cli_args.inspect_brk {
       args.push("--inspect-brk".to_string());
@@ -546,6 +667,13 @@ impl TestSetup {
     env_vars.insert("NODE_OPTIONS".to_string(), node_options.join(" "));
     env_vars.insert("NO_COLOR".to_string(), "1".to_string());
     env_vars.insert("TEST_SERIAL_ID".to_string(), serial_id.to_string());
+
+    // Per-test env overrides win over the defaults above.
+    if let Some(extra) = test_config.and_then(|c| c.env.as_ref()) {
+      for (key, value) in extra {
+        env_vars.insert(key.clone(), value.clone());
+      }
+    }
 
     let timeout = Duration::from_millis(if cfg!(target_os = "macos") {
       20_000
@@ -631,10 +759,32 @@ impl TestSetup {
       })
       .collect::<Vec<_>>()
       .join(" ");
+    // Surface any test-specific env vars (set via TestConfig.env) so the
+    // copy-pasted command reproduces the failure faithfully.
+    let well_known: &[&str] = &[
+      "NODE_TEST_KNOWN_GLOBALS",
+      "NODE_SKIP_FLAG_CHECK",
+      "NODE_OPTIONS",
+      "NO_COLOR",
+      "TEST_SERIAL_ID",
+    ];
+    let mut extras = self
+      .env_vars
+      .iter()
+      .filter(|(k, _)| !well_known.contains(&k.as_str()))
+      .map(|(k, v)| format!("{}='{}'", k, v.replace("'", "\\'")))
+      .collect::<Vec<_>>();
+    extras.sort();
+    let extras_str = if extras.is_empty() {
+      String::new()
+    } else {
+      format!("{} ", extras.join(" "))
+    };
     format!(
       "Command: {}",
       deno_terminal::colors::gray(format!(
-        "NODE_TEST_KNOWN_GLOBALS=0 NODE_SKIP_FLAG_CHECK=1 NODE_OPTIONS='{}' deno {}",
+        "{}NODE_TEST_KNOWN_GLOBALS=0 NODE_SKIP_FLAG_CHECK=1 NODE_OPTIONS='{}' deno {}",
+        extras_str,
         node_options.replace("'", "\\'"),
         args_str,
       ))
@@ -717,7 +867,7 @@ fn run_test(
     return TestResult::Ignored;
   }
 
-  let setup = TestSetup::new(cli_args, data);
+  let setup = TestSetup::new(cli_args, data, test_config);
 
   let (success, output_text, exit_code) = if is_pseudo_tty_test {
     setup.run_pty()
@@ -773,7 +923,7 @@ fn run_test(
 ///
 /// Returns `Passed` when the test fails in the expected way (matching exit code
 /// and/or output pattern), and `Failed` otherwise.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "all arguments are needed")]
 fn handle_expected_failure(
   ef: &ExpectedFailure,
   success: bool,
@@ -876,284 +1026,5 @@ fn handle_expected_failure(
       mismatch_details, output_text, debugging_command_text
     )
     .into_bytes(),
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  #[test]
-  fn test_deserialize_legacy_bool_platform() {
-    let json = r#"{ "windows": false, "reason": "disabled on windows" }"#;
-    let config: TestConfig = serde_json::from_str(json).unwrap();
-    assert!(matches!(
-      config.windows,
-      Some(PlatformExpectation::Enabled(false))
-    ));
-    assert!(config.darwin.is_none());
-  }
-
-  #[test]
-  fn test_deserialize_platform_expected_failure() {
-    let json =
-      r#"{ "windows": { "exitCode": 1, "output": "boom [WILDCARD]" } }"#;
-    let config: TestConfig = serde_json::from_str(json).unwrap();
-    match &config.windows {
-      Some(PlatformExpectation::ExpectedFailure(ef)) => {
-        assert_eq!(ef.exit_code, Some(1));
-        assert_eq!(ef.output.as_deref(), Some("boom [WILDCARD]"));
-      }
-      other => panic!("unexpected: {:?}", other),
-    }
-  }
-
-  #[test]
-  fn test_deserialize_top_level_expected_failure() {
-    let json = r#"{ "exitCode": 2, "output": "error [WILDCARD]" }"#;
-    let config: TestConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.exit_code, Some(2));
-    assert_eq!(config.output.as_deref(), Some("error [WILDCARD]"));
-    assert!(config.windows.is_none());
-  }
-
-  #[test]
-  fn test_deserialize_mixed_platforms() {
-    let json = r#"{
-      "linux": true,
-      "darwin": true,
-      "windows": { "exitCode": 1, "output": "Failed to create file at [WILDCARD]" }
-    }"#;
-    let config: TestConfig = serde_json::from_str(json).unwrap();
-    assert!(matches!(
-      config.linux,
-      Some(PlatformExpectation::Enabled(true))
-    ));
-    assert!(matches!(
-      config.darwin,
-      Some(PlatformExpectation::Enabled(true))
-    ));
-    match &config.windows {
-      Some(PlatformExpectation::ExpectedFailure(ef)) => {
-        assert_eq!(ef.exit_code, Some(1));
-        assert!(ef.output.as_deref().unwrap().contains("[WILDCARD]"));
-      }
-      other => panic!("unexpected: {:?}", other),
-    }
-  }
-
-  #[test]
-  fn test_deserialize_empty_config() {
-    let json = r#"{}"#;
-    let config: TestConfig = serde_json::from_str(json).unwrap();
-    assert!(config.windows.is_none());
-    assert!(config.darwin.is_none());
-    assert!(config.linux.is_none());
-    assert!(!config.flaky);
-    assert!(config.exit_code.is_none());
-    assert!(config.output.is_none());
-  }
-
-  #[test]
-  fn test_should_ignore_disabled_platform() {
-    let config = TestConfig {
-      windows: Some(PlatformExpectation::Enabled(false)),
-      reason: Some("broken on windows".to_string()),
-      ..Default::default()
-    };
-    let os = std::env::consts::OS;
-    if os == "windows" {
-      assert!(should_ignore(&config).is_some());
-    } else {
-      assert!(should_ignore(&config).is_none());
-    }
-  }
-
-  #[test]
-  fn test_should_ignore_expected_failure_is_not_ignored() {
-    // A platform with an ExpectedFailure should NOT be ignored - it should run
-    let config = TestConfig {
-      windows: Some(PlatformExpectation::ExpectedFailure(ExpectedFailure {
-        exit_code: Some(1),
-        output: None,
-      })),
-      ..Default::default()
-    };
-    // Even on Windows, should_ignore should return None because this is
-    // an expected-failure, not a disabled test
-    assert!(should_ignore(&config).is_none());
-  }
-
-  #[test]
-  fn test_resolve_expected_failure_platform_specific() {
-    let config = TestConfig {
-      windows: Some(PlatformExpectation::ExpectedFailure(ExpectedFailure {
-        exit_code: Some(1),
-        output: Some("error [WILDCARD]".to_string()),
-      })),
-      ..Default::default()
-    };
-    let ef = resolve_expected_failure(&config);
-    let os = std::env::consts::OS;
-    if os == "windows" {
-      let ef = ef.unwrap();
-      assert_eq!(ef.exit_code, Some(1));
-      assert_eq!(ef.output.as_deref(), Some("error [WILDCARD]"));
-    } else {
-      assert!(ef.is_none());
-    }
-  }
-
-  #[test]
-  fn test_resolve_expected_failure_top_level() {
-    let config = TestConfig {
-      exit_code: Some(2),
-      output: Some("fail".to_string()),
-      ..Default::default()
-    };
-    let ef = resolve_expected_failure(&config).unwrap();
-    assert_eq!(ef.exit_code, Some(2));
-    assert_eq!(ef.output.as_deref(), Some("fail"));
-  }
-
-  #[test]
-  fn test_resolve_expected_failure_platform_overrides_top_level() {
-    // On the current OS, platform config should override top-level
-    let os = std::env::consts::OS;
-    let platform_ef = ExpectedFailure {
-      exit_code: Some(42),
-      output: Some("platform specific".to_string()),
-    };
-    let mut config = TestConfig {
-      exit_code: Some(1),
-      output: Some("global".to_string()),
-      ..Default::default()
-    };
-    match os {
-      "windows" => {
-        config.windows = Some(PlatformExpectation::ExpectedFailure(platform_ef))
-      }
-      "linux" => {
-        config.linux = Some(PlatformExpectation::ExpectedFailure(platform_ef))
-      }
-      "macos" => {
-        config.darwin = Some(PlatformExpectation::ExpectedFailure(platform_ef))
-      }
-      _ => {}
-    }
-
-    let ef = resolve_expected_failure(&config).unwrap();
-    assert_eq!(ef.exit_code, Some(42));
-    assert_eq!(ef.output.as_deref(), Some("platform specific"));
-  }
-
-  #[test]
-  fn test_resolve_expected_failure_platform_true_uses_top_level() {
-    // If platform is simply `true`, fall back to top-level
-    let os = std::env::consts::OS;
-    let mut config = TestConfig {
-      exit_code: Some(1),
-      output: Some("global".to_string()),
-      ..Default::default()
-    };
-    match os {
-      "windows" => config.windows = Some(PlatformExpectation::Enabled(true)),
-      "linux" => config.linux = Some(PlatformExpectation::Enabled(true)),
-      "macos" => config.darwin = Some(PlatformExpectation::Enabled(true)),
-      _ => {}
-    }
-
-    let ef = resolve_expected_failure(&config).unwrap();
-    assert_eq!(ef.exit_code, Some(1));
-    assert_eq!(ef.output.as_deref(), Some("global"));
-  }
-
-  #[test]
-  fn test_resolve_no_expected_failure() {
-    let config = TestConfig::default();
-    assert!(resolve_expected_failure(&config).is_none());
-  }
-
-  #[test]
-  fn test_full_config_deserialization() {
-    let json = r#"{
-      "tests": {
-        "test-pass.js": {},
-        "test-disabled.js": {
-          "windows": false,
-          "reason": "broken"
-        },
-        "test-flaky.js": {
-          "flaky": true
-        },
-        "test-expected-fail-all.js": {
-          "exitCode": 1,
-          "output": "error [WILDCARD]"
-        },
-        "test-expected-fail-windows.js": {
-          "windows": {
-            "exitCode": 1,
-            "output": "Failed to create file at [WILDCARD]"
-          }
-        },
-        "test-mixed.js": {
-          "linux": true,
-          "darwin": true,
-          "windows": {
-            "exitCode": 1,
-            "output": "Failed [WILDCARD]"
-          },
-          "flaky": true
-        }
-      }
-    }"#;
-    let config: NodeCompatConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(config.tests.len(), 6);
-
-    // Empty config
-    let tc = &config.tests["test-pass.js"];
-    assert!(tc.windows.is_none());
-
-    // Disabled
-    let tc = &config.tests["test-disabled.js"];
-    assert!(matches!(
-      tc.windows,
-      Some(PlatformExpectation::Enabled(false))
-    ));
-
-    // Top-level expected failure
-    let tc = &config.tests["test-expected-fail-all.js"];
-    assert_eq!(tc.exit_code, Some(1));
-
-    // Platform-specific expected failure
-    let tc = &config.tests["test-expected-fail-windows.js"];
-    match &tc.windows {
-      Some(PlatformExpectation::ExpectedFailure(ef)) => {
-        assert_eq!(ef.exit_code, Some(1));
-      }
-      other => panic!("unexpected: {:?}", other),
-    }
-  }
-
-  #[test]
-  fn test_expected_failure_exit_code_only() {
-    let json = r#"{ "windows": { "exitCode": 3 } }"#;
-    let config: TestConfig = serde_json::from_str(json).unwrap();
-    match &config.windows {
-      Some(PlatformExpectation::ExpectedFailure(ef)) => {
-        assert_eq!(ef.exit_code, Some(3));
-        assert!(ef.output.is_none());
-      }
-      other => panic!("unexpected: {:?}", other),
-    }
-  }
-
-  #[test]
-  fn test_expected_failure_output_only() {
-    let json = r#"{ "exitCode": null, "output": "some error" }"#;
-    let config: TestConfig = serde_json::from_str(json).unwrap();
-    assert!(config.exit_code.is_none());
-    assert_eq!(config.output.as_deref(), Some("some error"));
-    let ef = resolve_expected_failure(&config).unwrap();
-    assert!(ef.exit_code.is_none());
-    assert_eq!(ef.output.as_deref(), Some("some error"));
   }
 }

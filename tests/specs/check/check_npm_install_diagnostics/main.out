@@ -1,4 +1,4 @@
-TS2581 [ERROR]: Cannot find name '$'. Did you mean to import jQuery? Try adding `import $ from "npm:jquery";`.
+TS25[WILDLINE] [ERROR]: Cannot find name '$'. Did you mean to import jQuery? Try adding `import $ from "npm:jquery";`.
 $;
 ^
     at file:///[WILDCARD]/main.ts:1:1

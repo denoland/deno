@@ -1,0 +1,62 @@
+{
+  // Regression test for https://github.com/denoland/deno/issues/34524 and
+  // https://github.com/denoland/deno/issues/34837
+  //
+  // A dual CJS/ESM package whose ESM entry default-imports a CJS entry that
+  // sets `module.exports.__esModule = true` (the shape tslib ships). The
+  // bundle must use node-style CJS interop so the default import is the whole
+  // `module.exports`, matching how `deno run` executes the same files. This
+  // must hold regardless of `--platform` (#34837), since it reflects how the
+  // source resolves its default import, not the runtime target.
+  "tempDir": true,
+  "tests": {
+    "bundle": {
+      "steps": [
+        {
+          "args": "bundle --quiet -o out.js entry.mjs",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A out.js",
+          "output": "out.out"
+        }
+      ]
+    },
+    "bundle_minified": {
+      "steps": [
+        {
+          "args": "bundle --quiet --minify -o out.min.js entry.mjs",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A out.min.js",
+          "output": "out.out"
+        }
+      ]
+    },
+    "bundle_browser": {
+      "steps": [
+        {
+          "args": "bundle --quiet --platform browser -o out.browser.js entry.mjs",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A out.browser.js",
+          "output": "out.out"
+        }
+      ]
+    },
+    "bundle_browser_minified": {
+      "steps": [
+        {
+          "args": "bundle --quiet --minify --platform browser -o out.browser.min.js entry.mjs",
+          "output": "[WILDCARD]"
+        },
+        {
+          "args": "run -A out.browser.min.js",
+          "output": "out.out"
+        }
+      ]
+    }
+  }
+}

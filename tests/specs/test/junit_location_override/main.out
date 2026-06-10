@@ -1,0 +1,12 @@
+Check [WILDCARD]main.ts
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="deno test" tests="2" failures="0" errors="0" time="[WILDCARD]">
+    <testsuite name="https://jsr.io/@std/testing/1.0.0/bdd.ts" tests="1" disabled="0" errors="0" failures="0">
+        <testcase name="library registered test" classname="https://jsr.io/@std/testing/1.0.0/bdd.ts" time="[WILDCARD]" line="100" col="10">
+        </testcase>
+    </testsuite>
+    <testsuite name="./main.ts" tests="1" disabled="0" errors="0" failures="0">
+        <testcase name="normal test" classname="./main.ts" time="[WILDCARD]" line="13" col="6">
+        </testcase>
+    </testsuite>
+</testsuites>

@@ -23,6 +23,9 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::coverage::CoverageCollector;
 use deno_runtime::cpu_prof_filename;
 use deno_runtime::cpu_profiler::CpuProfiler;
+use deno_runtime::deno_os::OpExitCallbacks;
+use deno_runtime::deno_os::WatcherExitHandle;
+use deno_runtime::deno_os::WatcherExited;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
@@ -75,13 +78,108 @@ impl CliMainWorker {
   }
 
   pub async fn run(&mut self) -> Result<i32, CoreError> {
-    let mut maybe_coverage_collector = self.maybe_setup_coverage_collector();
-    let mut maybe_cpu_profiler = self.maybe_setup_cpu_profiler();
+    let maybe_coverage_collector = self.maybe_setup_coverage_collector();
+    let maybe_cpu_profiler = self.maybe_setup_cpu_profiler();
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner();
+
+    // Wrap profiler and coverage in Rc<RefCell<Option<...>>> so that
+    // both the normal cleanup path and the Deno.exit() op_exit path
+    // can stop them. Whichever runs first takes the value; the other
+    // finds None and skips.
+    let coverage_cell: Rc<RefCell<Option<CoverageCollector>>> =
+      Rc::new(RefCell::new(maybe_coverage_collector));
+    let profiler_cell: Rc<RefCell<Option<CpuProfiler>>> =
+      Rc::new(RefCell::new(maybe_cpu_profiler));
+
+    // Register exit callbacks so Deno.exit() flushes profiling/coverage
+    // data before calling std::process::exit().
+    {
+      let coverage_for_exit = coverage_cell.clone();
+      let profiler_for_exit = profiler_cell.clone();
+      let inspector = self.worker.js_runtime().inspector();
+      let mut cbs = OpExitCallbacks::default();
+      cbs.push(Box::new(move || {
+        if let Some(mut cc) = coverage_for_exit.borrow_mut().take() {
+          let _ = cc.stop_collecting();
+        }
+      }));
+      cbs.push(Box::new(move || {
+        if let Some(mut cp) = profiler_for_exit.borrow_mut().take() {
+          let _ = cp.stop_profiling();
+        }
+      }));
+      // When an inspector session is connected, notify it that the
+      // execution context is being destroyed before exiting. Without this,
+      // process.exit() would call std::process::exit() immediately,
+      // skipping the normal event-loop shutdown path where V8's
+      // context_destroyed is called and Runtime.executionContextDestroyed
+      // is sent to debuggers.
+      cbs.push(Box::new(move || {
+        let sessions_state = inspector.sessions_state();
+        if sessions_state.has_nonblocking_wait_for_disconnect {
+          inspector.broadcast_context_destroyed();
+          // Sessions that called NodeRuntime.notifyWhenWaitingForDisconnect
+          // get a dedicated notification before the wait loop, instead of
+          // the generic Runtime.executionContextDestroyed.
+          inspector.broadcast_waiting_for_disconnect();
+          // Match Node.js message format that debugger clients rely on
+          log::info!("Waiting for the debugger to disconnect...");
+          inspector.wait_for_sessions_disconnect();
+        }
+      }));
+      self.worker.js_runtime().op_state().borrow_mut().put(cbs);
+    }
+
+    let has_coverage = coverage_cell.borrow().is_some();
 
     // WARNING: Remember to update cli/lib/worker.rs to align with
     // changes made here so that they affect deno_compile as well.
 
+    // Under `deno run --watch-hmr` / `deno serve --watch`, install the isolate
+    // handle so a script calling `Deno.exit()` terminates this isolate instead
+    // of the whole process, allowing the file watcher to survive and restart on
+    // the next change. The regular `--watch` path uses `run_for_watcher`, which
+    // installs it separately. See issue #7590.
+    let under_watcher = self.shared.maybe_file_watcher_communicator.is_some();
+    if under_watcher {
+      self.install_watcher_exit_handle();
+    }
+
+    let mut result = self
+      .run_to_completion(&mut maybe_hmr_runner, has_coverage)
+      .await;
+
+    // If the script called `Deno.exit()` under a watcher, `op_exit` terminated
+    // the isolate instead of the process. Treat it as a normal end of run:
+    // clear V8's termination flag so the worker can be dropped cleanly. The
+    // exit code recorded by `Deno.exit()` is reported below. See issue #7590.
+    if result.is_err() && under_watcher && self.exited_via_watcher() {
+      self.cancel_terminate_execution();
+      result = Ok(());
+    }
+
+    if let Some(mut coverage_collector) = coverage_cell.borrow_mut().take() {
+      coverage_collector.stop_collecting()?;
+    }
+    if let Some(mut cpu_profiler) = profiler_cell.borrow_mut().take() {
+      cpu_profiler.stop_profiling()?;
+    }
+    if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
+      hmr_runner.stop();
+    }
+
+    result?;
+    Ok(self.worker.exit_code())
+  }
+
+  /// Runs the main module to completion: preload + main module, lifecycle
+  /// events, and the event loop (including the HMR loop when `maybe_hmr_runner`
+  /// is set).
+  async fn run_to_completion(
+    &mut self,
+    maybe_hmr_runner: &mut Option<HmrRunner>,
+    has_coverage: bool,
+  ) -> Result<(), CoreError> {
     log::debug!("main_module {}", self.worker.main_module());
 
     // Run preload modules first if they were defined
@@ -114,10 +212,7 @@ impl CliMainWorker {
         }
       } else {
         // TODO(bartlomieju): this might not be needed anymore
-        self
-          .worker
-          .run_event_loop(maybe_coverage_collector.is_none())
-          .await?;
+        self.worker.run_event_loop(!has_coverage).await?;
       }
 
       let web_continue = self.worker.dispatch_beforeunload_event()?;
@@ -131,21 +226,17 @@ impl CliMainWorker {
 
     self.worker.dispatch_unload_event()?;
     self.worker.dispatch_process_exit_event()?;
+    self.worker.run_napi_ref_finalizers();
 
-    if let Some(coverage_collector) = maybe_coverage_collector.as_mut() {
-      coverage_collector.stop_collecting()?;
-    }
-    if let Some(cpu_profiler) = maybe_cpu_profiler.as_mut() {
-      cpu_profiler.stop_profiling()?;
-    }
-    if let Some(hmr_runner) = maybe_hmr_runner.as_mut() {
-      hmr_runner.stop();
-    }
-
-    Ok(self.worker.exit_code())
+    Ok(())
   }
 
-  pub async fn run_for_watcher(self) -> Result<(), CoreError> {
+  pub async fn run_for_watcher(mut self) -> Result<i32, CoreError> {
+    // Install the isolate handle so that a script calling `Deno.exit()`
+    // terminates this isolate instead of the whole process, allowing the file
+    // watcher to survive and restart on the next change. See issue #7590.
+    self.install_watcher_exit_handle();
+
     /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
     /// state of any pending events and emitting accordingly on drop in the case of a future
     /// cancellation.
@@ -165,9 +256,16 @@ impl CliMainWorker {
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
       pub async fn execute(&mut self) -> Result<(), CoreError> {
-        self.inner.execute_main_module().await?;
-        self.inner.worker.dispatch_load_event()?;
+        // Set pending_unload before module execution so that if the future
+        // is cancelled during a top-level await, Drop will still dispatch
+        // the unload event for any handlers registered during partial
+        // module evaluation.
         self.pending_unload = true;
+        if let Err(e) = self.inner.execute_main_module().await {
+          self.pending_unload = false;
+          return Err(e);
+        }
+        self.inner.worker.dispatch_load_event()?;
 
         let result = loop {
           match self.inner.worker.run_event_loop(false).await {
@@ -189,6 +287,7 @@ impl CliMainWorker {
 
         self.inner.worker.dispatch_unload_event()?;
         self.inner.worker.dispatch_process_exit_event()?;
+        self.inner.worker.run_napi_ref_finalizers();
 
         Ok(())
       }
@@ -198,12 +297,26 @@ impl CliMainWorker {
       fn drop(&mut self) {
         if self.pending_unload {
           let _ = self.inner.worker.dispatch_unload_event();
+          let _ = self.inner.worker.dispatch_process_exit_event();
         }
       }
     }
 
     let mut executor = FileWatcherModuleExecutor::new(self);
-    executor.execute().await
+    let result = executor.execute().await;
+
+    // If the script called `Deno.exit()`, `op_exit` terminated the isolate
+    // instead of the process. Treat it as a normal end of run: clear V8's
+    // termination flag so the worker can be dropped cleanly, and report the
+    // requested exit code rather than propagating the termination as an error.
+    // The watcher then waits for the next file change. See issue #7590.
+    if executor.inner.exited_via_watcher() {
+      executor.inner.cancel_terminate_execution();
+      return Ok(executor.inner.worker.exit_code());
+    }
+
+    result?;
+    Ok(executor.inner.worker.exit_code())
   }
 
   #[inline]
@@ -223,6 +336,44 @@ impl CliMainWorker {
 
   pub fn op_state(&mut self) -> Rc<RefCell<OpState>> {
     self.worker.js_runtime().op_state()
+  }
+
+  /// Returns a thread-safe handle to the V8 isolate. Used by the test runner
+  /// to install a handle that `op_test_isolate_exit` can call
+  /// `terminate_execution` on.
+  pub fn v8_isolate_handle(&mut self) -> v8::IsolateHandle {
+    self.worker.js_runtime().v8_isolate().thread_safe_handle()
+  }
+
+  /// Reset the V8 "terminating" flag. Called after the test runner detects
+  /// that the isolate's termination was caused by user code calling
+  /// `Deno.exit()`; this lets us cleanly tear down the worker.
+  pub fn cancel_terminate_execution(&mut self) {
+    self
+      .worker
+      .js_runtime()
+      .v8_isolate()
+      .cancel_terminate_execution();
+  }
+
+  /// Install the isolate handle so that a script calling `Deno.exit()`
+  /// terminates this isolate instead of the whole process. Used by the file
+  /// watcher paths (`deno run --watch[-hmr]`, `deno serve --watch`) so a script
+  /// calling `Deno.exit()` ends the current run without killing the watcher.
+  /// See issue #7590.
+  fn install_watcher_exit_handle(&mut self) {
+    let isolate_handle = self.v8_isolate_handle();
+    self
+      .op_state()
+      .borrow_mut()
+      .put(WatcherExitHandle(isolate_handle));
+  }
+
+  /// Whether the current run ended because the script called `Deno.exit()` while
+  /// a [`WatcherExitHandle`] was installed, i.e. `op_exit` terminated the
+  /// isolate instead of the process. See [`install_watcher_exit_handle`].
+  fn exited_via_watcher(&mut self) -> bool {
+    self.op_state().borrow().has::<WatcherExited>()
   }
 
   pub fn maybe_setup_hmr_runner(&mut self) -> Option<HmrRunner> {
@@ -260,6 +411,7 @@ impl CliMainWorker {
       filename,
       config.interval,
       config.md,
+      config.flamegraph,
     );
     cpu_profiler.start_profiling();
 
@@ -315,7 +467,7 @@ pub struct CliMainWorkerFactory {
 }
 
 impl CliMainWorkerFactory {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
@@ -388,7 +540,7 @@ impl CliMainWorkerFactory {
       .await
   }
 
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub async fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -400,28 +552,41 @@ impl CliMainWorkerFactory {
     stdio: deno_runtime::deno_io::Stdio,
     unconfigured_runtime: Option<deno_runtime::UnconfiguredRuntime>,
   ) -> Result<CliMainWorker, CreateCustomWorkerError> {
-    let main_module = match NpmPackageReqReference::from_specifier(&main_module)
-    {
-      Ok(package_ref) => {
-        if let Some(npm_installer) = &self.npm_installer {
-          let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
-          let reqs = &[package_ref.req().clone()];
-          npm_installer
-            .add_package_reqs(
-              reqs,
-              if matches!(
-                self.default_npm_caching_strategy,
-                NpmCachingStrategy::Lazy
-              ) {
-                PackageCaching::Only(reqs.into())
-              } else {
-                PackageCaching::All
-              },
-            )
-            .await
-            .map_err(CreateCustomWorkerError::NpmPackageReq)?;
-        }
+    let main_module_npm_ref =
+      NpmPackageReqReference::from_specifier(&main_module).ok();
+    let mut npm_reqs = Vec::new();
+    if let Some(package_ref) = &main_module_npm_ref {
+      npm_reqs.push(package_ref.req().clone());
+    }
+    for specifier in preload_modules.iter().chain(require_modules.iter()) {
+      if let Ok(package_ref) = NpmPackageReqReference::from_specifier(specifier)
+      {
+        npm_reqs.push(package_ref.req().clone());
+      }
+    }
 
+    if !npm_reqs.is_empty()
+      && let Some(npm_installer) = &self.npm_installer
+    {
+      let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
+      npm_installer
+        .add_package_reqs(
+          &npm_reqs,
+          if matches!(
+            self.default_npm_caching_strategy,
+            NpmCachingStrategy::Lazy
+          ) {
+            PackageCaching::Only(npm_reqs.as_slice().into())
+          } else {
+            PackageCaching::All
+          },
+        )
+        .await
+        .map_err(CreateCustomWorkerError::NpmPackageReq)?;
+    }
+
+    let main_module = match main_module_npm_ref {
+      Some(package_ref) => {
         // use a fake referrer that can be used to discover the package.json if necessary
         let referrer = self.shared.initial_cwd.join("package.json")?;
         let package_folder =
@@ -444,7 +609,7 @@ impl CliMainWorkerFactory {
 
         main_module
       }
-      _ => main_module,
+      None => main_module,
     };
 
     let mut worker = self.lib_main_worker_factory.create_custom_worker(
@@ -472,6 +637,7 @@ impl CliMainWorkerFactory {
         "40_test.js",
         "40_bench.js",
         "40_jupyter.js",
+        "jupyter_kernel.js",
         // TODO(bartlomieju): probably shouldn't include these files here?
         "40_lint_selector.js",
         "40_lint.js"
@@ -490,8 +656,8 @@ impl CliMainWorkerFactory {
   }
 }
 
-#[allow(clippy::print_stdout)]
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stdout, reason = "test code")]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::rc::Rc;
@@ -533,7 +699,8 @@ mod tests {
           permission_desc_parser,
           Permissions::none_without_prompt(),
         ),
-        blob_store: Default::default(),
+        blob_store: Arc::new(deno_runtime::deno_web::BlobStore::default())
+          as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
         broadcast_channel: Default::default(),
         feature_checker: Default::default(),
         node_services: Default::default(),

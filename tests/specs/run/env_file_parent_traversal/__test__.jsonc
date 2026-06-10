@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "finds_env_in_parent_dir": {
+      "cwd": "subdir",
+      "args": "run --env-file --allow-env main.ts",
+      "output": "found_in_parent\n"
+    }
+  }
+}

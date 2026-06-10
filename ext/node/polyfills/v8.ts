@@ -3,12 +3,48 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { primordials } from "ext:core/mod.js";
-const { ObjectPrototypeToString, SymbolSpecies } = primordials;
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  Array,
+  ArrayPrototypePush,
+  BigInt64Array,
+  BigUint64Array,
+  DataView,
+  DataViewPrototypeGetBuffer,
+  DataViewPrototypeGetByteLength,
+  DataViewPrototypeGetByteOffset,
+  Date,
+  DateNow,
+  DatePrototypeGetDate,
+  DatePrototypeGetFullYear,
+  DatePrototypeGetHours,
+  DatePrototypeGetMinutes,
+  DatePrototypeGetMonth,
+  DatePrototypeGetSeconds,
+  Error,
+  Float32Array,
+  Float64Array,
+  Int16Array,
+  Int32Array,
+  Int8Array,
+  ObjectFreeze,
+  ObjectPrototypeToString,
+  String,
+  StringPrototypePadStart,
+  Symbol,
+  SymbolDispose,
+  SymbolSpecies,
+  TypeError,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetByteOffset,
+  Uint16Array,
+  Uint32Array,
+  Uint8Array,
+  Uint8ClampedArray,
+} = primordials;
+const {
   op_v8_cached_data_version_tag,
   op_v8_get_heap_code_statistics,
   op_v8_get_heap_statistics,
@@ -23,7 +59,9 @@ import {
   op_v8_read_uint64,
   op_v8_read_value,
   op_v8_release_buffer,
+  op_v8_set_flags_from_string,
   op_v8_set_treat_array_buffer_views_as_host_objects,
+  op_v8_query_objects_count,
   op_v8_stop_coverage,
   op_v8_take_coverage,
   op_v8_take_heap_snapshot,
@@ -36,22 +74,48 @@ import {
   op_v8_write_uint32,
   op_v8_write_uint64,
   op_v8_write_value,
-} from "ext:core/ops";
+  op_v8_gc_profiler_new,
+  op_v8_gc_profiler_start,
+  op_v8_gc_profiler_stop,
+} = core.ops;
 
-import { Buffer } from "node:buffer";
-import { writeFileSync } from "node:fs";
-import { Readable } from "node:stream";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const lazyFs = core.createLazyLoader("node:fs");
+const lazyStream = core.createLazyLoader("node:stream");
 
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
-import { validateObject } from "ext:deno_node/internal/validators.mjs";
+const { isArrayBufferView, isDataView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
 
-export function cachedDataVersionTag() {
+function getViewBuffer(view: ArrayBufferView): ArrayBufferLike {
+  return isDataView(view)
+    ? DataViewPrototypeGetBuffer(view as DataView)
+    : TypedArrayPrototypeGetBuffer(view as Uint8Array);
+}
+function getViewByteOffset(view: ArrayBufferView): number {
+  return isDataView(view)
+    ? DataViewPrototypeGetByteOffset(view as DataView)
+    : TypedArrayPrototypeGetByteOffset(view as Uint8Array);
+}
+function getViewByteLength(view: ArrayBufferView): number {
+  return isDataView(view)
+    ? DataViewPrototypeGetByteLength(view as DataView)
+    : TypedArrayPrototypeGetByteLength(view as Uint8Array);
+}
+const lazyFsUtils = core.createLazyLoader(
+  "ext:deno_node/internal/fs/utils.mjs",
+);
+const { validateFunction, validateObject, validateOneOf, validateString } = core
+  .loadExtScript(
+    "ext:deno_node/internal/validators.mjs",
+  );
+
+function cachedDataVersionTag() {
   return op_v8_cached_data_version_tag();
 }
 const heapCodeStatisticsBuffer = new Float64Array(4);
 
-export function getHeapCodeStatistics() {
+function getHeapCodeStatistics() {
   op_v8_get_heap_code_statistics(heapCodeStatisticsBuffer);
   return {
     code_and_metadata_size: heapCodeStatisticsBuffer[0],
@@ -60,16 +124,16 @@ export function getHeapCodeStatistics() {
     cpu_profiler_metadata_size: heapCodeStatisticsBuffer[3],
   };
 }
-export function getHeapSnapshot(options?: Record<string, unknown>) {
+function getHeapSnapshot(options?: Record<string, unknown>) {
   if (options !== undefined) {
     validateObject(options, "options");
   }
   const data = op_v8_take_heap_snapshot();
-  return Readable.from(Buffer.from(data));
+  return lazyStream().Readable.from(Buffer.from(data));
 }
 const heapSpaceStatisticsBuffer = new Float64Array(4);
 
-export function getHeapSpaceStatistics() {
+function getHeapSpaceStatistics() {
   const numberOfHeapSpaces = op_v8_number_of_heap_spaces();
   const heapSpaceStatistics = new Array(numberOfHeapSpaces);
   for (let i = 0; i < numberOfHeapSpaces; i++) {
@@ -88,9 +152,9 @@ export function getHeapSpaceStatistics() {
   return heapSpaceStatistics;
 }
 
-const buffer = new Float64Array(14);
+const buffer = new Float64Array(15);
 
-export function getHeapStatistics() {
+function getHeapStatistics() {
   op_v8_get_heap_statistics(buffer);
 
   return {
@@ -108,66 +172,124 @@ export function getHeapStatistics() {
     total_global_handles_size: buffer[11],
     used_global_handles_size: buffer[12],
     external_memory: buffer[13],
+    total_allocated_bytes: buffer[14],
   };
 }
 
-export function setFlagsFromString() {
+function setFlagsFromString(flags: string) {
   // NOTE(bartlomieju): From Node.js docs:
   // The v8.setFlagsFromString() method can be used to programmatically set V8
   // command-line flags. This method should be used with care. Changing settings
   // after the VM has started may result in unpredictable behavior, including
   // crashes and data loss; or it may simply do nothing.
-  //
-  // Notice: "or it may simply do nothing". This is what we're gonna do,
-  // this function will just be a no-op.
+  validateString(flags, "flags");
+  op_v8_set_flags_from_string(flags);
 }
-export function stopCoverage() {
+function stopCoverage() {
   op_v8_stop_coverage();
 }
-export function takeCoverage() {
+function takeCoverage() {
   op_v8_take_coverage();
 }
 
 let heapSnapshotCounter = 0;
 
-export function writeHeapSnapshot(
+function writeHeapSnapshot(
   filename?: string,
   options?: Record<string, unknown>,
 ) {
   if (filename !== undefined) {
-    filename = getValidatedPath(filename) as string;
+    filename = lazyFsUtils().getValidatedPath(filename) as string;
   } else {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    const hours = String(now.getHours()).padStart(2, "0");
-    const minutes = String(now.getMinutes()).padStart(2, "0");
-    const seconds = String(now.getSeconds()).padStart(2, "0");
+    const year = DatePrototypeGetFullYear(now);
+    const month = StringPrototypePadStart(
+      String(DatePrototypeGetMonth(now) + 1),
+      2,
+      "0",
+    );
+    const day = StringPrototypePadStart(
+      String(DatePrototypeGetDate(now)),
+      2,
+      "0",
+    );
+    const hours = StringPrototypePadStart(
+      String(DatePrototypeGetHours(now)),
+      2,
+      "0",
+    );
+    const minutes = StringPrototypePadStart(
+      String(DatePrototypeGetMinutes(now)),
+      2,
+      "0",
+    );
+    const seconds = StringPrototypePadStart(
+      String(DatePrototypeGetSeconds(now)),
+      2,
+      "0",
+    );
     const pid = globalThis.process?.pid ?? 0;
     const thread = 0;
     const seq = ++heapSnapshotCounter;
     filename =
       `Heap.${year}${month}${day}.${hours}${minutes}${seconds}.${pid}.${thread}.${
-        String(seq).padStart(3, "0")
+        StringPrototypePadStart(String(seq), 3, "0")
       }.heapsnapshot`;
   }
   if (options !== undefined) {
     validateObject(options, "options");
   }
   const data = op_v8_take_heap_snapshot();
-  writeFileSync(filename, data);
+  lazyFs().writeFileSync(filename, data);
   return filename;
 }
 
+// https://nodejs.org/api/v8.html#v8queryobjectsctor-options
+//
+// Deno currently only supports `{ format: 'count' }`. Returning live instances
+// would require V8's `HeapProfiler::QueryObjects`, which isn't exposed in the
+// rusty_v8 bindings; the count form is what Node's leak tests rely on.
+function queryObjects(
+  ctor: { name?: string; prototype?: unknown },
+  options:
+    | { format?: "count" | "summary" }
+    | undefined = undefined,
+) {
+  validateFunction(ctor, "constructor");
+  if (options !== undefined) {
+    validateObject(options, "options");
+    if (options.format !== undefined) {
+      validateOneOf(options.format, "options.format", ["count", "summary"]);
+    }
+  }
+  const format = options?.format;
+
+  const name = typeof ctor.name === "string" ? ctor.name : "";
+  if (name === "") {
+    return format === "count" ? 0 : [];
+  }
+  const count = op_v8_query_objects_count(name);
+  if (format === "count") {
+    return count;
+  }
+  if (format === "summary") {
+    if (count === 0) return [];
+    return [`${count} instance(s) of ${name}`];
+  }
+  // Default format returns live object handles, which would require V8's
+  // `HeapProfiler::QueryObjects` (not exposed in rusty_v8). Returning an
+  // empty array keeps the signature sensible.
+  return [];
+}
+
 // deno-lint-ignore no-explicit-any
-export function serialize(value: any) {
+function serialize(value: any) {
   const ser = new DefaultSerializer();
   ser.writeHeader();
   ser.writeValue(value);
   return ser.releaseBuffer();
 }
-export function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
+function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
   if (!isArrayBufferView(buffer)) {
     throw new TypeError(
       "buffer must be a TypedArray or a DataView",
@@ -180,7 +302,7 @@ export function deserialize(buffer: Buffer | ArrayBufferView | DataView) {
 
 const kHandle = Symbol("kHandle");
 
-export class Serializer {
+class Serializer {
   [kHandle]: object;
   constructor() {
     this[kHandle] = op_v8_new_serializer(this);
@@ -231,7 +353,7 @@ export class Serializer {
   _getDataCloneError = Error;
 }
 
-export class Deserializer {
+class Deserializer {
   buffer: ArrayBufferView;
   [kHandle]: object;
   constructor(buffer: ArrayBufferView) {
@@ -245,9 +367,12 @@ export class Deserializer {
   }
   readRawBytes(length: number): Buffer {
     const offset = this._readRawBytes(length);
+    // `this.buffer` is the Deserializer's own field, not a TypedArray getter.
+    // deno-lint-ignore prefer-primordials
+    const view = this.buffer;
     return Buffer.from(
-      this.buffer.buffer,
-      this.buffer.byteOffset + offset,
+      getViewBuffer(view),
+      getViewByteOffset(view) + offset,
       length,
     );
   }
@@ -298,7 +423,7 @@ function arrayBufferViewTypeToIndex(abView: ArrayBufferView) {
   if (type === "[object Float16Array]") return 13;
   return -1;
 }
-export class DefaultSerializer extends Serializer {
+class DefaultSerializer extends Serializer {
   constructor() {
     super();
     this._setTreatArrayBufferViewsAsHostObjects(true);
@@ -323,9 +448,13 @@ export class DefaultSerializer extends Serializer {
       }
     }
     this.writeUint32(i);
-    this.writeUint32(abView.byteLength);
+    this.writeUint32(getViewByteLength(abView));
     this.writeRawBytes(
-      new Uint8Array(abView.buffer, abView.byteOffset, abView.byteLength),
+      new Uint8Array(
+        getViewBuffer(abView),
+        getViewByteOffset(abView),
+        getViewByteLength(abView),
+      ),
     );
   }
 }
@@ -349,7 +478,103 @@ function arrayBufferViewIndexToType(index: number): any {
   return undefined;
 }
 
-export class DefaultDeserializer extends Deserializer {
+const kGCHandle = Symbol("kGCHandle");
+const kGCStartTime = Symbol("kGCStartTime");
+
+class GCProfiler {
+  [kGCHandle]: object | null = null;
+  [kGCStartTime]: number = 0;
+
+  start() {
+    if (this[kGCHandle] !== null) return;
+    const handle = op_v8_gc_profiler_new();
+    this[kGCStartTime] = DateNow();
+    op_v8_gc_profiler_start(handle);
+    this[kGCHandle] = handle;
+  }
+
+  stop() {
+    const handle = this[kGCHandle];
+    if (handle === null) return undefined;
+    this[kGCHandle] = null;
+    const endTime = DateNow();
+    const result = op_v8_gc_profiler_stop(handle);
+    if (result === null) return undefined;
+    return {
+      version: 1,
+      startTime: this[kGCStartTime],
+      endTime,
+      statistics: result.statistics,
+    };
+  }
+
+  [SymbolDispose]() {
+    const handle = this[kGCHandle];
+    if (handle === null) return undefined;
+    this[kGCHandle] = null;
+    // Ignore the report; dispose() must return undefined.
+    op_v8_gc_profiler_stop(handle);
+    return undefined;
+  }
+}
+
+// https://nodejs.org/api/v8.html#startup-snapshot-api
+//
+// Deno does not ship `--build-snapshot` / `--snapshot-blob` for users, so this
+// is an API-surface polyfill that lets modules calling `v8.startupSnapshot`
+// load without errors. `isBuildingSnapshot()` always returns false. The
+// serialize/deserialize callbacks are stored but never invoked because there
+// is no snapshot lifecycle. `setDeserializeMainFunction` invokes the callback
+// synchronously so scripts that register a deserialize main still run their
+// entry point in plain Deno runs.
+// deno-lint-ignore no-explicit-any
+type SnapshotCallback = (data: any) => unknown;
+const serializeCallbacks: { fn: SnapshotCallback; data: unknown }[] = [];
+const deserializeCallbacks: { fn: SnapshotCallback; data: unknown }[] = [];
+let deserializeMainCalled = false;
+
+function startupSnapshotSetDeserializeMainFunction(
+  fn: SnapshotCallback,
+  data?: unknown,
+) {
+  validateFunction(fn, "callback");
+  if (deserializeMainCalled) {
+    throw new Error(
+      "v8.startupSnapshot.setDeserializeMainFunction() can only be called once.",
+    );
+  }
+  deserializeMainCalled = true;
+  fn(data);
+}
+
+function startupSnapshotAddSerializeCallback(
+  fn: SnapshotCallback,
+  data?: unknown,
+) {
+  validateFunction(fn, "callback");
+  ArrayPrototypePush(serializeCallbacks, { fn, data });
+}
+
+function startupSnapshotAddDeserializeCallback(
+  fn: SnapshotCallback,
+  data?: unknown,
+) {
+  validateFunction(fn, "callback");
+  ArrayPrototypePush(deserializeCallbacks, { fn, data });
+}
+
+function startupSnapshotIsBuildingSnapshot() {
+  return false;
+}
+
+const startupSnapshot = ObjectFreeze({
+  setDeserializeMainFunction: startupSnapshotSetDeserializeMainFunction,
+  addSerializeCallback: startupSnapshotAddSerializeCallback,
+  addDeserializeCallback: startupSnapshotAddDeserializeCallback,
+  isBuildingSnapshot: startupSnapshotIsBuildingSnapshot,
+});
+
+class DefaultDeserializer extends Deserializer {
   constructor(buffer: ArrayBufferView) {
     super(buffer);
   }
@@ -361,10 +586,13 @@ export class DefaultDeserializer extends Deserializer {
     const byteOffset = this._readRawBytes(byteLength);
     const BYTES_PER_ELEMENT = ctor?.BYTES_PER_ELEMENT ?? 1;
 
-    const offset = this.buffer.byteOffset + byteOffset;
+    // `this.buffer` is the Deserializer's own field, not a TypedArray getter.
+    // deno-lint-ignore prefer-primordials
+    const view = this.buffer;
+    const offset = getViewByteOffset(view) + byteOffset;
     if (offset % BYTES_PER_ELEMENT === 0) {
       return new ctor(
-        this.buffer.buffer,
+        getViewBuffer(view),
         offset,
         byteLength / BYTES_PER_ELEMENT,
       );
@@ -372,31 +600,35 @@ export class DefaultDeserializer extends Deserializer {
     // Copy to an aligned buffer first.
     const bufferCopy = Buffer.allocUnsafe(byteLength);
     Buffer.from(
-      this.buffer.buffer,
+      getViewBuffer(view),
       byteOffset,
       byteLength,
     ).copy(bufferCopy);
     return new ctor(
-      bufferCopy.buffer,
-      bufferCopy.byteOffset,
+      TypedArrayPrototypeGetBuffer(bufferCopy),
+      TypedArrayPrototypeGetByteOffset(bufferCopy),
       byteLength / BYTES_PER_ELEMENT,
     );
   }
 }
-export default {
+return {
   cachedDataVersionTag,
   getHeapCodeStatistics,
   getHeapSnapshot,
   getHeapSpaceStatistics,
   getHeapStatistics,
+  queryObjects,
   setFlagsFromString,
+  startupSnapshot,
   stopCoverage,
   takeCoverage,
   writeHeapSnapshot,
   serialize,
   deserialize,
+  GCProfiler,
   Serializer,
   Deserializer,
   DefaultSerializer,
   DefaultDeserializer,
 };
+})();

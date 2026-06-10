@@ -1,0 +1,9 @@
+running 1 test from ./describe_only.test.js
+a suite ...
+------- output -------
+Test suite is running
+----- output end -----
+a suite ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed ([WILDCARD])
+

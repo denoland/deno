@@ -541,8 +541,8 @@ impl Proxies {
 type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send>>;
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
-// These variatns are not to be inspected.
-#[allow(clippy::large_enum_variant)]
+// These variants are not to be inspected.
+#[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
 pub enum Proxied<T> {
   /// Not proxied
   PassThrough(T),

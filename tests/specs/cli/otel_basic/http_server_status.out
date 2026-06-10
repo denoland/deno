@@ -1,0 +1,144 @@
+{
+  "spans": [
+    {
+      "traceId": "[WILDLINE]",
+      "spanId": "[WILDLINE]",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+[WILDCARD]
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "[WILDLINE]",
+      "spanId": "[WILDLINE]",
+      "traceState": "",
+      "parentSpanId": "[WILDLINE]",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+[WILDCARD]
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+[# client span for /not-found: 404 IS an error for clients]
+      "traceId": "[WILDLINE]",
+      "spanId": "[WILDLINE]",
+      "traceState": "",
+      "parentSpanId": "[WILDLINE]",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+[WILDCARD]
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "404"
+          }
+        },
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "404"
+          }
+        }
+      ],
+[WILDCARD]
+      "status": {
+        "message": "Not Found",
+        "code": 2
+      }
+    },
+    {
+[# server span for /not-found: 404 is NOT an error for servers]
+      "traceId": "[WILDLINE]",
+      "spanId": "[WILDLINE]",
+      "traceState": "",
+      "parentSpanId": "[WILDLINE]",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+[WILDCARD]
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "404"
+          }
+        }
+      ],
+[WILDCARD]
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+[# client span for /error: 500 IS an error for clients]
+      "traceId": "[WILDLINE]",
+      "spanId": "[WILDLINE]",
+      "traceState": "",
+      "parentSpanId": "[WILDLINE]",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+[WILDCARD]
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "500"
+          }
+        },
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "500"
+          }
+        }
+      ],
+[WILDCARD]
+      "status": {
+        "message": "Internal Server Error",
+        "code": 2
+      }
+    },
+    {
+[# server span for /error: 500 IS an error for servers too]
+      "traceId": "[WILDLINE]",
+      "spanId": "[WILDLINE]",
+      "traceState": "",
+      "parentSpanId": "[WILDLINE]",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+[WILDCARD]
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "500"
+          }
+        },
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "500"
+          }
+        }
+      ],
+[WILDCARD]
+      "status": {
+        "message": "[WILDCARD]",
+        "code": 2
+      }
+    }
+  ],
+  "logs": [],
+  "metrics": [WILDCARD]
+}

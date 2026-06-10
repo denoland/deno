@@ -2,6 +2,7 @@
 
 pub(crate) mod bindings;
 pub(crate) mod exception_state;
+pub mod host_defined_options;
 mod jsrealm;
 mod jsruntime;
 pub mod op_driver;
@@ -40,10 +41,8 @@ pub use jsruntime::RuntimeOptions;
 pub use jsruntime::SharedArrayBufferStore;
 pub use snapshot::CreateSnapshotOptions;
 pub use snapshot::CreateSnapshotOutput;
-pub use snapshot::FilterFn;
 pub(crate) use snapshot::SnapshotDataId;
 pub(crate) use snapshot::SnapshotLoadDataStore;
 pub(crate) use snapshot::SnapshotStoreDataStore;
 pub(crate) use snapshot::SnapshottedData;
 pub use snapshot::create_snapshot;
-pub use snapshot::get_js_files;

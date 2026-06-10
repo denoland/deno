@@ -91,8 +91,6 @@ impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
     }
   }
 
-  // Url::from_file_path is not available in wasm, so add this cfg
-  #[cfg(any(unix, windows, target_os = "redox", target_os = "wasi"))]
   pub fn get_file_url(&self, url: &Url) -> Option<Url> {
     let sub_path = {
       let data = self.cache.manifest.data.read();
@@ -102,7 +100,7 @@ impl<TSys: LocalHttpCacheSys> LocalLspHttpCache<TSys> {
     };
     let path = sub_path.as_path_from_root(&self.cache.path);
     if self.cache.env().fs_is_file_no_err(&path) {
-      Url::from_file_path(path).ok()
+      deno_path_util::url_from_file_path(&path).ok()
     } else {
       None
     }
@@ -225,7 +223,7 @@ impl<TSys: LocalHttpCacheSys> HttpCache for LocalLspHttpCache<TSys> {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "arc wrapper type")]
 pub type LocalHttpCacheRc<TSys> =
   deno_maybe_sync::MaybeArc<LocalHttpCache<TSys>>;
 

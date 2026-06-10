@@ -20,12 +20,6 @@ use deno_ast::diagnostics::DiagnosticSnippetHighlight;
 use deno_ast::diagnostics::DiagnosticSnippetHighlightStyle;
 use deno_ast::diagnostics::DiagnosticSourcePos;
 use deno_ast::diagnostics::DiagnosticSourceRange;
-use deno_ast::swc::ast::Callee;
-use deno_ast::swc::ast::Expr;
-use deno_ast::swc::ast::Lit;
-use deno_ast::swc::ast::MemberProp;
-use deno_ast::swc::ast::MetaPropKind;
-use deno_ast::swc::atoms::Atom;
 use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
@@ -54,6 +48,8 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::sys::CliSys;
+use crate::tools::unfurl_utils::ImportMetaResolveCollector;
+use crate::tools::unfurl_utils::to_range;
 
 #[derive(Debug, Clone)]
 pub enum SpecifierUnfurlerDiagnostic {
@@ -506,16 +502,43 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   .ok()
                 }
               }
-              PackageJsonDepValue::Workspace(workspace_version_req) => {
-                let version_req = match workspace_version_req {
+              PackageJsonDepValue::Catalog(catalog_name) => {
+                let catalogs = self.workspace_resolver.catalogs();
+                match catalogs
+                  .get(catalog_name.as_str())
+                  .and_then(|c| c.get(alias))
+                {
+                  Some(version_req_str) => {
+                    match VersionReq::parse_from_npm(version_req_str) {
+                      Ok(version_req) => ModuleSpecifier::parse(&format!(
+                        "npm:{}@{}{}",
+                        alias,
+                        version_req,
+                        sub_path
+                          .as_ref()
+                          .map(|s| format!("/{}", s))
+                          .unwrap_or_default()
+                      ))
+                      .ok(),
+                      Err(_) => None,
+                    }
+                  }
+                  None => None,
+                }
+              }
+              PackageJsonDepValue::Workspace { name, version_req } => {
+                // The member is looked up by its own package name, which for
+                // pnpm-style aliases differs from the import alias (the key).
+                let target_name = name.as_deref().unwrap_or(alias);
+                let version_req = match version_req {
                   PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
                     Cow::Borrowed(version_req)
                   }
                   PackageJsonDepWorkspaceReq::Caret => {
                     let version = self
-                      .find_workspace_npm_dep_version(alias)
+                      .find_workspace_npm_dep_version(target_name)
                       .map_err(|err| UnfurlSpecifierError::Workspace {
-                        package_name: alias.to_string(),
+                        package_name: target_name.to_string(),
                         reason: err.to_string(),
                       })?;
                     // version was validated, so ok to unwrap
@@ -526,9 +549,9 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                   }
                   PackageJsonDepWorkspaceReq::Tilde => {
                     let version = self
-                      .find_workspace_npm_dep_version(alias)
+                      .find_workspace_npm_dep_version(target_name)
                       .map_err(|err| UnfurlSpecifierError::Workspace {
-                        package_name: alias.to_string(),
+                        package_name: target_name.to_string(),
                         reason: err.to_string(),
                       })?;
                     // version was validated, so ok to unwrap
@@ -542,7 +565,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
                 // people to map the specifiers in the import map
                 ModuleSpecifier::parse(&format!(
                   "npm:{}@{}{}",
-                  alias,
+                  target_name,
                   version_req,
                   sub_path
                     .as_ref()
@@ -564,7 +587,8 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
               PackageJsonDepValueParseErrorKind::VersionReq { .. }
               | PackageJsonDepValueParseErrorKind::JsrRequiresScope {
                 ..
-              } => {
+              }
+              | PackageJsonDepValueParseErrorKind::EmptyName => {
                 log::warn!(
                   "Ignoring failed to resolve package.json dependency. {:#}",
                   err
@@ -918,6 +942,7 @@ impl<TSys: SpecifierUnfurlerSys> SpecifierUnfurler<TSys> {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
+              | StaticDependencyKind::ImportDefer
               | StaticDependencyKind::ImportSource
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
@@ -1077,23 +1102,6 @@ fn relative_url(
   }
 }
 
-fn to_range(
-  text_info: &SourceTextInfo,
-  range: &deno_graph::PositionRange,
-) -> std::ops::Range<usize> {
-  let mut range = range
-    .as_source_range(text_info)
-    .as_byte_range(text_info.range().start);
-  let text = &text_info.text_str()[range.clone()];
-  if text.starts_with('"') || text.starts_with('\'') {
-    range.start += 1;
-  }
-  if text.ends_with('"') || text.ends_with('\'') {
-    range.end -= 1;
-  }
-  range
-}
-
 /// Collects the start position of import/export declarations for each specifier.
 /// This is needed to correctly insert @ts-types comments before import statements
 /// when multiple imports appear on the same line.
@@ -1127,40 +1135,7 @@ impl Visit for SpecifierStartCollector {
   }
 }
 
-#[derive(Default)]
-struct ImportMetaResolveCollector {
-  specifiers: Vec<(SourceRange<SourcePos>, Atom)>,
-  diagnostic_ranges: Vec<SourceRange<SourcePos>>,
-}
-
-impl Visit for ImportMetaResolveCollector {
-  noop_visit_type!();
-
-  fn visit_call_expr(&mut self, node: &deno_ast::swc::ast::CallExpr) {
-    if node.args.len() == 1
-      && let Some(first_arg) = node.args.first()
-      && let Callee::Expr(callee) = &node.callee
-      && let Expr::Member(member) = &**callee
-      && let Expr::MetaProp(prop) = &*member.obj
-      && prop.kind == MetaPropKind::ImportMeta
-      && let MemberProp::Ident(ident) = &member.prop
-      && ident.sym == "resolve"
-      && first_arg.spread.is_none()
-    {
-      if let Expr::Lit(Lit::Str(arg)) = &*first_arg.expr {
-        let range = arg.range();
-        self.specifiers.push((
-          // remove quotes
-          SourceRange::new(range.start + 1, range.end - 1),
-          arg.value.to_atom_lossy().into_owned(),
-        ));
-      } else {
-        self.diagnostic_ranges.push(first_arg.expr.range());
-      }
-    }
-  }
-}
-
+#[allow(clippy::disallowed_methods, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::path::Path;
@@ -1437,7 +1412,6 @@ export type * from "./c.d.ts";
   #[tokio::test]
   async fn test_unfurl_types_package() {
     async fn run_test(memory_sys: InMemorySys) {
-      #[allow(clippy::disallowed_methods)]
       let cwd = memory_sys.env_current_dir().unwrap();
       memory_sys.fs_insert_json(
         cwd.join("node_modules/package/package.json"),

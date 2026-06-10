@@ -72,6 +72,56 @@ Deno.test("[node/dgram] addMembership works", async () => {
   await promise;
 });
 
+Deno.test("[node/dgram] addMembership accepts scoped IPv6 interface", async () => {
+  // Regression test for https://github.com/denoland/deno/issues/34838.
+  // A scoped IPv6 interface whose zone id names no existing interface must
+  // resolve to the default interface (index 0) — exactly like passing no
+  // interface at all — instead of being rejected with EINVAL. Node.js (via
+  // libuv's `uv_ip6_addr`) behaves the same.
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  const socket = createSocket({ type: "udp6", ipv6Only: true });
+  let bound = false;
+  socket.on("error", (err) => {
+    // IPv6 may be unavailable before binding; treat that as a skip.
+    socket.close();
+    if (bound) {
+      reject(err);
+    } else {
+      resolve();
+    }
+  });
+  socket.bind(0, () => {
+    bound = true;
+    try {
+      // First join without an interface to determine whether IPv6 multicast is
+      // available at all in this environment (some CI sandboxes have no
+      // multicast-capable default interface). If it fails, skip the test.
+      socket.addMembership("ff02::fb");
+    } catch {
+      socket.close(() => resolve());
+      return;
+    }
+    try {
+      // The scoped interface resolves to the same default interface as the
+      // baseline join above, so it must be accepted too. On Unix a numeric
+      // zone is resolved via `if_nametoindex` (-> 0 for non-names), which is
+      // the reporter's exact "::%12" case; on Windows a numeric zone is a
+      // literal index (`atoi`), so use a non-numeric unknown name there.
+      const scopedIface = Deno.build.os === "windows"
+        ? "::%nonexistent0"
+        : "::%9999999";
+      // Use a different multicast group so this is a fresh join rather than a
+      // duplicate of the baseline join above.
+      socket.addMembership("ff02::1:3", scopedIface);
+      socket.close(() => resolve());
+    } catch (err) {
+      socket.close();
+      reject(err);
+    }
+  });
+  await promise;
+});
+
 Deno.test("[node/dgram] createSocket, reuseAddr option", async () => {
   const { promise, resolve } = Promise.withResolvers<string>();
   const socket0 = createSocket({ type: "udp4", reuseAddr: true });
@@ -173,6 +223,55 @@ Deno.test("[node/dgram] addSourceSpecificMembership and dropSourceSpecificMember
     socket.close(() => resolve());
   });
   await promise;
+});
+
+Deno.test("[node/dgram] send checks destination permission", {
+  permissions: { read: true, write: true, run: true, net: true },
+}, async () => {
+  // Verify that a subprocess with restricted --allow-net cannot send to
+  // destinations outside the allowed set.
+  const tempFile = Deno.makeTempFileSync({ suffix: ".ts" });
+  Deno.writeTextFileSync(
+    tempFile,
+    `import dgram from "node:dgram";
+const socket = dgram.createSocket("udp4");
+socket.bind(0, "0.0.0.0", () => {
+  socket.send("test", 9999, "127.0.0.1", (err) => {
+    if (err) {
+      console.log("SEND_BLOCKED:" + err.message);
+    } else {
+      console.log("SEND_ALLOWED");
+    }
+    socket.close();
+  });
+});
+socket.on("error", (err) => {
+  console.log("ERROR:" + err.message);
+  socket.close();
+});
+`,
+  );
+  try {
+    const { stdout, stderr } = await new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--no-prompt",
+        "--allow-net=0.0.0.0:0",
+        "--allow-read=" + tempFile,
+        tempFile,
+      ],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    const output = new TextDecoder().decode(stdout) +
+      new TextDecoder().decode(stderr);
+    assert(
+      !output.includes("SEND_ALLOWED"),
+      `Send should have been blocked, but got: ${output}`,
+    );
+  } finally {
+    Deno.removeSync(tempFile);
+  }
 });
 
 Deno.test("[node/dgram] large recvBufferSize and sendBufferSize do not throw", async () => {

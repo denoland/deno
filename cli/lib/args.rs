@@ -2,6 +2,7 @@
 
 use std::io::BufReader;
 use std::io::Cursor;
+use std::path::Path;
 use std::path::PathBuf;
 
 use base64::prelude::BASE64_STANDARD;
@@ -21,6 +22,7 @@ use deno_runtime::deno_tls::webpki_roots;
 use deno_semver::npm::NpmPackageReqReference;
 use serde::Deserialize;
 use serde::Serialize;
+use sys_traits::EnvVar;
 use thiserror::Error;
 
 pub fn npm_pkg_req_ref_to_binary_command(
@@ -29,12 +31,12 @@ pub fn npm_pkg_req_ref_to_binary_command(
   req_ref.sub_path().unwrap_or_else(|| &req_ref.req().name)
 }
 
-pub fn has_trace_permissions_enabled() -> bool {
-  has_flag_env_var("DENO_TRACE_PERMISSIONS")
+pub fn has_trace_permissions_enabled(sys: &impl EnvVar) -> bool {
+  has_flag_env_var(sys, "DENO_TRACE_PERMISSIONS")
 }
 
-pub fn has_flag_env_var(name: &str) -> bool {
-  match std::env::var_os(name) {
+pub fn has_flag_env_var(sys: &impl EnvVar, name: &str) -> bool {
+  match sys.env_var_os(name) {
     Some(value) => value == "1",
     None => false,
   }
@@ -73,9 +75,18 @@ pub enum RootCertStoreLoadError {
   FailedNativeCerts(String),
 }
 
+fn load_pem_certs(
+  path: &Path,
+) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>, std::io::Error> {
+  let file: std::fs::File = std::fs::File::open(path)?;
+  let mut reader: BufReader<std::fs::File> = BufReader::new(file);
+  rustls_pemfile::certs(&mut reader).collect()
+}
+
 /// Create and populate a root cert store based on the passed options and
 /// environment.
 pub fn get_root_cert_store(
+  sys: &impl EnvVar,
   maybe_root_path: Option<PathBuf>,
   maybe_ca_stores: Option<Vec<String>>,
   maybe_ca_data: Option<CaData>,
@@ -83,7 +94,7 @@ pub fn get_root_cert_store(
   let mut root_cert_store = RootCertStore::empty();
   let ca_stores: Vec<String> = maybe_ca_stores
     .or_else(|| {
-      let env_ca_store = std::env::var("DENO_TLS_CA_STORE").ok()?;
+      let env_ca_store = sys.env_var("DENO_TLS_CA_STORE").ok()?;
       Some(
         env_ca_store
           .split(',')
@@ -126,7 +137,7 @@ pub fn get_root_cert_store(
   }
 
   let ca_data = maybe_ca_data
-    .or_else(|| std::env::var("DENO_CERT").ok().and_then(CaData::parse));
+    .or_else(|| sys.env_var("DENO_CERT").ok().and_then(CaData::parse));
   if let Some(ca_data) = ca_data {
     let result = match ca_data {
       CaData::File(ca_file) => {
@@ -157,6 +168,26 @@ pub fn get_root_cert_store(
     }
   }
 
+  if let Ok(extra_ca_certs_path) = sys.env_var("NODE_EXTRA_CA_CERTS")
+    && !extra_ca_certs_path.is_empty()
+  {
+    let path: PathBuf = maybe_root_path.as_ref().map_or_else(
+      || PathBuf::from(&extra_ca_certs_path),
+      |root| root.join(&extra_ca_certs_path),
+    );
+    match load_pem_certs(&path) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(certs);
+      }
+      Err(e) => log::warn!(
+        "{}",
+        colors::yellow(&format!(
+          "Warning: Ignoring extra certs from \"{extra_ca_certs_path}\", load failed: {e}"
+        ))
+      ),
+    }
+  }
+
   Ok(root_cert_store)
 }
 
@@ -169,12 +200,9 @@ pub fn npm_process_state(
   NPM_PROCESS_STATE
     .get_or_init(|| {
       use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
-      let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
+      let fd_or_path = sys.env_var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
 
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      unsafe {
-        std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)
-      };
+      sys.env_remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
       if fd_or_path.is_empty() {
         return None;
       }
@@ -216,28 +244,36 @@ pub struct UnstableConfig {
 }
 
 impl UnstableConfig {
-  pub fn fill_with_env(&mut self) {
-    fn maybe_set(value: &mut bool, var_name: &str) {
-      if !*value && has_flag_env_var(var_name) {
+  pub fn fill_with_env(&mut self, sys: &impl EnvVar) {
+    fn maybe_set(sys: &impl EnvVar, value: &mut bool, var_name: &str) {
+      if !*value && has_flag_env_var(sys, var_name) {
         *value = true;
       }
     }
 
     maybe_set(
+      sys,
       &mut self.bare_node_builtins,
       UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,
     );
     maybe_set(
+      sys,
       &mut self.lazy_dynamic_imports,
       UNSTABLE_ENV_VAR_NAMES.lazy_dynamic_imports,
     );
     maybe_set(
+      sys,
       &mut self.npm_lazy_caching,
       UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
     );
-    maybe_set(&mut self.tsgo, UNSTABLE_ENV_VAR_NAMES.tsgo);
-    maybe_set(&mut self.raw_imports, UNSTABLE_ENV_VAR_NAMES.raw_imports);
+    maybe_set(sys, &mut self.tsgo, UNSTABLE_ENV_VAR_NAMES.tsgo);
     maybe_set(
+      sys,
+      &mut self.raw_imports,
+      UNSTABLE_ENV_VAR_NAMES.raw_imports,
+    );
+    maybe_set(
+      sys,
       &mut self.sloppy_imports,
       UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
     );

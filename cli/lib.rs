@@ -25,10 +25,11 @@ mod util;
 mod worker;
 
 pub(crate) mod sys {
-  #[allow(clippy::disallowed_types)] // ok, definition
+  #[allow(clippy::disallowed_types, reason = "definition")]
   pub type CliSys = sys_traits::impls::RealSys;
 }
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
 use std::future::Future;
@@ -60,6 +61,8 @@ use util::fs::canonicalize_path;
 
 const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
+const UNSUPPORTED_DIR_IMPORT: &str =
+  "[ERR_UNSUPPORTED_DIR_IMPORT] Directory import";
 
 use self::util::draw_thread::DrawThread;
 use self::util::env::resolve_cwd;
@@ -167,6 +170,8 @@ async fn run_subcommand(
         self::args::InstallEntrypointsFlags {
           entrypoints: cache_flags.files,
           lockfile_only: false,
+          production: false,
+          skip_types: false,
         },
       )
       .await
@@ -196,6 +201,15 @@ async fn run_subcommand(
     DenoSubcommand::Fmt(fmt_flags) => spawn_subcommand(async move {
       tools::fmt::format(Arc::new(flags), fmt_flags).await
     }),
+    DenoSubcommand::Transpile(transpile_flags) => {
+      spawn_subcommand(async move {
+        log::warn!(
+          "⚠️  {} is experimental and subject to changes",
+          colors::cyan("deno transpile")
+        );
+        tools::transpile::transpile(Arc::new(flags), transpile_flags).await
+      })
+    }
     DenoSubcommand::Init(init_flags) => spawn_subcommand(async {
       tools::init::init_project(flags, init_flags).await
     }),
@@ -204,6 +218,9 @@ async fn run_subcommand(
     }),
     DenoSubcommand::Install(install_flags) => spawn_subcommand(async {
       tools::installer::install_command(Arc::new(flags), install_flags).await
+    }),
+    DenoSubcommand::Ci(ci_flags) => spawn_subcommand(async {
+      tools::installer::ci_command(Arc::new(flags), ci_flags).await
     }),
     DenoSubcommand::JSONReference(json_reference) => {
       spawn_subcommand(async move {
@@ -262,6 +279,7 @@ async fn run_subcommand(
           recursive: false,
           filter: None,
           eval: false,
+          no_prefix: false,
         };
         let mut flags = flags;
         flags.subcommand = DenoSubcommand::Task(task_flags.clone());
@@ -352,6 +370,10 @@ async fn run_subcommand(
                     )
                     .with_cmd(&cmd);
                   error.insert(
+                    clap::error::ContextKind::InvalidSubcommand,
+                    clap::error::ContextValue::String(run_flags.script.clone()),
+                  );
+                  error.insert(
                     clap::error::ContextKind::SuggestedSubcommand,
                     clap::error::ContextValue::Strings(suggestions),
                   );
@@ -369,6 +391,7 @@ async fn run_subcommand(
                   recursive: false,
                   filter: None,
                   eval: false,
+                  no_prefix: false,
                 };
                 new_flags.subcommand = DenoSubcommand::Task(task_flags.clone());
                 let result = tools::task::execute_script(
@@ -415,7 +438,7 @@ async fn run_subcommand(
           // this is set in order to ensure spawned processes use the same
           // coverage directory
 
-          #[allow(clippy::undocumented_unsafe_blocks)]
+          // SAFETY: called during single-threaded CLI startup
           unsafe {
             env::set_var(
               "DENO_COVERAGE_DIR",
@@ -458,12 +481,27 @@ async fn run_subcommand(
       "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
       1,
     ),
+    DenoSubcommand::Why(why_flags) => spawn_subcommand(async {
+      tools::pm::why(Arc::new(flags), why_flags).await
+    }),
+    DenoSubcommand::BumpVersion(version_flags) => spawn_subcommand(async {
+      log::warn!(
+        "{}",
+        colors::yellow(
+          "deno bump-version is experimental and subject to change"
+        )
+      );
+      tools::bump_version::bump_version_command(Arc::new(flags), version_flags)
+    }),
     DenoSubcommand::Vendor => exit_with_message(
       "⚠️  `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       1,
     ),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
       tools::publish::publish(Arc::new(flags), publish_flags).await
+    }),
+    DenoSubcommand::Pack(pack_flags) => spawn_subcommand(async {
+      tools::pack::pack(flags.into(), pack_flags).await
     }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
       use std::io::Write;
@@ -504,6 +542,7 @@ async fn run_subcommand(
 fn should_fallback_on_run_error(script_err: &str) -> bool {
   if script_err.starts_with(MODULE_NOT_FOUND)
     || script_err.starts_with(UNSUPPORTED_SCHEME)
+    || script_err.starts_with(UNSUPPORTED_DIR_IMPORT)
   {
     return true;
   }
@@ -513,7 +552,7 @@ fn should_fallback_on_run_error(script_err: &str) -> bool {
   re.is_match(script_err)
 }
 
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "panic hook")]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
@@ -522,6 +561,15 @@ fn setup_panic_hook() {
   //   should be reported to us.
   let orig_hook = std::panic::take_hook();
   std::panic::set_hook(Box::new(move |panic_info| {
+    // Broken-pipe panics from `println!`/`eprintln!` (e.g. `deno | cls` on
+    // Windows, where the reader closes the pipe before we finish writing) are
+    // not bugs in Deno — they're a normal consequence of the downstream
+    // process exiting. Exit silently rather than emitting the bug-report
+    // banner. https://github.com/denoland/deno/issues/16308
+    if is_broken_pipe_print_panic(panic_info) {
+      deno_runtime::exit(1);
+    }
+
     eprintln!("\n============================================================");
     eprintln!("Deno has panicked. This is a bug in Deno. Please report this");
     eprintln!("at https://github.com/denoland/deno/issues/new.");
@@ -566,6 +614,32 @@ fn setup_panic_hook() {
   }
 
   deno_core::v8::V8::set_fatal_error_handler(error_handler);
+}
+
+/// Returns `true` if `panic_info` is a panic from `std`'s print macros caused
+/// by the downstream reader of stdout/stderr closing the pipe.
+///
+/// `println!`/`print!`/`eprintln!`/`eprint!` panic with the literal payload
+/// `"failed printing to {stdout,stderr}: <io error>"` when the underlying
+/// write fails. EPIPE (Unix, 32), ERROR_BROKEN_PIPE (Windows, 109), and
+/// ERROR_NO_DATA (Windows, 232) all indicate the receiver dropped the pipe.
+fn is_broken_pipe_print_panic(panic_info: &std::panic::PanicHookInfo) -> bool {
+  let payload = panic_info.payload();
+  let msg: &str = if let Some(s) = payload.downcast_ref::<String>() {
+    s.as_str()
+  } else if let Some(&s) = payload.downcast_ref::<&'static str>() {
+    s
+  } else {
+    return false;
+  };
+  if !msg.starts_with("failed printing to stdout:")
+    && !msg.starts_with("failed printing to stderr:")
+  {
+    return false;
+  }
+  msg.contains("(os error 32)")
+    || msg.contains("(os error 109)")
+    || msg.contains("(os error 232)")
 }
 
 fn exit_with_message(message: &str, code: i32) -> ! {
@@ -662,7 +736,10 @@ pub fn main() {
       (None, None, None);
 
     let args = waited_args.unwrap_or(args);
-    #[allow(clippy::disallowed_methods)] // ok because initialization of cwd
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "ok because initialization of cwd"
+    )]
     let initial_cwd =
       waited_cwd
         .map(Some)
@@ -732,13 +809,23 @@ async fn resolve_flags_and_init(
   if flags.subcommand.watch_flags().is_some() {
     WatchEnvTracker::snapshot();
   }
-  let env_file_paths: Option<Vec<std::path::PathBuf>> = flags
-    .env_file
-    .as_ref()
-    .map(|files| files.iter().map(PathBuf::from).collect());
-  load_env_variables_from_env_files(env_file_paths.as_ref(), flags.log_level);
 
-  if deno_lib::args::has_flag_env_var("DENO_CONNECTED") {
+  if let Some(files) = &flags.env_file {
+    let cwd = match &flags.initial_cwd {
+      Some(cwd) => Cow::Borrowed(cwd),
+      None => match resolve_cwd(None) {
+        Ok(cwd) => {
+          flags.initial_cwd = Some(cwd.into_owned());
+          Cow::Borrowed(flags.initial_cwd.as_ref().unwrap())
+        }
+        Err(_) => Cow::Owned(PathBuf::from(".")),
+      },
+    };
+    load_env_variables_from_env_files(&cwd, files, flags.log_level);
+  }
+
+  let sys = crate::sys::CliSys::default();
+  if deno_lib::args::has_flag_env_var(&sys, "DENO_CONNECTED") {
     flags.tunnel = true;
   }
 
@@ -756,7 +843,7 @@ async fn resolve_flags_and_init(
     }
   }
 
-  flags.unstable_config.fill_with_env();
+  flags.unstable_config.fill_with_env(&sys);
   if std::env::var("DENO_COMPAT").is_ok() {
     flags.unstable_config.enable_node_compat();
   }
@@ -772,6 +859,7 @@ async fn resolve_flags_and_init(
   let otel_config = flags.otel_config();
   init_logging(flags.log_level, Some(otel_config.clone()));
   deno_telemetry::init(
+    &sys,
     deno_lib::version::otel_runtime_config(),
     otel_config.clone(),
   )?;
@@ -869,7 +957,7 @@ fn init_logging(
 }
 
 #[cfg(unix)]
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, reason = "private code")]
 fn wait_for_start(
   args: &[std::ffi::OsString],
   roots: LibWorkerFactoryRoots,
@@ -884,10 +972,8 @@ fn wait_for_start(
   let startup_snapshot = deno_snapshots::CLI_SNAPSHOT?;
   let addr = std::env::var("DENO_UNSTABLE_CONTROL_SOCK").ok()?;
 
-  #[allow(clippy::undocumented_unsafe_blocks)]
-  unsafe {
-    std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK")
-  };
+  // SAFETY: single-threaded at this point in startup
+  unsafe { std::env::remove_var("DENO_UNSTABLE_CONTROL_SOCK") };
 
   let argv0 = args[0].clone();
 
@@ -920,6 +1006,8 @@ fn wait_for_start(
       crate::sys::CliSys,
     >(deno_runtime::UnconfiguredRuntimeOptions {
       startup_snapshot,
+      residual_lazy_js_sources: deno_snapshots::RESIDUAL_LAZY_JS,
+      residual_lazy_esm_sources: deno_snapshots::RESIDUAL_LAZY_ESM,
       create_params: deno_lib::worker::create_isolate_create_params(
         &crate::sys::CliSys::default(),
       ),
@@ -1052,7 +1140,6 @@ async fn auth_tunnel(
   Ok(output)
 }
 
-#[allow(clippy::print_stderr)]
 async fn initialize_tunnel(
   flags: &Flags,
 ) -> Result<(), deno_core::anyhow::Error> {
@@ -1157,10 +1244,13 @@ async fn initialize_tunnel(
 
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        eprintln!(
-          "{}",
-          colors::green(format!("You are connected to {endpoint}"))
-        );
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+        {
+          eprintln!(
+            "{}",
+            colors::green(format!("You are connected to {endpoint}"))
+          );
+        }
       }
       Event::Reconnect(duration, reason) => {
         let reason = if let Some(reason) = reason {
@@ -1170,14 +1260,17 @@ async fn initialize_tunnel(
         };
         // We explicitly use eprintln instead of log here since
         // there is a circular dep between tunnel and telemetry
-        eprintln!(
-          "{}",
-          colors::green(format!(
-            "Reconnecting tunnel in {}s...{}",
-            duration.as_secs(),
-            reason
-          ))
-        );
+        #[allow(clippy::print_stderr, reason = "can't use log crate yet")]
+        {
+          eprintln!(
+            "{}",
+            colors::green(format!(
+              "Reconnecting tunnel in {}s...{}",
+              duration.as_secs(),
+              reason
+            ))
+          );
+        }
       }
       _ => {}
     }
