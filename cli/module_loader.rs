@@ -1055,18 +1055,22 @@ impl<TGraphContainer: ModuleGraphContainer>
       Ok(())
     }
 
-    // The main module specifier is already fully resolved by the time it
-    // reaches here (e.g. an `npm:` package's bin entry resolves to a concrete
-    // path in the global npm cache). Re-resolving such a `file:` URL through
-    // the import map can corrupt it: an `"imports": { "/": "./" }` entry —
-    // as recommended in the docs for project-root absolute imports —
-    // normalizes to a `file:///` => `file:///<project>/` mapping that rewrites
-    // *any* file URL outside the project root (such as the npm cache) to live
-    // underneath the project directory. The main module is chosen explicitly
-    // by the user, so load it verbatim rather than remapping it.
+    // An `npm:`/`jsr:` package's bin entry chosen as the main module is
+    // resolved to a concrete `file:` URL inside the global npm cache before it
+    // reaches here. deno_core then re-resolves that already-resolved specifier
+    // as the main module, running it through the import map. An
+    // `"imports": { "/": "./" }` entry — recommended in the docs for
+    // project-root absolute imports — normalizes to a `file:///` =>
+    // `file:///<project>/` mapping whose prefix match rewrites *any* file URL
+    // outside the project root (such as the npm cache) to live underneath the
+    // project directory, breaking the load. Such a package-internal main
+    // module is not a user source file and must not be remapped, so load it
+    // verbatim. A user-provided path entry (e.g. `deno run ./thing.ts`) is
+    // intentionally left to the import map.
     if matches!(kind, deno_core::ResolutionKind::MainModule)
       && let Ok(url) = ModuleSpecifier::parse(raw_specifier)
       && url.scheme() == "file"
+      && self.shared.in_npm_pkg_checker.in_npm_package(&url)
     {
       return Ok(url);
     }

@@ -170,16 +170,19 @@ impl EmbeddedModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<Url, ModuleLoaderError> {
-    // The main module specifier is already fully resolved (e.g. an `npm:`
-    // package's bin entry resolves to a concrete path in the npm cache).
-    // Re-resolving such a `file:` URL through the import map can corrupt it:
-    // an `"imports": { "/": "./" }` entry normalizes to a `file:///` =>
-    // `file:///<project>/` mapping that rewrites any file URL outside the
-    // project root to live underneath it. The main module is chosen
-    // explicitly by the user, so load it verbatim.
+    // An `npm:`/`jsr:` package's bin entry chosen as the main module is
+    // resolved to a concrete `file:` URL inside the npm cache before it
+    // reaches here. Re-resolving that already-resolved specifier through the
+    // import map can corrupt it: an `"imports": { "/": "./" }` entry
+    // normalizes to a `file:///` => `file:///<project>/` mapping whose prefix
+    // match rewrites any file URL outside the project root (such as the npm
+    // cache) to live underneath it. Such a package-internal main module is not
+    // a user source file and must not be remapped, so load it verbatim. A
+    // user-provided path entry is intentionally left to the import map.
     if matches!(kind, ResolutionKind::MainModule)
       && let Ok(url) = Url::parse(raw_specifier)
       && url.scheme() == "file"
+      && self.shared.node_resolver.in_npm_package(&url)
     {
       return Ok(url);
     }
