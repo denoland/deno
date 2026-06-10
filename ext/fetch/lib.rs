@@ -423,6 +423,73 @@ impl Drop for ResourceToBodyAdapter {
   }
 }
 
+/// Wraps a streaming request body and enforces that it produces exactly
+/// `expected` bytes, matching a `Content-Length` header supplied by the caller.
+///
+/// Reporting an exact size hint makes hyper frame the request with
+/// `Content-Length` instead of `Transfer-Encoding: chunked`. If the underlying
+/// stream produces more or fewer bytes than declared, an error is surfaced so
+/// the request fails loudly instead of sending a malformed body.
+pub struct ContentLengthEnforcingBody<B> {
+  inner: B,
+  expected: u64,
+  sent: u64,
+}
+
+impl<B> ContentLengthEnforcingBody<B> {
+  pub fn new(inner: B, expected: u64) -> Self {
+    Self {
+      inner,
+      expected,
+      sent: 0,
+    }
+  }
+}
+
+impl<B> hyper::body::Body for ContentLengthEnforcingBody<B>
+where
+  B: hyper::body::Body<Data = Bytes, Error = JsErrorBox> + Unpin,
+{
+  type Data = Bytes;
+  type Error = JsErrorBox;
+
+  fn poll_frame(
+    self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+    let this = self.get_mut();
+    match Pin::new(&mut this.inner).poll_frame(cx) {
+      Poll::Ready(Some(Ok(frame))) => {
+        if let Some(data) = frame.data_ref() {
+          this.sent += data.len() as u64;
+          if this.sent > this.expected {
+            return Poll::Ready(Some(Err(JsErrorBox::type_error(format!(
+              "Request body length mismatch: the stream produced more than the {} bytes declared in the Content-Length header",
+              this.expected
+            )))));
+          }
+        }
+        Poll::Ready(Some(Ok(frame)))
+      }
+      Poll::Ready(None) => {
+        if this.sent < this.expected {
+          Poll::Ready(Some(Err(JsErrorBox::type_error(format!(
+            "Request body length mismatch: the stream produced {} bytes but the Content-Length header declared {} bytes",
+            this.sent, this.expected
+          )))))
+        } else {
+          Poll::Ready(None)
+        }
+      }
+      other => other,
+    }
+  }
+
+  fn size_hint(&self) -> hyper::body::SizeHint {
+    hyper::body::SizeHint::with_exact(self.expected)
+  }
+}
+
 #[op2(stack_trace)]
 #[allow(clippy::too_many_arguments, reason = "op")]
 #[allow(clippy::large_enum_variant, reason = "TODO: investigate")]
@@ -478,6 +545,18 @@ pub fn op_fetch(
         .parse::<Uri>()
         .map_err(|_| FetchError::InvalidUrl(url.clone()))?;
 
+      // A `Content-Length` header supplied by the caller. For streamed bodies
+      // with an unknown size, this lets us frame the request with
+      // `Content-Length` instead of `Transfer-Encoding: chunked` and enforce
+      // that the stream produces exactly that many bytes.
+      let content_length_header = headers.iter().find_map(|(k, v)| {
+        if k.eq_ignore_ascii_case(b"content-length") {
+          std::str::from_utf8(v).ok()?.trim().parse::<u64>().ok()
+        } else {
+          None
+        }
+      });
+
       let mut con_len = None;
       let body = if has_body {
         match (data, resource) {
@@ -492,10 +571,25 @@ pub fn op_fetch(
             match resource.size_hint() {
               (body_size, Some(n)) if body_size == n && body_size > 0 => {
                 con_len = Some(body_size);
+                ReqBody::streaming(ResourceToBodyAdapter::new(resource))
               }
-              _ => {}
+              // The stream's size is unknown. If the caller provided a
+              // `Content-Length` header, honor it: use `Content-Length` framing
+              // (not chunked) and enforce that the stream produces exactly that
+              // many bytes.
+              _ => match content_length_header {
+                Some(len) => {
+                  con_len = Some(len);
+                  ReqBody::streaming(ContentLengthEnforcingBody::new(
+                    ResourceToBodyAdapter::new(resource),
+                    len,
+                  ))
+                }
+                None => {
+                  ReqBody::streaming(ResourceToBodyAdapter::new(resource))
+                }
+              },
             }
-            ReqBody::streaming(ResourceToBodyAdapter::new(resource))
           }
           (None, None) => unreachable!(),
         }

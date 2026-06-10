@@ -1357,6 +1357,129 @@ Deno.test(
   },
 );
 
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  // A streamed body with an explicit Content-Length header should be framed
+  // with Content-Length rather than Transfer-Encoding: chunked.
+  // https://github.com/denoland/deno/issues/20274
+  async function fetchPostBodyReadableStreamWithContentLength() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const bufPromise = bufferServer(addr);
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    writer.write(new TextEncoder().encode("hello "));
+    writer.write(new TextEncoder().encode("world"));
+    writer.close();
+    const response = await fetch(`http://${addr}/blah`, {
+      method: "POST",
+      headers: [
+        ["content-length", "11"],
+      ],
+      body: stream.readable,
+    });
+    await response.body?.cancel();
+    assertEquals(response.status, 404);
+
+    const actual = new TextDecoder().decode((await bufPromise).bytes());
+    assert(
+      actual.includes("content-length: 11\r\n"),
+      `expected content-length header, got:\n${actual}`,
+    );
+    assert(
+      !actual.includes("transfer-encoding: chunked"),
+      `expected no chunked transfer-encoding, got:\n${actual}`,
+    );
+    assert(
+      actual.endsWith("hello world"),
+      `expected unframed body, got:\n${actual}`,
+    );
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  // A streamed body that produces fewer bytes than the declared Content-Length
+  // should make the fetch fail loudly.
+  async function fetchStreamBodyShorterThanContentLength() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const listener = Deno.listen({
+      hostname: "127.0.0.1",
+      port: listenPort,
+    });
+    const serverDone = listener.accept().then(async (conn) => {
+      try {
+        await conn.readable.pipeTo(new WritableStream());
+      } catch {
+        // ignore - the connection may be reset when the body mismatch errors
+      }
+      try {
+        listener.close();
+      } catch {
+        // already closed
+      }
+    });
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    writer.write(new TextEncoder().encode("hello"));
+    writer.close();
+    await assertRejects(
+      () =>
+        fetch(`http://${addr}/blah`, {
+          method: "POST",
+          headers: [["content-length", "100"]],
+          body: stream.readable,
+        }),
+      TypeError,
+    );
+    await serverDone;
+  },
+);
+
+Deno.test(
+  {
+    permissions: { net: true },
+  },
+  // A streamed body that produces more bytes than the declared Content-Length
+  // should make the fetch fail loudly.
+  async function fetchStreamBodyLongerThanContentLength() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const listener = Deno.listen({
+      hostname: "127.0.0.1",
+      port: listenPort,
+    });
+    const serverDone = listener.accept().then(async (conn) => {
+      try {
+        await conn.readable.pipeTo(new WritableStream());
+      } catch {
+        // ignore
+      }
+      try {
+        listener.close();
+      } catch {
+        // already closed
+      }
+    });
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    writer.write(new TextEncoder().encode("hello world"));
+    writer.close();
+    await assertRejects(
+      () =>
+        fetch(`http://${addr}/blah`, {
+          method: "POST",
+          headers: [["content-length", "2"]],
+          body: stream.readable,
+        }),
+      TypeError,
+    );
+    await serverDone;
+  },
+);
+
 Deno.test({}, function fetchWritableRespProps() {
   const original = new Response("https://deno.land", {
     status: 404,
