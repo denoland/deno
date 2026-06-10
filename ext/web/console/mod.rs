@@ -1216,8 +1216,8 @@ impl Console {
     #[string] label: String,
   ) {
     let mut map = self.count_map.borrow_mut();
-    if map.contains_key(&label) {
-      map.insert(label, 0);
+    if let std::collections::hash_map::Entry::Occupied(mut e) = map.entry(label) {
+      e.insert(0);
       return;
     }
     drop(map);
@@ -1587,29 +1587,27 @@ impl Console {
           },
         };
         for rk in &row_keys {
-          if !primitive {
-            if let Some(obj) = value_obj {
-              let has = {
-                v8::tc_scope!(tc, scope);
-                let key_v8 = v8_str(tc, rk);
-                obj.has(tc, key_v8.into()).unwrap_or(false)
+          if !primitive && let Some(obj) = value_obj {
+            let has = {
+              v8::tc_scope!(tc, scope);
+              let key_v8 = v8_str(tc, rk);
+              obj.has(tc, key_v8.into()).unwrap_or(false)
+            };
+            if has {
+              let column = match object_values
+                .iter_mut()
+                .find(|(n, _)| n == rk)
+              {
+                Some((_, rows)) => rows,
+                None => {
+                  object_values
+                    .push((rk.clone(), vec![Some(String::new()); num_rows]));
+                  &mut object_values.last_mut().unwrap().1
+                }
               };
-              if has {
-                let column = match object_values
-                  .iter_mut()
-                  .find(|(n, _)| n == rk)
-                {
-                  Some((_, rows)) => rows,
-                  None => {
-                    object_values
-                      .push((rk.clone(), vec![Some(String::new()); num_rows]));
-                    &mut object_values.last_mut().unwrap().1
-                  }
-                };
-                let key_v8 = v8_str(scope, rk);
-                let cell = js_get(scope, obj, key_v8.into())?;
-                column[idx] = Some(stringify(scope, &mut sctx, cell)?);
-              }
+              let key_v8 = v8_str(scope, rk);
+              let cell = js_get(scope, obj, key_v8.into())?;
+              column[idx] = Some(stringify(scope, &mut sctx, cell)?);
             }
           }
         }
@@ -1621,8 +1619,9 @@ impl Console {
     // `objectValues` is a JS object in the original implementation, so its
     // key order follows JS semantics: integer-like keys first in ascending
     // order, then string keys in insertion order.
-    let mut string_cols: Vec<(String, Vec<Option<String>>)> = Vec::new();
-    let mut index_cols: Vec<(u32, (String, Vec<Option<String>>))> = Vec::new();
+    type ColEntry = (String, Vec<Option<String>>);
+    let mut string_cols: Vec<ColEntry> = Vec::new();
+    let mut index_cols: Vec<(u32, ColEntry)> = Vec::new();
     for entry in object_values {
       match quote::is_canonical_index(&entry.0)
         .then(|| entry.0.parse::<u32>().ok())
