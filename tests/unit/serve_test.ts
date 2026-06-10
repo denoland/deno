@@ -1856,6 +1856,43 @@ Deno.test(
   },
 );
 
+// Same regression as `httpServerWebSocketShutdownNoLeak` but via the abort
+// signal path (`signal.abort()` -> `op_http_cancel`), which is a separate op
+// from `op_http_close` and must also drive open websockets to close.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketAbortNoLeak() {
+    const wsOpen = Promise.withResolvers<void>();
+    const wsClose = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler: (request) => {
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => wsOpen.resolve();
+        socket.onclose = () => wsClose.resolve();
+        return response;
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    const clientClose = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onclose = () => clientClose.resolve();
+    await wsOpen.promise;
+
+    ac.abort();
+
+    await wsClose.promise;
+    await clientClose.promise;
+    await server.finished;
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketCanAccessRequest() {
