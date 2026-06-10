@@ -5,7 +5,7 @@
 //! Registered on the extension via `objects = [Crypto]` so the class
 //! identity lives in Rust. `getRandomValues`, `randomUUID` and the `subtle`
 //! getter are implemented natively as `#[op2] impl` members; the JS shim
-//! only constructs the singleton via [`op_create_crypto`].
+//! only constructs the singleton via the [`Crypto::create`] static method.
 
 use std::ffi::CStr;
 
@@ -50,6 +50,23 @@ impl Crypto {
   #[cppgc]
   fn constructor(_: bool) -> Result<Crypto, SharedError> {
     Err(SharedError::IllegalConstructor)
+  }
+
+  /// Mint the singleton `Crypto` instance for `globalThis.crypto`. The JS
+  /// shim passes the already-constructed `SubtleCrypto` cppgc object so
+  /// that the `subtle` getter returns the same identity every call. Stays
+  /// as a static method on the class (not a top-level op) so it travels
+  /// with the cppgc class definition.
+  #[required(1)]
+  #[static_method]
+  #[cppgc]
+  fn create(
+    scope: &mut v8::PinScope<'_, '_>,
+    subtle: v8::Local<v8::Value>,
+  ) -> Crypto {
+    Crypto {
+      subtle: v8::Global::new(scope, subtle),
+    }
   }
 
   #[getter]
@@ -140,19 +157,5 @@ impl Crypto {
       rng.fill(&mut bytes);
     }
     fast_uuid_v4(&mut bytes)
-  }
-}
-
-/// Mint the singleton `Crypto` instance for `globalThis.crypto`. The JS shim
-/// passes the already-constructed `SubtleCrypto` cppgc object so that the
-/// `subtle` getter returns the same identity every call.
-#[op2]
-#[cppgc]
-pub fn op_create_crypto(
-  scope: &mut v8::PinScope<'_, '_>,
-  subtle: v8::Local<v8::Value>,
-) -> Crypto {
-  Crypto {
-    subtle: v8::Global::new(scope, subtle),
   }
 }

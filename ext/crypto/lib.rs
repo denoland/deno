@@ -117,8 +117,6 @@ pub use crate::x25519::X25519Error;
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
   ops = [
-    crypto::op_create_crypto,
-    subtle_crypto::op_create_subtle_crypto,
     crypto_key::op_create_crypto_key,
     crypto_key::op_crypto_key_handle,
     op_crypto_get_random_values,

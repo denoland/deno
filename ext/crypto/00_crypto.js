@@ -20,8 +20,6 @@ const {
   Crypto,
   CryptoKey,
   SubtleCrypto,
-  op_create_crypto,
-  op_create_subtle_crypto,
 } = core.ops;
 const {
   FunctionPrototypeCall,
@@ -223,18 +221,19 @@ webidl.configureInterface(SubtleCrypto);
 applyWebIdlInterfaceShape(SubtleCrypto);
 
 // The `SubtleCrypto` singleton (reachable as `globalThis.crypto.subtle`) is
-// minted lazily: `op_create_subtle_crypto` allocates a cppgc-wrapped
-// instance, and the cppgc heap isn't attached to the V8 isolate at
-// snapshot-build time. The first runtime read of `crypto.subtle` calls
-// `getSubtleSingleton`, which also stamps the `webidl.brand` symbol onto
-// the instance so the `assertBranded` checks at the top of every method
-// body pass. The same call hands `webidl.brand` and `kKeyObject` to Rust
-// so freshly-minted `CryptoKey`s carry both brands.
+// minted lazily: `SubtleCrypto.create()` (a static method on the cppgc
+// class) allocates the cppgc-wrapped instance, because the cppgc heap
+// isn't attached to the V8 isolate at snapshot-build time. The first
+// runtime read of `crypto.subtle` calls `getSubtleSingleton`, which also
+// stamps the `webidl.brand` symbol onto the instance so the
+// `assertBranded` checks at the top of every method body pass. The same
+// call hands `webidl.brand` and `kKeyObject` to Rust so freshly-minted
+// `CryptoKey`s carry both brands.
 let subtleSingleton;
 function getSubtleSingleton() {
   if (subtleSingleton === undefined) {
     Crypto.registerSymbols(webidl.brand, kKeyObject);
-    subtleSingleton = op_create_subtle_crypto();
+    subtleSingleton = SubtleCrypto.create();
     subtleSingleton[webidl.brand] = webidl.brand;
   }
   return subtleSingleton;
@@ -244,7 +243,7 @@ function getSubtleSingleton() {
 // `randomUUID` and the `subtle` getter are implemented natively in
 // `crypto.rs`. Here we only decorate the prototype with the inspector hook
 // and the WebIDL `Symbol.toStringTag` machinery, then mint the singleton
-// via `op_create_crypto`.
+// via `Crypto.create(subtle)` (a static method on the cppgc class).
 const CryptoPrototype = Crypto.prototype;
 ObjectDefineProperty(CryptoPrototype, SymbolFor("Deno.privateCustomInspect"), {
   __proto__: null,
@@ -268,7 +267,7 @@ applyWebIdlInterfaceShape(Crypto);
 let cryptoSingleton;
 function getCryptoSingleton() {
   if (cryptoSingleton === undefined) {
-    cryptoSingleton = op_create_crypto(getSubtleSingleton());
+    cryptoSingleton = Crypto.create(getSubtleSingleton());
     // Stamp the WebIDL brand so `Reflect.getPrototypeOf(crypto)` and
     // the IDL `Crypto interface: operation randomUUID()` invariants
     // resolve through the same brand-check path as `SubtleCrypto`.

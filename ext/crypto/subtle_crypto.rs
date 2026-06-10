@@ -14,7 +14,8 @@
 //!
 //! Registered on the extension via `objects = [SubtleCrypto]` so the class
 //! identity lives in Rust. The singleton instance reachable as
-//! `globalThis.crypto.subtle` is minted by [`op_create_subtle_crypto`].
+//! `globalThis.crypto.subtle` is minted by the [`SubtleCrypto::create`]
+//! static method.
 
 use std::ffi::CStr;
 
@@ -92,6 +93,16 @@ impl SubtleCrypto {
   #[cppgc]
   fn constructor(_: bool) -> Result<SubtleCrypto, SharedError> {
     Err(SharedError::IllegalConstructor)
+  }
+
+  /// Mint the singleton `SubtleCrypto` instance reachable as
+  /// `globalThis.crypto.subtle`. Stays as a static method on the class
+  /// (not a top-level op) so it travels with the cppgc class definition.
+  #[required(0)]
+  #[static_method]
+  #[cppgc]
+  fn create() -> SubtleCrypto {
+    SubtleCrypto
   }
 
   /// `SubtleCrypto.supports(operation, algorithm, lengthOrHash?)` from the
@@ -486,14 +497,6 @@ impl SubtleCrypto {
       usages,
     )
   }
-}
-
-/// Mint the singleton `SubtleCrypto` instance reachable as
-/// `globalThis.crypto.subtle`.
-#[op2]
-#[cppgc]
-pub fn op_create_subtle_crypto() -> SubtleCrypto {
-  SubtleCrypto
 }
 
 /// Body of `SubtleCrypto.supports()` — kept out of the macro `impl` block so
