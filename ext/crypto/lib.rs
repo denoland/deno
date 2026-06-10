@@ -109,14 +109,13 @@ pub use crate::shared::SharedError;
 pub use crate::x448::X448Error;
 pub use crate::x25519::X25519Error;
 
+// No standalone ops — every WebCrypto entry point is implemented as a
+// method on the `Crypto`/`SubtleCrypto`/`CryptoKey` cppgc classes
+// registered below under `objects`. The per-algorithm helpers
+// (`subtle_*::run`, `import_key_inner`, `export_key_inner`, etc.) are
+// pure-Rust and called directly from those method bodies.
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
-  // No standalone ops — every WebCrypto entry point is implemented as a
-  // method on the `Crypto`/`SubtleCrypto`/`CryptoKey` cppgc classes
-  // registered under `objects` below. The per-algorithm helpers
-  // (`subtle_*::run`, `import_key_inner`, `export_key_inner`, etc.) are
-  // pure-Rust and called directly from those method bodies.
-  ops = [],
   objects = [
     crypto::Crypto,
     subtle_crypto::SubtleCrypto,
