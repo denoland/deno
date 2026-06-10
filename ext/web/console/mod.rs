@@ -628,7 +628,7 @@ fn try_stringify<'s, 'i>(
   }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "formatting context")]
 fn inspect_args_impl<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   intr: &Intrinsics<'_>,
@@ -1216,9 +1216,8 @@ impl Console {
     #[string] label: String,
   ) {
     let mut map = self.count_map.borrow_mut();
-    if let std::collections::hash_map::Entry::Occupied(mut e) = map.entry(label)
-    {
-      e.insert(0);
+    if map.contains_key(&label) {
+      map.insert(label, 0);
       return;
     }
     drop(map);

@@ -1427,7 +1427,7 @@ fn is_instanceof<'s>(
 }
 
 /// `addPrototypeProperties(ctx, main, obj, recurseTimes, output)`.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "formatting context")]
 fn add_prototype_properties<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   intr: &Intrinsics<'_>,
@@ -1852,7 +1852,7 @@ fn well_known_symbol_iterator<'s>(
   v8::Symbol::get_iterator(scope)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "formatting context")]
 fn format_raw<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   intr: &Intrinsics<'_>,
@@ -2951,7 +2951,7 @@ fn format_array<'s, 'i>(
   Ok(output)
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "formatting context")]
 fn format_special_array<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   intr: &Intrinsics<'_>,
@@ -3451,7 +3451,7 @@ pub fn remove_colors(s: &str) -> String {
   out
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "formatting context")]
 fn format_property<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   intr: &Intrinsics<'_>,
@@ -3665,7 +3665,7 @@ fn is_below_break_length<'s>(
   base.is_empty() || !base.contains('\n')
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "formatting context")]
 fn reduce_to_single_string<'s, 'i>(
   scope: &mut v8::PinScope<'s, 'i>,
   ctx: &mut Ctx<'s>,
