@@ -66,10 +66,9 @@ use crate::subtle_sign::run as run_sign;
 use crate::subtle_verify::SubtleVerifyParams;
 use crate::subtle_verify::run as run_verify;
 use crate::subtle_wrap_key::UnwrapAlgorithm;
-use crate::subtle_wrap_key::UnwrappedKey;
 use crate::subtle_wrap_key::WrapAlgorithm;
+use crate::subtle_wrap_key::run_unwrap_key;
 use crate::subtle_wrap_key::run_wrap_key;
-use crate::subtle_wrap_key::unwrap_to_plaintext;
 
 pub struct SubtleCrypto;
 
@@ -409,16 +408,12 @@ impl SubtleCrypto {
   /// unwrapAlgorithm, unwrappedKeyAlgorithm, extractable, keyUsages)` —
   /// decrypt `wrappedKey` under `unwrappingKey` and import the result as
   /// `unwrappedKeyAlgorithm`. AES-KW or full encrypt path symmetric with
-  /// [`wrap_key`](Self::wrap_key). The decrypt step runs inside
-  /// `spawn_blocking` (matching the pre-port behavior where the legacy
-  /// JS body did `await this.decrypt(...)` and `decrypt` offloaded the
-  /// heavy AES/RSA/ChaCha20 work to a worker thread); the import step
-  /// stays on the main thread via the `UnwrappedKey` `ToV8` impl because
-  /// building the `CryptoKey` cppgc instance needs the v8 scope.
+  /// [`wrap_key`](Self::wrap_key).
   #[rename("unwrapKey")]
   #[required(7)]
-  async fn unwrap_key(
+  fn unwrap_key<'s>(
     &self,
+    scope: &mut v8::PinScope<'s, '_>,
     #[webidl] format: KeyFormat,
     #[webidl] wrapped_key: BufferSource,
     #[webidl] unwrapping_key: SubtleKey,
@@ -427,20 +422,19 @@ impl SubtleCrypto {
     unwrapped_key_algorithm: crate::subtle_import_key::ImportAlgorithm,
     extractable: bool,
     #[webidl] usages: Vec<String>,
-  ) -> Result<UnwrappedKey, CryptoError> {
+  ) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
     let UnwrapAlgorithm { name, params } = unwrap_algorithm;
-    let wrapped_bytes = wrapped_key.0;
-    let plain_bytes = spawn_blocking(move || {
-      unwrap_to_plaintext(wrapped_bytes, &name, unwrapping_key, params)
-    })
-    .await??;
-    Ok(UnwrappedKey {
+    run_unwrap_key(
+      scope,
       format,
-      plain_bytes,
+      wrapped_key.0,
+      &name,
+      unwrapping_key,
+      params,
       unwrapped_key_algorithm,
       extractable,
       usages,
-    })
+    )
   }
 
   /// `SubtleCrypto.encapsulateKey(algorithm, encapsulationKey,

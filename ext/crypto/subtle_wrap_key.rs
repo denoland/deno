@@ -162,18 +162,25 @@ pub fn run_wrap_key(
   }
 }
 
-/// First half of `SubtleCrypto.unwrapKey`: validate algorithm + usage,
-/// then decrypt (or AES-KW unwrap) the wrapped bytes. Pure-CPU, no v8
-/// scope — safe to run inside `spawn_blocking` so a large wrapped payload
-/// does not block the event loop (matching the pre-port behavior where
-/// `unwrapKey`'s JS body did `await this.decrypt(...)` and `decrypt`
-/// already offloaded the heavy AES/RSA/ChaCha20 work to a worker thread).
-pub fn unwrap_to_plaintext(
+/// Body of `SubtleCrypto.unwrapKey(format, wrappedKey, unwrappingKey,
+/// unwrapAlgorithm, unwrappedKeyAlgorithm, extractable, keyUsages)`.
+/// Returns the v8 `CryptoKey` Object directly.
+#[allow(
+  clippy::too_many_arguments,
+  reason = "signature mirrors the WebCrypto unwrapKey spec slots; \
+            collapsing them into a struct would just rename the IDL fields"
+)]
+pub fn run_unwrap_key<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  format: KeyFormat,
   wrapped_bytes: Vec<u8>,
   unwrapping_algorithm_name: &str,
   unwrapping_key: SubtleKey,
   unwrap_params: UnwrapParams,
-) -> Result<Vec<u8>, CryptoError> {
+  unwrapped_key_algorithm: ImportAlgorithm,
+  extractable: bool,
+  usages: Vec<String>,
+) -> Result<v8::Local<'s, v8::Object>, CryptoError> {
   if unwrapping_algorithm_name != unwrapping_key.algorithm_name {
     return Err(invalid_access(
       "Unwrapping algorithm does not match key algorithm".into(),
@@ -184,82 +191,43 @@ pub fn unwrap_to_plaintext(
       "The requested operation is not valid for the provided key".into(),
     ));
   }
-  match unwrap_params {
-    UnwrapParams::AesKw => aes_kw_unwrap(&unwrapping_key, &wrapped_bytes),
+  let plain_bytes = match unwrap_params {
+    UnwrapParams::AesKw => aes_kw_unwrap(&unwrapping_key, &wrapped_bytes)?,
     UnwrapParams::Decrypt(params) => {
       let mut decrypting_key = unwrapping_key;
       decrypting_key.usages = vec!["decrypt".to_string()];
-      run_decrypt(params, decrypting_key, wrapped_bytes)
+      run_decrypt(params, decrypting_key, wrapped_bytes)?
     }
-  }
-}
+  };
 
-/// Bundle the unwrap-step plaintext with the import-step params, returned
-/// from the async `SubtleCrypto.unwrapKey` body. The `ToV8` impl runs the
-/// import step (which needs the v8 scope to build the `CryptoKey` cppgc
-/// instance) synchronously in the JS scope once `spawn_blocking` has
-/// resolved the decrypt step. Mirrors `subtle_derive_key::DerivedKey`.
-pub struct UnwrappedKey {
-  pub format: KeyFormat,
-  pub plain_bytes: Vec<u8>,
-  pub unwrapped_key_algorithm: ImportAlgorithm,
-  pub extractable: bool,
-  pub usages: Vec<String>,
-}
-
-impl<'a> deno_core::ToV8<'a> for UnwrappedKey {
-  type Error = deno_error::JsErrorBox;
-
-  fn to_v8(
-    self,
-    scope: &mut v8::PinScope<'a, '_>,
-  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
-    let UnwrappedKey {
-      format,
-      plain_bytes,
-      unwrapped_key_algorithm,
-      extractable,
-      usages,
-    } = self;
-    let import_data = match format {
-      KeyFormat::Jwk => {
-        let value =
-          utf8_to_v8_json(scope, &plain_bytes).map_err(crypto_error_to_js)?;
-        ImportKeyData::from_v8(scope, value, format)
-          .map_err(crypto_error_to_js)?
-      }
-      _ => ImportKeyData::Buffer(plain_bytes),
-    };
-    let key = run_import_key(
-      scope,
-      format,
-      &unwrapped_key_algorithm,
-      import_data,
-      extractable,
-      &usages,
-    )
-    .map_err(crypto_error_to_js)?;
-    // Spec step 16: private/secret + empty usages → SyntaxError.
-    let key_type = deno_core::cppgc::try_unwrap_cppgc_object::<
-      crate::crypto_key::CryptoKey,
-    >(scope, key.into())
-    .map(|p| p.key_type());
-    if matches!(
-      key_type,
-      Some(CryptoKeyType::Private) | Some(CryptoKeyType::Secret)
-    ) && usages.is_empty()
-    {
-      return Err(crypto_error_to_js(syntax_error("Invalid key type".into())));
+  let import_data = match format {
+    KeyFormat::Jwk => {
+      let value = utf8_to_v8_json(scope, &plain_bytes)?;
+      ImportKeyData::from_v8(scope, value, format)?
     }
-    Ok(key.into())
+    _ => ImportKeyData::Buffer(plain_bytes),
+  };
+  let key = run_import_key(
+    scope,
+    format,
+    &unwrapped_key_algorithm,
+    import_data,
+    extractable,
+    &usages,
+  )?;
+  // Spec step 16: private/secret + empty usages → SyntaxError.
+  let key_type = deno_core::cppgc::try_unwrap_cppgc_object::<
+    crate::crypto_key::CryptoKey,
+  >(scope, key.into())
+  .map(|p| p.key_type());
+  if matches!(
+    key_type,
+    Some(CryptoKeyType::Private) | Some(CryptoKeyType::Secret)
+  ) && usages.is_empty()
+  {
+    return Err(syntax_error("Invalid key type".into()));
   }
-}
-
-fn crypto_error_to_js(err: CryptoError) -> deno_error::JsErrorBox {
-  match err {
-    CryptoError::Other(b) => b,
-    other => deno_error::JsErrorBox::from_err(other),
-  }
+  Ok(key)
 }
 
 fn aes_kw_wrap(
