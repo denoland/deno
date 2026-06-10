@@ -368,9 +368,11 @@ declare namespace Deno {
    * });
    * ```
    *
-   * Requires `allow-read` and `allow-write` permission.
+   * Requires `allow-read`, `allow-write` and `allow-net` permission. The
+   * `allow-net` grant may be scoped to the socket path with
+   * `--allow-net=unix:<absolute-path>`.
    *
-   * @tags allow-read, allow-write
+   * @tags allow-read, allow-write, allow-net
    * @category Network
    * @experimental
    */

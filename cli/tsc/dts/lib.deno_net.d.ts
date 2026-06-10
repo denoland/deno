@@ -284,9 +284,11 @@ declare namespace Deno {
    * const listener = Deno.listen({ path: "/foo/bar.sock", transport: "unix" })
    * ```
    *
-   * Requires `allow-read` and `allow-write` permission.
+   * Requires `allow-read`, `allow-write` and `allow-net` permission. The
+   * `allow-net` grant may be scoped to the socket path with
+   * `--allow-net=unix:<absolute-path>`.
    *
-   * @tags allow-read, allow-write
+   * @tags allow-read, allow-write, allow-net
    * @category Network
    */
   // deno-lint-ignore adjacent-overload-signatures
@@ -466,7 +468,9 @@ declare namespace Deno {
    * const conn5 = await Deno.connect({ path: "/foo/bar.sock", transport: "unix" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and `allow-read` for "unix".
+   * Requires `allow-net` permission for "tcp", and `allow-read` and
+   * `allow-net` for "unix". The "unix" `allow-net` grant may be scoped to the
+   * socket path with `--allow-net=unix:<absolute-path>`.
    *
    * @tags allow-net, allow-read
    * @category Network
@@ -508,7 +512,7 @@ declare namespace Deno {
    * const conn6 = await Deno.connect({ cid: -1, port: 80, transport: "vsock" });
    * ```
    *
-   * Requires `allow-net` permission for "tcp" and "vsock", and `allow-read` for "unix".
+   * Requires `allow-net` permission for "tcp" and "vsock", and `allow-read` and `allow-net` for "unix". The "unix" `allow-net` grant may be scoped to the socket path with `--allow-net=unix:<absolute-path>`.
    *
    * @tags allow-net, allow-read
    * @category Network

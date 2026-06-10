@@ -1581,3 +1581,64 @@ Deno.test(
     assertStringIncludes(output, "NOT_CAPABLE");
   },
 );
+
+// A `--allow-net=unix:<path>` rule scoped to the exact socket path grants both
+// listen and connect. Run in a subprocess so the dynamic socket path can be
+// passed in the allow-net rule.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function netUnixScopedAllowNetGrantsAccess() {
+    const socketPath = tmpUnixSocketPath();
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      const listener = Deno.listen({
+        path: ${JSON.stringify(socketPath)},
+        transport: "unix",
+      });
+      const conn = await Deno.connect({
+        path: ${JSON.stringify(socketPath)},
+        transport: "unix",
+      });
+      conn.close();
+      listener.close();
+      console.log("OK");
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      "--allow-write",
+      `--allow-net=unix:${socketPath}`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "OK");
+  },
+);
+
+// A `unix:` rule must be an absolute path: a relative path is rejected at flag
+// parse time before the script runs.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function netUnixAllowNetRejectsNonAbsolutePath() {
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(scriptPath, "console.log('UNREACHABLE');");
+    const { code, stdout, stderr } = await new Deno.Command(Deno.execPath(), {
+      args: ["run", "--allow-net=unix:relative.sock", scriptPath],
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    const decoder = new TextDecoder();
+    assert(code !== 0);
+    assertEquals(decoder.decode(stdout), "");
+    assertStringIncludes(decoder.decode(stderr), "invalid unix socket");
+  },
+);

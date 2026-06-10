@@ -4550,8 +4550,15 @@ impl PermissionsContainer {
   ///
   /// `path` must already be resolved to an absolute path (typically by the
   /// caller's earlier `check_open` pass). Matched lexically against
-  /// `--allow-net=unix:<absolute-path>` rules — no symlink resolution, by
-  /// design (mirrors `check_open`'s symlink-location semantics).
+  /// `--allow-net=unix:<absolute-path>` rules: no symlink resolution and no
+  /// `..` normalization, by design (mirrors `check_open`'s symlink-location
+  /// semantics). A rule must therefore already be canonical to match; e.g.
+  /// `unix:/var/run/../run/foo.sock` will not match a connect to
+  /// `/var/run/foo.sock`.
+  ///
+  /// Abstract socket paths (Linux, leading NUL) are not absolute, so they
+  /// cannot be expressed as a scoped `unix:` rule and are only reachable via
+  /// an unscoped `--allow-net` grant.
   pub fn check_net_unix_socket(
     &mut self,
     path: &Path,
