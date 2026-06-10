@@ -63,6 +63,14 @@ Deno.test("messagechannel primitive fast path", async () => {
     "hello world",
     123n, // bigint -> V8 fallback
   ];
+  // Expected received values. These match `values` except for `undefined`:
+  // dispatch builds the delivered event via `new MessageEvent("message",
+  // { data })`, and a WebIDL dictionary member whose value is `undefined`
+  // falls back to its default, which for `MessageEvent.data` is `null`. So
+  // posting `undefined` is observably delivered as `null` -- this is
+  // pre-existing Deno behavior, independent of the fast path, and the fast
+  // path must preserve it.
+  const expected = values.map((v) => v === undefined ? null : v);
 
   const received: unknown[] = [];
   const { promise, resolve } = Promise.withResolvers<void>();
@@ -77,12 +85,12 @@ Deno.test("messagechannel primitive fast path", async () => {
 
   await promise;
 
-  assertEquals(received.length, values.length);
-  for (let i = 0; i < values.length; i++) {
+  assertEquals(received.length, expected.length);
+  for (let i = 0; i < expected.length; i++) {
     // Object.is distinguishes -0/+0 and treats NaN as equal to itself.
     assert(
-      Object.is(received[i], values[i]),
-      `index ${i}: got ${String(received[i])}, expected ${String(values[i])}`,
+      Object.is(received[i], expected[i]),
+      `index ${i}: got ${String(received[i])}, expected ${String(expected[i])}`,
     );
   }
 
