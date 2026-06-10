@@ -14,6 +14,7 @@ pub mod internal_binding;
 pub mod internal_binding_constants;
 pub mod internal_binding_crypto;
 pub mod internal_binding_node_options;
+pub mod internal_binding_utils;
 pub mod internal_binding_uv;
 pub mod ipc;
 pub mod llhttp;

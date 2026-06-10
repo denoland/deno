@@ -342,6 +342,7 @@ deno_core::extension!(deno_node,
     ops::internal_binding_node_options::op_node_options_get_exec_argv_options,
     ops::internal_binding_node_options::op_node_options_get_options<TSys>,
     ops::internal_binding_node_options::op_node_options_set_exec_argv,
+    ops::internal_binding_utils::op_node_internal_binding_utils,
     ops::internal_binding_uv::op_node_internal_binding_uv,
     ops::internal_binding_uv::op_node_uv_errname,
     ops::internal_binding_uv::op_node_uv_get_code_map,
@@ -916,6 +917,9 @@ deno_core::extension!(deno_node,
     );
     ext.external_references.to_mut().extend(
       ops::blocklist::internal_binding_external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::internal_binding_utils::external_references(),
     );
   },
 );
