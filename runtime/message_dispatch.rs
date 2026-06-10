@@ -26,7 +26,6 @@ use std::task::Context;
 use deno_core::JsRuntime;
 use deno_core::OpState;
 use deno_core::error::CoreError;
-use deno_core::error::JsError;
 use deno_core::v8;
 use deno_web::JsMessageData;
 use deno_web::MessageDispatchTable;
@@ -116,9 +115,10 @@ pub fn drive_message_dispatch(
   }
 
   // 3. Dispatch into JS. One microtask checkpoint (run by the subsequent tick
-  //    phases) covers the whole batch instead of one per message.
+  //    phases) covers the whole batch instead of one per message. This mirrors
+  //    how `dispatch_event_loop_tick` invokes the resolved-op handler.
   v8::tc_scope!(let tc, scope);
-  for d in &drained {
+  'dispatch: for d in &drained {
     let dispatcher = v8::Local::new(tc, &d.dispatcher);
     let undefined: v8::Local<v8::Value> = v8::undefined(tc).into();
     for message in &d.messages {
@@ -127,8 +127,20 @@ pub fn drive_message_dispatch(
         Err(_) => continue,
       };
       dispatcher.call(tc, undefined, &[arg]);
+      // If a handler triggered `process.exit()` / `terminate()`, V8 execution
+      // is now terminating. Stop dispatching but leave the termination pending
+      // (do NOT build an error from it, which would cancel it): the enclosing
+      // event-loop tick handles the teardown exactly as for a resolved recv op,
+      // preserving the worker's exit code.
+      if tc.has_terminated() || tc.is_execution_terminating() {
+        break 'dispatch;
+      }
       if let Some(exception) = tc.exception() {
-        let js_error = JsError::from_v8_exception(tc, exception);
+        // A genuine throw escaped the handler. Surface it as the event-loop
+        // error (matching the old behavior where it became an unhandled
+        // rejection out of the async receive loop). `exception_to_err`
+        // correctly handles the terminating case by re-terminating.
+        let js_error = deno_core::exception_to_err(tc, exception, false, true);
         return Err(CoreError::from(js_error));
       }
     }

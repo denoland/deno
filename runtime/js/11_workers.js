@@ -279,12 +279,11 @@ class Worker extends EventTarget {
     // worker's host port + dispatcher so the runtime drains the queue and calls
     // `#dispatchWorkerMessage` directly, with no per-message Promise. The recv
     // op below stays pending as the keep-alive / ref-unref anchor and resolves
-    // `null` only on close.
+    // `null` only on close. The dispatcher guards on the TERMINATED state since
+    // the Rust pump may still hold already-queued messages after terminate()
+    // (e.g. "worker terminate busy loop").
     const dispatchId = op_host_register_message_dispatch(
       this.#id,
-      // Guard against delivery after terminate(): the Rust pump may still hold
-      // already-queued messages, and the old per-iteration TERMINATED check
-      // must be preserved (e.g. "worker terminate busy loop").
       (data) => {
         if (this.#status !== "TERMINATED") this.#dispatchWorkerMessage(data);
       },
@@ -299,7 +298,6 @@ class Worker extends EventTarget {
         if (this.#status === "TERMINATED" || data === null) {
           return;
         }
-        if (!this.#dispatchWorkerMessage(data)) return;
       }
     } finally {
       op_message_dispatch_unregister(dispatchId);

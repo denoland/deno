@@ -16,16 +16,15 @@ import {
   op_get_ext_import_meta_proto,
   op_internal_log,
   op_main_module,
-  op_message_dispatch_unregister,
   op_ppid,
   op_set_format_exception_callback,
   op_snapshot_options,
+  op_message_dispatch_unregister,
   op_worker_close,
   op_worker_get_type,
   op_worker_post_message,
   op_worker_post_message_raw,
   op_worker_recv_message,
-  op_worker_recv_message_sync,
   op_worker_register_message_dispatch,
   op_worker_sync_fetch,
 } from "ext:core/ops";
@@ -309,9 +308,9 @@ async function pollForMessages() {
   // `dispatchWorkerMessage` directly, with no per-message Promise or microtask
   // checkpoint. The recv op below stays pending purely as the keep-alive /
   // ref-unref anchor and resolves `null` only when the channel closes.
-  // Guard against delivery after the worker has begun closing: the Rust pump
-  // may still hold already-queued messages when `close()` runs, and the old
-  // per-iteration `!isClosing` check must be preserved.
+  // The dispatcher guards on `!isClosing`: the Rust pump may still hold
+  // already-queued messages when `close()` runs, so the old per-iteration
+  // `!isClosing` check must be preserved.
   const dispatchId = op_worker_register_message_dispatch((data) => {
     if (!isClosing) dispatchWorkerMessage(data);
   });
@@ -326,9 +325,6 @@ async function pollForMessages() {
       }
       const data = await recvMessage;
       if (data === null) break;
-      // Defensive: with Rust-driven dispatch the op only resolves on close,
-      // but dispatch any stray payload to preserve correctness.
-      dispatchWorkerMessage(data);
     }
   } finally {
     op_message_dispatch_unregister(dispatchId);
