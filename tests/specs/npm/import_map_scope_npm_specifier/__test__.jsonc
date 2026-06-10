@@ -11,6 +11,27 @@
       "args": "run --no-lock --quiet --allow-read --node-modules-dir=auto main.ts",
       "output": "2\n",
       "exitCode": 0
+    },
+    // A scope keyed by the referrer's npm package applies, but the specifier
+    // the package imports (`@denotest/different-nested-dep-child`) is not mapped
+    // by that scope (only an unrelated `@denotest/esm-basic` is). The import
+    // must fall through to normal node resolution and resolve the child to its
+    // declared `1.0.0` (exporting `1`) rather than leaking in any other mapping.
+    "unscoped_specifier_falls_through": {
+      "tempDir": true,
+      "args": "run --no-lock --quiet --allow-read --config deno_fallthrough.json main.ts",
+      "output": "1\n",
+      "exitCode": 0
+    },
+    // The only `npm:` scope is keyed by a version (`@9.9.9`) that does not match
+    // the referrer package (`@1.0.0`), so it must not apply. The child resolves
+    // to its declared `1.0.0` (exporting `1`) — the non-matching scope is a
+    // no-op.
+    "scope_key_no_match_is_noop": {
+      "tempDir": true,
+      "args": "run --no-lock --quiet --allow-read --config deno_nomatch.json main.ts",
+      "output": "1\n",
+      "exitCode": 0
     }
   }
 }
