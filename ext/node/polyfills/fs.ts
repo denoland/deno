@@ -26,7 +26,11 @@ const {
   AbortError,
   denoErrorToNodeError,
   denoWriteFileErrorToNodeError,
+  ERR_DIR_CLOSED,
+  ERR_DIR_CONCURRENT_OPERATION,
   ERR_FS_FILE_TOO_LARGE,
+  ERR_INVALID_THIS,
+  ERR_MISSING_ARGS,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
 const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 type statCallback = any;
@@ -36,9 +40,6 @@ const { copyFile, copyFileSync } = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_copy.ts",
 )();
 const { cp, cpSync } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
-const { default: Dir } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_dir.ts",
-)();
 const { exists, existsSync } = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_exists.ts",
 )();
@@ -92,9 +93,7 @@ const {
   getValidatedPath,
   getValidatedPathToString,
   Stats,
-  stringToFlags,
   toUnixTimestamp,
-  validateStringAfterArrayBufferView,
 } = core.createLazyLoader("ext:deno_node/internal/fs/utils.mjs")();
 const { glob, globSync } = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_glob.ts",
@@ -128,14 +127,14 @@ const {
   op_node_fs_futimes,
   op_node_fs_futimes_sync,
   op_node_fs_read_deferred,
-  op_node_fs_encode_bytes,
+  op_node_fs_readdir,
+  op_node_fs_readdir_sync,
   op_node_fs_read_file,
   op_node_fs_readv,
   op_node_fs_readv_sync,
   op_node_fs_read_file_path_sync,
   op_node_fs_read_file_path,
   op_node_fs_write_deferred,
-  op_node_fs_write_sync,
   op_node_fs_write_v_sync,
   op_node_fs_write_v,
   op_node_fs_writev_sync,
@@ -190,6 +189,7 @@ const {
   op_node_fs_access,
   op_node_fs_access_sync,
   op_node_fs_validate_watch_ignore,
+  op_node_fs_encode_bytes,
   op_node_fs_encode_watch_filename,
   op_node_fs_watch_open,
   op_node_fs_watch_poll,
@@ -229,13 +229,16 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromisePrototypeThen,
+  PromiseReject,
   PromiseResolve,
   RegExpPrototype,
   RegExpPrototypeTest,
   SafeMap,
+  SymbolAsyncDispose,
   SymbolAsyncIterator,
   SymbolDispose,
   SymbolFor,
+  Uint8ArrayPrototype,
   ArrayPrototypePush,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeSet,
@@ -246,11 +249,6 @@ const {
 const abortSignal = core.loadExtScript("ext:deno_web/03_abort_signal.js");
 const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
-
-const {
-  kIoMaxLength,
-  kReadFileUnknownBufferLength,
-} = fsUtilConstants;
 
 function stat(
   path: string | Buffer | URL,
@@ -443,31 +441,41 @@ type ReadFileCallback =
   | ReadFileGenericCallback;
 type ReadFilePath = string | URL | FileHandle | number;
 
-// Abort-capable path read (the no-signal case goes straight to
-// `op_node_fs_read_file_path`): a cancel handle lets the read be interrupted.
-// Returns raw bytes; the caller encodes via `op_node_fs_encode_bytes`.
-async function readFileAsyncWithSignal(
-  path: string,
-  options: FileOptions,
-): Promise<Uint8Array> {
-  const flagsNumber = stringToFlags(options.flag, "options.flag");
-  options.signal!.throwIfAborted();
+// Runs `fn(cancelRid)` with node's AbortSignal semantics, shared by the
+// readFile/writeFile signal paths: reject with node's AbortError when already
+// aborted, close the cancel handle on abort (which interrupts the in-flight
+// op), and always surface the abort (with `signal.reason` as cause) once the
+// signal fired -- even if the op won the race. The op's own cancellation
+// error is never observable: whenever the handle closes, `signal.aborted` is
+// set and the AbortError replaces it.
+function callWithSignal<T>(
+  signal: AbortSignal,
+  fn: (cancelRid: number) => Promise<T>,
+): Promise<T> {
+  if (signal.aborted) {
+    return PromiseReject(new AbortError(undefined, { cause: signal.reason }));
+  }
   const cancelRid = core.createCancelHandle();
   const abortHandler = () => core.tryClose(cancelRid as number);
-  options.signal![abortSignal.add](abortHandler);
-
-  try {
-    const data = await op_fs_read_file_async(
-      path,
-      cancelRid,
-      flagsNumber,
-    );
-    return data;
-  } finally {
-    options.signal![abortSignal.remove](abortHandler);
-    // always throw the abort error when aborted
-    options.signal!.throwIfAborted();
-  }
+  signal[abortSignal.add](abortHandler);
+  const finish = () => {
+    signal[abortSignal.remove](abortHandler);
+    core.tryClose(cancelRid as number);
+    if (signal.aborted) {
+      throw new AbortError(undefined, { cause: signal.reason });
+    }
+  };
+  return PromisePrototypeThen(
+    fn(cancelRid as number),
+    (value: T) => {
+      finish();
+      return value;
+    },
+    (e: Error) => {
+      finish();
+      throw e;
+    },
+  );
 }
 
 function readFileCheckAborted(signal: AbortSignal | undefined) {
@@ -495,8 +503,12 @@ function readFileConcatBuffers(buffers: Uint8Array[]): Uint8Array {
 
 // Abort-capable fd read (the no-signal case goes straight to
 // `op_node_fs_read_file`, whose read_to_end handles unknown-size sources and
-// "zero-byte liar" files). Returns raw bytes; the caller encodes via
-// `op_node_fs_encode_bytes`.
+// "zero-byte liar" files). This stays a JS chunked loop -- NOT a one-shot
+// native read with a cancel handle -- because node guarantees an abort
+// scheduled via process.nextTick before a chunk read completes is observed
+// (test-fs-promises-file-handle-readFile's tick-0 case), which needs
+// JS-visible async hops between chunk reads. Returns raw bytes; the caller
+// encodes via `op_node_fs_encode_bytes`.
 async function readFileFromFdWithSignal(fd: number, options: FileOptions) {
   const signal = options.signal;
   readFileCheckAborted(signal);
@@ -601,23 +613,25 @@ function readFile(
   );
 
   // The common no-signal cases resolve to an already-encoded string/Buffer
-  // (the ops parse options + decode); the rarer signal-capable JS paths
-  // return raw bytes encoded afterwards.
+  // (the ops parse options + decode). With a signal: the path case uses the
+  // shared cancel-handle wrapper (the abort interrupts the native open/read);
+  // the fd case stays a JS chunked loop for node's nextTick abort-timing
+  // guarantee (see readFileFromFdWithSignal).
   let p: Promise<string | Buffer>;
   if (!options?.signal) {
     p = typeof pathOrRid === "number"
       ? op_node_fs_read_file(pathOrRid, options)
       : op_node_fs_read_file_path(pathOrRid, options);
-  } else {
-    const raw = typeof pathOrRid === "number"
-      ? readFileFromFdWithSignal(pathOrRid, options)
-      : readFileAsyncWithSignal(
-        getValidatedPathToString(pathOrRid as string),
-        options,
-      );
+  } else if (typeof pathOrRid === "number") {
     p = PromisePrototypeThen(
-      raw,
+      readFileFromFdWithSignal(pathOrRid, options),
       (data: Uint8Array) => op_node_fs_encode_bytes(data, options),
+    );
+  } else {
+    p = callWithSignal(
+      options.signal,
+      (cancelRid: number) =>
+        op_node_fs_read_file_path(pathOrRid, options, cancelRid),
     );
   }
 
@@ -1035,6 +1049,178 @@ const openSync = op_node_open_sync;
 
 // -- opendir --
 
+// Node's `fs.Dir` (lib/internal/fs/dir.js), backed by a single native
+// readdir: the whole listing is produced in Rust (`op_node_fs_readdir`) on
+// the first read and handed out one entry at a time, so close() has nothing
+// native to release (it only flips the flag, with node's ERR_DIR_CLOSED and
+// callback-validation semantics).
+class Dir {
+  #dirPath: string | Uint8Array;
+  #entries: Dirent[] | null = null;
+  // The in-flight native readdir, shared by concurrent read()s so the listing
+  // is fetched once and handed out in call order.
+  #fetch: Promise<Dirent[]> | null = null;
+  // Number of async reads currently awaiting the fetch: sync operations throw
+  // ERR_DIR_CONCURRENT_OPERATION while nonzero, like node's operation queue.
+  #pending = 0;
+  #idx = 0;
+  #closed = false;
+  #recursive: boolean;
+
+  constructor(path: string | Uint8Array, recursive = false) {
+    if (!path) {
+      throw new ERR_MISSING_ARGS("path");
+    }
+    this.#dirPath = path;
+    this.#recursive = recursive;
+  }
+
+  get path(): string {
+    // Match Node: invoking the getter on a non-Dir receiver (e.g. the
+    // prototype) throws ERR_INVALID_THIS rather than a private-field error.
+    // deno-lint-ignore prefer-primordials -- private-field brand check
+    if (!(#dirPath in this)) {
+      throw new ERR_INVALID_THIS("Dir");
+    }
+    if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, this.#dirPath)) {
+      // deno-lint-ignore prefer-primordials
+      return Buffer.from(this.#dirPath as Uint8Array).toString("utf8");
+    }
+    return this.#dirPath as string;
+  }
+
+  #next(): Dirent | null {
+    if (this.#entries !== null && this.#idx < this.#entries.length) {
+      return this.#entries[this.#idx++];
+    }
+    return null;
+  }
+
+  async #readPromisified(): Promise<Dirent | null> {
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
+    if (this.#entries === null) {
+      // Async-function bodies run synchronously up to the first await, so
+      // buffered reads complete without ever appearing pending.
+      this.#pending++;
+      try {
+        this.#fetch ??= op_node_fs_readdir(this.path, this.#recursive, true);
+        const entries = await this.#fetch;
+        this.#entries ??= entries;
+      } finally {
+        this.#pending--;
+      }
+    }
+    return this.#next();
+  }
+
+  // Match node's read(): no arguments -> a promise; with a callback the
+  // closed check throws ERR_DIR_CLOSED synchronously, the callback is
+  // validated (ERR_INVALID_ARG_TYPE), and the method returns undefined.
+  read(
+    callback?: (...args: any[]) => void,
+  ): Promise<Dirent | null> | undefined {
+    if (arguments.length === 0) {
+      return this.#readPromisified();
+    }
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
+    if (callback === undefined) {
+      return this.#readPromisified();
+    }
+    validateFunction(callback, "callback");
+    PromisePrototypeThen(
+      this.#readPromisified(),
+      (dirent) => callback(null, dirent),
+      callback,
+    );
+  }
+
+  readSync(): Dirent | null {
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
+    if (this.#pending > 0) {
+      throw new ERR_DIR_CONCURRENT_OPERATION();
+    }
+    if (this.#entries === null) {
+      this.#entries = op_node_fs_readdir_sync(
+        this.path,
+        this.#recursive,
+        true,
+      ) as unknown as Dirent[];
+    }
+    return this.#next();
+  }
+
+  close(callback?: (...args: any[]) => void): Promise<void> | undefined {
+    if (callback === undefined) {
+      if (this.#closed) {
+        return PromiseReject(new ERR_DIR_CLOSED());
+      }
+      this.#closed = true;
+      return PromiseResolve();
+    }
+    validateFunction(callback, "callback");
+    if (this.#closed) {
+      process.nextTick(callback, new ERR_DIR_CLOSED());
+      return;
+    }
+    this.#closed = true;
+    process.nextTick(callback, null);
+  }
+
+  closeSync() {
+    if (this.#closed) {
+      throw new ERR_DIR_CLOSED();
+    }
+    if (this.#pending > 0) {
+      throw new ERR_DIR_CONCURRENT_OPERATION();
+    }
+    this.#closed = true;
+  }
+
+  async *entries(): AsyncIterableIterator<Dirent> {
+    try {
+      while (true) {
+        const dirent = await this.#readPromisified();
+        if (dirent === null) {
+          break;
+        }
+        yield dirent;
+      }
+    } finally {
+      if (!this.#closed) {
+        this.#closed = true;
+      }
+    }
+  }
+
+  // Unlike explicit close()/closeSync(), the dispose protocol is idempotent:
+  // repeated invocations must not throw (see node's file-handle-dispose test).
+  [SymbolDispose]() {
+    if (this.#closed) return;
+    this.closeSync();
+  }
+
+  async [SymbolAsyncDispose]() {
+    if (this.#closed) return;
+    await this.close();
+  }
+}
+
+// Match node: `Dir.prototype[Symbol.asyncIterator]` IS `entries` (the same
+// function object; non-enumerable, writable, configurable).
+ObjectDefineProperty(Dir.prototype, SymbolAsyncIterator, {
+  __proto__: null,
+  enumerable: false,
+  writable: true,
+  configurable: true,
+  value: Dir.prototype.entries,
+});
+
 type OpendirOptions = {
   encoding?: string;
   bufferSize?: number;
@@ -1230,12 +1416,13 @@ type WriteFileData =
   | AsyncIterable<NodeJS.TypedArray | string>;
 
 const {
+  kIoMaxLength,
+  kReadFileUnknownBufferLength,
   kWriteFileMaxChunkSize,
 } = fsUtilConstants;
 
 interface Writer {
   write(p: NodeJS.TypedArray): Promise<number>;
-  writeSync(p: NodeJS.TypedArray): number;
 }
 
 async function _writeFileGetRid(
@@ -1286,25 +1473,24 @@ function writeFile(
 
   const isRid = typeof pathOrRid === "number";
 
-  // Common case (non-iterable data, no AbortSignal), path or fd: the op
-  // parses options + data (string -> encoded bytes), opens, optionally
-  // chmods, writes all bytes, and closes natively, throwing the final node
-  // error. The iterable / signal cases fall through to JS.
-  if (!signal && !_isCustomIterable(data)) {
-    PromisePrototypeThen(
-      op_node_fs_write_file(pathOrRid, data, options),
-      () => callback(null),
-      callback,
-    );
+  // Non-iterable data, path or fd: the op parses options + data (string ->
+  // encoded bytes), opens, optionally chmods, writes all bytes, and closes
+  // natively, throwing the final node error; with a signal the shared
+  // cancel-handle wrapper interrupts the native open/write on abort. Only
+  // the (async-)iterable data case falls through to JS.
+  if (!_isCustomIterable(data)) {
+    const promise = signal
+      ? callWithSignal(
+        signal,
+        (cancelRid: number) =>
+          op_node_fs_write_file(pathOrRid, data, options, cancelRid),
+      )
+      : op_node_fs_write_file(pathOrRid, data, options);
+    PromisePrototypeThen(promise, () => callback(null), callback);
     return;
   }
 
   const encoding = getValidatedEncoding(options) || "utf8";
-
-  if (!ArrayBufferIsView(data) && !_isCustomIterable(data)) {
-    validateStringAfterArrayBufferView(data, "data");
-    data = Buffer.from(data, encoding);
-  }
 
   let file;
 
@@ -1317,9 +1503,6 @@ function writeFile(
           // Use the deferred op to yield to the event loop between writes,
           // allowing abort signals scheduled via process.nextTick to fire.
           return op_node_fs_write_deferred(fd, p, -1);
-        },
-        writeSync(p: NodeJS.TypedArray) {
-          return op_node_fs_write_sync(fd, p, -1);
         },
         close() {
           op_node_fs_close(fd);
@@ -1358,52 +1541,38 @@ const writeFileSync = op_node_fs_write_file_sync as (
   options?: Encodings | WriteFileOptions,
 ) => void;
 
+// Writes each chunk of an (async-)iterable `data` (the non-iterable cases go
+// through `op_node_fs_write_file` natively), checking the AbortSignal between
+// chunk writes.
 async function _writeAll(
   w: Writer,
   data: Exclude<WriteFileData, string>,
   encoding: BufferEncoding,
   signal?: AbortSignal,
 ) {
-  if (!_isCustomIterable(data)) {
+  // deno-lint-ignore prefer-primordials
+  for await (const buf of data) {
+    _checkAborted(signal);
+    let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
+    toWrite = new Uint8Array(
+      // deno-lint-ignore prefer-primordials
+      toWrite.buffer,
+      // deno-lint-ignore prefer-primordials
+      toWrite.byteOffset,
+      // deno-lint-ignore prefer-primordials
+      toWrite.byteLength,
+    );
     // deno-lint-ignore prefer-primordials
-    data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    // deno-lint-ignore prefer-primordials
-    let remaining = data.byteLength;
+    let remaining = toWrite.byteLength;
     while (remaining > 0) {
       const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
       // deno-lint-ignore prefer-primordials
-      const offset = data.byteLength - remaining;
+      const offset = toWrite.byteLength - remaining;
       const bytesWritten = await w.write(
-        data.subarray(offset, offset + writeSize),
+        toWrite.subarray(offset, offset + writeSize),
       );
       remaining -= bytesWritten;
       _checkAborted(signal);
-    }
-  } else {
-    // deno-lint-ignore prefer-primordials
-    for await (const buf of data) {
-      _checkAborted(signal);
-      let toWrite = ArrayBufferIsView(buf) ? buf : Buffer.from(buf, encoding);
-      toWrite = new Uint8Array(
-        // deno-lint-ignore prefer-primordials
-        toWrite.buffer,
-        // deno-lint-ignore prefer-primordials
-        toWrite.byteOffset,
-        // deno-lint-ignore prefer-primordials
-        toWrite.byteLength,
-      );
-      // deno-lint-ignore prefer-primordials
-      let remaining = toWrite.byteLength;
-      while (remaining > 0) {
-        const writeSize = MathMin(kWriteFileMaxChunkSize, remaining);
-        // deno-lint-ignore prefer-primordials
-        const offset = toWrite.byteLength - remaining;
-        const bytesWritten = await w.write(
-          toWrite.subarray(offset, offset + writeSize),
-        );
-        remaining -= bytesWritten;
-        _checkAborted(signal);
-      }
     }
   }
 

@@ -8,14 +8,21 @@ const Dir = DirOrig as any;
 
 Deno.test({
   name: "Closing current directory with callback is successful",
-  fn() {
-    let calledBack = false;
-    // deno-lint-ignore no-explicit-any
-    new Dir(".").close((valOrErr: any) => {
-      assert(!valOrErr);
-      calledBack = true;
+  // Match node: close(callback) returns undefined and invokes the callback
+  // asynchronously (process.nextTick).
+  async fn() {
+    await new Promise<void>((resolve, reject) => {
+      // deno-lint-ignore no-explicit-any
+      const ret = new Dir(".").close((valOrErr: any) => {
+        try {
+          assert(!valOrErr);
+          resolve();
+        } catch (e) {
+          reject(e);
+        }
+      });
+      assert(ret === undefined);
     });
-    assert(calledBack);
   },
 });
 
@@ -51,17 +58,22 @@ Deno.test({
       const file: Dirent | null = await new Dir(testDir).read();
       assert(file === null);
 
-      let calledBack = false;
-      const fileFromCallback: Dirent | null = await new Dir(
-        testDir,
-        // deno-lint-ignore no-explicit-any
-      ).read((err: any, res: Dirent) => {
-        assert(res === null);
-        assert(err === null);
-        calledBack = true;
+      // Match node: read(callback) returns undefined; the result arrives via
+      // the callback only.
+      await new Promise<void>((resolve, reject) => {
+        const ret = new Dir(testDir)
+          // deno-lint-ignore no-explicit-any
+          .read((err: any, res: Dirent | null) => {
+            try {
+              assert(res === null);
+              assert(err === null);
+              resolve();
+            } catch (e) {
+              reject(e);
+            }
+          });
+        assert(ret === undefined);
       });
-      assert(fileFromCallback === null);
-      assert(calledBack);
 
       assertEquals(new Dir(testDir).readSync(), null);
     } finally {
@@ -80,18 +92,20 @@ Deno.test({
     f2.close();
 
     try {
-      let secondCallback = false;
       const dir = new Dir(testDir);
       const firstRead: Dirent | null = await dir.read();
-      const secondRead: Dirent | null = await dir.read(
-        // deno-lint-ignore no-explicit-any
-        (_err: any, secondResult: Dirent) => {
-          assert(
-            secondResult.name === "bar.txt" || secondResult.name === "foo.txt",
-          );
-          secondCallback = true;
-        },
-      );
+      // Match node: read(callback) returns undefined; the dirent arrives via
+      // the callback only.
+      const secondRead: Dirent = await new Promise((resolve, reject) => {
+        const ret = dir.read(
+          // deno-lint-ignore no-explicit-any
+          (err: any, secondResult: Dirent) => {
+            if (err) reject(err);
+            else resolve(secondResult);
+          },
+        );
+        assert(ret === undefined);
+      });
       const thirdRead: Dirent | null = await dir.read();
       const fourthRead: Dirent | null = await dir.read();
 
@@ -102,7 +116,6 @@ Deno.test({
       } else {
         fail("File not found during read");
       }
-      assert(secondCallback);
       assert(thirdRead === null);
       assert(fourthRead === null);
     } finally {
@@ -265,23 +278,21 @@ Deno.test({
 });
 
 Deno.test({
-  name: "Dir.read callback receives ERR_DIR_CLOSED after close",
+  // Match node: read(callback) on a closed Dir throws synchronously; the
+  // callback is never invoked.
+  name: "Dir.read with callback throws ERR_DIR_CLOSED synchronously",
   async fn() {
     const testDir: string = Deno.makeTempDirSync();
     try {
       const dir = new Dir(testDir);
       await dir.close();
-      await new Promise<void>((resolve, reject) => {
+      try {
+        dir.read(() => fail("callback should not be invoked"));
+        fail("Expected ERR_DIR_CLOSED to be thrown");
+      } catch (e) {
         // deno-lint-ignore no-explicit-any
-        dir.read((err: any) => {
-          try {
-            assertEquals(err.code, "ERR_DIR_CLOSED");
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-        });
-      });
+        assertEquals((e as any).code, "ERR_DIR_CLOSED");
+      }
     } finally {
       Deno.removeSync(testDir, { recursive: true });
     }

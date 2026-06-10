@@ -143,6 +143,9 @@ pub struct FsStat {
 pub struct FsStatFs {
   pub typ: u64,
   pub bsize: u64,
+  // Fragment size: statfs(2)'s f_frsize on Linux; libuv falls back to f_bsize
+  // everywhere else (macOS/BSD statfs has no f_frsize; Windows neither).
+  pub frsize: u64,
   pub blocks: u64,
   pub bfree: u64,
   pub bavail: u64,

@@ -22,7 +22,9 @@ import {
   validateStringAfterArrayBufferView,
 } from "ext:deno_node/internal/fs/utils.mjs";
 import type { Buffer } from "node:buffer";
-import Dir from "ext:deno_node/_fs/_fs_dir.ts";
+// The runtime Dir class lives in fs.ts (reached via lazyFs().opendir); only
+// the type is needed here.
+type Dir = any;
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { primordials } from "ext:core/mod.js";
 const { parseFileMode } = core.loadExtScript(
