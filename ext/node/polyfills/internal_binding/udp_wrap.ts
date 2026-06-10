@@ -39,6 +39,7 @@ const {
   op_node_udp_set_multicast_loopback,
   op_node_udp_set_multicast_ttl,
   op_node_udp_set_ttl,
+  SendWrap,
 } = core.ops;
 const {
   ArrayPrototypeMap,
@@ -52,12 +53,11 @@ const {
 
 const osErrorRegExp = new SafeRegExp(/os error (40|90|10040)/);
 
-const {
-  AsyncWrap,
-  providerType,
-} = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
 const { HandleWrap } = core.loadExtScript(
   "ext:deno_node/internal_binding/handle_wrap.ts",
+);
+const { providerType } = core.loadExtScript(
+  "ext:deno_node/internal_binding/async_wrap.ts",
 );
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
@@ -75,6 +75,7 @@ const { os } = core.loadExtScript(
 );
 
 type MessageType = string | Uint8Array | Buffer | DataView;
+type SendWrapInstance = InstanceType<typeof SendWrap>;
 
 const AF_INET = 2;
 const AF_INET6 = 10;
@@ -105,19 +106,6 @@ function isValidMulticastAddress(
       return false;
     }
     return true;
-  }
-}
-
-class SendWrap extends AsyncWrap {
-  list!: MessageType[];
-  address!: string;
-  port!: number;
-
-  callback!: (error: Error | null, bytes?: number) => void;
-  oncomplete!: (err: number | null, sent?: number) => void;
-
-  constructor() {
-    super(providerType.UDPSENDWRAP);
   }
 }
 
@@ -458,7 +446,7 @@ class UDP extends HandleWrap {
   }
 
   send(
-    req: SendWrap,
+    req: SendWrapInstance,
     bufs: MessageType[],
     count: number,
     ...args: [number, string, boolean] | [boolean]
@@ -467,7 +455,7 @@ class UDP extends HandleWrap {
   }
 
   send6(
-    req: SendWrap,
+    req: SendWrapInstance,
     bufs: MessageType[],
     count: number,
     ...args: [number, string, boolean] | [boolean]
@@ -599,7 +587,7 @@ class UDP extends HandleWrap {
   }
 
   #doSend(
-    req: SendWrap,
+    req: SendWrapInstance,
     bufs: MessageType[],
     _count: number,
     args: [number, string, boolean] | [boolean],

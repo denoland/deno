@@ -10,6 +10,9 @@ use std::str::FromStr;
 
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::CppgcBase;
+use deno_core::CppgcInherits;
+use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -22,6 +25,35 @@ use socket2::Protocol;
 use socket2::Socket;
 use socket2::Type;
 use tokio::net::UdpSocket;
+
+use crate::ops::handle_wrap::AsyncWrap;
+use crate::ops::handle_wrap::ProviderType;
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct SendWrap {
+  base: AsyncWrap,
+}
+
+unsafe impl GarbageCollected for SendWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"SendWrap"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl SendWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> SendWrap {
+    SendWrap {
+      base: AsyncWrap::create(state, ProviderType::UdpSendWrap as i32),
+    }
+  }
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NodeUdpError {
