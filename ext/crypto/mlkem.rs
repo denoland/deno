@@ -2,7 +2,6 @@
 
 use aws_lc_rs::kem;
 use deno_core::convert::Uint8Array;
-use deno_core::op2;
 use fips203::traits::KeyGen;
 use fips203::traits::SerDes;
 use rsa::pkcs8;
@@ -15,8 +14,6 @@ use spki::der::TagNumber;
 use spki::der::asn1::BitString;
 use spki::der::asn1::ContextSpecific;
 use spki::der::asn1::OctetStringRef;
-
-use crate::key_store::CryptoKeyHandle;
 
 // FIPS 203 OIDs (NIST 2.16.840.1.101.3.4.4.{1,2,3}).
 pub const ML_KEM_512_OID: const_oid::ObjectIdentifier =

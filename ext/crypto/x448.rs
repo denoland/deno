@@ -1,15 +1,11 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-use deno_core::convert::Uint8Array;
-use deno_core::op2;
 use ed448_goldilocks::EdwardsScalar;
 use ed448_goldilocks::MontgomeryPoint;
 use ed448_goldilocks::subtle::ConstantTimeEq;
-use elliptic_curve::pkcs8::PrivateKeyInfo;
 use rand::RngCore;
 use rand::rngs::OsRng;
-use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 

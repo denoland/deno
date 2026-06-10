@@ -2,9 +2,6 @@
 
 use aws_lc_rs::rand::SecureRandom;
 use aws_lc_rs::signature::EcdsaKeyPair;
-use deno_core::convert::Uint8Array;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
 use elliptic_curve::pkcs8::EncodePrivateKey;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;

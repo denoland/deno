@@ -2,13 +2,9 @@
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use curve25519_dalek::montgomery::MontgomeryPoint;
-use deno_core::convert::Uint8Array;
-use deno_core::op2;
-use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
 use rand::RngCore;
 use rand::rngs::OsRng;
-use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 

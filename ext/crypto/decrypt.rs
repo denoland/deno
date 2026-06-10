@@ -21,10 +21,6 @@ use ctr::Ctr32BE;
 use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use ctr::cipher::StreamCipher;
-use deno_core::JsBuffer;
-use deno_core::convert::Uint8Array;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use serde::Deserialize;
 use sha1::Sha1;
@@ -35,7 +31,6 @@ use sha3::Sha3_256;
 use sha3::Sha3_384;
 use sha3::Sha3_512;
 
-use crate::key_store::CryptoKeyHandle;
 use crate::shared::*;
 
 #[derive(Deserialize)]

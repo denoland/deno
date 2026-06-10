@@ -4,8 +4,6 @@
 //! logic. Replaces the `supportedAlgorithms` / `normalizeAlgorithm` /
 //! `dictXxx` machinery that used to live in `ext/crypto/00_crypto.js`.
 
-use deno_core::op2;
-
 /// An operation slot in the WebCrypto algorithm registry. The string passed
 /// in from JS is mapped here via [`Operation::from_name`]; aliases that
 /// `SubtleCrypto.supports()` allows (e.g. `"encapsulateKey"`) are resolved

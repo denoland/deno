@@ -4,7 +4,6 @@ use base64::Engine;
 use deno_core::JsBuffer;
 use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
-use deno_core::op2;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
 use rsa::pkcs1::UintRef;

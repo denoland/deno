@@ -2,21 +2,11 @@
 
 use std::num::NonZeroU32;
 
-use aes_kw::KekAes128;
-use aes_kw::KekAes192;
-use aes_kw::KekAes256;
-use aws_lc_rs::digest as awslc_digest;
 use aws_lc_rs::hkdf;
 use aws_lc_rs::hmac::Algorithm as HmacAlgorithm;
 use aws_lc_rs::hmac::Key as HmacKey;
 use aws_lc_rs::pbkdf2;
-use base64::Engine;
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-use deno_core::JsBuffer;
-use deno_core::OpState;
 use deno_core::convert::Uint8Array;
-use deno_core::op2;
-use deno_core::unsync::spawn_blocking;
 use deno_error::JsErrorBox;
 use p256::ecdsa::Signature as P256Signature;
 use p256::ecdsa::SigningKey as P256SigningKey;
@@ -30,11 +20,9 @@ use p521::ecdsa::Signature as P521Signature;
 use p521::ecdsa::SigningKey as P521SigningKey;
 use p521::ecdsa::VerifyingKey as P521VerifyingKey;
 pub use rand;
-use rand::Rng;
 use rand::SeedableRng;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
-use rand::thread_rng;
 use rsa::Pss;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
@@ -54,7 +42,7 @@ use sha3::Sha3_256;
 use sha3::Sha3_384;
 use sha3::Sha3_512;
 use signature::hazmat::PrehashSigner;
-use signature::hazmat::PrehashVerifier; // Re-export rand
+use signature::hazmat::PrehashVerifier;
 
 mod algorithm;
 mod crypto;
@@ -101,7 +89,6 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
-use crate::key_store::CryptoKeyHandle;
 pub use crate::mldsa::MlDsaError;
 pub use crate::mlkem::MlKemError;
 pub use crate::shared::RawKeyData;

@@ -6,7 +6,6 @@ use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
 use deno_core::ToV8;
 use deno_core::convert::Uint8Array;
-use deno_core::op2;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rsa::pkcs1::der::Decode;
