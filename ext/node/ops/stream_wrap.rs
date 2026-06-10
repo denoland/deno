@@ -164,6 +164,15 @@ impl WriteWrap {
   }
 }
 
+#[op2(base, inherit = AsyncWrap)]
+impl WriteWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> WriteWrap {
+    WriteWrap::new(state)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // ShutdownWrap — cppgc object that wraps a uv_shutdown_t request.
 // ---------------------------------------------------------------------------
@@ -196,6 +205,80 @@ impl ShutdownWrap {
   pub fn req_ptr(&mut self) -> *mut uv_shutdown_t {
     self.req.as_mut_ptr()
   }
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl ShutdownWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> ShutdownWrap {
+    ShutdownWrap::new(state)
+  }
+}
+
+fn set_value(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  obj.set(scope, key.into(), value);
+}
+
+fn create_int32_array<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  length: usize,
+) -> v8::Local<'s, v8::Int32Array> {
+  let array_buffer = v8::ArrayBuffer::new(scope, length * 4);
+  v8::Int32Array::new(scope, array_buffer, 0, length).unwrap()
+}
+
+#[op2]
+pub fn op_node_internal_binding_stream_wrap<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  write_wrap: v8::Local<'s, v8::Value>,
+  shutdown_wrap: v8::Local<'s, v8::Value>,
+) -> v8::Local<'s, v8::Object> {
+  let obj = v8::Object::new(scope);
+  set_value(scope, obj, "WriteWrap", write_wrap);
+  set_value(scope, obj, "ShutdownWrap", shutdown_wrap);
+  set_value(
+    scope,
+    obj,
+    "kReadBytesOrError",
+    v8::Integer::new(scope, StreamBaseStateFields::ReadBytesOrError as i32)
+      .into(),
+  );
+  set_value(
+    scope,
+    obj,
+    "kArrayBufferOffset",
+    v8::Integer::new(scope, StreamBaseStateFields::ArrayBufferOffset as i32)
+      .into(),
+  );
+  set_value(
+    scope,
+    obj,
+    "kBytesWritten",
+    v8::Integer::new(scope, StreamBaseStateFields::BytesWritten as i32).into(),
+  );
+  set_value(
+    scope,
+    obj,
+    "kLastWriteWasAsync",
+    v8::Integer::new(scope, StreamBaseStateFields::LastWriteWasAsync as i32)
+      .into(),
+  );
+  set_value(
+    scope,
+    obj,
+    "kNumStreamBaseStateFields",
+    v8::Integer::new(scope, 4).into(),
+  );
+  let stream_base_state = create_int32_array(scope, 5);
+  set_value(scope, obj, "streamBaseState", stream_base_state.into());
+  obj
 }
 
 // ---------------------------------------------------------------------------
