@@ -1734,7 +1734,7 @@ Deno.test("inspector_no_pause_on_handled_stream_rejection", async () => {
   const script = `${testdataPath}/pipe_file_to_writable.js`;
   const tester = await InspectorTester.create(
     ["run", "-A", "--inspect-brk=0", script],
-    { notificationFilter: ignoreScriptParsed, timeout: 20_000 },
+    { notificationFilter: ignoreScriptParsed },
   );
 
   try {
