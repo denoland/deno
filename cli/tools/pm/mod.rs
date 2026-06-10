@@ -515,7 +515,7 @@ pub async fn add(
   let http_client = cli_factory.http_client_provider();
   let deps_http_cache = cli_factory.global_http_cache()?;
   let deps_file_fetcher = create_cli_file_fetcher(
-    Default::default(),
+    deno_runtime::deno_web::BlobStore::default_arc(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     cli_factory.memory_files().clone(),
@@ -1087,7 +1087,7 @@ pub(crate) async fn create_dep_manager_and_resolvers(
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
   let file_fetcher = create_cli_file_fetcher(
-    Default::default(),
+    deno_runtime::deno_web::BlobStore::default_arc(),
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     factory.memory_files().clone(),

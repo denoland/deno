@@ -261,7 +261,8 @@ pub async fn outdated(
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
   let file_fetcher = create_cli_file_fetcher(
-    Default::default(),
+    Arc::new(deno_runtime::deno_web::BlobStore::default())
+      as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
     factory.memory_files().clone(),
