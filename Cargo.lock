@@ -3432,6 +3432,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.12",
  "tokio",
+ "unicode-normalization",
  "urlpattern",
  "uuid",
 ]
