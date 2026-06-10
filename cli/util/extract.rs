@@ -331,23 +331,21 @@ enum Shebang {
 /// - The `deno` executable is matched by file name, so custom-named binaries
 ///   (e.g. `deno-canary`) are not recognized and yield an invalid shebang.
 /// - A scoped `--deny-*=<path>` cannot be represented in the `Deno.test`
-///   permissions object and yields an invalid shebang (denoland/deno#31966).
-///   A bare `--deny-*` is supported and revokes the permission.
+///   permissions object yet and yields an invalid shebang to force failure
+/// - A `--ignore-*` cannnot be represented in the `Deno.test` permissions
+///   object either yet, so they are currently ignored 
 fn parse_shebang(shebang: &str) -> Shebang {
   let invalid = |reason: &str| {
     Shebang::Invalid(format!(
-      "invalid doc test shebang: {} ({reason})",
+      "invalid doc test hashbang: {} ({reason})",
       shebang.trim()
     ))
   };
   let Some(line) = shebang.trim_start().strip_prefix("#!") else {
-    return invalid("not a shebang");
+    return invalid("invalid hashbang");
   };
-  // Tokenize like a POSIX shell so quoted arguments (e.g. a path containing
-  // spaces) are split the same way `env -S` would. `None` means the quoting
-  // was unbalanced.
   let Some(tokens) = shlex::split(line) else {
-    return invalid("could not be tokenized");
+    return invalid("tokenization failed, possibly due to unterminated quotes");
   };
   // Find the `deno` executable in the shebang (e.g. `deno`, `/usr/bin/deno`).
   let Some(deno_index) = tokens.iter().position(|token| {
@@ -356,22 +354,16 @@ fn parse_shebang(shebang: &str) -> Shebang {
       .and_then(|stem| stem.to_str())
       == Some("deno")
   }) else {
-    return invalid("not a deno command");
+    return invalid("binary basename needs to be 'deno'");
   };
   let mut args = vec![OsString::from("deno")];
   args.extend(tokens[deno_index + 1..].iter().cloned().map(OsString::from));
   args.push(OsString::from("./__doctest_shebang__.ts"));
   match flags_from_vec(args) {
-    // A scoped `--deny-*=<path>` can't be modelled in the test permissions
-    // object; dropping it would let the test run with broader permissions than
-    // the shebang declares, so reject it instead.
     Ok(flags) if has_scoped_deny(&flags.permissions) => invalid(
-      "scoped --deny-* flags aren't supported yet, see https://github.com/denoland/deno/issues/31966",
+      "scoped --deny-* flags aren't supported yet, either remove them or ignore the test",
     ),
     Ok(flags) => Shebang::Permissions(Box::new(flags.permissions)),
-    // Surface the offending flag so a typo can be told apart from a genuinely
-    // non-deno shebang. The arg is pulled from clap's error context to avoid
-    // embedding the (potentially colored, multi-line) rendered error.
     Err(err) => match err.get(clap::error::ContextKind::InvalidArg) {
       Some(clap::error::ContextValue::String(arg)) => {
         invalid(&format!("could not parse flag {arg}"))
@@ -384,10 +376,6 @@ fn parse_shebang(shebang: &str) -> Shebang {
   }
 }
 
-/// Returns `true` if a scoped `--deny-*=<value>` flag was specified. A scoped
-/// deny subtracts a path from a broader grant, which the `Deno.test`
-/// permissions object cannot express, so such shebangs are rejected. A bare
-/// `--deny-*` (deny all) is representable as `false` and is allowed.
 fn has_scoped_deny(permissions: &PermissionFlags) -> bool {
   [
     &permissions.deny_env,
@@ -1055,20 +1043,18 @@ fn string_lit(value: &str) -> ast::Expr {
 /// Builds the `{ permissions: ... }` options object passed to `Deno.test` for a
 /// snippet that declared a shebang.
 ///
-/// - `--allow-all` / `-A` becomes `{ permissions: "inherit" }`.
-/// - A bare flag such as `--allow-read` becomes `read: "inherit"` so the test
-///   inherits the scope granted to the test runner rather than requesting the
-///   global permission.
-/// - A scoped flag such as `--allow-read=/tmp` becomes `read: ["/tmp"]`.
-/// - A bare `--deny-read` becomes `read: false` (revoked).
-/// - Unspecified permissions are omitted, leaving them at their default
-///   (revoked), and a shebang without any permission flag becomes
-///   `{ permissions: "none" }`.
-///
-/// Scoped `--deny-*` flags are rejected in [`parse_shebang`], so only bare
-/// denies reach this function.
+/// - `--allow-all` becomes `{ permissions: "inherit" }`.
+/// - `--allow-*` becomes `{ [*]: "inherit" }`.
+/// - `--allow-*=...` becomes ` { [*]: [...] }`.
+/// - `--deny-*` becomes `{ [*]: false }`.
+/// - `--deny-*=...` is currently unsupported 
+/// - `--permission-set` is currently unsupported
+/// - `--ignore-*` is currently unsupported
+/// - No permissions flags becomes `{ permissions: "none" }`
+/// 
+/// The currently unsupported flags are due to the current 
+/// `Deno.PermissionOptionsObject` not being able to properly model them.
 fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
-  // Builds a `{ <name>: <value> }` object property.
   let prop = |name: &str, value: ast::Expr| {
     ast::PropOrSpread::Prop(Box::new(ast::Prop::KeyValue(ast::KeyValueProp {
       key: ast::PropName::Ident(ast::IdentName {
@@ -1108,13 +1094,9 @@ fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
     let props = perms
       .into_iter()
       .filter_map(|(name, allow, deny)| {
-        // A deny takes precedence over an allow for the same permission, and a
-        // bare deny becomes `false` (scoped deny is rejected in
-        // `parse_shebang`).
         let value = if deny.is_some() {
           bool_lit(false)
         } else if permissions.allow_all {
-          // `-A` inherits everything; a bare deny carves one permission back out.
           string_lit("inherit")
         } else if let Some(allowlist) = allow {
           if allowlist.is_empty() {
