@@ -360,7 +360,7 @@ dprint-plugin-markdown = "=0.20.0"
 dprint-plugin-typescript = "=0.96.1"
 env_logger = { version = "=0.11.6", default-features = false, features = ["regex"] }
 imara-diff = "=0.2.0"
-libsui = { path = "../sui" }
+libsui = "=0.15.0"
 malva = "=0.15.2"
 markup_fmt = "=0.27.3"
 object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }

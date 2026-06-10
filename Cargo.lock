@@ -1155,7 +1155,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
- "unicode-width 0.1.13",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -6462,14 +6462,16 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.13.0"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6af25036f57ea101cca401af0769d705cb5380181f9b1fe674c0e890a194eb03"
 dependencies = [
  "editpe",
  "image",
  "libc",
  "object",
  "sha2",
- "windows-sys 0.48.0",
+ "windows 0.58.0",
  "zerocopy 0.7.32",
 ]
 
