@@ -14,10 +14,46 @@ use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::webidl::WebIdlErrorKind;
 use deno_error::JsErrorBox;
+use serde::Deserialize;
 
 use crate::CryptoError;
-use crate::SubtleDigestXof;
 use crate::key::CryptoHash;
+
+/// Parameter dictionary for the SHA-3-family extendable-output digest
+/// algorithms (cSHAKE / TurboSHAKE) used by [`DigestAlgorithm::Xof`].
+/// Carries the `outputLength`-and-optional-trim parameters validated in
+/// [`run_xof`] rather than at converter time so the eventual error is a
+/// `DOMExceptionOperationError`, not a `WebIdlError`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", tag = "name")]
+pub enum SubtleDigestXof {
+  #[serde(rename = "cSHAKE128", rename_all = "camelCase")]
+  CShake128 {
+    output_length: u32,
+    #[serde(with = "serde_bytes", default)]
+    function_name: Option<Vec<u8>>,
+    #[serde(with = "serde_bytes", default)]
+    customization: Option<Vec<u8>>,
+  },
+  #[serde(rename = "cSHAKE256", rename_all = "camelCase")]
+  CShake256 {
+    output_length: u32,
+    #[serde(with = "serde_bytes", default)]
+    function_name: Option<Vec<u8>>,
+    #[serde(with = "serde_bytes", default)]
+    customization: Option<Vec<u8>>,
+  },
+  #[serde(rename = "TurboSHAKE128", rename_all = "camelCase")]
+  TurboShake128 {
+    output_length: u32,
+    domain_separation: Option<u8>,
+  },
+  #[serde(rename = "TurboSHAKE256", rename_all = "camelCase")]
+  TurboShake256 {
+    output_length: u32,
+    domain_separation: Option<u8>,
+  },
+}
 
 /// The `WebIdlConverter` for `AlgorithmIdentifier`-restricted-to-digest,
 /// canonicalized into the variant the dispatch code needs. Mirrors what
