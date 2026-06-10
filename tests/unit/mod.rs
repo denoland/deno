@@ -95,6 +95,10 @@ fn run_test(test: &CollectedTest) -> TestResult {
     deno = deno.arg("--unstable-bundle");
   }
 
+  if test.name.ends_with("::cookie_test") {
+    deno = deno.arg("--unstable-cookies");
+  }
+
   if test.name.ends_with("::cron_test") {
     deno = deno.arg("--unstable-cron");
   }
