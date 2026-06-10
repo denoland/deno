@@ -737,6 +737,18 @@ enum RawResponseBody {
   Stream(ResponseBytesInner),
 }
 
+fn preferred_supported_compression(
+  encodings: impl Iterator<
+    Item = Result<(Option<Encoding>, f32), fly_accept_encoding::EncodingError>,
+  >,
+) -> Compression {
+  match super::preferred_supported_encoding(encodings) {
+    Encoding::Brotli => Compression::Brotli,
+    Encoding::Gzip => Compression::GZip,
+    _ => Compression::None,
+  }
+}
+
 fn raw_request_compression(headers: &RawRequestHeaders) -> Compression {
   let Some(accept_encoding) = headers.get_joined(b"accept-encoding", b", ")
   else {
@@ -755,20 +767,63 @@ fn raw_request_compression(headers: &RawRequestHeaders) -> Compression {
   }
 
   let accepted =
-    fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding))
-      .filter(|r| {
-        matches!(
-          r,
-          Ok((
-            Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-            _
-          ))
-        )
-      });
-  match fly_accept_encoding::preferred(accepted) {
-    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
-    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
-    _ => Compression::None,
+    fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding));
+  preferred_supported_compression(accepted)
+}
+
+#[cfg(test)]
+mod compression_tests {
+  use super::*;
+
+  fn compression_for(accept_encoding: &str) -> Compression {
+    let accepted =
+      fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding));
+    preferred_supported_compression(accepted)
+  }
+
+  #[test]
+  fn compression_prefers_brotli_over_gzip_when_equal() {
+    assert!(matches!(
+      compression_for("gzip, deflate, br, zstd"),
+      Compression::Brotli
+    ));
+    assert!(matches!(
+      compression_for("zstd, gzip, deflate, br"),
+      Compression::Brotli
+    ));
+    assert!(matches!(
+      compression_for("gzip;q=1.0, br;q=1.0"),
+      Compression::Brotli
+    ));
+  }
+
+  #[test]
+  fn compression_respects_higher_qval() {
+    assert!(matches!(
+      compression_for("gzip;q=1.0, br;q=0.9, zstd;q=1.0"),
+      Compression::GZip
+    ));
+    assert!(matches!(
+      compression_for("gzip;q=0.5, br;q=0.9"),
+      Compression::Brotli
+    ));
+    assert!(matches!(
+      compression_for("identity;q=1.0, gzip;q=0.9, br;q=0.9"),
+      Compression::None
+    ));
+  }
+
+  #[test]
+  fn compression_ignores_unsupported_or_invalid_tokens() {
+    assert!(matches!(
+      compression_for("br, compress"),
+      Compression::Brotli
+    ));
+    assert!(matches!(compression_for("gzip, br;q=2"), Compression::GZip));
+    assert!(matches!(
+      compression_for("compress, x-gzip"),
+      Compression::None
+    ));
   }
 }
 
@@ -2511,21 +2566,8 @@ fn is_request_compressible(
   }
 
   // Fall back to the expensive parser
-  let accepted =
-    fly_accept_encoding::encodings_iter_http_1(headers).filter(|r| {
-      matches!(
-        r,
-        Ok((
-          Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-          _
-        ))
-      )
-    });
-  match fly_accept_encoding::preferred(accepted) {
-    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
-    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
-    _ => Compression::None,
-  }
+  let accepted = fly_accept_encoding::encodings_iter_http_1(headers);
+  preferred_supported_compression(accepted)
 }
 
 fn is_response_compressible(headers: &HeaderMap) -> bool {
