@@ -1335,6 +1335,7 @@ impl WorkspaceConfigData {
         specified_import_map: None,
         unstable_sloppy_imports: false,
         require_modules: vec![],
+        line_preserving_emit: false,
       },
     );
     let pb = ProgressBar::new(ProgressBarStyle::TextOnly);

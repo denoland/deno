@@ -57,6 +57,13 @@ pub struct Emitter<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
   emit_cache: EmitCacheRc<TSys>,
   parsed_source_cache: ParsedSourceCacheRc,
   compiler_options_resolver: CompilerOptionsResolverRc,
+  /// When `true`, TypeScript that can be transpiled by only stripping types is
+  /// emitted by blanking the type-only portions in place instead of running it
+  /// through the full code generator. This preserves the original line (and
+  /// column) numbers so that tools which don't apply source maps — most notably
+  /// the Chrome DevTools performance profiler — report locations that match the
+  /// original source. See denoland/deno#25349.
+  line_preserving_emit: bool,
 }
 
 impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
@@ -67,12 +74,14 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     emit_cache: EmitCacheRc<TSys>,
     parsed_source_cache: ParsedSourceCacheRc,
     compiler_options_resolver: CompilerOptionsResolverRc,
+    line_preserving_emit: bool,
   ) -> Self {
     Self {
       cjs_tracker,
       emit_cache,
       parsed_source_cache,
       compiler_options_resolver,
+      line_preserving_emit,
     }
   }
 
@@ -195,6 +204,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text.into()),
       PreEmitResult::NotCached { source_hash } => {
         let specifier = provider.specifier().clone();
+        let line_preserving_emit = self.line_preserving_emit;
         let emit = {
           let transpile_and_emit_options = transpile_and_emit_options.clone();
           move || {
@@ -204,6 +214,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
               module_kind,
               &transpile_and_emit_options.transpile,
               &transpile_and_emit_options.emit,
+              line_preserving_emit,
             )
             .map(|r| r.text)
           }
@@ -269,6 +280,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
           module_kind,
           &transpile_and_emit_options.transpile,
           &transpile_and_emit_options.emit,
+          self.line_preserving_emit,
         )?
         .text;
         helper.post_emit_parsed_source(
@@ -308,6 +320,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
       module_kind,
       &transpile_and_emit_options.transpile,
       &emit_options,
+      // `deno compile` provides the source map to v8 separately, so it must not
+      // use line-preserving emit (which omits the source map).
+      false,
     )?;
     Ok((source.text, source.source_map.unwrap()))
   }
@@ -396,6 +411,11 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: EmitterSys>
     source_text.hash(&mut hasher);
     transpile_and_emit.pre_computed_hash.hash(&mut hasher);
     module_kind.hash(&mut hasher);
+    // Only mix this in when enabled so the on-disk cache key (and therefore the
+    // emitted output) is unchanged for the common, non-inspecting case.
+    if self.line_preserving_emit {
+      "line_preserving_emit".hash(&mut hasher);
+    }
     hasher.finish()
   }
 }
@@ -535,10 +555,24 @@ fn transpile(
   module_kind: deno_ast::ModuleKind,
   transpile_options: &deno_ast::TranspileOptions,
   emit_options: &deno_ast::EmitOptions,
+  line_preserving_emit: bool,
 ) -> Result<EmittedSourceText, EmitParsedSourceHelperError> {
   ensure_no_import_assertion(&parsed_source)?;
   if let Some(diagnostics) = invalid_syntax_parse_diagnostics(&parsed_source) {
     return Err(deno_ast::TranspileError::ParseErrors(diagnostics).into());
+  }
+  // When the module can be transpiled by only stripping types, blank the
+  // type-only portions in place instead of regenerating the code. This keeps
+  // every remaining token on its original line and column so that line numbers
+  // match the source, even for tooling that doesn't apply source maps (e.g. the
+  // Chrome DevTools performance profiler). See denoland/deno#25349.
+  if line_preserving_emit
+    && let Some(text) = maybe_line_preserving_strip(&parsed_source)
+  {
+    return Ok(EmittedSourceText {
+      text,
+      source_map: None,
+    });
   }
   // Skip the decorator transform when the module has no decorators. The
   // swc decorator pass otherwise hoists every computed class-member key into
@@ -576,6 +610,28 @@ fn transpile(
   };
   patch_public_decorator_access_has(&mut transpiled_source.text);
   Ok(transpiled_source)
+}
+
+/// Attempts to emit `parsed_source` by only stripping TypeScript types,
+/// replacing them with whitespace so that the position of every remaining token
+/// is preserved exactly. Returns `None` (so the caller falls back to the full
+/// transpile) when the module uses TypeScript features that can't be handled by
+/// type stripping alone (enums, namespaces, parameter properties, legacy
+/// decorators, etc.) or isn't plain TypeScript (e.g. JSX, which still needs to
+/// be transformed).
+fn maybe_line_preserving_strip(parsed_source: &ParsedSource) -> Option<String> {
+  match parsed_source.media_type() {
+    deno_ast::MediaType::TypeScript
+    | deno_ast::MediaType::Mts
+    | deno_ast::MediaType::Cts => {}
+    _ => return None,
+  }
+  deno_ast::type_strip(
+    parsed_source.specifier(),
+    parsed_source.text().to_string(),
+    deno_ast::TypeStripOptions { module: None },
+  )
+  .ok()
 }
 
 pub fn patch_public_decorator_access_has(source: &mut String) {
