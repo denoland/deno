@@ -1817,6 +1817,45 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/22387:
+// `await server.shutdown()` used to leave upgraded `serverWebSocket`
+// resources alive (failing the post-test resource sanitizer), because
+// nothing tore down the active WebSocket when the listener stopped.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketShutdownNoLeak() {
+    const wsOpen = Promise.withResolvers<void>();
+    const wsClose = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const server = Deno.serve({
+      handler: (request) => {
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => wsOpen.resolve();
+        socket.onclose = () => wsClose.resolve();
+        return response;
+      },
+      port: servePort,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    const clientClose = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onclose = () => clientClose.resolve();
+    await wsOpen.promise;
+
+    // Without the leak fix this would either hang (graceful waits forever)
+    // or return immediately and leave the serverWebSocket resource alive.
+    await server.shutdown();
+
+    // The server-initiated Close(1001) should drive both ends to close.
+    await wsClose.promise;
+    await clientClose.promise;
+    await server.finished;
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketCanAccessRequest() {
