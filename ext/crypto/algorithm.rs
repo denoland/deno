@@ -275,18 +275,6 @@ pub fn check_support_for_algorithm(
   }
 }
 
-/// Op wrapper around [`check_support_for_algorithm`] for the JS shim that
-/// hasn't been moved onto the `SubtleCrypto` cppgc impl block yet (the
-/// two-argument-name overload of `supports()` still does extra paperwork in
-/// JS).
-#[op2(fast)]
-pub fn op_crypto_check_support_for_algorithm(
-  #[string] operation: &str,
-  #[string] algorithm_name: &str,
-) -> bool {
-  check_support_for_algorithm(operation, algorithm_name)
-}
-
 /// Result of the algorithm-registry lookup used by `normalizeAlgorithm` in
 /// JS. `name == ""` is the "not found" sentinel (instead of `Option`, to
 /// keep this a plain ToV8 struct).
@@ -294,33 +282,6 @@ pub fn op_crypto_check_support_for_algorithm(
 pub struct RegisteredAlgorithm {
   pub name: String,
   pub dict: Option<String>,
-}
-
-#[op2]
-pub fn op_crypto_get_registered_algorithm(
-  #[string] operation: &str,
-  #[string] algorithm_name: &str,
-) -> RegisteredAlgorithm {
-  let Some(op) = Operation::from_name(operation) else {
-    return RegisteredAlgorithm {
-      name: String::new(),
-      dict: None,
-    };
-  };
-  match op.registered().iter().find_map(|(name, dict)| {
-    name
-      .eq_ignore_ascii_case(algorithm_name)
-      .then(|| (*name, dict.map(|s| s.to_string())))
-  }) {
-    Some((name, dict)) => RegisteredAlgorithm {
-      name: name.to_string(),
-      dict,
-    },
-    None => RegisteredAlgorithm {
-      name: String::new(),
-      dict: None,
-    },
-  }
 }
 
 // AlgorithmIdentifier (string-or-dict) coercion is still performed in JS by
@@ -387,15 +348,6 @@ pub fn compute_key_length(
     "HKDF" | "PBKDF2" => Ok(None),
     _ => Err(GetKeyLengthError::Unreachable),
   }
-}
-
-#[op2]
-pub fn op_crypto_get_key_length(
-  #[string] name: &str,
-  length: Option<u32>,
-  #[string] hash_name: Option<String>,
-) -> Result<Option<u32>, GetKeyLengthError> {
-  compute_key_length(name, length, hash_name.as_deref())
 }
 
 /// Resolve `name` against the registered algorithm table for `operation`,

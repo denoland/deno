@@ -238,14 +238,6 @@ pub enum ImportKeyResult {
   },
 }
 
-#[op2]
-pub fn op_crypto_import_key(
-  #[serde] opts: ImportKeyOptions,
-  #[serde] key_data: KeyDataWire,
-) -> Result<ImportKeyResult, ImportKeyError> {
-  op_crypto_import_key_inner(opts, key_data.into())
-}
-
 /// Body of [`op_crypto_import_key`] callable from sibling Rust crates --
 /// in particular the Rust-native `SubtleCrypto.importKey` dispatcher in
 /// [`crate::subtle_import_key`] -- without round-tripping through the op

@@ -92,16 +92,11 @@ mod x25519;
 mod x448;
 
 pub use crate::decrypt::DecryptError;
-pub use crate::decrypt::op_crypto_decrypt;
 pub use crate::ed25519::Ed25519Error;
 pub use crate::encrypt::EncryptError;
-pub use crate::encrypt::op_crypto_encrypt;
 pub use crate::export_key::ExportKeyError;
-pub use crate::export_key::op_crypto_export_key;
 pub use crate::generate_key::GenerateKeyError;
-pub use crate::generate_key::op_crypto_generate_key;
 pub use crate::import_key::ImportKeyError;
-pub use crate::import_key::op_crypto_import_key;
 use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
@@ -116,60 +111,12 @@ pub use crate::x25519::X25519Error;
 
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
-  ops = [
-    crypto_key::op_create_crypto_key,
-    crypto_key::op_crypto_key_handle,
-    op_crypto_get_random_values,
-    op_crypto_generate_key,
-    op_crypto_import_key,
-    op_crypto_export_key,
-    op_crypto_encrypt,
-    op_crypto_decrypt,
-    op_crypto_subtle_digest,
-    op_crypto_subtle_digest_xof,
-    op_crypto_random_uuid,
-    op_crypto_wrap_key,
-    op_crypto_unwrap_key,
-    op_crypto_base64url_decode,
-    op_crypto_base64url_encode,
-    algorithm::op_crypto_check_support_for_algorithm,
-    algorithm::op_crypto_get_key_length,
-    algorithm::op_crypto_get_registered_algorithm,
-    key_store::op_crypto_key_store_insert,
-    key_store::op_crypto_key_store_get,
-    x25519::op_crypto_generate_x25519_keypair,
-    x25519::op_crypto_x25519_public_key,
-    x25519::op_crypto_import_spki_x25519,
-    x25519::op_crypto_import_pkcs8_x25519,
-    x25519::op_crypto_export_spki_x25519,
-    x25519::op_crypto_export_pkcs8_x25519,
-    x448::op_crypto_generate_x448_keypair,
-    x448::op_crypto_import_spki_x448,
-    x448::op_crypto_import_pkcs8_x448,
-    x448::op_crypto_x448_public_key,
-    x448::op_crypto_export_spki_x448,
-    x448::op_crypto_export_pkcs8_x448,
-    ed25519::op_crypto_generate_ed25519_keypair,
-    ed25519::op_crypto_import_spki_ed25519,
-    ed25519::op_crypto_import_pkcs8_ed25519,
-    ed25519::op_crypto_export_spki_ed25519,
-    ed25519::op_crypto_export_pkcs8_ed25519,
-    ed25519::op_crypto_jwk_x_ed25519,
-    mldsa::op_crypto_mldsa_from_seed,
-    mldsa::op_crypto_mldsa_from_pkcs8,
-    mldsa::op_crypto_mldsa_from_spki,
-    mldsa::op_crypto_mldsa_export_pkcs8,
-    mldsa::op_crypto_mldsa_export_spki,
-    mlkem::op_crypto_ml_kem_from_seed,
-    mlkem::op_crypto_ml_kem_encapsulate,
-    mlkem::op_crypto_ml_kem_decapsulate,
-    mlkem::op_crypto_ml_kem_import_spki,
-    mlkem::op_crypto_ml_kem_import_pkcs8,
-    mlkem::op_crypto_ml_kem_export_spki,
-    mlkem::op_crypto_ml_kem_export_pkcs8,
-    mlkem::op_crypto_ml_kem_get_public_key,
-    mlkem::op_crypto_ml_kem_validate_public_key,
-  ],
+  // No standalone ops — every WebCrypto entry point is implemented as a
+  // method on the `Crypto`/`SubtleCrypto`/`CryptoKey` cppgc classes
+  // registered under `objects` below. The per-algorithm helpers
+  // (`subtle_*::run`, `import_key_inner`, `export_key_inner`, etc.) are
+  // pure-Rust and called directly from those method bodies.
+  ops = [],
   objects = [
     crypto::Crypto,
     subtle_crypto::SubtleCrypto,
@@ -283,41 +230,6 @@ pub enum CryptoError {
     #[inherit]
     JsErrorBox,
   ),
-}
-
-#[op2]
-pub fn op_crypto_base64url_decode(
-  #[string] data: String,
-) -> Result<Uint8Array, CryptoError> {
-  let data: Vec<u8> = BASE64_URL_SAFE_NO_PAD.decode(data)?;
-  Ok(data.into())
-}
-
-#[op2]
-#[string]
-pub fn op_crypto_base64url_encode(#[buffer] data: JsBuffer) -> String {
-  let data: String = BASE64_URL_SAFE_NO_PAD.encode(data);
-  data
-}
-
-#[op2(fast)]
-pub fn op_crypto_get_random_values(
-  state: &mut OpState,
-  #[buffer] out: &mut [u8],
-) -> Result<(), CryptoError> {
-  if out.len() > 65536 {
-    return Err(CryptoError::ArrayBufferViewLengthExceeded(out.len()));
-  }
-
-  let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
-  if let Some(seeded_rng) = maybe_seeded_rng {
-    seeded_rng.fill(out);
-  } else {
-    let mut rng = thread_rng();
-    rng.fill(out);
-  }
-
-  Ok(())
 }
 
 #[derive(Deserialize)]
@@ -992,226 +904,6 @@ fn read_rsa_public_key(key_data: KeyData) -> Result<RsaPublicKey, CryptoError> {
     KeyType::Secret => unreachable!("unexpected KeyType::Secret"),
   };
   Ok(public_key)
-}
-
-#[op2]
-#[string]
-pub fn op_crypto_random_uuid(
-  state: &mut OpState,
-) -> Result<String, CryptoError> {
-  let maybe_seeded_rng = state.try_borrow_mut::<StdRng>();
-  let uuid = if let Some(seeded_rng) = maybe_seeded_rng {
-    let mut bytes = [0u8; 16];
-    seeded_rng.fill(&mut bytes);
-    fast_uuid_v4(&mut bytes)
-  } else {
-    let mut rng = thread_rng();
-    let mut bytes = [0u8; 16];
-    rng.fill(&mut bytes);
-    fast_uuid_v4(&mut bytes)
-  };
-
-  Ok(uuid)
-}
-
-#[op2]
-pub async fn op_crypto_subtle_digest(
-  #[serde] algorithm: CryptoHash,
-  #[buffer] data: JsBuffer,
-) -> Result<Uint8Array, CryptoError> {
-  let output = spawn_blocking(move || {
-    awslc_digest::digest(algorithm.into(), &data)
-      .as_ref()
-      .to_vec()
-      .into()
-  })
-  .await?;
-
-  Ok(output)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", tag = "name")]
-pub enum SubtleDigestXof {
-  #[serde(rename = "cSHAKE128", rename_all = "camelCase")]
-  CShake128 {
-    output_length: u32,
-    #[serde(with = "serde_bytes", default)]
-    function_name: Option<Vec<u8>>,
-    #[serde(with = "serde_bytes", default)]
-    customization: Option<Vec<u8>>,
-  },
-  #[serde(rename = "cSHAKE256", rename_all = "camelCase")]
-  CShake256 {
-    output_length: u32,
-    #[serde(with = "serde_bytes", default)]
-    function_name: Option<Vec<u8>>,
-    #[serde(with = "serde_bytes", default)]
-    customization: Option<Vec<u8>>,
-  },
-  #[serde(rename = "TurboSHAKE128", rename_all = "camelCase")]
-  TurboShake128 {
-    output_length: u32,
-    domain_separation: Option<u8>,
-  },
-  #[serde(rename = "TurboSHAKE256", rename_all = "camelCase")]
-  TurboShake256 {
-    output_length: u32,
-    domain_separation: Option<u8>,
-  },
-}
-
-#[op2]
-pub async fn op_crypto_subtle_digest_xof(
-  #[serde] algorithm: SubtleDigestXof,
-  #[buffer] data: JsBuffer,
-) -> Result<Uint8Array, CryptoError> {
-  let output = spawn_blocking(move || {
-    use sha3::digest::ExtendableOutput;
-    use sha3::digest::Update;
-    use sha3::digest::XofReader;
-
-    let length_bits = match &algorithm {
-      SubtleDigestXof::CShake128 { output_length, .. }
-      | SubtleDigestXof::CShake256 { output_length, .. }
-      | SubtleDigestXof::TurboShake128 { output_length, .. }
-      | SubtleDigestXof::TurboShake256 { output_length, .. } => *output_length,
-    };
-    if !length_bits.is_multiple_of(8) {
-      return Err(CryptoError::InvalidXofParameters);
-    }
-    let out_len = (length_bits / 8) as usize;
-    let mut out = vec![0u8; out_len];
-
-    match algorithm {
-      SubtleDigestXof::CShake128 {
-        function_name,
-        customization,
-        ..
-      } => {
-        use sha3::digest::core_api::CoreWrapper;
-        let core = sha3::CShake128Core::new_with_function_name(
-          function_name.as_deref().unwrap_or(&[]),
-          customization.as_deref().unwrap_or(&[]),
-        );
-        let mut h: sha3::CShake128 = CoreWrapper::from_core(core);
-        h.update(&data);
-        h.finalize_xof().read(&mut out);
-      }
-      SubtleDigestXof::CShake256 {
-        function_name,
-        customization,
-        ..
-      } => {
-        use sha3::digest::core_api::CoreWrapper;
-        let core = sha3::CShake256Core::new_with_function_name(
-          function_name.as_deref().unwrap_or(&[]),
-          customization.as_deref().unwrap_or(&[]),
-        );
-        let mut h: sha3::CShake256 = CoreWrapper::from_core(core);
-        h.update(&data);
-        h.finalize_xof().read(&mut out);
-      }
-      SubtleDigestXof::TurboShake128 {
-        domain_separation, ..
-      } => {
-        use sha3::digest::core_api::CoreWrapper;
-        let d = domain_separation.unwrap_or(0x1F);
-        if !(0x01..=0x7F).contains(&d) {
-          return Err(CryptoError::InvalidXofParameters);
-        }
-        let core = sha3::TurboShake128Core::new(d);
-        let mut h: sha3::TurboShake128 = CoreWrapper::from_core(core);
-        h.update(&data);
-        h.finalize_xof().read(&mut out);
-      }
-      SubtleDigestXof::TurboShake256 {
-        domain_separation, ..
-      } => {
-        use sha3::digest::core_api::CoreWrapper;
-        let d = domain_separation.unwrap_or(0x1F);
-        if !(0x01..=0x7F).contains(&d) {
-          return Err(CryptoError::InvalidXofParameters);
-        }
-        let core = sha3::TurboShake256Core::new(d);
-        let mut h: sha3::TurboShake256 = CoreWrapper::from_core(core);
-        h.update(&data);
-        h.finalize_xof().read(&mut out);
-      }
-    }
-
-    Ok(Uint8Array::from(out))
-  })
-  .await??;
-
-  Ok(output)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WrapUnwrapKeyArg {
-  algorithm: Algorithm,
-}
-
-#[op2]
-pub fn op_crypto_wrap_key(
-  #[cppgc] key_handle: &CryptoKeyHandle,
-  #[serde] args: WrapUnwrapKeyArg,
-  #[buffer] data: JsBuffer,
-) -> Result<Uint8Array, CryptoError> {
-  let algorithm = args.algorithm;
-  let key_data = key_handle.data();
-
-  match algorithm {
-    Algorithm::AesKw => {
-      let key = key_data.as_secret_key()?;
-
-      if !data.len().is_multiple_of(8) {
-        return Err(CryptoError::DataInvalidSize);
-      }
-
-      let wrapped_key = match key.len() {
-        16 => KekAes128::new(key.into()).wrap_vec(&data),
-        24 => KekAes192::new(key.into()).wrap_vec(&data),
-        32 => KekAes256::new(key.into()).wrap_vec(&data),
-        _ => return Err(CryptoError::InvalidKeyLength),
-      }
-      .map_err(|_| CryptoError::EncryptionError)?;
-
-      Ok(wrapped_key.into())
-    }
-    _ => Err(CryptoError::UnsupportedAlgorithm),
-  }
-}
-
-#[op2]
-pub fn op_crypto_unwrap_key(
-  #[cppgc] key_handle: &CryptoKeyHandle,
-  #[serde] args: WrapUnwrapKeyArg,
-  #[buffer] data: JsBuffer,
-) -> Result<Uint8Array, CryptoError> {
-  let algorithm = args.algorithm;
-  let key_data = key_handle.data();
-  match algorithm {
-    Algorithm::AesKw => {
-      let key = key_data.as_secret_key()?;
-
-      if !data.len().is_multiple_of(8) {
-        return Err(CryptoError::DataInvalidSize);
-      }
-
-      let unwrapped_key = match key.len() {
-        16 => KekAes128::new(key.into()).unwrap_vec(&data),
-        24 => KekAes192::new(key.into()).unwrap_vec(&data),
-        32 => KekAes256::new(key.into()).unwrap_vec(&data),
-        _ => return Err(CryptoError::InvalidKeyLength),
-      }
-      .map_err(|_| CryptoError::DecryptionError)?;
-
-      Ok(unwrapped_key.into())
-    }
-    _ => Err(CryptoError::UnsupportedAlgorithm),
-  }
 }
 
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";

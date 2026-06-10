@@ -39,22 +39,6 @@ pub fn generate_ed25519_keypair(pkey: &mut [u8], pubkey: &mut [u8]) -> bool {
   true
 }
 
-#[op2(fast)]
-pub fn op_crypto_generate_ed25519_keypair(
-  #[buffer] pkey: &mut [u8],
-  #[buffer] pubkey: &mut [u8],
-) -> bool {
-  let mut rng = OsRng;
-  rng.fill_bytes(pkey);
-
-  let pair = match Ed25519KeyPair::from_seed_unchecked(pkey) {
-    Ok(p) => p,
-    Err(_) => return false,
-  };
-  pubkey.copy_from_slice(pair.public_key().as_ref());
-  true
-}
-
 /// Ed25519 raw sign. `seed` is the 32-byte raw private key,
 /// `signature` is the 64-byte destination buffer. Returns `false` if
 /// the seed is malformed. Called from
@@ -91,58 +75,6 @@ pub(crate) fn ed25519_verify(
 pub const ED25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.112");
 
-#[op2(fast)]
-pub fn op_crypto_import_spki_ed25519(
-  #[buffer] key_data: &[u8],
-  #[buffer] out: &mut [u8],
-) -> bool {
-  // 2-3.
-  let pk_info = match spki::SubjectPublicKeyInfoRef::try_from(key_data) {
-    Ok(pk_info) => pk_info,
-    Err(_) => return false,
-  };
-  // 4.
-  let alg = pk_info.algorithm.oid;
-  if alg != ED25519_OID {
-    return false;
-  }
-  // 5.
-  if pk_info.algorithm.parameters.is_some() {
-    return false;
-  }
-  out.copy_from_slice(pk_info.subject_public_key.raw_bytes());
-  true
-}
-
-#[op2(fast)]
-pub fn op_crypto_import_pkcs8_ed25519(
-  #[buffer] key_data: &[u8],
-  #[buffer] out: &mut [u8],
-) -> bool {
-  // 2-3.
-  // This should probably use OneAsymmetricKey instead
-  let pk_info = match PrivateKeyInfo::from_der(key_data) {
-    Ok(pk_info) => pk_info,
-    Err(_) => return false,
-  };
-  // 4.
-  let alg = pk_info.algorithm.oid;
-  if alg != ED25519_OID {
-    return false;
-  }
-  // 5.
-  if pk_info.algorithm.parameters.is_some() {
-    return false;
-  }
-  // 6.
-  // CurvePrivateKey ::= OCTET STRING
-  if pk_info.private_key.len() != 34 {
-    return false;
-  }
-  out.copy_from_slice(&pk_info.private_key[2..]);
-  true
-}
-
 pub(crate) fn export_spki_ed25519(
   pubkey: &[u8],
 ) -> Result<Vec<u8>, Ed25519Error> {
@@ -154,13 +86,6 @@ pub(crate) fn export_spki_ed25519(
     subject_public_key: BitString::from_bytes(pubkey)?,
   };
   key_info.to_der().map_err(|_| Ed25519Error::FailedExport)
-}
-
-#[op2]
-pub fn op_crypto_export_spki_ed25519(
-  #[buffer] pubkey: &[u8],
-) -> Result<Uint8Array, Ed25519Error> {
-  export_spki_ed25519(pubkey).map(Into::into)
 }
 
 pub(crate) fn export_pkcs8_ed25519(
@@ -180,13 +105,6 @@ pub(crate) fn export_pkcs8_ed25519(
   Ok(buf)
 }
 
-#[op2]
-pub fn op_crypto_export_pkcs8_ed25519(
-  #[buffer] pkey: &[u8],
-) -> Result<Uint8Array, Ed25519Error> {
-  export_pkcs8_ed25519(pkey).map(Into::into)
-}
-
 pub(crate) fn jwk_x_ed25519(pkey: &[u8]) -> Result<String, Ed25519Error> {
   let pair = Ed25519KeyPair::from_seed_unchecked(pkey)?;
   Ok(BASE64_URL_SAFE_NO_PAD.encode(pair.public_key().as_ref()))
@@ -194,10 +112,3 @@ pub(crate) fn jwk_x_ed25519(pkey: &[u8]) -> Result<String, Ed25519Error> {
 
 // 'x' from Section 2 of RFC 8037
 // https://www.rfc-editor.org/rfc/rfc8037#section-2
-#[op2]
-#[string]
-pub fn op_crypto_jwk_x_ed25519(
-  #[buffer] pkey: &[u8],
-) -> Result<String, Ed25519Error> {
-  jwk_x_ed25519(pkey)
-}

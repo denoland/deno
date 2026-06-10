@@ -192,112 +192,11 @@ pub struct MlKemSeedKeys {
   pub public_key: Uint8Array,
 }
 
-/// Derive the expanded ML-KEM decapsulation key and its encapsulation key from
-/// a 64-byte FIPS 203 seed (`d || z`). Used by `generateKey`, `importKey`
-/// (`raw-seed`/`jwk`) and seed-form PKCS#8 import.
-#[op2]
-pub fn op_crypto_ml_kem_from_seed(
-  #[serde] variant: MlKemVariant,
-  #[buffer] seed: &[u8],
-) -> Result<MlKemSeedKeys, MlKemError> {
-  let (private_key, public_key) = variant.expand_seed(seed)?;
-  Ok(MlKemSeedKeys {
-    private_key: private_key.into(),
-    public_key: public_key.into(),
-  })
-}
-
-/// Encapsulate to an ML-KEM encapsulation key, returning ciphertext and
-/// shared secret.
-#[op2]
-pub fn op_crypto_ml_kem_encapsulate(
-  #[serde] variant: MlKemVariant,
-  #[cppgc] key: &CryptoKeyHandle,
-) -> Result<MlKemEncapsulationOutput, MlKemError> {
-  let public_key = key.data().bytes();
-  let alg = variant.algorithm();
-  let ek = kem::EncapsulationKey::new(alg, public_key)
-    .map_err(|_| MlKemError::InvalidKeyData)?;
-  let (ciphertext, shared_secret) =
-    ek.encapsulate().map_err(|_| MlKemError::OperationFailed)?;
-  Ok(MlKemEncapsulationOutput {
-    ciphertext: ciphertext.as_ref().to_vec().into(),
-    shared_secret: shared_secret.as_ref().to_vec().into(),
-  })
-}
-
-/// Decapsulate an ML-KEM ciphertext, returning the shared secret.
-#[op2]
-pub fn op_crypto_ml_kem_decapsulate(
-  #[serde] variant: MlKemVariant,
-  #[cppgc] key: &CryptoKeyHandle,
-  #[buffer] ciphertext: &[u8],
-) -> Result<Uint8Array, MlKemError> {
-  let private_key = key.data().expanded_private_key();
-  let alg = variant.algorithm();
-  let dk = kem::DecapsulationKey::new(alg, private_key)
-    .map_err(|_| MlKemError::InvalidKeyData)?;
-  let ct = kem::Ciphertext::from(ciphertext);
-  let shared_secret = dk
-    .decapsulate(ct)
-    .map_err(|_| MlKemError::OperationFailed)?;
-  Ok(shared_secret.as_ref().to_vec().into())
-}
-
-/// Import a SubjectPublicKeyInfo (SPKI) encoded ML-KEM encapsulation key.
-/// The OID inside the SPKI determines the variant; the JS layer is expected
-/// to validate it matches the requested algorithm.
-#[op2]
-pub fn op_crypto_ml_kem_import_spki(
-  #[buffer] data: &[u8],
-) -> Result<MlKemSpkiImport, MlKemError> {
-  let info = spki::SubjectPublicKeyInfoRef::try_from(data)
-    .map_err(|_| MlKemError::InvalidKeyData)?;
-  let variant = MlKemVariant::from_oid(&info.algorithm.oid)
-    .ok_or(MlKemError::InvalidKeyData)?;
-  if info.algorithm.parameters.is_some() {
-    return Err(MlKemError::InvalidKeyData);
-  }
-  let public_key = info
-    .subject_public_key
-    .as_bytes()
-    .ok_or(MlKemError::InvalidKeyData)?;
-  if public_key.len() != variant.public_key_size() {
-    return Err(MlKemError::InvalidKeyData);
-  }
-  // Validate by constructing an EncapsulationKey.
-  kem::EncapsulationKey::new(variant.algorithm(), public_key)
-    .map_err(|_| MlKemError::InvalidKeyData)?;
-  Ok(MlKemSpkiImport {
-    variant,
-    public_key: public_key.to_vec().into(),
-  })
-}
-
 #[derive(deno_core::ToV8)]
 pub struct MlKemSpkiImport {
   #[to_v8(serde)]
   pub variant: MlKemVariant,
   pub public_key: Uint8Array,
-}
-
-/// Import a PKCS#8 encoded ML-KEM decapsulation key.
-///
-/// Per the WICG Modern Algorithms spec and the
-/// `ML-KEM-PrivateKey` CHOICE of `draft-ietf-lamps-kyber-certificates`, the
-/// `privateKey` field is one of:
-///   - `seed [0] OCTET STRING (SIZE(64))` — the required form, also emitted by
-///     [`op_crypto_ml_kem_export_pkcs8`] and OpenSSL 3.5.
-///   - `both SEQUENCE { OCTET STRING seed, OCTET STRING expandedKey }` —
-///     optional; the seed must expand to exactly `expandedKey`
-///     (`DataError` on mismatch).
-///   - `expandedKey OCTET STRING` — explicitly rejected with
-///     `NotSupportedError`.
-#[op2]
-pub fn op_crypto_ml_kem_import_pkcs8(
-  #[buffer] data: &[u8],
-) -> Result<MlKemPkcs8Import, MlKemError> {
-  import_pkcs8(data)
 }
 
 /// Rust-side callable view of [`op_crypto_ml_kem_from_seed`] for the
@@ -517,33 +416,11 @@ pub(crate) fn ml_kem_export_spki(
   info.to_der().map_err(|_| MlKemError::OperationFailed)
 }
 
-/// Export the encapsulation key as SubjectPublicKeyInfo (SPKI).
-#[op2]
-pub fn op_crypto_ml_kem_export_spki(
-  #[serde] variant: MlKemVariant,
-  #[buffer] public_key: &[u8],
-) -> Result<Uint8Array, MlKemError> {
-  ml_kem_export_spki(variant, public_key).map(Into::into)
-}
-
 pub(crate) fn ml_kem_export_pkcs8(
   variant: MlKemVariant,
   seed: &[u8],
 ) -> Result<Vec<u8>, MlKemError> {
   encode_pkcs8_seed(variant, seed)
-}
-
-/// Export the decapsulation key as PKCS#8 PrivateKeyInfo in the standard
-/// seed-only form (`[0] IMPLICIT OCTET STRING` holding the 64-byte `d || z`
-/// seed), per [draft-ietf-lamps-kyber-certificates]. Requires the seed, so a
-/// key imported from the legacy expanded form (which has no recoverable seed)
-/// cannot be re-exported as PKCS#8.
-#[op2]
-pub fn op_crypto_ml_kem_export_pkcs8(
-  #[serde] variant: MlKemVariant,
-  #[buffer] seed: &[u8],
-) -> Result<Uint8Array, MlKemError> {
-  ml_kem_export_pkcs8(variant, seed).map(Into::into)
 }
 
 /// Encode a 64-byte seed as a PKCS#8 PrivateKeyInfo whose `privateKey` is the
@@ -589,30 +466,6 @@ pub fn public_from_expanded(
   expanded_private_key: &[u8],
 ) -> Result<Vec<u8>, MlKemError> {
   variant.public_from_expanded(expanded_private_key)
-}
-
-/// Derive the encapsulation key (public key) bytes from a decapsulation key.
-/// Used by `getPublicKey()` on ML-KEM keys.
-#[op2]
-pub fn op_crypto_ml_kem_get_public_key(
-  #[serde] variant: MlKemVariant,
-  #[cppgc] key: &CryptoKeyHandle,
-) -> Result<Uint8Array, MlKemError> {
-  let private_key = key.data().expanded_private_key();
-  let public_key = variant.public_from_expanded(private_key)?;
-  Ok(public_key.into())
-}
-
-/// Validate an ML-KEM public key has the right size for the variant.
-#[op2]
-pub fn op_crypto_ml_kem_validate_public_key(
-  #[serde] variant: MlKemVariant,
-  #[buffer] public_key: &[u8],
-) -> bool {
-  if public_key.len() != variant.public_key_size() {
-    return false;
-  }
-  kem::EncapsulationKey::new(variant.algorithm(), public_key).is_ok()
 }
 
 #[cfg(test)]

@@ -36,15 +36,6 @@ impl CryptoKeyType {
       Self::Secret => "secret",
     }
   }
-
-  fn parse(s: &str) -> Result<Self, SharedError> {
-    Ok(match s {
-      "public" => Self::Public,
-      "private" => Self::Private,
-      "secret" => Self::Secret,
-      _ => return Err(SharedError::InvalidKeyType),
-    })
-  }
 }
 
 pub struct CryptoKey {
@@ -269,32 +260,8 @@ impl CryptoKey {
   }
 }
 
-/// Construct a `CryptoKey`. Called from the JS shim as the Rust analogue of
-/// the old `constructKey(type, extractable, usages, algorithm, handle)`
-/// helper.
-#[op2]
-#[cppgc]
-pub fn op_create_crypto_key(
-  scope: &mut v8::PinScope<'_, '_>,
-  #[string] key_type: &str,
-  extractable: bool,
-  usages: v8::Local<v8::Value>,
-  algorithm: v8::Local<v8::Value>,
-  handle: v8::Local<v8::Value>,
-) -> Result<CryptoKey, SharedError> {
-  Ok(CryptoKey::from_parts(
-    scope,
-    CryptoKeyType::parse(key_type)?,
-    extractable,
-    usages,
-    algorithm,
-    handle,
-  ))
-}
-
 impl CryptoKey {
-  /// Construct a `CryptoKey` from its slot values. Used by both
-  /// `op_create_crypto_key` (the JS-facing op) and the Rust-native
+  /// Construct a `CryptoKey` from its slot values. Used by the Rust-side
   /// `make_crypto_key` helper that replaces the legacy JS `constructKey`.
   pub fn from_parts(
     scope: &mut v8::PinScope<'_, '_>,
@@ -312,15 +279,4 @@ impl CryptoKey {
       handle: v8::Global::new(scope, handle),
     }
   }
-}
-
-/// Internal accessor used by JS code that still needs the opaque handle
-/// (the `{ cppgc }` wrapper) to pass to ops in `lib.rs`. Will go away as
-/// each consumer is lifted onto the Rust impl block of `SubtleCrypto`.
-#[op2]
-pub fn op_crypto_key_handle<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  #[cppgc] key: &CryptoKey,
-) -> v8::Local<'s, v8::Value> {
-  v8::Local::new(scope, &key.handle)
 }

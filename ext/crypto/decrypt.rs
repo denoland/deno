@@ -138,49 +138,6 @@ pub enum DecryptError {
   Rsa(rsa::Error),
 }
 
-#[op2]
-pub async fn op_crypto_decrypt(
-  #[cppgc] key: &CryptoKeyHandle,
-  #[serde] opts: DecryptOptions,
-  #[buffer] data: JsBuffer,
-) -> Result<Uint8Array, DecryptError> {
-  let key_data = key.data().clone();
-  let fun = move || {
-    let key: &RawKeyData = &key_data;
-    match opts.algorithm {
-      DecryptAlgorithm::RsaOaep { hash, label } => {
-        decrypt_rsa_oaep(key, hash, label, &data)
-      }
-      DecryptAlgorithm::AesCbc { iv, length } => {
-        decrypt_aes_cbc(key, length, iv, &data)
-      }
-      DecryptAlgorithm::AesCtr {
-        counter,
-        ctr_length,
-        key_length,
-      } => decrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
-      DecryptAlgorithm::AesGcm {
-        iv,
-        additional_data,
-        length,
-        tag_length,
-      } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
-      DecryptAlgorithm::AesOcb {
-        iv,
-        additional_data,
-        length,
-        tag_length,
-      } => decrypt_aes_ocb(key, length, tag_length, iv, additional_data, &data),
-      DecryptAlgorithm::ChaCha20Poly1305 {
-        nonce,
-        additional_data,
-      } => decrypt_chacha20_poly1305(key, &nonce, additional_data, &data),
-    }
-  };
-  let buf = spawn_blocking(fun).await.unwrap()?;
-  Ok(buf.into())
-}
-
 pub(crate) fn decrypt_rsa_oaep(
   key: &RawKeyData,
   hash: ShaHash,

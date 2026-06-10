@@ -109,14 +109,6 @@ pub enum ExportKeyResult {
   },
 }
 
-#[op2]
-pub fn op_crypto_export_key(
-  #[serde] opts: ExportKeyOptions,
-  #[serde] key_data: V8RawKeyData,
-) -> Result<ExportKeyResult, ExportKeyError> {
-  op_crypto_export_key_inner(opts, key_data)
-}
-
 /// Rust-side callable view of [`op_crypto_export_key`]. Used by
 /// `getPublicKey` when round-tripping RSA / EC keys through SPKI without
 /// a JS hop.

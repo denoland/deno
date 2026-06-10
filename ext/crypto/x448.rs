@@ -37,22 +37,6 @@ pub fn generate_x448_keypair(pkey: &mut [u8], pubkey: &mut [u8]) {
   pubkey.copy_from_slice(&point.0);
 }
 
-#[op2(fast)]
-pub fn op_crypto_generate_x448_keypair(
-  #[buffer] pkey: &mut [u8],
-  #[buffer] pubkey: &mut [u8],
-) {
-  let mut rng = OsRng;
-  rng.fill_bytes(pkey);
-
-  // x448(pkey, 5)
-  let mut scalar_bytes = [0u8; 57];
-  scalar_bytes[..56].copy_from_slice(pkey);
-  let scalar = EdwardsScalar::from_bytes_mod_order(&scalar_bytes.into());
-  let point = &MontgomeryPoint::GENERATOR * &scalar;
-  pubkey.copy_from_slice(&point.0);
-}
-
 static MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 56]);
 
 /// Compute the X448 shared secret from a raw 56-byte private key `k`
@@ -97,14 +81,6 @@ pub(crate) fn x448_public_key(private_key: &[u8]) -> Result<String, X448Error> {
   Ok(BASE64_URL_SAFE_NO_PAD.encode(point.0))
 }
 
-#[op2]
-#[string]
-pub fn op_crypto_x448_public_key(
-  #[buffer] private_key: &[u8],
-) -> Result<String, X448Error> {
-  x448_public_key(private_key)
-}
-
 pub(crate) fn export_spki_x448(pubkey: &[u8]) -> Result<Vec<u8>, X448Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierRef {
@@ -114,13 +90,6 @@ pub(crate) fn export_spki_x448(pubkey: &[u8]) -> Result<Vec<u8>, X448Error> {
     subject_public_key: BitString::from_bytes(pubkey)?,
   };
   key_info.to_der().map_err(|_| X448Error::FailedExport)
-}
-
-#[op2]
-pub fn op_crypto_export_spki_x448(
-  #[buffer] pubkey: &[u8],
-) -> Result<Uint8Array, X448Error> {
-  export_spki_x448(pubkey).map(Into::into)
 }
 
 pub(crate) fn export_pkcs8_x448(pkey: &[u8]) -> Result<Vec<u8>, X448Error> {
@@ -136,62 +105,4 @@ pub(crate) fn export_pkcs8_x448(pkey: &[u8]) -> Result<Vec<u8>, X448Error> {
   let mut buf = Vec::new();
   pk_info.encode_to_vec(&mut buf)?;
   Ok(buf)
-}
-
-#[op2]
-pub fn op_crypto_export_pkcs8_x448(
-  #[buffer] pkey: &[u8],
-) -> Result<Uint8Array, X448Error> {
-  export_pkcs8_x448(pkey).map(Into::into)
-}
-
-#[op2(fast)]
-pub fn op_crypto_import_spki_x448(
-  #[buffer] key_data: &[u8],
-  #[buffer] out: &mut [u8],
-) -> bool {
-  // 2-3.
-  let pk_info = match spki::SubjectPublicKeyInfoRef::try_from(key_data) {
-    Ok(pk_info) => pk_info,
-    Err(_) => return false,
-  };
-  // 4.
-  let alg = pk_info.algorithm.oid;
-  if alg != X448_OID {
-    return false;
-  }
-  // 5.
-  if pk_info.algorithm.parameters.is_some() {
-    return false;
-  }
-  out.copy_from_slice(pk_info.subject_public_key.raw_bytes());
-  true
-}
-
-#[op2(fast)]
-pub fn op_crypto_import_pkcs8_x448(
-  #[buffer] key_data: &[u8],
-  #[buffer] out: &mut [u8],
-) -> bool {
-  // 2-3.
-  let pk_info = match PrivateKeyInfo::from_der(key_data) {
-    Ok(pk_info) => pk_info,
-    Err(_) => return false,
-  };
-  // 4.
-  let alg = pk_info.algorithm.oid;
-  if alg != X448_OID {
-    return false;
-  }
-  // 5.
-  if pk_info.algorithm.parameters.is_some() {
-    return false;
-  }
-  // 6.
-  // CurvePrivateKey ::= OCTET STRING
-  if pk_info.private_key.len() != 58 {
-    return false;
-  }
-  out.copy_from_slice(&pk_info.private_key[2..]);
-  true
 }

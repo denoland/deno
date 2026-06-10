@@ -70,25 +70,6 @@ pub enum GenerateKeyOptions {
   },
 }
 
-#[op2]
-pub async fn op_crypto_generate_key(
-  #[serde] opts: GenerateKeyOptions,
-) -> Result<Uint8Array, GenerateKeyError> {
-  let fun = || match opts {
-    GenerateKeyOptions::Rsa {
-      modulus_length,
-      public_exponent,
-    } => generate_key_rsa(modulus_length, &public_exponent),
-    GenerateKeyOptions::Ec { named_curve } => generate_key_ec(named_curve),
-    GenerateKeyOptions::Aes { length } => generate_key_aes(length),
-    GenerateKeyOptions::Hmac { hash, length } => {
-      generate_key_hmac(hash, length)
-    }
-  };
-  let buf = spawn_blocking(fun).await.unwrap()?;
-  Ok(buf.into())
-}
-
 /// Rust-callable view of the RSA keygen path. Returns raw PKCS#1 DER
 /// bytes ready to feed [`crate::shared::RawKeyData::Private`].
 pub fn generate_rsa(
