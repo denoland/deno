@@ -1797,7 +1797,7 @@ export function foo() {}
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-7.ts", async ()=>{
-    throw new Error("invalid doc test shebang: #!/bin/sh (not a deno command)");
+    throw new Error("invalid doc test hashbang: #!/bin/sh (binary basename needs to be 'deno')");
     foo();
 });
 "#,
@@ -1823,7 +1823,7 @@ export function foo() {}
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-7.ts", async ()=>{
-    throw new Error("invalid doc test shebang: #!/usr/bin/env -S deno run --allow-read --deny-read=/etc (scoped --deny-* flags aren't supported yet, see https://github.com/denoland/deno/issues/31966)");
+    throw new Error("invalid doc test hashbang: #!/usr/bin/env -S deno run --allow-read --deny-read=/etc (scoped --deny-* flags aren't supported yet, either remove them or ignore the test)");
     foo();
 });
 "#,
