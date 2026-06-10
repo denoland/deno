@@ -2308,13 +2308,30 @@ Deno.test({
   name: "remote backend invalid url",
   async fn() {
     // A URL that does not point at a KV Connect endpoint at all (here a 404)
-    // should be rejected when the connection is opened.
+    // should be rejected when the connection is opened. Assert on the status so
+    // the test pins the non-2xx branch rather than the prefix shared by every
+    // failure mode.
     await assertRejects(
       async () => {
         await Deno.openKv("http://localhost:4545/not_a_kv_endpoint");
       },
       Error,
-      "Could not open Deno KV database",
+      "responded with status 404",
+    );
+  },
+});
+
+Deno.test({
+  name: "remote backend unreachable",
+  async fn() {
+    // A host that refuses the connection should fail fast at open time via the
+    // network-error branch, rather than hanging or erroring on first use.
+    await assertRejects(
+      async () => {
+        await Deno.openKv("http://localhost:1");
+      },
+      Error,
+      "failed to connect to",
     );
   },
 });
