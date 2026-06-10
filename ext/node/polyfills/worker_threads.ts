@@ -10,6 +10,7 @@ const {
   op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
+  op_host_recv_message_sync,
   op_host_register_message_dispatch,
   op_host_terminate_worker,
   op_mark_as_untransferable,
@@ -737,11 +738,12 @@ class NodeWorker extends EventEmitter {
     // worker's host port + dispatcher so the runtime drains the queue and calls
     // `#dispatchWorkerThreadMessage` directly, with no per-message Promise. The
     // recv op below stays pending as the keep-alive / ref-unref anchor and
-    // resolves `null` only on close. The dispatcher guards on the TERMINATED
-    // state since the Rust pump may still hold already-queued messages after
-    // terminate().
+    // resolves `null` only on close.
     const dispatchId = op_host_register_message_dispatch(
       this.#id,
+      // Guard against delivery after terminate(): the Rust pump may still hold
+      // already-queued messages, and the old per-iteration TERMINATED check
+      // must be preserved.
       (data) => {
         if (this.#status !== "TERMINATED") {
           this.#dispatchWorkerThreadMessage(data);
@@ -758,6 +760,7 @@ class NodeWorker extends EventEmitter {
         if (this.#status === "TERMINATED" || data === null) {
           return;
         }
+        if (!this.#dispatchWorkerThreadMessage(data)) return;
       }
     } finally {
       op_message_dispatch_unregister(dispatchId);
@@ -931,7 +934,10 @@ interface NodeEventTarget extends
   // deno-lint-ignore no-explicit-any
   on(eventName: string, listener: (...args: any[]) => void): NodeEventTarget;
   // deno-lint-ignore no-explicit-any
-  once(eventName: string, listener: (...args: any[]) => void): NodeEventTarget;
+  once(
+    eventName: string,
+    listener: (...args: any[]) => void,
+  ): NodeEventTarget;
   addListener: NodeEventTarget["on"];
   removeListener: NodeEventTarget["off"];
 }
@@ -994,7 +1000,9 @@ internals.__initWorkerThreads = (
     // demand since parentPort accepts any event name.
     // deno-lint-ignore no-explicit-any
     type ListenerMap = SafeMap<(...args: any[]) => void, (ev: any) => any>;
-    const parentPortListeners: Record<string, ListenerMap> = ObjectCreate(null);
+    const parentPortListeners: Record<string, ListenerMap> = ObjectCreate(
+      null,
+    );
     const getParentPortListenerMap = (name: string): ListenerMap => {
       let map = parentPortListeners[name];
       if (map === undefined) {

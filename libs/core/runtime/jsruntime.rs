@@ -2317,7 +2317,17 @@ impl JsRuntime {
       let context =
         v8::Local::new(isolate_scope, self.inner.main_realm.context());
       let mut scope = v8::ContextScope::new(isolate_scope, context);
-      self.poll_event_loop_inner(cx, &mut scope, poll_options)
+      // Drive any registered event-loop tick callback (e.g. worker /
+      // MessagePort message delivery) before the tick proper. No-op unless a
+      // callback was installed via `set_event_loop_tick_callback`.
+      let tick_cb = self.inner.state.event_loop_tick_callback.borrow().clone();
+      match tick_cb {
+        Some(cb) => match cb(&mut scope, cx) {
+          Ok(()) => self.poll_event_loop_inner(cx, &mut scope, poll_options),
+          Err(e) => Poll::Ready(Err(e)),
+        },
+        None => self.poll_event_loop_inner(cx, &mut scope, poll_options),
+      }
     };
 
     // Tell V8's CPU profiler whether we're about to go idle. When the event
@@ -2422,18 +2432,6 @@ impl JsRuntime {
     // After the JS call, read timer_expiry shared buffer and schedule.
     if timer_ready {
       Self::process_timer_expiry(context_state);
-    }
-    // 2b'. Drive any registered event-loop tick callback (worker / MessagePort
-    // message delivery): drain registered ports and invoke the JS dispatcher
-    // directly, with no per-message Promise. Placed alongside op resolution so
-    // a dispatcher that triggers `process.exit()` / terminate unwinds through
-    // the same subsequent phases as a resolved recv op did. No-op unless a
-    // callback was installed via `set_event_loop_tick_callback`.
-    {
-      let tick_cb = self.inner.state.event_loop_tick_callback.borrow().clone();
-      if let Some(cb) = tick_cb {
-        cb(scope, cx)?;
-      }
     }
     // Microtask checkpoint after timer/op processing, but only when
     // no ticks are scheduled (matching original guard after timers).
