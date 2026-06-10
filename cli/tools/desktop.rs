@@ -1389,10 +1389,10 @@ fn extract_laufey_archive(
           entry_path.display()
         );
       }
-      let dest_path = dest.join(&entry_path);
       #[cfg(unix)]
       {
         use std::os::unix::fs::PermissionsExt;
+        let dest_path = dest.join(&entry_path);
         // `symlink_metadata` so we don't follow a just-extracted symlink
         // and chmod its target.
         if let Ok(meta) = std::fs::symlink_metadata(&dest_path)
