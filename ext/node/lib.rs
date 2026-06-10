@@ -320,11 +320,14 @@ deno_core::extension!(deno_node,
     ops::idna::op_node_idna_punycode_to_unicode,
     ops::idna::op_node_idna_punycode_decode,
     ops::idna::op_node_idna_punycode_encode,
+    ops::buffer::op_node_internal_binding_buffer,
     ops::internal_binding::op_node_internal_binding_ares,
     ops::internal_binding::op_node_internal_binding_encodings,
     ops::internal_binding::op_node_internal_binding_handle_wrap,
     ops::internal_binding::op_node_internal_binding_inspector,
     ops::internal_binding::op_node_internal_binding_libuv_winerror,
+    ops::internal_binding::op_node_internal_binding_string_decoder,
+    ops::internal_binding::op_node_internal_binding_symbols,
     ops::internal_binding::op_node_internal_binding_tty_wrap,
     ops::internal_binding::op_node_internal_binding_types,
     ops::internal_binding::op_node_ares_strerror,
@@ -340,6 +343,7 @@ deno_core::extension!(deno_node,
     ops::internal_binding_uv::op_node_uv_get_error_map,
     ops::internal_binding_uv::op_node_uv_get_error_message,
     ops::internal_binding_uv::op_node_uv_map_sys_errno_to_uv_errno,
+    ops::util::op_node_internal_binding_util,
     ops::zlib::op_zlib_crc32,
     ops::zlib::op_zlib_crc32_string,
     ops::handle_wrap::op_node_new_async_id,
@@ -897,6 +901,12 @@ deno_core::extension!(deno_node,
     ext.external_references.to_mut().extend(external_references);
     ext.external_references.to_mut().extend(
       ops::internal_binding_crypto::external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::util::external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::buffer::external_references(),
     );
   },
 );

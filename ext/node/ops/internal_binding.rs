@@ -36,6 +36,16 @@ fn set_bool(
   obj.set(scope, key.into(), value.into());
 }
 
+fn set_value(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  obj.set(scope, key.into(), value);
+}
+
 fn core_object<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Object> {
@@ -173,6 +183,46 @@ pub fn op_node_internal_binding_ares<'s>(
   }
 
   set_op_alias(scope, obj, "ares_strerror", "op_node_ares_strerror");
+  obj
+}
+
+#[op2]
+pub fn op_node_internal_binding_string_decoder<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Object> {
+  let obj = v8::Object::new(scope);
+  let encodings = v8::Array::new(scope, 8);
+  for (index, encoding) in [
+    (0, "ascii"),
+    (1, "utf8"),
+    (2, "base64"),
+    (3, "utf16le"),
+    (4, "latin1"),
+    (5, "hex"),
+    (6, "buffer"),
+    (7, "base64url"),
+  ] {
+    let value = v8::String::new(scope, encoding).unwrap();
+    encodings.set_index(scope, index, value.into());
+  }
+  set_value(scope, obj, "encodings", encodings.into());
+  let default_obj = v8::Object::new(scope);
+  set_value(scope, default_obj, "encodings", encodings.into());
+  set_value(scope, obj, "default", default_obj.into());
+  obj
+}
+
+#[op2]
+pub fn op_node_internal_binding_symbols<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> v8::Local<'s, v8::Object> {
+  let obj = v8::Object::new(scope);
+  let async_id_description = v8::String::new(scope, "asyncIdSymbol").unwrap();
+  let async_id = v8::Symbol::new(scope, Some(async_id_description));
+  set_value(scope, obj, "asyncIdSymbol", async_id.into());
+  let owner_description = v8::String::new(scope, "ownerSymbol").unwrap();
+  let owner = v8::Symbol::new(scope, Some(owner_description));
+  set_value(scope, obj, "ownerSymbol", owner.into());
   obj
 }
 
