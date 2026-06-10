@@ -551,12 +551,11 @@ pub fn run(
       if data.len() > ((1u64 << 39) - 256) as usize {
         return Err(op_error("Plaintext too large".to_string()));
       }
-      let iv_len = iv.len();
-      if iv_len != 12 && iv_len != 16 {
-        return Err(not_supported(
-          "Initialization vector length not supported".to_string(),
-        ));
-      }
+      // Spec order: validate `tagLength` before `iv` length so a bad
+      // tag length combined with an unsupported IV length rejects with
+      // the `OperationError` WebCrypto requires (WPT
+      // `aes_gcm_256_iv` "illegal tag length" subtests). Mirrors the
+      // decrypt path.
       let tag_length = match tag_length {
         None => 128u32,
         Some(t) if [32, 64, 96, 104, 112, 120, 128].contains(&t) => t,
@@ -564,6 +563,12 @@ pub fn run(
           return Err(op_error(format!("Invalid tag length: {t}")));
         }
       };
+      let iv_len = iv.len();
+      if iv_len != 12 && iv_len != 16 {
+        return Err(not_supported(
+          "Initialization vector length not supported".to_string(),
+        ));
+      }
       let key_length = key.algorithm_length.ok_or_else(|| {
         op_error("AES-GCM key is missing 'length'".to_string())
       })?;

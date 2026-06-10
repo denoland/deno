@@ -1145,22 +1145,7 @@
         "AES-GCM 256-bit key, 120-bit tag, 256-bit iv decryption with transferred ciphertext after call",
         "AES-GCM 256-bit key, no additional data, 120-bit tag, 256-bit iv decryption with transferred ciphertext after call",
         "AES-GCM 256-bit key, 128-bit tag, 256-bit iv decryption with transferred ciphertext after call",
-        "AES-GCM 256-bit key, no additional data, 128-bit tag, 256-bit iv decryption with transferred ciphertext after call",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 24-bits",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 48-bits",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 72-bits",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 95-bits",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 129-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 24-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 48-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 72-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 95-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 129-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 24-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 48-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 72-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 95-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 129-bits"
+        "AES-GCM 256-bit key, no additional data, 128-bit tag, 256-bit iv decryption with transferred ciphertext after call"
       ]
     },
     "aes_gcm_256_iv.https.any.worker.html": {
@@ -1542,22 +1527,7 @@
         "AES-GCM 256-bit key, 120-bit tag, 256-bit iv decryption with transferred ciphertext after call",
         "AES-GCM 256-bit key, no additional data, 120-bit tag, 256-bit iv decryption with transferred ciphertext after call",
         "AES-GCM 256-bit key, 128-bit tag, 256-bit iv decryption with transferred ciphertext after call",
-        "AES-GCM 256-bit key, no additional data, 128-bit tag, 256-bit iv decryption with transferred ciphertext after call",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 24-bits",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 48-bits",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 72-bits",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 95-bits",
-        "AES-GCM 128-bit key, 256-bit iv, illegal tag length 129-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 24-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 48-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 72-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 95-bits",
-        "AES-GCM 192-bit key, 256-bit iv, illegal tag length 129-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 24-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 48-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 72-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 95-bits",
-        "AES-GCM 256-bit key, 256-bit iv, illegal tag length 129-bits"
+        "AES-GCM 256-bit key, no additional data, 128-bit tag, 256-bit iv decryption with transferred ciphertext after call"
       ]
     },
     "aes_ocb.tentative.https.any.html": true,
