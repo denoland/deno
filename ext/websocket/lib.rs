@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::any::Any;
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -9,6 +10,7 @@ use std::rc::Rc;
 use bytes::Bytes;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
@@ -565,10 +567,27 @@ pub struct ServerWebSocket {
   string: Cell<Option<String>>,
   ws_read: AsyncRefCell<FragmentCollectorRead<ReadHalf<WebSocketStream>>>,
   ws_write: AsyncRefCell<WebSocketWrite<WriteHalf<WebSocketStream>>>,
+  /// Cancel handle for the pending [`op_ws_next_event`] read. Triggered when
+  /// the embedder (e.g. the HTTP server) needs to interrupt the read half
+  /// during a server-initiated shutdown after a close frame has been sent.
+  read_cancel: Rc<CancelHandle>,
+  /// Opaque lifetime token attached by the embedder when the websocket was
+  /// created. Holding it keeps the embedder's shutdown coordination alive
+  /// (e.g. the HTTP server's `SignallingRc<HttpServerState>`); dropping it
+  /// when the websocket resource is dropped lets a graceful shutdown
+  /// observe that this websocket is gone.
+  lifetime_guard: Cell<Option<Box<dyn Any>>>,
 }
 
 impl ServerWebSocket {
   fn new(ws: WebSocket<WebSocketStream>) -> Self {
+    Self::new_with_guard(ws, None)
+  }
+
+  fn new_with_guard(
+    ws: WebSocket<WebSocketStream>,
+    lifetime_guard: Option<Box<dyn Any>>,
+  ) -> Self {
     let (ws_read, ws_write) = ws.split(tokio::io::split);
     Self {
       buffered: Cell::new(0),
@@ -579,7 +598,30 @@ impl ServerWebSocket {
       string: Cell::new(None),
       ws_read: AsyncRefCell::new(FragmentCollectorRead::new(ws_read)),
       ws_write: AsyncRefCell::new(ws_write),
+      read_cancel: CancelHandle::new_rc(),
+      lifetime_guard: Cell::new(lifetime_guard),
     }
+  }
+
+  /// Initiate a server-side graceful shutdown of this websocket. Sends a
+  /// `Close(1001 Going Away)` frame in the background and then cancels the
+  /// pending [`op_ws_next_event`] read so the JS event loop observes the
+  /// close and drops the resource.
+  ///
+  /// Safe to call multiple times; only the first call has any effect.
+  pub fn server_shutdown(self: &Rc<Self>) {
+    if self.closed.replace(true) {
+      return;
+    }
+    let ws = self.clone();
+    let cancel = self.read_cancel.clone();
+    let lock = self.reserve_lock();
+    deno_core::unsync::spawn(async move {
+      const GOING_AWAY: &[u8] = b"Server shutting down";
+      let frame = Frame::close(1001, GOING_AWAY);
+      let _ = ws.write_frame(lock, frame).await;
+      cancel.cancel();
+    });
   }
 
   fn set_error(&self, error: Option<String>) {
@@ -618,12 +660,36 @@ impl Resource for ServerWebSocket {
   fn name(&self) -> Cow<'_, str> {
     "serverWebSocket".into()
   }
+
+  fn close(self: Rc<Self>) {
+    // Cancel any pending read so the JS event loop observes the close and
+    // drops this resource even if op_ws_next_event was already in flight.
+    self.read_cancel.cancel();
+    // Drop the embedder's lifetime guard eagerly so a graceful shutdown
+    // does not have to wait for ops still holding a strong reference.
+    self.lifetime_guard.take();
+  }
 }
 
 pub fn ws_create_server_stream(
   state: &mut OpState,
   transport: NetworkStream,
   read_buf: Bytes,
+) -> ResourceId {
+  ws_create_server_stream_with_guard(state, transport, read_buf, None)
+}
+
+/// Like [`ws_create_server_stream`] but lets the embedder attach an opaque
+/// lifetime guard that lives as long as the underlying [`ServerWebSocket`]
+/// resource. The embedder can also recover an [`Rc<ServerWebSocket>`] for
+/// the new resource through the returned [`ResourceId`] in order to drive
+/// a server-initiated shutdown later via
+/// [`ServerWebSocket::server_shutdown`].
+pub fn ws_create_server_stream_with_guard(
+  state: &mut OpState,
+  transport: NetworkStream,
+  read_buf: Bytes,
+  lifetime_guard: Option<Box<dyn Any>>,
 ) -> ResourceId {
   let mut ws = WebSocket::after_handshake(
     WebSocketStream::new(
@@ -636,7 +702,9 @@ pub fn ws_create_server_stream(
   ws.set_auto_close(true);
   ws.set_auto_pong(true);
 
-  state.resource_table.add(ServerWebSocket::new(ws))
+  state
+    .resource_table
+    .add(ServerWebSocket::new_with_guard(ws, lifetime_guard))
 }
 
 fn send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
@@ -871,11 +939,12 @@ pub async fn op_ws_next_event(
     let writer = writer.clone();
     async move { writer.borrow_mut().await.write_frame(frame).await }
   };
+  let cancel = resource.read_cancel.clone();
   loop {
-    let res = ws.read_frame(&mut sender).await;
+    let res = ws.read_frame(&mut sender).or_cancel(&cancel).await;
     let val = match res {
-      Ok(val) => val,
-      Err(err) => {
+      Ok(Ok(val)) => val,
+      Ok(Err(err)) => {
         // No message was received, socket closed while we waited.
         // Report closed status to JavaScript.
         if resource.closed.get() {
@@ -884,6 +953,12 @@ pub async fn op_ws_next_event(
 
         resource.set_error(Some(err.to_string()));
         return MessageKind::Error as u16;
+      }
+      Err(_) => {
+        // Read was cancelled by the embedder (e.g. a server-initiated
+        // graceful shutdown). Report ClosedDefault so the JS event loop
+        // tears down this resource without surfacing a spurious error.
+        return MessageKind::ClosedDefault as u16;
       }
     };
 

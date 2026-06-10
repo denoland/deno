@@ -89,6 +89,73 @@ pub(crate) use http_trace;
 
 pub(crate) struct HttpServerStateInner {
   pool: Vec<(Rc<HttpRecord>, HeaderMap)>,
+  /// Registry of upgraded server-side WebSockets owned by this server, so
+  /// that `op_http_close` can drive a graceful or forceful shutdown of any
+  /// websockets that are still open when `Deno.serve` is being torn down.
+  /// Without this they would leak past `await server.shutdown()` as
+  /// `serverWebSocket` resources.
+  pub(crate) active_websockets: Rc<ActiveWebSockets>,
+}
+
+/// Per-server registry of upgraded server-side WebSockets. See the
+/// `active_websockets` field on [`HttpServerStateInner`].
+#[derive(Default)]
+pub(crate) struct ActiveWebSockets {
+  next_key: Cell<u64>,
+  entries: RefCell<
+    std::collections::HashMap<
+      u64,
+      std::rc::Weak<deno_websocket::ServerWebSocket>,
+    >,
+  >,
+}
+
+impl ActiveWebSockets {
+  pub(crate) fn next_key(&self) -> u64 {
+    let key = self.next_key.get();
+    self.next_key.set(key.wrapping_add(1));
+    key
+  }
+
+  pub(crate) fn insert(
+    &self,
+    key: u64,
+    ws: std::rc::Weak<deno_websocket::ServerWebSocket>,
+  ) {
+    self.entries.borrow_mut().insert(key, ws);
+  }
+
+  pub(crate) fn remove(&self, key: u64) {
+    self.entries.borrow_mut().remove(&key);
+  }
+
+  /// Strong references to every websocket whose `Rc` is still alive.
+  pub(crate) fn snapshot(&self) -> Vec<Rc<deno_websocket::ServerWebSocket>> {
+    self
+      .entries
+      .borrow()
+      .values()
+      .filter_map(|w| w.upgrade())
+      .collect()
+  }
+}
+
+/// Drop guard handed to each upgraded server websocket. Holding it keeps the
+/// server's [`SignallingRc<HttpServerState>`] alive (so a graceful shutdown
+/// waits for this websocket to finish), and dropping it unregisters the
+/// websocket from the per-server [`ActiveWebSockets`] registry.
+pub(crate) struct WebSocketGuard {
+  pub(crate) registry: Rc<ActiveWebSockets>,
+  pub(crate) key: u64,
+  // Dropped after `registry`; keeps the server alive while this websocket is
+  // open so the graceful shutdown future can observe it.
+  pub(crate) _server_state: SignallingRc<HttpServerState>,
+}
+
+impl Drop for WebSocketGuard {
+  fn drop(&mut self) {
+    self.registry.remove(self.key);
+  }
 }
 
 /// A signalling version of `Rc` that allows one to poll for when all other references
@@ -152,7 +219,16 @@ impl HttpServerState {
   pub fn new() -> SignallingRc<Self> {
     SignallingRc::new(Self(RefCell::new(HttpServerStateInner {
       pool: Vec::new(),
+      active_websockets: Rc::new(ActiveWebSockets::default()),
     })))
+  }
+
+  /// Returns a clone of the per-server registry of upgraded server-side
+  /// WebSockets. Used by the websocket-upgrade op to register newly created
+  /// `ServerWebSocket` resources, and by `op_http_close` to enumerate them
+  /// during shutdown.
+  pub(crate) fn active_websockets(&self) -> Rc<ActiveWebSockets> {
+    self.0.borrow().active_websockets.clone()
   }
 }
 
@@ -818,6 +894,14 @@ impl HttpRecord {
 
   fn self_ref(&self) -> Ref<'_, HttpRecordInner> {
     Ref::map(self.0.borrow(), |option| option.as_ref().unwrap())
+  }
+
+  /// Clone of the per-server [`SignallingRc<HttpServerState>`] this record
+  /// belongs to. Used by the websocket upgrade op to keep the server alive
+  /// (and to find the per-server [`ActiveWebSockets`] registry) for as long
+  /// as the upgraded `ServerWebSocket` is open.
+  pub fn server_state(&self) -> SignallingRc<HttpServerState> {
+    self.self_ref().server_state.clone()
   }
 
   fn self_mut(&self) -> RefMut<'_, HttpRecordInner> {
