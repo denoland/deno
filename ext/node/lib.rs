@@ -459,6 +459,7 @@ deno_core::extension!(deno_node,
     ops::tcp_wrap::op_node_internal_binding_tcp_wrap,
     ops::stream_wrap::op_node_internal_binding_stream_wrap,
     ops::stream_wrap::op_stream_base_register_state,
+    ops::tls_wrap::op_node_internal_binding_tls_wrap,
     ops::tty_wrap::op_tty_check_fd_permission,
   ],
   objects = [
@@ -933,6 +934,9 @@ deno_core::extension!(deno_node,
     );
     ext.external_references.to_mut().extend(
       ops::http2::internal_binding_external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::tls_wrap::internal_binding_external_references(),
     );
   },
 );
