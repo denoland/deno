@@ -1,4 +1,5 @@
-Compile [WILDLINE]/index.mjs to [WILDLINE]
+Check [WILDCARD]index.mjs
+Compile [WILDCARD]index.mjs to [WILDLINE]
 
 Embedded Files
 

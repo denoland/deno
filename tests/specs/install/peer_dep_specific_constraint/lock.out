@@ -6,7 +6,7 @@
   },
   "npm": {
     "@denotest/add@1.0.0": {
-      "integrity": "sha512-P7KqAn8qFLI/13TfERSPS0NYt7CmA0diT6bhscyT6FzZjFaAVCja3K/dk96eZDsCyI1gtwtHg5Ahh8XDIvAgrw==",
+      "integrity": "sha512-uvNpnVPU/CC2Do/LNF3TkhoLGLLKC6jFDPiSnojuZCEwmoXJjS2+Sn+LYk7eUix4vsMKA9ctxaMhcfb6pdHQTQ==",
       "tarball": "http://localhost:4260/@denotest/add/1.0.0.tgz"
     },
     "@denotest/peer-dep-specific-constraint@1.0.0_@denotest+add@1.0.0": {

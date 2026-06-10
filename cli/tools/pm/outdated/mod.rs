@@ -1,20 +1,21 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod interactive;
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::GlobalOrLocalHttpCache;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use deno_semver::VersionReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_terminal::colors;
 
+use super::CacheTopLevelDepsOptions;
 use super::deps::Dep;
 use super::deps::DepId;
 use super::deps::DepKind;
@@ -24,10 +25,18 @@ use super::deps::PackageLatestVersion;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
 use crate::factory::CliFactory;
-use crate::file_fetcher::create_cli_file_fetcher;
 use crate::file_fetcher::CreateCliFileFetcherOptions;
+use crate::file_fetcher::create_cli_file_fetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
+use crate::npm::PackageInfoLoadError;
+
+/// Packages whose metadata could not be fetched (e.g. unreachable or
+/// unauthorized private registries) are dropped from the update check. They are
+/// collected here, keyed and deduplicated by `(kind, name)`, so we can warn the
+/// user instead of skipping them silently.
+type SkippedPackages =
+  std::collections::BTreeMap<(DepKind, StackString), Arc<PackageInfoLoadError>>;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct OutdatedPackage {
@@ -38,7 +47,7 @@ struct OutdatedPackage {
   name: StackString,
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "print method")]
 fn print_outdated_table(packages: &[OutdatedPackage]) {
   const HEADINGS: &[&str] = &["Package", "Current", "Update", "Latest"];
 
@@ -115,7 +124,7 @@ fn print_suggestion(compatible: bool) {
   log::info!(
     "{}",
     color_print::cformat!(
-      "<p(245)>Run</> <u>deno outdated --update{}</> <p(245)>to update to the latest {} versions,</>\n<p(245)>or</> <u>deno outdated --help</> <p(245)>for more information.</>",
+      "<p(245)>Run</> <u>deno update{}</> <p(245)>to update to the latest {} versions,</>\n<p(245)>or</> <u>deno outdated --help</> <p(245)>for more information.</>",
       cmd,
       txt,
     )
@@ -128,10 +137,13 @@ fn print_outdated(
 ) -> Result<(), AnyError> {
   let mut outdated = Vec::new();
   let mut seen = std::collections::BTreeSet::new();
+  let mut skipped = SkippedPackages::new();
   for (dep_id, resolved, latest_versions) in
     deps.deps_with_resolved_latest_versions()
   {
     let dep = deps.get_dep(dep_id);
+
+    collect_skipped(&mut skipped, dep.kind, &dep.req.name, &latest_versions);
 
     let Some(resolved) = resolved else { continue };
 
@@ -170,10 +182,73 @@ fn print_outdated(
   if !outdated.is_empty() {
     outdated.sort();
     print_outdated_table(&outdated);
+  }
+
+  print_skipped_warning(&skipped);
+
+  if !outdated.is_empty() {
     print_suggestion(compatible);
   }
 
   Ok(())
+}
+
+/// Records a package whose metadata fetch failed, deduplicating by
+/// `(kind, name)` and keeping the first reason seen.
+fn collect_skipped(
+  skipped: &mut SkippedPackages,
+  kind: DepKind,
+  name: &StackString,
+  latest_versions: &PackageLatestVersion,
+) {
+  if let Some(error) = &latest_versions.fetch_error {
+    skipped
+      .entry((kind, name.clone()))
+      .or_insert_with(|| error.clone());
+  }
+}
+
+fn print_skipped_warning(skipped: &SkippedPackages) {
+  if skipped.is_empty() {
+    return;
+  }
+
+  log::warn!("");
+  log::warn!(
+    "{}",
+    color_print::cformat!(
+      "<yellow>Warning</>: Unable to check updates for {} package(s), their metadata could not be fetched (e.g. private registry auth or network issues).",
+      skipped.len(),
+    )
+  );
+
+  if log::log_enabled!(log::Level::Debug) {
+    for ((kind, name), error) in skipped {
+      log::warn!(
+        "{}",
+        color_print::cformat!(
+          "  <bold>{}:{}</> (registry: {})",
+          kind.scheme(),
+          name,
+          error.registry_url,
+        )
+      );
+      log::warn!("    Reason: {}", error.reason);
+    }
+    log::warn!(
+      "{}",
+      color_print::cformat!(
+        "<p(245)>Verify your registry credentials (.npmrc) and network connectivity.</>"
+      )
+    );
+  } else {
+    log::warn!(
+      "{}",
+      color_print::cformat!(
+        "<p(245)>Run with </><u>--log-level=debug</><p(245)> for details on which packages could not be checked.</>"
+      )
+    );
+  }
 }
 
 pub async fn outdated(
@@ -186,9 +261,11 @@ pub async fn outdated(
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
   let file_fetcher = create_cli_file_fetcher(
-    Default::default(),
+    Arc::new(deno_runtime::deno_web::BlobStore::default())
+      as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
     GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
     http_client.clone(),
+    factory.memory_files().clone(),
     factory.sys(),
     CreateCliFileFetcherOptions {
       allow_remote: true,
@@ -201,13 +278,14 @@ pub async fn outdated(
   let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
     file_fetcher.clone(),
     factory.npmrc()?.clone(),
+    factory.npm_version_resolver()?.clone(),
   ));
-  let jsr_fetch_resolver =
-    Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
+  let jsr_fetch_resolver = Arc::new(JsrFetchResolver::new(
+    file_fetcher.clone(),
+    factory.jsr_version_resolver()?.clone(),
+  ));
 
-  if !cli_options.start_dir.has_deno_json()
-    && !cli_options.start_dir.has_pkg_json()
-  {
+  if !cli_options.start_dir.has_deno_or_pkg_json() {
     bail!(
       "No deno.json or package.json in \"{}\".",
       cli_options.initial_cwd().display(),
@@ -248,8 +326,17 @@ pub async fn outdated(
     crate::args::OutdatedKind::Update {
       latest,
       interactive,
+      lockfile_only,
     } => {
-      update(deps, latest, &filter_set, interactive, flags).await?;
+      update(
+        deps,
+        latest,
+        &filter_set,
+        interactive,
+        flags,
+        CacheTopLevelDepsOptions { lockfile_only },
+      )
+      .await?;
     }
     crate::args::OutdatedKind::PrintOutdated { compatible } => {
       print_outdated(&mut deps, compatible)?;
@@ -301,7 +388,29 @@ fn choose_new_version_req(
         latest_available: false,
       };
     };
-    if preferred.version <= resolved.version {
+    // Detect the original operator to preserve it
+    let version_req_str = dep.req.version_req.to_string();
+    let operator = if version_req_str.starts_with('~') {
+      "~"
+    } else if version_req_str.starts_with('^') {
+      "^"
+    } else {
+      // Check if it's an exact version (no operator)
+      let exact = if let Some(range) = dep.req.version_req.range() {
+        range.0[0].start == range.0[0].end
+      } else {
+        false
+      };
+      if exact { "" } else { "^" }
+    };
+    let candidate_version_req = VersionReq::parse_from_specifier(
+      format!("{}{}", operator, preferred.version).as_str(),
+    )
+    .unwrap();
+    if preferred.version <= resolved.version
+      && (candidate_version_req == dep.req.version_req
+        || preferred.version < resolved.version)
+    {
       return ChosenVersionReq::None {
         latest_available: !update_to_latest
           && latest_versions
@@ -310,19 +419,16 @@ fn choose_new_version_req(
             .is_some_and(|nv| nv.version > resolved.version),
       };
     }
-    let exact = if let Some(range) = dep.req.version_req.range() {
-      range.0[0].start == range.0[0].end
-    } else {
-      false
-    };
-    ChosenVersionReq::Some(
-      VersionReq::parse_from_specifier(
-        format!("{}{}", if exact { "" } else { "^" }, preferred.version)
-          .as_str(),
-      )
-      .unwrap(),
-    )
+    ChosenVersionReq::Some(candidate_version_req)
   }
+}
+
+struct ToUpdate {
+  dep_id: DepId,
+  package_name: String,
+  current_version: Option<PackageNv>,
+  current_version_req: VersionReq,
+  new_version_req: VersionReq,
 }
 
 async fn update(
@@ -331,10 +437,12 @@ async fn update(
   filter_set: &filter::FilterSet,
   interactive: bool,
   flags: Arc<Flags>,
+  cache_options: CacheTopLevelDepsOptions,
 ) -> Result<(), AnyError> {
   let mut to_update = Vec::new();
 
   let mut can_update_to_latest = false;
+  let mut skipped = SkippedPackages::new();
 
   for (dep_id, resolved, latest_versions) in deps
     .deps_with_resolved_latest_versions()
@@ -342,6 +450,7 @@ async fn update(
     .collect::<Vec<_>>()
   {
     let dep = deps.get_dep(dep_id);
+    collect_skipped(&mut skipped, dep.kind, &dep.req.name, &latest_versions);
     let new_version_req = choose_new_version_req(
       dep,
       resolved.as_ref(),
@@ -357,41 +466,33 @@ async fn update(
       }
     };
 
-    to_update.push((
+    to_update.push(ToUpdate {
       dep_id,
-      format!("{}:{}", dep.kind.scheme(), dep.req.name),
-      deps.resolved_version(dep.id).cloned(),
-      new_version_req.clone(),
-    ));
+      package_name: format!("{}:{}", dep.kind.scheme(), dep.req.name),
+      current_version: resolved.clone(),
+      current_version_req: dep.req.version_req.clone(),
+      new_version_req: new_version_req.clone(),
+    });
   }
 
   if interactive && !to_update.is_empty() {
     let selected = interactive::select_interactive(
       to_update
         .iter()
-        .map(
-          |(dep_id, _, current_version, new_req): &(
-            DepId,
-            String,
-            Option<PackageNv>,
-            VersionReq,
-          )| {
-            let dep = deps.get_dep(*dep_id);
-            interactive::PackageInfo {
-              id: *dep_id,
-              current_version: current_version
-                .as_ref()
-                .map(|nv| nv.version.clone()),
-              name: dep.alias_or_name().into(),
-              kind: dep.kind,
-              new_version: new_req.clone(),
-            }
-          },
-        )
+        .map(|to_update: &ToUpdate| {
+          let dep = deps.get_dep(to_update.dep_id);
+          interactive::PackageInfo {
+            id: to_update.dep_id,
+            current_version_req: to_update.current_version_req.clone(),
+            name: dep.alias_or_name().into(),
+            kind: dep.kind,
+            new_version: to_update.new_version_req.clone(),
+          }
+        })
         .collect(),
     )?;
     if let Some(selected) = selected {
-      to_update.retain(|(id, _, _, _)| selected.contains(id));
+      to_update.retain(|to_update| selected.contains(&to_update.dep_id));
     } else {
       log::info!("Cancelled, not updating");
       return Ok(());
@@ -399,15 +500,27 @@ async fn update(
   }
 
   if !to_update.is_empty() {
-    for (dep_id, _, _, new_version_req) in &to_update {
-      deps.update_dep(*dep_id, new_version_req.clone());
-    }
+    let lockfile_only = cache_options.lockfile_only;
+    if lockfile_only {
+      // `--lockfile-only`: don't touch deno.json/package.json. Instead,
+      // remove the existing lockfile entries for the deps so the
+      // following install re-resolves them to the latest version within
+      // their existing ranges.
+      deps.invalidate_lockfile_for_update(
+        to_update.iter().map(|pkg| pkg.dep_id),
+      )?;
+    } else {
+      for pkg in &to_update {
+        deps.update_dep(pkg.dep_id, pkg.new_version_req.clone());
+      }
 
-    deps.commit_changes()?;
+      deps.commit_changes()?;
+    }
 
     let factory = super::npm_install_after_modification(
       flags.clone(),
       Some(deps.jsr_fetch_resolver.clone()),
+      cache_options,
     )
     .await?;
 
@@ -421,20 +534,35 @@ async fn update(
 
     let mut deps = deps.reloaded_after_modification(args);
     deps.resolve_current_versions().await?;
-    for (dep_id, package_name, maybe_current_version, new_version_req) in
-      to_update
-    {
-      if let Some(nv) = deps.resolved_version(dep_id) {
-        updated_to_versions.insert((
-          package_name,
-          maybe_current_version,
-          nv.version.clone(),
-        ));
+    for pkg in &to_update {
+      if let Some(new_resolved) = deps.resolved_version(pkg.dep_id) {
+        if lockfile_only {
+          // For lockfile-only, only report deps whose resolved version
+          // actually changed in the lockfile.
+          if pkg.current_version.as_ref() == Some(new_resolved) {
+            continue;
+          }
+          updated_to_versions.insert((
+            pkg.package_name.clone(),
+            pkg
+              .current_version
+              .as_ref()
+              .map(|nv| nv.version.to_string())
+              .unwrap_or_else(|| "(unresolved)".to_string()),
+            new_resolved.version.to_string(),
+          ));
+        } else {
+          updated_to_versions.insert((
+            pkg.package_name.clone(),
+            pkg.current_version_req.to_string(),
+            pkg.new_version_req.to_string(),
+          ));
+        }
       } else {
         log::warn!(
           "Failed to resolve version for new version requirement: {} -> {}",
-          package_name,
-          new_version_req
+          pkg.package_name,
+          pkg.new_version_req
         );
       }
     }
@@ -458,30 +586,16 @@ async fn update(
       .unwrap_or(0);
     let max_old = updated_to_versions
       .iter()
-      .map(|(_, maybe_current, _)| {
-        maybe_current
-          .as_ref()
-          .map(|v| v.version.to_string().len())
-          .unwrap_or(0)
-      })
+      .map(|(_, maybe_current, _)| maybe_current.len())
       .max()
       .unwrap_or(0);
     let max_new = updated_to_versions
       .iter()
-      .map(|(_, _, new_version)| new_version.to_string().len())
+      .map(|(_, _, new_version)| new_version.len())
       .max()
       .unwrap_or(0);
 
-    for (package_name, maybe_current_version, new_version) in
-      updated_to_versions
-    {
-      let current_version = if let Some(current_version) = maybe_current_version
-      {
-        current_version.version.to_string()
-      } else {
-        "".to_string()
-      };
-
+    for (package_name, current_version, new_version) in updated_to_versions {
       log::info!(
         " - {}{}{} {}{} -> {}{}",
         colors::gray(package_name[0..4].to_string()),
@@ -489,8 +603,14 @@ async fn update(
         " ".repeat(max_name - package_name.len()),
         " ".repeat(max_old - current_version.len()),
         colors::gray(&current_version),
-        " ".repeat(max_new - new_version.to_string().len()),
+        " ".repeat(max_new - new_version.len()),
         colors::green(&new_version),
+      );
+    }
+    if lockfile_only && update_to_latest {
+      let note = deno_terminal::colors::intense_blue("note");
+      log::info!(
+        "{note}: --lockfile-only updates only within existing version requirements.\n      Drop --lockfile-only to update deno.json/package.json requirements.",
       );
     }
   } else {
@@ -509,6 +629,8 @@ async fn update(
     }
   }
 
+  print_skipped_warning(&skipped);
+
   Ok(())
 }
 
@@ -523,6 +645,8 @@ async fn dep_manager_args(
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
     npm_installer: factory.npm_installer().await?.clone(),
+    npm_version_resolver: factory.npm_version_resolver()?.clone(),
+    progress_bar: factory.text_only_progress_bar().clone(),
     permissions_container: factory.root_permissions_container()?.clone(),
     main_module_graph_container: factory
       .main_module_graph_container()
@@ -533,8 +657,8 @@ async fn dep_manager_args(
 }
 
 mod filter {
-  use deno_core::anyhow::anyhow;
   use deno_core::anyhow::Context;
+  use deno_core::anyhow::anyhow;
   use deno_core::error::AnyError;
   use deno_semver::VersionReq;
 

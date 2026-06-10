@@ -1,8 +1,8 @@
-# Copyright 2018-2025 the Deno authors. MIT license.
+# Copyright 2018-2026 the Deno authors. MIT license.
 
 [package]
 name = "deno_os"
-version = "0.23.0"
+version = "0.67.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,18 +18,11 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
-deno_telemetry.workspace = true
+deno_signals.workspace = true
 libc.workspace = true
 netif.workspace = true
-once_cell.workspace = true
-serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "sysinfoapi", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
-ntapi = "0.4.0"
-
-[target.'cfg(unix)'.dependencies]
-signal-hook = "0.3.17"
-signal-hook-registry = "1.4.2"
+windows-sys = { workspace = true, features = ["Wdk_System_SystemServices", "Win32_Foundation", "Win32_Networking_WinSock", "Win32_System_ProcessStatus", "Win32_System_SystemInformation", "Win32_System_Threading", "Win32_System_Time"] }

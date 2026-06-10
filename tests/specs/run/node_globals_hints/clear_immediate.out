@@ -1,8 +1,0 @@
-error: Uncaught (in promise) ReferenceError: clearImmediate is not defined
-clearImmediate;
-^
-    at [WILDCARD]clear_immediate.js:1:1
-
-    info: clearImmediate is not available in the global scope in Deno.
-    hint: Import it explicitly with import { clearImmediate } from "node:timers";,
-          or run again with --unstable-node-globals flag to add this global.

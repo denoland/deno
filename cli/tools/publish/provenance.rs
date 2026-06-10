@@ -1,12 +1,16 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::env;
 
+use aws_lc_rs::rand::SystemRandom;
+use aws_lc_rs::signature::EcdsaKeyPair;
+use aws_lc_rs::signature::KeyPair;
+use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::prelude::BASE64_STANDARD;
-use base64::Engine as _;
 use deno_core::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -15,15 +19,12 @@ use http_body_util::BodyExt;
 use once_cell::sync::Lazy;
 use p256::elliptic_curve;
 use p256::pkcs8::AssociatedOid;
-use ring::rand::SystemRandom;
-use ring::signature::EcdsaKeyPair;
-use ring::signature::KeyPair;
 use serde::Deserialize;
 use serde::Serialize;
 use sha2::Digest;
+use spki::der::EncodePem;
 use spki::der::asn1;
 use spki::der::pem::LineEnding;
-use spki::der::EncodePem;
 
 use super::auth::gha_oidc_token;
 use super::auth::is_gha;
@@ -159,20 +160,39 @@ struct Predicate {
 }
 
 impl Predicate {
-  pub fn new_github_actions() -> Self {
-    let repo =
-      std::env::var("GITHUB_REPOSITORY").expect("GITHUB_REPOSITORY not set");
+  pub fn new_github_actions() -> Result<Self, AnyError> {
+    let repo = std::env::var("GITHUB_REPOSITORY").map_err(|_| {
+      anyhow!("GITHUB_REPOSITORY environment variable is not set")
+    })?;
     let rel_ref = std::env::var("GITHUB_WORKFLOW_REF")
       .unwrap_or_default()
       .replace(&format!("{}/", &repo), "");
 
-    let delimn = rel_ref.find('@').unwrap();
-    let (workflow_path, mut workflow_ref) = rel_ref.split_at(delimn);
-    workflow_ref = &workflow_ref[1..];
+    let (workflow_path, workflow_ref) = if let Some(delimn) = rel_ref.find('@')
+    {
+      let (path, ref_) = rel_ref.split_at(delimn);
+      (path, &ref_[1..])
+    } else {
+      (rel_ref.as_str(), "")
+    };
 
-    let server_url = std::env::var("GITHUB_SERVER_URL").unwrap();
+    let server_url = std::env::var("GITHUB_SERVER_URL").map_err(|_| {
+      anyhow!("GITHUB_SERVER_URL environment variable is not set")
+    })?;
+    let github_ref = std::env::var("GITHUB_REF")
+      .map_err(|_| anyhow!("GITHUB_REF environment variable is not set"))?;
+    let github_sha = std::env::var("GITHUB_SHA")
+      .map_err(|_| anyhow!("GITHUB_SHA environment variable is not set"))?;
+    let runner_env = std::env::var("RUNNER_ENVIRONMENT").map_err(|_| {
+      anyhow!("RUNNER_ENVIRONMENT environment variable is not set")
+    })?;
+    let run_id = std::env::var("GITHUB_RUN_ID")
+      .map_err(|_| anyhow!("GITHUB_RUN_ID environment variable is not set"))?;
+    let run_attempt = std::env::var("GITHUB_RUN_ATTEMPT").map_err(|_| {
+      anyhow!("GITHUB_RUN_ATTEMPT environment variable is not set")
+    })?;
 
-    Self {
+    Ok(Self {
       build_definition: BuildDefinition {
         build_type: GITHUB_BUILD_TYPE,
         external_parameters: ExternalParameters {
@@ -192,36 +212,24 @@ impl Predicate {
           },
         },
         resolved_dependencies: [ResourceDescriptor {
-          uri: format!(
-            "git+{}/{}@{}",
-            server_url,
-            &repo,
-            std::env::var("GITHUB_REF").unwrap()
-          ),
+          uri: format!("git+{}/{}@{}", server_url, &repo, github_ref,),
           digest: Some(GhaResourceDigest {
-            git_commit: std::env::var("GITHUB_SHA").unwrap(),
+            git_commit: github_sha,
           }),
         }],
       },
       run_details: RunDetails {
         builder: Builder {
-          id: format!(
-            "{}/{}",
-            &GITHUB_BUILDER_ID_PREFIX,
-            std::env::var("RUNNER_ENVIRONMENT").unwrap()
-          ),
+          id: format!("{}/{}", &GITHUB_BUILDER_ID_PREFIX, runner_env),
         },
         metadata: Metadata {
           invocation_id: format!(
             "{}/{}/actions/runs/{}/attempts/{}",
-            server_url,
-            repo,
-            std::env::var("GITHUB_RUN_ID").unwrap(),
-            std::env::var("GITHUB_RUN_ATTEMPT").unwrap()
+            server_url, repo, run_id, run_attempt,
           ),
         },
       },
-    }
+    })
   }
 }
 
@@ -236,13 +244,13 @@ struct ProvenanceAttestation {
 }
 
 impl ProvenanceAttestation {
-  pub fn new_github_actions(subjects: Vec<Subject>) -> Self {
-    Self {
+  pub fn new_github_actions(subjects: Vec<Subject>) -> Result<Self, AnyError> {
+    Ok(Self {
       _type: INTOTO_STATEMENT_TYPE,
       subject: subjects,
       predicate_type: SLSA_PREDICATE_TYPE,
-      predicate: Predicate::new_github_actions(),
-    }
+      predicate: Predicate::new_github_actions()?,
+    })
   }
 }
 
@@ -309,7 +317,7 @@ pub async fn generate_provenance(
     );
   };
 
-  let slsa = ProvenanceAttestation::new_github_actions(subjects);
+  let slsa = ProvenanceAttestation::new_github_actions(subjects)?;
 
   let attestation = serde_json::to_string(&slsa)?;
   let bundle = attest(http_client, &attestation, INTOTO_PAYLOAD_TYPE).await?;
@@ -326,7 +334,7 @@ pub async fn attest(
   let pae = pre_auth_encoding(type_, data);
 
   let signer = FulcioSigner::new(http_client)?;
-  let (signature, key_material) = signer.sign(&pae).await?;
+  let (signature, key_material) = Box::pin(signer.sign(&pae)).await?;
 
   let content = SignatureBundle {
     case: "dsseSignature",
@@ -343,7 +351,10 @@ pub async fn attest(
     testify(http_client, &content, &key_material.certificate).await?;
 
   // First log entry is the one we're interested in
-  let (_, log_entry) = transparency_logs.iter().next().unwrap();
+  let (_, log_entry) = transparency_logs
+    .iter()
+    .next()
+    .ok_or_else(|| anyhow!("Rekor transparency log returned no entries"))?;
 
   let bundle = ProvenanceBundle {
     media_type: "application/vnd.in-toto+json",
@@ -371,8 +382,8 @@ static DEFAULT_FULCIO_URL: Lazy<String> = Lazy::new(|| {
     .unwrap_or_else(|_| "https://fulcio.sigstore.dev".to_string())
 });
 
-static ALGORITHM: &ring::signature::EcdsaSigningAlgorithm =
-  &ring::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
+static ALGORITHM: &aws_lc_rs::signature::EcdsaSigningAlgorithm =
+  &aws_lc_rs::signature::ECDSA_P256_SHA256_ASN1_SIGNING;
 
 struct KeyMaterial {
   pub _case: &'static str,
@@ -437,7 +448,7 @@ impl<'a> FulcioSigner<'a> {
     let rng = SystemRandom::new();
     let document = EcdsaKeyPair::generate_pkcs8(ALGORITHM, &rng)?;
     let ephemeral_signer =
-      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref(), &rng)?;
+      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref())?;
 
     Ok(Self {
       ephemeral_signer,
@@ -449,7 +460,7 @@ impl<'a> FulcioSigner<'a> {
   pub async fn sign(
     self,
     data: &[u8],
-  ) -> Result<(ring::signature::Signature, KeyMaterial), AnyError> {
+  ) -> Result<(aws_lc_rs::signature::Signature, KeyMaterial), AnyError> {
     // Request token from GitHub Actions for audience "sigstore"
     let token = self.gha_request_token("sigstore").await?;
     // Extract the subject from the token
@@ -471,9 +482,8 @@ impl<'a> FulcioSigner<'a> {
     let pem = spki.to_pem(LineEnding::LF)?;
 
     // Create signing certificate
-    let certificates = self
-      .create_signing_certificate(&token, pem, challenge)
-      .await?;
+    let certificates =
+      Box::pin(self.create_signing_certificate(&token, pem, challenge)).await?;
 
     let signature = self.ephemeral_signer.sign(&self.rng, data)?;
 
@@ -490,7 +500,7 @@ impl<'a> FulcioSigner<'a> {
     &self,
     token: &str,
     public_key: String,
-    challenge: ring::signature::Signature,
+    challenge: aws_lc_rs::signature::Signature,
   ) -> Result<Vec<String>, AnyError> {
     let url = format!("{}/api/v2/signingCert", *DEFAULT_FULCIO_URL);
     let request_body = CreateSigningCertificateRequest {
@@ -582,7 +592,7 @@ static DEFAULT_REKOR_URL: Lazy<String> = Lazy::new(|| {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "useful for debugging")]
   #[serde(rename = "logID")]
   pub log_id: String,
   pub log_index: u64,
@@ -713,25 +723,30 @@ mod tests {
   use super::Subject;
   use super::SubjectDigest;
 
+  // TODO(dsherret): use sys_traits in the implementation so that this can
+  // be properly tested without polluting the process environment
   #[test]
   fn slsa_github_actions() {
     // Set environment variable
     if env::var("GITHUB_ACTIONS").is_err() {
-      env::set_var("CI", "true");
-      env::set_var("GITHUB_ACTIONS", "true");
-      env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
-      env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
-      env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
-      env::set_var("GITHUB_SERVER_URL", "https://github.com");
-      env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
-      env::set_var("GITHUB_SHA", "lol");
-      env::set_var("GITHUB_RUN_ID", "1");
-      env::set_var("GITHUB_RUN_ATTEMPT", "1");
-      env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
-      env::set_var(
-        "GITHUB_WORKFLOW_REF",
-        "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1",
-      );
+      // SAFETY: test code
+      unsafe {
+        env::set_var("CI", "true");
+        env::set_var("GITHUB_ACTIONS", "true");
+        env::set_var("ACTIONS_ID_TOKEN_REQUEST_URL", "https://example.com");
+        env::set_var("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "dummy");
+        env::set_var("GITHUB_REPOSITORY", "littledivy/deno_sdl2");
+        env::set_var("GITHUB_SERVER_URL", "https://github.com");
+        env::set_var("GITHUB_REF", "refs/tags/sdl2@0.0.1");
+        env::set_var("GITHUB_SHA", "lol");
+        env::set_var("GITHUB_RUN_ID", "1");
+        env::set_var("GITHUB_RUN_ATTEMPT", "1");
+        env::set_var("RUNNER_ENVIRONMENT", "github-hosted");
+        env::set_var(
+          "GITHUB_WORKFLOW_REF",
+          "littledivy/deno_sdl2@refs/tags/sdl2@0.0.1",
+        )
+      }
     }
 
     let subject = Subject {
@@ -740,7 +755,8 @@ mod tests {
         sha256: "yourmom".to_string(),
       },
     };
-    let slsa = ProvenanceAttestation::new_github_actions(vec![subject]);
+    let slsa =
+      ProvenanceAttestation::new_github_actions(vec![subject]).unwrap();
     assert_eq!(
       slsa.subject.len(),
       1,

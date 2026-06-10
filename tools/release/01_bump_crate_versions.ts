@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, GitLogOutput, semver } from "./deps.ts";
 
@@ -10,13 +10,21 @@ const denoRtCrate = workspace.getDenoRtCrate();
 const denoLibCrate = workspace.getDenoLibCrate();
 const originalCliVersion = cliCrate.version;
 
-if (Deno.args.some((a) => a === "--rc")) {
-  const cliVersion = semver.parse(cliCrate.version)!;
+const prereleaseKind = (["--rc", "--alpha", "--beta"] as const).find((a) =>
+  Deno.args.includes(a)
+);
+if (prereleaseKind) {
+  const tag = prereleaseKind.slice(2); // "rc", "alpha", or "beta"
+  let cliVersion = semver.parse(cliCrate.version)!;
 
-  if (cliVersion.prerelease[0] != "rc") {
-    cliVersion.increment("minor");
+  if (!cliVersion.prerelease?.length) {
+    // Transitioning from stable (e.g. 2.7.0 -> 2.8.0-alpha.0)
+    cliVersion = semver.increment(cliVersion, "minor");
+  } else if (cliVersion.prerelease[0] != tag) {
+    // Transitioning between prerelease kinds (e.g. 3.0.0-alpha.12 -> 3.0.0-beta.0)
+    cliVersion = { ...cliVersion, prerelease: undefined };
   }
-  cliVersion.increment("pre", "rc");
+  cliVersion = increment(cliVersion, "prerelease", { prerelease: tag });
 
   const version = cliVersion.toString();
 
@@ -72,9 +80,14 @@ try {
 async function updateReleasesMd() {
   const gitLog = await getGitLog();
   const releasesMdFile = workspace.getReleasesMdFile();
+  const cliVersion = semver.parse(cliCrate.version)!;
+  const bodyPreText = releaseHasBlogPost()
+    ? `Read more: http://deno.com/blog/v${cliVersion.major}.${cliVersion.minor}`
+    : undefined;
   releasesMdFile.updateWithGitLog({
     version: cliCrate.version,
     gitLog,
+    bodyPreText,
   });
 
   await workspace.runFormatter();
@@ -123,7 +136,7 @@ async function getGitLog() {
 
 async function bumpCiCacheVersion() {
   const generateScript = workspace.repo.folderPath.join(
-    ".github/workflows/ci.generate.ts",
+    ".github/workflows/ci.ts",
   );
   const fileText = generateScript.readTextSync();
   const cacheVersionRegex = /const cacheVersion = ([0-9]+);/;
@@ -151,4 +164,12 @@ async function assertDenoBinaryVersion(expectedVersion: string) {
     $.logError("Error: Expected", expectedVersion, "but found", text);
     Deno.exit(1);
   }
+}
+
+function releaseHasBlogPost() {
+  const pastVersion = semver.parse(originalCliVersion)!;
+  const newVersion = semver.parse(cliCrate.version)!;
+
+  return pastVersion.major !== newVersion.major ||
+    pastVersion.minor !== newVersion.minor;
 }

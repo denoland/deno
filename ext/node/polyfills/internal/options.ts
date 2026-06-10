@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -19,28 +19,48 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-import { getOptions } from "ext:deno_node/internal_binding/node_options.ts";
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
+const { getExecArgvOptions, getOptions } = core.loadExtScript(
+  "ext:deno_node/internal_binding/node_options.ts",
+);
 const {
   MapPrototypeGet,
+  SafeMap,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
 } = primordials;
 
-let optionsMap: Map<string, { value: string }>;
+const dummyOptions = new SafeMap<string, { value: string | boolean }>();
 
-function getOptionsFromBinding() {
-  if (!optionsMap) {
-    ({ options: optionsMap } = getOptions());
-  }
-
-  return optionsMap;
+function isWarmupPhase() {
+  return !Deno.build;
 }
 
-export function getOptionValue(optionName: string) {
-  const options = getOptionsFromBinding();
+function getOptionsFromBinding() {
+  // If Deno.build is not defined, this is in warmup phase.
+  if (isWarmupPhase()) {
+    return dummyOptions;
+  }
 
+  return getOptions().options;
+}
+
+function getOptionValue(optionName: string) {
+  return getOptionValueFromMap(getOptionsFromBinding(), optionName);
+}
+
+function getExecArgvOptionValue(optionName: string) {
+  if (isWarmupPhase()) {
+    return undefined;
+  }
+  return getOptionValueFromMap(getExecArgvOptions().options, optionName);
+}
+
+function getOptionValueFromMap(
+  options: Map<string, { value: string | boolean }>,
+  optionName: string,
+) {
   if (StringPrototypeStartsWith(optionName, "--no-")) {
     const option = MapPrototypeGet(
       options,
@@ -52,3 +72,9 @@ export function getOptionValue(optionName: string) {
 
   return MapPrototypeGet(options, optionName)?.value;
 }
+
+return {
+  getExecArgvOptionValue,
+  getOptionValue,
+};
+})();

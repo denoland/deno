@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -7,14 +7,41 @@
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
-/** @category Platform */
+/**
+ * Defines the mapping between event names and their corresponding event types
+ * for the `Window` interface in Deno.
+ *
+ * This interface provides type safety for event handlers by associating event names
+ * with their proper event types.
+ *
+ * @category Platform
+ */
 interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
   "rejectionhandled": PromiseRejectionEvent;
 }
 
-/** @category Platform */
+/**
+ * Represents the global window object in the Deno runtime environment.
+ *
+ * While Deno doesn't have a browser window, this interface mimics browser window
+ * functionality for compatibility with web APIs. It provides access to global
+ * properties and methods such as timers, storage, and event handling.
+ *
+ * @example
+ * ```ts
+ * // Accessing global objects
+ * const localStorage = window.localStorage;
+ *
+ * // Event handling
+ * window.addEventListener("unhandledrejection", (event) => {
+ *   console.log("Unhandled promise rejection:", event.reason);d
+ * });
+ * ```
+ *
+ * @category Platform
+ */
 interface Window extends EventTarget {
   readonly window: Window & typeof globalThis;
   readonly self: Window & typeof globalThis;
@@ -71,7 +98,14 @@ interface Window extends EventTarget {
   ): void;
 }
 
-/** @category Platform */
+/**
+ * Constructor for `Window` objects.
+ *
+ * Note: This constructor cannot be used to create new `Window` instances in Deno.
+ * The global `window` object is pre-defined in the runtime environment.
+ *
+ * @category Platform
+ */
 declare var Window: {
   readonly prototype: Window;
   new (): never;
@@ -84,9 +118,21 @@ declare var Window: {
  * @category Platform
  */
 declare var window: Window & typeof globalThis;
-/** @category Platform */
+
+/**
+ * Reference to the global object itself.
+ * Equivalent to the global `window` object in browser environments.
+ *
+ * @category Platform
+ */
 declare var self: Window & typeof globalThis;
-/** @category Platform */
+
+/**
+ * Indicates whether the current window (context) is closed.
+ * In Deno, this property is primarily for API compatibility with browsers.
+ *
+ * @category Platform
+ */
 declare var closed: boolean;
 
 /**
@@ -112,18 +158,67 @@ declare var closed: boolean;
  */
 declare function close(): void;
 
-/** @category Events */
+/**
+ * Error event handler for the window.
+ * Triggered when an uncaught error occurs in the global scope.
+ *
+ * @example
+ * ```ts
+ * onerror = (event) => {
+ *   console.log(`Error occurred: ${event.message}`);
+ *   return true; // Prevents the default error handling
+ * };
+ * ```
+ *
+ * @category Events
+ */
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
-/** @category Events */
+
+/**
+ * Load event handler for the window.
+ * In Deno, this is primarily for API compatibility with browsers.
+ *
+ * @category Events
+ */
 declare var onload: ((this: Window, ev: Event) => any) | null;
-/** @category Events */
+
+/**
+ * Before unload event handler for the window.
+ * In Deno, this is primarily for API compatibility with browsers.
+ *
+ * @category Events
+ */
 declare var onbeforeunload: ((this: Window, ev: Event) => any) | null;
-/** @category Events */
+
+/**
+ * Unload event handler for the window.
+ * In Deno, this is primarily for API compatibility with browsers.
+ *
+ * @category Events
+ */
 declare var onunload: ((this: Window, ev: Event) => any) | null;
-/** @category Events */
+
+/**
+ * Event handler for unhandled promise rejections.
+ * Triggered when a `Promise` is rejected and no rejection handler is attached to it.
+ *
+ * @example
+ * ```ts
+ * onunhandledrejection = (event) => {
+ *   console.log("Unhandled rejection:", event.reason);
+ *   event.preventDefault(); // Prevents the default handling
+ * };
+ *
+ * // This will trigger the event handler
+ * Promise.reject(new Error("Example error"));
+ * ```
+ *
+ * @category Events
+ */
 declare var onunhandledrejection:
   | ((this: Window, ev: PromiseRejectionEvent) => any)
   | null;
+
 /**
  * Deno's `localStorage` API provides a way to store key-value pairs in a
  * web-like environment, similar to the Web Storage API found in browsers.
@@ -242,22 +337,60 @@ declare var sessionStorage: Storage;
  */
 declare var caches: CacheStorage;
 
-/** @category Platform */
+/**
+ * Provides information about the Deno runtime environment and the system
+ * on which it's running. Similar to the browser `Navigator` object but
+ * adapted for the Deno context.
+ *
+ * @example
+ * ```ts
+ * // Check available CPU cores
+ * console.log(`Available CPU cores: ${navigator.hardwareConcurrency}`);
+ *
+ * // Check user agent
+ * console.log(`User agent: ${navigator.userAgent}`);
+ *
+ * // Check language settings
+ * console.log(`Language: ${navigator.language}`);
+ * ```
+ *
+ * @category Platform
+ */
 interface Navigator {
   readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;
   readonly languages: string[];
+  readonly platform: string;
 }
 
-/** @category Platform */
+/**
+ * Constructor for `Navigator` objects.
+ *
+ * Note: This constructor cannot be used to create new `Navigator` instances in Deno.
+ * The global `navigator` object is pre-defined in the runtime environment.
+ *
+ * @category Platform
+ */
 declare var Navigator: {
   readonly prototype: Navigator;
   new (): never;
 };
 
-/** @category Platform */
+/**
+ * Provides access to the Deno runtime's `Navigator` interface, which contains
+ * information about the environment in which the script is running.
+ *
+ * @example
+ * ```ts
+ * // Log information about the runtime environment
+ * console.log(`Hardware concurrency: ${navigator.hardwareConcurrency}`);
+ * console.log(`User agent: ${navigator.userAgent}`);
+ * ```
+ *
+ * @category Platform
+ */
 declare var navigator: Navigator;
 
 /**
@@ -344,7 +477,11 @@ declare function addEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | AddEventListenerOptions,
 ): void;
-/** @category Events */
+/** Registers an event listener for an arbitrary event `type` on the global
+ * scope.
+ *
+ * @category Events
+ */
 declare function addEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -368,7 +505,11 @@ declare function removeEventListener<
   listener: (this: Window, ev: WindowEventMap[K]) => any,
   options?: boolean | EventListenerOptions,
 ): void;
-/** @category Events */
+/** Removes a previously registered event listener for an arbitrary event
+ * `type` from the global scope.
+ *
+ * @category Events
+ */
 declare function removeEventListener(
   type: string,
   listener: EventListenerOrEventListenerObject,
@@ -460,8 +601,17 @@ declare var Location: {
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
-/** @category Platform */
+/** The {@linkcode Location} object describing the absolute URL of the main
+ * module, available when the program is started with the `--location` flag.
+ * Accessing it without `--location` throws.
+ *
+ * @category Platform */
 declare var location: Location;
 
-/** @category Platform */
+/** Gets or sets the name of the global scope's browsing context.
+ *
+ * Provided for web compatibility; Deno has no browsing context, so this is an
+ * empty string by default.
+ *
+ * @category Platform */
 declare var name: string;

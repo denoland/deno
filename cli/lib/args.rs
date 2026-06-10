@@ -1,24 +1,28 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::BufReader;
 use std::io::Cursor;
+use std::path::Path;
 use std::path::PathBuf;
 
+use base64::prelude::BASE64_STANDARD;
+use base64::prelude::Engine;
 use deno_npm::resolution::PackageIdNotFoundError;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm_installer::process_state::NpmProcessState;
 use deno_npm_installer::process_state::NpmProcessStateFromEnvVarSys;
 use deno_npm_installer::process_state::NpmProcessStateKind;
+use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
-use deno_runtime::UNSTABLE_ENV_VAR_NAMES;
 use deno_semver::npm::NpmPackageReqReference;
 use serde::Deserialize;
 use serde::Serialize;
+use sys_traits::EnvVar;
 use thiserror::Error;
 
 pub fn npm_pkg_req_ref_to_binary_command(
@@ -27,12 +31,12 @@ pub fn npm_pkg_req_ref_to_binary_command(
   req_ref.sub_path().unwrap_or_else(|| &req_ref.req().name)
 }
 
-pub fn has_trace_permissions_enabled() -> bool {
-  has_flag_env_var("DENO_TRACE_PERMISSIONS")
+pub fn has_trace_permissions_enabled(sys: &impl EnvVar) -> bool {
+  has_flag_env_var(sys, "DENO_TRACE_PERMISSIONS")
 }
 
-pub fn has_flag_env_var(name: &str) -> bool {
-  match std::env::var_os(name) {
+pub fn has_flag_env_var(sys: &impl EnvVar, name: &str) -> bool {
+  match sys.env_var_os(name) {
     Some(value) => value == "1",
     None => false,
   }
@@ -42,9 +46,18 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub enum CaData {
   /// The string is a file path
   File(String),
-  /// This variant is not exposed as an option in the CLI, it is used internally
-  /// for standalone binaries.
+  /// The string holds the actual certificate
   Bytes(Vec<u8>),
+}
+
+impl CaData {
+  pub fn parse(input: String) -> Option<Self> {
+    if let Some(x) = input.strip_prefix("base64:") {
+      Some(CaData::Bytes(BASE64_STANDARD.decode(x).ok()?))
+    } else {
+      Some(CaData::File(input))
+    }
+  }
 }
 
 #[derive(Error, Debug, Clone, deno_error::JsError)]
@@ -62,9 +75,18 @@ pub enum RootCertStoreLoadError {
   FailedNativeCerts(String),
 }
 
+fn load_pem_certs(
+  path: &Path,
+) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>, std::io::Error> {
+  let file: std::fs::File = std::fs::File::open(path)?;
+  let mut reader: BufReader<std::fs::File> = BufReader::new(file);
+  rustls_pemfile::certs(&mut reader).collect()
+}
+
 /// Create and populate a root cert store based on the passed options and
 /// environment.
 pub fn get_root_cert_store(
+  sys: &impl EnvVar,
   maybe_root_path: Option<PathBuf>,
   maybe_ca_stores: Option<Vec<String>>,
   maybe_ca_data: Option<CaData>,
@@ -72,7 +94,7 @@ pub fn get_root_cert_store(
   let mut root_cert_store = RootCertStore::empty();
   let ca_stores: Vec<String> = maybe_ca_stores
     .or_else(|| {
-      let env_ca_store = std::env::var("DENO_TLS_CA_STORE").ok()?;
+      let env_ca_store = sys.env_var("DENO_TLS_CA_STORE").ok()?;
       Some(
         env_ca_store
           .split(',')
@@ -114,8 +136,8 @@ pub fn get_root_cert_store(
     }
   }
 
-  let ca_data =
-    maybe_ca_data.or_else(|| std::env::var("DENO_CERT").ok().map(CaData::File));
+  let ca_data = maybe_ca_data
+    .or_else(|| sys.env_var("DENO_CERT").ok().and_then(CaData::parse));
   if let Some(ca_data) = ca_data {
     let result = match ca_data {
       CaData::File(ca_file) => {
@@ -146,6 +168,26 @@ pub fn get_root_cert_store(
     }
   }
 
+  if let Ok(extra_ca_certs_path) = sys.env_var("NODE_EXTRA_CA_CERTS")
+    && !extra_ca_certs_path.is_empty()
+  {
+    let path: PathBuf = maybe_root_path.as_ref().map_or_else(
+      || PathBuf::from(&extra_ca_certs_path),
+      |root| root.join(&extra_ca_certs_path),
+    );
+    match load_pem_certs(&path) {
+      Ok(certs) => {
+        root_cert_store.add_parsable_certificates(certs);
+      }
+      Err(e) => log::warn!(
+        "{}",
+        colors::yellow(&format!(
+          "Warning: Ignoring extra certs from \"{extra_ca_certs_path}\", load failed: {e}"
+        ))
+      ),
+    }
+  }
+
   Ok(root_cert_store)
 }
 
@@ -158,8 +200,9 @@ pub fn npm_process_state(
   NPM_PROCESS_STATE
     .get_or_init(|| {
       use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
-      let fd_or_path = std::env::var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
-      std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
+      let fd_or_path = sys.env_var_os(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME)?;
+
+      sys.env_remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
       if fd_or_path.is_empty() {
         return None;
       }
@@ -190,42 +233,58 @@ pub fn resolve_npm_resolution_snapshot(
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable
-  pub subdomain_wildcards: bool,
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
   pub lazy_dynamic_imports: bool,
+  pub raw_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
+  pub tsgo: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
 
 impl UnstableConfig {
-  pub fn fill_with_env(&mut self) {
-    fn maybe_set(value: &mut bool, var_name: &str) {
-      if !*value && has_flag_env_var(var_name) {
+  pub fn fill_with_env(&mut self, sys: &impl EnvVar) {
+    fn maybe_set(sys: &impl EnvVar, value: &mut bool, var_name: &str) {
+      if !*value && has_flag_env_var(sys, var_name) {
         *value = true;
       }
     }
 
     maybe_set(
-      &mut self.subdomain_wildcards,
-      UNSTABLE_ENV_VAR_NAMES.subdomain_wildcards,
-    );
-    maybe_set(
+      sys,
       &mut self.bare_node_builtins,
       UNSTABLE_ENV_VAR_NAMES.bare_node_builtins,
     );
     maybe_set(
+      sys,
       &mut self.lazy_dynamic_imports,
       UNSTABLE_ENV_VAR_NAMES.lazy_dynamic_imports,
     );
     maybe_set(
+      sys,
       &mut self.npm_lazy_caching,
       UNSTABLE_ENV_VAR_NAMES.npm_lazy_caching,
     );
+    maybe_set(sys, &mut self.tsgo, UNSTABLE_ENV_VAR_NAMES.tsgo);
     maybe_set(
+      sys,
+      &mut self.raw_imports,
+      UNSTABLE_ENV_VAR_NAMES.raw_imports,
+    );
+    maybe_set(
+      sys,
       &mut self.sloppy_imports,
       UNSTABLE_ENV_VAR_NAMES.sloppy_imports,
     );
+  }
+
+  pub fn enable_node_compat(&mut self) {
+    self.bare_node_builtins = true;
+    self.sloppy_imports = true;
+    self.detect_cjs = true;
+    if !self.features.iter().any(|f| f == "node-globals") {
+      self.features.push("node-globals".to_string());
+    }
   }
 }

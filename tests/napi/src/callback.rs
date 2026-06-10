@@ -1,12 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ptr;
 
+use Status::napi_pending_exception;
 use napi_sys::ValueType::napi_function;
 use napi_sys::ValueType::napi_object;
 use napi_sys::ValueType::napi_undefined;
 use napi_sys::*;
-use Status::napi_pending_exception;
 
 use crate::assert_napi_ok;
 use crate::napi_get_callback_info;

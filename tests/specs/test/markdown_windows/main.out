@@ -1,6 +1,6 @@
-Check [WILDCARD]/main.md$11-14.js
-Check [WILDCARD]/main.md$17-20.ts
-Check [WILDCARD]/main.md$29-32.ts
+Check [WILDCARD]main.md$11-14.js
+Check [WILDCARD]main.md$17-20.ts
+Check [WILDCARD]main.md$29-32.ts
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
     const a: string = 42;
           ^

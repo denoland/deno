@@ -1,8 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -10,7 +11,6 @@ use std::rc::Rc;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::KillSignal;
@@ -18,8 +18,6 @@ use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use deno_task_shell::ShellPipeReader;
 use deno_task_shell::ShellPipeWriter;
-use lazy_regex::Lazy;
-use regex::Regex;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
@@ -27,20 +25,103 @@ use tokio_util::sync::CancellationToken;
 use crate::node::CliNodeResolver;
 use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliNpmResolver;
+use crate::util::fs::canonicalize_path;
 
 pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
   let additional_args = argv
     .iter()
-    // surround all the additional arguments in double quotes
-    // and sanitize any command substitution
-    .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
+    // Wrap each argument in single quotes so the shell preserves the
+    // content literally (including backslashes, $, `, etc.). For an
+    // argument containing a single quote, splice in a double-quoted `'`
+    // using the POSIX idiom `'foo'"'"'bar'`.
+    .map(|a| format!("'{}'", a.replace('\'', "'\"'\"'")))
     .collect::<Vec<_>>()
     .join(" ");
+
   let script = format!("{script} {additional_args}");
   script.trim().to_owned()
 }
 
 pub struct TaskStdio(Option<ShellPipeReader>, ShellPipeWriter);
+
+pub struct PrefixedWriter<W: std::io::Write> {
+  prefix: Vec<u8>,
+  inner: W,
+  line_buf: Vec<u8>,
+  at_line_start: bool,
+}
+
+impl<W: std::io::Write> PrefixedWriter<W> {
+  pub fn new(prefix: String, inner: W) -> Self {
+    Self {
+      prefix: prefix.into_bytes(),
+      inner,
+      line_buf: Vec::new(),
+      at_line_start: true,
+    }
+  }
+}
+
+impl<W: std::io::Write> std::io::Write for PrefixedWriter<W> {
+  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    let mut rest = buf;
+    while !rest.is_empty() {
+      if self.at_line_start {
+        self.line_buf.extend_from_slice(&self.prefix);
+        self.at_line_start = false;
+      }
+      match rest.iter().position(|&b| b == b'\n') {
+        Some(pos) => {
+          self.line_buf.extend_from_slice(&rest[..pos + 1]);
+          self.inner.write_all(&self.line_buf)?;
+          self.line_buf.clear();
+          self.at_line_start = true;
+          rest = &rest[pos + 1..];
+        }
+        None => {
+          self.line_buf.extend_from_slice(rest);
+          break;
+        }
+      }
+    }
+    Ok(buf.len())
+  }
+
+  fn flush(&mut self) -> std::io::Result<()> {
+    if !self.line_buf.is_empty() {
+      self.inner.write_all(&self.line_buf)?;
+      self.line_buf.clear();
+      self.at_line_start = true;
+    }
+    self.inner.flush()
+  }
+}
+
+pub fn make_prefixed_task_io(prefix: String) -> (TaskIo, Vec<JoinHandle<()>>) {
+  let (out_r, out_w) = deno_task_shell::pipe();
+  let (err_r, err_w) = deno_task_shell::pipe();
+
+  let out_prefix = prefix.clone();
+  let out_handle = tokio::task::spawn_blocking(move || {
+    let mut writer = PrefixedWriter::new(out_prefix, std::io::stdout());
+    let _ = out_r.pipe_to(&mut writer);
+    let _ = writer.flush();
+  });
+
+  let err_handle = tokio::task::spawn_blocking(move || {
+    let mut writer = PrefixedWriter::new(prefix, std::io::stderr());
+    let _ = err_r.pipe_to(&mut writer);
+    let _ = writer.flush();
+  });
+
+  (
+    TaskIo {
+      stdout: TaskStdio(None, out_w),
+      stderr: TaskStdio(None, err_w),
+    },
+    vec![out_handle, err_handle],
+  )
+}
 
 impl TaskStdio {
   pub fn stdout() -> Self {
@@ -79,7 +160,9 @@ pub struct RunTaskOptions<'a> {
   pub env_vars: HashMap<OsString, OsString>,
   pub argv: &'a [String],
   pub custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
-  pub root_node_modules_dir: Option<&'a Path>,
+  /// Directories to prepend to `PATH` for the duration of the task,
+  /// ordered closest-first (closest entry ends up first in `PATH`).
+  pub node_modules_bin_dirs: &'a [PathBuf],
   pub stdio: Option<TaskIo>,
   pub kill_signal: KillSignal,
 }
@@ -93,13 +176,18 @@ pub struct TaskResult {
 }
 
 pub async fn run_task(
-  opts: RunTaskOptions<'_>,
+  mut opts: RunTaskOptions<'_>,
 ) -> Result<TaskResult, AnyError> {
   let script = get_script_with_args(opts.script, opts.argv);
   let seq_list = deno_task_shell::parser::parse(&script)
     .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
   let env_vars =
-    prepare_env_vars(opts.env_vars, opts.init_cwd, opts.root_node_modules_dir);
+    prepare_env_vars(opts.env_vars, opts.init_cwd, opts.node_modules_bin_dirs);
+  if !opts.custom_commands.contains_key("deno") {
+    opts
+      .custom_commands
+      .insert("deno".to_string(), Rc::new(DenoCommand::default()));
+  }
   let state = deno_task_shell::ShellState::new(
     env_vars,
     opts.cwd,
@@ -153,7 +241,7 @@ pub async fn run_task(
 fn prepare_env_vars(
   mut env_vars: HashMap<OsString, OsString>,
   initial_cwd: &Path,
-  node_modules_dir: Option<&Path>,
+  node_modules_bin_dirs: &[PathBuf],
 ) -> HashMap<OsString, OsString> {
   const INIT_CWD_NAME: &str = "INIT_CWD";
   if !env_vars.contains_key(OsStr::new(INIT_CWD_NAME)) {
@@ -171,11 +259,9 @@ fn prepare_env_vars(
       crate::npm::get_npm_config_user_agent().into(),
     );
   }
-  if let Some(node_modules_dir) = node_modules_dir {
-    prepend_to_path(
-      &mut env_vars,
-      node_modules_dir.join(".bin").into_os_string(),
-    );
+  // Prepend in reverse so the closest dir ends up first in `PATH`.
+  for bin_dir in node_modules_bin_dirs.iter().rev() {
+    prepend_to_path(&mut env_vars, bin_dir.as_os_str().to_os_string());
   }
   env_vars
 }
@@ -242,7 +328,9 @@ impl ShellCommand for NpmCommand {
       );
       return ExecutableCommand::new(
         "deno".to_string(),
-        std::env::current_exe().unwrap(),
+        std::env::current_exe()
+          .and_then(|p| canonicalize_path(&p))
+          .unwrap(),
       )
       .execute(ShellCommandContext {
         args,
@@ -262,6 +350,28 @@ impl ShellCommand for NpmCommand {
       }
     };
     ExecutableCommand::new("npm".to_string(), npm_path).execute(context)
+  }
+}
+
+pub struct DenoCommand(ExecutableCommand);
+
+impl Default for DenoCommand {
+  fn default() -> Self {
+    Self(ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe()
+        .and_then(|p| canonicalize_path(&p))
+        .unwrap(),
+    ))
+  }
+}
+
+impl ShellCommand for DenoCommand {
+  fn execute(
+    &self,
+    context: ShellCommandContext,
+  ) -> LocalBoxFuture<'static, ExecuteResult> {
+    self.0.execute(context)
   }
 }
 
@@ -290,7 +400,6 @@ impl ShellCommand for NodeCommand {
       "-A".into(),
       "--unstable-bare-node-builtins".into(),
       "--unstable-detect-cjs".into(),
-      "--unstable-node-globals".into(),
       "--unstable-sloppy-imports".into(),
       "--unstable-unsafe-proto".into(),
     ]);
@@ -301,12 +410,17 @@ impl ShellCommand for NodeCommand {
       OsStr::new(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME),
       OsStr::new("1"),
     );
-    ExecutableCommand::new("deno".to_string(), std::env::current_exe().unwrap())
-      .execute(ShellCommandContext {
-        args,
-        state,
-        ..context
-      })
+    ExecutableCommand::new(
+      "deno".to_string(),
+      std::env::current_exe()
+        .and_then(|p| canonicalize_path(&p))
+        .unwrap(),
+    )
+    .execute(ShellCommandContext {
+      args,
+      state,
+      ..context
+    })
   }
 }
 
@@ -324,13 +438,18 @@ impl ShellCommand for NodeGypCommand {
       .resolve_command_path(OsStr::new("node-gyp"))
       .is_err()
     {
-      log::warn!("{} node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)", crate::colors::yellow("Warning"));
+      log::warn!(
+        "{} node-gyp was used in a script, but was not listed as a dependency. Either add it as a dependency or install it globally (e.g. `npm install -g node-gyp`)",
+        crate::colors::yellow("Warning")
+      );
+      Box::pin(std::future::ready(ExecuteResult::from_exit_code(0)))
+    } else {
+      ExecutableCommand::new(
+        "node-gyp".to_string(),
+        "node-gyp".to_string().into(),
+      )
+      .execute(context)
     }
-    ExecutableCommand::new(
-      "node-gyp".to_string(),
-      "node-gyp".to_string().into(),
-    )
-    .execute(context)
   }
 }
 
@@ -342,61 +461,33 @@ impl ShellCommand for NpxCommand {
     mut context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
     if let Some(first_arg) = context.args.first().cloned() {
-      if let Some(command) = context.state.resolve_custom_command(&first_arg) {
-        let context = ShellCommandContext {
-          args: context.args.into_iter().skip(1).collect::<Vec<_>>(),
-          ..context
-        };
-        command.execute(context)
-      } else {
-        // can't find the command, so fallback to running the real npx command
-        let npx_path =
-          match context.state.resolve_command_path(OsStr::new("npx")) {
-            Ok(npx) => npx,
-            Err(err) => {
-              let _ = context.stderr.write_line(&format!("{}", err));
-              return Box::pin(std::future::ready(
-                ExecuteResult::from_exit_code(err.exit_code()),
-              ));
-            }
+      match context.state.resolve_custom_command(&first_arg) {
+        Some(command) => {
+          let context = ShellCommandContext {
+            args: context.args.into_iter().skip(1).collect::<Vec<_>>(),
+            ..context
           };
-        ExecutableCommand::new("npx".to_string(), npx_path).execute(context)
+          command.execute(context)
+        }
+        _ => {
+          // can't find the command, so fallback to running the real npx command
+          let npx_path =
+            match context.state.resolve_command_path(OsStr::new("npx")) {
+              Ok(npx) => npx,
+              Err(err) => {
+                let _ = context.stderr.write_line(&format!("{}", err));
+                return Box::pin(std::future::ready(
+                  ExecuteResult::from_exit_code(err.exit_code()),
+                ));
+              }
+            };
+          ExecutableCommand::new("npx".to_string(), npx_path).execute(context)
+        }
       }
     } else {
       let _ = context.stderr.write_line("npx: missing command");
       Box::pin(std::future::ready(ExecuteResult::from_exit_code(1)))
     }
-  }
-}
-
-#[derive(Clone)]
-struct NpmPackageBinCommand {
-  name: String,
-  npm_package: PackageNv,
-}
-
-impl ShellCommand for NpmPackageBinCommand {
-  fn execute(
-    &self,
-    context: ShellCommandContext,
-  ) -> LocalBoxFuture<'static, ExecuteResult> {
-    let mut args: Vec<OsString> = vec![
-      "run".into(),
-      "-A".into(),
-      if self.npm_package.name == self.name {
-        format!("npm:{}", self.npm_package)
-      } else {
-        format!("npm:{}/{}", self.npm_package, self.name)
-      }
-      .into(),
-    ];
-
-    args.extend(context.args);
-    let executable_command = deno_task_shell::ExecutableCommand::new(
-      "deno".to_string(),
-      std::env::current_exe().unwrap(),
-    );
-    executable_command.execute(ShellCommandContext { args, ..context })
   }
 }
 
@@ -421,7 +512,9 @@ impl ShellCommand for NodeModulesFileRunCommand {
     args.extend(context.args);
     let executable_command = deno_task_shell::ExecutableCommand::new(
       "deno".to_string(),
-      std::env::current_exe().unwrap(),
+      std::env::current_exe()
+        .and_then(|p| canonicalize_path(&p))
+        .unwrap(),
     );
     // set this environment variable so that the launched process knows the npm command name
     context.state.apply_env_var(
@@ -433,130 +526,90 @@ impl ShellCommand for NodeModulesFileRunCommand {
 }
 
 pub fn resolve_custom_commands(
-  npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
+  npm_resolver: &CliNpmResolver,
+  bin_dirs: &[PathBuf],
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut commands = match npm_resolver {
-    CliNpmResolver::Byonm(npm_resolver) => {
-      let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
-      resolve_npm_commands_from_bin_dir(node_modules_dir)
+    CliNpmResolver::Byonm(_) => {
+      // Walk the bin dirs in order (closest first) and merge; closest wins.
+      let mut commands: HashMap<String, Rc<dyn ShellCommand>> = HashMap::new();
+      for bin_dir in bin_dirs {
+        for (name, cmd) in
+          resolve_npm_commands_from_bin_dir(bin_dir, node_resolver)
+        {
+          commands.entry(name).or_insert(cmd);
+        }
+      }
+      commands
     }
     CliNpmResolver::Managed(npm_resolver) => {
-      resolve_managed_npm_commands(npm_resolver, node_resolver)?
+      resolve_managed_npm_commands(node_resolver, npm_resolver)?
     }
   };
   commands.insert("npm".to_string(), Rc::new(NpmCommand));
   Ok(commands)
 }
 
+/// Builds the list of `node_modules/.bin` directories to consult for a task.
+///
+/// For BYONM this walks up the filesystem from `cwd` collecting every
+/// `<ancestor>/node_modules/.bin` directory (matching how Node, npm, and pnpm
+/// resolve bin commands). For the managed npm resolver there is only ever a
+/// single `node_modules/.bin`.
+pub fn resolve_task_node_modules_bin_dirs(
+  npm_resolver: &CliNpmResolver,
+  cwd: &Path,
+) -> Vec<PathBuf> {
+  match npm_resolver {
+    CliNpmResolver::Byonm(_) => cwd
+      .ancestors()
+      .map(|dir| dir.join("node_modules").join(".bin"))
+      .collect(),
+    CliNpmResolver::Managed(npm_resolver) => npm_resolver
+      .root_node_modules_path()
+      .map(|p| vec![p.join(".bin")])
+      .unwrap_or_default(),
+  }
+}
+
 pub fn resolve_npm_commands_from_bin_dir(
-  node_modules_dir: &Path,
+  bin_dir: &Path,
+  node_resolver: &CliNodeResolver,
 ) -> HashMap<String, Rc<dyn ShellCommand>> {
-  let mut result = HashMap::<String, Rc<dyn ShellCommand>>::new();
-  let bin_dir = node_modules_dir.join(".bin");
-  log::debug!("Resolving commands in '{}'.", bin_dir.display());
-  match std::fs::read_dir(&bin_dir) {
-    Ok(entries) => {
-      for entry in entries {
-        let Ok(entry) = entry else {
-          continue;
-        };
-        if let Some(command) = resolve_bin_dir_entry_command(entry) {
-          result.insert(command.command_name.clone(), Rc::new(command));
-        }
-      }
-    }
-    Err(err) => {
-      log::debug!("Failed read_dir for '{}': {:#}", bin_dir.display(), err);
-    }
-  }
-  result
-}
-
-fn resolve_bin_dir_entry_command(
-  entry: std::fs::DirEntry,
-) -> Option<NodeModulesFileRunCommand> {
-  if entry.path().extension().is_some() {
-    return None; // only look at files without extensions (even on Windows)
-  }
-  let file_type = entry.file_type().ok()?;
-  let path = if file_type.is_file() {
-    entry.path()
-  } else if file_type.is_symlink() {
-    entry.path().canonicalize().ok()?
-  } else {
-    return None;
-  };
-  let text = std::fs::read_to_string(&path).ok()?;
-  let command_name = entry.file_name().to_string_lossy().to_string();
-  if let Some(path) = resolve_execution_path_from_npx_shim(path, &text) {
-    log::debug!(
-      "Resolved npx command '{}' to '{}'.",
-      command_name,
-      path.display()
-    );
-    Some(NodeModulesFileRunCommand { command_name, path })
-  } else {
-    log::debug!("Failed resolving npx command '{}'.", command_name);
-    None
-  }
-}
-
-/// This is not ideal, but it works ok because it allows us to bypass
-/// the shebang and execute the script directly with Deno.
-fn resolve_execution_path_from_npx_shim(
-  file_path: PathBuf,
-  text: &str,
-) -> Option<PathBuf> {
-  static SCRIPT_PATH_RE: Lazy<Regex> =
-    lazy_regex::lazy_regex!(r#""\$basedir\/([^"]+)" "\$@""#);
-
-  let maybe_first_line = {
-    let index = text.find("\n")?;
-    Some(&text[0..index])
-  };
-
-  if let Some(first_line) = maybe_first_line {
-    // NOTE(bartlomieju): this is not perfect, but handle two most common scenarios
-    // where Node is run without any args. If there are args then we use `NodeCommand`
-    // struct.
-    if first_line == "#!/usr/bin/env node"
-      || first_line == "#!/usr/bin/env -S node"
-    {
-      // launch this file itself because it's a JS file
-      return Some(file_path);
-    }
-  }
-
-  // Search for...
-  // > "$basedir/../next/dist/bin/next" "$@"
-  // ...which is what it will look like on Windows
-  SCRIPT_PATH_RE
-    .captures(text)
-    .and_then(|c| c.get(1))
-    .map(|relative_path| {
-      file_path.parent().unwrap().join(relative_path.as_str())
+  let bin_commands = node_resolver.resolve_npm_commands_from_bin_dir(bin_dir);
+  bin_commands
+    .into_iter()
+    .map(|(command_name, path)| {
+      (
+        command_name.clone(),
+        Rc::new(NodeModulesFileRunCommand {
+          command_name,
+          path: path.path().to_path_buf(),
+        }) as Rc<dyn ShellCommand>,
+      )
     })
+    .collect()
 }
 
 fn resolve_managed_npm_commands(
-  npm_resolver: &CliManagedNpmResolver,
   node_resolver: &CliNodeResolver,
+  npm_resolver: &CliManagedNpmResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
   for id in npm_resolver.resolution().top_level_packages() {
     let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
-    let bin_commands =
-      node_resolver.resolve_binary_commands(&package_folder)?;
-    for bin_command in bin_commands {
-      result.insert(
-        bin_command.to_string(),
-        Rc::new(NpmPackageBinCommand {
-          name: bin_command,
-          npm_package: id.nv.clone(),
+    let bins =
+      node_resolver.resolve_npm_binary_commands_for_package(&package_folder)?;
+    result.extend(bins.into_iter().map(|(command_name, path)| {
+      (
+        command_name.clone(),
+        Rc::new(NodeModulesFileRunCommand {
+          command_name,
+          path: path.path().to_path_buf(),
         }) as Rc<dyn ShellCommand>,
-      );
-    }
+      )
+    }));
   }
   if !result.contains_key("npx") {
     result.insert("npx".to_string(), Rc::new(NpxCommand));
@@ -584,12 +637,21 @@ pub async fn run_future_forwarding_signals<TOutput>(
     });
   }
 
+  // Save the terminal mode up front so it can be restored once the task (and
+  // all of its child processes) have finished. A child process such as a dev
+  // server may switch the terminal into raw mode and, when terminated via
+  // Ctrl+C, leave it in a broken state (no echo, no line editing). Declared
+  // first so it is dropped last, i.e. after the children have been torn down by
+  // the kill-signal drop guards below.
+  let terminal_mode_guard = crate::util::console::TerminalModeGuard::acquire();
+  let saved_terminal_mode = terminal_mode_guard.saved();
+
   let token = CancellationToken::new();
   let _token_drop_guard = token.clone().drop_guard();
   let _drop_guard = kill_signal.clone().drop_guard();
 
   spawn_future_with_cancellation(
-    listen_ctrl_c(kill_signal.clone()),
+    listen_ctrl_c(kill_signal.clone(), saved_terminal_mode),
     token.clone(),
   );
   #[cfg(unix)]
@@ -601,13 +663,23 @@ pub async fn run_future_forwarding_signals<TOutput>(
   future.await
 }
 
-async fn listen_ctrl_c(kill_signal: KillSignal) {
-  while let Ok(()) = tokio::signal::ctrl_c().await {
+async fn listen_ctrl_c(
+  kill_signal: KillSignal,
+  saved_terminal_mode: crate::util::console::SavedTerminalMode,
+) {
+  while let Ok(()) = deno_signals::ctrl_c().await {
     // On windows, ctrl+c is sent to the process group, so the signal would
     // have already been sent to the child process. We still want to listen
     // for ctrl+c here to keep the process alive when receiving it, but no
     // need to forward the signal because it's already been sent.
-    if !cfg!(windows) {
+    if cfg!(windows) {
+      // A child (e.g. a dev server) may have put the terminal into raw mode.
+      // Restore it now so that input echoes again — for instance at cmd.exe's
+      // "Terminate batch job (Y/N)?" prompt that appears for `.cmd` scripts.
+      // The TerminalModeGuard still restores once more when the task ends, in
+      // case the child re-enters raw mode before exiting.
+      saved_terminal_mode.restore();
+    } else {
       kill_signal.send(deno_task_shell::SignalKind::SIGINT)
     }
   }
@@ -616,7 +688,7 @@ async fn listen_ctrl_c(kill_signal: KillSignal) {
 #[cfg(unix)]
 async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
   use deno_core::futures::FutureExt;
-  use deno_runtime::deno_os::signal::SIGNAL_NUMS;
+  use deno_signals::SIGNAL_NUMS;
 
   // listen and forward every signal we support
   let mut futures = Vec::with_capacity(SIGNAL_NUMS.len());
@@ -628,9 +700,7 @@ async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
     let kill_signal = kill_signal.clone();
     futures.push(
       async move {
-        let Ok(mut stream) = tokio::signal::unix::signal(
-          tokio::signal::unix::SignalKind::from_raw(signo),
-        ) else {
+        let Ok(mut stream) = deno_signals::signal_stream(signo) else {
           return;
         };
         let signal_kind: deno_task_shell::SignalKind = signo.into();
@@ -678,43 +748,24 @@ mod test {
   }
 
   #[test]
-  fn test_resolve_execution_path_from_npx_shim() {
-    // example shim on unix
-    let unix_shim = r#"#!/usr/bin/env node
-"use strict";
-console.log('Hi!');
-"#;
-    let path = PathBuf::from("/node_modules/.bin/example");
-    assert_eq!(
-      resolve_execution_path_from_npx_shim(path.clone(), unix_shim).unwrap(),
-      path
-    );
-    // example shim on unix
-    let unix_shim = r#"#!/usr/bin/env -S node
-"use strict";
-console.log('Hi!');
-"#;
-    let path = PathBuf::from("/node_modules/.bin/example");
-    assert_eq!(
-      resolve_execution_path_from_npx_shim(path.clone(), unix_shim).unwrap(),
-      path
-    );
-    // example shim on windows
-    let windows_shim = r#"#!/bin/sh
-basedir=$(dirname "$(echo "$0" | sed -e 's,\\,/,g')")
-
-case `uname` in
-    *CYGWIN*|*MINGW*|*MSYS*) basedir=`cygpath -w "$basedir"`;;
-esac
-
-if [ -x "$basedir/node" ]; then
-  exec "$basedir/node"  "$basedir/../example/bin/example" "$@"
-else
-  exec node  "$basedir/../example/bin/example" "$@"
-fi"#;
-    assert_eq!(
-      resolve_execution_path_from_npx_shim(path.clone(), windows_shim).unwrap(),
-      path.parent().unwrap().join("../example/bin/example")
-    );
+  fn test_get_script_with_args() {
+    let cases: &[(&[&str], &str)] = &[
+      (&[], "echo"),
+      (&["hello"], "echo 'hello'"),
+      (&["hello", "world"], "echo 'hello' 'world'"),
+      // Windows path with trailing backslash (issue #31453).
+      (&[".\\dist\\"], "echo '.\\dist\\'"),
+      // Dollar sign and backtick must not be expanded.
+      (&["$HOME"], "echo '$HOME'"),
+      (&["`cmd`"], "echo '`cmd`'"),
+      // Double quotes pass through literally.
+      (&["foo\"bar"], "echo 'foo\"bar'"),
+      // Single quote uses the POSIX `'"'"'` idiom.
+      (&["it's"], "echo 'it'\"'\"'s'"),
+    ];
+    for (argv, expected) in cases {
+      let argv: Vec<String> = argv.iter().map(|s| s.to_string()).collect();
+      assert_eq!(get_script_with_args("echo", &argv), *expected);
+    }
   }
 }

@@ -1,0 +1,20 @@
+{
+  "tempDir": true,
+  "tests": {
+    "missing_flag": {
+      "args": "compile main.ts",
+      "exitCode": 1,
+      "output": "missing_flag.out"
+    },
+    "providing": {
+      "steps": [{
+        "args": "compile -P --include deno.json --output main main.ts",
+        "output": "[WILDCARD]"
+      }, {
+        "commandName": "./main",
+        "args": [],
+        "output": "69\n"
+      }]
+    }
+  }
+}

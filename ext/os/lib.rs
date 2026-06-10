@@ -1,32 +1,32 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::env;
+use std::ffi::OsString;
+use std::ops::ControlFlow;
+use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
+use deno_core::OpState;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_core::v8;
-use deno_core::OpState;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
+use deno_permissions::PermissionState;
 use deno_permissions::PermissionsContainer;
-use once_cell::sync::Lazy;
-use serde::Serialize;
 
 mod ops;
-pub mod signal;
 pub mod sys_info;
 
 pub use ops::signal::SignalError;
 
-pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<&str>> = Lazy::new(|| {
-  // The full list of environment variables supported by Node.js is available
-  // at https://nodejs.org/api/cli.html#environment-variables
-  HashSet::from(["NODE_DEBUG", "NODE_OPTIONS", "FORCE_COLOR", "NO_COLOR"])
-});
+// The full list of environment variables supported by Node.js is available
+// at https://nodejs.org/api/cli.html#environment-variables
+const SORTED_NODE_ENV_VAR_ALLOWLIST: [&str; 4] =
+  ["FORCE_COLOR", "NODE_DEBUG", "NODE_OPTIONS", "NO_COLOR"];
 
 #[derive(Clone, Default)]
 pub struct ExitCode(Arc<AtomicI32>);
@@ -42,10 +42,47 @@ impl ExitCode {
 }
 
 pub fn exit(code: i32) -> ! {
-  deno_telemetry::flush();
-  #[allow(clippy::disallowed_methods)]
+  deno_signals::run_exit();
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "exit is the intended behavior"
+  )]
   std::process::exit(code);
 }
+
+/// Callbacks to run before the process exits via `Deno.exit()`.
+///
+/// Used to flush CPU profiling data and coverage data that would otherwise
+/// be lost when `Deno.exit()` calls `std::process::exit()` directly,
+/// bypassing normal cleanup in the worker's run loop.
+#[derive(Default)]
+pub struct OpExitCallbacks(Vec<Box<dyn FnMut()>>);
+
+impl OpExitCallbacks {
+  pub fn push(&mut self, cb: Box<dyn FnMut()>) {
+    self.0.push(cb);
+  }
+
+  fn run(&mut self) {
+    for cb in self.0.iter_mut() {
+      cb();
+    }
+  }
+}
+
+/// Holds the main isolate's handle so that `op_exit` (i.e. `Deno.exit()`) can
+/// terminate the current isolate instead of the whole process. Installed by
+/// `deno run --watch` / `deno serve --watch` so a script calling `Deno.exit()`
+/// ends the current run without killing the file watcher. See issue #7590.
+pub struct WatcherExitHandle(pub v8::IsolateHandle);
+
+/// Marker set by `op_exit` when a [`WatcherExitHandle`] is present, recording
+/// that the script called `Deno.exit()`. The watcher reads this after the run
+/// to confirm the V8 termination it observes was caused by `Deno.exit()` rather
+/// than another error; the requested exit code is read separately from the
+/// worker's `ExitCode` (set by `Deno.exit()` before `op_exit` runs).
+#[derive(Clone, Copy, Debug)]
+pub struct WatcherExited;
 
 deno_core::extension!(
   deno_os,
@@ -73,17 +110,13 @@ deno_core::extension!(
     ops::signal::op_signal_unbind,
     ops::signal::op_signal_poll,
   ],
-  esm = ["30_os.js", "40_signals.js"],
+  lazy_loaded_js = ["30_os.js", "40_signals.js"],
   options = {
     exit_code: Option<ExitCode>,
   },
   state = |state, options| {
     if let Some(exit_code) = options.exit_code {
       state.put::<ExitCode>(exit_code);
-    }
-    #[cfg(unix)]
-    {
-      state.put(ops::signal::SignalState::default());
     }
   }
 );
@@ -113,24 +146,22 @@ pub enum OsError {
   Io(#[from] std::io::Error),
 }
 
-#[op2(stack_trace)]
+#[op2]
 #[string]
-fn op_exec_path(state: &mut OpState) -> Result<String, OsError> {
+fn op_exec_path() -> Result<String, OsError> {
   let current_exe = env::current_exe().unwrap();
-  state
-    .borrow_mut::<PermissionsContainer>()
-    .check_read_blind(&current_exe, "exec_path", "Deno.execPath()")?;
   // normalize path so it doesn't include '.' or '..' components
-  let path = normalize_path(current_exe);
+  let path = normalize_path(Cow::Owned(current_exe));
 
   path
+    .into_owned()
     .into_os_string()
     .into_string()
     .map_err(OsError::InvalidUtf8)
 }
 
 fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
-  extern "C" {
+  unsafe extern "C" {
     #[cfg(unix)]
     fn tzset();
 
@@ -157,11 +188,13 @@ fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
 #[op2(fast, stack_trace)]
 fn op_set_env(
   state: &mut OpState,
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] key: &str,
   #[string] value: &str,
 ) -> Result<(), OsError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  if check_env_with_maybe_exit(state, key)?.is_break() {
+    return Ok(());
+  }
   if key.is_empty() {
     return Err(OsError::EnvEmptyKey);
   }
@@ -172,9 +205,30 @@ fn op_set_env(
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
 
-  env::set_var(key, value);
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "env::set_var is unsafe since Rust 1.66"
+  )]
+  unsafe {
+    env::set_var(key, value)
+  };
   dt_change_notif(scope, key);
   Ok(())
+}
+
+fn check_env_with_maybe_exit(
+  state: &mut OpState,
+  key: &str,
+) -> Result<ControlFlow<()>, PermissionCheckError> {
+  match state.borrow_mut::<PermissionsContainer>().check_env(key) {
+    Ok(()) => Ok(ControlFlow::Continue(())),
+    Err(PermissionCheckError::PermissionDenied(err))
+      if err.state == PermissionState::Ignored =>
+    {
+      Ok(ControlFlow::Break(()))
+    }
+    Err(err) => Err(err),
+  }
 }
 
 #[op2(stack_trace)]
@@ -182,8 +236,53 @@ fn op_set_env(
 fn op_env(
   state: &mut OpState,
 ) -> Result<HashMap<String, String>, PermissionCheckError> {
-  state.borrow_mut::<PermissionsContainer>().check_env_all()?;
-  Ok(env::vars().collect())
+  fn map_kv(kv: (OsString, OsString)) -> Option<(String, String)> {
+    let key = kv.0.into_string().ok()?;
+    // Skip keys that `Deno.env.get`/`set`/`delete` would reject, so that
+    // enumeration stays consistent with the rest of the API. On Windows,
+    // cmd.exe exposes hidden per-drive cwd variables such as `=C:` which
+    // contain `=` and are not meant to be surfaced to users.
+    if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+      return None;
+    }
+    let value = kv.1.into_string().ok()?;
+    Some((key, value))
+  }
+
+  let permissions_container = state.borrow::<PermissionsContainer>();
+  let grant_all = match permissions_container.check_env_all() {
+    Ok(()) => true,
+    Err(PermissionCheckError::PermissionDenied(err)) => match err.state {
+      PermissionState::Granted
+      | PermissionState::Prompt
+      | PermissionState::Denied => return Err(err.into()),
+      PermissionState::GrantedPartial
+      | PermissionState::DeniedPartial
+      | PermissionState::Ignored => false,
+    },
+    Err(err) => return Err(err),
+  };
+  Ok(
+    env::vars_os()
+      .filter_map(|kv| {
+        let (k, v) = map_kv(kv)?;
+        let state = if grant_all {
+          PermissionState::Granted
+        } else {
+          permissions_container.query_env(Some(&k))
+        };
+        match state {
+          PermissionState::Granted | PermissionState::GrantedPartial => {
+            Some((k, v))
+          }
+          PermissionState::Ignored
+          | PermissionState::Prompt
+          | PermissionState::Denied
+          | PermissionState::DeniedPartial => None,
+        }
+      })
+      .collect(),
+  )
 }
 
 fn get_env_var(key: &str) -> Result<Option<String>, OsError> {
@@ -216,10 +315,12 @@ fn op_get_env(
   state: &mut OpState,
   #[string] key: &str,
 ) -> Result<Option<String>, OsError> {
-  let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(key);
+  let skip_permission_check =
+    SORTED_NODE_ENV_VAR_ALLOWLIST.binary_search(&key).is_ok();
 
-  if !skip_permission_check {
-    state.borrow_mut::<PermissionsContainer>().check_env(key)?;
+  if !skip_permission_check && check_env_with_maybe_exit(state, key)?.is_break()
+  {
+    return Ok(None);
   }
 
   get_env_var(key)
@@ -228,13 +329,22 @@ fn op_get_env(
 #[op2(fast, stack_trace)]
 fn op_delete_env(
   state: &mut OpState,
-  #[string] key: String,
+  #[string] key: &str,
 ) -> Result<(), OsError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+  if check_env_with_maybe_exit(state, key)?.is_break() {
+    return Ok(());
+  }
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(OsError::EnvInvalidKey(key.to_string()));
   }
-  env::remove_var(key);
+
+  #[allow(
+    clippy::undocumented_unsafe_blocks,
+    reason = "env::remove_var is unsafe since Rust 1.66"
+  )]
+  unsafe {
+    env::remove_var(key)
+  };
   Ok(())
 }
 
@@ -256,13 +366,32 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
+  // Under `deno run --watch`, terminate the current V8 isolate instead of
+  // exiting the process so the file watcher survives and can restart the
+  // script on the next file change. See issue #7590.
+  //
+  // We intentionally return before running `OpExitCallbacks` here: those flush
+  // coverage/profiler data and notify the inspector as the process is about to
+  // disappear. Under a watcher the process keeps running, so that teardown is
+  // not wanted; the watcher run paths stop the coverage collector and profiler
+  // themselves after the run completes.
+  if let Some(handle) =
+    state.try_borrow::<WatcherExitHandle>().map(|h| h.0.clone())
+  {
+    state.put(WatcherExited);
+    handle.terminate_execution();
+    return;
+  }
+
+  if let Some(cbs) = state.try_borrow_mut::<OpExitCallbacks>() {
+    cbs.run();
+  }
   if let Some(exit_code) = state.try_borrow::<ExitCode>() {
     exit(exit_code.get())
   }
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_loadavg(
   state: &mut OpState,
 ) -> Result<(f64, f64, f64), PermissionCheckError> {
@@ -291,7 +420,6 @@ fn op_os_release(state: &mut OpState) -> Result<String, PermissionCheckError> {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, OsError> {
@@ -301,7 +429,7 @@ fn op_network_interfaces(
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 struct NetworkInterface {
   family: &'static str,
   name: String,
@@ -343,7 +471,6 @@ impl From<netif::Interface> for NetworkInterface {
 }
 
 #[op2(stack_trace)]
-#[serde]
 fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<sys_info::MemInfo>, PermissionCheckError> {
@@ -361,7 +488,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
     .borrow_mut::<PermissionsContainer>()
     .check_sys("gid", "Deno.gid()")?;
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(clippy::undocumented_unsafe_blocks, reason = "libc call")]
   unsafe {
     Ok(Some(libc::getgid()))
   }
@@ -385,7 +512,7 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, PermissionCheckError> {
     .borrow_mut::<PermissionsContainer>()
     .check_sys("uid", "Deno.uid()")?;
   // TODO(bartlomieju):
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  #[allow(clippy::undocumented_unsafe_blocks, reason = "libc call")]
   unsafe {
     Ok(Some(libc::getuid()))
   }
@@ -434,13 +561,13 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 
 #[cfg(windows)]
 fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
-  use winapi::shared::minwindef::FALSE;
-  use winapi::shared::minwindef::FILETIME;
-  use winapi::shared::minwindef::TRUE;
-  use winapi::um::minwinbase::SYSTEMTIME;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::processthreadsapi::GetProcessTimes;
-  use winapi::um::timezoneapi::FileTimeToSystemTime;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::Foundation::FILETIME;
+  use windows_sys::Win32::Foundation::SYSTEMTIME;
+  use windows_sys::Win32::Foundation::TRUE;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
+  use windows_sys::Win32::System::Threading::GetProcessTimes;
+  use windows_sys::Win32::System::Time::FileTimeToSystemTime;
 
   fn convert_system_time(system_time: SYSTEMTIME) -> std::time::Duration {
     std::time::Duration::from_secs(
@@ -455,7 +582,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
   let mut kernel_time = std::mem::MaybeUninit::<FILETIME>::uninit();
   let mut user_time = std::mem::MaybeUninit::<FILETIME>::uninit();
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   let ret = unsafe {
     GetProcessTimes(
       GetCurrentProcess(),
@@ -509,7 +636,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 
 #[op2(fast)]
 fn op_runtime_memory_usage(
-  scope: &mut v8::HandleScope,
+  scope: &mut v8::PinScope<'_, '_>,
   #[buffer] out: &mut [f64],
 ) {
   let s = scope.get_heap_statistics();
@@ -554,7 +681,10 @@ fn rss() -> u64 {
     (out, idx)
   }
 
-  #[allow(clippy::disallowed_methods)]
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "reading /proc/self requires direct fs access"
+  )]
   let statm_content = if let Ok(c) = std::fs::read_to_string("/proc/self/statm")
   {
     c
@@ -587,7 +717,7 @@ fn rss() -> u64 {
   let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
   // SAFETY: libc calls
   let r = unsafe {
-    extern "C" {
+    unsafe extern "C" {
       static mut mach_task_self_: std::ffi::c_uint;
     }
     libc::task_info(
@@ -653,13 +783,12 @@ fn rss() -> u64 {
 
 #[cfg(windows)]
 fn rss() -> u64 {
-  use winapi::shared::minwindef::DWORD;
-  use winapi::shared::minwindef::FALSE;
-  use winapi::um::processthreadsapi::GetCurrentProcess;
-  use winapi::um::psapi::GetProcessMemoryInfo;
-  use winapi::um::psapi::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::Foundation::FALSE;
+  use windows_sys::Win32::System::ProcessStatus::GetProcessMemoryInfo;
+  use windows_sys::Win32::System::ProcessStatus::PROCESS_MEMORY_COUNTERS;
+  use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
-  // SAFETY: winapi calls
+  // SAFETY: Win32 calls
   unsafe {
     // this handle is a constant—no need to close it
     let current_process = GetCurrentProcess();
@@ -668,7 +797,7 @@ fn rss() -> u64 {
     if GetProcessMemoryInfo(
       current_process,
       &mut pmc,
-      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as DWORD,
+      std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
     ) != FALSE
     {
       pmc.WorkingSetSize as u64
@@ -689,4 +818,17 @@ fn os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
 #[number]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, PermissionCheckError> {
   os_uptime(state)
+}
+
+#[cfg(test)]
+mod test {
+  use crate::SORTED_NODE_ENV_VAR_ALLOWLIST;
+
+  #[test]
+  fn ensure_node_env_var_list_sorted() {
+    // ensure this is sorted for binary search
+    let mut items = SORTED_NODE_ENV_VAR_ALLOWLIST.to_vec();
+    items.sort();
+    assert_eq!(items, SORTED_NODE_ENV_VAR_ALLOWLIST);
+  }
 }

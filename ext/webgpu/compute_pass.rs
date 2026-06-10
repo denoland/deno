@@ -1,19 +1,21 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 
-use deno_core::cppgc::Ptr;
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
+use deno_core::cppgc::Ref;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::IntOptions;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
-use deno_core::GarbageCollected;
-use deno_core::WebIDL;
 
 use crate::Instance;
+use crate::error::GPUError;
+use crate::error::GPUGenericError;
 
 pub struct GPUComputePassEncoder {
   pub instance: Instance,
@@ -23,7 +25,10 @@ pub struct GPUComputePassEncoder {
   pub label: String,
 }
 
-impl GarbageCollected for GPUComputePassEncoder {
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUComputePassEncoder {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GPUComputePassEncoder"
   }
@@ -31,6 +36,12 @@ impl GarbageCollected for GPUComputePassEncoder {
 
 #[op2]
 impl GPUComputePassEncoder {
+  #[constructor]
+  #[cppgc]
+  fn constructor(_: bool) -> Result<GPUComputePassEncoder, GPUGenericError> {
+    Err(GPUGenericError::InvalidConstructor)
+  }
+
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -42,9 +53,10 @@ impl GPUComputePassEncoder {
     // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
   }
 
+  #[undefined]
   fn set_pipeline(
     &self,
-    #[webidl] pipeline: Ptr<crate::compute_pipeline::GPUComputePipeline>,
+    #[webidl] pipeline: Ref<crate::compute_pipeline::GPUComputePipeline>,
   ) {
     let err = self
       .instance
@@ -56,6 +68,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn dispatch_workgroups(
     &self,
     #[webidl(options(enforce_range = true))] work_group_count_x: u32,
@@ -76,9 +89,10 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn dispatch_workgroups_indirect(
     &self,
-    #[webidl] indirect_buffer: Ptr<crate::buffer::GPUBuffer>,
+    #[webidl] indirect_buffer: Ref<crate::buffer::GPUBuffer>,
     #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) {
     let err = self
@@ -93,6 +107,7 @@ impl GPUComputePassEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn end(&self) {
     let err = self
       .instance
@@ -101,6 +116,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn push_debug_group(&self, #[webidl] group_label: String) {
     let err = self
       .instance
@@ -114,6 +130,7 @@ impl GPUComputePassEncoder {
   }
 
   #[fast]
+  #[undefined]
   fn pop_debug_group(&self) {
     let err = self
       .instance
@@ -122,6 +139,7 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn insert_debug_marker(&self, #[webidl] marker_label: String) {
     let err = self
       .instance
@@ -134,11 +152,12 @@ impl GPUComputePassEncoder {
     self.error_handler.push_error(err);
   }
 
+  #[undefined]
   fn set_bind_group<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    scope: &mut v8::PinScope<'a, '_>,
     #[webidl(options(enforce_range = true))] index: u32,
-    #[webidl] bind_group: Nullable<Ptr<crate::bind_group::GPUBindGroup>>,
+    #[webidl] bind_group: Nullable<Ref<crate::bind_group::GPUBindGroup>>,
     dynamic_offsets: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_length: v8::Local<'a, v8::Value>,
@@ -168,15 +187,39 @@ impl GPUComputePassEncoder {
         },
       )? as usize;
 
+      let view_byte_offset = uint_32.byte_offset();
+      let view_len = uint_32.length();
+
+      // Validate `start..start+len` against the **view** length, not the
+      // backing buffer's length. Without this check, `&data[start..end]`
+      // below would panic on out-of-range input; the panic crosses the
+      // op's `extern "C"` boundary and aborts the process. See #33956.
+      let Some(end) = start.checked_add(len).filter(|end| *end <= view_len)
+      else {
+        self.error_handler.push_error(Some(GPUError::Validation(format!(
+          "{PREFIX}: dynamicOffsetsDataStart + dynamicOffsetsDataLength ({start} + {len}) is outside the bounds of dynamicOffsetsData (length {view_len})",
+        ))));
+        return Ok(());
+      };
+
       let ab = uint_32.buffer(scope).unwrap();
       let ptr = ab.data().unwrap();
-      let ab_len = ab.byte_length() / 4;
 
-      // SAFETY: compute_pass_set_bind_group internally calls extend_from_slice with this slice
-      let data =
-        unsafe { std::slice::from_raw_parts(ptr.as_ptr() as _, ab_len) };
+      // SAFETY: `ptr` is the start of the backing ArrayBuffer's data; the
+      // Uint32Array constructor guarantees `byte_offset + view_len * 4`
+      // fits within `byte_length`, so the resulting slice covers exactly
+      // the view's window. `data` is dropped at the end of this call;
+      // `ab` keeps the backing buffer alive for that duration.
+      // compute_pass_set_bind_group internally calls extend_from_slice
+      // with this slice.
+      let data = unsafe {
+        std::slice::from_raw_parts(
+          (ptr.as_ptr() as *const u8).add(view_byte_offset) as *const u32,
+          view_len,
+        )
+      };
 
-      let offsets = &data[start..(start + len)];
+      let offsets = &data[start..end];
 
       self
         .instance
@@ -229,7 +272,7 @@ pub(crate) struct GPUComputePassDescriptor {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUComputePassTimestampWrites {
-  pub query_set: Ptr<crate::query_set::GPUQuerySet>,
+  pub query_set: Ref<crate::query_set::GPUQuerySet>,
   #[options(enforce_range = true)]
   pub beginning_of_pass_write_index: Option<u32>,
   #[options(enforce_range = true)]

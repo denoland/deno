@@ -1,11 +1,11 @@
 #!/usr/bin/env -S deno run -A --quiet --lock=tools/deno.lock.json
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
 import { $, createOctoKit, semver } from "./deps.ts";
 
-const currentDirPath = $.path(import.meta).parentOrThrow();
+const currentDirPath = $.path(import.meta.dirname!);
 
 $.logStep("Getting next version...");
 const currentVersion = semver.parse(getCliVersion())!;
@@ -18,10 +18,10 @@ if (Deno.args.some((a) => a === "--dry-run")) {
 } else {
   const octoKit = createOctoKit();
   const result = await octoKit.request("POST /gists", {
-    description: `Deno CLI v${nextVersion} release checklist`,
+    description: `Deno CLI v${semver.format(nextVersion)} release checklist`,
     public: false,
     files: {
-      [`release_${nextVersion}.md`]: {
+      [`release_${semver.format(nextVersion)}.md`]: {
         content: releaseInstructions,
       },
     },
@@ -37,15 +37,31 @@ if (Deno.args.some((a) => a === "--dry-run")) {
 }
 
 function getNextVersion(originalVersion: semver.SemVer) {
-  if (Deno.args.some((a) => a === "--patch")) {
-    return originalVersion.increment("patch");
+  const prereleaseKind = (["--alpha", "--beta", "--rc"] as const).find((a) =>
+    Deno.args.includes(a)
+  );
+  if (prereleaseKind) {
+    const tag = prereleaseKind.slice(2);
+    let v = originalVersion;
+    if (!v.prerelease?.length) {
+      v = semver.increment(v, "minor");
+    } else if (v.prerelease[0] != tag) {
+      v = { ...v, prerelease: undefined };
+    }
+    return semver.increment(v, "prerelease", { prerelease: tag });
+  } else if (Deno.args.some((a) => a === "--patch")) {
+    return semver.increment(originalVersion, "patch");
   } else if (Deno.args.some((a) => a === "--minor")) {
-    return originalVersion.increment("minor");
+    return semver.increment(originalVersion, "minor");
   } else if (Deno.args.some((a) => a === "--major")) {
-    return originalVersion.increment("major");
+    return semver.increment(originalVersion, "major");
   } else {
     throw new Error("Missing argument");
   }
+}
+
+function isPrerelease() {
+  return Deno.args.some((a) => ["--alpha", "--beta", "--rc"].includes(a));
 }
 
 function buildDenoReleaseInstructionsDoc() {
@@ -53,14 +69,19 @@ function buildDenoReleaseInstructionsDoc() {
     return version.split(".").slice(0, 2).join(".");
   }
 
+  const templateFile = isPrerelease()
+    ? "prerelease_doc_template.md"
+    : "release_doc_template.md";
   const templateText = currentDirPath
-    .join("release_doc_template.md")
+    .join(templateFile)
     .readTextSync()
     .replaceAll("$BRANCH_NAME", `v${nextVersion.major}.${nextVersion.minor}`)
-    .replaceAll("$VERSION", nextVersion.toString())
-    .replaceAll("$MINOR_VERSION", getMinorVersion(nextVersion.toString()))
-    .replaceAll("$PAST_VERSION", currentVersion.toString());
-  return `# Deno CLI ${nextVersion.toString()} Release Checklist\n\n${templateText}`;
+    .replaceAll("$VERSION", semver.format(nextVersion))
+    .replaceAll("$MINOR_VERSION", getMinorVersion(semver.format(nextVersion)))
+    .replaceAll("$PAST_VERSION", semver.format(currentVersion));
+  return `# Deno CLI ${
+    semver.format(nextVersion)
+  } Release Checklist\n\n${templateText}`;
 }
 
 function getCliVersion() {

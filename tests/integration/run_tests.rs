@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::BufReader;
 use std::io::Cursor;
@@ -16,13 +16,15 @@ use rustls::ClientConnection;
 use rustls_tokio_stream::TlsStream;
 use serde_json::json;
 use test_util as util;
-use test_util::itest;
 use test_util::TempDir;
-use util::assert_contains;
-use util::assert_not_contains;
+use test_util::eprintln;
+use test_util::println;
+use test_util::test;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
+use util::assert_contains;
+use util::assert_not_contains;
 
 const CODE_CACHE_DB_FILE_NAME: &str = "v8_code_cache_v2";
 
@@ -158,16 +160,7 @@ fn _083_legacy_external_source_map() {
   assert_eq!(out, "");
 }
 
-itest!(_089_run_allow_list {
-  args: "run --allow-run=curl run/089_run_allow_list.ts",
-  envs: vec![
-    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
-    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
-  ],
-  output: "run/089_run_allow_list.ts.out",
-});
-
-#[test]
+#[test(flaky)]
 fn _090_run_permissions_request() {
   TestContext::default()
     .new_command()
@@ -200,7 +193,7 @@ fn _090_run_permissions_request() {
     });
 }
 
-#[test]
+#[test(flaky)]
 fn _090_run_permissions_request_sync() {
   TestContext::default()
     .new_command()
@@ -233,7 +226,7 @@ fn _090_run_permissions_request_sync() {
     });
 }
 
-#[test]
+#[test(flaky)]
 fn permissions_prompt_allow_all() {
   TestContext::default()
     .new_command()
@@ -327,7 +320,7 @@ fn permissions_prompt_allow_all() {
   );
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 fn permissions_prompt_allow_all_2() {
   TestContext::default()
     .new_command()
@@ -362,7 +355,7 @@ fn permissions_prompt_allow_all_2() {
       // "read" permissions
       test_util::assertions::assert_wildcard_match(&text, concat!(
         "\r\n",
-        "┏ ⚠️  Deno requests read access to \"[WILDCARD]tests[WILDCHAR]testdata[WILDCHAR]\".\r\n",
+        "┏ ⚠️  Deno requests read access to \"[WILDCARD]tests[WILDCHAR]testdata\".\r\n",
         "┠─ Requested by `Deno.lstatSync()` API.\r\n",
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
@@ -375,7 +368,7 @@ fn permissions_prompt_allow_all_2() {
     });
 }
 
-#[test]
+#[test(flaky)]
 fn permissions_prompt_allow_all_lowercase_a() {
   TestContext::default()
     .new_command()
@@ -396,7 +389,24 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
-#[test]
+// Regression test for https://github.com/denoland/deno/issues/34399
+// When stdin has been put into raw mode by user code (e.g. ts-node calling
+// `process.stdin.setRawMode(true)`), the prompt's line-buffered `read_line`
+// would hang because Enter delivers `\r` and ECHO is off. Verify we bail
+// out with a clear message and deny the permission instead.
+#[test(flaky)]
+fn permissions_prompt_raw_stdin() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_prompt_raw_stdin.ts"])
+    .with_pty(|mut console| {
+      console.expect("stdin is in raw mode");
+      console.expect("Run again with --allow-env");
+      console.expect("STATUS: denied");
+    });
+}
+
+#[test(flaky)]
 fn permission_request_long() {
   TestContext::default()
     .new_command()
@@ -410,7 +420,7 @@ fn permission_request_long() {
     });
 }
 
-#[test]
+#[test(flaky)]
 fn permissions_cache() {
   TestContext::default()
     .new_command()
@@ -433,7 +443,7 @@ fn permissions_cache() {
     });
 }
 
-#[test]
+#[test(flaky)]
 fn permissions_trace() {
   TestContext::default()
     .new_command()
@@ -444,7 +454,7 @@ fn permissions_trace() {
       test_util::assertions::assert_wildcard_match(&text, concat!(
       "┏ ⚠️  Deno requests sys access to \"hostname\".\r\n",
       "┠─ Requested by `Deno.hostname()` API.\r\n",
-      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:43:10)\r\n",
+      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:[WILDLINE]:[WILDLINE])\r\n",
       "┃  ├─ foo (file://[WILDCARD]/run/permissions_trace.ts:2:8)\r\n",
       "┃  ├─ bar (file://[WILDCARD]/run/permissions_trace.ts:6:3)\r\n",
       "┃  └─ file://[WILDCARD]/run/permissions_trace.ts:9:1\r\n",
@@ -459,13 +469,54 @@ fn permissions_trace() {
     });
 }
 
-itest!(lock_write_fetch {
-  args:
-    "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
-  output: "run/lock_write_fetch/main.out",
-  http_server: true,
-  exit_code: 0,
-});
+#[test]
+fn permissions_audit() {
+  let ctx = TestContext::default();
+  let dir = ctx.temp_dir();
+  let path = dir.path().join(std::path::Path::new("audit.jsonl"));
+
+  ctx
+    .new_command()
+    .env("DENO_AUDIT_PERMISSIONS", &path)
+    .args_vec(["run", "-A", "run/permissions_audit.ts"])
+    .run()
+    .skip_output_check();
+
+  let file = std::fs::read_to_string(path).unwrap();
+  test_util::assertions::assert_wildcard_match(
+    &file,
+    r#"{"v":1,"datetime":"[WILDCARD]","permission":"sys","value":"hostname"}
+{"v":1,"datetime":"[WILDCARD]","permission":"read","value":"[WILDCARD]"}
+{"v":1,"datetime":"[WILDCARD]","permission":"write","value":"[WILDCARD]"}
+{"v":1,"datetime":"[WILDCARD]","permission":"env","value":"FOO"}
+"#,
+  );
+}
+
+#[test]
+fn permissions_audit_with_traces() {
+  let ctx = TestContext::default();
+  let dir = ctx.temp_dir();
+  let path = dir.path().join(std::path::Path::new("audit.jsonl"));
+
+  ctx
+    .new_command()
+    .env("DENO_AUDIT_PERMISSIONS", &path)
+    .env("DENO_TRACE_PERMISSIONS", "1")
+    .args_vec(["run", "-A", "run/permissions_audit.ts"])
+    .run()
+    .skip_output_check();
+
+  let file = std::fs::read_to_string(path).unwrap();
+  test_util::assertions::assert_wildcard_match(
+    &file,
+    r#"{"v":1,"datetime":"[WILDCARD]","permission":"sys","value":"hostname","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"read","value":"[WILDCARD]","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"write","value":"[WILDCARD]","stack":[WILDCARD]}
+{"v":1,"datetime":"[WILDCARD]","permission":"env","value":"FOO","stack":[WILDCARD]}
+"#,
+  );
+}
 
 #[test]
 fn lock_redirects() {
@@ -871,54 +922,6 @@ fn get_lockfile_npm_package_integrity(
     .to_string()
 }
 
-itest!(error_013_missing_script {
-  args: "run --reload missing_file_name",
-  exit_code: 1,
-  output: "run/error_013_missing_script.out",
-});
-
-// We have an allow-import flag but not allow-read, it should still result in error.
-itest!(error_016_dynamic_import_permissions2 {
-  args:
-    "run --reload --allow-import run/error_016_dynamic_import_permissions2.js",
-  output: "run/error_016_dynamic_import_permissions2.out",
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(error_026_remote_import_error {
-  args: "run --allow-import run/error_026_remote_import_error.ts",
-  output: "run/error_026_remote_import_error.ts.out",
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(error_local_static_import_from_remote_ts {
-  args: "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.ts",
-  exit_code: 1,
-  http_server: true,
-  output: "run/error_local_static_import_from_remote.ts.out",
-});
-
-itest!(error_local_static_import_from_remote_js {
-  args: "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.js",
-  exit_code: 1,
-  http_server: true,
-  output: "run/error_local_static_import_from_remote.js.out",
-});
-
-itest!(import_meta {
-  args: "run --allow-import --quiet --reload --import-map=run/import_meta/importmap.json run/import_meta/main.ts",
-  output: "run/import_meta/main.out",
-  http_server: true,
-});
-
-itest!(no_check_remote {
-  args: "run --allow-import --quiet --reload --no-check=remote run/no_check_remote.ts",
-  output: "run/no_check_remote.ts.enabled.out",
-  http_server: true,
-});
-
 #[test]
 fn type_directives_js_main() {
   let context = TestContext::default();
@@ -933,44 +936,6 @@ fn type_directives_js_main() {
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
-
-itest!(type_directives_redirect {
-  args: "run --allow-import --reload --check run/type_directives_redirect.ts",
-  output: "run/type_directives_redirect.ts.out",
-  http_server: true,
-});
-
-itest!(disallow_http_from_https_js {
-  args: "run --allow-import --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.js",
-  output: "run/disallow_http_from_https_js.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(disallow_http_from_https_ts {
-  args: "run --allow-import --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.ts",
-  output: "run/disallow_http_from_https_ts.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(jsx_import_source_import_map_scoped {
-  args: "run --allow-import --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
-  output: "run/jsx_import_source_import_map.out",
-  http_server: true,
-});
-
-itest!(jsx_import_source_import_map_scoped_dev {
-  args: "run --allow-import --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
-  output: "run/jsx_import_source_import_map_dev.out",
-  http_server: true,
-});
-
-// FIXME(bartlomieju): disabled, because this test is very flaky on CI
-// itest!(local_sources_not_cached_in_memory {
-//   args: "run --allow-read --allow-write run/no_mem_cache.js",
-//   output: "run/no_mem_cache.js.out",
-// });
 
 #[test]
 fn no_validate_asm() {
@@ -1056,7 +1021,7 @@ console.log("executing javascript");
 
 #[cfg(windows)]
 // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "NoStd prefix improves clarity")]
 enum WinProcConstraints {
   NoStdIn,
   NoStdOut,
@@ -1209,6 +1174,7 @@ fn dont_cache_on_check_fail() {
 
 mod permissions {
   use test_util as util;
+  use test_util::test;
   use util::TestContext;
 
   #[test]
@@ -1397,11 +1363,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4545/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4545/",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1410,11 +1376,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=deno.land run/complex_permissions_test.ts netFetch http://localhost:4545/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=deno.land run/complex_permissions_test.ts netFetch http://localhost:4545/",
+      None,
+      None,
+      true,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1423,11 +1389,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4546/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=localhost:4545 run/complex_permissions_test.ts netFetch http://localhost:4546/",
+      None,
+      None,
+      true,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1436,11 +1402,33 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+      None,
+      None,
+      true,
+    );
+    assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
+  }
+
+  #[test]
+  fn net_fetch_deny_cidr() {
+    let _http_guard = util::http_server();
+    let (_, err) = util::run_and_collect_output(
+      false,
+      "run --allow-net --deny-net=192.168.0.0/16 run/complex_permissions_test.ts netFetch http://192.168.1.128:4545/",
+      None,
+      None,
+      false,
+    );
+    assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
+
+    let (_, err) = util::run_and_collect_output(
+      true,
+      "run --allow-net --deny-net=192.168.0.0/16 run/complex_permissions_test.ts netFetch http://127.0.0.1:4545/",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1449,11 +1437,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --unstable-subdomain-wildcards --allow-net=*.localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=*.localhost run/complex_permissions_test.ts netFetch http://localhost:4545/ http://localhost:4546/ http://localhost:4547/",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1462,11 +1450,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4545",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4545",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1475,11 +1463,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=deno.land run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=deno.land run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
+      None,
+      None,
+      true,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1488,11 +1476,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=127.0.0.1:4545 run/complex_permissions_test.ts netConnect 127.0.0.1:4546",
+      None,
+      None,
+      true,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1501,11 +1489,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=127.0.0.1 run/complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
-        None,
-        None,
-        true,
-      );
+      "run --allow-net=127.0.0.1 run/complex_permissions_test.ts netConnect 127.0.0.1:4545 127.0.0.1:4546 127.0.0.1:4547",
+      None,
+      None,
+      true,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1514,11 +1502,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost:4588 run/complex_permissions_test.ts netListen localhost:4588",
-        None,
-        None,
-        false,
-      );
+      "run --allow-net=localhost:4588 run/complex_permissions_test.ts netListen localhost:4588",
+      None,
+      None,
+      false,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1527,11 +1515,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=deno.land run/complex_permissions_test.ts netListen localhost:4545",
-        None,
-        None,
-        false,
-      );
+      "run --allow-net=deno.land run/complex_permissions_test.ts netListen localhost:4545",
+      None,
+      None,
+      false,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1540,11 +1528,11 @@ mod permissions {
     let _http_guard = util::http_server();
     let (_, err) = util::run_and_collect_output(
       false,
-        "run --allow-net=localhost:4555 run/complex_permissions_test.ts netListen localhost:4556",
-        None,
-        None,
-        false,
-      );
+      "run --allow-net=localhost:4555 run/complex_permissions_test.ts netListen localhost:4556",
+      None,
+      None,
+      false,
+    );
     assert!(err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
@@ -1555,15 +1543,15 @@ mod permissions {
     // target/debug/test_server
     let (_, err) = util::run_and_collect_output(
       true,
-        "run --allow-net=localhost run/complex_permissions_test.ts netListen localhost:4600",
-        None,
-        None,
-        false,
-      );
+      "run --allow-net=localhost run/complex_permissions_test.ts netListen localhost:4600",
+      None,
+      None,
+      false,
+    );
     assert!(!err.contains(util::PERMISSION_DENIED_PATTERN));
   }
 
-  #[test]
+  #[test(flaky)]
   fn _061_permissions_request() {
     TestContext::default()
       .new_command()
@@ -1595,7 +1583,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[test(flaky)]
   fn _061_permissions_request_sync() {
     TestContext::default()
       .new_command()
@@ -1627,7 +1615,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[test(flaky)]
   fn _062_permissions_request_global() {
     TestContext::default()
       .new_command()
@@ -1652,7 +1640,7 @@ mod permissions {
       });
   }
 
-  #[test]
+  #[test(flaky)]
   fn _062_permissions_request_global_sync() {
     TestContext::default()
       .new_command()
@@ -1677,7 +1665,7 @@ mod permissions {
       });
   }
 
-  #[flaky_test::flaky_test]
+  #[test(flaky)]
   fn _066_prompt() {
     TestContext::default()
       .new_command()
@@ -1705,6 +1693,14 @@ mod permissions {
         console.expect("What is Windows EOL? ");
         console.write_line("windows");
         console.expect("Your answer is \"windows\"");
+        console.expect("Type some unicode: ");
+        console.write_line_raw("Hello! ążć 🦕");
+        console.expect("Your unicode answer is \"Hello! ążć 🦕\"");
+        // \u{ą} = 0xC4 0x85, \u{ż} = 0xC5 0xBC, \u{ć} = 0xC4 0x87,
+        // \u{1F995} = 0xF0 0x9F 0xA6 0x95 (🦕)
+        console.expect(
+          "bytes=72,101,108,108,111,33,32,196,133,197,188,196,135,32,240,159,166,149",
+        );
         console.expect("Hi [Enter] ");
         console.write_line("");
         console.expect("Alert [Enter] ");
@@ -1714,7 +1710,7 @@ mod permissions {
   }
 }
 
-#[flaky_test::flaky_test]
+#[test(flaky)]
 #[cfg(windows)]
 fn process_stdin_read_unblock() {
   TestContext::default()
@@ -1728,7 +1724,7 @@ fn process_stdin_read_unblock() {
     });
 }
 
-#[test]
+#[test(flaky)]
 fn issue9750() {
   TestContext::default()
     .new_command()
@@ -1956,7 +1952,7 @@ fn check_local_then_remote() {
   assert_contains!(stderr, "Type 'string' is not assignable to type 'number'.");
 }
 
-#[test]
+#[test(flaky)]
 fn permission_request_with_no_prompt() {
   TestContext::default()
     .new_command()
@@ -2003,16 +1999,6 @@ fn running_declaration_files() {
       .assert_exit_code(0);
   }
 }
-
-#[cfg(not(target_os = "windows"))]
-itest!(spawn_kill_permissions {
-  args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
-  envs: vec![
-    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
-    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
-  ],
-  output_str: Some(""),
-});
 
 #[test]
 fn cache_test() {
@@ -2206,8 +2192,10 @@ fn basic_auth_tokens() {
   let stderr_str = std::str::from_utf8(&output.stderr).unwrap().trim();
   eprintln!("{stderr_str}");
 
-  assert!(stderr_str
-    .contains("Module not found \"http://127.0.0.1:4554/run/001_hello.js\"."));
+  assert!(
+    stderr_str
+      .contains("Module not found \"http://127.0.0.1:4554/run/001_hello.js\".")
+  );
 
   let output = util::deno_cmd()
     .current_dir(util::root_path())
@@ -2230,18 +2218,18 @@ fn basic_auth_tokens() {
   assert_eq!(util::strip_ansi_codes(stdout_str), "Hello World");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_resolve_dns() {
+#[test]
+fn test_resolve_dns() {
   use std::net::SocketAddr;
   use std::str::FromStr;
   use std::sync::Arc;
   use std::time::Duration;
 
+  use hickory_server::ServerFuture;
   use hickory_server::authority::Catalog;
   use hickory_server::authority::ZoneType;
   use hickory_server::proto::rr::Name;
   use hickory_server::store::in_memory::InMemoryAuthority;
-  use hickory_server::ServerFuture;
   use tokio::net::TcpListener;
   use tokio::net::UdpSocket;
   use tokio::sync::oneshot;
@@ -2257,7 +2245,7 @@ async fn test_resolve_dns() {
     let records = Parser::new(
       &zone_file,
       None,
-      Some(Name::from_str("example.com").unwrap()),
+      Some(Name::from_str("example.com.").unwrap()),
     )
     .parse();
     if records.is_err() {
@@ -2284,116 +2272,125 @@ async fn test_resolve_dns() {
     server_fut.block_until_done().await.unwrap();
   }
 
-  let (ready_tx, ready_rx) = oneshot::channel();
-  let dns_server_fut = run_dns_server(ready_tx);
-  let handle = tokio::spawn(dns_server_fut);
-
-  // Waits for the DNS server to be ready
-  ready_rx.await.unwrap();
-
-  // Pass: `--allow-net`
-  {
-    let output = util::deno_cmd()
-      .current_dir(util::testdata_path())
-      .env("NO_COLOR", "1")
-      .arg("run")
-      .arg("--check")
-      .arg("--allow-net")
-      .arg("run/resolve_dns.ts")
-      .piped_output()
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    let err = String::from_utf8_lossy(&output.stderr);
-    let out = String::from_utf8_lossy(&output.stdout);
-    println!("{err}");
-    assert!(output.status.success());
-    assert!(err.starts_with("Check file"));
-
-    let expected = std::fs::read_to_string(
-      util::testdata_path().join("run/resolve_dns.ts.out"),
-    )
+  // Create a multi-threaded tokio runtime with 2 worker threads
+  let runtime = tokio::runtime::Builder::new_multi_thread()
+    .worker_threads(2)
+    .enable_all()
+    .build()
     .unwrap();
-    assert_eq!(expected, out);
-  }
 
-  // Pass: `--allow-net=127.0.0.1:4553`
-  {
-    let output = util::deno_cmd()
-      .current_dir(util::testdata_path())
-      .env("NO_COLOR", "1")
-      .arg("run")
-      .arg("--check")
-      .arg("--allow-net=127.0.0.1:4553")
-      .arg("run/resolve_dns.ts")
-      .piped_output()
-      .spawn()
-      .unwrap()
-      .wait_with_output()
+  runtime.block_on(async {
+    let (ready_tx, ready_rx) = oneshot::channel();
+    let dns_server_fut = run_dns_server(ready_tx);
+    let handle = tokio::spawn(dns_server_fut);
+
+    // Waits for the DNS server to be ready
+    ready_rx.await.unwrap();
+
+    // Pass: `--allow-net`
+    {
+      let output = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .env("NO_COLOR", "1")
+        .arg("run")
+        .arg("--check")
+        .arg("--allow-net")
+        .arg("run/resolve_dns.ts")
+        .piped_output()
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      let err = String::from_utf8_lossy(&output.stderr);
+      let out = String::from_utf8_lossy(&output.stdout);
+      println!("{err}");
+      assert!(output.status.success());
+      assert!(err.starts_with("Check run/resolve_dns.ts"));
+
+      let expected = std::fs::read_to_string(
+        util::testdata_path().join("run/resolve_dns.ts.out"),
+      )
       .unwrap();
-    let err = String::from_utf8_lossy(&output.stderr);
-    let out = String::from_utf8_lossy(&output.stdout);
-    if !output.status.success() {
-      eprintln!("stderr: {err}");
+      assert_eq!(expected, out);
     }
-    assert!(output.status.success());
-    assert!(err.starts_with("Check file"));
 
-    let expected = std::fs::read_to_string(
-      util::testdata_path().join("run/resolve_dns.ts.out"),
-    )
-    .unwrap();
-    assert_eq!(expected, out);
-  }
+    // Pass: `--allow-net=127.0.0.1:4553`
+    {
+      let output = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .env("NO_COLOR", "1")
+        .arg("run")
+        .arg("--check")
+        .arg("--allow-net=127.0.0.1:4553")
+        .arg("run/resolve_dns.ts")
+        .piped_output()
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      let err = String::from_utf8_lossy(&output.stderr);
+      let out = String::from_utf8_lossy(&output.stdout);
+      if !output.status.success() {
+        eprintln!("stderr: {err}");
+      }
+      assert!(output.status.success());
+      assert!(err.starts_with("Check run/resolve_dns.ts"));
 
-  // Permission error: `--allow-net=deno.land`
-  {
-    let output = util::deno_cmd()
-      .current_dir(util::testdata_path())
-      .env("NO_COLOR", "1")
-      .arg("run")
-      .arg("--check")
-      .arg("--allow-net=deno.land")
-      .arg("run/resolve_dns.ts")
-      .piped_output()
-      .spawn()
-      .unwrap()
-      .wait_with_output()
+      let expected = std::fs::read_to_string(
+        util::testdata_path().join("run/resolve_dns.ts.out"),
+      )
       .unwrap();
-    let err = String::from_utf8_lossy(&output.stderr);
-    let out = String::from_utf8_lossy(&output.stdout);
-    assert!(!output.status.success());
-    assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
-    assert!(out.is_empty());
-  }
+      assert_eq!(expected, out);
+    }
 
-  // Permission error: no permission specified
-  {
-    let output = util::deno_cmd()
-      .current_dir(util::testdata_path())
-      .env("NO_COLOR", "1")
-      .arg("run")
-      .arg("--check")
-      .arg("run/resolve_dns.ts")
-      .piped_output()
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    let err = String::from_utf8_lossy(&output.stderr);
-    let out = String::from_utf8_lossy(&output.stdout);
-    assert!(!output.status.success());
-    assert!(err.starts_with("Check file"));
-    assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
-    assert!(out.is_empty());
-  }
+    // Permission error: `--allow-net=deno.land`
+    {
+      let output = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .env("NO_COLOR", "1")
+        .arg("run")
+        .arg("--check")
+        .arg("--allow-net=deno.land")
+        .arg("run/resolve_dns.ts")
+        .piped_output()
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      let err = String::from_utf8_lossy(&output.stderr);
+      let out = String::from_utf8_lossy(&output.stdout);
+      assert!(!output.status.success());
+      assert!(err.starts_with("Check run/resolve_dns.ts"));
+      assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
+      assert!(out.is_empty());
+    }
 
-  handle.abort();
+    // Permission error: no permission specified
+    {
+      let output = util::deno_cmd()
+        .current_dir(util::testdata_path())
+        .env("NO_COLOR", "1")
+        .arg("run")
+        .arg("--check")
+        .arg("run/resolve_dns.ts")
+        .piped_output()
+        .spawn()
+        .unwrap()
+        .wait_with_output()
+        .unwrap();
+      let err = String::from_utf8_lossy(&output.stderr);
+      let out = String::from_utf8_lossy(&output.stdout);
+      assert!(!output.status.success());
+      assert!(err.starts_with("Check run/resolve_dns.ts"));
+      assert!(err.contains(r#"error: Uncaught (in promise) NotCapable: Requires net access to "127.0.0.1:4553""#));
+      assert!(out.is_empty());
+    }
+
+    handle.abort();
+  });
 }
 
-#[tokio::test]
+#[test]
 async fn http2_request_url() {
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -2475,6 +2472,47 @@ fn fsfile_set_raw_should_not_panic_on_no_tty() {
   );
 }
 
+// Regression test for https://github.com/denoland/deno/issues/32803
+// After a Rust-side TTY sync write sets kLastWriteWasAsync=0, a JS Pipe
+// write must not cause ERR_MULTIPLE_CALLBACK. Needs a PTY so stdout is a
+// real TTY backed by the Rust LibUvStreamWrap.
+#[cfg(target_os = "macos")]
+#[test]
+fn pipe_write_no_double_callback_after_tty_write() {
+  let deno_exe = util::deno_exe_path();
+  let testdata = util::testdata_path();
+  let script = testdata.join("node/pipe_write_no_double_callback.mjs");
+  let output = Command::new("expect")
+    .arg("-c")
+    .arg(format!(
+      concat!(
+        "set timeout 30\n",
+        "spawn {} run --allow-all -q {}\n",
+        "expect eof\n",
+        "lassign [wait] pid spawnid os_error_flag value\n",
+        "exit $value\n",
+      ),
+      deno_exe.to_string().replace("{", "\\{").replace("}", "\\}"),
+      script.to_string().replace("{", "\\{").replace("}", "\\}"),
+    ))
+    .output()
+    .unwrap();
+  let combined = String::from_utf8_lossy(&output.stdout);
+  assert!(
+    !combined.contains("ERR_MULTIPLE_CALLBACK"),
+    "ERR_MULTIPLE_CALLBACK detected.\nstdout:\n{combined}"
+  );
+  assert!(
+    combined.contains("OK"),
+    "test did not print OK.\nstdout:\n{combined}"
+  );
+  assert!(
+    output.status.success(),
+    "test failed (exit={:?}).\nstdout:\n{combined}",
+    output.status.code()
+  );
+}
+
 #[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
@@ -2509,7 +2547,7 @@ console.log("finish");
 }
 
 #[test]
-fn broken_stdout() {
+fn stdout_early_read_drop() {
   let (reader, writer) = os_pipe::pipe().unwrap();
   // drop the reader to create a broken pipe
   drop(reader);
@@ -2525,10 +2563,9 @@ fn broken_stdout() {
     .wait_with_output()
     .unwrap();
 
-  assert!(!output.status.success());
+  assert!(output.status.success());
   let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
-  assert!(stderr.contains("Uncaught (in promise) BrokenPipe"));
-  assert!(!stderr.contains("panic"));
+  assert_eq!(stderr, "", "{:?}", stderr);
 }
 
 #[test]
@@ -2555,6 +2592,29 @@ fn broken_stdout_repl() {
     assert_contains!(stderr, "Broken pipe (os error 32)");
   }
   assert_not_contains!(stderr, "panic");
+}
+
+// Regression test for https://github.com/denoland/deno/issues/16308 — when
+// `println!` panics on a broken stdout pipe (e.g. `deno | cls` on Windows),
+// the panic hook should exit cleanly instead of printing the bug-report banner.
+#[test]
+fn broken_stdout_no_panic_banner() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("info")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap();
+  assert_not_contains!(stderr, "Deno has panicked");
+  assert_not_contains!(stderr, "panicked at");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2637,7 +2697,7 @@ where
   }
 }
 
-#[tokio::test]
+#[test]
 async fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("run/websocket_server_multi_field_connection_header_test.ts");
@@ -2688,9 +2748,8 @@ async fn websocket_server_multi_field_connection_header() {
   assert!(child.wait().unwrap().success());
 }
 
-#[tokio::test]
+#[test(timeout = 300)]
 async fn websocket_server_idletimeout() {
-  test_util::timeout!(60);
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -2700,7 +2759,7 @@ async fn websocket_server_idletimeout() {
     .arg("--cert")
     .arg(root_ca)
     .arg("--config")
-    .arg("./config/deno.json")
+    .arg(util::tests_path().join("config/deno.json"))
     .arg(script)
     .stdout_piped()
     .spawn()
@@ -2738,7 +2797,7 @@ async fn websocket_server_idletimeout() {
 }
 
 // Regression test for https://github.com/denoland/deno/issues/16772
-#[test]
+#[test(flaky)]
 fn file_fetcher_preserves_permissions() {
   let context = TestContext::with_http_server();
   context
@@ -2755,7 +2814,7 @@ fn file_fetcher_preserves_permissions() {
     });
 }
 
-#[test]
+#[test(flaky)]
 fn stdio_streams_are_locked_in_permission_prompt() {
   if !util::pty::Pty::is_supported() {
     // Don't deal with the logic below if the with_pty
@@ -2816,7 +2875,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
   });
 }
 
-#[test]
+#[test(flaky)]
 fn permission_prompt_escapes_ansi_codes_and_control_chars() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(
@@ -2861,18 +2920,6 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
       });
   }
 }
-
-itest!(extension_import {
-  args: "run run/extension_import.ts",
-  output: "run/extension_import.ts.out",
-  exit_code: 1,
-});
-
-itest!(extension_dynamic_import {
-  args: "run run/extension_dynamic_import.ts",
-  output: "run/extension_dynamic_import.ts.out",
-  exit_code: 1,
-});
 
 #[test]
 pub fn vendor_dir_config_file() {
@@ -3257,7 +3304,7 @@ fn node_process_stdin_pause() {
     .unwrap();
 }
 
-#[test]
+#[test(flaky)]
 fn node_process_stdin_unref_with_pty() {
   TestContext::default()
     .new_command()
@@ -3286,8 +3333,21 @@ fn node_process_stdin_unref_with_pty() {
     });
 }
 
-#[tokio::test]
+#[test]
+fn stdin_readable_cancel_with_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/stdin_readable_cancel.ts"])
+    .with_pty(|mut console| {
+      console.expect("CANCELLED");
+      console.expect("DONE");
+    });
+}
+
+#[test]
 async fn listen_tls_alpn() {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -3339,8 +3399,10 @@ async fn listen_tls_alpn() {
   assert!(status.success());
 }
 
-#[tokio::test]
+#[test]
 async fn listen_tls_alpn_fail() {
+  let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -3405,7 +3467,7 @@ fn emit_failed_readonly_file_system() {
     .new_command()
     .args("run --log-level=debug main.ts")
     .run();
-  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
+  output.assert_matches_text("[WILDCARD]Error saving emit data ([WILDLINE]main.ts)[WILDCARD]Skipped emit cache save of [WILDLINE]main.ts[WILDCARD]Skipped emit cache save of [WILDLINE]other.ts[WILDCARD]hi[WILDCARD]");
 }
 
 // todo(dsherret): waiting on fix in https://github.com/servo/rust-url/issues/505
@@ -3434,4 +3496,267 @@ fn handle_invalid_path_error() {
   let deno_cmd = util::deno_cmd_with_deno_dir(&util::new_deno_dir());
   let output = deno_cmd.arg("run").arg("///a/b").output().unwrap();
   assert_contains!(String::from_utf8_lossy(&output.stderr), "Module not found");
+}
+
+#[test(flaky)]
+fn test_permission_broker_doesnt_exit() {
+  let context = TestContext::default();
+  let socket_path = if cfg!(windows) {
+    PathRef::new(r"\\.\pipe\deno-permission-broker-nonexistent")
+  } else {
+    context.temp_dir().path().join("broker.sock")
+  };
+
+  let output = context
+    .new_command()
+    .env("DENO_PERMISSION_BROKER_PATH", &socket_path)
+    .args("run run/permission_broker/test1.ts")
+    .run();
+  output.assert_exit_code(87);
+  output.assert_matches_text(
+    "[WILDCARD]Failed to create permission broker[WILDCARD]",
+  );
+}
+
+#[test(flaky)]
+fn test_permission_broker() {
+  use std::io::BufRead;
+  use std::io::BufReader;
+
+  let context = TestContext::default();
+  let socket_path = if cfg!(windows) {
+    PathRef::new(r"\\.\pipe\deno-permission-broker")
+  } else {
+    context.temp_dir().path().join("broker.sock")
+  };
+
+  let mut broker = context
+    .new_command()
+    .arg("run")
+    .arg("-A")
+    .arg("run/permission_broker/broker.ts")
+    .arg(&socket_path)
+    .stdout(Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let broker_stdout = broker.stdout.take().unwrap();
+
+  let mut broker_reader = BufReader::new(broker_stdout);
+  let mut line = String::new();
+  loop {
+    line.clear();
+    match broker_reader.read_line(&mut line) {
+      Ok(0) => break, // EOF
+      Ok(_) => {
+        if line.starts_with("Permission broker listening on") {
+          eprintln!("{}", line);
+          break;
+        }
+      }
+      Err(err) => panic!("{}", err),
+    }
+  }
+
+  let output = context
+    .new_command()
+    .env("DENO_PERMISSION_BROKER_PATH", &socket_path)
+    .args("run run/permission_broker/test1.ts")
+    .run();
+  output.assert_exit_code(1);
+  output.assert_matches_text(
+    "Warning Permission broker is an experimental feature\nerror:[WILDCARD]NotCapable: Make sure to enable reading env vars.[WILDCARD]",
+  );
+
+  let _ = broker.kill();
+  line.clear();
+  broker_reader.read_to_string(&mut line).unwrap();
+
+  test_util::assertions::assert_wildcard_match(
+    &line,
+    r#"[WILDCARD]
+{"v":1,"pid":[WILDCARD],"id":1,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":2,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/scratch.txt"}
+{"v":1,"pid":[WILDCARD],"id":3,"datetime":"[WILDCARD]","permission":"read","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":4,"datetime":"[WILDCARD]","permission":"write","value":"./run/permission_broker/log.txt"}
+{"v":1,"pid":[WILDCARD],"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
+[WILDCARD]"#,
+  );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32473
+// Verifies that process.stdout.write() and console.log() produce output
+// in the correct order when stdout is a TTY (uses PTY).
+#[test]
+fn process_stdout_write_order_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_write_order.ts"])
+    .with_pty(|mut console| {
+      console.expect("A");
+      console.expect("B");
+      console.expect("C");
+      console.expect("D");
+      console.expect("E");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32513
+// Verifies that process.stdout survives destroy() calls (e.g. from mute-stream).
+#[test]
+fn process_stdout_destroy_undestroy_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_destroy_undestroy.ts"])
+    .with_pty(|mut console| {
+      console.expect("before");
+      console.expect("after");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work (e.g. @inquirer/prompts).
+#[test]
+fn readline_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/17047.
+// Verifies that permission prompts wait for an active user-space stdin prompt
+// instead of racing it and consuming the user's answer.
+#[test]
+fn readline_permission_prompt_interleaving_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_permission_prompt_interleaving.ts"])
+    .with_pty(|mut console| {
+      console.expect("Project?");
+      console.write_line("demo");
+      console.expect("ANSWER:demo");
+      console.expect("Deno requests read access to");
+      console.expect("Allow?");
+      console.human_delay();
+      console.write_line_raw("n");
+      console.expect("Denied read access to");
+      console.expect("READ_ERROR:NotCapable");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32997
+// Verifies that toggling raw mode between consecutive prompts (like
+// vite create, @clack/prompts) properly restores console mode so
+// stdin continues to work for subsequent prompts.
+#[test]
+fn tty_raw_mode_toggle_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_toggle.ts"])
+    .with_pty(|mut console| {
+      console.expect("Step1?");
+      console.write_line("a");
+      console.expect("Got1: a");
+      console.expect("Step2?");
+      console.write_line("b");
+      console.expect("Got2: b");
+      console.expect("Step3?");
+      console.write_line("c");
+      console.expect("Got3: c");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32996
+// Verifies that Unicode characters are correctly written through TTY
+// output (WriteConsoleW), regardless of console code page.
+#[test]
+fn tty_unicode_output_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_unicode_output.ts"])
+    .with_pty(|mut console| {
+      console.expect("┌─────────────┐");
+      console.expect("│ Hello World │");
+      console.expect("└─────────────┘");
+      console.expect("café résumé naïve");
+      console.expect("OK");
+    });
+}
+
+// Tests that line-mode TTY reading works correctly with the threaded
+// ReadConsoleW approach (matching libuv's uv_tty_line_read_thread).
+// Exercises consecutive line-mode prompts without raw mode.
+#[test]
+fn tty_line_mode_read_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_line_mode_read.ts"])
+    .with_pty(|mut console| {
+      console.expect("Name?");
+      console.write_line("Alice");
+      console.expect("Hello, Alice");
+      console.expect("Color?");
+      console.write_line("blue");
+      console.expect("You like blue");
+    });
+}
+
+// Tests that arrow keys in raw mode are correctly mapped to VT100
+// escape sequences via ReadConsoleInputW + get_vt100_fn_key.
+#[test]
+fn tty_raw_mode_arrow_keys_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_arrow_keys.ts"])
+    .with_pty(|mut console| {
+      console.write_raw("\x1b[A"); // Up arrow
+      console.expect("UP");
+      console.write_raw("\x1b[B"); // Down arrow
+      console.expect("DOWN");
+      console.write_raw("\x1b[C"); // Right arrow
+      console.expect("RIGHT");
+      console.write_raw("\x1b[D"); // Left arrow
+      console.expect("LEFT");
+    });
+}
+
+// Tests that Ctrl+C (0x03) is delivered as data in raw mode.
+// Without proper INPUT_RECORD processing via ReadConsoleInputW,
+// the event loop would block and Ctrl+C data would never arrive.
+#[test]
+fn tty_ctrl_c_raw_mode_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_ctrl_c_raw_mode.ts"])
+    .with_pty(|mut console| {
+      console.expect("READY");
+      console.write_raw("\x03"); // Ctrl+C
+      console.expect("GOT_CTRL_C");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work when output is a
+// PassThrough/MuteStream piped to process.stdout (like @inquirer/prompts).
+#[test]
+fn readline_muted_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_muted_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
+    });
 }

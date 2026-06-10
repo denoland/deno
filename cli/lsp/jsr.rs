@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,15 +9,17 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_graph::ModuleSpecifier;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
-use deno_graph::ModuleSpecifier;
+use deno_graph::packages::JsrVersionResolver;
+use deno_resolver::workspace::WorkspaceResolver;
+use deno_semver::StackString;
+use deno_semver::Version;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use deno_semver::StackString;
-use deno_semver::Version;
 use serde::Deserialize;
 
 use super::config::ConfigData;
@@ -26,8 +28,9 @@ use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
-use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
+use crate::jsr::partial_jsr_package_version_info_from_slice;
+use crate::sys::CliSys;
 
 #[derive(Debug)]
 struct WorkspacePackage {
@@ -51,49 +54,52 @@ impl JsrCacheResolver {
   pub fn new(
     cache: Arc<dyn HttpCache>,
     config_data: Option<&ConfigData>,
+    workspace_resolver: &WorkspaceResolver<CliSys>,
   ) -> Self {
     let nv_by_req = DashMap::new();
     let info_by_nv = DashMap::new();
     let info_by_name = DashMap::new();
     let mut workspace_packages_by_name = HashMap::new();
-    if let Some(config_data) = config_data {
-      for jsr_package in config_data.resolver.jsr_packages() {
-        let exports = deno_core::serde_json::json!(&jsr_package.exports);
-        let version_info = Arc::new(JsrPackageVersionInfo {
-          exports: exports.clone(),
-          module_graph_1: None,
-          module_graph_2: None,
-          manifest: Default::default(),
-          lockfile_checksum: None,
-        });
-        let name = StackString::from_str(&jsr_package.name);
-        workspace_packages_by_name.insert(
-          name.clone(),
-          WorkspacePackage {
-            dir_url: jsr_package.base.clone(),
-            version_info: version_info.clone(),
-          },
-        );
-        let Some(version) = &jsr_package.version else {
-          continue;
-        };
-        let nv = PackageNv {
-          name,
-          version: version.clone(),
-        };
-        info_by_name.insert(
-          nv.name.clone(),
-          Some(Arc::new(JsrPackageInfo {
-            versions: [(
-              nv.version.clone(),
-              JsrPackageInfoVersion { yanked: false },
-            )]
-            .into_iter()
-            .collect(),
-          })),
-        );
-        info_by_nv.insert(nv.clone(), Some(version_info));
-      }
+    for jsr_package in workspace_resolver.jsr_packages().iter() {
+      let exports = deno_core::serde_json::json!(&jsr_package.exports);
+      let version_info = Arc::new(JsrPackageVersionInfo {
+        exports: exports.clone(),
+        module_graph_1: None,
+        module_graph_2: None,
+        manifest: Default::default(),
+        lockfile_checksum: None,
+      });
+      let name = StackString::from_str(&jsr_package.name);
+      workspace_packages_by_name.insert(
+        name.clone(),
+        WorkspacePackage {
+          dir_url: jsr_package.base.clone(),
+          version_info: version_info.clone(),
+        },
+      );
+      let Some(version) = &jsr_package.version else {
+        continue;
+      };
+      let nv = PackageNv {
+        name,
+        version: version.clone(),
+      };
+      info_by_name.insert(
+        nv.name.clone(),
+        Some(Arc::new(JsrPackageInfo {
+          versions: [(
+            nv.version.clone(),
+            JsrPackageInfoVersion {
+              yanked: false,
+              created_at: None,
+            },
+          )]
+          .into_iter()
+          .collect(),
+          latest: Some(nv.version.clone()),
+        })),
+      );
+      info_by_nv.insert(nv.clone(), Some(version_info));
     }
     if let Some(lockfile) = config_data.and_then(|d| d.lockfile.as_ref()) {
       for (dep_req, version) in &lockfile.lock().content.packages.specifiers {
@@ -176,6 +182,38 @@ impl JsrCacheResolver {
         .join(&format!("{}/{}/{}", &nv.name, &nv.version, &path))
         .ok()
     }
+  }
+
+  pub fn auto_import_resource_urls(
+    &self,
+    req_ref: &JsrPackageReqReference,
+  ) -> Vec<ModuleSpecifier> {
+    let req = req_ref.req().clone();
+    let Some(nv) = self.req_to_nv(&req) else {
+      return Vec::new();
+    };
+    let Some(info) = self.package_version_info(&nv) else {
+      return Vec::new();
+    };
+    let maybe_export_prefix = req_ref.sub_path().map(|s| s.trim_matches('/'));
+    info
+      .exports()
+      .filter_map(|(export, _)| {
+        let export = export.strip_prefix("./").unwrap_or(export);
+        if let Some(export_prefix) = maybe_export_prefix
+          && !export.starts_with(export_prefix)
+        {
+          return None;
+        }
+        let req_ref = if export == "." {
+          JsrPackageReqReference::from_str(&format!("jsr:{req}")).ok()?
+        } else {
+          JsrPackageReqReference::from_str(&format!("jsr:{req}/{export}"))
+            .ok()?
+        };
+        self.jsr_to_resource_url(&req_ref)
+      })
+      .collect()
   }
 
   pub fn lookup_bare_specifier_for_workspace_file(
@@ -322,7 +360,13 @@ pub struct CliJsrSearchApi {
 
 impl CliJsrSearchApi {
   pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
-    let resolver = JsrFetchResolver::new(file_fetcher.clone());
+    let resolver = JsrFetchResolver::new(
+      file_fetcher.clone(),
+      Arc::new(JsrVersionResolver {
+        // not currently supported in the lsp
+        newest_dependency_date_options: Default::default(),
+      }),
+    );
     Self {
       file_fetcher,
       resolver,

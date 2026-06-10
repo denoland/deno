@@ -1,0 +1,1 @@
+You can initialize project manually by running deno run npm:@denotest/create and applying desired permissions.

@@ -1,5 +1,5 @@
 Download http://localhost:4545/wasm/math_with_import.wasm
-Check file:///[WILDLINE]/main.js
+Check [WILDCARD]main.js
 TS2305 [ERROR]: Module '"file:///[WILDLINE]/local_math.ts"' has no exported member '"add"'.
     at http://localhost:4545/wasm/math_with_import.wasm:1:1
 

@@ -1,0 +1,14 @@
+Check main.ts
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+  const value: number = test.getValue();
+        ~~~~~
+    at file:///[WILDCARD]/main.ts:5:9
+
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+  const value: number = process.getValue();
+        ~~~~~
+    at file:///[WILDCARD]/main.ts:9:9
+
+Found 2 errors.
+
+error: Type checking failed.

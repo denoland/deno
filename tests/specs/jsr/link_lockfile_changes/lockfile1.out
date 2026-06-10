@@ -1,0 +1,16 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@denotest/add@*": "1.0.0"
+  },
+  "jsr": {
+    "@denotest/add@1.0.0": {
+      "integrity": "[WILDLINE]"
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "jsr:@denotest/add@*"
+    ]
+  }
+}

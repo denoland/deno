@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference no-default-lib="true" />
@@ -10,8 +10,9 @@
 /// <reference path="./internal.d.ts" />
 /// <reference lib="esnext" />
 
-import { primordials } from "ext:core/mod.js";
-import { op_encode_binary_string } from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const { op_encode_binary_string } = core.ops;
 const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,
@@ -20,7 +21,6 @@ const {
   MapPrototypeSet,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
-  queueMicrotask,
   SafeArrayIterator,
   SafeMap,
   Symbol,
@@ -33,13 +33,22 @@ const {
   Uint8Array,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { forgivingBase64Encode } from "./00_infra.js";
-import { EventTarget, ProgressEvent } from "./02_event.js";
-import { decode, TextDecoder } from "./08_text_encoding.js";
-import { parseMimeType } from "./01_mimesniff.js";
-import { DOMException } from "./01_dom_exception.js";
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { forgivingBase64Encode } = core.loadExtScript(
+  "ext:deno_web/00_infra.js",
+);
+const { EventTarget, ProgressEvent } = core.loadExtScript(
+  "ext:deno_web/02_event.js",
+);
+const { decode, TextDecoder } = core.loadExtScript(
+  "ext:deno_web/08_text_encoding.js",
+);
+const { parseMimeType } = core.loadExtScript("ext:deno_web/01_mimesniff.js");
+const { DOMException } = core.loadExtScript("ext:deno_web/01_dom_exception.js");
+const { setTimeout } = core.loadExtScript("ext:deno_web/02_timers.js");
 
 const state = Symbol("[[state]]");
 const result = Symbol("[[result]]");
@@ -108,8 +117,14 @@ class FileReader extends EventTarget {
 
           // 2. If chunkPromise is fulfilled, and isFirstChunk is true, queue a task to fire a progress event called loadstart at fr.
           if (isFirstChunk) {
-            // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
-            queueMicrotask(() => {
+            // The spec says to "queue a task" to fire these progress events.
+            // This must be a task, not a microtask: a FileReader read fires
+            // several events in sequence (loadstart, progress*, load/error,
+            // loadend) and consumers (e.g. the WPT EventWatcher) rely on the
+            // microtask queue draining between them. Using queueMicrotask
+            // collapsed them into one turn, so the events arrived back-to-back
+            // before listeners had a chance to react.
+            setTimeout(() => {
               if (abortedState.aborted) return;
               // fire a progress event for loadstart
               const ev = new ProgressEvent("loadstart", {});
@@ -138,8 +153,7 @@ class FileReader extends EventTarget {
               const ev = new ProgressEvent("progress", {
                 loaded: size,
               });
-              // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
-              queueMicrotask(() => {
+              setTimeout(() => {
                 if (abortedState.aborted) return;
                 this.dispatchEvent(ev);
               });
@@ -148,8 +162,7 @@ class FileReader extends EventTarget {
             chunkPromise = reader.read();
           } // 5 Otherwise, if chunkPromise is fulfilled with an object whose done property is true, queue a task to run the following steps and abort this algorithm:
           else if (chunk.done === true) {
-            // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
-            queueMicrotask(() => {
+            setTimeout(() => {
               if (abortedState.aborted) return;
               // 1. Set fr's state to "done".
               this[state] = "done";
@@ -224,21 +237,26 @@ class FileReader extends EventTarget {
               }
 
               // 5. If fr's state is not "loading", fire a progress event called loadend at the fr.
-              //Note: Event handler for the load or error events could have started another load, if that happens the loadend event for this load is not fired.
-              if (this[state] !== "loading") {
-                const ev = new ProgressEvent("loadend", {
-                  lengthComputable: true,
-                  loaded: size,
-                  total: size,
-                });
-                this.dispatchEvent(ev);
-              }
+              // Note: Event handler for the load event could have started
+              // another load, if that happens the loadend event for this load
+              // is not fired. loadend is queued as its own task so the load
+              // event has a chance to be observed (and react) before loadend.
+              setTimeout(() => {
+                if (abortedState.aborted) return;
+                if (this[state] !== "loading") {
+                  const ev = new ProgressEvent("loadend", {
+                    lengthComputable: true,
+                    loaded: size,
+                    total: size,
+                  });
+                  this.dispatchEvent(ev);
+                }
+              });
             });
             break;
           }
         } catch (err) {
-          // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
-          queueMicrotask(() => {
+          setTimeout(() => {
             if (abortedState.aborted) return;
 
             // chunkPromise rejected
@@ -250,12 +268,18 @@ class FileReader extends EventTarget {
               this.dispatchEvent(ev);
             }
 
-            //If fr's state is not "loading", fire a progress event called loadend at fr.
-            //Note: Event handler for the error event could have started another load, if that happens the loadend event for this load is not fired.
-            if (this[state] !== "loading") {
-              const ev = new ProgressEvent("loadend", {});
-              this.dispatchEvent(ev);
-            }
+            // If fr's state is not "loading", fire a progress event called
+            // loadend at fr. Note: Event handler for the error event could
+            // have started another load, if that happens the loadend event
+            // for this load is not fired. loadend is queued as its own task so
+            // the error event has a chance to be observed before loadend.
+            setTimeout(() => {
+              if (abortedState.aborted) return;
+              if (this[state] !== "loading") {
+                const ev = new ProgressEvent("loadend", {});
+                this.dispatchEvent(ev);
+              }
+            });
           });
           break;
         }
@@ -511,4 +535,5 @@ function makeWrappedHandler(handler) {
   return wrappedHandler;
 }
 
-export { FileReader };
+return { FileReader };
+})();

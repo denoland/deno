@@ -1,48 +1,52 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+// deno-lint-ignore-file no-explicit-any
 
-import { op_node_pbkdf2, op_node_pbkdf2_async } from "ext:core/ops";
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  MathPow,
+  PromisePrototypeCatch,
+  PromisePrototypeThen,
+  StringPrototypeToLowerCase,
+  Uint8Array,
+} = primordials;
+const {
+  op_node_pbkdf2,
+  op_node_pbkdf2_async,
+  op_node_pbkdf2_validate,
+} = core.ops;
 
-import { Buffer } from "node:buffer";
-import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
-import {
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   validateFunction,
   validateString,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import { getArrayBufferOrView } from "ext:deno_node/internal/crypto/keys.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { getArrayBufferOrView } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/keys.ts",
+);
+const {
   ERR_CRYPTO_INVALID_DIGEST,
   ERR_OUT_OF_RANGE,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const {
+  emitAfter,
+  emitBefore,
+  emitDestroy,
+  emitInit,
+  executionAsyncId,
+  newAsyncId,
+} = core.loadExtScript("ext:deno_node/internal/async_hooks.ts");
 
-export const MAX_ALLOC = Math.pow(2, 30) - 1;
-export const MAX_I32 = 2 ** 31 - 1;
+const lazyProcess = core.createLazyLoader("node:process");
 
-export type NormalizedAlgorithms =
-  | "md5"
-  | "ripemd160"
-  | "sha1"
-  | "sha224"
-  | "sha256"
-  | "sha384"
-  | "sha512";
-
-export type Algorithms =
-  | "md5"
-  | "ripemd160"
-  | "rmd160"
-  | "sha1"
-  | "sha224"
-  | "sha256"
-  | "sha384"
-  | "sha512";
+const MAX_ALLOC = MathPow(2, 30) - 1;
+const MAX_I32 = 2 ** 31 - 1;
 
 function check(
-  password: HASH_DATA,
-  salt: HASH_DATA,
+  password: any,
+  salt: any,
   iterations: number,
   keylen: number,
   digest: string,
@@ -69,9 +73,9 @@ function check(
  * @param keylen  Needs to be higher or equal than zero but less than max allocation size (2^30)
  * @param digest Algorithm to be used for encryption
  */
-export function pbkdf2Sync(
-  password: HASH_DATA,
-  salt: HASH_DATA,
+function pbkdf2Sync(
+  password: any,
+  salt: any,
   iterations: number,
   keylen: number,
   digest: string,
@@ -84,7 +88,7 @@ export function pbkdf2Sync(
     digest,
   ));
 
-  digest = digest.toLowerCase() as NormalizedAlgorithms;
+  digest = StringPrototypeToLowerCase(digest);
 
   const DK = new Uint8Array(keylen);
   if (!op_node_pbkdf2(password, salt, iterations, digest, DK)) {
@@ -99,9 +103,9 @@ export function pbkdf2Sync(
  * @param keylen  Needs to be higher or equal than zero but less than max allocation size (2^30)
  * @param digest Algorithm to be used for encryption
  */
-export function pbkdf2(
-  password: HASH_DATA,
-  salt: HASH_DATA,
+function pbkdf2(
+  password: any,
+  salt: any,
   iterations: number,
   keylen: number,
   digest: string,
@@ -122,22 +126,85 @@ export function pbkdf2(
 
   validateFunction(callback, "callback");
 
-  digest = digest.toLowerCase() as NormalizedAlgorithms;
+  digest = StringPrototypeToLowerCase(digest);
+  op_node_pbkdf2_validate(digest);
 
-  op_node_pbkdf2_async(
-    password,
-    salt,
-    iterations,
-    digest,
-    keylen,
-  ).then(
-    (DK) => callback(null, Buffer.from(DK)),
-  )
-    .catch((err) => callback(err));
+  // Set up async_hooks tracking
+  const asyncId = newAsyncId();
+  const triggerAsyncId = executionAsyncId();
+  const resource = {};
+  emitInit(asyncId, "PBKDF2REQUEST", triggerAsyncId, resource);
+
+  // Track if callback was already invoked (to avoid calling twice if callback throws)
+  let callbackInvoked = false;
+
+  const process = lazyProcess().default;
+
+  PromisePrototypeCatch(
+    PromisePrototypeThen(
+      op_node_pbkdf2_async(
+        password,
+        salt,
+        iterations,
+        digest,
+        keylen,
+      ),
+      (DK) => {
+        callbackInvoked = true;
+        emitBefore(asyncId);
+        try {
+          callback(null, Buffer.from(DK));
+        } catch (err) {
+          // If there's an active domain, emit error to it
+          if (process.domain && process.domain.listenerCount("error") > 0) {
+            process.domain.emit("error", err);
+          } else {
+            throw err;
+          }
+        } finally {
+          emitAfter(asyncId);
+          emitDestroy(asyncId);
+        }
+      },
+    ),
+    (err) => {
+      // Don't call callback again if error was thrown by the callback itself
+      if (callbackInvoked) {
+        // If there's an active domain, emit error to it
+        if (process.domain && process.domain.listenerCount("error") > 0) {
+          process.domain.emit("error", err);
+        } else {
+          throw err;
+        }
+        return;
+      }
+      emitBefore(asyncId);
+      try {
+        callback(err);
+      } catch (callbackErr) {
+        // If there's an active domain, emit error to it
+        if (process.domain && process.domain.listenerCount("error") > 0) {
+          process.domain.emit("error", callbackErr);
+        } else {
+          throw callbackErr;
+        }
+      } finally {
+        emitAfter(asyncId);
+        emitDestroy(asyncId);
+      }
+    },
+  );
 }
 
-export default {
+return {
   MAX_ALLOC,
+  MAX_I32,
   pbkdf2,
   pbkdf2Sync,
+  default: {
+    MAX_ALLOC,
+    pbkdf2,
+    pbkdf2Sync,
+  },
 };
+})();

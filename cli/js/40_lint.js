@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 
@@ -391,6 +391,12 @@ export class Context {
     const start = range[0];
     const end = range[1];
 
+    if (start > end) {
+      throw new RangeError(
+        `Invalid range. Start value is bigger than end value: [${start}, ${end}]`,
+      );
+    }
+
     /** @type {Deno.lint.Fix[]} */
     const fixes = [];
 
@@ -449,44 +455,53 @@ function materializeComments(ctx) {
 /**
  * @param {Deno.lint.Plugin[]} plugins
  * @param {string[]} exclude
+ * @param {string[]} [specifiers] The specifiers each plugin was loaded from,
+ *   parallel to `plugins`, used to make error messages actionable.
  */
-export function installPlugins(plugins, exclude) {
+export function installPlugins(plugins, exclude, specifiers) {
   if (Array.isArray(exclude)) {
     for (let i = 0; i < exclude.length; i++) {
       state.ignoredRules.add(exclude[i]);
     }
   }
 
-  return plugins.map((plugin) => installPlugin(plugin));
+  return plugins.map((plugin, i) => installPlugin(plugin, specifiers?.[i]));
 }
 
 /**
  * @param {Deno.lint.Plugin} plugin
+ * @param {string} [specifier] The specifier the plugin was loaded from, if any.
  */
-function installPlugin(plugin) {
+function installPlugin(plugin, specifier) {
+  // When the plugin was loaded from a specifier (i.e. `lint.plugins` in the
+  // config), prefix validation errors with it so the user knows which plugin
+  // is misbehaving instead of getting an anonymous error.
+  const prefix = typeof specifier === "string"
+    ? `Failed to load lint plugin '${specifier}': `
+    : "";
   if (typeof plugin !== "object") {
-    throw new Error("Linter plugin must be an object");
+    throw new Error(`${prefix}Linter plugin must be an object`);
   }
   if (typeof plugin.name !== "string") {
-    throw new Error("Linter plugin name must be a string");
+    throw new Error(`${prefix}Linter plugin name must be a string`);
   }
   if (!/^[a-z-]+$/.test(plugin.name)) {
     throw new Error(
-      "Linter plugin name must only contain lowercase letters (a-z) or hyphens (-).",
+      `${prefix}Linter plugin name must only contain lowercase letters (a-z) or hyphens (-).`,
     );
   }
   if (plugin.name.startsWith("-") || plugin.name.endsWith("-")) {
     throw new Error(
-      "Linter plugin name must start and end with a lowercase letter.",
+      `${prefix}Linter plugin name must start and end with a lowercase letter.`,
     );
   }
   if (plugin.name.includes("--")) {
     throw new Error(
-      "Linter plugin name must not have consequtive hyphens.",
+      `${prefix}Linter plugin name must not have consequtive hyphens.`,
     );
   }
   if (typeof plugin.rules !== "object") {
-    throw new Error("Linter plugin rules must be an object");
+    throw new Error(`${prefix}Linter plugin rules must be an object`);
   }
   if (state.installedPlugins.has(plugin.name)) {
     throw new Error(`Linter plugin ${plugin.name} has already been registered`);
@@ -607,6 +622,9 @@ function setNodeGetters(ctx) {
     const name = getString(ctx.strTable, id);
 
     Object.defineProperty(FacadeNode.prototype, name, {
+      // The `parent` key is expected to be non-enumerable.
+      // See the npm `zimmerframe` library.
+      enumerable: name !== "parent",
       get() {
         return readValue(
           this[INTERNAL_CTX],
@@ -622,8 +640,8 @@ function setNodeGetters(ctx) {
     hasCommenstGetter = true;
     Object.defineProperty(FacadeNode.prototype, "comments", {
       get() {
-        materializeComments(ctx);
-        return ctx.comments;
+        materializeComments(this[INTERNAL_CTX]);
+        return this[INTERNAL_CTX].comments;
       },
     });
   }
@@ -1612,4 +1630,10 @@ function runLintPlugin(plugin, fileName, sourceText) {
   return diagnostics;
 }
 
-Deno.lint.runPlugin = runLintPlugin;
+// `op_lint_create_serialized_ast` is only available in the `deno test`
+// subcommand. In other subcommands that load this module (e.g. the REPL) the op
+// is missing, so keep the stub `Deno.lint.runPlugin` from 99_main.js which
+// throws a helpful error instead of a cryptic "op is not a function".
+if (op_lint_create_serialized_ast) {
+  Deno.lint.runPlugin = runLintPlugin;
+}

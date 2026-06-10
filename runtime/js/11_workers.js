@@ -1,16 +1,20 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_create_worker,
   op_host_post_message,
+  op_host_post_message_raw,
   op_host_recv_ctrl,
   op_host_recv_message,
   op_host_terminate_worker,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayPrototypeFilter,
+  ArrayPrototypeJoin,
   Error,
+  JSONStringify,
   ObjectPrototypeIsPrototypeOf,
   String,
   StringPrototypeStartsWith,
@@ -20,24 +24,31 @@ const {
   SymbolToStringTag,
 } = primordials;
 
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import { URL } from "ext:deno_url/00_url.js";
-import { getLocationHref } from "ext:deno_web/12_location.js";
-import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { log } from "ext:runtime/06_util.js";
-import {
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const { createFilteredInspectProxy } = core.loadExtScript(
+  "ext:deno_web/01_console.js",
+);
+const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
+const { getLocationHref } = core.loadExtScript("ext:deno_web/12_location.js");
+const { serializePermissions } = core.loadExtScript(
+  "ext:runtime/10_permissions.js",
+);
+const { log } = core.loadExtScript("ext:runtime/06_util.js");
+const {
   defineEventHandler,
   ErrorEvent,
   EventTarget,
   MessageEvent,
   setIsTrusted,
-} from "ext:deno_web/02_event.js";
-import {
+} = core.loadExtScript("ext:deno_web/02_event.js");
+const {
   deserializeJsMessageData,
   MessagePortPrototype,
   serializeJsMessageData,
-} from "ext:deno_web/13_message_port.js";
+} = core.loadExtScript("ext:deno_web/13_message_port.js");
+const { DOMException } = core.loadExtScript(
+  "ext:deno_web/01_dom_exception.js",
+);
 
 function createWorker(
   specifier,
@@ -100,6 +111,21 @@ class Worker extends EventTarget {
       type = "classic",
     } = options;
 
+    if (options.env !== undefined || options.workerData !== undefined) {
+      const unsupported = [];
+      if (options.env !== undefined) unsupported[unsupported.length] = "env";
+      if (options.workerData !== undefined) {
+        unsupported[unsupported.length] = "workerData";
+      }
+      globalThis.console.warn(
+        `Warning: ${
+          ArrayPrototypeJoin(unsupported, ", ")
+        } option(s) are not supported ` +
+          "for web Workers and will be ignored. Use the " +
+          "node:worker_threads module instead.",
+      );
+    }
+
     const workerType = webidl.converters["WorkerType"](type);
 
     if (
@@ -117,7 +143,7 @@ class Worker extends EventTarget {
     let hasSourceCode, sourceCode;
     if (workerType === "classic") {
       hasSourceCode = true;
-      sourceCode = `importScripts("#");`;
+      sourceCode = `importScripts(${JSONStringify(specifier)});`;
     } else {
       hasSourceCode = false;
       sourceCode = "";
@@ -217,6 +243,34 @@ class Worker extends EventTarget {
     }
   };
 
+  #dispatchWorkerMessage(data) {
+    let message, transferables;
+    try {
+      const v = deserializeJsMessageData(data);
+      message = v[0];
+      transferables = v[1];
+    } catch (err) {
+      const event = new MessageEvent("messageerror", {
+        cancelable: false,
+        data: err,
+      });
+      setIsTrusted(event, true);
+      this.dispatchEvent(event);
+      return false;
+    }
+    const event = new MessageEvent("message", {
+      cancelable: false,
+      data: message,
+      ports: ArrayPrototypeFilter(
+        transferables,
+        (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
+      ),
+    });
+    setIsTrusted(event, true);
+    this.dispatchEvent(event);
+    return true;
+  }
+
   #pollMessages = async () => {
     while (this.#status !== "TERMINATED") {
       this.#messagePromise = hostRecvMessage(this.#id);
@@ -227,36 +281,28 @@ class Worker extends EventTarget {
       if (this.#status === "TERMINATED" || data === null) {
         return;
       }
-      let message, transferables;
-      try {
-        const v = deserializeJsMessageData(data);
-        message = v[0];
-        transferables = v[1];
-      } catch (err) {
-        const event = new MessageEvent("messageerror", {
-          cancelable: false,
-          data: err,
-        });
-        setIsTrusted(event, true);
-        this.dispatchEvent(event);
-        return;
-      }
-      const event = new MessageEvent("message", {
-        cancelable: false,
-        data: message,
-        ports: ArrayPrototypeFilter(
-          transferables,
-          (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
-        ),
-      });
-      setIsTrusted(event, true);
-      this.dispatchEvent(event);
+      if (!this.#dispatchWorkerMessage(data)) return;
     }
   };
 
   postMessage(message, transferOrOptions = { __proto__: null }) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
     webidl.requiredArguments(arguments.length, 1, prefix);
+    if (this.#status !== "RUNNING") return;
+    // Fast path: no transferables
+    if (
+      transferOrOptions === undefined ||
+      transferOrOptions === null ||
+      (arguments.length <= 1)
+    ) {
+      op_host_post_message_raw(
+        this.#id,
+        core.serialize(message, undefined, (err) => {
+          throw new DOMException(err, "DataCloneError");
+        }),
+      );
+      return;
+    }
     message = webidl.converters.any(message);
     let options;
     if (
@@ -279,9 +325,7 @@ class Worker extends EventTarget {
     }
     const { transfer } = options;
     const data = serializeJsMessageData(message, transfer);
-    if (this.#status === "RUNNING") {
-      hostPostMessage(this.#id, data);
-    }
+    hostPostMessage(this.#id, data);
   }
 
   terminate() {
@@ -320,4 +364,5 @@ webidl.converters["WorkerType"] = webidl.createEnumConverter("WorkerType", [
   "module",
 ]);
 
-export { Worker };
+return { Worker };
+})();

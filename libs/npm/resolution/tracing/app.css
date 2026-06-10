@@ -1,0 +1,56 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+#slider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #f0f0f0;
+}
+
+#slider input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+#stepText {
+  flex: 0;
+  white-space: nowrap;
+}
+
+#main {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  height: 100vh;
+}
+
+#graph {
+  flex: 1;
+  overflow: hidden;
+}
+
+#info h3 {
+  padding-top: 0;
+  margin-top: 0;
+}
+
+#info {
+  padding: 20px;
+  background: #f0f0f0;
+  flex: 0 0 400px;
+  overflow-y: scroll;
+}

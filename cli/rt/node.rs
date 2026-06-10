@@ -1,21 +1,22 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
 
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
-use deno_lib::loader::NpmModuleLoader;
 use deno_lib::standalone::binary::CjsExportAnalysisEntry;
 use deno_media_type::MediaType;
+use deno_resolver::loader::NpmModuleLoader;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolver;
 use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_permissions::CheckedPath;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::EsmAnalysisMode;
 use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::binary::StandaloneModules;
 use crate::file_system::DenoRtSys;
@@ -78,10 +79,11 @@ impl CjsCodeAnalyzer {
       return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
         exports: vec![],
         reexports: vec![],
+        member_reexports: vec![],
       }));
     }
 
-    let cjs_tracker = self.cjs_tracker.clone();
+    let cjs_tracker = &self.cjs_tracker;
     let is_maybe_cjs = cjs_tracker
       .is_maybe_cjs(specifier, media_type)
       .map_err(JsErrorBox::from_err)?;
@@ -104,6 +106,7 @@ impl CjsCodeAnalyzer {
               CjsAnalysis::Cjs(CjsAnalysisExports {
                 exports,
                 reexports: Vec::new(), // already resolved
+                member_reexports: Vec::new(),
               })
             }
             CjsExportAnalysisEntry::Error(err) => {
@@ -112,21 +115,28 @@ impl CjsCodeAnalyzer {
           }
         }
         None => {
-          if log::log_enabled!(log::Level::Debug) {
-            if self.sys.is_specifier_in_vfs(specifier) {
+          if self.sys.is_specifier_in_vfs(specifier) {
+            // VFS-embedded modules always have a pre-computed analysis
+            // written by the compile step. A missing entry here means
+            // the compile step skipped analysis for this file — bug.
+            if log::log_enabled!(log::Level::Debug) {
               log::debug!(
                 "No CJS export analysis was stored for '{}'. Assuming ESM. This might indicate a bug in Deno.",
                 specifier
               );
-            } else {
-              log::debug!(
-                "Analyzing potentially CommonJS files is not supported at runtime in a compiled executable ({}). Assuming ESM.",
-                specifier
-              );
             }
+            CjsAnalysis::Esm(source, None)
+          } else {
+            // Host-FS fallback: the file was read from the user's real
+            // filesystem (HMR / dev mode), so it has no embedded
+            // analysis. Run the analyzer live with deno_ast — without
+            // this the loader would treat every host-FS CJS module as
+            // ESM and any `import { name }` from it would fail with
+            // "does not provide an export named 'name'", even for
+            // common npm packages whose CJS index re-exports names
+            // via `Object.defineProperty(exports, ...)`.
+            analyze_cjs_live(cjs_tracker, specifier, media_type, source)?
           }
-          // assume ESM as we don't have access to swc here
-          CjsAnalysis::Esm(source, None)
         }
       }
     } else {
@@ -134,6 +144,52 @@ impl CjsCodeAnalyzer {
     };
 
     Ok(analysis)
+  }
+}
+
+/// Parse `source` with deno_ast and classify it as CJS (with its named
+/// exports) or ESM. Used at runtime in the standalone executable for
+/// files read from the host filesystem (HMR / dev mode) which have no
+/// pre-computed analysis embedded in the VFS.
+///
+/// Mirrors what `DenoCjsCodeAnalyzer` does at compile time, minus the
+/// re-export resolution (the loader walks reexports separately). The
+/// `compute_is_script` + `is_cjs_with_known_is_script` two-step is the
+/// same one the compile-time analyzer uses; without it, ESM files that
+/// happen to look CJS-ish would be mis-classified.
+fn analyze_cjs_live<'a>(
+  cjs_tracker: &DenoRtCjsTracker,
+  specifier: &Url,
+  media_type: MediaType,
+  source: Cow<'a, str>,
+) -> Result<CjsAnalysis<'a>, JsErrorBox> {
+  let parsed = deno_ast::parse_program(deno_ast::ParseParams {
+    specifier: specifier.clone(),
+    text: source.to_string().into(),
+    media_type,
+    capture_tokens: true,
+    scope_analysis: false,
+    maybe_syntax: None,
+  })
+  .map_err(JsErrorBox::from_err)?;
+  let is_script = parsed.compute_is_script();
+  let is_cjs = cjs_tracker
+    .is_cjs_with_known_is_script(specifier, media_type, is_script)
+    .map_err(JsErrorBox::from_err)?;
+  if is_cjs {
+    let analysis = parsed.analyze_cjs();
+    cjs_tracker.set_is_known_script(specifier, true);
+    Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
+      exports: analysis.exports,
+      reexports: analysis.reexports,
+      // `deno_ast::analyze_cjs` doesn't surface member-level
+      // reexports; the loader walks them via its own reexport
+      // resolution.
+      member_reexports: Vec::new(),
+    }))
+  } else {
+    cjs_tracker.set_is_known_script(specifier, false);
+    Ok(CjsAnalysis::Esm(source, None))
   }
 }
 
@@ -149,25 +205,42 @@ impl node_resolver::analyze::CjsCodeAnalyzer for CjsCodeAnalyzer {
       Some(source) => source,
       None => {
         if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
+          // PERMISSIONS: This is ok because it's just being used for cjs analysis
+          let path = CheckedPath::unsafe_new(Cow::Owned(path));
           // todo(dsherret): should this use the sync method instead?
           if let Ok(source_from_file) =
-            self.sys.read_text_file_lossy_async(path, None).await
+            self.sys.read_text_file_lossy_async(path.into_owned()).await
           {
             source_from_file
           } else {
             return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
               exports: vec![],
               reexports: vec![],
+              member_reexports: vec![],
             }));
           }
         } else {
           return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
             exports: vec![],
             reexports: vec![],
+            member_reexports: vec![],
           }));
         }
       }
     };
     self.inner_cjs_analysis(specifier, source)
+  }
+
+  async fn analyze_cjs_member_props<'a>(
+    &self,
+    _specifier: &Url,
+    _maybe_source: Option<Cow<'a, str>>,
+    _member: &str,
+  ) -> Result<Option<Vec<String>>, JsErrorBox> {
+    // The compiled runtime does not have access to swc; CJS export
+    // analysis is precomputed at compile time. Member-shape narrowing
+    // is therefore unavailable here, and the wrapper falls back to
+    // advertising only the default and module.exports.
+    Ok(None)
   }
 }

@@ -1,8 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import {
-  ASSET_SCOPES,
-  ASSETS_URL_PREFIX,
   clearScriptNamesCache,
   debug,
   error,
@@ -12,9 +10,9 @@ import {
   host,
   IS_NODE_SOURCE_FILE_CACHE,
   LANGUAGE_SERVICE_ENTRIES,
+  LAST_REQUEST_COMPILER_OPTIONS_KEY,
   LAST_REQUEST_METHOD,
   LAST_REQUEST_NOTEBOOK_URI,
-  LAST_REQUEST_SCOPE,
   OperationCanceledError,
   PROJECT_VERSION_CACHE,
   SCRIPT_SNAPSHOT_CACHE,
@@ -26,9 +24,6 @@ import {
 /** @type {DenoCore} */
 const core = globalThis.Deno.core;
 const ops = core.ops;
-
-/** @type {Map<string | null, string[]>} */
-const ambientModulesCacheByScope = new Map();
 
 const ChangeKind = {
   Opened: 0,
@@ -45,6 +40,22 @@ function getCompilationSettings(settingsOrHost) {
     return settingsOrHost.getCompilationSettings();
   }
   return /** @type {ts.CompilerOptions} */ (settingsOrHost);
+}
+
+/**
+ * Assigns `moduleName` on a source file so that tsc displays the original
+ * module specifier (e.g. in `typeof import("...")`) for non-file URL
+ * specifiers like `https://...`. For `file://` specifiers we leave it
+ * unset so tsc keeps its usual relative-path computation and so internal
+ * details like the `/$node_modules/` rewrite don't leak into hovers.
+ *
+ * @param {ts.SourceFile} sourceFile
+ * @param {string} fileName
+ */
+function setSourceFileModuleNameForDisplay(sourceFile, fileName) {
+  if (!fileName.startsWith("file:")) {
+    sourceFile.moduleName = fileName;
+  }
 }
 
 // We need to use a custom document registry in order to provide source files
@@ -110,6 +121,12 @@ const documentRegistry = {
       if (scriptSnapshot.isClassicScript) {
         sourceFile.externalModuleIndicator = undefined;
       }
+      // Preserve the original module specifier so that `typeof import(...)`
+      // displays the URL exactly as the user wrote it, including extensions.
+      // Without this, tsc's `getSpecifierForModuleSymbol` recomputes the
+      // specifier via `getModuleSpecifiers`, which strips `.ts` from URL
+      // imports like `https://example.com/mod.ts`. See denoland/deno#16058.
+      setSourceFileModuleNameForDisplay(sourceFile, fileName);
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     const sourceRefCount = SOURCE_REF_COUNTS.get(fileName) ?? 0;
@@ -175,6 +192,7 @@ const documentRegistry = {
       if (scriptSnapshot.isClassicScript) {
         sourceFile.externalModuleIndicator = undefined;
       }
+      setSourceFileModuleNameForDisplay(sourceFile, fileName);
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     return sourceFile;
@@ -222,7 +240,7 @@ const documentRegistry = {
 };
 
 /** @param {Record<string, unknown>} config */
-function normalizeConfig(config) {
+function normalizeCompilerOptions(config) {
   // the typescript compiler doesn't know about the precompile
   // transform at the moment, so just tell it we're using react-jsx
   if (config.jsx === "precompile") {
@@ -235,15 +253,21 @@ function normalizeConfig(config) {
 }
 
 /** @param {Record<string, unknown>} config */
-function lspTsConfigToCompilerOptions(config) {
-  const normalizedConfig = normalizeConfig(config);
+function lspToTsCompilerOptions(config) {
+  const normalizedConfig = normalizeCompilerOptions(config);
   const { options, errors } = ts
     .convertCompilerOptionsFromJson(normalizedConfig, "");
   Object.assign(options, {
     allowNonTsExtensions: true,
     allowImportingTsExtensions: true,
-    module: ts.ModuleKind.NodeNext,
-    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    module: options.module === ts.ModuleKind.ESNext ||
+        options.module === ts.ModuleKind.Preserve
+      ? options.module
+      : ts.ModuleKind.NodeNext,
+    moduleResolution:
+      options.moduleResolution === ts.ModuleResolutionKind.Bundler
+        ? ts.ModuleResolutionKind.Bundler
+        : ts.ModuleResolutionKind.NodeNext,
   });
   if (errors.length > 0) {
     debug(ts.formatDiagnostics(errors, host));
@@ -319,6 +343,24 @@ function createLs() {
   return ls;
 }
 
+/**
+ * Prompt V8 to collect garbage and hand memory back to the OS. Triggered by
+ * `op_poll_requests` after the language server has been idle, so a long-running
+ * editor session doesn't keep sitting on the (often large) transient heap left
+ * over from the last batch of type-checking until something else forces a
+ * collection. See denoland/deno#23577.
+ *
+ * Note we deliberately don't drop the language services' semantic caches here:
+ * `cleanupSemanticCache()` discards the current program without bumping the
+ * project version, so the language service would consider itself up to date and
+ * never rebuild it, breaking the next request. It's only safe to call paired
+ * with a project change (see `$cleanupSemanticCache`). A full GC reclaims the
+ * dead allocations without touching the still-valid live program.
+ */
+function releaseMemory() {
+  ops.op_lsp_release_memory();
+}
+
 /** @param {boolean} enableDebugLogging */
 export async function serverMainLoop(enableDebugLogging) {
   ts.deno.setEnterSpan(ops.op_make_span);
@@ -327,28 +369,6 @@ export async function serverMainLoop(enableDebugLogging) {
     throw new Error("The language server has already been initialized.");
   }
   hasStarted = true;
-  LANGUAGE_SERVICE_ENTRIES.unscoped = {
-    ls: createLs(),
-    compilerOptions: lspTsConfigToCompilerOptions({
-      "allowJs": true,
-      "esModuleInterop": true,
-      "experimentalDecorators": false,
-      "isolatedModules": true,
-      "lib": ["deno.ns", "deno.window", "deno.unstable"],
-      "module": "NodeNext",
-      "moduleResolution": "NodeNext",
-      "moduleDetection": "force",
-      "noEmit": true,
-      "noImplicitOverride": true,
-      "resolveJsonModule": true,
-      "strict": true,
-      "target": "esnext",
-      "useDefineForClassFields": true,
-      "jsx": "react",
-      "jsxFactory": "React.createElement",
-      "jsxFragmentFactory": "React.Fragment",
-    }),
-  };
   setLogDebug(enableDebugLogging, "TSLS");
   debug("serverInit()");
 
@@ -356,6 +376,17 @@ export async function serverMainLoop(enableDebugLogging) {
     const request = await pollRequests();
     if (request === null) {
       break;
+    }
+    // Synthesized by `op_poll_requests` when the server has gone idle. Handled
+    // here rather than through `serverRequest()` because there's no client
+    // waiting on a response.
+    if (request[1] === "$releaseMemory") {
+      try {
+        releaseMemory();
+      } catch (err) {
+        error(`Internal error occurred during idle memory release: ${err}`);
+      }
+      continue;
     }
     try {
       serverRequest(
@@ -389,74 +420,79 @@ function formatErrorWithArgs(error, args) {
 }
 
 /**
- * @param {string[]} a
- * @param {string[]} b
- */
-function arraysEqual(a, b) {
-  if (a === b) {
-    return true;
-  }
-  if (a === null || b === null) {
-    return false;
-  }
-  if (a.length !== b.length) {
-    return false;
-  }
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
  * @param {number} id
  * @param {string} method
  * @param {any[]} args
- * @param {string | null} scope
+ * @param {string} compilerOptionsKey
  * @param {string | null} notebookUri
  * @param {PendingChange | null} maybeChange
  */
-function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
-  debug(`serverRequest()`, id, method, args, scope, notebookUri, maybeChange);
+function serverRequestInner(
+  id,
+  method,
+  args,
+  compilerOptionsKey,
+  notebookUri,
+  maybeChange,
+) {
+  debug(
+    `serverRequest()`,
+    id,
+    method,
+    args,
+    compilerOptionsKey,
+    notebookUri,
+    maybeChange,
+  );
   if (maybeChange !== null) {
     const changedScripts = maybeChange[0];
     const newProjectVersion = maybeChange[1];
-    const newConfigsByScope = maybeChange[2];
-    const newNotebookScopes = maybeChange[3];
-    if (newConfigsByScope) {
+    const newCompilerOptionsByKey = maybeChange[2];
+    const newNotebookKeys = maybeChange[3];
+    if (newCompilerOptionsByKey) {
       IS_NODE_SOURCE_FILE_CACHE.clear();
-      ASSET_SCOPES.clear();
-      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byScope } */
-      const newByScope = new Map();
-      for (const [scope, config] of newConfigsByScope) {
-        LAST_REQUEST_SCOPE.set(scope);
+      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey } */
+      const newByCompilerOptionsKey = new Map();
+      for (const [compilerOptionsKey, options] of newCompilerOptionsByKey) {
+        LAST_REQUEST_COMPILER_OPTIONS_KEY.set(compilerOptionsKey);
         LAST_REQUEST_NOTEBOOK_URI.set(null);
-        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
+        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(
+          compilerOptionsKey,
+        );
         const ls = oldEntry ? oldEntry.ls : createLs();
-        const compilerOptions = lspTsConfigToCompilerOptions(config);
-        newByScope.set(scope, { ls, compilerOptions });
-        LANGUAGE_SERVICE_ENTRIES.byScope.delete(scope);
+        const compilerOptions = lspToTsCompilerOptions(options);
+        newByCompilerOptionsKey.set(compilerOptionsKey, {
+          ls,
+          compilerOptions,
+        });
+        LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.delete(
+          compilerOptionsKey,
+        );
       }
-      for (const oldEntry of LANGUAGE_SERVICE_ENTRIES.byScope.values()) {
+      for (
+        const oldEntry of LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.values()
+      ) {
         oldEntry.ls.dispose();
       }
-      LANGUAGE_SERVICE_ENTRIES.byScope = newByScope;
+      LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey = newByCompilerOptionsKey;
     }
-    if (newNotebookScopes) {
+    if (newNotebookKeys) {
       /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byNotebookUri } */
       const newByNotebookUri = new Map();
-      for (const [notebookUri, scope] of newNotebookScopes) {
-        LAST_REQUEST_SCOPE.set(scope);
+      for (const [notebookUri, compilerOptionsKey] of newNotebookKeys) {
+        LAST_REQUEST_COMPILER_OPTIONS_KEY.set(compilerOptionsKey);
         LAST_REQUEST_NOTEBOOK_URI.set(notebookUri);
         const oldEntry = LANGUAGE_SERVICE_ENTRIES.byNotebookUri.get(
           notebookUri,
         );
         const ls = oldEntry ? oldEntry.ls : createLs();
-        const compilerOptions =
-          LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.compilerOptions ??
-            LANGUAGE_SERVICE_ENTRIES.unscoped.compilerOptions;
+        const compilerOptions = LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey
+          .get(compilerOptionsKey)?.compilerOptions;
+        if (!compilerOptions) {
+          throw new Error(
+            `Couldn't find language service entry for key: ${compilerOptionsKey}`,
+          );
+        }
         newByNotebookUri.set(notebookUri, { ls, compilerOptions });
         LANGUAGE_SERVICE_ENTRIES.byNotebookUri.delete(notebookUri);
       }
@@ -480,32 +516,31 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
       SCRIPT_SNAPSHOT_CACHE.delete(script);
     }
 
-    if (newConfigsByScope || newNotebookScopes || opened || closed) {
+    if (newCompilerOptionsByKey || newNotebookKeys || opened || closed) {
       clearScriptNamesCache();
     }
   }
 
-  // For requests pertaining to an asset document, we make it so that the
-  // passed scope is just its own specifier. We map it to an actual scope here
-  // based on the first scope that the asset was loaded into.
-  if (scope?.startsWith(ASSETS_URL_PREFIX)) {
-    scope = ASSET_SCOPES.get(scope) ?? null;
-  }
   LAST_REQUEST_METHOD.set(method);
-  LAST_REQUEST_SCOPE.set(scope);
+  LAST_REQUEST_COMPILER_OPTIONS_KEY.set(compilerOptionsKey);
   LAST_REQUEST_NOTEBOOK_URI.set(notebookUri);
   const ls =
     (notebookUri
       ? LANGUAGE_SERVICE_ENTRIES.byNotebookUri.get(notebookUri)?.ls
       : null) ??
-      (scope ? LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.ls : null) ??
-      LANGUAGE_SERVICE_ENTRIES.unscoped.ls;
+      LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.get(compilerOptionsKey)?.ls;
+  if (!ls) {
+    throw new Error(
+      `Couldn't find language service entry for key: ${compilerOptionsKey}`,
+    );
+  }
   switch (method) {
     case "$cleanupSemanticCache": {
       for (
         const ls of [
-          LANGUAGE_SERVICE_ENTRIES.unscoped.ls,
-          ...[...LANGUAGE_SERVICE_ENTRIES.byScope.values()].map((e) => e.ls),
+          ...[...LANGUAGE_SERVICE_ENTRIES.byCompilerOptionsKey.values()].map((
+            e,
+          ) => e.ls),
           ...[...LANGUAGE_SERVICE_ENTRIES.byNotebookUri.values()].map((e) =>
             e.ls
           ),
@@ -532,28 +567,14 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
         return respond(id, [[], null]);
       }
       try {
-        /** @type {any[][]} */
-        const diagnosticsList = [];
-        for (const specifier of args[0]) {
-          diagnosticsList.push(fromTypeScriptDiagnostics([
-            ...ls.getSemanticDiagnostics(specifier),
-            ...ls.getSuggestionDiagnostics(specifier),
-            ...ls.getSyntacticDiagnostics(specifier),
-          ].filter(filterMapDiagnostic)));
-        }
-        let ambient =
-          ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
-            symbol.getName()
-          ) ?? [];
-        const previousAmbient = ambientModulesCacheByScope.get(scope);
-        if (
-          ambient && previousAmbient && arraysEqual(ambient, previousAmbient)
-        ) {
-          ambient = null; // null => use previous value
-        } else {
-          ambientModulesCacheByScope.set(scope, ambient);
-        }
-        return respond(id, [diagnosticsList, ambient]);
+        /** @type {string} */
+        const specifier = args[0];
+        const diagnostics = fromTypeScriptDiagnostics([
+          ...ls.getSemanticDiagnostics(specifier),
+          ...ls.getSuggestionDiagnostics(specifier),
+          ...ls.getSyntacticDiagnostics(specifier),
+        ].filter(filterMapDiagnostic));
+        return respond(id, diagnostics);
       } catch (e) {
         if (
           !isCancellationError(e)
@@ -565,7 +586,7 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
               id,
               method,
               args,
-              scope,
+              compilerOptionsKey,
               notebookUri,
               maybeChange,
             ]),
@@ -573,6 +594,14 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
         }
         return respond(id, [[], null]);
       }
+    }
+    case "$getAmbientModules": {
+      return respond(
+        id,
+        ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
+          symbol.getName()
+        ) ?? [],
+      );
     }
     default:
       if (typeof ls[method] === "function") {
@@ -592,7 +621,7 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
                 id,
                 method,
                 args,
-                scope,
+                compilerOptionsKey,
                 notebookUri,
                 maybeChange,
               ]),
@@ -612,14 +641,28 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
  * @param {number} id
  * @param {string} method
  * @param {any[]} args
- * @param {string | null} scope
+ * @param {string} compilerOptionsKey
  * @param {string | null} notebookUri
  * @param {PendingChange | null} maybeChange
  */
-function serverRequest(id, method, args, scope, notebookUri, maybeChange) {
+function serverRequest(
+  id,
+  method,
+  args,
+  compilerOptionsKey,
+  notebookUri,
+  maybeChange,
+) {
   const span = ops.op_make_span(`serverRequest(${method})`, true);
   try {
-    serverRequestInner(id, method, args, scope, notebookUri, maybeChange);
+    serverRequestInner(
+      id,
+      method,
+      args,
+      compilerOptionsKey,
+      notebookUri,
+      maybeChange,
+    );
   } finally {
     ops.op_exit_span(span, true);
   }

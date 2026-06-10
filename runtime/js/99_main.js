@@ -1,9 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
 
-import * as internalConsole from "ext:deno_console/01_console.js";
+const internalConsole = core.loadExtScript("ext:deno_web/01_console.js");
 import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
@@ -22,65 +22,77 @@ import {
   op_worker_close,
   op_worker_get_type,
   op_worker_post_message,
+  op_worker_post_message_raw,
   op_worker_recv_message,
+  op_worker_recv_message_sync,
   op_worker_sync_fetch,
 } from "ext:core/ops";
 const {
   ArrayPrototypeFilter,
-  ArrayPrototypeForEach,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   Error,
   ErrorPrototype,
   FunctionPrototypeBind,
-  FunctionPrototypeCall,
   ObjectAssign,
   ObjectDefineProperties,
   ObjectDefineProperty,
+  ObjectGetOwnPropertyDescriptors,
   ObjectHasOwn,
   ObjectKeys,
-  ObjectGetOwnPropertyDescriptor,
-  ObjectGetOwnPropertyDescriptors,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
   PromiseResolve,
-  RangeError,
   StringPrototypePadEnd,
   Symbol,
+  SymbolDispose,
   SymbolIterator,
   TypeError,
-  uncurryThis,
 } = primordials;
 const {
   isNativeError,
 } = core;
-import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
-import * as event from "ext:deno_web/02_event.js";
-import * as location from "ext:deno_web/12_location.js";
-import * as version from "ext:runtime/01_version.ts";
-import * as os from "ext:deno_os/30_os.js";
-import * as timers from "ext:deno_web/02_timers.js";
-import {
+// Deno.serve (00_serve.ts) chains through 23_request/23_response/22_body
+// into the 208 KB web-streams polyfill. Only loaded if `deno serve` / a
+// declarative server export is actually used.
+let _serveMod;
+const lazyServeMod = () =>
+  _serveMod ??
+    (_serveMod = core.loadExtScript("ext:deno_http/00_serve.ts"));
+const event = core.loadExtScript("ext:deno_web/02_event.js");
+const location = core.loadExtScript("ext:deno_web/12_location.js");
+const version = core.loadExtScript("ext:runtime/01_version.ts");
+const os = core.loadExtScript("ext:deno_os/30_os.js");
+const {
   getConsoleInspectOptions,
   getDefaultInspectOptions,
   getStderrNoColor,
   inspectArgs,
   quoteString,
   setNoColorFns,
-} from "ext:deno_console/01_console.js";
-import * as performance from "ext:deno_web/15_performance.js";
-import * as url from "ext:deno_url/00_url.js";
-import * as fetch from "ext:deno_fetch/26_fetch.js";
-import * as messagePort from "ext:deno_web/13_message_port.js";
+} = core.loadExtScript("ext:deno_web/01_console.js");
+const performance = core.loadExtScript("ext:deno_web/15_performance.js");
+const url = core.loadExtScript("ext:deno_web/00_url.js");
+// 26_fetch pulls 22_body -> 06_streams (208 KB). The only thing 99_main
+// needs from it at bootstrap is the wasm-streaming callback registration -
+// wrap that so the actual module loads on first WebAssembly streaming use.
+let _fetchMod;
+const lazyFetchMod = () =>
+  _fetchMod ??
+    (_fetchMod = core.loadExtScript("ext:deno_fetch/26_fetch.js"));
+const messagePort = core.loadExtScript("ext:deno_web/13_message_port.js");
 import {
   denoNs,
   denoNsUnstableById,
   unstableIds,
 } from "ext:runtime/90_deno_ns.js";
-import { errors } from "ext:runtime/01_errors.js";
-import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { DOMException } from "ext:deno_web/01_dom_exception.js";
+const { errors } = core.loadExtScript("ext:runtime/01_errors.js");
+const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
+const {
+  DOMException,
+  QuotaExceededError,
+} = core.loadExtScript("ext:deno_web/01_dom_exception.js");
 import {
   unstableForWindowOrWorkerGlobalScope,
   windowOrWorkerGlobalScope,
@@ -92,8 +104,10 @@ import {
 import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope_worker.js";
-import { SymbolDispose, SymbolMetadata } from "ext:deno_web/00_infra.js";
-import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
+const { SymbolMetadata } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { bootstrap: bootstrapOtel } = core.loadExtScript(
+  "ext:deno_telemetry/telemetry.ts",
+);
 
 // deno-lint-ignore prefer-primordials
 if (Symbol.metadata) {
@@ -137,6 +151,17 @@ op_get_ext_import_meta_proto().log = function internalLog(levelStr, ...args) {
   op_internal_log(this.url, level, message);
 };
 
+// Equivalent of import.meta.log for use in lazy-loaded (IIFE) scripts that
+// lack access to import.meta.
+internals.log = function internalLog(levelStr, ...args) {
+  const level = LOG_LEVELS[levelStr];
+  const message = inspectArgs(
+    args,
+    getConsoleInspectOptions(getStderrNoColor()),
+  );
+  op_internal_log("ext:runtime", level, message);
+};
+
 let windowIsClosing = false;
 let globalThis_;
 
@@ -148,10 +173,14 @@ function windowClose() {
     PromisePrototypeThen(
       PromiseResolve(),
       () =>
-        FunctionPrototypeCall(timers.setTimeout, null, () => {
-          // This should be fine, since only Window/MainWorker has .close()
-          os.exit(0);
-        }, 0),
+        core.createSystemTimer(
+          () => {
+            // This should be fine, since only Window/MainWorker has .close()
+            os.exit(0);
+          },
+          0,
+          true,
+        ),
     );
   }
 }
@@ -169,6 +198,17 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
   webidl.requiredArguments(arguments.length, 1, prefix);
+  // Fast path: no transferables
+  if (
+    transferOrOptions === undefined ||
+    transferOrOptions === null ||
+    (arguments.length <= 1)
+  ) {
+    op_worker_post_message_raw(core.serialize(message, undefined, (err) => {
+      throw new DOMException(err, "DataCloneError");
+    }));
+    return;
+  }
   message = webidl.converters.any(message);
   let options;
   if (
@@ -207,6 +247,52 @@ function hasMessageEventListener() {
     messagePort.refedMessagePortsCount > 0;
 }
 
+function dispatchWorkerMessage(data) {
+  let message, transferables;
+  try {
+    const v = messagePort.deserializeJsMessageData(data);
+    message = v[0];
+    transferables = v[1];
+  } catch (err) {
+    const errorEvent = new event.MessageEvent("messageerror", {
+      cancelable: false,
+      data: err,
+    });
+    event.setIsTrusted(errorEvent, true);
+    globalDispatchEvent(errorEvent);
+    return;
+  }
+
+  const msgEvent = new event.MessageEvent("message", {
+    cancelable: false,
+    data: message,
+    ports: ArrayPrototypeFilter(
+      transferables,
+      (t) => ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
+    ),
+  });
+  event.setIsTrusted(msgEvent, true);
+
+  try {
+    globalDispatchEvent(msgEvent);
+  } catch (e) {
+    const errorEvent = new event.ErrorEvent("error", {
+      cancelable: true,
+      message: e.message,
+      lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
+      colno: e.columnNumber ? e.columnNumber + 1 : undefined,
+      filename: e.fileName,
+      error: e,
+    });
+
+    event.setIsTrusted(errorEvent, true);
+    globalDispatchEvent(errorEvent);
+    if (!errorEvent.defaultPrevented) {
+      throw e;
+    }
+  }
+}
+
 async function pollForMessages() {
   if (!globalDispatchEvent) {
     globalDispatchEvent = FunctionPrototypeBind(
@@ -223,40 +309,16 @@ async function pollForMessages() {
       core.unrefOpPromise(recvMessage);
     }
     const data = await recvMessage;
-    // const data = await op_worker_recv_message();
     if (data === null) break;
-    const v = messagePort.deserializeJsMessageData(data);
-    const message = v[0];
-    const transferables = v[1];
-
-    const msgEvent = new event.MessageEvent("message", {
-      cancelable: false,
-      data: message,
-      ports: ArrayPrototypeFilter(
-        transferables,
-        (t) =>
-          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
-      ),
-    });
-    event.setIsTrusted(msgEvent, true);
-
-    try {
-      globalDispatchEvent(msgEvent);
-    } catch (e) {
-      const errorEvent = new event.ErrorEvent("error", {
-        cancelable: true,
-        message: e.message,
-        lineno: e.lineNumber ? e.lineNumber + 1 : undefined,
-        colno: e.columnNumber ? e.columnNumber + 1 : undefined,
-        filename: e.fileName,
-        error: e,
-      });
-
-      event.setIsTrusted(errorEvent, true);
-      globalDispatchEvent(errorEvent);
-      if (!errorEvent.defaultPrevented) {
-        throw e;
-      }
+    dispatchWorkerMessage(data);
+    // Sync drain: process a limited batch of already-queued messages
+    // without going through the async op machinery. The batch limit
+    // prevents starvation of the event loop when message handlers
+    // synchronously post new messages (e.g. ping-pong patterns).
+    for (let i = 0; i < 1000 && !isClosing; i++) {
+      const syncData = op_worker_recv_message_sync();
+      if (syncData === null) break;
+      dispatchWorkerMessage(syncData);
     }
   }
 }
@@ -264,7 +326,7 @@ async function pollForMessages() {
 let loadedMainWorkerScript = false;
 
 function importScripts(...urls) {
-  if (op_worker_get_type() === "module") {
+  if (op_worker_get_type() !== "classic") {
     throw new TypeError("Cannot import scripts in a module worker");
   }
 
@@ -354,7 +416,7 @@ core.registerErrorBuilder(
 core.registerErrorBuilder(
   "DOMExceptionQuotaExceededError",
   function DOMExceptionQuotaExceededError(msg) {
-    return new DOMException(msg, "QuotaExceededError");
+    return new QuotaExceededError(msg);
   },
 );
 core.registerErrorBuilder(
@@ -393,6 +455,18 @@ core.registerErrorBuilder(
     return new DOMException(msg, "InvalidStateError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionSyntaxError",
+  function DOMExceptionSyntaxError(msg) {
+    return new DOMException(msg, "SyntaxError");
+  },
+);
+core.registerErrorBuilder(
+  "DOMExceptionIndexSizeError",
+  function DOMExceptionIndexSizeError(msg) {
+    return new DOMException(msg, "IndexSizeError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
@@ -400,7 +474,10 @@ function runtimeStart(
   tsVersion,
   target,
 ) {
-  core.setWasmStreamingCallback(fetch.handleWasmStreaming);
+  core.setWasmStreamingCallback(function wasmStreamingCallback(source, rid) {
+    const handleWasmStreaming = lazyFetchMod().handleWasmStreaming;
+    return handleWasmStreaming(source, rid);
+  });
   core.setReportExceptionCallback(event.reportException);
   op_set_format_exception_callback(formatException);
   version.setVersions(
@@ -462,22 +539,22 @@ function processRejectionHandled(promise, reason) {
 }
 
 function dispatchLoadEvent() {
-  globalThis_.dispatchEvent(new Event("load"));
+  globalThis_.dispatchEvent(new event.Event("load"));
 }
 
 function dispatchBeforeUnloadEvent() {
   return globalThis_.dispatchEvent(
-    new Event("beforeunload", { cancelable: true }),
+    new event.Event("beforeunload", { cancelable: true }),
   );
 }
 
 function dispatchUnloadEvent() {
-  globalThis_.dispatchEvent(new Event("unload"));
+  globalThis_.dispatchEvent(new event.Event("unload"));
 }
 
 let hasBootstrapped = false;
 // Set up global properties shared by main and worker runtime.
-ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
+core.defineGlobalProperties(globalThis, windowOrWorkerGlobalScope);
 
 // Set up global properties shared by main and worker runtime that are exposed
 // by unstable features if those are enabled.
@@ -493,184 +570,9 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
     const featureId = featureIds[i];
     if (ArrayPrototypeIncludes(unstableFeatures, featureId)) {
       const props = unstableForWindowOrWorkerGlobalScope[featureId];
-      ObjectDefineProperties(globalThis, { ...props });
+      core.defineGlobalProperties(globalThis, { ...props });
     }
   }
-}
-
-function updateTemporal() {
-  // Removes the obsoleted `Temporal` API.
-  // https://github.com/tc39/proposal-temporal/pull/2895
-  // https://github.com/tc39/proposal-temporal/pull/2914
-  // https://github.com/tc39/proposal-temporal/pull/2925
-  if (typeof globalThis.Temporal.Instant.fromEpochSeconds === "undefined") {
-    throw "V8 removes obsoleted Temporal API now, no need to delete them";
-  }
-  delete globalThis.Temporal.Instant.fromEpochSeconds;
-  delete globalThis.Temporal.Instant.fromEpochMicroseconds;
-  delete globalThis.Temporal.Instant.prototype.epochSeconds;
-  delete globalThis.Temporal.Instant.prototype.epochMicroseconds;
-  delete globalThis.Temporal.Instant.prototype.toZonedDateTime;
-  delete globalThis.Temporal.PlainDate.prototype.getISOFiels; // weird
-  delete globalThis.Temporal.PlainDate.prototype.getISOFields;
-  delete globalThis.Temporal.PlainDateTime.prototype.withPlainDate;
-  delete globalThis.Temporal.PlainDateTime.prototype.toPlainYearMonth;
-  delete globalThis.Temporal.PlainDateTime.prototype.toPlainMonthDay;
-  delete globalThis.Temporal.PlainDateTime.prototype.getISOFields;
-  delete globalThis.Temporal.PlainMonthDay.prototype.getISOFields;
-  delete globalThis.Temporal.PlainTime.prototype.calendar;
-  delete globalThis.Temporal.PlainTime.prototype.toPlainDateTime;
-  delete globalThis.Temporal.PlainTime.prototype.toZonedDateTime;
-  delete globalThis.Temporal.PlainTime.prototype.getISOFields;
-  delete globalThis.Temporal.PlainYearMonth.prototype.getISOFields;
-  delete globalThis.Temporal.ZonedDateTime.prototype.epochSeconds;
-  delete globalThis.Temporal.ZonedDateTime.prototype.epochMicroseconds;
-  delete globalThis.Temporal.ZonedDateTime.prototype.withPlainDate;
-  delete globalThis.Temporal.ZonedDateTime.prototype.toPlainYearMonth;
-  delete globalThis.Temporal.ZonedDateTime.prototype.toPlainMonthDay;
-  delete globalThis.Temporal.ZonedDateTime.prototype.getISOFields;
-  delete globalThis.Temporal.Now.zonedDateTime;
-  delete globalThis.Temporal.Now.plainDateTime;
-  delete globalThis.Temporal.Now.plainDate;
-  delete globalThis.Temporal.Calendar;
-  delete globalThis.Temporal.TimeZone;
-
-  // Modify `Temporal.Calendar` to calendarId string
-  ArrayPrototypeForEach([
-    globalThis.Temporal.PlainDate,
-    globalThis.Temporal.PlainDateTime,
-    globalThis.Temporal.PlainMonthDay,
-    globalThis.Temporal.PlainYearMonth,
-    globalThis.Temporal.ZonedDateTime,
-  ], (target) => {
-    const getCalendar =
-      ObjectGetOwnPropertyDescriptor(target.prototype, "calendar").get;
-    ObjectDefineProperty(target.prototype, "calendarId", {
-      __proto__: null,
-      get: function calendarId() {
-        return FunctionPrototypeCall(getCalendar, this).id;
-      },
-      enumerable: false,
-      configurable: true,
-    });
-    delete target.prototype.calendar;
-  });
-
-  // Modify `Temporal.TimeZone` to timeZoneId string
-  {
-    const getTimeZone = ObjectGetOwnPropertyDescriptor(
-      globalThis.Temporal.ZonedDateTime.prototype,
-      "timeZone",
-    ).get;
-    ObjectDefineProperty(
-      globalThis.Temporal.ZonedDateTime.prototype,
-      "timeZoneId",
-      {
-        __proto__: null,
-        get: function timeZoneId() {
-          return FunctionPrototypeCall(getTimeZone, this).id;
-        },
-        enumerable: false,
-        configurable: true,
-      },
-    );
-    ObjectAssign(globalThis.Temporal.ZonedDateTime.prototype, {
-      getTimeZoneTransition(options) {
-        if (options === undefined) {
-          throw new TypeError("options parameter is required");
-        }
-        if (typeof options === "string") {
-          options = {
-            direction: options,
-          };
-        }
-        const direction = options.direction;
-        if (direction === undefined) {
-          throw new TypeError("direction option is required");
-        }
-        const tz = FunctionPrototypeCall(getTimeZone, this);
-        let resultInstant;
-        switch (direction) {
-          case "next":
-            resultInstant = tz.getNextTransition(this.toInstant());
-            break;
-          case "previous":
-            resultInstant = tz.getPreviousTransition(this.toInstant());
-            break;
-          default:
-            throw new RangeError(
-              `direction must be one of next, previous, not ${options.direction}`,
-            );
-        }
-        return resultInstant?.toZonedDateTimeISO(tz.id) ?? null;
-      },
-    });
-    delete globalThis.Temporal.ZonedDateTime.prototype.timeZone;
-  }
-  {
-    const nowTimeZone = globalThis.Temporal.Now.timeZone;
-    ObjectDefineProperty(globalThis.Temporal.Now, "timeZoneId", {
-      __proto__: null,
-      value: function timeZoneId() {
-        return nowTimeZone().id;
-      },
-      writable: true,
-      enumerable: false,
-      configurable: true,
-    });
-    delete globalThis.Temporal.Now.timeZone;
-  }
-
-  // deno-lint-ignore prefer-primordials
-  if (new Temporal.Duration().toLocaleString("en-US") !== "PT0S") {
-    throw "V8 supports Temporal.Duration.prototype.toLocaleString now, no need to shim it";
-  }
-  shimTemporalDurationToLocaleString();
-}
-
-function shimTemporalDurationToLocaleString() {
-  const DurationFormat = Intl.DurationFormat;
-  if (!DurationFormat) {
-    // Intl.DurationFormat can be disabled with --v8-flags=--no-harmony-intl-duration-format
-    return;
-  }
-  const DurationFormatPrototype = DurationFormat.prototype;
-  const formatDuration = uncurryThis(DurationFormatPrototype.format);
-
-  const Duration = Temporal.Duration;
-  const DurationPrototype = Duration.prototype;
-  const desc = ObjectGetOwnPropertyDescriptors(DurationPrototype);
-  const assertDuration = uncurryThis(desc.toLocaleString.value);
-  const getYears = uncurryThis(desc.years.get);
-  const getMonths = uncurryThis(desc.months.get);
-  const getWeeks = uncurryThis(desc.weeks.get);
-  const getDays = uncurryThis(desc.days.get);
-  const getHours = uncurryThis(desc.hours.get);
-  const getMinutes = uncurryThis(desc.minutes.get);
-  const getSeconds = uncurryThis(desc.seconds.get);
-  const getMilliseconds = uncurryThis(desc.milliseconds.get);
-  const getMicroseconds = uncurryThis(desc.microseconds.get);
-  const getNanoseconds = uncurryThis(desc.nanoseconds.get);
-
-  ObjectAssign(DurationPrototype, {
-    toLocaleString(locales = undefined, options) {
-      assertDuration(this);
-      const durationFormat = new DurationFormat(locales, options);
-      const duration = {
-        years: getYears(this),
-        months: getMonths(this),
-        weeks: getWeeks(this),
-        days: getDays(this),
-        hours: getHours(this),
-        minutes: getMinutes(this),
-        seconds: getSeconds(this),
-        milliseconds: getMilliseconds(this),
-        microseconds: getMicroseconds(this),
-        nanoseconds: getNanoseconds(this),
-      };
-      return formatDuration(durationFormat, duration);
-    },
-  });
 }
 
 // NOTE(bartlomieju): remove all the ops that have already been imported using
@@ -682,11 +584,25 @@ const NOT_IMPORTED_OPS = [
   "op_register_bench",
   "op_bench_get_origin",
 
-  // Related to `Deno.jupyter` API
+  // Related to `Deno.jupyter` REPL API
   "op_jupyter_broadcast",
   "op_jupyter_input",
   "op_jupyter_create_png_from_texture",
   "op_jupyter_get_buffer",
+  // Related to the Jupyter ZMQ kernel worker
+  "op_jupyter_get_connection_info",
+  "op_jupyter_repl_evaluate",
+  "op_jupyter_repl_get_properties",
+  "op_jupyter_repl_global_lexical_scope_names",
+  "op_jupyter_repl_call_function_on_args",
+  "op_jupyter_repl_call_function_on",
+  "op_jupyter_repl_interrupt",
+  "op_jupyter_repl_cancel_interrupt",
+  "op_jupyter_recv_iopub",
+  "op_jupyter_recv_input",
+  "op_jupyter_send_input_reply",
+  "op_jupyter_deno_version",
+  "op_jupyter_typescript_version",
   // Used in jupyter API
   "op_base64_encode",
 
@@ -707,14 +623,22 @@ const NOT_IMPORTED_OPS = [
   "op_test_op_sanitizer_report",
   "op_restore_test_permissions",
   "op_register_test_step",
+  "op_register_test_hook",
   "op_register_test",
   "op_test_get_origin",
+  "op_test_event_exit",
+  "op_test_isolate_exit",
   "op_pledge_test_permissions",
 
   // TODO(bartlomieju): used in various integration tests - figure out a way
   // to not depend on them.
   "op_set_exit_code",
   "op_napi_open",
+
+  // deno deploy subcommand
+  "op_deploy_token_get",
+  "op_deploy_token_set",
+  "op_deploy_token_delete",
 ];
 
 function removeImportedOps() {
@@ -732,23 +656,30 @@ function removeImportedOps() {
 // methods should be left there.
 ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
-const finalDenoNs = {
-  internal: internalSymbol,
-  [internalSymbol]: internals,
-  ...denoNs,
-  // Deno.test, Deno.bench, Deno.lint are noops here, but kept for compatibility; so
-  // that they don't cause errors when used outside of `deno test`/`deno bench`/`deno lint`
-  // contexts.
-  test: () => {},
-  bench: () => {},
-  lint: {
-    runPlugin: () => {
-      throw new Error(
-        "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
-      );
+// Build finalDenoNs without spreading denoNs: spread invokes every getter,
+// including the lazy ones (Deno.serve / Deno.run / etc.) that intentionally
+// avoid loading 06_streams / 22_body / 40_process at snapshot time. Use
+// ObjectDefineProperties + getOwnPropertyDescriptors to preserve the lazy
+// descriptors.
+const finalDenoNs = ObjectDefineProperties(
+  {
+    internal: internalSymbol,
+    [internalSymbol]: internals,
+    // Deno.test, Deno.bench, Deno.lint are noops here, but kept for
+    // compatibility; so that they don't cause errors when used outside of
+    // `deno test`/`deno bench`/`deno lint` contexts.
+    test: () => {},
+    bench: () => {},
+    lint: {
+      runPlugin: () => {
+        throw new Error(
+          "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+        );
+      },
     },
   },
-};
+  ObjectGetOwnPropertyDescriptors(denoNs),
+);
 
 ObjectDefineProperties(finalDenoNs, {
   pid: core.propGetterOnly(opPid),
@@ -808,16 +739,26 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       12: serveWorkerCountOrIndex,
       13: otelConfig,
       15: standalone,
+      16: autoServe,
+      17: nodeClusterUniqueId,
+      18: nodeClusterSchedPolicy,
     } = runtimeOptions;
 
     denoNs.build.standalone = standalone;
 
-    if (mode === executionModes.serve) {
-      const hasMultipleThreads = serveIsMain
-        ? serveWorkerCountOrIndex > 0 // count > 0
+    let serveIsMain_ = serveIsMain;
+    let serveWorkerCountOrIndex_ = serveWorkerCountOrIndex;
+    if (autoServe) {
+      serveIsMain_ = true;
+      serveWorkerCountOrIndex_ = 0;
+    }
+
+    if (mode === executionModes.serve || autoServe) {
+      const hasMultipleThreads = serveIsMain_
+        ? serveWorkerCountOrIndex_ > 0 // count > 0
         : true;
       if (hasMultipleThreads) {
-        const serveLogIndex = serveIsMain ? 0 : (serveWorkerCountOrIndex + 1);
+        const serveLogIndex = serveIsMain_ ? 0 : (serveWorkerCountOrIndex_ + 1);
         const base = `serve-worker-${serveLogIndex}`;
         // 15 = "serve-worker-nn".length, assuming
         // serveWorkerCount < 100
@@ -834,16 +775,16 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       core.addMainModuleHandler((main) => {
         if (ObjectHasOwn(main, "default")) {
           try {
-            serve = registerDeclarativeServer(main.default);
+            serve = lazyServeMod().registerDeclarativeServer(main.default);
           } catch (e) {
-            if (mode === executionModes.serve) {
+            if (mode === executionModes.serve || autoServe) {
               throw e;
             }
           }
         }
 
         if (mode === executionModes.serve && !serve) {
-          if (serveIsMain) {
+          if (serveIsMain_) {
             // Only error if main worker
             import.meta.log(
               "error",
@@ -858,7 +799,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         }
 
         if (serve) {
-          if (mode === executionModes.run) {
+          if (mode === executionModes.run && !autoServe) {
             import.meta.log(
               "error",
               `%cwarning: %cDetected %cexport default { fetch }%c, did you mean to run \"deno serve\"?`,
@@ -868,12 +809,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
               "font-weight: normal;",
             );
           }
-          if (mode === executionModes.serve) {
+          if (mode === executionModes.serve || autoServe) {
             serve({
               servePort,
               serveHost,
-              workerCountWhenMain: serveIsMain
-                ? serveWorkerCountOrIndex
+              workerCountWhenMain: serveIsMain_
+                ? serveWorkerCountOrIndex_
                 : undefined,
             });
           }
@@ -886,7 +827,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
@@ -903,7 +849,6 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       location.setLocationHref(location_);
     }
 
-    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectDefineProperties(globalThis, mainRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       // TODO(bartlomieju): in the future we might want to change the
@@ -913,6 +858,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
       close: core.propWritable(windowClose),
       closed: core.propGetterOnly(() => windowIsClosing),
     });
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, Window.prototype);
 
     bootstrapOtel(otelConfig);
@@ -954,21 +900,19 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      const unstable = denoNsUnstableById[id];
+      if (unstable) {
+        ObjectDefineProperties(
+          finalDenoNs,
+          ObjectGetOwnPropertyDescriptors(unstable),
+        );
+      }
     }
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
       // Removes the `__proto__` for security reasons.
       // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
       delete Object.prototype.__proto__;
-    }
-
-    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-      // Removes the `Temporal` API.
-      delete globalThis.Temporal;
-      delete globalThis.Date.prototype.toTemporalInstant;
-    } else {
-      updateTemporal();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -981,6 +925,8 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         runningOnMainThread: true,
         argv0,
         nodeDebug,
+        nodeClusterUniqueId,
+        nodeClusterSchedPolicy,
       });
     }
   } else {
@@ -993,6 +939,7 @@ function bootstrapWorkerRuntime(
   name,
   internalName,
   workerId,
+  workerType,
   maybeWorkerMetadata,
   warmup = false,
 ) {
@@ -1010,18 +957,32 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
+      15: standalone,
+      17: nodeClusterUniqueId,
+      18: nodeClusterSchedPolicy,
     } = runtimeOptions;
+
+    denoNs.build.standalone = standalone;
+
     closeOnIdle = runtimeOptions[14];
 
     performance.setTimeOrigin();
     globalThis_ = globalThis;
 
-    // Remove bootstrapping data from the global scope
+    // Remove bootstrapping data from the global scope. Lazy-loaded IIFE
+    // scripts (`ext:.../*.js`) and the synthetic_esm backing-script path
+    // both read `globalThis.__bootstrap.core.ops` at module body; the
+    // Rust `load_ext_script` reinstalls a captured snapshot view of
+    // `__bootstrap` for the duration of each script's evaluation (see
+    // `BootstrapInstallGuard` in `libs/core/modules/map.rs`).
     delete globalThis.__bootstrap;
     delete globalThis.bootstrap;
     hasBootstrapped = true;
 
-    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
+    if (workerType === "node") {
+      delete workerRuntimeGlobalProperties["WorkerGlobalScope"];
+      delete workerRuntimeGlobalProperties["self"];
+    }
     ObjectDefineProperties(globalThis, workerRuntimeGlobalProperties);
     ObjectDefineProperties(globalThis, {
       name: core.propWritable(name),
@@ -1036,14 +997,15 @@ function bootstrapWorkerRuntime(
         core.propWritable(importScripts),
       );
     }
+    exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures);
     ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
     bootstrapOtel(otelConfig);
 
     core.wrapConsole(globalThis.console, core.v8Console);
 
-    event.defineEventHandler(self, "message");
-    event.defineEventHandler(self, "error", undefined, true);
+    event.defineEventHandler(globalThis, "message");
+    event.defineEventHandler(globalThis, "error", undefined, true);
 
     // `Deno.exit()` is an alias to `self.close()`. Setting and exit
     // code using an op in worker context is a no-op.
@@ -1066,24 +1028,23 @@ function bootstrapWorkerRuntime(
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
-      ObjectAssign(finalDenoNs, denoNsUnstableById[id]);
+      const unstable = denoNsUnstableById[id];
+      if (unstable) {
+        ObjectDefineProperties(
+          finalDenoNs,
+          ObjectGetOwnPropertyDescriptors(unstable),
+        );
+      }
     }
 
     // Not available in workers
+    const moduleSpecifier = finalDenoNs.mainModule;
     delete finalDenoNs.mainModule;
 
     if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.unsafeProto)) {
       // Removes the `__proto__` for security reasons.
       // https://tc39.es/ecma262/#sec-get-object.prototype.__proto__
       delete Object.prototype.__proto__;
-    }
-
-    if (!ArrayPrototypeIncludes(unstableFeatures, unstableIds.temporal)) {
-      // Removes the `Temporal` API.
-      delete globalThis.Temporal;
-      delete globalThis.Date.prototype.toTemporalInstant;
-    } else {
-      updateTemporal();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -1102,6 +1063,9 @@ function bootstrapWorkerRuntime(
         workerId,
         maybeWorkerMetadata: workerMetadata,
         nodeDebug,
+        nodeClusterUniqueId,
+        nodeClusterSchedPolicy,
+        moduleSpecifier: workerType === "node" ? moduleSpecifier : null,
       });
     }
   } else {
@@ -1132,7 +1096,7 @@ event.saveGlobalThisReference(globalThis);
 event.defineEventHandler(globalThis, "unhandledrejection");
 
 // Nothing listens to this, but it warms up the code paths for event dispatch
-(new event.EventTarget()).dispatchEvent(new Event("warmup"));
+(new event.EventTarget()).dispatchEvent(new event.Event("warmup"));
 
 removeImportedOps();
 
@@ -1144,6 +1108,12 @@ bootstrapWorkerRuntime(
   undefined,
   undefined,
   undefined,
+  undefined,
   true,
 );
-nodeBootstrap({ warmup: true });
+// Skip warmup. The warmup branch creates placeholder stdin/stdout/stderr
+// streams that the runtime bootstrap (__bootstrapNodeProcess(warmup=false))
+// then unconditionally overwrites with fresh TTYWriteStream instances, so
+// the only observable effect of warmup was pulling node:stream and friends
+// into the snapshot via createWritableStdioStream/initStdin.
+// nodeBootstrap({ warmup: true });

@@ -1,0 +1,33 @@
+# original
+{
+  "version": "5",
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:foo@1"
+      ],
+      "overrides": {
+        "bar": "2.0.0"
+      }
+    }
+  }
+}
+
+# --no-npm should preserve overrides (no change)
+{
+}
+
+# overrides preserved
+{
+  "version": "5",
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:foo@1"
+      ],
+      "overrides": {
+        "bar": "2.0.0"
+      }
+    }
+  }
+}

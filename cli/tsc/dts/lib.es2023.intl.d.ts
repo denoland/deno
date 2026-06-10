@@ -7,14 +7,12 @@ License at http://www.apache.org/licenses/LICENSE-2.0
 THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
 WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
-MERCHANTABLITY OR NON-INFRINGEMENT.
+MERCHANTABILITY OR NON-INFRINGEMENT.
 
 See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-/// <reference no-default-lib="true"/>
 
 declare namespace Intl {
     interface NumberFormatOptionsUseGroupingRegistry {
@@ -26,6 +24,12 @@ declare namespace Intl {
     interface NumberFormatOptionsSignDisplayRegistry {
         negative: never;
     }
+
+    interface NumberFormatRangePartTypeRegistry extends NumberFormatPartTypeRegistry {
+        approximatelySign: never;
+    }
+
+    type NumberFormatRangePartTypes = keyof NumberFormatRangePartTypeRegistry;
 
     interface NumberFormatOptions {
         roundingPriority?: "auto" | "morePrecision" | "lessPrecision" | undefined;
@@ -41,7 +45,9 @@ declare namespace Intl {
         trailingZeroDisplay: "auto" | "stripIfInteger";
     }
 
-    interface NumberRangeFormatPart extends NumberFormatPart {
+    interface NumberRangeFormatPart {
+        type: NumberFormatRangePartTypes;
+        value: string;
         source: "startRange" | "endRange" | "shared";
     }
 

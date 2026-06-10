@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -10,15 +10,34 @@ use brotli::enc::encode::BrotliEncoderStateStruct;
 use brotli::writer::StandardAlloc;
 use bytes::Bytes;
 use bytes::BytesMut;
-use deno_core::futures::FutureExt;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::Resource;
+use deno_core::futures::FutureExt;
 use deno_error::JsErrorBox;
 use flate2::write::GzEncoder;
 use hyper::body::Frame;
 use hyper::body::SizeHint;
 use pin_project::pin_project;
+
+const BROTLI_COMPRESSION_QUALITY: u32 = 6;
+const BROTLI_COMPRESSION_LGWIN: u32 = 22;
+
+// Quality level 6 is based on google's nginx default value for on-the-fly
+// compression:
+// https://github.com/google/ngx_brotli#brotli_comp_level
+// lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB).
+#[inline(never)]
+pub(crate) fn brotli_compressor(
+  buffer_size: usize,
+) -> brotli::CompressorWriter<Vec<u8>> {
+  brotli::CompressorWriter::new(
+    Vec::new(),
+    buffer_size,
+    BROTLI_COMPRESSION_QUALITY,
+    BROTLI_COMPRESSION_LGWIN,
+  )
+}
 
 /// Simplification for nested types we use for our streams. We provide a way to convert from
 /// this type into Hyper's body [`Frame`].
@@ -163,13 +182,7 @@ impl ResponseBytesInner {
         Self::Bytes(BufView::from(writer.finish().unwrap()))
       }
       Compression::Brotli => {
-        // quality level 6 is based on google's nginx default value for
-        // on-the-fly compression
-        // https://github.com/google/ngx_brotli#brotli_comp_level
-        // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
-        // (~4MB)
-        let mut writer =
-          brotli::CompressorWriter::new(Vec::new(), 65 * 1024, 6, 22);
+        let mut writer = brotli_compressor(65 * 1024);
         writer.write_all(&buf).unwrap();
         writer.flush().unwrap();
         Self::Bytes(BufView::from(writer.into_inner()))
@@ -187,8 +200,7 @@ impl ResponseBytesInner {
         Self::Bytes(BufView::from(writer.finish().unwrap()))
       }
       Compression::Brotli => {
-        let mut writer =
-          brotli::CompressorWriter::new(Vec::new(), 65 * 1024, 6, 22);
+        let mut writer = brotli_compressor(65 * 1024);
         writer.write_all(&vec).unwrap();
         writer.flush().unwrap();
         Self::Bytes(BufView::from(writer.into_inner()))
@@ -350,7 +362,7 @@ impl PollFrame for GZipResponseStream {
     let orig_state = *state;
     let frame = match *state {
       GZipState::EndOfStream => {
-        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream)
+        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream);
       }
       GZipState::Header => {
         *state = GZipState::Streaming;
@@ -367,13 +379,12 @@ impl PollFrame for GZipResponseStream {
           BufView::from(v),
         ));
       }
-      GZipState::Streaming => {
-        if let Some(partial) = this.partial.take() {
-          ResponseStreamResult::NonEmptyBuf(partial)
-        } else {
+      GZipState::Streaming => match this.partial.take() {
+        Some(partial) => ResponseStreamResult::NonEmptyBuf(partial),
+        _ => {
           ready!(Pin::new(&mut this.underlying).poll_frame(cx))
         }
-      }
+      },
       GZipState::Flushing => ResponseStreamResult::EndOfStream,
     };
 
@@ -391,7 +402,7 @@ impl PollFrame for GZipResponseStream {
     let res = match frame {
       // Short-circuit these and just return
       x @ (ResponseStreamResult::NoData | ResponseStreamResult::Error(..)) => {
-        return std::task::Poll::Ready(x)
+        return std::task::Poll::Ready(x);
       }
       ResponseStreamResult::EndOfStream => {
         *state = GZipState::Flushing;
@@ -465,11 +476,14 @@ pub struct BrotliResponseStream {
 impl BrotliResponseStream {
   pub fn new(underlying: ResponseStream) -> Self {
     let mut stm = BrotliEncoderStateStruct::new(StandardAlloc::default());
-    // Quality level 6 is based on google's nginx default value for on-the-fly compression
-    // https://github.com/google/ngx_brotli#brotli_comp_level
-    // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB)
-    stm.set_parameter(BrotliEncoderParameter::BROTLI_PARAM_QUALITY, 6);
-    stm.set_parameter(BrotliEncoderParameter::BROTLI_PARAM_LGWIN, 22);
+    stm.set_parameter(
+      BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
+      BROTLI_COMPRESSION_QUALITY,
+    );
+    stm.set_parameter(
+      BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
+      BROTLI_COMPRESSION_LGWIN,
+    );
     Self {
       stm,
       state: BrotliState::Streaming,
@@ -492,11 +506,7 @@ fn max_compressed_size(input_size: usize) -> usize {
   let overhead = 2 + (4 * num_large_blocks) + 3 + 1;
   let result = input_size + overhead;
 
-  if result < input_size {
-    0
-  } else {
-    result
-  }
+  if result < input_size { 0 } else { result }
 }
 
 impl PollFrame for BrotliResponseStream {
@@ -572,7 +582,7 @@ impl PollFrame for BrotliResponseStream {
   }
 }
 
-#[allow(clippy::print_stderr)]
+#[allow(clippy::print_stderr, reason = "test code")]
 #[cfg(test)]
 mod tests {
   use std::future::poll_fn;

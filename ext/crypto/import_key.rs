@@ -1,15 +1,15 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use base64::Engine;
-use deno_core::op2;
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
+use deno_core::op2;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
 use rsa::pkcs1::UintRef;
 use rsa::pkcs8::der::Encode;
 use serde::Deserialize;
-use serde::Serialize;
 use spki::der::Decode;
 
 use crate::shared::*;
@@ -112,9 +112,9 @@ pub enum KeyData {
     y: String,
   },
   JwkPrivateEc {
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "deserialized but not directly read")]
     x: String,
-    #[allow(dead_code)]
+    #[allow(dead_code, reason = "deserialized but not directly read")]
     y: String,
     d: String,
   },
@@ -139,26 +139,27 @@ pub enum ImportKeyOptions {
   Hmac {},
 }
 
-#[derive(Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum ImportKeyResult {
-  #[serde(rename_all = "camelCase")]
   Rsa {
     raw_data: RustRawKeyData,
     modulus_length: usize,
-    public_exponent: ToJsBuffer,
+    public_exponent: Uint8Array,
   },
-  #[serde(rename_all = "camelCase")]
-  Ec { raw_data: RustRawKeyData },
-  #[serde(rename_all = "camelCase")]
-  #[allow(dead_code)]
-  Aes { raw_data: RustRawKeyData },
-  #[serde(rename_all = "camelCase")]
-  Hmac { raw_data: RustRawKeyData },
+  Ec {
+    raw_data: RustRawKeyData,
+  },
+  #[allow(dead_code, reason = "variant kept for completeness")]
+  Aes {
+    raw_data: RustRawKeyData,
+  },
+  Hmac {
+    raw_data: RustRawKeyData,
+  },
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_import_key(
   #[serde] opts: ImportKeyOptions,
   #[serde] key_data: KeyData,
@@ -686,7 +687,7 @@ fn import_key_ec(
         .parameters
         .ok_or(ImportKeyError::MalformedParameters)?
         .try_into()
-        .unwrap();
+        .map_err(|_| ImportKeyError::MalformedParameters)?;
 
       let pk_named_curve = match named_curve_alg {
         // id-secp256r1

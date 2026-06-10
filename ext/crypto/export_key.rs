@@ -1,22 +1,22 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
+use deno_core::ToV8;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
-use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rsa::pkcs1::der::Decode;
-use rsa::pkcs8::der::asn1::UintRef;
 use rsa::pkcs8::der::Encode;
+use rsa::pkcs8::der::asn1::UintRef;
 use serde::Deserialize;
-use serde::Serialize;
-use spki::der::asn1;
-use spki::der::asn1::BitString;
 use spki::AlgorithmIdentifier;
 use spki::AlgorithmIdentifierOwned;
+use spki::der::asn1;
+use spki::der::asn1::BitString;
 
 use crate::shared::*;
 
@@ -75,12 +75,12 @@ pub enum ExportKeyAlgorithm {
   Hmac {},
 }
 
-#[derive(Serialize)]
-#[serde(untagged)]
+#[derive(ToV8)]
+#[to_v8(untagged)]
 pub enum ExportKeyResult {
-  Raw(ToJsBuffer),
-  Pkcs8(ToJsBuffer),
-  Spki(ToJsBuffer),
+  Raw(Uint8Array),
+  Pkcs8(Uint8Array),
+  Spki(Uint8Array),
   JwkSecret {
     k: String,
   },
@@ -110,7 +110,6 @@ pub enum ExportKeyResult {
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_key(
   #[serde] opts: ExportKeyOptions,
   #[serde] key_data: V8RawKeyData,
@@ -410,7 +409,23 @@ fn export_key_ec(
             Err(SharedError::ExpectedValidPublicECKey.into())
           }
         }
-        _ => Err(ExportKeyError::UnsupportedNamedCurve),
+        EcNamedCurve::P521 => {
+          let ec_key = p521::SecretKey::from_pkcs8_der(private_key)
+            .map_err(|_| SharedError::FailedDecodePrivateKey)?;
+
+          let point = ec_key.public_key().to_encoded_point(false);
+          if let elliptic_curve::sec1::Coordinates::Uncompressed { x, y } =
+            point.coordinates()
+          {
+            Ok(ExportKeyResult::JwkPrivateEc {
+              x: bytes_to_b64(x),
+              y: bytes_to_b64(y),
+              d: bytes_to_b64(&ec_key.to_bytes()),
+            })
+          } else {
+            Err(SharedError::ExpectedValidPublicECKey.into())
+          }
+        }
       }
     }
     ExportKeyFormat::JwkSecret => Err(SharedError::UnsupportedFormat.into()),

@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::IsTerminal;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -32,6 +33,10 @@ impl CacheDBHash {
         .write_hashable(hashable)
         .finish(),
     )
+  }
+
+  pub fn inner(&self) -> u64 {
+    self.0
   }
 }
 
@@ -83,20 +88,49 @@ pub struct CacheDBConfiguration {
 
 impl CacheDBConfiguration {
   fn create_combined_sql(&self) -> String {
+    // WSL-1's filesystem translation layer doesn't support WAL's
+    // shared-memory locking, which surfaces as `SQLITE_PROTOCOL` (error
+    // code 15: "Database lock protocol error") when two Deno processes
+    // open the same cache DB at once. Fall back to TRUNCATE journal mode
+    // there. See https://github.com/denoland/deno/issues/26441.
+    let journal_mode = if is_wsl1() { "TRUNCATE" } else { "WAL" };
     format!(
-      concat!(
-        "PRAGMA journal_mode=WAL;",
-        "PRAGMA synchronous=NORMAL;",
-        "PRAGMA temp_store=memory;",
-        "PRAGMA page_size=4096;",
-        "PRAGMA mmap_size=6000000;",
-        "PRAGMA optimize;",
-        "CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
-        "{}",
-      ),
-      self.table_initializer
+      "PRAGMA journal_mode={journal_mode};\
+       PRAGMA synchronous=NORMAL;\
+       PRAGMA temp_store=memory;\
+       PRAGMA page_size=4096;\
+       PRAGMA mmap_size=6000000;\
+       PRAGMA optimize;\
+       CREATE TABLE IF NOT EXISTS info (key TEXT PRIMARY KEY, value TEXT NOT NULL);\
+       {table_initializer}",
+      table_initializer = self.table_initializer
     )
   }
+}
+
+/// Returns whether the underlying `osrelease` string was produced by
+/// the WSL-1 kernel. The WSL-1 kernel string contains "Microsoft"; the
+/// WSL-2 kernel string contains both "microsoft" and "WSL2".
+#[cfg(any(target_os = "linux", test))]
+fn parse_wsl1_from_osrelease(osrelease: &str) -> bool {
+  let lower = osrelease.to_ascii_lowercase();
+  lower.contains("microsoft") && !lower.contains("wsl2")
+}
+
+#[cfg(target_os = "linux")]
+fn is_wsl1() -> bool {
+  use std::sync::OnceLock;
+  static IS_WSL1: OnceLock<bool> = OnceLock::new();
+  *IS_WSL1.get_or_init(|| {
+    std::fs::read_to_string("/proc/sys/kernel/osrelease")
+      .map(|s| parse_wsl1_from_osrelease(&s))
+      .unwrap_or(false)
+  })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn is_wsl1() -> bool {
+  false
 }
 
 #[derive(Debug)]
@@ -385,14 +419,14 @@ fn open_connection(
   };
 
   // reduce logging for readonly file system
-  if let rusqlite::Error::SqliteFailure(ffi_err, _) = &err {
-    if ffi_err.code == rusqlite::ErrorCode::ReadOnly {
-      log::debug!(
-        "Failed creating cache db. Folder readonly: {}",
-        path.display()
-      );
-      return handle_failure_mode(config, err, open_connection_and_init);
-    }
+  if let rusqlite::Error::SqliteFailure(ffi_err, _) = &err
+    && ffi_err.code == rusqlite::ErrorCode::ReadOnly
+  {
+    log::debug!(
+      "Failed creating cache db. Folder readonly: {}",
+      path.display()
+    );
+    return handle_failure_mode(config, err, open_connection_and_init);
   }
 
   // ensure the parent directory exists
@@ -403,6 +437,25 @@ fn open_connection(
       }
       Err(err) => {
         log::debug!("Failed creating the cache db parent dir: {:#}", err);
+      }
+    }
+  }
+
+  // If the failure is just transient lock contention (another process is
+  // currently operating on the database — for example recovering a WAL-mode
+  // database, which surfaces as SQLITE_BUSY_RECOVERY / error code 261), the
+  // file is not corrupt. Wait for the other process to finish by retrying with
+  // exponential backoff instead of deleting it.
+  // See https://github.com/denoland/deno/issues/27283.
+  if is_lock_contention_error(&err) {
+    match retry_open_with_backoff(path, &open_connection_and_init) {
+      Ok(conn) => return Ok(ConnectionState::Connected(conn)),
+      Err(err) => {
+        // Still locked after exhausting retries. Don't delete the file — it
+        // belongs to another process and is not corrupt — just degrade
+        // gracefully to the configured failure mode.
+        log_failure_mode(path, std::io::stderr().is_terminal(), config);
+        return handle_failure_mode(config, err, open_connection_and_init);
       }
     }
   }
@@ -423,7 +476,11 @@ fn open_connection(
   // Failed, try deleting it
   let is_tty = std::io::stderr().is_terminal();
   log::log!(
-    if is_tty { log::Level::Warn } else { log::Level::Trace },
+    if is_tty {
+      log::Level::Warn
+    } else {
+      log::Level::Trace
+    },
     "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
     path.to_string_lossy()
   );
@@ -438,6 +495,68 @@ fn open_connection(
 
   log_failure_mode(path, is_tty, config);
   handle_failure_mode(config, err, open_connection_and_init)
+}
+
+/// Returns whether the error is transient lock contention that just means
+/// another process is currently operating on the database (e.g. recovering a
+/// WAL-mode database file, which surfaces as `SQLITE_BUSY_RECOVERY`). The
+/// underlying file is not corrupt and the operation should be retried rather
+/// than the file deleted.
+fn is_lock_contention_error(err: &rusqlite::Error) -> bool {
+  matches!(
+    err,
+    rusqlite::Error::SqliteFailure(ffi_err, _)
+      if matches!(
+        ffi_err.code,
+        rusqlite::ErrorCode::DatabaseBusy
+          | rusqlite::ErrorCode::DatabaseLocked
+      )
+  )
+}
+
+/// Maximum number of times to retry opening a database that is busy because
+/// another process is operating on it.
+const LOCK_CONTENTION_RETRIES: u32 = 7;
+/// Base delay used for the first retry; doubles on each subsequent retry up to
+/// [`LOCK_CONTENTION_MAX_DELAY`]. The default schedule waits ~1.3s in total.
+const LOCK_CONTENTION_BASE_DELAY: Duration = Duration::from_millis(10);
+const LOCK_CONTENTION_MAX_DELAY: Duration = Duration::from_millis(1000);
+
+/// Retry opening the database with exponential backoff while it remains locked
+/// by another process. Returns the last error if the contention does not clear
+/// within [`LOCK_CONTENTION_RETRIES`] attempts, or immediately if a different
+/// (non-contention) error is encountered.
+fn retry_open_with_backoff(
+  path: &Path,
+  open_connection_and_init: impl Fn(
+    Option<&Path>,
+  ) -> Result<Connection, rusqlite::Error>,
+) -> Result<Connection, rusqlite::Error> {
+  let mut delay = LOCK_CONTENTION_BASE_DELAY;
+  let mut last_err = None;
+  for attempt in 1..=LOCK_CONTENTION_RETRIES {
+    log::debug!(
+      "Cache database '{}' is locked by another process, retrying in {}ms (attempt {}/{}).",
+      path.to_string_lossy(),
+      delay.as_millis(),
+      attempt,
+      LOCK_CONTENTION_RETRIES,
+    );
+    std::thread::sleep(delay);
+    match open_connection_and_init(Some(path)) {
+      Ok(conn) => return Ok(conn),
+      Err(err) => {
+        // If the error changed to something other than lock contention, stop
+        // retrying and surface it to the regular recovery path.
+        if !is_lock_contention_error(&err) {
+          return Err(err);
+        }
+        last_err = Some(err);
+      }
+    }
+    delay = (delay * 2).min(LOCK_CONTENTION_MAX_DELAY);
+  }
+  Err(last_err.unwrap_or(rusqlite::Error::SqliteSingleThreadedMode))
 }
 
 fn log_failure_mode(path: &Path, is_tty: bool, config: &CacheDBConfiguration) {
@@ -561,6 +680,57 @@ mod tests {
   }
 
   #[tokio::test]
+  async fn lock_contention_retries_then_succeeds() {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    let temp_dir = TempDir::new();
+    let path = temp_dir.path().join("data").to_path_buf();
+    let attempts = AtomicUsize::new(0);
+    let state = open_connection(&TEST_DB, Some(path.as_path()), |maybe_path| {
+      let n = attempts.fetch_add(1, Ordering::SeqCst);
+      if n < 2 {
+        // SQLITE_BUSY_RECOVERY (261): another process is recovering the WAL db.
+        Err(rusqlite::Error::SqliteFailure(
+          rusqlite::ffi::Error::new(261),
+          Some("recovering".to_string()),
+        ))
+      } else {
+        Connection::open(maybe_path.unwrap())
+      }
+    })
+    .unwrap();
+    assert!(matches!(state, ConnectionState::Connected(_)));
+    // The first open plus at least two retries should have happened.
+    assert!(attempts.load(Ordering::SeqCst) >= 3);
+    // The file must not have been deleted — it was never corrupt.
+    assert!(path.exists());
+  }
+
+  #[tokio::test]
+  async fn lock_contention_does_not_delete_on_giving_up() {
+    let temp_dir = TempDir::new();
+    let path = temp_dir.path().join("data").to_path_buf();
+    // Create a sentinel file so we can assert it is not deleted.
+    std::fs::write(&path, b"not a real db").unwrap();
+    let state = open_connection(&TEST_DB, Some(path.as_path()), |maybe_path| {
+      match maybe_path {
+        // Always busy: simulate a database that never finishes recovering.
+        Some(_) => Err(rusqlite::Error::SqliteFailure(
+          rusqlite::ffi::Error::new(261),
+          Some("recovering".to_string()),
+        )),
+        None => Ok(Connection::open_in_memory().unwrap()),
+      }
+    })
+    .unwrap();
+    // Falls back to the in-memory failure mode rather than erroring.
+    assert!(matches!(state, ConnectionState::Connected(_)));
+    // Crucially, the on-disk file owned by another process is preserved.
+    assert!(path.exists());
+  }
+
+  #[tokio::test]
   async fn failure_mode_blackhole() {
     let temp_dir = TempDir::new();
     let path = temp_dir.path().join("data");
@@ -597,13 +767,39 @@ mod tests {
     assert_same_serialize_deserialize(CacheDBHash::new(u64::MAX));
     assert_same_serialize_deserialize(CacheDBHash::new(u64::MAX - 1));
     assert_same_serialize_deserialize(CacheDBHash::new(u64::MIN));
-    assert_same_serialize_deserialize(CacheDBHash::new(u64::MIN + 1));
+    assert_same_serialize_deserialize(CacheDBHash::new(1));
+  }
+
+  #[test]
+  fn detects_wsl1_kernel() {
+    assert!(parse_wsl1_from_osrelease("4.4.0-19041-Microsoft"));
+    assert!(parse_wsl1_from_osrelease("4.4.0-19041-Microsoft\n"));
+    assert!(!parse_wsl1_from_osrelease(
+      "5.10.16.3-microsoft-standard-WSL2"
+    ));
+    assert!(!parse_wsl1_from_osrelease(
+      "5.15.146.1-microsoft-standard-WSL2+"
+    ));
+    assert!(!parse_wsl1_from_osrelease("5.15.0-91-generic"));
+    assert!(!parse_wsl1_from_osrelease(""));
+  }
+
+  #[test]
+  fn combined_sql_uses_truncate_on_wsl1_only() {
+    let sql = TEST_DB.create_combined_sql();
+    if is_wsl1() {
+      assert!(sql.contains("PRAGMA journal_mode=TRUNCATE"));
+      assert!(!sql.contains("PRAGMA journal_mode=WAL"));
+    } else {
+      assert!(sql.contains("PRAGMA journal_mode=WAL"));
+      assert!(!sql.contains("PRAGMA journal_mode=TRUNCATE"));
+    }
   }
 
   fn assert_same_serialize_deserialize(original_hash: CacheDBHash) {
+    use rusqlite::ToSql;
     use rusqlite::types::FromSql;
     use rusqlite::types::ValueRef;
-    use rusqlite::ToSql;
 
     let value = original_hash.to_sql().unwrap();
     match value {

@@ -1,0 +1,11 @@
+[# Warning! It should not show that it downloaded anything here]
+Check [WILDCARD]
+Compile [WILDCARD]
+
+Embedded Files
+
+[WILDLINE]
+├── branch.ts ([WILDLINE])
+└── main.ts ([WILDLINE])
+
+[WILDCARD]

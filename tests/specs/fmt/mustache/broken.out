@@ -1,0 +1,4 @@
+Error formatting: [WILDCARD]broken.mustache
+   Syntax error (expected element) at file://[WILDCARD]broken.mustache:2:0
+
+error: Failed to format 1 of 1 checked file

@@ -1,7 +1,7 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
-
-import { primordials } from "ext:core/mod.js";
+// Copyright 2018-2026 the Deno authors. MIT license.
+(function () {
+const { core, primordials } = __bootstrap;
 "use strict";
 
 const {
@@ -38,6 +38,8 @@ const kClosed = 1 << 5;
 const kCloseEmitted = 1 << 6;
 const kErrored = 1 << 7;
 const kConstructed = 1 << 8;
+const kEnding = 1 << 12;
+const kEnded = 1 << 30;
 
 function isReadableNodeStream(obj, strict = false) {
   return !!(
@@ -369,10 +371,11 @@ const _defaultExport1 = {
   kCloseEmitted,
   kErrored,
   kConstructed,
+  kEnding,
+  kEnded,
 };
 
-export default _defaultExport1;
-export {
+return {
   isClosed,
   isDestroyed,
   isDisturbed,
@@ -404,6 +407,8 @@ export {
   kControllerErrorFunction,
   kDestroyed,
   kEmitClose,
+  kEnded,
+  kEnding,
   kErrored,
   kErrorEmitted,
   kIsClosedPromise,
@@ -416,4 +421,6 @@ export {
   kOnConstructed,
   kState,
   willEmitClose,
+  default: _defaultExport1,
 };
+})();

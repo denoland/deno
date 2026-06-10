@@ -1,5 +1,5 @@
 Download http://localhost:4545/remote.ts
-Check file:///[WILDLINE]/module_not_found/main.ts
+Check [WILDCARD]main.ts
 TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/other.js'.
     at file:///[WILDLINE]/main.ts:1:22
 

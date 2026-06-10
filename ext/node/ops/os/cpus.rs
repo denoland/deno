@@ -1,8 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_core::serde::Serialize;
+use deno_core::ToV8;
 
-#[derive(Debug, Default, Serialize, Clone)]
+#[derive(Debug, Default, ToV8, Clone)]
 pub struct CpuTimes {
   pub user: u64,
   pub nice: u64,
@@ -11,7 +11,7 @@ pub struct CpuTimes {
   pub irq: u64,
 }
 
-#[derive(Debug, Default, Serialize, Clone)]
+#[derive(Debug, Default, ToV8, Clone)]
 pub struct CpuInfo {
   pub model: String,
   /* in MHz */
@@ -73,7 +73,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
       cpu_speed = 2_400_000_000;
     }
 
-    extern "C" {
+    unsafe extern "C" {
       fn mach_host_self() -> std::ffi::c_uint;
       static mut mach_task_self_: std::ffi::c_uint;
     }
@@ -143,9 +143,11 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
   // Safety: Assumes correct behavior of platform-specific syscalls and data structures.
   unsafe {
-    let mut system_info: winapi::um::sysinfoapi::SYSTEM_INFO =
+    let mut system_info: windows_sys::Win32::System::SystemInformation::SYSTEM_INFO =
       std::mem::zeroed();
-    winapi::um::sysinfoapi::GetSystemInfo(&mut system_info);
+    windows_sys::Win32::System::SystemInformation::GetSystemInfo(
+      &mut system_info,
+    );
 
     let cpu_count = system_info.dwNumberOfProcessors as usize;
 

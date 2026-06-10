@@ -1,22 +1,23 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::num::NonZeroUsize;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::ModuleSpecifier;
 use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_runtime::UnconfiguredRuntime;
 
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
-use crate::args::parallelism_count;
 use crate::args::Flags;
 use crate::args::ServeFlags;
 use crate::args::WatchFlagsWithPaths;
+use crate::args::WorkspaceMainModuleResolver;
+use crate::args::parallelism_count;
 use crate::factory::CliFactory;
 use crate::util::file_watcher::WatcherRestartMode;
 use crate::worker::CliMainWorkerFactory;
@@ -51,7 +52,12 @@ pub async fn serve(
     deno_dir.upgrade_check_file_path(),
   );
 
-  let main_module = cli_options.resolve_main_module()?;
+  let workspace_resolver = factory.workspace_resolver().await?.clone();
+  let node_resolver = factory.node_resolver().await?.clone();
+
+  let main_module = cli_options.resolve_main_module_with_resolver(Some(
+    &WorkspaceMainModuleResolver::new(workspace_resolver, node_resolver),
+  ))?;
 
   maybe_npm_install(&factory).await?;
 
@@ -92,6 +98,9 @@ async fn do_serve(
     .create_main_worker_with_unconfigured_runtime(
       deno_runtime::WorkerExecutionMode::ServeMain { worker_count },
       main_module.clone(),
+      // TODO(bartlomieju):
+      vec![],
+      vec![],
       unconfigured_runtime,
     )
     .await?;
@@ -145,11 +154,13 @@ async fn run_worker(
     .create_main_worker(
       deno_runtime::WorkerExecutionMode::ServeWorker { worker_index },
       main_module,
+      // TODO(bartlomieju):
+      vec![],
+      vec![],
     )
     .await?;
   if hmr {
-    worker.run_for_watcher().await?;
-    Ok(0)
+    worker.run_for_watcher().await.map_err(Into::into)
   } else {
     worker.run().await.map_err(Into::into)
   }
@@ -177,7 +188,14 @@ async fn serve_with_watch(
           watcher_communicator.clone(),
         );
         let cli_options = factory.cli_options()?;
-        let main_module = cli_options.resolve_main_module()?;
+        let workspace_resolver = factory.workspace_resolver().await?.clone();
+        let node_resolver = factory.node_resolver().await?.clone();
+        let main_module = cli_options.resolve_main_module_with_resolver(
+          Some(&WorkspaceMainModuleResolver::new(
+            workspace_resolver,
+            node_resolver,
+          )),
+        )?;
 
         maybe_npm_install(&factory).await?;
 
@@ -185,7 +203,7 @@ async fn serve_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        do_serve(
+        let exit_code = do_serve(
           worker_factory,
           main_module.clone(),
           parallelism_count,
@@ -194,7 +212,7 @@ async fn serve_with_watch(
         )
         .await?;
 
-        Ok(())
+        Ok(exit_code)
       })
     },
   )

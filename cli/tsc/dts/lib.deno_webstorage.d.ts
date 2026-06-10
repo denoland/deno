@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -41,7 +41,15 @@ interface Storage {
   [name: string]: any;
 }
 
-/** @category Storage */
+/** This Web Storage API interface provides access to a particular domain's
+ * session or local storage. Instances of this interface are not constructable
+ * and are accessed through the {@linkcode localStorage} and
+ * {@linkcode sessionStorage} globals.
+ *
+ * @see https://developer.mozilla.org/docs/Web/API/Storage
+ *
+ * @category Storage
+ */
 declare var Storage: {
   readonly prototype: Storage;
   new (): never;

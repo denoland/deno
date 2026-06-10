@@ -1,0 +1,8 @@
+[UNORDERED_START]
+Download http://localhost:4269/@jsr%2fdenotest__add
+Download http://localhost:4261/@denotest%2fbasic
+Download http://localhost:4269/@jsr/denotest__add/1.0.0.tgz
+Download http://localhost:4261/@denotest/basic/1.0.0.tgz
+[UNORDERED_END]
+3
+1

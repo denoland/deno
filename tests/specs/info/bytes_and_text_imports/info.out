@@ -1,0 +1,7 @@
+local: [WILDLINE]
+type: TypeScript
+dependencies: 1 unique
+size: [WILDLINE]
+
+file:///[WILDLINE]/main.ts ([WILDLINE])
+└── file:///[WILDLINE]/data.txt (unknown)

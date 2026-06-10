@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -7,16 +7,18 @@
 
 /**
  * @category Messaging
- * @experimental
  */
 interface BroadcastChannelEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
 
-/**
+/** Represents a named channel that any
+ * {@linkcode BroadcastChannel} with the same name (across workers or isolates
+ * in the same Deno process) can use to send and receive messages, allowing
+ * one-to-many communication between execution contexts.
+ *
  * @category Messaging
- * @experimental
  */
 interface BroadcastChannel extends EventTarget {
   /**
@@ -57,9 +59,13 @@ interface BroadcastChannel extends EventTarget {
   ): void;
 }
 
-/**
+/** The constructor object for {@linkcode BroadcastChannel}.
+ *
+ * Construct a channel with `new BroadcastChannel(name)` to join the channel
+ * identified by `name`; messages posted on it are delivered to every other
+ * `BroadcastChannel` connected to the same name.
+ *
  * @category Messaging
- * @experimental
  */
 declare var BroadcastChannel: {
   readonly prototype: BroadcastChannel;

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -64,8 +64,7 @@ if (validPrefixes.some((prefix) => prTitle.startsWith(prefix))) {
     console.error(`  - ${prefix}`);
   }
   console.error(
-    "\nPlease fix the PR title according to https://www.conventionalcommits.org " +
-      "then push an empty commit to reset the CI.",
+    "\nPlease fix the PR title according to https://www.conventionalcommits.org",
   );
   Deno.exit(1);
 }

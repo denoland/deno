@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "x -y @denotest/deno --version",
+  "output": "x.out"
+}

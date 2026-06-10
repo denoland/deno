@@ -1,6 +1,15 @@
 /* Copyright 2015 the Istanbul contributors. All rights reserved. ISC license. */
 /* Copyright 2018-2023 the Deno authors. All rights reserved. MIT license. */
 
+.light {
+  /* forces light color-scheme */
+  color-scheme: light;
+}
+.dark {
+  /* forces dark color-scheme */
+  color-scheme: dark;
+}
+
 body,
 html {
   margin: 0;
@@ -8,7 +17,6 @@ html {
   height: 100%;
 }
 body {
-  color-scheme: light dark;
   font-family:
     Helvetica Neue,
     Helvetica,
@@ -23,8 +31,6 @@ body {
 *,
 *:after,
 *:before {
-  -webkit-box-sizing: border-box;
-  -moz-box-sizing: border-box;
   box-sizing: border-box;
 }
 h1 {
@@ -43,16 +49,15 @@ pre {
     monospace;
   margin: 0;
   padding: 0;
-  -moz-tab-size: 2;
-  -o-tab-size: 2;
   tab-size: 2;
 }
 a {
-  color: light-dark(#0074d9, #3ba3ff);
-  text-decoration: none;
+  color: light-dark(#0074d9, #75baff);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 a:hover {
-  text-decoration: underline;
+  text-decoration-thickness: 2px;
 }
 .strong {
   font-weight: bold;
@@ -108,10 +113,10 @@ a:hover {
 }
 
 .quiet {
-  color: light-dark(rgb(0 0 0 / 0.5), rgb(255 255 255 / 0.5));
+  color: light-dark(rgb(0 0 0 / 0.65), rgb(255 255 255 / 0.65));
 }
 .quiet a {
-  opacity: 0.7;
+  opacity: 1;
 }
 
 .fraction {
@@ -167,7 +172,7 @@ table.coverage td span.cline-any {
   position: relative;
   padding: 0 4px;
   background: light-dark(#333, #ddd);
-  color: light-dark(yellow, #cc0);
+  color: light-dark(yellow, #717108);
 }
 
 .skip-if-branch {
@@ -187,20 +192,20 @@ table.coverage td span.cline-any {
   width: 100%;
 }
 .coverage-summary tr {
-  border-bottom: 1px solid light-dark(#bbb, #444);
+  border-bottom: 1px solid light-dark(#bbb, #7E7E7E);
 }
 .keyline-all {
-  border: 1px solid light-dark(#ddd, #222);
+  border: 1px solid light-dark(#ddd, #7E7E7E);
 }
 .coverage-summary td,
 .coverage-summary th {
   padding: 10px;
 }
 .coverage-summary tbody {
-  border: 1px solid light-dark(#bbb, #444);
+  border: 1px solid light-dark(#bbb, #7E7E7E);
 }
 .coverage-summary td {
-  border-right: 1px solid light-dark(#bbb, #444);
+  border-right: 1px solid light-dark(#bbb, #7E7E7E);
 }
 .coverage-summary td:last-child {
   border-right: none;
@@ -213,8 +218,6 @@ table.coverage td span.cline-any {
 .coverage-summary th.file {
   border-right: none !important;
 }
-.coverage-summary th.pct {
-}
 .coverage-summary th.pic,
 .coverage-summary th.abs,
 .coverage-summary td.pct,
@@ -226,8 +229,6 @@ table.coverage td span.cline-any {
 }
 .coverage-summary td.pic {
   min-width: 120px !important;
-}
-.coverage-summary tfoot td {
 }
 
 .coverage-summary .sorter {
@@ -372,4 +373,20 @@ pre.prettyprint {
 }
 .overflow-auto {
   overflow: auto;
+}
+.flex-header {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+#theme-toggle {
+  border: none;
+  padding: 6px;
+  border-radius: 4px;
+}
+#theme-toggle svg {
+  width: 20px;
+  height: 20px;
 }

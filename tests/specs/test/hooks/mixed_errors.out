@@ -1,0 +1,55 @@
+Check [WILDCARD]mixed_errors.ts
+running 5 tests from ./mixed_errors.ts
+test 1 - should pass ... ok ([WILDCARD])
+test 2 - should pass ... ok ([WILDCARD])
+test 3 - beforeEach fails ... FAILED ([WILDCARD])
+test 4 - afterEach fails ... FAILED ([WILDCARD])
+test 5 - test itself fails ... FAILED ([WILDCARD])
+------- post-test output -------
+[
+  "beforeEach executed for test 1",
+  "test 1 executed",
+  "afterEach executed for test 1",
+  "beforeEach executed for test 2",
+  "test 2 executed",
+  "afterEach executed for test 2",
+  "beforeEach executed for test 3",
+  "afterEach executed for test 3",
+  "beforeEach executed for test 4",
+  "test 4 executed",
+  "afterEach executed for test 4",
+  "beforeEach executed for test 5",
+  "test 5 executed",
+  "afterEach executed for test 5"
+]
+----- post-test output end -----
+
+ ERRORS 
+
+test 3 - beforeEach fails => ./mixed_errors.ts:29:6
+error: Error: beforeEach failed for test 3
+    throw new Error("beforeEach failed for test 3");
+          ^
+    at [WILDCARD]mixed_errors.ts:9:11
+
+test 4 - afterEach fails => ./mixed_errors.ts:33:6
+error: Error: afterEach failed for test 4
+    throw new Error("afterEach failed for test 4");
+          ^
+    at [WILDCARD]mixed_errors.ts:17:11
+
+test 5 - test itself fails => ./mixed_errors.ts:37:6
+error: Error: test 5 failed
+  throw new Error("test 5 failed");
+        ^
+    at [WILDCARD]mixed_errors.ts:39:9
+
+ FAILURES 
+
+test 3 - beforeEach fails => ./mixed_errors.ts:29:6
+test 4 - afterEach fails => ./mixed_errors.ts:33:6
+test 5 - test itself fails => ./mixed_errors.ts:37:6
+
+FAILED | 2 passed | 3 failed ([WILDCARD])
+
+error: Test failed

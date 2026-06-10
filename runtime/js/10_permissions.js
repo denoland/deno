@@ -1,11 +1,12 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_query_permission,
   op_request_permission,
   op_revoke_permission,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
@@ -25,8 +26,8 @@ const {
   TypeError,
 } = primordials;
 
-import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { Event, EventTarget } from "ext:deno_web/02_event.js";
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
+const { Event, EventTarget } = core.loadExtScript("ext:deno_web/02_event.js");
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
@@ -37,7 +38,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
  * @property {boolean} partial
  */
 
-/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi">} */
+/** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "import">} */
 const permissionNames = [
   "read",
   "write",
@@ -46,6 +47,7 @@ const permissionNames = [
   "sys",
   "run",
   "ffi",
+  "import",
 ];
 
 /**
@@ -136,7 +138,10 @@ function cache(desc, rawStatus) {
     ReflectHas(desc, "path")
   ) {
     key += `-${desc.path}&`;
-  } else if (desc.name === "net" && desc.host) {
+  } else if (
+    ((desc.name === "net") || desc.name === "import") &&
+    ReflectHas(desc, "host")
+  ) {
     key += `-${desc.host}&`;
   } else if (desc.name === "run" && desc.command) {
     key += `-${desc.command}&`;
@@ -300,4 +305,5 @@ function serializePermissions(permissions) {
   return permissions;
 }
 
-export { Permissions, permissions, PermissionStatus, serializePermissions };
+return { Permissions, permissions, PermissionStatus, serializePermissions };
+})();

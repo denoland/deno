@@ -1,19 +1,29 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::fmt::Formatter;
 use std::io;
+use std::path::Path;
+#[cfg(unix)]
+use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use deno_core::error::ResourceError;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::CancelHandle;
+use deno_core::CancelTryFuture;
+use deno_core::Canceled;
 use deno_core::OpState;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
+use deno_core::error::ResourceError;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionCheckError;
+#[cfg(windows)]
+use deno_subprocess_windows::Stdio as StdStdio;
 use tokio::task::JoinError;
 
 #[derive(Debug, deno_error::JsError)]
@@ -24,8 +34,10 @@ pub enum FsError {
   FileBusy,
   #[class(not_supported)]
   NotSupported,
-  #[class("NotCapable")]
-  NotCapable(&'static str),
+  #[class(inherit)]
+  PermissionCheck(PermissionCheckError),
+  #[class(inherit)]
+  JoinError(JoinError),
 }
 
 impl std::fmt::Display for FsError {
@@ -34,9 +46,8 @@ impl std::fmt::Display for FsError {
       FsError::Io(err) => std::fmt::Display::fmt(err, f),
       FsError::FileBusy => f.write_str("file busy"),
       FsError::NotSupported => f.write_str("not supported"),
-      FsError::NotCapable(err) => {
-        f.write_str(&format!("requires {err} access"))
-      }
+      FsError::PermissionCheck(err) => std::fmt::Display::fmt(err, f),
+      FsError::JoinError(err) => std::fmt::Display::fmt(err, f),
     }
   }
 }
@@ -49,7 +60,8 @@ impl FsError {
       Self::Io(err) => err.kind(),
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
-      Self::NotCapable(_) => io::ErrorKind::Other,
+      Self::PermissionCheck(e) => e.kind(),
+      Self::JoinError(_) => io::ErrorKind::Other,
     }
   }
 
@@ -58,8 +70,9 @@ impl FsError {
       FsError::Io(err) => err,
       FsError::FileBusy => io::Error::new(self.kind(), "file busy"),
       FsError::NotSupported => io::Error::new(self.kind(), "not supported"),
-      FsError::NotCapable(err) => {
-        io::Error::new(self.kind(), format!("requires {err} access"))
+      FsError::PermissionCheck(err) => err.into_io_error(),
+      FsError::JoinError(ref err) => {
+        io::Error::new(self.kind(), format!("join error: {err}"))
       }
     }
   }
@@ -77,15 +90,21 @@ impl From<io::ErrorKind> for FsError {
   }
 }
 
+impl From<PermissionCheckError> for FsError {
+  fn from(err: PermissionCheckError) -> Self {
+    Self::PermissionCheck(err)
+  }
+}
+
 impl From<JoinError> for FsError {
   fn from(err: JoinError) -> Self {
-    if err.is_cancelled() {
-      todo!("async tasks must not be cancelled")
-    }
-    if err.is_panic() {
-      std::panic::resume_unwind(err.into_panic()); // resume the panic on the main thread
-    }
-    unreachable!()
+    Self::JoinError(err)
+  }
+}
+
+impl From<Canceled> for FsError {
+  fn from(err: Canceled) -> Self {
+    Self::Io(err.into())
   }
 }
 
@@ -103,22 +122,49 @@ pub struct FsStat {
   pub ctime: Option<u64>,
 
   pub dev: u64,
-  pub ino: u64,
+  pub ino: Option<u64>,
   pub mode: u32,
-  pub nlink: u64,
+  pub nlink: Option<u64>,
   pub uid: u32,
   pub gid: u32,
   pub rdev: u64,
   pub blksize: u64,
-  pub blocks: u64,
+  pub blocks: Option<u64>,
   pub is_block_device: bool,
   pub is_char_device: bool,
   pub is_fifo: bool,
   pub is_socket: bool,
 }
 
+/// File system statistics as returned by `statfs(2)` (or `GetDiskFreeSpaceW`
+/// on Windows). Mirrors the result of Node's `fs.statfs`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FsStatFs {
+  pub typ: u64,
+  pub bsize: u64,
+  pub blocks: u64,
+  pub bfree: u64,
+  pub bavail: u64,
+  pub files: u64,
+  pub ffree: u64,
+}
+
 impl FsStat {
   pub fn from_std(metadata: std::fs::Metadata) -> Self {
+    macro_rules! unix_some_or_none {
+      ($member:ident) => {{
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::MetadataExt;
+          Some(metadata.$member())
+        }
+        #[cfg(not(unix))]
+        {
+          None
+        }
+      }};
+    }
+
     macro_rules! unix_or_zero {
       ($member:ident) => {{
         #[cfg(unix)]
@@ -182,14 +228,14 @@ impl FsStat {
       ctime: get_ctime(unix_or_zero!(ctime)),
 
       dev: unix_or_zero!(dev),
-      ino: unix_or_zero!(ino),
+      ino: unix_some_or_none!(ino),
       mode: unix_or_zero!(mode),
-      nlink: unix_or_zero!(nlink),
+      nlink: unix_some_or_none!(nlink),
       uid: unix_or_zero!(uid),
       gid: unix_or_zero!(gid),
       rdev: unix_or_zero!(rdev),
       blksize: unix_or_zero!(blksize),
-      blocks: unix_or_zero!(blocks),
+      blocks: unix_some_or_none!(blocks),
       is_block_device: unix_or_false!(is_block_device),
       is_char_device: unix_or_false!(is_char_device),
       is_fifo: unix_or_false!(is_fifo),
@@ -200,6 +246,10 @@ impl FsStat {
 
 #[async_trait::async_trait(?Send)]
 pub trait File {
+  /// Provides the path of the file, which is used for checking
+  /// metadata permission updates.
+  fn maybe_path(&self) -> Option<&Path>;
+
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize>;
   async fn read(self: Rc<Self>, limit: usize) -> FsResult<BufView> {
     let buf = BufMutView::new(limit);
@@ -253,6 +303,9 @@ pub trait File {
   fn lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<()>;
   async fn lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<()>;
 
+  fn try_lock_sync(self: Rc<Self>, exclusive: bool) -> FsResult<bool>;
+  async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool>;
+
   fn unlock_sync(self: Rc<Self>) -> FsResult<()>;
   async fn unlock_async(self: Rc<Self>) -> FsResult<()>;
 
@@ -274,8 +327,27 @@ pub trait File {
     mtime_nanos: u32,
   ) -> FsResult<()>;
 
+  /// Read at a position without moving the file cursor (pread).
+  fn read_at_sync(
+    self: Rc<Self>,
+    buf: &mut [u8],
+    position: u64,
+  ) -> FsResult<usize>;
+  /// Async pread -- runs on a blocking thread.
+  async fn read_at_async(
+    self: Rc<Self>,
+    buf: BufMutView,
+    position: u64,
+  ) -> FsResult<(usize, BufMutView)>;
+  /// Write at a position without moving the file cursor (pwrite).
+  fn write_at_sync(
+    self: Rc<Self>,
+    buf: &[u8],
+    position: u64,
+  ) -> FsResult<usize>;
+
   // lower level functionality
-  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio>;
+  fn as_stdio(self: Rc<Self>) -> FsResult<StdStdio>;
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd>;
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn File>>;
 }
@@ -283,11 +355,28 @@ pub trait File {
 pub struct FileResource {
   name: String,
   file: Rc<dyn File>,
+  /// Cancels pending read operations when the resource is closed.
+  /// Used so streams backed by a file (especially pipes / FIFOs whose
+  /// reads can block indefinitely) can be cancelled — see
+  /// <https://github.com/denoland/deno/issues/21186>.
+  cancel_handle: RefCell<Rc<CancelHandle>>,
 }
 
 impl FileResource {
   pub fn new(file: Rc<dyn File>, name: String) -> Self {
-    Self { name, file }
+    Self {
+      name,
+      file,
+      cancel_handle: RefCell::new(CancelHandle::new_rc()),
+    }
+  }
+
+  fn cancel_handle(&self) -> Rc<CancelHandle> {
+    self.cancel_handle.borrow().clone()
+  }
+
+  fn cancel_read_ops(&self) {
+    self.cancel_handle.replace(CancelHandle::new_rc()).cancel();
   }
 
   fn with_resource<F, R>(
@@ -330,16 +419,18 @@ impl FileResource {
 }
 
 impl deno_core::Resource for FileResource {
-  fn name(&self) -> Cow<str> {
+  fn name(&self) -> Cow<'_, str> {
     Cow::Borrowed(&self.name)
   }
 
   fn read(self: Rc<Self>, limit: usize) -> deno_core::AsyncResult<BufView> {
+    let cancel_handle = self.cancel_handle();
     Box::pin(async move {
       self
         .file
         .clone()
         .read(limit)
+        .try_or_cancel(cancel_handle)
         .await
         .map_err(JsErrorBox::from_err)
     })
@@ -349,11 +440,13 @@ impl deno_core::Resource for FileResource {
     self: Rc<Self>,
     buf: BufMutView,
   ) -> deno_core::AsyncResult<(usize, BufMutView)> {
+    let cancel_handle = self.cancel_handle();
     Box::pin(async move {
       self
         .file
         .clone()
         .read_byob(buf)
+        .try_or_cancel(cancel_handle)
         .await
         .map_err(JsErrorBox::from_err)
     })
@@ -405,5 +498,17 @@ impl deno_core::Resource for FileResource {
 
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     self.file.clone().backing_fd()
+  }
+
+  fn close(self: Rc<Self>) {
+    // Cancel any pending read operations. Reads on pipes / FIFOs can
+    // block indefinitely; without this, a `ReadableStream` backed by
+    // such a file could never have its `cancel()` promise resolve while
+    // a read is outstanding.
+    self.cancel_read_ops();
+  }
+
+  fn cancel_read_ops(self: Rc<Self>) {
+    FileResource::cancel_read_ops(&self);
   }
 }

@@ -1,11 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use ::deno_permissions::PermissionState;
 use ::deno_permissions::PermissionsContainer;
-use deno_core::op2;
+use deno_core::FromV8;
 use deno_core::OpState;
-use serde::Deserialize;
-use serde::Serialize;
+use deno_core::ToV8;
+use deno_core::op2;
 
 deno_core::extension!(
   deno_permissions,
@@ -16,7 +16,7 @@ deno_core::extension!(
   ],
 );
 
-#[derive(Deserialize)]
+#[derive(FromV8)]
 pub struct PermissionArgs {
   name: String,
   path: Option<String>,
@@ -26,19 +26,21 @@ pub struct PermissionArgs {
   command: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(ToV8)]
 pub struct PermissionStatus {
-  state: String,
+  state: &'static str,
   partial: bool,
 }
 
 impl From<PermissionState> for PermissionStatus {
   fn from(state: PermissionState) -> Self {
     PermissionStatus {
-      state: if state == PermissionState::GrantedPartial {
-        PermissionState::Granted.to_string()
-      } else {
-        state.to_string()
+      state: match state {
+        PermissionState::Granted | PermissionState::GrantedPartial => "granted",
+        PermissionState::Ignored
+        | PermissionState::DeniedPartial
+        | PermissionState::Denied => "denied",
+        PermissionState::Prompt => "prompt",
       },
       partial: state == PermissionState::GrantedPartial,
     }
@@ -65,10 +67,9 @@ pub enum PermissionError {
 }
 
 #[op2]
-#[serde]
 pub fn op_query_permission(
   state: &mut OpState,
-  #[serde] args: PermissionArgs,
+  #[scoped] args: PermissionArgs,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
@@ -79,16 +80,16 @@ pub fn op_query_permission(
     "sys" => permissions.query_sys(args.kind.as_deref())?,
     "run" => permissions.query_run(args.command.as_deref())?,
     "ffi" => permissions.query_ffi(args.path.as_deref())?,
+    "import" => permissions.query_import(args.host.as_deref())?,
     _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))
 }
 
 #[op2]
-#[serde]
 pub fn op_revoke_permission(
   state: &mut OpState,
-  #[serde] args: PermissionArgs,
+  #[scoped] args: PermissionArgs,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
@@ -99,16 +100,16 @@ pub fn op_revoke_permission(
     "sys" => permissions.revoke_sys(args.kind.as_deref())?,
     "run" => permissions.revoke_run(args.command.as_deref())?,
     "ffi" => permissions.revoke_ffi(args.path.as_deref())?,
+    "import" => permissions.revoke_import(args.host.as_deref())?,
     _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_request_permission(
   state: &mut OpState,
-  #[serde] args: PermissionArgs,
+  #[scoped] args: PermissionArgs,
 ) -> Result<PermissionStatus, PermissionError> {
   let permissions = state.borrow::<PermissionsContainer>();
   let perm = match args.name.as_ref() {
@@ -119,6 +120,7 @@ pub fn op_request_permission(
     "sys" => permissions.request_sys(args.kind.as_deref())?,
     "run" => permissions.request_run(args.command.as_deref())?,
     "ffi" => permissions.request_ffi(args.path.as_deref())?,
+    "import" => permissions.request_import(args.host.as_deref())?,
     _ => return Err(PermissionError::InvalidPermissionName(args.name)),
   };
   Ok(PermissionStatus::from(perm))

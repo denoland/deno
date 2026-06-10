@@ -1,3 +1,8 @@
 [Function: createRequire]
 v[WILDCARD].[WILDCARD].[WILDCARD]
-[ [Getter], [Getter], "hello", "there" ]
+[
+  "[WILDCARD]",
+  "[WILDCARD]mod.js",
+  "hello",
+  "there"
+]

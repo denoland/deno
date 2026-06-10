@@ -1,10 +1,13 @@
 {
   "tempDir": true,
-  "steps": [{
-    "args": "install",
-    "output": "[WILDCARD]"
-  }, {
-    "args": "check main.tsx",
-    "output": "check.out"
-  }]
+  "steps": [
+    {
+      "args": "install",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "check main.tsx",
+      "output": "check.out"
+    }
+  ]
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::OnceCell;
 use std::cell::RefCell;
@@ -12,17 +12,19 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::unsync::spawn;
 use deno_core::unsync::JoinHandle;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::WeakSender;
+use deno_core::unsync::spawn;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
+use tokio::sync::mpsc;
+use tokio::sync::mpsc::WeakSender;
 
 use crate::CronError;
 use crate::CronHandle;
 use crate::CronHandler;
+use crate::CronNextResult;
 use crate::CronSpec;
+use crate::cron::Schedule;
 
 const MAX_CRONS: usize = 100;
 const DISPATCH_CONCURRENCY_LIMIT: usize = 50;
@@ -186,11 +188,8 @@ impl RuntimeState {
   }
 }
 
-#[async_trait(?Send)]
 impl CronHandler for LocalCronHandler {
-  type EH = CronExecutionHandle;
-
-  fn create(&self, spec: CronSpec) -> Result<Self::EH, CronError> {
+  fn create(&self, spec: CronSpec) -> Result<Rc<dyn CronHandle>, CronError> {
     // Ensure that the cron loop is started.
     self.cron_loop_join_handle.get_or_init(|| {
       let (cron_schedule_tx, cron_schedule_rx) =
@@ -216,7 +215,7 @@ impl CronHandler for LocalCronHandler {
     // Validate schedule expression.
     spec
       .cron_schedule
-      .parse::<saffron::Cron>()
+      .parse::<Schedule>()
       .map_err(|_| CronError::InvalidCron)?;
 
     // Validate backoff_schedule.
@@ -232,7 +231,7 @@ impl CronHandler for LocalCronHandler {
     };
     runtime_state.crons.insert(spec.name.clone(), cron);
 
-    Ok(CronExecutionHandle {
+    Ok(Rc::new(CronExecutionHandle {
       name: spec.name.clone(),
       cron_schedule_tx: self.cron_schedule_tx.get().unwrap().clone(),
       concurrency_limiter: self.concurrency_limiter.clone(),
@@ -242,7 +241,15 @@ impl CronHandler for LocalCronHandler {
         shutdown_tx: Some(next_tx),
         permit: None,
       }),
-    })
+    }))
+  }
+}
+
+impl Drop for LocalCronHandler {
+  fn drop(&mut self) {
+    if let Some(handle) = self.cron_loop_join_handle.take() {
+      handle.abort();
+    }
   }
 }
 
@@ -262,7 +269,10 @@ struct Inner {
 
 #[async_trait(?Send)]
 impl CronHandle for CronExecutionHandle {
-  async fn next(&self, prev_success: bool) -> Result<bool, CronError> {
+  async fn next(
+    &self,
+    prev_success: bool,
+  ) -> Result<CronNextResult, CronError> {
     self.inner.borrow_mut().permit.take();
 
     if self
@@ -271,21 +281,33 @@ impl CronHandle for CronExecutionHandle {
       .await
       .is_err()
     {
-      return Ok(false);
+      return Ok(CronNextResult {
+        active: false,
+        traceparent: None,
+      });
     };
 
     let Some(mut next_rx) = self.inner.borrow_mut().next_rx.take() else {
-      return Ok(false);
+      return Ok(CronNextResult {
+        active: false,
+        traceparent: None,
+      });
     };
     if next_rx.recv().await.is_none() {
-      return Ok(false);
+      return Ok(CronNextResult {
+        active: false,
+        traceparent: None,
+      });
     };
 
     let permit = self.concurrency_limiter.clone().acquire_owned().await?;
     let mut inner = self.inner.borrow_mut();
     inner.next_rx = Some(next_rx);
     inner.permit = Some(permit);
-    Ok(true)
+    Ok(CronNextResult {
+      active: true,
+      traceparent: None,
+    })
   }
 
   fn close(&self) {
@@ -302,14 +324,14 @@ impl CronHandle for CronExecutionHandle {
 fn compute_next_deadline(cron_expression: &str) -> Result<u64, CronError> {
   let now = chrono::Utc::now();
 
-  if let Ok(test_schedule) = env::var("DENO_CRON_TEST_SCHEDULE_OFFSET") {
-    if let Ok(offset) = test_schedule.parse::<u64>() {
-      return Ok(now.timestamp_millis() as u64 + offset);
-    }
+  if let Ok(test_schedule) = env::var("DENO_CRON_TEST_SCHEDULE_OFFSET")
+    && let Ok(offset) = test_schedule.parse::<u64>()
+  {
+    return Ok(now.timestamp_millis() as u64 + offset);
   }
 
   let cron = cron_expression
-    .parse::<saffron::Cron>()
+    .parse::<Schedule>()
     .map_err(|_| CronError::InvalidCron)?;
   let Some(next_deadline) = cron.next_after(now) else {
     return Err(CronError::InvalidCron);

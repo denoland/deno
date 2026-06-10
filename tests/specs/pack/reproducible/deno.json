@@ -1,0 +1,9 @@
+{
+  "name": "@test/reproducible",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+  "imports": {
+    "chalk": "npm:chalk@5",
+    "ansi-regex": "npm:ansi-regex@6"
+  }
+}

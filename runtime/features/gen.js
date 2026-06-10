@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 /**
  * Don't modify this file manually.
@@ -8,19 +8,21 @@
 
 export const unstableIds = {
   broadcastChannel: 1,
-  cron: 3,
-  ffi: 5,
-  fs: 6,
-  http: 7,
-  kv: 8,
-  net: 11,
-  noLegacyAbort: 12,
-  nodeGlobals: 13,
-  otel: 15,
-  process: 16,
-  temporal: 19,
-  unsafeProto: 20,
-  vsock: 21,
-  webgpu: 22,
-  workerOptions: 23,
+  bundle: 2,
+  cron: 4,
+  ffi: 6,
+  fs: 7,
+  http: 8,
+  kv: 9,
+  net: 12,
+  noLegacyAbort: 13,
+  nodeGlobals: 14,
+  otel: 16,
+  process: 17,
+  rawImports: 18,
+  temporal: 21,
+  unsafeProto: 23,
+  vsock: 24,
+  webgpu: 25,
+  workerOptions: 26,
 };

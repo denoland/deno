@@ -1,0 +1,6 @@
+{
+  "files": ["main.dom.ts"],
+  "compilerOptions": {
+    "lib": []
+  }
+}

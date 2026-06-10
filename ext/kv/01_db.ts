@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = __bootstrap;
 const {
   isPromise,
 } = core;
-import {
+const {
   op_kv_atomic_write,
   op_kv_database_open,
   op_kv_dequeue_next_message,
@@ -13,9 +14,10 @@ import {
   op_kv_snapshot_read,
   op_kv_watch,
   op_kv_watch_next,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayFrom,
+  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeReverse,
@@ -24,6 +26,7 @@ const {
   BigInt,
   BigIntPrototypeToString,
   Error,
+  NumberIsInteger,
   NumberIsNaN,
   Object,
   ObjectFreeze,
@@ -36,14 +39,16 @@ const {
   StringPrototypeReplace,
   Symbol,
   SymbolAsyncIterator,
+  SymbolDispose,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 
-import { SymbolDispose } from "ext:deno_web/00_infra.js";
-import { ReadableStream } from "ext:deno_web/06_streams.js";
+const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+
+const cloneableDeserializers = core.getCloneableDeserializers();
 
 const encodeCursor: (
   selector: [Deno.KvKey | null, Deno.KvKey | null, Deno.KvKey | null],
@@ -69,6 +74,18 @@ function validateQueueDelay(delay: number) {
   }
   if (NumberIsNaN(delay)) {
     throw new TypeError("Delay cannot be NaN");
+  }
+}
+
+function validateExpireIn(expireIn: number | undefined) {
+  if (expireIn === undefined) return;
+  // Reject NaN, Infinity, fractional and negative values. A non-finite
+  // expireIn otherwise reaches the native layer and overflows when computing
+  // the absolute expiry, panicking the process.
+  if (!NumberIsInteger(expireIn) || expireIn < 0) {
+    throw new TypeError(
+      `expireIn must be a non-negative integer: received ${expireIn}`,
+    );
   }
 }
 
@@ -188,6 +205,7 @@ class Kv {
   }
 
   async set(key: Deno.KvKey, value: unknown, options?: { expireIn?: number }) {
+    validateExpireIn(options?.expireIn);
     const versionstamp = await doAtomicWriteInPlace(
       this.#rid,
       [],
@@ -218,12 +236,21 @@ class Kv {
       consistency?: Deno.KvConsistencyLevel;
     } = { __proto__: null },
   ): KvListIterator {
-    if (options.limit !== undefined && options.limit <= 0) {
-      throw new Error(`Limit must be positive: received ${options.limit}`);
+    if (
+      options.limit !== undefined &&
+      (!NumberIsInteger(options.limit) || options.limit <= 0)
+    ) {
+      throw new Error(
+        `Limit must be a positive integer: received ${options.limit}`,
+      );
     }
 
     let batchSize = options.batchSize ?? (options.limit ?? 100);
-    if (batchSize <= 0) throw new Error("batchSize must be positive");
+    if (!NumberIsInteger(batchSize) || batchSize <= 0) {
+      throw new Error(
+        `batchSize must be a positive integer: received ${batchSize}`,
+      );
+    }
     if (options.batchSize === undefined && batchSize > 500) batchSize = 500;
 
     return new KvListIterator({
@@ -314,6 +341,7 @@ class Kv {
       const { 0: payload, 1: handleId } = next;
       const deserializedPayload = core.deserialize(payload, {
         forStorage: true,
+        deserializers: cloneableDeserializers,
       });
 
       // Dispatch the payload.
@@ -324,7 +352,7 @@ class Kv {
           const _res = isPromise(result) ? (await result) : result;
           success = true;
         } catch (error) {
-          import.meta.log("error", "Exception in queue handler", error);
+          internals.log("error", "Exception in queue handler", error);
         } finally {
           const promise: Promise<void> = op_kv_finish_dequeued_message(
             handleId,
@@ -461,6 +489,7 @@ class AtomicOperation {
           if (typeof mutation.expireIn === "number") {
             expireIn = mutation.expireIn;
           }
+          validateExpireIn(expireIn);
           /* falls through */
         case "sum":
         case "min":
@@ -514,6 +543,7 @@ class AtomicOperation {
     value: unknown,
     options?: { expireIn?: number },
   ): this {
+    validateExpireIn(options?.expireIn);
     ArrayPrototypePush(this.#mutations, [
       key,
       "set",
@@ -567,6 +597,128 @@ class AtomicOperation {
       "'Deno.AtomicOperation' is not a promise: did you forget to call 'commit()'",
     );
   }
+
+  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+    const operations = [];
+
+    // Format checks
+    for (let i = 0; i < this.#checks.length; ++i) {
+      const check = this.#checks[i];
+      const key = check[0];
+      const versionstamp = check[1];
+      const keyStr = inspect(key, inspectOptions);
+      const versionstampStr = versionstamp === null
+        ? "null"
+        : `"${versionstamp}"`;
+      ArrayPrototypePush(
+        operations,
+        `  check({ key: ${keyStr}, versionstamp: ${versionstampStr} })`,
+      );
+    }
+
+    // Format mutations
+    for (let i = 0; i < this.#mutations.length; ++i) {
+      const mutation = this.#mutations[i];
+      const key = mutation[0];
+      const type = mutation[1];
+      const rawValue = mutation[2];
+      const expireIn = mutation[3];
+      const keyStr = inspect(key, inspectOptions);
+
+      if (type === "delete") {
+        ArrayPrototypePush(operations, `  delete(${keyStr})`);
+      } else {
+        // Deserialize value for display
+        let value;
+        try {
+          if (rawValue === null) {
+            value = null;
+          } else {
+            switch (rawValue.kind) {
+              case "v8":
+                value = core.deserialize(rawValue.value, {
+                  forStorage: true,
+                  deserializers: cloneableDeserializers,
+                });
+                break;
+              case "bytes":
+                value = rawValue.value;
+                break;
+              case "u64":
+                value = new KvU64(rawValue.value);
+                break;
+              default:
+                value = rawValue;
+            }
+          }
+        } catch {
+          // If deserialization fails, show the raw value structure
+          value = `[${rawValue?.kind || "unknown"} value]`;
+        }
+
+        const valueStr = inspect(value, inspectOptions);
+
+        if (type === "set" && expireIn !== undefined) {
+          ArrayPrototypePush(
+            operations,
+            `  set(${keyStr}, ${valueStr}, { expireIn: ${expireIn} })`,
+          );
+        } else {
+          ArrayPrototypePush(operations, `  ${type}(${keyStr}, ${valueStr})`);
+        }
+      }
+    }
+
+    // Format enqueues
+    for (let i = 0; i < this.#enqueues.length; ++i) {
+      const enqueue = this.#enqueues[i];
+      const serializedMessage = enqueue[0];
+      const delay = enqueue[1];
+      const keysIfUndelivered = enqueue[2];
+      const backoffSchedule = enqueue[3];
+
+      // Deserialize message for display
+      let message;
+      try {
+        message = core.deserialize(serializedMessage, {
+          forStorage: true,
+          deserializers: cloneableDeserializers,
+        });
+      } catch {
+        message = "[serialized message]";
+      }
+
+      const messageStr = inspect(message, inspectOptions);
+
+      if (
+        delay === 0 && keysIfUndelivered.length === 0 &&
+        backoffSchedule === null
+      ) {
+        ArrayPrototypePush(operations, `  enqueue(${messageStr})`);
+      } else {
+        const options = [];
+        if (delay !== 0) ArrayPrototypePush(options, `delay: ${delay}`);
+        if (keysIfUndelivered.length > 0) {
+          const keysStr = inspect(keysIfUndelivered, inspectOptions);
+          ArrayPrototypePush(options, `keysIfUndelivered: ${keysStr}`);
+        }
+        if (backoffSchedule !== null) {
+          const scheduleStr = inspect(backoffSchedule, inspectOptions);
+          ArrayPrototypePush(options, `backoffSchedule: ${scheduleStr}`);
+        }
+        ArrayPrototypePush(
+          operations,
+          `  enqueue(${messageStr}, { ${ArrayPrototypeJoin(options, ", ")} })`,
+        );
+      }
+    }
+
+    if (operations.length === 0) {
+      return "AtomicOperation (empty)";
+    }
+
+    return `AtomicOperation\n${ArrayPrototypeJoin(operations, "\n")}`;
+  }
 }
 
 const MIN_U64 = BigInt("0");
@@ -618,7 +770,10 @@ function deserializeValue(entry: RawKvEntry): Deno.KvEntry<unknown> {
     case "v8":
       return {
         ...entry,
-        value: core.deserialize(value, { forStorage: true }),
+        value: core.deserialize(value, {
+          forStorage: true,
+          deserializers: cloneableDeserializers,
+        }),
       };
     case "bytes":
       return {
@@ -833,4 +988,5 @@ async function doAtomicWriteInPlace(
   );
 }
 
-export { AtomicOperation, Kv, KvListIterator, KvU64, openKv };
+return { AtomicOperation, Kv, KvListIterator, KvU64, openKv };
+})();

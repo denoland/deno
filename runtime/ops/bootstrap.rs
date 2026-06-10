@@ -1,9 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-use deno_core::op2;
 use deno_core::OpState;
+use deno_core::op2;
 use deno_terminal::colors::ColorLevel;
-use serde::Serialize;
 
 use crate::BootstrapOptions;
 
@@ -36,7 +35,7 @@ deno_core::extension!(
   },
 );
 
-#[derive(Serialize)]
+#[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SnapshotOptions {
   pub ts_version: String,
@@ -69,11 +68,14 @@ impl Default for SnapshotOptions {
 #[op2]
 #[serde]
 pub fn op_snapshot_options(state: &mut OpState) -> SnapshotOptions {
-  state.take::<SnapshotOptions>()
+  // `SnapshotOptions` is only placed into the op state when the runtime is
+  // bootstrapped with a startup snapshot. Embedders that bootstrap without one
+  // (`startup_snapshot: None`) never insert it, so fall back to the default
+  // instead of panicking when the value is absent.
+  state.try_take::<SnapshotOptions>().unwrap_or_default()
 }
 
 #[op2]
-#[serde]
 pub fn op_bootstrap_args(state: &mut OpState) -> Vec<String> {
   state.borrow::<BootstrapOptions>().args.clone()
 }
@@ -97,7 +99,6 @@ pub fn op_bootstrap_user_agent(state: &mut OpState) -> String {
 }
 
 #[op2]
-#[serde]
 pub fn op_bootstrap_unstable_args(state: &mut OpState) -> Vec<String> {
   let options = state.borrow::<BootstrapOptions>();
   let mut flags = Vec::with_capacity(options.unstable_features.len());

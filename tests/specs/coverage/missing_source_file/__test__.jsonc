@@ -1,0 +1,19 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run --coverage=coverage main.ts",
+      "output": "hello\n"
+    },
+    {
+      // Delete a source file to simulate cleanup (e.g. build artifact removed)
+      "args": "task --eval rm helper.ts",
+      "output": "[WILDCARD]"
+    },
+    {
+      // Coverage should still work, warning about the missing file
+      "args": "coverage coverage",
+      "output": "missing_source.out"
+    }
+  ]
+}

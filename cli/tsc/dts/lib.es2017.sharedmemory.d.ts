@@ -7,14 +7,12 @@ License at http://www.apache.org/licenses/LICENSE-2.0
 THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
 WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
-MERCHANTABLITY OR NON-INFRINGEMENT.
+MERCHANTABILITY OR NON-INFRINGEMENT.
 
 See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
-/// <reference no-default-lib="true"/>
 
 /// <reference lib="es2015.symbol" />
 /// <reference lib="es2015.symbol.wellknown" />
@@ -29,13 +27,13 @@ interface SharedArrayBuffer {
      * Returns a section of an SharedArrayBuffer.
      */
     slice(begin?: number, end?: number): SharedArrayBuffer;
-    readonly [Symbol.species]: SharedArrayBuffer;
     readonly [Symbol.toStringTag]: "SharedArrayBuffer";
 }
 
 interface SharedArrayBufferConstructor {
     readonly prototype: SharedArrayBuffer;
     new (byteLength?: number): SharedArrayBuffer;
+    readonly [Symbol.species]: SharedArrayBufferConstructor;
 }
 declare var SharedArrayBuffer: SharedArrayBufferConstructor;
 

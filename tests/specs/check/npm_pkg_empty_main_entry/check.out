@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/index.ts
+Check [WILDCARD]index.ts
 TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const result: string = add(1, 2);
       ~~~~~~

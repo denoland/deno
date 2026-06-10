@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -36,7 +36,15 @@ interface FormData extends DomIterable<string, FormDataEntryValue> {
   set(name: string, value: string | Blob, fileName?: string): void;
 }
 
-/** @category Fetch */
+/** Provides a way to construct a set of key/value pairs representing form
+ * fields and their values, which can then be sent using the {@linkcode fetch}
+ * API. It uses the same format a form would use if the encoding type were set
+ * to `"multipart/form-data"`.
+ *
+ * @see https://developer.mozilla.org/docs/Web/API/FormData
+ *
+ * @category Fetch
+ */
 declare var FormData: {
   readonly prototype: FormData;
   new (): FormData;
@@ -45,7 +53,7 @@ declare var FormData: {
 /** @category Fetch */
 interface Body {
   /** A simple getter used to expose a `ReadableStream` of the body contents. */
-  readonly body: ReadableStream<Uint8Array> | null;
+  readonly body: ReadableStream<Uint8Array<ArrayBuffer>> | null;
   /** Stores a `Boolean` that declares whether the body has been used in a
    * response yet.
    */
@@ -61,7 +69,7 @@ interface Body {
   /** Takes a `Response` stream and reads it to completion. It returns a promise
    * that resolves with a `Uint8Array`.
    */
-  bytes(): Promise<Uint8Array>;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
   /** Takes a `Response` stream and reads it to completion. It returns a promise
    * that resolves with a `FormData` object.
    */
@@ -146,6 +154,8 @@ type RequestMode = "cors" | "navigate" | "no-cors" | "same-origin";
 /** @category Fetch */
 type RequestRedirect = "error" | "follow" | "manual";
 /** @category Fetch */
+type RequestPriority = "auto" | "high" | "low";
+/** @category Fetch */
 type ReferrerPolicy =
   | ""
   | "no-referrer"
@@ -228,6 +238,11 @@ interface RequestInit {
    */
   mode?: RequestMode;
   /**
+   * A string indicating the relative priority of the request. Sets request's
+   * priority.
+   */
+  priority?: RequestPriority;
+  /**
    * A string indicating whether request follows redirects, results in an error
    * upon encountering a redirect, or returns the redirect (in an opaque
    * fashion). Sets request's redirect.
@@ -292,7 +307,8 @@ interface Request extends Body {
   readonly isHistoryNavigation: boolean;
   /**
    * Returns a boolean indicating whether or not request is for a reload
-   * navigation.
+   * navigation, e.g. a refresh triggered via the browser's reload control or
+   * by calling location.reload().
    */
   readonly isReloadNavigation: boolean;
   /**
@@ -417,6 +433,7 @@ declare function fetch(
  */
 interface EventSourceInit {
   withCredentials?: boolean;
+  headers?: HeadersInit;
 }
 
 /**
@@ -428,7 +445,11 @@ interface EventSourceEventMap {
   "open": Event;
 }
 
-/**
+/** Represents a connection to a server that sends
+ * [server-sent events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events),
+ * receiving updates pushed by the server as a stream of `message` events over a
+ * persistent HTTP connection that automatically reconnects when interrupted.
+ *
  * @category Fetch
  */
 interface EventSource extends EventTarget {
@@ -486,7 +507,13 @@ interface EventSource extends EventTarget {
   ): void;
 }
 
-/**
+/** The `EventSource` interface is a web content's interface to server-sent
+ * events. An `EventSource` instance opens a persistent connection to an HTTP
+ * server, which sends events in `text/event-stream` format. The connection
+ * remains open until closed by calling {@linkcode EventSource.close}.
+ *
+ * @see https://developer.mozilla.org/docs/Web/API/EventSource
+ *
  * @category Fetch
  */
 declare var EventSource: {

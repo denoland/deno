@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -187,7 +187,15 @@ interface URLSearchParams {
   readonly size: number;
 }
 
-/** @category URL */
+/** The URLSearchParams interface defines utility methods to work with the
+ * query string of a URL. An object implementing URLSearchParams can directly
+ * be used in a `for...of` structure to iterate over key/value pairs in the
+ * same order as they appear in the query string.
+ *
+ * @see https://developer.mozilla.org/docs/Web/API/URLSearchParams
+ *
+ * @category URL
+ */
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   /**

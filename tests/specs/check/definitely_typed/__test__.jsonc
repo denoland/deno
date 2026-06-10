@@ -1,8 +1,5 @@
 {
   "tempDir": true,
-  "envs": {
-    "RUST_BACKTRACE": "0"
-  },
   "tests": {
     "node_modules_dir_auto": {
       "steps": [

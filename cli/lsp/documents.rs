@@ -1,13 +1,14 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;
+use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -16,39 +17,37 @@ use std::sync::Weak;
 use std::time::SystemTime;
 
 use dashmap::DashMap;
-use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_core::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::futures::future;
 use deno_core::futures::future::Shared;
-use deno_core::futures::FutureExt;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::url::Position;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::TypesDependency;
 use deno_path_util::url_to_file_path;
+use deno_resolver::deno_json::CompilerOptionsKey;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lsp_types::Uri;
-use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::Lazy;
-use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
-use weak_table::PtrWeakKeyHashMap;
-use weak_table::WeakValueHashMap;
 
-use super::cache::calculate_fs_version_at_path;
 use super::cache::LspCache;
+use super::cache::calculate_fs_version_at_path;
 use super::config::Config;
 use super::logging::lsp_warn;
 use super::resolver::LspResolver;
@@ -61,11 +60,16 @@ use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
 use super::urls::normalize_uri;
 use super::urls::uri_is_file_like;
+use super::urls::uri_is_in_memory;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
-use super::urls::COMPONENT;
 use crate::graph_util::CliJsrUrlProvider;
+use crate::lsp::compiler_options::LspCompilerOptionsData;
+use crate::lsp::compiler_options::LspCompilerOptionsResolver;
+use crate::tsc::BYTES_IMPORT_SOURCE;
+use crate::tsc::RawImportKind;
+use crate::tsc::TEXT_IMPORT_SOURCE;
 
 #[derive(Debug)]
 pub struct OpenDocument {
@@ -153,35 +157,28 @@ impl OpenDocument {
   }
 }
 
-fn remote_url_to_uri(url: &Url) -> Option<Uri> {
-  if !matches!(url.scheme(), "http" | "https") {
+fn remote_or_asset_url_to_uri(url: &Url) -> Option<Uri> {
+  if !matches!(url.scheme(), "http" | "https" | "asset") {
     return None;
   }
-  let mut string = String::with_capacity(url.as_str().len() + 6);
-  string.push_str("deno:/");
-  string.push_str(url.scheme());
-  for p in url[Position::BeforeHost..].split('/') {
-    string.push('/');
-    string.push_str(
-      &percent_encoding::utf8_percent_encode(p, COMPONENT).to_string(),
-    );
-  }
-  Uri::from_str(&string)
-    .inspect_err(|err| {
-      lsp_warn!("Couldn't convert remote URL \"{url}\" to URI: {err}")
-    })
-    .ok()
-}
-
-fn asset_url_to_uri(url: &Url) -> Option<Uri> {
-  if url.scheme() != "asset" {
-    return None;
-  }
-  Uri::from_str(&format!("deno:/asset{}", url.path()))
-    .inspect_err(|err| {
-      lsp_warn!("Couldn't convert asset URL \"{url}\" to URI: {err}")
-    })
-    .ok()
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(url.scheme());
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(
+    &percent_encoding::percent_decode_str(
+      url[Position::BeforeUsername..].trim_start_matches('/'),
+    )
+    .decode_utf8_lossy(),
+  );
+  let uri = fluent_uri::Uri::builder()
+    .scheme(fluent_uri::component::Scheme::new_or_panic("deno"))
+    .path(encoded_path.as_ref())
+    .build()
+    .expect("component constraints should be met by the above")
+    .into();
+  Some(uri)
 }
 
 fn data_url_to_uri(url: &Url) -> Option<Uri> {
@@ -192,20 +189,25 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
   } else {
     media_type.as_ts_extension()
   };
-  let mut file_name_str = url.path().to_string();
-  if let Some(query) = url.query() {
-    file_name_str.push('?');
-    file_name_str.push_str(query);
-  }
-  let hash = deno_lib::util::checksum::gen(&[file_name_str.as_bytes()]);
-  Uri::from_str(&format!("deno:/data_url/{hash}{extension}",))
-    .inspect_err(|err| {
-      lsp_warn!("Couldn't convert data url \"{url}\" to URI: {err}")
-    })
-    .ok()
+  let hash = deno_lib::util::checksum::r#gen(&[url.as_str().as_bytes()]);
+  let mut encoded_path =
+    fluent_uri::pct_enc::EString::<fluent_uri::pct_enc::encoder::Path>::new();
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("data-url");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>("/");
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(&hash);
+  encoded_path.encode_str::<fluent_uri::pct_enc::encoder::Path>(extension);
+  let uri = fluent_uri::Uri::builder()
+    .scheme(fluent_uri::component::Scheme::new_or_panic("deno"))
+    .path(encoded_path.as_ref())
+    .build()
+    .expect("component constraints should be met by the above")
+    .into();
+  Some(uri)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, deno_core::ToV8)]
+#[to_v8(untagged)]
 pub enum DocumentText {
   Static(&'static str),
   Arc(Arc<str>),
@@ -232,48 +234,53 @@ impl std::ops::Deref for DocumentText {
   }
 }
 
-impl Serialize for DocumentText {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    (self as &str).serialize(serializer)
-  }
-}
-
 #[derive(Debug, Clone)]
 pub enum ServerDocumentKind {
   Fs {
     fs_version: String,
+    media_type: MediaType,
     text: Arc<str>,
+    line_index: Arc<LineIndex>,
   },
   RemoteUrl {
     url: Arc<Url>,
     fs_cache_version: String,
+    media_type: MediaType,
     text: Arc<str>,
+    line_index: Arc<LineIndex>,
   },
   DataUrl {
     url: Arc<Url>,
+    media_type: MediaType,
     text: Arc<str>,
+    line_index: Arc<LineIndex>,
   },
   Asset {
     url: Arc<Url>,
+    media_type: MediaType,
     text: &'static str,
+    line_index: Arc<LineIndex>,
+  },
+  RawImportTypes {
+    kind: RawImportKind,
   },
 }
+
+static TEXT_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
+  Lazy::new(|| Arc::new(LineIndex::new(TEXT_IMPORT_SOURCE)));
+
+static BYTES_IMPORT_SOURCE_LINE_INDEX: Lazy<Arc<LineIndex>> =
+  Lazy::new(|| Arc::new(LineIndex::new(BYTES_IMPORT_SOURCE)));
 
 #[derive(Debug)]
 pub struct ServerDocument {
   pub uri: Arc<Uri>,
-  pub media_type: MediaType,
-  pub line_index: Arc<LineIndex>,
   pub kind: ServerDocumentKind,
 }
 
 impl ServerDocument {
   fn load(uri: &Uri) -> Option<Self> {
-    let scheme = uri.scheme()?;
-    if scheme.eq_lowercase("file") {
+    if uri.scheme().as_str().eq_ignore_ascii_case("file") {
       let url = uri_to_url(uri);
       let path = url_to_file_path(&url).ok()?;
       let bytes = fs::read(&path).ok()?;
@@ -284,9 +291,12 @@ impl ServerDocument {
       let line_index = Arc::new(LineIndex::new(&text));
       return Some(Self {
         uri: Arc::new(uri.clone()),
-        media_type,
-        line_index,
-        kind: ServerDocumentKind::Fs { fs_version, text },
+        kind: ServerDocumentKind::Fs {
+          fs_version,
+          media_type,
+          text,
+          line_index,
+        },
       });
     }
     None
@@ -324,26 +334,29 @@ impl ServerDocument {
     let line_index = Arc::new(LineIndex::new(&text));
     Some(Self {
       uri: Arc::new(uri.clone()),
-      media_type,
-      line_index,
       kind: ServerDocumentKind::RemoteUrl {
         url,
         fs_cache_version,
+        media_type,
         text,
+        line_index,
       },
     })
   }
 
   fn asset(name: &str, text: &'static str) -> Self {
     let url = Arc::new(Url::parse(&format!("asset:///{name}")).unwrap());
-    let uri = asset_url_to_uri(&url).unwrap();
+    let uri = remote_or_asset_url_to_uri(&url).unwrap();
     let media_type = MediaType::from_specifier(&url);
     let line_index = Arc::new(LineIndex::new(text));
     Self {
       uri: Arc::new(uri),
-      media_type,
-      line_index,
-      kind: ServerDocumentKind::Asset { url, text },
+      kind: ServerDocumentKind::Asset {
+        url,
+        media_type,
+        text,
+        line_index,
+      },
     }
   }
 
@@ -355,10 +368,53 @@ impl ServerDocument {
     let line_index = Arc::new(LineIndex::new(&text));
     Some(Self {
       uri: Arc::new(uri.clone()),
-      media_type,
-      line_index,
-      kind: ServerDocumentKind::DataUrl { url, text },
+      kind: ServerDocumentKind::DataUrl {
+        url,
+        media_type,
+        text,
+        line_index,
+      },
     })
+  }
+
+  fn raw_import_types(uri: &Uri) -> Option<Self> {
+    if uri
+      .as_str()
+      .strip_prefix("deno:/text-import-types/")
+      .and_then(|s| s.strip_suffix(".ts"))
+      .is_some()
+    {
+      return Some(ServerDocument {
+        uri: Arc::new(uri.clone()),
+        kind: ServerDocumentKind::RawImportTypes {
+          kind: RawImportKind::Text,
+        },
+      });
+    }
+    if uri
+      .as_str()
+      .strip_prefix("deno:/bytes-import-types/")
+      .and_then(|s| s.strip_suffix(".ts"))
+      .is_some()
+    {
+      return Some(ServerDocument {
+        uri: Arc::new(uri.clone()),
+        kind: ServerDocumentKind::RawImportTypes {
+          kind: RawImportKind::Bytes,
+        },
+      });
+    }
+    None
+  }
+
+  pub fn media_type(&self) -> MediaType {
+    match &self.kind {
+      ServerDocumentKind::Fs { media_type, .. } => *media_type,
+      ServerDocumentKind::RemoteUrl { media_type, .. } => *media_type,
+      ServerDocumentKind::DataUrl { media_type, .. } => *media_type,
+      ServerDocumentKind::Asset { media_type, .. } => *media_type,
+      ServerDocumentKind::RawImportTypes { .. } => MediaType::TypeScript,
+    }
   }
 
   pub fn text(&self) -> DocumentText {
@@ -371,11 +427,36 @@ impl ServerDocument {
         DocumentText::Arc(text.clone())
       }
       ServerDocumentKind::Asset { text, .. } => DocumentText::Static(text),
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Text,
+        ..
+      } => DocumentText::Static(TEXT_IMPORT_SOURCE),
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Bytes,
+        ..
+      } => DocumentText::Static(BYTES_IMPORT_SOURCE),
+    }
+  }
+
+  pub fn line_index(&self) -> &Arc<LineIndex> {
+    match &self.kind {
+      ServerDocumentKind::Fs { line_index, .. } => line_index,
+      ServerDocumentKind::RemoteUrl { line_index, .. } => line_index,
+      ServerDocumentKind::DataUrl { line_index, .. } => line_index,
+      ServerDocumentKind::Asset { line_index, .. } => line_index,
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Text,
+        ..
+      } => &TEXT_IMPORT_SOURCE_LINE_INDEX,
+      ServerDocumentKind::RawImportTypes {
+        kind: RawImportKind::Bytes,
+        ..
+      } => &BYTES_IMPORT_SOURCE_LINE_INDEX,
     }
   }
 
   pub fn is_diagnosable(&self) -> bool {
-    media_type_is_diagnosable(self.media_type)
+    media_type_is_diagnosable(self.media_type())
   }
 
   pub fn is_file_like(&self) -> bool {
@@ -390,6 +471,7 @@ impl ServerDocument {
       } => fs_cache_version.clone(),
       ServerDocumentKind::DataUrl { .. } => "1".to_string(),
       ServerDocumentKind::Asset { .. } => "1".to_string(),
+      ServerDocumentKind::RawImportTypes { .. } => "1".to_string(),
     }
   }
 }
@@ -410,7 +492,7 @@ pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
     inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
       .iter()
       .map(|(k, v)| {
-        let doc = Arc::new(ServerDocument::asset(k, v.as_str()));
+        let doc = Arc::new(ServerDocument::asset(k, v.source.as_str()));
         let uri = doc.uri.clone();
         (uri, doc)
       })
@@ -455,7 +537,7 @@ impl Document {
   pub fn line_index(&self) -> &Arc<LineIndex> {
     match self {
       Self::Open(d) => &d.line_index,
-      Self::Server(d) => &d.line_index,
+      Self::Server(d) => d.line_index(),
     }
   }
 
@@ -506,14 +588,14 @@ impl Documents {
     let uri = normalize_uri(&uri);
     self.server.remove(&uri);
     let doc = Arc::new(OpenDocument::new(
-      uri.as_ref().clone(),
+      uri.clone(),
       version,
       language_id,
       text,
       notebook_uri,
     ));
-    self.open.insert(uri.into_owned(), doc.clone());
-    if !doc.uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+    self.open.insert(uri, doc.clone());
+    if !doc.uri.scheme().as_str().eq_ignore_ascii_case("file") {
       let url = uri_to_url(&doc.uri);
       if url.scheme() == "file" {
         self.file_like_uris_by_url.insert(url, doc.uri.clone());
@@ -529,7 +611,7 @@ impl Documents {
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<OpenDocument>, AnyError> {
     let uri = normalize_uri(uri);
-    let Some((uri, doc)) = self.open.shift_remove_entry(uri.as_ref()) else {
+    let Some((uri, doc)) = self.open.shift_remove_entry(&uri) else {
       return Err(
         JsErrorBox::new(
           "NotFound",
@@ -548,10 +630,8 @@ impl Documents {
 
   fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
     let uri = normalize_uri(uri);
-    self
-      .file_like_uris_by_url
-      .retain(|_, u| u.as_ref() != uri.as_ref());
-    let doc = self.open.shift_remove(uri.as_ref()).ok_or_else(|| {
+    self.file_like_uris_by_url.retain(|_, u| u.as_ref() != &uri);
+    let doc = self.open.shift_remove(&uri).ok_or_else(|| {
       JsErrorBox::new(
         "NotFound",
         format!(
@@ -568,7 +648,7 @@ impl Documents {
     uri: Uri,
     cells: Vec<lsp::TextDocumentItem>,
   ) -> Vec<Arc<OpenDocument>> {
-    let uri = Arc::new(normalize_uri(&uri).into_owned());
+    let uri = Arc::new(normalize_uri(&uri));
     let mut documents = Vec::with_capacity(cells.len());
     for cell in cells {
       let language_id = cell.language_id.parse().unwrap_or_else(|err| {
@@ -603,7 +683,7 @@ impl Documents {
     structure: Option<lsp::NotebookDocumentCellChangeStructure>,
     content: Option<Vec<lsp::NotebookDocumentChangeTextContent>>,
   ) -> Vec<(Arc<OpenDocument>, ChangeKind)> {
-    let uri = Arc::new(normalize_uri(uri).into_owned());
+    let uri = Arc::new(normalize_uri(uri));
     let mut documents_with_change_kinds = Vec::new();
     if let Some(structure) = structure {
       if let Some(cells) = self.cells_by_notebook_uri.get_mut(&uri) {
@@ -615,7 +695,7 @@ impl Documents {
             .cells
             .into_iter()
             .flatten()
-            .map(|c| Arc::new(normalize_uri(&c.document).into_owned())),
+            .map(|c| Arc::new(normalize_uri(&c.document))),
         );
       }
       for closed in structure.did_close.into_iter().flatten() {
@@ -669,8 +749,7 @@ impl Documents {
 
   pub fn close_notebook(&mut self, uri: &Uri) -> Vec<Arc<OpenDocument>> {
     let uri = normalize_uri(uri);
-    let Some(cell_uris) = self.cells_by_notebook_uri.remove(uri.as_ref())
-    else {
+    let Some(cell_uris) = self.cells_by_notebook_uri.remove(&uri) else {
       lsp_warn!(
         "The URI \"{}\" does not refer to an open notebook document.",
         uri.as_str(),
@@ -693,31 +772,38 @@ impl Documents {
 
   pub fn get(&self, uri: &Uri) -> Option<Document> {
     let uri = normalize_uri(uri);
-    if let Some(doc) = self.open.get(uri.as_ref()) {
+    if let Some(doc) = self.open.get(&uri) {
       return Some(Document::Open(doc.clone()));
     }
     if let Some(doc) = ASSET_DOCUMENTS.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
+    if let Some(doc) = ServerDocument::raw_import_types(&uri) {
+      return Some(Document::Server(Arc::new(doc)));
+    }
     if let Some(doc) = self.server.get(&uri) {
       return Some(Document::Server(doc.clone()));
     }
-    let doc = if let Some(doc) = ServerDocument::load(&uri) {
-      doc
-    } else if let Some(data_url) = self.data_urls_by_uri.get(&uri) {
-      ServerDocument::data_url(&uri, data_url.value().clone())?
-    } else {
-      return None;
+    let doc = match ServerDocument::load(&uri) {
+      Some(doc) => doc,
+      _ => match self.data_urls_by_uri.get(&uri) {
+        Some(data_url) => {
+          ServerDocument::data_url(&uri, data_url.value().clone())?
+        }
+        _ => {
+          return None;
+        }
+      },
     };
     let doc = Arc::new(doc);
-    self.server.insert(uri.into_owned(), doc.clone());
+    self.server.insert(uri, doc.clone());
     Some(Document::Server(doc))
   }
 
   /// This will not create any server entries, only retrieve existing entries.
   pub fn inspect(&self, uri: &Uri) -> Option<Document> {
     let uri = normalize_uri(uri);
-    if let Some(doc) = self.open.get(uri.as_ref()) {
+    if let Some(doc) = self.open.get(&uri) {
       return Some(Document::Open(doc.clone()));
     }
     if let Some(doc) = self.server.get(&uri) {
@@ -741,7 +827,7 @@ impl Documents {
         .or_else(|| url_to_uri(specifier).ok().map(Arc::new))?;
       self.get(&uri)
     } else if scheme == "asset" {
-      let uri = asset_url_to_uri(specifier)?;
+      let uri = remote_or_asset_url_to_uri(specifier)?;
       self.get(&uri)
     } else if scheme == "http" || scheme == "https" {
       if let Some(vendored_specifier) =
@@ -750,7 +836,7 @@ impl Documents {
         let uri = url_to_uri(&vendored_specifier).ok()?;
         self.get(&uri)
       } else {
-        let uri = remote_url_to_uri(specifier)?;
+        let uri = remote_or_asset_url_to_uri(specifier)?;
         if let Some(doc) = self.server.get(&uri) {
           return Some(Document::Server(doc.clone()));
         }
@@ -839,6 +925,7 @@ pub struct DocumentModule {
   pub script_version: String,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
+  pub compiler_options_key: CompilerOptionsKey,
   pub media_type: MediaType,
   pub headers: Option<HashMap<String, String>>,
   pub text: DocumentText,
@@ -848,14 +935,27 @@ pub struct DocumentModule {
   pub types_dependency: Option<Arc<TypesDependency>>,
   pub navigation_tree: tokio::sync::OnceCell<Arc<NavigationTree>>,
   pub semantic_tokens_full: tokio::sync::OnceCell<lsp::SemanticTokens>,
+  /// Cached lint diagnostics. These only depend on this module's own contents
+  /// (not on other files), so they can be computed once per module instance
+  /// and reused until the document changes. A new `DocumentModule` is created
+  /// whenever the document content or the lint configuration changes, which
+  /// naturally invalidates this cache.
+  pub lint_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
+  /// Cached `deno doc --lint` diagnostics. Like lint diagnostics, these are
+  /// derived solely from this module's own contents (a single-module graph),
+  /// so they're cached per module instance.
+  pub doc_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
   text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
   test_module_fut: Option<TestModuleFut>,
 }
 
 impl DocumentModule {
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub fn new(
     document: &Document,
     specifier: Arc<Url>,
+    compiler_options_key: CompilerOptionsKey,
+    compiler_options_data: &LspCompilerOptionsData,
     scope: Option<Arc<Url>>,
     resolver: &LspResolver,
     config: &Config,
@@ -884,6 +984,7 @@ impl DocumentModule {
           headers.as_ref(),
           media_type,
           scope.as_deref(),
+          compiler_options_data,
           resolver,
         )
       } else {
@@ -909,6 +1010,7 @@ impl DocumentModule {
       script_version: document.script_version(),
       specifier,
       scope,
+      compiler_options_key,
       media_type,
       headers,
       text,
@@ -918,6 +1020,8 @@ impl DocumentModule {
       types_dependency,
       navigation_tree: Default::default(),
       semantic_tokens_full: Default::default(),
+      lint_diagnostics: Default::default(),
+      doc_diagnostics: Default::default(),
       text_info_cell: Default::default(),
       test_module_fut,
     }
@@ -964,23 +1068,114 @@ impl DocumentModule {
 
 type DepInfoByScope = BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>;
 
+struct WeakKeyDocumentMap<T> {
+  entries: HashMap<usize, (Weak<T>, Arc<DocumentModule>)>,
+}
+
+impl<T> Default for WeakKeyDocumentMap<T> {
+  fn default() -> Self {
+    Self {
+      entries: Default::default(),
+    }
+  }
+}
+
+impl<T> fmt::Debug for WeakKeyDocumentMap<T> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("WeakKeyDocumentMap")
+      .field("len", &self.entries.len())
+      .finish()
+  }
+}
+
+impl<T> WeakKeyDocumentMap<T> {
+  fn get(&self, document: &Arc<T>) -> Option<Arc<DocumentModule>> {
+    let (document_weak, module) = self.entries.get(&Self::key(document))?;
+    let document_strong = document_weak.upgrade()?;
+    Arc::ptr_eq(&document_strong, document).then(|| module.clone())
+  }
+
+  fn values(&self) -> impl Iterator<Item = Arc<DocumentModule>> + '_ {
+    self.entries.values().filter_map(|(document, module)| {
+      document.upgrade().map(|_| module.clone())
+    })
+  }
+
+  fn insert(
+    &mut self,
+    document: Arc<T>,
+    module: Arc<DocumentModule>,
+  ) -> Option<Arc<DocumentModule>> {
+    self.remove_expired();
+    self
+      .entries
+      .insert(Self::key(&document), (Arc::downgrade(&document), module))
+      .map(|(_, module)| module)
+  }
+
+  fn remove_expired(&mut self) {
+    self
+      .entries
+      .retain(|_, (document, _)| document.strong_count() > 0);
+  }
+
+  fn key(document: &Arc<T>) -> usize {
+    Arc::as_ptr(document) as usize
+  }
+}
+
+#[derive(Default)]
+struct WeakValueDocumentMap {
+  entries: HashMap<Arc<Url>, Weak<DocumentModule>>,
+}
+
+impl fmt::Debug for WeakValueDocumentMap {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("WeakValueDocumentMap")
+      .field("len", &self.entries.len())
+      .finish()
+  }
+}
+
+impl WeakValueDocumentMap {
+  fn contains_key(&self, specifier: &Url) -> bool {
+    self
+      .entries
+      .get(specifier)
+      .and_then(|module| module.upgrade())
+      .is_some()
+  }
+
+  fn insert(
+    &mut self,
+    specifier: Arc<Url>,
+    module: Arc<DocumentModule>,
+  ) -> Option<Arc<DocumentModule>> {
+    self.remove_expired();
+    self
+      .entries
+      .insert(specifier, Arc::downgrade(&module))
+      .and_then(|module| module.upgrade())
+  }
+
+  fn remove_expired(&mut self) {
+    self.entries.retain(|_, module| module.strong_count() > 0);
+  }
+}
+
 #[derive(Debug, Default)]
 struct WeakDocumentModuleMap {
-  open: RwLock<PtrWeakKeyHashMap<Weak<OpenDocument>, Arc<DocumentModule>>>,
-  server: RwLock<PtrWeakKeyHashMap<Weak<ServerDocument>, Arc<DocumentModule>>>,
-  by_specifier: RwLock<WeakValueHashMap<Arc<Url>, Weak<DocumentModule>>>,
+  open: RwLock<WeakKeyDocumentMap<OpenDocument>>,
+  server: RwLock<WeakKeyDocumentMap<ServerDocument>>,
+  by_specifier: RwLock<WeakValueDocumentMap>,
 }
 
 impl WeakDocumentModuleMap {
   fn get(&self, document: &Document) -> Option<Arc<DocumentModule>> {
     match document {
-      Document::Open(d) => self.open.read().get(d).cloned(),
-      Document::Server(d) => self.server.read().get(d).cloned(),
+      Document::Open(d) => self.open.read().get(d),
+      Document::Server(d) => self.server.read().get(d),
     }
-  }
-
-  fn get_for_specifier(&self, specifier: &Url) -> Option<Arc<DocumentModule>> {
-    self.by_specifier.read().get(specifier)
   }
 
   fn contains_specifier(&self, specifier: &Url) -> bool {
@@ -992,8 +1187,7 @@ impl WeakDocumentModuleMap {
       .open
       .read()
       .values()
-      .cloned()
-      .chain(self.server.read().values().cloned())
+      .chain(self.server.read().values())
       .collect()
   }
 
@@ -1025,27 +1219,33 @@ impl WeakDocumentModuleMap {
   }
 }
 
+type ScopeInfo = (Option<Arc<Url>>, CompilerOptionsKey);
+
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   pub documents: Documents,
   config: Arc<Config>,
+  compiler_options_resolver: Arc<LspCompilerOptionsResolver>,
   resolver: Arc<LspResolver>,
   cache: Arc<LspCache>,
   workspace_files: Arc<IndexSet<PathBuf>>,
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
   modules_unscoped: Arc<WeakDocumentModuleMap>,
   modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
+  assigned_scopes: Arc<RwLock<HashMap<Arc<Uri>, ScopeInfo>>>,
 }
 
 impl DocumentModules {
   pub fn update_config(
     &mut self,
     config: &Config,
+    compiler_options_resolver: &Arc<LspCompilerOptionsResolver>,
     resolver: &Arc<LspResolver>,
     cache: &LspCache,
     workspace_files: &Arc<IndexSet<PathBuf>>,
   ) {
     self.config = Arc::new(config.clone());
+    self.compiler_options_resolver = compiler_options_resolver.clone();
     self.cache = Arc::new(cache.clone());
     self.resolver = resolver.clone();
     self.workspace_files = workspace_files.clone();
@@ -1060,6 +1260,7 @@ impl DocumentModules {
         .collect(),
     );
     self.dep_info_by_scope = Default::default();
+    self.assigned_scopes = Default::default();
 
     node_resolver::PackageJsonThreadLocalCache::clear();
     NodeResolutionThreadLocalCache::clear();
@@ -1117,7 +1318,7 @@ impl DocumentModules {
     let document = self.documents.close(uri)?;
     // If applicable, try to load the closed document as a server document so
     // it's still included as a ts root etc..
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
+    if uri.scheme().as_str().eq_ignore_ascii_case("file")
       && self.config.uri_enabled(uri)
     {
       self.documents.get(uri);
@@ -1152,8 +1353,15 @@ impl DocumentModules {
     self.documents.close_notebook(uri)
   }
 
-  pub fn release(&self, specifier: &Url, scope: Option<&Url>) {
-    let Some(module) = self.module_for_specifier(specifier, scope) else {
+  pub fn release(
+    &self,
+    specifier: &Url,
+    scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
+  ) {
+    let Some(module) =
+      self.module_for_specifier(specifier, scope, compiler_options_key)
+    else {
       return;
     };
     self.documents.remove_server_doc(&module.uri);
@@ -1166,6 +1374,7 @@ impl DocumentModules {
         ServerDocumentKind::RemoteUrl { url, .. } => return Some(url.clone()),
         ServerDocumentKind::DataUrl { url, .. } => return Some(url.clone()),
         ServerDocumentKind::Asset { url, .. } => return Some(url.clone()),
+        ServerDocumentKind::RawImportTypes { .. } => return None,
       }
     }
     let uri = document.uri();
@@ -1173,10 +1382,10 @@ impl DocumentModules {
     if url.scheme() != "file" {
       return None;
     }
-    if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
-      if let Some(remote_specifier) = self.cache.unvendored_specifier(&url) {
-        return Some(Arc::new(remote_specifier));
-      }
+    if uri.scheme().as_str().eq_ignore_ascii_case("file")
+      && let Some(remote_specifier) = self.cache.unvendored_specifier(&url)
+    {
+      return Some(Arc::new(remote_specifier));
     }
     Some(Arc::new(url))
   }
@@ -1186,6 +1395,7 @@ impl DocumentModules {
     document: &Document,
     specifier: Option<&Arc<Url>>,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Option<Arc<DocumentModule>> {
     let modules = self.modules_for_scope(scope)?;
     if let Some(module) = modules.get(document) {
@@ -1194,9 +1404,33 @@ impl DocumentModules {
     let specifier = specifier
       .cloned()
       .or_else(|| self.infer_specifier(document))?;
+    let scheme = specifier.scheme();
+    let (compiler_options_key, compiler_options_data) = if scheme != "file"
+      || self.resolver.in_node_modules(&specifier)
+      || self.cache.in_global_cache_directory(&specifier)
+    {
+      let key = compiler_options_key?;
+      let value = self
+        .compiler_options_resolver
+        .for_key(key)
+        .expect("Key should be in sync with resolver.");
+      (key, value)
+    } else {
+      self.compiler_options_resolver.entry_for_specifier(
+        if scheme != "file"
+          && let Some(scope) = scope
+        {
+          scope
+        } else {
+          &specifier
+        },
+      )
+    };
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
+      compiler_options_key.clone(),
+      compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,
       &self.config,
@@ -1212,28 +1446,40 @@ impl DocumentModules {
     document: &Document,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
-    self.module_inner(document, None, scope)
+    self.module_inner(document, None, scope, None)
   }
 
   pub fn module_for_specifier(
     &self,
     specifier: &Url,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Option<Arc<DocumentModule>> {
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
-      Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-    } else {
-      Cow::Borrowed(specifier)
+    let specifier = match JsrPackageReqReference::from_specifier(specifier) {
+      Ok(jsr_req_ref) => {
+        Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
+      }
+      _ => Cow::Borrowed(specifier),
     };
     let specifier = scoped_resolver.resolve_redirects(&specifier)?;
     let document =
       self
         .documents
         .get_for_specifier(&specifier, scope, &self.cache)?;
-    self.module_inner(&document, Some(&Arc::new(specifier)), scope)
+    let module = self.module_inner(
+      &document,
+      Some(&Arc::new(specifier)),
+      scope,
+      compiler_options_key,
+    );
+    if let Some(module) = &module {
+      self.assigned_scopes.write().insert(
+        document.uri().clone(),
+        (module.scope.clone(), module.compiler_options_key.clone()),
+      );
+    }
+    module
   }
 
   pub fn primary_module(
@@ -1242,6 +1488,16 @@ impl DocumentModules {
   ) -> Option<Arc<DocumentModule>> {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
+    }
+    let assigned_scope =
+      self.assigned_scopes.read().get(document.uri()).cloned();
+    if let Some((scope, compiler_options_key)) = assigned_scope {
+      return self.module_inner(
+        document,
+        None,
+        scope.as_deref(),
+        Some(&compiler_options_key),
+      );
     }
     for modules in self.modules_by_scope.values() {
       if let Some(module) = modules.get(document) {
@@ -1316,25 +1572,6 @@ impl DocumentModules {
   }
 
   /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_module_for_specifier(
-    &self,
-    specifier: &Url,
-    scope: Option<&Url>,
-  ) -> Option<Arc<DocumentModule>> {
-    let scoped_resolver = self.resolver.get_scoped_resolver(scope);
-    let specifier = if let Ok(jsr_req_ref) =
-      JsrPackageReqReference::from_specifier(specifier)
-    {
-      Cow::Owned(scoped_resolver.jsr_to_resource_url(&jsr_req_ref)?)
-    } else {
-      Cow::Borrowed(specifier)
-    };
-    let specifier = scoped_resolver.resolve_redirects(&specifier)?;
-    let modules = self.modules_for_scope(scope)?;
-    modules.get_for_specifier(&specifier)
-  }
-
-  /// This will not create any module entries, only retrieve existing entries.
   pub fn inspect_primary_module(
     &self,
     document: &Document,
@@ -1353,36 +1590,37 @@ impl DocumentModules {
   }
 
   /// This will not store any module entries, only retrieve existing entries or
-  /// create temporary entries for scopes where one doesn't exist.
-  pub fn inspect_or_temp_modules_by_scope(
+  /// create temporary entries for other keys.
+  // TODO(nayeemrmn): Support notebook scopes here.
+  pub fn get_or_temp_modules_by_compiler_options_key(
     &self,
     document: &Document,
-  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
+  ) -> BTreeMap<CompilerOptionsKey, Arc<DocumentModule>> {
+    let Some(primary_module) = self.primary_module(document) else {
+      return Default::default();
+    };
     let mut result = BTreeMap::new();
-    for (scope, modules) in self.modules_by_scope.iter() {
-      let module = modules.get(document).unwrap_or_else(|| {
+    for (compiler_options_key, compiler_options_data) in
+      self.compiler_options_resolver.entries()
+    {
+      if compiler_options_key == &primary_module.compiler_options_key {
+        continue;
+      }
+      result.insert(
+        compiler_options_key.clone(),
         Arc::new(DocumentModule::new(
           document,
-          Arc::new(uri_to_url(document.uri())),
-          Some(scope.clone()),
+          primary_module.specifier.clone(),
+          compiler_options_key.clone(),
+          compiler_options_data,
+          primary_module.scope.clone(),
           &self.resolver,
           &self.config,
           &self.cache,
-        ))
-      });
-      result.insert(Some(scope.clone()), module);
+        )),
+      );
     }
-    let module = self.modules_unscoped.get(document).unwrap_or_else(|| {
-      Arc::new(DocumentModule::new(
-        document,
-        Arc::new(uri_to_url(document.uri())),
-        None,
-        &self.resolver,
-        &self.config,
-        &self.cache,
-      ))
-    });
-    result.insert(None, module);
+    result.insert(primary_module.compiler_options_key.clone(), primary_module);
     result
   }
 
@@ -1399,17 +1637,35 @@ impl DocumentModules {
   pub fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
     let url = uri_to_url(uri);
     if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
-      let scope = self.config.tree.scope_for_specifier(&url);
+      let mut scope = self.config.tree.scope_for_specifier(&url);
+      // In-memory documents (untitled files and unsaved notebook cells) convert
+      // to a `file:` URL at the filesystem root, which matches no workspace
+      // scope. Associate them with the workspace root so its config (import
+      // map, compiler options) applies — matching the behavior once the
+      // document is saved into the workspace. See denoland/deno#22628.
+      if scope.is_none()
+        && uri_is_in_memory(uri)
+        && let Some(root_url) = self.config.root_url()
+      {
+        scope = self.config.tree.scope_for_specifier(root_url);
+      }
       return Some(scope);
     }
     None
   }
 
-  pub fn primary_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+  pub fn primary_specifier(
+    &self,
+    document: &Document,
+  ) -> Option<(Arc<Url>, MediaType)> {
     self
-      .inspect_primary_module(document)
-      .map(|m| m.specifier.clone())
-      .or_else(|| self.infer_specifier(document))
+      .primary_module(document)
+      .map(|m| (m.specifier.clone(), m.media_type))
+      .or_else(|| {
+        let specifier = self.infer_specifier(document)?;
+        let media_type = MediaType::from_specifier(&specifier);
+        Some((specifier, media_type))
+      })
   }
 
   pub fn remove_expired_modules(&self) {
@@ -1419,21 +1675,11 @@ impl DocumentModules {
     }
   }
 
-  pub fn scopes(&self) -> BTreeSet<Option<Arc<Url>>> {
-    self
-      .modules_by_scope
-      .keys()
-      .cloned()
-      .map(Some)
-      .chain([None])
-      .collect()
-  }
-
   pub fn specifier_exists(&self, specifier: &Url, scope: Option<&Url>) -> bool {
-    if let Some(modules) = self.modules_for_scope(scope) {
-      if modules.contains_specifier(specifier) {
-        return true;
-      }
+    if let Some(modules) = self.modules_for_scope(scope)
+      && modules.contains_specifier(specifier)
+    {
+      return true;
     }
     if specifier.scheme() == "file" {
       return url_to_file_path(specifier)
@@ -1460,21 +1706,19 @@ impl DocumentModules {
         for dependency in module.dependencies.values() {
           let code_specifier = dependency.get_code();
           let type_specifier = dependency.get_type();
-          if let Some(dep) = code_specifier {
-            if dep.scheme() == "node" {
-              dep_info.has_node_specifier = true;
-            }
+          if let Some(dep) = code_specifier
+            && dep.scheme() == "node"
+          {
+            dep_info.has_node_specifier = true;
           }
-          if dependency.maybe_deno_types_specifier.is_some() {
-            if let (Some(code_specifier), Some(type_specifier)) =
+          if dependency.maybe_deno_types_specifier.is_some()
+            && let (Some(code_specifier), Some(type_specifier)) =
               (code_specifier, type_specifier)
-            {
-              if MediaType::from_specifier(type_specifier).is_declaration() {
-                dep_info
-                  .deno_types_to_code_resolutions
-                  .insert(type_specifier.clone(), code_specifier.clone());
-              }
-            }
+            && MediaType::from_specifier(type_specifier).is_declaration()
+          {
+            dep_info
+              .deno_types_to_code_resolutions
+              .insert(type_specifier.clone(), code_specifier.clone());
           }
         }
       };
@@ -1485,11 +1729,19 @@ impl DocumentModules {
         scope.and_then(|s| self.config.tree.data_by_scope().get(s));
       if let Some(config_data) = config_data {
         (|| {
-          let member_dir = &config_data.member_dir;
-          let jsx_config =
-            member_dir.to_maybe_jsx_import_source_config().ok()??;
-          let import_source_types = jsx_config.import_source_types.as_ref()?;
-          let import_source = jsx_config.import_source.as_ref()?;
+          let compiler_options_data = self
+            .compiler_options_resolver
+            .for_specifier(&config_data.scope);
+          let import_source_types = compiler_options_data
+            .jsx_import_source_config
+            .as_ref()?
+            .import_source_types
+            .as_ref()?;
+          let import_source = compiler_options_data
+            .jsx_import_source_config
+            .as_ref()?
+            .import_source
+            .as_ref()?;
           let scoped_resolver =
             self.resolver.get_scoped_resolver(scope.map(|s| s.as_ref()));
           let cli_resolver = scoped_resolver.as_cli_resolver();
@@ -1556,8 +1808,10 @@ impl DocumentModules {
     raw_specifiers: &[(bool, String)],
     referrer: &Url,
     scope: Option<&Url>,
+    compiler_options_key: Option<&CompilerOptionsKey>,
   ) -> Vec<Option<(Url, MediaType)>> {
-    let referrer_module = self.module_for_specifier(referrer, scope);
+    let referrer_module =
+      self.module_for_specifier(referrer, scope, compiler_options_key);
     let dependencies = referrer_module.as_ref().map(|d| &d.dependencies);
     let mut results = Vec::new();
     let scoped_resolver = self.resolver.get_scoped_resolver(scope);
@@ -1566,49 +1820,60 @@ impl DocumentModules {
         true => ResolutionMode::Require,
         false => ResolutionMode::Import,
       };
-      if raw_specifier.starts_with("asset:") {
+      let result = if raw_specifier.starts_with("asset:") {
         if let Ok(specifier) = resolve_url(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
-          results.push(Some((specifier, media_type)));
+          Some((specifier, media_type))
         } else {
-          results.push(None);
+          None
         }
       } else if let Some(dep) =
         dependencies.as_ref().and_then(|d| d.get(raw_specifier))
       {
         if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-          ));
+          self
+            .resolve_dependency(
+              specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t))
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            scope,
-          ));
+          self
+            .resolve_dependency(
+              specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t))
         } else {
-          results.push(None);
+          None
         }
-      } else if let Ok(specifier) = scoped_resolver.as_cli_resolver().resolve(
-        raw_specifier,
-        referrer,
-        deno_graph::Position::zeroed(),
-        resolution_mode,
-        NodeResolutionKind::Types,
-      ) {
-        results.push(self.resolve_dependency(
-          &specifier,
-          referrer,
-          resolution_mode,
-          scope,
-        ));
       } else {
-        results.push(None);
-      }
+        match scoped_resolver.as_cli_resolver().resolve(
+          raw_specifier,
+          referrer,
+          deno_graph::Position::zeroed(),
+          resolution_mode,
+          NodeResolutionKind::Types,
+        ) {
+          Ok(specifier) => self
+            .resolve_dependency(
+              &specifier,
+              referrer,
+              resolution_mode,
+              scope,
+              compiler_options_key,
+            )
+            .map(|(s, t, _)| (s, t)),
+          _ => None,
+        }
+      };
+      results.push(result);
     }
     results
   }
@@ -1620,14 +1885,14 @@ impl DocumentModules {
     referrer: &Url,
     resolution_mode: ResolutionMode,
     scope: Option<&Url>,
-  ) -> Option<(Url, MediaType)> {
-    if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
-      if deno_node::is_builtin_node_module(module_name) {
-        // return itself for node: specifiers because during type checking
-        // we resolve to the ambient modules in the @types/node package
-        // rather than deno_std/node
-        return Some((specifier.clone(), MediaType::Dts));
-      }
+    compiler_options_key: Option<&CompilerOptionsKey>,
+  ) -> Option<(Url, MediaType, Option<Arc<Uri>>)> {
+    if let Some(module_name) = specifier.as_str().strip_prefix("node:")
+      && deno_node::is_builtin_node_module(module_name)
+    {
+      // Don't resolve node: specifiers because during type checking we resolve
+      // to the ambient modules in the @types/node package.
+      return None;
     }
     let mut specifier = specifier.clone();
     let mut media_type = None;
@@ -1642,19 +1907,31 @@ impl DocumentModules {
       specifier = s;
       media_type = Some(mt);
     }
-    let Some(module) = self.module_for_specifier(&specifier, scope) else {
+    let Some(module) =
+      self.module_for_specifier(&specifier, scope, compiler_options_key)
+    else {
       let media_type =
         media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
-      return Some((specifier, media_type));
+      return Some((specifier, media_type, None));
     };
     if let Some(types) = module
       .types_dependency
       .as_ref()
       .and_then(|d| d.dependency.maybe_specifier())
     {
-      self.resolve_dependency(types, &specifier, module.resolution_mode, scope)
+      self.resolve_dependency(
+        types,
+        &specifier,
+        module.resolution_mode,
+        scope,
+        compiler_options_key,
+      )
     } else {
-      Some((module.specifier.as_ref().clone(), module.media_type))
+      Some((
+        module.specifier.as_ref().clone(),
+        module.media_type,
+        Some(module.uri.clone()),
+      ))
     }
   }
 }
@@ -1786,7 +2063,7 @@ impl IndexValid {
 }
 
 type ModuleResult = Result<deno_graph::JsModule, deno_graph::ModuleGraphError>;
-type ParsedSourceResult = Result<ParsedSource, deno_ast::ParseDiagnostic>;
+type ParsedSourceResult = Result<ParsedSource, Arc<JsErrorBox>>;
 type TestModuleFut =
   Shared<Pin<Box<dyn Future<Output = Option<Arc<TestModule>>> + Send>>>;
 
@@ -1841,7 +2118,7 @@ fn get_maybe_test_module_fut(
   Some(handle)
 }
 
-fn resolve_media_type(
+pub fn resolve_media_type(
   specifier: &ModuleSpecifier,
   maybe_headers: Option<&HashMap<String, String>>,
   maybe_language_id: Option<LanguageId>,
@@ -1871,18 +2148,18 @@ impl OpenDocumentsGraphLoader<'_> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<deno_graph::source::LoadFuture> {
-    if specifier.scheme() == "file" {
-      if let Some(doc) = self.open_modules.get(specifier) {
-        return Some(
-          future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
-            content: Arc::from(doc.text.as_bytes().to_owned()),
-            mtime: None,
-            specifier: doc.specifier.as_ref().clone(),
-            maybe_headers: None,
-          })))
-          .boxed_local(),
-        );
-      }
+    if specifier.scheme() == "file"
+      && let Some(doc) = self.open_modules.get(specifier)
+    {
+      return Some(
+        future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
+          content: Arc::from(doc.text.as_bytes().to_owned()),
+          mtime: None,
+          specifier: doc.specifier.as_ref().clone(),
+          maybe_headers: None,
+        })))
+        .boxed_local(),
+      );
     }
     None
   }
@@ -1906,7 +2183,8 @@ fn parse_and_analyze_module(
   text: Arc<str>,
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
-  file_referrer: Option<&ModuleSpecifier>,
+  scope: Option<&Url>,
+  compiler_options_data: &LspCompilerOptionsData,
   resolver: &LspResolver,
 ) -> (
   Option<ParsedSourceResult>,
@@ -1918,7 +2196,8 @@ fn parse_and_analyze_module(
     specifier,
     &parsed_source_result,
     maybe_headers,
-    file_referrer,
+    scope,
+    compiler_options_data,
     resolver,
   );
   (
@@ -1928,38 +2207,64 @@ fn parse_and_analyze_module(
   )
 }
 
-#[allow(clippy::result_large_err)]
 fn parse_source(
   specifier: ModuleSpecifier,
   text: Arc<str>,
   media_type: MediaType,
 ) -> ParsedSourceResult {
-  deno_ast::parse_program(deno_ast::ParseParams {
-    specifier,
-    text,
-    media_type,
-    capture_tokens: true,
-    scope_analysis: true,
-    maybe_syntax: None,
-  })
+  let specifier_for_error = specifier.clone();
+  let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+    deno_ast::parse_program(deno_ast::ParseParams {
+      specifier,
+      text,
+      media_type,
+      capture_tokens: true,
+      scope_analysis: true,
+      maybe_syntax: None,
+    })
+  }));
+  match result {
+    Ok(result) => {
+      result.map_err(|diagnostic| Arc::new(JsErrorBox::from_err(diagnostic)))
+    }
+    Err(error) => {
+      let error = panic_payload_to_string(&error);
+      lsp_warn!(
+        "Failed to parse \"{}\" due to parser panic: {}",
+        specifier_for_error,
+        error,
+      );
+      Err(Arc::new(JsErrorBox::generic(format!(
+        "The parser panicked while parsing this module: {error}"
+      ))))
+    }
+  }
+}
+
+fn panic_payload_to_string(error: &(dyn std::any::Any + Send)) -> String {
+  if let Some(message) = error.downcast_ref::<String>() {
+    message.clone()
+  } else if let Some(message) = error.downcast_ref::<&'static str>() {
+    message.to_string()
+  } else {
+    "unknown parser panic".to_string()
+  }
 }
 
 fn analyze_module(
   specifier: ModuleSpecifier,
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
-  file_referrer: Option<&ModuleSpecifier>,
+  scope: Option<&Url>,
+  compiler_options_data: &LspCompilerOptionsData,
   resolver: &LspResolver,
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
     Ok(parsed_source) => {
-      let scoped_resolver = resolver.get_scoped_resolver(file_referrer);
+      let scoped_resolver = resolver.get_scoped_resolver(scope);
       let cli_resolver = scoped_resolver.as_cli_resolver();
       let is_cjs_resolver = scoped_resolver.as_is_cjs_resolver();
-      let config_data = scoped_resolver.as_config_data();
       let valid_referrer = specifier.clone();
-      let jsx_import_source_config =
-        config_data.and_then(|d| d.maybe_jsx_import_source_config());
       let module_resolution_mode = is_cjs_resolver.get_lsp_resolution_mode(
         &specifier,
         Some(parsed_source.compute_is_script()),
@@ -1968,7 +2273,9 @@ fn analyze_module(
         valid_referrer: &valid_referrer,
         module_resolution_mode,
         cli_resolver,
-        jsx_import_source_config: jsx_import_source_config.as_ref(),
+        jsx_import_source_config: compiler_options_data
+          .jsx_import_source_config
+          .as_deref(),
       };
       (
         Ok(deno_graph::parse_module_from_ast(
@@ -1990,11 +2297,12 @@ fn analyze_module(
     }
     Err(diagnostic) => (
       Err(deno_graph::ModuleGraphError::ModuleError(
-        deno_graph::ModuleError::Parse {
+        deno_graph::ModuleErrorKind::Parse {
           specifier,
           mtime: None,
           diagnostic: diagnostic.clone(),
-        },
+        }
+        .into_box(),
       )),
       ResolutionMode::Import,
     ),
@@ -2038,9 +2346,13 @@ mod tests {
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
+    let compiler_options_resolver =
+      Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+    resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
+      &compiler_options_resolver,
       &resolver,
       &cache,
       &Default::default(),
@@ -2126,6 +2438,24 @@ console.log(b, "hello deno");
     );
   }
 
+  #[test]
+  fn test_parse_invalid_tsx_with_jsx_pragmas_does_not_panic() {
+    let specifier = ModuleSpecifier::parse("file:///index.tsx").unwrap();
+    let result = parse_source(
+      specifier,
+      r#"/** @jsxRuntime automatic */ /** @jsxImportSource npm:preact */
+
+const Counter = () => {
+  const [count
+  <button>{count}</button>
+}
+"#
+      .into(),
+      MediaType::Tsx,
+    );
+    assert!(result.is_err());
+  }
+
   #[tokio::test]
   async fn test_documents_refresh_dependencies_config_change() {
     // it should never happen that a user of this API causes this to happen,
@@ -2183,8 +2513,12 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
+      let compiler_options_resolver =
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
+        &compiler_options_resolver,
         &resolver,
         &cache,
         &workspace_files,
@@ -2225,8 +2559,12 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
+      let compiler_options_resolver =
+        Arc::new(LspCompilerOptionsResolver::new(&config, &resolver));
+      resolver.set_compiler_options_resolver(&compiler_options_resolver.inner);
       document_modules.update_config(
         &config,
+        &compiler_options_resolver,
         &resolver,
         &cache,
         &workspace_files,

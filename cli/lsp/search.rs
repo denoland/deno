@@ -1,17 +1,17 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
-use deno_semver::package::PackageNv;
 use deno_semver::Version;
+use deno_semver::package::PackageNv;
 
 #[async_trait::async_trait(?Send)]
 pub trait PackageSearchApi {
   async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError>;
   async fn versions(&self, name: &str) -> Result<Arc<Vec<Version>>, AnyError>;
   async fn exports(&self, nv: &PackageNv)
-    -> Result<Arc<Vec<String>>, AnyError>;
+  -> Result<Arc<Vec<String>>, AnyError>;
 }
 
 #[cfg(test)]

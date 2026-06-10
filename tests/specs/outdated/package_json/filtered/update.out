@@ -5,5 +5,5 @@ Initialize @denotest/has-patch-versions@0.2.0
 Initialize @denotest/bin@0.7.0
 [UNORDERED_END]
 Updated 2 dependencies:
- - npm:@denotest/bin                0.6.0 -> 0.7.0
- - npm:@denotest/has-patch-versions 0.1.0 -> 0.2.0
+ - npm:@denotest/bin                ^0.6.0 ->  0.7.0
+ - npm:@denotest/has-patch-versions ^0.1.0 -> ^0.2.0

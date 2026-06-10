@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -19,52 +19,57 @@
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
-import { promises } from "node:dns";
-export const {
-  getServers,
-  lookup,
-  resolve,
-  resolve4,
-  resolve6,
-  resolveAny,
-  resolveCaa,
-  resolveCname,
-  resolveMx,
-  resolveNaptr,
-  resolveNs,
-  resolvePtr,
-  Resolver,
-  resolveSoa,
-  resolveSrv,
-  resolveTxt,
-  reverse,
-  setDefaultResultOrder,
-  setServers,
 
-  // ERROR CODES
-  NODATA,
-  FORMERR,
-  SERVFAIL,
-  NOTFOUND,
-  NOTIMP,
-  REFUSED,
-  BADQUERY,
-  BADNAME,
-  BADFAMILY,
-  BADRESP,
-  CONNREFUSED,
-  TIMEOUT,
-  EOF,
-  FILE,
-  NOMEM,
-  DESTRUCTION,
-  BADSTR,
-  BADFLAGS,
-  NONAME,
-  BADHINTS,
-  NOTINITIALIZED,
-  LOADIPHLPAPI,
-  ADDRGETNETWORKPARAMS,
-  CANCELLED,
-} = promises;
-export default promises;
+(function () {
+const { core } = __bootstrap;
+const { promises } = core.loadExtScript("ext:deno_node/dns.ts");
+
+return {
+  default: promises,
+  getDefaultResultOrder: promises.getDefaultResultOrder,
+  getServers: promises.getServers,
+  lookup: promises.lookup,
+  lookupService: promises.lookupService,
+  resolve: promises.resolve,
+  resolve4: promises.resolve4,
+  resolve6: promises.resolve6,
+  resolveAny: promises.resolveAny,
+  resolveCaa: promises.resolveCaa,
+  resolveCname: promises.resolveCname,
+  resolveMx: promises.resolveMx,
+  resolveNaptr: promises.resolveNaptr,
+  resolveNs: promises.resolveNs,
+  resolvePtr: promises.resolvePtr,
+  Resolver: promises.Resolver,
+  resolveSoa: promises.resolveSoa,
+  resolveSrv: promises.resolveSrv,
+  resolveTxt: promises.resolveTxt,
+  reverse: promises.reverse,
+  setDefaultResultOrder: promises.setDefaultResultOrder,
+  setServers: promises.setServers,
+  NODATA: promises.NODATA,
+  FORMERR: promises.FORMERR,
+  SERVFAIL: promises.SERVFAIL,
+  NOTFOUND: promises.NOTFOUND,
+  NOTIMP: promises.NOTIMP,
+  REFUSED: promises.REFUSED,
+  BADQUERY: promises.BADQUERY,
+  BADNAME: promises.BADNAME,
+  BADFAMILY: promises.BADFAMILY,
+  BADRESP: promises.BADRESP,
+  CONNREFUSED: promises.CONNREFUSED,
+  TIMEOUT: promises.TIMEOUT,
+  EOF: promises.EOF,
+  FILE: promises.FILE,
+  NOMEM: promises.NOMEM,
+  DESTRUCTION: promises.DESTRUCTION,
+  BADSTR: promises.BADSTR,
+  BADFLAGS: promises.BADFLAGS,
+  NONAME: promises.NONAME,
+  BADHINTS: promises.BADHINTS,
+  NOTINITIALIZED: promises.NOTINITIALIZED,
+  LOADIPHLPAPI: promises.LOADIPHLPAPI,
+  ADDRGETNETWORKPARAMS: promises.ADDRGETNETWORKPARAMS,
+  CANCELLED: promises.CANCELLED,
+};
+})();

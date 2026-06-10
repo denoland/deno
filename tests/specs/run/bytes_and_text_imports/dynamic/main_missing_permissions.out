@@ -1,0 +1,4 @@
+error: Uncaught (in promise) TypeError: Requires read access to "[WILDLINE]non_analyzable.txt", run again with the --allow-read flag
+const { default: nonAnalyzableText } = await import(nonAnalyzablePath(), {
+                                       ^
+    at async file:///[WILDLINE]/main.ts:[WILDLINE]

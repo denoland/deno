@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]mod.ts
+Check [WILDCARD]mod.ts
 Checking for slow types in the public API...
 Simulating publish of @scope/pkg@1.0.0 with files:
    file:///[WILDLINE]/LICENSE ([WILDLINE])

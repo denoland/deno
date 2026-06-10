@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -20,10 +20,13 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { Buffer } from "node:buffer";
-import { uvException } from "ext:deno_node/internal/errors.ts";
-import { writeBuffer } from "ext:deno_node/internal_binding/node_file.ts";
-import { primordials } from "ext:core/mod.js";
+(function () {
+const { core, primordials } = __bootstrap;
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const { uvException } = core.loadExtScript("ext:deno_node/internal/errors.ts");
+const { writeBuffer } = core.loadExtScript(
+  "ext:deno_node/internal_binding/node_file.ts",
+);
 
 const { RegExpPrototypeTest, SafeRegExp, Symbol } = primordials;
 
@@ -47,15 +50,15 @@ const IPv6Reg = new SafeRegExp(
     ")(%[0-9a-zA-Z-.:]{1,})?$",
 );
 
-export function isIPv4(ip: string) {
+function isIPv4(ip) {
   return RegExpPrototypeTest(IPv4Reg, ip);
 }
 
-export function isIPv6(ip: string) {
+function isIPv6(ip) {
   return RegExpPrototypeTest(IPv6Reg, ip);
 }
 
-export function isIP(ip: string) {
+function isIP(ip) {
   if (isIPv4(ip)) {
     return 4;
   }
@@ -66,22 +69,25 @@ export function isIP(ip: string) {
   return 0;
 }
 
-export function makeSyncWrite(fd: number) {
-  return function (
-    // deno-lint-ignore no-explicit-any
-    this: any,
-    // deno-lint-ignore no-explicit-any
-    chunk: any,
-    enc: string,
-    cb: (err?: Error) => void,
-  ) {
+function getIPFamily(ip) {
+  if (isIPv4(ip)) {
+    return "IPv4";
+  }
+  if (isIPv6(ip)) {
+    return "IPv6";
+  }
+  return undefined;
+}
+
+function makeSyncWrite(fd) {
+  return function (chunk, enc, cb) {
     if (enc !== "buffer") {
       chunk = Buffer.from(chunk, enc);
     }
 
     this._handle.bytesWritten += chunk.length;
 
-    const ctx: { errno?: number } = {};
+    const ctx = {};
     writeBuffer(fd, chunk, 0, chunk.length, null, ctx);
 
     if (ctx.errno !== undefined) {
@@ -95,5 +101,22 @@ export function makeSyncWrite(fd: number) {
   };
 }
 
-export const kReinitializeHandle = Symbol("kReinitializeHandle");
-export const normalizedArgsSymbol = Symbol("normalizedArgs");
+const kReinitializeHandle = Symbol("kReinitializeHandle");
+const kSetNoDelay = Symbol("kSetNoDelay");
+const kSetKeepAlive = Symbol("kSetKeepAlive");
+const kSetKeepAliveInitialDelay = Symbol("kSetKeepAliveInitialDelay");
+const normalizedArgsSymbol = Symbol("normalizedArgs");
+
+return {
+  isIPv4,
+  isIPv6,
+  isIP,
+  getIPFamily,
+  makeSyncWrite,
+  kReinitializeHandle,
+  kSetKeepAlive,
+  kSetKeepAliveInitialDelay,
+  kSetNoDelay,
+  normalizedArgsSymbol,
+};
+})();

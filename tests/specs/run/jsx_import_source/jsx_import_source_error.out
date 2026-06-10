@@ -1,4 +1,4 @@
-Check file:///[WILDLINE]/jsx_import_source_no_pragma.tsx
+Check [WILDCARD]jsx_import_source_no_pragma.tsx
 TS2307 [ERROR]: Cannot find module 'file:///[WILDCARD]/nonexistent/jsx-runtime'.
     at file:///[WILDLINE]/jsx_import_source_no_pragma.tsx:1:1
 

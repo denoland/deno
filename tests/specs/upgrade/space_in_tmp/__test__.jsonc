@@ -1,4 +1,5 @@
 {
+  "if": "notWindowsArm",
   "tempDir": true,
   "steps": [
     {

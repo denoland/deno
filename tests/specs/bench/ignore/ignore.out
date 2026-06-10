@@ -1,9 +1,9 @@
-Check [WILDCARD]/ignore.ts
+Check [WILDCARD]ignore.ts
     CPU | [WILDCARD]
 Runtime | Deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/ignore.ts
 
-benchmark   time/iter (avg)        iter/s      (min … max)           p75      p99     p995
------------ ----------------------------- --------------------- --------------------------
+| benchmark   | time/iter (avg) |        iter/s |      (min … max)      |      p75 |      p99 |     p995 |
+| ----------- | --------------- | ------------- | --------------------- | -------- | -------- | -------- |
 

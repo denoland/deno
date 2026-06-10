@@ -42,10 +42,8 @@
 - v8_code_cache_v2[WILDCARD]
 
 ./node_modules
-- .bin
 - .deno
 -- .deno.lock
--- .deno.lock.poll
 -- .setup-cache.bin
 -- @denotest+add@1.0.0
 --- .initialized

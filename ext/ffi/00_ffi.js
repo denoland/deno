@@ -1,12 +1,13 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { core, primordials } from "ext:core/mod.js";
+(function () {
+const { core, internals, primordials } = __bootstrap;
 const {
-  isArrayBuffer,
+  isAnyArrayBuffer,
   isDataView,
   isTypedArray,
 } = core;
-import {
+const {
   op_ffi_buf_copy_into,
   op_ffi_call_nonblocking,
   op_ffi_call_ptr,
@@ -14,6 +15,7 @@ import {
   op_ffi_cstr_read,
   op_ffi_get_buf,
   op_ffi_get_static,
+  op_ffi_get_turbocall_target,
   op_ffi_load,
   op_ffi_ptr_create,
   op_ffi_ptr_equals,
@@ -36,7 +38,7 @@ import {
   op_ffi_unsafe_callback_close,
   op_ffi_unsafe_callback_create,
   op_ffi_unsafe_callback_ref,
-} from "ext:core/ops";
+} = core.ops;
 const {
   ArrayBufferIsView,
   ArrayBufferPrototypeGetByteLength,
@@ -60,7 +62,7 @@ const {
   SafeWeakMap,
 } = primordials;
 
-import { pathFromURL } from "ext:deno_web/00_infra.js";
+const { pathFromURL } = core.loadExtScript("ext:deno_web/00_infra.js");
 
 /**
  * @param {BufferSource} source
@@ -242,15 +244,19 @@ class UnsafePointer {
       } else {
         pointer = op_ffi_ptr_of(value);
       }
-    } else if (isArrayBuffer(value)) {
-      if (value.length === 0) {
-        pointer = op_ffi_ptr_of_exact(new Uint8Array(value));
+    } else if (isAnyArrayBuffer(value)) {
+      // `ArrayBuffer`/`SharedArrayBuffer` expose `byteLength`, not `length`, so
+      // wrap in a `Uint8Array` and measure that to detect the empty case (the
+      // `op`s require a view anyway).
+      const view = new Uint8Array(value);
+      if (TypedArrayPrototypeGetByteLength(view) === 0) {
+        pointer = op_ffi_ptr_of_exact(view);
       } else {
-        pointer = op_ffi_ptr_of(new Uint8Array(value));
+        pointer = op_ffi_ptr_of(view);
       }
     } else {
       throw new TypeError(
-        `Cannot access pointer: expected 'ArrayBuffer', 'ArrayBufferView' or 'UnsafeCallbackPrototype', received ${typeof value}`,
+        `Cannot access pointer: expected 'ArrayBuffer', 'SharedArrayBuffer', 'ArrayBufferView' or 'UnsafeCallbackPrototype', received ${typeof value}`,
       );
     }
     if (pointer) {
@@ -453,7 +459,7 @@ class DynamicLibrary {
   symbols = { __proto__: null };
 
   constructor(path, symbols) {
-    ({ 0: this.#rid, 1: this.symbols } = op_ffi_load({ path, symbols }));
+    ({ 0: this.#rid, 1: this.symbols } = op_ffi_load(path, symbols));
     for (const symbol in symbols) {
       if (!ObjectHasOwn(symbols, symbol)) {
         continue;
@@ -562,10 +568,18 @@ function dlopen(path, symbols) {
   return new DynamicLibrary(pathFromURL(path), symbols);
 }
 
-export {
+function getTurbocallTarget() {
+  return op_ffi_get_turbocall_target();
+}
+
+internals.getTurbocallTarget = getTurbocallTarget;
+
+return {
   dlopen,
+  getTurbocallTarget,
   UnsafeCallback,
   UnsafeFnPointer,
   UnsafePointer,
   UnsafePointerView,
 };
+})();

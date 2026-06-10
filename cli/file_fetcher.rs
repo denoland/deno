@@ -1,26 +1,27 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_cache_dir::GlobalOrLocalHttpCache;
 use deno_cache_dir::file_fetcher::BlobData;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::file_fetcher::File;
 use deno_cache_dir::file_fetcher::SendError;
 use deno_cache_dir::file_fetcher::SendResponse;
-use deno_cache_dir::GlobalOrLocalHttpCache;
+use deno_core::ModuleSpecifier;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
 use deno_resolver::file_fetcher::PermissionedFileFetcherOptions;
-use deno_runtime::deno_web::BlobStore;
+use deno_resolver::loader::MemoryFiles;
+use deno_runtime::deno_web::BlobStoreTrait;
 use http::HeaderMap;
 use http::StatusCode;
 
 use crate::colors;
-use crate::http_util::get_response_body_with_progress;
 use crate::http_util::HttpClientProvider;
+use crate::http_util::get_response_body_with_progress;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 
@@ -78,11 +79,12 @@ pub struct CreateCliFileFetcherOptions {
   pub progress_bar: Option<ProgressBar>,
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "construction")]
 pub fn create_cli_file_fetcher(
-  blob_store: Arc<BlobStore>,
+  blob_store: Arc<dyn BlobStoreTrait>,
   http_cache: GlobalOrLocalHttpCache<CliSys>,
   http_client_provider: Arc<HttpClientProvider>,
+  memory_files: Arc<MemoryFiles>,
   sys: CliSys,
   options: CreateCliFileFetcherOptions,
 ) -> CliFileFetcher {
@@ -94,6 +96,7 @@ pub fn create_cli_file_fetcher(
       download_log_level: options.download_log_level,
       progress_bar: options.progress_bar,
     },
+    memory_files,
     sys,
     PermissionedFileFetcherOptions {
       allow_remote: options.allow_remote,
@@ -103,7 +106,7 @@ pub fn create_cli_file_fetcher(
 }
 
 #[derive(Debug)]
-pub struct BlobStoreAdapter(Arc<BlobStore>);
+pub struct BlobStoreAdapter(Arc<dyn BlobStoreTrait>);
 
 #[async_trait::async_trait(?Send)]
 impl deno_cache_dir::file_fetcher::BlobStore for BlobStoreAdapter {
@@ -242,12 +245,14 @@ impl deno_cache_dir::file_fetcher::HttpClient for HttpClientAdapter {
 mod tests {
   use std::collections::HashMap;
 
-  use deno_cache_dir::file_fetcher::HttpClient;
   use deno_cache_dir::HttpCache;
+  use deno_cache_dir::file_fetcher::HttpClient;
   use deno_core::resolve_url;
   use deno_resolver::file_fetcher::FetchErrorKind;
   use deno_resolver::file_fetcher::FetchPermissionsOptionRef;
+  use deno_resolver::loader::MemoryFilesRc;
   use deno_runtime::deno_web::Blob;
+  use deno_runtime::deno_web::BlobStore;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use test_util::TempDir;
 
@@ -267,7 +272,7 @@ mod tests {
   fn setup_with_blob_store(
     cache_setting: CacheSetting,
     maybe_temp_dir: Option<TempDir>,
-  ) -> (CliFileFetcher, TempDir, Arc<BlobStore>) {
+  ) -> (CliFileFetcher, TempDir, Arc<dyn BlobStoreTrait>) {
     let (file_fetcher, temp_dir, blob_store, _) =
       setup_with_blob_store_and_cache(cache_setting, maybe_temp_dir);
     (file_fetcher, temp_dir, blob_store)
@@ -279,17 +284,19 @@ mod tests {
   ) -> (
     CliFileFetcher,
     TempDir,
-    Arc<BlobStore>,
+    Arc<dyn BlobStoreTrait>,
     Arc<GlobalHttpCache>,
   ) {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let temp_dir = maybe_temp_dir.unwrap_or_default();
     let location = temp_dir.path().join("remote").to_path_buf();
-    let blob_store: Arc<BlobStore> = Default::default();
+    let blob_store = BlobStore::default_arc();
     let cache = Arc::new(GlobalHttpCache::new(CliSys::default(), location));
     let file_fetcher = create_cli_file_fetcher(
       blob_store.clone(),
       GlobalOrLocalHttpCache::Global(cache.clone()),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
@@ -391,6 +398,7 @@ mod tests {
         "content-type".to_string(),
         "application/javascript".to_string(),
       )])),
+      loaded_from: deno_cache_dir::file_fetcher::LoadedFrom::Local,
     };
     file_fetcher.insert_memory_files(file.clone());
 
@@ -510,9 +518,10 @@ mod tests {
     // invocation and indicates to "cache bust".
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = create_cli_file_fetcher(
-      Default::default(),
+      BlobStore::default_arc(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
@@ -543,9 +552,10 @@ mod tests {
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()));
     let file_modified_01 = {
       let file_fetcher = create_cli_file_fetcher(
-        Default::default(),
+        BlobStore::default_arc(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
@@ -567,9 +577,10 @@ mod tests {
 
     let file_modified_02 = {
       let file_fetcher = create_cli_file_fetcher(
-        Default::default(),
+        BlobStore::default_arc(),
         Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
@@ -702,9 +713,10 @@ mod tests {
 
     let metadata_file_modified_01 = {
       let file_fetcher = create_cli_file_fetcher(
-        Default::default(),
+        BlobStore::default_arc(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
@@ -727,9 +739,10 @@ mod tests {
 
     let metadata_file_modified_02 = {
       let file_fetcher = create_cli_file_fetcher(
-        Default::default(),
+        BlobStore::default_arc(),
         http_cache.clone().into(),
         Arc::new(HttpClientProvider::new(None, None)),
+        MemoryFilesRc::default(),
         CliSys::default(),
         CreateCliFileFetcherOptions {
           allow_remote: true,
@@ -836,9 +849,10 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher = create_cli_file_fetcher(
-      Default::default(),
+      BlobStore::default_arc(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: false,
@@ -868,7 +882,10 @@ mod tests {
       deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::NoRemote {
         ..
       } => {
-        assert_eq!(err.to_string(), "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified.");
+        assert_eq!(
+          err.to_string(),
+          "A remote specifier was requested: \"http://localhost:4545/run/002_hello.ts\", but --no-remote is specified."
+        );
       }
       _ => unreachable!(),
     }
@@ -880,10 +897,11 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("remote").to_path_buf();
     let file_fetcher_01 = create_cli_file_fetcher(
-      Default::default(),
+      BlobStore::default_arc(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location.clone()))
         .into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
@@ -893,9 +911,10 @@ mod tests {
       },
     );
     let file_fetcher_02 = create_cli_file_fetcher(
-      Default::default(),
+      BlobStore::default_arc(),
       Arc::new(GlobalHttpCache::new(CliSys::default(), location)).into(),
       Arc::new(HttpClientProvider::new(None, None)),
+      MemoryFilesRc::default(),
       CliSys::default(),
       CreateCliFileFetcherOptions {
         allow_remote: true,
@@ -923,7 +942,10 @@ mod tests {
       deno_cache_dir::file_fetcher::FetchNoFollowErrorKind::NotCached {
         ..
       } => {
-        assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
+        assert_eq!(
+          err.to_string(),
+          "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified."
+        );
       }
       _ => unreachable!(),
     }
@@ -1042,6 +1064,7 @@ mod tests {
   }
 
   fn create_http_client_adapter() -> HttpClientAdapter {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     HttpClientAdapter {
       http_client_provider: Arc::new(HttpClientProvider::new(None, None)),
       download_log_level: log::Level::Info,

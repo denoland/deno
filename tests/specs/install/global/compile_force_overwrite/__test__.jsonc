@@ -1,0 +1,63 @@
+{
+  "tempDir": true,
+  "tests": {
+    "force_overwrite": {
+      "steps": [
+        {
+          // Initial install
+          "if": "unix",
+          "args": "install -g --compile --root ./bins --name hello main.ts",
+          "output": "install.out"
+        },
+        {
+          // Reinstall without --force should fail
+          "if": "unix",
+          "args": "install -g --compile --root ./bins --name hello main2.ts",
+          "output": "no_force_install.out",
+          "exitCode": 1
+        },
+        {
+          // Reinstall with --force should succeed
+          "if": "unix",
+          "args": "install -g -f --compile --root ./bins --name hello main2.ts",
+          "output": "force_install.out"
+        },
+        {
+          // Running it should show the new output
+          "if": "unix",
+          "commandName": "./bins/bin/hello",
+          "args": [],
+          "output": "run.out",
+          "exitCode": 0
+        },
+        {
+          // Initial install
+          "if": "windows",
+          "args": "install -g --compile --root ./bins --name hello main.ts",
+          "output": "install.out"
+        },
+        {
+          // Reinstall without --force should fail
+          "if": "windows",
+          "args": "install -g --compile --root ./bins --name hello main2.ts",
+          "output": "no_force_install.out",
+          "exitCode": 1
+        },
+        {
+          // Reinstall with --force should succeed
+          "if": "windows",
+          "args": "install -g -f --compile --root ./bins --name hello main2.ts",
+          "output": "force_install.out"
+        },
+        {
+          // Running it should show the new output
+          "if": "windows",
+          "commandName": "./bins/bin/hello.exe",
+          "args": [],
+          "output": "run.out",
+          "exitCode": 0
+        }
+      ]
+    }
+  }
+}

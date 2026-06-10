@@ -8,15 +8,15 @@ Download http://localhost:4260/@denotest/globals/1.0.0.tgz
 Download http://localhost:4260/@types/node/node-[WILDLINE].tgz
 Download http://localhost:4260/undici-types/undici-types-[WILDLINE].tgz
 [UNORDERED_END]
-Check file:///[WILDCARD]/main.ts
+Check [WILDCARD]main.ts
 true
 true
 []
 process equals process true
-setTimeout 1 false
+setTimeout 1 true
 setTimeout 2 function
 setTimeout 3 function
-setTimeout 4 function
+setTimeout 4 undefined
 setTimeout 5 undefined
 window 1 false
 window 2 false
@@ -24,8 +24,8 @@ false
 false
 self 1 true
 self 2 true
-false
-false
+true
+true
 bar
 bar
 true

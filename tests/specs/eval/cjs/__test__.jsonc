@@ -1,0 +1,17 @@
+{
+  "tests": {
+    "cjs": {
+      "args": ["eval", "--quiet", "--ext=cjs", "require('./say_hello')"],
+      "output": "Hello!\n"
+    },
+    "cts": {
+      "args": [
+        "eval",
+        "--quiet",
+        "--ext=cts",
+        "import test = require('./say_hello.js');"
+      ],
+      "output": "Hello!\n"
+    }
+  }
+}

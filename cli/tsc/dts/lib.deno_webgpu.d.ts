@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-empty-interface
 
@@ -23,7 +23,7 @@ declare class GPUSupportedLimits {
   readonly maxTextureArrayLayers: number;
   readonly maxBindGroups: number;
   // TODO(@crowlKats): support max_bind_groups_plus_vertex_buffers
-  readonly maxBindGroupsPlusVertexBuffers?: number;
+  readonly maxBindGroupsPlusVertexBuffers: number;
   readonly maxBindingsPerBindGroup: number;
   readonly maxDynamicUniformBuffersPerPipelineLayout: number;
   readonly maxDynamicStorageBuffersPerPipelineLayout: number;
@@ -41,7 +41,7 @@ declare class GPUSupportedLimits {
   readonly maxVertexAttributes: number;
   readonly maxVertexBufferArrayStride: number;
   // TODO(@crowlKats): support max_inter_stage_shader_variables
-  readonly maxInterStageShaderVariables?: number;
+  readonly maxInterStageShaderVariables: number;
   readonly maxColorAttachments: number;
   readonly maxColorAttachmentBytesPerSample: number;
   readonly maxComputeWorkgroupStorageSize: number;
@@ -698,7 +698,7 @@ type GPUStorageTextureAccess =
 
 /** @category GPU */
 interface GPUStorageTextureBindingLayout {
-  access: GPUStorageTextureAccess;
+  access?: GPUStorageTextureAccess;
   format: GPUTextureFormat;
   viewDimension?: GPUTextureViewDimension;
 }
@@ -747,32 +747,46 @@ interface GPUPipelineLayoutDescriptor extends GPUObjectDescriptorBase {
 type GPUCompilationMessageType = "error" | "warning" | "info";
 
 /** @category GPU */
-interface GPUCompilationMessage {
+declare class GPUCompilationMessage {
   readonly message: string;
   readonly type: GPUCompilationMessageType;
   readonly lineNum: number;
   readonly linePos: number;
+  readonly offset: number;
+  readonly length: number;
 }
 
 /** @category GPU */
-interface GPUCompilationInfo {
+declare class GPUCompilationInfo {
   readonly messages: ReadonlyArray<GPUCompilationMessage>;
 }
 
-/** @category GPU */
-declare class GPUPipelineError extends DOMException {
-  constructor(message?: string, options?: GPUPipelineErrorInit);
-
-  readonly reason: GPUPipelineErrorReason;
+/**
+ * The **`GPUPipelineError`** interface of the WebGPU API describes a pipeline failure.
+ * Available only in secure contexts.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUPipelineError)
+ * @category GPU
+ */
+interface GPUPipelineError extends DOMException {
+  /**
+   * The **`reason`** read-only property of the GPUPipelineError interface defines the reason the pipeline creation failed in a machine-readable way.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUPipelineError/reason)
+   */
+  readonly reason: "validation" | "internal";
 }
+
+/** @category GPU */
+declare var GPUPipelineError: {
+  prototype: GPUPipelineError;
+  new (message: string, options: GPUPipelineErrorInit): GPUPipelineError;
+};
 
 /** @category GPU */
 interface GPUPipelineErrorInit {
-  reason: GPUPipelineErrorReason;
+  reason: "validation" | "internal";
 }
-
-/** @category GPU */
-type GPUPipelineErrorReason = "validation" | "internal";
 
 /**
  * Represents a compiled shader module that can be used to create graphics or compute pipelines.
@@ -1584,25 +1598,55 @@ interface GPUDeviceLostInfo {
   readonly message: string;
 }
 
-/** @category GPU */
-declare class GPUError {
+/**
+ * The **`GPUError`** interface of the WebGPU API is the base interface for errors surfaced by GPUDevice.popErrorScope and the GPUDevice.uncapturederror_event event.
+ * Available only in secure contexts.
+ *
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUError)
+ * @category GPU
+ */
+interface GPUError {
+  /**
+   * The **`message`** read-only property of the A string.
+   * The **`message`** read-only property of the GPUError interface provides a human-readable message that explains why the error occurred.
+   *
+   * [MDN Reference](https://developer.mozilla.org/docs/Web/API/GPUError/message)
+   */
   readonly message: string;
 }
 
 /** @category GPU */
-declare class GPUOutOfMemoryError extends GPUError {
-  constructor(message: string);
-}
+declare var GPUError: {
+  prototype: GPUError;
+  new (): GPUError;
+};
 
 /** @category GPU */
-declare class GPUValidationError extends GPUError {
-  constructor(message: string);
-}
+interface GPUOutOfMemoryError extends GPUError {}
 
 /** @category GPU */
-declare class GPUInternalError extends GPUError {
-  constructor(message: string);
-}
+declare var GPUOutOfMemoryError: {
+  prototype: GPUOutOfMemoryError;
+  new (message?: string): GPUOutOfMemoryError;
+};
+
+/** @category GPU */
+interface GPUValidationError extends GPUError {}
+
+/** @category GPU */
+declare var GPUValidationError: {
+  prototype: GPUValidationError;
+  new (message?: string): GPUValidationError;
+};
+
+/** @category GPU */
+interface GPUInternalError extends GPUError {}
+
+/** @category GPU */
+declare var GPUInternalError: {
+  prototype: GPUInternalError;
+  new (message?: string): GPUInternalError;
+};
 
 /** @category GPU */
 type GPUErrorFilter = "out-of-memory" | "validation" | "internal";
@@ -1652,23 +1696,3 @@ interface GPUExtent3DDict {
 
 /** @category GPU */
 type GPUExtent3D = number[] | GPUExtent3DDict;
-
-/** @category GPU */
-type GPUCanvasAlphaMode = "opaque" | "premultiplied";
-
-/** @category GPU */
-interface GPUCanvasConfiguration {
-  device: GPUDevice;
-  format: GPUTextureFormat;
-  usage?: GPUTextureUsageFlags;
-  viewFormats?: GPUTextureFormat[];
-  colorSpace?: "srgb" | "display-p3";
-  alphaMode?: GPUCanvasAlphaMode;
-}
-
-/** @category GPU */
-interface GPUCanvasContext {
-  configure(configuration: GPUCanvasConfiguration): undefined;
-  unconfigure(): undefined;
-  getCurrentTexture(): GPUTexture;
-}
