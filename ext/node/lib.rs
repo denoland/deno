@@ -200,6 +200,7 @@ deno_core::extension!(deno_node,
 
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
+    ops::blocklist::op_node_internal_binding_block_list,
 
     ops::blocklist::op_blocklist_new,
     ops::blocklist::op_blocklist_add_address,
@@ -907,6 +908,9 @@ deno_core::extension!(deno_node,
     );
     ext.external_references.to_mut().extend(
       ops::buffer::external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::blocklist::internal_binding_external_references(),
     );
   },
 );
