@@ -7,7 +7,6 @@ mod proxy;
 mod tests;
 
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
@@ -741,37 +740,24 @@ struct BodyReaderShared {
   /// Partial chunk left over from a previous `read` that requested fewer bytes
   /// than were available.
   leftover: Rc<RefCell<Option<Bytes>>>,
-  /// Number of chunks the background task has committed to the channel that
-  /// have not yet been consumed by `read`. Incremented *before* send and
-  /// decremented *after* recv so it never undercounts: overcounting merely
-  /// delays `closed` (safe), while undercounting could let `closed` error the
-  /// stream while buffered data is still pending.
-  buffered: Rc<Cell<usize>>,
-  /// Notified whenever `terminal`, `buffered` or `leftover` changes.
+  /// Notified whenever `terminal` changes so a pending `closed` re-checks it.
   notify: Rc<tokio::sync::Notify>,
 }
 
 impl BodyReaderShared {
   /// The terminal status, if `closed` can settle now.
   ///
-  /// A clean termination settles immediately even if buffered data is still
-  /// pending (future reads will serve it); settling promptly lets the watcher
-  /// op release its reference to the JS stream so an unconsumed response can be
-  /// garbage-collected. An error only settles once all buffered data has been
-  /// consumed, so a read-first consumer still receives its data before the
-  /// stream is errored.
+  /// Both a clean termination and an error settle immediately, even if buffered
+  /// data is still pending. Settling promptly is what lets a consumer that only
+  /// awaits `reader.closed` (without ever reading) observe a connection error
+  /// instead of hanging forever: with a high-water-mark of 0 nothing pulls the
+  /// buffered chunk, so gating the error on `buffered == 0` would deadlock.
+  ///
+  /// A *reading* consumer is unaffected: the `read` path serves any `leftover`
+  /// and channel-buffered chunks before it surfaces the channel-closed error,
+  /// so buffered data is still delivered ahead of the stream being errored.
   fn settled_terminal(&self) -> Option<BodyTerminal> {
-    let terminal = self.terminal.borrow();
-    let result = terminal.as_ref()?;
-    match result {
-      Ok(()) => Some(Ok(())),
-      Err(_)
-        if self.buffered.get() == 0 && self.leftover.borrow().is_none() =>
-      {
-        Some(result.clone())
-      }
-      Err(_) => None,
-    }
+    self.terminal.borrow().clone()
   }
 }
 
@@ -796,7 +782,6 @@ impl Drop for BodyReader {
     if self.shared.terminal.borrow().is_none() {
       *self.shared.terminal.borrow_mut() = Some(Ok(()));
     }
-    self.shared.buffered.set(0);
     *self.shared.leftover.borrow_mut() = None;
     self.shared.notify.notify_one();
   }
@@ -811,7 +796,6 @@ impl BodyReader {
     let shared = BodyReaderShared {
       terminal: Rc::new(RefCell::new(None)),
       leftover: Rc::new(RefCell::new(None)),
-      buffered: Rc::new(Cell::new(0)),
       notify: Rc::new(tokio::sync::Notify::new()),
     };
     let task = {
@@ -823,15 +807,10 @@ impl BodyReader {
               if chunk.is_empty() {
                 continue;
               }
-              // Reserve a buffer slot before sending so that `closed` never
-              // observes an empty buffer while this chunk is still in flight.
-              shared.buffered.set(shared.buffered.get() + 1);
               if tx.send(chunk).await.is_err() {
                 // The receiver was dropped (resource closed); stop reading.
-                shared.buffered.set(shared.buffered.get().saturating_sub(1));
                 return;
               }
-              shared.notify.notify_one();
             }
             Some(Err(err)) => {
               *shared.terminal.borrow_mut() = Some(Err(err.to_string()));
@@ -869,7 +848,6 @@ impl Default for FetchResponseReader {
     let shared = BodyReaderShared {
       terminal: Rc::new(RefCell::new(Some(Ok(())))),
       leftover: Rc::new(RefCell::new(None)),
-      buffered: Rc::new(Cell::new(0)),
       notify: Rc::new(tokio::sync::Notify::new()),
     };
     Self::BodyReader(BodyReader {
@@ -990,24 +968,17 @@ impl Resource for FetchResponseResource {
             if buf.is_empty() {
               *leftover = None;
             }
-            drop(leftover);
-            pipe.shared.notify.notify_one();
             return Ok(BufView::from(head));
           }
         }
 
         match pipe.rx.recv().await {
           Some(mut chunk) => {
-            pipe
-              .shared
-              .buffered
-              .set(pipe.shared.buffered.get().saturating_sub(1));
             let len = min(limit, chunk.len());
             let head = chunk.split_to(len);
             if !chunk.is_empty() {
               *pipe.shared.leftover.borrow_mut() = Some(chunk);
             }
-            pipe.shared.notify.notify_one();
             Ok(BufView::from(head))
           }
           None => {

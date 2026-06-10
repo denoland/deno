@@ -2505,6 +2505,24 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true } },
+  // Regression test for the buffered-chunk hang: the server sends one body
+  // chunk and then errors the connection, so the background reader buffers a
+  // chunk *and* records an error terminal. A consumer that awaits
+  // `reader.closed` without ever reading must still see it reject (an error
+  // terminal settles `closed` regardless of buffered data) rather than hang
+  // waiting for the buffered chunk to be drained by a read that never comes.
+  async function fetchReaderClosedRejectsWithUnreadChunk() {
+    const addr = `127.0.0.1:${listenPort}`;
+    const listener = closeAfterHeadersServer(addr, { chunk: "TEST_CHUNK" });
+    const response = await fetch(`http://${addr}/`);
+    const reader = response.body!.getReader();
+    await assertRejects(() => reader.closed, TypeError);
+    listener.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
   // A second `read()` after a successful first chunk must reject when the
   // connection errors mid-body.
   async function fetchReadRejectsAfterFirstChunk() {
