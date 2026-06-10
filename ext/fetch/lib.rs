@@ -7,6 +7,7 @@ mod proxy;
 mod tests;
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
@@ -33,6 +34,7 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
+use deno_core::ExternalOpsTracker;
 use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -682,12 +684,15 @@ pub async fn op_fetch_response_closed(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), JsErrorBox> {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<FetchResponseResource>(rid)
-    .map_err(JsErrorBox::from_err)?;
-  resource.closed().await
+  let (resource, tracker) = {
+    let state = state.borrow();
+    let resource = state
+      .resource_table
+      .get::<FetchResponseResource>(rid)
+      .map_err(JsErrorBox::from_err)?;
+    (resource, state.external_ops_tracker.clone())
+  };
+  resource.closed(tracker).await
 }
 
 type CancelableResponseResult =
@@ -740,24 +745,81 @@ struct BodyReaderShared {
   /// Partial chunk left over from a previous `read` that requested fewer bytes
   /// than were available.
   leftover: Rc<RefCell<Option<Bytes>>>,
-  /// Notified whenever `terminal` changes so a pending `closed` re-checks it.
+  /// Number of chunks the background task has committed to the channel that
+  /// have not yet been consumed by `read`. Incremented *before* send and
+  /// decremented *after* recv so it never undercounts: overcounting merely
+  /// delays an error `closed` (safe), while undercounting could let `closed`
+  /// error the stream while buffered data is still pending.
+  buffered: Rc<Cell<usize>>,
+  /// Set the first time the consumer issues a `read`. Distinguishes a consumer
+  /// that drains the body from one that only awaits `reader.closed`.
+  has_read: Rc<Cell<bool>>,
+  /// Notified whenever `terminal` or `buffered` changes so a pending `closed`
+  /// re-checks `settled_terminal`.
   notify: Rc<tokio::sync::Notify>,
 }
 
 impl BodyReaderShared {
   /// The terminal status, if `closed` can settle now.
   ///
-  /// Both a clean termination and an error settle immediately, even if buffered
-  /// data is still pending. Settling promptly is what lets a consumer that only
-  /// awaits `reader.closed` (without ever reading) observe a connection error
-  /// instead of hanging forever: with a high-water-mark of 0 nothing pulls the
-  /// buffered chunk, so gating the error on `buffered == 0` would deadlock.
+  /// A clean termination settles immediately even if buffered data is still
+  /// pending (future reads will serve it); settling promptly lets the watcher
+  /// op release its reference to the JS stream so an unconsumed response can be
+  /// garbage-collected.
   ///
-  /// A *reading* consumer is unaffected: the `read` path serves any `leftover`
-  /// and channel-buffered chunks before it surfaces the channel-closed error,
-  /// so buffered data is still delivered ahead of the stream being errored.
+  /// An *error* terminal settles either:
+  /// - immediately, if the consumer never issued a `read` (`!has_read`): there
+  ///   is no buffered data anyone is waiting to drain, and the resource-backed
+  ///   stream has a high-water-mark of 0 so nothing would ever pull it; gating
+  ///   on `buffered` here is what would deadlock `await reader.closed` (#16246),
+  ///   or
+  /// - once all buffered data has been consumed, if the consumer *is* reading,
+  ///   so a chunk received just before the connection errored is still
+  ///   delivered to the reader before the stream is errored.
   fn settled_terminal(&self) -> Option<BodyTerminal> {
-    self.terminal.borrow().clone()
+    let terminal = self.terminal.borrow();
+    let result = terminal.as_ref()?;
+    match result {
+      Ok(()) => Some(Ok(())),
+      Err(_)
+        if !self.has_read.get()
+          || (self.buffered.get() == 0 && self.leftover.borrow().is_none()) =>
+      {
+        Some(result.clone())
+      }
+      Err(_) => None,
+    }
+  }
+}
+
+/// RAII hold on the event loop via the [`ExternalOpsTracker`]. Refs on
+/// construction and unrefs on `release` or drop, so a hold can never leak (and
+/// pin the loop alive forever) even if the owning future is dropped.
+struct EventLoopHold {
+  tracker: ExternalOpsTracker,
+  held: bool,
+}
+
+impl EventLoopHold {
+  fn new(tracker: ExternalOpsTracker) -> Self {
+    tracker.ref_op();
+    Self {
+      tracker,
+      held: true,
+    }
+  }
+
+  fn release(&mut self) {
+    if self.held {
+      self.tracker.unref_op();
+      self.held = false;
+    }
+  }
+}
+
+impl Drop for EventLoopHold {
+  fn drop(&mut self) {
+    self.release();
   }
 }
 
@@ -782,6 +844,7 @@ impl Drop for BodyReader {
     if self.shared.terminal.borrow().is_none() {
       *self.shared.terminal.borrow_mut() = Some(Ok(()));
     }
+    self.shared.buffered.set(0);
     *self.shared.leftover.borrow_mut() = None;
     self.shared.notify.notify_one();
   }
@@ -796,6 +859,8 @@ impl BodyReader {
     let shared = BodyReaderShared {
       terminal: Rc::new(RefCell::new(None)),
       leftover: Rc::new(RefCell::new(None)),
+      buffered: Rc::new(Cell::new(0)),
+      has_read: Rc::new(Cell::new(false)),
       notify: Rc::new(tokio::sync::Notify::new()),
     };
     let task = {
@@ -807,8 +872,13 @@ impl BodyReader {
               if chunk.is_empty() {
                 continue;
               }
+              // Reserve a buffer slot before sending so an error `closed`
+              // never observes an empty buffer while this chunk is still in
+              // flight.
+              shared.buffered.set(shared.buffered.get() + 1);
               if tx.send(chunk).await.is_err() {
                 // The receiver was dropped (resource closed); stop reading.
+                shared.buffered.set(shared.buffered.get().saturating_sub(1));
                 return;
               }
             }
@@ -848,6 +918,8 @@ impl Default for FetchResponseReader {
     let shared = BodyReaderShared {
       terminal: Rc::new(RefCell::new(Some(Ok(())))),
       leftover: Rc::new(RefCell::new(None)),
+      buffered: Rc::new(Cell::new(0)),
+      has_read: Rc::new(Cell::new(false)),
       notify: Rc::new(tokio::sync::Notify::new()),
     };
     Self::BodyReader(BodyReader {
@@ -916,7 +988,21 @@ impl FetchResponseResource {
 
   /// Resolves when the body stream finishes cleanly and rejects (with a
   /// `TypeError`) when it errors, even if the consumer never reads the body.
-  pub async fn closed(self: Rc<Self>) -> Result<(), JsErrorBox> {
+  ///
+  /// The op's own promise is unref'd on the JS side; instead it keeps the event
+  /// loop alive through `tracker` only while a consumer that has *not started
+  /// reading* is waiting for the body to terminate (the `await reader.closed`
+  /// with no read case). Once the consumer issues its first read, that hold is
+  /// released: the consumer's own read ops then keep the loop alive and drive
+  /// the body, and an engaged-then-abandoned body is free to let the process
+  /// exit instead of being pinned alive until the peer closes the connection.
+  pub async fn closed(
+    self: Rc<Self>,
+    tracker: ExternalOpsTracker,
+  ) -> Result<(), JsErrorBox> {
+    // Hold the loop open up-front so the unref'd op promise can't let it drain
+    // before the first check below.
+    let mut hold = EventLoopHold::new(tracker);
     self.clone().ensure_body_reader().await;
     let shared = self
       .shared
@@ -928,14 +1014,21 @@ impl FetchResponseResource {
     // terminates (set by the background task) or when the resource is torn
     // down (set by `BodyReader::drop`).
     drop(self);
-    loop {
+    let result = loop {
       if let Some(result) = shared.settled_terminal() {
-        return match result {
-          Ok(()) => Ok(()),
-          Err(err) => Err(JsErrorBox::type_error(err)),
-        };
+        break result;
+      }
+      // The consumer started reading: stop pinning the loop alive (its read ops
+      // do that now), so an abandoned body can let the process exit.
+      if shared.has_read.get() {
+        hold.release();
       }
       shared.notify.notified().await;
+    };
+    drop(hold);
+    match result {
+      Ok(()) => Ok(()),
+      Err(err) => Err(JsErrorBox::type_error(err)),
     }
   }
 }
@@ -959,14 +1052,25 @@ impl Resource for FetchResponseResource {
           FetchResponseReader::Start(_) => unreachable!(),
         };
 
+        // Mark the body as actively read so an error `closed` waits for the
+        // buffered chunk to be drained here before the stream is errored.
+        pipe.shared.has_read.set(true);
+
         // Serve any leftover from a previous partial read first.
         {
           let mut leftover = pipe.shared.leftover.borrow_mut();
           if let Some(buf) = leftover.as_mut() {
             let len = min(limit, buf.len());
             let head = buf.split_to(len);
-            if buf.is_empty() {
+            let drained = buf.is_empty();
+            if drained {
               *leftover = None;
+            }
+            drop(leftover);
+            if drained {
+              // Wake a pending error `closed` in case draining the leftover
+              // just emptied the buffer and opened the gate.
+              pipe.shared.notify.notify_one();
             }
             return Ok(BufView::from(head));
           }
@@ -974,11 +1078,18 @@ impl Resource for FetchResponseResource {
 
         match pipe.rx.recv().await {
           Some(mut chunk) => {
+            pipe
+              .shared
+              .buffered
+              .set(pipe.shared.buffered.get().saturating_sub(1));
             let len = min(limit, chunk.len());
             let head = chunk.split_to(len);
             if !chunk.is_empty() {
               *pipe.shared.leftover.borrow_mut() = Some(chunk);
             }
+            // Wake a pending error `closed` so it re-checks the gate now that a
+            // buffered chunk has been consumed.
+            pipe.shared.notify.notify_one();
             Ok(BufView::from(head))
           }
           None => {

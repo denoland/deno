@@ -263,15 +263,20 @@ function opFetchSend(rid) {
 // happens after the response headers were received, even when the consumer
 // isn't actively reading the body.
 //
-// The op is kept ref'd so the event loop stays alive while a consumer is
-// awaiting `reader.closed` (otherwise the loop would drain before the error is
-// observed). The readable stream is referenced only weakly so this watcher does
-// not prevent an unconsumed body from being garbage-collected. It is started
-// lazily (see `createResponseBodyStream`) so an untouched body never arms it.
+// The op's promise is unref'd here; the op itself keeps the event loop alive
+// (via an internal ref) only while a consumer that has not started reading is
+// waiting for the body to terminate. Once the consumer reads, that hold is
+// released (its read ops drive the body), so an engaged-then-abandoned body
+// lets the process exit instead of being pinned alive until the peer closes.
+// The readable stream is referenced only weakly so this watcher does not
+// prevent an unconsumed body from being garbage-collected. It is started lazily
+// (see `createResponseBodyStream`) so an untouched body never arms it.
 // See https://github.com/denoland/deno/issues/16246
 function watchResponseBodyClosed(responseBodyRid, readableRef) {
+  const promise = op_fetch_response_closed(responseBodyRid);
+  core.unrefOpPromise(promise);
   PromisePrototypeThen(
-    op_fetch_response_closed(responseBodyRid),
+    promise,
     // Resolved: the body finished cleanly (or was torn down). The stream is
     // closed through the normal read EOF path, so there is nothing to do here.
     undefined,
