@@ -10,10 +10,15 @@
       "exitCode": 1,
       "output": "invalid.out"
     },
-    "deny_flag_warns": {
-      "args": "test --doc --allow-read --reload deny.ts",
-      "exitCode": 0,
+    "bare_deny": {
+      "args": "test --doc --allow-read --allow-env --reload deny.ts",
+      "exitCode": 1,
       "output": "deny.out"
+    },
+    "scoped_deny": {
+      "args": "test --doc --allow-read --reload scoped.ts",
+      "exitCode": 1,
+      "output": "scoped.out"
     }
   }
 }

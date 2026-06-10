@@ -330,8 +330,9 @@ enum Shebang {
 /// Known limitations:
 /// - The `deno` executable is matched by file name, so custom-named binaries
 ///   (e.g. `deno-canary`) are not recognized and yield an invalid shebang.
-/// - `--deny-*` flags parse but cannot be represented in the `Deno.test`
-///   permissions object, so they are ignored (with a warning).
+/// - A scoped `--deny-*=<path>` cannot be represented in the `Deno.test`
+///   permissions object and yields an invalid shebang (denoland/deno#31966).
+///   A bare `--deny-*` is supported and revokes the permission.
 fn parse_shebang(shebang: &str) -> Shebang {
   let invalid = |reason: &str| {
     Shebang::Invalid(format!(
@@ -361,15 +362,13 @@ fn parse_shebang(shebang: &str) -> Shebang {
   args.extend(tokens[deno_index + 1..].iter().cloned().map(OsString::from));
   args.push(OsString::from("./__doctest_shebang__.ts"));
   match flags_from_vec(args) {
-    Ok(flags) => {
-      if has_deny_flags(&flags.permissions) {
-        log::warn!(
-          "{} `--deny-*` flags aren't handled in doc test shebangs and are treated as if they were not specified",
-          crate::colors::yellow("Warning")
-        );
-      }
-      Shebang::Permissions(Box::new(flags.permissions))
-    }
+    // A scoped `--deny-*=<path>` can't be modelled in the test permissions
+    // object; dropping it would let the test run with broader permissions than
+    // the shebang declares, so reject it instead.
+    Ok(flags) if has_scoped_deny(&flags.permissions) => invalid(
+      "scoped --deny-* flags aren't supported yet, see https://github.com/denoland/deno/issues/31966",
+    ),
+    Ok(flags) => Shebang::Permissions(Box::new(flags.permissions)),
     // Surface the offending flag so a typo can be told apart from a genuinely
     // non-deno shebang. The arg is pulled from clap's error context to avoid
     // embedding the (potentially colored, multi-line) rendered error.
@@ -385,17 +384,23 @@ fn parse_shebang(shebang: &str) -> Shebang {
   }
 }
 
-/// Returns `true` if any `--deny-*` permission flag was specified. These cannot
-/// be expressed in the `Deno.test` permissions object and are dropped.
-fn has_deny_flags(permissions: &PermissionFlags) -> bool {
-  permissions.deny_env.is_some()
-    || permissions.deny_ffi.is_some()
-    || permissions.deny_net.is_some()
-    || permissions.deny_read.is_some()
-    || permissions.deny_run.is_some()
-    || permissions.deny_sys.is_some()
-    || permissions.deny_write.is_some()
-    || permissions.deny_import.is_some()
+/// Returns `true` if a scoped `--deny-*=<value>` flag was specified. A scoped
+/// deny subtracts a path from a broader grant, which the `Deno.test`
+/// permissions object cannot express, so such shebangs are rejected. A bare
+/// `--deny-*` (deny all) is representable as `false` and is allowed.
+fn has_scoped_deny(permissions: &PermissionFlags) -> bool {
+  [
+    &permissions.deny_env,
+    &permissions.deny_ffi,
+    &permissions.deny_import,
+    &permissions.deny_net,
+    &permissions.deny_read,
+    &permissions.deny_run,
+    &permissions.deny_sys,
+    &permissions.deny_write,
+  ]
+  .into_iter()
+  .any(|deny| matches!(deny, Some(list) if !list.is_empty()))
 }
 
 #[derive(Default)]
@@ -1055,11 +1060,14 @@ fn string_lit(value: &str) -> ast::Expr {
 ///   inherits the scope granted to the test runner rather than requesting the
 ///   global permission.
 /// - A scoped flag such as `--allow-read=/tmp` becomes `read: ["/tmp"]`.
-/// - Permissions not mentioned in the shebang are left at their default
-///   (revoked), and a shebang without any permission flag becomes
-///   `{ permissions: "none" }`.
-/// - `--deny-*` flags have no representation here and are dropped (a warning is
-///   emitted while parsing the shebang).
+/// - A bare `--deny-read` becomes `read: false` (revoked).
+/// - When any `--deny-*` flag is present, unspecified permissions default to
+///   `"inherit"` (so `--deny-net` reads as "inherit everything except net").
+///   Otherwise unspecified permissions are omitted, leaving them revoked, and a
+///   shebang without any permission flag becomes `{ permissions: "none" }`.
+///
+/// Scoped `--deny-*` flags are rejected in [`parse_shebang`], so only bare
+/// denies reach this function.
 fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
   // Builds a `{ <name>: <value> }` object property.
   let prop = |name: &str, value: ast::Expr| {
@@ -1071,43 +1079,74 @@ fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
       value: Box::new(value),
     })))
   };
+  let bool_lit = |value: bool| {
+    ast::Expr::Lit(ast::Lit::Bool(ast::Bool {
+      span: DUMMY_SP,
+      value,
+    }))
+  };
 
-  let value = if permissions.allow_all {
+  let perms = [
+    ("env", &permissions.allow_env, &permissions.deny_env),
+    ("ffi", &permissions.allow_ffi, &permissions.deny_ffi),
+    (
+      "import",
+      &permissions.allow_import,
+      &permissions.deny_import,
+    ),
+    ("net", &permissions.allow_net, &permissions.deny_net),
+    ("read", &permissions.allow_read, &permissions.deny_read),
+    ("run", &permissions.allow_run, &permissions.deny_run),
+    ("sys", &permissions.allow_sys, &permissions.deny_sys),
+    ("write", &permissions.allow_write, &permissions.deny_write),
+  ];
+
+  // A bare `--deny-*` switches the baseline for unspecified permissions from
+  // "revoked" to "inherit": a deny only makes sense relative to an
+  // otherwise-inherited permission set.
+  let has_deny = perms.iter().any(|(_, _, deny)| deny.is_some());
+
+  let value = if permissions.allow_all && !has_deny {
     string_lit("inherit")
   } else {
-    let props = [
-      ("env", &permissions.allow_env),
-      ("ffi", &permissions.allow_ffi),
-      ("import", &permissions.allow_import),
-      ("net", &permissions.allow_net),
-      ("read", &permissions.allow_read),
-      ("run", &permissions.allow_run),
-      ("sys", &permissions.allow_sys),
-      ("write", &permissions.allow_write),
-    ]
-    .into_iter()
-    .filter_map(|(name, allowlist)| {
-      let allowlist = allowlist.as_ref()?;
-      let value = if allowlist.is_empty() {
-        // A bare `--allow-*` inherits the runner's scope for that permission.
-        string_lit("inherit")
-      } else {
-        ast::Expr::Array(ast::ArrayLit {
-          span: DUMMY_SP,
-          elems: allowlist
-            .iter()
-            .map(|entry| {
-              Some(ast::ExprOrSpread {
-                spread: None,
-                expr: Box::new(string_lit(entry)),
-              })
+    let props = perms
+      .into_iter()
+      .filter_map(|(name, allow, deny)| {
+        let value = if permissions.allow_all {
+          // `-A` inherits everything; a bare deny carves one permission back out.
+          if deny.is_some() {
+            bool_lit(false)
+          } else {
+            string_lit("inherit")
+          }
+        } else if let Some(allowlist) = allow {
+          if allowlist.is_empty() {
+            string_lit("inherit")
+          } else {
+            ast::Expr::Array(ast::ArrayLit {
+              span: DUMMY_SP,
+              elems: allowlist
+                .iter()
+                .map(|entry| {
+                  Some(ast::ExprOrSpread {
+                    spread: None,
+                    expr: Box::new(string_lit(entry)),
+                  })
+                })
+                .collect(),
             })
-            .collect(),
-        })
-      };
-      Some(prop(name, value))
-    })
-    .collect::<Vec<_>>();
+          }
+        } else if deny.is_some() {
+          // Bare deny (scoped deny is rejected in `parse_shebang`).
+          bool_lit(false)
+        } else if has_deny {
+          string_lit("inherit")
+        } else {
+          return None;
+        };
+        Some(prop(name, value))
+      })
+      .collect::<Vec<_>>();
 
     if props.is_empty() {
       string_lit("none")
@@ -1792,8 +1831,8 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
           media_type: MediaType::TypeScript,
         }],
       },
-      // `--deny-*` flags are dropped (and warned about); the allow is still
-      // forwarded.
+      // A scoped `--deny-*` can't be modelled, so the test is made to fail
+      // rather than run with broader permissions than the shebang declares.
       Test {
         input: Input {
           source: r#"
@@ -1809,9 +1848,72 @@ export function foo() {}
         },
         expected: vec![Expected {
           source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", async ()=>{
+    throw new Error("invalid doc test shebang: #!/usr/bin/env -S deno run --allow-read --deny-read=/etc (scoped --deny-* flags aren't supported yet, see https://github.com/denoland/deno/issues/31966)");
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A bare `--deny-*` revokes that permission and inherits the rest, since
+      // unspecified permissions default to `false` once the object is present.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --deny-env
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
 Deno.test("file:///main.ts$3-7.ts", {
     permissions: {
-        read: "inherit"
+        env: false,
+        ffi: "inherit",
+        import: "inherit",
+        net: "inherit",
+        read: "inherit",
+        run: "inherit",
+        sys: "inherit",
+        write: "inherit"
+    }
+}, async ()=>{
+    foo();
+});
+"#,
+          specifier: "file:///main.ts$3-7.ts",
+          media_type: MediaType::TypeScript,
+        }],
+      },
+      // A quoted allow-list path (with a space) is tokenized by `shlex`.
+      Test {
+        input: Input {
+          source: r#"
+/**
+ * ```ts
+ * #!/usr/bin/env -S deno run --allow-read="/tmp/with space"
+ * foo();
+ * ```
+ */
+export function foo() {}
+"#,
+          specifier: "file:///main.ts",
+        },
+        expected: vec![Expected {
+          source: r#"import { foo } from "file:///main.ts";
+Deno.test("file:///main.ts$3-7.ts", {
+    permissions: {
+        read: [
+            "/tmp/with space"
+        ]
     }
 }, async ()=>{
     foo();

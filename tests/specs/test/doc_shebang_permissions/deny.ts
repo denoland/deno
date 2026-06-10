@@ -1,10 +1,17 @@
 /**
- * `--deny-*` flags can't be represented in the `Deno.test` permissions object,
- * so they are dropped (with a warning) and only the allow is forwarded.
+ * `--deny-env` revokes env, but every other permission is still inherited from
+ * the test runner, so reading the cwd keeps working.
  *
  * ```ts
- * #!/usr/bin/env -S deno run --allow-read --deny-read=/etc
+ * #!/usr/bin/env -S deno run --deny-env
  * Deno.cwd();
+ * ```
+ *
+ * The same shebang denies env, so accessing the environment fails.
+ *
+ * ```ts
+ * #!/usr/bin/env -S deno run --deny-env
+ * Deno.env.toObject();
  * ```
  * @module doc
  */
