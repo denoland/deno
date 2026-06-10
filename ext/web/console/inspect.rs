@@ -1224,10 +1224,6 @@ pub fn get_keys<'s, 'i>(
 ) -> Vec<v8::Local<'s, v8::Value>> {
   let mut keys: Vec<v8::Local<'s, v8::Value>> = Vec::new();
 
-  let is_module_namespace = v8::Local::<v8::Value>::try_from(value)
-    .map(|v| v.is_module_namespace_object())
-    .unwrap_or(false);
-
   // Symbols first (collected separately, appended after names).
   let symbols: Vec<v8::Local<'s, v8::Value>> = {
     v8::tc_scope!(tc, scope);
