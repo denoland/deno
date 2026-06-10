@@ -34,7 +34,6 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
-use deno_core::ExternalOpsTracker;
 use deno_core::FromV8;
 use deno_core::OpState;
 use deno_core::RcRef;
@@ -684,15 +683,12 @@ pub async fn op_fetch_response_closed(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<(), JsErrorBox> {
-  let (resource, tracker) = {
-    let state = state.borrow();
-    let resource = state
-      .resource_table
-      .get::<FetchResponseResource>(rid)
-      .map_err(JsErrorBox::from_err)?;
-    (resource, state.external_ops_tracker.clone())
-  };
-  resource.closed(tracker).await
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<FetchResponseResource>(rid)
+    .map_err(JsErrorBox::from_err)?;
+  resource.closed().await
 }
 
 type CancelableResponseResult =
@@ -789,37 +785,6 @@ impl BodyReaderShared {
       }
       Err(_) => None,
     }
-  }
-}
-
-/// RAII hold on the event loop via the [`ExternalOpsTracker`]. Refs on
-/// construction and unrefs on `release` or drop, so a hold can never leak (and
-/// pin the loop alive forever) even if the owning future is dropped.
-struct EventLoopHold {
-  tracker: ExternalOpsTracker,
-  held: bool,
-}
-
-impl EventLoopHold {
-  fn new(tracker: ExternalOpsTracker) -> Self {
-    tracker.ref_op();
-    Self {
-      tracker,
-      held: true,
-    }
-  }
-
-  fn release(&mut self) {
-    if self.held {
-      self.tracker.unref_op();
-      self.held = false;
-    }
-  }
-}
-
-impl Drop for EventLoopHold {
-  fn drop(&mut self) {
-    self.release();
   }
 }
 
@@ -999,20 +964,14 @@ impl FetchResponseResource {
   /// Resolves when the body stream finishes cleanly and rejects (with a
   /// `TypeError`) when it errors, even if the consumer never reads the body.
   ///
-  /// The op's own promise is unref'd on the JS side; instead it keeps the event
-  /// loop alive through `tracker` only while a consumer that has *not started
-  /// reading* is waiting for the body to terminate (the `await reader.closed`
-  /// with no read case). Once the consumer issues its first read, that hold is
-  /// released: the consumer's own read ops then keep the loop alive and drive
-  /// the body, and an engaged-then-abandoned body is free to let the process
-  /// exit instead of being pinned alive until the peer closes the connection.
-  pub async fn closed(
-    self: Rc<Self>,
-    tracker: ExternalOpsTracker,
-  ) -> Result<(), JsErrorBox> {
-    // Hold the loop open up-front so the unref'd op promise can't let it drain
-    // before the first check below.
-    let mut hold = EventLoopHold::new(tracker);
+  /// The op is kept ref'd (it is a normal async op) so the event loop stays
+  /// alive while a consumer is awaiting `reader.closed` — whether or not it has
+  /// already read a prefix — until the body terminates. A consumer that reads
+  /// part of a streaming response and then abandons it without
+  /// `cancel()`/`releaseLock()` therefore keeps the connection's watcher alive
+  /// until the peer closes, mirroring Node, where an abandoned HTTP response
+  /// keeps its socket ref'd until destroyed.
+  pub async fn closed(self: Rc<Self>) -> Result<(), JsErrorBox> {
     self.clone().ensure_body_reader().await;
     let shared = self
       .shared
@@ -1024,21 +983,14 @@ impl FetchResponseResource {
     // terminates (set by the background task) or when the resource is torn
     // down (set by `BodyReader::drop`).
     drop(self);
-    let result = loop {
+    loop {
       if let Some(result) = shared.settled_terminal() {
-        break result;
-      }
-      // The consumer started reading: stop pinning the loop alive (its read ops
-      // do that now), so an abandoned body can let the process exit.
-      if shared.has_read.get() {
-        hold.release();
+        return match result {
+          Ok(()) => Ok(()),
+          Err(err) => Err(JsErrorBox::type_error(err)),
+        };
       }
       shared.notify.notified().await;
-    };
-    drop(hold);
-    match result {
-      Ok(()) => Ok(()),
-      Err(err) => Err(JsErrorBox::type_error(err)),
     }
   }
 }

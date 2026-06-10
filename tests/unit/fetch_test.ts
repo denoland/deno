@@ -2539,28 +2539,28 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true, run: true, read: true } },
-  // Pins the watcher's narrowed liveness: a response body that was engaged (a
-  // reader read a prefix) and then abandoned — with no further read and no
-  // cancel/releaseLock — does NOT keep the event loop alive. Once the consumer
-  // has read, the connection-closed watcher releases its event-loop hold (the
-  // consumer's own read ops would drive the body from there), so the child goes
-  // idle and exits promptly even though the server keeps the connection open.
-  // If the watcher kept the loop pinned alive instead, the child would block on
-  // the still-open connection and time out rather than exit, and "SETTLED"
-  // (printed only if the loop survived until the connection later closed) would
-  // appear. The watcher staying alive *while the consumer is still awaiting
-  // closed without reading* is covered by the no-read regression tests above.
-  async function fetchEngagedThenAbandonedBodyDoesNotKeepLoopAlive() {
+  // Pins the ref'd-watcher behavior: a response body that was engaged (a reader
+  // read a prefix) and then abandoned — with no further read and no
+  // cancel/releaseLock — keeps the event loop alive until the connection closes,
+  // at which point `reader.closed` settles. This mirrors Node, where an
+  // abandoned HTTP response keeps its socket ref'd until destroyed. (It is also
+  // what makes `read()`-then-`await reader.closed` work, the WPT
+  // `error-after-response` case.) If the watcher were unref'd, the child would
+  // go idle and exit before observing the close, so "SETTLED" would never print.
+  //
+  // The connection is closed only after the child signals (on stdout) that it
+  // has read the prefix and armed `closed`, so the test does not race a timer.
+  async function fetchEngagedBodyKeepsLoopAliveUntilClose() {
     const addr = `127.0.0.1:${listenPort}`;
     const [hostname, port] = addr.split(":");
     const listener = Deno.listen({ hostname, port: Number(port) });
 
-    // Released by the test once the child has exited, so the server keeps the
-    // connection open for the whole lifetime of the child (it must exit on its
-    // own, not because the server closed).
-    let releaseServer: () => void;
-    const hold = new Promise<void>((resolve) => {
-      releaseServer = resolve;
+    // Closed only once the child has read the chunk and armed `closed` (it
+    // prints "READ_DONE"), so the watcher is provably idle-but-alive when the
+    // close arrives — no reliance on a fixed delay.
+    let closeNow: () => void;
+    const readyToClose = new Promise<void>((resolve) => {
+      closeNow = resolve;
     });
     const serverDone = (async () => {
       try {
@@ -2571,10 +2571,12 @@ Deno.test(
             "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHELLO\r\n",
           ),
         );
-        await hold;
+        await readyToClose;
+        // Close before sending the terminating `0\r\n\r\n` chunk.
         conn.close();
       } catch {
-        // The listener was closed by the test once the child exited.
+        // The child may have exited early (the unref'd regression), closing the
+        // connection from its side; ignore the resulting errors.
       }
     })();
 
@@ -2585,29 +2587,33 @@ Deno.test(
       if (new TextDecoder().decode(first.value) !== "HELLO") {
         throw new Error("unexpected first chunk");
       }
-      // Abandon the body: no further reads, no cancel/releaseLock. The process
-      // should now exit on its own without waiting for the connection to close.
+      // Abandon the body: no further reads, no cancel/releaseLock.
       reader.closed.catch(() => console.log("SETTLED"));
+      console.log("READ_DONE");
     `;
-    const start = Date.now();
-    const { code, stdout } = await new Deno.Command(Deno.execPath(), {
+    const command = new Deno.Command(Deno.execPath(), {
       // `deno eval` runs with all permissions, so no `--allow-net` is needed.
       args: ["eval", child],
       stdout: "piped",
       stderr: "null",
-    }).output();
-    const elapsed = Date.now() - start;
+    }).spawn();
 
-    releaseServer!();
+    // Stream the child's stdout, closing the connection once it reports
+    // "READ_DONE", and capture whether it later prints "SETTLED".
+    let out = "";
+    const decoder = new TextDecoder();
+    for await (const chunk of command.stdout) {
+      out += decoder.decode(chunk, { stream: true });
+      if (out.includes("READ_DONE")) {
+        closeNow!();
+      }
+    }
+    const { code } = await command.status;
+
     listener.close();
     await serverDone;
 
-    const out = new TextDecoder().decode(stdout);
-    // The child exited on its own (the watcher did not pin the loop alive), so
-    // it never observed the connection close and never printed "SETTLED".
-    assertEquals(out.includes("SETTLED"), false);
+    assertStringIncludes(out, "SETTLED");
     assertEquals(code, 0);
-    // It exited promptly rather than blocking on the still-open connection.
-    assert(elapsed < 9000, `child took ${elapsed}ms to exit`);
   },
 );
