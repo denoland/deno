@@ -189,6 +189,13 @@ pub struct ReplSession {
   test_event_receiver: Option<TestEventReceiver>,
   jsx: deno_ast::JsxRuntime,
   decorators: deno_ast::DecoratorsTranspileOption,
+  /// When set, the next `evaluate_ts_expression` call produces a source map
+  /// for the transpiled code and stores it in `source_maps` under the key
+  /// V8 uses for evaluated scripts (`<anonymous>`). Jupyter cells set this
+  /// before each evaluate so the stack trace line/column numbers can be
+  /// mapped back to the user's TypeScript via `apply_source_map_to_stack`.
+  pub track_source_map_for_next: bool,
+  source_maps: HashMap<String, Arc<deno_core::sourcemap::SourceMap>>,
 }
 
 // TODO: duplicated in `cli/tools/run/hmr.rs`
@@ -384,6 +391,8 @@ impl ReplSession {
       test_event_receiver: Some(test_event_receiver),
       jsx: transpile_options.jsx.clone().unwrap_or_default(),
       decorators: transpile_options.decorators.clone(),
+      track_source_map_for_next: false,
+      source_maps: HashMap::new(),
     };
 
     // inject prelude
@@ -829,7 +838,8 @@ impl ReplSession {
 
     self.analyze_and_handle_jsx(&parsed_source);
 
-    let transpiled_src = parsed_source
+    let want_source_map = self.track_source_map_for_next;
+    let emitted = parsed_source
       .transpile(
         &deno_ast::TranspileOptions {
           decorators: self.decorators.clone(),
@@ -842,21 +852,126 @@ impl ReplSession {
           module_kind: Some(ModuleKind::Esm),
         },
         &deno_ast::EmitOptions {
-          source_map: deno_ast::SourceMapOption::None,
+          source_map: if want_source_map {
+            deno_ast::SourceMapOption::Separate
+          } else {
+            deno_ast::SourceMapOption::None
+          },
           source_map_base: None,
           source_map_file: None,
           inline_sources: false,
           remove_comments: false,
         },
       )?
-      .into_source()
-      .text;
+      .into_source();
+    let transpiled_src = emitted.text;
 
-    let value = self
-      .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
-      .await?;
+    if want_source_map
+      && let Some(source_map) = emitted.source_map.as_ref()
+      && let Ok(parsed_map) =
+        deno_core::sourcemap::SourceMap::from_slice(source_map.as_bytes())
+    {
+      // Keyed by V8's reported file name (always `<anonymous>` for
+      // `Runtime.evaluate`). Each cell's source map replaces the previous
+      // one, so frames coming from earlier cells will get remapped against
+      // the current cell's map. That's a known limitation — V8 doesn't
+      // surface per-script identifiers in `err.stack` for evaluate-style
+      // inputs, so we can't tell apart frames from prior cells.
+      self
+        .source_maps
+        .insert("<anonymous>".to_string(), Arc::new(parsed_map));
+    }
+
+    // V8's `Runtime.evaluate` (with replMode) reports stack frames as
+    // `<anonymous>:LINE:COL` and does not honour `//# sourceURL=` magic
+    // comments injected into the evaluated script (the inspector treats
+    // the script as anonymous regardless). So instead of trying to
+    // surface a stable URL through V8, we always register the current
+    // cell's source map under the `<anonymous>` key and apply it to any
+    // `<anonymous>` frames in the stack. This matches V8's reported
+    // script name and handles the common case where the thrown exception
+    // originates in the cell that's currently executing. Frames from
+    // earlier cells (function definitions that live across cells) still
+    // get remapped through the latest source map — that's not strictly
+    // correct, but it's far better than reporting the transpiled JS
+    // line numbers, and lining them up correctly would require V8 to
+    // surface per-script identifiers in `err.stack`.
+    let script = format!("'use strict'; void 0;{transpiled_src}");
+
+    let value = self.evaluate_expression(&script).await?;
 
     Ok(TsEvaluateResponse { value })
+  }
+
+  /// Walks a JavaScript stack trace string and rewrites the position of any
+  /// frame whose URL we have a registered source map for. Lines that don't
+  /// match the `at FILE:LINE:COL` / `at NAME (FILE:LINE:COL)` shapes are
+  /// passed through unchanged.
+  pub fn apply_source_map_to_stack(&mut self, stack: &str) -> String {
+    if self.source_maps.is_empty() {
+      return stack.to_string();
+    }
+
+    static STACK_FRAME_RE: Lazy<Regex> = Lazy::new(|| {
+      // Two capture shapes:
+      //   `    at FILE:LINE:COL`
+      //   `    at NAME (FILE:LINE:COL)`
+      // The file portion can itself contain colons (eg. `<jupyter:cell:1>`),
+      // so we lazy-match it and let the anchored `:LINE:COL[)]$` tail force
+      // backtracking onto the correct boundary.
+      Regex::new(r"^(?P<prefix>\s*at (?:.+? \()?)(?P<file>.+?):(?P<line>\d+):(?P<col>\d+)(?P<suffix>\)?)\s*$").unwrap()
+    });
+
+    let mut out = String::with_capacity(stack.len());
+    for (idx, line) in stack.lines().enumerate() {
+      if idx > 0 {
+        out.push('\n');
+      }
+      let Some(caps) = STACK_FRAME_RE.captures(line) else {
+        out.push_str(line);
+        continue;
+      };
+      let file = caps.name("file").unwrap().as_str();
+      let Some(source_map) = self.source_maps.get(file).cloned() else {
+        out.push_str(line);
+        continue;
+      };
+      let line_num: u32 = match caps["line"].parse() {
+        Ok(n) => n,
+        Err(_) => {
+          out.push_str(line);
+          continue;
+        }
+      };
+      let col_num: u32 = match caps["col"].parse() {
+        Ok(n) => n,
+        Err(_) => {
+          out.push_str(line);
+          continue;
+        }
+      };
+      // SourceMap::lookup_token expects 0-based positions; the lookup token
+      // returns 0-based source positions which we convert back to 1-based.
+      let lookup_line = line_num.saturating_sub(1);
+      let lookup_col = col_num.saturating_sub(1);
+      let Some(token) = source_map.lookup_token(lookup_line, lookup_col) else {
+        out.push_str(line);
+        continue;
+      };
+      let new_line = token.get_src_line() + 1;
+      let new_col = token.get_src_col() + 1;
+      // Don't risk silently swapping the URL out: keeping the V8-reported
+      // file name avoids visually surprising callers who only have a single
+      // cell anyway. Only rewrite the line and column.
+      out.push_str(caps.name("prefix").unwrap().as_str());
+      out.push_str(file);
+      out.push(':');
+      out.push_str(&new_line.to_string());
+      out.push(':');
+      out.push_str(&new_col.to_string());
+      out.push_str(caps.name("suffix").unwrap().as_str());
+    }
+    out
   }
 
   fn analyze_and_handle_jsx(&mut self, parsed_source: &ParsedSource) {

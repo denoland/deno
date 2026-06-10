@@ -33,7 +33,7 @@ pub struct IopubMessage {
 pub enum JupyterReplRequest {
   Evaluate {
     line: String,
-    resp_tx: oneshot::Sender<Option<serde_json::Value>>,
+    resp_tx: oneshot::Sender<JupyterEvaluateOutcome>,
   },
   GetProperties {
     object_id: String,
@@ -52,6 +52,29 @@ pub enum JupyterReplRequest {
     arg1: cdp::CallArgument,
     resp_tx: oneshot::Sender<Option<serde_json::Value>>,
   },
+}
+
+/// Result of evaluating a Jupyter cell, ready for the kernel JS to consume.
+///
+/// Either `value` (success — the serialized CDP evaluate response, used to
+/// publish `execute_result`) or `error` (the cell threw — already
+/// source-map-remapped and split into the `ename`/`evalue`/`traceback`
+/// fields Jupyter expects) will be set. `None` (`null` on the JS side)
+/// signals that evaluation was skipped or failed before yielding a usable
+/// response.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct JupyterEvaluateOutcome {
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub value: Option<serde_json::Value>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub error: Option<JupyterEvaluateError>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct JupyterEvaluateError {
+  pub ename: String,
+  pub evalue: String,
+  pub traceback: Vec<String>,
 }
 
 // ------------------------------------------------------------------
@@ -186,7 +209,7 @@ pub fn op_jupyter_get_connection_info(state: &mut OpState) -> String {
 pub async fn op_jupyter_repl_evaluate(
   state: Rc<RefCell<OpState>>,
   #[string] line: String,
-) -> Result<Option<serde_json::Value>, JsErrorBox> {
+) -> Result<JupyterEvaluateOutcome, JsErrorBox> {
   let (resp_tx, resp_rx) = oneshot::channel();
   {
     let s = state.borrow();

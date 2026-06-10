@@ -732,41 +732,14 @@ async function startJupyterKernel() {
     }
 
     if (evalResult !== null && evalResult !== undefined) {
-      // Check for exception
-      const exDetails = evalResult?.value?.exceptionDetails;
-      if (exDetails) {
-        // Exception during execution
-        const exception = exDetails.exception;
-        let ename = "Error";
-        let evalue = "(none)";
-        let traceback = [];
-
-        if (exception) {
-          const callResult = await op_jupyter_repl_call_function_on_args(
-            `function(object) {
-              if (object instanceof Error) {
-                const name = "name" in object ? String(object.name) : "";
-                const message = "message" in object ? String(object.message) : "";
-                const stack = "stack" in object ? String(object.stack) : "";
-                return JSON.stringify({ name, message, stack });
-              } else {
-                return JSON.stringify({ name: "", message: String(object), stack: "" });
-              }
-            }`,
-            [exception],
-          );
-          if (callResult?.result?.value) {
-            try {
-              const parsed = JSON.parse(callResult.result.value);
-              ename = parsed.name || "Error";
-              evalue = parsed.message || "(none)";
-              traceback = (parsed.stack || "").split("\n");
-            } catch { /**/ }
-          }
-        } else {
-          ename = exDetails.text || "Error";
-          evalue = exDetails.text || "(none)";
-        }
+      // Source-map-aware error shape filled in by the REPL thread: line
+      // numbers in `traceback` already point at the user's TypeScript
+      // input, not the transpiled cell source.
+      const evalError = evalResult.error;
+      if (evalError) {
+        const ename = evalError.ename || "Error";
+        const evalue = evalError.evalue || "(none)";
+        const traceback = evalError.traceback || [];
 
         const errFrames = await encodeMsg(
           session,

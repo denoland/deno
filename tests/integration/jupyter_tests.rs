@@ -877,6 +877,144 @@ async fn jupyter_stdin_prompt_reply() -> Result<()> {
   Ok(())
 }
 
+// Regression for denoland/deno#20643: errors thrown from a Jupyter cell
+// must arrive in the `traceback` with line/column numbers that match the
+// user's TypeScript, not the transpiled JavaScript. The bug originally
+// reported a four-line cell whose `throw new Error("fail")` on line 4
+// surfaced as `<anonymous>:5:7` (SWC adds a `"use strict";` line in front
+// of ESM module output, shifting every line by one).
+#[test]
+async fn jupyter_execute_error_source_map_remaps_line() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  let code = "console.log(\"1\");\n\
+              console.log(\"2\");\n\
+              console.log(\"3\");\n\
+              throw new Error(\"fail\");\n";
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": true,
+        "stop_on_error": false,
+        "code": code,
+      }),
+    )
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  let status = reply
+    .content
+    .get("status")
+    .and_then(|v| v.as_str())
+    .unwrap_or("");
+  assert_eq!(
+    status, "error",
+    "expected status=error: {:?}",
+    reply.content
+  );
+
+  let ename = reply
+    .content
+    .get("ename")
+    .and_then(|v| v.as_str())
+    .unwrap_or("");
+  let evalue = reply
+    .content
+    .get("evalue")
+    .and_then(|v| v.as_str())
+    .unwrap_or("");
+  let traceback = reply
+    .content
+    .get("traceback")
+    .and_then(|v| v.as_array())
+    .cloned()
+    .unwrap_or_default();
+  assert_eq!(ename, "Error");
+  assert_eq!(evalue, "fail");
+  let joined = traceback
+    .iter()
+    .filter_map(|v| v.as_str())
+    .collect::<Vec<_>>()
+    .join("\n");
+  assert!(
+    joined.contains(":4:"),
+    "traceback should point at the user's line 4: {joined:?}",
+  );
+  assert!(
+    !joined.contains(":5:"),
+    "traceback should not surface the transpiled line 5: {joined:?}",
+  );
+
+  Ok(())
+}
+
+// Regression for denoland/deno#20643: the same source-map fix must also
+// shift line numbers across SWC's parameter-property transform (which
+// expands `constructor(public x: T)` into an explicit assignment in the
+// constructor body, growing the class body by several lines). Without the
+// fix, the `throw` after the class body reports a line that's many lines
+// past the original.
+#[test]
+async fn jupyter_execute_error_source_map_remaps_after_class_transform()
+-> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  let code = "class Point {\n\
+              \x20\x20constructor(public x: number, public y: number, public z: number) {}\n\
+              }\n\
+              new Point(1, 2, 3);\n\
+              throw new Error(\"fail\");\n";
+  // The throw is on line 5 of the user's TypeScript.
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": true,
+        "stop_on_error": false,
+        "code": code,
+      }),
+    )
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  let status = reply
+    .content
+    .get("status")
+    .and_then(|v| v.as_str())
+    .unwrap_or("");
+  assert_eq!(
+    status, "error",
+    "expected status=error: {:?}",
+    reply.content
+  );
+  let traceback = reply
+    .content
+    .get("traceback")
+    .and_then(|v| v.as_array())
+    .cloned()
+    .unwrap_or_default();
+  let joined = traceback
+    .iter()
+    .filter_map(|v| v.as_str())
+    .collect::<Vec<_>>()
+    .join("\n");
+  assert!(
+    joined.contains(":5:"),
+    "traceback should point at user line 5 (the throw): {joined:?}",
+  );
+
+  Ok(())
+}
+
 #[test]
 async fn jupyter_stdin_disabled_returns_null() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
