@@ -656,6 +656,14 @@ fn split_authority(authority: &str) -> (&str, Option<u16>) {
   (address, Some(port))
 }
 
+fn request_header_value_separator(name: &[u8]) -> &'static [u8] {
+  if name.eq_ignore_ascii_case(COOKIE.as_ref()) {
+    b"; "
+  } else {
+    b", "
+  }
+}
+
 fn raw_request_header_to_v8<'scope>(
   scope: &mut v8::PinScope<'scope, '_>,
   headers: &RawRequestHeaders,
@@ -672,11 +680,7 @@ fn raw_request_header_to_v8<'scope>(
     .unwrap()
     .into();
   }
-  let separator = if name.eq_ignore_ascii_case(b"cookie") {
-    b"; ".as_slice()
-  } else {
-    b", ".as_slice()
-  };
+  let separator = request_header_value_separator(name);
   let mut first = None::<&[u8]>;
   let mut out = None::<Vec<u8>>;
   for header in headers.iter() {
@@ -733,6 +737,18 @@ enum RawResponseBody {
   Stream(ResponseBytesInner),
 }
 
+fn preferred_supported_compression(
+  encodings: impl Iterator<
+    Item = Result<(Option<Encoding>, f32), fly_accept_encoding::EncodingError>,
+  >,
+) -> Compression {
+  match super::preferred_supported_encoding(encodings) {
+    Encoding::Brotli => Compression::Brotli,
+    Encoding::Gzip => Compression::GZip,
+    _ => Compression::None,
+  }
+}
+
 fn raw_request_compression(headers: &RawRequestHeaders) -> Compression {
   let Some(accept_encoding) = headers.get_joined(b"accept-encoding", b", ")
   else {
@@ -751,20 +767,63 @@ fn raw_request_compression(headers: &RawRequestHeaders) -> Compression {
   }
 
   let accepted =
-    fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding))
-      .filter(|r| {
-        matches!(
-          r,
-          Ok((
-            Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-            _
-          ))
-        )
-      });
-  match fly_accept_encoding::preferred(accepted) {
-    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
-    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
-    _ => Compression::None,
+    fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding));
+  preferred_supported_compression(accepted)
+}
+
+#[cfg(test)]
+mod compression_tests {
+  use super::*;
+
+  fn compression_for(accept_encoding: &str) -> Compression {
+    let accepted =
+      fly_accept_encoding::encodings_iter_str(std::iter::once(accept_encoding));
+    preferred_supported_compression(accepted)
+  }
+
+  #[test]
+  fn compression_prefers_brotli_over_gzip_when_equal() {
+    assert!(matches!(
+      compression_for("gzip, deflate, br, zstd"),
+      Compression::Brotli
+    ));
+    assert!(matches!(
+      compression_for("zstd, gzip, deflate, br"),
+      Compression::Brotli
+    ));
+    assert!(matches!(
+      compression_for("gzip;q=1.0, br;q=1.0"),
+      Compression::Brotli
+    ));
+  }
+
+  #[test]
+  fn compression_respects_higher_qval() {
+    assert!(matches!(
+      compression_for("gzip;q=1.0, br;q=0.9, zstd;q=1.0"),
+      Compression::GZip
+    ));
+    assert!(matches!(
+      compression_for("gzip;q=0.5, br;q=0.9"),
+      Compression::Brotli
+    ));
+    assert!(matches!(
+      compression_for("identity;q=1.0, gzip;q=0.9, br;q=0.9"),
+      Compression::None
+    ));
+  }
+
+  #[test]
+  fn compression_ignores_unsupported_or_invalid_tokens() {
+    assert!(matches!(
+      compression_for("br, compress"),
+      Compression::Brotli
+    ));
+    assert!(matches!(compression_for("gzip, br;q=2"), Compression::GZip));
+    assert!(matches!(
+      compression_for("compress, x-gzip"),
+      Compression::None
+    ));
   }
 }
 
@@ -2134,6 +2193,7 @@ pub fn op_http_get_request_header<'scope>(
       let Ok(name) = HeaderName::from_bytes(&name) else {
         return v8::null(scope).into();
       };
+      let separator = request_header_value_separator(name.as_ref());
       let request_parts = http.request_parts();
       let mut values = request_parts.headers.get_all(name).iter();
       let Some(first) = values.next() else {
@@ -2148,12 +2208,14 @@ pub fn op_http_get_request_header<'scope>(
         .unwrap()
         .into();
       };
-      let mut value = Vec::with_capacity(first.as_bytes().len() + 2);
+      let mut value = Vec::with_capacity(
+        first.as_bytes().len() + separator.len() + next.as_bytes().len(),
+      );
       value.extend_from_slice(first.as_bytes());
-      value.extend_from_slice(b", ");
+      value.extend_from_slice(separator);
       value.extend_from_slice(next.as_bytes());
       for next in values {
-        value.extend_from_slice(b", ");
+        value.extend_from_slice(separator);
         value.extend_from_slice(next.as_bytes());
       }
       v8::String::new_from_one_byte(scope, &value, v8::NewStringType::Normal)
@@ -2221,7 +2283,9 @@ pub fn op_http_get_request_headers<'scope>(
       vec.push(
         v8::String::new_from_one_byte(
           scope,
-          cookies.join(b"; ".as_slice()).as_ref(),
+          cookies
+            .join(request_header_value_separator(COOKIE.as_ref()))
+            .as_ref(),
           v8::NewStringType::Normal,
         )
         .unwrap()
@@ -2274,8 +2338,6 @@ pub fn op_http_get_request_headers<'scope>(
   // semicolons.
   // TODO(mmastrac): This should probably happen on the JS side on-demand
   if let Some(cookies) = cookies {
-    let cookie_sep = "; ".as_bytes();
-
     vec.push(
       v8::String::new_external_onebyte_static(scope, COOKIE.as_ref())
         .unwrap()
@@ -2284,7 +2346,9 @@ pub fn op_http_get_request_headers<'scope>(
     vec.push(
       v8::String::new_from_one_byte(
         scope,
-        cookies.join(cookie_sep).as_ref(),
+        cookies
+          .join(request_header_value_separator(COOKIE.as_ref()))
+          .as_ref(),
         v8::NewStringType::Normal,
       )
       .unwrap()
@@ -2502,21 +2566,8 @@ fn is_request_compressible(
   }
 
   // Fall back to the expensive parser
-  let accepted =
-    fly_accept_encoding::encodings_iter_http_1(headers).filter(|r| {
-      matches!(
-        r,
-        Ok((
-          Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
-          _
-        ))
-      )
-    });
-  match fly_accept_encoding::preferred(accepted) {
-    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
-    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
-    _ => Compression::None,
-  }
+  let accepted = fly_accept_encoding::encodings_iter_http_1(headers);
+  preferred_supported_compression(accepted)
 }
 
 fn is_response_compressible(headers: &HeaderMap) -> bool {

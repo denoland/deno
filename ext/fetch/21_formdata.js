@@ -14,6 +14,7 @@ const {
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
   MapPrototypeGet,
+  MapPrototypeHas,
   MapPrototypeSet,
   MathRandom,
   ObjectFreeze,
@@ -517,6 +518,7 @@ class MultipartParser {
           // These are UTF-8 decoded as if it was Latin-1.
           // TODO(@andreubotella): Maybe we shouldn't be parsing entry headers
           // as Latin-1.
+          const hasFilename = MapPrototypeHas(disposition, "filename");
           const latin1Filename = MapPrototypeGet(disposition, "filename");
           const latin1Name = MapPrototypeGet(disposition, "name");
 
@@ -525,7 +527,7 @@ class MultipartParser {
           // Skip nameless parts, but still advance past the matched delimiter.
           if (latin1Name) {
             const name = decodeLatin1StringAsUtf8(latin1Name);
-            if (latin1Filename) {
+            if (hasFilename) {
               const blob = new Blob([content], {
                 type: headers.get("Content-Type") || "application/octet-stream",
               });

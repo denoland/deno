@@ -111,6 +111,45 @@ pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
 
+fn preferred_supported_encoding(
+  encodings: impl Iterator<
+    Item = Result<(Option<Encoding>, f32), fly_accept_encoding::EncodingError>,
+  >,
+) -> Encoding {
+  let mut best_brotli_qval = 0.0;
+  let mut best_gzip_qval = 0.0;
+  let mut best_identity_qval = 0.0;
+
+  for encoding in encodings {
+    let Ok((encoding, qval)) = encoding else {
+      continue;
+    };
+    match encoding {
+      Some(Encoding::Brotli) if qval > best_brotli_qval => {
+        best_brotli_qval = qval;
+      }
+      Some(Encoding::Gzip) if qval > best_gzip_qval => {
+        best_gzip_qval = qval;
+      }
+      Some(Encoding::Identity) if qval > best_identity_qval => {
+        best_identity_qval = qval;
+      }
+      _ => {}
+    }
+  }
+
+  if best_brotli_qval >= best_gzip_qval
+    && best_brotli_qval >= best_identity_qval
+    && best_brotli_qval > 0.0
+  {
+    Encoding::Brotli
+  } else if best_gzip_qval >= best_identity_qval && best_gzip_qval > 0.0 {
+    Encoding::Gzip
+  } else {
+    Encoding::Identity
+  }
+}
+
 fn cache_control_has_no_transform(value: &str) -> Option<bool> {
   let mut no_transform = false;
   for token in value.split(',') {
@@ -805,14 +844,8 @@ impl HttpConnResource {
       let request = request_rx.await.ok()?;
       let accept_encoding = {
         let encodings =
-          fly_accept_encoding::encodings_iter_http(request.headers()).filter(
-            |r| matches!(r, Ok((Some(Encoding::Brotli | Encoding::Gzip), _))),
-          );
-
-        fly_accept_encoding::preferred(encodings)
-          .ok()
-          .flatten()
-          .unwrap_or(Encoding::Identity)
+          fly_accept_encoding::encodings_iter_http(request.headers());
+        preferred_supported_encoding(encodings)
       };
 
       let otel_info =
