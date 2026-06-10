@@ -53,15 +53,11 @@ const util = core.loadExtScript(
   "ext:deno_node/internal_binding/util.ts",
 );
 const uvNamespace = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
-const httpParser = core.loadExtScript(
-  "ext:deno_node/internal_binding/http_parser.ts",
-);
-const http2Binding = core.loadExtScript(
-  "ext:deno_node/internal_binding/http2.ts",
-);
 const inspectorBinding = core.loadExtScript(
   "ext:deno_node/internal_binding/inspector.js",
 );
+let httpParser;
+let http2Binding;
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap
 // `errname` with a deprecation warning when --pending-deprecation is set).
@@ -98,8 +94,8 @@ const modules = {
   "fs_dir": {},
   "fs_event_wrap": {},
   "heap_utils": {},
-  "http_parser": httpParser,
-  "http2": http2Binding,
+  "http_parser": {},
+  "http2": {},
   icu: {},
   inspector: inspectorBinding,
   "js_stream": {},
@@ -146,6 +142,16 @@ const modules = {
 export type BindingName = keyof typeof modules;
 
 export function getBinding(name: BindingName) {
+  if (name === "http_parser") {
+    return httpParser ??= core.loadExtScript(
+      "ext:deno_node/internal_binding/http_parser.ts",
+    );
+  }
+  if (name === "http2") {
+    return http2Binding ??= core.loadExtScript(
+      "ext:deno_node/internal_binding/http2.ts",
+    );
+  }
   const mod = modules[name];
   if (!mod) {
     throw new Error(`No such module: ${name}`);
