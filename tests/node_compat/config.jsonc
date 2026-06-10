@@ -1342,6 +1342,7 @@
     "parallel/test-fs-cp-sync-verbatim-symlinks-invalid.mjs": {},
     "parallel/test-fs-cp-sync-verbatim-symlinks-true.mjs": {},
     "parallel/test-fs-empty-readStream.js": {},
+    "parallel/test-fs-error-messages.js": {},
     "parallel/test-fs-exists.js": {},
     "parallel/test-fs-existssync-false.js": {},
     "parallel/test-fs-fchmod.js": {},

@@ -11,6 +11,9 @@ const {
 const { validateFunction } = core.loadExtScript(
   "ext:deno_node/internal/validators.mjs",
 );
+const { createFSReqCallback, unregisterActiveRequest } = core.loadExtScript(
+  "ext:deno_node/internal/process/active_resources.ts",
+);
 
 const lazyFsUtils = core.createLazyLoader(
   "ext:deno_node/internal/fs/utils.mjs",
@@ -94,13 +97,25 @@ function makeCallback(cb) {
 // callback sits at that index, so omitting it still validates the args first).
 // Shared by fs.ts and the eager _fs_*.ts wrappers so each `const f =
 // callbackify(op, n)` shares one SFI instead of baking a wrapper per function.
+// Each wrapper registers an FSReqCallback for the in-flight request --
+// node's `process._getActiveRequests()` reports one per pending async fs
+// call -- and unregisters it when the request settles (before the user
+// callback runs, like node's req teardown).
+
 function callbackify(op, nargs, defaultCb) {
   return function (...args) {
-    const promise = ReflectApply(
-      op,
-      undefined,
-      ArrayPrototypeSlice(args, 0, nargs),
-    );
+    const request = createFSReqCallback();
+    let promise;
+    try {
+      promise = ReflectApply(
+        op,
+        undefined,
+        ArrayPrototypeSlice(args, 0, nargs),
+      );
+    } catch (e) {
+      unregisterActiveRequest(request);
+      throw e;
+    }
     let callback;
     try {
       // JS default-parameter semantics: only `undefined` falls back to the
@@ -108,11 +123,22 @@ function callbackify(op, nargs, defaultCb) {
       const cb = args[nargs] === undefined ? defaultCb : args[nargs];
       callback = makeCallback(cb);
     } catch (e) {
+      unregisterActiveRequest(request);
       PromisePrototypeThen(promise, undefined, () => {});
       throw e;
     }
     // These wrappers are all void in node (callback receives only `err`).
-    return PromisePrototypeThen(promise, () => callback(null), callback);
+    return PromisePrototypeThen(
+      promise,
+      () => {
+        unregisterActiveRequest(request);
+        callback(null);
+      },
+      (err) => {
+        unregisterActiveRequest(request);
+        callback(err);
+      },
+    );
   };
 }
 
@@ -141,10 +167,28 @@ function callbackifyOpt(op, nLeading = 1, cbAtEnd = false) {
       const callback = makeCallback(
         cbIdx === args.length ? undefined : args[cbIdx],
       );
+      const request = createFSReqCallback();
+      let promise;
+      try {
+        promise = ReflectApply(
+          op,
+          undefined,
+          ArrayPrototypeSlice(args, 0, cbIdx),
+        );
+      } catch (e) {
+        unregisterActiveRequest(request);
+        throw e;
+      }
       return PromisePrototypeThen(
-        ReflectApply(op, undefined, ArrayPrototypeSlice(args, 0, cbIdx)),
-        (result) => result == null ? callback(null) : callback(null, result),
-        callback,
+        promise,
+        (result) => {
+          unregisterActiveRequest(request);
+          return result == null ? callback(null) : callback(null, result);
+        },
+        (err) => {
+          unregisterActiveRequest(request);
+          callback(err);
+        },
       );
     }
     for (let i = nLeading; i < args.length; i++) {
@@ -153,22 +197,36 @@ function callbackifyOpt(op, nLeading = 1, cbAtEnd = false) {
         break;
       }
     }
-    const promise = ReflectApply(
-      op,
-      undefined,
-      ArrayPrototypeSlice(args, 0, cbIdx),
-    );
+    const request = createFSReqCallback();
+    let promise;
+    try {
+      promise = ReflectApply(
+        op,
+        undefined,
+        ArrayPrototypeSlice(args, 0, cbIdx),
+      );
+    } catch (e) {
+      unregisterActiveRequest(request);
+      throw e;
+    }
     let callback;
     try {
       callback = makeCallback(cbIdx === args.length ? undefined : args[cbIdx]);
     } catch (e) {
+      unregisterActiveRequest(request);
       PromisePrototypeThen(promise, undefined, () => {});
       throw e;
     }
     return PromisePrototypeThen(
       promise,
-      (result) => result == null ? callback(null) : callback(null, result),
-      callback,
+      (result) => {
+        unregisterActiveRequest(request);
+        return result == null ? callback(null) : callback(null, result);
+      },
+      (err) => {
+        unregisterActiveRequest(request);
+        callback(err);
+      },
     );
   };
 }
@@ -195,10 +253,24 @@ function callbackifyWrite(op) {
     // Forward `op(fd, buffer, ...rest)` -- the callback included, since the op
     // uses the trailing slots to disambiguate the string overload.
     ArrayPrototypeUnshift(rest, fd, buffer);
+    const request = createFSReqCallback();
+    let promise;
+    try {
+      promise = ReflectApply(op, undefined, rest);
+    } catch (e) {
+      unregisterActiveRequest(request);
+      throw e;
+    }
     return PromisePrototypeThen(
-      ReflectApply(op, undefined, rest),
-      (written) => cb(null, written || 0, buffer),
-      (err) => cb(err, 0, buffer),
+      promise,
+      (written) => {
+        unregisterActiveRequest(request);
+        cb(null, written || 0, buffer);
+      },
+      (err) => {
+        unregisterActiveRequest(request);
+        cb(err, 0, buffer);
+      },
     );
   };
 }

@@ -35,6 +35,7 @@ const { uvTranslateSysError } = core.loadExtScript(
 const {
   ArrayPrototypeMap,
   Error,
+  MapPrototypeForEach,
   MapPrototypeGet,
 } = primordials;
 
@@ -549,19 +550,6 @@ function mapSysErrnoToUvErrno(sysErrno: number): number {
   }
 }
 
-const UV_EAI_MEMORY = MapPrototypeGet(codeMap, "EAI_MEMORY")!;
-const UV_EBADF = MapPrototypeGet(codeMap, "EBADF")!;
-const UV_ECANCELED = MapPrototypeGet(codeMap, "ECANCELED")!;
-const UV_EEXIST = MapPrototypeGet(codeMap, "EEXIST");
-const UV_EINVAL = MapPrototypeGet(codeMap, "EINVAL")!;
-const UV_ENETUNREACH = MapPrototypeGet(codeMap, "ENETUNREACH")!;
-const UV_ENOENT = MapPrototypeGet(codeMap, "ENOENT");
-const UV_ENOMEM = MapPrototypeGet(codeMap, "ENOMEM")!;
-const UV_ENOTSOCK = MapPrototypeGet(codeMap, "ENOTSOCK")!;
-const UV_ETIMEDOUT = MapPrototypeGet(codeMap, "ETIMEDOUT")!;
-const UV_UNKNOWN = MapPrototypeGet(codeMap, "UNKNOWN")!;
-const UV_EOF = MapPrototypeGet(codeMap, "EOF")!;
-
 function errname(errno: number): string {
   const err = MapPrototypeGet(errorMap, errno);
   if (err) {
@@ -587,25 +575,20 @@ function getCodeMap(): Map<string, number> {
   return codeMap;
 }
 
-return {
+const mod: Record<string, unknown> = {
   errorMap,
   codeMap,
   mapSysErrnoToUvErrno,
-  UV_EAI_MEMORY,
-  UV_EBADF,
-  UV_ECANCELED,
-  UV_EEXIST,
-  UV_EINVAL,
-  UV_ENETUNREACH,
-  UV_ENOENT,
-  UV_ENOMEM,
-  UV_ENOTSOCK,
-  UV_ETIMEDOUT,
-  UV_UNKNOWN,
-  UV_EOF,
   errname,
   getErrorMessage,
   getErrorMap,
   getCodeMap,
 };
+// node's internalBinding('uv') defines a UV_<code> constant for every entry
+// in the error map (src/uv.cc Initialize); generate them all so any of them
+// (UV_ENOTEMPTY, UV_EPERM, ...) can be destructured.
+MapPrototypeForEach(codeMap, (errno, code) => {
+  mod[`UV_${code}`] = errno;
+});
+return mod;
 })();
