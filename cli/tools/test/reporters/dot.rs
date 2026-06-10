@@ -215,6 +215,35 @@ impl TestReporter for DotTestReporter {
     );
   }
 
+  fn report_exit(
+    &mut self,
+    exit_code: i32,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    common::report_exit(
+      &mut std::io::stdout(),
+      &self.cwd,
+      exit_code,
+      tests_pending,
+      tests,
+      test_steps,
+    );
+  }
+
+  fn report_isolate_exit(&mut self, origin: &str, exit_code: i32) {
+    common::report_isolate_exit(
+      &mut std::io::stdout(),
+      &self.cwd,
+      origin,
+      exit_code,
+    );
+    if exit_code != 0 {
+      self.summary.failed += 1;
+    }
+  }
+
   fn report_completed(&mut self) {}
 
   fn flush_report(

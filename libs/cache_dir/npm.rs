@@ -82,6 +82,14 @@ impl NpmCacheDir {
     &self.root_dir_url
   }
 
+  /// The safe local directory names (relative to `root_dir`) for every
+  /// registry url known via `.npmrc` discovery. May contain multiple path
+  /// segments when a registry url has a sub-path (e.g.
+  /// `http://mirrors.example.com/npm/` -> `mirrors.example.com/npm`).
+  pub fn known_registries_dirnames(&self) -> &[String] {
+    &self.known_registries_dirnames
+  }
+
   pub fn package_folder_for_id(
     &self,
     package_name: &str,

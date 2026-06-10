@@ -190,6 +190,104 @@ test("mock calls have stack traces", () => {
   mock.restoreAll();
 });
 
+test("mock.property() mocks a property value", () => {
+  const obj = { value: 42 };
+  const mocked = mock.property(obj, "value", 100);
+
+  assert.strictEqual(obj.value, 100);
+  assert.strictEqual(mocked.mock.accessCount(), 1);
+  assert.strictEqual(mocked.mock.accesses[0].type, "get");
+  assert.strictEqual(mocked.mock.accesses[0].value, 100);
+  assert.ok(mocked.mock.accesses[0].stack instanceof Error);
+
+  mocked.mock.restore();
+  assert.strictEqual(obj.value, 42);
+
+  mock.restoreAll();
+});
+
+test("mock.property() defaults to the original value", () => {
+  const obj = { value: "orig" };
+  const mocked = mock.property(obj, "value");
+
+  assert.strictEqual(obj.value, "orig");
+  mocked.mock.mockImplementation("changed");
+  assert.strictEqual(obj.value, "changed");
+
+  mocked.mock.restore();
+  assert.strictEqual(obj.value, "orig");
+
+  mock.restoreAll();
+});
+
+test("mock.property() tracks set accesses", () => {
+  const obj = { value: 1 };
+  const mocked = mock.property(obj, "value", 1);
+
+  obj.value = 2;
+  assert.strictEqual(mocked.mock.accesses[0].type, "set");
+  assert.strictEqual(mocked.mock.accesses[0].value, 2);
+  assert.strictEqual(obj.value, 2);
+
+  mock.restoreAll();
+});
+
+test("mock.property() mockImplementationOnce", () => {
+  const obj = { value: 1 };
+  const mocked = mock.property(obj, "value", 10);
+
+  mocked.mock.mockImplementationOnce(99);
+  assert.strictEqual(obj.value, 99);
+  assert.strictEqual(obj.value, 10);
+
+  mock.restoreAll();
+});
+
+test("mock.property() resetAccesses", () => {
+  const obj = { value: 1 };
+  const mocked = mock.property(obj, "value", 1);
+
+  void obj.value;
+  void obj.value;
+  assert.strictEqual(mocked.mock.accessCount(), 2);
+
+  mocked.mock.resetAccesses();
+  assert.strictEqual(mocked.mock.accessCount(), 0);
+
+  mock.restoreAll();
+});
+
+test("mock.property() throws for non-existent property", () => {
+  const obj = { value: 1 };
+  assert.throws(
+    () => mock.property(obj, "missing"),
+    { code: "ERR_INVALID_ARG_VALUE" },
+  );
+
+  mock.restoreAll();
+});
+
+test("mock.property() supports symbol property names", () => {
+  const sym = Symbol("s");
+  const obj = { [sym]: "x" };
+  const mocked = mock.property(obj, sym, "y");
+
+  assert.strictEqual(obj[sym], "y");
+  mocked.mock.restore();
+  assert.strictEqual(obj[sym], "x");
+
+  mock.restoreAll();
+});
+
+test("mock.property() validates arguments", () => {
+  assert.throws(() => mock.property(null, "x"), {
+    code: "ERR_INVALID_ARG_TYPE",
+  });
+  assert.throws(() => mock.property({ x: 1 }, 123), {
+    code: "ERR_INVALID_ARG_TYPE",
+  });
+});
+
 test("done callback support", (t, done) => {
   setTimeout(() => done(), 10);
 });

@@ -40,7 +40,6 @@ const {
   RangeError,
   SafeRegExp,
   String,
-  StringFromCharCode,
   StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeIncludes,
@@ -73,7 +72,7 @@ const {
   op_node_buffer_compare,
   op_node_buffer_compare_offset,
   op_node_call_is_from_dependency,
-  op_node_decode_utf8,
+  op_node_encoding_slice,
   op_transcode,
 } = core.ops;
 
@@ -91,8 +90,6 @@ const {
   asciiToBytes,
   base64ToBytes,
   base64UrlToBytes,
-  bytesToAscii,
-  bytesToUtf16le,
   hexToBytes,
   utf16leToBytes,
 } = core.loadExtScript("ext:deno_node/internal_binding/_utils.ts");
@@ -710,10 +707,47 @@ Buffer.prototype.swap64 = function swap64() {
 };
 
 function decodeUtf8(buffer, start, end) {
-  return op_node_decode_utf8(
+  return op_node_encoding_slice(
     buffer,
     start,
     end,
+    0,
+  );
+}
+
+function decodeLatin1(buffer, start, end) {
+  return op_node_encoding_slice(
+    buffer,
+    start,
+    end,
+    1,
+  );
+}
+
+function decodeAscii(buffer, start, end) {
+  return op_node_encoding_slice(
+    buffer,
+    start,
+    end,
+    2,
+  );
+}
+
+function decodeUtf16le(buffer, start, end) {
+  return op_node_encoding_slice(
+    buffer,
+    start,
+    end,
+    3,
+  );
+}
+
+function encodeHex(buffer, start, end) {
+  return op_node_encoding_slice(
+    buffer,
+    start,
+    end,
+    4,
   );
 }
 
@@ -995,11 +1029,7 @@ Buffer.prototype.lastIndexOf = function lastIndexOf(
 };
 
 Buffer.prototype.asciiSlice = function asciiSlice(offset, length) {
-  if (offset === 0 && length === this.length) {
-    return bytesToAscii(this);
-  } else {
-    return bytesToAscii(TypedArrayPrototypeSlice(this, offset, length));
-  }
+  return decodeAscii(this, offset, length);
 };
 
 Buffer.prototype.asciiWrite = function asciiWrite(string, offset, length) {
@@ -1082,11 +1112,11 @@ Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
 };
 
 Buffer.prototype.hexSlice = function hexSlice(offset, length) {
-  return _hexSlice(this, offset, length);
+  return encodeHex(this, offset, length);
 };
 
 Buffer.prototype.latin1Slice = function latin1Slice(offset, length) {
-  return _latin1Slice(this, offset, length);
+  return decodeLatin1(this, offset, length);
 };
 
 Buffer.prototype.latin1Write = function latin1Write(
@@ -1107,11 +1137,7 @@ Buffer.prototype.latin1Write = function latin1Write(
 };
 
 Buffer.prototype.ucs2Slice = function ucs2Slice(offset, length) {
-  if (offset === 0 && length === this.length) {
-    return bytesToUtf16le(this);
-  } else {
-    return bytesToUtf16le(TypedArrayPrototypeSlice(this, offset, length));
-  }
+  return decodeUtf16le(this, offset, length);
 };
 
 Buffer.prototype.ucs2Write = function ucs2Write(string, offset, length) {
@@ -1249,55 +1275,6 @@ function fromArrayBuffer(obj, byteOffset, length) {
   }
 
   return new FastBuffer(obj, byteOffset, length);
-}
-
-function _base64Slice(buf, start, end) {
-  if (start === 0 && end === buf.length && end <= 4096) {
-    return op_base64_encode(buf);
-  }
-  return op_base64_encode_from_buffer(buf, start, end - start);
-}
-const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
-
-function _utf8Slice(buf, start, end) {
-  try {
-    // deno-lint-ignore prefer-primordials
-    return decoder.decode(buf.slice(start, end));
-  } catch (err) {
-    if (ObjectPrototypeIsPrototypeOf(TypeErrorPrototype, err)) {
-      throw new NodeError("ERR_STRING_TOO_LONG", "String too long");
-    }
-    throw err;
-  }
-}
-
-function _latin1Slice(buf, start, end) {
-  let ret = "";
-  if (!start || start < 0) {
-    start = 0;
-  }
-  if (end === undefined || end > buf.length) {
-    end = buf.length;
-  }
-  for (let i = start; i < end; ++i) {
-    ret += StringFromCharCode(buf[i]);
-  }
-  return ret;
-}
-
-function _hexSlice(buf, start, end) {
-  const len = buf.length;
-  if (!start || start < 0) {
-    start = 0;
-  }
-  if (!end || end < 0 || end > len) {
-    end = len;
-  }
-  let out = "";
-  for (let i = start; i < end; ++i) {
-    out += hexSliceLookupTable[buf[i]];
-  }
-  return out;
 }
 
 function adjustOffset(offset, length) {
@@ -2206,18 +2183,6 @@ function blitBuffer(src, dst, offset, byteLength = Infinity) {
   dst.set(src, offset);
   return bytesToWrite;
 }
-
-const hexSliceLookupTable = function () {
-const alphabet = "0123456789abcdef";
-const table = [];
-for (let i = 0; i < 16; ++i) {
-  const i16 = i * 16;
-  for (let j = 0; j < 16; ++j) {
-    table[i16 + j] = alphabet[i] + alphabet[j];
-  }
-}
-return table;
-}();
 
 function readUInt48LE(buf, offset = 0) {
   validateNumber(offset, "offset");

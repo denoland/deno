@@ -389,6 +389,23 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
+// Regression test for https://github.com/denoland/deno/issues/34399
+// When stdin has been put into raw mode by user code (e.g. ts-node calling
+// `process.stdin.setRawMode(true)`), the prompt's line-buffered `read_line`
+// would hang because Enter delivers `\r` and ECHO is off. Verify we bail
+// out with a clear message and deny the permission instead.
+#[test(flaky)]
+fn permissions_prompt_raw_stdin() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_prompt_raw_stdin.ts"])
+    .with_pty(|mut console| {
+      console.expect("stdin is in raw mode");
+      console.expect("Run again with --allow-env");
+      console.expect("STATUS: denied");
+    });
+}
+
 #[test(flaky)]
 fn permission_request_long() {
   TestContext::default()
@@ -2577,6 +2594,29 @@ fn broken_stdout_repl() {
   assert_not_contains!(stderr, "panic");
 }
 
+// Regression test for https://github.com/denoland/deno/issues/16308 — when
+// `println!` panics on a broken stdout pipe (e.g. `deno | cls` on Windows),
+// the panic hook should exit cleanly instead of printing the bug-report banner.
+#[test]
+fn broken_stdout_no_panic_banner() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("info")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap();
+  assert_not_contains!(stderr, "Deno has panicked");
+  assert_not_contains!(stderr, "panicked at");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn websocketstream_ping() {
   let _g = util::http_server();
@@ -3294,6 +3334,17 @@ fn node_process_stdin_unref_with_pty() {
 }
 
 #[test]
+fn stdin_readable_cancel_with_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/stdin_readable_cancel.ts"])
+    .with_pty(|mut console| {
+      console.expect("CANCELLED");
+      console.expect("DONE");
+    });
+}
+
+#[test]
 async fn listen_tls_alpn() {
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
@@ -3577,6 +3628,27 @@ fn readline_multi_prompt_pty() {
       console.expect("Q2?");
       console.write_line("world");
       console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/17047.
+// Verifies that permission prompts wait for an active user-space stdin prompt
+// instead of racing it and consuming the user's answer.
+#[test]
+fn readline_permission_prompt_interleaving_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_permission_prompt_interleaving.ts"])
+    .with_pty(|mut console| {
+      console.expect("Project?");
+      console.write_line("demo");
+      console.expect("ANSWER:demo");
+      console.expect("Deno requests read access to");
+      console.expect("Allow?");
+      console.human_delay();
+      console.write_line_raw("n");
+      console.expect("Denied read access to");
+      console.expect("READ_ERROR:NotCapable");
     });
 }
 

@@ -229,8 +229,8 @@ unsafe extern "C" fn h2_stream_close_cb(
   handle: *mut deno_core::uv_compat::UvHandle,
 ) {
   // The stream handle was a UvTcp allocated by the TCP cppgc object.
-  // Now that we've taken ownership via detach(), we're responsible for
-  // freeing the memory.
+  // `consume_stream` transferred ownership to the session via
+  // `TCPWrap::detach`, so the session is now responsible for freeing it.
   // SAFETY: handle was allocated by Box::into_raw and ownership transferred via detach
   let _ = unsafe { Box::from_raw(handle as *mut deno_core::uv_compat::UvTcp) };
 }
@@ -2776,7 +2776,17 @@ impl Http2Session {
   fn consume_stream(&self, #[cppgc] tcp: &crate::ops::tcp_wrap::TCPWrap) {
     // SAFETY: self.inner was allocated by Box::into_raw and is valid
     let session = unsafe { &mut *self.inner };
-    let stream = tcp.stream_ptr();
+    // Take ownership of the underlying TCP handle away from the `TCPWrap`. The
+    // session now owns the `UvTcp` allocation and is solely responsible for
+    // freeing it (via `h2_stream_close_cb`). Without this transfer both the
+    // `TCPWrap` and the session would free the same allocation, causing a
+    // double free / use-after-free.
+    let stream = tcp.detach() as *mut deno_core::uv_compat::UvStream;
+    if stream.is_null() {
+      // The TCP handle was never allocated or was already detached; nothing to
+      // consume.
+      return;
+    }
 
     // Save the original stream.data (LibUvStreamWrap's StreamHandleData)
     // before overwriting it with our session pointer.

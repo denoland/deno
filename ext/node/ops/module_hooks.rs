@@ -18,8 +18,15 @@ struct PendingLoad {
   url: String,
 }
 
-/// Load hook result: (source, format). Format is e.g. "commonjs", "module".
-type LoadResult = (Option<String>, Option<String>);
+/// Load hook result: (source, format, effective_url).
+///
+/// - `source` is `Some` when a hook provided source directly.
+/// - `format` is e.g. "commonjs", "module", "builtin".
+/// - `effective_url` is the URL the JS hook chain ultimately delegated to
+///   via `nextLoad(newUrl)`. Only meaningful when `source` is `None`
+///   (fallthrough) and the user changed the URL inside their load hook,
+///   so the Rust default loader knows which URL to actually fetch from.
+type LoadResult = (Option<String>, Option<String>, Option<String>);
 type LoadSender =
   deno_core::futures::channel::oneshot::Sender<Result<LoadResult, String>>;
 
@@ -131,8 +138,8 @@ impl LoaderHookRegistry {
   }
 
   /// Push a load request and return a receiver for the response.
-  /// `Ok((Some(source), format))` = hook provided source,
-  /// `Ok((None, _))` = fallthrough.
+  /// `Ok((Some(source), format, _))` = hook provided source,
+  /// `Ok((None, _, effective_url))` = fallthrough, optionally redirected.
   pub fn push_load(
     &self,
     url: String,
@@ -215,6 +222,9 @@ pub fn op_module_default_resolve(
 }
 
 /// Respond to a load request. `source` is null to delegate to default loading.
+/// `effective_url` is the URL the user's load hook chain delegated to via
+/// `nextLoad(newUrl)`; the Rust default loader fetches source from there
+/// while keeping the original URL as the module's identity.
 #[op2]
 pub fn op_module_hooks_respond_load(
   state: &mut OpState,
@@ -222,12 +232,13 @@ pub fn op_module_hooks_respond_load(
   #[string] source: Option<String>,
   #[string] format: Option<String>,
   #[string] error: Option<String>,
+  #[string] effective_url: Option<String>,
 ) {
   let registry = state.borrow::<LoaderHookRegistry>().clone();
   let result: Result<LoadResult, String> = if let Some(err) = error {
     Err(err)
   } else {
-    Ok((source, format))
+    Ok((source, format, effective_url))
   };
   // Fulfill piggybacking waiters.
   if let Some(key) = registry.load_id_keys.borrow_mut().remove(&id)

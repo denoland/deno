@@ -219,6 +219,7 @@ pub async fn execute_script(
         .run_deno_task(
           &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
           None,
+          None,
           "",
           &TaskDefinition {
             command: Some(task_flags.task.as_ref().unwrap().to_string()),
@@ -232,16 +233,14 @@ pub async fn execute_script(
         .await;
     }
 
-    for task_config in &packages_task_configs {
-      let exit_code = task_runner
-        .run_tasks(task_config, name, &kill_signal, cli_options.argv())
-        .await?;
-      if exit_code > 0 {
-        return Ok(exit_code);
-      }
-    }
-
-    Ok(0)
+    task_runner
+      .run_all_tasks(
+        &packages_task_configs,
+        name,
+        &kill_signal,
+        cli_options.argv(),
+      )
+      .await
   })
   .await
 }
@@ -249,7 +248,10 @@ pub async fn execute_script(
 #[derive(Clone, Copy)]
 struct ParallelInfo {
   color_index: usize,
-  name_pad_width: usize,
+  label_pad_width: usize,
+  /// When true, the prefix label includes the package name (`[pkg#task]`) so
+  /// identically-named tasks from sibling workspace members stay distinct.
+  include_package: bool,
 }
 
 /// For each task that could run concurrently with at least one other task,
@@ -301,6 +303,40 @@ fn compute_concurrent_task_color_indices(
   color_indices
 }
 
+/// Returns the workspace member's display name for a task's prefix label —
+/// its `name` from deno.json/package.json if set, otherwise the folder's
+/// directory name as a fallback so unnamed sibling packages stay
+/// distinguishable. Tasks from the workspace root get no fallback (their
+/// root folder name is typically not a meaningful package name).
+fn task_label_name<'a>(
+  task: &ResolvedTask<'a>,
+  workspace_root_url: &Url,
+) -> Option<&'a str> {
+  if let Some(name) = task.task_or_script.package_name() {
+    return Some(name);
+  }
+  if task.task_or_script.folder_url() == workspace_root_url {
+    return None;
+  }
+  workspace_folder_dir_name(task.task_or_script.folder_url())
+}
+
+/// Length of the inner part of the prefix label (without the surrounding
+/// brackets) — used to right-align brackets across concurrent tasks.
+fn label_inner_len(
+  task: &ResolvedTask<'_>,
+  include_package: bool,
+  workspace_root_url: &Url,
+) -> usize {
+  if include_package
+    && let Some(pkg) = task_label_name(task, workspace_root_url)
+  {
+    pkg.len() + 1 + task.name.len()
+  } else {
+    task.name.len()
+  }
+}
+
 fn colorize_task_prefix(label: &str, color_index: usize) -> String {
   match color_index % 6 {
     0 => colors::cyan(label).to_string(),
@@ -315,6 +351,10 @@ fn colorize_task_prefix(label: &str, color_index: usize) -> String {
 struct RunSingleOptions<'a> {
   task_name: &'a str,
   package_name: Option<&'a str>,
+  /// Display name used in the parallel-mode prefix label only. Falls back to
+  /// the folder's directory name when the package itself is unnamed (and the
+  /// folder isn't the workspace root). May be `None`.
+  label_name: Option<&'a str>,
   script: &'a str,
   cwd: PathBuf,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
@@ -337,33 +377,52 @@ struct TaskRunner<'a> {
 }
 
 impl<'a> TaskRunner<'a> {
-  pub async fn run_tasks(
+  /// Topologically sort all matched tasks across the given packages into a
+  /// single flat list, then run them through `run_tasks_in_parallel` so tasks
+  /// from sibling packages execute concurrently.
+  pub async fn run_all_tasks(
     &self,
-    pkg_tasks_config: &PackageTaskInfo,
+    packages: &'a [PackageTaskInfo],
     task_name: &str,
     kill_signal: &KillSignal,
-    argv: &[String],
+    argv: &'a [String],
   ) -> Result<i32, deno_core::anyhow::Error> {
-    match sort_tasks_topo(pkg_tasks_config, task_name) {
-      Ok(sorted) => self.run_tasks_in_parallel(sorted, kill_signal, argv).await,
-      Err(err) => match err {
-        TaskError::NotFound(name) => {
-          if self.task_flags.is_run {
-            return Err(anyhow!("Task not found: {}", name));
+    let mut sorted: Vec<ResolvedTask<'a>> = Vec::new();
+    for pkg in packages {
+      if let Err(err) = sort_tasks_topo(pkg, &mut sorted) {
+        return match err {
+          TaskError::NotFound(name) => {
+            if self.task_flags.is_run {
+              return Err(anyhow!("Task not found: {}", name));
+            }
+            log::error!("Task not found: {}", name);
+            if log::log_enabled!(log::Level::Error) {
+              self.print_available_tasks(&pkg.tasks_config)?;
+            }
+            Ok(1)
           }
-
-          log::error!("Task not found: {}", name);
-          if log::log_enabled!(log::Level::Error) {
-            self.print_available_tasks(&pkg_tasks_config.tasks_config)?;
+          TaskError::TaskDepCycle { path } => {
+            log::error!("Task cycle detected: {}", path.join(" -> "));
+            Ok(1)
           }
-          Ok(1)
-        }
-        TaskError::TaskDepCycle { path } => {
-          log::error!("Task cycle detected: {}", path.join(" -> "));
-          Ok(1)
-        }
-      },
+        };
+      }
     }
+
+    if sorted.is_empty() {
+      if self.task_flags.is_run {
+        return Err(anyhow!("Task not found: {}", task_name));
+      }
+      log::error!("Task not found: {}", task_name);
+      if log::log_enabled!(log::Level::Error)
+        && let Some(pkg) = packages.first()
+      {
+        self.print_available_tasks(&pkg.tasks_config)?;
+      }
+      return Ok(1);
+    }
+
+    self.run_tasks_in_parallel(sorted, kill_signal, argv).await
   }
 
   pub fn print_available_tasks(
@@ -384,15 +443,33 @@ impl<'a> TaskRunner<'a> {
     kill_signal: &KillSignal,
     args: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
+    let workspace_root_url: &Url =
+      self.cli_options.workspace().root_dir_url().as_ref();
     let concurrent_task_color_indices = if self.task_flags.no_prefix {
       HashMap::new()
     } else {
       compute_concurrent_task_color_indices(&tasks)
     };
-    let max_task_name_len = tasks
+    // Include the package name in prefix labels when concurrent tasks span
+    // more than one workspace member.
+    let include_package = {
+      let mut seen: HashSet<&Url> = HashSet::new();
+      let mut multi = false;
+      for t in &tasks {
+        if !concurrent_task_color_indices.contains_key(&t.id) {
+          continue;
+        }
+        if seen.insert(t.task_or_script.folder_url()) && seen.len() > 1 {
+          multi = true;
+          break;
+        }
+      }
+      multi
+    };
+    let max_label_len = tasks
       .iter()
       .filter(|t| concurrent_task_color_indices.contains_key(&t.id))
-      .map(|t| t.name.len())
+      .map(|t| label_inner_len(t, include_package, workspace_root_url))
       .max()
       .unwrap_or(0);
 
@@ -401,7 +478,9 @@ impl<'a> TaskRunner<'a> {
       running: HashSet<usize>,
       tasks: &'a [ResolvedTask<'a>],
       concurrent_task_color_indices: HashMap<usize, usize>,
-      max_task_name_len: usize,
+      max_label_len: usize,
+      include_package: bool,
+      workspace_root_url: &'a Url,
     }
 
     impl<'a> PendingTasksContext<'a> {
@@ -454,8 +533,10 @@ impl<'a> TaskRunner<'a> {
             .get(&task.id)
             .map(|&color_index| ParallelInfo {
               color_index,
-              name_pad_width: self.max_task_name_len,
+              label_pad_width: self.max_label_len,
+              include_package: self.include_package,
             });
+          let label_name = task_label_name(task, self.workspace_root_url);
           return Some(
             async move {
               match task.task_or_script {
@@ -464,6 +545,7 @@ impl<'a> TaskRunner<'a> {
                     .run_deno_task(
                       task.task_or_script.folder_url(),
                       task.task_or_script.package_name(),
+                      label_name,
                       task.name,
                       def,
                       kill_signal,
@@ -477,6 +559,7 @@ impl<'a> TaskRunner<'a> {
                     .run_npm_script(
                       task.task_or_script.folder_url(),
                       task.task_or_script.package_name(),
+                      label_name,
                       task.name,
                       &details.tasks,
                       kill_signal,
@@ -500,7 +583,9 @@ impl<'a> TaskRunner<'a> {
       running: HashSet::with_capacity(self.concurrency),
       tasks: &tasks,
       concurrent_task_color_indices,
-      max_task_name_len,
+      max_label_len,
+      include_package,
+      workspace_root_url,
     };
 
     let mut queue = futures_unordered::FuturesUnordered::new();
@@ -542,6 +627,7 @@ impl<'a> TaskRunner<'a> {
     &self,
     dir_url: &Url,
     package_name: Option<&str>,
+    label_name: Option<&str>,
     task_name: &str,
     definition: &TaskDefinition,
     kill_signal: KillSignal,
@@ -579,6 +665,7 @@ impl<'a> TaskRunner<'a> {
       .run_single(RunSingleOptions {
         task_name,
         package_name,
+        label_name,
         script: command,
         cwd,
         custom_commands,
@@ -598,6 +685,7 @@ impl<'a> TaskRunner<'a> {
     &self,
     dir_url: &Url,
     package_name: Option<&str>,
+    label_name: Option<&str>,
     task_name: &str,
     scripts: &IndexMap<String, String>,
     kill_signal: KillSignal,
@@ -634,6 +722,7 @@ impl<'a> TaskRunner<'a> {
           .run_single(RunSingleOptions {
             task_name,
             package_name,
+            label_name,
             script,
             cwd: cwd.to_path_buf(),
             custom_commands: custom_commands.clone(),
@@ -659,6 +748,7 @@ impl<'a> TaskRunner<'a> {
     let RunSingleOptions {
       task_name,
       package_name,
+      label_name,
       script,
       cwd,
       custom_commands,
@@ -677,9 +767,16 @@ impl<'a> TaskRunner<'a> {
     let (stdio, prefix_handles) = if let Some(info) = parallel_info {
       // Right-align the entire `[name]` block so brackets line up across rows,
       // putting the leading padding spaces *outside* the brackets.
-      let label = format!("[{}]", task_name);
+      let inner: Cow<str> = if info.include_package
+        && let Some(pkg) = label_name
+      {
+        Cow::Owned(format!("{}#{}", pkg, task_name))
+      } else {
+        Cow::Borrowed(task_name)
+      };
+      let label = format!("[{}]", inner);
       let padded_label =
-        format!("{:>width$}", label, width = info.name_pad_width + 2);
+        format!("{:>width$}", label, width = info.label_pad_width + 2);
       let prefix =
         format!("{} ", colorize_task_prefix(&padded_label, info.color_index));
       let (io, handles) = task_runner::make_prefixed_task_io(prefix);
@@ -760,8 +857,8 @@ struct ResolvedTask<'a> {
 
 fn sort_tasks_topo<'a>(
   pkg_task_config: &'a PackageTaskInfo,
-  task_name: &str,
-) -> Result<Vec<ResolvedTask<'a>>, TaskError> {
+  sorted: &mut Vec<ResolvedTask<'a>>,
+) -> Result<(), TaskError> {
   trait TasksConfig {
     fn task(&self, name: &str) -> Option<(TaskOrScript<'_>, &dyn TasksConfig)>;
   }
@@ -833,17 +930,11 @@ fn sort_tasks_topo<'a>(
     Ok(id)
   }
 
-  let mut sorted: Vec<ResolvedTask<'a>> = vec![];
-
   for name in &pkg_task_config.matched_tasks {
-    sort_visit(name, &mut sorted, Vec::new(), &pkg_task_config.tasks_config)?;
+    sort_visit(name, sorted, Vec::new(), &pkg_task_config.tasks_config)?;
   }
 
-  if sorted.is_empty() {
-    return Err(TaskError::NotFound(task_name.to_string()));
-  }
-
-  Ok(sorted)
+  Ok(())
 }
 
 fn matches_package(
@@ -1184,28 +1275,65 @@ fn package_filter_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
 fn arg_to_task_name_filter(
   input: &str,
 ) -> Result<TaskNameFilter<'_>, AnyError> {
-  if !input.contains("*") {
+  // Parse an optional trailing exclusion group of the form `(!a|b|c)`.
+  // Exclusion values are matched against what each `*` in the pattern
+  // captures, e.g. `test:*(!e2e|interactive)` excludes `test:e2e` and
+  // `test:interactive` but still matches `test:unit`.
+  let (pattern, exclusions): (&str, Vec<&str>) = match input.rfind("(!") {
+    Some(open) if input.ends_with(')') => {
+      let inner = &input[open + 2..input.len() - 1];
+      (&input[..open], inner.split('|').collect())
+    }
+    _ => (input, Vec::new()),
+  };
+
+  if !pattern.contains('*') {
+    if !exclusions.is_empty() {
+      return Err(anyhow!(
+        "task name filter '{}' uses an exclusion group '(!...)' but has no wildcard '*' to exclude from",
+        input
+      ));
+    }
     return Ok(TaskNameFilter::Exact(input));
   }
 
-  let mut regex_str = regex::escape(input);
-  regex_str = regex_str.replace("\\*", ".*");
+  let mut regex_str = regex::escape(pattern);
+  regex_str = regex_str.replace("\\*", "(.*)");
   regex_str = format!("^{}", regex_str);
   let re = Regex::new(&regex_str)?;
-  Ok(TaskNameFilter::Regex(re))
+  let exclusions = exclusions.into_iter().map(String::from).collect();
+  Ok(TaskNameFilter::Regex { re, exclusions })
 }
 
 #[derive(Debug)]
 enum TaskNameFilter<'s> {
   Exact(&'s str),
-  Regex(regex::Regex),
+  Regex {
+    re: regex::Regex,
+    exclusions: Vec<String>,
+  },
 }
 
 impl TaskNameFilter<'_> {
   fn matches(&self, name: &str) -> bool {
     match self {
       Self::Exact(n) => *n == name,
-      Self::Regex(re) => re.is_match(name),
+      Self::Regex { re, exclusions } => {
+        let Some(caps) = re.captures(name) else {
+          return false;
+        };
+        if exclusions.is_empty() {
+          return true;
+        }
+        for i in 1..caps.len() {
+          if let Some(m) = caps.get(i)
+            && exclusions.iter().any(|e| e == m.as_str())
+          {
+            return false;
+          }
+        }
+        true
+      }
     }
   }
 }
@@ -1226,12 +1354,36 @@ mod tests {
     ));
     assert!(matches!(
       arg_to_task_name_filter("test*").unwrap(),
-      TaskNameFilter::Regex(_)
+      TaskNameFilter::Regex { .. }
     ));
 
     let filter = arg_to_task_name_filter("test:*").unwrap();
     assert!(filter.matches("test:deno"));
     assert!(filter.matches("test:dprint"));
     assert!(!filter.matches("update:latest:deno"));
+  }
+
+  #[test]
+  fn test_arg_to_task_name_filter_exclusion() {
+    let filter = arg_to_task_name_filter("test:*(!e2e|interactive)").unwrap();
+    assert!(filter.matches("test:unit"));
+    assert!(filter.matches("test:integration"));
+    assert!(!filter.matches("test:e2e"));
+    assert!(!filter.matches("test:interactive"));
+    assert!(!filter.matches("update:latest:deno"));
+
+    let filter = arg_to_task_name_filter("*(!build)").unwrap();
+    assert!(filter.matches("test"));
+    assert!(filter.matches("lint"));
+    assert!(!filter.matches("build"));
+
+    let filter = arg_to_task_name_filter("test:*(!e2e)").unwrap();
+    assert!(filter.matches("test:e2e:smoke"));
+    assert!(!filter.matches("test:e2e"));
+  }
+
+  #[test]
+  fn test_arg_to_task_name_filter_exclusion_without_wildcard_errors() {
+    assert!(arg_to_task_name_filter("test(!e2e)").is_err());
   }
 }

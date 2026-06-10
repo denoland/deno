@@ -97,6 +97,7 @@ use sys_traits::EnvCurrentDir;
 use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
 use crate::binary::StandaloneModules;
+use crate::binary::transpile_runtime_module;
 use crate::code_cache::DenoCompileCodeCache;
 use crate::file_system::DenoRtSys;
 use crate::file_system::FileBackedVfs;
@@ -108,6 +109,7 @@ use crate::node::DenoRtNpmModuleLoader;
 use crate::node::DenoRtNpmReqResolver;
 
 struct SharedModuleLoaderState {
+  blob_store: Arc<BlobStore>,
   cjs_tracker: Arc<DenoRtCjsTracker>,
   code_cache: Option<Arc<DenoCompileCodeCache>>,
   modules: Arc<StandaloneModules>,
@@ -268,12 +270,12 @@ impl EmbeddedModuleLoader {
               url_or_path.into_url().map_err(JsErrorBox::from_err)
             })?,
         ),
-        PackageJsonDepValue::Workspace(version_req) => {
+        PackageJsonDepValue::Workspace { name, version_req } => {
           let pkg_folder = self
             .shared
             .workspace_resolver
             .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-              alias,
+              name.as_deref().unwrap_or(alias),
               version_req,
             )
             .map_err(JsErrorBox::from_err)?;
@@ -423,21 +425,25 @@ impl EmbeddedModuleLoader {
             )
             .await
             .map_err(JsErrorBox::from_err)?;
-          let code_cache_entry = match options.requested_module_type {
-            RequestedModuleType::None => shared.get_code_cache(
+          let module_type = module_type_from_media_and_requested_type(
+            code_source.media_type,
+            &options.requested_module_type,
+          );
+          // Only JavaScript modules produce a V8 code cache. Requesting one
+          // for other module types (JSON, Wasm, etc.) bumps the `FirstRun`
+          // strategy's pending counter via `get_sync` without a matching
+          // `set_sync`, preventing the cache from ever being serialized.
+          // See https://github.com/denoland/deno/issues/31766
+          let code_cache_entry = if module_type == ModuleType::JavaScript {
+            shared.get_code_cache(
               &code_source.specifier,
               code_source.source.as_bytes(),
-            ),
-            RequestedModuleType::Other(_)
-            | RequestedModuleType::Json
-            | RequestedModuleType::Text
-            | RequestedModuleType::Bytes => None,
+            )
+          } else {
+            None
           };
           Ok(deno_core::ModuleSource::new_with_redirect(
-            module_type_from_media_and_requested_type(
-              code_source.media_type,
-              &options.requested_module_type,
-            ),
+            module_type,
             loaded_module_source_to_module_source_code(code_source.source),
             &original_specifier,
             &code_source.specifier,
@@ -525,8 +531,16 @@ impl EmbeddedModuleLoader {
                   ModuleSourceCode::String(FastString::from_static(source))
                 }
               };
-              let code_cache_entry = shared
-                .get_code_cache(&module_specifier, module_source.as_bytes());
+              // CJS modules are always JavaScript, but gate on the module
+              // type anyway to keep the code cache contract uniform across all
+              // load paths: only JavaScript produces a V8 code cache.
+              // See https://github.com/denoland/deno/issues/31766
+              let code_cache_entry = if module_type == ModuleType::JavaScript {
+                shared
+                  .get_code_cache(&module_specifier, module_source.as_bytes())
+              } else {
+                None
+              };
               Ok(deno_core::ModuleSource::new_with_redirect(
                 module_type,
                 module_source,
@@ -539,9 +553,18 @@ impl EmbeddedModuleLoader {
           )
         } else {
           let module_source = module_source.into_for_v8();
-          let code_cache_entry = self
-            .shared
-            .get_code_cache(module_specifier, module_source.as_bytes());
+          // Only JavaScript modules produce a V8 code cache. Requesting the
+          // code cache for other module types (JSON, Wasm, etc.) would still
+          // bump the `FirstRun` strategy's pending counter via `get_sync`
+          // without a matching `set_sync`, preventing the cache from ever
+          // being serialized. See https://github.com/denoland/deno/issues/31766
+          let code_cache_entry = if module_type == ModuleType::JavaScript {
+            self
+              .shared
+              .get_code_cache(module_specifier, module_source.as_bytes())
+          } else {
+            None
+          };
           deno_core::ModuleLoadResponse::Sync(Ok(
             deno_core::ModuleSource::new_with_redirect(
               module_type,
@@ -607,6 +630,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
     self.resolve_inner(raw_specifier, referrer, kind)
   }
 
+  fn pump_event_loop_during_load(&self) -> bool {
+    // Load hooks respond through the async bridge, so the event loop must be
+    // pumped during the recursive load or the load deadlocks.
+    self.hook_registry.load_active.get()
+  }
+
   fn get_host_defined_options<'s>(
     &self,
     scope: &mut deno_core::v8::PinScope<'s, '_>,
@@ -627,25 +656,103 @@ impl ModuleLoader for EmbeddedModuleLoader {
     options: ModuleLoadOptions,
   ) -> deno_core::ModuleLoadResponse {
     if original_specifier.scheme() == "data" {
-      let data_url_text =
-        match deno_media_type::data_url::RawDataUrl::parse(original_specifier)
-          .and_then(|url| url.decode())
-        {
-          Ok(response) => response,
-          Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(
-              JsErrorBox::type_error(format!("{:#}", err)),
-            ));
-          }
-        };
+      let raw_data_url = match deno_media_type::data_url::RawDataUrl::parse(
+        original_specifier,
+      ) {
+        Ok(raw) => raw,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(
+            JsErrorBox::type_error(format!("{:#}", err)),
+          ));
+        }
+      };
+      let media_type = raw_data_url.media_type();
+      let data_url_text = match raw_data_url.decode() {
+        Ok(text) => text,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(
+            JsErrorBox::type_error(format!("{:#}", err)),
+          ));
+        }
+      };
+      // Transpile when the data URL carries TypeScript/JSX, so compiled
+      // programs can dynamically import TypeScript built at runtime.
+      let code = match transpile_runtime_module(
+        original_specifier,
+        media_type,
+        data_url_text,
+      ) {
+        Ok(code) => code,
+        Err(err) => {
+          return deno_core::ModuleLoadResponse::Sync(Err(err));
+        }
+      };
       return deno_core::ModuleLoadResponse::Sync(Ok(
         deno_core::ModuleSource::new(
           deno_core::ModuleType::JavaScript,
-          ModuleSourceCode::String(data_url_text.into()),
+          ModuleSourceCode::String(code.into()),
           original_specifier,
           None,
         ),
       ));
+    }
+
+    if original_specifier.scheme() == "blob" {
+      let specifier = original_specifier.clone();
+      let Some(blob) = self.shared.blob_store.get_object_url(specifier.clone())
+      else {
+        return deno_core::ModuleLoadResponse::Sync(Err(
+          JsErrorBox::type_error(format!("Blob URL not found: {specifier}")),
+        ));
+      };
+      let requested_module_type = options.requested_module_type.clone();
+      return deno_core::ModuleLoadResponse::Async(
+        async move {
+          let bytes = blob.read_all().await;
+          let (media_type, maybe_charset) =
+            deno_media_type::resolve_media_type_and_charset_from_content_type(
+              &specifier,
+              Some(&blob.media_type),
+            );
+          let module_type = module_type_from_media_and_requested_type(
+            media_type,
+            &requested_module_type,
+          );
+          let source = match module_type {
+            ModuleType::Bytes | ModuleType::Wasm => {
+              ModuleSourceCode::Bytes(bytes.into_boxed_slice().into())
+            }
+            _ => {
+              // Mirror `deno run`'s charset-aware decoding (see
+              // `TextDecodedFile::decode` in cli/file_fetcher.rs) so blob
+              // sources honor the content-type charset and have a leading BOM
+              // stripped, instead of blindly assuming UTF-8.
+              let charset = maybe_charset.unwrap_or_else(|| {
+                deno_media_type::encoding::detect_charset(&specifier, &bytes)
+              });
+              let text =
+                deno_media_type::encoding::decode_owned_source(charset, bytes)
+                  .map_err(|err| {
+                    JsErrorBox::type_error(format!(
+                      "Failed decoding \"{specifier}\": {err}"
+                    ))
+                  })?;
+              // Transpile when the blob carries TypeScript/JSX, so compiled
+              // programs can dynamically import TypeScript built at runtime.
+              let text =
+                transpile_runtime_module(&specifier, media_type, text)?;
+              ModuleSourceCode::String(text.into())
+            }
+          };
+          Ok(deno_core::ModuleSource::new(
+            module_type,
+            source,
+            &specifier,
+            None,
+          ))
+        }
+        .boxed_local(),
+      );
     }
 
     // When load hooks are active, delegate to JS hooks first.
@@ -690,7 +797,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             }
           };
           match hook_result {
-            Ok((Some(source), _format)) => {
+            Ok((Some(source), _format, _effective_url)) => {
               // Hook provided transformed source
               Ok(deno_core::ModuleSource::new(
                 deno_core::ModuleType::JavaScript,
@@ -699,12 +806,20 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 None,
               ))
             }
-            Ok((None, _)) => {
+            Ok((None, _, effective_url)) => {
               // Fallthrough: hooks didn't intercept; route through the same
               // default loader that an un-hooked load would use, so npm
-              // packages and embedded modules resolve correctly.
+              // packages and embedded modules resolve correctly. If the
+              // user's load hook chain delegated via `nextLoad(newUrl)`,
+              // fetch source from that URL while keeping the module's
+              // identity at the original specifier (matches Node).
+              let fetch_specifier = effective_url
+                .as_deref()
+                .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
+                .filter(|u| u != &specifier);
+              let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
               let response = this.load_default(
-                &specifier,
+                load_url,
                 maybe_referrer.as_ref(),
                 ModuleLoadOptions {
                   is_dynamic_import,
@@ -712,9 +827,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
                   requested_module_type,
                 },
               );
-              match response {
-                deno_core::ModuleLoadResponse::Sync(r) => r,
-                deno_core::ModuleLoadResponse::Async(fut) => fut.await,
+              let source = match response {
+                deno_core::ModuleLoadResponse::Sync(r) => r?,
+                deno_core::ModuleLoadResponse::Async(fut) => fut.await?,
+              };
+              if fetch_specifier.is_some() {
+                Ok(deno_core::ModuleSource::new(
+                  source.module_type,
+                  source.code,
+                  &specifier,
+                  source.code_cache,
+                ))
+              } else {
+                Ok(source)
               }
             }
             Err(err) => Err(JsErrorBox::generic(err)),
@@ -818,22 +943,48 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     path: &std::path::Path,
   ) -> Result<FastString, JsErrorBox> {
-    let file_entry = self
-      .shared
-      .vfs
-      .file_entry(path)
-      .map_err(JsErrorBox::from_err)?;
-    let file_bytes = self
-      .shared
-      .vfs
-      .read_file_offset_with_len(
-        file_entry.transpiled_offset.unwrap_or(file_entry.offset),
-      )
-      .map_err(JsErrorBox::from_err)?;
-    Ok(match from_utf8_lossy_cow(file_bytes) {
-      Cow::Borrowed(s) => FastString::from_static(s),
-      Cow::Owned(s) => s.into(),
-    })
+    match self.shared.vfs.file_entry(path) {
+      Ok(file_entry) => {
+        let file_bytes = self
+          .shared
+          .vfs
+          .read_file_offset_with_len(
+            file_entry.transpiled_offset.unwrap_or(file_entry.offset),
+          )
+          .map_err(JsErrorBox::from_err)?;
+        Ok(match from_utf8_lossy_cow(file_bytes) {
+          Cow::Borrowed(s) => FastString::from_static(s),
+          Cow::Owned(s) => s.into(),
+        })
+      }
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+        // Fall back to the host filesystem. Mirrors the fallback
+        // `StandaloneModules::read` does for the ESM loader path.
+        // Without it, a CJS `require()` that resolves to a file
+        // outside the embedded VFS (HMR / dev mode, or a dynamic
+        // import that landed on a host-FS path) would fail with
+        // "path not found" even though the file exists on disk and
+        // the permission layer already allowed reading it.
+        use sys_traits::FsRead;
+        #[allow(
+          clippy::disallowed_types,
+          reason = "use real file system because not in vfs"
+        )]
+        let bytes = sys_traits::impls::RealSys
+          .fs_read(path)
+          .map_err(JsErrorBox::from_err)?;
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        // Mirror the ESM loader path: TypeScript/JSX read from disk at
+        // runtime hasn't been transpiled at compile time, so transpile
+        // here. Non-TS media types are returned verbatim.
+        let specifier = deno_path_util::url_from_file_path(path)
+          .map_err(JsErrorBox::from_err)?;
+        let media_type = MediaType::from_specifier(&specifier);
+        let text = transpile_runtime_module(&specifier, media_type, text)?;
+        Ok(text.into())
+      }
+      Err(err) => Err(JsErrorBox::from_err(err)),
+    }
   }
 
   fn is_maybe_cjs(
@@ -842,6 +993,17 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
   ) -> Result<bool, PackageJsonLoadError> {
     let media_type = MediaType::from_specifier(specifier);
     self.shared.cjs_tracker.is_maybe_cjs(specifier, media_type)
+  }
+
+  fn is_maybe_cjs_from_require(
+    &self,
+    specifier: &Url,
+  ) -> Result<bool, PackageJsonLoadError> {
+    let media_type = MediaType::from_specifier(specifier);
+    self
+      .shared
+      .cjs_tracker
+      .is_maybe_cjs_from_require(specifier, media_type)
   }
 }
 
@@ -1172,8 +1334,10 @@ pub async fn run(
       None
     }
   };
+  let blob_store = Arc::new(BlobStore::default());
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {
+      blob_store: blob_store.clone(),
       cjs_tracker: cjs_tracker.clone(),
       code_cache: code_cache.clone(),
       modules,
@@ -1260,7 +1424,7 @@ pub async fn run(
     maybe_initial_cwd: None,
   };
   let worker_factory = LibMainWorkerFactory::new(
-    Arc::new(BlobStore::default()),
+    blob_store,
     code_cache.map(|c| c.for_deno_core()),
     sys.maybe_native_addon_loader(),
     feature_checker,
