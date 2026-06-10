@@ -46,7 +46,7 @@ use deno_permissions::PermissionsContainer;
 use deno_process::NpmProcessStateProviderRc;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
-use deno_web::BlobStore;
+use deno_web::BlobStoreTrait;
 use deno_web::InMemoryBroadcastChannel;
 use log::debug;
 use node_resolver::InNpmPackageChecker;
@@ -173,7 +173,7 @@ pub struct WorkerServiceOptions<
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TExtNodeSys: ExtNodeSys,
 > {
-  pub blob_store: Arc<BlobStore>,
+  pub blob_store: Arc<dyn BlobStoreTrait>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub deno_rt_native_addon_loader: Option<DenoRtNativeAddonLoaderRc>,
   pub feature_checker: Arc<FeatureChecker>,

@@ -1216,6 +1216,21 @@ Deno.test("[node/sqlite] StatementSync alive while iterator", () => {
   }
 });
 
+Deno.test("[node/sqlite] detached iterator callbacks keep state alive", async () => {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--quiet",
+      "--v8-flags=--expose-gc",
+      "tests/unit_node/testdata/sqlite_iterate_detached_gc.ts",
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stderr } = await command.output();
+  assertEquals(code, 0, new TextDecoder().decode(stderr));
+});
+
 Deno.test("sql.run inserts data", () => {
   using db = new DatabaseSync(":memory:");
   // @ts-expect-error createTagStore is a valid method

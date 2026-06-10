@@ -36,11 +36,15 @@ interface FormData extends DomIterable<string, FormDataEntryValue> {
   set(name: string, value: string | Blob, fileName?: string): void;
 }
 
-/** The constructor object for {@linkcode FormData}, used to create a new,
- * empty `FormData` object that can be populated with fields and submitted with
- * {@linkcode fetch}.
+/** Provides a way to construct a set of key/value pairs representing form
+ * fields and their values, which can then be sent using the {@linkcode fetch}
+ * API. It uses the same format a form would use if the encoding type were set
+ * to `"multipart/form-data"`.
  *
- * @category Fetch */
+ * @see https://developer.mozilla.org/docs/Web/API/FormData
+ *
+ * @category Fetch
+ */
 declare var FormData: {
   readonly prototype: FormData;
   new (): FormData;
@@ -503,9 +507,12 @@ interface EventSource extends EventTarget {
   ): void;
 }
 
-/** The constructor object for {@linkcode EventSource}, used to open a new
- * server-sent events connection to the given `url`. The object also exposes the
- * `CONNECTING`, `OPEN`, and `CLOSED` ready-state constants.
+/** The `EventSource` interface is a web content's interface to server-sent
+ * events. An `EventSource` instance opens a persistent connection to an HTTP
+ * server, which sends events in `text/event-stream` format. The connection
+ * remains open until closed by calling {@linkcode EventSource.close}.
+ *
+ * @see https://developer.mozilla.org/docs/Web/API/EventSource
  *
  * @category Fetch
  */

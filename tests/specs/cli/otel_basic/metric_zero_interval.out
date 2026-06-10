@@ -1,0 +1,33 @@
+{
+  "spans": [],
+  "logs": [],
+  "metrics": [
+    {
+      "name": "counter",
+      "description": "Example of a Counter",
+      "unit": "",
+      "metadata": [],
+      "sum": {
+        "dataPoints": [
+          {
+            "attributes": [
+              {
+                "key": "attribute",
+                "value": {
+                  "doubleValue": 1
+                }
+              }
+            ],
+            "startTimeUnixNano": [WILDCARD],
+            "timeUnixNano": [WILDCARD],
+            "exemplars": [],
+            "flags": 0,
+            "asDouble": 1
+          }
+        ],
+        "aggregationTemporality": 2,
+        "isMonotonic": true
+      }
+    }
+  ]
+}

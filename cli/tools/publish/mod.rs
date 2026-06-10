@@ -389,8 +389,8 @@ impl PublishPreparer {
             type_check_mode: self.cli_options.type_check_mode(),
           },
         )?;
-        // ignore unused parameter diagnostics that may occur due to fast check
-        // not having function body implementations
+        // ignore unused (type) parameter diagnostics that may occur due to fast
+        // check not having function body implementations
         for result in diagnostics_by_folder.by_ref() {
           let check_diagnostics = result?;
           let check_diagnostics =
