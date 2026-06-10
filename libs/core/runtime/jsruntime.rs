@@ -487,7 +487,17 @@ pub struct JsRuntimeState {
   /// is pending but V8 reports no stalled top-level await. Used to detect
   /// deadlocks and avoid spinning the event loop indefinitely.
   tla_stall_retries: Cell<u32>,
+  /// Optional Rust callback invoked once at the start of every event-loop
+  /// tick, with the main-context scope. Used by `deno_runtime` to drive
+  /// worker / `MessagePort` message delivery directly (drain a channel and
+  /// invoke a JS dispatcher) without a per-message async op + Promise. `None`
+  /// (the default) makes this a no-op.
+  event_loop_tick_callback: RefCell<Option<EventLoopTickCallback>>,
 }
+
+/// See [`JsRuntime::set_event_loop_tick_callback`].
+pub type EventLoopTickCallback =
+  Rc<dyn Fn(&mut v8::PinScope, &mut Context) -> Result<(), CoreError>>;
 
 #[derive(Default)]
 pub struct RuntimeOptions {
@@ -827,6 +837,7 @@ impl JsRuntime {
       callsite_prototype: None.into(),
       lazy_extensions,
       tla_stall_retries: Cell::new(0),
+      event_loop_tick_callback: RefCell::new(None),
     });
 
     // ...now we're moving on to ops; set them up, create `OpCtx` for each op
@@ -1851,6 +1862,16 @@ impl JsRuntime {
     self.inner.state.op_state.clone()
   }
 
+  /// Installs a callback invoked once at the start of every event-loop tick,
+  /// with the main-context scope. Intended for embedders that need to drive
+  /// native delivery directly into JS each tick (e.g. worker / `MessagePort`
+  /// message dispatch) without a per-event async op + Promise round-trip.
+  /// Pass `None`-producing logic by simply not calling this; only one callback
+  /// is supported (a later call replaces the earlier one).
+  pub fn set_event_loop_tick_callback(&self, cb: EventLoopTickCallback) {
+    *self.inner.state.event_loop_tick_callback.borrow_mut() = Some(cb);
+  }
+
   /// Returns the raw `uv_loop_t` pointer registered with this runtime,
   /// or `None` if no loop is registered.
   pub fn uv_loop_ptr(&self) -> Option<*mut uv_compat::uv_loop_t> {
@@ -2296,7 +2317,17 @@ impl JsRuntime {
       let context =
         v8::Local::new(isolate_scope, self.inner.main_realm.context());
       let mut scope = v8::ContextScope::new(isolate_scope, context);
-      self.poll_event_loop_inner(cx, &mut scope, poll_options)
+      // Drive any registered event-loop tick callback (e.g. worker /
+      // MessagePort message delivery) before the tick proper. No-op unless a
+      // callback was installed via `set_event_loop_tick_callback`.
+      let tick_cb = self.inner.state.event_loop_tick_callback.borrow().clone();
+      match tick_cb {
+        Some(cb) => match cb(&mut scope, cx) {
+          Ok(()) => self.poll_event_loop_inner(cx, &mut scope, poll_options),
+          Err(e) => Poll::Ready(Err(e)),
+        },
+        None => self.poll_event_loop_inner(cx, &mut scope, poll_options),
+      }
     };
 
     // Tell V8's CPU profiler whether we're about to go idle. When the event

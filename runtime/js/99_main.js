@@ -16,6 +16,7 @@ import {
   op_get_ext_import_meta_proto,
   op_internal_log,
   op_main_module,
+  op_message_dispatch_unregister,
   op_ppid,
   op_set_format_exception_callback,
   op_snapshot_options,
@@ -25,6 +26,7 @@ import {
   op_worker_post_message_raw,
   op_worker_recv_message,
   op_worker_recv_message_sync,
+  op_worker_register_message_dispatch,
   op_worker_sync_fetch,
 } from "ext:core/ops";
 const {
@@ -302,26 +304,34 @@ async function pollForMessages() {
       globalThis,
     );
   }
-  while (!isClosing) {
-    const recvMessage = op_worker_recv_message();
-    // In a Node.js worker, unref() the op promise to prevent it from
-    // keeping the event loop alive. This avoids the need to explicitly
-    // call self.close() or worker.terminate().
-    if (closeOnIdle) {
-      core.unrefOpPromise(recvMessage);
+  // Message delivery is driven from the Rust event loop: register the parent
+  // port + dispatcher, and the runtime drains the queue and invokes
+  // `dispatchWorkerMessage` directly, with no per-message Promise or microtask
+  // checkpoint. The recv op below stays pending purely as the keep-alive /
+  // ref-unref anchor and resolves `null` only when the channel closes.
+  // Guard against delivery after the worker has begun closing: the Rust pump
+  // may still hold already-queued messages when `close()` runs, and the old
+  // per-iteration `!isClosing` check must be preserved.
+  const dispatchId = op_worker_register_message_dispatch((data) => {
+    if (!isClosing) dispatchWorkerMessage(data);
+  });
+  try {
+    while (!isClosing) {
+      const recvMessage = op_worker_recv_message();
+      // In a Node.js worker, unref() the op promise to prevent it from
+      // keeping the event loop alive. This avoids the need to explicitly
+      // call self.close() or worker.terminate().
+      if (closeOnIdle) {
+        core.unrefOpPromise(recvMessage);
+      }
+      const data = await recvMessage;
+      if (data === null) break;
+      // Defensive: with Rust-driven dispatch the op only resolves on close,
+      // but dispatch any stray payload to preserve correctness.
+      dispatchWorkerMessage(data);
     }
-    const data = await recvMessage;
-    if (data === null) break;
-    dispatchWorkerMessage(data);
-    // Sync drain: process a limited batch of already-queued messages
-    // without going through the async op machinery. The batch limit
-    // prevents starvation of the event loop when message handlers
-    // synchronously post new messages (e.g. ping-pong patterns).
-    for (let i = 0; i < 1000 && !isClosing; i++) {
-      const syncData = op_worker_recv_message_sync();
-      if (syncData === null) break;
-      dispatchWorkerMessage(syncData);
-    }
+  } finally {
+    op_message_dispatch_unregister(dispatchId);
   }
 }
 

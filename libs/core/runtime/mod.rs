@@ -29,6 +29,7 @@ pub(crate) use jsrealm::UnrefedOps;
 pub use jsruntime::CompiledWasmModuleStore;
 pub use jsruntime::CreateRealmOptions;
 pub use jsruntime::CrossIsolateStore;
+pub use jsruntime::EventLoopTickCallback;
 pub use jsruntime::ExtensionTranspiler;
 pub(crate) use jsruntime::InitMode;
 pub use jsruntime::JsRuntime;
