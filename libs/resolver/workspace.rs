@@ -838,11 +838,33 @@ impl fmt::Display for WorkspaceResolverDiagnostic<'_> {
 type CompilerOptionsResolverCellRc =
   deno_maybe_sync::MaybeArc<RwLock<CompilerOptionsResolverRc>>;
 
+/// Collects the import map `scopes` keys that are keyed by an `npm:` specifier
+/// (e.g. `"npm:react@18.2.0"`). Computed once at resolver construction so the
+/// hot in-npm resolve path can gate on / match against the result without
+/// re-iterating every scope.
+fn collect_npm_specifier_scope_keys(
+  maybe_import_map: Option<&ImportMapWithDiagnostics>,
+) -> Vec<String> {
+  maybe_import_map
+    .map(|m| {
+      m.import_map
+        .scopes()
+        .filter(|s| s.key.starts_with("npm:"))
+        .map(|s| s.key.to_string())
+        .collect()
+    })
+    .unwrap_or_default()
+}
+
 #[derive(Debug)]
 pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   workspace_root: UrlRc,
   jsr_pkgs: Vec<ResolverWorkspaceJsrPackage>,
   maybe_import_map: Option<ImportMapWithDiagnostics>,
+  /// Import map `scopes` keyed by an `npm:` specifier (e.g.
+  /// `"npm:react@18.2.0"`), precomputed once so the hot in-npm resolve path
+  /// does not have to re-iterate every scope. Empty when no such scopes exist.
+  npm_specifier_scope_keys: Vec<String>,
   pkg_jsons: FolderScopedMap<PkgJsonResolverFolderConfig>,
   pkg_json_dep_resolution: PackageJsonDepResolution,
   sloppy_imports_options: SloppyImportsOptions,
@@ -1095,6 +1117,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
 
     let maybe_import_map =
       resolve_import_map(&sys, workspace, options.specified_import_map)?;
+    let npm_specifier_scope_keys =
+      collect_npm_specifier_scope_keys(maybe_import_map.as_ref());
     let jsr_pkgs = workspace.resolver_jsr_pkgs().collect::<Vec<_>>();
     let pkg_jsons = workspace
       .resolver_pkg_jsons()
@@ -1123,6 +1147,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       pkg_json_dep_resolution: options.pkg_json_dep_resolution,
       jsr_pkgs,
       maybe_import_map,
+      npm_specifier_scope_keys,
       pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       sloppy_imports_options: options.sloppy_imports_options,
       fs_cache_options: options.fs_cache_options,
@@ -1152,6 +1177,8 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
         import_map,
         diagnostics: Default::default(),
       });
+    let npm_specifier_scope_keys =
+      collect_npm_specifier_scope_keys(maybe_import_map.as_ref());
     let pkg_jsons = pkg_jsons
       .into_iter()
       .map(|pkg_json| {
@@ -1178,6 +1205,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       workspace_root,
       jsr_pkgs,
       maybe_import_map,
+      npm_specifier_scope_keys,
       pkg_jsons: FolderScopedMap::from_map(pkg_jsons),
       pkg_json_dep_resolution,
       sloppy_imports_options,
@@ -1330,12 +1358,9 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
   ///
   /// This is used to gate transitive npm specifier mapping so that the common
   /// case (no such scopes) does not pay the cost of looking up the npm package
-  /// a referrer belongs to.
+  /// a referrer belongs to. The set of keys is computed once at construction.
   pub fn has_npm_specifier_scopes(&self) -> bool {
-    self
-      .maybe_import_map
-      .as_ref()
-      .is_some_and(|m| m.import_map.scopes().any(|s| s.key.starts_with("npm:")))
+    !self.npm_specifier_scope_keys.is_empty()
   }
 
   /// Resolves a bare `specifier` imported from within the npm package
@@ -1368,11 +1393,12 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
     // Only consult the import map when a scope actually applies to this npm
     // package, so that the transitive dependencies of packages the user has
     // not scoped keep their normal node resolution (and top-level `imports`
-    // do not leak into them).
+    // do not leak into them). Matched against the precomputed `npm:` scope
+    // keys to avoid re-iterating every scope on the hot path.
     let referrer_str = package_referrer.as_str();
-    let has_matching_scope = import_map.scopes().any(|scope| {
-      scope.key == referrer_str
-        || (scope.key.ends_with('/') && referrer_str.starts_with(scope.key))
+    let has_matching_scope = self.npm_specifier_scope_keys.iter().any(|key| {
+      key == referrer_str
+        || (key.ends_with('/') && referrer_str.starts_with(key.as_str()))
     });
     if !has_matching_scope {
       return None;
