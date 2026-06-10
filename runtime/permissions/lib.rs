@@ -1345,6 +1345,34 @@ fn comparison_path(path: &Path) -> PathBuf {
   path.to_path_buf()
 }
 
+/// On Windows, strips a `\\?\` verbatim (extended-length) prefix from a path
+/// when it can be losslessly represented without it, so that the permission
+/// system treats `\\?\C:\foo` and `C:\foo` as the same path. The two forms
+/// refer to the same file, so a grant for one must apply to the other (see
+/// denoland/deno#18597).
+///
+/// `dunce::simplified` only strips the prefix when it is actually safe to do
+/// so: it leaves verbatim paths that contain `.`/`..` components (taken
+/// literally in verbatim mode), reserved device names (e.g. `CON`), or that
+/// are too long to be expressed as a regular path, because those forms are
+/// *not* equivalent to their stripped counterparts.
+#[cfg(windows)]
+#[inline]
+fn strip_verbatim_prefix(path: Cow<'_, Path>) -> Cow<'_, Path> {
+  let simplified = dunce::simplified(path.as_ref());
+  if simplified.as_os_str().len() == path.as_os_str().len() {
+    path
+  } else {
+    Cow::Owned(simplified.to_path_buf())
+  }
+}
+
+#[cfg(not(windows))]
+#[inline]
+fn strip_verbatim_prefix(path: Cow<'_, Path>) -> Cow<'_, Path> {
+  path
+}
+
 impl<'a> PathQueryDescriptor<'a> {
   pub fn new(
     sys: &impl sys_traits::EnvCurrentDir,
@@ -1354,6 +1382,8 @@ impl<'a> PathQueryDescriptor<'a> {
     if path_bytes.is_empty() {
       return Err(PathResolveError::EmptyPath);
     }
+    let path = strip_verbatim_prefix(path);
+    let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
       && path_bytes.starts_with(br"\\.\")
       && !path_bytes.contains(&b':');
@@ -1382,6 +1412,7 @@ impl<'a> PathQueryDescriptor<'a> {
   }
 
   pub fn new_known_absolute(path: Cow<'a, Path>) -> Self {
+    let path = strip_verbatim_prefix(path);
     let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
       && path_bytes.starts_with(br"\\.\")
@@ -1546,6 +1577,7 @@ impl PathDescriptor {
   }
 
   pub fn new_known_cwd(path: Cow<'_, Path>, cwd: &Path) -> Self {
+    let path = strip_verbatim_prefix(path);
     let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
       && path_bytes.starts_with(br"\\.\")
@@ -9651,6 +9683,57 @@ mod tests {
       perms
         .check_open(
           Cow::Borrowed(Path::new("c:\\users\\admin\\secret\\data.txt")),
+          OpenAccessKind::Read,
+          Some("api"),
+        )
+        .is_err()
+    );
+  }
+
+  #[test]
+  #[cfg(windows)]
+  fn check_path_verbatim_prefix() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        // Grant via a regular path and via a `\\?\` verbatim path.
+        allow_read: Some(svec!["C:\\Users\\Admin", "\\\\?\\C:\\Data"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // A `\\?\` verbatim request must match a grant made with a regular path,
+    // since both refer to the same file (denoland/deno#18597).
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("\\\\?\\C:\\Users\\Admin\\file.txt")),
+          OpenAccessKind::Read,
+          Some("api"),
+        )
+        .is_ok()
+    );
+
+    // A regular request must likewise match a grant made with a `\\?\` path.
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("C:\\Data\\file.txt")),
+          OpenAccessKind::Read,
+          Some("api"),
+        )
+        .is_ok()
+    );
+
+    // An unrelated path must still be denied.
+    assert!(
+      perms
+        .check_open(
+          Cow::Borrowed(Path::new("\\\\?\\C:\\Other\\file.txt")),
           OpenAccessKind::Read,
           Some("api"),
         )
