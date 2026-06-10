@@ -1222,22 +1222,13 @@ pub fn get_keys<'s, 'i>(
 ) -> Vec<v8::Local<'s, v8::Value>> {
   let mut keys: Vec<v8::Local<'s, v8::Value>> = Vec::new();
 
-  let is_module_namespace = v8::Local::<v8::Value>::try_from(value)
-    .map(|v| v.is_module_namespace_object())
-    .unwrap_or(false);
-  let key_collection_mode = if is_module_namespace {
-    v8::KeyCollectionMode::IncludePrototypes
-  } else {
-    v8::KeyCollectionMode::OwnOnly
-  };
-
   // Symbols first (collected separately, appended after names).
   let symbols: Vec<v8::Local<'s, v8::Value>> = {
     v8::tc_scope!(tc, scope);
     match value.get_property_names(
       tc,
       v8::GetPropertyNamesArgs {
-        mode: key_collection_mode,
+        mode: v8::KeyCollectionMode::OwnOnly,
         property_filter: v8::PropertyFilter::SKIP_STRINGS,
         index_filter: v8::IndexFilter::IncludeIndices,
         key_conversion: v8::KeyConversionMode::KeepNumbers,
@@ -1262,7 +1253,7 @@ pub fn get_keys<'s, 'i>(
     if let Some(arr) = value.get_property_names(
       tc,
       v8::GetPropertyNamesArgs {
-        mode: key_collection_mode,
+        mode: v8::KeyCollectionMode::OwnOnly,
         property_filter: v8::PropertyFilter::SKIP_SYMBOLS,
         index_filter: v8::IndexFilter::IncludeIndices,
         key_conversion: v8::KeyConversionMode::ConvertToString,
