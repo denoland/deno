@@ -1277,7 +1277,22 @@ pub fn get_keys<'s, 'i>(
         }
       }
     }
-    keys.extend(symbols.iter().copied());
+    // Filter out Symbol.toStringTag for module namespaces
+    if is_module_namespace {
+      for sym in symbols {
+        if let Some(s) = v8::Local::<v8::Symbol>::try_from(sym).ok() {
+          if let Some(desc) = s.description(scope) {
+            let desc_str = desc.to_rust_string_lossy(scope);
+            if desc_str == "Symbol.toStringTag" {
+              continue;
+            }
+          }
+        }
+        keys.push(sym);
+      }
+    } else {
+      keys.extend(symbols.iter().copied());
+    }
   } else {
     // ObjectKeys: own enumerable string keys.
     {
