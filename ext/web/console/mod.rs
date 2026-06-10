@@ -21,10 +21,9 @@ use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::v8;
+use inspect::*;
 
 pub use preview::op_preview_entries;
-
-use inspect::*;
 
 const DEFAULT_INDENT: &str = "  "; // Default indent string
 

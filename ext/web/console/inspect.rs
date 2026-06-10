@@ -1991,7 +1991,8 @@ fn format_raw<'s, 'i>(
     }
   }
   if no_iterator {
-    keys = get_keys(scope, intr, value_obj, ctx.show_hidden);
+    let use_show_hidden = ctx.show_hidden || value.is_module_namespace_object();
+    keys = get_keys(scope, intr, value_obj, use_show_hidden);
     formatter.braces = ("{".to_string(), "}".to_string());
     let constructor_str = constructor.as_deref();
     if constructor_str == Some("Object") {
