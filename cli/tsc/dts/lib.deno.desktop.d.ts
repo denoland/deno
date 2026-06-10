@@ -256,8 +256,8 @@ declare namespace Deno {
 
   export interface AutoUpdateOptions {
     /** Base URL of the release server hosting `latest.json` and patch
-     * files. Required unless a string URL is passed directly to
-     * {@linkcode Deno.autoUpdate}. */
+     * files. Defaults to `desktop.release.baseUrl` from `deno.json` when
+     * configured; required otherwise. */
     url?: string;
     /** Poll interval in milliseconds. If omitted, only a single check is
      * performed ~1s after the call. */
@@ -280,9 +280,13 @@ declare namespace Deno {
    * If the previous launch's update failed and was rolled back,
    * `onRollback` is invoked shortly after this call.
    *
-   * Only available in apps compiled with `deno desktop`. */
+   * Only available in apps compiled with `deno desktop`.
+   *
+   * The release server URL may be passed directly, supplied via
+   * {@linkcode AutoUpdateOptions.url}, or configured once in `deno.json`
+   * under `desktop.release.baseUrl` (in which case it can be omitted). */
   export function autoUpdate(url: string): void;
-  export function autoUpdate(options: AutoUpdateOptions): void;
+  export function autoUpdate(options?: AutoUpdateOptions): void;
 
   export interface OpenDevtoolsOptions {
     /** Inspect the CEF renderer isolate. @default {true} */

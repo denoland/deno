@@ -105,6 +105,9 @@ pub struct Metadata {
   /// Error reporting URL from deno.json `desktop.errorReporting.url`.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub error_reporting_url: Option<String>,
+  /// Auto-update release base URL from deno.json `desktop.release.baseUrl`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub release_base_url: Option<String>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

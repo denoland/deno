@@ -1700,6 +1700,7 @@ async fn run_desktop(
     auto_update_version,
     auto_update_rolled_back,
     error_reporting_url: data.metadata.error_reporting_url.clone(),
+    release_base_url: data.metadata.release_base_url.clone(),
     inspect_brk,
     inspect_wait,
     is_inspecting: inspect_internal_port.is_some(),

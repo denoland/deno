@@ -945,6 +945,7 @@ pub const DESKTOP_JS: &str = r#"
 pub fn desktop_auto_update_js(
   version: Option<&str>,
   rolled_back: bool,
+  release_base_url: Option<&str>,
 ) -> String {
   format!(
     r#"(() => {{
@@ -957,6 +958,7 @@ pub fn desktop_auto_update_js(
 
   const _version = {version};
   const _rolledBack = {rolled_back};
+  const _releaseBaseUrl = {release_base_url};
 
   const ROLLBACK_REASON = "Update failed to start, rolled back.";
 
@@ -979,7 +981,13 @@ pub fn desktop_auto_update_js(
     const opts = typeof urlOrOpts === "string"
       ? {{ url: urlOrOpts }}
       : (urlOrOpts ?? {{}});
-    const {{ url, interval, onUpdateReady, onRollback, publicKey }} = opts;
+    const {{
+      url = _releaseBaseUrl,
+      interval,
+      onUpdateReady,
+      onRollback,
+      publicKey,
+    }} = opts;
 
     if (_rolledBack && typeof onRollback === "function") {{
       queueMicrotask(() => {{
@@ -1117,6 +1125,7 @@ pub fn desktop_auto_update_js(
 "#,
     version = serde_json::to_string(&version).unwrap(),
     rolled_back = if rolled_back { "true" } else { "false" },
+    release_base_url = serde_json::to_string(&release_base_url).unwrap(),
   )
 }
 
@@ -1283,7 +1292,7 @@ mod tests {
 
   #[test]
   fn auto_update_js_inlines_version_as_json_literal() {
-    let js = desktop_auto_update_js(Some("1.2.3"), false);
+    let js = desktop_auto_update_js(Some("1.2.3"), false, None);
     // The version must be a JSON-quoted string, not a bare identifier:
     // we feed it through serde_json::to_string. A regression that
     // dropped the quoting would produce invalid JS for any non-trivial
@@ -1298,9 +1307,26 @@ mod tests {
 
   #[test]
   fn auto_update_js_serializes_none_as_null_literal() {
-    let js = desktop_auto_update_js(None, true);
+    let js = desktop_auto_update_js(None, true, None);
     assert!(js.contains("const _version = null"));
     assert!(js.contains("const _rolledBack = true"));
+    assert!(js.contains("const _releaseBaseUrl = null"));
+  }
+
+  #[test]
+  fn auto_update_js_inlines_release_base_url() {
+    // The configured `desktop.release.baseUrl` is baked in as the default
+    // `url` for `Deno.autoUpdate`, so a no-arg call uses it.
+    let js = desktop_auto_update_js(
+      Some("1.0.0"),
+      false,
+      Some("https://releases.example/app"),
+    );
+    assert!(
+      js.contains(r#"const _releaseBaseUrl = "https://releases.example/app""#),
+      "release base url must be quoted; got: {js}"
+    );
+    assert!(js.contains("url = _releaseBaseUrl"));
   }
 
   #[test]
@@ -1308,7 +1334,7 @@ mod tests {
     // Anti-downgrade defence: the auto-update path must refuse to
     // fetch its manifest over http://, gopher://, file://, etc. A
     // change that loosened this check is a security regression.
-    let js = desktop_auto_update_js(Some("1.0.0"), false);
+    let js = desktop_auto_update_js(Some("1.0.0"), false, None);
     assert!(js.contains("isHttpsUrl"));
     assert!(js.contains("https:"));
   }

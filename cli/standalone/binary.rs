@@ -1008,6 +1008,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         .to_desktop_config()
         .ok()
         .and_then(|c| c.error_reporting.as_ref()?.url.clone()),
+      release_base_url: self
+        .cli_options
+        .start_dir
+        .to_desktop_config()
+        .ok()
+        .and_then(|c| c.release.as_ref()?.base_url.clone()),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(
