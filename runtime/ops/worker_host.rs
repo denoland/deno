@@ -257,14 +257,6 @@ fn op_create_worker(
     );
   }
 
-  if args.inherit_static_imports {
-    super::check_unstable(
-      state,
-      UNSTABLE_FEATURE_NAME,
-      "Worker.deno.inheritStaticImports",
-    );
-  }
-
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
