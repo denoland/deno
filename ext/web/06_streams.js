@@ -4789,13 +4789,14 @@ function writableStreamDefaultWriterEnsureClosedPromiseRejected(
   writer,
   error,
 ) {
-  if (writer[_closedPromise].state === "pending") {
-    writer[_closedPromise].reject(error);
-  } else {
+  if (writer[_closedPromise].state !== "pending") {
     writer[_closedPromise] = new Deferred();
-    writer[_closedPromise].reject(error);
   }
+  // Mark the promise as handled before rejecting it. Otherwise the rejection is
+  // momentarily observable as unhandled, which trips a debugger configured to
+  // "pause on uncaught exceptions". See https://github.com/denoland/deno/issues/18513
   setPromiseIsHandledToTrue(writer[_closedPromise].promise);
+  writer[_closedPromise].reject(error);
 }
 
 /**
@@ -4806,13 +4807,14 @@ function writableStreamDefaultWriterEnsureReadyPromiseRejected(
   writer,
   error,
 ) {
-  if (writer[_readyPromise].state === "pending") {
-    writer[_readyPromise].reject(error);
-  } else {
+  if (writer[_readyPromise].state !== "pending") {
     writer[_readyPromise] = new Deferred();
-    writer[_readyPromise].reject(error);
   }
+  // Mark the promise as handled before rejecting it. Otherwise the rejection is
+  // momentarily observable as unhandled, which trips a debugger configured to
+  // "pause on uncaught exceptions". See https://github.com/denoland/deno/issues/18513
   setPromiseIsHandledToTrue(writer[_readyPromise].promise);
+  writer[_readyPromise].reject(error);
 }
 
 /**
