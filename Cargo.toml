@@ -15,6 +15,7 @@ members = [
   "ext/fetch",
   "ext/ffi",
   "ext/fs",
+  "ext/html_rewriter",
   "ext/http",
   "ext/image",
   "ext/io",
@@ -119,6 +120,7 @@ deno_crypto = { version = "0.264.0", path = "./ext/crypto" }
 deno_fetch = { version = "0.274.0", path = "./ext/fetch" }
 deno_ffi = { version = "0.237.0", path = "./ext/ffi" }
 deno_fs = { version = "0.160.0", path = "./ext/fs" }
+deno_html_rewriter = { version = "0.1.0", path = "./ext/html_rewriter" }
 deno_http = { version = "0.248.0", path = "./ext/http" }
 deno_image = { version = "0.26.0", path = "./ext/image" }
 deno_io = { version = "0.160.0", path = "./ext/io" }
@@ -244,6 +246,7 @@ libc = "0.2.168"
 libdeflater = "1.25.2"
 libz-sys = { version = "1.1.20", default-features = false }
 log = { version = "0.4.28", features = ["kv"] }
+lol_html = "=3.0.0"
 lsp-types = { package = "ls-types", version = "=0.0.3" }
 memchr = "2.7.4"
 mime = "0.3.16"

@@ -99,6 +99,10 @@ fn run_test(test: &CollectedTest) -> TestResult {
     deno = deno.arg("--unstable-cron");
   }
 
+  if test.name.ends_with("::html_rewriter_test") {
+    deno = deno.arg("--unstable-html-rewriter");
+  }
+
   if test.name.contains("::kv_") {
     deno = deno.arg("--unstable-kv");
   }

@@ -67,6 +67,7 @@ pub fn create_runtime_snapshot(
     deno_cache::deno_cache::lazy_init(),
     deno_websocket::deno_websocket::lazy_init(),
     deno_webstorage::deno_webstorage::lazy_init(),
+    deno_html_rewriter::deno_html_rewriter::lazy_init(),
     deno_crypto::deno_crypto::lazy_init(),
     deno_ffi::deno_ffi::lazy_init(),
     deno_net::deno_net::lazy_init(),

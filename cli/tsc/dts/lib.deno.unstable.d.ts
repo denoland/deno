@@ -4707,6 +4707,291 @@ declare var WebSocketError: {
   new (message?: string, init?: WebSocketCloseInfo): WebSocketError;
 };
 
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * Options for the content insertion methods of {@linkcode HTMLRewriter}
+ * content tokens.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriterContentOptions {
+  /** Whether the inserted content should be interpreted as raw HTML markup.
+   * When `false` (the default) the content is HTML-escaped. */
+  html?: boolean;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A handle to an element matched by an {@linkcode HTMLRewriter} selector,
+ * valid only during the handler invocation it was passed to.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriterElement {
+  /** The tag name of the element, lowercased. Can be assigned to rename the
+   * tag. */
+  tagName: string;
+  /** An iterator over the `[name, value]` pairs of the element's
+   * attributes. */
+  readonly attributes: IterableIterator<[string, string]>;
+  /** The namespace URI of the element. */
+  readonly namespaceURI: string;
+  /** Whether the element has been removed or replaced by a previous
+   * handler. */
+  readonly removed: boolean;
+  getAttribute(name: string): string | null;
+  hasAttribute(name: string): boolean;
+  setAttribute(name: string, value: string): HTMLRewriterElement;
+  removeAttribute(name: string): HTMLRewriterElement;
+  /** Inserts content before the element's start tag. */
+  before(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterElement;
+  /** Inserts content after the element's end tag. */
+  after(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterElement;
+  /** Inserts content right after the element's start tag. */
+  prepend(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterElement;
+  /** Inserts content right before the element's end tag. */
+  append(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterElement;
+  /** Replaces the element and its inner content. */
+  replace(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterElement;
+  /** Replaces the inner content of the element. */
+  setInnerContent(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterElement;
+  /** Removes the element and its inner content. */
+  remove(): HTMLRewriterElement;
+  /** Removes the element's start and end tags, keeping its inner content. */
+  removeAndKeepContent(): HTMLRewriterElement;
+  /** Registers a handler invoked when the element's end tag is reached.
+   * Throws if the element does not have an end tag. */
+  onEndTag(
+    handler: (endTag: HTMLRewriterEndTag) => void | Promise<void>,
+  ): void;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A chunk of a text node encountered by an {@linkcode HTMLRewriter}, valid
+ * only during the handler invocation it was passed to. A single text node
+ * can be split over multiple chunks; the final chunk in a text node has
+ * {@linkcode HTMLRewriterText.lastInTextNode} set to `true` and is empty.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriterText {
+  /** The text content of the chunk. */
+  readonly text: string;
+  /** Whether this is the last chunk of the surrounding text node. */
+  readonly lastInTextNode: boolean;
+  /** Whether the chunk has been removed or replaced by a previous handler. */
+  readonly removed: boolean;
+  before(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterText;
+  after(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterText;
+  replace(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterText;
+  remove(): HTMLRewriterText;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * An HTML comment encountered by an {@linkcode HTMLRewriter}, valid only
+ * during the handler invocation it was passed to.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriterComment {
+  /** The text of the comment. Can be assigned to change the comment. */
+  text: string;
+  /** Whether the comment has been removed or replaced by a previous
+   * handler. */
+  readonly removed: boolean;
+  before(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterComment;
+  after(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterComment;
+  replace(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterComment;
+  remove(): HTMLRewriterComment;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * The document type declaration encountered by an {@linkcode HTMLRewriter},
+ * valid only during the handler invocation it was passed to.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriterDoctype {
+  readonly name: string | null;
+  readonly publicId: string | null;
+  readonly systemId: string | null;
+  /** Whether the doctype has been removed by a previous handler. */
+  readonly removed: boolean;
+  remove(): HTMLRewriterDoctype;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * The end of the document processed by an {@linkcode HTMLRewriter}, valid
+ * only during the handler invocation it was passed to.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriterDocumentEnd {
+  /** Appends content at the end of the document. */
+  append(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterDocumentEnd;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * The end tag of an element, passed to handlers registered with
+ * {@linkcode HTMLRewriterElement.onEndTag}, valid only during the handler
+ * invocation it was passed to.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriterEndTag {
+  /** The tag name of the end tag, lowercased. Can be assigned to rename the
+   * tag. */
+  name: string;
+  before(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterEndTag;
+  after(
+    content: string,
+    options?: HTMLRewriterContentOptions,
+  ): HTMLRewriterEndTag;
+  remove(): HTMLRewriterEndTag;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * Handlers for content matched by an {@linkcode HTMLRewriter} selector.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriterElementContentHandlers {
+  /** Called for each element matched by the selector. */
+  element?(element: HTMLRewriterElement): void | Promise<void>;
+  /** Called for each HTML comment in the inner content of a matched
+   * element. */
+  comments?(comment: HTMLRewriterComment): void | Promise<void>;
+  /** Called for each text chunk in the inner content of a matched
+   * element. */
+  text?(text: HTMLRewriterText): void | Promise<void>;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * Document-level handlers for an {@linkcode HTMLRewriter}.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriterDocumentContentHandlers {
+  /** Called for the document type declaration. */
+  doctype?(doctype: HTMLRewriterDoctype): void | Promise<void>;
+  /** Called for each HTML comment in the document. */
+  comments?(comment: HTMLRewriterComment): void | Promise<void>;
+  /** Called for each text chunk in the document. */
+  text?(text: HTMLRewriterText): void | Promise<void>;
+  /** Called at the end of the document. */
+  end?(end: HTMLRewriterDocumentEnd): void | Promise<void>;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A streaming HTML rewriter with a CSS-selector based API, compatible with
+ * the `HTMLRewriter` API available in Cloudflare Workers and Bun.
+ *
+ * ```ts
+ * const response = new HTMLRewriter()
+ *   .on("a[href]", {
+ *     element(element) {
+ *       element.setAttribute("target", "_blank");
+ *     },
+ *   })
+ *   .transform(await fetch("https://example.com/"));
+ * console.log(await response.text());
+ * ```
+ *
+ * Handlers may return promises; parsing pauses until they resolve. Async
+ * handlers are only supported when transforming a `Response`.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+interface HTMLRewriter {
+  /** Registers handlers for elements matching a CSS selector. Throws a
+   * `TypeError` if the selector is invalid or unsupported. */
+  on(
+    selector: string,
+    handlers: HTMLRewriterElementContentHandlers,
+  ): HTMLRewriter;
+  /** Registers document-level handlers. */
+  onDocument(handlers: HTMLRewriterDocumentContentHandlers): HTMLRewriter;
+  /** Transforms the body of a `Response`, returning a new `Response` with a
+   * streaming transformed body. The status, status text and headers are
+   * preserved. Errors thrown by handlers error the returned body stream. */
+  transform(input: Response): Response;
+  /** Transforms a string synchronously and returns the rewritten string. */
+  transform(input: string): string;
+}
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * A streaming HTML rewriter with a CSS-selector based API, compatible with
+ * the `HTMLRewriter` API available in Cloudflare Workers and Bun.
+ *
+ * @category HTML Rewriter
+ * @experimental
+ */
+declare var HTMLRewriter: {
+  readonly prototype: HTMLRewriter;
+  new (): HTMLRewriter;
+};
+
 /**
  * @category Intl
  * @experimental
