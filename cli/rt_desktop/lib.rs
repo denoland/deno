@@ -296,11 +296,11 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
     if let Ok(mux) = env::var("DENO_DESKTOP_MUX_WS") {
       // Reuse an existing DevTools window when one is already open, so
       // repeated `openDevtools()` calls don't pile up windows.
-      if let Some(id) = *self.devtools_window.lock().unwrap() {
-        if !self.closed_windows.lock().unwrap().contains(&id) {
-          laufey::Window::from_id(id).focus();
-          return;
-        }
+      if let Some(id) = *self.devtools_window.lock().unwrap()
+        && !self.closed_windows.lock().unwrap().contains(&id)
+      {
+        laufey::Window::from_id(id).focus();
+        return;
       }
 
       let (endpoint, frontend) = match (renderer, deno) {
@@ -498,8 +498,7 @@ impl denort::desktop::DesktopApi for WefDesktopApi {
           std::num::NonZeroIsize::new(raw_win as isize)
             .ok_or_else(null_window)?,
         );
-        handle.hinstance =
-          std::num::NonZeroIsize::new(raw_display as isize).map(|v| v.into());
+        handle.hinstance = std::num::NonZeroIsize::new(raw_display as isize);
         let win = RawWindowHandle::Win32(handle);
         let display = RawDisplayHandle::Windows(WindowsDisplayHandle::new());
         Ok((win, display))
@@ -822,7 +821,7 @@ fn desktop_menu_item_to_laufey_menu_item(
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "kept alongside v8_to_laufey_value for symmetry")]
 fn laufey_value_to_v8<'a>(
   scope: &v8::PinScope<'a, '_>,
   val: laufey::Value,
@@ -866,7 +865,7 @@ fn laufey_value_to_v8<'a>(
   }
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "kept alongside laufey_value_to_v8 for symmetry")]
 fn v8_to_laufey_value<'a>(
   scope: &v8::PinScope<'a, '_>,
   val: v8::Local<'a, v8::Value>,
@@ -995,6 +994,8 @@ fn get_dylib_path() -> Option<PathBuf> {
       info: *mut DlInfo,
     ) -> std::ffi::c_int;
   }
+  // SAFETY: `dladdr` is given a valid function pointer and a stack-allocated
+  // `DlInfo`; on success we only read `dli_fname` after null-checking it.
   unsafe {
     let mut info: DlInfo = std::mem::zeroed();
     let addr = get_dylib_path as *const std::ffi::c_void;
@@ -1017,6 +1018,7 @@ fn get_dylib_path() -> Option<PathBuf> {
 /// - `.backup` exists and `.update-ok` exists → previous update succeeded, clean up
 ///
 /// Returns `true` if a rollback occurred (so we can dispatch an event in JS).
+#[allow(clippy::print_stderr, reason = "runs before logging is initialized")]
 fn apply_pending_update(dylib_path: &Path) -> bool {
   let ext = dylib_path.extension().unwrap_or_default().to_string_lossy();
   let update_path = dylib_path.with_extension(format!("{}.update", ext));
@@ -1087,6 +1089,7 @@ fn apply_pending_update(dylib_path: &Path) -> bool {
 laufey::main!(|| {
   // Apply any pending update before anything else.
   #[cfg(unix)]
+  #[allow(clippy::print_stderr, reason = "runs before logging is initialized")]
   let update_rolled_back = {
     match std::panic::catch_unwind(|| {
       if let Some(ref dylib_path) = get_dylib_path() {
@@ -1147,6 +1150,7 @@ laufey::main!(|| {
   // so the hook reads from a global that gets set later.
   {
     let orig_hook = std::panic::take_hook();
+    #[allow(clippy::print_stderr, reason = "panic hook")]
     std::panic::set_hook(Box::new(move |panic_info| {
       use deno_runtime::ops::desktop::error_report_config;
       use deno_runtime::ops::desktop::send_error_report;
@@ -1212,7 +1216,7 @@ laufey::main!(|| {
   let desktop_serve_port = match allocate_random_port() {
     Ok(p) => p,
     Err(e) => {
-      eprintln!("[desktop] failed to allocate serve port: {}", e);
+      log::error!("[desktop] failed to allocate serve port: {}", e);
       return;
     }
   };
@@ -1236,7 +1240,7 @@ laufey::main!(|| {
   ) {
     Ok(data) => data,
     Err(e) => {
-      eprintln!("[desktop] failed to read standalone section: {:?}", e);
+      log::error!("[desktop] failed to read standalone section: {:?}", e);
       return;
     }
   };
@@ -1244,13 +1248,13 @@ laufey::main!(|| {
     if let Err(e) =
       denort::binary::extract_vfs_to_disk(&data.vfs, &data.root_path)
     {
-      eprintln!("[desktop] failed to extract VFS: {:?}", e);
+      log::error!("[desktop] failed to extract VFS: {:?}", e);
       return;
     }
     // Frameworks like Next.js look for build output (e.g. .next/)
     // relative to CWD.
     if let Err(e) = std::env::set_current_dir(&data.root_path) {
-      eprintln!(
+      log::error!(
         "[desktop] failed to chdir to {}: {}",
         data.root_path.display(),
         e
@@ -1265,9 +1269,9 @@ laufey::main!(|| {
     .unwrap();
 
   rt.block_on(async {
-    eprintln!("[desktop] run_desktop starting");
+    log::debug!("[desktop] run_desktop starting");
     match run_desktop(update_rolled_back, desktop_serve_port, data).await {
-      Ok(()) => eprintln!("[desktop] run_desktop completed OK"),
+      Ok(()) => log::debug!("[desktop] run_desktop completed OK"),
       Err(error) => {
         let is_js_error = js_error_downcast_ref(&error).is_some();
         let error_string = match js_error_downcast_ref(&error) {
@@ -1308,15 +1312,20 @@ fn run_headless_worker() {
 
   rt.block_on(async {
     let args: Vec<_> = env::args_os().collect();
-    eprintln!("[worker] args: {:?}", args);
-    eprintln!("[worker] cwd: {:?}", env::current_dir());
+    log::debug!("[worker] args: {:?}", args);
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "debug trace of the worker's current directory"
+    )]
+    let cwd = env::current_dir();
+    log::debug!("[worker] cwd: {:?}", cwd);
 
     // Detect if this is a child_process.fork() invocation.
     // fork() translates args to: ["run", "-A", "--unstable-...", "script.js", ...]
     // Extract the script path so the forked worker runs the correct module
     // instead of the embedded entrypoint.
     let fork_module = extract_fork_script_path(&args);
-    eprintln!("[worker] fork_module: {:?}", fork_module);
+    log::debug!("[worker] fork_module: {:?}", fork_module);
 
     let data = match denort::binary::extract_standalone_with_finder(
       Cow::Owned(args),
@@ -1348,7 +1357,7 @@ fn run_headless_worker() {
       ..Default::default()
     };
 
-    eprintln!("[worker] starting run_with_options");
+    log::debug!("[worker] starting run_with_options");
 
     match denort::run::run_with_options(
       Arc::new(sys.clone()),
@@ -1359,7 +1368,7 @@ fn run_headless_worker() {
     .await
     {
       Ok(exit_code) => {
-        eprintln!(
+        log::debug!(
           "[worker] run_with_options completed with exit code: {}",
           exit_code
         );
@@ -1369,7 +1378,7 @@ fn run_headless_worker() {
           Some(js_error) => format_js_error(js_error, None),
           None => format!("{:?}", error),
         };
-        eprintln!("[worker] run_with_options error: {}", error_string);
+        log::debug!("[worker] run_with_options error: {}", error_string);
         log::error!(
           "{}: {}",
           colors::red_bold("error"),
@@ -1377,9 +1386,9 @@ fn run_headless_worker() {
         );
       }
     }
-    eprintln!("[worker] block_on finished");
+    log::debug!("[worker] block_on finished");
   });
-  eprintln!("[worker] run_headless_worker returning");
+  log::debug!("[worker] run_headless_worker returning");
 }
 
 /// Extract the script path from fork'd process arguments.
@@ -1410,7 +1419,12 @@ fn extract_fork_script_path(
     let path = if path.is_absolute() {
       path
     } else {
-      env::current_dir().ok()?.join(path)
+      #[allow(
+        clippy::disallowed_methods,
+        reason = "denort_desktop has no resolve_cwd helper; resolves a relative fork-script path"
+      )]
+      let cwd = env::current_dir().ok()?;
+      cwd.join(path)
     };
     return deno_core::url::Url::from_file_path(path).ok();
   }
@@ -1585,10 +1599,8 @@ async fn run_desktop(
 
   // In dev mode, restore CWD to the source directory so the framework
   // dev server watches the original source files, not the extracted VFS.
-  if is_framework_dev {
-    if let Ok(source_dir) = env::var("DENO_DESKTOP_HMR") {
-      std::env::set_current_dir(&source_dir)?;
-    }
+  if is_framework_dev && let Ok(source_dir) = env::var("DENO_DESKTOP_HMR") {
+    std::env::set_current_dir(&source_dir)?;
   }
 
   // Shared initial window ID for navigate_fut and HMR reload.
@@ -1710,7 +1722,7 @@ async fn run_desktop(
   // We spawn the runtime first, wait for the server to be ready,
   // then navigate the webview.
   let url = format!("http://127.0.0.1:{}", desktop_serve_port);
-  eprintln!("[desktop] starting runtime and laufey event loop");
+  log::debug!("[desktop] starting runtime and laufey event loop");
   let run_fut =
     denort::run::run_with_options(Arc::new(sys.clone()), sys, data, run_opts);
   let laufey_fut = laufey::run();
@@ -1727,31 +1739,29 @@ async fn run_desktop(
     // When --inspect-wait or --inspect-brk: block until a DevTools
     // client has connected to the mux. This prevents the renderer
     // from racing ahead while the developer is still opening DevTools.
-    if wait_for_debugger {
-      if let Some(ref mux) = mux_addr {
-        eprintln!("[desktop] Waiting for debugger to attach on ws://{mux} …");
-        loop {
-          if let Ok(mut stream) =
-            tokio::net::TcpStream::connect(mux.as_str()).await
-          {
-            let req = format!(
-              "GET /debugger-attached HTTP/1.1\r\nHost: {mux}\r\nConnection: close\r\n\r\n",
-            );
-            if stream.write_all(req.as_bytes()).await.is_ok() {
-              let mut buf = vec![0u8; 128];
-              if let Ok(n) = stream.read(&mut buf).await {
-                let resp = String::from_utf8_lossy(&buf[..n]);
-                if resp.starts_with("HTTP/1.1 200")
-                  || resp.starts_with("HTTP/1.0 200")
-                {
-                  eprintln!("[desktop] Debugger attached");
-                  break;
-                }
+    if wait_for_debugger && let Some(ref mux) = mux_addr {
+      log::info!("[desktop] Waiting for debugger to attach on ws://{mux} …");
+      loop {
+        if let Ok(mut stream) =
+          tokio::net::TcpStream::connect(mux.as_str()).await
+        {
+          let req = format!(
+            "GET /debugger-attached HTTP/1.1\r\nHost: {mux}\r\nConnection: close\r\n\r\n",
+          );
+          if stream.write_all(req.as_bytes()).await.is_ok() {
+            let mut buf = vec![0u8; 128];
+            if let Ok(n) = stream.read(&mut buf).await {
+              let resp = String::from_utf8_lossy(&buf[..n]);
+              if resp.starts_with("HTTP/1.1 200")
+                || resp.starts_with("HTTP/1.0 200")
+              {
+                log::info!("[desktop] Debugger attached");
+                break;
               }
             }
           }
-          tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         }
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
       }
     }
 
@@ -1772,7 +1782,7 @@ async fn run_desktop(
               || response.starts_with("HTTP/1.0 2")
               || response.starts_with("HTTP/1.0 3")
             {
-              eprintln!(
+              log::debug!(
                 "[desktop] Server ready after {} attempts, navigating to {}",
                 i + 1,
                 &url
@@ -1801,17 +1811,17 @@ async fn run_desktop(
     result = run_fut => {
       match result {
         Ok(exit_code) => {
-          eprintln!("[desktop] Deno runtime exited with code {}", exit_code);
+          log::debug!("[desktop] Deno runtime exited with code {}", exit_code);
         }
         Err(err) => {
-          eprintln!("[desktop] Deno runtime error: {:?}", err);
+          log::error!("[desktop] Deno runtime error: {:?}", err);
           navigate_handle.abort();
           return Err(err);
         }
       }
     }
     _ = laufey_fut => {
-      eprintln!("[desktop] Laufey event loop ended (window closed)");
+      log::debug!("[desktop] Laufey event loop ended (window closed)");
     }
   }
   navigate_handle.abort();

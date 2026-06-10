@@ -107,7 +107,10 @@ pub struct MuxConfig {
   /// `true` when `--inspect-wait` or `--inspect-brk` was passed.
   /// Not read by the mux itself — the child process uses env vars to
   /// decide whether to poll `/debugger-attached` before navigating.
-  #[allow(dead_code)]
+  #[allow(
+    dead_code,
+    reason = "read by the child process via env vars, not by the mux itself"
+  )]
   pub wait_for_debugger: bool,
 }
 
@@ -289,7 +292,7 @@ async fn handle_request(
   let path = req.uri().path().to_string();
   match path.as_str() {
     "/json/version" => json_version(&state),
-    "/json" | "/json/list" => json_list(&state).await,
+    "/json" | "/json/list" => json_list(&state),
     "/json/protocol" => json_protocol(),
     "/debugger-attached" => {
       if state
@@ -303,7 +306,7 @@ async fn handle_request(
     }
     other => {
       if let Some(kind) = state.target_for_path(other) {
-        match handle_upgrade(req, kind, state.clone()).await {
+        match handle_upgrade(req, kind, state.clone()) {
           Ok(resp) => resp,
           Err(err) => {
             log::error!("[devtools-mux] upgrade failed for {other}: {err:?}");
@@ -409,7 +412,7 @@ fn json_version(state: &MuxState) -> hyper::Response<Full<Bytes>> {
   json_response(body)
 }
 
-async fn json_list(state: &MuxState) -> hyper::Response<Full<Bytes>> {
+fn json_list(state: &MuxState) -> hyper::Response<Full<Bytes>> {
   let listen = state.listen.to_string();
   let unified_url = format!("ws://{listen}{}", TargetKind::Unified.path());
   let deno_url = format!("ws://{listen}{}", TargetKind::Deno.path());
@@ -503,7 +506,7 @@ fn strip_scheme(ws_url: &str) -> String {
 /// Upgrade an incoming HTTP request to a WebSocket, open a matching
 /// WebSocket to the upstream target, and shuttle frames in both
 /// directions.
-async fn handle_upgrade(
+fn handle_upgrade(
   mut req: hyper::Request<Incoming>,
   kind: TargetKind,
   state: Arc<MuxState>,
@@ -1244,14 +1247,12 @@ fn rewrite_text_from_upstream(
   }
   if obj.get("method").and_then(|v| v.as_str())
     == Some("Runtime.executionContextCreated")
-  {
-    if let Some(ctx) = obj
+    && let Some(ctx) = obj
       .get_mut("params")
       .and_then(|v| v.get_mut("context"))
       .and_then(|v| v.as_object_mut())
-    {
-      ctx.insert("name".to_string(), Value::String(context_name.to_string()));
-    }
+  {
+    ctx.insert("name".to_string(), Value::String(context_name.to_string()));
   }
   serde_json::to_vec(&value).unwrap_or_else(|_| payload.to_vec())
 }
@@ -1571,7 +1572,7 @@ mod tests {
   #[tokio::test]
   async fn json_list_returns_three_targets() {
     let state = MuxState::new(test_config(), "127.0.0.1:9229".parse().unwrap());
-    let resp = json_list(&state).await;
+    let resp = json_list(&state);
     let body = resp.into_body();
     let bytes = body.collect().await.unwrap().to_bytes();
     let list: Vec<Value> = serde_json::from_slice(&bytes).unwrap();
@@ -1648,7 +1649,7 @@ mod tests {
     }
 
     // IDs must be stable across calls — DevTools caches them.
-    let resp2 = json_list(&state).await;
+    let resp2 = json_list(&state);
     let bytes2 = resp2.into_body().collect().await.unwrap().to_bytes();
     let list2: Vec<Value> = serde_json::from_slice(&bytes2).unwrap();
     for (a, b) in list.iter().zip(list2.iter()) {

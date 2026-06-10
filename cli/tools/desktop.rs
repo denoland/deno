@@ -133,24 +133,24 @@ pub async fn desktop(
       log::info!("Building for target: {}", target);
       let mut desktop_flags = desktop_flags.clone();
       desktop_flags.target = Some(target.to_string());
-      compile_desktop(
+      Box::pin(compile_desktop(
         flags.clone(),
         desktop_flags,
         cli_options,
         &laufey_resolver,
         &deno_dir_root,
-      )
+      ))
       .await?;
     }
     Ok(())
   } else {
-    compile_desktop(
+    Box::pin(compile_desktop(
       flags,
       desktop_flags,
       cli_options,
       &laufey_resolver,
       &deno_dir_root,
-    )
+    ))
     .await
   }
 }
@@ -274,10 +274,10 @@ async fn compile_desktop(
       }
       let entrypoint_path = entrypoint_temp.path().to_path_buf();
       desktop_flags.source_file = entrypoint_path.display().to_string();
-      if desktop_flags.output.is_none() {
-        if let Some(dir_name) = cwd.file_name() {
-          desktop_flags.output = Some(dir_name.to_string_lossy().into_owned());
-        }
+      if desktop_flags.output.is_none()
+        && let Some(dir_name) = cwd.file_name()
+      {
+        desktop_flags.output = Some(dir_name.to_string_lossy().into_owned());
       }
       // Add framework build output to includes.
       for inc in includes {
@@ -502,7 +502,7 @@ fn resolve_hmr_icon_path(
       icon_path.display()
     ),
   }
-  Ok(icon_path.canonicalize().unwrap_or(icon_path))
+  Ok(crate::util::fs::canonicalize_path(&icon_path).unwrap_or(icon_path))
 }
 
 /// Launch the desktop app with HMR enabled after compilation.
@@ -524,11 +524,9 @@ async fn run_desktop_hmr(
   let laufey_backend = laufey_resolver
     .find_binary(backend, LAUFEY_NATIVE_TARGET)
     .await?;
-  let dylib_abs = dylib_path
-    .canonicalize()
+  let dylib_abs = crate::util::fs::canonicalize_path(dylib_path)
     .unwrap_or(dylib_path.to_path_buf());
-  let source_abs = source_dir
-    .canonicalize()
+  let source_abs = crate::util::fs::canonicalize_path(source_dir)
     .unwrap_or(source_dir.to_path_buf());
 
   // In HMR/inspector mode we launch the prebuilt laufey.app, so a user
@@ -1214,13 +1212,13 @@ impl LaufeyBackendResolver {
     // id so the running identity is internally consistent. No-op on
     // non-macOS targets / hosts (no `codesign(1)`).
     #[cfg(target_os = "macos")]
-    if target.contains("apple-darwin") {
-      if let Err(e) = harmonize_cached_laufey_identifiers(&dir, backend) {
-        log::warn!(
-          "[desktop] could not re-sign cached laufey backend: {e} \
-           (notifications may not work in HMR mode until you re-download)"
-        );
-      }
+    if target.contains("apple-darwin")
+      && let Err(e) = harmonize_cached_laufey_identifiers(&dir, backend)
+    {
+      log::warn!(
+        "[desktop] could not re-sign cached laufey backend: {e} \
+         (notifications may not work in HMR mode until you re-download)"
+      );
     }
 
     Ok(dir)
@@ -1250,13 +1248,13 @@ impl LaufeyBackendResolver {
       // default `Identifier=laufey`. The harmonize call is idempotent:
       // already-correct binaries are skipped.
       #[cfg(target_os = "macos")]
-      if let Some(laufey_app) = laufey_app_for_binary(&binary) {
-        if let Err(e) = harmonize_laufey_app_identifiers(&laufey_app) {
-          log::warn!(
-            "[desktop] could not re-sign dev laufey backend: {e} \
-             (notifications may not work in HMR mode)"
-          );
-        }
+      if let Some(laufey_app) = laufey_app_for_binary(&binary)
+        && let Err(e) = harmonize_laufey_app_identifiers(&laufey_app)
+      {
+        log::warn!(
+          "[desktop] could not re-sign dev laufey backend: {e} \
+           (notifications may not work in HMR mode)"
+        );
       }
       return Ok(binary);
     }
@@ -1397,15 +1395,15 @@ fn extract_laufey_archive(
         use std::os::unix::fs::PermissionsExt;
         // `symlink_metadata` so we don't follow a just-extracted symlink
         // and chmod its target.
-        if let Ok(meta) = std::fs::symlink_metadata(&dest_path) {
-          if meta.file_type().is_file() {
-            // Was the entry executable? If so, mask to 0o755; otherwise 0o644.
-            let mode = entry.header().mode().unwrap_or(0o644);
-            let safe = if mode & 0o111 != 0 { 0o755 } else { 0o644 };
-            let mut perms = meta.permissions();
-            perms.set_mode(safe);
-            let _ = std::fs::set_permissions(&dest_path, perms);
-          }
+        if let Ok(meta) = std::fs::symlink_metadata(&dest_path)
+          && meta.file_type().is_file()
+        {
+          // Was the entry executable? If so, mask to 0o755; otherwise 0o644.
+          let mode = entry.header().mode().unwrap_or(0o644);
+          let safe = if mode & 0o111 != 0 { 0o755 } else { 0o644 };
+          let mut perms = meta.permissions();
+          perms.set_mode(safe);
+          let _ = std::fs::set_permissions(&dest_path, perms);
         }
       }
     }
@@ -2945,6 +2943,8 @@ mod disclaim_spawn {
       // the orphan. Polite escalation (TERM-then-KILL) isn't possible inside
       // sync Drop, and the existing tokio path uses SIGKILL too.
       if !self.exited {
+        // SAFETY: `kill(2)` with a pid we spawned is always safe to call; a
+        // stale pid simply returns ESRCH, which we ignore.
         unsafe {
           libc::kill(self.pid, libc::SIGKILL);
         }
@@ -2952,13 +2952,13 @@ mod disclaim_spawn {
     }
   }
 
+  /// Flattened `(program, argv, envp, cwd)` for `posix_spawn`.
+  type SpawnArgs = (CString, Vec<CString>, Vec<CString>, Option<CString>);
+
   /// Convert a std::process::Command into the argv/envp/cwd tuple posix_spawn
   /// needs. Inherits the parent's env, then applies Command::env() overrides
   /// (matching what std::process::Command does internally).
-  fn flatten(
-    cmd: &std::process::Command,
-  ) -> std::io::Result<(CString, Vec<CString>, Vec<CString>, Option<CString>)>
-  {
+  fn flatten(cmd: &std::process::Command) -> std::io::Result<SpawnArgs> {
     let program = CString::new(cmd.get_program().as_bytes()).map_err(|_| {
       std::io::Error::new(
         std::io::ErrorKind::InvalidInput,

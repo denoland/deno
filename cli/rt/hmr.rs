@@ -360,6 +360,10 @@ impl DesktopHmrRunner {
       .watch(&watch_dir, RecursiveMode::Recursive)
       .map_err(|e| JsErrorBox::generic(e.to_string()))?;
 
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "denort has no canonicalize helper; falls back to the original path"
+    )]
     let watch_dir_canonical = watch_dir
       .canonicalize()
       .unwrap_or_else(|_| watch_dir.clone());
@@ -449,7 +453,7 @@ impl DesktopHmrRunner {
 
           for url in &handled {
             self.dispatch_hmr_event(url);
-            eprintln!("HMR: replaced {}", url);
+            log::info!("HMR: replaced {}", url);
           }
 
           if (needs_reload || !handled.is_empty())
@@ -469,6 +473,10 @@ impl DesktopHmrRunner {
     path: &Path,
     change: FileChange,
   ) -> ChangeOutcome {
+    #[allow(
+      clippy::disallowed_methods,
+      reason = "denort has no canonicalize helper; non-canonicalizable paths are handled below"
+    )]
     let canonical = match (change, path.canonicalize()) {
       (FileChange::Updated, Ok(p)) => p,
       (FileChange::Updated, Err(_)) => return ChangeOutcome::Skipped,
@@ -563,7 +571,7 @@ impl DesktopHmrRunner {
         return ChangeOutcome::Replaced(module_url.into());
       }
 
-      eprintln!("HMR: failed to reload {}: {}", module_url, explain(&result));
+      log::error!("HMR: failed to reload {}: {}", module_url, explain(&result));
 
       // V8 can't replace modules whose top-level surface (imports, exported
       // bindings, top-level let/const) changed. The classic run-mode HMR

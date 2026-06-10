@@ -579,64 +579,63 @@ impl EmbeddedModuleLoader {
       }
       Ok(None) => {
         // Fall back to reading from disk (used by dev entrypoint in HMR mode).
-        if original_specifier.scheme() == "file" {
-          if let Ok(path) = original_specifier.to_file_path() {
-            if let Ok(source) = std::fs::read_to_string(&path) {
-              let media_type = MediaType::from_specifier(original_specifier);
-              let (module_type, should_transpile) = match media_type {
-                MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
-                  (ModuleType::JavaScript, false)
-                }
-                MediaType::TypeScript
-                | MediaType::Mts
-                | MediaType::Cts
-                | MediaType::Jsx
-                | MediaType::Tsx => (ModuleType::JavaScript, true),
-                MediaType::Json => (ModuleType::Json, false),
-                _ => (ModuleType::JavaScript, false),
-              };
-              let code = if should_transpile {
-                match deno_ast::parse_module(deno_ast::ParseParams {
-                  specifier: original_specifier.clone(),
-                  text: source.into(),
-                  media_type,
-                  capture_tokens: false,
-                  scope_analysis: false,
-                  maybe_syntax: None,
-                }) {
-                  Ok(parsed) => match parsed.transpile(
-                    &deno_ast::TranspileOptions::default(),
-                    &deno_ast::TranspileModuleOptions::default(),
-                    &deno_ast::EmitOptions::default(),
-                  ) {
-                    Ok(transpiled) => ModuleSourceCode::String(
-                      transpiled.into_source().text.into(),
-                    ),
-                    Err(e) => {
-                      return deno_core::ModuleLoadResponse::Sync(Err(
-                        JsErrorBox::type_error(format!("Transpile error: {e}")),
-                      ));
-                    }
-                  },
-                  Err(e) => {
-                    return deno_core::ModuleLoadResponse::Sync(Err(
-                      JsErrorBox::type_error(format!("Parse error: {e}")),
-                    ));
-                  }
-                }
-              } else {
-                ModuleSourceCode::String(source.into())
-              };
-              return deno_core::ModuleLoadResponse::Sync(Ok(
-                deno_core::ModuleSource::new(
-                  module_type,
-                  code,
-                  original_specifier,
-                  None,
-                ),
-              ));
+        if original_specifier.scheme() == "file"
+          && let Ok(path) = original_specifier.to_file_path()
+          && let Ok(source) = std::fs::read_to_string(&path)
+        {
+          let media_type = MediaType::from_specifier(original_specifier);
+          let (module_type, should_transpile) = match media_type {
+            MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+              (ModuleType::JavaScript, false)
             }
-          }
+            MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Jsx
+            | MediaType::Tsx => (ModuleType::JavaScript, true),
+            MediaType::Json => (ModuleType::Json, false),
+            _ => (ModuleType::JavaScript, false),
+          };
+          let code = if should_transpile {
+            match deno_ast::parse_module(deno_ast::ParseParams {
+              specifier: original_specifier.clone(),
+              text: source.into(),
+              media_type,
+              capture_tokens: false,
+              scope_analysis: false,
+              maybe_syntax: None,
+            }) {
+              Ok(parsed) => match parsed.transpile(
+                &deno_ast::TranspileOptions::default(),
+                &deno_ast::TranspileModuleOptions::default(),
+                &deno_ast::EmitOptions::default(),
+              ) {
+                Ok(transpiled) => {
+                  ModuleSourceCode::String(transpiled.into_source().text.into())
+                }
+                Err(e) => {
+                  return deno_core::ModuleLoadResponse::Sync(Err(
+                    JsErrorBox::type_error(format!("Transpile error: {e}")),
+                  ));
+                }
+              },
+              Err(e) => {
+                return deno_core::ModuleLoadResponse::Sync(Err(
+                  JsErrorBox::type_error(format!("Parse error: {e}")),
+                ));
+              }
+            }
+          } else {
+            ModuleSourceCode::String(source.into())
+          };
+          return deno_core::ModuleLoadResponse::Sync(Ok(
+            deno_core::ModuleSource::new(
+              module_type,
+              code,
+              original_specifier,
+              None,
+            ),
+          ));
         }
         deno_core::ModuleLoadResponse::Sync(Err(JsErrorBox::type_error(
           format!("Module not found: {}", original_specifier),
@@ -1142,8 +1141,12 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
   }
 }
 
+/// Callback to initialize additional `OpState` during worker creation.
+pub type OpStateInitFn = Box<dyn FnOnce(&mut deno_core::OpState) + Send>;
+
 /// Options to override default standalone runtime behavior.
 /// Used by the desktop runtime to enable auto_serve and set the port.
+#[derive(Default)]
 pub struct RunOptions {
   pub auto_serve: bool,
   pub serve_port: Option<u16>,
@@ -1154,7 +1157,7 @@ pub struct RunOptions {
   pub hmr_on_reload: Option<crate::hmr::HmrReloadCallback>,
   /// Callback to initialize additional OpState (e.g. desktop APIs).
   /// Called during worker creation to inject state without adding extensions.
-  pub op_state_init: Option<Box<dyn FnOnce(&mut deno_core::OpState) + Send>>,
+  pub op_state_init: Option<OpStateInitFn>,
   /// Override the main module to execute instead of the embedded entrypoint.
   /// Used by desktop runtime for forked worker processes (child_process.fork)
   /// where the child should run a specific script, not the embedded entrypoint.
@@ -1177,27 +1180,6 @@ pub struct RunOptions {
   pub is_inspecting: bool,
 }
 
-impl Default for RunOptions {
-  fn default() -> Self {
-    Self {
-      auto_serve: false,
-      serve_port: None,
-      serve_host: None,
-      hmr_watch_dir: None,
-      hmr_on_reload: None,
-      op_state_init: None,
-      override_main_module: None,
-      auto_update_version: None,
-      auto_update_rolled_back: false,
-      error_reporting_url: None,
-      release_base_url: None,
-      inspect_brk: false,
-      inspect_wait: false,
-      is_inspecting: false,
-    }
-  }
-}
-
 /// Read NODE_CHANNEL_FD from the environment to initialize IPC for
 /// forked child processes (e.g. child_process.fork()).
 fn node_ipc_init_from_env() -> Option<(i64, ChildIpcSerialization)> {
@@ -1206,7 +1188,8 @@ fn node_ipc_init_from_env() -> Option<(i64, ChildIpcSerialization)> {
     .ok()
     .and_then(|s| s.parse::<ChildIpcSerialization>().ok())
     .unwrap_or(ChildIpcSerialization::Json);
-  #[allow(clippy::undocumented_unsafe_blocks)]
+  // SAFETY: called during early startup before any worker threads are
+  // spawned, so there are no concurrent readers of these env vars.
   unsafe {
     std::env::remove_var("NODE_CHANNEL_FD");
     std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");

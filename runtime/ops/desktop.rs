@@ -2168,10 +2168,7 @@ mod tests {
       &b64(&sig.to_bytes()),
       message,
     );
-    assert!(
-      ok == false,
-      "signature from key A must NOT verify under key B"
-    );
+    assert!(!ok, "signature from key A must NOT verify under key B");
   }
 
   #[test]

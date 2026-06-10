@@ -186,7 +186,7 @@ async fn run_subcommand(
       tools::compile::compile(flags, compile_flags).await
     }),
     DenoSubcommand::Desktop(desktop_flags) => spawn_subcommand(async {
-      tools::desktop::desktop(flags, desktop_flags).await
+      Box::pin(tools::desktop::desktop(flags, desktop_flags)).await
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async move {
       let reporter =
