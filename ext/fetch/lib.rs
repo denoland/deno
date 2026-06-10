@@ -941,6 +941,16 @@ pub struct FetchResponseResource {
   shared: RefCell<Option<BodyReaderShared>>,
 }
 
+impl std::fmt::Debug for FetchResponseResource {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    // The body reader holds non-`Debug` handles (a task join handle, channel
+    // and `Notify`), so only the cheap, always-available fields are shown.
+    f.debug_struct("FetchResponseResource")
+      .field("size", &self.size)
+      .finish_non_exhaustive()
+  }
+}
+
 impl FetchResponseResource {
   pub fn new(response: http::Response<ResBody>, size: Option<u64>) -> Self {
     Self {
