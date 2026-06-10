@@ -24,10 +24,6 @@
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.h
 (function () {
-const { core } = __bootstrap;
-const { HandleWrap } = core.ops;
-
-return {
-  HandleWrap,
-};
+const { op_node_internal_binding_handle_wrap } = __bootstrap.core.ops;
+return op_node_internal_binding_handle_wrap();
 })();

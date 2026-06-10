@@ -90,8 +90,26 @@ macro_rules! with_js_handle {
   }};
 }
 
-/// Connection callback for `uv_listen`. Fires `this.onconnection(status)` on
-/// the server handle's JS object.
+fn new_tcp_client<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let tcp = {
+    let op_state = deno_core::JsRuntime::op_state_from(scope);
+    let mut op_state = op_state.borrow_mut();
+    TCPWrap::new(SocketType::Socket, &mut op_state)
+  };
+  let obj = deno_core::cppgc::make_cppgc_object(scope, tcp);
+  let global = v8::Global::new(scope, obj);
+  let tcp =
+    deno_core::cppgc::try_unwrap_cppgc_object::<TCPWrap>(scope, obj.into())?;
+  let tcp = unsafe { tcp.as_ref() };
+  tcp.base.set_js_handle(global, scope);
+  Some(obj)
+}
+
+/// Connection callback for `uv_listen`. Accepts a pending connection into a
+/// native TCPWrap client and fires `this.onconnection(status, client)` on the
+/// server handle's JS object.
 ///
 /// # Safety
 /// Must only be called by libuv as a `uv_connection_cb`. `server` must be a
@@ -110,9 +128,46 @@ pub(crate) unsafe extern "C" fn server_connection_cb(
     if let Some(onconnection) = this.get(scope, key.into())
       && let Ok(func) = v8::Local::<v8::Function>::try_from(onconnection)
     {
+      if status != 0 {
+        let status_val: v8::Local<v8::Value> =
+          v8::Integer::new(scope, status).into();
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        func.call(scope, this.into(), &[status_val, undefined]);
+        return;
+      }
+
+      let Some(client_obj) = new_tcp_client(scope) else {
+        let status_val: v8::Local<v8::Value> =
+          v8::Integer::new(scope, uv_compat::UV_EINVAL).into();
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        func.call(scope, this.into(), &[status_val, undefined]);
+        return;
+      };
+
+      let accept_status = match deno_core::cppgc::try_unwrap_cppgc_object::<
+        TCPWrap,
+      >(scope, client_obj.into())
+      {
+        Some(client) => {
+          let client = unsafe { client.as_ref() };
+          let client_tcp = client.tcp_ptr();
+          if client_tcp.is_null() {
+            uv_compat::UV_EBADF
+          } else {
+            unsafe { uv_compat::uv_accept(server, client_tcp as *mut UvStream) }
+          }
+        }
+        None => uv_compat::UV_EINVAL,
+      };
+
       let status_val: v8::Local<v8::Value> =
-        v8::Integer::new(scope, status).into();
-      func.call(scope, this.into(), &[status_val]);
+        v8::Integer::new(scope, accept_status).into();
+      let client_val: v8::Local<v8::Value> = if accept_status == 0 {
+        client_obj.into()
+      } else {
+        v8::undefined(scope).into()
+      };
+      func.call(scope, this.into(), &[status_val, client_val]);
     }
   });
 }

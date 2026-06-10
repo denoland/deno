@@ -88,10 +88,36 @@ macro_rules! with_js_handle {
   }};
 }
 
-/// Connection callback for `uv_pipe_listen`. Fires
-/// `this.onconnection(status)` on the server handle's JS object. The JS
-/// `setupListenWrap` shim intercepts this to allocate a client PipeWrap
-/// and call `accept` before forwarding to the user's onconnection.
+fn new_pipe_client<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+) -> Option<v8::Local<'s, v8::Object>> {
+  let pipe = {
+    let op_state = deno_core::JsRuntime::op_state_from(scope);
+    let mut op_state = op_state.borrow_mut();
+    PipeWrap::new(PipeType::Socket, &mut op_state)
+  };
+  let obj = deno_core::cppgc::make_cppgc_object(scope, pipe);
+  let global = v8::Global::new(scope, obj);
+  let pipe =
+    deno_core::cppgc::try_unwrap_cppgc_object::<PipeWrap>(scope, obj.into())?;
+  let pipe = unsafe { pipe.as_ref() };
+  pipe.base.set_js_handle(global, scope);
+  Some(obj)
+}
+
+fn ceil_pow_of_two(n: i32) -> i32 {
+  if n <= 1 {
+    return 1;
+  }
+  (n as u32)
+    .checked_next_power_of_two()
+    .and_then(|value| i32::try_from(value).ok())
+    .unwrap_or(i32::MAX)
+}
+
+/// Connection callback for `uv_pipe_listen`. Accepts a pending connection into
+/// a native PipeWrap client and fires `this.onconnection(status, client)` on
+/// the server handle's JS object.
 ///
 /// # Safety
 /// Must only be called by libuv as a `uv_connection_cb`. `server` must be
@@ -107,9 +133,48 @@ unsafe extern "C" fn server_connection_cb(server: *mut UvStream, status: i32) {
     if let Some(onconnection) = this.get(scope, key.into())
       && let Ok(func) = v8::Local::<v8::Function>::try_from(onconnection)
     {
+      if status != 0 {
+        let status_val: v8::Local<v8::Value> =
+          v8::Integer::new(scope, status).into();
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        func.call(scope, this.into(), &[status_val, undefined]);
+        return;
+      }
+
+      let Some(client_obj) = new_pipe_client(scope) else {
+        let status_val: v8::Local<v8::Value> =
+          v8::Integer::new(scope, uv_compat::UV_EINVAL).into();
+        let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+        func.call(scope, this.into(), &[status_val, undefined]);
+        return;
+      };
+
+      let accept_status = match deno_core::cppgc::try_unwrap_cppgc_object::<
+        PipeWrap,
+      >(scope, client_obj.into())
+      {
+        Some(client) => {
+          let client = unsafe { client.as_ref() };
+          let client_pipe = client.pipe_ptr();
+          if client_pipe.is_null() {
+            uv_compat::UV_EBADF
+          } else {
+            unsafe {
+              uv_compat::uv_pipe_accept(server as *mut UvPipe, client_pipe)
+            }
+          }
+        }
+        None => uv_compat::UV_EINVAL,
+      };
+
       let status_val: v8::Local<v8::Value> =
-        v8::Integer::new(scope, status).into();
-      func.call(scope, this.into(), &[status_val]);
+        v8::Integer::new(scope, accept_status).into();
+      let client_val: v8::Local<v8::Value> = if accept_status == 0 {
+        client_obj.into()
+      } else {
+        v8::undefined(scope).into()
+      };
+      func.call(scope, this.into(), &[status_val, client_val]);
     }
   });
 }
@@ -374,6 +439,8 @@ impl PipeWrap {
         Some("node:net.Server.listen()"),
       )?;
     }
+    let backlog = ceil_pow_of_two(backlog.saturating_add(1));
+
     // SAFETY: pipe is valid (null-checked above).
     Ok(unsafe {
       uv_compat::uv_pipe_listen(pipe, backlog, Some(server_connection_cb))
@@ -445,10 +512,19 @@ impl PipeWrap {
     }
   }
 
-  /// Change permissions on the bound pipe path. Takes already-translated
-  /// POSIX mode bits; the JS wrapper translates UV_READABLE/UV_WRITABLE.
+  /// Change permissions on the bound pipe path. Takes Node's UV_READABLE /
+  /// UV_WRITABLE flags and translates them to POSIX mode bits natively.
   #[fast]
   fn fchmod(&self, #[smi] mode: i32) -> i32 {
+    const UV_READABLE: i32 = 1;
+    const UV_WRITABLE: i32 = 2;
+    if mode != UV_READABLE
+      && mode != UV_WRITABLE
+      && mode != (UV_READABLE | UV_WRITABLE)
+    {
+      return uv_compat::UV_EINVAL;
+    }
+
     #[cfg(unix)]
     {
       let pipe = self.pipe_ptr();
@@ -466,8 +542,15 @@ impl PipeWrap {
           Ok(p) => p,
           Err(_) => return uv_compat::UV_EINVAL,
         };
+        let mut desired_mode: libc::mode_t = 0;
+        if mode & UV_READABLE != 0 {
+          desired_mode |= libc::S_IRUSR | libc::S_IRGRP | libc::S_IROTH;
+        }
+        if mode & UV_WRITABLE != 0 {
+          desired_mode |= libc::S_IWUSR | libc::S_IWGRP | libc::S_IWOTH;
+        }
         // SAFETY: c_path is a valid null-terminated C string.
-        if unsafe { libc::chmod(c_path.as_ptr(), mode as libc::mode_t) } != 0 {
+        if unsafe { libc::chmod(c_path.as_ptr(), desired_mode) } != 0 {
           return -1;
         }
         0

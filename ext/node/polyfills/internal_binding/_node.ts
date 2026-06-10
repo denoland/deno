@@ -6,17 +6,8 @@
  * https://github.com/nodejs/node/blob/3b72788afb7365e10ae1e97c71d1f60ee29f09f2/src/node.h#L728-L738
  */
 (function () {
-enum Encodings {
-  ASCII, // 0
-  UTF8, // 1
-  BASE64, // 2
-  UCS2, // 3
-  BINARY, // 4
-  HEX, // 5
-  BUFFER, // 6
-  BASE64URL, // 7
-  LATIN1 = 4, // 4 = BINARY
-}
+const { op_node_internal_binding_encodings } = __bootstrap.core.ops;
+const Encodings = op_node_internal_binding_encodings();
 
 return {
   Encodings,

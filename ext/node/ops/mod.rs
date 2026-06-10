@@ -10,6 +10,7 @@ pub mod handle_wrap;
 pub mod http2;
 pub mod idna;
 pub mod inspector;
+pub mod internal_binding;
 pub mod ipc;
 pub mod llhttp;
 pub mod module;

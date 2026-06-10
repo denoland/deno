@@ -32,12 +32,11 @@
 // accept) and for re-exporting types.
 
 (function () {
-const { core, primordials } = __bootstrap;
+const { core } = __bootstrap;
 const { TCPWrap } = core.ops;
 const { AsyncWrap, providerType } = core.loadExtScript(
   "ext:deno_node/internal_binding/async_wrap.ts",
 );
-const { FunctionPrototypeCall } = primordials;
 
 // Mark TCPWrap as a StreamBase handle, matching Node's StreamBase::AddMethods.
 // This allows parser.consume(socket._handle) to detect it as consumable.
@@ -74,63 +73,16 @@ enum constants {
   UV_TCP_REUSEPORT = 4,
 }
 
-/**
- * Wrap the native TCPWrap.listen() to handle connection acceptance.
- * The Rust server_connection_cb fires onconnection(status), and this
- * wrapper creates client handles and calls uv_accept before forwarding
- * to the user's onconnection(status, clientHandle).
- *
- * TODO: Move this logic into Rust by making the connection callback
- * allocate a CppGC TCPWrap directly, removing the need for this JS shim.
- */
-function setupListenWrap(serverHandle: InstanceType<typeof TCPWrap>) {
-  const userOnConnection = serverHandle.onconnection;
-  serverHandle.onconnection = function (status: number) {
-    if (status !== 0) {
-      if (userOnConnection) {
-        FunctionPrototypeCall(
-          userOnConnection,
-          serverHandle,
-          status,
-          undefined,
-        );
-      }
-      return;
-    }
-
-    // Create a new client handle and accept the connection
-    const clientHandle = new TCPWrap(socketType.SOCKET);
-    const acceptErr = serverHandle.accept(clientHandle);
-    if (acceptErr !== 0) {
-      if (userOnConnection) {
-        FunctionPrototypeCall(
-          userOnConnection,
-          serverHandle,
-          acceptErr,
-          undefined,
-        );
-      }
-      return;
-    }
-
-    if (userOnConnection) {
-      FunctionPrototypeCall(userOnConnection, serverHandle, 0, clientHandle);
-    }
-  };
-}
-
 // Re-export the Rust TCPWrap as TCP.
 
 const _defaultExport = {
   TCPConnectWrap,
   constants,
   TCP: TCPWrap,
-  setupListenWrap,
 };
 
 return {
   TCP: TCPWrap,
-  setupListenWrap,
   TCPConnectWrap,
   socketType,
   constants,
