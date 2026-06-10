@@ -4,7 +4,7 @@
 //!
 //! This is a cdylib that exports the Laufey C ABI (laufey_runtime_init,
 //! laufey_runtime_start, laufey_runtime_shutdown) and boots the full Deno
-//! standalone runtime. A Laufey backend (CEF, WebView, Servo) loads this
+//! standalone runtime. A Laufey backend (CEF, WebView) loads this
 //! shared library and provides the browser/window layer.
 //!
 //! The user's code uses `Deno.serve()` or `export default { fetch }`

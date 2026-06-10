@@ -1493,7 +1493,6 @@ fn locate_backend_binary(
       let stem = match backend {
         "cef" => "laufey",
         "raw" => "laufey_winit",
-        "servo" => "laufey_servo",
         _ => "laufey_webview",
       };
       let exe = if is_windows {
@@ -1545,10 +1544,6 @@ fn locate_dev_backend_binary(laufey: &Path, backend: &str) -> Option<PathBuf> {
       laufey.join("cef/build/Release/laufey"),
       laufey.join("cef/build/laufey"),
     ],
-    "servo" => vec![
-      laufey.join("target/release/laufey_servo"),
-      laufey.join("target/debug/laufey_servo"),
-    ],
     "raw" => vec![
       laufey.join("target/release/laufey_winit"),
       laufey.join("target/debug/laufey_winit"),
@@ -1575,7 +1570,7 @@ fn locate_dev_app_bundle(laufey: &Path, backend: &str) -> Option<PathBuf> {
       laufey.join("cef/build/Release/laufey.app"),
       laufey.join("cef/build/laufey.app"),
     ],
-    "raw" | "servo" => return None,
+    "raw" => return None,
     _ => vec![
       laufey.join("result-1/Applications/laufey_webview.app"),
       laufey.join("result/Applications/laufey_webview.app"),
@@ -3945,7 +3940,7 @@ def456  other.zip
 
   #[test]
   fn rewrite_helpers_is_noop_when_frameworks_missing() {
-    // Some backends (winit, servo) don't ship a Frameworks/ subdir. The
+    // Some backends (winit) don't ship a Frameworks/ subdir. The
     // helper-rewriter must tolerate that without erroring.
     let tmp = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(tmp.path().join("Contents")).unwrap();
@@ -3994,14 +3989,13 @@ def456  other.zip
   }
 
   #[test]
-  fn locate_dev_app_bundle_skips_winit_and_servo() {
-    // winit and servo don't ship as .app bundles. locate_dev_app_bundle
+  fn locate_dev_app_bundle_skips_winit() {
+    // winit don't ship as .app bundles. locate_dev_app_bundle
     // must short-circuit to None for those, never touching the
     // filesystem (so a misleading directory with the right name can't
     // accidentally match).
     let tmp = tempfile::tempdir().unwrap();
     assert!(locate_dev_app_bundle(tmp.path(), "raw").is_none());
-    assert!(locate_dev_app_bundle(tmp.path(), "servo").is_none());
   }
 
   #[test]

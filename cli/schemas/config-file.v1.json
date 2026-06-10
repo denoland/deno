@@ -184,7 +184,7 @@
         "backend": {
           "type": "string",
           "description": "Backend to use for the desktop app.",
-          "enum": ["webview", "cef", "servo"]
+          "enum": ["webview", "cef"]
         },
         "output": {
           "type": "object",
