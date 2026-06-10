@@ -4261,6 +4261,43 @@ impl PermissionsContainer {
     }
   }
 
+  /// Strict counterpart of [`Self::check_write_partial`]: every path below the
+  /// query must be allowed. Use this for recursive write operations such as
+  /// `fs::remove_all`, where a deny scope *inside* the requested tree must still
+  /// block the operation. (`check_open` deliberately uses partial semantics, so
+  /// recursive callers must not route through it.)
+  #[inline(always)]
+  pub fn check_write<'a>(
+    &self,
+    path: Cow<'a, Path>,
+    api_name: &str,
+  ) -> Result<CheckedPath<'a>, PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    let inner = &mut inner.write;
+    if inner.is_allow_all() {
+      write_audit(WriteQueryDescriptor::flag_name(), &path);
+      Ok(CheckedPath {
+        path: PathWithRequested {
+          path,
+          requested: None,
+        },
+        canonicalized: false,
+      })
+    } else {
+      let desc = self.descriptor_parser.parse_path_query(path)?.into_write();
+      inner.check(&desc, Some(api_name))?;
+      // skip checking for special permissions because this is treated as
+      // WriteNoFollow (it's only used for the recursive `fs::remove` path)
+      Ok(CheckedPath {
+        path: PathWithRequested {
+          path: desc.0.path,
+          requested: desc.0.requested.map(Cow::Owned),
+        },
+        canonicalized: false,
+      })
+    }
+  }
+
   #[inline(always)]
   pub fn check_run(
     &self,
@@ -7148,6 +7185,65 @@ mod tests {
       .unwrap()
       .into_read();
     assert!(perms.read.check_partial(&mnt_sub_read, None).is_err());
+  }
+
+  // Recursive remove must keep strict deny semantics: `check_write` rejects an
+  // ancestor of a denied path, while the partial checks used by single-path ops
+  // (`check_write_partial`, `check_open`) allow it. Without this, a recursive
+  // `Deno.remove("/foo", { recursive: true })` under `--deny-write=/foo/bar`
+  // would delete the denied descendant.
+  #[test]
+  fn test_check_write_strict_for_recursive_remove() {
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_write: Some(vec![]),
+        deny_write: Some(svec!["/foo/bar"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser), perms);
+
+    // Strict write check (used by recursive remove) rejects the ancestor.
+    assert!(
+      perms
+        .check_write(Cow::Borrowed(Path::new("/foo")), "Deno.removeSync()")
+        .is_err(),
+      "recursive remove of an ancestor of a denied path must be blocked"
+    );
+
+    // Partial checks (used by non-recursive remove and other single-path ops)
+    // allow the ancestor.
+    perms
+      .check_write_partial(
+        Cow::Borrowed(Path::new("/foo")),
+        "Deno.removeSync()",
+      )
+      .unwrap();
+    perms
+      .check_open(
+        Cow::Borrowed(Path::new("/foo")),
+        OpenAccessKind::WriteNoFollow,
+        Some("api"),
+      )
+      .unwrap();
+
+    // The denied path itself is rejected by every variant.
+    assert!(
+      perms
+        .check_write(Cow::Borrowed(Path::new("/foo/bar")), "Deno.removeSync()")
+        .is_err()
+    );
+    assert!(
+      perms
+        .check_write_partial(
+          Cow::Borrowed(Path::new("/foo/bar")),
+          "Deno.removeSync()"
+        )
+        .is_err()
+    );
   }
 
   #[test]

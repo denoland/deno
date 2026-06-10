@@ -8,6 +8,18 @@
     "stat_ancestor_of_denied_write": {
       "args": "run --allow-write --deny-write=denied write.ts",
       "output": "write.out"
+    },
+    "recursive_remove_blocked_by_denied_descendant": {
+      "steps": [
+        {
+          "args": "run --allow-write setup_tree.ts",
+          "output": "setup_tree.out"
+        },
+        {
+          "args": "run --allow-read --allow-write --deny-write=parent/denied recursive_remove.ts",
+          "output": "recursive_remove.out"
+        }
+      ]
     }
   }
 }
