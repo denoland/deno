@@ -44,7 +44,7 @@ use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
 use crate::tools::test::create_test_event_channel;
-use crate::util::env::load_env_variables_from_env_files;
+use crate::util::env::WatchEnvTracker;
 use crate::util::env::resolve_cwd_or_fallback;
 
 /// Logic to convert a test request into a set of test modules to be tested and
@@ -246,9 +246,28 @@ impl TestRun {
     // them here against the process environment before constructing the
     // worker factory. Without this, tests that read env vars at module load
     // wouldn't see values from a deno.json `test` task's `--env-file`.
+    //
+    // We use the stateful `WatchEnvTracker` so that re-runs after edits to
+    // the env file or task definition refresh values rather than seeing the
+    // first-run snapshot for the lifetime of the LSP. Caveats that callers
+    // should be aware of:
+    //   * All test runs share the long-lived LSP's single process env. When
+    //     two workspace scopes set the same key to different values, the
+    //     first file wins and the other scope silently runs with the wrong
+    //     value until the LSP restarts.
+    //   * Variables that were present in the process environment *before*
+    //     any env file was loaded keep precedence over env files, matching
+    //     the CLI's `load_env_variables_from_env_files`.
+    //   * Concurrent `deno/testRun` requests racing on the shared global env
+    //     can interleave; this is the same hazard the CLI has when running
+    //     multiple `deno test` invocations in one process.
     if let Some(env_files) = &flags.env_file {
       let cwd = resolve_cwd_or_fallback(flags.initial_cwd.as_deref());
-      load_env_variables_from_env_files(&cwd, env_files, flags.log_level);
+      WatchEnvTracker::snapshot().load_env_variables_from_env_files(
+        &cwd,
+        env_files,
+        flags.log_level,
+      );
     }
     let factory = CliFactory::from_flags(flags);
     let cli_options = factory.cli_options()?;
