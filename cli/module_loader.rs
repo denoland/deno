@@ -462,7 +462,7 @@ impl CliModuleLoaderFactory {
     graph_container: TGraphContainer,
     lib: TsTypeLib,
     is_worker: bool,
-    allow_cached_import: bool,
+    inherit_static_imports: bool,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
@@ -472,7 +472,7 @@ impl CliModuleLoaderFactory {
       Rc::new(CliModuleLoader(Rc::new(CliModuleLoaderInner {
         lib,
         is_worker,
-        allow_cached_import,
+        inherit_static_imports,
         parent_permissions,
         permissions,
         graph_container: graph_container.clone(),
@@ -526,7 +526,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       (*self.shared.main_module_graph_container).clone(),
       self.shared.lib_window,
       /* is worker */ false,
-      /* allow cached import */ false,
+      /* inherit static imports */ false,
       root_permissions.clone(),
       root_permissions,
     )
@@ -534,7 +534,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
 
   fn create_for_worker(
     &self,
-    allow_cached_import: bool,
+    inherit_static_imports: bool,
     parent_permissions: PermissionsContainer,
     permissions: PermissionsContainer,
   ) -> CreateModuleLoaderResult {
@@ -545,7 +545,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
       ))),
       self.shared.lib_worker,
       /* is worker */ true,
-      allow_cached_import,
+      inherit_static_imports,
       parent_permissions,
       permissions,
     )
@@ -564,9 +564,9 @@ struct CliModuleLoaderInner<TGraphContainer: ModuleGraphContainer> {
   /// When set on a Web Worker, statically analyzable remote imports the worker
   /// lacks import permission for are still allowed as long as the module is
   /// already present in the parent's (main) module graph, i.e. a dependency the
-  /// parent already loaded. Corresponds to the `allowCachedImport` worker
+  /// parent already loaded. Corresponds to the `inheritStaticImports` worker
   /// option.
-  allow_cached_import: bool,
+  inherit_static_imports: bool,
   /// The initial set of permissions used to resolve the static imports in the
   /// worker. These are "allow all" for main worker, and parent thread
   /// permissions for Web Worker.
@@ -1437,33 +1437,45 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       // (the same way it does for `import()`), but the worker's own import
       // permission still has to gate every remote module reachable from it.
       //
-      // Re-check each remote module in the worker's graph against the worker's
-      // own permissions. Only `http(s):` specifiers are checked: that is what
-      // the import permission governs, and `jsr:` imports are already resolved
-      // to their `https://jsr.io` URLs here. `file:`/`data:`/`blob:` imports
-      // don't require import access, and `node:`/`npm:` specifiers are gated by
-      // a different mechanism, so they are skipped. Dynamic `import()` is
-      // already checked against the worker's permissions while the graph is
-      // built, so this only needs to run for statically analyzable imports.
+      // A Web Worker's own statically analyzable remote imports must be checked
+      // against the worker's own permissions, not the parent thread's. The
+      // graph is built with `parent_permissions` (so the parent's read access
+      // governs loading the worker's entry point and its local dependencies),
+      // but the worker's import permission still has to gate every remote module
+      // it pulls in.
+      //
+      // The graph roots — the worker's entry module — are excluded: the parent
+      // spawned the worker pointing at that specifier, so loading it is governed
+      // by the parent's permissions (a worker may be created from a remote URL
+      // the worker itself couldn't import).
+      //
+      // Only `http(s):` specifiers are checked: that is what the import
+      // permission governs, and `jsr:` imports are already resolved to their
+      // `https://jsr.io` URLs here. `file:`/`data:`/`blob:` imports don't
+      // require import access, and `node:`/`npm:` specifiers are gated by a
+      // different mechanism, so they are skipped. Dynamic `import()` is already
+      // checked against the worker's permissions while the graph is built, so
+      // this only needs to run for statically analyzable imports.
       if inner.is_worker && !options.is_dynamic_import {
         let graph = graph_container.graph();
-        // With `allowCachedImport`, a remote module the worker can't import
+        // With `inheritStaticImports`, a remote module the worker can't import
         // itself is still permitted if it is already present in the parent's
         // module graph (a dependency the parent already loaded).
         let parent_graph = inner
-          .allow_cached_import
+          .inherit_static_imports
           .then(|| inner.shared.main_module_graph_container.graph());
         for module in graph.modules() {
           let specifier = module.specifier();
           if matches!(specifier.scheme(), "http" | "https")
+            && !graph.roots.contains(specifier)
             && let Err(err) = inner
               .permissions
               .check_specifier(specifier, CheckSpecifierKind::Static)
           {
-            let cached_by_parent = parent_graph
+            let inherited_from_parent = parent_graph
               .as_ref()
               .is_some_and(|graph| graph.get(specifier).is_some());
-            if !cached_by_parent {
+            if !inherited_from_parent {
               return Err(JsErrorBox::from_err(err));
             }
           }

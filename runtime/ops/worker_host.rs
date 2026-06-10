@@ -62,7 +62,7 @@ pub struct CreateWebWorkerArgs {
   pub worker_id: WorkerId,
   pub parent_permissions: PermissionsContainer,
   pub permissions: PermissionsContainer,
-  pub allow_cached_import: bool,
+  pub inherit_static_imports: bool,
   pub main_module: ModuleSpecifier,
   pub worker_type: WorkerThreadType,
   pub close_on_idle: bool,
@@ -205,7 +205,7 @@ pub struct CreateWorkerArgs {
   worker_type: WorkerThreadType,
   close_on_idle: bool,
   resource_limits: Option<ResourceLimits>,
-  allow_cached_import: bool,
+  inherit_static_imports: bool,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -242,7 +242,7 @@ fn op_create_worker(
   };
   let args_name = args.name;
   let worker_type = args.worker_type;
-  let allow_cached_import = args.allow_cached_import;
+  let inherit_static_imports = args.inherit_static_imports;
   if let WorkerThreadType::Classic = worker_type
     && let TestingFeaturesEnabled(false) = state.borrow()
   {
@@ -257,11 +257,11 @@ fn op_create_worker(
     );
   }
 
-  if args.allow_cached_import {
+  if args.inherit_static_imports {
     super::check_unstable(
       state,
       UNSTABLE_FEATURE_NAME,
-      "Worker.deno.allowCachedImport",
+      "Worker.deno.inheritStaticImports",
     );
   }
 
@@ -324,7 +324,7 @@ fn op_create_worker(
           worker_id,
           parent_permissions,
           permissions: worker_permissions,
-          allow_cached_import,
+          inherit_static_imports,
           main_module: module_specifier.clone(),
           worker_type,
           close_on_idle: args.close_on_idle,

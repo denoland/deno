@@ -4624,7 +4624,7 @@ interface WorkerOptions {
      *
      * Defaults to `false`.
      */
-    allowCachedImport?: boolean;
+    inheritStaticImports?: boolean;
   };
 }
 
