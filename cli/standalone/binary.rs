@@ -753,10 +753,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
       let specifier = deno_path_util::url_from_file_path(&file_path)?;
       let media_type = MediaType::from_specifier(&specifier);
-      // Pre-filter: only script-flavored media types can have CJS exports.
-      // Without this, every byte-blob the user includes via `--include`
-      // (images, fonts, .wasm, json blobs that aren't `.json`, …) gets
-      // handed to swc, which is unhappy parsing binary.
+      // Only script-flavored files can carry CJS exports. Extensions answer
+      // this for everything except extensionless files (`MediaType::Unknown`),
+      // which may be real modules (an npm `"main"` with no extension — see
+      // test-module-main-extension-lookup); those are disambiguated by content
+      // below rather than skipped outright.
       if !matches!(
         media_type,
         MediaType::JavaScript
@@ -770,16 +771,24 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           | MediaType::Dts
           | MediaType::Dmts
           | MediaType::Dcts
+          | MediaType::Unknown
       ) {
         continue;
       }
       if self.cjs_tracker.is_maybe_cjs(&specifier, media_type)? {
-        let maybe_source = vfs
-          .file_bytes(file.offset)
-          .map(|text| String::from_utf8_lossy(text));
+        // Strict UTF-8 (not `from_utf8_lossy`): binary assets (images,
+        // fonts, …) that resolve to `Unknown` are skipped rather than
+        // mangled into garbage that panics swc. Extensionless *text*
+        // modules still flow through.
+        let Some(bytes) = vfs.file_bytes(file.offset) else {
+          continue;
+        };
+        let Ok(source) = std::str::from_utf8(bytes) else {
+          continue;
+        };
         let cjs_analysis_result = self
           .cjs_module_export_analyzer
-          .analyze_all_exports(&specifier, maybe_source)
+          .analyze_all_exports(&specifier, Some(source.into()))
           .await;
         let analysis = match cjs_analysis_result {
           Ok(ResolvedCjsAnalysis::Esm(_)) => CjsExportAnalysisEntry::Esm,

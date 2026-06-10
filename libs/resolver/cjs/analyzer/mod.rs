@@ -212,13 +212,14 @@ impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
       return Ok(DenoCjsAnalysis::Cjs(Default::default()));
     }
 
-    // Defense-in-depth: short-circuit non-script media types before we
-    // hand bytes to swc. The CJS-walk in `compile_binary` already
-    // pre-filters at its call site, but anything else that ends up here
-    // with a binary blob (random `--include`d asset, etc.) would
-    // otherwise feed garbage to the parser — recent swc asserts on a
-    // backwards span and the whole thread panics.
-    if !matches!(
+    // Non-script files can't carry CJS exports. Extensions answer this for
+    // everything except extensionless files (`MediaType::Unknown`), which may
+    // be real modules (an npm `"main"` with no extension — see
+    // test-module-main-extension-lookup) OR binary assets a framework happened
+    // to `require()`. Feeding binary to swc panics (it asserts on a backwards
+    // span), so for `Unknown` we only proceed when the source looks like text
+    // rather than blanket-skipping every extensionless module.
+    let is_definitely_non_script = !matches!(
       media_type,
       MediaType::JavaScript
         | MediaType::Mjs
@@ -231,7 +232,12 @@ impl<TSys: DenoCjsCodeAnalyzerSys> DenoCjsCodeAnalyzer<TSys> {
         | MediaType::Dts
         | MediaType::Dmts
         | MediaType::Dcts
-    ) {
+        | MediaType::Unknown
+    );
+    let looks_binary = source.contains('\0') || source.contains('\u{FFFD}');
+    if is_definitely_non_script
+      || (media_type == MediaType::Unknown && looks_binary)
+    {
       return Ok(DenoCjsAnalysis::Esm);
     }
 
