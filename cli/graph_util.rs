@@ -805,9 +805,7 @@ impl ModuleGraphBuilder {
     }
 
     let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
-    let analyzer = self.module_info_cache.as_module_analyzer_with_css_imports(
-      self.cli_options.unstable_raw_imports(),
-    );
+    let analyzer = self.module_info_cache.as_module_analyzer();
     let mut loader = match options.loader {
       Some(loader) => LoaderRef::Borrowed(loader),
       None => {
@@ -856,6 +854,7 @@ impl ModuleGraphBuilder {
           locker: locker.as_mut().map(|l| l as _),
           unstable_bytes_imports: self.cli_options.unstable_raw_imports(),
           unstable_text_imports: true,
+          unstable_css_imports: self.cli_options.unstable_raw_imports(),
         }
       };
     }

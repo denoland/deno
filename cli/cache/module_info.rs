@@ -133,18 +133,6 @@ impl ModuleInfoCache {
     ModuleInfoCacheModuleAnalyzer {
       module_info_cache: self,
       parsed_source_cache: &self.parsed_source_cache,
-      unstable_css_imports: false,
-    }
-  }
-
-  pub fn as_module_analyzer_with_css_imports(
-    &self,
-    unstable_css_imports: bool,
-  ) -> ModuleInfoCacheModuleAnalyzer<'_> {
-    ModuleInfoCacheModuleAnalyzer {
-      module_info_cache: self,
-      parsed_source_cache: &self.parsed_source_cache,
-      unstable_css_imports,
     }
   }
 }
@@ -174,34 +162,6 @@ impl deno_graph::source::ModuleInfoCacher for ModuleInfoCache {
 pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   module_info_cache: &'a ModuleInfoCache,
   parsed_source_cache: &'a Arc<ParsedSourceCache>,
-  unstable_css_imports: bool,
-}
-
-/// deno_graph only knows about `type: "text"` and `type: "bytes"` asset
-/// imports, so it would error on a `type: "css"` import attribute. Remap
-/// such attributes to `type: "text"` in the analysis output so the graph
-/// records the import as an asset edge; at runtime the import is still
-/// requested as `css` (via the V8 import attributes) and evaluated to a
-/// `CSSStyleSheet`.
-// TODO(prototype): a real implementation should make the allowed asset
-// attribute types pluggable in deno_graph instead.
-fn remap_css_imports_to_text(module_info: &mut ModuleInfo) {
-  use deno_graph::analysis::DependencyDescriptor;
-  use deno_graph::analysis::ImportAttribute;
-  use deno_graph::analysis::ImportAttributes;
-
-  for dep in &mut module_info.dependencies {
-    let attributes = match dep {
-      DependencyDescriptor::Static(d) => &mut d.import_attributes,
-      DependencyDescriptor::Dynamic(d) => &mut d.import_attributes,
-    };
-    if let ImportAttributes::Known(map) = attributes
-      && let Some(ImportAttribute::Known(value)) = map.get_mut("type")
-      && value == "css"
-    {
-      "text".clone_into(value);
-    }
-  }
 }
 
 impl ModuleInfoCacheModuleAnalyzer<'_> {
@@ -258,19 +218,16 @@ impl ModuleInfoCacheModuleAnalyzer<'_> {
   ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
     let source_hash = CacheDBHash::from_hashable(source);
-    if let Some(mut info) =
+    if let Some(info) =
       self.load_cached_module_info(specifier, media_type, source_hash)
     {
-      if self.unstable_css_imports {
-        remap_css_imports_to_text(&mut info);
-      }
       return Ok(info);
     }
 
     // otherwise, get the module info from the parsed source cache
     let parser = self.parsed_source_cache.as_capturing_parser();
     let analyzer = ParserModuleAnalyzer::new(&parser);
-    let mut module_info =
+    let module_info =
       analyzer.analyze_sync(specifier, source.clone(), media_type)?;
 
     // then attempt to cache it
@@ -280,10 +237,6 @@ impl ModuleInfoCacheModuleAnalyzer<'_> {
       source_hash,
       &module_info,
     );
-
-    if self.unstable_css_imports {
-      remap_css_imports_to_text(&mut module_info);
-    }
 
     Ok(module_info)
   }
@@ -301,17 +254,14 @@ impl deno_graph::analysis::ModuleAnalyzer
   ) -> Result<ModuleInfo, JsErrorBox> {
     // attempt to load from the cache
     let source_hash = CacheDBHash::from_hashable(&source);
-    if let Some(mut info) =
+    if let Some(info) =
       self.load_cached_module_info(specifier, media_type, source_hash)
     {
-      if self.unstable_css_imports {
-        remap_css_imports_to_text(&mut info);
-      }
       return Ok(info);
     }
 
     // otherwise, get the module info from the parsed source cache
-    let mut module_info = deno_core::unsync::spawn_blocking({
+    let module_info = deno_core::unsync::spawn_blocking({
       let cache = self.parsed_source_cache.clone();
       let specifier = specifier.clone();
       move || {
@@ -332,10 +282,6 @@ impl deno_graph::analysis::ModuleAnalyzer
       source_hash,
       &module_info,
     );
-
-    if self.unstable_css_imports {
-      remap_css_imports_to_text(&mut module_info);
-    }
 
     Ok(module_info)
   }

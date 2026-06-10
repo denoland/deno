@@ -2247,8 +2247,7 @@ dependencies = [
 [[package]]
 name = "deno_doc"
 version = "0.199.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "638edca809f05908e5725d60c2700c92a6cc2d39a57f0b536008001d1050a16b"
+source = "git+https://github.com/bartlomieju/deno_doc?branch=chore%2Fupgrade-deno-graph-0.109#be9b6941fe6f54902229679c979cacc6fbbd1bdf"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -2405,9 +2404,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.108.4"
+version = "0.109.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21d2b976d342f56afb862e2291e891a13391e07771baf6d266aee16bfd758285"
+checksum = "18b1634ebdfde4f040b2c40f2510969e755e5b782319a01dc9cab88ef25b7e3f"
 dependencies = [
  "async-trait",
  "boxed_error",
@@ -5937,7 +5936,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.2",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8430,7 +8429,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -9070,7 +9069,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
