@@ -496,6 +496,11 @@ fn import_key_rsa<'s>(
             "Only optimized private keys are supported".into(),
           ));
         }
+        if p.is_none() {
+          return Err(data_error(
+            "'p' property of JsonWebKey is required for private keys".into(),
+          ));
+        }
         if q.is_none() {
           return Err(data_error(
             "'q' property of JsonWebKey is required for private keys".into(),
