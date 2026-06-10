@@ -1061,10 +1061,9 @@ fn string_lit(value: &str) -> ast::Expr {
 ///   global permission.
 /// - A scoped flag such as `--allow-read=/tmp` becomes `read: ["/tmp"]`.
 /// - A bare `--deny-read` becomes `read: false` (revoked).
-/// - When any `--deny-*` flag is present, unspecified permissions default to
-///   `"inherit"` (so `--deny-net` reads as "inherit everything except net").
-///   Otherwise unspecified permissions are omitted, leaving them revoked, and a
-///   shebang without any permission flag becomes `{ permissions: "none" }`.
+/// - Unspecified permissions are omitted, leaving them at their default
+///   (revoked), and a shebang without any permission flag becomes
+///   `{ permissions: "none" }`.
 ///
 /// Scoped `--deny-*` flags are rejected in [`parse_shebang`], so only bare
 /// denies reach this function.
@@ -1101,24 +1100,22 @@ fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
     ("write", &permissions.allow_write, &permissions.deny_write),
   ];
 
-  // A bare `--deny-*` switches the baseline for unspecified permissions from
-  // "revoked" to "inherit": a deny only makes sense relative to an
-  // otherwise-inherited permission set.
-  let has_deny = perms.iter().any(|(_, _, deny)| deny.is_some());
-
-  let value = if permissions.allow_all && !has_deny {
+  let value = if permissions.allow_all
+    && perms.iter().all(|(_, _, deny)| deny.is_none())
+  {
     string_lit("inherit")
   } else {
     let props = perms
       .into_iter()
       .filter_map(|(name, allow, deny)| {
-        let value = if permissions.allow_all {
+        // A deny takes precedence over an allow for the same permission, and a
+        // bare deny becomes `false` (scoped deny is rejected in
+        // `parse_shebang`).
+        let value = if deny.is_some() {
+          bool_lit(false)
+        } else if permissions.allow_all {
           // `-A` inherits everything; a bare deny carves one permission back out.
-          if deny.is_some() {
-            bool_lit(false)
-          } else {
-            string_lit("inherit")
-          }
+          string_lit("inherit")
         } else if let Some(allowlist) = allow {
           if allowlist.is_empty() {
             string_lit("inherit")
@@ -1136,11 +1133,6 @@ fn permissions_options_object(permissions: &PermissionFlags) -> ast::Expr {
                 .collect(),
             })
           }
-        } else if deny.is_some() {
-          // Bare deny (scoped deny is rejected in `parse_shebang`).
-          bool_lit(false)
-        } else if has_deny {
-          string_lit("inherit")
         } else {
           return None;
         };
@@ -1857,14 +1849,14 @@ Deno.test("file:///main.ts$3-7.ts", async ()=>{
           media_type: MediaType::TypeScript,
         }],
       },
-      // A bare `--deny-*` revokes that permission and inherits the rest, since
-      // unspecified permissions default to `false` once the object is present.
+      // A bare `--deny-*` becomes `false`; only the flags present in the
+      // shebang end up in the permissions object.
       Test {
         input: Input {
           source: r#"
 /**
  * ```ts
- * #!/usr/bin/env -S deno run --deny-env
+ * #!/usr/bin/env -S deno run --allow-read --deny-env
  * foo();
  * ```
  */
@@ -1877,13 +1869,7 @@ export function foo() {}
 Deno.test("file:///main.ts$3-7.ts", {
     permissions: {
         env: false,
-        ffi: "inherit",
-        import: "inherit",
-        net: "inherit",
-        read: "inherit",
-        run: "inherit",
-        sys: "inherit",
-        write: "inherit"
+        read: "inherit"
     }
 }, async ()=>{
     foo();
