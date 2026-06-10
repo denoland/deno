@@ -2108,128 +2108,133 @@ mod tests {
   // Tests below exercise each branch using a tempdir as the live dylib
   // location.
 
-  use super::apply_pending_update;
+  // apply_pending_update is unix-only (see its #[cfg(unix)] gate), so its
+  // tests and helpers live in a unix-only submodule.
+  #[cfg(unix)]
+  mod pending_update_tests {
+    use super::super::apply_pending_update;
 
-  fn touch(path: &std::path::Path, content: &str) {
-    std::fs::write(path, content).unwrap();
-  }
+    fn touch(path: &std::path::Path, content: &str) {
+      std::fs::write(path, content).unwrap();
+    }
 
-  fn read(path: &std::path::Path) -> String {
-    std::fs::read_to_string(path).unwrap()
-  }
+    fn read(path: &std::path::Path) -> String {
+      std::fs::read_to_string(path).unwrap()
+    }
 
-  fn paths(
-    tmp: &std::path::Path,
-  ) -> (
-    std::path::PathBuf,
-    std::path::PathBuf,
-    std::path::PathBuf,
-    std::path::PathBuf,
-  ) {
-    let dylib = tmp.join("app.dylib");
-    let update = tmp.join("app.dylib.update");
-    let backup = tmp.join("app.dylib.backup");
-    let sentinel = tmp.join("app.dylib.update-ok");
-    (dylib, update, backup, sentinel)
-  }
+    fn paths(
+      tmp: &std::path::Path,
+    ) -> (
+      std::path::PathBuf,
+      std::path::PathBuf,
+      std::path::PathBuf,
+      std::path::PathBuf,
+    ) {
+      let dylib = tmp.join("app.dylib");
+      let update = tmp.join("app.dylib.update");
+      let backup = tmp.join("app.dylib.backup");
+      let sentinel = tmp.join("app.dylib.update-ok");
+      (dylib, update, backup, sentinel)
+    }
 
-  #[test]
-  fn pending_update_no_files_is_noop() {
-    let tmp = tempfile::tempdir().unwrap();
-    let (dylib, _, _, _) = paths(tmp.path());
-    touch(&dylib, "live");
-    let rolled_back = apply_pending_update(&dylib);
-    assert!(!rolled_back, "no .update / .backup → no rollback");
-    assert_eq!(read(&dylib), "live", "dylib must be untouched");
-  }
+    #[test]
+    fn pending_update_no_files_is_noop() {
+      let tmp = tempfile::tempdir().unwrap();
+      let (dylib, _, _, _) = paths(tmp.path());
+      touch(&dylib, "live");
+      let rolled_back = apply_pending_update(&dylib);
+      assert!(!rolled_back, "no .update / .backup → no rollback");
+      assert_eq!(read(&dylib), "live", "dylib must be untouched");
+    }
 
-  #[test]
-  fn pending_update_swaps_in_new_dylib_when_update_exists() {
-    let tmp = tempfile::tempdir().unwrap();
-    let (dylib, update, backup, sentinel) = paths(tmp.path());
-    touch(&dylib, "old");
-    touch(&update, "new");
-    let rolled_back = apply_pending_update(&dylib);
+    #[test]
+    fn pending_update_swaps_in_new_dylib_when_update_exists() {
+      let tmp = tempfile::tempdir().unwrap();
+      let (dylib, update, backup, sentinel) = paths(tmp.path());
+      touch(&dylib, "old");
+      touch(&update, "new");
+      let rolled_back = apply_pending_update(&dylib);
 
-    assert!(!rolled_back, "applying a fresh update is not a rollback");
-    assert_eq!(
-      read(&dylib),
-      "new",
-      "dylib must now hold the update contents"
-    );
-    assert!(backup.exists(), "live dylib must be preserved as .backup");
-    assert_eq!(read(&backup), "old", "backup must be the *previous* dylib");
-    // Stale sentinel from a prior update is cleared so the next launch
-    // can detect THIS update's success/failure.
-    assert!(!sentinel.exists());
-    // The staged update file is consumed.
-    assert!(!update.exists());
-  }
+      assert!(!rolled_back, "applying a fresh update is not a rollback");
+      assert_eq!(
+        read(&dylib),
+        "new",
+        "dylib must now hold the update contents"
+      );
+      assert!(backup.exists(), "live dylib must be preserved as .backup");
+      assert_eq!(read(&backup), "old", "backup must be the *previous* dylib");
+      // Stale sentinel from a prior update is cleared so the next launch
+      // can detect THIS update's success/failure.
+      assert!(!sentinel.exists());
+      // The staged update file is consumed.
+      assert!(!update.exists());
+    }
 
-  #[test]
-  fn pending_update_clears_stale_sentinel_before_swap() {
-    let tmp = tempfile::tempdir().unwrap();
-    let (dylib, update, backup, sentinel) = paths(tmp.path());
-    touch(&dylib, "old");
-    touch(&update, "new");
-    touch(&sentinel, "ok"); // sentinel left over from a previous launch
-    touch(&backup, "very-old"); // and a backup, also stale
-    apply_pending_update(&dylib);
-    // After applying a new update: backup is the just-replaced 'old',
-    // sentinel was cleared. The previous backup ("very-old") must not
-    // persist, or rollback would resurrect a two-version-old dylib.
-    assert_eq!(read(&backup), "old");
-    assert!(!sentinel.exists());
-  }
+    #[test]
+    fn pending_update_clears_stale_sentinel_before_swap() {
+      let tmp = tempfile::tempdir().unwrap();
+      let (dylib, update, backup, sentinel) = paths(tmp.path());
+      touch(&dylib, "old");
+      touch(&update, "new");
+      touch(&sentinel, "ok"); // sentinel left over from a previous launch
+      touch(&backup, "very-old"); // and a backup, also stale
+      apply_pending_update(&dylib);
+      // After applying a new update: backup is the just-replaced 'old',
+      // sentinel was cleared. The previous backup ("very-old") must not
+      // persist, or rollback would resurrect a two-version-old dylib.
+      assert_eq!(read(&backup), "old");
+      assert!(!sentinel.exists());
+    }
 
-  #[test]
-  fn pending_update_rolls_back_when_sentinel_missing() {
-    // .backup present + no sentinel = previous update booted but crashed
-    // before writing the sentinel. Rollback to backup.
-    let tmp = tempfile::tempdir().unwrap();
-    let (dylib, _, backup, _) = paths(tmp.path());
-    touch(&dylib, "new-but-broken");
-    touch(&backup, "old-but-known-good");
-    let rolled_back = apply_pending_update(&dylib);
-    assert!(rolled_back, "missing sentinel must trigger rollback");
-    assert_eq!(
-      read(&dylib),
-      "old-but-known-good",
-      "rollback must restore the backup contents over the live dylib"
-    );
-  }
+    #[test]
+    fn pending_update_rolls_back_when_sentinel_missing() {
+      // .backup present + no sentinel = previous update booted but crashed
+      // before writing the sentinel. Rollback to backup.
+      let tmp = tempfile::tempdir().unwrap();
+      let (dylib, _, backup, _) = paths(tmp.path());
+      touch(&dylib, "new-but-broken");
+      touch(&backup, "old-but-known-good");
+      let rolled_back = apply_pending_update(&dylib);
+      assert!(rolled_back, "missing sentinel must trigger rollback");
+      assert_eq!(
+        read(&dylib),
+        "old-but-known-good",
+        "rollback must restore the backup contents over the live dylib"
+      );
+    }
 
-  #[test]
-  fn pending_update_cleans_up_after_successful_boot() {
-    // .backup + .update-ok sentinel = previous update was applied AND
-    // booted at least once. Clean up; we don't need to keep the backup
-    // around forever.
-    let tmp = tempfile::tempdir().unwrap();
-    let (dylib, _, backup, sentinel) = paths(tmp.path());
-    touch(&dylib, "new");
-    touch(&backup, "old");
-    touch(&sentinel, "ok");
-    let rolled_back = apply_pending_update(&dylib);
-    assert!(!rolled_back);
-    assert!(!backup.exists(), "successful-boot path must delete .backup");
-    assert!(
-      !sentinel.exists(),
-      "successful-boot path must delete sentinel"
-    );
-    assert_eq!(read(&dylib), "new", "dylib untouched on cleanup path");
-  }
+    #[test]
+    fn pending_update_cleans_up_after_successful_boot() {
+      // .backup + .update-ok sentinel = previous update was applied AND
+      // booted at least once. Clean up; we don't need to keep the backup
+      // around forever.
+      let tmp = tempfile::tempdir().unwrap();
+      let (dylib, _, backup, sentinel) = paths(tmp.path());
+      touch(&dylib, "new");
+      touch(&backup, "old");
+      touch(&sentinel, "ok");
+      let rolled_back = apply_pending_update(&dylib);
+      assert!(!rolled_back);
+      assert!(!backup.exists(), "successful-boot path must delete .backup");
+      assert!(
+        !sentinel.exists(),
+        "successful-boot path must delete sentinel"
+      );
+      assert_eq!(read(&dylib), "new", "dylib untouched on cleanup path");
+    }
 
-  #[test]
-  fn pending_update_with_only_sentinel_is_noop() {
-    // Sentinel without backup or update — orphaned. Don't roll back
-    // (there's nothing to roll back to) and don't touch the dylib.
-    let tmp = tempfile::tempdir().unwrap();
-    let (dylib, _, _, sentinel) = paths(tmp.path());
-    touch(&dylib, "live");
-    touch(&sentinel, "ok");
-    let rolled_back = apply_pending_update(&dylib);
-    assert!(!rolled_back);
-    assert_eq!(read(&dylib), "live");
+    #[test]
+    fn pending_update_with_only_sentinel_is_noop() {
+      // Sentinel without backup or update — orphaned. Don't roll back
+      // (there's nothing to roll back to) and don't touch the dylib.
+      let tmp = tempfile::tempdir().unwrap();
+      let (dylib, _, _, sentinel) = paths(tmp.path());
+      touch(&dylib, "live");
+      touch(&sentinel, "ok");
+      let rolled_back = apply_pending_update(&dylib);
+      assert!(!rolled_back);
+      assert_eq!(read(&dylib), "live");
+    }
   }
 
   #[test]
