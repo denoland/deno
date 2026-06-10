@@ -1595,7 +1595,8 @@ impl Console {
               obj.has(tc, key_v8.into()).unwrap_or(false)
             };
             if has {
-              let column = match object_values.iter_mut().find(|(n, _)| n == rk) {
+              let column = match object_values.iter_mut().find(|(n, _)| n == rk)
+              {
                 Some((_, rows)) => rows,
                 None => {
                   object_values
