@@ -1,0 +1,11 @@
+{
+  // Companion to tests/specs/info/jsx_trailing_space_windows, covering the
+  // `run` resolution path. On Windows a trailing space in the path argument
+  // used to be percent encoded into the specifier (`main.tsx%20`), misdetecting
+  // the media type (TypeScript instead of TSX) and producing a confusing parse
+  // error. Deno now normalizes the path the way the OS does, so the TSX file
+  // runs. See denoland/deno#30585.
+  "if": "windows",
+  "args": ["run", "./main.tsx "],
+  "output": "main.out"
+}
