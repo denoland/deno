@@ -1646,7 +1646,12 @@ async fn run_desktop(
     }
   });
   #[cfg(not(unix))]
-  let auto_update_state: Option<denort::desktop::AutoUpdateState> = None;
+  let auto_update_state: Option<denort::desktop::AutoUpdateState> = {
+    // Auto-update rollback is only wired up on unix; consume the flag so the
+    // parameter isn't flagged as unused on other platforms.
+    let _ = update_rolled_back;
+    None
+  };
 
   let auto_update_version = auto_update_state
     .as_ref()
