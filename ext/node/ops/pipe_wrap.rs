@@ -11,6 +11,7 @@ use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use deno_core::CppgcBase;
 use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
@@ -39,6 +40,110 @@ enum PipeType {
   Socket = 0,
   Server = 1,
   Ipc = 2,
+}
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct PipeConnectWrap {
+  base: AsyncWrap,
+}
+
+unsafe impl GarbageCollected for PipeConnectWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"PipeConnectWrap"
+  }
+
+  fn trace(&self, _visitor: &mut v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl PipeConnectWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> PipeConnectWrap {
+    PipeConnectWrap {
+      base: AsyncWrap::create(state, ProviderType::PipeConnectWrap as i32),
+    }
+  }
+}
+
+fn set_value(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  name: &str,
+  value: v8::Local<v8::Value>,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  obj.set(scope, key.into(), value);
+}
+
+fn set_number(
+  scope: &mut v8::PinScope,
+  obj: v8::Local<v8::Object>,
+  name: &str,
+  number: u32,
+) {
+  let value = v8::Integer::new_from_unsigned(scope, number).into();
+  set_value(scope, obj, name, value);
+  let key = v8::Integer::new_from_unsigned(scope, number);
+  let reverse = v8::String::new(scope, name).unwrap();
+  obj.set(scope, key.into(), reverse.into());
+}
+
+fn mark_stream_base(
+  scope: &mut v8::PinScope,
+  constructor: v8::Local<v8::Value>,
+) {
+  let Ok(constructor) = v8::Local::<v8::Function>::try_from(constructor) else {
+    return;
+  };
+  let prototype_key = v8::String::new(scope, "prototype").unwrap();
+  let Some(prototype) = constructor.get(scope, prototype_key.into()) else {
+    return;
+  };
+  let Ok(prototype) = v8::Local::<v8::Object>::try_from(prototype) else {
+    return;
+  };
+  let value = v8::Boolean::new(scope, true).into();
+  set_value(scope, prototype, "isStreamBase", value);
+}
+
+#[op2]
+pub fn op_node_internal_binding_pipe_wrap<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  pipe_wrap: v8::Local<'s, v8::Value>,
+  pipe_connect_wrap: v8::Local<'s, v8::Value>,
+  create_pipe: v8::Local<'s, v8::Value>,
+) -> v8::Local<'s, v8::Object> {
+  mark_stream_base(scope, pipe_wrap);
+
+  let socket_type = v8::Object::new(scope);
+  set_number(scope, socket_type, "SOCKET", 0);
+  set_number(scope, socket_type, "SERVER", 1);
+  set_number(scope, socket_type, "IPC", 2);
+
+  let constants = v8::Object::new(scope);
+  set_number(scope, constants, "SOCKET", 0);
+  set_number(scope, constants, "SERVER", 1);
+  set_number(scope, constants, "IPC", 2);
+  set_number(scope, constants, "UV_READABLE", 1);
+  set_number(scope, constants, "UV_WRITABLE", 2);
+
+  let default = v8::Object::new(scope);
+  set_value(scope, default, "Pipe", pipe_wrap);
+  set_value(scope, default, "PipeConnectWrap", pipe_connect_wrap);
+  set_value(scope, default, "constants", constants.into());
+  set_value(scope, default, "createPipe", create_pipe);
+
+  let obj = v8::Object::new(scope);
+  set_value(scope, obj, "Pipe", pipe_wrap);
+  set_value(scope, obj, "createPipe", create_pipe);
+  set_value(scope, obj, "PipeConnectWrap", pipe_connect_wrap);
+  set_value(scope, obj, "socketType", socket_type.into());
+  set_value(scope, obj, "constants", constants.into());
+  set_value(scope, obj, "default", default.into());
+  obj
 }
 
 // -- libuv callbacks (called from the event loop) --
