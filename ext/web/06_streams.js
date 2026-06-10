@@ -3167,21 +3167,18 @@ function readableStreamReaderGenericRelease(reader) {
   const stream = reader[_stream];
   assert(stream !== undefined);
   assert(stream[_reader] === reader);
-  if (stream[_state] === "readable") {
-    reader[_closedPromise].reject(
-      new TypeError(
-        "Reader was released and can no longer be used to monitor the stream's closedness.",
-      ),
-    );
-  } else {
+  if (stream[_state] !== "readable") {
     reader[_closedPromise] = new Deferred();
-    reader[_closedPromise].reject(
-      new TypeError(
-        "Reader was released and can no longer be used to monitor the stream's closedness.",
-      ),
-    );
   }
+  // Mark the promise as handled before rejecting it. Otherwise the rejection is
+  // momentarily observable as unhandled, which trips a debugger configured to
+  // "pause on uncaught exceptions". See https://github.com/denoland/deno/issues/18513
   setPromiseIsHandledToTrue(reader[_closedPromise].promise);
+  reader[_closedPromise].reject(
+    new TypeError(
+      "Reader was released and can no longer be used to monitor the stream's closedness.",
+    ),
+  );
   stream[_controller][_releaseSteps]();
   stream[_reader] = undefined;
   reader[_stream] = undefined;

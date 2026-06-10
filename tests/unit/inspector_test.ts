@@ -1771,8 +1771,29 @@ Deno.test("inspector_no_pause_on_handled_stream_rejection", async () => {
     tester.send({ id: 5, method: "Debugger.resume" });
     await tester.expectResponse(5);
 
-    // If the internal writer-release rejection were reported as uncaught, the
-    // debugger would pause here and the script would never print "done".
+    // Releasing the writer and reader during pipeTo rejects their internal
+    // ready/closed promises, but those rejections are handled. With
+    // "pause on uncaught exceptions" enabled the debugger must not break on
+    // them. If it regresses, a Debugger.paused (reason "promiseRejection")
+    // arrives here instead of the script running to completion.
+    let unexpectedPause: CDPMessage | undefined;
+    try {
+      unexpectedPause = await tester.expectNotification("Debugger.paused", {
+        timeout: 5_000,
+      });
+    } catch {
+      // No second pause within the window — this is the expected outcome.
+    }
+    if (unexpectedPause) {
+      // deno-lint-ignore no-explicit-any
+      const params = unexpectedPause.params as any;
+      throw new Error(
+        `debugger paused unexpectedly on a handled rejection: reason=${params?.reason} ${
+          params?.data?.description ?? ""
+        }`,
+      );
+    }
+
     const scriptOutput = await tester.nextStdoutLine();
     assertEquals(scriptOutput, "done");
   } finally {
