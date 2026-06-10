@@ -243,6 +243,23 @@ pub struct NodeFsErrorContext {
   syscall: Option<String>,
 }
 
+impl NodeFsErrorContext {
+  // Public constructor for ops outside this crate (runtime's fs.watch ops)
+  // that need to build fully-formed node fs errors.
+  pub fn new_syscall_path(syscall: &str, path: &str) -> Self {
+    Self {
+      syscall: Some(syscall.to_string()),
+      path: Some(path.to_string()),
+      ..Default::default()
+    }
+  }
+
+  pub fn with_message(mut self, message: String) -> Self {
+    self.message = Some(message);
+    self
+  }
+}
+
 // Maps a raw OS errno to its libuv error-code name (e.g. `ENOENT`). On unix
 // the OS errno is matched directly via `libc`; on windows the value is a Win32
 // error code translated by libuv's table. Returns `"UNKNOWN"` when unmapped.
@@ -488,7 +505,7 @@ impl NodeFsError {
 
   // Builds the fully-formed node error from a raw OS errno, so ops can throw
   // the final error without a JS round-trip.
-  fn new(os_errno: i32, context: NodeFsErrorContext) -> Self {
+  pub fn new(os_errno: i32, context: NodeFsErrorContext) -> Self {
     let code = os_errno_to_uv_code(os_errno);
     let (_, win_errno) = uv_code_info(code);
     let errno = if cfg!(windows) { win_errno } else { -os_errno };
@@ -497,7 +514,7 @@ impl NodeFsError {
 
   // Builds a node error from a uv code name directly (for synthetic errors not
   // backed by a real OS error).
-  fn from_code(code: &'static str, context: NodeFsErrorContext) -> Self {
+  pub fn from_code(code: &'static str, context: NodeFsErrorContext) -> Self {
     let (_, win_errno) = uv_code_info(code);
     #[cfg(windows)]
     let errno = win_errno;
@@ -1946,7 +1963,9 @@ pub fn op_node_rmdir(
   scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   path: v8::Local<v8::Value>,
+  options: v8::Local<v8::Value>,
 ) -> Result<impl Future<Output = Result<(), FsError>> + use<>, FsError> {
+  validate_rmdir_options(scope, options)?;
   let path = validate_path_to_string(scope, path, "path")?;
   let checked = state
     .borrow_mut::<PermissionsContainer>()
@@ -3030,15 +3049,17 @@ fn write_all_node(
   Ok(())
 }
 
-// Resolves `fs.writeFile{,Sync}`'s (data, options) arguments: returns
-// (bytes-to-write, open flags, mode). Replicates node's order: encoding is
-// validated first (`getOptions`/`assertEncoding`), then `data`
-// (`validateStringAfterArrayBufferView` + `Buffer.from(str, encoding)`), then
-// `options.flag` (default "w") and `options.mode`.
+// Resolves `fs.writeFile{,Sync}`/`fs.appendFile{,Sync}`'s (data, options)
+// arguments: returns (bytes-to-write, open flags, mode). Replicates node's
+// order: encoding is validated first (`getOptions`/`assertEncoding`), then
+// `data` (`validateStringAfterArrayBufferView` + `Buffer.from(str,
+// encoding)`), then `options.flag` (default "w", or "a" for the appendFile
+// variants) and `options.mode`.
 fn resolve_write_file_args(
   scope: &mut v8::PinScope<'_, '_>,
   data: v8::Local<v8::Value>,
   options: v8::Local<v8::Value>,
+  append: bool,
 ) -> Result<(Vec<u8>, i32, Option<u32>), FsError> {
   let enc = parse_encoding_options(scope, options, Some(BufEnc::Utf8))?;
   let bytes = if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(data)
@@ -3072,8 +3093,13 @@ fn resolve_write_file_args(
     (undef, undef)
   };
   let flags = if flag_v.is_null_or_undefined() {
-    // writeFile's default flag is "w", not stringToFlags' "r".
-    libc::O_TRUNC | libc::O_CREAT | libc::O_WRONLY
+    // writeFile's default flag is "w" (appendFile's is "a"), not
+    // stringToFlags' "r".
+    if append {
+      libc::O_APPEND | libc::O_CREAT | libc::O_WRONLY
+    } else {
+      libc::O_TRUNC | libc::O_CREAT | libc::O_WRONLY
+    }
   } else {
     string_to_flags(scope, flag_v, "options.flag")?
   };
@@ -3090,16 +3116,20 @@ fn resolve_write_file_args(
 // fd, writes all bytes; for a path, opens (flags + default 0o666), optionally
 // chmods to `mode`, writes all bytes, then closes (the file `Rc` drops at
 // scope end, including error paths). Emits the final node errors
-// (open -> "open" w/ path, write -> "write").
-#[op2(fast, stack_trace)]
-pub fn op_node_fs_write_file_sync(
+// (open -> "open" w/ path, write -> "write"). `append` selects the
+// appendFile{,Sync} variant (default flag "a"; for an fd the flag is moot --
+// like node, the write goes to the fd as-is).
+fn write_file_sync_impl(
   scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   path_or_rid: v8::Local<v8::Value>,
   data: v8::Local<v8::Value>,
   options: v8::Local<v8::Value>,
+  append: bool,
+  api_name: &str,
 ) -> Result<(), FsError> {
-  let (bytes, flags, mode) = resolve_write_file_args(scope, data, options)?;
+  let (bytes, flags, mode) =
+    resolve_write_file_args(scope, data, options, append)?;
   if path_or_rid.is_number() {
     let fd = path_or_rid.int32_value(scope).unwrap_or(0);
     let file = file_for_fd(state, fd)?;
@@ -3110,7 +3140,7 @@ pub fn op_node_fs_write_file_sync(
   let checked = state.borrow_mut::<PermissionsContainer>().check_open(
     Cow::Borrowed(Path::new(&path)),
     open_options_to_access_kind(&open_options),
-    Some("node:fs.writeFileSync"),
+    Some(api_name),
   )?;
   let fs = state.borrow::<FileSystemRc>().clone();
   let file = fs
@@ -3125,20 +3155,63 @@ pub fn op_node_fs_write_file_sync(
   write_all_node(file, &bytes)
 }
 
-// Async `fs.writeFile` for the common case (no AbortSignal, no custom
-// iterable — those stay in JS), both path and fd. Validates synchronously in
-// the eager prologue; open + optional chmod + write-all + close run on the
-// event loop. The file `Rc` drops at scope end. Emits node errors
-// (open -> "open", write -> "write").
-#[op2(async(eager_throw), stack_trace)]
-pub fn op_node_fs_write_file(
+#[op2(fast, stack_trace)]
+pub fn op_node_fs_write_file_sync(
   scope: &mut v8::PinScope<'_, '_>,
   state: &mut OpState,
   path_or_rid: v8::Local<v8::Value>,
   data: v8::Local<v8::Value>,
   options: v8::Local<v8::Value>,
+) -> Result<(), FsError> {
+  write_file_sync_impl(
+    scope,
+    state,
+    path_or_rid,
+    data,
+    options,
+    false,
+    "node:fs.writeFileSync",
+  )
+}
+
+// `fs.appendFileSync(pathOrFd, data, options)`: writeFileSync with node's
+// appendFile option handling (default flag "a") done natively, so the public
+// API is a direct op binding.
+#[op2(fast, stack_trace)]
+pub fn op_node_fs_append_file_sync(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &mut OpState,
+  path_or_rid: v8::Local<v8::Value>,
+  data: v8::Local<v8::Value>,
+  options: v8::Local<v8::Value>,
+) -> Result<(), FsError> {
+  write_file_sync_impl(
+    scope,
+    state,
+    path_or_rid,
+    data,
+    options,
+    true,
+    "node:fs.appendFileSync",
+  )
+}
+
+// Async `fs.writeFile`/`fs.appendFile` for the common case (no AbortSignal,
+// no custom iterable — those stay in JS), both path and fd. Validates
+// synchronously in the eager prologue; open + optional chmod + write-all +
+// close run on the event loop. The file `Rc` drops at scope end. Emits node
+// errors (open -> "open", write -> "write").
+fn write_file_async_impl(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &mut OpState,
+  path_or_rid: v8::Local<v8::Value>,
+  data: v8::Local<v8::Value>,
+  options: v8::Local<v8::Value>,
+  append: bool,
+  api_name: &str,
 ) -> Result<impl Future<Output = Result<(), FsError>> + use<>, FsError> {
-  let (bytes, flags, mode) = resolve_write_file_args(scope, data, options)?;
+  let (bytes, flags, mode) =
+    resolve_write_file_args(scope, data, options, append)?;
   enum Target {
     // The lookup Result is deferred into the future so a bad fd surfaces as
     // EBADF via the callback (node) rather than a synchronous throw.
@@ -3156,7 +3229,7 @@ pub fn op_node_fs_write_file(
       .check_open(
         Cow::Owned(PathBuf::from(&path)),
         open_options_to_access_kind(&open_options),
-        Some("node:fs.writeFile"),
+        Some(api_name),
       )?
       .into_owned();
     Target::Path(path, checked)
@@ -3190,6 +3263,47 @@ pub fn op_node_fs_write_file(
     };
     write_all_node(file, &bytes)
   })
+}
+
+#[op2(async(eager_throw), stack_trace)]
+pub fn op_node_fs_write_file(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &mut OpState,
+  path_or_rid: v8::Local<v8::Value>,
+  data: v8::Local<v8::Value>,
+  options: v8::Local<v8::Value>,
+) -> Result<impl Future<Output = Result<(), FsError>> + use<>, FsError> {
+  write_file_async_impl(
+    scope,
+    state,
+    path_or_rid,
+    data,
+    options,
+    false,
+    "node:fs.writeFile",
+  )
+}
+
+// Async `fs.appendFile` for the common case (no AbortSignal, no custom
+// iterable): writeFile with node's appendFile option handling (default flag
+// "a") done natively.
+#[op2(async(eager_throw), stack_trace)]
+pub fn op_node_fs_append_file(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &mut OpState,
+  path_or_rid: v8::Local<v8::Value>,
+  data: v8::Local<v8::Value>,
+  options: v8::Local<v8::Value>,
+) -> Result<impl Future<Output = Result<(), FsError>> + use<>, FsError> {
+  write_file_async_impl(
+    scope,
+    state,
+    path_or_rid,
+    data,
+    options,
+    true,
+    "node:fs.appendFile",
+  )
 }
 
 // `fs.truncateSync(path, len)`: node opens 'r+' (so ENOENT etc. surface with
@@ -5633,11 +5747,10 @@ pub fn op_node_fs_utime(
   })
 }
 
-// An all-zero `Stats`, used as the watchFile sentinel (`emptyStats`). Built
-// lazily on first use since cppgc objects can't be created at snapshot time.
-#[op2]
-#[cppgc]
-pub fn op_node_fs_empty_stats(bigint: bool) -> Stats {
+// An all-zero `Stats`, the watchFile sentinel for a path that can't be
+// stat'ed — matching libuv's `uv_fs_poll_t`, which reports zeroed stats when
+// the poll target doesn't exist.
+fn empty_stats(bigint: bool) -> Stats {
   Stats {
     dev: 0.0,
     ino: 0.0,
@@ -5665,21 +5778,198 @@ pub fn op_node_fs_empty_stats(bigint: bool) -> Stats {
   }
 }
 
+// The fields node's watchFile change detector compares
+// (lib/internal/fs/watchers.js onchange). `None` (a failed stat) compares as
+// all zeros, mirroring libuv's zeroed `uv_fs_poll_t` stats.
+fn watch_cmp_fields(
+  stat: &Option<deno_io::fs::FsStat>,
+) -> (f64, f64, f64, u32, u32, u32, f64, f64) {
+  match stat {
+    None => (0.0, 0.0, 0.0, 0, 0, 0, 0.0, 0.0),
+    Some(s) => {
+      let n = NodeFsStat::from(*s);
+      (
+        n.mtime_ms.unwrap_or(0.0),
+        n.ctime_ms.unwrap_or(0.0),
+        n.size,
+        n.mode,
+        n.uid,
+        n.gid,
+        n.ino,
+        n.dev,
+      )
+    }
+  }
+}
+
 // `watchFile`'s change detector: any difference in the fields node compares
-// (lib/internal/fs/watchers.js onchange) counts as a change.
-#[op2(fast)]
-pub fn op_node_fs_stats_changed(
-  #[cppgc] prev: &Stats,
-  #[cppgc] curr: &Stats,
+// counts as a change (chmod/chown, file replacement, and sub-mtime-resolution
+// changes all fire "change").
+fn watch_stats_changed(
+  prev: &Option<deno_io::fs::FsStat>,
+  curr: &Option<deno_io::fs::FsStat>,
 ) -> bool {
-  prev.mtime_ms != curr.mtime_ms
-    || prev.ctime_ms != curr.ctime_ms
-    || prev.size != curr.size
-    || prev.mode != curr.mode
-    || prev.uid != curr.uid
-    || prev.gid != curr.gid
-    || prev.ino != curr.ino
-    || prev.dev != curr.dev
+  watch_cmp_fields(prev) != watch_cmp_fields(curr)
+}
+
+// The Rust half of `fs.watchFile`'s StatWatcher: owns the poll interval and
+// the previous stat snapshot. JS keeps only the EventEmitter shell; each
+// `op_node_fs_stat_watcher_poll` call resolves with the next [curr, prev]
+// change pair (or null once the resource is closed by `unwatchFile`/`stop`).
+struct StatWatcherResource {
+  path: String,
+  bigint: bool,
+  interval_ms: u64,
+  poll_state: deno_core::AsyncRefCell<StatWatcherPollState>,
+  cancel: deno_core::CancelHandle,
+}
+
+#[derive(Default)]
+struct StatWatcherPollState {
+  started: bool,
+  prev: Option<deno_io::fs::FsStat>,
+}
+
+impl deno_core::Resource for StatWatcherResource {
+  fn name(&self) -> Cow<'_, str> {
+    "nodeStatWatcher".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel.cancel();
+  }
+}
+
+// A watchFile poll result stat: a real stat (converted with own data
+// properties like every op-built Stats), or the zeroed sentinel for a failed
+// stat. The sentinel is a bare cppgc object with NO own properties so it
+// deep-equals a constructor-built `new fs.Stats()`, matching node (where the
+// zeroed stats also come from the binding) and the previous `emptyStats()`
+// polyfill helper.
+struct WatchStat(Option<deno_io::fs::FsStat>, bool);
+
+impl WatchStat {
+  fn into_v8<'a>(
+    self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> v8::Local<'a, v8::Value> {
+    match self.0 {
+      Some(stat) => stats_to_v8(scope, Stats::build(stat, self.1)),
+      None => {
+        deno_core::cppgc::make_cppgc_object(scope, empty_stats(self.1)).into()
+      }
+    }
+  }
+}
+
+// `[curr, prev]` Stats pair for a watchFile "change" emission, or `null` once
+// the watcher is stopped (ends the JS poll loop).
+struct StatsPair(Option<(WatchStat, WatchStat)>);
+
+impl<'a> ToV8<'a> for StatsPair {
+  type Error = std::convert::Infallible;
+  fn to_v8(
+    self,
+    scope: &mut v8::PinScope<'a, '_>,
+  ) -> Result<v8::Local<'a, v8::Value>, Self::Error> {
+    Ok(match self.0 {
+      Some((curr, prev)) => {
+        let curr = curr.into_v8(scope);
+        let prev = prev.into_v8(scope);
+        v8::Array::new_with_elements(scope, &[curr, prev]).into()
+      }
+      None => v8::null(scope).into(),
+    })
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_node_fs_stat_watcher_open(
+  state: &mut OpState,
+  #[string] path: String,
+  bigint: bool,
+  interval: f64,
+) -> ResourceId {
+  state.resource_table.add(StatWatcherResource {
+    path,
+    bigint,
+    interval_ms: interval.max(0.0) as u64,
+    poll_state: deno_core::AsyncRefCell::new(StatWatcherPollState::default()),
+    cancel: deno_core::CancelHandle::default(),
+  })
+}
+
+// watchFile swallows stat errors into the zeroed-stats sentinel (`None`),
+// including permission errors — matching the JS `statAsync` it replaces.
+async fn stat_watch_path(
+  state: &Rc<RefCell<OpState>>,
+  path: &str,
+) -> Option<deno_io::fs::FsStat> {
+  let (fs, checked) = {
+    let mut state = state.borrow_mut();
+    let checked = state
+      .borrow_mut::<PermissionsContainer>()
+      .check_open(
+        Cow::Owned(PathBuf::from(path)),
+        OpenAccessKind::Read,
+        Some("node:fs.watchFile"),
+      )
+      .ok()?
+      .into_owned();
+    (state.borrow::<FileSystemRc>().clone(), checked)
+  };
+  fs.stat_async(checked).await.ok()
+}
+
+// Resolves with the next change pair. The first call performs the initial
+// stat; libuv emits an initial "change" (with zeroed stats for both args)
+// only when that first stat fails, which is mirrored here. Resolves null when
+// the resource is closed.
+#[op2]
+pub async fn op_node_fs_stat_watcher_poll(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<StatsPair, deno_core::error::ResourceError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<StatWatcherResource>(rid)?;
+  let mut poll_state = deno_core::RcRef::map(&resource, |r| &r.poll_state)
+    .borrow_mut()
+    .await;
+  if !poll_state.started {
+    poll_state.started = true;
+    poll_state.prev = stat_watch_path(&state, &resource.path).await;
+    if poll_state.prev.is_none() {
+      return Ok(StatsPair(Some((
+        WatchStat(None, resource.bigint),
+        WatchStat(None, resource.bigint),
+      ))));
+    }
+  }
+  loop {
+    let cancel = deno_core::RcRef::map(&resource, |r| &r.cancel);
+    let sleep = tokio::time::sleep(std::time::Duration::from_millis(
+      resource.interval_ms,
+    ));
+    if deno_core::CancelFuture::or_cancel(sleep, cancel)
+      .await
+      .is_err()
+    {
+      // Closed by `unwatchFile`/`stop()`.
+      return Ok(StatsPair(None));
+    }
+    let curr = stat_watch_path(&state, &resource.path).await;
+    if watch_stats_changed(&poll_state.prev, &curr) {
+      let prev = poll_state.prev.take();
+      poll_state.prev = curr;
+      return Ok(StatsPair(Some((
+        WatchStat(poll_state.prev, resource.bigint),
+        WatchStat(prev, resource.bigint),
+      ))));
+    }
+  }
 }
 
 // Replicates `validateIgnoreOption` from node's lib/internal/fs/watchers.js:

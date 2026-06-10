@@ -14,10 +14,12 @@ const lazyProcess = core.createLazyLoader("node:process");
 const lazyReaddir = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_readdir.ts",
 );
+// The ops validate the path + extract options themselves; the async op is
+// directly the promise form (resolves the cppgc Stats).
 const {
-  lstatPromise: lstat,
-  lstatSync,
-} = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
+  op_node_fs_lstat: lstat,
+  op_node_fs_lstat_sync: lstatSync,
+} = core.ops;
 
 const {
   basename,

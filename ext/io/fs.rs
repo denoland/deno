@@ -110,6 +110,7 @@ impl From<Canceled> for FsError {
 
 pub type FsResult<T> = Result<T, FsError>;
 
+#[derive(Debug, Clone, Copy)]
 pub struct FsStat {
   pub is_file: bool,
   pub is_directory: bool,

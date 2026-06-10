@@ -11,10 +11,16 @@ import { copyFilePromise } from "ext:deno_node/_fs/_fs_copy.ts";
 const { cpPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
 import { lutimesPromise } from "ext:deno_node/_fs/_fs_lutimes.ts";
 import { readdirPromise } from "ext:deno_node/_fs/_fs_readdir.ts";
-const { lstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_lstat.ts");
+import { op_node_fs_lstat } from "ext:core/ops";
+// The op is already the promise form: it extracts bigint/throwIfNoEntry from
+// options, validates the path eagerly, and resolves the cppgc Stats.
+const lstatPromise = op_node_fs_lstat;
 const lazyFs = core.createLazyLoader("node:fs");
 import { globPromise } from "ext:deno_node/_fs/_fs_glob.ts";
-import { getValidatedPathToString } from "ext:deno_node/internal/fs/utils.mjs";
+import {
+  getValidatedPathToString,
+  validateStringAfterArrayBufferView,
+} from "ext:deno_node/internal/fs/utils.mjs";
 import type { Buffer } from "node:buffer";
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
@@ -31,12 +37,16 @@ const lazyPath = core.createLazyLoader("node:path");
 const lazyProcess = core.createLazyLoader("node:process");
 
 const {
+  ArrayBufferIsView,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   PromiseReject,
   SafeArrayIterator,
   SymbolAsyncDispose,
 } = primordials;
+const { isIterable } = core.loadExtScript(
+  "ext:deno_node/internal/streams/utils.js",
+);
 
 // Promisified fs.X wrappers MUST NOT be built at module body. handle.ts /
 // internal/fs/promises.ts are loaded during the initial `fs.promises`
@@ -359,6 +369,14 @@ function writeFilePromise(
   const flag = opts.flag ?? "w";
   const mode = opts.mode ?? 0o666;
   return (async () => {
+    // Node validates `data` before opening, so invalid data must not create
+    // the file (custom iterables are consumed by FileHandle.writeFile later).
+    if (
+      !ArrayBufferIsView(data) &&
+      !(isIterable(data) && typeof data !== "string")
+    ) {
+      validateStringAfterArrayBufferView(data, "data");
+    }
     // Match the existing path-based behavior: surface the same `DOMException`
     // that `signal.throwIfAborted()` produces (the fd-based fallback would
     // throw Deno's `AbortError` instead). Inside the async IIFE so the throw

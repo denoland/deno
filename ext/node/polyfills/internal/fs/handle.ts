@@ -33,7 +33,11 @@ function writevPromise(
   });
 }
 // readvPromise loaded lazily from node:fs via lazyFs
-const { fstatPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_fstat.ts");
+import { op_node_fs_fstat_stats } from "ext:core/ops";
+// The op is already the promise form: it validates the fd, extracts bigint
+// from options, and resolves the cppgc Stats (errors node-formatted with
+// syscall "fstat").
+const fstatPromise = op_node_fs_fstat_stats;
 // fchown, ftruncate, futimes loaded lazily from node:fs via lazyFs
 const { kEmptyObject, promisify } = core.loadExtScript(
   "ext:deno_node/internal/util.mjs",

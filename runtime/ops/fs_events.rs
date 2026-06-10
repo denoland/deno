@@ -24,6 +24,8 @@ use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorClass;
 use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_node::ops::fs::NodeFsError;
+use deno_node::ops::fs::NodeFsErrorContext;
 use deno_permissions::PermissionsContainer;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -39,7 +41,12 @@ use tokio::sync::mpsc::error::TrySendError;
 
 deno_core::extension!(
   deno_fs_events,
-  ops = [op_fs_events_open, op_fs_events_poll],
+  ops = [
+    op_fs_events_open,
+    op_fs_events_poll,
+    op_node_fs_watch_open,
+    op_node_fs_watch_poll
+  ],
 );
 
 /// Capacity of the queue between the notify backend thread and the JS-side
@@ -52,7 +59,11 @@ deno_core::extension!(
 /// idle watcher does not pay for it.
 const FS_EVENT_QUEUE_CAPACITY: usize = 1024;
 
-struct FsEventsResource {
+/// The shared guts of a watch registration: the event channel plus the
+/// bookkeeping needed to clean up the shared watcher on drop. Wrapped by both
+/// [`FsEventsResource`] (`Deno.watchFs`) and [`NodeFsWatcherResource`]
+/// (`node:fs.watch`).
+struct WatchHandle {
   receiver: AsyncRefCell<mpsc::Receiver<Result<FsEvent, NotifyError>>>,
   cancel: CancelHandle,
   /// Shared backend used to clean up our watch on drop.
@@ -64,8 +75,12 @@ struct FsEventsResource {
   watched: Vec<(PathBuf, RecursiveMode)>,
   /// Set by the watcher callback when the event queue overflowed and events
   /// were dropped; drained by `op_fs_events_poll`, which surfaces the loss as
-  /// a `flag: "rescan"` event.
+  /// a `flag: "rescan"` event. Shares the `Arc` held by our `WatchSender`.
   overflowed: Arc<AtomicBool>,
+}
+
+struct FsEventsResource {
+  handle: WatchHandle,
 }
 
 impl Resource for FsEventsResource {
@@ -74,11 +89,11 @@ impl Resource for FsEventsResource {
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel.cancel();
+    self.handle.cancel.cancel();
   }
 }
 
-impl Drop for FsEventsResource {
+impl Drop for WatchHandle {
   fn drop(&mut self) {
     // Remove this resource's sender from the shared dispatch list so the
     // watcher callback stops trying to deliver events to a dead channel.
@@ -176,7 +191,7 @@ struct WatchSender {
   /// Pre-canonicalized versions of `ignore`, mirroring `canonical_paths`.
   canonical_ignore: Vec<Option<PathBuf>>,
   sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
-  /// See [`FsEventsResource::overflowed`].
+  /// See [`WatchHandle::overflowed`].
   overflowed: Arc<AtomicBool>,
 }
 
@@ -190,29 +205,6 @@ impl WatchSender {
     if let Err(TrySendError::Full(_)) = self.sender.try_send(msg) {
       self.overflowed.store(true, Ordering::Relaxed);
     }
-  }
-}
-
-/// `notify::Error` is not `Clone` (it can wrap an `std::io::Error`), but the
-/// shared watcher callback has to deliver an error to every interested
-/// resource, so rebuild an equivalent error for each receiver. For I/O errors
-/// the original `ErrorKind` and message are preserved.
-fn clone_notify_error(err: &NotifyError) -> NotifyError {
-  let kind = match &err.kind {
-    notify::ErrorKind::Generic(msg) => notify::ErrorKind::Generic(msg.clone()),
-    notify::ErrorKind::Io(io_err) => notify::ErrorKind::Io(
-      std::io::Error::new(io_err.kind(), io_err.to_string()),
-    ),
-    notify::ErrorKind::PathNotFound => notify::ErrorKind::PathNotFound,
-    notify::ErrorKind::WatchNotFound => notify::ErrorKind::WatchNotFound,
-    notify::ErrorKind::InvalidConfig(config) => {
-      notify::ErrorKind::InvalidConfig(*config)
-    }
-    notify::ErrorKind::MaxFilesWatch => notify::ErrorKind::MaxFilesWatch,
-  };
-  NotifyError {
-    kind,
-    paths: err.paths.clone(),
   }
 }
 
@@ -342,6 +334,29 @@ pub enum FsEventsError {
   Canceled(#[from] deno_core::Canceled),
 }
 
+/// `notify::Error` is not `Clone` (it can wrap an `std::io::Error`), but the
+/// shared watcher callback has to deliver an error to every interested
+/// resource, so rebuild an equivalent error for each receiver. For I/O errors
+/// the original `ErrorKind` and message are preserved.
+fn clone_notify_error(err: &NotifyError) -> NotifyError {
+  let kind = match &err.kind {
+    notify::ErrorKind::Generic(msg) => notify::ErrorKind::Generic(msg.clone()),
+    notify::ErrorKind::Io(io_err) => notify::ErrorKind::Io(
+      std::io::Error::new(io_err.kind(), io_err.to_string()),
+    ),
+    notify::ErrorKind::PathNotFound => notify::ErrorKind::PathNotFound,
+    notify::ErrorKind::WatchNotFound => notify::ErrorKind::WatchNotFound,
+    notify::ErrorKind::InvalidConfig(config) => {
+      notify::ErrorKind::InvalidConfig(*config)
+    }
+    notify::ErrorKind::MaxFilesWatch => notify::ErrorKind::MaxFilesWatch,
+  };
+  NotifyError {
+    kind,
+    paths: err.paths.clone(),
+  }
+}
+
 fn make_watch_sender(
   id: u64,
   paths: Vec<PathBuf>,
@@ -364,7 +379,7 @@ fn make_watch_sender(
 
 fn ensure_watcher(
   state: &mut OpState,
-) -> Result<Arc<WatcherInner>, FsEventsError> {
+) -> Result<Arc<WatcherInner>, NotifyError> {
   if let Some(ws) = state.try_borrow::<WatcherState>() {
     return Ok(ws.inner.clone());
   }
@@ -445,8 +460,7 @@ fn ensure_watcher(
       }
     },
     Default::default(),
-  )
-  .map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
+  )?;
 
   let inner = Arc::new(WatcherInner {
     senders,
@@ -484,6 +498,70 @@ fn normalize_watch_path(path: PathBuf) -> PathBuf {
   }
 }
 
+/// Register `resolved_paths` with the shared watcher and return the channel
+/// handle. Shared by `op_fs_events_open` and `op_node_fs_watch_open`.
+fn open_watch_handle(
+  state: &mut OpState,
+  resolved_paths: Vec<PathBuf>,
+  ignore_paths: Vec<PathBuf>,
+  recursive_mode: RecursiveMode,
+) -> Result<WatchHandle, NotifyError> {
+  let (sender, receiver) =
+    mpsc::channel::<Result<FsEvent, NotifyError>>(FS_EVENT_QUEUE_CAPACITY);
+  let overflowed = Arc::new(AtomicBool::new(false));
+
+  let inner = ensure_watcher(state)?;
+
+  let id = inner.next_id.fetch_add(1, Ordering::Relaxed);
+
+  inner.senders.lock().push(make_watch_sender(
+    id,
+    resolved_paths.clone(),
+    ignore_paths,
+    sender,
+    overflowed.clone(),
+  ));
+
+  // Register each path with the shared watcher exactly once per
+  // (path, mode) pair. Subsequent resources requesting the same
+  // (path, mode) bump the refcount but skip the `watch` syscall.
+  // This is the core of the duplicate-event fix on Windows (see
+  // denoland/deno#27742): otherwise repeated `watch` calls register
+  // duplicate ReadDirectoryChangesW operations whose callbacks all
+  // fire on every change.
+  let mut watched = Vec::with_capacity(resolved_paths.len());
+  {
+    let mut watched_paths = inner.watched_paths.lock();
+    let mut watcher = inner.watcher.lock();
+    for path in &resolved_paths {
+      let key = (path.clone(), recursive_mode);
+      let count = watched_paths.entry(key.clone()).or_insert(0);
+      if *count == 0
+        && let Err(e) = watcher.watch(path, recursive_mode)
+      {
+        // Roll back any partial state we accumulated for this call so
+        // a failed open doesn't leave dangling refcounts/senders.
+        watched_paths.remove(&key);
+        drop(watcher);
+        drop(watched_paths);
+        rollback_partial_open(&inner, id, &watched);
+        return Err(e);
+      }
+      *count += 1;
+      watched.push((path.clone(), recursive_mode));
+    }
+  }
+
+  Ok(WatchHandle {
+    receiver: AsyncRefCell::new(receiver),
+    cancel: Default::default(),
+    inner,
+    id,
+    watched,
+    overflowed,
+  })
+}
+
 #[op2(stack_trace)]
 #[smi]
 fn op_fs_events_open(
@@ -518,67 +596,16 @@ fn op_fs_events_open(
     }
   }
 
-  let (sender, receiver) =
-    mpsc::channel::<Result<FsEvent, NotifyError>>(FS_EVENT_QUEUE_CAPACITY);
-  let overflowed = Arc::new(AtomicBool::new(false));
-
-  let inner = ensure_watcher(state)?;
-
-  let id = inner.next_id.fetch_add(1, Ordering::Relaxed);
-
-  inner.senders.lock().push(make_watch_sender(
-    id,
-    resolved_paths.clone(),
-    ignore_paths,
-    sender,
-    overflowed.clone(),
-  ));
-
   let recursive_mode = if recursive {
     RecursiveMode::Recursive
   } else {
     RecursiveMode::NonRecursive
   };
 
-  // Register each path with the shared watcher exactly once per
-  // (path, mode) pair. Subsequent resources requesting the same
-  // (path, mode) bump the refcount but skip the `watch` syscall.
-  // This is the core of the duplicate-event fix on Windows (see
-  // denoland/deno#27742): otherwise repeated `watch` calls register
-  // duplicate ReadDirectoryChangesW operations whose callbacks all
-  // fire on every change.
-  let mut watched = Vec::with_capacity(resolved_paths.len());
-  {
-    let mut watched_paths = inner.watched_paths.lock();
-    let mut watcher = inner.watcher.lock();
-    for path in &resolved_paths {
-      let key = (path.clone(), recursive_mode);
-      let count = watched_paths.entry(key.clone()).or_insert(0);
-      if *count == 0
-        && let Err(e) = watcher.watch(path, recursive_mode)
-      {
-        // Roll back any partial state we accumulated for this call so
-        // a failed open doesn't leave dangling refcounts/senders.
-        watched_paths.remove(&key);
-        drop(watcher);
-        drop(watched_paths);
-        rollback_partial_open(&inner, id, &watched);
-        return Err(FsEventsError::Notify(JsNotifyError(e)));
-      }
-      *count += 1;
-      watched.push((path.clone(), recursive_mode));
-    }
-  }
-
-  let resource = FsEventsResource {
-    receiver: AsyncRefCell::new(receiver),
-    cancel: Default::default(),
-    inner,
-    id,
-    watched,
-    overflowed,
-  };
-  let rid = state.resource_table.add(resource);
+  let handle =
+    open_watch_handle(state, resolved_paths, ignore_paths, recursive_mode)
+      .map_err(|e| FsEventsError::Notify(JsNotifyError(e)))?;
+  let rid = state.resource_table.add(FsEventsResource { handle });
   Ok(rid)
 }
 
@@ -613,7 +640,9 @@ async fn op_fs_events_poll(
   #[smi] rid: ResourceId,
 ) -> Result<Option<FsEvent>, FsEventsError> {
   let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
-  let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
+  let mut receiver = RcRef::map(&resource, |r| &r.handle.receiver)
+    .borrow_mut()
+    .await;
 
   // If the event queue overflowed since the last poll, events were dropped:
   // tell the consumer via a `"rescan"`-flagged event rather than losing them
@@ -625,18 +654,23 @@ async fn op_fs_events_poll(
   // here: the flag can only be set while the queue is full, so a consumer
   // blocked in `recv()` below always has queued events to wake it, and the
   // flag is checked again on the next poll.
-  if resource.overflowed.swap(false, Ordering::Relaxed) {
+  if resource.handle.overflowed.swap(false, Ordering::Relaxed) {
     loop {
       match receiver.try_recv() {
         Ok(Ok(_)) => continue,
         Ok(Err(err)) => {
-          resource.overflowed.store(true, Ordering::Relaxed);
+          resource.handle.overflowed.store(true, Ordering::Relaxed);
           return Err(FsEventsError::Notify(JsNotifyError(err)));
         }
         Err(_) => break,
       }
     }
-    let paths = resource.watched.iter().map(|(p, _)| p.clone()).collect();
+    let paths = resource
+      .handle
+      .watched
+      .iter()
+      .map(|(p, _)| p.clone())
+      .collect();
     return Ok(Some(FsEvent {
       kind: "any",
       paths,
@@ -644,12 +678,243 @@ async fn op_fs_events_poll(
     }));
   }
 
-  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let cancel = RcRef::map(resource, |r| &r.handle.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;
   match maybe_result {
     Some(Ok(value)) => Ok(Some(value)),
     Some(Err(err)) => Err(FsEventsError::Notify(JsNotifyError(err))),
     None => Ok(None),
+  }
+}
+
+// --- node:fs.watch ---
+//
+// node-flavored watcher ops sharing the same notify backend as
+// `Deno.watchFs`. They live here (not in ext/node) because they reuse the
+// private shared-watcher machinery above; errors are built fully node-formed
+// via deno_node's error helpers so the polyfill needs no translation layer.
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum NodeFsEventsError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Node(#[from] NodeFsError),
+}
+
+// Maps a notify error to node's uv-style watch error (syscall "watch" + the
+// user-supplied path). PathNotFound/WatchNotFound surface as ENOENT like
+// node's failed `handle.start`.
+fn node_notify_err(e: NotifyError, path: &str) -> NodeFsError {
+  let ctx = NodeFsErrorContext::new_syscall_path("watch", path);
+  match e.kind {
+    notify::ErrorKind::PathNotFound | notify::ErrorKind::WatchNotFound => {
+      NodeFsError::from_code("ENOENT", ctx)
+    }
+    notify::ErrorKind::Io(io) => match io.raw_os_error() {
+      Some(errno) => NodeFsError::new(errno, ctx),
+      None => {
+        NodeFsError::from_code("UNKNOWN", ctx.with_message(io.to_string()))
+      }
+    },
+    notify::ErrorKind::MaxFilesWatch => NodeFsError::from_code("ENOSPC", ctx),
+    notify::ErrorKind::Generic(msg) => {
+      NodeFsError::from_code("UNKNOWN", ctx.with_message(msg))
+    }
+    notify::ErrorKind::InvalidConfig(_) => {
+      NodeFsError::from_code("EINVAL", ctx)
+    }
+  }
+}
+
+struct NodeFsWatcherResource {
+  handle: WatchHandle,
+  recursive: bool,
+  /// Symlink-resolved watch root, used to relativize recursive event paths
+  /// (notify reports real paths, e.g. /private/var for /var on macOS).
+  resolved_path: PathBuf,
+  /// The user-supplied path, for error messages.
+  path: String,
+}
+
+impl Resource for NodeFsWatcherResource {
+  fn name(&self) -> Cow<'_, str> {
+    "nodeFsWatcher".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.handle.cancel.cancel();
+  }
+}
+
+#[allow(
+  clippy::disallowed_methods,
+  reason = "always using real fs with watcher"
+)]
+fn lstat_real(path: &Path) -> Result<(), std::io::Error> {
+  std::fs::symlink_metadata(path).map(|_| ())
+}
+
+#[op2(fast, stack_trace)]
+#[smi]
+fn op_node_fs_watch_open(
+  state: &mut OpState,
+  #[string] path: String,
+  recursive: bool,
+) -> Result<ResourceId, NodeFsEventsError> {
+  let checked = state
+    .borrow_mut::<PermissionsContainer>()
+    .check_open(
+      Cow::Owned(PathBuf::from(&path)),
+      deno_permissions::OpenAccessKind::ReadNoFollow,
+      Some("node:fs.watch"),
+    )?
+    .into_owned_path();
+
+  // Pre-validate path existence so missing-path failures surface as uv ENOENT
+  // consistently across platforms: notify's Windows backend (`add_watch` in
+  // src/windows.rs) returns a Generic error rather than a typed not-found when
+  // the path doesn't exist.
+  if let Err(e) = lstat_real(&checked) {
+    let ctx = NodeFsErrorContext::new_syscall_path("watch", &path);
+    return Err(
+      match e.raw_os_error() {
+        Some(errno) => NodeFsError::new(errno, ctx),
+        None => NodeFsError::from_code("ENOENT", ctx),
+      }
+      .into(),
+    );
+  }
+
+  let normalized = normalize_watch_path(checked);
+  let resolved_path =
+    canonicalize_path(&normalized).unwrap_or_else(|| normalized.clone());
+
+  let recursive_mode = if recursive {
+    RecursiveMode::Recursive
+  } else {
+    RecursiveMode::NonRecursive
+  };
+
+  let handle =
+    open_watch_handle(state, vec![normalized], vec![], recursive_mode)
+      .map_err(|e| node_notify_err(e, &path))?;
+  Ok(state.resource_table.add(NodeFsWatcherResource {
+    handle,
+    recursive,
+    resolved_path,
+    path,
+  }))
+}
+
+// node maps create/remove/rename events to "rename" and everything else to
+// "change" (see the FSWatcher rename/change split in lib/internal/fs/watchers.js).
+fn node_event_type(kind: &str) -> &'static str {
+  match kind {
+    "create" | "remove" | "rename" => "rename",
+    _ => "change",
+  }
+}
+
+// `path.relative()` reduced to what fs.watch needs: both inputs are absolute
+// and normalized, so a failed strip_prefix walks up with `..` segments.
+fn relative_filename(from: &Path, to: &Path) -> String {
+  if let Ok(stripped) = to.strip_prefix(from) {
+    return stripped.to_string_lossy().into_owned();
+  }
+  let from_comps: Vec<_> = from.components().collect();
+  let to_comps: Vec<_> = to.components().collect();
+  let common = from_comps
+    .iter()
+    .zip(to_comps.iter())
+    .take_while(|(a, b)| a == b)
+    .count();
+  let mut parts: Vec<String> =
+    vec![String::from(".."); from_comps.len() - common];
+  parts.extend(
+    to_comps[common..]
+      .iter()
+      .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+  );
+  parts.join(std::path::MAIN_SEPARATOR_STR)
+}
+
+/// `[eventType, filename]` for an fs.watch "change" emission, or `null` once
+/// the watcher closes (ends the JS poll loop).
+struct NodeWatchEvent(Option<(&'static str, String)>);
+
+impl<'a> ToV8<'a> for NodeWatchEvent {
+  type Error = std::convert::Infallible;
+  fn to_v8(
+    self,
+    scope: &mut deno_core::v8::PinScope<'a, '_>,
+  ) -> Result<deno_core::v8::Local<'a, deno_core::v8::Value>, Self::Error> {
+    use deno_core::v8;
+    Ok(match self.0 {
+      Some((event_type, filename)) => {
+        let event_type: v8::Local<v8::Value> =
+          v8::String::new(scope, event_type)
+            .map(|s| s.into())
+            .unwrap_or_else(|| v8::undefined(scope).into());
+        let filename: v8::Local<v8::Value> = v8::String::new(scope, &filename)
+          .map(|s| s.into())
+          .unwrap_or_else(|| v8::undefined(scope).into());
+        v8::Array::new_with_elements(scope, &[event_type, filename]).into()
+      }
+      None => v8::null(scope).into(),
+    })
+  }
+}
+
+#[op2]
+async fn op_node_fs_watch_poll(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<NodeWatchEvent, NodeFsEventsError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NodeFsWatcherResource>(rid)?;
+  let mut receiver = RcRef::map(&resource, |r| &r.handle.receiver)
+    .borrow_mut()
+    .await;
+  loop {
+    let cancel = RcRef::map(&resource, |r| &r.handle.cancel);
+    let maybe_result = match receiver.recv().or_cancel(cancel).await {
+      Ok(v) => v,
+      // Closed by FSWatcher.close().
+      Err(_canceled) => return Ok(NodeWatchEvent(None)),
+    };
+    match maybe_result {
+      None => return Ok(NodeWatchEvent(None)),
+      Some(Err(e)) => {
+        return Err(node_notify_err(e, &resource.path).into());
+      }
+      Some(Ok(event)) => {
+        let Some(event_path) = event.paths.first() else {
+          continue;
+        };
+        // node reports the path relative to the watch root for recursive
+        // watches, just the basename for non-recursive ones.
+        let filename = if resource.recursive {
+          relative_filename(&resource.resolved_path, event_path)
+        } else {
+          event_path
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default()
+        };
+        return Ok(NodeWatchEvent(Some((
+          node_event_type(event.kind),
+          filename,
+        ))));
+      }
+    }
   }
 }
 

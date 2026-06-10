@@ -121,11 +121,32 @@ function callbackify(op, nargs, defaultCb) {
 // middle args (the op supplies defaults for omitted ones), then the callback
 // (the first trailing function). Op-first, so the op's synchronous validation
 // runs before the callback is validated -- matching node's "validate the inputs
-// before the callback" order. The resolved value (null/undefined normalized to
-// undefined) is passed to the callback.
-function callbackifyOpt(op, nLeading = 1) {
+// before the callback" order. A null/undefined resolution invokes the callback
+// with exactly `(null)` -- node's void-op oncomplete arity (test-fs-access
+// deepStrictEquals the callback arguments) -- otherwise `(null, result)`.
+//
+// `cbAtEnd` selects node's positional-callback variant (e.g. `symlink`, whose
+// `makeCallback(arguments.length === 3 ? type_ : callback_)` treats whatever
+// follows the leading args as the callback by POSITION, so
+// `symlink(t, p, "dir")` throws "Received type string ('dir')"). In that mode
+// the callback is also validated BEFORE the op runs, like node, so a bad
+// callback never starts the I/O.
+function callbackifyOpt(op, nLeading = 1, cbAtEnd = false) {
   return function (...args) {
     let cbIdx = args.length;
+    if (cbAtEnd) {
+      if (args.length > nLeading) {
+        cbIdx = args.length - 1;
+      }
+      const callback = makeCallback(
+        cbIdx === args.length ? undefined : args[cbIdx],
+      );
+      return PromisePrototypeThen(
+        ReflectApply(op, undefined, ArrayPrototypeSlice(args, 0, cbIdx)),
+        (result) => result == null ? callback(null) : callback(null, result),
+        callback,
+      );
+    }
     for (let i = nLeading; i < args.length; i++) {
       if (typeof args[i] === "function") {
         cbIdx = i;
@@ -146,7 +167,7 @@ function callbackifyOpt(op, nLeading = 1) {
     }
     return PromisePrototypeThen(
       promise,
-      (result) => callback(null, result ?? undefined),
+      (result) => result == null ? callback(null) : callback(null, result),
       callback,
     );
   };

@@ -6,7 +6,12 @@ import { core, primordials } from "ext:core/mod.js";
 // node `fs.Stats` / `fs.Dirent` cppgc classes, implemented in Rust
 // (ext/node/ops/fs.rs).
 import { Dirent, Stats } from "ext:core/ops";
-const { op_node_fs_dirent, op_node_fs_dirent_from_stats } = core.ops;
+const {
+  op_node_fs_dirent,
+  op_node_fs_dirent_from_stats,
+  op_node_fs_lstat,
+  op_node_fs_lstat_sync,
+} = core.ops;
 const {
   ArrayIsArray,
   BigInt,
@@ -81,9 +86,13 @@ const kStats = Symbol("stats");
 const assert = core.loadExtScript(
   "ext:deno_node/internal/assert.mjs",
 );
-const { lstat, lstatSync } = core.loadExtScript(
-  "ext:deno_node/_fs/_fs_lstat.ts",
+// Callback-style lstat over the op (same shape as node:fs `lstat`): the op
+// validates the path + extracts options itself and resolves the cppgc Stats.
+const { callbackifyOpt } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_common.ts",
 );
+const lstat = callbackifyOpt(op_node_fs_lstat);
+const lstatSync = op_node_fs_lstat_sync;
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
 const lazyProcess = core.createLazyLoader("node:process");
 const { ERR_INCOMPATIBLE_OPTION_PAIR } = core.loadExtScript(
