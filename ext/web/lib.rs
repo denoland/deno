@@ -165,6 +165,7 @@ deno_core::extension!(deno_web,
     "15_performance.js",
     "16_image_data.js",
     "17_geometry.js",
+    "18_css_stylesheet.js",
   ],
   options = {
     blob_store: Arc<dyn BlobStoreTrait>,

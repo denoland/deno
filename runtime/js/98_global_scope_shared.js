@@ -504,4 +504,17 @@ unstableForWindowOrWorkerGlobalScope[unstableIds.nodeGlobals] = {
 };
 unstableForWindowOrWorkerGlobalScope[unstableIds.webgpu] = {};
 
+let _cssStyleSheetMod;
+const loadCssStyleSheet = () =>
+  _cssStyleSheetMod ??
+    (_cssStyleSheetMod = core.loadExtScript(
+      "ext:deno_web/18_css_stylesheet.js",
+    ));
+unstableForWindowOrWorkerGlobalScope[unstableIds.rawImports] = {
+  CSSStyleSheet: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSStyleSheet,
+    loadCssStyleSheet,
+  ),
+};
+
 export { unstableForWindowOrWorkerGlobalScope, windowOrWorkerGlobalScope };

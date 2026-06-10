@@ -102,7 +102,8 @@ pub fn create_validate_import_attributes_callback(
           context: &deno_core::ImportAttributesContext| {
       let valid_attribute = |kind: &str| {
         matches!(kind, "json" | "text")
-          || (enable_raw_imports.load(Ordering::Relaxed) && kind == "bytes")
+          || (enable_raw_imports.load(Ordering::Relaxed)
+            && matches!(kind, "bytes" | "css"))
       };
       for (key, value) in attributes {
         let msg = if key != "type" {
@@ -125,6 +126,67 @@ pub fn create_validate_import_attributes_callback(
       }
     },
   )
+}
+
+/// Evaluates custom module types that aren't built into deno_core. Currently
+/// only `with { type: "css" }` imports (gated on `--unstable-raw-imports` by
+/// `create_validate_import_attributes_callback`), which evaluate to a
+/// `CSSStyleSheet` containing the source text.
+pub fn create_custom_module_evaluation_callback()
+-> deno_core::CustomModuleEvaluationCb {
+  Box::new(
+    |scope, module_type, _module_name, code| match &*module_type {
+      "css" => {
+        let code = match code {
+          deno_core::ModuleSourceCode::String(code) => code.as_str().to_owned(),
+          deno_core::ModuleSourceCode::Bytes(bytes) => {
+            String::from_utf8_lossy(bytes.as_bytes()).into_owned()
+          }
+        };
+        let sheet = create_css_style_sheet(scope, &code).map_err(|err| {
+          deno_error::JsErrorBox::generic(format!(
+            "Failed to create a CSSStyleSheet: {err}"
+          ))
+        })?;
+        Ok(deno_core::CustomModuleEvaluationKind::Synthetic(sheet))
+      }
+      _ => Err(deno_error::JsErrorBox::generic(format!(
+        "Importing \"{module_type}\" modules is not supported"
+      ))),
+    },
+  )
+}
+
+/// Creates a `CSSStyleSheet` instance with the given text by calling
+/// `new globalThis.CSSStyleSheet()` followed by `replaceSync(text)`.
+fn create_css_style_sheet<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  text: &str,
+) -> Result<v8::Global<v8::Value>, &'static str> {
+  let context = scope.get_current_context();
+  let global = context.global(scope);
+  let ctor_key = v8::String::new(scope, "CSSStyleSheet")
+    .ok_or("failed to allocate string")?;
+  let ctor: v8::Local<v8::Function> = global
+    .get(scope, ctor_key.into())
+    .and_then(|v| v.try_into().ok())
+    .ok_or("CSSStyleSheet is not available")?;
+  let sheet = ctor
+    .new_instance(scope, &[])
+    .ok_or("CSSStyleSheet constructor threw")?;
+  let replace_key =
+    v8::String::new(scope, "replaceSync").ok_or("failed to allocate string")?;
+  let replace_fn: v8::Local<v8::Function> = sheet
+    .get(scope, replace_key.into())
+    .and_then(|v| v.try_into().ok())
+    .ok_or("CSSStyleSheet.prototype.replaceSync is not available")?;
+  let text_value =
+    v8::String::new(scope, text).ok_or("style sheet text is too long")?;
+  replace_fn
+    .call(scope, sheet.into(), &[text_value.into()])
+    .ok_or("CSSStyleSheet.prototype.replaceSync threw")?;
+  let sheet: v8::Local<v8::Value> = sheet.into();
+  Ok(v8::Global::new(scope, sheet))
 }
 
 pub fn make_wait_for_inspector_disconnect_callback() -> Box<dyn Fn()> {
@@ -1202,7 +1264,9 @@ fn common_runtime(opts: CommonRuntimeOptions) -> JsRuntime {
       .then(create_permissions_stack_trace_callback),
     extension_code_cache: None,
     v8_platform: None,
-    custom_module_evaluation_cb: None,
+    custom_module_evaluation_cb: Some(
+      create_custom_module_evaluation_callback(),
+    ),
     eval_context_code_cache_cbs: None,
   });
 

@@ -805,7 +805,9 @@ impl ModuleGraphBuilder {
     }
 
     let _clear_guard = self.progress_bar.deferred_keep_initialize_alive();
-    let analyzer = self.module_info_cache.as_module_analyzer();
+    let analyzer = self.module_info_cache.as_module_analyzer_with_css_imports(
+      self.cli_options.unstable_raw_imports(),
+    );
     let mut loader = match options.loader {
       Some(loader) => LoaderRef::Borrowed(loader),
       None => {
