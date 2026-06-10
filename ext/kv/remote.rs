@@ -202,8 +202,80 @@ impl DatabaseHandler for RemoteDbHandler {
       state: state.clone(),
     };
 
+    // Eagerly validate that the URL points at a real Deno KV database before
+    // returning the connection. Without this, `Deno.openKv("https://invalid")`
+    // succeeds and only fails later — with an opaque error — when the
+    // connection is first used (or hangs indefinitely on a network error).
+    // See https://github.com/denoland/deno/issues/22248.
+    validate_metadata_endpoint(&fetch_client, &metadata_endpoint).await?;
+
     let remote = Remote::new(fetch_client, permissions, metadata_endpoint);
 
     Ok(remote)
   }
+}
+
+/// Fetches the KV Connect metadata endpoint and verifies that the response is a
+/// valid Deno KV database metadata document, so that an invalid URL fails fast
+/// at `Deno.openKv` time with a clear error message.
+async fn validate_metadata_endpoint(
+  client: &FetchClient,
+  metadata_endpoint: &MetadataEndpoint,
+) -> Result<(), JsErrorBox> {
+  use denokv_proto::DatabaseMetadata;
+  use denokv_proto::MetadataExchangeRequest;
+
+  let url = &metadata_endpoint.url;
+  let body = serde_json::to_vec(&MetadataExchangeRequest {
+    supported_versions: vec![1, 2, 3],
+  })
+  .unwrap();
+
+  let (_, status, res) = client
+    .post(url.clone(), metadata_endpoint.headers(), body.into())
+    .await
+    .map_err(|err| {
+      JsErrorBox::type_error(format!(
+        "Could not open Deno KV database: failed to connect to '{url}': {err}"
+      ))
+    })?;
+
+  if !status.is_success() {
+    let body = res.text().await.unwrap_or_default();
+    let body = body.trim();
+    let detail = if body.is_empty() {
+      String::new()
+    } else {
+      format!(": {}", body.chars().take(512).collect::<String>())
+    };
+    return Err(JsErrorBox::type_error(format!(
+      "Could not open Deno KV database: the metadata endpoint at '{url}' \
+       responded with status {status}{detail}"
+    )));
+  }
+
+  let body = res.text().await.map_err(|err| {
+    JsErrorBox::type_error(format!(
+      "Could not open Deno KV database: failed to read the metadata response \
+       from '{url}': {err}"
+    ))
+  })?;
+
+  let metadata: DatabaseMetadata =
+    serde_json::from_str(&body).map_err(|err| {
+      JsErrorBox::type_error(format!(
+        "Could not open Deno KV database: '{url}' is not a valid KV Connect \
+         endpoint (failed to parse metadata response: {err})"
+      ))
+    })?;
+
+  if !matches!(metadata.version, 1..=3) {
+    return Err(JsErrorBox::type_error(format!(
+      "Could not open Deno KV database: '{url}' reported unsupported KV \
+       Connect metadata version {}",
+      metadata.version
+    )));
+  }
+
+  Ok(())
 }
