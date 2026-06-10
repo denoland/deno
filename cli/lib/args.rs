@@ -53,18 +53,19 @@ pub fn has_flag_env_var(sys: &impl EnvVar, name: &str) -> bool {
 /// Shared by the `deno` CLI and the standalone (`denort`) runtime so the two
 /// entry points can't drift; the latter relies on this for IPC to work in a
 /// compiled binary's forked child (issue #26304).
-pub fn node_ipc_init() -> Result<
+pub fn node_ipc_init(
+  sys: &impl EnvVar,
+) -> Result<
   Option<(i64, ChildIpcSerialization)>,
   deno_runtime::deno_core::anyhow::Error,
 > {
-  let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
-  let maybe_node_channel_serialization = if let Ok(serialization) =
-    std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
-  {
-    Some(serialization.parse::<ChildIpcSerialization>()?)
-  } else {
-    None
-  };
+  let maybe_node_channel_fd = sys.env_var("NODE_CHANNEL_FD").ok();
+  let maybe_node_channel_serialization =
+    if let Ok(serialization) = sys.env_var("NODE_CHANNEL_SERIALIZATION_MODE") {
+      Some(serialization.parse::<ChildIpcSerialization>()?)
+    } else {
+      None
+    };
   if let Some(node_channel_fd) = maybe_node_channel_fd {
     // Remove so that child processes don't inherit these environment variables.
     // SAFETY: single-threaded at this point in startup

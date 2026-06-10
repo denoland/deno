@@ -653,8 +653,9 @@ impl CliOptions {
 
   pub fn node_ipc_init(
     &self,
+    sys: &CliSys,
   ) -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
-    deno_lib::args::node_ipc_init()
+    deno_lib::args::node_ipc_init(sys)
   }
 
   pub fn serve_port(&self) -> Option<u16> {
