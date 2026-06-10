@@ -2280,6 +2280,135 @@ Deno.test(
   },
 );
 
+type SplitHeaderResult = {
+  cookieGet: string | null;
+  cookieIter: string | undefined;
+  xTestGet: string | null;
+  xTestIter: string | undefined;
+};
+
+const expectedSplitHeaderResult = {
+  cookieGet: "a=1; b=2",
+  cookieIter: "a=1; b=2",
+  xTestGet: "one, two",
+  xTestIter: "one, two",
+} as const;
+
+function readSplitHeaders(req: Request): SplitHeaderResult {
+  const iterHeaders = new Map(req.headers);
+  return {
+    cookieGet: req.headers.get("cookie"),
+    cookieIter: iterHeaders.get("cookie"),
+    xTestGet: req.headers.get("x-test"),
+    xTestIter: iterHeaders.get("x-test"),
+  };
+}
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp1SplitHeaderConcatenation() {
+    const ac = new AbortController();
+    const listening = Promise.withResolvers<void>();
+    const headers = Promise.withResolvers<SplitHeaderResult>();
+
+    await using server = Deno.serve({
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listening.resolve),
+      handler: (req) => {
+        headers.resolve(readSplitHeaders(req));
+        return new Response("ok");
+      },
+    });
+    await listening.promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+    await writeAll(
+      conn,
+      encoder.encode(
+        `GET / HTTP/1.1\r\nHost: localhost:${servePort}\r\nCookie: a=1\r\nCookie: b=2\r\nX-Test: one\r\nX-Test: two\r\nConnection: close\r\n\r\n`,
+      ),
+    );
+
+    assertEquals(await headers.promise, expectedSplitHeaderResult);
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerHttp2SplitHeaderConcatenation() {
+    const ac = new AbortController();
+    const listening = Promise.withResolvers<void>();
+    const headers = Promise.withResolvers<SplitHeaderResult>();
+
+    await using server = Deno.serve({
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listening.resolve),
+      handler: (req) => {
+        headers.resolve(readSplitHeaders(req));
+        return new Response("ok");
+      },
+    });
+    await listening.promise;
+
+    const conn = await Deno.connect({ port: servePort });
+    const encoder = new TextEncoder();
+
+    await writeAll(conn, encoder.encode("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"));
+    await writeAll(conn, new Uint8Array([0, 0, 0, 4, 0, 0, 0, 0, 0]));
+
+    const literalHeader = (name: string, value: string): number[] => {
+      const encodedName = encoder.encode(name);
+      const encodedValue = encoder.encode(value);
+      return [
+        0x00,
+        encodedName.length,
+        ...encodedName,
+        encodedValue.length,
+        ...encodedValue,
+      ];
+    };
+    const block = [
+      ...literalHeader(":method", "GET"),
+      ...literalHeader(":path", "/"),
+      ...literalHeader(":scheme", "http"),
+      ...literalHeader(":authority", `localhost:${servePort}`),
+      ...literalHeader("cookie", "a=1"),
+      ...literalHeader("cookie", "b=2"),
+      ...literalHeader("x-test", "one"),
+      ...literalHeader("x-test", "two"),
+    ];
+    const len = block.length;
+    await writeAll(
+      conn,
+      new Uint8Array([
+        (len >> 16) & 0xff,
+        (len >> 8) & 0xff,
+        len & 0xff,
+        0x01, // HEADERS
+        0x05, // END_STREAM | END_HEADERS
+        0,
+        0,
+        0,
+        1,
+        ...block,
+      ]),
+    );
+
+    assertEquals(await headers.promise, expectedSplitHeaderResult);
+
+    conn.close();
+    ac.abort();
+    await server.finished;
+  },
+);
+
 // https://github.com/denoland/deno/issues/12741
 // https://github.com/denoland/deno/pull/12746
 // https://github.com/denoland/deno/pull/12798
