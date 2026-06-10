@@ -333,6 +333,7 @@ deno_core::extension!(deno_node,
     ops::internal_binding::op_node_internal_binding_tty_wrap,
     ops::internal_binding::op_node_internal_binding_types,
     ops::internal_binding::op_node_ares_strerror,
+    ops::internal_binding_async_wrap::op_node_internal_binding_async_wrap,
     ops::internal_binding_constants::op_node_internal_binding_constants,
     ops::internal_binding_crypto::op_node_crypto_get_fips,
     ops::internal_binding_crypto::op_node_crypto_set_fips,
@@ -920,6 +921,9 @@ deno_core::extension!(deno_node,
     );
     ext.external_references.to_mut().extend(
       ops::internal_binding_utils::external_references(),
+    );
+    ext.external_references.to_mut().extend(
+      ops::internal_binding_async_wrap::external_references(),
     );
   },
 );

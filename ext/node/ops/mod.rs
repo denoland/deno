@@ -11,6 +11,7 @@ pub mod http2;
 pub mod idna;
 pub mod inspector;
 pub mod internal_binding;
+pub mod internal_binding_async_wrap;
 pub mod internal_binding_constants;
 pub mod internal_binding_crypto;
 pub mod internal_binding_node_options;
