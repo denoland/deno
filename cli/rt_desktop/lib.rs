@@ -15,6 +15,9 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
+// Only used by the unix-only `apply_pending_update`; gated to avoid an unused
+// import on other platforms.
+#[cfg(unix)]
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1018,6 +1021,9 @@ fn get_dylib_path() -> Option<PathBuf> {
 /// - `.backup` exists and `.update-ok` exists → previous update succeeded, clean up
 ///
 /// Returns `true` if a rollback occurred (so we can dispatch an event in JS).
+// Only invoked from the unix `laufey::main!` startup path; gated to match its
+// sole call site so it isn't flagged as dead code on other platforms.
+#[cfg(unix)]
 #[allow(clippy::print_stderr, reason = "runs before logging is initialized")]
 fn apply_pending_update(dylib_path: &Path) -> bool {
   let ext = dylib_path.extension().unwrap_or_default().to_string_lossy();
