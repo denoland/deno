@@ -476,7 +476,6 @@ async fn op_host_recv_ctrl(
 }
 
 #[op2]
-#[serde]
 async fn op_host_recv_message(
   state: Rc<RefCell<OpState>>,
   #[scoped] id: WorkerId,
@@ -514,7 +513,6 @@ async fn op_host_recv_message(
 }
 
 #[op2]
-#[serde]
 fn op_host_recv_message_sync(
   state: &mut OpState,
   #[scoped] id: WorkerId,
@@ -646,7 +644,6 @@ fn op_node_worker_thread_post_message(
 /// Resolves to `None` when the channel is closed (i.e. the thread is
 /// being torn down), at which point the JS-side poll loop terminates.
 #[op2]
-#[serde]
 async fn op_node_worker_thread_recv_message(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
