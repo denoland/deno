@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -25,28 +25,32 @@
 // - https://github.com/nodejs/node/blob/master/src/util.cc
 // - https://github.com/nodejs/node/blob/master/src/util.h
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import {
+(function () {
+const { core, primordials } = __bootstrap;
+const {
   op_node_get_own_non_index_properties,
   op_node_guess_handle_type,
+  op_node_parse_env,
   op_node_view_has_buffer,
-} from "ext:core/ops";
+} = core.ops;
+const {
+  StringPrototypeCharCodeAt,
+  SymbolFor,
+} = primordials;
 
 const handleTypes = ["TCP", "TTY", "UDP", "FILE", "PIPE", "UNKNOWN"];
-export function guessHandleType(fd: number): string {
+function guessHandleType(fd: number): string {
   const type = op_node_guess_handle_type(fd);
   return handleTypes[type];
 }
 
-export const ALL_PROPERTIES = 0;
-export const ONLY_WRITABLE = 1;
-export const ONLY_ENUMERABLE = 2;
-export const ONLY_CONFIGURABLE = 4;
-export const ONLY_ENUM_WRITABLE = 6;
-export const SKIP_STRINGS = 8;
-export const SKIP_SYMBOLS = 16;
+const ALL_PROPERTIES = 0;
+const ONLY_WRITABLE = 1;
+const ONLY_ENUMERABLE = 2;
+const ONLY_CONFIGURABLE = 4;
+const ONLY_ENUM_WRITABLE = 6;
+const SKIP_STRINGS = 8;
+const SKIP_SYMBOLS = 16;
 
 /**
  * Efficiently determine whether the provided property key is numeric
@@ -59,7 +63,7 @@ export const SKIP_SYMBOLS = 16;
  * Results are cached.
  */
 const isNumericLookup: Record<string, boolean> = {};
-export function isArrayIndex(value: unknown): value is number | string {
+function isArrayIndex(value: unknown): value is number | string {
   switch (typeof value) {
     case "number":
       return value >= 0 && (value | 0) === value;
@@ -75,7 +79,7 @@ export function isArrayIndex(value: unknown): value is number | string {
       let ch = 0;
       let i = 0;
       for (; i < length; ++i) {
-        ch = value.charCodeAt(i);
+        ch = StringPrototypeCharCodeAt(value, i);
         if (
           i === 0 && ch === 0x30 && length > 1 /* must not start with 0 */ ||
           ch < 0x30 /* 0 */ || ch > 0x39 /* 9 */
@@ -90,19 +94,50 @@ export function isArrayIndex(value: unknown): value is number | string {
   }
 }
 
-export function getOwnNonIndexProperties(
+function getOwnNonIndexProperties(
   obj: object,
   filter: number,
 ): (string | symbol)[] {
   return op_node_get_own_non_index_properties(obj, filter);
 }
 
-export function arrayBufferViewHasBuffer(
+function arrayBufferViewHasBuffer(
   view: ArrayBufferView,
 ): boolean {
   return op_node_view_has_buffer(view);
 }
 
-export const untransferableSymbol = Symbol.for(
+const parseEnv = op_node_parse_env as (
+  env: string,
+) => Record<string, string>;
+
+const untransferableSymbol = SymbolFor(
   "nodejs.worker_threads.untransferable",
 );
+
+const _defaultExport = {
+  guessHandleType,
+  isArrayIndex,
+  getOwnNonIndexProperties,
+  arrayBufferViewHasBuffer,
+  parseEnv,
+  untransferableSymbol,
+};
+
+return {
+  guessHandleType,
+  isArrayIndex,
+  getOwnNonIndexProperties,
+  arrayBufferViewHasBuffer,
+  ALL_PROPERTIES,
+  ONLY_WRITABLE,
+  ONLY_ENUMERABLE,
+  ONLY_CONFIGURABLE,
+  ONLY_ENUM_WRITABLE,
+  SKIP_STRINGS,
+  SKIP_SYMBOLS,
+  parseEnv,
+  untransferableSymbol,
+  default: _defaultExport,
+};
+})();

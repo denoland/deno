@@ -1,34 +1,46 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
-import { Buffer } from "node:buffer";
-import { ERR_INVALID_ARG_VALUE } from "ext:deno_node/internal/errors.ts";
-import * as io from "ext:deno_io/12_io.js";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
+  denoErrorToNodeError,
+  ERR_INVALID_ARG_VALUE,
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 import {
   arrayBufferViewToUint8Array,
   getValidatedFd,
   validateOffsetLengthRead,
   validatePosition,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import {
+import { core, primordials } from "ext:core/mod.js";
+const {
   validateBuffer,
   validateFunction,
   validateInteger,
   validateObject,
-} from "ext:deno_node/internal/validators.mjs";
-import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
-import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
-import { primordials } from "ext:core/mod.js";
-import {
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { isArrayBufferView, isDataView } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+import { op_node_fs_read_deferred, op_node_fs_read_sync } from "ext:core/ops";
+const {
   customPromisifyArgs,
   kEmptyObject,
-} from "ext:deno_node/internal/util.mjs";
-import * as process from "node:process";
-import type { ReadAsyncOptions, ReadSyncOptions } from "node:fs";
+} = core.loadExtScript("ext:deno_node/internal/util.mjs");
+const lazyProcess = core.createLazyLoader("node:process");
 
-const { ObjectDefineProperty } = primordials;
+const {
+  BigInt,
+  DataViewPrototypeGetByteLength,
+  ObjectDefineProperty,
+  PromisePrototypeThen,
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
+
+function getByteLength(buffer: ArrayBufferView): number {
+  return isDataView(buffer)
+    ? DataViewPrototypeGetByteLength(buffer)
+    : TypedArrayPrototypeGetByteLength(buffer);
+}
 
 const validateOptionArgs = { __proto__: null, nullable: true };
 
@@ -104,7 +116,8 @@ export function read(
     }
     ({
       offset = 0,
-      length = buffer?.byteLength - (offset as number),
+      length = (buffer ? getByteLength(buffer as ArrayBufferView) : undefined) -
+        (offset as number),
       position = null,
     } = params ?? kEmptyObject);
   }
@@ -121,12 +134,12 @@ export function read(
   (length as number) |= 0;
 
   if (length === 0) {
-    return process.nextTick(function tick() {
+    return lazyProcess().default.nextTick(function tick() {
       callback!(null, 0, buffer);
     });
   }
 
-  if (buffer.byteLength === 0) {
+  if (getByteLength(buffer as ArrayBufferView) === 0) {
     throw new ERR_INVALID_ARG_VALUE(
       "buffer",
       buffer,
@@ -134,7 +147,11 @@ export function read(
     );
   }
 
-  validateOffsetLengthRead(offset, length, buffer.byteLength);
+  validateOffsetLengthRead(
+    offset,
+    length,
+    getByteLength(buffer as ArrayBufferView),
+  );
 
   if (position == null) {
     position = -1;
@@ -142,40 +159,26 @@ export function read(
     validatePosition(position, "position", length as number);
   }
 
-  (async () => {
-    try {
-      let nread: number | null;
-      if (typeof position === "number" && position >= 0) {
-        const currentPosition = await op_fs_seek_async(
-          fd,
-          0,
-          io.SeekMode.Current,
-        );
-        // We use sync calls below to avoid being affected by others during
-        // these calls.
-        op_fs_seek_sync(fd, position, io.SeekMode.Start);
-        nread = io.readSync(
-          fd,
-          arrayBufferViewToUint8Array(buffer).subarray(
-            offset,
-            offset + (length as number),
-          ),
-        );
-        op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
-      } else {
-        nread = await io.read(
-          fd,
-          arrayBufferViewToUint8Array(buffer).subarray(
-            offset,
-            offset + (length as number),
-          ),
-        );
-      }
+  // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
+  const readPos = position != null && position >= 0
+    ? BigInt(position as number | bigint)
+    : -1n;
+  PromisePrototypeThen(
+    op_node_fs_read_deferred(
+      fd,
+      arrayBufferViewToUint8Array(buffer).subarray(
+        offset,
+        offset + (length as number),
+      ),
+      readPos,
+    ),
+    (nread: number) => {
       callback!(null, nread ?? 0, buffer);
-    } catch (error) {
-      callback!(error as Error, null);
-    }
-  })();
+    },
+    (error: Error) => {
+      callback!(denoErrorToNodeError(error, { syscall: "read" }), null);
+    },
+  );
 }
 
 ObjectDefineProperty(read, customPromisifyArgs, {
@@ -215,7 +218,7 @@ export function readSync(
 
     ({
       offset = 0,
-      length = buffer.byteLength - (offset as number),
+      length = getByteLength(buffer) - (offset as number),
       position = null,
     } = offsetOrOpt ?? kEmptyObject);
   }
@@ -232,7 +235,7 @@ export function readSync(
     return 0;
   }
 
-  if (buffer.byteLength === 0) {
+  if (getByteLength(buffer) === 0) {
     throw new ERR_INVALID_ARG_VALUE(
       "buffer",
       buffer,
@@ -240,7 +243,7 @@ export function readSync(
     );
   }
 
-  validateOffsetLengthRead(offset, length, buffer.byteLength);
+  validateOffsetLengthRead(offset, length, getByteLength(buffer));
 
   if (position == null) {
     position = -1;
@@ -248,20 +251,19 @@ export function readSync(
     validatePosition(position, "position", length);
   }
 
-  let currentPosition = 0;
-  if (typeof position === "number" && position >= 0) {
-    currentPosition = op_fs_seek_sync(fd, 0, io.SeekMode.Current);
-    op_fs_seek_sync(fd, position, io.SeekMode.Start);
+  // BigInt avoids precision loss for positions > 2^53. -1n means current pos.
+  const pos = position != null && position >= 0
+    ? BigInt(position as number | bigint)
+    : -1n;
+  try {
+    const numberOfBytesRead = op_node_fs_read_sync(
+      fd,
+      arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
+      pos,
+    );
+
+    return numberOfBytesRead ?? 0;
+  } catch (err) {
+    throw denoErrorToNodeError(err as Error, { syscall: "read" });
   }
-
-  const numberOfBytesRead = io.readSync(
-    fd,
-    arrayBufferViewToUint8Array(buffer).subarray(offset, offset + length!),
-  );
-
-  if (typeof position === "number" && position >= 0) {
-    op_fs_seek_sync(fd, currentPosition, io.SeekMode.Start);
-  }
-
-  return numberOfBytesRead ?? 0;
 }

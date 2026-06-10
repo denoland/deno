@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "get_active_handles_on_exit": {
+      "args": "run -A repro.cjs",
+      "output": "handles=0\nrequests=0\nok\n"
+    }
+  }
+}

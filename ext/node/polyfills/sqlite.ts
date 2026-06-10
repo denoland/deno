@@ -1,73 +1,140 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-import { primordials } from "ext:core/mod.js";
-import {
-  DatabaseSync as DatabaseSyncOp,
+(function () {
+const { core, primordials } = __bootstrap;
+const {
+  DatabaseSync: DatabaseSyncOp,
   op_node_database_backup,
+  Session,
   StatementSync,
-} from "ext:core/ops";
-import type { Buffer } from "node:buffer";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { URLPrototype } from "ext:deno_web/00_url.js";
-import type { URL } from "node:url";
+} = core.ops;
+const { isUint8Array } = core.loadExtScript(
+  "ext:deno_node/internal/util/types.ts",
+);
+const { URLPrototype } = core.loadExtScript("ext:deno_web/00_url.js");
 
 const {
+  FunctionPrototypeCall,
+  ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectGetOwnPropertyDescriptor,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  Proxy,
   ReflectConstruct,
+  SafeSet,
+  SafeWeakMap,
   StringPrototypeIncludes,
   SymbolDispose,
   SymbolFor,
   TypeError,
 } = primordials;
 
+// Keep in sync with LIMIT_MAPPING in ext/node_sqlite/database.rs.
+const LIMIT_NAMES = [
+  "length",
+  "sqlLength",
+  "column",
+  "exprDepth",
+  "compoundSelect",
+  "vdbeOp",
+  "functionArg",
+  "attach",
+  "likePatternLength",
+  "variableNumber",
+  "triggerDepth",
+];
+
+const LIMIT_NAMES_SET = new SafeSet(LIMIT_NAMES);
+
+const nativeLimitsGetter = ObjectGetOwnPropertyDescriptor(
+  DatabaseSyncOp.prototype,
+  "limits",
+).get;
+
+function createLimitsProxy(nativeLimits) {
+  return new Proxy(nativeLimits, {
+    get(target, prop, _receiver) {
+      if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
+        return undefined;
+      }
+      return target[prop];
+    },
+    set(target, prop, value, _receiver) {
+      if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
+        return false;
+      }
+
+      target[prop] = value;
+      return true;
+    },
+    has(_target, prop) {
+      return typeof prop === "string" &&
+        LIMIT_NAMES_SET.has(prop);
+    },
+    ownKeys(_target) {
+      return LIMIT_NAMES;
+    },
+    getOwnPropertyDescriptor(target, prop) {
+      if (typeof prop !== "string" || !LIMIT_NAMES_SET.has(prop)) {
+        return undefined;
+      }
+
+      return {
+        value: target[prop],
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      };
+    },
+  });
+}
+
 class ConstructCallRequiredError extends TypeError {
-  code: string;
+  code;
   constructor() {
     super("Cannot call constructor without `new`");
     this.code = "ERR_CONSTRUCT_CALL_REQUIRED";
   }
 }
 
-class InvalidPathError extends TypeError {
-  code: string;
-  constructor() {
-    super(
-      'The "path" argument must be a string, Uint8Array, or URL without null bytes.',
-    );
+class InvalidArgTypeError extends TypeError {
+  code;
+  constructor(message) {
+    super(message);
     this.code = "ERR_INVALID_ARG_TYPE";
   }
 }
 
 class InvalidURLSchemeError extends TypeError {
-  code: string;
+  code;
   constructor() {
     super("The URL must be of scheme file:");
     this.code = "ERR_INVALID_URL_SCHEME";
   }
 }
 
-const parsePath = (path: unknown): string => {
-  let parsedPath: string | undefined;
+const parsePath = (path) => {
+  let parsedPath;
   if (typeof path === "string") {
     parsedPath = path;
   } else if (isUint8Array(path)) {
     const decoder = new TextDecoder("utf8");
     parsedPath = decoder.decode(path);
-    // @ts-expect-error safe to check even though `path` is unknown
   } else if (ObjectPrototypeIsPrototypeOf(URLPrototype, path)) {
-    if ((path as URL).protocol !== "file:") {
+    if (path.protocol !== "file:") {
       throw new InvalidURLSchemeError();
     }
-    parsedPath = (path as URL).href;
+    parsedPath = path.href;
   }
 
   if (
     typeof parsedPath === "undefined" ||
     StringPrototypeIncludes(parsedPath, "\0")
   ) {
-    throw new InvalidPathError();
+    throw new InvalidArgTypeError(
+      'The "path" argument must be a string, Uint8Array, or URL without null bytes.',
+    );
   }
 
   return parsedPath;
@@ -76,9 +143,9 @@ const parsePath = (path: unknown): string => {
 // Using ES5 class allows custom error to be thrown
 // when called without `new`.
 function DatabaseSync(
-  path: string | URL | Buffer,
-  options?: unknown,
-): DatabaseSyncOp {
+  path,
+  options,
+) {
   if (new.target === undefined) {
     throw new ConstructCallRequiredError();
   }
@@ -91,79 +158,34 @@ function DatabaseSync(
 ObjectSetPrototypeOf(DatabaseSync.prototype, DatabaseSyncOp.prototype);
 ObjectSetPrototypeOf(DatabaseSync, DatabaseSyncOp);
 
-interface BackupOptions {
-  /**
-   * Name of the source database. This can be `'main'` (the default primary database) or any other
-   * database that have been added with [`ATTACH DATABASE`](https://www.sqlite.org/lang_attach.html)
-   * @default 'main'
-   */
-  source?: string | undefined;
-  /**
-   * Name of the target database. This can be `'main'` (the default primary database) or any other
-   * database that have been added with [`ATTACH DATABASE`](https://www.sqlite.org/lang_attach.html)
-   * @default 'main'
-   */
-  target?: string | undefined;
-  /**
-   * Number of pages to be transmitted in each batch of the backup.
-   * @default 100
-   */
-  rate?: number | undefined;
-  /**
-   * Callback function that will be called with the number of pages copied and the total number of
-   * pages.
-   */
-  progress?: ((progressInfo: BackupProgressInfo) => void) | undefined;
-}
-
-interface BackupProgressInfo {
-  totalPages: number;
-  remainingPages: number;
-}
-
-/**
- * This method makes a database backup. This method abstracts the
- * [`sqlite3_backup_init()`](https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupinit),
- * [`sqlite3_backup_step()`](https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupstep)
- * and [`sqlite3_backup_finish()`](https://www.sqlite.org/c3ref/backup_finish.html#sqlite3backupfinish) functions.
- *
- * The backed-up database can be used normally during the backup process. Mutations coming from the same connection - same
- * `DatabaseSync` - object will be reflected in the backup right away. However, mutations from other connections will cause
- * the backup process to restart.
- *
- * ```js
- * import { backup, DatabaseSync } from 'node:sqlite';
- *
- * const sourceDb = new DatabaseSync('source.db');
- * const totalPagesTransferred = await backup(sourceDb, 'backup.db', {
- *   rate: 1, // Copy one page at a time.
- *   progress: ({ totalPages, remainingPages }) => {
- *     console.log('Backup in progress', { totalPages, remainingPages });
- *   },
- * });
- *
- * console.log('Backup completed', totalPagesTransferred);
- * ```
- * @param sourceDb The database to backup. The source database must be open.
- * @param path The path where the backup will be created. If the file already exists,
- * the contents will be overwritten.
- * @param options Optional configuration for the backup. The
- * following properties are supported:
- * @returns A promise that resolves when the backup is completed and rejects if an error occurs.
- */
+// deno-lint-ignore require-await
 async function backup(
-  sourceDb: DatabaseSync,
-  path: string | Buffer | URL,
-  options?: BackupOptions,
-): Promise<number> {
-  return await op_node_database_backup(
+  sourceDb,
+  path,
+  options,
+) {
+  if (!ObjectPrototypeIsPrototypeOf(DatabaseSync.prototype, sourceDb)) {
+    throw new InvalidArgTypeError(
+      'The "sourceDb" argument must be an object.',
+    );
+  }
+
+  // TODO(Tango992): Implement async op
+  return op_node_database_backup(
     sourceDb,
     parsePath(path),
     options,
   );
 }
+ObjectDefineProperty(backup, "length", {
+  __proto__: null,
+  value: 2,
+  enumerable: false,
+  configurable: true,
+  writable: false,
+});
 
-export const constants = {
+const constants = {
   SQLITE_CHANGESET_OMIT: 0,
   SQLITE_CHANGESET_REPLACE: 1,
   SQLITE_CHANGESET_ABORT: 2,
@@ -173,9 +195,49 @@ export const constants = {
   SQLITE_CHANGESET_CONFLICT: 3,
   SQLITE_CHANGESET_CONSTRAINT: 4,
   SQLITE_CHANGESET_FOREIGN_KEY: 5,
+
+  SQLITE_OK: 0,
+  SQLITE_DENY: 1,
+  SQLITE_IGNORE: 2,
+  SQLITE_CREATE_INDEX: 1,
+  SQLITE_CREATE_TABLE: 2,
+  SQLITE_CREATE_TEMP_INDEX: 3,
+  SQLITE_CREATE_TEMP_TABLE: 4,
+  SQLITE_CREATE_TEMP_TRIGGER: 5,
+  SQLITE_CREATE_TEMP_VIEW: 6,
+  SQLITE_CREATE_TRIGGER: 7,
+  SQLITE_CREATE_VIEW: 8,
+  SQLITE_DELETE: 9,
+  SQLITE_DROP_INDEX: 10,
+  SQLITE_DROP_TABLE: 11,
+  SQLITE_DROP_TEMP_INDEX: 12,
+  SQLITE_DROP_TEMP_TABLE: 13,
+  SQLITE_DROP_TEMP_TRIGGER: 14,
+  SQLITE_DROP_TEMP_VIEW: 15,
+  SQLITE_DROP_TRIGGER: 16,
+  SQLITE_DROP_VIEW: 17,
+  SQLITE_INSERT: 18,
+  SQLITE_PRAGMA: 19,
+  SQLITE_READ: 20,
+  SQLITE_SELECT: 21,
+  SQLITE_TRANSACTION: 22,
+  SQLITE_UPDATE: 23,
+  SQLITE_ATTACH: 24,
+  SQLITE_DETACH: 25,
+  SQLITE_ALTER_TABLE: 26,
+  SQLITE_REINDEX: 27,
+  SQLITE_ANALYZE: 28,
+  SQLITE_CREATE_VTABLE: 29,
+  SQLITE_DROP_VTABLE: 30,
+  SQLITE_FUNCTION: 31,
+  SQLITE_SAVEPOINT: 32,
+  SQLITE_COPY: 0,
+  SQLITE_RECURSIVE: 33,
 };
 
 const sqliteTypeSymbol = SymbolFor("sqlite-type");
+const limitsCache = new SafeWeakMap();
+
 ObjectDefineProperties(DatabaseSync.prototype, {
   [sqliteTypeSymbol]: {
     __proto__: null,
@@ -196,13 +258,42 @@ ObjectDefineProperties(DatabaseSync.prototype, {
     configurable: true,
     writable: true,
   },
+  limits: {
+    __proto__: null,
+    get() {
+      let cached = limitsCache.get(this);
+      if (cached === undefined) {
+        const nativeLimits = FunctionPrototypeCall(nativeLimitsGetter, this);
+        cached = createLimitsProxy(nativeLimits);
+        limitsCache.set(this, cached);
+      }
+      return cached;
+    },
+    enumerable: true,
+    configurable: true,
+  },
 });
 
-export { backup, DatabaseSync, StatementSync };
+ObjectDefineProperties(Session.prototype, {
+  [SymbolDispose]: {
+    __proto__: null,
+    value: function () {
+      try {
+        this.close();
+      } catch {
+        // Ignore errors.
+      }
+    },
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  },
+});
 
-export default {
+return {
   backup,
   constants,
   DatabaseSync,
   StatementSync,
 };
+})();

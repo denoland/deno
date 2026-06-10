@@ -1,6 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
-mod collectors;
+pub(crate) mod collectors;
 mod definitions;
 mod execution;
 pub mod lsp_custom;

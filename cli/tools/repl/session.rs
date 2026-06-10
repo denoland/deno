@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -22,7 +22,6 @@ use deno_ast::swc::ecma_visit::Visit;
 use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::swc::ecma_visit::noop_visit_type;
 use deno_core::LocalInspectorSession;
-use deno_core::PollEventLoopOptions;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
@@ -56,7 +55,6 @@ use crate::args::CliOptions;
 use crate::cdp;
 use crate::cdp::RemoteObjectId;
 use crate::colors;
-use crate::lsp::ReplLanguageServer;
 use crate::npm::CliNpmInstaller;
 use crate::resolver::CliResolver;
 use crate::tools::test::TestEventReceiver;
@@ -170,7 +168,6 @@ pub fn result_to_evaluation_output(
 
 #[derive(Debug)]
 pub struct TsEvaluateResponse {
-  pub ts_code: String,
   pub value: cdp::EvaluateResponse,
 }
 
@@ -184,7 +181,6 @@ pub struct ReplSession {
   state: ReplSessionState,
   pub worker: MainWorker,
   pub context_id: u64,
-  pub language_server: ReplLanguageServer,
   pub notifications: Arc<Mutex<UnboundedReceiver<Value>>>,
   referrer: ModuleSpecifier,
   main_module: ModuleSpecifier,
@@ -264,21 +260,35 @@ impl ReplSessionState {
   }
 
   async fn wait_for_response(&self, msg_id: i32) -> serde_json::Value {
-    if let Some(message_state) = self.0.lock().messages.remove(&msg_id) {
-      let InspectorMessageState::Ready(mut value) = message_state else {
-        unreachable!();
-      };
-      return value["result"].take();
-    }
+    let rx = {
+      let mut state = self.0.lock();
+      if let Some(message_state) = state.messages.remove(&msg_id) {
+        let InspectorMessageState::Ready(value) = message_state else {
+          unreachable!();
+        };
+        return Self::extract_result(value);
+      }
+      let (tx, rx) = oneshot::channel();
+      state
+        .messages
+        .insert(msg_id, InspectorMessageState::WaitingFor(tx));
+      rx
+    };
 
-    let (tx, rx) = oneshot::channel();
-    self
-      .0
-      .lock()
-      .messages
-      .insert(msg_id, InspectorMessageState::WaitingFor(tx));
-    let mut value = rx.await.unwrap();
-    value["result"].take()
+    let value = rx.await.unwrap();
+    Self::extract_result(value)
+  }
+
+  #[allow(clippy::print_stderr, reason = "diagnostic for flaky CDP responses")]
+  fn extract_result(mut value: serde_json::Value) -> serde_json::Value {
+    let result = value["result"].take();
+    if result.is_null() {
+      eprintln!(
+        "CDP response has null result. Full response: {}",
+        serde_json::to_string(&value).unwrap_or_default()
+      );
+    }
+    result
   }
 }
 
@@ -288,7 +298,7 @@ fn next_msg_id() -> i32 {
 }
 
 impl ReplSession {
-  #[allow(clippy::too_many_arguments)]
+  #[allow(clippy::too_many_arguments, reason = "construction")]
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_installer: Option<Arc<CliNpmInstaller>>,
@@ -298,8 +308,6 @@ impl ReplSession {
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized().await?;
-
     let (notification_tx, mut notification_rx) = unbounded();
     let repl_session_state = ReplSessionState::new(notification_tx);
     let state = repl_session_state.clone();
@@ -360,7 +368,6 @@ impl ReplSession {
       session,
       state,
       context_id,
-      language_server,
       referrer,
       notifications: Arc::new(Mutex::new(notification_rx)),
       test_reporter_factory: Box::new(move || {
@@ -384,13 +391,6 @@ impl ReplSession {
     repl_session.internal_object_id = evaluated.result.object_id;
 
     Ok(repl_session)
-  }
-
-  pub fn set_test_reporter_factory(
-    &mut self,
-    f: Box<dyn Fn() -> Box<dyn TestReporter>>,
-  ) {
-    self.test_reporter_factory = f;
   }
 
   pub async fn closing(&mut self) -> Result<bool, AnyError> {
@@ -417,6 +417,17 @@ impl ReplSession {
   ) -> Value {
     let msg_id = next_msg_id();
     self.session.post_message(msg_id, method, params);
+
+    // Under Explicit microtask policy, V8's REPL-mode evaluation creates
+    // a promise whose resolution callback is a queued microtask. Without
+    // this checkpoint, GC can collect the weakly-held promise before the
+    // microtask drains, causing a "Promise was collected" CDP error.
+    self
+      .worker
+      .js_runtime
+      .v8_isolate()
+      .perform_microtask_checkpoint();
+
     let fut = self
       .state
       .wait_for_response(msg_id)
@@ -426,22 +437,58 @@ impl ReplSession {
     self
       .worker
       .js_runtime
-      .with_event_loop_future(
-        fut,
-        PollEventLoopOptions {
-          // NOTE(bartlomieju): this is an important bit; we don't want to pump V8
-          // message loop here, so that GC won't run. Otherwise, the resulting
-          // object might be GC'ed before we have a chance to inspect it.
-          pump_v8_message_loop: false,
-          ..Default::default()
-        },
-      )
+      .with_event_loop_future(fut, Default::default())
       .await
       .unwrap()
   }
 
   pub async fn run_event_loop(&mut self) -> Result<(), CoreError> {
-    self.worker.run_event_loop(true).await
+    // Pump inspector sessions ahead of the rest of the event-loop tick and
+    // drain microtasks before any other V8 work runs. Under V8's Explicit
+    // microtask policy, REPL-mode Runtime.evaluate (replMode: true) wraps
+    // the expression in an async IIFE and tracks the result promise via a
+    // weak handle. If GC runs after the inspector dispatch but before the
+    // resolution microtask drains, the weakly-held promise is collected and
+    // the CDP client gets a `-32000 "Promise was collected"` error. Doing
+    // the dispatch + drain pair here closes that window for external
+    // debuggers attached via `deno repl --inspect`.
+    // (post_message_with_event_loop above handles the same race for the
+    // in-process REPL session.)
+    std::future::poll_fn(|cx| {
+      self
+        .worker
+        .js_runtime
+        .inspector()
+        .poll_sessions_from_event_loop(cx);
+      self
+        .worker
+        .js_runtime
+        .v8_isolate()
+        .perform_microtask_checkpoint();
+      let poll_result = self.worker.js_runtime.poll_event_loop(
+        cx,
+        deno_core::PollEventLoopOptions {
+          wait_for_inspector: true,
+        },
+      );
+      // Flush inspector sessions again after the event-loop tick. A timer (or
+      // other async) callback that ran during `poll_event_loop` may have
+      // produced inspector notifications (e.g. `Runtime.exceptionThrown` from
+      // an uncaught error). These are queued on the session's outbound channel
+      // and are only delivered to the REPL's notification channel when the
+      // sessions are pumped. Without this second pump they would linger until
+      // the next evaluation, so an uncaught exception thrown from a timeout
+      // would not be printed until the user evaluated another expression (see
+      // https://github.com/denoland/deno/issues/21622). Delivering them here
+      // wakes the `notifications` stream in the REPL read loop right away.
+      self
+        .worker
+        .js_runtime
+        .inspector()
+        .poll_sessions_from_event_loop(cx);
+      poll_result
+    })
+    .await
   }
 
   pub async fn evaluate_line_and_get_output(
@@ -489,11 +536,6 @@ impl ReplSession {
               exception_details.text, description
             ))
           } else {
-            session
-              .language_server
-              .commit_text(&evaluate_response.ts_code)
-              .await;
-
             session.set_last_eval_result(&result).await?;
             let value = session.get_eval_value(&result).await?;
             EvaluationOutput::Value(value)
@@ -743,21 +785,43 @@ impl ReplSession {
     &mut self,
     expression: &str,
   ) -> Result<TsEvaluateResponse, AnyError> {
-    let parsed_source =
-      match parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx) {
+    let tsx_result =
+      parse_source_as(expression.to_string(), deno_ast::MediaType::Tsx);
+    // Prefer a clean `.tsx` parse. Fall back to parsing as TypeScript when the
+    // `.tsx` parse fails outright, or when it only recovered by inserting an
+    // `Invalid` placeholder node (e.g. a TypeScript type assertion like
+    // `<string>x` is misread as JSX in `.tsx`).
+    let needs_ts_fallback = match &tsx_result {
+      Ok(parsed) => {
+        deno_resolver::emit::invalid_syntax_parse_diagnostics(parsed).is_some()
+      }
+      Err(_) => true,
+    };
+    let parsed_source = match tsx_result {
+      Ok(parsed) if !needs_ts_fallback => parsed,
+      tsx_result => match parse_source_as(
+        expression.to_string(),
+        deno_ast::MediaType::TypeScript,
+      ) {
         Ok(parsed) => parsed,
-        Err(err) => {
-          match parse_source_as(
-            expression.to_string(),
-            deno_ast::MediaType::TypeScript,
-          ) {
-            Ok(parsed) => parsed,
-            _ => {
-              return Err(err);
-            }
-          }
-        }
-      };
+        Err(ts_err) => match tsx_result {
+          // Both parses have errors; report the recovered `.tsx` diagnostics
+          // via the check below.
+          Ok(parsed) => parsed,
+          Err(_) => return Err(ts_err),
+        },
+      },
+    };
+
+    // If `swc` recovered from a syntax error by inserting an `Invalid`
+    // placeholder node, surface the precise parse diagnostic instead of
+    // transpiling to `<invalid>` and letting V8 report a misleading
+    // `Unexpected token '<'`. See denoland/deno#19457.
+    if let Some(diagnostics) =
+      deno_resolver::emit::invalid_syntax_parse_diagnostics(&parsed_source)
+    {
+      return Err(diagnostics.into());
+    }
 
     self
       .check_for_npm_or_node_imports(&parsed_source.program())
@@ -792,10 +856,7 @@ impl ReplSession {
       .evaluate_expression(&format!("'use strict'; void 0;{transpiled_src}"))
       .await?;
 
-    Ok(TsEvaluateResponse {
-      ts_code: expression.to_string(),
-      value,
-    })
+    Ok(TsEvaluateResponse { value })
   }
 
   fn analyze_and_handle_jsx(&mut self, parsed_source: &ParsedSource) {
@@ -913,7 +974,7 @@ impl ReplSession {
           return_by_value: None,
           generate_preview: None,
           user_gesture: None,
-          await_promise: None,
+          await_promise: Some(true),
           throw_on_side_effect: None,
           timeout: None,
           disable_breaks: None,

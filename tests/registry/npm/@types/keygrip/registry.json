@@ -1,0 +1,59 @@
+{
+  "name": "@types/keygrip",
+  "dist-tags": {
+    "ts5.8": "1.0.6",
+    "ts5.7": "1.0.6",
+    "latest": "1.0.6",
+    "ts4.5": "1.0.6",
+    "ts4.6": "1.0.6",
+    "ts4.7": "1.0.6",
+    "ts4.8": "1.0.6",
+    "ts4.9": "1.0.6",
+    "ts5.0": "1.0.6",
+    "ts5.1": "1.0.6",
+    "ts5.2": "1.0.6",
+    "ts5.3": "1.0.6",
+    "ts5.4": "1.0.6",
+    "ts5.5": "1.0.6",
+    "ts5.9": "1.0.6",
+    "ts5.6": "1.0.6",
+    "ts6.0": "1.0.6"
+  },
+  "versions": {
+    "1.0.6": {
+      "name": "@types/keygrip",
+      "version": "1.0.6",
+      "license": "MIT",
+      "_id": "@types/keygrip@1.0.6",
+      "dist": {
+        "shasum": "1749535181a2a9b02ac04a797550a8787345b740",
+        "tarball": "http://localhost:4260/@types/keygrip/keygrip-1.0.6.tgz",
+        "fileCount": 5,
+        "integrity": "sha512-lZuNAY9xeJt7Bx4t4dx0rYCDqGPW8RXhQZK1td7d4H6E9zYbLoOtjBvfwdTKpsyxQI/2jv+armjX/RW+ZNpXOQ==",
+        "unpackedSize": 3297
+      },
+      "main": "",
+      "types": "index.d.ts",
+      "scripts": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/keygrip"
+      },
+      "description": "TypeScript definitions for keygrip",
+      "directories": {},
+      "dependencies": {},
+      "_hasShrinkwrap": false,
+      "typeScriptVersion": "4.5",
+      "typesPublisherContentHash": "6bf83f5974b3f14a8897c7a44a7466a538cec2557be059088d658eb2170c44ea"
+    }
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/keygrip",
+  "repository": {
+    "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+    "type": "git",
+    "directory": "types/keygrip"
+  },
+  "description": "TypeScript definitions for keygrip"
+}

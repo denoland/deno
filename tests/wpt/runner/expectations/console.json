@@ -1,0 +1,16 @@
+{
+  "console-is-a-namespace.any.html": true,
+  "console-is-a-namespace.any.worker.html": true,
+  "console-label-conversion.any.html": true,
+  "console-label-conversion.any.worker.html": true,
+  "console-namespace-object-class-string.any.html": true,
+  "console-namespace-object-class-string.any.worker.html": true,
+  "console-tests-historical.any.html": true,
+  "console-tests-historical.any.worker.html": true,
+  "idlharness.any.html": true,
+  "idlharness.any.worker.html": true,
+  "console-log-large-array.any.html": true,
+  "console-log-large-array.any.worker.html": true,
+  "console-log-symbol.any.html": true,
+  "console-log-symbol.any.worker.html": true
+}

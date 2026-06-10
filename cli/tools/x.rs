@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -9,9 +9,7 @@ use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_lib::worker::LibWorkerFactoryRoots;
 use deno_npm_installer::PackagesAllowedScripts;
-use deno_runtime::UnconfiguredRuntime;
 use deno_runtime::deno_permissions::PathQueryDescriptor;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
@@ -24,15 +22,18 @@ use crate::args::XFlags;
 use crate::args::XFlagsKind;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
+use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::tools::pm::CacheTopLevelDepsOptions;
 use crate::util::console::ConfirmOptions;
 use crate::util::console::confirm;
 use crate::util::draw_thread::DrawThread;
+use crate::util::fs::canonicalize_path;
 
-fn resolve_local_bins(
+async fn resolve_local_bins(
   node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
+  factory: &CliFactory,
 ) -> Result<BTreeMap<String, BinValue>, AnyError> {
   match &npm_resolver {
     deno_resolver::npm::NpmResolver::Byonm(npm_resolver) => {
@@ -45,8 +46,23 @@ fn resolve_local_bins(
       for id in npm_resolver.resolution().top_level_packages() {
         let package_folder =
           npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
-        let bins = node_resolver
-          .resolve_npm_binary_commands_for_package(&package_folder)?;
+        let bins = match node_resolver
+          .resolve_npm_binary_commands_for_package(&package_folder)
+        {
+          Ok(bins) => bins,
+          Err(_) => {
+            crate::tools::pm::cache_top_level_deps(
+              factory,
+              None,
+              CacheTopLevelDepsOptions {
+                lockfile_only: false,
+              },
+            )
+            .await?;
+            node_resolver
+              .resolve_npm_binary_commands_for_package(&package_folder)?
+          }
+        };
         for (command, bin_value) in bins {
           all_bins.insert(command.clone(), bin_value.clone());
         }
@@ -56,56 +72,170 @@ fn resolve_local_bins(
   }
 }
 
-async fn run_js_file(
-  factory: &CliFactory,
-  roots: LibWorkerFactoryRoots,
-  unconfigured_runtime: Option<UnconfiguredRuntime>,
+fn run_js_file(
   main_module: &deno_core::url::Url,
+  deno_args: &[String],
+  argv: &[String],
+  npm_process_state: Option<String>,
   npm: bool,
 ) -> Result<i32, AnyError> {
-  let cli_options = factory.cli_options()?;
-  let preload_modules = cli_options.preload_modules()?;
-  let require_modules = cli_options.require_modules()?;
+  use deno_runtime::deno_io::FromRawIoHandle;
+
+  let deno_exe = std::env::current_exe()
+    .and_then(|p| canonicalize_path(&p))
+    .context("Failed to get current executable path")?;
+
+  let mut args: Vec<std::ffi::OsString> = vec!["run".into()];
+  args.extend(deno_args.iter().map(|s| s.into()));
+  args.push(main_module.as_str().into());
+  args.extend(argv.iter().map(|s| s.into()));
+
+  let mut command = std::process::Command::new(deno_exe);
+  command.args(&args);
+
+  let _temp_file = if let Some(state) = &npm_process_state {
+    let fd =
+      deno_runtime::deno_process::npm_process_state_tempfile(state.as_bytes())
+        .context("Failed to create npm process state tempfile")?;
+    command.env(
+      deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME,
+      (fd as usize).to_string(),
+    );
+    // Keep the file alive until the subprocess completes
+    // SAFETY: fd is valid
+    Some(unsafe { std::fs::File::from_raw_io_handle(fd) })
+  } else {
+    None
+  };
 
   if npm {
     crate::tools::run::set_npm_user_agent();
   }
 
-  crate::tools::run::maybe_npm_install(factory).await?;
+  #[cfg(unix)]
+  {
+    use std::os::unix::process::CommandExt;
+    Err(command.exec().into())
+  }
+  #[cfg(not(unix))]
+  {
+    let mut child =
+      command.spawn().context("Failed to spawn deno subprocess")?;
+    let status = child.wait().context("Failed to wait for deno subprocess")?;
+    Ok(status.code().unwrap_or(1))
+  }
+}
 
-  let worker_factory = factory
-    .create_cli_main_worker_factory_with_roots(roots)
-    .await?;
-  let mut worker = worker_factory
-    .create_main_worker_with_unconfigured_runtime(
-      deno_runtime::WorkerExecutionMode::Run,
-      main_module.clone(),
-      preload_modules,
-      require_modules,
-      unconfigured_runtime,
-    )
-    .await
-    .inspect_err(|e| deno_telemetry::report_event("boot_failure", e))?;
+pub(crate) fn get_npm_process_state(
+  npm_resolver: &CliNpmResolver,
+) -> Option<String> {
+  match npm_resolver {
+    deno_resolver::npm::NpmResolver::Managed(managed) => {
+      let linker_mode = match managed.linker_mode() {
+        deno_config::deno_json::NodeModulesLinkerMode::Hoisted => {
+          deno_npm_installer::process_state::NpmProcessStateLinkerMode::Hoisted
+        }
+        deno_config::deno_json::NodeModulesLinkerMode::Isolated => {
+          deno_npm_installer::process_state::NpmProcessStateLinkerMode::Isolated
+        }
+      };
+      Some(
+        deno_npm_installer::process_state::NpmProcessState::new_managed(
+          managed.resolution().serialized_valid_snapshot(),
+          managed.root_node_modules_path(),
+          linker_mode,
+        )
+        .as_serialized(),
+      )
+    }
+    deno_resolver::npm::NpmResolver::Byonm(_) => None,
+  }
+}
 
-  let exit_code = worker
-    .run()
-    .await
-    .inspect_err(|e| deno_telemetry::report_event("uncaught_exception", e))?;
-  Ok(exit_code)
+pub(crate) fn run_bin_value(
+  factory: &CliFactory,
+  flags: &Flags,
+  bin_value: BinValue,
+  npm_process_state: Option<String>,
+  unstable_args: &[String],
+) -> Result<i32, AnyError> {
+  match bin_value {
+    BinValue::JsFile(path_buf) => {
+      let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
+      let mut deno_args = flags.to_permission_args();
+      deno_args.extend(unstable_args.iter().cloned());
+
+      run_js_file(&path, &deno_args, &flags.argv, npm_process_state, true)
+    }
+    BinValue::Executable(mut path_buf) => {
+      if cfg!(windows) && path_buf.extension().is_none() {
+        // prefer cmd shim over sh
+        path_buf.set_extension("cmd");
+        if !path_buf.exists() {
+          //  just fall back to original path
+          path_buf.set_extension("");
+        }
+      }
+      let permissions = factory.root_permissions_container()?;
+      permissions.check_run(
+        &deno_runtime::deno_permissions::RunQueryDescriptor::Path(
+          PathQueryDescriptor::new(
+            &factory.sys(),
+            std::borrow::Cow::Borrowed(path_buf.as_ref()),
+          )?,
+        ),
+        "entrypoint",
+      )?;
+      let mut child = std::process::Command::new(path_buf)
+        .args(&flags.argv)
+        .spawn()
+        .context("Failed to spawn command")?;
+      let status = child.wait()?;
+      Ok(status.code().unwrap_or(1))
+    }
+  }
+}
+
+/// Try to find a bin value from a map of bins, with fallbacks for scoped package names
+/// and single-bin packages.
+pub(crate) fn find_bin_value(
+  bins: &BTreeMap<String, BinValue>,
+  bin_name: &str,
+) -> Option<BinValue> {
+  bins
+    .get(bin_name)
+    .or_else(|| {
+      // Try the package name without scope as fallback
+      if bin_name.starts_with('@') && bin_name.contains('/') {
+        bin_name
+          .split('/')
+          .next_back()
+          .and_then(|name| bins.get(name))
+      } else {
+        None
+      }
+    })
+    .or_else(|| {
+      // If there's only one bin, use it
+      if bins.len() == 1 {
+        bins.values().next()
+      } else {
+        None
+      }
+    })
+    .cloned()
 }
 
 async fn maybe_run_local_npm_bin(
   factory: &CliFactory,
   flags: &Flags,
-  roots: LibWorkerFactoryRoots,
-  unconfigured_runtime: &mut Option<UnconfiguredRuntime>,
   node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
   command: &str,
+  unstable_args: &[String],
 ) -> Result<Option<i32>, AnyError> {
-  let permissions = factory.root_permissions_container()?;
-
-  let mut bins = resolve_local_bins(node_resolver, npm_resolver)?;
+  let mut bins =
+    resolve_local_bins(node_resolver, npm_resolver, factory).await?;
   let bin_value = if let Some(bin_value) = bins.remove(command) {
     bin_value
   } else if let Some(bin_value) = {
@@ -121,40 +251,9 @@ async fn maybe_run_local_npm_bin(
     return Ok(None);
   };
 
-  match bin_value {
-    BinValue::JsFile(path_buf) => {
-      let path = deno_path_util::url_from_file_path(path_buf.as_ref())?;
-      let unconfigured_runtime = unconfigured_runtime.take();
-      return run_js_file(factory, roots, unconfigured_runtime, &path, true)
-        .await
-        .map(Some);
-    }
-    BinValue::Executable(mut path_buf) => {
-      if cfg!(windows) && path_buf.extension().is_none() {
-        // prefer cmd shim over sh
-        path_buf.set_extension("cmd");
-        if !path_buf.exists() {
-          //  just fall back to original path
-          path_buf.set_extension("");
-        }
-      }
-      permissions.check_run(
-        &deno_runtime::deno_permissions::RunQueryDescriptor::Path(
-          PathQueryDescriptor::new(
-            &factory.sys(),
-            std::borrow::Cow::Borrowed(path_buf.as_ref()),
-          )?,
-        ),
-        "entrypoint",
-      )?;
-      let mut child = std::process::Command::new(path_buf)
-        .args(&flags.argv)
-        .spawn()
-        .context("Failed to spawn command")?;
-      let status = child.wait()?;
-      Ok(Some(status.code().unwrap_or(1)))
-    }
-  }
+  let npm_process_state = get_npm_process_state(npm_resolver);
+  run_bin_value(factory, flags, bin_value, npm_process_state, unstable_args)
+    .map(Some)
 }
 
 enum XTempDir {
@@ -189,11 +288,7 @@ fn create_package_temp_dir(
     if reload || !temp_dir.join("deno.lock").exists() {
       std::fs::remove_dir_all(&temp_dir)?;
     } else {
-      let canonicalized_temp_dir = temp_dir
-        .canonicalize()
-        .ok()
-        .map(deno_path_util::strip_unc_prefix);
-      let temp_dir = canonicalized_temp_dir.unwrap_or(temp_dir);
+      let temp_dir = canonicalize_path(&temp_dir).unwrap_or(temp_dir);
       return Ok(XTempDir::Existing(temp_dir));
     }
   }
@@ -203,11 +298,7 @@ fn create_package_temp_dir(
   let deno_json_path = temp_dir.join("deno.json");
   std::fs::write(&deno_json_path, r#"{"nodeModulesDir": "auto"}"#)?;
 
-  let canonicalized_temp_dir = temp_dir
-    .canonicalize()
-    .ok()
-    .map(deno_path_util::strip_unc_prefix);
-  let temp_dir = canonicalized_temp_dir.unwrap_or(temp_dir);
+  let temp_dir = canonicalize_path(&temp_dir).unwrap_or(temp_dir);
   Ok(XTempDir::New(temp_dir))
 }
 
@@ -224,7 +315,7 @@ fn write_shim(
         &out_path,
         r##"#!/bin/sh
 SCRIPT_DIR="$(dirname -- "$(readlink -f -- "$0")")"
-exec "$SCRIPT_DIR/deno" x --default-allow-all "$@"
+exec "$SCRIPT_DIR/deno" x "$@"
 "##
           .as_bytes(),
       )?;
@@ -260,12 +351,7 @@ exit /b %ERRORLEVEL%
   Ok(())
 }
 
-pub async fn run(
-  flags: Arc<Flags>,
-  x_flags: XFlags,
-  mut unconfigured_runtime: Option<UnconfiguredRuntime>,
-  roots: LibWorkerFactoryRoots,
-) -> Result<i32, AnyError> {
+pub async fn run(flags: Arc<Flags>, x_flags: XFlags) -> Result<i32, AnyError> {
   let command_flags = match x_flags.kind {
     XFlagsKind::InstallAlias(shim_name) => {
       let exe = std::env::current_exe()?;
@@ -278,7 +364,8 @@ pub async fn run(
       let factory = CliFactory::from_flags(flags.clone());
       let npm_resolver = factory.npm_resolver().await?;
       let node_resolver = factory.node_resolver().await?;
-      let bins = resolve_local_bins(node_resolver, npm_resolver)?;
+      let bins =
+        resolve_local_bins(node_resolver, npm_resolver, &factory).await?;
       if bins.is_empty() {
         log::info!("No local commands found");
         return Ok(0);
@@ -291,36 +378,45 @@ pub async fn run(
     }
   };
   let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+  let unstable_args = cli_options.unstable_args();
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let result = maybe_run_local_npm_bin(
     &factory,
     &flags,
-    roots.clone(),
-    &mut unconfigured_runtime,
     node_resolver,
     npm_resolver,
     &command_flags.command,
+    &unstable_args,
   )
   .await?;
   if let Some(exit_code) = result {
     return Ok(exit_code);
   }
 
-  let cli_options = factory.cli_options()?;
+  // When --package is specified, the command is the binary name and
+  // the package flag specifies which package to install. Combine them
+  // into a single specifier like "npm:package/binary" so the existing
+  // resolution flow handles it correctly.
+  let effective_command = if let Some(ref package) = command_flags.package {
+    format!("{}/{}", package, command_flags.command)
+  } else {
+    command_flags.command.clone()
+  };
 
-  let is_file_like = command_flags.command.starts_with('.')
-    || command_flags.command.starts_with('/')
-    || command_flags.command.starts_with('~')
-    || command_flags.command.starts_with('\\')
-    || Path::new(&command_flags.command).extension().is_some();
-  if is_file_like && Path::new(&command_flags.command).is_file() {
+  let is_file_like = effective_command.starts_with('.')
+    || effective_command.starts_with('/')
+    || effective_command.starts_with('~')
+    || effective_command.starts_with('\\')
+    || Path::new(&effective_command).extension().is_some();
+  if is_file_like && Path::new(&effective_command).is_file() {
     return Err(anyhow::anyhow!(
       "Use 'deno run' to run a local file directly, 'deno x' is intended for running commands from packages."
     ));
   }
 
-  let thing_to_run = match deno_core::url::Url::parse(&command_flags.command) {
+  let thing_to_run = match deno_core::url::Url::parse(&effective_command) {
     Ok(url) => {
       if url.scheme() == "npm" {
         let req_ref = NpmPackageReqReference::from_specifier(&url)?;
@@ -333,7 +429,7 @@ pub async fn run(
       }
     }
     Err(deno_core::url::ParseError::RelativeUrlWithoutBase) => {
-      let new_command = format!("npm:{}", command_flags.command);
+      let new_command = format!("npm:{}", effective_command);
       let req_ref = NpmPackageReqReference::from_str(&new_command)?;
       ReqRefOrUrl::Npm(req_ref)
     }
@@ -346,44 +442,103 @@ pub async fn run(
   let reload = matches!(cache_setting, CacheSetting::ReloadAll);
   match thing_to_run {
     ReqRefOrUrl::Npm(npm_package_req_reference) => {
-      let (new_flags, _) = autoinstall_package(
+      // First try to resolve from the local project
+      if let Ok(package_folder) = npm_resolver
+        .resolve_pkg_folder_from_deno_module_req(
+          npm_package_req_reference.req(),
+          &deno_path_util::url_from_directory_path(cli_options.initial_cwd())
+            .unwrap(),
+        )
+      {
+        let bin_name =
+          if let Some(sub_path) = npm_package_req_reference.sub_path() {
+            sub_path
+          } else {
+            npm_package_req_reference.req().name.as_str()
+          };
+
+        let bins = node_resolver
+          .resolve_npm_binary_commands_for_package(&package_folder)?;
+        if let Some(bin_value) = find_bin_value(&bins, bin_name) {
+          let npm_process_state = get_npm_process_state(npm_resolver);
+          return run_bin_value(
+            &factory,
+            &flags,
+            bin_value,
+            npm_process_state,
+            &unstable_args,
+          );
+        }
+      }
+
+      // Fall back to autoinstall
+      let (managed_flags, managed_factory) = autoinstall_package(
         ReqRef::Npm(&npm_package_req_reference),
         &flags,
         reload,
         command_flags.yes,
+        &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
       )
       .await?;
-      let mut new_new_flags = (*new_flags).clone();
-      new_new_flags.node_modules_dir =
+      let mut runner_flags = (*managed_flags).clone();
+      runner_flags.node_modules_dir =
         Some(deno_config::deno_json::NodeModulesDirMode::Manual);
-      let new_new_flags = Arc::new(new_new_flags);
-      let new_new_factory = CliFactory::from_flags(new_new_flags.clone());
-      let new_node_resolver = new_new_factory.node_resolver().await?;
-      let new_npm_resolver = new_new_factory.npm_resolver().await?;
+      let runner_flags = Arc::new(runner_flags);
+      let runner_factory = CliFactory::from_flags(runner_flags.clone());
+      let runner_node_resolver = runner_factory.node_resolver().await?;
+      let runner_npm_resolver = runner_factory.npm_resolver().await?;
 
-      let bin_name = npm_package_req_reference
-        .sub_path()
-        .unwrap_or_else(|| &npm_package_req_reference.req().name);
+      let bin_name =
+        if let Some(sub_path) = npm_package_req_reference.sub_path() {
+          sub_path
+        } else {
+          npm_package_req_reference.req().name.as_str()
+        };
 
       let res = maybe_run_local_npm_bin(
-        &new_new_factory,
-        &new_new_flags,
-        roots.clone(),
-        &mut unconfigured_runtime,
-        new_node_resolver,
-        new_npm_resolver,
+        &runner_factory,
+        &runner_flags,
+        runner_node_resolver,
+        runner_npm_resolver,
         bin_name,
+        &unstable_args,
       )
       .await?;
       if let Some(exit_code) = res {
         Ok(exit_code)
       } else {
-        let bins = resolve_local_bins(new_node_resolver, new_npm_resolver)?;
+        let managed_npm_resolver =
+          managed_factory.npm_resolver().await?.as_managed().unwrap();
+        let bin_commands = bin_commands_for_package(
+          runner_node_resolver,
+          managed_npm_resolver,
+          npm_package_req_reference.req(),
+        )?;
+        let fallback_name = if bin_commands.len() == 1 {
+          Some(bin_commands.keys().next().unwrap())
+        } else {
+          None
+        };
+
+        if let Some(fallback_name) = fallback_name
+          && let Some(exit_code) = maybe_run_local_npm_bin(
+            &runner_factory,
+            &runner_flags,
+            runner_node_resolver,
+            runner_npm_resolver,
+            fallback_name.as_ref(),
+            &unstable_args,
+          )
+          .await?
+        {
+          return Ok(exit_code);
+        }
+
         Err(anyhow::anyhow!(
           "Unable to choose binary for {}\n  Available bins:\n{}",
-          command_flags.command,
-          bins
+          effective_command,
+          bin_commands
             .keys()
             .map(|k| format!("    {}", k))
             .collect::<Vec<_>>()
@@ -397,25 +552,40 @@ pub async fn run(
         &flags,
         reload,
         command_flags.yes,
+        &command_flags.ignore_scripts,
         &factory.deno_dir()?.root,
       )
       .await?;
 
+      let npm_resolver = new_factory.npm_resolver().await?;
+      let npm_process_state = get_npm_process_state(npm_resolver);
+
+      let mut deno_args = flags.to_permission_args();
+      deno_args.extend(unstable_args.iter().cloned());
       let url =
         deno_core::url::Url::parse(&jsr_package_req_reference.to_string())?;
-      run_js_file(&new_factory, roots, None, &url, false).await
+      run_js_file(&url, &deno_args, &flags.argv, npm_process_state, false)
     }
     ReqRefOrUrl::Url(url) => {
-      let mut new_flags = (*flags).clone();
-      new_flags.node_modules_dir =
-        Some(deno_config::deno_json::NodeModulesDirMode::None);
-      new_flags.internal.lockfile_skip_write = true;
-
-      let new_flags = Arc::new(new_flags);
-      let new_factory = CliFactory::from_flags(new_flags.clone());
-      run_js_file(&new_factory, roots, None, &url, false).await
+      let mut deno_args = flags.to_permission_args();
+      deno_args.extend(unstable_args.iter().cloned());
+      run_js_file(&url, &deno_args, &flags.argv, None, false)
     }
   }
+}
+
+fn bin_commands_for_package(
+  node_resolver: &CliNodeResolver,
+  managed_npm_resolver: &CliManagedNpmResolver,
+  package_req: &PackageReq,
+) -> Result<BTreeMap<String, BinValue>, AnyError> {
+  let pkg_id =
+    managed_npm_resolver.resolve_pkg_id_from_deno_module_req(package_req)?;
+  let package_folder =
+    managed_npm_resolver.resolve_pkg_folder_from_pkg_id(&pkg_id)?;
+  node_resolver
+    .resolve_npm_binary_commands_for_package(&package_folder)
+    .map_err(Into::into)
 }
 
 async fn autoinstall_package(
@@ -423,9 +593,14 @@ async fn autoinstall_package(
   old_flags: &Flags,
   reload: bool,
   yes: bool,
+  ignore_scripts: &PackagesAllowedScripts,
   deno_dir: &Path,
 ) -> Result<(Arc<Flags>, CliFactory), AnyError> {
-  fn make_new_flags(old_flags: &Flags, temp_dir: &Path) -> Arc<Flags> {
+  fn make_new_flags(
+    old_flags: &Flags,
+    temp_dir: &Path,
+    ignore_scripts: &PackagesAllowedScripts,
+  ) -> Arc<Flags> {
     let mut new_flags = (*old_flags).clone();
     new_flags.node_modules_dir =
       Some(deno_config::deno_json::NodeModulesDirMode::Auto);
@@ -434,7 +609,23 @@ async fn autoinstall_package(
     new_flags.config_flag = crate::args::ConfigFlag::Path(
       temp_dir.join("deno.json").to_string_lossy().into_owned(),
     );
-    new_flags.allow_scripts = PackagesAllowedScripts::All;
+    match ignore_scripts {
+      PackagesAllowedScripts::All => {
+        new_flags.allow_scripts = PackagesAllowedScripts::None;
+        new_flags.deny_scripts.clear();
+      }
+      PackagesAllowedScripts::Some(package_reqs) => {
+        if matches!(old_flags.allow_scripts, PackagesAllowedScripts::None) {
+          new_flags.allow_scripts = PackagesAllowedScripts::All;
+        }
+        new_flags.deny_scripts = package_reqs.clone();
+      }
+      PackagesAllowedScripts::None => {
+        if matches!(old_flags.allow_scripts, PackagesAllowedScripts::None) {
+          new_flags.allow_scripts = PackagesAllowedScripts::All;
+        }
+      }
+    };
 
     log::debug!("new_flags: {:?}", new_flags);
 
@@ -447,7 +638,7 @@ async fn autoinstall_package(
     deno_dir,
   )?;
 
-  let new_flags = make_new_flags(old_flags, temp_dir.path());
+  let new_flags = make_new_flags(old_flags, temp_dir.path(), ignore_scripts);
   let new_factory = CliFactory::from_flags(new_flags.clone());
 
   match temp_dir {

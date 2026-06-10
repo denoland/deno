@@ -1,6 +1,7 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod bench;
+pub mod bump_version;
 pub mod bundle;
 pub mod check;
 pub mod clean;
@@ -9,11 +10,13 @@ pub mod coverage;
 pub mod deploy;
 pub mod doc;
 pub mod fmt;
+pub mod framework;
 pub mod info;
 pub mod init;
 pub mod installer;
 pub mod jupyter;
 pub mod lint;
+pub mod pack;
 pub mod pm;
 pub mod publish;
 pub mod repl;
@@ -21,5 +24,7 @@ pub mod run;
 pub mod serve;
 pub mod task;
 pub mod test;
+pub mod transpile;
+pub mod unfurl_utils;
 pub mod upgrade;
 pub mod x;

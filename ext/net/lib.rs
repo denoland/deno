@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod io;
 pub mod ops;
@@ -10,6 +10,8 @@ pub mod raw;
 pub mod resolve_addr;
 pub mod tcp;
 pub mod tunnel;
+#[cfg(windows)]
+pub mod win_pipe;
 
 use std::sync::Arc;
 
@@ -70,6 +72,7 @@ deno_core::extension!(deno_net,
     ops::op_net_set_broadcast_udp,
     ops::op_net_validate_multicast,
     ops::op_dns_resolve,
+    ops::op_net_get_system_dns_servers,
     ops::op_set_nodelay,
     ops::op_set_keepalive,
     ops::op_net_listen_vsock,
@@ -134,8 +137,8 @@ deno_core::extension!(deno_net,
     quic::webtransport::op_webtransport_accept,
     quic::webtransport::op_webtransport_connect,
   ],
-  esm = [ "01_net.js", "02_tls.js" ],
   lazy_loaded_esm = [ "03_quic.js" ],
+  lazy_loaded_js = [ "01_net.js", "02_tls.js" ],
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -156,19 +159,6 @@ mod ops_unix {
   use deno_core::op2;
 
   macro_rules! stub_op {
-    ($name:ident) => {
-      #[op2(fast)]
-      pub fn $name() -> Result<(), std::io::Error> {
-        let error_msg = format!(
-          "Operation `{:?}` not supported on non-unix platforms.",
-          stringify!($name)
-        );
-        Err(std::io::Error::new(
-          std::io::ErrorKind::Unsupported,
-          error_msg,
-        ))
-      }
-    };
     ($name:ident) => {
       #[op2(fast)]
       pub fn $name() -> Result<(), std::io::Error> {

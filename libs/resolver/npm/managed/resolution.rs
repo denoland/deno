@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
@@ -16,7 +16,7 @@ use deno_semver::package::PackageReq;
 use deno_unsync::sync::AtomicFlag;
 use parking_lot::RwLock;
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type NpmResolutionCellRc = deno_maybe_sync::MaybeArc<NpmResolutionCell>;
 
 /// Handles updating and storing npm resolution in memory.

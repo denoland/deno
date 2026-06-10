@@ -1,8 +1,8 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 "use strict";
 
-import { primordials } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   BigInt,
@@ -39,8 +39,8 @@ const {
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
-import { Buffer } from "node:buffer";
-import {
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const {
   ERR_FS_EISDIR,
   ERR_FS_INVALID_SYMLINK_TYPE,
   ERR_INVALID_ARG_TYPE,
@@ -48,17 +48,21 @@ import {
   ERR_OUT_OF_RANGE,
   hideStackFrames,
   uvException,
-} from "ext:deno_node/internal/errors.ts";
+} = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
-import {
+const {
   isArrayBufferView,
   isBigUint64Array,
   isDate,
   isUint8Array,
-} from "ext:deno_node/internal/util/types.ts";
-import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
-import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
-import {
+} = core.loadExtScript("ext:deno_node/internal/util/types.ts");
+const { kEmptyObject, once } = core.loadExtScript(
+  "ext:deno_node/internal/util.mjs",
+);
+const { toPathIfFileURL } = core.loadExtScript(
+  "ext:deno_node/internal/url.ts",
+);
+const {
   validateAbortSignal,
   validateBoolean,
   validateFunction,
@@ -66,20 +70,25 @@ import {
   validateInteger,
   validateObject,
   validateUint32,
-} from "ext:deno_node/internal/validators.mjs";
-import pathModule from "node:path";
+} = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const lazyPath = core.createLazyLoader("node:path");
 const kType = Symbol("type");
 const kStats = Symbol("stats");
-import assert from "ext:deno_node/internal/assert.mjs";
-import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
-import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
-import { isWindows } from "ext:deno_node/_util/os.ts";
-import process from "node:process";
-import { ERR_INCOMPATIBLE_OPTION_PAIR } from "ext:deno_node/internal/errors.ts";
-import {
-  fs as fsConstants,
-  os as osConstants,
-} from "ext:deno_node/internal_binding/constants.ts";
+const assert = core.loadExtScript(
+  "ext:deno_node/internal/assert.mjs",
+);
+const { lstat, lstatSync } = core.loadExtScript(
+  "ext:deno_node/_fs/_fs_lstat.ts",
+);
+const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
+const lazyProcess = core.createLazyLoader("node:process");
+const { ERR_INCOMPATIBLE_OPTION_PAIR } = core.loadExtScript(
+  "ext:deno_node/internal/errors.ts",
+);
+const {
+  fs: fsConstants,
+  os: osConstants,
+} = core.loadExtScript("ext:deno_node/internal_binding/constants.ts");
 const {
   F_OK = 0,
   W_OK = 0,
@@ -196,7 +205,7 @@ export class Dirent {
   }
 }
 
-export function direntFromDeno(entry) {
+export function direntFromDeno(entry, path) {
   let type;
 
   if (entry.isDirectory) {
@@ -207,7 +216,7 @@ export function direntFromDeno(entry) {
     type = UV_DIRENT_LINK;
   }
 
-  return new Dirent(entry.name, type, entry.parentPath);
+  return new Dirent(entry.name, type, path ?? entry.parentPath);
 }
 
 export class DirentFromStats extends Dirent {
@@ -234,7 +243,7 @@ export function copyObject(source) {
   return target;
 }
 
-const bufferSep = Buffer.from(pathModule.sep);
+const bufferSep = Buffer.from(lazyPath().default.sep);
 
 function join(path, name) {
   if (
@@ -245,8 +254,10 @@ function join(path, name) {
   }
 
   if (typeof path === "string" && isUint8Array(name)) {
-    // deno-lint-ignore prefer-primordials `join` is a `node:path` function
-    const pathBuffer = Buffer.from(pathModule.join(path, pathModule.sep));
+    const pathBuffer = Buffer.from(
+      // deno-lint-ignore prefer-primordials `join` is a `node:path` function
+      lazyPath().default.join(path, lazyPath().default.sep),
+    );
     // Ignore lint. `concat` is a 'node:buffer' static method on `Buffer`
     // deno-lint-ignore prefer-primordials
     return Buffer.concat([pathBuffer, name]);
@@ -254,7 +265,7 @@ function join(path, name) {
 
   if (typeof path === "string" && typeof name === "string") {
     // deno-lint-ignore prefer-primordials `join` is a `node:path` function
-    return pathModule.join(path, name);
+    return lazyPath().default.join(path, name);
   }
 
   if (isUint8Array(path) && isUint8Array(name)) {
@@ -430,12 +441,12 @@ export function preprocessSymlinkDestination(path, type, linkPath) {
   if (type === "junction") {
     // Junctions paths need to be absolute and \\?\-prefixed.
     // A relative target is relative to the link's parent directory.
-    path = pathModule.resolve(linkPath, "..", path);
-    return pathModule.toNamespacedPath(path);
+    path = lazyPath().default.resolve(linkPath, "..", path);
+    return lazyPath().default.toNamespacedPath(path);
   }
-  if (pathModule.isAbsolute(path)) {
+  if (lazyPath().default.isAbsolute(path)) {
     // If the path is absolute, use the \\?\-prefix to enable long filenames
-    return pathModule.toNamespacedPath(path);
+    return lazyPath().default.toNamespacedPath(path);
   }
   // Windows symlinks don't tolerate forward slashes.
   return StringPrototypeReplace(path, new SafeRegExp(/\//g), "\\");
@@ -934,7 +945,7 @@ export function warnOnNonPortableTemplate(template) {
   // Template strings passed to the mkdtemp() family of functions should not
   // end with 'X' because they are handled inconsistently across platforms.
   if (nonPortableTemplateWarn && StringPrototypeEndsWith(template, "X")) {
-    process.emitWarning(
+    lazyProcess().default.emitWarning(
       "mkdtemp() templates ending with X are not portable. " +
         "For details see: https://nodejs.org/api/fs.html",
     );
@@ -990,12 +1001,26 @@ export const validateCpOptions = hideStackFrames((options) => {
   return options;
 });
 
+/**
+ * @typedef {{
+ *   force: boolean;
+ *   recursive?: boolean;
+ *   retryDelay?: number;
+ *   maxRetries?: number;
+ * }} RmOptions
+ */
+
+/**
+ * @typedef {(err: Error | false | null, options?: RmOptions) => void} RmOptionsCallback
+ */
+
+/** @type {(path: string, options: RmOptions, expectDir: boolean, cb: RmOptionsCallback) => void} */
 export const validateRmOptions = hideStackFrames(
   (path, options, expectDir, cb) => {
     options = validateRmdirOptions(options, defaultRmOptions);
     validateBoolean(options.force, "options.force");
 
-    stat(path, (err, stats) => {
+    lstat(path, (err, stats) => {
       if (err) {
         if (options.force && err.code === "ENOENT") {
           return cb(null, options);
@@ -1023,13 +1048,14 @@ export const validateRmOptions = hideStackFrames(
   },
 );
 
+/** @type {(path: string, options: RmOptions, expectDir: boolean) => RmOptions | false} */
 export const validateRmOptionsSync = hideStackFrames(
   (path, options, expectDir) => {
     options = validateRmdirOptions(options, defaultRmOptions);
     validateBoolean(options.force, "options.force");
 
     if (!options.force || expectDir || !options.recursive) {
-      const isDirectory = statSync(path, { throwIfNoEntry: !options.force })
+      const isDirectory = lstatSync(path, { throwIfNoEntry: !options.force })
         ?.isDirectory();
 
       if (expectDir && !isDirectory) {
@@ -1051,10 +1077,10 @@ export const validateRmOptionsSync = hideStackFrames(
   },
 );
 
-let recursiveRmdirWarned = process.noDeprecation;
+let recursiveRmdirWarned = lazyProcess().default.noDeprecation;
 export function emitRecursiveRmdirWarning() {
   if (!recursiveRmdirWarned) {
-    process.emitWarning(
+    lazyProcess().default.emitWarning(
       "In future versions of Node.js, fs.rmdir(path, { recursive: true }) " +
         "will be removed. Use fs.rm(path, { recursive: true }) instead",
       "DeprecationWarning",
@@ -1182,6 +1208,7 @@ export default {
   getOptions,
   getValidatedFd,
   getValidatedPath,
+  getValidatedPathToString,
   getValidMode,
   handleErrorFromBinding,
   kMaxUserId,

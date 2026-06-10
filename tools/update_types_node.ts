@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -14,6 +14,7 @@ import {
   Node,
   Project,
   ScriptTarget,
+  SourceFile,
   SyntaxKind,
   VariableDeclaration,
 } from "jsr:@ts-morph/ts-morph@27.0.2";
@@ -138,6 +139,10 @@ function modifySourceFiles() {
     nodeTypesDir.join("index.d.cts").toString(),
   );
 
+  // Names that Deno exposes as Web Platform globals. Used to alias the
+  // `node:stream/web` module exports to the globals (see `aliasWebStreamGlobals`).
+  const webGlobalNames = getWebGlobalNames();
+
   for (const statement of typesNodeSourceFile.getStatementsWithComments()) {
     if (Node.isCommentStatement(statement)) {
       const text = statement.getText();
@@ -242,6 +247,17 @@ function modifySourceFiles() {
       }
     }
 
+    // `node:stream/web` re-exposes the same Web Streams classes Deno uses for
+    // its globals. The upstream `@types/node` declarations redeclare them as
+    // separate structural interfaces, which cross-reference Deno's globals
+    // (e.g. via `pipeThrough`) in a way TypeScript can't prove compatible. That
+    // makes `new ReadableStream()` unassignable to `Readable.fromWeb()` and
+    // friends. Alias the module exports straight to the globals so platform
+    // values flow through. See https://github.com/denoland/deno/issues/19620.
+    if (sourceFile.getFilePath().endsWith("stream/web.d.ts")) {
+      aliasWebStreamGlobals(sourceFile, webGlobalNames);
+    }
+
     if (
       !sourceFile.getFilePath().includes("undici") &&
       sourceFile.getFilePath().endsWith(".d.ts")
@@ -263,6 +279,73 @@ function modifySourceFiles() {
   }
 
   project.saveSync();
+}
+
+// Collect the names Deno declares as Web Platform globals (from
+// `lib.deno_web.d.ts`). These are what `node:stream/web` should alias to.
+function getWebGlobalNames(): Set<string> {
+  const project = new Project({ skipAddingFilesFromTsConfig: true });
+  const sourceFile = project.addSourceFileAtPath(
+    dtsDir.join("lib.deno_web.d.ts").toString(),
+  );
+  const names = new Set<string>();
+  for (const decl of sourceFile.getInterfaces()) {
+    names.add(decl.getName());
+  }
+  for (const decl of sourceFile.getTypeAliases()) {
+    names.add(decl.getName());
+  }
+  for (const decl of sourceFile.getVariableDeclarations()) {
+    names.add(decl.getName());
+  }
+  return names;
+}
+
+// Rewrite the `declare module "stream/web"` block so every export that has a
+// matching Web Platform global becomes a `globalThis.*` alias. Declarations
+// that don't have a global counterpart (e.g. `ReadableStreamAsyncIterator`,
+// `BufferSource`) are left untouched.
+function aliasWebStreamGlobals(
+  sourceFile: SourceFile,
+  webGlobalNames: Set<string>,
+) {
+  for (const moduleDecl of sourceFile.getModules()) {
+    if (moduleDecl.getName().replace(/['"]/g, "") !== "stream/web") {
+      continue;
+    }
+    const body = moduleDecl.getBody();
+    if (body == null || !Node.isModuleBlock(body)) {
+      continue;
+    }
+    for (const statement of [...body.getStatements()]) {
+      if (Node.isVariableStatement(statement)) {
+        const name = statement.getDeclarations()[0]?.getName();
+        if (name != null && webGlobalNames.has(name)) {
+          statement.replaceWithText(
+            `const ${name}: typeof globalThis.${name};`,
+          );
+        }
+      } else if (
+        Node.isInterfaceDeclaration(statement) ||
+        Node.isTypeAliasDeclaration(statement)
+      ) {
+        const name = statement.getName();
+        if (!webGlobalNames.has(name)) {
+          continue;
+        }
+        const typeParams = statement.getTypeParameters();
+        const lhs = typeParams.length === 0
+          ? name
+          : `${name}<${typeParams.map((p) => p.getText()).join(", ")}>`;
+        const rhs = typeParams.length === 0
+          ? `globalThis.${name}`
+          : `globalThis.${name}<${
+            typeParams.map((p) => p.getName()).join(", ")
+          }>`;
+        statement.replaceWithText(`type ${lhs} = ${rhs};`);
+      }
+    }
+  }
 }
 
 function handleInterface(decl: InterfaceDeclaration) {
@@ -330,6 +413,7 @@ function handleVarDecl(decl: VariableDeclaration) {
     case "PerformanceEntry":
     case "PerformanceMark":
     case "PerformanceMeasure":
+    case "QuotaExceededError":
     case "ReadableByteStreamController":
     case "ReadableStream":
     case "ReadableStreamBYOBReader":

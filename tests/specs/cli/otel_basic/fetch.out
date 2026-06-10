@@ -168,6 +168,24 @@
           "value": {
             "stringValue": "TypeError"
           }
+        },
+        {
+          "key": "exception.type",
+          "value": {
+            "stringValue": "TypeError"
+          }
+        },
+        {
+          "key": "exception.message",
+          "value": {
+            "stringValue": "[WILDCARD]"
+          }
+        },
+        {
+          "key": "exception.stacktrace",
+          "value": {
+            "stringValue": "[WILDCARD]"
+          }
         }
       ],
       "droppedAttributesCount": 0,
@@ -225,6 +243,24 @@
           "key": "error.type",
           "value": {
             "stringValue": "AbortError"
+          }
+        },
+        {
+          "key": "exception.type",
+          "value": {
+            "stringValue": "AbortError"
+          }
+        },
+        {
+          "key": "exception.message",
+          "value": {
+            "stringValue": "The signal has been aborted"
+          }
+        },
+        {
+          "key": "exception.stacktrace",
+          "value": {
+            "stringValue": "[WILDCARD]"
           }
         }
       ],

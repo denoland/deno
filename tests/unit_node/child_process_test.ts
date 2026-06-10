@@ -1,11 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import CP from "node:child_process";
 import { Buffer } from "node:buffer";
 import {
   assert,
   assertEquals,
-  assertExists,
   assertNotStrictEquals,
   assertStrictEquals,
   assertStringIncludes,
@@ -493,30 +492,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/child_process] ChildProcess.kill()",
-  async fn() {
-    const script = path.join(
-      path.dirname(path.fromFileUrl(import.meta.url)),
-      "./testdata/infinite_loop.js",
-    );
-    const childProcess = spawn(Deno.execPath(), ["run", script]);
-    const p = withTimeout<void>();
-    const pStdout = withTimeout<void>();
-    const pStderr = withTimeout<void>();
-    childProcess.on("exit", () => p.resolve());
-    childProcess.stdout.on("close", () => pStdout.resolve());
-    childProcess.stderr.on("close", () => pStderr.resolve());
-    childProcess.kill("SIGKILL");
-    await p.promise;
-    await pStdout.promise;
-    await pStderr.promise;
-    assert(childProcess.killed);
-    assertEquals(childProcess.signalCode, "SIGKILL");
-    assertExists(childProcess.exitCode);
-  },
-});
-
-Deno.test({
   ignore: true,
   name: "[node/child_process] ChildProcess.unref()",
   async fn() {
@@ -552,6 +527,32 @@ Deno.test({
     );
     const p = Promise.withResolvers<void>();
     const cp = CP.fork(script, [], { cwd: testdataDir, stdio: "pipe" });
+    let output = "";
+    cp.on("close", () => p.resolve());
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    await p.promise;
+    assertEquals(output, "foo\ntrue\ntrue\ntrue\n");
+  },
+});
+
+Deno.test({
+  name: "[node/child_process] child_process.fork with URL",
+  async fn() {
+    const testdataDir = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+    );
+    const script = path.join(
+      testdataDir,
+      "node_modules",
+      "foo",
+      "index.js",
+    );
+    const scriptUrl = path.toFileUrl(script);
+    const p = Promise.withResolvers<void>();
+    const cp = CP.fork(scriptUrl, [], { cwd: testdataDir, stdio: "pipe" });
     let output = "";
     cp.on("close", () => p.resolve());
     cp.stdout?.on("data", (data) => {
@@ -653,6 +654,43 @@ Deno.test({
     await pStderr.promise;
     assert(cp.killed);
     assertEquals(cp.signalCode, "SIGIOT");
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process spawn] AbortSignal aborts the child and emits AbortError",
+  async fn() {
+    const ac = new AbortController();
+    const cp = spawn(
+      Deno.execPath(),
+      ["eval", "setInterval(() => {}, 1000)"],
+      { signal: ac.signal },
+    );
+    const error = withTimeout<Error>();
+    const exit = withTimeout<void>();
+    cp.on("error", (err) => error.resolve(err));
+    cp.on("exit", () => exit.resolve());
+    cp.on("spawn", () => ac.abort());
+    const err = await error.promise;
+    assertEquals(err.name, "AbortError");
+    await exit.promise;
+  },
+});
+
+Deno.test({
+  name:
+    "[node/child_process] kill() on an exited process returns false and does not throw",
+  async fn() {
+    // Regression for https://github.com/denoland/deno/issues/28882 — killing
+    // a process that has already exited must not surface a spurious error
+    // (PermissionError on Windows / ESRCH on Unix), it should just return
+    // false like Node.js does.
+    const cp = spawn(Deno.execPath(), ["eval", "Deno.exit(0)"]);
+    const exit = withTimeout<void>();
+    cp.on("exit", () => exit.resolve());
+    await exit.promise;
+    assertEquals(cp.kill("SIGTERM"), false);
   },
 });
 
@@ -1262,6 +1300,24 @@ Deno.test({
   },
 });
 
+// Regression test for https://github.com/denoland/deno/issues/25776
+Deno.test(async function killSignalZero() {
+  const child = CP.spawn(Deno.execPath(), [
+    "eval",
+    "setTimeout(() => {}, 60_000)",
+  ]);
+  try {
+    // Signal 0 checks if the process exists without sending a signal
+    const alive = child.kill(0);
+    assertEquals(alive, true);
+    // The child should not be marked as killed
+    assertEquals(child.killed, false);
+  } finally {
+    child.kill();
+    await new Promise((resolve) => child.on("close", resolve));
+  }
+});
+
 Deno.test(async function experimentalFlag() {
   const code = ``;
   const file = await Deno.makeTempFile();
@@ -1276,4 +1332,102 @@ Deno.test(async function experimentalFlag() {
   });
 
   await timeout.promise;
+});
+
+// Regression test for https://github.com/denoland/deno/issues/26784
+// process.stdout partial writes were silently dropped, causing data
+// truncation when piping >64KB through a subprocess.
+Deno.test(async function stdoutPipePartialWriteNotTruncated() {
+  // Child script: pipe a file to stdout via createReadStream
+  const pipeScript = await Deno.makeTempFile({ suffix: ".mjs" });
+  await Deno.writeTextFile(
+    pipeScript,
+    `import fs from "node:fs";fs.createReadStream(process.argv[2]).pipe(process.stdout);`,
+  );
+  // Create a file >65536 bytes with multiple lines (triggers chunked reads)
+  const dataFile = await Deno.makeTempFile();
+  const content = "x".repeat(40000) + "\n" + "y".repeat(40000) + "\n";
+  await Deno.writeTextFile(dataFile, content);
+  try {
+    const output = execFileSync(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      pipeScript,
+      dataFile,
+    ], { encoding: "utf-8", maxBuffer: 50 * 1024 * 1024 });
+    assertEquals(output.length, content.length);
+    assertEquals(output, content);
+  } finally {
+    await Deno.remove(pipeScript);
+    await Deno.remove(dataFile);
+  }
+});
+
+Deno.test(async function stdoutWriteMultipleChunksNotTruncated() {
+  // Child script: write two large chunks to stdout directly
+  const script = await Deno.makeTempFile({ suffix: ".mjs" });
+  await Deno.writeTextFile(
+    script,
+    `const chunk1 = "A".repeat(50000);const chunk2 = "B".repeat(50000);process.stdout.write(chunk1);process.stdout.write(chunk2);`,
+  );
+  try {
+    const output = execFileSync(Deno.execPath(), ["run", script], {
+      encoding: "utf-8",
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    assertEquals(output.length, 100000);
+    assertEquals(output, "A".repeat(50000) + "B".repeat(50000));
+  } finally {
+    await Deno.remove(script);
+  }
+});
+
+Deno.test(function spawnSyncShellMetacharactersEscaped() {
+  // Shell metacharacters in args should be escaped, not interpreted.
+  // On Unix, & would launch a background process; on Windows, it
+  // would chain a second command. Either way echo should print
+  // the literal string.
+  const ret = spawnSync(
+    Deno.execPath(),
+    ["eval", "console.log(Deno.args[0])", "--", "a&b|c<d>e"],
+    { shell: true, encoding: "utf-8" },
+  );
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.trim(), "a&b|c<d>e");
+});
+
+Deno.test(function spawnSyncReturnsPid() {
+  const ret = spawnSync(Deno.execPath(), ["eval", "console.log('hi')"]);
+  assertEquals(ret.status, 0);
+  assertEquals(typeof ret.pid, "number");
+  assert(ret.pid > 0);
+});
+
+Deno.test({
+  name: "spawnWithNumericFdInStdioArray",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fs = await import("node:fs");
+    const tmpFile = Deno.makeTempFileSync();
+    try {
+      const fd = fs.openSync(tmpFile, "w");
+      const child = spawn("/bin/sh", [
+        "-c",
+        "echo hello from child >&3",
+      ], {
+        stdio: ["ignore", "pipe", "pipe", fd],
+      });
+      const { promise, resolve } = Promise.withResolvers<number>();
+      child.on("close", (code: number) => {
+        resolve(code);
+      });
+      const code = await promise;
+      fs.closeSync(fd);
+      assertEquals(code, 0);
+      const content = Deno.readTextFileSync(tmpFile);
+      assertEquals(content, "hello from child\n");
+    } finally {
+      Deno.removeSync(tmpFile);
+    }
+  },
 });

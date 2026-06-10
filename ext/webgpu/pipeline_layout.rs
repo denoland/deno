@@ -1,9 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_core::cppgc::Ref;
 use deno_core::op2;
+use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlInterfaceConverter;
 
 use crate::Instance;
@@ -61,5 +62,5 @@ pub(crate) struct GPUPipelineLayoutDescriptor {
   pub label: String,
 
   pub bind_group_layouts:
-    Vec<Ref<super::bind_group_layout::GPUBindGroupLayout>>,
+    Vec<Nullable<Ref<super::bind_group_layout::GPUBindGroupLayout>>>,
 }

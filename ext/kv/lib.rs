@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub mod config;
 pub mod dynamic;
@@ -11,7 +11,6 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
 
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE;
@@ -28,6 +27,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
@@ -53,6 +53,8 @@ use denokv_proto::WatchKeyOutput;
 use denokv_proto::WatchStream;
 use denokv_proto::decode_key;
 use denokv_proto::encode_key;
+use dynamic::DynamicDbHandler;
+use dynamic::RcDynamicDb;
 use log::debug;
 use serde::Deserialize;
 use serde::Serialize;
@@ -64,34 +66,33 @@ pub const UNSTABLE_FEATURE_NAME: &str = "kv";
 
 deno_core::extension!(deno_kv,
   deps = [ deno_web ],
-  parameters = [ DBH: DatabaseHandler ],
   ops = [
-    op_kv_database_open<DBH>,
-    op_kv_snapshot_read<DBH>,
-    op_kv_atomic_write<DBH>,
+    op_kv_database_open,
+    op_kv_snapshot_read,
+    op_kv_atomic_write,
     op_kv_encode_cursor,
-    op_kv_dequeue_next_message<DBH>,
-    op_kv_finish_dequeued_message<DBH>,
-    op_kv_watch<DBH>,
+    op_kv_dequeue_next_message,
+    op_kv_finish_dequeued_message,
+    op_kv_watch,
     op_kv_watch_next,
   ],
-  esm = [ "01_db.ts" ],
+  lazy_loaded_js = [ "01_db.ts" ],
   options = {
-    handler: DBH,
+    handler: Box<dyn DynamicDbHandler>,
     config: KvConfig,
   },
   state = |state, options| {
     state.put(Rc::new(options.config));
-    state.put(Rc::new(options.handler));
+    state.put::<Rc<dyn DynamicDbHandler>>(Rc::from(options.handler));
   }
 );
 
-struct DatabaseResource<DB: Database + 'static> {
-  db: DB,
+struct DatabaseResource {
+  db: RcDynamicDb,
   cancel_handle: Rc<CancelHandle>,
 }
 
-impl<DB: Database + 'static> Resource for DatabaseResource<DB> {
+impl Resource for DatabaseResource {
   fn name(&self) -> Cow<'_, str> {
     "database".into()
   }
@@ -184,7 +185,7 @@ pub enum KvErrorKind {
   #[error("Invalid check")]
   InvalidCheck(#[source] KvCheckError),
   #[class(inherit)]
-  #[error("Invalid mutation")]
+  #[error("Invalid mutation: {0}")]
   InvalidMutation(#[source] KvMutationError),
   #[class(inherit)]
   #[error("Invalid enqueue")]
@@ -209,24 +210,21 @@ pub enum KvErrorKind {
   InvalidRange,
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[smi]
-async fn op_kv_database_open<DBH>(
+async fn op_kv_database_open(
   state: Rc<RefCell<OpState>>,
   #[string] path: Option<String>,
-) -> Result<ResourceId, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<ResourceId, KvError> {
   let handler = {
     let state = state.borrow();
     state
       .borrow::<Arc<FeatureChecker>>()
       .check_or_exit(UNSTABLE_FEATURE_NAME, "Deno.openKv");
-    state.borrow::<Rc<DBH>>().clone()
+    state.borrow::<Rc<dyn DynamicDbHandler>>().clone()
   };
   let db = handler
-    .open(state.clone(), path)
+    .dyn_open(state.clone(), path)
     .await
     .map_err(KvErrorKind::DatabaseHandler)?;
   let rid = state.borrow_mut().resource_table.add(DatabaseResource {
@@ -348,22 +346,19 @@ type SnapshotReadRange = (
   Option<ByteString>,
 );
 
-#[op2(async)]
+#[op2]
 #[serde]
-async fn op_kv_snapshot_read<DBH>(
+async fn op_kv_snapshot_read(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[serde] ranges: Vec<SnapshotReadRange>,
   #[serde] consistency: V8Consistency,
-) -> Result<Vec<Vec<ToV8KvEntry>>, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<Vec<Vec<ToV8KvEntry>>, KvError> {
   let db = {
     let state = state.borrow();
     let resource = state
       .resource_table
-      .get::<DatabaseResource<DBH::DB>>(rid)
+      .get::<DatabaseResource>(rid)
       .map_err(KvErrorKind::Resource)?;
     resource.db.clone()
   };
@@ -424,38 +419,33 @@ where
   Ok(output_ranges)
 }
 
-struct QueueMessageResource<QPH: QueueMessageHandle + 'static> {
-  handle: QPH,
+struct QueueMessageResource {
+  handle: Box<dyn QueueMessageHandle>,
 }
 
-impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
+impl Resource for QueueMessageResource {
   fn name(&self) -> Cow<'_, str> {
     "queueMessage".into()
   }
 }
 
-#[op2(async)]
-#[serde]
-async fn op_kv_dequeue_next_message<DBH>(
+#[op2]
+async fn op_kv_dequeue_next_message(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<Option<(ToJsBuffer, ResourceId)>, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<Option<(Uint8Array, ResourceId)>, KvError> {
   let db = {
     let state = state.borrow();
-    let resource =
-      match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
-        Ok(resource) => resource,
-        Err(err) => {
-          if err.get_class() == "BadResource" {
-            return Ok(None);
-          } else {
-            return Err(KvErrorKind::Resource(err).into_box());
-          }
+    let resource = match state.resource_table.get::<DatabaseResource>(rid) {
+      Ok(resource) => resource,
+      Err(err) => {
+        if err.get_class() == "BadResource" {
+          return Ok(None);
+        } else {
+          return Err(KvErrorKind::Resource(err).into_box());
         }
-      };
+      }
+    };
     resource.db.clone()
   };
 
@@ -474,17 +464,14 @@ where
 
 #[op2]
 #[smi]
-fn op_kv_watch<DBH>(
+fn op_kv_watch(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   #[serde] keys: Vec<KvKey>,
-) -> Result<ResourceId, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<ResourceId, KvError> {
   let resource = state
     .resource_table
-    .get::<DatabaseResource<DBH::DB>>(rid)
+    .get::<DatabaseResource>(rid)
     .map_err(KvErrorKind::Resource)?;
   let config = state.borrow::<Rc<KvConfig>>().clone();
 
@@ -519,7 +506,7 @@ enum WatchEntry {
   Unchanged,
 }
 
-#[op2(async)]
+#[op2]
 #[serde]
 async fn op_kv_watch_next(
   state: Rc<RefCell<OpState>>,
@@ -572,20 +559,17 @@ async fn op_kv_watch_next(
   Ok(Some(entries))
 }
 
-#[op2(async)]
-async fn op_kv_finish_dequeued_message<DBH>(
+#[op2]
+async fn op_kv_finish_dequeued_message(
   state: Rc<RefCell<OpState>>,
   #[smi] handle_rid: ResourceId,
   success: bool,
-) -> Result<(), KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<(), KvError> {
   let handle = {
     let mut state = state.borrow_mut();
     let handle = state
       .resource_table
-      .take::<QueueMessageResource<<<DBH>::DB as Database>::QMH>>(handle_rid)
+      .take::<QueueMessageResource>(handle_rid)
       .map_err(|_| KvErrorKind::QueueMessageNotFound)?;
     Rc::try_unwrap(handle)
       .map_err(|_| KvErrorKind::QueueMessageNotFound)?
@@ -648,6 +632,9 @@ pub enum KvMutationError {
   #[class(type)]
   #[error("Invalid mutation '{0}' without value")]
   InvalidMutationWithoutValue(String),
+  #[class(type)]
+  #[error("expireIn is too large: {0}")]
+  InvalidExpireAt(u64),
 }
 
 type V8KvMutation = (KvKey, String, Option<FromV8Value>, Option<u64>);
@@ -677,12 +664,26 @@ fn mutation_from_v8(
       return Err(KvMutationError::InvalidMutationWithoutValue(op.to_string()));
     }
   };
+  let expire_at = match value.3 {
+    None => None,
+    Some(expire_in) => {
+      // Compute the absolute expiry with checked arithmetic so an
+      // out-of-range expireIn surfaces as an error instead of panicking the
+      // process on overflow.
+      let expire_at = i64::try_from(expire_in)
+        .ok()
+        .and_then(chrono::TimeDelta::try_milliseconds)
+        .and_then(|delta| current_timstamp.checked_add_signed(delta));
+      match expire_at {
+        Some(expire_at) => Some(expire_at),
+        None => return Err(KvMutationError::InvalidExpireAt(expire_in)),
+      }
+    }
+  };
   Ok(Mutation {
     key,
     kind,
-    expire_at: value
-      .3
-      .map(|expire_in| current_timstamp + Duration::from_millis(expire_in)),
+    expire_at,
   })
 }
 
@@ -884,24 +885,21 @@ fn decode_selector_and_cursor(
   Ok((first_key, last_key))
 }
 
-#[op2(async)]
+#[op2]
 #[string]
-async fn op_kv_atomic_write<DBH>(
+async fn op_kv_atomic_write(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[serde] checks: Vec<V8KvCheck>,
   #[serde] mutations: Vec<V8KvMutation>,
   #[serde] enqueues: Vec<V8Enqueue>,
-) -> Result<Option<String>, KvError>
-where
-  DBH: DatabaseHandler + 'static,
-{
+) -> Result<Option<String>, KvError> {
   let current_timestamp = chrono::Utc::now();
   let db = {
     let state = state.borrow();
     let resource = state
       .resource_table
-      .get::<DatabaseResource<DBH::DB>>(rid)
+      .get::<DatabaseResource>(rid)
       .map_err(KvErrorKind::Resource)?;
     resource.db.clone()
   };

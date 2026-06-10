@@ -1,8 +1,9 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use boxed_error::Boxed;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -17,7 +18,13 @@ use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub enum NpmResolverManagedSnapshotOption<TSys: LockfileSys> {
-  ResolveFromLockfile(Arc<LockfileLock<TSys>>),
+  ResolveFromLockfile {
+    lockfile: Arc<LockfileLock<TSys>>,
+    /// Whether to dedupe equivalent peer-dep variants when loading the
+    /// snapshot. Should be true only on install paths — see
+    /// [`deno_npm::resolution::SnapshotFromLockfileParams`].
+    dedup_equivalent_peer_variants: bool,
+  },
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
 }
 
@@ -115,29 +122,42 @@ impl<TSys: LockfileSys> NpmResolutionInitializer<TSys> {
   }
 }
 
+#[derive(Debug, Clone, JsError, Boxed)]
+#[class(inherit)]
+pub struct ResolveSnapshotError(Box<ResolveSnapshotErrorData>);
+
 #[derive(Debug, Error, Clone, JsError)]
 #[error("failed reading lockfile '{}'", lockfile_path.display())]
 #[class(inherit)]
-pub struct ResolveSnapshotError {
+pub struct ResolveSnapshotErrorData {
   lockfile_path: PathBuf,
   #[inherit]
   #[source]
   source: SnapshotFromLockfileError,
 }
 
-#[allow(clippy::result_large_err)]
 fn resolve_snapshot<TSys: LockfileSys>(
   snapshot: NpmResolverManagedSnapshotOption<TSys>,
   link_packages: &WorkspaceNpmLinkPackagesRc,
 ) -> Result<Option<SnapshotWithPending>, ResolveSnapshotError> {
   match snapshot {
-    NpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
+    NpmResolverManagedSnapshotOption::ResolveFromLockfile {
+      lockfile,
+      dedup_equivalent_peer_variants,
+    } => {
       if !lockfile.overwrite() {
-        let snapshot = snapshot_from_lockfile(lockfile.clone(), link_packages)
-          .map_err(|source| ResolveSnapshotError {
+        let snapshot = snapshot_from_lockfile(
+          lockfile.clone(),
+          link_packages,
+          dedup_equivalent_peer_variants,
+        )
+        .map_err(|source| {
+          ResolveSnapshotErrorData {
             lockfile_path: lockfile.filename.clone(),
             source,
-          })?;
+          }
+          .into_box()
+        })?;
         Ok(Some(snapshot))
       } else {
         Ok(None)
@@ -167,6 +187,7 @@ struct SnapshotWithPending {
 fn snapshot_from_lockfile<TSys: LockfileSys>(
   lockfile: Arc<LockfileLock<TSys>>,
   link_packages: &WorkspaceNpmLinkPackagesRc,
+  dedup_equivalent_peer_variants: bool,
 ) -> Result<SnapshotWithPending, SnapshotFromLockfileError> {
   let lockfile = lockfile.lock();
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
@@ -174,6 +195,7 @@ fn snapshot_from_lockfile<TSys: LockfileSys>(
       link_packages: &link_packages.0,
       lockfile: &lockfile,
       default_tarball_url: Default::default(),
+      dedup_equivalent_peer_variants,
     },
   )?;
 

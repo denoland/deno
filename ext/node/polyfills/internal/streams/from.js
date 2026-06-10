@@ -1,10 +1,10 @@
 // deno-lint-ignore-file
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import process from "node:process";
-import { primordials } from "ext:core/mod.js";
-import { Buffer } from "node:buffer";
-import _mod1 from "ext:deno_node/internal/errors.ts";
+import { core, primordials } from "ext:core/mod.js";
+const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
+const _mod1 = core.loadExtScript("ext:deno_node/internal/errors.ts");
 
 const {
   ERR_INVALID_ARG_TYPE,

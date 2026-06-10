@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -20,7 +20,10 @@ pub enum NpmProcessStateKind {
 }
 
 #[sys_traits::auto_impl]
-pub trait NpmProcessStateFromEnvVarSys: sys_traits::FsOpen {}
+pub trait NpmProcessStateFromEnvVarSys:
+  sys_traits::FsOpen + sys_traits::EnvVar + sys_traits::EnvRemoveVar
+{
+}
 
 /// The serialized npm process state which can be written to a file and then
 /// the FD or path can be passed to a spawned deno process via the
@@ -29,25 +32,40 @@ pub trait NpmProcessStateFromEnvVarSys: sys_traits::FsOpen {}
 pub struct NpmProcessState {
   pub kind: NpmProcessStateKind,
   pub local_node_modules_path: Option<String>,
+  /// The linker mode used for npm packages. Defaults to "isolated" if not
+  /// present (for backward compatibility with older process states).
+  #[serde(default)]
+  pub linker_mode: NpmProcessStateLinkerMode,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NpmProcessStateLinkerMode {
+  #[default]
+  Isolated,
+  Hoisted,
 }
 
 impl NpmProcessState {
   pub fn new_managed(
     snapshot: ValidSerializedNpmResolutionSnapshot,
     node_modules_path: Option<&Path>,
+    linker_mode: NpmProcessStateLinkerMode,
   ) -> Self {
     NpmProcessState {
       kind: NpmProcessStateKind::Snapshot(snapshot.into_serialized()),
       local_node_modules_path: node_modules_path
         .map(|p| p.to_string_lossy().into_owned()),
+      linker_mode,
     }
   }
 
   pub fn new_local(
     snapshot: ValidSerializedNpmResolutionSnapshot,
     node_modules_path: &Path,
+    linker_mode: NpmProcessStateLinkerMode,
   ) -> Self {
-    NpmProcessState::new_managed(snapshot, Some(node_modules_path))
+    NpmProcessState::new_managed(snapshot, Some(node_modules_path), linker_mode)
   }
 
   pub fn from_env_var(

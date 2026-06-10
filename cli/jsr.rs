@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -15,6 +15,7 @@ use deno_semver::package::PackageReq;
 
 use crate::args::jsr_url;
 use crate::file_fetcher::CliFileFetcher;
+use crate::npm::PackageInfoLoadError;
 
 /// This is similar to a subset of `JsrCacheResolver` which fetches rather than
 /// just reads the cache. Keep in sync!
@@ -24,7 +25,8 @@ pub struct JsrFetchResolver {
   /// The `module_graph` field of the version infos should be forcibly absent.
   /// It can be large and we don't want to store it.
   info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
-  info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
+  info_by_name:
+    DashMap<String, Result<Arc<JsrPackageInfo>, Arc<PackageInfoLoadError>>>,
   file_fetcher: Arc<CliFileFetcher>,
   jsr_version_resolver: Arc<JsrVersionResolver>,
 }
@@ -116,9 +118,7 @@ impl JsrFetchResolver {
       .ok()?;
     let info = serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()?;
     let info = Arc::new(info);
-    self
-      .info_by_name
-      .insert(name.to_string(), Some(info.clone()));
+    self.info_by_name.insert(name.to_string(), Ok(info.clone()));
     Some(info)
   }
 
@@ -126,24 +126,49 @@ impl JsrFetchResolver {
     jsr_url().join(&format!("{}/meta.json", name)).ok()
   }
 
-  // todo(dsherret): this should return error messages and only `None` when the package
-  // doesn't exist
   pub async fn package_info(&self, name: &str) -> Option<Arc<JsrPackageInfo>> {
+    self.package_info_with_reason(name).await.ok()
+  }
+
+  /// Like [`Self::package_info`], but preserves the reason the fetch failed
+  /// so callers can surface it instead of silently treating the package as
+  /// having no available versions.
+  pub async fn package_info_with_reason(
+    &self,
+    name: &str,
+  ) -> Result<Arc<JsrPackageInfo>, Arc<PackageInfoLoadError>> {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
-    let fetch_package_info = || async {
-      let meta_url = self.meta_url(name)?;
-      let file = self
-        .file_fetcher
-        .fetch_bypass_permissions(&meta_url)
+    let result =
+      self
+        .fetch_package_info(name)
         .await
-        .ok()?;
-      serde_json::from_slice::<JsrPackageInfo>(&file.source).ok()
-    };
-    let info = fetch_package_info().await.map(Arc::new);
-    self.info_by_name.insert(name.to_string(), info.clone());
-    info
+        .map(Arc::new)
+        .map_err(|reason| {
+          Arc::new(PackageInfoLoadError {
+            registry_url: jsr_url().to_string(),
+            reason,
+          })
+        });
+    self.info_by_name.insert(name.to_string(), result.clone());
+    result
+  }
+
+  async fn fetch_package_info(
+    &self,
+    name: &str,
+  ) -> Result<JsrPackageInfo, String> {
+    let meta_url = self
+      .meta_url(name)
+      .ok_or_else(|| format!("invalid package name: {name}"))?;
+    let file = self
+      .file_fetcher
+      .fetch_bypass_permissions(&meta_url)
+      .await
+      .map_err(|e| format!("{e:#}"))?;
+    serde_json::from_slice::<JsrPackageInfo>(&file.source)
+      .map_err(|e| format!("failed to parse package metadata: {e}"))
   }
 
   pub async fn package_version_info(

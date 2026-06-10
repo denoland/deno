@@ -1,0 +1,15 @@
+Test 1: Basic numbered parameters (?1, ?2)
+Insert changes: 1
+Inserted row: Alice alice@example.com
+
+Test 2: Parameter reuse (?1 appearing multiple times)
+Rows found: 3
+  id=1, parent_id=null
+  id=2, parent_id=1
+  id=3, parent_id=1
+
+Test 3: Parameters in different order (?2, ?1)
+Column a: second_arg
+Column b: first_arg
+
+All tests passed!

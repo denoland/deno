@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // @ts-nocheck `Deno.serveHttp()` was soft-removed in Deno 2.
 
 // deno-lint-ignore-file no-deprecated-deno-api
@@ -1378,6 +1378,7 @@ Deno.test(
 /* Automatic Body Compression */
 
 const decoder = new TextDecoder();
+const gzipPreferredAcceptEncoding = "gzip;q=1.0, deflate, br;q=0.9";
 
 Deno.test({
   name: "http server compresses body - check headers",
@@ -1397,7 +1398,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const response = new Response(JSON.stringify(data), {
         headers: { "content-type": "application/json" },
       });
@@ -1414,7 +1418,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const { success, stdout } = await new Deno.Command("curl", {
         args,
@@ -1450,7 +1454,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const response = new Response(JSON.stringify(data), {
         headers: { "content-type": "application/json" },
       });
@@ -1466,7 +1473,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const proc = new Deno.Command("curl", {
         args,
@@ -1506,7 +1513,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const response = new Response(
         JSON.stringify({ hello: "deno" }),
         {
@@ -1526,7 +1536,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const { success, stdout } = await new Deno.Command("curl", {
         args,
@@ -1617,7 +1627,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const response = new Response(
         JSON.stringify({ hello: "deno", now: "with", compressed: "body" }),
         {
@@ -1637,7 +1650,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const { success, stdout } = await new Deno.Command("curl", {
         args,
@@ -1671,7 +1684,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const response = new Response(
         JSON.stringify({ hello: "deno", now: "with", compressed: "body" }),
         {
@@ -1695,7 +1711,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const { success, stdout } = await new Deno.Command("curl", {
         args,
@@ -1732,7 +1748,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const response = new Response(
         JSON.stringify({ hello: "deno", now: "with", compressed: "body" }),
         {
@@ -1755,7 +1774,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const { success, stdout } = await new Deno.Command("curl", {
         args,
@@ -1792,7 +1811,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const response = new Response(
         JSON.stringify({ hello: "deno", now: "with", compressed: "body" }),
         {
@@ -1815,7 +1837,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const { success, stdout } = await new Deno.Command("curl", {
         args,
@@ -1849,7 +1871,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const response = new Response(
         JSON.stringify({ hello: "deno", now: "with", compressed: "body" }),
         {
@@ -1872,7 +1897,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const { success, stdout } = await new Deno.Command("curl", {
         args,
@@ -1910,7 +1935,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const bodyInit = new ReadableStream({
         start(controller) {
           controller.enqueue(encoder.encode(JSON.stringify(data)));
@@ -1935,7 +1963,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const { success, stdout } = await new Deno.Command("curl", {
         args,
@@ -1973,7 +2001,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const bodyInit = new ReadableStream({
         start(controller) {
           controller.enqueue(encoder.encode(JSON.stringify(data)));
@@ -1996,7 +2027,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const proc = new Deno.Command("curl", {
         args,
@@ -2037,7 +2068,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const body = JSON.stringify({
         hello: "deno",
         now: "with",
@@ -2066,7 +2100,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
       ];
       const { success, stdout } = await new Deno.Command("curl", {
         args,
@@ -2450,7 +2484,10 @@ Deno.test({
       const e = await httpConn.nextRequest();
       assert(e);
       const { request, respondWith } = e;
-      assertEquals(request.headers.get("Accept-Encoding"), "gzip, deflate, br");
+      assertEquals(
+        request.headers.get("Accept-Encoding"),
+        gzipPreferredAcceptEncoding,
+      );
       const resp = await fetch(`http://${hostname}:${port2}/`);
       await respondWith(resp);
       listener.close();
@@ -2483,7 +2520,7 @@ Deno.test({
         "--url",
         url,
         "--header",
-        "Accept-Encoding: gzip, deflate, br",
+        `Accept-Encoding: ${gzipPreferredAcceptEncoding}`,
         "--no-buffer",
       ];
       const proc = new Deno.Command("curl", {
@@ -2714,6 +2751,53 @@ Deno.test(
 
     const response = await promise;
     assertEquals(response, null);
+  },
+);
+
+// `respondWith` on a Response-like object (prototype chain matches `Response`
+// but the internal slot is missing — e.g. a subclass that skipped super(), or
+// a Response from a different realm/polyfill) must reject with a clear
+// TypeError instead of crashing on `innerResp.body`. Mirrors the Deno.serve
+// guard added in https://github.com/denoland/deno/pull/34416.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerRespondWithResponseLike() {
+    // deno-lint-ignore no-explicit-any
+    let httpConn: any;
+    const serverPromise = (async () => {
+      const listener = Deno.listen({ port: listenPort });
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const e = await httpConn.nextRequest();
+      assert(e);
+      const { respondWith } = e;
+      const fake = Object.create(Response.prototype);
+      Object.defineProperty(fake, "type", { value: "default" });
+      Object.defineProperty(fake, "bodyUsed", { value: false });
+      const err = await assertRejects(
+        () => respondWith(fake),
+        TypeError,
+      );
+      assert(
+        err.message.includes(
+          "First argument to 'respondWith' must be a Response",
+        ),
+        `unexpected message: ${err.message}`,
+      );
+      assert(
+        err.message.includes("constructor in this realm"),
+        `unexpected message: ${err.message}`,
+      );
+    })();
+
+    const conn = await Deno.connect({ port: listenPort });
+    const body =
+      `GET / HTTP/1.1\r\nHost: 127.0.0.1:${listenPort}\r\nConnection: close\r\n\r\n`;
+    await conn.write(new TextEncoder().encode(body));
+    await serverPromise;
+    conn.close();
+    httpConn!.close();
   },
 );
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 pub trait IsBuiltInNodeModuleChecker: std::fmt::Debug {
   /// e.g. `is_builtin_node_module("assert")`
@@ -77,9 +77,11 @@ pub static DENO_SUPPORTED_BUILTIN_NODE_MODULES: &[&str] = &[
   "string_decoder",
   "sys",
   "test",
+  "test/reporters",
   "timers",
   "timers/promises",
   "tls",
+  "trace_events",
   "tty",
   "url",
   "util",

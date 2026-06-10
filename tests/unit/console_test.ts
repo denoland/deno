@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
@@ -154,11 +154,11 @@ Deno.test(
         },
       ),
       `{
-  [Symbol("foo\\b")]: 'Symbol("foo\\n")',
-  [Symbol("bar\\n")]: 'Symbol("bar\\n")',
-  [Symbol("bar\\r")]: 'Symbol("bar\\r")',
-  [Symbol("baz\\t")]: 'Symbol("baz\\t")',
-  [Symbol("qux\\x00")]: 'Symbol("qux\\x00")'
+  Symbol(foo\\b): 'Symbol("foo\\n")',
+  Symbol(bar\\n): 'Symbol("bar\\n")',
+  Symbol(bar\\r): 'Symbol("bar\\r")',
+  Symbol(baz\\t): 'Symbol("baz\\t")',
+  Symbol(qux\\x00): 'Symbol("qux\\x00")'
 }`,
     );
     assertEquals(
@@ -343,7 +343,7 @@ Deno.test(function consoleTestStringifyCircular() {
   debug: [Function: debug],
   info: [Function: info],
   dir: [Function: dir],
-  dirxml: [Function: dir],
+  dirxml: [Function: dirxml],
   warn: [Function: warn],
   error: [Function: error],
   assert: [Function: assert],
@@ -362,19 +362,40 @@ Deno.test(function consoleTestStringifyCircular() {
   profileEnd: [Function: profileEnd],
   timeStamp: [Function: timeStamp],
   indentLevel: 0,
-  [Symbol(isConsoleInstance)]: true
+  Symbol(isConsoleInstance): true
 }`,
   );
   assertEquals(
     stringify({ str: 1, [Symbol.for("sym")]: 2, [Symbol.toStringTag]: "TAG" }),
     `Object [TAG] {
   str: 1,
-  [Symbol(sym)]: 2,
-  [Symbol(Symbol.toStringTag)]: "TAG"
+  Symbol(sym): 2,
+  Symbol(Symbol.toStringTag): "TAG"
 }`,
   );
   // test inspect is working the same
   assertEquals(stripAnsiCode(Deno.inspect(nestedObj)), nestedObjExpected);
+});
+
+Deno.test(function consoleTestStringifyToStringTagGetterThrows() {
+  // Symbol.toStringTag getter that throws should not crash console.log
+  // https://github.com/denoland/deno/issues/32894
+  class Circular {
+    self: Circular;
+    constructor() {
+      this.self = this;
+    }
+    get [Symbol.toStringTag]() {
+      // This throws due to circular reference
+      JSON.stringify(this);
+      return "Circular";
+    }
+  }
+  const obj = new Circular();
+  // Should not throw, should handle the error gracefully
+  const result = stringify(obj);
+  assertStringIncludes(result, "Circular");
+  assertStringIncludes(result, "[Circular");
 });
 
 Deno.test(function consoleTestStringifyMultipleCircular() {
@@ -1214,6 +1235,26 @@ Deno.test(function consoleTestWithObjectFormatSpecifier() {
   );
 });
 
+Deno.test(function consoleTestWithJsonFormatSpecifier() {
+  assertEquals(stringify("%j"), "%j");
+  assertEquals(stringify("%j", { foo: "bar" }), `{"foo":"bar"}`);
+  assertEquals(stringify("%j", 42), "42");
+  assertEquals(stringify("%j", "foo"), `"foo"`);
+  assertEquals(stringify("%j", null), "null");
+  assertEquals(stringify("%j", [1, 2, 3]), "[1,2,3]");
+  assertEquals(
+    stringify("%j %s", { foo: "bar" }, "Hello"),
+    `{"foo":"bar"} Hello`,
+  );
+  assertEquals(stringify("%j %j", { a: 1 }, { b: 2 }), `{"a":1} {"b":2}`);
+  // Circular reference
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  assertEquals(stringify("%j", circular), "[Circular]");
+  // Non-circular errors (e.g., BigInt) should be re-thrown
+  assertThrows(() => stringify("%j", BigInt(1)));
+});
+
 Deno.test(function consoleTestWithStyleSpecifier() {
   assertEquals(stringify("%cfoo%cbar"), "%cfoo%cbar");
   assertEquals(stringify("%cfoo%cbar", ""), "foo%cbar");
@@ -1337,6 +1378,23 @@ Deno.test(function consoleCssToAnsi() {
   assertEquals(
     cssToAnsiEsc({ ...DEFAULT_CSS, color: [203, 204, 205] }),
     "_[38;2;203;204;205m",
+  );
+  // Regression test for https://github.com/denoland/deno/issues/21605: two hex
+  // colors sharing the same red component must not be treated as equal, so the
+  // new background color is still emitted.
+  assertEquals(
+    cssToAnsiEsc(
+      { ...DEFAULT_CSS, backgroundColor: "#FFAFC8" },
+      { ...DEFAULT_CSS, backgroundColor: "#FFFFFF" },
+    ),
+    "_[48;2;255;175;200m",
+  );
+  assertEquals(
+    cssToAnsiEsc(
+      { ...DEFAULT_CSS, color: "#FFAFC8" },
+      { ...DEFAULT_CSS, color: "#FFFFFF" },
+    ),
+    "_[38;2;255;175;200m",
   );
   assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontWeight: "bold" }), "_[1m");
   assertEquals(cssToAnsiEsc({ ...DEFAULT_CSS, fontStyle: "italic" }), "_[3m");
@@ -1579,6 +1637,84 @@ Deno.test(function consoleGroupWarn() {
   });
 });
 
+// Regression test for https://github.com/denoland/deno/issues/30176.
+// When the V8 inspector wraps `console`, every method routes through both the
+// inspector binding and Deno's printer. `console.group("label")` must call the
+// wrapped `log` so DevTools receives a paired `log("label")` next to the
+// `startGroup("label")` event — without it, DevTools renders an empty group
+// container and the visible nesting drifts out of alignment with the CLI.
+Deno.test(function consoleGroupForwardsLabelToWrappedLog() {
+  const out = new StringBuffer();
+  const csl = new Console(
+    (x: string, _level: number, printsNewLine: boolean) => {
+      out.add(x + (printsNewLine ? "\n" : ""));
+    },
+  );
+
+  type V8Call = { method: string; args: unknown[] };
+  const v8Calls: V8Call[] = [];
+  const record = (method: string) => (...args: unknown[]) =>
+    v8Calls.push({ method, args });
+  const v8Console = {
+    log: record("log"),
+    info: record("info"),
+    warn: record("warn"),
+    error: record("error"),
+    debug: record("debug"),
+    dir: record("dir"),
+    group: record("group"),
+    groupCollapsed: record("groupCollapsed"),
+    groupEnd: record("groupEnd"),
+    trace: record("trace"),
+    count: record("count"),
+    countReset: record("countReset"),
+    table: record("table"),
+    time: record("time"),
+    timeEnd: record("timeEnd"),
+    timeLog: record("timeLog"),
+    assert: record("assert"),
+    clear: record("clear"),
+  };
+
+  // Replicate the wrap that core.wrapConsole performs at inspector bootstrap.
+  // We can't call core.wrapConsole directly here because it resolves
+  // `Deno.core.callConsole` from the live global, which is hidden by the
+  // time test code runs.
+  // @ts-ignore: Deno[Deno.internal] allowed
+  const { callConsole } = Deno[Deno.internal].core;
+  for (const key of Object.keys(v8Console)) {
+    // deno-lint-ignore no-explicit-any
+    const target = csl as any;
+    if (Object.hasOwn(target, key)) {
+      // deno-lint-ignore no-explicit-any
+      target[key] = (callConsole as any).bind(
+        target,
+        // deno-lint-ignore no-explicit-any
+        (v8Console as any)[key],
+        target[key],
+      );
+    }
+  }
+
+  csl.group("test1");
+  csl.group("test2");
+  csl.groupEnd();
+  csl.groupEnd();
+
+  // The inspector must see startGroup AND log for each label so DevTools can
+  // render the group title inside the group container.
+  assertEquals(v8Calls, [
+    { method: "group", args: ["test1"] },
+    { method: "log", args: ["test1"] },
+    { method: "group", args: ["test2"] },
+    { method: "log", args: ["test2"] },
+    { method: "groupEnd", args: [] },
+    { method: "groupEnd", args: [] },
+  ]);
+  // CLI indentation is preserved.
+  assertEquals(out.toString(), "test1\n  test2\n");
+});
+
 // console.table test
 Deno.test(function consoleTable() {
   mockConsole((console, out) => {
@@ -1722,6 +1858,35 @@ Deno.test(function consoleTable() {
 `,
     );
   });
+  // Objects with long values should stay on a single line (#18828)
+  mockConsole((console, out) => {
+    console.table([
+      ["b0a6d0c1-7b6c-4fea-9efa-cb2629ce6068", {
+        id: "b0a6d0c1-7b6c-4fea-9efa-cb2629ce6068",
+        name: "Trenitalia",
+        countryCode: "IT",
+      }],
+      ["371fe41e-349c-40b7-be93-10c58fbbb95f", {
+        id: "371fe41e-349c-40b7-be93-10c58fbbb95f",
+        name: "Deutsche Bahn",
+        countryCode: "DE",
+      }],
+    ]);
+    const output = stripAnsiCode(out.toString());
+    // Each row should be a single line (no newlines within cell values)
+    const rows = output.split("\n").filter((line) => line.startsWith("│"));
+    for (const row of rows) {
+      // The row should not contain embedded newlines (the cell value should be flat)
+      assert(!row.includes("\n  "), "Table row should be single-line");
+    }
+    // Verify object values are rendered on one line
+    assert(
+      output.includes(
+        'name: "Deutsche Bahn", countryCode: "DE"',
+      ),
+      "Object should be on single line",
+    );
+  });
   mockConsole((console, out) => {
     console.table([]);
     assertEquals(
@@ -1856,6 +2021,56 @@ Deno.test(function consoleTable() {
 `,
     );
   });
+  // console.table with iterators (https://github.com/denoland/deno/issues/20725)
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).entries(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬───┬───┐
+│ (iter idx) │ 0 │ 1 │
+├────────────┼───┼───┤
+│          0 │ 1 │ 1 │
+│          1 │ 2 │ 2 │
+│          2 │ 3 │ 3 │
+└────────────┴───┴───┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(
+      new Map([[1, 1], [2, 2], [3, 3]]).values(),
+    );
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
+  mockConsole((console, out) => {
+    console.table(new Set([1, 2, 3]).values());
+    assertEquals(
+      stripAnsiCode(out.toString()),
+      `\
+┌────────────┬────────┐
+│ (iter idx) │ Values │
+├────────────┼────────┤
+│          0 │      1 │
+│          1 │      2 │
+│          2 │      3 │
+└────────────┴────────┘
+`,
+    );
+  });
 });
 
 // console.log(Error) test
@@ -1934,8 +2149,9 @@ Deno.test(function consoleLogWhenCauseIsAssignedShouldNotPrintCauseTwice() {
       .filter((line) => !line.trim().startsWith("at"))
       .join("\n");
 
-    const expectedResult =
-      "TypeError: Type incorrect\nCaused by SyntaxError: Improper syntax\n";
+    const expectedResult = "TypeError: Type incorrect\n" +
+      "    ... 3 lines matching cause stack trace ...\n" +
+      "  cause: SyntaxError: Improper syntax\n}";
     assertEquals(filteredOutput.trim(), expectedResult.trim());
   });
 });
@@ -1994,15 +2210,16 @@ Deno.test(function consoleDir() {
   });
 });
 
-// console.dir test
+// console.dirxml forwards to log per the WHATWG console spec; extra args
+// are passed through like log, not interpreted as dir-style options.
 Deno.test(function consoleDirXml() {
   mockConsole((console, out) => {
     console.dirxml("DIRXML");
     assertEquals(out.toString(), "DIRXML\n");
   });
   mockConsole((console, out) => {
-    console.dirxml("DIRXML", { indentLevel: 2 });
-    assertEquals(out.toString(), "    DIRXML\n");
+    console.dirxml("DIRXML", "extra");
+    assertEquals(out.toString(), "DIRXML extra\n");
   });
 });
 
@@ -2181,6 +2398,9 @@ Deno.test(function inspectProxy() {
     )),
     `{ key: "value" }`,
   );
+  // When `showProxy` is false (the default), `Deno.inspect` mirrors Node.js
+  // and inspects the proxy target directly without invoking any traps. The
+  // handler below is ignored entirely; the empty target prints as `{}`.
   assertEquals(
     stripAnsiCode(Deno.inspect(
       new Proxy({}, {
@@ -2203,7 +2423,34 @@ Deno.test(function inspectProxy() {
         },
       }),
     )),
-    `{ prop1: 5, prop2: 5 }`,
+    `{}`,
+  );
+
+  // Issue: https://github.com/denoland/deno/issues/26355
+  // A proxy whose `ownKeys` trap violates the invariant (returns a
+  // non-Object) must not throw — Node.js returns the target's inspection.
+  assertEquals(
+    stripAnsiCode(Deno.inspect(
+      // deno-lint-ignore no-explicit-any
+      new Proxy({ x: 1 }, { ownKeys: (() => undefined) as any }),
+    )),
+    `{ x: 1 }`,
+  );
+
+  // Issue: https://github.com/denoland/deno/issues/24980
+  // A proxy whose `getOwnPropertyDescriptor` trap throws used to surface
+  // as `AssertionError: Assertion failed` from inside the console
+  // formatter. With proxy unwrapping in default mode, the target is
+  // inspected directly and the trap is never invoked.
+  assertEquals(
+    stripAnsiCode(Deno.inspect(
+      new Proxy({ x: 10 }, {
+        getOwnPropertyDescriptor: () => {
+          throw new Error("oops");
+        },
+      }),
+    )),
+    `{ x: 10 }`,
   );
   assertEquals(
     stripAnsiCode(Deno.inspect(
@@ -2257,6 +2504,36 @@ Deno.test(function inspectProxy() {
   );
 });
 
+Deno.test(function inspectProxyWithNodeCustomInspect() {
+  // Proxy that hides symbols from `has`/`ownKeys` but exposes them via `get`.
+  // This pattern is used by nodejs-polars DataFrames (issue #33236).
+  const nodeInspect = Symbol.for("nodejs.util.inspect.custom");
+  const target = {
+    [nodeInspect]() {
+      return "custom proxy output";
+    },
+  };
+  const proxy = new Proxy(target, {
+    has(_t, p) {
+      return typeof p === "string" && p === "x";
+    },
+    ownKeys() {
+      return ["x"];
+    },
+    getOwnPropertyDescriptor(_t, p) {
+      if (p === "x") return { configurable: true, enumerable: true, value: 1 };
+      return undefined;
+    },
+    get(t, p, r) {
+      return Reflect.get(t, p, r);
+    },
+  });
+  assertEquals(
+    stripAnsiCode(Deno.inspect(proxy)),
+    "custom proxy output",
+  );
+});
+
 Deno.test(function inspectError() {
   const error1 = new Error("This is an error");
   const error2 = new Error("This is an error", {
@@ -2273,7 +2550,7 @@ Deno.test(function inspectError() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by Error: This is a cause error",
+    "[cause]: Error: This is a cause error",
   );
 });
 
@@ -2296,11 +2573,11 @@ Deno.test(function inspectErrorCircular() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by Error: This is a cause error",
+    "[cause]: Error: This is a cause error",
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error2)),
-    "Caused by [Circular *1]",
+    "cause: [Circular *1]",
   );
 });
 
@@ -2316,7 +2593,7 @@ Deno.test(function inspectErrorWithCauseFormat() {
   );
   assertStringIncludes(
     stripAnsiCode(Deno.inspect(error)),
-    "Caused by { code: 100500 }",
+    "[cause]: { code: 100500 }",
   );
 });
 
@@ -2439,7 +2716,7 @@ Deno.test(async function inspectAggregateError() {
   } catch (err) {
     assertEquals(
       Deno.inspect(err).trimEnd(),
-      "AggregateError: All promises were rejected",
+      "[AggregateError: All promises were rejected] { [errors]: [] }",
     );
   }
 });
@@ -2522,4 +2799,38 @@ Deno.test(function inspectEscapeSequencesFalse() {
     Deno.inspect("foo\nbar", { escapeSequences: false }),
     '"foo\nbar"',
   );
+});
+
+Deno.test(function inspectProxyDoesNotTriggerGetTrap() {
+  // Regression test for https://github.com/denoland/deno/issues/33719
+  // Proxies that return functions for any property access (e.g. grammy API
+  // client) should not have their get/has traps triggered for custom inspect
+  // symbols during inspection.
+  const accessed: PropertyKey[] = [];
+  const proxy = new Proxy({}, {
+    has(_target, prop) {
+      accessed.push(prop);
+      return false;
+    },
+    get(_target, prop) {
+      accessed.push(prop);
+      return () => {};
+    },
+  });
+
+  accessed.length = 0;
+  Deno.inspect(proxy);
+
+  const inspectSymbols = [
+    Symbol.for("nodejs.util.inspect.custom"),
+    Symbol.for("Deno.customInspect"),
+    Symbol.for("Deno.privateCustomInspect"),
+  ];
+  for (const sym of inspectSymbols) {
+    assertEquals(
+      accessed.filter((p) => p === sym).length,
+      0,
+      `Deno.inspect should not trigger proxy traps for ${String(sym)}`,
+    );
+  }
 });

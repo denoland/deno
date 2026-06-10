@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
@@ -15,11 +15,16 @@ import {
   createBrotliCompress,
   createBrotliDecompress,
   createDeflate,
+  createGunzip,
+  createGzip,
+  createZstdCompress,
+  createZstdDecompress,
   deflateSync,
   gunzip,
   gzip,
   gzipSync,
   unzipSync,
+  zstdCompressSync,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -322,4 +327,136 @@ Deno.test("gunzip doesn't cause stack overflow with 64MiB data", async () => {
   });
 
   await promise;
+});
+
+// Every compression/decompression backend whose native handle writes the
+// post-write avail_out/avail_in pair back into `_writeState`. Decoders are
+// paired with valid compressed input so the write reaches the result buffer
+// instead of bailing out on a decode error.
+const raw = new Uint8Array(16).fill(0x61);
+const writeStateCases: [() => unknown, Uint8Array][] = [
+  [createDeflate, raw],
+  [createGzip, raw],
+  [createGunzip, gzipSync(raw)],
+  [createBrotliCompress, raw],
+  [createBrotliDecompress, brotliCompressSync(raw)],
+  [createZstdCompress, raw],
+  [createZstdDecompress, zstdCompressSync(raw)],
+];
+
+// The native zlib/brotli/zstd bindings must not retain a pointer into the JS
+// `_writeState` buffer across calls. The result buffer is passed per write and
+// bounds checked, so detaching it (e.g. via a structuredClone transfer) before
+// a write is harmless rather than writing into a freed backing store.
+Deno.test("zlib writeSync does not write through a detached _writeState", () => {
+  const output = new Uint8Array(128);
+
+  // Each of these would crash or corrupt the heap before the fix. With the
+  // buffer detached the result write must be a no-op; the only thing asserted
+  // is that the process survives and nothing lands in the freed backing store.
+  for (const [factory, input] of writeStateCases) {
+    // deno-lint-ignore no-explicit-any
+    const stream = factory() as any;
+    const handle = stream._handle;
+    const state = stream._writeState;
+    // Detach the underlying ArrayBuffer, freeing the backing store.
+    structuredClone(state.buffer, { transfer: [state.buffer] });
+    assertEquals(state.buffer.byteLength, 0);
+    handle.writeSync(
+      0,
+      input,
+      0,
+      input.length,
+      output,
+      0,
+      output.length,
+      state,
+    );
+    assertEquals(state.buffer.byteLength, 0);
+  }
+});
+
+// Guards the other direction: with a live buffer the per-write result must
+// actually be written. A regression that dropped or misrouted the argument
+// would silently leave `_writeState` untouched and pass the detach test above.
+Deno.test("zlib writeSync populates _writeState per call", () => {
+  const SENTINEL = 0xffffffff;
+  const input = new Uint8Array(32).fill(0x61);
+  const output = new Uint8Array(128);
+
+  // Decoders need valid input to reach the result write, so only the encoders
+  // are exercised here; the shared native path covers the decoders.
+  for (
+    const factory of [
+      createDeflate,
+      createGzip,
+      createBrotliCompress,
+      createZstdCompress,
+    ]
+  ) {
+    // deno-lint-ignore no-explicit-any
+    const stream = factory() as any;
+    const handle = stream._handle;
+    const state = stream._writeState;
+    state[0] = SENTINEL;
+    state[1] = SENTINEL;
+    // flush 0 means "process / no flush" across zlib, brotli and zstd.
+    handle.writeSync(
+      0,
+      input,
+      0,
+      input.length,
+      output,
+      0,
+      output.length,
+      state,
+    );
+    // avail_out and avail_in were written, replacing the sentinel, and stay
+    // within the bounds of the output and input buffers.
+    assert(state[0] !== SENTINEL, "avail_out was not written");
+    assert(state[1] !== SENTINEL, "avail_in was not written");
+    assert(state[0] <= output.length, "avail_out out of range");
+    assert(state[1] <= input.length, "avail_in out of range");
+  }
+});
+
+// Same regression as the writeSync detach test above, but for the async
+// `handle.write` op. That op is a separately duplicated native function which
+// also writes the result pair back into `_writeState`, so it carries its own
+// copy of the bounds check and needs its own coverage. The op is invoked
+// directly (rather than through the stream) so the detach is observed against
+// the freed backing store before any other state mutates. brotli/zstd run
+// `processCallback` synchronously from the op, which then reads the now-detached
+// state and throws downstream; that throw is unrelated to the native result
+// write under test and is swallowed. Surviving the call with the buffer still
+// detached is the assertion.
+Deno.test("zlib write does not write through a detached _writeState", () => {
+  const output = new Uint8Array(128);
+
+  for (const [factory, input] of writeStateCases) {
+    // deno-lint-ignore no-explicit-any
+    const stream = factory() as any;
+    const handle = stream._handle;
+    const state = stream._writeState;
+    // Detach the underlying ArrayBuffer, freeing the backing store.
+    structuredClone(state.buffer, { transfer: [state.buffer] });
+    assertEquals(state.buffer.byteLength, 0);
+    try {
+      handle.write(
+        0,
+        input,
+        0,
+        input.length,
+        output,
+        0,
+        output.length,
+        state,
+      );
+    } catch {
+      // Expected for the engines whose op runs processCallback synchronously:
+      // it reads the detached state and throws. The native result write (the
+      // thing under test) already happened as a no-op before the callback.
+    }
+    assertEquals(state.buffer.byteLength, 0);
+  }
 });

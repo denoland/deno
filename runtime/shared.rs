@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
 
 use deno_core::Extension;
@@ -26,6 +26,13 @@ extension!(runtime,
   esm_entry_point = "ext:runtime/90_deno_ns.js",
   esm = [
     dir "js",
+    "90_deno_ns.js",
+    "98_global_scope_shared.js",
+    "98_global_scope_window.js",
+    "98_global_scope_worker.js"
+  ],
+  lazy_loaded_js = [
+    dir "js",
     "01_errors.js",
     "01_version.ts",
     "06_util.js",
@@ -34,18 +41,25 @@ extension!(runtime,
     "40_fs_events.js",
     "40_tty.js",
     "41_prompt.js",
-    "90_deno_ns.js",
-    "98_global_scope_shared.js",
-    "98_global_scope_window.js",
-    "98_global_scope_worker.js"
   ],
   customizer = |ext: &mut Extension| {
     #[cfg(not(feature = "exclude_runtime_main_js"))]
     {
-      use deno_core::ascii_str_include;
       use deno_core::ExtensionFileSource;
-      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:deno_features/flags.js", deno_features::JS_SOURCE));
-      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:runtime_main/js/99_main.js", ascii_str_include!("./js/99_main.js")));
+      // `flags.js` is an ad-hoc inline source that lives only in the snapshot
+      // (it's evaluated during snapshot creation and reachable through the
+      // snapshot blob at runtime).
+      ext.esm_files.to_mut().push(ExtensionFileSource::loaded_from_memory_during_snapshot(
+        "ext:deno_features/flags.js",
+        deno_features::JS_SOURCE,
+      ));
+      // 99_main.js is the snapshot's ESM entry point; its source is loaded
+      // from disk only during snapshot creation, so we don't duplicate it in
+      // the final binary's `.rodata`.
+      ext.esm_files.to_mut().push(ExtensionFileSource::loaded_during_snapshot(
+        "ext:runtime_main/js/99_main.js",
+        concat!(env!("CARGO_MANIFEST_DIR"), "/js/99_main.js"),
+      ));
       ext.esm_entry_point = Some("ext:runtime_main/js/99_main.js");
     }
   }

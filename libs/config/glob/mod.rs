@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -605,6 +605,12 @@ pub struct GlobPatternParseError {
 pub struct GlobPattern {
   is_negated: bool,
   pattern: glob::Pattern,
+  /// Literal directory prefix of `pattern` before the first glob character.
+  /// Empty when the pattern starts with a glob (e.g. `**/*.ts`).
+  base_path: PathBuf,
+  /// `pattern` with `base_path` stripped off, used to match against paths that
+  /// have had `base_path` removed via `Path::strip_prefix` on the hot path.
+  relative_pattern: glob::Pattern,
 }
 
 impl GlobPattern {
@@ -622,15 +628,26 @@ impl GlobPattern {
       Some(pattern) => (true, pattern),
       None => (false, pattern),
     };
-    let pattern = escape_brackets(pattern).replace('\\', "/");
-    let pattern =
-      glob::Pattern::new(&pattern).map_err(|source| GlobPatternParseError {
-        pattern: pattern.to_string(),
+    let pattern_text = escape_brackets(pattern).replace('\\', "/");
+    let (base_path, relative_pattern_text) = split_pattern_base(&pattern_text);
+    let pattern = glob::Pattern::new(&pattern_text).map_err(|source| {
+      GlobPatternParseError {
+        pattern: pattern_text.clone(),
         source,
+      }
+    })?;
+    let relative_pattern =
+      glob::Pattern::new(&relative_pattern_text).map_err(|source| {
+        GlobPatternParseError {
+          pattern: relative_pattern_text,
+          source,
+        }
       })?;
     Ok(Self {
       is_negated,
       pattern,
+      base_path,
+      relative_pattern,
     })
   }
 
@@ -668,7 +685,24 @@ impl GlobPattern {
   }
 
   pub fn matches_path(&self, path: &Path) -> PathGlobMatch {
-    if self.pattern.matches_path_with(path, match_options()) {
+    let matched = if self.base_path.as_os_str().is_empty() {
+      // No literal prefix to strip, so match the full pattern. This is
+      // unconditionally equivalent to the old behavior, including for
+      // root-anchored patterns like `/**/*.ts` where `relative_pattern`
+      // (`**/*.ts`) drops the leading slash that `pattern` keeps.
+      self.pattern.matches_path_with(path, match_options())
+    } else if let Ok(relative_path) = path.strip_prefix(&self.base_path) {
+      // Hot path: skip re-matching the literal base on every call.
+      self
+        .relative_pattern
+        .matches_path_with(relative_path, match_options())
+    } else {
+      // The path doesn't share the literal base prefix (e.g. it differs only
+      // in casing on a case-insensitive filesystem). Fall back to the full
+      // absolute pattern, which `match_options()` matches case-insensitively.
+      self.pattern.matches_path_with(path, match_options())
+    };
+    if matched {
       if self.is_negated {
         PathGlobMatch::MatchedNegated
       } else {
@@ -680,14 +714,7 @@ impl GlobPattern {
   }
 
   pub fn base_path(&self) -> PathBuf {
-    let base_path = self
-      .pattern
-      .as_str()
-      .split('/')
-      .take_while(|c| !has_glob_chars(c))
-      .collect::<Vec<_>>()
-      .join(std::path::MAIN_SEPARATOR_STR);
-    PathBuf::from(base_path)
+    self.base_path.clone()
   }
 
   pub fn is_negated(&self) -> bool {
@@ -698,6 +725,8 @@ impl GlobPattern {
     Self {
       is_negated: !self.is_negated,
       pattern: self.pattern.clone(),
+      base_path: self.base_path.clone(),
+      relative_pattern: self.relative_pattern.clone(),
     }
   }
 }
@@ -717,6 +746,31 @@ fn has_url_prefix(pattern: &str) -> bool {
 fn has_glob_chars(pattern: &str) -> bool {
   // we don't support [ and ]
   pattern.chars().any(|c| matches!(c, '*' | '?'))
+}
+
+/// Splits a `/`-separated glob pattern into its literal directory prefix and
+/// the remaining (relative) glob pattern. The prefix is every leading segment
+/// up to, but not including, the first segment containing a glob character.
+///
+/// `"a/b/**/*.ts"` -> (`"a/b"`, `"**/*.ts"`)
+/// `"**/*.ts"`     -> (`""`,    `"**/*.ts"`)
+fn split_pattern_base(pattern: &str) -> (PathBuf, String) {
+  let mut base_parts = Vec::new();
+  let mut relative_parts = Vec::new();
+  for part in pattern.split('/') {
+    // Once a glob segment is seen, everything after it is part of the relative
+    // pattern (including any later non-glob segments).
+    if relative_parts.is_empty() && !has_glob_chars(part) {
+      base_parts.push(part);
+    } else {
+      relative_parts.push(part);
+    }
+  }
+  // Joining preserves the original behavior of `base_path()`: a pattern like
+  // `/**/*.ts` yields a single empty leading segment and an empty base.
+  let base_path = base_parts.join(std::path::MAIN_SEPARATOR_STR);
+  let relative_pattern = relative_parts.join("/");
+  (PathBuf::from(base_path), relative_pattern)
 }
 
 fn escape_brackets(pattern: &str) -> String {
@@ -1163,13 +1217,13 @@ mod test {
 
   #[test]
   fn file_patterns_include() {
-    let cwd = current_dir();
+    let dir = base_dir();
     // include is a closed set
     let file_patterns = FilePatterns {
-      base: cwd.clone(),
+      base: dir.clone(),
       include: Some(PathOrPatternSet(vec![
-        PathOrPattern::from_relative(&cwd, "target").unwrap(),
-        PathOrPattern::from_relative(&cwd, "other/**/*.ts").unwrap(),
+        PathOrPattern::from_relative(&dir, "target").unwrap(),
+        PathOrPattern::from_relative(&dir, "other/**/*.ts").unwrap(),
       ])),
       exclude: PathOrPatternSet(vec![]),
     };
@@ -1177,29 +1231,29 @@ mod test {
       |path: &Path, kind: PathKind, expected: FilePatternsMatch| {
         run_file_patterns_match_test(&file_patterns, path, kind, expected);
       };
-    run_test(&cwd, PathKind::Directory, FilePatternsMatch::Passed);
+    run_test(&dir, PathKind::Directory, FilePatternsMatch::Passed);
     run_test(
-      &cwd.join("other"),
+      &dir.join("other"),
       PathKind::Directory,
       FilePatternsMatch::Passed,
     );
     run_test(
-      &cwd.join("other/sub_dir"),
+      &dir.join("other/sub_dir"),
       PathKind::Directory,
       FilePatternsMatch::Passed,
     );
     run_test(
-      &cwd.join("not_matched"),
+      &dir.join("not_matched"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
     run_test(
-      &cwd.join("other/test.ts"),
+      &dir.join("other/test.ts"),
       PathKind::File,
       FilePatternsMatch::Passed,
     );
     run_test(
-      &cwd.join("other/test.js"),
+      &dir.join("other/test.js"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
@@ -1207,21 +1261,21 @@ mod test {
 
   #[test]
   fn file_patterns_exclude() {
-    let cwd = current_dir();
+    let dir = base_dir();
     let file_patterns = FilePatterns {
-      base: cwd.clone(),
+      base: dir.clone(),
       include: None,
       exclude: PathOrPatternSet(vec![
-        PathOrPattern::from_relative(&cwd, "target").unwrap(),
-        PathOrPattern::from_relative(&cwd, "!not_excluded").unwrap(),
+        PathOrPattern::from_relative(&dir, "target").unwrap(),
+        PathOrPattern::from_relative(&dir, "!not_excluded").unwrap(),
         // lower items take priority
-        PathOrPattern::from_relative(&cwd, "excluded_then_not_excluded")
+        PathOrPattern::from_relative(&dir, "excluded_then_not_excluded")
           .unwrap(),
-        PathOrPattern::from_relative(&cwd, "!excluded_then_not_excluded")
+        PathOrPattern::from_relative(&dir, "!excluded_then_not_excluded")
           .unwrap(),
-        PathOrPattern::from_relative(&cwd, "!not_excluded_then_excluded")
+        PathOrPattern::from_relative(&dir, "!not_excluded_then_excluded")
           .unwrap(),
-        PathOrPattern::from_relative(&cwd, "not_excluded_then_excluded")
+        PathOrPattern::from_relative(&dir, "not_excluded_then_excluded")
           .unwrap(),
       ]),
     };
@@ -1229,24 +1283,24 @@ mod test {
       |path: &Path, kind: PathKind, expected: FilePatternsMatch| {
         run_file_patterns_match_test(&file_patterns, path, kind, expected);
       };
-    run_test(&cwd, PathKind::Directory, FilePatternsMatch::Passed);
+    run_test(&dir, PathKind::Directory, FilePatternsMatch::Passed);
     run_test(
-      &cwd.join("target"),
+      &dir.join("target"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
     run_test(
-      &cwd.join("not_excluded"),
+      &dir.join("not_excluded"),
       PathKind::File,
       FilePatternsMatch::PassedOptedOutExclude,
     );
     run_test(
-      &cwd.join("excluded_then_not_excluded"),
+      &dir.join("excluded_then_not_excluded"),
       PathKind::File,
       FilePatternsMatch::PassedOptedOutExclude,
     );
     run_test(
-      &cwd.join("not_excluded_then_excluded"),
+      &dir.join("not_excluded_then_excluded"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
@@ -1254,21 +1308,21 @@ mod test {
 
   #[test]
   fn file_patterns_include_exclude() {
-    let cwd = current_dir();
+    let dir = base_dir();
     let file_patterns = FilePatterns {
-      base: cwd.clone(),
+      base: dir.clone(),
       include: Some(PathOrPatternSet(vec![
-        PathOrPattern::from_relative(&cwd, "other").unwrap(),
-        PathOrPattern::from_relative(&cwd, "target").unwrap(),
-        PathOrPattern::from_relative(&cwd, "**/*.js").unwrap(),
-        PathOrPattern::from_relative(&cwd, "**/file.ts").unwrap(),
+        PathOrPattern::from_relative(&dir, "other").unwrap(),
+        PathOrPattern::from_relative(&dir, "target").unwrap(),
+        PathOrPattern::from_relative(&dir, "**/*.js").unwrap(),
+        PathOrPattern::from_relative(&dir, "**/file.ts").unwrap(),
       ])),
       exclude: PathOrPatternSet(vec![
-        PathOrPattern::from_relative(&cwd, "target").unwrap(),
-        PathOrPattern::from_relative(&cwd, "!target/unexcluded/").unwrap(),
-        PathOrPattern::from_relative(&cwd, "!target/other/**").unwrap(),
-        PathOrPattern::from_relative(&cwd, "**/*.ts").unwrap(),
-        PathOrPattern::from_relative(&cwd, "!**/file.ts").unwrap(),
+        PathOrPattern::from_relative(&dir, "target").unwrap(),
+        PathOrPattern::from_relative(&dir, "!target/unexcluded/").unwrap(),
+        PathOrPattern::from_relative(&dir, "!target/other/**").unwrap(),
+        PathOrPattern::from_relative(&dir, "**/*.ts").unwrap(),
+        PathOrPattern::from_relative(&dir, "!**/file.ts").unwrap(),
       ]),
     };
     let run_test =
@@ -1277,59 +1331,59 @@ mod test {
       };
     // matches other
     run_test(
-      &cwd.join("other/test.txt"),
+      &dir.join("other/test.txt"),
       PathKind::File,
       FilePatternsMatch::Passed,
     );
     // matches **/*.js
     run_test(
-      &cwd.join("sub_dir/test.js"),
+      &dir.join("sub_dir/test.js"),
       PathKind::File,
       FilePatternsMatch::Passed,
     );
     // not in include set
     run_test(
-      &cwd.join("sub_dir/test.txt"),
+      &dir.join("sub_dir/test.txt"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
     // .ts extension not matched
     run_test(
-      &cwd.join("other/test.ts"),
+      &dir.join("other/test.ts"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
     // file.ts excluded from excludes
     run_test(
-      &cwd.join("other/file.ts"),
+      &dir.join("other/file.ts"),
       PathKind::File,
       FilePatternsMatch::PassedOptedOutExclude,
     );
     // not allowed target dir
     run_test(
-      &cwd.join("target/test.txt"),
+      &dir.join("target/test.txt"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
     run_test(
-      &cwd.join("target/sub_dir/test.txt"),
+      &dir.join("target/sub_dir/test.txt"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
     // but allowed target/other dir
     run_test(
-      &cwd.join("target/other/test.txt"),
+      &dir.join("target/other/test.txt"),
       PathKind::File,
       FilePatternsMatch::PassedOptedOutExclude,
     );
     run_test(
-      &cwd.join("target/other/sub/dir/test.txt"),
+      &dir.join("target/other/sub/dir/test.txt"),
       PathKind::File,
       FilePatternsMatch::PassedOptedOutExclude,
     );
     // and in target/unexcluded
     run_test(
-      &cwd.join("target/unexcluded/test.txt"),
+      &dir.join("target/unexcluded/test.txt"),
       PathKind::File,
       FilePatternsMatch::PassedOptedOutExclude,
     );
@@ -1337,13 +1391,13 @@ mod test {
 
   #[test]
   fn file_patterns_include_excluded() {
-    let cwd = current_dir();
+    let dir = base_dir();
     let file_patterns = FilePatterns {
-      base: cwd.clone(),
+      base: dir.clone(),
       include: None,
       exclude: PathOrPatternSet(vec![
-        PathOrPattern::from_relative(&cwd, "js/").unwrap(),
-        PathOrPattern::from_relative(&cwd, "!js/sub_dir/").unwrap(),
+        PathOrPattern::from_relative(&dir, "js/").unwrap(),
+        PathOrPattern::from_relative(&dir, "!js/sub_dir/").unwrap(),
       ]),
     };
     let run_test =
@@ -1351,12 +1405,12 @@ mod test {
         run_file_patterns_match_test(&file_patterns, path, kind, expected);
       };
     run_test(
-      &cwd.join("js/test.txt"),
+      &dir.join("js/test.txt"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
     run_test(
-      &cwd.join("js/sub_dir/test.txt"),
+      &dir.join("js/sub_dir/test.txt"),
       PathKind::File,
       FilePatternsMatch::PassedOptedOutExclude,
     );
@@ -1364,15 +1418,15 @@ mod test {
 
   #[test]
   fn file_patterns_opposite_incorrect_excluded_include() {
-    let cwd = current_dir();
+    let dir = base_dir();
     let file_patterns = FilePatterns {
-      base: cwd.clone(),
+      base: dir.clone(),
       include: None,
       exclude: PathOrPatternSet(vec![
         // this is lower priority
-        PathOrPattern::from_relative(&cwd, "!js/sub_dir/").unwrap(),
+        PathOrPattern::from_relative(&dir, "!js/sub_dir/").unwrap(),
         // this wins because it's higher priority
-        PathOrPattern::from_relative(&cwd, "js/").unwrap(),
+        PathOrPattern::from_relative(&dir, "js/").unwrap(),
       ]),
     };
     let run_test =
@@ -1380,12 +1434,12 @@ mod test {
         run_file_patterns_match_test(&file_patterns, path, kind, expected);
       };
     run_test(
-      &cwd.join("js/test.txt"),
+      &dir.join("js/test.txt"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
     run_test(
-      &cwd.join("js/sub_dir/test.txt"),
+      &dir.join("js/sub_dir/test.txt"),
       PathKind::File,
       FilePatternsMatch::Excluded,
     );
@@ -1393,82 +1447,89 @@ mod test {
 
   #[test]
   fn from_relative() {
-    let cwd = current_dir();
+    let dir = base_dir();
     // leading dot slash
     {
-      let pattern = PathOrPattern::from_relative(&cwd, "./**/*.ts").unwrap();
+      let pattern = PathOrPattern::from_relative(&dir, "./**/*.ts").unwrap();
+      assert_eq!(pattern.base_path().unwrap(), dir);
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.ts")),
+        pattern.matches_path(&dir.join("foo.ts")),
         PathGlobMatch::Matched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("dir/foo.ts")),
+        pattern.matches_path(&dir.join("dir/foo.ts")),
         PathGlobMatch::Matched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.js")),
+        pattern.matches_path(&dir.join("foo.js")),
         PathGlobMatch::NotMatched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("dir/foo.js")),
+        pattern.matches_path(&dir.join("dir/foo.js")),
+        PathGlobMatch::NotMatched
+      );
+      // a sibling of the base dir must not match
+      assert_eq!(
+        pattern.matches_path(&dir.parent().unwrap().join("sibling/foo.ts")),
         PathGlobMatch::NotMatched
       );
     }
     // no leading dot slash
     {
-      let pattern = PathOrPattern::from_relative(&cwd, "**/*.ts").unwrap();
+      let pattern = PathOrPattern::from_relative(&dir, "**/*.ts").unwrap();
+      assert_eq!(pattern.base_path().unwrap(), dir);
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.ts")),
+        pattern.matches_path(&dir.join("foo.ts")),
         PathGlobMatch::Matched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("dir/foo.ts")),
+        pattern.matches_path(&dir.join("dir/foo.ts")),
         PathGlobMatch::Matched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.js")),
+        pattern.matches_path(&dir.join("foo.js")),
         PathGlobMatch::NotMatched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("dir/foo.js")),
+        pattern.matches_path(&dir.join("dir/foo.js")),
         PathGlobMatch::NotMatched
       );
     }
     // exact file, leading dot slash
     {
-      let pattern = PathOrPattern::from_relative(&cwd, "./foo.ts").unwrap();
+      let pattern = PathOrPattern::from_relative(&dir, "./foo.ts").unwrap();
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.ts")),
+        pattern.matches_path(&dir.join("foo.ts")),
         PathGlobMatch::Matched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("dir/foo.ts")),
+        pattern.matches_path(&dir.join("dir/foo.ts")),
         PathGlobMatch::NotMatched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.js")),
+        pattern.matches_path(&dir.join("foo.js")),
         PathGlobMatch::NotMatched
       );
     }
     // exact file, no leading dot slash
     {
-      let pattern = PathOrPattern::from_relative(&cwd, "foo.ts").unwrap();
+      let pattern = PathOrPattern::from_relative(&dir, "foo.ts").unwrap();
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.ts")),
+        pattern.matches_path(&dir.join("foo.ts")),
         PathGlobMatch::Matched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("dir/foo.ts")),
+        pattern.matches_path(&dir.join("dir/foo.ts")),
         PathGlobMatch::NotMatched
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.js")),
+        pattern.matches_path(&dir.join("foo.js")),
         PathGlobMatch::NotMatched
       );
     }
     // error for invalid url
     {
-      let err = PathOrPattern::from_relative(&cwd, "https://raw.githubusercontent.com%2Fdyedgreen%2Fdeno-sqlite%2Frework_api%2Fmod.ts").unwrap_err();
+      let err = PathOrPattern::from_relative(&dir, "https://raw.githubusercontent.com%2Fdyedgreen%2Fdeno-sqlite%2Frework_api%2Fmod.ts").unwrap_err();
       assert_eq!(
         format!("{:#}", err),
         "Invalid URL 'https://raw.githubusercontent.com%2Fdyedgreen%2Fdeno-sqlite%2Frework_api%2Fmod.ts'"
@@ -1480,8 +1541,8 @@ mod test {
     }
     // sibling dir
     {
-      let pattern = PathOrPattern::from_relative(&cwd, "../sibling").unwrap();
-      let parent_dir = cwd.parent().unwrap();
+      let pattern = PathOrPattern::from_relative(&dir, "../sibling").unwrap();
+      let parent_dir = dir.parent().unwrap();
       assert_eq!(pattern.base_path().unwrap(), parent_dir.join("sibling"));
       assert_eq!(
         pattern.matches_path(&parent_dir.join("sibling/foo.ts")),
@@ -1495,18 +1556,80 @@ mod test {
   }
 
   #[test]
+  fn matches_relative_to_base() {
+    // The literal prefix is split off into the base path and the remaining
+    // glob is matched against the path with that prefix stripped.
+    let pattern = GlobPattern::new("a/b/**/*.ts").unwrap();
+    assert_eq!(pattern.base_path(), PathBuf::from("a/b"));
+    assert_eq!(
+      pattern.matches_path(Path::new("a/b/c/foo.ts")),
+      PathGlobMatch::Matched
+    );
+    // `**` matches zero intermediate directories.
+    assert_eq!(
+      pattern.matches_path(Path::new("a/b/foo.ts")),
+      PathGlobMatch::Matched
+    );
+    // a path that doesn't live under the base must not match.
+    assert_eq!(
+      pattern.matches_path(Path::new("a/x/foo.ts")),
+      PathGlobMatch::NotMatched
+    );
+
+    // When the path's base casing differs (as happens on case-insensitive
+    // filesystems), `strip_prefix` fails and we fall back to the full pattern,
+    // which is matched case-insensitively.
+    let pattern = GlobPattern::new("ROOT/**/*.ts").unwrap();
+    assert_eq!(
+      pattern.matches_path(Path::new("root/foo.ts")),
+      PathGlobMatch::Matched
+    );
+
+    // A pattern that starts with a glob has an empty base and matches the full
+    // path directly.
+    let pattern = GlobPattern::new("**/*.ts").unwrap();
+    assert_eq!(pattern.base_path(), PathBuf::new());
+    assert_eq!(
+      pattern.matches_path(Path::new("a/b/foo.ts")),
+      PathGlobMatch::Matched
+    );
+
+    // A relative pattern without `**` honors `require_literal_separator`: the
+    // `*` segment must not span directory boundaries.
+    let pattern = GlobPattern::new("a/b/*.ts").unwrap();
+    assert_eq!(pattern.base_path(), PathBuf::from("a/b"));
+    assert_eq!(
+      pattern.matches_path(Path::new("a/b/foo.ts")),
+      PathGlobMatch::Matched
+    );
+    assert_eq!(
+      pattern.matches_path(Path::new("a/b/c/foo.ts")),
+      PathGlobMatch::NotMatched
+    );
+
+    // A root-anchored pattern has an empty base but must keep the leading slash
+    // (the empty-base branch matches the full `pattern`, not `relative_pattern`).
+    let pattern = GlobPattern::new("/**/*.ts").unwrap();
+    assert_eq!(pattern.base_path(), PathBuf::new());
+    assert_eq!(
+      pattern.matches_path(Path::new("/a/b/foo.ts")),
+      PathGlobMatch::Matched
+    );
+  }
+
+  #[test]
   fn from_relative_dot_slash() {
-    let cwd = current_dir();
-    let pattern = PathOrPattern::from_relative(&cwd, "./").unwrap();
+    let dir = base_dir();
+    let pattern = PathOrPattern::from_relative(&dir, "./").unwrap();
     match pattern {
-      PathOrPattern::Path(p) => assert_eq!(p, cwd),
+      PathOrPattern::Path(p) => assert_eq!(p, dir),
       _ => unreachable!(),
     }
   }
 
   #[test]
   fn new_ctor() {
-    let cwd = current_dir();
+    let dir = base_dir();
     for scheme in &["http", "https"] {
       let url = format!("{}://deno.land/x/test", scheme);
       let pattern = PathOrPattern::new(&url).unwrap();
@@ -1528,11 +1651,11 @@ mod test {
       }
     }
     {
-      let file_specifier = url_from_directory_path(&cwd).unwrap();
+      let file_specifier = url_from_directory_path(&dir).unwrap();
       let pattern = PathOrPattern::new(file_specifier.as_str()).unwrap();
       match pattern {
         PathOrPattern::Path(p) => {
-          assert_eq!(p, cwd);
+          assert_eq!(p, dir);
         }
         _ => {
           unreachable!()
@@ -1543,10 +1666,10 @@ mod test {
 
   #[test]
   fn from_relative_specifier() {
-    let cwd = current_dir();
+    let dir = base_dir();
     for scheme in &["http", "https"] {
       let url = format!("{}://deno.land/x/test", scheme);
-      let pattern = PathOrPattern::from_relative(&cwd, &url).unwrap();
+      let pattern = PathOrPattern::from_relative(&dir, &url).unwrap();
       match pattern {
         PathOrPattern::RemoteUrl(p) => {
           assert_eq!(p.as_str(), url)
@@ -1556,7 +1679,7 @@ mod test {
     }
     for scheme in &["npm", "jsr"] {
       let url = format!("{}:@denotest/basic", scheme);
-      let pattern = PathOrPattern::from_relative(&cwd, &url).unwrap();
+      let pattern = PathOrPattern::from_relative(&dir, &url).unwrap();
       match pattern {
         PathOrPattern::RemoteUrl(p) => {
           assert_eq!(p.as_str(), url)
@@ -1565,12 +1688,12 @@ mod test {
       }
     }
     {
-      let file_specifier = url_from_directory_path(&cwd).unwrap();
+      let file_specifier = url_from_directory_path(&dir).unwrap();
       let pattern =
-        PathOrPattern::from_relative(&cwd, file_specifier.as_str()).unwrap();
+        PathOrPattern::from_relative(&dir, file_specifier.as_str()).unwrap();
       match pattern {
         PathOrPattern::Path(p) => {
-          assert_eq!(p, cwd);
+          assert_eq!(p, dir);
         }
         _ => {
           unreachable!()
@@ -1581,35 +1704,34 @@ mod test {
 
   #[test]
   fn negated_globs() {
-    #[allow(clippy::disallowed_methods)]
-    let cwd = current_dir();
+    let dir = base_dir();
     {
-      let pattern = GlobPattern::from_relative(&cwd, "!./**/*.ts").unwrap();
+      let pattern = GlobPattern::from_relative(&dir, "!./**/*.ts").unwrap();
       assert!(pattern.is_negated());
-      assert_eq!(pattern.base_path(), cwd);
+      assert_eq!(pattern.base_path(), dir);
       assert!(pattern.as_str().starts_with('!'));
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.ts")),
+        pattern.matches_path(&dir.join("foo.ts")),
         PathGlobMatch::MatchedNegated
       );
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.js")),
+        pattern.matches_path(&dir.join("foo.js")),
         PathGlobMatch::NotMatched
       );
       let pattern = pattern.as_negated();
       assert!(!pattern.is_negated());
-      assert_eq!(pattern.base_path(), cwd);
+      assert_eq!(pattern.base_path(), dir);
       assert!(!pattern.as_str().starts_with('!'));
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.ts")),
+        pattern.matches_path(&dir.join("foo.ts")),
         PathGlobMatch::Matched
       );
       let pattern = pattern.as_negated();
       assert!(pattern.is_negated());
-      assert_eq!(pattern.base_path(), cwd);
+      assert_eq!(pattern.base_path(), dir);
       assert!(pattern.as_str().starts_with('!'));
       assert_eq!(
-        pattern.matches_path(&cwd.join("foo.ts")),
+        pattern.matches_path(&dir.join("foo.ts")),
         PathGlobMatch::MatchedNegated
       );
     }
@@ -1627,9 +1749,8 @@ mod test {
     assert!(!is_glob_pattern("test/test"));
   }
 
-  fn current_dir() -> PathBuf {
-    // ok because this is test code
-    #[allow(clippy::disallowed_methods)]
+  fn base_dir() -> PathBuf {
+    #[allow(clippy::disallowed_methods, reason = "test code")]
     std::env::current_dir().unwrap()
   }
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 #[test_util::test]
@@ -54,7 +54,7 @@ fn macos_shared_libraries() {
   // 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
 
   // path and whether its weak or not
-  const EXPECTED: [(&str, bool); 10] = [
+  const EXPECTED: [(&str, bool); 11] = [
     (
       "/System/Library/Frameworks/Security.framework/Versions/A/Security",
       false,
@@ -65,6 +65,10 @@ fn macos_shared_libraries() {
     ),
     (
       "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+      false,
+    ),
+    (
+      "/System/Library/Frameworks/Foundation.framework/Versions/C/Foundation",
       false,
     ),
     (

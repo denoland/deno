@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // @ts-check
 const path = require("path");
@@ -36,19 +36,14 @@ function runDenoExe(exePath) {
     { stdio: "inherit" },
   );
   if (result.error) {
-    throw result.error;
-  }
-
-  throwIfNoExePath();
-
-  process.exitCode = result.status;
-
-  function throwIfNoExePath() {
     if (!fs.existsSync(exePath)) {
       throw new Error(
         "Could not find exe at path '" + exePath +
-          "'. Maybe try running deno again.",
+          "'. Maybe try installing deno again.",
       );
     }
+    throw result.error;
   }
+
+  process.exit(result.status ?? 1);
 }

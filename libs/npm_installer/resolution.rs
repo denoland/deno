@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -216,11 +216,33 @@ impl<TNpmCacheHttpClient: NpmCacheHttpClient, TSys: NpmResolutionInstallerSys>
 
     self.registry_info_provider.clear_memory_cache();
 
-    if !result.unmet_peer_diagnostics.is_empty()
-      && log::log_enabled!(log::Level::Warn)
-    {
-      let root_node =
-        peer_dep_diagnostics_to_display_tree(&result.unmet_peer_diagnostics);
+    // Suppress peer dependency warnings for packages that the user has
+    // explicitly overridden in the root package.json "overrides" field. An
+    // override is an authoritative resolution directive, so a peer mismatch
+    // against an overridden version is intentional and shouldn't be reported.
+    // See https://github.com/denoland/deno/issues/32801.
+    let overrides = &self.npm_version_resolver.overrides;
+    // Only allocate when there are overrides to filter against; otherwise
+    // display the diagnostics directly without copying them.
+    let filtered: Vec<UnmetPeerDepDiagnostic>;
+    let diagnostics: &[UnmetPeerDepDiagnostic] = if overrides.is_empty() {
+      &result.unmet_peer_diagnostics
+    } else {
+      filtered = result
+        .unmet_peer_diagnostics
+        .iter()
+        .filter(|d| {
+          overrides
+            .get_override_for(&d.dependency.name, Some(&d.resolved))
+            .is_none()
+        })
+        .cloned()
+        .collect();
+      &filtered
+    };
+
+    if !diagnostics.is_empty() && log::log_enabled!(log::Level::Warn) {
+      let root_node = peer_dep_diagnostics_to_display_tree(diagnostics);
       let mut text = String::new();
       _ = root_node.print(&mut text);
       log::warn!("{}", text);

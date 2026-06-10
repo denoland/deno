@@ -1,0 +1,40 @@
+{
+  "tests": {
+    "eval_flag": {
+      "args": "run -A --unstable-detect-cjs main.js eval",
+      "output": "eval_flag.out"
+    },
+    "print_flag": {
+      "args": "run -A --unstable-detect-cjs main.js print",
+      "output": "print_flag.out"
+    },
+    "inspect_flag": {
+      "args": "run -A --unstable-detect-cjs main.js inspect",
+      "output": "inspect_flag.out"
+    },
+    "conditions_flag": {
+      "args": "run -A --unstable-detect-cjs main.js conditions",
+      "output": "conditions_flag.out"
+    },
+    "no_warnings_flag": {
+      "args": "run -A --unstable-detect-cjs main.js no_warnings",
+      "output": "no_warnings_flag.out"
+    },
+    "v8_flags": {
+      "args": "run -A --unstable-detect-cjs main.js v8_flags",
+      "output": "v8_flags.out"
+    },
+    "multiple_flags": {
+      "args": "run -A --unstable-detect-cjs main.js multiple",
+      "output": "multiple_flags.out"
+    },
+    "numeric_args": {
+      "args": "run -A --unstable-detect-cjs main.js numeric",
+      "output": "numeric_args.out"
+    },
+    "deno_subcommand_passthrough": {
+      "args": "run -A --unstable-detect-cjs main.js deno_subcommand",
+      "output": "deno_subcommand.out"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod npm;
 
@@ -32,9 +32,15 @@ pub enum RequestedModuleType<'a> {
   Other(&'a str),
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "source text is always stored as Arc<str>"
+)]
 type ArcStr = std::sync::Arc<str>;
-#[allow(clippy::disallowed_types)]
+#[allow(
+  clippy::disallowed_types,
+  reason = "byte content is always stored as Arc<[u8]>"
+)]
 type ArcBytes = std::sync::Arc<[u8]>;
 
 pub enum LoadedModuleOrAsset<'a> {
@@ -71,7 +77,7 @@ impl LoadedModuleSource {
   }
 }
 
-#[allow(clippy::disallowed_types)]
+#[allow(clippy::disallowed_types, reason = "definition")]
 pub type MemoryFilesRc = deno_maybe_sync::MaybeArc<MemoryFiles>;
 
 #[derive(Debug, Default)]

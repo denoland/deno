@@ -1,10 +1,11 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 mod esbuild;
 mod externals;
 mod html;
 mod provider;
 mod transform;
+mod wasm;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -25,6 +26,7 @@ use deno_bundle_runtime::BundlePlatform;
 use deno_bundle_runtime::PackageHandling;
 use deno_bundle_runtime::SourceMapType;
 use deno_config::workspace::TsTypeLib;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt as _;
 use deno_core::parking_lot::Mutex;
@@ -32,6 +34,7 @@ use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsError;
+use deno_error::JsErrorClass;
 use deno_graph::ModuleErrorKind;
 use deno_graph::Position;
 use deno_path_util::resolve_url_or_path;
@@ -58,12 +61,14 @@ use node_resolver::ResolutionMode;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageSubpathResolveError;
 pub use provider::CliBundleProvider;
-use sys_traits::EnvCurrentDir;
 
 use crate::args::BundleFlags;
 use crate::args::Flags;
+use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
+use crate::graph_container::CheckSpecifiersOptions;
+use crate::graph_container::CollectSpecifiersOptions;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -75,16 +80,15 @@ use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliResolver;
-use crate::sys::CliSys;
 use crate::tools::bundle::externals::ExternalsMatcher;
 use crate::util::file_watcher::WatcherRestartMode;
+use crate::util::fs::canonicalize_path;
 
 static DISABLE_HACK: LazyLock<bool> =
   LazyLock::new(|| std::env::var("NO_DENO_BUNDLE_HACK").is_err());
 
 pub async fn prepare_inputs(
   resolver: &CliResolver,
-  sys: CliSys,
   npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
   init_cwd: &Path,
@@ -110,8 +114,12 @@ pub async fn prepare_inputs(
       .prepare_module_load(&resolved_entrypoints)
       .await?;
 
-    let roots =
-      resolve_roots(resolved_entrypoints, sys, npm_resolver, node_resolver);
+    let roots = resolve_roots(
+      resolved_entrypoints,
+      init_cwd,
+      npm_resolver,
+      node_resolver,
+    );
     plugin_handler.prepare_module_load(&roots).await?;
     let graph = plugin_handler.module_graph_container.graph();
     let mut fully_resolved_roots = IndexSet::with_capacity(graph.roots.len());
@@ -172,7 +180,7 @@ pub async fn prepare_inputs(
     // Prepare non-HTML entries too
     let _ = plugin_handler.prepare_module_load(&script_entry_urls).await;
     let roots =
-      resolve_roots(script_entry_urls, sys, npm_resolver, node_resolver);
+      resolve_roots(script_entry_urls, init_cwd, npm_resolver, node_resolver);
     let _ = plugin_handler.prepare_module_load(&roots).await;
     for url in roots {
       entries.push(("".into(), url.into()));
@@ -214,13 +222,15 @@ pub async fn bundle_init(
   let node_resolver = factory.node_resolver().await?;
   let cli_options = factory.cli_options()?;
   let module_loader = factory.resolver_factory()?.module_loader()?;
-  let sys = factory.sys();
   let init_cwd = cli_options.initial_cwd().to_path_buf();
   let module_graph_container =
     factory.main_module_graph_container().await?.clone();
 
   let (on_end_tx, on_end_rx) = tokio::sync::mpsc::channel(10);
-  #[allow(clippy::arc_with_non_send_sync)]
+  #[allow(
+    clippy::arc_with_non_send_sync,
+    reason = "fine because only used in output positions"
+  )]
   let mut plugin_handler = Arc::new(DenoPluginHandler {
     file_fetcher: factory.file_fetcher()?.clone(),
     resolver: resolver.clone(),
@@ -238,13 +248,16 @@ pub async fn bundle_init(
     parsed_source_cache: factory.parsed_source_cache()?.clone(),
     cjs_tracker: factory.cjs_tracker()?.clone(),
     emitter: factory.emitter()?.clone(),
+    pkg_json_resolver: factory.pkg_json_resolver()?.clone(),
     deferred_resolve_errors: Default::default(),
     virtual_modules: None,
+    initial_cwd: deno_path_util::url_from_directory_path(
+      cli_options.initial_cwd(),
+    )?,
   });
 
   let input = prepare_inputs(
     &resolver,
-    sys,
     npm_resolver,
     node_resolver,
     &init_cwd,
@@ -260,7 +273,7 @@ pub async fn bundle_init(
     Default::default(),
   )
   .await
-  .unwrap();
+  .context("failed to start esbuild")?;
   let client = esbuild.client().clone();
 
   tokio::spawn(async move {
@@ -294,6 +307,29 @@ pub async fn bundle(
   {
     let flags_mut = Arc::make_mut(&mut flags);
     flags_mut.unstable_config.sloppy_imports = true;
+  }
+  // `--check[=all]` is documented in `bundle --help`; honour it before we
+  // hand the graph to esbuild so type errors surface alongside (and not
+  // after) the bundle output (denoland/deno#30159).
+  if !matches!(flags.type_check_mode, TypeCheckMode::None) {
+    let check_factory = CliFactory::from_flags(flags.clone());
+    let main_graph_container =
+      check_factory.main_module_graph_container().await?;
+    let specifiers = main_graph_container.collect_specifiers(
+      &bundle_flags.entrypoints,
+      CollectSpecifiersOptions {
+        include_ignored_specified: false,
+      },
+    )?;
+    main_graph_container
+      .check_specifiers(
+        &specifiers,
+        CheckSpecifiersOptions {
+          allow_unknown_media_types: true,
+          ..Default::default()
+        },
+      )
+      .await?;
   }
   let bundler = bundle_init(flags.clone(), &bundle_flags).await?;
   let init_cwd = bundler.cwd.clone();
@@ -350,6 +386,93 @@ pub async fn bundle(
   }
 
   Ok(())
+}
+
+/// Bundle a single entrypoint for `deno compile --bundle` and return the
+/// resulting JavaScript bytes in memory. The Deno-specific `createRequire`
+/// shim is applied to the output so CJS `require()` calls keep working in
+/// the compiled binary.
+///
+/// `external` is the set of import patterns (typically npm package names) to
+/// leave unbundled. For `deno compile --bundle` this is populated with the
+/// names of packages that ship native `.node` addons so their internal
+/// `require('./X.node')` calls keep their original `__dirname` context at
+/// runtime.
+pub async fn bundle_for_compile(
+  flags: Arc<Flags>,
+  entrypoint: String,
+  external: Vec<String>,
+  minify: bool,
+) -> Result<Vec<u8>, AnyError> {
+  let bundle_flags = BundleFlags {
+    entrypoints: vec![entrypoint],
+    output_path: None,
+    output_dir: None,
+    external,
+    format: BundleFormat::Esm,
+    minify,
+    keep_names: false,
+    code_splitting: false,
+    inline_imports: true,
+    packages: PackageHandling::Bundle,
+    sourcemap: None,
+    platform: BundlePlatform::Deno,
+    watch: false,
+  };
+
+  // Force bundle-style resolver config for the duration of bundling.
+  // Without this, module-graph creation skips deep CJS files inside
+  // `node_modules` (jiti.cjs is the canonical case) and the parent
+  // `.mjs` trips an esbuild parse error when its import target can't
+  // be loaded. This flips the same three resolver knobs `deno bundle`
+  // sets (`bundle_mode`, `node_code_translator_mode` = Disabled,
+  // `allow_json_imports` = Always) without otherwise swapping the
+  // subcommand, so the rest of compilation keeps Compile semantics.
+  // Disabling the code translator means the CJS analyzer's
+  // extensionless `.node` auto-resolution no longer runs, which is why
+  // the resolver grows a `.node` fallback (see `resolution.rs`).
+  let mut flags = flags;
+  {
+    let flags_mut = Arc::make_mut(&mut flags);
+    flags_mut.internal.force_bundle_mode = true;
+  }
+
+  let bundler = bundle_init(flags, &bundle_flags).await?;
+  let response = bundler.build().await?;
+
+  handle_esbuild_errors_and_warnings(
+    &response,
+    &bundler.cwd,
+    &bundler.plugin_handler.take_deferred_resolve_errors(),
+  );
+  if !response.errors.is_empty() {
+    deno_core::anyhow::bail!("bundling failed");
+  }
+
+  let output_files = collect_output_files(
+    response.output_files.as_deref(),
+    &bundler.cwd,
+    bundler.input.clone(),
+    None,
+  )?;
+
+  for file in &output_files {
+    let processed = maybe_process_contents(
+      file,
+      should_replace_require_shim(bundle_flags.platform),
+      bundle_flags.minify,
+    )?;
+    if !processed.is_js {
+      continue;
+    }
+    return Ok(
+      processed
+        .into_contents()
+        .unwrap_or_else(|| file.contents.to_vec()),
+    );
+  }
+
+  deno_core::anyhow::bail!("esbuild produced no JavaScript output")
 }
 
 fn metafile_from_response(
@@ -450,7 +573,9 @@ async fn bundle_watch(
             watcher_communicator.watch_paths(current_roots.borrow().clone());
         }
 
-        Ok(())
+        // `deno bundle --watch` has no per-run exit code (and disables the
+        // "finished" message above), so report 0 to the watcher.
+        Ok(0)
       })
     },
   )
@@ -573,7 +698,7 @@ impl EsbuildBundler {
       .client
       .send_build_request(self.make_build_request())
       .await
-      .unwrap()
+      .context("failed to send build request to esbuild")?
       .map_err(|e| message_to_error(&e, &self.cwd))?;
 
     Ok(response)
@@ -590,9 +715,13 @@ impl EsbuildBundler {
           .client
           .send_rebuild_request(0)
           .await
-          .unwrap()
+          .context("failed to send rebuild request to esbuild")?
           .map_err(|e| message_to_error(&e, &self.cwd))?;
-        let response = self.on_end_rx.recv().await.unwrap();
+        let response = self.on_end_rx.recv().await.ok_or_else(|| {
+          deno_core::anyhow::anyhow!(
+            "esbuild exited before the rebuild completed"
+          )
+        })?;
         Ok(response.into())
       }
     }
@@ -659,7 +788,7 @@ fn message_to_error(
 fn replace_require_shim(contents: &str, minified: bool) -> String {
   if minified {
     let re = lazy_regex::regex!(
-      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[l\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
+      r#"var (\w+)\s*=\((\w+)\s*=>typeof require<"u"\?require:typeof Proxy<"u"\?new Proxy\((\w+)\,\{get:\(\w+,\w+\)=>\(typeof require<"u"\?require:\w+\)\[\w+\]\}\):(\w+)\)\(function\(\w+\)\{if\(typeof require<"u"\)return require\.apply\(this\,arguments\);throw Error\('Dynamic require of "'\+\w+\+'" is not supported'\)\}\);"#
     );
     re.replace(contents, |c: &regex::Captures<'_>| {
       let var_name = c.get(1).unwrap().as_str();
@@ -677,6 +806,35 @@ var __require = __deno_internal_createRequire(import.meta.url);
     )
     .into_owned()
   }
+}
+
+// Force esbuild's CommonJS-to-ESM interop helper (`__toESM`) into "node mode"
+// for every platform.
+//
+// esbuild emits a node-mode interop call (`__toESM(require_x(), 1)`) only when
+// it can tell the importing module is *explicitly* ESM (a `.mjs`/`.mts` file or
+// a file under a `"type": "module"` package.json). It learns this while walking
+// package.json during its own resolve step. In `deno bundle` resolution and
+// loading are handled by our plugin, and esbuild's plugin protocol has no way
+// to communicate a module's type, so esbuild falls back to browser-mode interop
+// which respects the `__esModule` marker and does not synthesize `.default`.
+//
+// For packages whose ESM wrapper default-imports a CJS entry that sets
+// `module.exports.__esModule = true` (e.g. tslib's `modules/index.js`), that
+// means `import_x.default` ends up undefined and module init throws. This is a
+// property of how the source module resolves its default import (Node interop
+// semantics, which is what such packages are authored against), not of the
+// runtime target, so it applies regardless of `--platform`. We rewrite the
+// helper's `<isNodeMode> || !mod || !mod.__esModule` condition to always pick
+// the node-mode branch. See denoland/deno#34524 and denoland/deno#34837.
+//
+// The variable names differ between minified and non-minified output, but the
+// `.__esModule` access and surrounding shape are stable, so a single regex
+// covers both.
+fn force_node_cjs_interop(contents: &str) -> String {
+  let re =
+    lazy_regex::regex!(r#"\w+\s*\|\|\s*!\w+\s*\|\|\s*!\w+\.__esModule\s*\?"#);
+  re.replace(contents, "1 ?").into_owned()
 }
 
 fn format_location(
@@ -754,9 +912,12 @@ fn format_message(
     }
   )
 }
+#[derive(Debug, boxed_error::Boxed, JsError)]
+struct BundleError(Box<BundleErrorKind>);
+
 #[derive(Debug, thiserror::Error, JsError)]
 #[class(generic)]
-enum BundleError {
+enum BundleErrorKind {
   #[error(transparent)]
   Resolver(#[from] deno_resolver::graph::ResolveWithGraphError),
   #[error(transparent)]
@@ -781,7 +942,7 @@ enum BundleError {
   PackageReqReferenceParse(
     #[from] deno_semver::package::PackageReqReferenceParseError,
   ),
-  #[allow(dead_code)]
+  #[allow(dead_code, reason = "not used yet")]
   #[error("Http cache error")]
   HttpCache,
 }
@@ -840,6 +1001,10 @@ pub struct DeferredResolveError {
   error: ResolveWithGraphError,
 }
 
+/// Path prefix used to mark modules disabled via a `browser` map (`"foo": false`).
+/// `\0` keeps it from colliding with any real filesystem path.
+const BROWSER_DISABLED_PREFIX: &str = "\0deno-browser-disabled:";
+
 pub struct DenoPluginHandler {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: Arc<CliResolver>,
@@ -855,6 +1020,8 @@ pub struct DenoPluginHandler {
   parsed_source_cache: Arc<ParsedSourceCache>,
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<CliEmitter>,
+  pkg_json_resolver: Arc<crate::node::CliPackageJsonResolver>,
+  initial_cwd: Url,
 }
 
 impl DenoPluginHandler {
@@ -867,62 +1034,75 @@ impl DenoPluginHandler {
       virtual_modules.insert(path.to_string(), module);
     }
   }
-}
 
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "kebab-case")]
-enum PluginImportKind {
-  EntryPoint,
-  ImportStatement,
-  RequireCall,
-  DynamicImport,
-  RequireResolve,
-  ImportRule,
-  ComposesFrom,
-  UrlToken,
-}
-
-impl From<protocol::ImportKind> for PluginImportKind {
-  fn from(kind: protocol::ImportKind) -> Self {
-    match kind {
-      protocol::ImportKind::EntryPoint => PluginImportKind::EntryPoint,
-      protocol::ImportKind::ImportStatement => {
-        PluginImportKind::ImportStatement
+  /// Determines whether the resolved file has side effects by consulting
+  /// the closest `package.json`'s `sideEffects` field. Returns `Some(false)`
+  /// when the file is known to be side-effect-free (which lets esbuild
+  /// tree-shake unused exports), and `None` otherwise (esbuild's default
+  /// is to assume side effects).
+  fn resolve_side_effects(&self, resolved: &str) -> Option<bool> {
+    // Only inspect concrete local file paths. URLs (jsr:, https:, data:, etc.)
+    // are handled elsewhere and don't have a package.json context.
+    if resolved.starts_with("jsr:")
+      || resolved.starts_with("https:")
+      || resolved.starts_with("http:")
+      || resolved.starts_with("data:")
+      || resolved.starts_with("node:")
+      || resolved.starts_with("bun:")
+      || resolved.starts_with("npm:")
+    {
+      return None;
+    }
+    let file_path = std::path::Path::new(resolved);
+    if !file_path.is_absolute() {
+      return None;
+    }
+    let pkg_json = self
+      .pkg_json_resolver
+      .get_closest_package_json(file_path)
+      .ok()
+      .flatten()?;
+    match pkg_json.side_effects.as_ref()? {
+      deno_package_json::PackageJsonSideEffects::Bool(true) => None,
+      deno_package_json::PackageJsonSideEffects::Bool(false) => Some(false),
+      deno_package_json::PackageJsonSideEffects::Patterns(patterns) => {
+        let rel = file_path.strip_prefix(pkg_json.dir_path()).ok()?;
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        for pattern in patterns {
+          if side_effects_pattern_matches(pattern, &rel_str) {
+            return None;
+          }
+        }
+        Some(false)
       }
-      protocol::ImportKind::RequireCall => PluginImportKind::RequireCall,
-      protocol::ImportKind::DynamicImport => PluginImportKind::DynamicImport,
-      protocol::ImportKind::RequireResolve => PluginImportKind::RequireResolve,
-      protocol::ImportKind::ImportRule => PluginImportKind::ImportRule,
-      protocol::ImportKind::ComposesFrom => PluginImportKind::ComposesFrom,
-      protocol::ImportKind::UrlToken => PluginImportKind::UrlToken,
     }
   }
 }
 
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PluginOnResolveArgs {
-  path: String,
-  importer: Option<String>,
-  kind: PluginImportKind,
-  namespace: Option<String>,
-  resolve_dir: Option<String>,
-  with: IndexMap<String, String>,
-}
-
-// TODO(bartlomieju): in Rust 1.90 some structs started getting flagged as not used
-#[allow(dead_code)]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PluginOnLoadArgs {
-  path: String,
-  namespace: String,
-  suffix: String,
-  with: IndexMap<String, String>,
+/// Matches a path (relative to the package root, using forward slashes)
+/// against a `sideEffects` entry from a `package.json`.
+///
+/// Per webpack's convention, a pattern without a leading `./`, `/`, or `*`
+/// is implicitly treated as `**/<pattern>`.
+fn side_effects_pattern_matches(pattern: &str, rel_path: &str) -> bool {
+  let normalized = if let Some(rest) = pattern.strip_prefix("./") {
+    rest.to_string()
+  } else if pattern.starts_with('/') {
+    pattern.trim_start_matches('/').to_string()
+  } else {
+    format!("**/{pattern}")
+  };
+  match glob::Pattern::new(&normalized) {
+    Ok(p) => p.matches_with(
+      rel_path,
+      glob::MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: false,
+        require_literal_leading_dot: false,
+      },
+    ),
+    Err(_) => false,
+  }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -956,6 +1136,26 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       }));
     }
 
+    // Same-document fragment references in CSS — `url(#default#VML)`,
+    // `url(#gradient)` for SVG paint servers, etc. — are not file imports
+    // and must be left as-is in the output. Without this, `bundle_resolve`
+    // tries to resolve them as package import specifiers and fails (see
+    // denoland/deno#32232).
+    if matches!(
+      args.kind,
+      esbuild_client::protocol::ImportKind::UrlToken
+        | esbuild_client::protocol::ImportKind::ImportRule
+    ) && args.path.starts_with('#')
+    {
+      return Ok(Some(esbuild_client::OnResolveResult {
+        external: Some(true),
+        path: Some(args.path),
+        plugin_name: Some("deno".to_string()),
+        plugin_data: None,
+        ..Default::default()
+      }));
+    }
+
     let result = self.bundle_resolve(
       &args.path,
       args.importer.as_deref(),
@@ -967,6 +1167,17 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     let result = match result {
       Ok(r) => r,
       Err(e) => {
+        // A `browser` map entry of `false` disables the module: return a
+        // sentinel path that `on_load` recognizes and turns into an empty
+        // module, rather than surfacing the resolver error.
+        if let Some(orig) = browser_map_disabled_specifier(&e) {
+          return Ok(Some(esbuild_client::OnResolveResult {
+            path: Some(format!("{BROWSER_DISABLED_PREFIX}{orig}")),
+            namespace: Some("deno".into()),
+            plugin_name: Some("deno".to_string()),
+            ..Default::default()
+          }));
+        }
         return Ok(Some(esbuild_client::OnResolveResult {
           errors: Some(vec![esbuild_client::protocol::PartialMessage {
             id: "deno_error".into(),
@@ -985,11 +1196,23 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
       // output file this import will end up in. We may have to use the metafile and rewrite at the end
       let is_external = r.starts_with("node:")
         || r.starts_with("bun:")
+        // Always externalize native addons regardless of `--external`.
+        // esbuild has no loader for `.node` files, and the user-facing
+        // `*.node` pre-resolve pattern doesn't catch paths that arrive
+        // here only after `.node`-extension auto-resolution (e.g. CJS
+        // `require('./build/Release/foo')`).
+        || r.ends_with(".node")
         || self
           .externals_matcher
           .as_ref()
           .map(|matcher| matcher.is_post_resolve_match(&r))
           .unwrap_or(false);
+
+      let side_effects = if is_external {
+        None
+      } else {
+        self.resolve_side_effects(&r)
+      };
 
       esbuild_client::OnResolveResult {
         namespace: if r.starts_with("jsr:")
@@ -1005,6 +1228,7 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
         path: Some(r),
         plugin_name: Some("deno".to_string()),
         plugin_data: None,
+        side_effects,
         ..Default::default()
       }
     }))
@@ -1015,6 +1239,13 @@ impl esbuild_client::PluginHandler for DenoPluginHandler {
     args: esbuild_client::OnLoadArgs,
   ) -> Result<Option<esbuild_client::OnLoadResult>, AnyError> {
     log::debug!("{}: {args:?}", deno_terminal::colors::cyan("on_load"));
+    if args.path.starts_with(BROWSER_DISABLED_PREFIX) {
+      return Ok(Some(esbuild_client::OnLoadResult {
+        contents: Some(b"module.exports = {};\n".to_vec()),
+        loader: Some(esbuild_client::BuiltinLoader::Js),
+        ..Default::default()
+      }));
+    }
     if let Some(virtual_modules) = &self.virtual_modules
       && let Some(module) = virtual_modules.get(&args.path)
     {
@@ -1097,8 +1328,11 @@ fn import_kind_to_resolution_mode(
   }
 }
 
+#[derive(Debug, boxed_error::Boxed, deno_error::JsError)]
+pub struct BundleLoadError(pub Box<BundleLoadErrorKind>);
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum BundleLoadError {
+pub enum BundleLoadErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   Fetch(#[from] deno_resolver::file_fetcher::FetchError),
@@ -1112,8 +1346,8 @@ pub enum BundleLoadError {
   #[error(transparent)]
   ResolveWithGraph(#[from] ResolveWithGraphError),
   #[class(generic)]
-  #[error("Wasm modules are not implemented in deno bundle.")]
-  WasmUnsupported,
+  #[error("Failed to parse Wasm module: {0}")]
+  WasmParse(String),
   #[class(generic)]
   #[error("UTF-8 conversion error")]
   Utf8(#[from] std::str::Utf8Error),
@@ -1143,12 +1377,12 @@ pub enum BundleLoadError {
 
 impl BundleLoadError {
   pub fn is_unsupported_media_type(&self) -> bool {
-    match self {
-      BundleLoadError::LoadCodeSource(e) => match e.as_kind() {
+    match self.as_kind() {
+      BundleLoadErrorKind::LoadCodeSource(e) => match e.as_kind() {
         LoadCodeSourceErrorKind::LoadPreparedModule(e) => match e.as_kind() {
           LoadPreparedModuleErrorKind::Graph(e) => matches!(
-            e.error.as_kind(),
-            ModuleErrorKind::UnsupportedMediaType { .. },
+            e.original().as_module_error_kind(),
+            Some(ModuleErrorKind::UnsupportedMediaType { .. }),
           ),
           _ => false,
         },
@@ -1157,6 +1391,43 @@ impl BundleLoadError {
       _ => false,
     }
   }
+}
+
+/// Walk a `BundleError` looking for a `BrowserMapDisabled` error returned
+/// by `node_resolver`. Returns the original specifier so the bundle can
+/// emit an empty-module stub in place of the resolution.
+fn browser_map_disabled_specifier(error: &BundleError) -> Option<String> {
+  let BundleErrorKind::Resolver(resolve_err) = error.as_kind() else {
+    return None;
+  };
+  let deno_resolver::graph::ResolveWithGraphErrorKind::Resolve(e) =
+    resolve_err.as_kind()
+  else {
+    return None;
+  };
+  let deno_resolver::DenoResolveErrorKind::Node(node_err) = e.as_kind() else {
+    return None;
+  };
+  let node_resolver::errors::NodeResolveErrorKind::BrowserMapDisabled(disabled) =
+    node_err.as_kind()
+  else {
+    return None;
+  };
+  Some(disabled.specifier.clone())
+}
+
+/// Whether a specifier looks like a bare (npm/node-style) specifier, i.e. not
+/// a relative path, absolute path, package-internal `#` import, or a URL with a
+/// scheme (`file:`, `data:`, `node:`, `npm:`, `jsr:`, `http(s):`, ...).
+fn looks_like_bare_specifier(specifier: &str) -> bool {
+  !specifier.is_empty()
+    && !specifier.starts_with('.')
+    && !specifier.starts_with('/')
+    && !specifier.starts_with('#')
+    // Load-bearing on Windows: `Url::parse("C:/foo")` succeeds (scheme `c`), so
+    // a drive-letter absolute path is correctly treated as not bare here. Don't
+    // "simplify" this away or Windows absolute paths regress into the fallback.
+    && Url::parse(specifier).is_err()
 }
 
 fn maybe_ignorable_resolution_error(
@@ -1182,8 +1453,11 @@ fn maybe_ignorable_resolution_error(
       ..
     },
   ) = error.as_kind()
-    && let deno_graph::source::ResolveError::ImportMap(import_map_err) =
+    && let deno_graph::source::ResolveError::Other(other_err) =
       resolve_error.deref()
+    && let Some(import_map_err) = other_err
+      .get_ref()
+      .downcast_ref::<import_map::ImportMapError>()
     && let import_map::ImportMapErrorKind::UnmappedBareSpecifier(..) =
       import_map_err.as_kind()
   {
@@ -1214,7 +1488,6 @@ impl DenoPluginHandler {
     Ok(())
   }
 
-  #[allow(clippy::result_large_err)]
   fn bundle_resolve(
     &self,
     path: &str,
@@ -1231,6 +1504,9 @@ impl DenoPluginHandler {
       kind,
       with
     );
+    if path.starts_with("data:") {
+      return Ok(None);
+    }
     let mut resolve_dir = resolve_dir.unwrap_or("").to_string();
     let resolver = self.resolver.clone();
     if !resolve_dir.ends_with(std::path::MAIN_SEPARATOR) {
@@ -1239,9 +1515,7 @@ impl DenoPluginHandler {
     let resolve_dir_path = Path::new(&resolve_dir);
     let mut referrer =
       resolve_url_or_path(importer.unwrap_or(""), resolve_dir_path)
-        .unwrap_or_else(|_| {
-          Url::from_directory_path(std::env::current_dir().unwrap()).unwrap()
-        });
+        .unwrap_or_else(|_| self.initial_cwd.clone());
     if referrer.scheme() == "file" {
       let pth = referrer.to_file_path().unwrap();
       if (pth.is_dir()) && !pth.ends_with(std::path::MAIN_SEPARATOR_STR) {
@@ -1285,6 +1559,26 @@ impl DenoPluginHandler {
       Ok(specifier) => Ok(Some(file_path_or_url(specifier)?)),
       Err(e) => {
         log::debug!("{}: {:?}", deno_terminal::colors::red("error"), e);
+        // The graph may record an unmapped-bare-specifier error for a referrer
+        // pulled in from outside the entrypoint's package scope (e.g. a source
+        // file reached via a `new Worker(new URL(...))` reference next to a
+        // `dist/`-rooted entrypoint). The package is still in the build's npm
+        // snapshot, so resolve it by name the way Node/Bun do before giving up.
+        if looks_like_bare_specifier(path)
+          && let Some(url) = resolver.resolve_bare_specifier_in_npm_snapshot(
+            path,
+            Some(&referrer),
+            import_kind_to_resolution_mode(kind),
+            NodeResolutionKind::Execution,
+          )
+        {
+          log::debug!(
+            "{}: resolved {} via npm snapshot fallback",
+            deno_terminal::colors::cyan("op_bundle_resolve"),
+            path
+          );
+          return Ok(Some(file_path_or_url(url)?));
+        }
         if let Some(specifier) = maybe_ignorable_resolution_error(&e) {
           log::debug!(
             "{}: resolution failed, but maybe ignorable",
@@ -1301,7 +1595,7 @@ impl DenoPluginHandler {
           // for fallible imports/requires
           return Ok(None);
         }
-        Err(BundleError::Resolver(e))
+        Err(BundleErrorKind::Resolver(e).into())
       }
     }
   }
@@ -1325,6 +1619,7 @@ impl DenoPluginHandler {
           ext_overwrite: None,
           allow_unknown_media_types: true,
           skip_graph_roots_validation: true,
+          file_content_overrides: Default::default(),
         },
       )
       .await?;
@@ -1349,6 +1644,9 @@ impl DenoPluginHandler {
       specifier,
       Path::new(""), // should be absolute already, feels kind of hacky though
     )?;
+    if specifier.scheme() == "data" {
+      return Ok(None);
+    }
     let (specifier, media_type) =
       if let RequestedModuleType::Bytes = requested_type {
         (specifier, MediaType::Unknown)
@@ -1364,13 +1662,6 @@ impl DenoPluginHandler {
           deno_terminal::colors::yellow("warn"),
           specifier
         );
-
-        if specifier.scheme() == "data" {
-          return Ok(Some((
-            specifier.to_string().as_bytes().to_vec(),
-            esbuild_client::BuiltinLoader::DataUrl,
-          )));
-        }
 
         let (media_type, _) =
           deno_media_type::resolve_media_type_and_charset_from_content_type(
@@ -1497,6 +1788,11 @@ impl DenoPluginHandler {
       Some(RequestedModuleType::Other(_) | RequestedModuleType::None)
       | None => {}
     }
+    if media_type == MediaType::Wasm {
+      let code = wasm::render_js_wasm_module(source)
+        .map_err(|e| BundleLoadErrorKind::WasmParse(e.to_string()))?;
+      return Ok((code.into_bytes(), esbuild_client::BuiltinLoader::Js));
+    }
     if matches!(
       media_type,
       MediaType::JavaScript
@@ -1560,7 +1856,6 @@ impl DenoPluginHandler {
     Ok(source)
   }
 
-  #[allow(clippy::result_large_err)]
   fn apply_transform(
     resolved_roots: &IndexSet<ModuleSpecifier>,
     module_graph_container: &MainModuleGraphContainer,
@@ -1572,6 +1867,17 @@ impl DenoPluginHandler {
     let mut transform = transform::BundleImportMetaMainTransform::new(
       graph.roots.contains(specifier) || resolved_roots.contains(specifier),
     );
+    // A CJS module imported from ESM reaches us as an ESM facade the module
+    // loader generated (`import { createRequire } ...; export default mod;`).
+    // Parsing that under `MediaType::Cjs` forces script mode (see
+    // deno_ast `refine_parse_mode`), which rejects the facade's import/export
+    // statements with a parse error. Parse as JavaScript so program mode
+    // auto-detects module vs script and handles both the facade and genuine
+    // CJS scripts.
+    let media_type = match media_type {
+      deno_ast::MediaType::Cjs => deno_ast::MediaType::JavaScript,
+      other => other,
+    };
     let parsed_source = deno_ast::parse_program_with_post_process(
       deno_ast::ParseParams {
         specifier: specifier.clone(),
@@ -1599,7 +1905,6 @@ impl DenoPluginHandler {
     Ok(code.text)
   }
 
-  #[allow(clippy::result_large_err)]
   fn specifier_and_type_from_graph(
     &self,
     specifier: &ModuleSpecifier,
@@ -1626,9 +1931,11 @@ impl DenoPluginHandler {
         deno_ast::MediaType::Json,
         esbuild_client::BuiltinLoader::Json,
       ),
-      deno_graph::Module::Wasm(_) => {
-        return Err(BundleLoadError::WasmUnsupported);
-      }
+      deno_graph::Module::Wasm(wasm_module) => (
+        wasm_module.specifier.clone(),
+        deno_ast::MediaType::Wasm,
+        esbuild_client::BuiltinLoader::Js,
+      ),
       deno_graph::Module::Npm(_) => {
         let req_ref =
           NpmPackageReqReference::from_specifier(specifier).unwrap();
@@ -1681,6 +1988,7 @@ fn media_type_to_loader(
     Json => esbuild_client::BuiltinLoader::Json,
     Jsonc => esbuild_client::BuiltinLoader::Text,
     Json5 => esbuild_client::BuiltinLoader::Text,
+    Markdown => esbuild_client::BuiltinLoader::Text,
     SourceMap => esbuild_client::BuiltinLoader::Text,
     Html => esbuild_client::BuiltinLoader::Text,
     Sql => esbuild_client::BuiltinLoader::Text,
@@ -1699,7 +2007,7 @@ fn resolve_url_or_path_absolute(
   } else {
     let path = current_dir.join(specifier);
     let path = deno_path_util::normalize_path(Cow::Owned(path));
-    let path = path.canonicalize()?;
+    let path = canonicalize_path(&path)?;
     Ok(deno_path_util::url_from_file_path(&path)?)
   }
 }
@@ -1733,7 +2041,7 @@ fn resolve_entrypoints(
 
 fn resolve_roots(
   entrypoints: Vec<Url>,
-  sys: CliSys,
+  cwd: &Path,
   npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
 ) -> Vec<Url> {
@@ -1742,9 +2050,7 @@ fn resolve_roots(
   for url in entrypoints {
     let root = match NpmPackageReqReference::from_specifier(&url) {
       Ok(v) => {
-        let referrer =
-          ModuleSpecifier::from_directory_path(sys.env_current_dir().unwrap())
-            .unwrap();
+        let referrer = ModuleSpecifier::from_directory_path(cwd).unwrap();
         let package_folder = npm_resolver
           .resolve_pkg_folder_from_deno_module_req(v.req(), &referrer)
           .unwrap();
@@ -1809,6 +2115,10 @@ fn configure_esbuild_flags(
       PackageHandling::External => esbuild_client::PackagesHandling::External,
       PackageHandling::Bundle => esbuild_client::PackagesHandling::Bundle,
     });
+
+  if bundle_flags.keep_names {
+    builder.raw_flag("--keep-names");
+  }
 
   if let Some(sourcemap_type) = bundle_flags.sourcemap {
     builder.sourcemap(match sourcemap_type {
@@ -1901,6 +2211,12 @@ pub struct ProcessedContents {
   is_js: bool,
 }
 
+impl ProcessedContents {
+  pub fn into_contents(self) -> Option<Vec<u8>> {
+    self.contents
+  }
+}
+
 fn is_js(path: &Path) -> bool {
   if let Some(ext) = path.extension() {
     matches!(
@@ -1921,11 +2237,15 @@ pub fn maybe_process_contents(
   let is_js = is_js(path) || path.ends_with("<stdout>");
   if is_js {
     let string = str::from_utf8(&file.contents)?;
+    // The `createRequire` shim is Deno-specific (it injects an import from
+    // `node:module`), so it is only applied for the Deno platform. The CJS
+    // interop fix-up below is platform-independent and always runs.
     let string = if should_replace_require_shim {
       replace_require_shim(string, minified)
     } else {
       string.to_string()
     };
+    let string = force_node_cjs_interop(&string);
     Ok(ProcessedContents {
       contents: Some(string.into_bytes()),
       is_js,

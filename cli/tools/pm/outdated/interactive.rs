@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -17,7 +17,7 @@ use crate::tools::pm::interactive_picker;
 #[derive(Debug)]
 pub struct PackageInfo {
   pub id: DepId,
-  pub current_version: Option<Version>,
+  pub current_version_req: VersionReq,
   pub new_version: VersionReq,
   pub name: String,
   pub kind: DepKind,
@@ -26,11 +26,20 @@ pub struct PackageInfo {
 #[derive(Debug)]
 struct FormattedPackageInfo {
   dep_ids: Vec<DepId>,
-  current_version_string: Option<String>,
+  current_version_string: String,
   new_version_highlighted: String,
   formatted_name: String,
   formatted_name_len: usize,
   name: String,
+}
+
+/// Strip a leading single-version operator (`^`, `~`, or `=`) so the bare
+/// version can be parsed for highlighting and displayed consistently. Range
+/// requirements such as `>=1.2.3` are left untouched, since stripping the
+/// operator would surface a misleading bare version; they fall through to the
+/// unhighlighted display instead.
+fn strip_version_operator(version_text: &str) -> &str {
+  version_text.trim_start_matches(['^', '~', '='])
 }
 
 #[derive(Debug)]
@@ -43,23 +52,22 @@ struct State {
 impl From<PackageInfo> for FormattedPackageInfo {
   fn from(package: PackageInfo) -> Self {
     let new_version_string =
-      package.new_version.version_text().trim_start_matches('^');
+      strip_version_operator(package.new_version.version_text());
+    let current_version_string =
+      strip_version_operator(package.current_version_req.version_text());
 
     let new_version_highlighted = match (
-      &package.current_version,
+      Version::parse_standard(current_version_string),
       Version::parse_standard(new_version_string),
     ) {
-      (Some(current_version), Ok(new_version)) => {
-        highlight_new_version(current_version, &new_version)
+      (Ok(current_version), Ok(new_version)) => {
+        highlight_new_version(&current_version, &new_version)
       }
       _ => new_version_string.to_string(),
     };
     FormattedPackageInfo {
       dep_ids: vec![package.id],
-      current_version_string: package
-        .current_version
-        .as_ref()
-        .map(|v| v.to_string()),
+      current_version_string: current_version_string.to_string(),
       new_version_highlighted,
       formatted_name: format!(
         "{}{}",
@@ -75,13 +83,13 @@ impl From<PackageInfo> for FormattedPackageInfo {
 impl State {
   fn new(packages: Vec<PackageInfo>) -> anyhow::Result<Self> {
     let mut deduped_packages: HashMap<
-      (String, Option<Version>, VersionReq),
+      (String, VersionReq, VersionReq),
       FormattedPackageInfo,
     > = HashMap::with_capacity(packages.len());
     for package in packages {
       match deduped_packages.entry((
         package.name.clone(),
-        package.current_version.clone(),
+        package.current_version_req.clone(),
         package.new_version.clone(),
       )) {
         std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
@@ -102,12 +110,7 @@ impl State {
       .unwrap_or_default();
     let current_width = packages
       .iter()
-      .map(|p| {
-        p.current_version_string
-          .as_ref()
-          .map(|s| s.len())
-          .unwrap_or_default()
-      })
+      .map(|p| p.current_version_string.len())
       .max()
       .unwrap_or_default();
 
@@ -213,10 +216,7 @@ fn render_package(
   write!(
     f,
     "{formatted_name}{name_pad} {:<current_width$} -> {}",
-    package
-      .current_version_string
-      .as_deref()
-      .unwrap_or_default(),
+    &package.current_version_string,
     &package.new_version_highlighted,
     name_pad = name_pad,
     formatted_name = package.formatted_name,

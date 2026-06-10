@@ -1,0 +1,80 @@
+[WILDCARD]
+{
+  "spans": [
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000001",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "deno.cron",
+      "kind": 1,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "deno.cron.name",
+          "value": {
+            "stringValue": "test-cron-error"
+          }
+        },
+        {
+          "key": "deno.cron.schedule",
+          "value": {
+            "stringValue": "*/20 * * * *"
+          }
+        },
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "Error"
+          }
+        },
+        {
+          "key": "exception.type",
+          "value": {
+            "stringValue": "Error"
+          }
+        },
+        {
+          "key": "exception.message",
+          "value": {
+            "stringValue": "test error"
+          }
+        },
+        {
+          "key": "exception.stacktrace",
+          "value": {
+            "stringValue": "[WILDCARD]"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "test error",
+        "code": 2
+      }
+    }
+  ],
+  "logs": [
+    {
+      "timeUnixNano": "[WILDCARD]",
+      "observedTimeUnixNano": "[WILDCARD]",
+      "severityNumber": 17,
+      "severityText": "ERROR",
+      "body": {
+        "stringValue": "[WILDCARD]"
+      },
+      "attributes": [],
+      "droppedAttributesCount": 0,
+      "flags": 0,
+      "traceId": "",
+      "spanId": ""
+    }
+  ],
+  "metrics": []
+}

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
 use std::borrow::Cow;
 use std::fmt::Write as _;
@@ -275,7 +275,8 @@ fn format_js_error_inner(
       && let Some(fn_name) = &frame.function_name
       && (fn_name.starts_with("__node_internal_")
         || fn_name == "eventLoopTick"
-        || fn_name == "denoErrorToNodeError")
+        || fn_name == "denoErrorToNodeError"
+        || fn_name == "__drainNextTickAndMacrotasks")
     {
       continue;
     }
@@ -425,13 +426,6 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
           "Run again with `--unstable-net` flag to enable this API.",
         ),
       ];
-    } else if msg.contains("Temporal is not defined") {
-      return vec![
-        FixSuggestion::info("Temporal is an unstable API."),
-        FixSuggestion::hint(
-          "Run again with `--unstable-temporal` flag to enable this API.",
-        ),
-      ];
     } else if msg.contains("window is not defined") {
       return vec![
         FixSuggestion::info("window global is not available in Deno 2."),
@@ -458,10 +452,50 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
           "Run again with `--unstable-net` flag to enable this API.",
         ),
       ];
+    } else if msg.contains("invalid peer certificate: UnknownIssuer") {
+      // The certificate chain isn't trusted by Deno's CA store (the default is
+      // Mozilla's bundle). This commonly happens with `mkcert` dev certs or a
+      // corporate TLS proxy, whose root is in the OS trust store but not
+      // Mozilla's. See denoland/deno#25366.
+      return vec![
+        FixSuggestion::info(
+          "The TLS certificate could not be verified against Deno's trusted certificate authorities.",
+        ),
+        FixSuggestion::hint_multiline(&[
+          "If the certificate is trusted by your operating system (for example, issued",
+          cstr!(
+            "by <u>mkcert</> or a corporate proxy), run again with <u>DENO_TLS_CA_STORE=mozilla,system</>."
+          ),
+        ]),
+        FixSuggestion::hint(cstr!(
+          "Otherwise pass <u>--unsafely-ignore-certificate-errors</> to bypass verification (insecure)."
+        )),
+      ];
     } else if msg.contains("client error (Connect): invalid peer certificate") {
       return vec![FixSuggestion::hint(
         "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
       )];
+    // `isolated-vm` is a native addon built directly on V8's C++ internals,
+    // which Deno does not expose. It fails either with a `Cannot find module
+    // './out/isolated_vm'` error (when the addon was never built, the most
+    // commonly reported case) or, if built, with the legacy native addon ABI
+    // error from `ext/napi`. Either way it cannot run in Deno, so point users
+    // at the supported isolation primitives. See denoland/deno#25130.
+    } else if (msg.contains("isolated_vm") || msg.contains("isolated-vm"))
+      && (msg.contains("Cannot find module")
+        || msg.contains("legacy Node.js native addon API"))
+    {
+      return vec![
+        FixSuggestion::info_multiline(&[
+          "`isolated-vm` is a native addon built directly on V8's C++ internals,",
+          "which Deno does not expose, so it cannot be loaded in Deno.",
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "To run code in a separate isolate, use a `Worker`: it executes in its",
+          "own isolate and thread and can be sandboxed via the `deno.permissions`",
+          "option. For in-process sandboxing, the `node:vm` module is also available.",
+        ]),
+      ];
     // Try to capture errors like:
     // ```
     // Uncaught Error: Cannot find module '../build/Release/canvas.node'
@@ -469,9 +503,18 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
     // - /.../deno/npm/registry.npmjs.org/canvas/2.11.2/lib/bindings.js
     // - /.../.cache/deno/npm/registry.npmjs.org/canvas/2.11.2/lib/canvas.js
     // ```
-    } else if msg.contains("Cannot find module")
+    // as well as errors thrown by the `bindings` npm package (used by
+    // libxmljs and many other native addons), like:
+    // ```
+    // Uncaught Error: Could not locate the bindings file. Tried:
+    //  → /.../node_modules/libxmljs/build/xmljs.node
+    //  → /.../node_modules/libxmljs/build/Release/xmljs.node
+    // ```
+    } else if (msg.contains("Cannot find module")
       && msg.contains("Require stack")
-      && msg.contains(".node'")
+      && msg.contains(".node'"))
+      || (msg.contains("Could not locate the bindings file")
+        && msg.contains(".node"))
     {
       return vec![
         FixSuggestion::info_multiline(&[
@@ -481,6 +524,38 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion<'_>> {
         FixSuggestion::hint_multiline(&[
           "Add `\"nodeModulesDir\": \"auto\" option to `deno.json`, and then run",
           "`deno install --allow-scripts=npm:<package> --entrypoint <script>` to setup `node_modules` directory.",
+        ]),
+      ];
+    // Captures the error thrown by `ext/napi` when a native addon was built
+    // against the legacy Node.js native addon ABI (the `NODE_MODULE` macro /
+    // `nan`) instead of Node-API. Such addons link against V8's C++ internals,
+    // which Deno does not expose, so they cannot be loaded. See
+    // denoland/deno#26034 (better-sqlite3) and denoland/deno#26656.
+    } else if msg.contains("legacy Node.js native addon API") {
+      // `better-sqlite3` is by far the most commonly reported offender, so
+      // point users straight at drop-in Node-API alternatives.
+      if msg.contains("better-sqlite3") || msg.contains("better_sqlite3") {
+        return vec![
+          FixSuggestion::info_multiline(&[
+            "`better-sqlite3` is built on the legacy V8/nan native addon ABI,",
+            "which depends on V8 internals that Deno does not expose.",
+          ]),
+          FixSuggestion::hint_multiline(&[
+            "Use a Node-API based alternative instead, such as the built-in",
+            "`node:sqlite` module, or the `npm:libsql` / `npm:@libsql/client`",
+            "packages (the latter expose a `better-sqlite3`-compatible API).",
+          ]),
+        ];
+      }
+      return vec![
+        FixSuggestion::info_multiline(&[
+          "This native addon uses the legacy V8/nan addon ABI, which depends",
+          "on V8 internals that Deno does not expose. Only Node-API (N-API)",
+          "addons can be loaded by Deno.",
+        ]),
+        FixSuggestion::hint_multiline(&[
+          "Switch to a package that uses Node-API (N-API), or ask the addon's",
+          "authors to migrate it from the legacy `NODE_MODULE`/`nan` ABI.",
         ]),
       ];
     } else if msg.contains("document is not defined") {

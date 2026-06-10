@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util as util;
 use test_util::test;
@@ -138,57 +138,13 @@ fn pty_complete_expression() {
 }
 
 #[test(flaky)]
-fn pty_complete_imports() {
-  let context = TestContextBuilder::default().use_temp_cwd().build();
-  let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("subdir");
-  temp_dir.write("./subdir/my_file.ts", "");
-  temp_dir.create_dir_all("run");
-  temp_dir.write("./run/hello.ts", "console.log('Hello World');");
-  temp_dir.write(
-    "./run/output.ts",
-    r#"export function output(text: string) {
-  console.log(text);
-}
-"#,
-  );
-  context
-    .new_command()
-    .args_vec(["repl", "-A"])
-    .with_pty(|mut console| {
-      // single quotes
-      console.write_line_raw("import './run/hel\t'");
-      console.expect("Hello World");
-      // double quotes
-      console.write_line_raw("import { output } from \"./run/out\t\"");
-      console.expect("\"./run/output.ts\"");
-      console.write_line_raw("output('testing output');");
-      console.expect("testing output");
-    });
-
-  // ensure when the directory changes that the suggestions come from the cwd
-  context
-    .new_command()
-    .args_vec(["repl", "-A"])
-    .with_pty(|mut console| {
-      console.write_line("Deno.chdir('./subdir');");
-      console.expect("undefined");
-      console.write_line_raw("import '../run/he\t'");
-      console.expect("Hello World");
-    });
-}
-
-#[test(flaky)]
-fn pty_complete_imports_no_panic_empty_specifier() {
-  // does not panic when tabbing when empty
-  util::with_pty(&["repl", "-A"], |mut console| {
-    if cfg!(windows) {
-      console.write_line_raw("import '\t'");
-      console.expect_any(&["not prefixed with", "https://deno.land"]);
-    } else {
-      console.write_raw("import '\t");
-      console.expect("import 'https://deno.land");
-    }
+fn pty_complete_lazy_loaded_getter() {
+  // `navigator.gpu` is exposed through a lazily-loaded getter that triggers a
+  // side effect on first access. Completion must still surface its properties.
+  // https://github.com/denoland/deno/issues/24917
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line_raw("navigator.gpu.getPreferredCanvasForma\t");
+    console.expect("navigator.gpu.getPreferredCanvasFormat");
   });
 }
 
@@ -305,6 +261,20 @@ fn await_timeout() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("await new Promise((r) => setTimeout(r, 0, 'done'))");
     console.expect("\"done\"");
+  });
+}
+
+#[test(flaky)]
+fn pty_uncaught_exception_from_timeout() {
+  // Regression test for https://github.com/denoland/deno/issues/21622:
+  // an uncaught exception thrown from a `setTimeout` callback must be printed
+  // while sitting at the prompt, without requiring another expression to be
+  // evaluated first.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("setTimeout(() => { throw new Error('boom') }, 200);");
+    // Do NOT evaluate anything else. The exception should be reported on its
+    // own once the timer fires.
+    console.expect("Uncaught Error: boom");
   });
 }
 
@@ -519,6 +489,32 @@ fn syntax_error() {
     // ensure it keeps accepting input after
     console.write_line("7 * 6");
     console.expect("42");
+  });
+}
+
+#[test(flaky)]
+fn syntax_error_invalid_arrow_params() {
+  // Regression test for https://github.com/denoland/deno/issues/19457: swc
+  // recovers from the malformed arrow params by emitting an `<invalid>` token,
+  // which used to surface as a misleading `Unexpected token '<'`.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const test = (i, 2 * i) => console.log(i);");
+    console.expect("parse error: Not a pattern");
+    // ensure it keeps accepting input after
+    console.write_line("7 * 6");
+    console.expect("42");
+  });
+}
+
+#[test(flaky)]
+fn type_assertion_still_parses() {
+  // A `.ts` type assertion looks like JSX when parsed as `.tsx`; the repl must
+  // fall back to parsing as TypeScript rather than reporting a parse error.
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("const x = <string>('hello' as unknown);");
+    console.expect("undefined");
+    console.write_line("x");
+    console.expect("\"hello\"");
   });
 }
 
@@ -977,8 +973,8 @@ fn npm_packages() {
       true,
     );
 
+    assert!(err.is_empty(), "stderr: {}\nstdout: {}", err, out);
     assert_contains!(out, "hello");
-    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -993,8 +989,8 @@ fn npm_packages() {
       true,
     );
 
+    assert!(err.is_empty(), "stderr: {}\nstdout: {}", err, out);
     assert_contains!(out, "hello");
-    assert!(err.is_empty(), "Error: {}", err);
   }
 
   {
@@ -1088,7 +1084,7 @@ fn package_json_uncached_no_error() {
     // should support getting the package now though
     console
       .write_line("import { getValue, setValue } from '@denotest/esm-basic';");
-    console.expect_all(&["undefined", "Download"]);
+    console.expect("undefined");
     console.write_line("setValue(12 + 30);");
     console.expect("undefined");
     console.write_line("getValue()");
@@ -1096,19 +1092,6 @@ fn package_json_uncached_no_error() {
 
     assert!(temp_dir.path().join("node_modules").exists());
   });
-}
-
-#[test(flaky)]
-fn closed_file_pre_load_does_not_occur() {
-  TestContext::default()
-    .new_command()
-    .args_vec(["repl", "-A", "--log-level=debug"])
-    .with_pty(|console| {
-      assert_contains!(
-        console.all_output(),
-        "Skipped workspace walk due to client incapability.",
-      );
-    });
 }
 
 #[test(flaky)]
@@ -1188,4 +1171,70 @@ fn repl_no_globalthis() {
       console.expect(r#"Hello World"#);
       console.expect(r#"undefined"#);
     });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/34360.
+// Running `babel-node` (or any user code that calls `repl.start` with both
+// a custom `eval` and `preview: true`) used to evaluate the typed input
+// via `vm.Script` on every keystroke. That produced visible side effects
+// the moment a closing paren completed an expression -- `console.log("hi")`
+// would print "hi" while still being typed.
+#[test(flaky)]
+fn pty_node_repl_no_preview_side_effects_with_custom_eval() {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.mjs",
+    r#"import repl from "node:repl";
+globalThis.__sideEffectCount = 0;
+const server = repl.start({
+  prompt: "> ",
+  // babel-node's pattern: custom eval + preview enabled. Preview must
+  // not re-run the typed input via vm.Script.
+  preview: true,
+  useGlobal: true,
+  eval(_code, _ctx, _file, cb) {
+    process.stdout.write(
+      "EVALED__side_effect=" + globalThis.__sideEffectCount + "\n",
+    );
+    cb(null);
+  },
+});
+server.on("exit", () => process.exit(0));
+"#,
+  );
+  context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args_vec(["run", "-A", "main.mjs"])
+    .with_pty(|mut console| {
+      console.expect("> ");
+      // Type a fully-formed expression that *would* increment the side-
+      // effect counter if the preview path eagerly ran user code via
+      // `vm.Script`. Critically, do not press Enter yet.
+      console.write_raw("(globalThis.__sideEffectCount++, 0)");
+      // Give the REPL plenty of time to (not) run the preview eval.
+      console.human_delay();
+      // Now press Enter. The custom eval reports the counter value: it
+      // must still be 0, meaning no preview-time side effects occurred.
+      console.write_raw("\r");
+      console.expect("EVALED__side_effect=0");
+      console.write_raw(".exit\r");
+    });
+}
+
+#[test(flaky)]
+fn pty_lint_run_plugin_disabled() {
+  // Regression test for https://github.com/denoland/deno/issues/28264
+  // `Deno.lint.runPlugin` is not available outside of `deno test`, so calling
+  // it in the REPL should throw a helpful error instead of a cryptic
+  // "op_lint_create_serialized_ast is not a function".
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(
+      "Deno.lint.runPlugin({ name: \"x\", rules: {} }, \"x.ts\", \"\");",
+    );
+    console.expect(
+      "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+    );
+  });
 }

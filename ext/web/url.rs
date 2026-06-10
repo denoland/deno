@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use deno_core::JsBuffer;
 use deno_core::OpState;
@@ -47,6 +47,9 @@ pub fn op_url_parse(
   #[string] href: &str,
   #[buffer] buf: &mut [u32],
 ) -> u32 {
+  if parse_simple_special_url(href, buf) {
+    return ParseStatus::Ok as u32;
+  }
   parse_url(state, href, None, buf)
 }
 
@@ -105,7 +108,190 @@ fn parse_url(
   }
 }
 
-#[allow(dead_code)]
+// Keep in sync with parseSimpleSpecialUrl() in ext/web/00_url.js.
+fn parse_simple_special_url(href: &str, buf: &mut [u32]) -> bool {
+  let bytes = href.as_bytes();
+  let (scheme_end, default_port) = if bytes.starts_with(b"http://") {
+    (4, 80u32)
+  } else if bytes.starts_with(b"https://") {
+    (5, 443u32)
+  } else {
+    return false;
+  };
+
+  let host_start = scheme_end + 3;
+  let mut path_start = host_start;
+  while path_start < bytes.len() && bytes[path_start] != b'/' {
+    match bytes[path_start] {
+      b'a'..=b'z' | b'0'..=b'9' | b'.' | b'-' | b':' => {
+        path_start += 1;
+      }
+      _ => return false,
+    }
+  }
+  if path_start == host_start || path_start == bytes.len() {
+    return false;
+  }
+
+  let mut host_end = path_start;
+  let mut port = 65536u32;
+  for i in host_start..path_start {
+    if bytes[i] == b':' {
+      if i == host_start || i + 1 == path_start {
+        return false;
+      }
+      host_end = i;
+      port = 0;
+      if i + 2 < path_start && bytes[i + 1] == b'0' {
+        return false;
+      }
+      for &byte in &bytes[i + 1..path_start] {
+        if !byte.is_ascii_digit() {
+          return false;
+        }
+        let Some(next_port) = port
+          .checked_mul(10)
+          .and_then(|port| port.checked_add((byte - b'0') as u32))
+        else {
+          return false;
+        };
+        if next_port > 65535 {
+          return false;
+        }
+        port = next_port;
+      }
+      if port == default_port {
+        return false;
+      }
+      break;
+    }
+  }
+  if !simple_special_host_is_canonical(&bytes[host_start..host_end]) {
+    return false;
+  }
+
+  let mut query_start = 0u32;
+  for i in path_start..bytes.len() {
+    if bytes[i] == b'.'
+      && i > path_start
+      && bytes[i - 1] == b'/'
+      && (i + 1 == bytes.len() || matches!(bytes[i + 1], b'/' | b'?' | b'.'))
+    {
+      return false;
+    }
+    if query_start != 0 && bytes[i] == b'\'' {
+      return false;
+    }
+    match bytes[i] {
+      b'a'..=b'z'
+      | b'A'..=b'Z'
+      | b'0'..=b'9'
+      | b'/'
+      | b'.'
+      | b'_'
+      | b'~'
+      | b'-'
+      | b'!'
+      | b'$'
+      | b'&'
+      | b'\''
+      | b'('
+      | b')'
+      | b'*'
+      | b'+'
+      | b','
+      | b';'
+      | b'='
+      | b':'
+      | b'@' => {}
+      b'?' if query_start == 0 => query_start = i as u32,
+      _ => return false,
+    }
+  }
+
+  buf[0] = scheme_end as u32;
+  buf[1] = host_start as u32;
+  buf[2] = host_start as u32;
+  buf[3] = host_end as u32;
+  buf[4] = port;
+  buf[5] = path_start as u32;
+  buf[6] = query_start;
+  buf[7] = 0;
+  true
+}
+
+fn simple_special_host_is_canonical(host: &[u8]) -> bool {
+  if host.is_empty() || host[0] == b'.' || host[host.len() - 1] == b'.' {
+    return false;
+  }
+
+  if host
+    .iter()
+    .all(|byte| byte.is_ascii_digit() || *byte == b'.')
+  {
+    let mut dots = 0;
+    let mut part = 0u32;
+    let mut part_len = 0;
+    for (i, &byte) in host.iter().enumerate() {
+      if byte == b'.' {
+        if part_len == 0
+          || part > 255
+          || (part_len > 1 && host[i - part_len] == b'0')
+        {
+          return false;
+        }
+        dots += 1;
+        part = 0;
+        part_len = 0;
+        continue;
+      }
+      part = part * 10 + (byte - b'0') as u32;
+      part_len += 1;
+      if part_len > 3 {
+        return false;
+      }
+    }
+    return dots == 3
+      && part_len != 0
+      && part <= 255
+      && (part_len == 1 || host[host.len() - part_len] != b'0');
+  }
+
+  if host[0].is_ascii_digit() {
+    return false;
+  }
+
+  let mut label_len = 0;
+  let mut label_start = 0;
+  let mut final_label_all_digits = true;
+  for (i, &byte) in host.iter().enumerate() {
+    match byte {
+      b'a'..=b'z' | b'0'..=b'9' | b'-' => {
+        if !byte.is_ascii_digit() {
+          final_label_all_digits = false;
+        }
+        label_len += 1;
+      }
+      b'.' => {
+        if label_len == 0 {
+          return false;
+        }
+        label_len = 0;
+        label_start = i + 1;
+        final_label_all_digits = true;
+      }
+      _ => return false,
+    }
+    if i == label_start + 3 && &host[label_start..=i] == b"xn--" {
+      return false;
+    }
+  }
+  label_len != 0
+    && !final_label_all_digits
+    && !(label_len >= 2 && &host[label_start..label_start + 2] == b"0x")
+}
+
+#[allow(dead_code, reason = "used in JS")]
 #[derive(Eq, PartialEq, Debug)]
 #[repr(u8)]
 pub enum UrlSetter {
@@ -192,7 +378,6 @@ pub fn op_url_reparse(
 }
 
 #[op2]
-#[serde]
 pub fn op_url_parse_search_params(
   #[string] args: Option<String>,
   #[buffer] zero_copy: Option<JsBuffer>,
@@ -214,7 +399,7 @@ pub fn op_url_parse_search_params(
 #[op2]
 #[string]
 pub fn op_url_stringify_search_params(
-  #[serde] args: Vec<(String, String)>,
+  #[scoped] args: Vec<(String, String)>,
 ) -> String {
   form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)

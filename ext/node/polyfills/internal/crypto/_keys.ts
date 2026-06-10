@@ -1,26 +1,28 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 // This file is here because to break a circular dependency between streams and
 // crypto.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
+(function () {
+const { core, primordials } = __bootstrap;
+const { Symbol } = primordials;
+const { kKeyObject } = core.loadExtScript(
+  "ext:deno_node/internal/crypto/constants.ts",
+);
 
-import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
-import type { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
+const kKeyType = Symbol("kKeyType");
 
-export const kKeyType = Symbol("kKeyType");
-
-export function isKeyObject(obj: unknown): obj is KeyObject {
+function isKeyObject(obj) {
   return (
-    obj != null && (obj as Record<symbol, unknown>)[kKeyType] !== undefined
+    obj != null && obj[kKeyType] !== undefined
   );
 }
 
-export function isCryptoKey(
-  obj: unknown,
-): obj is CryptoKey {
+function isCryptoKey(obj) {
   return (
-    obj != null && (obj as Record<symbol, unknown>)[kKeyObject] !== undefined
+    obj != null && obj[kKeyObject] !== undefined
   );
 }
+
+return { kKeyType, isKeyObject, isCryptoKey };
+})();

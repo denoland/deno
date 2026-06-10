@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -13,11 +13,13 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::FromV8;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToV8;
 use deno_core::op2;
 use deno_permissions::PermissionsContainer;
 use hickory_proto::ProtoError;
@@ -32,7 +34,6 @@ use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::name_server::TokioConnectionProvider;
 use hickory_resolver::system_conf;
 use quinn::rustls;
-use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
 use socket2::Protocol;
@@ -59,7 +60,7 @@ pub struct TlsHandshakeInfo {
     Option<Vec<rustls::pki_types::CertificateDer<'static>>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, FromV8, ToV8)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -182,8 +183,7 @@ pub(crate) fn accept_err(e: std::io::Error) -> NetError {
   }
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_tcp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -225,8 +225,7 @@ pub async fn op_net_accept_tcp(
   ))
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -246,12 +245,12 @@ pub async fn op_net_recv_udp(
   Ok((nread, IpAddr::from(remote_addr)))
 }
 
-#[op2(async, stack_trace)]
+#[op2(stack_trace)]
 #[number]
 pub async fn op_net_send_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   #[buffer] zero_copy: JsBuffer,
 ) -> Result<usize, NetError> {
   {
@@ -265,6 +264,17 @@ pub async fn op_net_send_udp(
     .await?
     .next()
     .ok_or(NetError::NoResolvedAddress)?;
+
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(
+        &addr.ip(),
+        addr.port(),
+        "Deno.DatagramConn.send()",
+      )?;
+  }
 
   let resource = state
     .borrow_mut()
@@ -296,7 +306,7 @@ pub fn op_net_validate_multicast(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_join_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -318,7 +328,7 @@ pub async fn op_net_join_multi_v4_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_join_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -339,7 +349,7 @@ pub async fn op_net_join_multi_v6_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_leave_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -361,7 +371,7 @@ pub async fn op_net_leave_multi_v4_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_leave_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -382,7 +392,7 @@ pub async fn op_net_leave_multi_v6_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_set_multi_loopback_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -405,7 +415,7 @@ pub async fn op_net_set_multi_loopback_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_set_multi_ttl_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -423,7 +433,7 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
-#[op2(async)]
+#[op2]
 pub async fn op_net_set_broadcast_udp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -466,18 +476,16 @@ impl NetPermToken {
 }
 
 #[op2]
-#[serde]
 pub fn op_net_get_ips_from_perm_token(
   #[cppgc] token: &NetPermToken,
 ) -> Vec<String> {
   token.resolved_ips.clone()
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_net_connect_tcp(
   state: Rc<RefCell<OpState>>,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   #[cppgc] net_perm_token: Option<&NetPermToken>,
   #[smi] resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
@@ -508,6 +516,16 @@ pub async fn op_net_connect_tcp_inner(
     .await?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+
+  // Post-resolution deny check: verify the resolved IP is not denied.
+  // This prevents bypassing IP-literal deny rules via numeric hostname
+  // aliases (e.g. 2130706433 → 127.0.0.1).
+  {
+    state
+      .borrow_mut()
+      .borrow_mut::<PermissionsContainer>()
+      .check_net_resolved(&addr.ip(), addr.port(), "Deno.connect()")?;
+  }
 
   let cancel_handle = resource_abort_id.and_then(|rid| {
     state
@@ -561,10 +579,9 @@ impl Resource for UdpSocketResource {
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_net_listen_tcp(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   reuse_port: bool,
   load_balanced: bool,
   tcp_backlog: i32,
@@ -578,6 +595,9 @@ pub fn op_net_listen_tcp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listen()")?;
 
   let listener = if load_balanced {
     TcpListener::bind_load_balanced(addr, tcp_backlog)
@@ -603,6 +623,9 @@ fn net_listen_udp(
   let addr = resolve_addr_sync(&addr.hostname, addr.port)?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
+  state
+    .borrow_mut::<PermissionsContainer>()
+    .check_net_resolved(&addr.ip(), addr.port(), "Deno.listenDatagram()")?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4
@@ -656,10 +679,9 @@ fn net_listen_udp(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_net_listen_udp(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), NetError> {
@@ -668,10 +690,9 @@ pub fn op_net_listen_udp(
 }
 
 #[op2(stack_trace)]
-#[serde]
 pub fn op_node_unstable_net_listen_udp(
   state: &mut OpState,
-  #[serde] addr: IpAddr,
+  #[scoped] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), NetError> {
@@ -679,8 +700,7 @@ pub fn op_node_unstable_net_listen_udp(
 }
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_net_connect_vsock(
   state: Rc<RefCell<OpState>>,
   #[smi] cid: u32,
@@ -727,15 +747,13 @@ pub async fn op_net_connect_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_connect_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
 #[op2(stack_trace)]
-#[serde]
 pub fn op_net_listen_vsock(
   state: &mut OpState,
   #[smi] cid: u32,
@@ -770,15 +788,13 @@ pub fn op_net_listen_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_listen_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
 
 #[cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))]
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_vsock(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -820,14 +836,12 @@ pub async fn op_net_accept_vsock(
   target_os = "linux",
   target_os = "macos"
 )))]
-#[op2]
-#[serde]
+#[op2(fast)]
 pub fn op_net_accept_vsock() -> Result<(), NetError> {
   Err(NetError::VsockUnsupported)
 }
 
 #[op2]
-#[serde]
 pub fn op_net_listen_tunnel(
   state: &mut OpState,
 ) -> Result<(ResourceId, IpAddr), NetError> {
@@ -842,8 +856,7 @@ pub fn op_net_listen_tunnel(
   Ok((rid, local_addr))
 }
 
-#[op2(async)]
-#[serde]
+#[op2]
 pub async fn op_net_accept_tunnel(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -871,8 +884,8 @@ pub async fn op_net_accept_tunnel(
   Ok((rid, local_addr.into(), remote_addr.into()))
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
-#[serde(untagged)]
+#[derive(ToV8, Eq, PartialEq, Debug)]
+#[to_v8(untagged)]
 pub enum DnsRecordData {
   A(String),
   Aaaa(String),
@@ -915,45 +928,42 @@ pub enum DnsRecordData {
   Txt(Vec<String>),
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
-#[serde()]
+#[derive(ToV8, Eq, PartialEq, Debug)]
 pub struct DnsRecordWithTtl {
   pub data: DnsRecordData,
+  /// Record type name, populated for ANY queries to distinguish
+  /// untagged string variants (A vs AAAA vs NS vs PTR vs CNAME).
+  #[to_v8(serde)]
+  pub record_type: Option<String>,
   pub ttl: u32,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ResolveAddrArgs {
   cancel_rid: Option<ResourceId>,
   query: String,
+  #[from_v8(serde)]
   record_type: RecordType,
   options: Option<ResolveDnsOption>,
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct ResolveDnsOption {
   name_server: Option<NameServer>,
 }
 
-fn default_port() -> u16 {
-  53
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(FromV8)]
 pub struct NameServer {
   ip_addr: String,
-  #[serde(default = "default_port")]
+  #[from_v8(default = 53)]
   port: u16,
 }
 
-#[op2(async, stack_trace)]
-#[serde]
+#[op2(stack_trace)]
 pub async fn op_dns_resolve(
   state: Rc<RefCell<OpState>>,
-  #[serde] args: ResolveAddrArgs,
+  #[scoped] args: ResolveAddrArgs,
+  use_edns: bool,
 ) -> Result<Vec<DnsRecordWithTtl>, NetError> {
   let ResolveAddrArgs {
     query,
@@ -962,7 +972,7 @@ pub async fn op_dns_resolve(
     cancel_rid,
   } = args;
 
-  let (config, opts) = if let Some(name_server) =
+  let (config, mut opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
     let group = NameServerConfigGroup::from_ips_clear(
@@ -970,13 +980,24 @@ pub async fn op_dns_resolve(
       name_server.port,
       true,
     );
-    (
-      ResolverConfig::from_parts(None, vec![], group),
-      ResolverOpts::default(),
-    )
+    (ResolverConfig::from_parts(None, vec![], group), {
+      let mut opts = ResolverOpts::default();
+      if use_edns {
+        opts.edns0 = true;
+      }
+      opts
+    })
   } else {
     system_conf::read_system_conf()?
   };
+
+  // When a cancel handle is provided, use a short resolver timeout so
+  // that hickory's background connection tasks clean up quickly after
+  // cancellation (they are not aborted by the cancel handle itself).
+  if cancel_rid.is_some() {
+    opts.timeout = std::time::Duration::from_secs(1);
+    opts.attempts = 1;
+  }
 
   {
     let mut s = state.borrow_mut();
@@ -1043,15 +1064,43 @@ pub async fn op_dns_resolve(
     .records()
     .iter()
     .filter_map(|rec| {
-      let r = format_rdata(record_type)(rec.data()).transpose();
+      let is_any = record_type == RecordType::ANY;
+      // For ANY queries, use each record's actual type for formatting
+      let effective_type = if is_any {
+        rec.record_type()
+      } else {
+        record_type
+      };
+      let r = format_rdata(effective_type)(rec.data()).transpose();
       r.map(|maybe_data| {
         maybe_data.map(|data| DnsRecordWithTtl {
           data,
+          record_type: if is_any {
+            Some(effective_type.to_string())
+          } else {
+            None
+          },
           ttl: rec.ttl(),
         })
       })
     })
     .collect::<Result<Vec<DnsRecordWithTtl>, NetError>>()
+}
+
+#[op2]
+#[serde]
+pub fn op_net_get_system_dns_servers() -> Result<Vec<(String, u16)>, NetError> {
+  let (config, _opts) = system_conf::read_system_conf()
+    .unwrap_or_else(|_| (ResolverConfig::default(), ResolverOpts::default()));
+  let servers = config
+    .name_servers()
+    .iter()
+    .map(|ns| {
+      let addr = ns.socket_addr;
+      (addr.ip().to_string(), addr.port())
+    })
+    .collect();
+  Ok(servers)
 }
 
 #[op2(fast)]
@@ -1395,7 +1444,10 @@ mod tests {
     check_sockopt(String::from("127.0.0.1:4146"), set_keepalive, test_fn).await;
   }
 
-  #[allow(clippy::type_complexity)]
+  #[allow(
+    clippy::type_complexity,
+    reason = "set_sockopt_fn isn't that complex"
+  )]
   async fn check_sockopt(
     addr: String,
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,

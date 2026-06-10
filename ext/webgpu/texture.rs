@@ -1,4 +1,6 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
+
+use std::sync::OnceLock;
 
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -15,6 +17,7 @@ use wgpu_types::TextureViewDimension;
 
 use crate::Instance;
 use crate::error::GPUGenericError;
+use crate::webidl::GPUTextureUsageFlags;
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
@@ -32,8 +35,7 @@ pub(crate) struct GPUTextureDescriptor {
   #[webidl(default = GPUTextureDimension::D2)]
   pub dimension: GPUTextureDimension,
   pub format: GPUTextureFormat,
-  #[options(enforce_range = true)]
-  pub usage: u32,
+  pub usage: GPUTextureUsageFlags,
   #[webidl(default = vec![])]
   pub view_formats: Vec<GPUTextureFormat>,
 }
@@ -43,8 +45,11 @@ pub struct GPUTexture {
   pub error_handler: super::error::ErrorHandler,
 
   pub id: wgpu_core::id::TextureId,
+  // needed by deno
   pub device_id: wgpu_core::id::DeviceId,
+  // needed by deno
   pub queue_id: wgpu_core::id::QueueId,
+  pub default_view_id: OnceLock<wgpu_core::id::TextureViewId>,
 
   pub label: String,
 
@@ -53,11 +58,38 @@ pub struct GPUTexture {
   pub sample_count: u32,
   pub dimension: GPUTextureDimension,
   pub format: GPUTextureFormat,
-  pub usage: u32,
+  pub usage: GPUTextureUsageFlags,
+}
+
+impl GPUTexture {
+  pub(crate) fn default_view_id(&self) -> wgpu_core::id::TextureViewId {
+    *self.default_view_id.get_or_init(|| {
+      let (id, err) =
+        self
+          .instance
+          .texture_create_view(self.id, &Default::default(), None);
+      if let Some(err) = err {
+        use wgpu_types::error::WebGpuError;
+        assert_ne!(
+          err.webgpu_error_type(),
+          wgpu_types::error::ErrorType::Validation,
+          concat!(
+            "getting default view for a texture ",
+            "caused a validation error (!?)"
+          )
+        );
+        self.error_handler.push_error(Some(err));
+      }
+      id
+    })
+  }
 }
 
 impl Drop for GPUTexture {
   fn drop(&mut self) {
+    if let Some(id) = self.default_view_id.take() {
+      self.instance.texture_view_drop(id);
+    }
     self.instance.texture_drop(self.id);
   }
 }
@@ -126,14 +158,12 @@ impl GPUTexture {
   }
   #[getter]
   fn usage(&self) -> u32 {
-    self.usage
+    self.usage.bits()
   }
   #[fast]
-  fn destroy(&self) -> Result<(), JsErrorBox> {
-    self
-      .instance
-      .texture_destroy(self.id)
-      .map_err(|e| JsErrorBox::generic(e.to_string()))
+  #[undefined]
+  fn destroy(&self) {
+    self.instance.texture_destroy(self.id);
   }
 
   #[cppgc]
@@ -145,10 +175,7 @@ impl GPUTexture {
       label: crate::transform_label(descriptor.label.clone()),
       format: descriptor.format.map(Into::into),
       dimension: descriptor.dimension.map(Into::into),
-      usage: Some(
-        wgpu_types::TextureUsages::from_bits(descriptor.usage)
-          .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?,
-      ),
+      usage: Some(descriptor.usage.into()),
       range: wgpu_types::ImageSubresourceRange {
         aspect: descriptor.aspect.into(),
         base_mip_level: descriptor.base_mip_level,
@@ -181,9 +208,8 @@ struct GPUTextureViewDescriptor {
 
   format: Option<GPUTextureFormat>,
   dimension: Option<GPUTextureViewDimension>,
-  #[webidl(default = 0)]
-  #[options(enforce_range = true)]
-  usage: u32,
+  #[webidl(default = GPUTextureUsageFlags(wgpu_types::TextureUsages::empty()))]
+  usage: GPUTextureUsageFlags,
   #[webidl(default = GPUTextureAspect::All)]
   aspect: GPUTextureAspect,
   #[webidl(default = 0)]
@@ -254,7 +280,7 @@ pub struct GPUTextureView {
 
 impl Drop for GPUTextureView {
   fn drop(&mut self) {
-    let _ = self.instance.texture_view_drop(self.id);
+    self.instance.texture_view_drop(self.id);
   }
 }
 
@@ -583,7 +609,7 @@ impl From<GPUTextureFormat> for TextureFormat {
         channel: AstcChannel::Unorm,
       },
       GPUTextureFormat::Astc4x4UnormSrgb => Self::Astc {
-        block: AstcBlock::B5x4,
+        block: AstcBlock::B4x4,
         channel: AstcChannel::UnormSrgb,
       },
       GPUTextureFormat::Astc5x4Unorm => Self::Astc {
@@ -693,3 +719,23 @@ impl From<GPUTextureFormat> for TextureFormat {
     }
   }
 }
+
+pub struct GPUExternalTexture {
+  pub id: wgpu_core::id::ExternalTextureId,
+}
+
+impl WebIdlInterfaceConverter for GPUExternalTexture {
+  const NAME: &'static str = "GPUExternalTexture";
+}
+
+// SAFETY: we're sure this can be GCed
+unsafe impl GarbageCollected for GPUExternalTexture {
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GPUExternalTexture"
+  }
+}
+
+#[op2]
+impl GPUExternalTexture {}

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "preinstall": "echo preinstall && node preinstall.js && node --require ./helper.js preinstall.js",
-    "install": "echo install && cli-esm 'hello from install script'",
+    "install": "echo install && cli-esm 'hello from install script' && node install.js",
     "postinstall": "echo postinstall && npx cowsay postinstall"
   },
   "exports": "./index.js",

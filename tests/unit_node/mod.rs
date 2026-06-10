@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -9,6 +9,7 @@ use file_test_runner::collection::CollectedTest;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::TestPerFileCollectionStrategy;
 use test_util as util;
+use test_util::test_runner::FlakyTestTracker;
 use test_util::test_runner::Parallelism;
 use test_util::test_runner::flaky_test_ci;
 use test_util::tests_path;
@@ -16,6 +17,20 @@ use util::deno_config_path;
 use util::env_vars_for_npm_tests;
 
 fn main() {
+  let ci_hash = test_util::hash::check_ci_hash("unit_node", |hasher| {
+    let tests = test_util::tests_path();
+    hasher
+      .hash_dir(tests.join("unit_node"))
+      .hash_dir(tests.join("util"))
+      .hash_dir(tests.join("testdata"))
+      .hash_dir(tests.join("registry"))
+      .hash_file(test_util::deno_exe_path())
+      .hash_file(test_util::test_server_path());
+  });
+  if matches!(ci_hash, test_util::hash::CiHashStatus::Skip) {
+    return;
+  }
+
   let category = collect_tests_or_exit(CollectOptions {
     base: tests_path().join("unit_node").to_path_buf(),
     strategy: Box::new(TestPerFileCollectionStrategy {
@@ -26,29 +41,50 @@ fn main() {
   if category.is_empty() {
     return;
   }
+  if test_util::test_runner::print_tests_if_list_flag(&category) {
+    return;
+  }
   let parallelism = Parallelism::default();
+  let flaky_test_tracker = Arc::new(FlakyTestTracker::default());
   let _g = util::http_server();
   // Run the crypto category tests separately without concurrency because they run in Deno with --parallel
   let (crypto_category, category) =
     category.partition(|test| test.name.contains("::crypto::"));
+  let reporter = test_util::test_runner::get_test_reporter(
+    "unit_node",
+    flaky_test_tracker.clone(),
+  );
   file_test_runner::run_tests(
     &category,
     RunOptions {
-      parallelism: parallelism.for_run_options(),
-      ..Default::default()
+      parallelism: parallelism.max_parallelism(),
+      reporter: reporter.clone(),
     },
-    move |test| {
-      flaky_test_ci(&test.name, Some(&parallelism), || run_test(test))
+    {
+      let flaky_test_tracker = flaky_test_tracker.clone();
+      move |test| {
+        flaky_test_ci(
+          &test.name,
+          &flaky_test_tracker,
+          Some(&parallelism),
+          || run_test(test),
+        )
+      }
     },
   );
   file_test_runner::run_tests(
     &crypto_category,
     RunOptions {
-      parallelism: Arc::new(file_test_runner::parallelism::Parallelism::none()),
-      ..Default::default()
+      parallelism: file_test_runner::Parallelism::from_usize(1),
+      reporter: reporter.clone(),
     },
-    move |test| flaky_test_ci(&test.name, None, || run_test(test)),
+    move |test| {
+      flaky_test_ci(&test.name, &flaky_test_tracker, None, || run_test(test))
+    },
   );
+  if let test_util::hash::CiHashStatus::RunThenCommit(pending) = ci_hash {
+    pending.commit();
+  }
 }
 
 fn run_test(test: &CollectedTest) -> TestResult {

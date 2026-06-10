@@ -1,10 +1,10 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use aws_lc_rs::signature::Ed25519KeyPair;
 use aws_lc_rs::signature::KeyPair;
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-use deno_core::ToJsBuffer;
+use deno_core::convert::Uint8Array;
 use deno_core::op2;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use rand::RngCore;
@@ -12,6 +12,8 @@ use rand::rngs::OsRng;
 use spki::der::Decode;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
+
+use crate::key_store::CryptoKeyHandle;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Ed25519Error {
@@ -44,10 +46,11 @@ pub fn op_crypto_generate_ed25519_keypair(
 
 #[op2(fast)]
 pub fn op_crypto_sign_ed25519(
-  #[buffer] key: &[u8],
+  #[cppgc] key: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] signature: &mut [u8],
 ) -> bool {
+  let key = key.data().bytes();
   let pair = match Ed25519KeyPair::from_seed_unchecked(key) {
     Ok(p) => p,
     Err(_) => return false,
@@ -58,10 +61,11 @@ pub fn op_crypto_sign_ed25519(
 
 #[op2(fast)]
 pub fn op_crypto_verify_ed25519(
-  #[buffer] pubkey: &[u8],
+  #[cppgc] pubkey: &CryptoKeyHandle,
   #[buffer] data: &[u8],
   #[buffer] signature: &[u8],
 ) -> bool {
+  let pubkey = pubkey.data().bytes();
   aws_lc_rs::signature::UnparsedPublicKey::new(
     &aws_lc_rs::signature::ED25519,
     pubkey,
@@ -127,10 +131,9 @@ pub fn op_crypto_import_pkcs8_ed25519(
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_spki_ed25519(
   #[buffer] pubkey: &[u8],
-) -> Result<ToJsBuffer, Ed25519Error> {
+) -> Result<Uint8Array, Ed25519Error> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifierOwned {
       // id-Ed25519
@@ -148,10 +151,9 @@ pub fn op_crypto_export_spki_ed25519(
 }
 
 #[op2]
-#[serde]
 pub fn op_crypto_export_pkcs8_ed25519(
   #[buffer] pkey: &[u8],
-) -> Result<ToJsBuffer, Ed25519Error> {
+) -> Result<Uint8Array, Ed25519Error> {
   use rsa::pkcs1::der::Encode;
 
   // This should probably use OneAsymmetricKey instead

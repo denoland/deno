@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::cmp;
 use std::collections::HashMap;
@@ -80,11 +80,9 @@ pub struct PerformanceScopeMark {
 
 impl Drop for PerformanceScopeMark {
   fn drop(&mut self) {
-    self
-      .performance
-      .0
-      .lock()
-      .measure(self.inner.take().unwrap());
+    if let Some(mark) = self.inner.take() {
+      self.performance.0.lock().measure(mark);
+    }
   }
 }
 

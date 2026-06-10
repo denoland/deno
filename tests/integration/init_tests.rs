@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util as util;
 use test_util::test;
@@ -17,21 +17,11 @@ fn init_subcommand_without_dir() {
   let stderr = output.stderr();
   assert_contains!(stderr, "Project initialized");
   assert!(!stderr.contains("cd"));
-  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno run --allow-net main.ts");
   assert_contains!(stderr, "deno task dev");
   assert_contains!(stderr, "deno test");
 
   assert!(cwd.join("deno.json").exists());
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("run main.ts")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-  assert_eq!(output.stdout().as_bytes(), b"Add 2 + 3 = 5\n");
 
   let output = context
     .new_command()
@@ -41,7 +31,7 @@ fn init_subcommand_without_dir() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stdout(), "1 passed");
+  assert_contains!(output.stdout(), "2 passed");
   output.skip_output_check();
 }
 
@@ -61,23 +51,11 @@ fn init_subcommand_with_dir_arg() {
   let stderr = output.stderr();
   assert_contains!(stderr, "Project initialized");
   assert_contains!(stderr, "cd my_dir");
-  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno run --allow-net main.ts");
   assert_contains!(stderr, "deno task dev");
   assert_contains!(stderr, "deno test");
 
   assert!(cwd.join("my_dir/deno.json").exists());
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("run my_dir/main.ts")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-
-  assert_eq!(output.stdout().as_bytes(), b"Add 2 + 3 = 5\n");
-  output.skip_output_check();
 
   let output = context
     .new_command()
@@ -88,7 +66,7 @@ fn init_subcommand_with_dir_arg() {
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stdout(), "1 passed");
+  assert_contains!(output.stdout(), "2 passed");
   output.skip_output_check();
 }
 
@@ -111,23 +89,12 @@ fn init_subcommand_with_quiet_arg() {
   let output = context
     .new_command()
     .env("NO_COLOR", "1")
-    .args("run main.ts")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-  assert_eq!(output.stdout().as_bytes(), b"Add 2 + 3 = 5\n");
-  output.skip_output_check();
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
     .args("test")
     .split_output()
     .run();
 
   output.assert_exit_code(0);
-  assert_contains!(output.stdout(), "1 passed");
+  assert_contains!(output.stdout(), "2 passed");
   output.skip_output_check();
 }
 
@@ -149,10 +116,10 @@ fn init_subcommand_with_existing_file() {
 
 Run these commands to get started
 
-  # Run the program
-  deno run main.ts
+  # Run the server
+  deno run --allow-net main.ts
 
-  # Run the program and watch for file changes
+  # Run the server and watch for file changes
   deno task dev
 
   # Run the tests
@@ -217,6 +184,7 @@ fn init_subcommand_empty() {
 }
 
 #[tokio::test]
+#[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
 async fn init_subcommand_serve() {
   let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
@@ -283,4 +251,76 @@ fn init_npm() {
       pty.expect("Initialized!");
       assert_eq!(cwd.join("3").read_to_string(), "test");
     });
+}
+
+#[test(flaky)]
+fn create_jsr() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  context
+    .new_command()
+    .args("create jsr:@denotest/create")
+    .with_pty(|mut pty| {
+      pty.expect("Do you want to continue?");
+      pty.write_raw("y\n");
+      pty.expect("Initialized from JSR!");
+      assert_eq!(
+        cwd.join("initialized.txt").read_to_string(),
+        "jsr-create-test"
+      );
+    });
+}
+
+#[test]
+fn create_jsr_with_yes_flag() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  let output = context
+    .new_command()
+    .args("create --yes jsr:@denotest/create")
+    .split_output()
+    .run();
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "Initialized from JSR!");
+  assert_eq!(
+    cwd.join("initialized.txt").read_to_string(),
+    "jsr-create-test"
+  );
+  output.skip_output_check();
+}
+
+#[test(flaky)]
+fn init_jsr() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  context
+    .new_command()
+    .args("init --jsr @denotest/create")
+    .with_pty(|mut pty| {
+      pty.expect("Do you want to continue?");
+      pty.write_raw("y\n");
+      pty.expect("Initialized from JSR!");
+      assert_eq!(
+        cwd.join("initialized.txt").read_to_string(),
+        "jsr-create-test"
+      );
+    });
+}
+
+#[test]
+fn init_jsr_with_yes_flag() {
+  let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+  let output = context
+    .new_command()
+    .args("init --jsr --yes @denotest/create")
+    .split_output()
+    .run();
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "Initialized from JSR!");
+  assert_eq!(
+    cwd.join("initialized.txt").read_to_string(),
+    "jsr-create-test"
+  );
+  output.skip_output_check();
 }

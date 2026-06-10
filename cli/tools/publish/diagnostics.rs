@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -253,7 +253,7 @@ impl Diagnostic for PublishDiagnostic {
       SyntaxError(diagnostic) => diagnostic.message(),
       MissingLicense { .. } => Cow::Borrowed("missing license field or file"),
       UnstableRawImport { .. } => {
-        Cow::Borrowed("raw imports have not been stabilized")
+        Cow::Borrowed("bytes imports have not been stabilized")
       }
     }
   }

@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::io::BufReader;
 use std::io::Cursor;
@@ -18,7 +18,6 @@ use serde_json::json;
 use test_util as util;
 use test_util::TempDir;
 use test_util::eprintln;
-use test_util::itest;
 use test_util::println;
 use test_util::test;
 use util::PathRef;
@@ -160,15 +159,6 @@ fn _083_legacy_external_source_map() {
   let out = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(out, "");
 }
-
-itest!(_089_run_allow_list {
-  args: "run --allow-run=curl run/089_run_allow_list.ts",
-  envs: vec![
-    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
-    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
-  ],
-  output: "run/089_run_allow_list.ts.out",
-});
 
 #[test(flaky)]
 fn _090_run_permissions_request() {
@@ -399,6 +389,23 @@ fn permissions_prompt_allow_all_lowercase_a() {
     });
 }
 
+// Regression test for https://github.com/denoland/deno/issues/34399
+// When stdin has been put into raw mode by user code (e.g. ts-node calling
+// `process.stdin.setRawMode(true)`), the prompt's line-buffered `read_line`
+// would hang because Enter delivers `\r` and ECHO is off. Verify we bail
+// out with a clear message and deny the permission instead.
+#[test(flaky)]
+fn permissions_prompt_raw_stdin() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_prompt_raw_stdin.ts"])
+    .with_pty(|mut console| {
+      console.expect("stdin is in raw mode");
+      console.expect("Run again with --allow-env");
+      console.expect("STATUS: denied");
+    });
+}
+
 #[test(flaky)]
 fn permission_request_long() {
   TestContext::default()
@@ -447,7 +454,7 @@ fn permissions_trace() {
       test_util::assertions::assert_wildcard_match(&text, concat!(
       "┏ ⚠️  Deno requests sys access to \"hostname\".\r\n",
       "┠─ Requested by `Deno.hostname()` API.\r\n",
-      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:43:10)\r\n",
+      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:[WILDLINE]:[WILDLINE])\r\n",
       "┃  ├─ foo (file://[WILDCARD]/run/permissions_trace.ts:2:8)\r\n",
       "┃  ├─ bar (file://[WILDCARD]/run/permissions_trace.ts:6:3)\r\n",
       "┃  └─ file://[WILDCARD]/run/permissions_trace.ts:9:1\r\n",
@@ -510,13 +517,6 @@ fn permissions_audit_with_traces() {
 "#,
   );
 }
-
-itest!(lock_write_fetch {
-  args: "run --quiet --allow-import --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
-  output: "run/lock_write_fetch/main.out",
-  http_server: true,
-  exit_code: 0,
-});
 
 #[test]
 fn lock_redirects() {
@@ -922,47 +922,6 @@ fn get_lockfile_npm_package_integrity(
     .to_string()
 }
 
-itest!(error_013_missing_script {
-  args: "run --reload missing_file_name",
-  exit_code: 1,
-  output: "run/error_013_missing_script.out",
-});
-
-// We have an allow-import flag but not allow-read, it should still result in error.
-itest!(error_016_dynamic_import_permissions2 {
-  args: "run --reload --allow-import run/error_016_dynamic_import_permissions2.js",
-  output: "run/error_016_dynamic_import_permissions2.out",
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(error_026_remote_import_error {
-  args: "run --allow-import run/error_026_remote_import_error.ts",
-  output: "run/error_026_remote_import_error.ts.out",
-  exit_code: 1,
-  http_server: true,
-});
-
-itest!(error_local_static_import_from_remote_ts {
-  args: "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.ts",
-  exit_code: 1,
-  http_server: true,
-  output: "run/error_local_static_import_from_remote.ts.out",
-});
-
-itest!(error_local_static_import_from_remote_js {
-  args: "run --allow-import --reload http://localhost:4545/run/error_local_static_import_from_remote.js",
-  exit_code: 1,
-  http_server: true,
-  output: "run/error_local_static_import_from_remote.js.out",
-});
-
-itest!(no_check_remote {
-  args: "run --allow-import --quiet --reload --no-check=remote run/no_check_remote.ts",
-  output: "run/no_check_remote.ts.enabled.out",
-  http_server: true,
-});
-
 #[test]
 fn type_directives_js_main() {
   let context = TestContext::default();
@@ -977,44 +936,6 @@ fn type_directives_js_main() {
     .run();
   assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }
-
-itest!(type_directives_redirect {
-  args: "run --allow-import --reload --check run/type_directives_redirect.ts",
-  output: "run/type_directives_redirect.ts.out",
-  http_server: true,
-});
-
-itest!(disallow_http_from_https_js {
-  args: "run --allow-import --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.js",
-  output: "run/disallow_http_from_https_js.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(disallow_http_from_https_ts {
-  args: "run --allow-import --quiet --reload --cert tls/RootCA.pem https://localhost:5545/run/disallow_http_from_https.ts",
-  output: "run/disallow_http_from_https_ts.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(jsx_import_source_import_map_scoped {
-  args: "run --allow-import --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsx-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
-  output: "run/jsx_import_source_import_map.out",
-  http_server: true,
-});
-
-itest!(jsx_import_source_import_map_scoped_dev {
-  args: "run --allow-import --reload --import-map jsx/import-map-scoped.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc subdir/jsx_import_source_no_pragma.tsx",
-  output: "run/jsx_import_source_import_map_dev.out",
-  http_server: true,
-});
-
-// FIXME(bartlomieju): disabled, because this test is very flaky on CI
-// itest!(local_sources_not_cached_in_memory {
-//   args: "run --allow-read --allow-write run/no_mem_cache.js",
-//   output: "run/no_mem_cache.js.out",
-// });
 
 #[test]
 fn no_validate_asm() {
@@ -1100,7 +1021,7 @@ console.log("executing javascript");
 
 #[cfg(windows)]
 // Clippy suggests to remove the `NoStd` prefix from all variants. I disagree.
-#[allow(clippy::enum_variant_names)]
+#[allow(clippy::enum_variant_names, reason = "NoStd prefix improves clarity")]
 enum WinProcConstraints {
   NoStdIn,
   NoStdOut,
@@ -1772,6 +1693,14 @@ mod permissions {
         console.expect("What is Windows EOL? ");
         console.write_line("windows");
         console.expect("Your answer is \"windows\"");
+        console.expect("Type some unicode: ");
+        console.write_line_raw("Hello! ążć 🦕");
+        console.expect("Your unicode answer is \"Hello! ążć 🦕\"");
+        // \u{ą} = 0xC4 0x85, \u{ż} = 0xC5 0xBC, \u{ć} = 0xC4 0x87,
+        // \u{1F995} = 0xF0 0x9F 0xA6 0x95 (🦕)
+        console.expect(
+          "bytes=72,101,108,108,111,33,32,196,133,197,188,196,135,32,240,159,166,149",
+        );
         console.expect("Hi [Enter] ");
         console.write_line("");
         console.expect("Alert [Enter] ");
@@ -2070,16 +1999,6 @@ fn running_declaration_files() {
       .assert_exit_code(0);
   }
 }
-
-#[cfg(not(target_os = "windows"))]
-itest!(spawn_kill_permissions {
-  args: "run --quiet --allow-run=cat spawn_kill_permissions.ts",
-  envs: vec![
-    ("LD_LIBRARY_PATH".to_string(), "".to_string()),
-    ("DYLD_FALLBACK_LIBRARY_PATH".to_string(), "".to_string())
-  ],
-  output_str: Some(""),
-});
 
 #[test]
 fn cache_test() {
@@ -2553,6 +2472,47 @@ fn fsfile_set_raw_should_not_panic_on_no_tty() {
   );
 }
 
+// Regression test for https://github.com/denoland/deno/issues/32803
+// After a Rust-side TTY sync write sets kLastWriteWasAsync=0, a JS Pipe
+// write must not cause ERR_MULTIPLE_CALLBACK. Needs a PTY so stdout is a
+// real TTY backed by the Rust LibUvStreamWrap.
+#[cfg(target_os = "macos")]
+#[test]
+fn pipe_write_no_double_callback_after_tty_write() {
+  let deno_exe = util::deno_exe_path();
+  let testdata = util::testdata_path();
+  let script = testdata.join("node/pipe_write_no_double_callback.mjs");
+  let output = Command::new("expect")
+    .arg("-c")
+    .arg(format!(
+      concat!(
+        "set timeout 30\n",
+        "spawn {} run --allow-all -q {}\n",
+        "expect eof\n",
+        "lassign [wait] pid spawnid os_error_flag value\n",
+        "exit $value\n",
+      ),
+      deno_exe.to_string().replace("{", "\\{").replace("}", "\\}"),
+      script.to_string().replace("{", "\\{").replace("}", "\\}"),
+    ))
+    .output()
+    .unwrap();
+  let combined = String::from_utf8_lossy(&output.stdout);
+  assert!(
+    !combined.contains("ERR_MULTIPLE_CALLBACK"),
+    "ERR_MULTIPLE_CALLBACK detected.\nstdout:\n{combined}"
+  );
+  assert!(
+    combined.contains("OK"),
+    "test did not print OK.\nstdout:\n{combined}"
+  );
+  assert!(
+    output.status.success(),
+    "test failed (exit={:?}).\nstdout:\n{combined}",
+    output.status.code()
+  );
+}
+
 #[test]
 fn timeout_clear() {
   // https://github.com/denoland/deno/issues/7599
@@ -2587,7 +2547,7 @@ console.log("finish");
 }
 
 #[test]
-fn broken_stdout() {
+fn stdout_early_read_drop() {
   let (reader, writer) = os_pipe::pipe().unwrap();
   // drop the reader to create a broken pipe
   drop(reader);
@@ -2603,10 +2563,9 @@ fn broken_stdout() {
     .wait_with_output()
     .unwrap();
 
-  assert!(!output.status.success());
+  assert!(output.status.success());
   let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap().trim();
-  assert!(stderr.contains("Uncaught (in promise) BrokenPipe"));
-  assert!(!stderr.contains("panic"));
+  assert_eq!(stderr, "", "{:?}", stderr);
 }
 
 #[test]
@@ -2633,6 +2592,29 @@ fn broken_stdout_repl() {
     assert_contains!(stderr, "Broken pipe (os error 32)");
   }
   assert_not_contains!(stderr, "panic");
+}
+
+// Regression test for https://github.com/denoland/deno/issues/16308 — when
+// `println!` panics on a broken stdout pipe (e.g. `deno | cls` on Windows),
+// the panic hook should exit cleanly instead of printing the bug-report banner.
+#[test]
+fn broken_stdout_no_panic_banner() {
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("info")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  let stderr = std::str::from_utf8(output.stderr.as_ref()).unwrap();
+  assert_not_contains!(stderr, "Deno has panicked");
+  assert_not_contains!(stderr, "panicked at");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2766,7 +2748,7 @@ async fn websocket_server_multi_field_connection_header() {
   assert!(child.wait().unwrap().success());
 }
 
-#[test(timeout = 60_000)]
+#[test(timeout = 300)]
 async fn websocket_server_idletimeout() {
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
@@ -2777,7 +2759,7 @@ async fn websocket_server_idletimeout() {
     .arg("--cert")
     .arg(root_ca)
     .arg("--config")
-    .arg("./config/deno.json")
+    .arg(util::tests_path().join("config/deno.json"))
     .arg(script)
     .stdout_piped()
     .spawn()
@@ -2938,18 +2920,6 @@ fn permission_prompt_escapes_ansi_codes_and_control_chars() {
       });
   }
 }
-
-itest!(extension_import {
-  args: "run run/extension_import.ts",
-  output: "run/extension_import.ts.out",
-  exit_code: 1,
-});
-
-itest!(extension_dynamic_import {
-  args: "run run/extension_dynamic_import.ts",
-  output: "run/extension_dynamic_import.ts.out",
-  exit_code: 1,
-});
 
 #[test]
 pub fn vendor_dir_config_file() {
@@ -3364,6 +3334,17 @@ fn node_process_stdin_unref_with_pty() {
 }
 
 #[test]
+fn stdin_readable_cancel_with_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/stdin_readable_cancel.ts"])
+    .with_pty(|mut console| {
+      console.expect("CANCELLED");
+      console.expect("DONE");
+    });
+}
+
+#[test]
 async fn listen_tls_alpn() {
   let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
@@ -3521,7 +3502,7 @@ fn handle_invalid_path_error() {
 fn test_permission_broker_doesnt_exit() {
   let context = TestContext::default();
   let socket_path = if cfg!(windows) {
-    PathRef::new(r"\\.\pipe\deno-permission-broker")
+    PathRef::new(r"\\.\pipe\deno-permission-broker-nonexistent")
   } else {
     context.temp_dir().path().join("broker.sock")
   };
@@ -3601,4 +3582,181 @@ fn test_permission_broker() {
 {"v":1,"pid":[WILDCARD],"id":5,"datetime":"[WILDCARD]","permission":"env","value":null}
 [WILDCARD]"#,
   );
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32473
+// Verifies that process.stdout.write() and console.log() produce output
+// in the correct order when stdout is a TTY (uses PTY).
+#[test]
+fn process_stdout_write_order_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_write_order.ts"])
+    .with_pty(|mut console| {
+      console.expect("A");
+      console.expect("B");
+      console.expect("C");
+      console.expect("D");
+      console.expect("E");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32513
+// Verifies that process.stdout survives destroy() calls (e.g. from mute-stream).
+#[test]
+fn process_stdout_destroy_undestroy_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/process_stdout_destroy_undestroy.ts"])
+    .with_pty(|mut console| {
+      console.expect("before");
+      console.expect("after");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work (e.g. @inquirer/prompts).
+#[test]
+fn readline_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/17047.
+// Verifies that permission prompts wait for an active user-space stdin prompt
+// instead of racing it and consuming the user's answer.
+#[test]
+fn readline_permission_prompt_interleaving_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_permission_prompt_interleaving.ts"])
+    .with_pty(|mut console| {
+      console.expect("Project?");
+      console.write_line("demo");
+      console.expect("ANSWER:demo");
+      console.expect("Deno requests read access to");
+      console.expect("Allow?");
+      console.human_delay();
+      console.write_line_raw("n");
+      console.expect("Denied read access to");
+      console.expect("READ_ERROR:NotCapable");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32997
+// Verifies that toggling raw mode between consecutive prompts (like
+// vite create, @clack/prompts) properly restores console mode so
+// stdin continues to work for subsequent prompts.
+#[test]
+fn tty_raw_mode_toggle_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_toggle.ts"])
+    .with_pty(|mut console| {
+      console.expect("Step1?");
+      console.write_line("a");
+      console.expect("Got1: a");
+      console.expect("Step2?");
+      console.write_line("b");
+      console.expect("Got2: b");
+      console.expect("Step3?");
+      console.write_line("c");
+      console.expect("Got3: c");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32996
+// Verifies that Unicode characters are correctly written through TTY
+// output (WriteConsoleW), regardless of console code page.
+#[test]
+fn tty_unicode_output_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_unicode_output.ts"])
+    .with_pty(|mut console| {
+      console.expect("┌─────────────┐");
+      console.expect("│ Hello World │");
+      console.expect("└─────────────┘");
+      console.expect("café résumé naïve");
+      console.expect("OK");
+    });
+}
+
+// Tests that line-mode TTY reading works correctly with the threaded
+// ReadConsoleW approach (matching libuv's uv_tty_line_read_thread).
+// Exercises consecutive line-mode prompts without raw mode.
+#[test]
+fn tty_line_mode_read_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_line_mode_read.ts"])
+    .with_pty(|mut console| {
+      console.expect("Name?");
+      console.write_line("Alice");
+      console.expect("Hello, Alice");
+      console.expect("Color?");
+      console.write_line("blue");
+      console.expect("You like blue");
+    });
+}
+
+// Tests that arrow keys in raw mode are correctly mapped to VT100
+// escape sequences via ReadConsoleInputW + get_vt100_fn_key.
+#[test]
+fn tty_raw_mode_arrow_keys_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_raw_mode_arrow_keys.ts"])
+    .with_pty(|mut console| {
+      console.write_raw("\x1b[A"); // Up arrow
+      console.expect("UP");
+      console.write_raw("\x1b[B"); // Down arrow
+      console.expect("DOWN");
+      console.write_raw("\x1b[C"); // Right arrow
+      console.expect("RIGHT");
+      console.write_raw("\x1b[D"); // Left arrow
+      console.expect("LEFT");
+    });
+}
+
+// Tests that Ctrl+C (0x03) is delivered as data in raw mode.
+// Without proper INPUT_RECORD processing via ReadConsoleInputW,
+// the event loop would block and Ctrl+C data would never arrive.
+#[test]
+fn tty_ctrl_c_raw_mode_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/tty_ctrl_c_raw_mode.ts"])
+    .with_pty(|mut console| {
+      console.expect("READY");
+      console.write_raw("\x03"); // Ctrl+C
+      console.expect("GOT_CTRL_C");
+    });
+}
+
+// Regression test for https://github.com/denoland/deno/issues/32782
+// Verifies that consecutive readline prompts work when output is a
+// PassThrough/MuteStream piped to process.stdout (like @inquirer/prompts).
+#[test]
+fn readline_muted_multi_prompt_pty() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "run/readline_muted_multi_prompt.ts"])
+    .with_pty(|mut console| {
+      console.expect("Q1?");
+      console.write_line("hello");
+      console.expect("A1: hello");
+      console.expect("Q2?");
+      console.write_line("world");
+      console.expect("A2: world");
+    });
 }

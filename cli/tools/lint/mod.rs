@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2026 the Deno authors. MIT license.
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
@@ -145,7 +145,11 @@ async fn lint_with_watch_inner(
   let mut paths_with_options_batches =
     resolve_paths_with_options_batches(cli_options, &lint_flags)?;
   for paths_with_options in &mut paths_with_options_batches {
-    _ = watcher_communicator.watch_paths(paths_with_options.paths.clone());
+    _ = watcher_communicator.watch_paths(
+      file_watcher::watch_paths_for_file_patterns(
+        &paths_with_options.options.files,
+      ),
+    );
 
     let files = std::mem::take(&mut paths_with_options.paths);
     paths_with_options.paths = if let Some(paths) = &changed_paths {
@@ -315,8 +319,8 @@ impl WorkspaceLinter {
       )));
     }
 
-    #[allow(clippy::print_stdout)]
-    #[allow(clippy::print_stderr)]
+    #[allow(clippy::print_stdout, reason = "actually want to output")]
+    #[allow(clippy::print_stderr, reason = "actually want to output")]
     fn logger_printer(msg: &str, is_err: bool) {
       if is_err {
         eprint!("{}", msg);
@@ -507,7 +511,7 @@ fn collect_lint_files(
   .collect_file_patterns(&CliSys::default(), &files)
 }
 
-#[allow(clippy::print_stdout)]
+#[allow(clippy::print_stdout, reason = "print method")]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None);
   let mut all_rules = rule_provider.all_rules();
