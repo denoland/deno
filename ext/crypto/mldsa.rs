@@ -11,8 +11,6 @@ use aws_lc_rs::unstable::signature::ML_DSA_87_SIGNING;
 use aws_lc_rs::unstable::signature::PqdsaKeyPair;
 use aws_lc_rs::unstable::signature::PqdsaSigningAlgorithm;
 use aws_lc_rs::unstable::signature::PqdsaVerificationAlgorithm;
-use deno_core::ToJsBuffer;
-use serde::Serialize;
 use spki::der::Encode;
 use spki::der::asn1::BitString;
 

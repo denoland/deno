@@ -22,7 +22,6 @@ use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use ctr::cipher::StreamCipher;
 use rsa::pkcs1::DecodeRsaPrivateKey;
-use serde::Deserialize;
 use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;

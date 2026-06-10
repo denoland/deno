@@ -23,7 +23,6 @@ use ctr::Ctr64BE;
 use ctr::Ctr128BE;
 use rand::rngs::OsRng;
 use rsa::pkcs1::DecodeRsaPublicKey;
-use serde::Deserialize;
 use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
