@@ -855,6 +855,35 @@ Deno.test({
 });
 
 Deno.test({
+  name: "worker main-thread receives a burst of messages (sync drain)",
+  fn: async function () {
+    // Regression test for the Web `Worker` main-side receive loop's bounded
+    // sync-drain: a worker that synchronously posts many messages in one turn
+    // must have all of them delivered to the host, in order, with no drops.
+    const worker = new Worker(
+      resolveWorker("message_burst.ts"),
+      { type: "module" },
+    );
+    const count = 500;
+    const received: number[] = [];
+    const { promise, resolve } = Promise.withResolvers<void>();
+    worker.onmessage = (e) => {
+      received.push(e.data);
+      // No transferables, so `ports` must be the cheap empty frozen array.
+      assertEquals(e.ports.length, 0);
+      if (received.length === count) resolve();
+    };
+    worker.postMessage(count);
+    await promise;
+    assertEquals(received.length, count);
+    for (let i = 0; i < count; i++) {
+      assertEquals(received[i], i);
+    }
+    worker.terminate();
+  },
+});
+
+Deno.test({
   name: "worker Deno.memoryUsage",
   fn: async function () {
     const w = new Worker(
