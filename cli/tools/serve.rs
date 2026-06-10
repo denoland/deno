@@ -160,8 +160,7 @@ async fn run_worker(
     )
     .await?;
   if hmr {
-    worker.run_for_watcher().await?;
-    Ok(0)
+    worker.run_for_watcher().await.map_err(Into::into)
   } else {
     worker.run().await.map_err(Into::into)
   }
@@ -204,7 +203,7 @@ async fn serve_with_watch(
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        do_serve(
+        let exit_code = do_serve(
           worker_factory,
           main_module.clone(),
           parallelism_count,
@@ -213,7 +212,7 @@ async fn serve_with_watch(
         )
         .await?;
 
-        Ok(())
+        Ok(exit_code)
       })
     },
   )

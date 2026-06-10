@@ -1548,6 +1548,84 @@ async fn test_watch_doc() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/24558:
+// `deno test --doc --watch` panicked with a parse error on Markdown files
+// because the watcher passed them to the module graph builder as roots.
+#[test(flaky)]
+async fn test_watch_doc_markdown() {
+  let t = TempDir::new();
+
+  let readme = t.path().join("README.md");
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+console.log("Hello world");
+```
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("test")
+    .arg("--config")
+    .arg(util::deno_config_path())
+    .arg("--watch")
+    .arg("--doc")
+    .arg(t.path())
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  // Edit the markdown file to introduce a failing assertion in its doc test.
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+assertEquals(1, 2);
+```
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("FAILED | 0 passed | 1 failed", &mut stdout_lines).await;
+  wait_contains("Test failed", &mut stderr_lines).await;
+
+  // Fix it again.
+  readme.write(
+    r#"# demo
+
+## Example
+
+```ts
+import { assertEquals } from "@std/assert/equals";
+
+assertEquals(1, 1);
+```
+"#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("running 1 test from", &mut stdout_lines).await;
+  wait_contains("ok | 1 passed | 0 failed", &mut stdout_lines).await;
+  wait_contains("Test finished", &mut stderr_lines).await;
+
+  check_alive_then_kill(child);
+}
+
 #[test(flaky)]
 async fn test_watch_module_graph_error_referrer() {
   let t = TempDir::new();
@@ -1826,6 +1904,188 @@ async fn run_watch_process_exit_on_restart() {
   // The process exit handler should fire before the process restarts
   wait_contains("process exit fired", &mut stdout_lines).await;
   wait_contains("Restarting", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Wait, in either order, for the watcher to both report the requested exit
+/// code and start watching `file_name`.
+///
+/// The "Process finished with exit code N" line (printed by the watcher when
+/// the run ends) and the "Watching paths" line (emitted asynchronously by the
+/// watcher thread) race on stderr, so a fixed-order wait is flaky. Waiting for
+/// both before touching files ensures the exit code was surfaced and the
+/// watcher is ready, so a subsequent edit is not missed.
+async fn wait_for_exit_code_and_watcher<R>(
+  exit_code: i32,
+  file_name: &str,
+  stderr_lines: &mut LoggingLines<R>,
+) where
+  R: tokio::io::AsyncBufRead + Unpin,
+{
+  let finished = format!("Process finished with exit code {exit_code}");
+  let saw_finished = std::cell::Cell::new(false);
+  let saw_watching = std::cell::Cell::new(false);
+  let result = tokio::time::timeout(
+    tokio::time::Duration::from_secs(60),
+    wait_for(
+      |line| {
+        if line.contains(finished.as_str()) {
+          saw_finished.set(true);
+        }
+        if line.contains("Watching paths") && line.contains(file_name) {
+          saw_watching.set(true);
+        }
+        saw_finished.get() && saw_watching.get()
+      },
+      stderr_lines,
+    ),
+  )
+  .await;
+  match result {
+    Ok(Some(_)) => {}
+    Ok(None) => panic!(
+      "output ended before the watcher reported exit code {exit_code} and started watching \"{file_name}\""
+    ),
+    Err(_) => panic!(
+      "watcher did not report exit code {exit_code} and start watching \"{file_name}\" within 60 seconds"
+    ),
+  }
+}
+
+/// Shared body for the `Deno.exit()` / `process.exit()` under-watch tests: the
+/// exit call ends the current run with the requested code, the `unload` event
+/// still fires, code after the exit call does not run, and the watcher stays
+/// alive and restarts on the next file change.
+/// See https://github.com/denoland/deno/issues/7590.
+async fn run_watch_exit_keeps_watcher_alive(watch_flag: &str, exit_call: &str) {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(format!(
+    r#"
+      import process from "node:process";
+      globalThis.addEventListener("unload", () => {{
+        console.log("unload event fired");
+      }});
+      console.log("started");
+      {exit_call};
+      console.log("not reached");
+    "#
+  ));
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg(watch_flag)
+    .arg("-L")
+    .arg("debug")
+    .arg("--allow-all")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("started", &mut stdout_lines).await;
+  // The exit call still dispatches the `unload` event, and code after it does
+  // not run.
+  wait_contains("unload event fired", &mut stdout_lines).await;
+  // The watcher must survive the exit instead of terminating the process, and
+  // the requested exit code is surfaced in the finished message.
+  wait_for_exit_code_and_watcher(42, "file_to_watch.js", &mut stderr_lines)
+    .await;
+
+  // Editing the file restarts the run, proving the watcher is still alive.
+  file_to_watch.write("console.log('restarted');");
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_contains("restarted", &mut stdout_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// Test that a script calling `Deno.exit()` under `--watch` ends the current
+/// run without killing the watcher, which keeps watching and restarts the
+/// script on the next file change. See https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn run_watch_deno_exit() {
+  run_watch_exit_keeps_watcher_alive("--watch", "Deno.exit(42)").await;
+}
+
+/// Like [`run_watch_deno_exit`], but using `process.exit()` from `node:process`,
+/// which routes through the same `op_exit` chokepoint.
+#[test(flaky)]
+async fn run_watch_process_exit() {
+  run_watch_exit_keeps_watcher_alive("--watch", "process.exit(42)").await;
+}
+
+/// Like [`run_watch_deno_exit`], but for HMR mode (`--watch-hmr`), which runs
+/// through `worker.run()` rather than `run_for_watcher`. A script calling
+/// `Deno.exit()` must still keep the watcher alive. See
+/// https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn run_watch_hmr_deno_exit() {
+  run_watch_exit_keeps_watcher_alive("--watch-hmr", "Deno.exit(42)").await;
+}
+
+/// Test that a served module calling `Deno.exit()` under `deno serve --watch`
+/// ends the current run without killing the watcher, which keeps watching and
+/// restarts on the next file change. `deno serve --watch` shares the same exit
+/// handling as `deno run --watch`. See https://github.com/denoland/deno/issues/7590.
+#[test(flaky)]
+async fn serve_watch_deno_exit() {
+  let t = TempDir::new();
+  let main_file_to_watch = t.path().join("main_file_to_watch.js");
+  main_file_to_watch.write(
+    r#"
+      console.log("started");
+      Deno.exit(42);
+      export default {
+        fetch(_request) {
+          return new Response("not reached");
+        },
+      };
+    "#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--watch")
+    .arg("-L")
+    .arg("debug")
+    .arg(&main_file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("started", &mut stdout_lines).await;
+  // The watcher must survive `Deno.exit()` instead of terminating the process,
+  // and the requested exit code is surfaced in the finished message.
+  wait_for_exit_code_and_watcher(
+    42,
+    "main_file_to_watch.js",
+    &mut stderr_lines,
+  )
+  .await;
+
+  // Editing the file restarts the run with a working server, proving the
+  // watcher is still alive.
+  main_file_to_watch.write(
+    r#"
+      export default {
+        fetch(_request) {
+          return new Response("ok");
+        },
+      };
+    "#,
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  wait_for_watcher("main_file_to_watch.js", &mut stderr_lines).await;
   check_alive_then_kill(child);
 }
 

@@ -242,16 +242,24 @@ pub fn op_net_listen_unix(
 
 pub fn net_listen_unixpacket(
   state: &mut OpState,
-  address_path: &str,
+  address_path: Option<&str>,
 ) -> Result<(ResourceId, Option<String>), NetError> {
-  let permissions = state.borrow_mut::<PermissionsContainer>();
-  let address_path = check_unix_socket_path(
-    permissions,
-    Cow::Borrowed(Path::new(address_path)),
-    OpenAccessKind::ReadWriteNoFollow,
-    Some("Deno.listenDatagram()"),
-  )?;
-  let socket = bind_unix_datagram(address_path.as_ref())?;
+  let socket = match address_path {
+    // Bind to the given path
+    Some(address_path) => {
+      let permissions = state.borrow_mut::<PermissionsContainer>();
+      let address_path = check_unix_socket_path(
+        permissions,
+        Cow::Borrowed(Path::new(address_path)),
+        OpenAccessKind::ReadWriteNoFollow,
+        Some("Deno.listenDatagram()"),
+      )?;
+      bind_unix_datagram(address_path.as_ref())?
+    }
+
+    // Leave the socket unbound: it can send messages, but not receive them
+    None => UnixDatagram::unbound()?,
+  };
   let local_addr = socket.local_addr()?;
   let pathname = unix_socket_addr_path(&local_addr)?;
   let datagram_resource = UnixDatagramResource {
@@ -265,18 +273,18 @@ pub fn net_listen_unixpacket(
 #[op2(stack_trace)]
 pub fn op_net_listen_unixpacket(
   state: &mut OpState,
-  #[string] path: &str,
+  #[string] path: Option<String>, // todo: Option<&str> not supported in ops yet
 ) -> Result<(ResourceId, Option<String>), NetError> {
   super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_unixpacket(state, path)
+  net_listen_unixpacket(state, path.as_deref())
 }
 
 #[op2(stack_trace)]
 pub fn op_node_unstable_net_listen_unixpacket(
   state: &mut OpState,
-  #[string] path: &str,
+  #[string] path: Option<String>, // todo: Option<&str> not supported in ops yet
 ) -> Result<(ResourceId, Option<String>), NetError> {
-  net_listen_unixpacket(state, path)
+  net_listen_unixpacket(state, path.as_deref())
 }
 
 pub fn pathstring(pathname: &Path) -> Result<String, NetError> {

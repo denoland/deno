@@ -46,7 +46,6 @@ use deno_lib::worker::StorageKeyResolver;
 use deno_npm::NpmSystemInfo;
 use deno_npm_installer::LifecycleScriptsConfig;
 use deno_npm_installer::graph::NpmCachingStrategy;
-use deno_path_util::resolve_url_or_path;
 use deno_resolver::factory::resolve_jsr_url;
 use deno_runtime::deno_node::ops::ipc::ChildIpcSerialization;
 use deno_runtime::deno_permissions::AllowRunDescriptor;
@@ -62,6 +61,7 @@ use thiserror::Error;
 
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path;
+use crate::util::path::resolve_url_or_path_normalized;
 
 pub type CliLockfile = deno_resolver::lockfile::LockfileLock<CliSys>;
 
@@ -764,7 +764,7 @@ impl CliOptions {
     let mut modules = Vec::with_capacity(self.flags.preload.len());
     for preload_specifier in self.flags.preload.iter() {
       let default_resolve = || {
-        resolve_url_or_path(preload_specifier, self.initial_cwd())
+        resolve_url_or_path_normalized(preload_specifier, self.initial_cwd())
           .map_err(|e| e.into())
       };
       modules.push(self.resolve_main_module_with_resolver_if_bare(
@@ -784,7 +784,10 @@ impl CliOptions {
 
     let mut require = Vec::with_capacity(self.flags.require.len());
     for require_specifier in self.flags.require.iter() {
-      require.push(resolve_url_or_path(require_specifier, self.initial_cwd())?);
+      require.push(resolve_url_or_path_normalized(
+        require_specifier,
+        self.initial_cwd(),
+      )?);
     }
 
     Ok(require)
@@ -819,7 +822,10 @@ impl CliOptions {
       .get_or_init(|| {
         Ok(match &self.flags.subcommand {
           DenoSubcommand::Compile(compile_flags) => {
-            resolve_url_or_path(&compile_flags.source_file, self.initial_cwd())?
+            resolve_url_or_path_normalized(
+              &compile_flags.source_file,
+              self.initial_cwd(),
+            )?
           }
           DenoSubcommand::Eval(_) => {
             let specifier = format!(
@@ -841,8 +847,10 @@ impl CliOptions {
               deno_path_util::resolve_path(&specifier, self.initial_cwd())?
             } else {
               let default_resolve = || {
-                let url =
-                  resolve_url_or_path(&run_flags.script, self.initial_cwd())?;
+                let url = resolve_url_or_path_normalized(
+                  &run_flags.script,
+                  self.initial_cwd(),
+                )?;
                 if self.is_node_main()
                   && url.scheme() == "file"
                   && MediaType::from_specifier(&url) == MediaType::Unknown
@@ -870,8 +878,11 @@ impl CliOptions {
               &run_flags.script,
               resolver,
               || {
-                resolve_url_or_path(&run_flags.script, self.initial_cwd())
-                  .map_err(|e| e.into())
+                resolve_url_or_path_normalized(
+                  &run_flags.script,
+                  self.initial_cwd(),
+                )
+                .map_err(|e| e.into())
               },
             )?,
           _ => {

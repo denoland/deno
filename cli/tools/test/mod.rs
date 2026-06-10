@@ -80,6 +80,7 @@ use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::CollectSpecifiersOptions;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_script_ext;
@@ -1709,15 +1710,18 @@ pub async fn report_tests(
     );
   }
 
+  // A genuine test failure takes precedence over the `only` notice: if a test
+  // failed on its own, reporting that it failed "because the \"only\" option
+  // was used" is misleading.
+  if failed {
+    return (Err(anyhow!("Test failed")), receiver);
+  }
+
   if used_only {
     return (
       Err(anyhow!("Test failed because the \"only\" option was used",)),
       receiver,
     );
-  }
-
-  if failed {
-    return (Err(anyhow!("Test failed")), receiver);
   }
 
   (Ok(()), receiver)
@@ -2096,11 +2100,23 @@ pub async fn run_tests_with_watch(
           .flatten()
           .collect::<Vec<_>>();
 
+        // Markdown (and other non-script) doc-test files cannot be parsed
+        // by the module graph, so split them out and track reloads for
+        // them by path instead of by graph dependency. With `--doc`, the
+        // collector accepts extensions like `.md` that `is_script_ext`
+        // rejects.
+        let (graph_modules, doc_only_modules): (Vec<_>, Vec<_>) =
+          test_modules.into_iter().partition(|specifier| {
+            deno_path_util::url_to_file_path(specifier)
+              .map(|p| is_script_ext(&p))
+              .unwrap_or(true)
+          });
+
         let graph = module_graph_creator
-          .create_graph(graph_kind, test_modules, NpmCachingStrategy::Eager)
+          .create_graph(graph_kind, graph_modules, NpmCachingStrategy::Eager)
           .await?;
         module_graph_creator.graph_valid(&graph)?;
-        let test_modules = &graph.roots;
+        let graph_modules = graph.roots.clone();
 
         let test_modules_to_reload = if let Some(changed_paths) = changed_paths
         {
@@ -2111,10 +2127,15 @@ pub async fn run_tests_with_watch(
             .possible_env_file_paths_for_watch()
             .any(|path| changed_paths.contains(&path));
           if env_file_changed {
-            test_modules.clone()
+            graph_modules
+              .into_iter()
+              .chain(doc_only_modules)
+              .collect::<IndexSet<_>>()
           } else {
-            let mut result = IndexSet::with_capacity(test_modules.len());
-            for test_module_specifier in test_modules {
+            let mut result = IndexSet::with_capacity(
+              graph_modules.len() + doc_only_modules.len(),
+            );
+            for test_module_specifier in &graph_modules {
               if has_graph_root_local_dependent_changed(
                 &graph,
                 test_module_specifier,
@@ -2123,10 +2144,21 @@ pub async fn run_tests_with_watch(
                 result.insert(test_module_specifier.clone());
               }
             }
+            for specifier in &doc_only_modules {
+              if let Ok(path) = deno_path_util::url_to_file_path(specifier)
+                && let Ok(path) = canonicalize_path(&path)
+                && changed_paths.contains(&path)
+              {
+                result.insert(specifier.clone());
+              }
+            }
             result
           }
         } else {
-          test_modules.clone()
+          graph_modules
+            .into_iter()
+            .chain(doc_only_modules)
+            .collect::<IndexSet<_>>()
         };
 
         let specifiers_with_mode = fetch_specifiers_with_test_mode(
