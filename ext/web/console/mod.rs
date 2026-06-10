@@ -1216,7 +1216,8 @@ impl Console {
     #[string] label: String,
   ) {
     let mut map = self.count_map.borrow_mut();
-    if let std::collections::hash_map::Entry::Occupied(mut e) = map.entry(label) {
+    if let std::collections::hash_map::Entry::Occupied(mut e) = map.entry(label)
+    {
       e.insert(0);
       return;
     }
@@ -1594,10 +1595,7 @@ impl Console {
               obj.has(tc, key_v8.into()).unwrap_or(false)
             };
             if has {
-              let column = match object_values
-                .iter_mut()
-                .find(|(n, _)| n == rk)
-              {
+              let column = match object_values.iter_mut().find(|(n, _)| n == rk) {
                 Some((_, rows)) => rows,
                 None => {
                   object_values
