@@ -420,10 +420,10 @@ class Resolver {
   }
 }
 
-let defaultResolver = new Resolver();
+let defaultResolver: Resolver | undefined;
 
 function getDefaultResolver(): Resolver {
-  return defaultResolver;
+  return defaultResolver ??= new Resolver();
 }
 
 function setDefaultResolver<T extends Resolver>(resolver: T) {

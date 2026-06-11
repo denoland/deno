@@ -63,6 +63,7 @@ const {
   GetAddrInfoReqWrap,
   GetNameInfoReqWrap,
   QueryReqWrap,
+  ChannelWrap: NativeChannelWrap,
 } = core.ops;
 const { isIPv4, isIPv6 } = core.loadExtScript(
   "ext:deno_node/internal/net.ts",
@@ -70,10 +71,6 @@ const { isIPv4, isIPv6 } = core.loadExtScript(
 const { codeMap } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
-const {
-  AsyncWrap,
-  providerType,
-} = core.loadExtScript("ext:deno_node/internal_binding/async_wrap.ts");
 const { ares_strerror } = core.loadExtScript(
   "ext:deno_node/internal_binding/ares.ts",
 );
@@ -283,7 +280,7 @@ function getSystemDnsServers(): [string, number][] {
   return systemDnsServers;
 }
 
-class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
+class ChannelWrap extends NativeChannelWrap implements ChannelWrapQuery {
   #servers: [string, number][] | null = null;
   #timeout: number;
   #tries: number;
@@ -292,7 +289,7 @@ class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   #cancelRids: Set<number> = new SafeSet();
 
   constructor(timeout: number, tries: number, maxTimeout: number) {
-    super(providerType.DNSCHANNEL);
+    super();
 
     this.#timeout = timeout;
     this.#tries = tries;

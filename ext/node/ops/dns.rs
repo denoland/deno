@@ -100,6 +100,32 @@ impl QueryReqWrap {
   }
 }
 
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct ChannelWrap {
+  base: AsyncWrap,
+}
+
+unsafe impl GarbageCollected for ChannelWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"ChannelWrap"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl ChannelWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> ChannelWrap {
+    ChannelWrap {
+      base: AsyncWrap::create(state, ProviderType::DnsChannel as i32),
+    }
+  }
+}
+
 #[derive(Debug, thiserror::Error, JsError)]
 pub enum DnsError {
   #[class(type)]
