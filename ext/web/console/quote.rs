@@ -3,7 +3,7 @@
 //! String quoting/escaping ported from `01_console.js`
 //! (`quoteString`, `replaceEscapeSequences`, `maybeQuoteSymbol`, `meta`).
 
-/// Escaped control characters (plus the single quote and the backslash) —
+/// Escaped control characters (plus the single quote and the backslash) --
 /// the `meta` table from 01_console.js, used to escape symbol descriptions
 /// and property keys.
 fn meta_escape(c: char) -> Option<&'static str> {

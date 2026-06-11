@@ -445,7 +445,7 @@ fn css_color_equals(a: &Option<CssColor>, b: &Option<CssColor>) -> bool {
     // None vs Some(...) is never equal unless the string indexes are
     // undefined, which can't happen for non-empty strings.
     (Some(CssColor::Raw(s)), None) | (None, Some(CssColor::Raw(s))) => {
-      // JS: `color?.[0] == undefined` etc. — true only for empty string.
+      // JS: `color?.[0] == undefined` etc. -- true only for empty string.
       s.is_empty()
     }
     (Some(CssColor::Rgb(_)), None) | (None, Some(CssColor::Rgb(_))) => false,

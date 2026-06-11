@@ -172,7 +172,7 @@ fn improve_stack(
     }
     let prefix_full = get_prefix(constructor, tag, &fallback, "");
     let prefix = &prefix_full[..prefix_full.len().saturating_sub(1)];
-    // JS: `if (name !== prefix)` — a non-string name never equals a string.
+    // JS: `if (name !== prefix)` -- a non-string name never equals a string.
     if name.display != prefix || !name.is_string {
       if prefix.contains(&name.display) {
         if len == Some(0) {

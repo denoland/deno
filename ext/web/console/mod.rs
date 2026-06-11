@@ -242,6 +242,24 @@ fn opt_num<'s>(
   try_get_str(scope, obj, key).filter(|v| !v.is_undefined())
 }
 
+/// `ToNumber(v)` guarded by a `TryCatch`. Option values can be objects with a
+/// user `valueOf`; an unguarded `number_value` leaves the thrown exception
+/// pending on the isolate while formatting keeps making V8 calls (DCHECK in
+/// debug, resurfaces at an arbitrary point in release). Catch and clear it,
+/// returning NaN, so the rest of option parsing runs on a clean isolate.
+fn coerce_number<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  v: v8::Local<'s, v8::Value>,
+) -> f64 {
+  v8::tc_scope!(tc, scope);
+  let n = v.number_value(tc).unwrap_or(f64::NAN);
+  if tc.has_caught() {
+    tc.reset();
+    return f64::NAN;
+  }
+  n
+}
+
 /// `null` maps to Infinity for maxArrayLength/maxStringLength.
 fn read_limit<'s>(
   scope: &mut v8::PinScope<'s, '_>,
@@ -250,7 +268,7 @@ fn read_limit<'s>(
   if v.is_null() {
     f64::INFINITY
   } else {
-    v.number_value(scope).unwrap_or(f64::NAN)
+    coerce_number(scope, v)
   }
 }
 
@@ -299,7 +317,7 @@ fn apply_options<'s>(
         ctx.depth = if v.is_null() || v.is_undefined() {
           None
         } else {
-          Some(v.number_value(scope).unwrap_or(f64::NAN))
+          Some(coerce_number(scope, v))
         };
       }
       "colors" => ctx.colors = v.boolean_value(scope),
@@ -308,7 +326,7 @@ fn apply_options<'s>(
       "maxArrayLength" => ctx.max_array_length = read_limit(scope, v),
       "maxStringLength" => ctx.max_string_length = read_limit(scope, v),
       "breakLength" => {
-        ctx.break_length = v.number_value(scope).unwrap_or(f64::NAN);
+        ctx.break_length = coerce_number(scope, v);
       }
       "escapeSequences" => ctx.escape_sequences = v.boolean_value(scope),
       "compact" => {
@@ -352,19 +370,17 @@ fn apply_options<'s>(
         }
       }
       "iterableLimit" => {
-        ctx.iterable_limit = v.number_value(scope).unwrap_or(f64::NAN);
+        ctx.iterable_limit = coerce_number(scope, v);
       }
       "trailingComma" => ctx.trailing_comma = v.boolean_value(scope),
       "indentLevel" => {
-        ctx.indent_level = v.number_value(scope).unwrap_or(0.0);
+        ctx.indent_level = coerce_number(scope, v);
       }
       "strAbbreviateSize" => {
-        ctx.str_abbreviate_size =
-          Some(v.number_value(scope).unwrap_or(f64::NAN));
+        ctx.str_abbreviate_size = Some(coerce_number(scope, v));
       }
       "indentationLvl" => {
-        ctx.indentation_lvl =
-          v.number_value(scope).unwrap_or(0.0).max(0.0) as usize;
+        ctx.indentation_lvl = coerce_number(scope, v).max(0.0) as usize;
       }
       "numericSeparator" => ctx.numeric_separator = Some(v),
       "userOptions" => {
@@ -406,8 +422,14 @@ fn apply_options<'s>(
               let Some(val) = budget_obj.get(tc, key) else {
                 continue;
               };
-              let n = val.number_value(tc).unwrap_or(0.0).max(0.0) as usize;
-              ctx.budget.insert(lvl, n);
+              let n = val.number_value(tc).unwrap_or(0.0);
+              // A throwing `valueOf` leaves an exception pending on `tc`;
+              // clear it so the next iteration runs on a clean isolate.
+              if tc.has_caught() {
+                tc.reset();
+                continue;
+              }
+              ctx.budget.insert(lvl, n.max(0.0) as usize);
             }
           }
         }
@@ -873,7 +895,7 @@ pub fn op_console_inspect<'s>(
   }
 }
 
-/// `formatValue(ctx, value, recurseTimes)` — node `util.inspect` entry.
+/// `formatValue(ctx, value, recurseTimes)` -- node `util.inspect` entry.
 #[op2(reentrant)]
 #[string]
 pub fn op_console_format_value<'s>(
@@ -907,7 +929,10 @@ pub fn op_console_format_value<'s>(
 }
 
 /// `quoteString(string, ctx)`.
-#[op2]
+//
+// `reentrant`: reading `quotes`/`escapeSequences` off `ctx_obj` runs `Get`,
+// which can fire user getters / proxy traps that call back into ops.
+#[op2(reentrant)]
 #[string]
 pub fn op_console_quote_string<'s>(
   scope: &mut v8::PinScope<'s, '_>,
@@ -1027,7 +1052,11 @@ impl Console {
     let msg = v8_str(scope, msg);
     let level = v8::Integer::new(scope, level);
     let undef: v8::Local<v8::Value> = v8::undefined(scope).into();
-    let _ = js_call(scope, f, undef, &[msg.into(), level.into()]);
+    // Propagate exceptions from the print function (e.g. broken-pipe errors
+    // from `core.print`) out of `console.log`, matching the old JS behavior.
+    if let Err(err) = js_call(scope, f, undef, &[msg.into(), level.into()]) {
+      rethrow(scope, err);
+    }
   }
 
   /// `getConsoleInspectOptions(noColor)`-equivalent ctx.
@@ -1530,21 +1559,21 @@ impl Console {
     let get_row_value = |scope: &mut v8::PinScope<'s, '_>,
                          idx: usize,
                          key: &str|
-     -> Option<RowValue<'s>> {
+     -> R<Option<RowValue<'s>>> {
       match &result_data {
         ResultData::Object(obj) => {
+          // Propagate a throwing row getter (main let `data[k]` throw out of
+          // `console.table`) instead of swallowing it to `undefined`.
+          let obj = *obj;
           let key_v8 = v8_str(scope, key);
-          let v = {
-            v8::tc_scope!(tc, scope);
-            obj.get(tc, key_v8.into())
-          };
-          v.map(RowValue::Plain)
+          let v = js_get(scope, obj, key_v8.into())?;
+          Ok(Some(RowValue::Plain(v)))
         }
         ResultData::MapEntries(entries) => {
-          entries.get(idx).map(|(k, v)| RowValue::MapEntry(*k, *v))
+          Ok(entries.get(idx).map(|(k, v)| RowValue::MapEntry(*k, *v)))
         }
         ResultData::List(values) => {
-          values.get(idx).copied().map(RowValue::Plain)
+          Ok(values.get(idx).copied().map(RowValue::Plain))
         }
       }
     };
@@ -1605,7 +1634,7 @@ impl Console {
     };
 
     for (idx, k) in keys.iter().enumerate() {
-      let row = get_row_value(scope, idx, k);
+      let row = get_row_value(scope, idx, k)?;
       let (value, map_entry) = match row {
         Some(RowValue::Plain(v)) => (v, None),
         Some(RowValue::MapEntry(mk, mv)) => {

@@ -7,8 +7,8 @@
 /// chalk/ansi-regex). Implemented as a hand-rolled scanner so we don't pay
 /// for a regex engine on the hot path.
 ///
-/// Pattern: `[][[\]()#;?]*` followed by either
-/// - `(?:(?:;[-a-zA-Z\d\/#&.:=?%@~_]+)*|[a-zA-Z\d]+(?:;[-a-zA-Z\d\/#&.:=?%@~_]*)*)?(?:|\|)`
+/// Pattern: `[\x1b\x9b][[\]()#;?]*` followed by either
+/// - `(?:(?:;[-a-zA-Z\d\/#&.:=?%@~_]+)*|[a-zA-Z\d]+(?:;[-a-zA-Z\d\/#&.:=?%@~_]*)*)?(?:\x07|\x1b\\|\x9c)`
 /// - `(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]`
 fn ansi_sequence_len(chars: &[char]) -> Option<usize> {
   let first = chars[0];
@@ -29,7 +29,7 @@ fn ansi_sequence_len(chars: &[char]) -> Option<usize> {
   // first in the pattern, so attempt it first.
 
   // Alternative 1: optional parameter body then a terminator
-  // ( | \ | ).
+  // (BEL | ESC-backslash | ST).
   {
     let mut j = body_start;
     let is_param_char = |c: char| {
@@ -39,7 +39,7 @@ fn ansi_sequence_len(chars: &[char]) -> Option<usize> {
           '-' | '/' | '#' | '&' | '.' | ':' | '=' | '?' | '%' | '@' | '~' | '_'
         )
     };
-    // (?:;[-…]+)* | [a-zA-Z\d]+(?:;[-…]*)*
+    // (?:;[-...]+)* | [a-zA-Z\d]+(?:;[-...]*)*
     if j < chars.len() && chars[j] == ';' {
       while j < chars.len() && chars[j] == ';' {
         let mut k = j + 1;
@@ -74,8 +74,19 @@ fn ansi_sequence_len(chars: &[char]) -> Option<usize> {
     }
   }
 
-  // Alternative 2.
+  // Alternative 2: (?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]
   {
+    let is_term = |c: char| {
+      c.is_ascii_digit()
+        || ('A'..='P').contains(&c)
+        || ('R'..='T').contains(&c)
+        || c == 'Z'
+        || c == 'c'
+        || ('f'..='n').contains(&c)
+        || ('q'..='u').contains(&c)
+        || c == 'y'
+        || matches!(c, '=' | '>' | '<' | '~')
+    };
     let mut j = body_start;
     let mut digits = 0;
     while j < chars.len() && chars[j].is_ascii_digit() && digits < 4 {
@@ -92,19 +103,20 @@ fn ansi_sequence_len(chars: &[char]) -> Option<usize> {
         }
       }
     }
-    if j < chars.len() {
-      let c = chars[j];
-      let is_term = c.is_ascii_digit()
-        || ('A'..='P').contains(&c)
-        || ('R'..='T').contains(&c)
-        || c == 'Z'
-        || c == 'c'
-        || ('f'..='n').contains(&c)
-        || ('q'..='u').contains(&c)
-        || c == 'y'
-        || matches!(c, '=' | '>' | '<' | '~');
-      if is_term {
-        return Some(j + 1);
+    // The terminator class includes `\d`, which overlaps the optional numeric
+    // parameter. The regex backtracks the trailing parameter so its last digit
+    // can serve as the terminator, so truncated sequences like "\x1b[5" and
+    // "\x1b[1;2" still match. Mirror that: prefer a terminator right after the
+    // greedily-consumed body, otherwise reuse the last body char that is a
+    // valid terminator (longest match wins).
+    if j < chars.len() && is_term(chars[j]) {
+      return Some(j + 1);
+    }
+    let mut t = j;
+    while t > body_start {
+      t -= 1;
+      if is_term(chars[t]) {
+        return Some(t + 1);
       }
     }
   }
@@ -220,7 +232,7 @@ mod tests {
     assert_eq!(get_string_width("hello", true), 5);
     assert_eq!(get_string_width("\u{1b}[31mhi\u{1b}[39m", true), 2);
     assert_eq!(get_string_width("デノ", true), 4);
-    assert_eq!(get_string_width("a\u{300}", true), 1); // a + combining accent (NFC -> à)
+    assert_eq!(get_string_width("a\u{300}", true), 1); // a + combining accent (NFC -> U+00E0)
   }
 
   #[test]
@@ -230,5 +242,17 @@ mod tests {
       "cake"
     );
     assert_eq!(strip_vt_control_characters("no escapes"), "no escapes");
+  }
+
+  #[test]
+  fn strip_truncated_escapes() {
+    // Truncated CSI sequences: the terminator class includes digits, so the
+    // last parameter digit doubles as the terminator (regex backtracking).
+    assert_eq!(strip_vt_control_characters("\u{1b}[5"), "");
+    assert_eq!(strip_vt_control_characters("\u{1b}[1;2"), "");
+    assert_eq!(strip_vt_control_characters("a\u{1b}[5b"), "ab");
+    // A trailing `;` is not a terminator; the match stops before it.
+    assert_eq!(strip_vt_control_characters("\u{1b}[1;"), ";");
+    assert_eq!(get_string_width("\u{1b}[5", true), 0);
   }
 }

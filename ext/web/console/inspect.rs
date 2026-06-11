@@ -80,7 +80,7 @@ pub enum StylizeKind<'s> {
 
 /// Intrinsic JS values the engine needs, captured by the JS shim at module
 /// initialization (so they are primordial-safe) and passed per call. Fields
-/// are opened from the cached Globals lazily — most calls (primitives) need
+/// are opened from the cached Globals lazily -- most calls (primitives) need
 /// none of them.
 pub struct Intrinsics<'c> {
   cached: &'c CachedIntrinsics,
@@ -225,7 +225,7 @@ pub struct Ctx<'s> {
   pub user_options: Option<v8::Local<'s, v8::Object>>,
   /// `ctx.numericSeparator` passthrough for `getUserOptions`.
   pub numeric_separator: Option<v8::Local<'s, v8::Value>>,
-  /// `ctx.inspect` — used to filter out util.inspect itself when probing
+  /// `ctx.inspect` -- used to filter out util.inspect itself when probing
   /// the node custom-inspect symbol.
   pub ctx_inspect_fn: Option<v8::Local<'s, v8::Value>>,
 
@@ -415,7 +415,7 @@ pub fn range_err<'s>(scope: &mut v8::PinScope<'s, '_>, message: &str) -> JsErr {
 /// IsOnCentralStack()`) once a native API is hit too deep. The old JS recursed
 /// on the JS stack and threw a catchable `RangeError`. A fixed recursion count
 /// can't work across build profiles (debug frames are far larger than
-/// release), so bound the bytes consumed since entry — under V8's budget
+/// release), so bound the bytes consumed since entry -- under V8's budget
 /// (~0.8MB observed before it aborts) with headroom left to construct the
 /// error, while staying close enough not to truncate sooner than the old code
 /// rendered.
@@ -501,7 +501,7 @@ pub fn try_get_str<'s, 'i>(
   try_get(scope, obj, key.into())
 }
 
-/// `ObjectPrototypeIsPrototypeOf(proto, value)` — walk the prototype chain.
+/// `ObjectPrototypeIsPrototypeOf(proto, value)` -- walk the prototype chain.
 pub fn is_prototype_of<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   proto: v8::Local<'s, v8::Value>,
@@ -1807,7 +1807,7 @@ fn get_constructor_name<'s, 'i>(
   match proto_constr {
     None => {
       // `${res} <${inspect(firstProto, {...ctx, customInspect: false,
-      // depth: -1})}>` — `inspect()` re-applies its option post-processing:
+      // depth: -1})}>` -- `inspect()` re-applies its option post-processing:
       // iterableLimit overrides maxArrayLength, and colors re-derives the
       // default theme stylize.
       let mut sub_ctx = fork_ctx(ctx);
@@ -2721,7 +2721,7 @@ fn strip_comments_js_quirk(s: &str) -> String {
   let mut i = 0;
   while i < bytes.len() {
     if bytes[i] == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
-      // `//.*?\n` — must find a newline; otherwise no match.
+      // `//.*?\n` -- must find a newline; otherwise no match.
       if let Some(nl) = s[i..].find('\n') {
         out.push_str("undefined");
         i += nl + 1;
@@ -3494,7 +3494,7 @@ fn format_namespace_object<'s, 'i>(
 
 const COLOR_REGEXP_NOTE: () = ();
 
-/// `removeColors(str)`: strip `\[\d\d?m` sequences.
+/// `removeColors(str)`: strip `\x1b\[\d\d?m` sequences.
 pub fn remove_colors(s: &str) -> String {
   let _ = COLOR_REGEXP_NOTE;
   let chars: Vec<char> = s.chars().collect();
