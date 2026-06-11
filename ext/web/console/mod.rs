@@ -27,6 +27,17 @@ use inspect::*;
 pub use preview::op_preview_entries;
 
 const DEFAULT_INDENT: &str = "  "; // Default indent string
+// Upper bound on repeated-indent / pre-allocation counts derived from
+// caller-controlled values, to avoid usize-saturation panics and multi-GB
+// allocations on absurd inputs.
+const MAX_INDENT_REPEAT: usize = 1024;
+
+/// Cap a caller-controlled `Array.length` used only as a `Vec::with_capacity`
+/// hint, so a cheap-to-create sparse array (length up to 2^32-1) can't trigger
+/// a multi-GB up-front allocation. The Vec still grows to hold real elements.
+fn capacity_hint(len: u32) -> usize {
+  (len as usize).min(1 << 16)
+}
 
 const STR_ABBREVIATE_SIZE: f64 = 10_000.0;
 
@@ -48,47 +59,53 @@ fn cached_intrinsics<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   state: &std::rc::Rc<RefCell<OpState>>,
   obj: v8::Local<'s, v8::Object>,
-) -> std::rc::Rc<CachedIntrinsics> {
+) -> R<std::rc::Rc<CachedIntrinsics>> {
   {
     let state = state.borrow();
     if let Some(slot) = state.try_borrow::<IntrinsicsSlot>() {
       if let Some(cached) = &slot.0 {
         if cached.matches(scope, obj) {
-          return cached.clone();
+          return Ok(cached.clone());
         }
       }
     }
   }
-  let parsed = std::rc::Rc::new(parse_intrinsics_global(scope, obj));
+  let parsed = std::rc::Rc::new(parse_intrinsics_global(scope, obj)?);
   state.borrow_mut().put(IntrinsicsSlot(Some(parsed.clone())));
-  parsed
+  Ok(parsed)
 }
 
 fn parse_intrinsics_global<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   obj: v8::Local<'s, v8::Object>,
-) -> CachedIntrinsics {
+) -> R<CachedIntrinsics> {
+  // The intrinsics object is normally supplied by the trusted JS shim, but the
+  // ops/`Console` constructor are reachable from user JS with an arbitrary
+  // object, so reject a malformed one with a catchable TypeError rather than
+  // aborting the process on a panic.
   fn get_fn<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     obj: v8::Local<'s, v8::Object>,
     key: &'static str,
-  ) -> v8::Global<v8::Function> {
+  ) -> R<v8::Global<v8::Function>> {
     let v = try_get_str(scope, obj, key)
       .unwrap_or_else(|| v8::undefined(scope).into());
-    let f = v8::Local::<v8::Function>::try_from(v)
-      .unwrap_or_else(|_| panic!("intrinsics.{key} must be a function"));
-    v8::Global::new(scope, f)
+    let f = v8::Local::<v8::Function>::try_from(v).map_err(|_| {
+      type_err(scope, &format!("intrinsics.{key} must be a function"))
+    })?;
+    Ok(v8::Global::new(scope, f))
   }
   fn get_obj<'s>(
     scope: &mut v8::PinScope<'s, '_>,
     obj: v8::Local<'s, v8::Object>,
     key: &'static str,
-  ) -> v8::Global<v8::Object> {
+  ) -> R<v8::Global<v8::Object>> {
     let v = try_get_str(scope, obj, key)
       .unwrap_or_else(|| v8::undefined(scope).into());
-    let o = v8::Local::<v8::Object>::try_from(v)
-      .unwrap_or_else(|_| panic!("intrinsics.{key} must be an object"));
-    v8::Global::new(scope, o)
+    let o = v8::Local::<v8::Object>::try_from(v).map_err(|_| {
+      type_err(scope, &format!("intrinsics.{key} must be an object"))
+    })?;
+    Ok(v8::Global::new(scope, o))
   }
 
   // wellKnown: flat array of [proto, name, constructor, ...] triples.
@@ -119,27 +136,27 @@ fn parse_intrinsics_global<'s>(
     }
   }
 
-  CachedIntrinsics {
+  Ok(CachedIntrinsics {
     key: v8::Global::new(scope, obj),
-    function_to_string: get_fn(scope, obj, "functionToString"),
-    inspect_fn: get_fn(scope, obj, "inspect"),
-    stylize_no_color: get_fn(scope, obj, "stylizeNoColor"),
-    create_stylize_with_color: get_fn(scope, obj, "createStylizeWithColor"),
-    styles_obj: get_obj(scope, obj, "styles"),
-    colors_obj: get_obj(scope, obj, "colors"),
-    object_prototype: get_obj(scope, obj, "objectPrototype"),
-    error_prototype: get_obj(scope, obj, "errorPrototype"),
+    function_to_string: get_fn(scope, obj, "functionToString")?,
+    inspect_fn: get_fn(scope, obj, "inspect")?,
+    stylize_no_color: get_fn(scope, obj, "stylizeNoColor")?,
+    create_stylize_with_color: get_fn(scope, obj, "createStylizeWithColor")?,
+    styles_obj: get_obj(scope, obj, "styles")?,
+    colors_obj: get_obj(scope, obj, "colors")?,
+    object_prototype: get_obj(scope, obj, "objectPrototype")?,
+    error_prototype: get_obj(scope, obj, "errorPrototype")?,
     well_known,
-    get_url_prototype: get_fn(scope, obj, "getURLPrototype"),
-    get_cwd: get_fn(scope, obj, "getCwd"),
-    make_cross_context_stylize: get_fn(scope, obj, "makeCrossContextStylize"),
-    reg_exp_to_string: get_fn(scope, obj, "regExpToString"),
-    number_value_of: get_fn(scope, obj, "numberValueOf"),
-    string_value_of: get_fn(scope, obj, "stringValueOf"),
-    boolean_value_of: get_fn(scope, obj, "booleanValueOf"),
-    big_int_value_of: get_fn(scope, obj, "bigIntValueOf"),
-    symbol_value_of: get_fn(scope, obj, "symbolValueOf"),
-  }
+    get_url_prototype: get_fn(scope, obj, "getURLPrototype")?,
+    get_cwd: get_fn(scope, obj, "getCwd")?,
+    make_cross_context_stylize: get_fn(scope, obj, "makeCrossContextStylize")?,
+    reg_exp_to_string: get_fn(scope, obj, "regExpToString")?,
+    number_value_of: get_fn(scope, obj, "numberValueOf")?,
+    string_value_of: get_fn(scope, obj, "stringValueOf")?,
+    boolean_value_of: get_fn(scope, obj, "booleanValueOf")?,
+    big_int_value_of: get_fn(scope, obj, "bigIntValueOf")?,
+    symbol_value_of: get_fn(scope, obj, "symbolValueOf")?,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +228,7 @@ fn default_ctx<'s>() -> Ctx<'s> {
     ctx_inspect_fn: None,
     url_prototype: None,
     circular_error_message: None,
+    stack_base: None,
     stylize_js_fn: None,
     theme_memo: HashMap::new(),
   }
@@ -275,10 +293,10 @@ fn apply_options<'s>(
     match key_str.as_str() {
       "showHidden" => ctx.show_hidden = v.boolean_value(scope),
       "depth" => {
-        if v.is_undefined() {
-          continue;
-        }
-        ctx.depth = if v.is_null() {
+        // Explicit `depth: undefined` (and `null`) means unlimited depth, as
+        // in Node: every depth check is `recurseTimes > depth && depth != null`
+        // and comparisons against undefined/null are false.
+        ctx.depth = if v.is_null() || v.is_undefined() {
           None
         } else {
           Some(v.number_value(scope).unwrap_or(f64::NAN))
@@ -324,7 +342,7 @@ fn apply_options<'s>(
       }
       "quotes" => {
         if let Ok(arr) = v8::Local::<v8::Array>::try_from(v) {
-          let mut quotes = Vec::with_capacity(arr.length() as usize);
+          let mut quotes = Vec::with_capacity(capacity_hint(arr.length()));
           for i in 0..arr.length() {
             if let Some(q) = arr.get_index(scope, i) {
               quotes.push(q.to_rust_string_lossy(scope));
@@ -362,7 +380,7 @@ fn apply_options<'s>(
       "seen" => {
         // Shared seen array (custom-inspect hooks pass the live ctx back).
         if let Ok(arr) = v8::Local::<v8::Array>::try_from(v) {
-          let mut seen = Vec::with_capacity(arr.length() as usize);
+          let mut seen = Vec::with_capacity(capacity_hint(arr.length()));
           for i in 0..arr.length() {
             if let Some(item) = arr.get_index(scope, i) {
               seen.push(item);
@@ -407,11 +425,14 @@ fn finish_options<'s>(
   options: Option<v8::Local<'s, v8::Object>>,
 ) {
   if let Some(options) = options {
+    // `iterableLimit`/`strAbbreviateSize` are aliases for
+    // `maxArrayLength`/`maxStringLength`; null means unlimited (Infinity), not
+    // ToNumber(null) == 0 (which would truncate everything).
     if let Some(v) = opt_num(scope, options, "iterableLimit") {
-      ctx.max_array_length = v.number_value(scope).unwrap_or(f64::NAN);
+      ctx.max_array_length = read_limit(scope, v);
     }
     if let Some(v) = opt_num(scope, options, "strAbbreviateSize") {
-      ctx.max_string_length = v.number_value(scope).unwrap_or(f64::NAN);
+      ctx.max_string_length = read_limit(scope, v);
     }
   }
   if ctx.colors {
@@ -682,7 +703,15 @@ fn inspect_args_impl<'s, 'i>(
             'j' if ch < 128 => {
               let value = args[a];
               a += 1;
-              formatted_arg = Some(try_stringify(scope, ctx, value)?);
+              // JSON.stringify yields `undefined` for undefined/function/symbol
+              // top-level values; the old JS left the literal `%j` in the
+              // output rather than substituting the string "undefined".
+              if !(value.is_undefined()
+                || value.is_function()
+                || value.is_symbol())
+              {
+                formatted_arg = Some(try_stringify(scope, ctx, value)?);
+              }
             }
             'O' | 'o' if ch < 128 => {
               let value = args[a];
@@ -741,7 +770,10 @@ fn inspect_args_impl<'s, 'i>(
   }
 
   if ctx.indent_level > 0.0 {
-    let group_indent = DEFAULT_INDENT.repeat(ctx.indent_level as usize);
+    // Clamp so a huge/Infinite `indentLevel` can't saturate to usize::MAX and
+    // panic in `str::repeat` (the old JS threw a catchable RangeError).
+    let indent = (ctx.indent_level as usize).min(MAX_INDENT_REPEAT);
+    let group_indent = DEFAULT_INDENT.repeat(indent);
     string = format!(
       "{group_indent}{}",
       string.replace('\n', &format!("\n{group_indent}"))
@@ -763,7 +795,7 @@ fn collect_array<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   arr: v8::Local<'s, v8::Array>,
 ) -> Vec<v8::Local<'s, v8::Value>> {
-  let mut out = Vec::with_capacity(arr.length() as usize);
+  let mut out = Vec::with_capacity(capacity_hint(arr.length()));
   for i in 0..arr.length() {
     out.push(
       arr
@@ -784,7 +816,13 @@ pub fn op_console_inspect_args<'s>(
   args: v8::Local<'s, v8::Array>,
   options: v8::Local<'s, v8::Value>,
 ) -> Option<String> {
-  let cached = cached_intrinsics(scope, &state, intrinsics);
+  let cached = match cached_intrinsics(scope, &state, intrinsics) {
+    Ok(c) => c,
+    Err(err) => {
+      rethrow(scope, err);
+      return None;
+    }
+  };
   let intr = Intrinsics::new(&cached);
   let mut ctx = default_ctx();
   let options_obj = v8::Local::<v8::Object>::try_from(options).ok();
@@ -812,7 +850,13 @@ pub fn op_console_inspect<'s>(
   value: v8::Local<'s, v8::Value>,
   options: v8::Local<'s, v8::Value>,
 ) -> Option<String> {
-  let cached = cached_intrinsics(scope, &state, intrinsics);
+  let cached = match cached_intrinsics(scope, &state, intrinsics) {
+    Ok(c) => c,
+    Err(err) => {
+      rethrow(scope, err);
+      return None;
+    }
+  };
   let intr = Intrinsics::new(&cached);
   let mut ctx = default_ctx();
   let options_obj = v8::Local::<v8::Object>::try_from(options).ok();
@@ -840,7 +884,13 @@ pub fn op_console_format_value<'s>(
   value: v8::Local<'s, v8::Value>,
   recurse_times: f64,
 ) -> Option<String> {
-  let cached = cached_intrinsics(scope, &state, intrinsics);
+  let cached = match cached_intrinsics(scope, &state, intrinsics) {
+    Ok(c) => c,
+    Err(err) => {
+      rethrow(scope, err);
+      return None;
+    }
+  };
   let intr = Intrinsics::new(&cached);
   let mut ctx = default_ctx();
   if let Ok(ctx_o) = v8::Local::<v8::Object>::try_from(ctx_obj) {
@@ -1004,16 +1054,19 @@ impl Console {
   fn intr<'s>(
     &self,
     scope: &mut v8::PinScope<'s, '_>,
-  ) -> Option<std::rc::Rc<CachedIntrinsics>> {
-    let obj = self.intrinsics.get(scope)?;
+  ) -> R<std::rc::Rc<CachedIntrinsics>> {
+    let obj = self
+      .intrinsics
+      .get(scope)
+      .ok_or_else(|| type_err(scope, "console intrinsics are unavailable"))?;
     if let Some(cached) = self.intr_cache.borrow().as_ref() {
       if cached.matches(scope, obj) {
-        return Some(cached.clone());
+        return Ok(cached.clone());
       }
     }
-    let parsed = std::rc::Rc::new(parse_intrinsics_global(scope, obj));
+    let parsed = std::rc::Rc::new(parse_intrinsics_global(scope, obj)?);
     *self.intr_cache.borrow_mut() = Some(parsed.clone());
-    Some(parsed)
+    Ok(parsed)
   }
 
   fn log_with_level<'a>(
@@ -1023,8 +1076,12 @@ impl Console {
     stderr: bool,
     level: i32,
   ) {
-    let Some(cached) = self.intr(scope) else {
-      return;
+    let cached = match self.intr(scope) {
+      Ok(c) => c,
+      Err(err) => {
+        rethrow(scope, err);
+        return;
+      }
     };
     let intr = Intrinsics::new(&cached);
     let mut ctx = self.console_ctx(scope, &intr, stderr);
@@ -1142,8 +1199,12 @@ impl Console {
     obj: v8::Local<'a, v8::Value>,
     options: v8::Local<'a, v8::Value>,
   ) {
-    let Some(cached) = self.intr(scope) else {
-      return;
+    let cached = match self.intr(scope) {
+      Ok(c) => c,
+      Err(err) => {
+        rethrow(scope, err);
+        return;
+      }
     };
     let intr = Intrinsics::new(&cached);
     let mut ctx = self.console_ctx(scope, &intr, false);
@@ -1169,8 +1230,12 @@ impl Console {
     if condition {
       return;
     }
-    let Some(cached) = self.intr(scope) else {
-      return;
+    let cached = match self.intr(scope) {
+      Ok(c) => c,
+      Err(err) => {
+        rethrow(scope, err);
+        return;
+      }
     };
     let intr = Intrinsics::new(&cached);
     let mut ctx = self.console_ctx(scope, &intr, true);
@@ -1253,8 +1318,12 @@ impl Console {
     };
     let duration = start.elapsed().as_secs_f64() * 1000.0;
     let display = Self::duration_display(duration);
-    let Some(cached) = self.intr(scope) else {
-      return;
+    let cached = match self.intr(scope) {
+      Ok(c) => c,
+      Err(err) => {
+        rethrow(scope, err);
+        return;
+      }
     };
     let intr = Intrinsics::new(&cached);
     let mut ctx = self.console_ctx(scope, &intr, false);
@@ -1305,8 +1374,12 @@ impl Console {
     data: v8::Local<'a, v8::Value>,
     properties: v8::Local<'a, v8::Value>,
   ) {
-    let Some(cached) = self.intr(scope) else {
-      return;
+    let cached = match self.intr(scope) {
+      Ok(c) => c,
+      Err(err) => {
+        rethrow(scope, err);
+        return;
+      }
     };
     let intr = Intrinsics::new(&cached);
     if let Err(err) = self.table_impl(scope, &intr, data, properties) {
@@ -1343,7 +1416,10 @@ impl Console {
       return Err(JsErr(v8::Global::new(scope, exc)));
     };
 
-    if data.is_null() || !(data.is_object() || data.is_function()) {
+    // `is_object()` is true for functions in V8 (IsJSReceiver), so functions
+    // must be excluded explicitly to take the log path (old JS keyed on
+    // `typeof data !== "object"`): `console.table(fn)` prints `[Function: fn]`.
+    if data.is_null() || !data.is_object() || data.is_function() {
       // this.log(data)
       let mut ctx = self.console_ctx(scope, intr, false);
       let s = inspect_args_impl(scope, intr, &mut ctx, &[data])?;

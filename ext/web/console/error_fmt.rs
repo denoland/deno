@@ -568,7 +568,10 @@ fn mark_cwd<'s, 'i>(
   };
   let mut temp_line = String::new();
   let mut cwd_length = working_directory.len();
-  if cwd_start_pos >= 7 && &line[cwd_start_pos - 7..cwd_start_pos] == "file://"
+  // `.get` returns None (rather than panicking) when `cwd_start_pos - 7` lands
+  // mid-character, e.g. when a multibyte char precedes the match.
+  if cwd_start_pos >= 7
+    && line.get(cwd_start_pos - 7..cwd_start_pos) == Some("file://")
   {
     cwd_length += 7;
     cwd_start_pos -= 7;
@@ -584,8 +587,13 @@ fn mark_cwd<'s, 'i>(
   } else {
     line.len()
   };
+  // Extend one character past the matched cwd to include the path separator.
+  // The old JS sliced UTF-16 and added one unit; in UTF-8 the following byte
+  // can be mid-character, so extend by the whole next char's byte length to
+  // stay on a char boundary (`cwd_start_pos + cwd_length` is always one).
+  let after_cwd = cwd_start_pos + cwd_length;
   let working_directory_end_pos =
-    (cwd_start_pos + cwd_length + 1).min(line.len());
+    after_cwd + line[after_cwd..].chars().next().map_or(0, |c| c.len_utf8());
   let cwd_slice = &line[start..working_directory_end_pos];
 
   temp_line.push_str(&line[..start]);

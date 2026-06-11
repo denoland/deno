@@ -237,6 +237,9 @@ pub struct Ctx<'s> {
   pub stylize_js_fn: Option<v8::Local<'s, v8::Function>>,
   /// Per-call memo of resolved theme escape codes, keyed by flavour.
   pub theme_memo: HashMap<&'static str, Option<(String, String)>>,
+  /// `stacker::remaining_stack()` captured at the outermost `format_value`
+  /// call, used to bound native-stack recursion (see `stack_low`).
+  pub stack_base: Option<usize>,
 }
 
 impl<'s> Ctx<'s> {
@@ -267,30 +270,49 @@ impl<'s> Ctx<'s> {
   }
 }
 
+/// Read one entry (open/close code) of a `colors[style]` pair. A string entry
+/// (used by the Node-ecosystem truecolor pattern,
+/// `util.inspect.colors.foo = ["38;2;255;0;0", "39"]`) is emitted verbatim;
+/// `number_value` on it would yield NaN and print `\x1b[NaNm`.
+fn color_code<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  arr: v8::Local<'s, v8::Object>,
+  i: u32,
+) -> Option<String> {
+  let v = arr.get_index(scope, i)?;
+  if v.is_string() {
+    Some(v.to_rust_string_lossy(scope))
+  } else {
+    Some(fmt_js_number(v.number_value(scope)?))
+  }
+}
+
 /// Resolve `styles[flavour]` -> `colors[style]` -> escape codes.
 fn resolve_theme_codes<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   styles: v8::Local<'s, v8::Object>,
   colors: v8::Local<'s, v8::Object>,
-  flavour: &'static str,
+  flavour: &str,
 ) -> Option<(String, String)> {
-  let flavour_key = v8_static_key(scope, flavour);
-  let style = styles.get(scope, flavour_key.into())?;
+  // `styles`/`colors` are user-mutable (and alias entries are getters), so the
+  // gets / ToString / ToNumber below can run user code that throws. Run under
+  // a TryCatch so a throwing hook is caught (and cleared on drop) instead of
+  // leaving a pending exception on the isolate for later V8 calls to trip on.
+  v8::tc_scope!(tc, scope);
+  let flavour_key = v8_str(tc, flavour);
+  let style = styles.get(tc, flavour_key.into())?;
   if style.is_undefined() {
     return None;
   }
-  let style_key = style.to_string(scope)?;
-  let color = colors.get(scope, style_key.into())?;
+  let style_key = style.to_string(tc)?;
+  let color = colors.get(tc, style_key.into())?;
   if color.is_undefined() {
     return None;
   }
   let arr = v8::Local::<v8::Object>::try_from(color).ok()?;
-  let open = arr.get_index(scope, 0)?.number_value(scope)?;
-  let close = arr.get_index(scope, 1)?.number_value(scope)?;
-  Some((
-    format!("\u{1b}[{}m", fmt_js_number(open)),
-    format!("\u{1b}[{}m", fmt_js_number(close)),
-  ))
+  let open = color_code(tc, arr, 0)?;
+  let close = color_code(tc, arr, 1)?;
+  Some((format!("\u{1b}[{open}m"), format!("\u{1b}[{close}m")))
 }
 
 pub fn stylize_with<'s>(
@@ -302,46 +324,14 @@ pub fn stylize_with<'s>(
   match kind {
     StylizeKind::NoColor => Ok(s.to_string()),
     StylizeKind::Theme { styles, colors, .. } => {
-      // const style = styles[styleType];
-      let flavour_key = v8_str(scope, flavour);
-      let style = styles.get(scope, flavour_key.into());
-      let Some(style) = style else {
-        return Ok(s.to_string());
-      };
-      if !style.is_string() {
-        if style.is_undefined() {
-          return Ok(s.to_string());
-        }
+      // `styles`/`colors` are user-mutable, so resolving the codes can run
+      // user code; on any failure (missing style, throwing getter/valueOf)
+      // fall back to the unstyled string. `resolve_theme_codes` runs the
+      // lookups under a TryCatch so a thrown exception doesn't linger.
+      match resolve_theme_codes(scope, *styles, *colors, flavour) {
+        Some((open, close)) => Ok(format!("{open}{s}{close}")),
+        None => Ok(s.to_string()),
       }
-      let style_key = match style.to_string(scope) {
-        Some(v) => v,
-        None => return Ok(s.to_string()),
-      };
-      if style.is_undefined() {
-        return Ok(s.to_string());
-      }
-      let color = colors.get(scope, style_key.into());
-      let Some(color) = color else {
-        return Ok(s.to_string());
-      };
-      if color.is_undefined() {
-        return Ok(s.to_string());
-      }
-      let Ok(arr) = v8::Local::<v8::Object>::try_from(color) else {
-        return Ok(s.to_string());
-      };
-      let open = get_index(scope, arr, 0)
-        .and_then(|v| v.number_value(scope))
-        .unwrap_or(0.0);
-      let close = get_index(scope, arr, 1)
-        .and_then(|v| v.number_value(scope))
-        .unwrap_or(0.0);
-      Ok(format!(
-        "\u{1b}[{}m{}\u{1b}[{}m",
-        fmt_js_number(open),
-        s,
-        fmt_js_number(close)
-      ))
     }
     StylizeKind::Js(f) => {
       let str_val = v8_str(scope, s);
@@ -394,20 +384,64 @@ pub fn to_rust_string<'s>(
   value.to_rust_string_lossy(scope)
 }
 
-fn get_index<'s>(
-  scope: &mut v8::PinScope<'s, '_>,
-  obj: v8::Local<'s, v8::Object>,
-  i: u32,
-) -> Option<v8::Local<'s, v8::Value>> {
-  obj.get_index(scope, i)
-}
-
 pub fn grab_err<'s>(
   tc: &mut v8::PinScope<'s, '_>,
   exception: Option<v8::Local<'s, v8::Value>>,
 ) -> JsErr {
   let exc = exception.unwrap_or_else(|| v8::undefined(tc).into());
   JsErr(v8::Global::new(tc, exc))
+}
+
+/// Build a `JsErr` wrapping a fresh `TypeError`, for cases the old JS handled
+/// with a catchable throw rather than letting Rust panic.
+pub fn type_err<'s>(scope: &mut v8::PinScope<'s, '_>, message: &str) -> JsErr {
+  let msg = v8_str(scope, message);
+  let exc = v8::Exception::type_error(scope, msg);
+  JsErr(v8::Global::new(scope, exc))
+}
+
+/// Build a `JsErr` wrapping a fresh `RangeError`.
+pub fn range_err<'s>(scope: &mut v8::PinScope<'s, '_>, message: &str) -> JsErr {
+  let msg = v8_str(scope, message);
+  let exc = v8::Exception::range_error(scope, msg);
+  JsErr(v8::Global::new(scope, exc))
+}
+
+/// Max native stack (bytes) the inspect recursion may consume past its entry
+/// point before bailing. The depth option normally bounds recursion, but
+/// `depth: null`/`Infinity` (a common `util.inspect` pattern) leaves it
+/// unbounded; a deep acyclic structure then recurses on the native Rust stack
+/// and V8's per-call stack guard aborts the process (`Check failed:
+/// IsOnCentralStack()`) once a native API is hit too deep. The old JS recursed
+/// on the JS stack and threw a catchable `RangeError`. A fixed recursion count
+/// can't work across build profiles (debug frames are far larger than
+/// release), so bound the bytes consumed since entry — comfortably under V8's
+/// budget (~0.8MB observed) with headroom left to construct the error.
+const STACK_BUDGET: usize = 512 * 1024;
+
+/// Absolute floor on remaining native stack, for unusually small stacks.
+const STACK_RED_ZONE: usize = 64 * 1024;
+
+/// Fallback recursion cap used only when the remaining native stack can't be
+/// measured (`stacker::remaining_stack()` returns `None`).
+const RECURSION_LIMIT_FALLBACK: f64 = 256.0;
+
+/// True when continuing to recurse risks tripping V8's stack guard / the
+/// native guard page. `ctx.stack_base` is the remaining stack captured at the
+/// outermost `format_value`, so `base - current` is the bytes consumed since.
+fn stack_low(ctx: &Ctx<'_>, recurse_times: f64) -> bool {
+  match stacker::remaining_stack() {
+    Some(current) => {
+      if current < STACK_RED_ZONE {
+        return true;
+      }
+      match ctx.stack_base {
+        Some(base) => base.saturating_sub(current) > STACK_BUDGET,
+        None => false,
+      }
+    }
+    None => recurse_times > RECURSION_LIMIT_FALLBACK,
+  }
 }
 
 /// Call a JS function, catching exceptions.
@@ -537,6 +571,14 @@ pub fn format_value<'s, 'i>(
   recurse_times: f64,
   typed_array: bool,
 ) -> R<String> {
+  // Bound native-stack recursion (see STACK_BUDGET); throw a catchable
+  // RangeError instead of aborting when `depth` is unlimited.
+  if ctx.stack_base.is_none() {
+    ctx.stack_base = stacker::remaining_stack();
+  }
+  if stack_low(ctx, recurse_times) {
+    return Err(range_err(scope, "Maximum call stack size exceeded"));
+  }
   // Primitive types cannot have properties.
   if !value.is_object()
     && !value.is_function()
@@ -561,9 +603,31 @@ pub fn format_value<'s, 'i>(
   if let Ok(proxy) = v8::Local::<v8::Proxy>::try_from(value) {
     let target = proxy.get_target(scope);
     let handler = proxy.get_handler(scope);
+    // A revoked proxy has null target/handler. Proceeding would feed `null`
+    // into `format_raw` (which expects an object) and abort the process; the
+    // old JS threw a catchable TypeError instead.
+    if target.is_null() || handler.is_null() {
+      return Err(type_err(
+        scope,
+        "Cannot inspect a proxy that has been revoked",
+      ));
+    }
     if !ctx.show_proxy {
-      // Inspect the proxy target directly; avoids invoking proxy traps.
+      // Inspect the underlying target directly. Unwrap nested proxies fully so
+      // downstream type checks (array/typed-array/map/...) see through a proxy
+      // chain, matching the old console's `ArrayIsArray`/prototype probes which
+      // pierce proxies (`new Proxy(new Proxy([1, 2], {}), {})` -> `[ 1, 2 ]`).
       value = target;
+      while let Ok(inner) = v8::Local::<v8::Proxy>::try_from(value) {
+        let inner_target = inner.get_target(scope);
+        if inner_target.is_null() || inner.get_handler(scope).is_null() {
+          return Err(type_err(
+            scope,
+            "Cannot inspect a proxy that has been revoked",
+          ));
+        }
+        value = inner_target;
+      }
     } else {
       proxy_details = Some((target, handler));
     }
@@ -1811,6 +1875,7 @@ fn fork_ctx<'s>(ctx: &Ctx<'s>) -> Ctx<'s> {
     circular_error_message: ctx.circular_error_message.clone(),
     stylize_js_fn: ctx.stylize_js_fn,
     theme_memo: ctx.theme_memo.clone(),
+    stack_base: ctx.stack_base,
   }
 }
 
@@ -2277,10 +2342,15 @@ fn format_raw<'s, 'i>(
     Ok(output)
   })();
 
+  // Pop unconditionally now that all child values have been formatted: the
+  // remaining logic (circular refs, user `stylize`, sorting) can still throw
+  // via `?`, and leaving `value` in `seen` would cause false `[Circular]`
+  // markers for it in sibling branches once an outer frame catches the error.
+  ctx.seen.pop();
+
   let mut output = match output_result {
     Ok(output) => output,
     Err(err) => {
-      ctx.seen.pop();
       let stack = error_stack_string(scope, &err);
       return ctx.stylize(
         scope,
@@ -2309,7 +2379,6 @@ fn format_raw<'s, 'i>(
       }
     }
   }
-  ctx.seen.pop();
 
   if !matches!(ctx.sorted, Sorted::No) {
     if extras_type == K_OBJECT_TYPE {
@@ -2356,34 +2425,40 @@ fn sort_output<'s, 'i>(
       });
     }
     Sorted::Comparator(f) => {
-      // Call the user comparator pairwise (insertion-sort style to bound
-      // comparator calls like Array.prototype.sort would).
-      let mut err = None;
+      // Manual insertion sort, calling the user comparator pairwise. Unlike
+      // `slice::sort_by` (which since Rust 1.81 panics when it detects an
+      // inconsistent total order), this tolerates arbitrary comparators the
+      // way `Array.prototype.sort` does -- including a throwing one (which
+      // makes the order inconsistent the moment it throws) and non-transitive
+      // ones like `() => Math.random() - 0.5`.
       let mut items: Vec<String> = output.to_vec();
-      items.sort_by(|a, b| {
-        if err.is_some() {
-          return std::cmp::Ordering::Equal;
-        }
-        let a_v = v8_str(scope, a);
-        let b_v = v8_str(scope, b);
-        let undef: v8::Local<v8::Value> = v8::undefined(scope).into();
-        match js_call(scope, f, undef, &[a_v.into(), b_v.into()]) {
-          Ok(ret) => {
-            let n = ret.number_value(scope).unwrap_or(f64::NAN);
-            if n < 0.0 {
-              std::cmp::Ordering::Less
-            } else if n > 0.0 {
-              std::cmp::Ordering::Greater
-            } else {
-              std::cmp::Ordering::Equal
+      let mut err = None;
+      let mut i = 1;
+      while i < items.len() {
+        let mut j = i;
+        while j > 0 {
+          let a_v = v8_str(scope, &items[j - 1]);
+          let b_v = v8_str(scope, &items[j]);
+          let undef: v8::Local<v8::Value> = v8::undefined(scope).into();
+          let n = match js_call(scope, f, undef, &[a_v.into(), b_v.into()]) {
+            Ok(ret) => ret.number_value(scope).unwrap_or(f64::NAN),
+            Err(e) => {
+              err = Some(e);
+              break;
             }
-          }
-          Err(e) => {
-            err = Some(e);
-            std::cmp::Ordering::Equal
+          };
+          if n > 0.0 {
+            items.swap(j - 1, j);
+            j -= 1;
+          } else {
+            break;
           }
         }
-      });
+        if err.is_some() {
+          break;
+        }
+        i += 1;
+      }
       if let Some(e) = err {
         return Err(e);
       }

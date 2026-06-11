@@ -52,6 +52,7 @@ const {
   ObjectDefineProperty,
   ObjectIs,
   ObjectPrototype,
+  ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Promise,
   PromisePrototype,
@@ -277,7 +278,14 @@ const intrinsics = {
     return FunctionPrototypeToString(this);
   },
   regExpToString: function regExpToString() {
-    return RegExpPrototypeToString(this);
+    // When the prototype was detached (e.g. `Object.setPrototypeOf(re, null)`),
+    // `source`/`flags` are no longer reachable as properties and
+    // RegExpPrototypeToString would yield "/undefined/undefined". Reconstruct a
+    // real RegExp from the internal slots first (matches the old console).
+    const re = ObjectPrototypeIsPrototypeOf(RegExpPrototype, this)
+      ? this
+      : new RegExp(this);
+    return RegExpPrototypeToString(re);
   },
   numberValueOf: function numberValueOf() {
     return NumberPrototypeValueOf(this);
@@ -580,7 +588,10 @@ class Console {
   };
 
   assert = (condition = false, ...args) => {
-    this.#getWrap().assert(condition, ...new SafeArrayIterator(args));
+    // `#[op2]` converts the `bool` arg with strict identity (=== true), not
+    // ToBoolean, so coerce here to match the WHATWG console spec (truthy
+    // condition passes).
+    this.#getWrap().assert(!!condition, ...new SafeArrayIterator(args));
   };
 
   count = (label = "default") => {

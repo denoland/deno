@@ -24,6 +24,7 @@ encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }
 futures.workspace = true
 serde.workspace = true
+stacker.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 unicode-normalization.workspace = true
