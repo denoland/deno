@@ -602,6 +602,11 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
+  /// Whether the body was transparently decompressed, in which case the
+  /// `content-encoding`/`content-length`/`transfer-encoding` entries in
+  /// `headers` describe the encoded wire body, not the body behind
+  /// `response_rid`.
+  pub body_decoded: bool,
   /// This field is populated if some error occurred which needs to be
   /// reconstructed in the JS side to set the error _cause_.
   /// In the tuple, the first element is an error message and the second one is
@@ -655,6 +660,7 @@ pub async fn op_fetch_send(
   }
 
   let content_length = hyper::body::Body::size_hint(res.body()).exact();
+  let body_decoded = res.extensions().get::<BodyDecoded>().is_some();
 
   let response_rid = state
     .borrow_mut()
@@ -668,6 +674,7 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
+    body_decoded,
     error: None,
   })
 }
@@ -1259,6 +1266,13 @@ enum DecodeKind {
   Brotli,
 }
 
+/// Marker inserted into the response extensions when the body was
+/// transparently decompressed, so consumers know the `Content-Encoding`,
+/// `Content-Length` and `Transfer-Encoding` headers describe the encoded
+/// wire body rather than the body in the response.
+#[derive(Clone, Copy)]
+pub struct BodyDecoded;
+
 fn decode_response(
   resp: http::Response<Incoming>,
   kind: DecodeKind,
@@ -1267,7 +1281,8 @@ fn decode_response(
   // header list keeps `Content-Encoding` and `Content-Length` as received
   // (the latter describes the encoded body, not the decoded one). See
   // https://github.com/denoland/deno/issues/20548.
-  let (parts, body) = resp.into_parts();
+  let (mut parts, body) = resp.into_parts();
+  parts.extensions.insert(BodyDecoded);
 
   let stream = BodyDataStream::new(
     body.map_err(|err| std::io::Error::other(err.to_string())),
