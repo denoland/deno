@@ -903,7 +903,31 @@ async fn serve_watch_parallel_stops_old_workers() {
     .piped_output()
     .spawn()
     .unwrap();
-  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  // If anything in the test body panics (a timeout, a failed assertion), the
+  // child must still be killed before unwinding: a leaked `deno serve --watch`
+  // child never exits on its own, and on Windows tokio reads child pipes with
+  // blocking threads, so dropping the test runtime during the unwind waits
+  // forever on a stderr read that never completes. This wedged CI for the
+  // full job timeout instead of reporting the failure.
+  let result = futures::FutureExt::catch_unwind(std::panic::AssertUnwindSafe(
+    serve_watch_parallel_stops_old_workers_inner(&t, &mut child),
+  ))
+  .await;
+  if let Err(panic) = result {
+    let _ = child.kill();
+    std::panic::resume_unwind(panic);
+  }
+
+  check_alive_then_kill(child);
+}
+
+async fn serve_watch_parallel_stops_old_workers_inner(
+  t: &TempDir,
+  child: &mut DenoChild,
+) {
+  let file_to_watch = t.path().join("server_file_to_watch.js");
+  let (_stdout_lines, mut stderr_lines) = child_lines(child);
 
   let port_regex =
     regex::Regex::new(r"Listening on https?:[^:]+:(\d+)/").unwrap();
@@ -959,13 +983,15 @@ async fn serve_watch_parallel_stops_old_workers() {
       .await
     {
       Ok(response) => {
-        let body = response.text().await.unwrap();
-        if body == "v2" {
-          consecutive_v2 += 1;
-        } else {
+        match response.text().await {
+          Ok(body) if body == "v2" => consecutive_v2 += 1,
           // Only the old or the new code may respond, nothing else.
-          assert_eq!(body, "v1");
-          consecutive_v2 = 0;
+          Ok(body) => {
+            assert_eq!(body, "v1");
+            consecutive_v2 = 0;
+          }
+          // The connection can die mid-response during the restart.
+          Err(_) => consecutive_v2 = 0,
         }
       }
       // Transient connection errors can happen mid-restart.
@@ -991,9 +1017,22 @@ async fn serve_watch_parallel_stops_old_workers() {
       {
         // Connection error or timeout: the old workers no longer serve.
         Err(_) => break,
-        // Old workers may still serve while winding down, but only old code.
         Ok(response) => {
-          assert_eq!(response.text().await.unwrap(), "v1");
+          match response.text().await {
+            // Old workers may still serve the old code while winding down.
+            Ok(body) if body == "v1" => {}
+            // Seeing the new code here is fine too: on platforms without
+            // SO_REUSEPORT load balancing (e.g. Windows) every worker binds
+            // its own ephemeral port, and the OS can hand the just-released
+            // old port to a worker of the new generation. Either way the old
+            // listener is gone.
+            Ok(body) if body == "v2" => break,
+            // Only the old or the new code may respond, nothing else.
+            Ok(body) => panic!("unexpected response body: {body}"),
+            // The connection can die mid-response while the old generation
+            // winds down.
+            Err(_) => {}
+          }
         }
       }
       if start.elapsed() > std::time::Duration::from_secs(30) {
@@ -1002,8 +1041,6 @@ async fn serve_watch_parallel_stops_old_workers() {
       tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
   }
-
-  check_alive_then_kill(child);
 }
 
 // Regression test for https://github.com/denoland/deno/issues/30046

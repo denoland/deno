@@ -28,6 +28,7 @@ deno_semver.workspace = true
 deno_unsync = { workspace = true, features = ["tokio"] }
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 file_test_runner.workspace = true
+futures.workspace = true
 hickory-proto.workspace = true
 hickory-server.workspace = true
 hmac.workspace = true
