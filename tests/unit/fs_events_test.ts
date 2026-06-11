@@ -400,7 +400,9 @@ Deno.test(
 // Regression test for https://github.com/denoland/deno/issues/11373
 // When events arrive faster than the consumer drains them and the internal
 // queue overflows, the loss must be reported with a `rescan`-flagged event
-// instead of being silent.
+// instead of being silent. The rescan supersedes everything queued before
+// it, so the stale queued events are dropped and the rescan must be the
+// first event the consumer sees.
 Deno.test(
   { permissions: { read: true, write: true } },
   async function watchFsQueueOverflowEmitsRescan() {
@@ -418,17 +420,16 @@ Deno.test(
     await delay(3000);
 
     // Escape hatch so the iteration below can't hang the test forever if
-    // the rescan event never arrives.
+    // no event ever arrives.
     const deadline = setTimeout(() => watcher.close(), 20_000);
-    let sawRescan = false;
+    let firstEvent: Deno.FsEvent | undefined;
     for await (const event of watcher) {
-      if (event.flag === "rescan") {
-        sawRescan = true;
-        break;
-      }
+      firstEvent = event;
+      break;
     }
     clearTimeout(deadline);
-    assert(sawRescan, "expected a rescan event after the queue overflowed");
+    assert(firstEvent, "expected an event after the queue overflowed");
+    assertEquals(firstEvent.flag, "rescan");
   },
 );
 

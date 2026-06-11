@@ -531,13 +531,29 @@ async fn op_fs_events_poll(
   #[smi] rid: ResourceId,
 ) -> Result<Option<FsEvent>, FsEventsError> {
   let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
+  let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
 
   // If the event queue overflowed since the last poll, events were dropped:
   // tell the consumer via a `"rescan"`-flagged event rather than losing them
-  // silently (denoland/deno#11373). The flag can only be set while the queue
-  // is full, so polls after this one will find the queue non-empty and this
-  // check can never starve the queue or be starved by it.
+  // silently (denoland/deno#11373). Everything still queued predates the
+  // rescan and is superseded by it, so drain and discard those stale events
+  // rather than delivering them after the rescan. Queued watcher errors must
+  // not be lost though: deliver such an error now and re-arm the flag so the
+  // next poll still reports the rescan. There is no missed-wakeup hazard
+  // here: the flag can only be set while the queue is full, so a consumer
+  // blocked in `recv()` below always has queued events to wake it, and the
+  // flag is checked again on the next poll.
   if resource.overflowed.swap(false, Ordering::Relaxed) {
+    loop {
+      match receiver.try_recv() {
+        Ok(Ok(_)) => continue,
+        Ok(Err(err)) => {
+          resource.overflowed.store(true, Ordering::Relaxed);
+          return Err(FsEventsError::Notify(JsNotifyError(err)));
+        }
+        Err(_) => break,
+      }
+    }
     let paths = resource.watched.iter().map(|(p, _)| p.clone()).collect();
     return Ok(Some(FsEvent {
       kind: "any",
@@ -546,7 +562,6 @@ async fn op_fs_events_poll(
     }));
   }
 
-  let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;
   match maybe_result {
