@@ -1,0 +1,8 @@
+[
+  {
+    "kind": "npm",
+    "name": "@denotest/esm-basic",
+    "required": "[WILDLINE]
+    "resolved": "[WILDLINE]
+  }
+]

@@ -228,6 +228,18 @@ impl Dep {
   pub fn alias_or_name(&self) -> &str {
     self.alias.as_deref().unwrap_or_else(|| &self.req.name)
   }
+
+  /// Whether this dependency is a development dependency. Only `package.json`
+  /// `devDependencies` are considered dev; `deno.json` imports have no such
+  /// distinction and are always treated as regular dependencies.
+  pub fn is_dev(&self) -> bool {
+    match &self.location {
+      DepLocation::PackageJson(_, key_path) => {
+        matches!(key_path.parts.first(), Some(KeyPart::DevDependencies))
+      }
+      DepLocation::DenoJson(..) => false,
+    }
+  }
 }
 
 fn import_map_entries(

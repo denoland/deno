@@ -1,0 +1,14 @@
+[
+  {
+    "kind": "npm",
+    "name": "@denotest/esm-basic",
+    "required": "[WILDLINE]
+    "resolved": "[WILDLINE]
+  },
+  {
+    "kind": "npm",
+    "name": "@denotest/esm-import-cjs-default",
+    "required": "[WILDLINE]
+    "resolved": "[WILDLINE]
+  }
+]
