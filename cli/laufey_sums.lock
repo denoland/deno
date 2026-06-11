@@ -12,20 +12,20 @@
 # A `# version: vX.Y.Z` directive (optional) is matched against LAUFEY_VERSION
 # at build time to guard against forgetting to refresh this file.
 #
-# version: v0.3.1
+# version: v0.3.2
 
-1cc78cc42918f40c9ade0837b6dd34f90016c9fbf6ae3516ac108fa1676f507c  laufey-cef-aarch64-apple-darwin.tar.gz
-cef2c9ad33ba0001fd9fb15e83653736ae9585f45f7cb768789ba7bf0fe9e9a4  laufey-cef-aarch64-unknown-linux-gnu.tar.gz
-2f0c52e5b12aac33cbddced3a1b0e39898891ad49fef90f653037109dd77427f  laufey-cef-x86_64-apple-darwin.tar.gz
-6bd91d645268c741b3c513b355795e36792c5cd72e6bac60e25cbd17963f9e20  laufey-cef-x86_64-unknown-linux-gnu.tar.gz
-750400f5ca8ef5945c2dfa69d22b803fb31e6fa5806984b671fbcaae8504384b  laufey-webview-aarch64-apple-darwin.tar.gz
-64d959bb93d3af561a638a3fc91f96680ea9d4e80424daf380e551ccc94c34cf  laufey-webview-aarch64-unknown-linux-gnu.tar.gz
-01414cc749f0923ca1bc2cca66b50066eacdef2006bfa98fef18a2cfb0729a74  laufey-webview-x86_64-apple-darwin.tar.gz
-97fbbfb5b30bbd8c549788448a9c19e3ad63494b398d459c575463818fb3cbca  laufey-webview-x86_64-unknown-linux-gnu.tar.gz
-b7569c0925949529d63553408d1a90ebc7cae3f29288fc2732df8de63eb87660  laufey-winit-aarch64-apple-darwin.tar.gz
-b35909be03c621c1c4b830d909b81b53050af1105e4c2e96baf9aa6cd8b50201  laufey-winit-aarch64-unknown-linux-gnu.tar.gz
-0ab0555ec2ab36ddcf576710ff3c58254f49a22ddc27efa620be96e7475d2e51  laufey-winit-x86_64-apple-darwin.tar.gz
-3c5484697d85ab4e507b8c4df824120cdff472bd5f2716537c465bcedc8f86f5  laufey-winit-x86_64-unknown-linux-gnu.tar.gz
-71f2fc9b025b7a5c74222ccb1f4cf16290c0a8872f223d2bfa813558255edfc8  laufey-cef-x86_64-pc-windows-msvc.zip
-9bc782aaeb146c01a7c20bea8c52ee35c5e2722e2d028d2e9a518c83c0376d2b  laufey-webview-x86_64-pc-windows-msvc.zip
-5a0ca5a7c6ea451d6931d954ed25a479aaa91de6d8a96ea0bcf32412b15fb42d  laufey-winit-x86_64-pc-windows-msvc.zip
+08ca9afbb017d5f3fcb7f610e0bb4f12c8721baaa65122740ccf05e6593f866b  laufey-cef-aarch64-apple-darwin.tar.gz
+30f4062e97060aca984b28039dcc5b7fd7291366a940d0d574fbfc48baf928c7  laufey-cef-aarch64-unknown-linux-gnu.tar.gz
+e82769d843ef1c706344acde3e95a36f9c069c747d502a40b42e9b28f9610ea0  laufey-cef-x86_64-apple-darwin.tar.gz
+d7939b35c401a4ec12ca285927a6dde6e071d4e43b5aa9fa0e53caed65b33a8a  laufey-cef-x86_64-unknown-linux-gnu.tar.gz
+2308760642c6d69ae8eb86f31648a09449d141cc9394a0d24cadc7401c743532  laufey-webview-aarch64-apple-darwin.tar.gz
+73d1ed08feba2c1bfa36c0bc669d2480440e251f3c959afa32339a9e00c626d3  laufey-webview-aarch64-unknown-linux-gnu.tar.gz
+770c42352d1164c9c9600e8599059bae237c4b61cbc3802681a3fa84aaf11568  laufey-webview-x86_64-apple-darwin.tar.gz
+59dfda4b9bb36f2fbbfd0fd4aed91fac55c706f03fdbd946821372199cca9616  laufey-webview-x86_64-unknown-linux-gnu.tar.gz
+3b02ee34e7864979db7c7f0d98fd98c3f3237b4f5d80bd8b2765a190341cbe5a  laufey-winit-aarch64-apple-darwin.tar.gz
+fa120e433cd5141b69c4ef314b3d8cbc915471bc71402c104f217507c9dcab4e  laufey-winit-aarch64-unknown-linux-gnu.tar.gz
+fd88cd7db2763c82a2c49b048f0b467995c5f598586344ab6ecc852b4f1ddb92  laufey-winit-x86_64-apple-darwin.tar.gz
+4c0f091b89d8a1c98a560062cd342f43a7943b356d23e2d8f0030bcf0d79c35c  laufey-winit-x86_64-unknown-linux-gnu.tar.gz
+f89abe11afffe588cd9c6d367e217e211e1c8640260ccb2e7637f9eb4a0aa833  laufey-cef-x86_64-pc-windows-msvc.zip
+c8fbfd17f98ad37bbc7567121a24beff2dbee374fdf5f5395b29fc7a3b5c7059  laufey-webview-x86_64-pc-windows-msvc.zip
+899ab6e9dd6396e5fe7fb5f5860b540ed0092d0010e53ce7308a5bfff2bb4c1b  laufey-winit-x86_64-pc-windows-msvc.zip
