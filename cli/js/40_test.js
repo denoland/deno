@@ -2,10 +2,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
-import {
-  assertSnapshot,
-  snapshotRunState,
-} from "ext:cli/40_test_snapshot.js";
+import { assertSnapshot, snapshotRunState } from "ext:cli/40_test_snapshot.js";
 
 // TODO(mmastrac): We cannot import these from "ext:core/ops" yet
 const {

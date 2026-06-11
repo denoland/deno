@@ -1226,9 +1226,7 @@ pub async fn run_tests_for_worker(
         ),
       )
       .map(|_| ())
-      .map_err(|e| {
-        RunTestsForWorkerErr::Core(CoreErrorKind::Js(e).into_box())
-      })
+      .map_err(|e| RunTestsForWorkerErr::Core(CoreErrorKind::Js(e).into_box()))
   } else {
     result
   };

@@ -229,7 +229,9 @@ function getSnapshotNotMatchMessage(actual, expected) {
   const diff = ArrayPrototypeJoin(buildDiffLines(actual, expected), "\n");
   return `Snapshot does not match:\n\n    ${green("[Diff]")} ${
     green("Actual")
-  } / ${red("Expected")}\n\n${diff}\n\nTo update snapshots, run\n    deno test --update-snapshots [files]...\n`;
+  } / ${
+    red("Expected")
+  }\n\n${diff}\n\nTo update snapshots, run\n    deno test --update-snapshots [files]...\n`;
 }
 
 let isUpdateMode = undefined;
@@ -306,7 +308,11 @@ function getErrorMessage(message, options) {
  * Implementation of `Deno.TestContext.assertSnapshot()`. `tContext` is the
  * test context object the method was called on.
  */
-export function assertSnapshot(tContext, actual, options = { __proto__: null }) {
+export function assertSnapshot(
+  tContext,
+  actual,
+  options = { __proto__: null },
+) {
   if (typeof options === "string") {
     options = { __proto__: null, msg: options };
   } else if (typeof options !== "object" || options === null) {
