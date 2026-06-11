@@ -120,6 +120,29 @@ fn strip_bom(source_code: &[u8]) -> &[u8] {
   }
 }
 
+/// Raise (`inc == true`) or lower (`inc == false`) the async_hooks promise-hook
+/// suppression depth counter. While the counter is non-zero, the promise
+/// lifecycle callbacks in `ext:deno_node/internal/async_hooks.ts` ignore
+/// promises created by deno_core internals (see usage in `mod_evaluate` and
+/// `synthetic_module_evaluation_steps`).
+///
+/// The `incPromiseHooksSuppressed`/`decPromiseHooksSuppressed` functions are
+/// captured into `ContextState` at init (`store_js_callbacks`). If async_hooks
+/// isn't wired (e.g. during snapshotting) the callbacks are `None` and this is
+/// a no-op, leaving the current behavior unchanged for that promise.
+fn set_promise_hook_suppression(scope: &mut v8::PinScope, inc: bool) {
+  let state = JsRealm::state_from_scope(scope);
+  let func = {
+    let cbs = state.promise_hook_suppress_cbs.borrow();
+    let Some((inc_cb, dec_cb)) = cbs.as_ref() else {
+      return;
+    };
+    v8::Local::new(scope, if inc { inc_cb } else { dec_cb })
+  };
+  let undefined = v8::undefined(scope).into();
+  func.call(scope, undefined, &[]);
+}
+
 /// A `FuturesUnordered` paired with a `Cell<bool>` flag that tracks whether
 /// the collection has pending items. The flag avoids borrowing the `RefCell`
 /// just to check `is_empty()`.
@@ -1888,13 +1911,27 @@ impl ModuleMap {
       .build(tc_scope);
 
       // V8 GC roots all promises, so we don't need to worry about it after this
-      // then2 will return None if the runtime is shutting down
-      if on_fulfilled.is_none()
-        || on_rejected.is_none()
-        || promise
-          .then2(tc_scope, on_fulfilled.unwrap(), on_rejected.unwrap())
-          .is_none()
-      {
+      // then2 will return None if the runtime is shutting down.
+      //
+      // The promise returned by `then2` is internal to deno_core (we discard
+      // it and only use the reactions for their side effects). User code never
+      // observes it, so we bracket the `then2` call with the async_hooks
+      // promise-hook suppression counter; otherwise a user-installed
+      // `async_hooks` promise hook would see a spurious PROMISE init/resolve
+      // for this throwaway promise during module evaluation.
+      let handlers_attached = match (on_fulfilled, on_rejected) {
+        (Some(on_fulfilled), Some(on_rejected))
+          if !tc_scope.is_execution_terminating() =>
+        {
+          set_promise_hook_suppression(tc_scope, true);
+          let then_result =
+            promise.then2(tc_scope, on_fulfilled, on_rejected);
+          set_promise_hook_suppression(tc_scope, false);
+          then_result.is_some()
+        }
+        _ => false,
+      };
+      if !handlers_attached {
         // There are two reasons we could be here:
         // 1. The runtime is shutting down, and JS ops are disabled with termination exceptions.
         // 2. User code has tampered with the runtime globals in some way that prevents us from
@@ -3295,11 +3332,18 @@ pub(crate) fn synthetic_module_evaluation_steps<'s>(
   }
 
   // Since Top-Level Await is active we need to return a promise.
-  // This promise is resolved immediately.
+  // This promise is resolved immediately. It is created by deno_core to
+  // satisfy V8's synthetic-module evaluation contract and is never observed by
+  // user code, so suppress async_hooks promise hooks around it (otherwise a
+  // user-installed promise hook sees a spurious PROMISE init/resolve for every
+  // synthetic module - including the CommonJS wrapper of the entrypoint).
+  set_promise_hook_suppression(tc_scope, true);
   let resolver = v8::PromiseResolver::new(tc_scope).unwrap();
   let undefined = v8::undefined(tc_scope);
   resolver.resolve(tc_scope, undefined.into());
-  Some(resolver.get_promise(tc_scope).into())
+  let promise = resolver.get_promise(tc_scope);
+  set_promise_hook_suppression(tc_scope, false);
+  Some(promise.into())
 }
 
 pub fn script_origin<'s, 'i>(

@@ -1560,6 +1560,7 @@ impl JsRuntime {
       handle_rejections_cb,
       build_custom_error_cb,
       run_immediate_callbacks_cb,
+      promise_hook_suppress_cbs,
       wasm_instance_fn,
     ) = {
       scope!(scope, self);
@@ -1602,6 +1603,26 @@ impl JsRuntime {
         RUN_IMMEDIATE_CALLBACKS,
         "Deno.core.runImmediateCallbacks",
       );
+      // async_hooks promise-hook suppression hooks. These live in
+      // `ext:deno_node/internal/async_hooks.ts` (via `Deno.core`) and may be
+      // absent (e.g. when snapshotting without that extension), so fetch them
+      // non-panicking and store `None` if unavailable.
+      let promise_hook_suppress_cbs = {
+        let inc_key = INC_PROMISE_HOOKS_SUPPRESSED.v8_string(scope).unwrap();
+        let dec_key = DEC_PROMISE_HOOKS_SUPPRESSED.v8_string(scope).unwrap();
+        let inc = core_obj
+          .get(scope, inc_key.into())
+          .and_then(|v| v8::Local::<v8::Function>::try_from(v).ok());
+        let dec = core_obj
+          .get(scope, dec_key.into())
+          .and_then(|v| v8::Local::<v8::Function>::try_from(v).ok());
+        match (inc, dec) {
+          (Some(inc), Some(dec)) => {
+            Some((v8::Global::new(scope, inc), v8::Global::new(scope, dec)))
+          }
+          _ => None,
+        }
+      };
       let mut wasm_instance_fn = None;
       if !will_snapshot {
         let key = WEBASSEMBLY.v8_string(scope).unwrap();
@@ -1766,6 +1787,7 @@ impl JsRuntime {
         v8::Global::new(scope, handle_rejections_cb),
         v8::Global::new(scope, build_custom_error_cb),
         v8::Global::new(scope, run_immediate_callbacks_cb),
+        promise_hook_suppress_cbs,
         wasm_instance_fn.map(|f| v8::Global::new(scope, f)),
       )
     };
@@ -1793,6 +1815,8 @@ impl JsRuntime {
       .run_immediate_callbacks_cb
       .borrow_mut()
       .replace(run_immediate_callbacks_cb);
+    *state_rc.promise_hook_suppress_cbs.borrow_mut() =
+      promise_hook_suppress_cbs;
     if let Some(wasm_instance_fn) = wasm_instance_fn {
       state_rc
         .wasm_instance_fn

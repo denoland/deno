@@ -84,6 +84,14 @@ pub struct ContextState {
   pub(crate) js_drain_next_tick_and_macrotasks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_handle_rejections_cb: RefCell<Option<v8::Global<v8::Function>>>,
+  /// `Deno.core.incPromiseHooksSuppressed` / `decPromiseHooksSuppressed`,
+  /// captured at init while `Deno.core` is still reachable. Used by deno_core
+  /// to bracket internal promise creation (e.g. the throwaway `then2` promise
+  /// in module evaluation) so user-installed `async_hooks` promise hooks don't
+  /// observe promises that user code never sees. `None` when async_hooks isn't
+  /// wired (e.g. during snapshotting).
+  pub(crate) promise_hook_suppress_cbs:
+    RefCell<Option<(v8::Global<v8::Function>, v8::Global<v8::Function>)>>,
   pub(crate) run_immediate_callbacks_cb:
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
@@ -173,6 +181,7 @@ impl ContextState {
       js_event_loop_tick_cb: Default::default(),
       js_drain_next_tick_and_macrotasks_cb: Default::default(),
       js_handle_rejections_cb: Default::default(),
+      promise_hook_suppress_cbs: Default::default(),
       run_immediate_callbacks_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),

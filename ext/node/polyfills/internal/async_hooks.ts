@@ -488,13 +488,14 @@ function promiseAfterHook(promise: any): void {
 // deno-lint-ignore no-explicit-any
 function promiseResolveHook(promise: any): void {
   if (suppressedPromises.has(promise)) return;
-  let info = promiseInfo.get(promise);
-  if (info === undefined) {
-    // Same backfill as in beforeHook so promiseResolve and destroy stay
-    // paired with a valid id.
-    info = trackPromise(promise, null);
-  }
-  if (async_hook_fields[kPromiseResolve] > 0) {
+  const info = promiseInfo.get(promise);
+  // Only fire promiseResolve for promises we actually tracked (observed at
+  // init or before time). A promise that reaches resolve while still untracked
+  // is deno_core infrastructure -- e.g. the module-evaluation result promise,
+  // which is created before the user's hook is installed and resolves while it
+  // is active. Node never surfaces those, so we must not backfill+emit here or
+  // user `promiseResolve` callbacks see a spurious extra resolve.
+  if (info !== undefined && async_hook_fields[kPromiseResolve] > 0) {
     emitPromiseResolve(info.asyncId);
   }
 }
