@@ -13,6 +13,7 @@ const { TextDecoder } = core.loadExtScript("ext:deno_web/08_text_encoding.js");
 
 const {
   Promise,
+  ReflectApply,
   ObjectPrototypeIsPrototypeOf,
   Uint8ArrayPrototype,
   PromisePrototypeThen,
@@ -61,7 +62,7 @@ export default class Dir {
       }
       assert(this.#asyncIterator);
       PromisePrototypeThen(
-        this.#asyncIterator.next(),
+        ReflectApply(this.#asyncIterator.next, this.#asyncIterator, []),
         (iteratorResult) => {
           resolve(
             iteratorResult.done
