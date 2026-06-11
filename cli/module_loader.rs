@@ -1059,9 +1059,9 @@ impl<TGraphContainer: ModuleGraphContainer>
     // resolved to a concrete `file:` URL inside the global npm cache before it
     // reaches here. deno_core then re-resolves that already-resolved specifier
     // as the main module, running it through the import map. An
-    // `"imports": { "/": "./" }` entry — recommended in the docs for
-    // project-root absolute imports — normalizes to a `file:///` =>
-    // `file:///<project>/` mapping whose prefix match rewrites *any* file URL
+    // `"imports": { "/": "./" }` entry (recommended in the docs for
+    // project-root absolute imports) normalizes to a `file:///` =>
+    // `file:///<project>/` mapping whose prefix match rewrites any file URL
     // outside the project root (such as the npm cache) to live underneath the
     // project directory, breaking the load. Such a package-internal main
     // module is not a user source file and must not be remapped, so load it
