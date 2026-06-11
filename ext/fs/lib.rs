@@ -13,6 +13,8 @@ pub use crate::interface::FileSystem;
 pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;
 pub use crate::interface::FsFileType;
+pub use crate::interface::FsReadDir;
+pub use crate::interface::FsReadDirRc;
 pub use crate::interface::OpenOptions;
 pub use crate::ops::FsOpsError;
 pub use crate::ops::FsOpsErrorKind;

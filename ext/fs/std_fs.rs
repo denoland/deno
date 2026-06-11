@@ -1166,7 +1166,10 @@ struct RealFsReadDir(Mutex<tokio::fs::ReadDir>);
 
 #[async_trait::async_trait(?Send)]
 impl FsReadDir for RealFsReadDir {
-  #[allow(clippy::await_holding_lock)]
+  #[allow(
+    clippy::await_holding_lock,
+    reason = "tokio::fs::ReadDir requires mutable access across next_entry().await"
+  )]
   async fn next(&self) -> FsResult<Option<FsDirEntry>> {
     let mut read_dir = self.0.try_lock().map_err(|_| FsError::FileBusy)?;
     let Some(entry) = read_dir.next_entry().await? else {
