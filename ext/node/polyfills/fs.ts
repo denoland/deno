@@ -29,6 +29,7 @@ const {
   ERR_DIR_CLOSED,
   ERR_DIR_CONCURRENT_OPERATION,
   ERR_FS_FILE_TOO_LARGE,
+  ERR_INVALID_ARG_VALUE,
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
@@ -37,9 +38,6 @@ type statCallback = any;
 type statCallbackBigInt = any;
 type statOptions = any;
 const { cp, cpSync } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
-const { read, readSync } = core.createLazyLoader(
-  "ext:deno_node/_fs/_fs_read.ts",
-)();
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 type MaybeEmpty<T> = T | null | undefined;
 const { deprecate, promisify } = core.loadExtScript("ext:deno_node/util.ts");
@@ -73,15 +71,19 @@ const lazyUtf8Stream = core.createLazyLoader(
   "ext:deno_node/internal/streams/fast-utf8-stream.js",
 );
 const {
+  arrayBufferViewToUint8Array,
   BigIntStats,
   constants: fsUtilConstants,
   copyObject,
   Dirent,
   getOptions,
+  getValidatedFd,
   getValidatedPath,
   getValidatedPathToString,
   Stats,
   toUnixTimestamp,
+  validateOffsetLengthRead,
+  validatePosition,
 } = core.createLazyLoader("ext:deno_node/internal/fs/utils.mjs")();
 const { glob, globSync } = core.createLazyLoader(
   "ext:deno_node/_fs/_fs_glob.ts",
@@ -124,6 +126,7 @@ const {
   op_node_fs_read_file,
   op_node_fs_readv,
   op_node_fs_readv_sync,
+  op_node_fs_read_v_sync,
   op_node_fs_read_file_path_sync,
   op_node_fs_read_file_path,
   op_node_fs_write_deferred,
@@ -194,6 +197,7 @@ const { isMacOS, isWindows } = core.loadExtScript(
 const {
   customPromisifyArgs,
   kCustomPromisifiedSymbol,
+  kEmptyObject,
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const lazyPath = core.createLazyLoader("node:path");
 const pathModule = lazyPath();
@@ -202,10 +206,15 @@ type Encoding = any;
 const {
   validateAbortSignal,
   validateBoolean,
+  validateBuffer,
   validateFunction,
+  validateInteger,
   validateObject,
   validateString,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { createFSReqCallback, unregisterActiveRequest } = core.loadExtScript(
+  "ext:deno_node/internal/process/active_resources.ts",
+);
 const { Blob, markFileBackedBlob } = core.loadExtScript(
   "ext:deno_web/09_file.js",
 );
@@ -215,6 +224,9 @@ const _toUnixTimestamp = toUnixTimestamp;
 const {
   ArrayBufferIsView,
   ArrayIsArray,
+  BigInt,
+  DataViewPrototype,
+  DataViewPrototypeGetByteLength,
   FunctionPrototypeBind,
   MapPrototypeDelete,
   MapPrototypeGet,
@@ -416,6 +428,177 @@ const readvPromise = promisify(readv) as (
   buffers: readonly ArrayBufferView[],
   position?: number,
 ) => Promise<ReadVResult>;
+
+// -- read --
+
+type ReadCallback = (
+  err: Error | null,
+  bytesRead: number,
+  buffer?: ArrayBufferView,
+) => void;
+
+const validateOptionsNullable = { __proto__: null, nullable: true };
+
+// `buffer?.byteLength` for views via primordial getters; undefined otherwise
+// (non-views fail validateBuffer before the value is ever used, like node's
+// optional chaining producing NaN).
+function viewByteLength(buffer: unknown): number | undefined {
+  if (ObjectPrototypeIsPrototypeOf(DataViewPrototype, buffer)) {
+    return DataViewPrototypeGetByteLength(buffer as DataView);
+  }
+  if (ArrayBufferIsView(buffer)) {
+    return TypedArrayPrototypeGetByteLength(buffer);
+  }
+  return undefined;
+}
+
+// `fs.read`: node's arity-based overload dispatch and validation order,
+// verbatim (lib/fs.js). The dispatch stays in JS because it allocates the
+// default 16384-byte Buffer and locates the callback -- both of which the
+// completion path needs -- and the zero-length case must deliver via
+// process.nextTick (ahead of promise microtasks), which an op can't do.
+function read(
+  fd: number,
+  buffer?: unknown,
+  offsetOrOptions?: unknown,
+  length?: unknown,
+  position?: unknown,
+  callback?: unknown,
+) {
+  fd = getValidatedFd(fd);
+
+  let offset = offsetOrOptions;
+  let params = null;
+  if (arguments.length <= 4) {
+    if (arguments.length === 4) {
+      // This is fs.read(fd, buffer, options, callback)
+      validateObject(offsetOrOptions, "options", validateOptionsNullable);
+      callback = length;
+      params = offsetOrOptions;
+    } else if (arguments.length === 3) {
+      // This is fs.read(fd, bufferOrParams, callback)
+      if (!ArrayBufferIsView(buffer)) {
+        // This is fs.read(fd, params, callback)
+        params = buffer;
+        ({ buffer = Buffer.alloc(16384) } = (params ?? kEmptyObject) as any);
+      }
+      callback = offsetOrOptions;
+    } else {
+      // This is fs.read(fd, callback)
+      callback = buffer;
+      buffer = Buffer.alloc(16384);
+    }
+
+    if (params !== undefined) {
+      validateObject(params, "options", validateOptionsNullable);
+    }
+    ({
+      offset = 0,
+      length = viewByteLength(buffer)! - (offset as number),
+      position = null,
+    } = (params ?? kEmptyObject) as any);
+  }
+
+  validateBuffer(buffer);
+  validateFunction(callback, "cb");
+
+  if (offset == null) {
+    offset = 0;
+  } else {
+    validateInteger(offset, "offset", 0);
+  }
+
+  (length as number) |= 0;
+
+  if (position == null) {
+    position = -1;
+  } else {
+    validatePosition(position, "position", length);
+  }
+
+  if (length === 0) {
+    return process.nextTick(function tick() {
+      (callback as ReadCallback)(null, 0, buffer as ArrayBufferView);
+    });
+  }
+
+  if (viewByteLength(buffer) === 0) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
+  }
+
+  validateOffsetLengthRead(offset, length, viewByteLength(buffer)!);
+
+  // node's wrapper: retain `buffer` so it can't be GC'ed before completion
+  // and deliver `(err, bytesRead || 0, buffer)` on BOTH paths. The op emits
+  // final node errors (EBADF/read failures, syscall "read"). BigInt avoids
+  // precision loss for positions > 2**31; -1n reads the current position.
+  const request = createFSReqCallback();
+  PromisePrototypeThen(
+    op_node_fs_read_deferred(
+      fd,
+      TypedArrayPrototypeSubarray(
+        arrayBufferViewToUint8Array(buffer),
+        offset as number,
+        (offset as number) + (length as number),
+      ),
+      typeof position === "bigint" ? position : BigInt(position as number),
+    ),
+    (bytesRead: number) => {
+      unregisterActiveRequest(request);
+      (callback as ReadCallback)(
+        null,
+        bytesRead || 0,
+        buffer as ArrayBufferView,
+      );
+    },
+    (err: Error) => {
+      unregisterActiveRequest(request);
+      (callback as ReadCallback)(err, 0, buffer as ArrayBufferView);
+    },
+  );
+}
+
+ObjectDefineProperty(read, customPromisifyArgs, {
+  __proto__: null,
+  value: ["bytesRead", "buffer"],
+  enumerable: false,
+});
+
+// `fs.readSync`: the whole overload resolution + validation + positioned
+// read happens in the op; `arguments.length` rides along because node's
+// dispatch is arity-based (an explicit `undefined` offsetOrOptions with five
+// args selects the positional form, where an undefined length |0s to a
+// zero-byte read). The op returns -1 when the (non-zero-length) target
+// buffer is empty -- the throw stays here for util.inspect's rendering of
+// the received buffer in the error message.
+function readSync(
+  fd: number,
+  buffer: ArrayBufferView,
+  offsetOrOptions?: unknown,
+  length?: unknown,
+  position?: unknown,
+): number {
+  const bytesRead = op_node_fs_read_v_sync(
+    arguments.length,
+    fd,
+    buffer,
+    offsetOrOptions,
+    length,
+    position,
+  );
+  if (bytesRead === -1) {
+    throw new ERR_INVALID_ARG_VALUE(
+      "buffer",
+      buffer,
+      "is empty and cannot be written",
+    );
+  }
+  return bytesRead;
+}
 
 // -- readFile --
 

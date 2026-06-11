@@ -536,8 +536,6 @@
     "ext:deno_node/_fs/_fs_futimes.ts": "../ext/node/polyfills/_fs/_fs_futimes.ts",
     "ext:deno_node/_fs/_fs_ftruncate.ts": "../ext/node/polyfills/_fs/_fs_ftruncate.ts",
     "ext:deno_node/_fs/_fs_glob.ts": "../ext/node/polyfills/_fs/_fs_glob.ts",
-    "ext:deno_node/_fs/_fs_read.ts": "../ext/node/polyfills/_fs/_fs_read.ts",
-    "ext:deno_node/_fs/_fs_readlink.ts": "../ext/node/polyfills/_fs/_fs_readlink.ts",
     "ext:deno_node/_global.d.ts": "../ext/node/polyfills/_global.d.ts",
     "ext:deno_node/_next_tick.ts": "../ext/node/polyfills/_next_tick.ts",
     "ext:deno_node/_process/exiting.ts": "../ext/node/polyfills/_process/exiting.ts",

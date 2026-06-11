@@ -846,7 +846,8 @@ export const validatePosition = hideStackFrames((position, name, length) => {
       );
     }
   } else {
-    throw new ERR_INVALID_ARG_TYPE(name, ["integer", "bigint"], position);
+    // node v26's order ("bigint or integer", not "integer or bigint").
+    throw new ERR_INVALID_ARG_TYPE(name, ["bigint", "integer"], position);
   }
 });
 

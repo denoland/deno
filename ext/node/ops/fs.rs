@@ -639,6 +639,9 @@ fn invalid_arg_type_helper(
     } else {
       format!("Symbol({})", desc.to_rust_string_lossy(scope))
     }
+  } else if actual.is_big_int() {
+    // inspect renders bigints with the literal `n` suffix.
+    format!("{}n", actual.to_rust_string_lossy(scope))
   } else {
     actual.to_rust_string_lossy(scope)
   };
@@ -971,8 +974,14 @@ fn fmt_num(n: f64) -> String {
   if n.is_infinite() {
     return if n < 0.0 { "-Infinity" } else { "Infinity" }.to_string();
   }
-  if n.fract() == 0.0 && n.abs() < 9e15 {
-    let s = format!("{}", n as i64);
+  if n.fract() == 0.0 && n.abs() < 1e21 {
+    // JS `String()` keeps integers below 1e21 in decimal notation; values at
+    // or above 2**63 need the float formatter to render their digits.
+    let s = if n.abs() < 9.2e18 {
+      format!("{}", n as i64)
+    } else {
+      format!("{n:.0}")
+    };
     // node's ERR_OUT_OF_RANGE adds `_` thousands separators when an integer
     // value's magnitude exceeds 2**32.
     if n.abs() > 4294967296.0 {
@@ -2206,40 +2215,255 @@ pub fn op_node_fs_close_async(
   })
 }
 
-/// Read from a raw OS fd using libc. No dup, no clone -- the read uses the
-/// fd number directly, so closing the fd from another thread interrupts the
 /// Positioned read: if position >= 0, uses pread to read without moving the
-/// file cursor. If position < 0, reads from the current position.
+/// file cursor. If position < 0, reads from the current position. Errors are
+/// node-formatted with syscall "read".
 fn read_with_position(
   file: Rc<dyn deno_io::fs::File>,
   buf: &mut [u8],
   position: i64,
 ) -> Result<u32, FsError> {
-  if position >= 0 {
-    let nread = file.read_at_sync(buf, position as u64)?;
-    Ok(nread as u32)
+  let nread = if position >= 0 {
+    file.read_at_sync(buf, position as u64)
   } else {
-    let nread = file.read_sync(buf)?;
-    Ok(nread as u32)
+    file.read_sync(buf)
+  }
+  .map_err(|e| fd_syscall_err(e, "read"))?;
+  Ok(nread as u32)
+}
+
+// `Array.isArray`: true for arrays and (recursively) for proxies whose
+// ultimate target is an array -- node's `validateObject` rejects a proxied
+// array as an options bag (test-fs-readSync-optional-params).
+fn js_is_array(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+) -> bool {
+  let mut v = value;
+  loop {
+    if v.is_array() {
+      return true;
+    }
+    match v8::Local::<v8::Proxy>::try_from(v) {
+      Ok(p) => v = p.get_target(scope),
+      Err(_) => return false,
+    }
   }
 }
 
-#[op2(fast)]
-#[smi]
-pub fn op_node_fs_read_sync(
-  state: &mut OpState,
-  fd: i32,
-  #[buffer] buf: &mut [u8],
-  #[bigint] position: i64,
-) -> Result<u32, FsError> {
-  let file = file_for_fd(state, fd)?;
-  read_with_position(file, buf, position)
+// node's `validateObject(value, name, kValidateObjectAllowNullable)`: `null`
+// passes; arrays (Proxy-pierced, like `ArrayIsArray`), functions, and
+// non-objects are ERR_INVALID_ARG_TYPE "object".
+fn validate_object_nullable(
+  scope: &mut v8::PinScope<'_, '_>,
+  value: v8::Local<v8::Value>,
+  name: &str,
+) -> Result<(), FsError> {
+  if value.is_null() {
+    return Ok(());
+  }
+  if js_is_array(scope, value) || value.is_function() || !value.is_object() {
+    return Err(err_invalid_arg_type(scope, name, &["object"], value).into());
+  }
+  Ok(())
 }
 
-/// Async read for node:fs. Runs a blocking read on a spawned thread using
-/// the raw OS fd directly (no dup/clone). When the fd is closed via
+// Replicates `validateOffsetLengthRead(offset, length, bufferLength)`.
+fn validate_offset_length_read(
+  offset: i64,
+  length: i64,
+  buffer_length: i64,
+) -> Result<(), FsError> {
+  if offset < 0 {
+    return Err(err_oor_int("offset", ">= 0", offset).into());
+  }
+  if length < 0 {
+    return Err(err_oor_int("length", ">= 0", length).into());
+  }
+  if offset + length > buffer_length {
+    return Err(
+      err_oor_int("length", &format!("<= {}", buffer_length - offset), length)
+        .into(),
+    );
+  }
+  Ok(())
+}
+
+// JS ToInt32 for an f64 already known to be in safe-integer range
+// (`buffer.byteLength - offset`): modular reduction into i32.
+fn js_to_int32_f64(d: f64) -> i32 {
+  (d as i64).rem_euclid(4294967296) as u32 as i32
+}
+
+// Resolves read's trailing `(offsetOrOptions, length, position)` per node:
+// the options form applies when `arguments.length <= 3` or `offsetOrOptions`
+// is `typeof "object"` (null included); otherwise the args are positional.
+// Validation order matches node readSync: options object-ness, then
+// `validateInteger(offset, 0)`, then `length |= 0` (ToInt32, with the options
+// default `buffer.byteLength - offset`), then `validatePosition`
+// (null/undefined -> -1; numbers are safe integers >= -1; bigints in
+// [-1, 2**63 - 1 - length]). Returns `Ok(None)` when a JS conversion (ToInt32
+// on a symbol or a throwing valueOf) left an exception pending -- the caller
+// must return immediately so it propagates.
+fn resolve_read_args(
+  scope: &mut v8::PinScope<'_, '_>,
+  view: v8::Local<v8::ArrayBufferView>,
+  arity: u32,
+  offset_or_options: v8::Local<v8::Value>,
+  length_v: v8::Local<v8::Value>,
+  position_v: v8::Local<v8::Value>,
+) -> Result<Option<(i64, i32, i64)>, FsError> {
+  let use_options = arity <= 3
+    || offset_or_options.is_null()
+    || (offset_or_options.is_object() && !offset_or_options.is_function());
+  let undefined: v8::Local<v8::Value> = v8::undefined(scope).into();
+  let (offset_raw, length_raw, position_raw) = if use_options {
+    if !offset_or_options.is_undefined() {
+      validate_object_nullable(scope, offset_or_options, "options")?;
+    }
+    if offset_or_options.is_null_or_undefined() {
+      (undefined, undefined, undefined)
+    } else {
+      let obj = v8::Local::<v8::Object>::try_from(offset_or_options).unwrap();
+      (
+        get_prop(scope, obj, "offset"),
+        get_prop(scope, obj, "length"),
+        get_prop(scope, obj, "position"),
+      )
+    }
+  } else {
+    (offset_or_options, length_v, position_v)
+  };
+
+  let offset: i64 = if offset_raw.is_undefined() {
+    0
+  } else {
+    validate_integer(scope, offset_raw, "offset", 0, MAX_SAFE_INTEGER)?
+  };
+
+  let length: i32 = if length_raw.is_undefined() {
+    if use_options {
+      js_to_int32_f64(view.byte_length() as f64 - offset as f64)
+    } else {
+      0
+    }
+  } else {
+    match length_raw.int32_value(scope) {
+      Some(n) => n,
+      // ToInt32 threw (symbol/bigint length or a throwing valueOf): bail so
+      // the pending exception propagates.
+      None => return Ok(None),
+    }
+  };
+
+  let position: i64 = if position_raw.is_null_or_undefined() {
+    -1
+  } else if position_raw.is_number() {
+    validate_integer(scope, position_raw, "position", -1, MAX_SAFE_INTEGER)?
+  } else if position_raw.is_big_int() {
+    // validatePosition's bigint arm: [-1, 2**63 - 1 - length]. `length` may
+    // be negative here (position is validated before the length range), so
+    // the bound is computed in i128.
+    let max = ((1i128 << 63) - 1) - length as i128;
+    let big = v8::Local::<v8::BigInt>::try_from(position_raw).unwrap();
+    let (v, lossless) = big.i64_value();
+    if !lossless || (v as i128) < -1 || (v as i128) > max {
+      let digits = position_raw.to_rust_string_lossy(scope);
+      // ERR_OUT_OF_RANGE bigint rendering: `_` separators past 2**32, `n`
+      // suffix.
+      let mut received = if !lossless || v.unsigned_abs() > 4294967296 {
+        add_numerical_separator(&digits)
+      } else {
+        digits
+      };
+      received.push('n');
+      return Err(
+        err_out_of_range("position", &format!(">= -1 && <= {max}"), &received)
+          .into(),
+      );
+    }
+    v
+  } else {
+    return Err(
+      err_invalid_arg_type(
+        scope,
+        "position",
+        &["bigint", "integer"],
+        position_raw,
+      )
+      .into(),
+    );
+  };
+
+  Ok(Some((offset, length, position)))
+}
+
+// `fs.readSync(fd, buffer, offsetOrOptions?, length?, position?)`: full node
+// overload resolution + validation + positioned read. `arity` is the caller's
+// `arguments.length` -- node's dispatch is arity-based (an explicit
+// `undefined` offsetOrOptions with arity > 3 selects the positional form).
+// Validation ORDER matches node: buffer first; the fd is validated LAST (at
+// the binding layer in node) and not at all when length resolves to 0.
+// Returns -1 as the "buffer is empty" sentinel -- the JS wrapper throws
+// ERR_INVALID_ARG_VALUE there, keeping util.inspect's rendering of the
+// received buffer.
+#[op2(fast, stack_trace)]
+#[smi]
+pub fn op_node_fs_read_v_sync(
+  scope: &mut v8::PinScope<'_, '_>,
+  state: &mut OpState,
+  #[smi] arity: u32,
+  fd_v: v8::Local<v8::Value>,
+  buffer_v: v8::Local<v8::Value>,
+  offset_or_options: v8::Local<v8::Value>,
+  length_v: v8::Local<v8::Value>,
+  position_v: v8::Local<v8::Value>,
+) -> Result<i32, FsError> {
+  let view =
+    v8::Local::<v8::ArrayBufferView>::try_from(buffer_v).map_err(|_| {
+      err_invalid_arg_type(
+        scope,
+        "buffer",
+        &["Buffer", "TypedArray", "DataView"],
+        buffer_v,
+      )
+    })?;
+  let Some((offset, length, position)) = resolve_read_args(
+    scope,
+    view,
+    arity,
+    offset_or_options,
+    length_v,
+    position_v,
+  )?
+  else {
+    return Ok(0);
+  };
+  if length == 0 {
+    return Ok(0);
+  }
+  let byte_length = view.byte_length();
+  if byte_length == 0 {
+    return Ok(-1);
+  }
+  validate_offset_length_read(offset, length as i64, byte_length as i64)?;
+  let fd = validate_fd_value(scope, fd_v)?;
+  let file = file_for_fd(state, fd).map_err(|_| ebadf_node("read"))?;
+  // SAFETY: no JS runs during this synchronous op and `buffer_v` keeps the
+  // view alive; [offset, offset + length) was just range-checked against the
+  // view, whose `data()` already includes its byte_offset.
+  let buf: &mut [u8] = unsafe {
+    std::slice::from_raw_parts_mut(
+      (view.data() as *mut u8).add(offset as usize),
+      length as usize,
+    )
+  };
+  read_with_position(file, buf, position).map(|n| n as i32)
+}
+
 /// Async read for node:fs. Uses the File trait from FdTable for proper
-/// I/O through the file handle.
+/// I/O through the file handle. Errors are node-formatted with syscall
+/// "read" (EBADF included), matching node's binding-level read errors.
 #[op2]
 #[smi]
 pub async fn op_node_fs_read_deferred(
@@ -2248,16 +2472,16 @@ pub async fn op_node_fs_read_deferred(
   #[buffer] buf: JsBuffer,
   #[bigint] position: i64,
 ) -> Result<u32, FsError> {
-  let file = file_for_fd(&state.borrow(), fd)?;
-  if position >= 0 {
-    let view = deno_core::BufMutView::from(buf);
-    let (nread, _) = file.read_at_async(view, position as u64).await?;
-    Ok(nread as u32)
+  let file =
+    file_for_fd(&state.borrow(), fd).map_err(|_| ebadf_node("read"))?;
+  let view = deno_core::BufMutView::from(buf);
+  let result = if position >= 0 {
+    file.read_at_async(view, position as u64).await
   } else {
-    let view = deno_core::BufMutView::from(buf);
-    let (nread, _) = file.read_byob(view).await?;
-    Ok(nread as u32)
-  }
+    file.read_byob(view).await
+  };
+  let (nread, _) = result.map_err(|e| fd_syscall_err(e, "read"))?;
+  Ok(nread as u32)
 }
 
 /// Positioned write: if position >= 0, uses pwrite to write without moving
@@ -2444,10 +2668,26 @@ fn hex_val(b: u8) -> Option<u8> {
 }
 
 // Replicates `getValidatedFd`: `-0` -> 0, otherwise `validateInt32(fd,"fd",0)`.
+// This is node's BINDING-level check (node_file.cc GetValidatedFd), whose C++
+// message renders a bigint without inspect's `n` suffix -- `(2)`, where the
+// JS validators say `(2n)`.
 fn validate_fd_value(
   scope: &mut v8::PinScope<'_, '_>,
   value: v8::Local<v8::Value>,
 ) -> Result<i32, FsError> {
+  if value.is_big_int() {
+    return Err(
+      NodeArgError {
+        class: deno_error::builtin_classes::TYPE_ERROR,
+        code: "ERR_INVALID_ARG_TYPE",
+        message: format!(
+          "The \"fd\" argument must be of type number. Received type bigint ({})",
+          value.to_rust_string_lossy(scope)
+        ),
+      }
+      .into(),
+    );
+  }
   Ok(validate_integer(scope, value, "fd", 0, i32::MAX as i64)? as i32)
 }
 

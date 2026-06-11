@@ -1435,7 +1435,9 @@
     "parallel/test-fs-read-file-sync.js": {},
     "parallel/test-fs-read-offset-null.js": {},
     "parallel/test-fs-read-optional-params.js": {},
+    "parallel/test-fs-read-position-validation.mjs": {},
     "parallel/test-fs-read-promises-optional-params.js": {},
+    "parallel/test-fs-read-promises-position-validation.mjs": {},
     "parallel/test-fs-read-stream-autoClose.js": {},
     "parallel/test-fs-read-stream-concurrent-reads.js": {},
     "parallel/test-fs-read-stream-double-close.js": {},
@@ -4888,8 +4890,6 @@
     "parallel/test-file-write-stream.js": {},
     "parallel/test-file-write-stream4.js": {},
     "parallel/test-fileurltopathbuffer.js": {},
-    "parallel/test-fs-read-position-validation.mjs": {},
-    "parallel/test-fs-read-promises-position-validation.mjs": {},
     "parallel/test-fs-readdir-ucs2.js": {
       "linux": false,
       "reason": "error: Uncaught (in promise) AssertionError: Expected values to be strictly deep"
