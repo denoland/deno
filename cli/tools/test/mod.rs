@@ -337,6 +337,7 @@ pub enum TestFailure {
   JsError(Box<JsError>),
   FailedSteps(usize),
   IncompleteSteps,
+  PendingPromiseResolution,
   Leaked(Vec<String>, Vec<String>), // Details, trailer notes
   TimedOut(u32),
   // The rest are for steps only.
@@ -360,6 +361,9 @@ impl TestFailure {
       }
       TestFailure::IncompleteSteps => Cow::Borrowed(
         "Completed while steps were still running. Ensure all steps are awaited with `await t.step(...)`.",
+      ),
+      TestFailure::PendingPromiseResolution => Cow::Borrowed(
+        "Promise resolution is still pending but the event loop has already resolved.",
       ),
       TestFailure::Incomplete => Cow::Borrowed(
         "Didn't complete before parent. Await step with `await t.step(...)`.",
@@ -404,6 +408,9 @@ impl TestFailure {
       TestFailure::FailedSteps(n) => format!("{n} test steps failed"),
       TestFailure::IncompleteSteps => {
         "Completed while steps were still running".to_string()
+      }
+      TestFailure::PendingPromiseResolution => {
+        "Promise resolution is still pending".to_string()
       }
       TestFailure::Incomplete => "Didn't complete before parent".to_string(),
       TestFailure::Leaked(_, _) => "Leaks detected".to_string(),
@@ -1382,6 +1389,9 @@ async fn run_tests_for_worker_inner(
               event_tracker.cancelled(desc)?;
               had_uncaught_error = true;
               continue;
+            }
+            CoreErrorKind::PendingPromiseResolution => {
+              TestResult::Failed(TestFailure::PendingPromiseResolution)
             }
             err => return Err(err.into_box().into()),
           },
