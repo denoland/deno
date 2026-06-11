@@ -10,6 +10,14 @@
       "output": ""
     },
     {
+      "args": "install --global --root ./bins-transitive --allow-scripts=npm:@denotest/transitive-lifecycle-script npm:@denotest/bin-with-transitive-lifecycle",
+      "output": "install_transitive.out"
+    },
+    {
+      "args": "run -A assert_transitive.js",
+      "output": ""
+    },
+    {
       "if": "unix",
       "args": "install --global --root ./bins-denied --name lifecycle-scripts-simple npm:@denotest/lifecycle-scripts-simple",
       "output": "install_denied.out"

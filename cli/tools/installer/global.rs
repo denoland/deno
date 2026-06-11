@@ -438,25 +438,39 @@ async fn maybe_prompt_allow_lifecycle_scripts(
     return Ok(());
   };
 
-  let Some(package_req) = bin_name_resolver
-    .resolve_npm_lifecycle_scripts_package_req(&npm_ref)
-    .await?
-  else {
+  let package_reqs = bin_name_resolver
+    .resolve_npm_lifecycle_scripts_package_reqs(&npm_ref)
+    .await?;
+  if package_reqs.is_empty() {
     return Ok(());
   };
 
   if confirm(ConfirmOptions {
-    message: format!(
-      "Run lifecycle scripts for {}?",
-      npm_package_req_to_string(&package_req)
-    ),
+    message: lifecycle_scripts_prompt_message(&package_reqs),
     default: false,
   }) == Some(true)
   {
-    flags.allow_scripts = PackagesAllowedScripts::Some(vec![package_req]);
+    flags.allow_scripts = PackagesAllowedScripts::Some(package_reqs);
   }
 
   Ok(())
+}
+
+fn lifecycle_scripts_prompt_message(package_reqs: &[PackageReq]) -> String {
+  if package_reqs.len() == 1 {
+    return format!(
+      "Run lifecycle scripts for {}?",
+      npm_package_req_to_string(&package_reqs[0])
+    );
+  }
+  format!(
+    "Run lifecycle scripts for these packages?\n{}",
+    package_reqs
+      .iter()
+      .map(|req| format!("- {}", npm_package_req_to_string(req)))
+      .collect::<Vec<_>>()
+      .join("\n")
+  )
 }
 
 fn npm_package_req_to_string(req: &PackageReq) -> String {

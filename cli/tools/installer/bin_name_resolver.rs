@@ -1,9 +1,12 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_npm::registry::NpmDependencyEntryKind;
 use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmVersionResolver;
@@ -201,32 +204,64 @@ impl<'a> BinNameResolver<'a> {
     self.resolve_npm_bin_entries(&npm_ref).await.ok().flatten()
   }
 
-  pub async fn resolve_npm_lifecycle_scripts_package_req(
+  pub async fn resolve_npm_lifecycle_scripts_package_reqs(
     &self,
     npm_ref: &NpmPackageReqReference,
-  ) -> Result<Option<PackageReq>, AnyError> {
-    let Some(version_info) = self.resolve_npm_version_info(npm_ref).await?
-    else {
-      return Ok(None);
-    };
-    // Global install prompts only for the directly installed package here.
-    // Transitive lifecycle scripts are discovered by npm install later and are
-    // not included in the generated allowScripts list.
-    let has_lifecycle_scripts =
-      version_info.has_install_script.unwrap_or(false)
-        || version_info.scripts.contains_key("preinstall")
-        || version_info.scripts.contains_key("install")
-        || version_info.scripts.contains_key("postinstall");
-    if !has_lifecycle_scripts {
-      return Ok(None);
+  ) -> Result<Vec<PackageReq>, AnyError> {
+    let mut pending = VecDeque::from([npm_ref.req().clone()]);
+    let mut seen = HashSet::new();
+    let mut package_reqs = Vec::new();
+
+    while let Some(package_req) = pending.pop_front() {
+      let package_info = self
+        .npm_registry_api
+        .package_info(&package_req.name)
+        .await?;
+      let version_resolver =
+        self.npm_version_resolver.get_for_package(&package_info);
+      let Some(version_info) = version_resolver
+        .resolve_best_package_version_info(
+          &package_req.version_req,
+          Vec::new().into_iter(),
+        )
+        .ok()
+      else {
+        continue;
+      };
+      if !seen.insert((package_req.name.clone(), version_info.version.clone()))
+      {
+        continue;
+      }
+
+      if has_lifecycle_scripts(version_info) {
+        let version_req =
+          VersionReq::parse_from_npm(&version_info.version.to_string())?;
+        package_reqs.push(PackageReq {
+          name: package_req.name.clone(),
+          version_req,
+        });
+      }
+
+      for dep in version_info.dependencies_as_entries(&package_req.name)? {
+        if dep.kind == NpmDependencyEntryKind::Dep {
+          pending.push_back(PackageReq {
+            name: dep.name,
+            version_req: dep.version_req,
+          });
+        }
+      }
     }
-    let version_req =
-      VersionReq::parse_from_npm(&version_info.version.to_string())?;
-    Ok(Some(PackageReq {
-      name: npm_ref.req().name.clone(),
-      version_req,
-    }))
+
+    package_reqs.sort_by_key(|req| req.to_string());
+    Ok(package_reqs)
   }
+}
+
+fn has_lifecycle_scripts(version_info: &NpmPackageVersionInfo) -> bool {
+  version_info.has_install_script.unwrap_or(false)
+    || version_info.scripts.contains_key("preinstall")
+    || version_info.scripts.contains_key("install")
+    || version_info.scripts.contains_key("postinstall")
 }
 
 #[cfg(test)]
