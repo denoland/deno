@@ -20,7 +20,6 @@ const {
   SymbolAsyncDispose,
   SymbolDispose,
   ArrayIteratorPrototypeNext,
-  AsyncGeneratorPrototypeNext,
   SymbolIterator,
 } = primordials;
 
@@ -62,7 +61,7 @@ export default class Dir {
       }
       assert(this.#asyncIterator);
       PromisePrototypeThen(
-        AsyncGeneratorPrototypeNext(this.#asyncIterator),
+        this.#asyncIterator.next(),
         (iteratorResult) => {
           resolve(
             iteratorResult.done
