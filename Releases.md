@@ -8,8 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.8.3 / 2026.06.11
 
-- Revert "test(node_compat): enable parallel/test-child-process-send-utf8.js"
-  (#35036)
 - feat(cli): suggest DENO_TLS_CA_STORE on untrusted TLS certificate (#34756)
 - feat(cli): support --env-file in dependency and registry subcommands (#34843)
 - feat(compile): support watch mode (#34860)
