@@ -38,7 +38,7 @@ use crate::io::WriteOutcome;
 /// Readable resources are resources that can have data read from. Examples of
 /// this are files, sockets, or HTTP streams.
 ///
-/// Readables can be read from from either JS or Rust. In JS one can use
+/// Readables can be read from either JS or Rust. In JS one can use
 /// `Deno.core.read()` to read from a single chunk of data from a readable. In
 /// Rust one can directly call `read()` or `read_byob()`. The Rust side code is
 /// used to implement ops like `op_slice`.
