@@ -85,6 +85,12 @@ impl TestReporter for CompoundTestReporter {
     }
   }
 
+  fn report_snapshot_summary(&mut self, summary: &TestSnapshotSummary) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_snapshot_summary(summary);
+    }
+  }
+
   fn report_summary(
     &mut self,
     elapsed: &Duration,

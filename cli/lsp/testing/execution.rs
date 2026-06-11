@@ -336,6 +336,7 @@ impl TestRun {
               // and they'd generate noise in the test gutter.
               sanitize_ops: false,
               sanitize_resources: false,
+              update_snapshots: false,
             },
           ))
         }

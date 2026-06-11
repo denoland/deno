@@ -38,6 +38,10 @@ pub trait TestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );
+  /// Called after a test module ran with `--update-snapshots` and updated or
+  /// removed snapshots. Reporters that print a final summary should
+  /// accumulate these counts and include them there.
+  fn report_snapshot_summary(&mut self, _summary: &TestSnapshotSummary) {}
   fn report_summary(
     &mut self,
     elapsed: &Duration,
