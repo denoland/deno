@@ -3175,6 +3175,7 @@ dependencies = [
  "deno_inspector_server",
  "deno_io",
  "deno_kv",
+ "deno_media_type",
  "deno_napi",
  "deno_net",
  "deno_node",
