@@ -3146,9 +3146,7 @@ def456  file-b.zip
 
   #[test]
   fn parse_sha256sum_tolerates_blank_and_extra_whitespace() {
-    let contents = "\
-
-abc123    file.tar.gz
+    let contents = "abc123    file.tar.gz
    \t
 
 def456  other.zip

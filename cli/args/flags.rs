@@ -3320,7 +3320,7 @@ supported framework (Next.js, Astro, etc.) in the current directory.
         Arg::new("backend")
           .long("backend")
           .help("Backend to use for the desktop app")
-          .value_parser(["webview", "cef"])
+          .value_parser(["webview", "cef", "raw"])
           .default_value("cef")
           .help_heading(DESKTOP_HEADING),
       )
