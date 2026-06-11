@@ -41,6 +41,39 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "[node/buffer] Buffer constructor throws RangeError instead of panicking for excessive size",
+  fn() {
+    // Regression for https://github.com/denoland/deno/issues/34043 - calling
+    // Buffer with a value like Date.now() used to crash V8 with a fatal error
+    // because the size exceeded V8's external-memory budget. It should now
+    // throw a JS RangeError just like Node.
+    const tooLarge = Number.MAX_SAFE_INTEGER;
+    assertThrows(
+      // @ts-expect-error Buffer() (without new) is valid at runtime but TS says otherwise.
+      () => Buffer(tooLarge),
+      RangeError,
+      '"size" is out of range',
+    );
+    assertThrows(
+      () => Buffer.alloc(tooLarge),
+      RangeError,
+      '"size" is out of range',
+    );
+    assertThrows(
+      () => Buffer.allocUnsafe(tooLarge),
+      RangeError,
+      '"size" is out of range',
+    );
+    assertThrows(
+      () => Buffer.allocUnsafeSlow(tooLarge),
+      RangeError,
+      '"size" is out of range',
+    );
+  },
+});
+
+Deno.test({
   name: "[node/buffer] alloc(0) creates an empty buffer",
   fn() {
     const buffer: Buffer = Buffer.alloc(0);

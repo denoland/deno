@@ -147,7 +147,12 @@ float32Array[0] = -1; // 0xBF800000
 // check this with `os.endianness()` because that is determined at compile time.
 const bigEndian = uInt8Float32Array[3] === 0;
 
-const kMaxLength = NumberMAX_SAFE_INTEGER;
+// Max length for a Buffer. Matches Node.js, which uses
+// `v8::TypedArray::kMaxByteLength` (32 GiB - 1 on sandboxed V8 builds).
+// Setting this any higher risks tripping V8's
+// `external_memory_max_reasonable_size` check (32 GiB by default) and
+// triggering a fatal V8 error instead of a JS RangeError. See #34043.
+const kMaxLength = 0x7FFFFFFFF;
 const kStringMaxLength = 536870888;
 const MAX_UINT32 = 2 ** 32;
 
