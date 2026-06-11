@@ -311,12 +311,13 @@ pub(crate) fn with_required_check(
 
   gs_quote!(generator_state(fn_args, scope) =>
     (if #fn_args.length() < (#required as i32) + #async_offset {
+      let present = #fn_args.length() - #async_offset;
       let msg = format!(
         "{}: {} {} required, but only {} present",
         #prefix,
         #required,
         #arguments_lit,
-        #fn_args.length() - #async_offset
+        present
       );
       let msg = deno_core::v8::String::new(&mut #scope, &msg).unwrap();
       let exception = deno_core::v8::Exception::type_error(&mut #scope, msg.into());
