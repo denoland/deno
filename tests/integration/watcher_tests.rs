@@ -915,6 +915,11 @@ async fn serve_watch_parallel_stops_old_workers() {
     // disable connection pooling so we create a new connection per request
     // which allows us to distribute requests across workers
     .pool_max_idle_per_host(0)
+    // bound every request; reqwest has no default timeout, so without this a
+    // request to a socket that connects but never responds (e.g. a dying old
+    // worker generation's listener backlog) hangs the test forever
+    .connect_timeout(std::time::Duration::from_secs(5))
+    .timeout(std::time::Duration::from_secs(10))
     .build()
     .unwrap();
 
@@ -940,39 +945,62 @@ async fn serve_watch_parallel_stops_old_workers() {
   let line = wait_contains("Listening on", &mut stderr_lines).await;
   let new_port = port_regex.captures(&line).unwrap()[1].to_string();
 
-  // The new generation serves the new code.
-  for _ in 0..8 {
-    let body = client
+  // The old generation may keep serving the old code briefly while winding
+  // down, and with `--parallel` both generations can even share the same port
+  // (SO_REUSEPORT), so responses can interleave right after the restart.
+  // Eventually only the new code must be served; before the fix the old
+  // workers kept serving "v1" forever.
+  let start = std::time::Instant::now();
+  let mut consecutive_v2 = 0;
+  while consecutive_v2 < 20 {
+    match client
       .get(format!("http://127.0.0.1:{new_port}/"))
       .send()
       .await
-      .unwrap()
-      .text()
-      .await
-      .unwrap();
-    assert_eq!(body, "v2");
-  }
-
-  // All workers of the old generation must shut down and release the old
-  // port. Before the fix they kept serving the old code forever.
-  let start = std::time::Instant::now();
-  loop {
-    match client
-      .get(format!("http://127.0.0.1:{old_port}/"))
-      .send()
-      .await
     {
-      // Connection error: the old workers are gone.
-      Err(_) => break,
-      // Old workers may still serve while winding down, but only old code.
       Ok(response) => {
-        assert_eq!(response.text().await.unwrap(), "v1");
+        let body = response.text().await.unwrap();
+        if body == "v2" {
+          consecutive_v2 += 1;
+        } else {
+          // Only the old or the new code may respond, nothing else.
+          assert_eq!(body, "v1");
+          consecutive_v2 = 0;
+        }
+      }
+      // Transient connection errors can happen mid-restart.
+      Err(_) => {
+        consecutive_v2 = 0;
       }
     }
     if start.elapsed() > std::time::Duration::from_secs(30) {
       panic!("old workers are still serving 30s after the restart");
     }
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+  }
+
+  // If the new generation got a different port, the old generation must shut
+  // down and release the old port.
+  if new_port != old_port {
+    let start = std::time::Instant::now();
+    loop {
+      match client
+        .get(format!("http://127.0.0.1:{old_port}/"))
+        .send()
+        .await
+      {
+        // Connection error or timeout: the old workers no longer serve.
+        Err(_) => break,
+        // Old workers may still serve while winding down, but only old code.
+        Ok(response) => {
+          assert_eq!(response.text().await.unwrap(), "v1");
+        }
+      }
+      if start.elapsed() > std::time::Duration::from_secs(30) {
+        panic!("old workers are still serving 30s after the restart");
+      }
+      tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
   }
 
   check_alive_then_kill(child);
