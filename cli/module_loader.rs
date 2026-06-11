@@ -1055,7 +1055,7 @@ impl<TGraphContainer: ModuleGraphContainer>
       Ok(())
     }
 
-    // An `npm:`/`jsr:` package's bin entry chosen as the main module is
+    // An `npm:` package's bin entry chosen as the main module is
     // resolved to a concrete `file:` URL inside the global npm cache before it
     // reaches here. deno_core then re-resolves that already-resolved specifier
     // as the main module, running it through the import map. An
