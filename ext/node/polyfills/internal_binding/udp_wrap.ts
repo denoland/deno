@@ -29,15 +29,9 @@ const {
   UDP: NativeUDP,
 } = core.ops;
 const {
-  ArrayPrototypeMap,
-  ErrorPrototype,
   ObjectPrototypeIsPrototypeOf,
-  SafeRegExp,
-  StringPrototypeMatch,
   Uint8Array,
 } = primordials;
-
-const osErrorRegExp = new SafeRegExp(/os error (40|90|10040)/);
 
 core.loadExtScript("ext:deno_node/internal_binding/handle_wrap.ts");
 const { ownerSymbol } = core.loadExtScript(
@@ -220,7 +214,7 @@ class UDP extends NativeUDP {
   #doSend(
     req: SendWrapInstance,
     bufs: MessageType[],
-    _count: number,
+    count: number,
     args: [number, string, boolean] | [boolean],
     _family: number,
   ): number {
@@ -233,56 +227,22 @@ class UDP extends NativeUDP {
       hasCallback = args[0] as boolean;
     }
 
-    const payload = new Uint8Array(
-      // deno-lint-ignore prefer-primordials
-      Buffer.concat(
-        ArrayPrototypeMap(bufs, (buf) => {
-          if (typeof buf === "string") {
-            return Buffer.from(buf);
-          }
-
-          // deno-lint-ignore prefer-primordials
-          return Buffer.from(buf.buffer, buf.byteOffset, buf.byteLength);
-        }),
-      ),
+    const promise = op_node_udp_send(
+      this._rid(),
+      bufs,
+      count,
+      this._remoteAddress()!,
+      this._remotePort(),
     );
-
-    (async () => {
-      let sent: number;
-      let err: number | null = null;
-
-      try {
-        sent = await op_node_udp_send(
-          this._rid(),
-          payload,
-          this._remoteAddress()!,
-          this._remotePort(),
-        );
-      } catch (e) {
-        if (
-          ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
-        ) {
-          err = codeMap.get("EBADF")!;
-        } else if (
-          ObjectPrototypeIsPrototypeOf(ErrorPrototype, e) &&
-          StringPrototypeMatch(e.message, osErrorRegExp)
-        ) {
-          err = codeMap.get("EMSGSIZE")!;
-        } else {
-          err = codeMap.get("UNKNOWN")!;
-        }
-
-        sent = 0;
-      }
-
-      if (hasCallback) {
+    if (hasCallback) {
+      promise.then(({ err, sent }) => {
         try {
           req.oncomplete(err, sent);
         } catch {
           // swallow callback errors
         }
-      }
-    })();
+      });
+    }
 
     return 0;
   }

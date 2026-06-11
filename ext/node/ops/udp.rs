@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::future::Future;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
@@ -20,6 +21,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_core::serde::Serialize;
 use deno_core::uv_compat;
 use deno_core::v8;
 use deno_permissions::PermissionsContainer;
@@ -141,10 +143,13 @@ impl UDP {
 const UV_UNKNOWN: i32 = -4094;
 
 fn io_error_to_uv(err: &std::io::Error) -> i32 {
-  err
-    .raw_os_error()
-    .map(|code| -code)
-    .unwrap_or(uv_compat::UV_EINVAL)
+  match err.raw_os_error() {
+    #[cfg(windows)]
+    Some(10040) => -4065,
+    Some(code @ (40 | 90)) => -code,
+    Some(code) => -code,
+    None => uv_compat::UV_EINVAL,
+  }
 }
 
 fn udp_error_to_uv(err: &NodeUdpError) -> i32 {
@@ -153,7 +158,8 @@ fn udp_error_to_uv(err: &NodeUdpError) -> i32 {
     NodeUdpError::Resource(_) => uv_compat::UV_EBADF,
     NodeUdpError::AddrParse(_)
     | NodeUdpError::NoResolvedAddress
-    | NodeUdpError::InvalidHostname(_) => uv_compat::UV_EINVAL,
+    | NodeUdpError::InvalidHostname(_)
+    | NodeUdpError::InvalidSendBuffer => uv_compat::UV_EINVAL,
     NodeUdpError::Canceled(_) => uv_compat::UV_ECANCELED,
     NodeUdpError::Permission(_) => UV_UNKNOWN,
   }
@@ -786,6 +792,9 @@ pub enum NodeUdpError {
   #[class(type)]
   #[error("Invalid hostname: '{0}'")]
   InvalidHostname(String),
+  #[class(type)]
+  #[error("Invalid UDP send buffer")]
+  InvalidSendBuffer,
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
@@ -1313,14 +1322,62 @@ pub fn op_node_udp_leave_source_specific(
   )
 }
 
-#[op2]
-#[smi]
-pub async fn op_node_udp_send(
+fn array_buffer_view_to_vec(view: v8::Local<v8::ArrayBufferView>) -> Vec<u8> {
+  let mut buf = vec![0u8; view.byte_length()];
+  let copied = view.copy_contents(&mut buf);
+  debug_assert_eq!(copied, buf.len());
+  buf
+}
+
+fn string_to_utf8(
+  scope: &mut v8::PinScope,
+  value: v8::Local<v8::String>,
+) -> Vec<u8> {
+  let len = value.utf8_length(scope);
+  let mut buf = Vec::with_capacity(len);
+  let written = value.write_utf8_uninit_v2(
+    scope,
+    buf.spare_capacity_mut(),
+    v8::WriteFlags::kReplaceInvalidUtf8,
+    None,
+  );
+  // SAFETY: write_utf8_uninit_v2 initialized exactly `written` bytes.
+  unsafe {
+    buf.set_len(written);
+  }
+  buf
+}
+
+fn udp_send_buffers_to_vec(
+  scope: &mut v8::PinScope,
+  bufs: v8::Local<v8::Array>,
+  count: u32,
+) -> Result<Vec<u8>, NodeUdpError> {
+  let count = count.min(bufs.length());
+  let mut payload = Vec::new();
+  for i in 0..count {
+    let Some(value) = bufs.get_index(scope, i) else {
+      continue;
+    };
+    if let Ok(string) = v8::Local::<v8::String>::try_from(value) {
+      payload.extend_from_slice(&string_to_utf8(scope, string));
+      continue;
+    }
+    if let Ok(view) = v8::Local::<v8::ArrayBufferView>::try_from(value) {
+      payload.extend_from_slice(&array_buffer_view_to_vec(view));
+      continue;
+    }
+    return Err(NodeUdpError::InvalidSendBuffer);
+  }
+  Ok(payload)
+}
+
+async fn node_udp_send(
   state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[buffer] buf: JsBuffer,
-  #[string] hostname: String,
-  #[smi] port: u16,
+  rid: ResourceId,
+  buf: Vec<u8>,
+  hostname: String,
+  port: u16,
 ) -> Result<usize, NodeUdpError> {
   {
     state
@@ -1353,6 +1410,43 @@ pub async fn op_node_udp_send(
     .await??;
 
   Ok(nwritten)
+}
+
+#[derive(Serialize)]
+pub struct SendResult {
+  pub err: Option<i32>,
+  pub sent: usize,
+}
+
+#[op2]
+#[serde]
+pub fn op_node_udp_send<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+  bufs: v8::Local<'a, v8::Array>,
+  #[smi] count: u32,
+  #[string] hostname: String,
+  #[smi] port: u16,
+) -> impl Future<Output = SendResult> + use<> {
+  let payload = udp_send_buffers_to_vec(scope, bufs, count);
+  async move {
+    match payload {
+      Ok(payload) => {
+        match node_udp_send(state, rid, payload, hostname, port).await {
+          Ok(sent) => SendResult { err: None, sent },
+          Err(err) => SendResult {
+            err: Some(udp_error_to_uv(&err)),
+            sent: 0,
+          },
+        }
+      }
+      Err(err) => SendResult {
+        err: Some(udp_error_to_uv(&err)),
+        sent: 0,
+      },
+    }
+  }
 }
 
 #[derive(serde::Serialize)]
