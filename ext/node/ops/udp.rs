@@ -27,6 +27,7 @@ use socket2::Type;
 use tokio::net::UdpSocket;
 
 use crate::ops::handle_wrap::AsyncWrap;
+use crate::ops::handle_wrap::HandleWrap;
 use crate::ops::handle_wrap::ProviderType;
 
 #[derive(CppgcBase, CppgcInherits)]
@@ -51,6 +52,35 @@ impl SendWrap {
   fn constructor(state: &mut OpState) -> SendWrap {
     SendWrap {
       base: AsyncWrap::create(state, ProviderType::UdpSendWrap as i32),
+    }
+  }
+}
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(HandleWrap)]
+#[repr(C)]
+pub struct UDP {
+  base: HandleWrap,
+}
+
+unsafe impl GarbageCollected for UDP {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"UDP"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = HandleWrap)]
+impl UDP {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> UDP {
+    UDP {
+      base: HandleWrap::create(
+        AsyncWrap::create(state, ProviderType::UdpWrap as i32),
+        None,
+      ),
     }
   }
 }

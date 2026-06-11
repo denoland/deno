@@ -40,6 +40,7 @@ const {
   op_node_udp_set_multicast_ttl,
   op_node_udp_set_ttl,
   SendWrap,
+  UDP: NativeUDP,
 } = core.ops;
 const {
   ArrayPrototypeMap,
@@ -53,12 +54,7 @@ const {
 
 const osErrorRegExp = new SafeRegExp(/os error (40|90|10040)/);
 
-const { HandleWrap } = core.loadExtScript(
-  "ext:deno_node/internal_binding/handle_wrap.ts",
-);
-const { providerType } = core.loadExtScript(
-  "ext:deno_node/internal_binding/async_wrap.ts",
-);
+core.loadExtScript("ext:deno_node/internal_binding/handle_wrap.ts");
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
 );
@@ -109,7 +105,7 @@ function isValidMulticastAddress(
   }
 }
 
-class UDP extends HandleWrap {
+class UDP extends NativeUDP {
   [ownerSymbol]: unknown = null;
 
   #address?: string;
@@ -151,7 +147,7 @@ class UDP extends HandleWrap {
   ) => any;
 
   constructor() {
-    super(providerType.UDPWRAP);
+    super();
   }
 
   addMembership(multicastAddress: string, interfaceAddress?: string): number {
