@@ -4,6 +4,7 @@ import { buildPath, existsSync, join } from "./util.js";
 const currentDataFile = join(buildPath(), "bench.json");
 const allDataFile = "gh-pages/data.json"; // Includes all benchmark data.
 const allDataJsonlFile = "gh-pages/data.jsonl"; // JSONL version of all benchmark data.
+const uiRangeDataJsonlFile = "gh-pages/data-250.jsonl"; // JSONL version of recent 250 benchmark data.
 const recentDataFile = "gh-pages/recent.json"; // Includes recent 20 benchmark data.
 const recentDataJsonlFile = "gh-pages/recent.jsonl"; // JSONL version of recent benchmark data.
 
@@ -34,9 +35,11 @@ const newData = readJson(currentDataFile);
 const allData = readJson(allDataFile);
 allData.push(newData);
 const allDataLen = allData.length;
+const uiRangeData = allData.slice(allDataLen - 250);
 const recentData = allData.slice(allDataLen - 20);
 
 writeJson(allDataFile, allData);
 writeJson(allDataJsonlFile, allData);
+writeJson(uiRangeDataJsonlFile, uiRangeData);
 writeJson(recentDataFile, recentData);
 writeJson(recentDataJsonlFile, recentData);
