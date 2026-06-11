@@ -524,7 +524,7 @@ class TapContext {
   // sequentially in the order it was registered. Concurrent calls (Promise.all)
   // are serialized through the parent's subtest tail.
   runOnly(value) {
-    this.#runOnly = Boolean(value);
+    this.#runOnly = !!value;
     return null;
   }
 
@@ -1000,7 +1000,7 @@ class NodeTestContext {
   }
 
   runOnly(value) {
-    this.#runOnly = Boolean(value);
+    this.#runOnly = !!value;
     return null;
   }
 
