@@ -534,12 +534,12 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
-    let mut op_fn = op_ctx_function(
-      scope,
-      op_ctx,
-      v8::ConstructorBehavior::Allow,
-      will_snapshot,
-    );
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = if will_snapshot && !op_ctx.decl.constructable {
+      op_ctx_plain_function(scope, op_ctx, constructor_behavior)
+    } else {
+      op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot)
+    };
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     // For async ops we need to set them up, by calling `Deno.core.setUpAsyncStub` -
@@ -657,8 +657,8 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
       continue;
     }
 
-    let mut op_fn =
-      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Allow, false);
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = op_ctx_function(scope, op_ctx, constructor_behavior, false);
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     if op_ctx.decl.is_async {
@@ -673,10 +673,21 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
 }
 
 fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {
+  if op_ctx.decl.constructable {
+    return false;
+  }
   if op_ctx.metrics_enabled() {
     op_ctx.decl.fast_fn_with_metrics.is_some()
   } else {
     op_ctx.decl.fast_fn.is_some()
+  }
+}
+
+fn op_ctx_constructor_behavior(op_ctx: &OpCtx) -> v8::ConstructorBehavior {
+  if op_ctx.decl.constructable {
+    v8::ConstructorBehavior::Allow
+  } else {
+    v8::ConstructorBehavior::Throw
   }
 }
 
@@ -734,6 +745,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
 
       let tmpl = v8::FunctionTemplate::builder_raw(getter_raw)
         .data(external.into())
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
       let method_name = format!("get {}", op_ctx.decl.name_fast);
@@ -754,6 +766,7 @@ fn op_ctx_template_or_accessor<'s, 'i>(
 
       let tmpl = v8::FunctionTemplate::builder_raw(setter_raw)
         .data(external.into())
+        .constructor_behavior(v8::ConstructorBehavior::Throw)
         .length(1)
         .build(scope);
       let op_fn = tmpl.get_function(scope).unwrap();
@@ -815,6 +828,7 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   // snapshot deserialization.
   let template = if let Some(fast_function) = fast_fn
     && !will_snapshot
+    && !op_ctx.decl.constructable
   {
     builder.build_fast(scope, &[fast_function])
   } else {
@@ -835,6 +849,35 @@ fn op_ctx_function<'s, 'i>(
   let template =
     op_ctx_template(scope, op_ctx, constructor_behaviour, will_snapshot);
   let v8fn = template.get_function(scope).unwrap();
+  v8fn.set_name(v8name);
+  v8fn
+}
+
+fn op_ctx_plain_function<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  op_ctx: &OpCtx,
+  constructor_behaviour: v8::ConstructorBehavior,
+) -> v8::Local<'s, v8::Function> {
+  let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
+  let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
+  let slow_fn = if op_ctx.metrics_enabled() {
+    op_ctx.decl.slow_fn_with_metrics
+  } else {
+    op_ctx.decl.slow_fn
+  };
+
+  let v8fn = v8::Function::builder_raw(slow_fn)
+    .data(external.into())
+    .constructor_behavior(constructor_behaviour)
+    .side_effect_type(if op_ctx.decl.no_side_effects {
+      v8::SideEffectType::HasNoSideEffect
+    } else {
+      v8::SideEffectType::HasSideEffect
+    })
+    .length(op_ctx.decl.arg_count as i32)
+    .build(scope)
+    .unwrap();
+  let v8name = op_ctx.decl.name_fast.v8_string(scope).unwrap();
   v8fn.set_name(v8name);
   v8fn
 }
