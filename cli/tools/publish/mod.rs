@@ -44,6 +44,7 @@ use self::tar::PublishableTarball;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
+use crate::args::PublishTarget;
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::factory::CliFactory;
@@ -62,6 +63,7 @@ mod auth;
 mod diagnostics;
 mod graph;
 mod module_content;
+mod npm;
 mod paths;
 mod provenance;
 mod publish_order;
@@ -78,6 +80,11 @@ pub async fn publish(
   flags: Arc<Flags>,
   publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
+  let resolved_target = resolve_publish_target(publish_flags.target)?;
+  if matches!(resolved_target, PublishTarget::Npm) {
+    return npm::publish(flags, publish_flags).await;
+  }
+
   let cli_factory = CliFactory::from_flags(flags);
 
   let auth_method =
@@ -203,6 +210,28 @@ pub async fn publish(
   .await?;
 
   Ok(())
+}
+
+/// Resolve `Auto` against the current working directory. A package.json
+/// without an accompanying deno config file means an npm-only project, so
+/// dispatch to the npm path. Otherwise fall through to JSR.
+fn resolve_publish_target(
+  target: PublishTarget,
+) -> Result<PublishTarget, AnyError> {
+  if !matches!(target, PublishTarget::Auto) {
+    return Ok(target);
+  }
+  let cwd = crate::util::env::resolve_cwd(None)
+    .context("failed to read current dir")?;
+  let has_deno_config = ["deno.json", "deno.jsonc", "jsr.json", "jsr.jsonc"]
+    .iter()
+    .any(|n| cwd.join(n).is_file());
+  let has_pkg_json = cwd.join("package.json").is_file();
+  if has_pkg_json && !has_deno_config {
+    Ok(PublishTarget::Npm)
+  } else {
+    Ok(PublishTarget::Jsr)
+  }
 }
 
 struct PreparedPublishPackage {

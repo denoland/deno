@@ -284,6 +284,37 @@ impl HttpClient {
     ))
   }
 
+  pub fn put(
+    &self,
+    url: Url,
+    body: deno_fetch::ReqBody,
+  ) -> Result<RequestBuilder, http::Error> {
+    let mut req = http::Request::new(body);
+    *req.method_mut() = http::Method::PUT;
+    *req.uri_mut() = url.as_str().parse()?;
+    Ok(RequestBuilder {
+      client: self.client.clone(),
+      req,
+    })
+  }
+
+  pub fn put_json<S>(
+    &self,
+    url: Url,
+    ser: &S,
+  ) -> Result<RequestBuilder, DownloadError>
+  where
+    S: serde::Serialize,
+  {
+    let json = deno_core::serde_json::to_vec(ser)?;
+    let body = deno_fetch::ReqBody::full(json.into());
+    let builder = self.put(url, body)?;
+    Ok(builder.header(
+      http::header::CONTENT_TYPE,
+      "application/json".parse().map_err(http::Error::from)?,
+    ))
+  }
+
   pub async fn send(
     &self,
     url: &Url,

@@ -1,0 +1,6 @@
+{
+  "name": "@deno-test/npm-publish-mvp",
+  "version": "0.0.1",
+  "description": "smoke test for deno publish --npm",
+  "files": ["index.js"]
+}

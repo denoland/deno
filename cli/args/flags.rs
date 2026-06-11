@@ -677,6 +677,14 @@ pub struct UpgradeFlags {
   pub branch: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PublishTarget {
+  #[default]
+  Auto,
+  Jsr,
+  Npm,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PublishFlags {
   pub token: Option<String>,
@@ -685,6 +693,7 @@ pub struct PublishFlags {
   pub allow_dirty: bool,
   pub no_provenance: bool,
   pub set_version: Option<String>,
+  pub target: PublishTarget,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -5274,7 +5283,7 @@ See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs
 }
 
 fn publish_subcommand() -> Command {
-  command("publish", "Publish the current working directory's package or workspace to JSR", UnstableArgsConfig::ResolutionOnly)
+  command("publish", "Publish the current working directory's package or workspace to JSR or npm", UnstableArgsConfig::ResolutionOnly)
     .defer(|cmd| {
       cmd
         .arg(
@@ -5282,6 +5291,22 @@ fn publish_subcommand() -> Command {
             .long("token")
             .help("The API token to use when publishing. If unset, interactive authentication is be used")
             .help_heading(PUBLISH_HEADING)
+        )
+        .arg(
+          Arg::new("npm")
+            .long("npm")
+            .help("Publish to the npm registry (https://registry.npmjs.org). When unset, the target registry is inferred from the project: a package.json without deno.json publishes to npm; otherwise JSR")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("jsr")
+            .help_heading(PUBLISH_HEADING),
+        )
+        .arg(
+          Arg::new("jsr")
+            .long("jsr")
+            .help("Publish to JSR (https://jsr.io). Overrides auto-detection when both deno.json and package.json are present")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("npm")
+            .help_heading(PUBLISH_HEADING),
         )
         .arg(config_arg())
         .arg(no_config_arg())
@@ -8467,6 +8492,14 @@ fn publish_parse(
   config_args_parse(flags, matches);
   env_file_arg_parse(flags, matches);
 
+  let target = if matches.get_flag("npm") {
+    PublishTarget::Npm
+  } else if matches.get_flag("jsr") {
+    PublishTarget::Jsr
+  } else {
+    PublishTarget::Auto
+  };
+
   flags.subcommand = DenoSubcommand::Publish(PublishFlags {
     token: matches.remove_one("token"),
     dry_run: matches.get_flag("dry-run"),
@@ -8474,6 +8507,7 @@ fn publish_parse(
     allow_dirty: matches.get_flag("allow-dirty"),
     no_provenance: matches.get_flag("no-provenance"),
     set_version: matches.remove_one::<String>("set-version"),
+    target,
   });
 
   Ok(())
@@ -15364,6 +15398,7 @@ mod tests {
           allow_dirty: true,
           no_provenance: true,
           set_version: Some("1.0.1".to_string()),
+          target: PublishTarget::Auto,
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
