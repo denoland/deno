@@ -87,3 +87,13 @@ test(async function testPromiseIdWraparound() {
   // overflow map on the far side of the wraparound.
   await Promise.all([pending, barrierAwait("wraparound_barrier")]);
 });
+
+// Ops that complete eagerly return a plain resolved promise with no promise
+// id attached, so ref/unref of such a promise must be a silent no-op.
+// `hasPromise(undefined)` used to read `promiseRing[NaN]` and throw.
+test(async function testRefUnrefPromiseWithoutId() {
+  const eager = Promise.resolve("eager");
+  Deno.core.refOpPromise(eager);
+  Deno.core.unrefOpPromise(eager);
+  await eager;
+});

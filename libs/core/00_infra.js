@@ -190,8 +190,12 @@
 
   function hasPromise(promiseId) {
     const idx = promiseId % RING_SIZE;
+    // Loose comparison on purpose: `promiseId` can be `undefined` (e.g.
+    // `unrefOpPromise()` with a promise from an op that completed eagerly and
+    // has no promise id attached), making `idx` NaN and the ring lookup
+    // return `undefined` instead of the `NO_PROMISE` (null) sentinel.
     const promise = promiseRing[idx];
-    if (promise !== NO_PROMISE && promise[2] === promiseId) {
+    if (promise != NO_PROMISE && promise[2] === promiseId) {
       return true;
     }
     return MapPrototypeHas(promiseMap, promiseId);
