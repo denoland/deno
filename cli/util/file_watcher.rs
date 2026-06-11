@@ -421,6 +421,10 @@ where
     select! {
       _ = receiver_future => {},
       _ = deno_signals::ctrl_c() => {
+        // Suppress Deno.exit()/process.exit() during synthetic signal
+        // dispatch so SIGTERM handlers don't kill the watcher process.
+        deno_runtime::deno_os::suppress_exit();
+
         // Dispatch SIGINT (matching what Ctrl+C normally sends) and
         // SIGTERM to give JS code a chance for async cleanup. Some
         // libraries only listen for SIGINT, others for SIGTERM.
@@ -443,9 +447,15 @@ where
           )
           .await;
         }
+
+        deno_runtime::deno_os::unsuppress_exit();
         return Ok(());
       },
       _ = restart_rx.recv() => {
+        // Suppress Deno.exit()/process.exit() during synthetic signal
+        // dispatch so SIGTERM handlers don't kill the watcher process.
+        deno_runtime::deno_os::suppress_exit();
+
         // Dispatch SIGTERM to give JS code a chance for async cleanup
         // before restarting. If handlers are registered, wait for the
         // operation to finish gracefully before restarting.
@@ -460,6 +470,8 @@ where
           )
           .await;
         }
+
+        deno_runtime::deno_os::unsuppress_exit();
         deno_runtime::deno_inspector_server::notify_restart();
         print_after_restart();
         continue;
