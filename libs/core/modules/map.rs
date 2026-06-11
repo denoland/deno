@@ -1924,8 +1924,7 @@ impl ModuleMap {
           if !tc_scope.is_execution_terminating() =>
         {
           set_promise_hook_suppression(tc_scope, true);
-          let then_result =
-            promise.then2(tc_scope, on_fulfilled, on_rejected);
+          let then_result = promise.then2(tc_scope, on_fulfilled, on_rejected);
           set_promise_hook_suppression(tc_scope, false);
           then_result.is_some()
         }
