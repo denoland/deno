@@ -535,6 +535,7 @@ impl WebWorker {
       deno_cache::deno_cache::init(create_cache),
       deno_websocket::deno_websocket::init(),
       deno_webstorage::deno_webstorage::init(None).disable(),
+      deno_html_rewriter::deno_html_rewriter::init(),
       deno_crypto::deno_crypto::init(options.seed),
       deno_ffi::deno_ffi::init(services.deno_rt_native_addon_loader.clone()),
       deno_net::deno_net::init(
