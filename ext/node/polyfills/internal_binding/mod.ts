@@ -18,9 +18,6 @@ const { default: blockList } = core.loadExtScript(
 const buffer = core.loadExtScript(
   "ext:deno_node/internal_binding/buffer.ts",
 );
-const { default: caresWrap } = core.loadExtScript(
-  "ext:deno_node/internal_binding/cares_wrap.ts",
-);
 const constants = core.loadExtScript(
   "ext:deno_node/internal_binding/constants.ts",
 );
@@ -58,6 +55,7 @@ const inspectorBinding = core.loadExtScript(
 );
 let httpParser;
 let http2Binding;
+let caresWrap;
 
 // Mutable shallow copy so callers can replace properties (e.g. wrap
 // `errname` with a deprecation warning when --pending-deprecation is set).
@@ -83,7 +81,7 @@ const modules = {
   "async_wrap": asyncWrap,
   "block_list": blockList,
   buffer,
-  "cares_wrap": caresWrap,
+  "cares_wrap": {},
   config: {},
   constants,
   contextify: {},
@@ -150,6 +148,11 @@ export function getBinding(name: BindingName) {
   if (name === "http2") {
     return http2Binding ??= core.loadExtScript(
       "ext:deno_node/internal_binding/http2.ts",
+    );
+  }
+  if (name === "cares_wrap") {
+    return caresWrap ??= core.loadExtScript(
+      "ext:deno_node/internal_binding/cares_wrap.ts",
     );
   }
   const mod = modules[name];
