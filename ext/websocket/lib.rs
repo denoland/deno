@@ -608,13 +608,22 @@ impl ServerWebSocket {
   /// pending [`op_ws_next_event`] read so the JS event loop observes the
   /// close and drops the resource.
   ///
-  /// Safe to call multiple times; only the first call has any effect.
+  /// If the socket is already in the middle of the close handshake (because
+  /// JS called `socket.close()` via [`op_ws_close`]) we skip the duplicate
+  /// Close frame but still cancel the pending read, so a peer that never
+  /// sends its close ack does not block graceful server shutdown.
+  ///
+  /// Safe to call multiple times.
   pub fn server_shutdown(self: &Rc<Self>) {
-    if self.closed.replace(true) {
+    let already_closing = self.closed.replace(true);
+    let cancel = self.read_cancel.clone();
+    if already_closing {
+      // JS already sent its own Close frame (or another shutdown is already
+      // in flight). Just unblock the pending read so the resource can drop.
+      cancel.cancel();
       return;
     }
     let ws = self.clone();
-    let cancel = self.read_cancel.clone();
     let lock = self.reserve_lock();
     deno_core::unsync::spawn(async move {
       const GOING_AWAY: &[u8] = b"Server shutting down";
@@ -622,6 +631,19 @@ impl ServerWebSocket {
       let _ = ws.write_frame(lock, frame).await;
       cancel.cancel();
     });
+  }
+
+  /// Forcefully tear down this websocket without waiting on the write half.
+  /// Used by the forceful `op_http_close` / `op_http_cancel` paths where a
+  /// graceful Close frame could hang indefinitely if the peer's TCP send
+  /// buffer is full.
+  ///
+  /// The pending [`op_ws_next_event`] read is cancelled synchronously so the
+  /// JS event loop drops the resource promptly. Safe to call repeatedly and
+  /// safe to call after `server_shutdown`.
+  pub fn server_force_close(self: &Rc<Self>) {
+    self.closed.set(true);
+    self.read_cancel.cancel();
   }
 
   fn set_error(&self, error: Option<String>) {

@@ -5,11 +5,13 @@ use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
 use std::cell::RefMut;
+use std::collections::HashMap;
 use std::ffi::c_void;
 use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::rc::Weak;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::task::Context;
@@ -97,17 +99,29 @@ pub(crate) struct HttpServerStateInner {
   pub(crate) active_websockets: Rc<ActiveWebSockets>,
 }
 
+/// Server-initiated shutdown mode passed to [`ActiveWebSockets::begin_shutdown`]
+/// and applied to newly-upgraded websockets that race the shutdown.
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub(crate) enum WsShutdownMode {
+  /// Send a `Close(1001 Going Away)` frame, then cancel the read.
+  Graceful,
+  /// Cancel the read immediately, do not wait on a write that may hang.
+  Forced,
+}
+
 /// Per-server registry of upgraded server-side WebSockets. See the
 /// `active_websockets` field on [`HttpServerStateInner`].
 #[derive(Default)]
 pub(crate) struct ActiveWebSockets {
   next_key: Cell<u64>,
-  entries: RefCell<
-    std::collections::HashMap<
-      u64,
-      std::rc::Weak<deno_websocket::ServerWebSocket>,
-    >,
-  >,
+  entries: RefCell<HashMap<u64, Weak<deno_websocket::ServerWebSocket>>>,
+  /// Once set, every new websocket registered through
+  /// [`Self::register`] is immediately shut down. Set by
+  /// [`Self::begin_shutdown`] when `op_http_close` / `op_http_cancel` starts
+  /// tearing the server down — this closes the race window where a handler
+  /// upgrades a request *after* the initial registry snapshot was taken and
+  /// would otherwise hold the server alive forever.
+  shutting_down: Cell<Option<WsShutdownMode>>,
 }
 
 impl ActiveWebSockets {
@@ -117,26 +131,50 @@ impl ActiveWebSockets {
     key
   }
 
-  pub(crate) fn insert(
+  /// Register a newly-upgraded websocket. If the server has already begun
+  /// shutting down (see [`Self::begin_shutdown`]), apply the recorded
+  /// shutdown mode immediately so the new socket does not pin the server
+  /// alive past `shutdown()`.
+  pub(crate) fn register(
     &self,
     key: u64,
-    ws: std::rc::Weak<deno_websocket::ServerWebSocket>,
+    ws: &Rc<deno_websocket::ServerWebSocket>,
   ) {
-    self.entries.borrow_mut().insert(key, ws);
+    self.entries.borrow_mut().insert(key, Rc::downgrade(ws));
+    if let Some(mode) = self.shutting_down.get() {
+      apply_shutdown(ws, mode);
+    }
   }
 
   pub(crate) fn remove(&self, key: u64) {
     self.entries.borrow_mut().remove(&key);
   }
 
-  /// Strong references to every websocket whose `Rc` is still alive.
-  pub(crate) fn snapshot(&self) -> Vec<Rc<deno_websocket::ServerWebSocket>> {
-    self
+  /// Mark the server as shutting down and tear down every websocket whose
+  /// `Rc` is still alive. Idempotent — only the first call takes effect, so
+  /// a later forceful shutdown will not downgrade a graceful one (but does
+  /// still re-apply forced shutdown to any sockets that survived).
+  pub(crate) fn begin_shutdown(&self, mode: WsShutdownMode) {
+    self.shutting_down.set(Some(mode));
+    for ws in self
       .entries
       .borrow()
       .values()
       .filter_map(|w| w.upgrade())
-      .collect()
+      .collect::<Vec<_>>()
+    {
+      apply_shutdown(&ws, mode);
+    }
+  }
+}
+
+fn apply_shutdown(
+  ws: &Rc<deno_websocket::ServerWebSocket>,
+  mode: WsShutdownMode,
+) {
+  match mode {
+    WsShutdownMode::Graceful => ws.server_shutdown(),
+    WsShutdownMode::Forced => ws.server_force_close(),
   }
 }
 

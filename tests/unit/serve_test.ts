@@ -1890,6 +1890,128 @@ Deno.test(
   },
 );
 
+// Gap from PR review: a handler that calls `Deno.upgradeWebSocket` *during*
+// the graceful shutdown drain — after the listener has been cancelled and
+// (in the original implementation) the websocket registry snapshot already
+// taken — must still have its new websocket torn down. Without the
+// `shutting_down` flag the late socket pinned the server alive forever and
+// `await server.shutdown()` hung.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketUpgradeDuringShutdown() {
+    const handlerEntered = Promise.withResolvers<void>();
+    const releaseHandler = Promise.withResolvers<void>();
+    const wsOpen = Promise.withResolvers<void>();
+    const wsClose = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    const server = Deno.serve({
+      handler: async (request) => {
+        // Block inside the handler so `server.shutdown()` runs before the
+        // websocket upgrade response is returned. The upgrade — and the
+        // subsequent registration — therefore happen *after* the shutdown
+        // flag has been set and the listener has been cancelled.
+        handlerEntered.resolve();
+        await releaseHandler.promise;
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        socket.onopen = () => wsOpen.resolve();
+        socket.onclose = () => wsClose.resolve();
+        return response;
+      },
+      port: servePort,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    const clientClose = Promise.withResolvers<void>();
+    const ws = new WebSocket(`ws://localhost:${servePort}`);
+    ws.onclose = () => clientClose.resolve();
+    await handlerEntered.promise;
+
+    // Begin graceful shutdown while the handler is still inside its
+    // pre-upgrade await. Then let the handler return the upgrade response,
+    // which triggers `register_server_websocket` *after* shutdown began.
+    const shutdownPromise = server.shutdown();
+    // Yield to the event loop so the shutdown op has a chance to set the
+    // `shutting_down` flag and cancel the listener before the handler
+    // resumes. We use multiple microtask hops rather than a timer so the
+    // resource sanitizer stays happy.
+    for (let i = 0; i < 16; i++) await Promise.resolve();
+    releaseHandler.resolve();
+
+    // If the late-registered socket weren't auto-shut-down by the
+    // `shutting_down` flag, `shutdownPromise` would never resolve.
+    await shutdownPromise;
+
+    await wsClose.promise;
+    await clientClose.promise;
+    await server.finished;
+  },
+);
+
+// Gap from PR review: a websocket that has already started its own close
+// handshake from the server side (handler called `socket.close()`) must
+// not block graceful `server.shutdown()` if the peer never sends the
+// close ack. Before the fix, `server_shutdown()` early-returned for
+// already-closed sockets and left the pending read alive forever.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketShutdownAfterServerClose() {
+    const wsOpen = Promise.withResolvers<void>();
+    const wsCloseStarted = Promise.withResolvers<void>();
+    const listeningDeferred = Promise.withResolvers<void>();
+    let serverSocket: WebSocket | undefined;
+    const server = Deno.serve({
+      handler: (request) => {
+        const { response, socket } = Deno.upgradeWebSocket(request);
+        serverSocket = socket;
+        socket.onopen = () => {
+          // Initiate the close handshake from the server side and then
+          // resolve so the test can proceed to call `server.shutdown()`
+          // while the socket is still in `CLOSING` state.
+          socket.close();
+          wsCloseStarted.resolve();
+          wsOpen.resolve();
+        };
+        return response;
+      },
+      port: servePort,
+      onListen: onListen(listeningDeferred.resolve),
+    });
+
+    await listeningDeferred.promise;
+
+    // Build a raw TCP client that completes the WS upgrade but never
+    // replies with a Close frame. This wedges the socket in CLOSING
+    // until the server gives up reading.
+    const conn = await Deno.connect({ port: servePort });
+    const key = "dGhlIHNhbXBsZSBub25jZQ==";
+    const handshake =
+      `GET / HTTP/1.1\r\nHost: localhost:${servePort}\r\nUpgrade: websocket\r\n` +
+      `Connection: Upgrade\r\nSec-WebSocket-Key: ${key}\r\n` +
+      `Sec-WebSocket-Version: 13\r\n\r\n`;
+    await conn.write(new TextEncoder().encode(handshake));
+    // Drain the handshake response so the server-side upgrade completes.
+    const responseBuf = new Uint8Array(1024);
+    await conn.read(responseBuf);
+
+    await wsOpen.promise;
+    await wsCloseStarted.promise;
+
+    // Without the mid-close fix, this would hang forever because the
+    // pending `op_ws_next_event` read never observed any data and the
+    // duplicate-Close-frame early return left no one to cancel it.
+    await server.shutdown();
+    try {
+      conn.close();
+    } catch { /* already closed */ }
+    await server.finished;
+    // Silence unused-variable lint; the server-side WebSocket reference
+    // is here to make the test intent obvious.
+    void serverSocket;
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketCanAccessRequest() {
