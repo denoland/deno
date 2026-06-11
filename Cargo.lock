@@ -2400,6 +2400,7 @@ dependencies = [
  "same-file",
  "serde",
  "thiserror 2.0.12",
+ "tokio",
  "windows-sys 0.59.0",
 ]
 
