@@ -1451,35 +1451,63 @@ pub fn op_node_udp_send<'a>(
 
 #[derive(serde::Serialize)]
 pub struct RecvResult {
-  pub nread: usize,
-  pub hostname: String,
-  pub port: u16,
+  pub nread: i32,
+  pub hostname: Option<String>,
+  pub port: Option<u16>,
+  pub family: Option<&'static str>,
 }
 
 #[op2]
 #[serde]
-pub async fn op_node_udp_recv(
+pub fn op_node_udp_recv(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   #[buffer] mut buf: JsBuffer,
-) -> Result<RecvResult, NodeUdpError> {
+) -> impl Future<Output = RecvResult> + use<> {
   let resource = state
     .borrow()
     .resource_table
-    .get::<NodeUdpSocketResource>(rid)?;
+    .get::<NodeUdpSocketResource>(rid);
+  async move {
+    let resource = match resource {
+      Ok(resource) => resource,
+      Err(_) => {
+        return RecvResult {
+          nread: 0,
+          hostname: None,
+          port: None,
+          family: None,
+        };
+      }
+    };
+    let cancel = RcRef::map(&resource, |r| &r.cancel);
+    let result = resource.socket.recv_from(&mut buf).or_cancel(cancel).await;
 
-  let cancel = RcRef::map(&resource, |r| &r.cancel);
-  let (nread, remote_addr) = resource
-    .socket
-    .recv_from(&mut buf)
-    .or_cancel(cancel)
-    .await??;
-
-  Ok(RecvResult {
-    nread,
-    hostname: remote_addr.ip().to_string(),
-    port: remote_addr.port(),
-  })
+    match result {
+      Ok(Ok((nread, remote_addr))) => RecvResult {
+        nread: nread as i32,
+        hostname: Some(remote_addr.ip().to_string()),
+        port: Some(remote_addr.port()),
+        family: Some(if remote_addr.is_ipv6() {
+          "IPv6"
+        } else {
+          "IPv4"
+        }),
+      },
+      Ok(Err(_)) => RecvResult {
+        nread: UV_UNKNOWN,
+        hostname: None,
+        port: None,
+        family: None,
+      },
+      Err(_) => RecvResult {
+        nread: 0,
+        hostname: None,
+        port: None,
+        family: None,
+      },
+    }
+  }
 }
 
 /// Return an owned dup of the bound UDP socket's file descriptor, for use as

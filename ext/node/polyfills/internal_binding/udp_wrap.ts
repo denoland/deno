@@ -29,7 +29,6 @@ const {
   UDP: NativeUDP,
 } = core.ops;
 const {
-  ObjectPrototypeIsPrototypeOf,
   Uint8Array,
 } = primordials;
 
@@ -37,9 +36,7 @@ core.loadExtScript("ext:deno_node/internal_binding/handle_wrap.ts");
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
 );
-const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
-const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
 
 type MessageType = string | Uint8Array | Buffer | DataView;
 type SendWrapInstance = InstanceType<typeof SendWrap>;
@@ -254,41 +251,21 @@ class UDP extends NativeUDP {
 
     const p = new Uint8Array(this._recvBufferSize());
 
-    let nread: number;
-    let remoteHostname: string | null = null;
-    let remotePort: number | null = null;
-
-    try {
-      const promise = op_node_udp_recv(this._rid(), p);
-      if (this.#unrefed) {
-        core.unrefOpPromise(promise);
-      }
-      const result = await promise;
-      nread = result.nread;
-      remoteHostname = result.hostname;
-      remotePort = result.port;
-    } catch (e) {
-      if (
-        ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, e) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, e)
-      ) {
-        nread = 0;
-      } else {
-        nread = codeMap.get("UNKNOWN")!;
-      }
+    const promise = op_node_udp_recv(this._rid(), p);
+    if (this.#unrefed) {
+      core.unrefOpPromise(promise);
     }
+    const { nread, hostname, port, family } = await promise;
 
-    const rinfo = remoteHostname !== null
+    const rinfo = hostname !== null
       ? {
-        address: remoteHostname,
-        port: remotePort!,
-        family: isIP(remoteHostname) === 6
-          ? ("IPv6" as const)
-          : ("IPv4" as const),
+        address: hostname,
+        port: port!,
+        family: family!,
       }
       : undefined;
 
-    const buf = remoteHostname !== null
+    const buf = hostname !== null
       // deno-lint-ignore prefer-primordials
       ? Buffer.from(p.buffer, p.byteOffset, nread)
       : Buffer.alloc(0);
