@@ -873,6 +873,111 @@ async fn serve_watch_with_import_map() {
   check_alive_then_kill(child);
 }
 
+// Regression test for https://github.com/denoland/deno/issues/26052
+// On a watcher restart, `deno serve --parallel` used to leave the previous
+// generation of workers running (the worker threads were never signalled and
+// the main worker task was detached), so requests kept being served by the old
+// code and the process would eventually panic with an isolate mismatch.
+#[test(flaky)]
+async fn serve_watch_parallel_stops_old_workers() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("server_file_to_watch.js");
+  file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"v1\");
+      },
+    };",
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("serve")
+    .arg("--parallel")
+    .arg("--watch")
+    .arg("--port")
+    .arg("0")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .env("DENO_JOBS", "4")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (_stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  let port_regex =
+    regex::Regex::new(r"Listening on https?:[^:]+:(\d+)/").unwrap();
+
+  let line = wait_contains("Listening on", &mut stderr_lines).await;
+  let old_port = port_regex.captures(&line).unwrap()[1].to_string();
+
+  let client = reqwest::Client::builder()
+    // disable connection pooling so we create a new connection per request
+    // which allows us to distribute requests across workers
+    .pool_max_idle_per_host(0)
+    .build()
+    .unwrap();
+
+  let body = client
+    .get(format!("http://127.0.0.1:{old_port}/"))
+    .send()
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+  assert_eq!(body, "v1");
+
+  file_to_watch.write(
+    "export default {
+      fetch(_request) {
+        return new Response(\"v2\");
+      },
+    };",
+  );
+
+  wait_contains("Restarting", &mut stderr_lines).await;
+  let line = wait_contains("Listening on", &mut stderr_lines).await;
+  let new_port = port_regex.captures(&line).unwrap()[1].to_string();
+
+  // The new generation serves the new code.
+  for _ in 0..8 {
+    let body = client
+      .get(format!("http://127.0.0.1:{new_port}/"))
+      .send()
+      .await
+      .unwrap()
+      .text()
+      .await
+      .unwrap();
+    assert_eq!(body, "v2");
+  }
+
+  // All workers of the old generation must shut down and release the old
+  // port. Before the fix they kept serving the old code forever.
+  let start = std::time::Instant::now();
+  loop {
+    match client
+      .get(format!("http://127.0.0.1:{old_port}/"))
+      .send()
+      .await
+    {
+      // Connection error: the old workers are gone.
+      Err(_) => break,
+      // Old workers may still serve while winding down, but only old code.
+      Ok(response) => {
+        assert_eq!(response.text().await.unwrap(), "v1");
+      }
+    }
+    if start.elapsed() > std::time::Duration::from_secs(30) {
+      panic!("old workers are still serving 30s after the restart");
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+  }
+
+  check_alive_then_kill(child);
+}
+
 // Regression test for https://github.com/denoland/deno/issues/30046
 // `deno serve` used to ignore `--watch-exclude` entirely, so writing to an
 // excluded file that's part of the module graph would trigger a restart.
