@@ -159,7 +159,7 @@ serde_repr.workspace = true
 sha2.workspace = true
 shlex.workspace = true
 spki = { workspace = true, features = ["pem"] }
-sqlformat.workspace = true
+lax-sql.workspace = true
 strsim.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "serde_json", "real", "strip_unc", "winapi"] }
 tar.workspace = true
