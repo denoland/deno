@@ -14,6 +14,7 @@ import {
 } from "checkin:object";
 
 const {
+  op_constructable_test,
   op_pipe_create,
   op_file_open,
   op_async_make_cppgc_resource,
@@ -22,6 +23,7 @@ const {
 
 test(async function testPipe() {
   assertEquals("prototype" in op_pipe_create, false);
+  assertEquals("prototype" in op_constructable_test, true);
 
   const [p1, p2] = op_pipe_create();
   assertEquals(3, await Deno.core.write(p1, new Uint8Array([1, 2, 3])));

@@ -534,10 +534,11 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
 
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
-    let mut op_fn = if will_snapshot {
-      op_ctx_plain_function(scope, op_ctx, v8::ConstructorBehavior::Throw)
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = if will_snapshot && !op_ctx.decl.constructable {
+      op_ctx_plain_function(scope, op_ctx, constructor_behavior)
     } else {
-      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Throw, false)
+      op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot)
     };
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
@@ -656,8 +657,8 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
       continue;
     }
 
-    let mut op_fn =
-      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Throw, false);
+    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
+    let mut op_fn = op_ctx_function(scope, op_ctx, constructor_behavior, false);
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     if op_ctx.decl.is_async {
@@ -672,10 +673,21 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
 }
 
 fn method_needs_fast_call_upgrade(op_ctx: &OpCtx) -> bool {
+  if op_ctx.decl.constructable {
+    return false;
+  }
   if op_ctx.metrics_enabled() {
     op_ctx.decl.fast_fn_with_metrics.is_some()
   } else {
     op_ctx.decl.fast_fn.is_some()
+  }
+}
+
+fn op_ctx_constructor_behavior(op_ctx: &OpCtx) -> v8::ConstructorBehavior {
+  if op_ctx.decl.constructable {
+    v8::ConstructorBehavior::Allow
+  } else {
+    v8::ConstructorBehavior::Throw
   }
 }
 
@@ -816,6 +828,7 @@ pub(crate) fn op_ctx_template<'s, 'i>(
   // snapshot deserialization.
   let template = if let Some(fast_function) = fast_fn
     && !will_snapshot
+    && !op_ctx.decl.constructable
   {
     builder.build_fast(scope, &[fast_function])
   } else {
