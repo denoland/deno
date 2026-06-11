@@ -641,6 +641,100 @@ impl StdFileResourceInner {
     }
   }
 
+  // Runs a blocking file-lock action (flock) without risking starvation of the
+  // shared blocking threadpool. Acquiring a lock can block for an unbounded
+  // amount of time, so parking a pooled thread for the whole wait would, with
+  // only a couple dozen pool threads available, let a burst of concurrent locks
+  // exhaust the pool and stall every other blocking fs operation (see #22504).
+  // We keep using the blocking flock() syscall, which the OS schedules fairly,
+  // but cap how many lock waits may sit on the threadpool at once and run any
+  // further waits on dedicated threads that don't compete with other fs work.
+  fn with_inner_lock_task<F, R: 'static + Send>(
+    &self,
+    action: F,
+  ) -> impl Future<Output = R> + '_
+  where
+    F: FnOnce(&mut StdFile) -> R + Send + 'static,
+  {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    const MAX_THREADPOOL_LOCK_WAITS: usize = 8;
+    static THREADPOOL_LOCK_WAITS: AtomicUsize = AtomicUsize::new(0);
+
+    // Reserves a threadpool slot while we stay under the limit. The returned
+    // guard releases the slot on drop, including if the task is cancelled
+    // while awaiting.
+    struct ThreadpoolSlot;
+    impl Drop for ThreadpoolSlot {
+      fn drop(&mut self) {
+        THREADPOOL_LOCK_WAITS.fetch_sub(1, Ordering::Relaxed);
+      }
+    }
+    fn reserve_threadpool_slot() -> Option<ThreadpoolSlot> {
+      let mut current = THREADPOOL_LOCK_WAITS.load(Ordering::Relaxed);
+      loop {
+        if current >= MAX_THREADPOOL_LOCK_WAITS {
+          return None;
+        }
+        match THREADPOOL_LOCK_WAITS.compare_exchange_weak(
+          current,
+          current + 1,
+          Ordering::Relaxed,
+          Ordering::Relaxed,
+        ) {
+          Ok(_) => return Some(ThreadpoolSlot),
+          Err(actual) => current = actual,
+        }
+      }
+    }
+
+    // we want to restrict this to one async action at a time
+    let acquire_fut = self.cell_async_task_queue.acquire();
+    async move {
+      let permit = acquire_fut.await;
+      // we clone the file (or take it out if cloning fails), lock it on a
+      // blocking task, then put it back into the cell when we're done
+      let mut did_take = false;
+      let mut cell_value = {
+        let mut cell = self.cell.borrow_mut();
+        match cell.as_mut().unwrap().try_clone().ok() {
+          Some(value) => value,
+          None => {
+            did_take = true;
+            cell.take().unwrap()
+          }
+        }
+      };
+
+      let task = move || {
+        let result = action(&mut cell_value);
+        (cell_value, result)
+      };
+      let (cell_value, result) = match reserve_threadpool_slot() {
+        Some(_slot) => spawn_blocking(task).await.unwrap(),
+        None => {
+          let (tx, rx) = tokio::sync::oneshot::channel();
+          std::thread::Builder::new()
+            .name("deno-flock".to_string())
+            .spawn(move || {
+              let _ = tx.send(task());
+            })
+            .unwrap();
+          rx.await.unwrap()
+        }
+      };
+
+      if did_take {
+        // put it back
+        self.cell.borrow_mut().replace(cell_value);
+      }
+
+      drop(permit); // explicit for clarity
+      result
+    }
+  }
+
   #[cfg(windows)]
   async fn handle_stdin_read(
     &self,
@@ -1111,7 +1205,7 @@ impl crate::fs::File for StdFileResourceInner {
   }
   async fn lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<()> {
     self
-      .with_inner_blocking_task(move |file| {
+      .with_inner_lock_task(move |file| {
         if exclusive {
           file.lock()?;
         } else {
@@ -1138,30 +1232,17 @@ impl crate::fs::File for StdFileResourceInner {
     })
   }
   async fn try_lock_async(self: Rc<Self>, exclusive: bool) -> FsResult<bool> {
-    use std::fs::TryLockError;
-    self
-      .with_inner_blocking_task(move |file| {
-        let result = if exclusive {
-          file.try_lock()
-        } else {
-          file.try_lock_shared()
-        };
-        match result {
-          Ok(()) => Ok(true),
-          Err(TryLockError::WouldBlock) => Ok(false),
-          Err(TryLockError::Error(err)) => Err(err.into()),
-        }
-      })
-      .await
+    // try_lock with LOCK_NB is non-blocking (returns immediately),
+    // so no need to use spawn_blocking.
+    self.clone().try_lock_sync(exclusive)
   }
 
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
     self.with_sync(|file| Ok(file.unlock()?))
   }
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
-    self
-      .with_inner_blocking_task(|file| Ok(file.unlock()?))
-      .await
+    // unlock (flock with LOCK_UN) is non-blocking, no need for spawn_blocking.
+    self.unlock_sync()
   }
 
   fn truncate_sync(self: Rc<Self>, len: u64) -> FsResult<()> {
