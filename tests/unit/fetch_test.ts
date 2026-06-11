@@ -2355,6 +2355,43 @@ Deno.test(
   },
 );
 
+// Regression test for https://github.com/denoland/deno/issues/20548
+// `content-encoding` and `content-length` response headers must stay visible
+// when the body is transparently decompressed; only the body is decoded.
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchPreservesContentEncodingHeader() {
+    const compressed = await new Response(
+      new Blob(["hello world"]).stream().pipeThrough(
+        new CompressionStream("gzip"),
+      ),
+    ).bytes();
+    const ac = new AbortController();
+    const server = Deno.serve(
+      { port: listenPort, signal: ac.signal, onListen() {} },
+      () =>
+        new Response(compressed, {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": String(compressed.length),
+          },
+        }),
+    );
+    try {
+      const resp = await fetch(`http://localhost:${listenPort}/`);
+      assertEquals(resp.headers.get("content-encoding"), "gzip");
+      assertEquals(
+        resp.headers.get("content-length"),
+        String(compressed.length),
+      );
+      assertEquals(await resp.text(), "hello world");
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
 Deno.test(
   {
     permissions: { net: true },

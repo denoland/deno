@@ -80,7 +80,6 @@ use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
-use http::header::TRANSFER_ENCODING;
 use http::header::USER_AGENT;
 use http_body_util::BodyDataStream;
 use http_body_util::BodyExt;
@@ -1211,7 +1210,7 @@ where
 }
 
 fn decompress_response(
-  mut resp: http::Response<Incoming>,
+  resp: http::Response<Incoming>,
   skip_decompression: bool,
 ) -> http::Response<ResBody> {
   if skip_decompression {
@@ -1227,7 +1226,7 @@ fn decompress_response(
     .and_then(|v| v.parse::<u64>().ok())
     == Some(0);
   if is_empty {
-    resp.headers_mut().remove(CONTENT_ENCODING);
+    return resp.map(box_raw_body);
   }
 
   match resp
@@ -1264,10 +1263,11 @@ fn decode_response(
   resp: http::Response<Incoming>,
   kind: DecodeKind,
 ) -> http::Response<ResBody> {
-  let (mut parts, body) = resp.into_parts();
-  parts.headers.remove(CONTENT_ENCODING);
-  parts.headers.remove(CONTENT_LENGTH);
-  parts.headers.remove(TRANSFER_ENCODING);
+  // Per the fetch spec, handling content codings only decodes the body; the
+  // header list keeps `Content-Encoding` and `Content-Length` as received
+  // (the latter describes the encoded body, not the decoded one). See
+  // https://github.com/denoland/deno/issues/20548.
+  let (parts, body) = resp.into_parts();
 
   let stream = BodyDataStream::new(
     body.map_err(|err| std::io::Error::other(err.to_string())),
