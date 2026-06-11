@@ -43,7 +43,9 @@ const {
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
-const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
+const { fsConstants: constants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 type statCallback = any;
 type statCallbackBigInt = any;
 type statOptions = any;

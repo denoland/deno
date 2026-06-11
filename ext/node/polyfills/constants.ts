@@ -6,14 +6,12 @@
 const { core, primordials } = __bootstrap;
 const { ObjectAssign } = primordials;
 
-const fsConstants = core.loadExtScript(
-  "ext:deno_node/_fs/_fs_constants.ts",
-);
 const { constants: osConstants } = core.loadExtScript(
   "ext:deno_node/os.ts",
 );
 const {
   crypto: cryptoConstants,
+  fsConstants,
   zlib: zlibConstants,
 } = core.loadExtScript("ext:deno_node/internal_binding/constants.ts");
 

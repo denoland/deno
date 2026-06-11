@@ -6,7 +6,9 @@ import { core } from "ext:core/mod.js";
 import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
-const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
+const { fsConstants: constants } = core.loadExtScript(
+  "ext:deno_node/internal_binding/constants.ts",
+);
 import { op_node_fs_lstat } from "ext:core/ops";
 // The op is already the promise form: it extracts bigint/throwIfNoEntry from
 // options, validates the path eagerly, and resolves the cppgc Stats.

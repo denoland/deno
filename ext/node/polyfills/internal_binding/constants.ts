@@ -2,7 +2,7 @@
 
 (function () {
 const { primordials } = __bootstrap;
-const { ObjectFreeze } = primordials;
+const { ObjectAssign, ObjectCreate, ObjectFreeze } = primordials;
 const { core } = __bootstrap;
 const { op_node_build_os, op_node_fs_constants } = core.ops;
 
@@ -642,6 +642,12 @@ ObjectFreeze(os.signals);
 
 const fs = op_node_fs_constants();
 
+// node's `fs.constants` (null prototype; shared by node:fs, fs.promises, and
+// node:constants). The op's field order and platform-conditional fields
+// follow node_constants.cc, so the key set and order match node's exactly
+// (O_SYMLINK / O_DIRECT / O_NOATIME only where node has them).
+const fsConstants = ObjectAssign(ObjectCreate(null), fs);
+
 const crypto = {
   OPENSSL_VERSION_NUMBER: 269488319,
   SSL_OP_ALL: 2147485780,
@@ -894,5 +900,5 @@ const trace = {
   TRACE_EVENT_PHASE_LINK_IDS: 61,
 } as const;
 
-return { os, fs, crypto, zlib, trace };
+return { os, fs, fsConstants, crypto, zlib, trace };
 })();
