@@ -12,12 +12,16 @@ use deno_core::CppgcInherits;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::op2;
+use deno_core::serde::Serialize;
 use deno_core::unsync::spawn_blocking;
+use deno_core::uv_compat;
 use deno_error::JsError;
 use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use socket2::SockAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::ProviderType;
@@ -152,6 +156,46 @@ pub enum DnsError {
   #[class(generic)]
   #[error("Unsupported platform.")]
   UnsupportedPlatform,
+}
+
+#[derive(Serialize)]
+pub struct ReverseNameResult {
+  pub code: i32,
+  pub name: Option<String>,
+}
+
+#[op2]
+#[serde]
+pub fn op_node_dns_reverse_name(#[string] name: &str) -> ReverseNameResult {
+  if let Ok(addr) = name.parse::<Ipv4Addr>() {
+    let octets = addr.octets();
+    return ReverseNameResult {
+      code: 0,
+      name: Some(format!(
+        "{}.{}.{}.{}.in-addr.arpa",
+        octets[3], octets[2], octets[1], octets[0]
+      )),
+    };
+  }
+
+  if let Ok(addr) = name.parse::<Ipv6Addr>() {
+    let hex = format!("{:032x}", u128::from(addr));
+    let mut reverse = String::with_capacity("ip6.arpa".len() + 64);
+    for ch in hex.chars().rev() {
+      reverse.push(ch);
+      reverse.push('.');
+    }
+    reverse.push_str("ip6.arpa");
+    return ReverseNameResult {
+      code: 0,
+      name: Some(reverse),
+    };
+  }
+
+  ReverseNameResult {
+    code: uv_compat::UV_EINVAL,
+    name: None,
+  }
 }
 
 impl DnsError {

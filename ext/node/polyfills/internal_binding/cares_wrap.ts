@@ -28,17 +28,13 @@
 const { core, primordials } = __bootstrap;
 const {
   ArrayPrototypeFilter,
-  ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypePush,
-  ArrayPrototypeReverse,
   ArrayPrototypeSort,
   Error,
   MathMin,
   MathPow,
-  Number,
   NumberParseInt,
-  NumberPrototypeToString,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
   SafeArrayIterator,
@@ -49,15 +45,13 @@ const {
   SetPrototypeClear,
   SetPrototypeDelete,
   SetPrototypeHas,
-  StringPrototypeIncludes,
-  StringPrototypePadStart,
   StringPrototypeReplace,
-  StringPrototypeSplit,
 } = primordials;
 const {
   op_dns_resolve,
   op_net_get_ips_from_perm_token,
   op_net_get_system_dns_servers,
+  op_node_dns_reverse_name,
   op_node_getaddrinfo,
   op_node_getnameinfo,
   GetAddrInfoReqWrap,
@@ -757,74 +751,27 @@ class ChannelWrap extends NativeChannelWrap implements ChannelWrapQuery {
   }
 
   getHostByAddr(req: QueryReqWrapInstance, name: string): number {
-    let reverseName: string;
-
-    if (isIPv4(name)) {
-      const octets = StringPrototypeSplit(name, ".");
-      reverseName = ArrayPrototypeJoin(ArrayPrototypeReverse(octets), ".") +
-        ".in-addr.arpa";
-    } else if (isIPv6(name)) {
-      // Expand the IPv6 address to full form
-      const parts = StringPrototypeSplit(name, ":");
-      const expanded: string[] = [];
-      let emptyFound = false;
-      for (const part of new SafeArrayIterator(parts)) {
-        if (part === "" && !emptyFound) {
-          emptyFound = true;
-          const missing = 8 -
-            ArrayPrototypeFilter(parts, (p) => p !== "").length;
-          for (let j = 0; j < missing; j++) {
-            ArrayPrototypePush(expanded, "0000");
-          }
-        } else if (part !== "" && StringPrototypeIncludes(part, ".")) {
-          // IPv4-mapped IPv6 (e.g. ::ffff:1.2.3.4) - convert dotted
-          // quad to two 16-bit hex groups
-          const octets = ArrayPrototypeMap(
-            StringPrototypeSplit(part, "."),
-            Number,
-          );
-          ArrayPrototypePush(
-            expanded,
-            StringPrototypePadStart(
-              NumberPrototypeToString((octets[0] << 8) | octets[1], 16),
-              4,
-              "0",
-            ),
-          );
-          ArrayPrototypePush(
-            expanded,
-            StringPrototypePadStart(
-              NumberPrototypeToString((octets[2] << 8) | octets[3], 16),
-              4,
-              "0",
-            ),
-          );
-        } else if (part !== "") {
-          ArrayPrototypePush(expanded, StringPrototypePadStart(part, 4, "0"));
-        }
-      }
-      const fullHex = ArrayPrototypeJoin(expanded, "");
-      reverseName = ArrayPrototypeJoin(
-        ArrayPrototypeReverse(StringPrototypeSplit(fullHex, "")),
-        ".",
-      ) + ".ip6.arpa";
-    } else {
-      req.oncomplete(codeMap.get("EINVAL")!, []);
+    const { code, name: reverseName } = op_node_dns_reverse_name(name);
+    if (code !== 0) {
+      req.oncomplete(code, []);
       return 0;
     }
 
     SetPrototypeAdd(this.#pendingQueries, req);
 
-    PromisePrototypeThen(this.#query(reverseName, "PTR"), ({ code, ret }) => {
-      if (!SetPrototypeHas(this.#pendingQueries, req)) return;
-      SetPrototypeDelete(this.#pendingQueries, req);
+    PromisePrototypeThen(
+      this.#query(reverseName!, "PTR"),
+      ({ code, ret }) => {
+        if (!SetPrototypeHas(this.#pendingQueries, req)) return;
+        SetPrototypeDelete(this.#pendingQueries, req);
 
-      const records = ArrayPrototypeMap(
-        ret as string[],
-        (record) => fqdnToHostname(record),
-      );
-      req.oncomplete(code, records);
-    });
+        const records = ArrayPrototypeMap(
+          ret as string[],
+          (record) => fqdnToHostname(record),
+        );
+        req.oncomplete(code, records);
+      },
+    );
 
     return 0;
   }
