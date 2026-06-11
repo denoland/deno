@@ -7,7 +7,6 @@ import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import type { Encodings } from "ext:deno_node/_utils.ts";
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
-const { cpPromise } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
 import { op_node_fs_lstat } from "ext:core/ops";
 // The op is already the promise form: it extracts bigint/throwIfNoEntry from
 // options, validates the path eagerly, and resolves the cppgc Stats.
@@ -486,7 +485,9 @@ const promises = {
   access: accessPromise,
   constants,
   copyFile: copyFilePromise,
-  cp: cpPromise,
+  cp:
+    ((...args: any[]) =>
+      (lazyFs() as any).cpPromise(...new SafeArrayIterator(args))) as any,
   glob: globPromise,
   open: openPromise,
   opendir: opendirPromise,

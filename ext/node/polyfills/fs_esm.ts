@@ -26,6 +26,7 @@ export const convertFileInfoToStats = mod.convertFileInfoToStats;
 export const copyFile = mod.copyFile;
 export const copyFileSync = mod.copyFileSync;
 export const cp = mod.cp;
+export const cpPromise = mod.cpPromise;
 export const cpSync = mod.cpSync;
 export const Dir = mod.Dir;
 export const Dirent = mod.Dirent;

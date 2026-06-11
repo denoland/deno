@@ -28,8 +28,18 @@ const {
   denoWriteFileErrorToNodeError,
   ERR_DIR_CLOSED,
   ERR_DIR_CONCURRENT_OPERATION,
+  ERR_FS_CP_DIR_TO_NON_DIR,
+  ERR_FS_CP_EEXIST,
+  ERR_FS_CP_EINVAL,
+  ERR_FS_CP_FIFO_PIPE,
+  ERR_FS_CP_NON_DIR_TO_DIR,
+  ERR_FS_CP_SOCKET,
+  ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY,
+  ERR_FS_CP_UNKNOWN,
+  ERR_FS_EISDIR,
   ERR_FS_FILE_TOO_LARGE,
   ERR_INVALID_ARG_VALUE,
+  ERR_INVALID_RETURN_VALUE,
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
 } = core.loadExtScript("ext:deno_node/internal/errors.ts");
@@ -37,7 +47,6 @@ const constants = core.loadExtScript("ext:deno_node/_fs/_fs_constants.ts");
 type statCallback = any;
 type statCallbackBigInt = any;
 type statOptions = any;
-const { cp, cpSync } = core.loadExtScript("ext:deno_node/_fs/_fs_cp.ts");
 const { EventEmitter } = core.loadExtScript("ext:deno_node/_events.mjs");
 type MaybeEmpty<T> = T | null | undefined;
 const { deprecate, promisify } = core.loadExtScript("ext:deno_node/util.ts");
@@ -82,6 +91,7 @@ const {
   getValidatedPathToString,
   Stats,
   toUnixTimestamp,
+  validateCpOptions,
   validateOffsetLengthRead,
   validatePosition,
 } = core.createLazyLoader("ext:deno_node/internal/fs/utils.mjs")();
@@ -99,6 +109,11 @@ type ErrnoException = any;
 type BufferEncoding = any;
 const {
   op_fs_read_file_async,
+  op_node_cp_check_paths_recursive,
+  op_node_cp_on_file,
+  op_node_cp_on_link,
+  op_node_cp_sync,
+  op_node_cp_validate_and_prepare,
   op_node_fs_close,
   op_node_fs_close_async,
   op_node_fs_copy_file,
@@ -201,7 +216,9 @@ const {
 } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const lazyPath = core.createLazyLoader("node:path");
 const pathModule = lazyPath();
-const { resolve } = pathModule;
+const { join, resolve } = pathModule;
+// errno values (EEXIST etc.) for the ERR_FS_CP_* error payloads.
+const lazyNodeConstants = core.createLazyLoader("node:constants");
 type Encoding = any;
 const {
   validateAbortSignal,
@@ -228,6 +245,7 @@ const {
   DataViewPrototype,
   DataViewPrototypeGetByteLength,
   FunctionPrototypeBind,
+  Number,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeSet,
@@ -1536,6 +1554,353 @@ function readdirSync(
   );
 }
 
+// -- cp --
+
+const { isPromise } = core;
+
+/**
+  Layout (bigint) of the stat info returned by the cp "check paths" ops:
+  - bits 0..31  : source mode (`st_mode`) masked by `SrcModeMask`
+  - bit 32      : whether destination exists
+  - bits 33..39 : source entry type flags (dir, file, char/block device,
+                  symlink, socket, fifo)
+*/
+const CpEntryFlags = {
+  SrcModeMask: (1n << 32n) - 1n,
+  IsDestExists: 1n << 32n,
+  IsSrcDirectory: 1n << 33n,
+  IsSrcFile: 1n << 34n,
+  IsSrcCharDevice: 1n << 35n,
+  IsSrcBlockDevice: 1n << 36n,
+  IsSrcSymlink: 1n << 37n,
+  IsSrcSocket: 1n << 38n,
+  IsSrcFifo: 1n << 39n,
+};
+
+// Maps errors out of the cp ops to node's: plain errno errors (anything
+// carrying `os_errno`) become regular node fs errors; the ops' structured
+// `{ kind, message, path }` payloads become the ERR_FS_CP_* family.
+function rethrowCpError(err: any): never {
+  if (typeof err?.os_errno === "number") {
+    throw denoErrorToNodeError(err, {
+      path: err.path,
+      dest: err.dest,
+      syscall: err.syscall,
+    });
+  }
+  const { EEXIST, EINVAL, EISDIR, ENOTDIR } = lazyNodeConstants();
+  switch (err.kind) {
+    case "EINVAL":
+      throw new ERR_FS_CP_EINVAL({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "DIR_TO_NON_DIR":
+      throw new ERR_FS_CP_DIR_TO_NON_DIR({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EISDIR,
+        code: "EISDIR",
+      });
+    case "NON_DIR_TO_DIR":
+      throw new ERR_FS_CP_NON_DIR_TO_DIR({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: ENOTDIR,
+        code: "ENOTDIR",
+      });
+    case "EEXIST":
+      throw new ERR_FS_CP_EEXIST({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EEXIST,
+        code: "EEXIST",
+      });
+    case "EISDIR":
+      throw new ERR_FS_EISDIR({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EISDIR,
+        code: "EISDIR",
+      });
+    case "SOCKET":
+      throw new ERR_FS_CP_SOCKET({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "FIFO":
+      throw new ERR_FS_CP_FIFO_PIPE({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "UNKNOWN":
+      throw new ERR_FS_CP_UNKNOWN({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    case "SYMLINK_TO_SUBDIRECTORY":
+      throw new ERR_FS_CP_SYMLINK_TO_SUBDIRECTORY({
+        message: err.message,
+        path: err.path,
+        syscall: "cp",
+        errno: EINVAL,
+        code: "EINVAL",
+      });
+    default:
+      throw err;
+  }
+}
+
+// The recursion stays in JS (like node's lib/internal/fs/cp) because
+// `options.filter` is a user callback, possibly async, consulted per entry;
+// the per-entry stat/copy/link work is all in the ops.
+async function cpFn(src: string, dest: string, opts: any): Promise<void> {
+  try {
+    const filter = opts.filter;
+    if (filter && !(await filter(src, dest))) return;
+    const statInfo = await op_node_cp_validate_and_prepare(
+      src,
+      dest,
+      opts.dereference,
+    );
+    return await getStatsForCopy(statInfo, src, dest, opts);
+  } catch (err) {
+    rethrowCpError(err);
+  }
+}
+
+function getStatsForCopy(
+  statInfo: bigint,
+  src: string,
+  dest: string,
+  opts: any,
+) {
+  const { EISDIR, EINVAL } = lazyNodeConstants();
+  if ((statInfo & CpEntryFlags.IsSrcDirectory) && opts.recursive) {
+    return onDirCp(statInfo, src, dest, opts);
+  } else if (statInfo & CpEntryFlags.IsSrcDirectory) {
+    throw new ERR_FS_EISDIR({
+      message: `${src} is a directory (not copied)`,
+      path: src,
+      syscall: "cp",
+      errno: EISDIR,
+      code: "EISDIR",
+    });
+  } else if (
+    (statInfo & CpEntryFlags.IsSrcFile) ||
+    (statInfo & CpEntryFlags.IsSrcCharDevice) ||
+    (statInfo & CpEntryFlags.IsSrcBlockDevice)
+  ) {
+    return onFileCp(statInfo, src, dest, opts);
+  } else if (statInfo & CpEntryFlags.IsSrcSymlink) {
+    const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
+    return onLinkCp(isDestExists, src, dest, opts);
+  } else if (statInfo & CpEntryFlags.IsSrcSocket) {
+    throw new ERR_FS_CP_SOCKET({
+      message: `cannot copy a socket file: ${dest}`,
+      path: dest,
+      syscall: "cp",
+      errno: EINVAL,
+      code: "EINVAL",
+    });
+  } else if (statInfo & CpEntryFlags.IsSrcFifo) {
+    throw new ERR_FS_CP_FIFO_PIPE({
+      message: `cannot copy a FIFO pipe: ${dest}`,
+      path: dest,
+      syscall: "cp",
+      errno: EINVAL,
+      code: "EINVAL",
+    });
+  }
+  throw new ERR_FS_CP_UNKNOWN({
+    message: `cannot copy an unknown file type: ${dest}`,
+    path: dest,
+    syscall: "cp",
+    errno: EINVAL,
+    code: "EINVAL",
+  });
+}
+
+async function onFileCp(
+  statInfo: bigint,
+  src: string,
+  dest: string,
+  opts: any,
+) {
+  const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+  const isDestExists = !!(statInfo & CpEntryFlags.IsDestExists);
+  await op_node_cp_on_file(
+    src,
+    dest,
+    srcMode,
+    isDestExists,
+    opts.force,
+    opts.errorOnExist,
+    opts.preserveTimestamps,
+    opts.mode ?? 0,
+  );
+}
+
+async function setDestMode(dest: string, srcMode: number) {
+  if (!srcMode) return;
+  // node's setDestMode is fsPromises.chmod; the op produces the same
+  // node-formatted errors. Awaited (not returned) so the op's `null`
+  // resolution doesn't leak out of cpPromise, which resolves undefined.
+  await op_node_fs_chmod(dest, srcMode);
+}
+
+function onDirCp(statInfo: bigint, src: string, dest: string, opts: any) {
+  if (!(statInfo & CpEntryFlags.IsDestExists)) {
+    const srcMode = Number(statInfo & CpEntryFlags.SrcModeMask);
+    return mkDirAndCopy(srcMode, src, dest, opts);
+  }
+  // node: an existing destination directory is EEXIST under `errorOnExist`
+  // without `force`, even when no contents conflict (the async cp only;
+  // node's cpSync has no such check).
+  if (opts.errorOnExist && !opts.force) {
+    const { EEXIST } = lazyNodeConstants();
+    throw new ERR_FS_CP_EEXIST({
+      message: `${dest} already exists`,
+      path: dest,
+      syscall: "cp",
+      errno: EEXIST,
+      code: "EEXIST",
+    });
+  }
+  return copyDir(src, dest, opts);
+}
+
+async function mkDirAndCopy(
+  srcMode: number,
+  src: string,
+  dest: string,
+  opts: any,
+) {
+  await lazyInternalPromises().mkdirPromise(dest);
+  await copyDir(src, dest, opts);
+  return setDestMode(dest, srcMode);
+}
+
+async function copyDir(src: string, dest: string, opts: any) {
+  const filter = opts.filter;
+  const dir = await lazyInternalPromises().opendirPromise(src);
+  const iterator = dir[SymbolAsyncIterator]();
+  while (true) {
+    // deno-lint-ignore prefer-primordials
+    const { done, value } = await iterator.next();
+    if (done) break;
+    const { name } = value;
+    const srcItem = join(src, name);
+    const destItem = join(dest, name);
+    if (filter && !(await filter(srcItem, destItem))) continue;
+    const statInfo = await op_node_cp_check_paths_recursive(
+      srcItem,
+      destItem,
+      opts.dereference,
+    );
+    await getStatsForCopy(statInfo, srcItem, destItem, opts);
+  }
+}
+
+async function onLinkCp(
+  destExists: boolean,
+  src: string,
+  dest: string,
+  opts: any,
+) {
+  await op_node_cp_on_link(
+    src,
+    dest,
+    destExists,
+    opts.verbatimSymlinks,
+  );
+}
+
+function cpSync(src: string | URL, dest: string | URL, options?: any) {
+  options = validateCpOptions(options);
+  const srcPath = getValidatedPathToString(src, "src");
+  const destPath = getValidatedPathToString(dest, "dest");
+
+  try {
+    if (options.filter) {
+      // deno-lint-ignore prefer-primordials
+      const shouldCopy = options.filter(srcPath, destPath);
+      if (isPromise(shouldCopy)) {
+        throw new ERR_INVALID_RETURN_VALUE("boolean", "filter", shouldCopy);
+      }
+      if (!shouldCopy) return;
+    }
+
+    op_node_cp_sync(
+      srcPath,
+      destPath,
+      options.dereference,
+      options.recursive,
+      options.force,
+      options.errorOnExist,
+      options.preserveTimestamps,
+      options.verbatimSymlinks,
+      options.mode ?? 0,
+      options.filter,
+    );
+  } catch (err) {
+    rethrowCpError(err);
+  }
+}
+
+function cp(
+  src: string | URL,
+  dest: string | URL,
+  options?: any,
+  callback?: any,
+) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  callback = makeCallback(callback);
+  options = validateCpOptions(options);
+  const srcPath = getValidatedPathToString(src, "src");
+  const destPath = getValidatedPathToString(dest, "dest");
+
+  PromisePrototypeThen(
+    cpFn(srcPath, destPath, options),
+    () => callback(null),
+    callback,
+  );
+}
+
+// fsPromises.cp (re-exported via internal/fs/promises.ts): validation errors
+// reject (node validates inside the async fn). Can't be `promisify(cp)` -- a
+// function `options` would be taken for the callback by cp's dispatch
+// instead of failing validateCpOptions.
+async function cpPromise(
+  src: string | URL,
+  dest: string | URL,
+  options?: any,
+) {
+  options = validateCpOptions(options);
+  const srcPath = getValidatedPathToString(src, "src");
+  const destPath = getValidatedPathToString(dest, "dest");
+  return await cpFn(srcPath, destPath, options);
+}
+
 // -- copyFile / lutimes / exists --
 
 // node validates src/dest before the callback and mode after it (in the C++
@@ -2513,6 +2878,7 @@ return {
   copyFile,
   copyFileSync,
   cp,
+  cpPromise,
   cpSync,
   get createReadStream() {
     return _createReadStream ??

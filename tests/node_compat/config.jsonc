@@ -1271,6 +1271,7 @@
     "parallel/test-fs-cp-async-dereference-force-false-silent-fail.mjs": {},
     "parallel/test-fs-cp-async-dereference-symlink.mjs": {},
     "parallel/test-fs-cp-async-dest-symlink-points-to-src-error.mjs": {},
+    "parallel/test-fs-cp-async-dir-exists-error-on-exist.mjs": {},
     "parallel/test-fs-cp-async-dir-to-file.mjs": {},
     "parallel/test-fs-cp-async-error-on-exist.mjs": {},
     "parallel/test-fs-cp-async-file-to-dir.mjs": {},

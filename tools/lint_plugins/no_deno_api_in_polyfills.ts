@@ -33,7 +33,6 @@ export const EXPECTED_VIOLATIONS: Record<string, number> = {
   "ext/node/polyfills/internal/options.ts": 1,
   "ext/node/polyfills/internal/assert/assertion_error.js": 1,
   "ext/node/polyfills/internal_binding/node_options.ts": 1,
-  "ext/node/polyfills/_fs/cp/cp.ts": 1,
 };
 
 const plugin: Deno.lint.Plugin = {
