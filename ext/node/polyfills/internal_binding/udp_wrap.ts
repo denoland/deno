@@ -23,22 +23,8 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
-  op_node_udp_bind,
-  op_node_udp_fd_for_ipc,
-  op_node_udp_join_multi_v4,
-  op_node_udp_join_multi_v6,
-  op_node_udp_join_source_specific,
-  op_node_udp_leave_multi_v4,
-  op_node_udp_leave_multi_v6,
-  op_node_udp_leave_source_specific,
-  op_node_udp_open,
   op_node_udp_recv,
   op_node_udp_send,
-  op_node_udp_set_broadcast,
-  op_node_udp_set_multicast_interface,
-  op_node_udp_set_multicast_loopback,
-  op_node_udp_set_multicast_ttl,
-  op_node_udp_set_ttl,
   SendWrap,
   UDP: NativeUDP,
 } = core.ops;
@@ -47,7 +33,6 @@ const {
   ErrorPrototype,
   ObjectPrototypeIsPrototypeOf,
   SafeRegExp,
-  StringPrototypeIncludes,
   StringPrototypeMatch,
   Uint8Array,
 } = primordials;
@@ -58,17 +43,9 @@ core.loadExtScript("ext:deno_node/internal_binding/handle_wrap.ts");
 const { ownerSymbol } = core.loadExtScript(
   "ext:deno_node/internal_binding/symbols.ts",
 );
-const { codeMap, errorMap } = core.loadExtScript(
-  "ext:deno_node/internal_binding/uv.ts",
-);
+const { codeMap } = core.loadExtScript("ext:deno_node/internal_binding/uv.ts");
 const { Buffer } = core.loadExtScript("ext:deno_node/internal/buffer.mjs");
 const { isIP } = core.loadExtScript("ext:deno_node/internal/net.ts");
-const { isLinux, isWindows } = core.loadExtScript(
-  "ext:deno_node/_util/os.ts",
-);
-const { os } = core.loadExtScript(
-  "ext:deno_node/internal_binding/constants.ts",
-);
 
 type MessageType = string | Uint8Array | Buffer | DataView;
 type SendWrapInstance = InstanceType<typeof SendWrap>;
@@ -76,53 +53,11 @@ type SendWrapInstance = InstanceType<typeof SendWrap>;
 const AF_INET = 2;
 const AF_INET6 = 10;
 
-const UDP_DGRAM_MAXSIZE = 64 * 1024;
-
-/** Validate that the address is a parseable IPv4 address. */
-function isValidIPv4Address(address: string): boolean {
-  return isIP(address) === 4;
-}
-
-/** Validate multicast address matches the socket family. */
-function isValidMulticastAddress(
-  multicastAddress: string,
-  family: string | undefined,
-  interfaceAddress?: string,
-): boolean {
-  if (family === "IPv6") {
-    // IPv6 multicast - interface can be address, name, or address%zone
-    // Validation of interface is done in Rust
-    return isIP(multicastAddress) === 6;
-  } else {
-    // IPv4 multicast
-    if (!isValidIPv4Address(multicastAddress)) return false;
-    if (
-      interfaceAddress !== undefined && !isValidIPv4Address(interfaceAddress)
-    ) {
-      return false;
-    }
-    return true;
-  }
-}
-
 class UDP extends NativeUDP {
   [ownerSymbol]: unknown = null;
 
-  #address?: string;
-  #family?: string;
-  #port?: number;
-
-  #remoteAddress?: string;
-  #remoteFamily?: string;
-  #remotePort?: number;
-
-  #rid?: number;
   #receiving = false;
-  #recvPromiseId?: number;
   #unrefed = false;
-
-  #recvBufferSize = UDP_DGRAM_MAXSIZE;
-  #sendBufferSize = UDP_DGRAM_MAXSIZE;
 
   onmessage!: (
     nread: number,
@@ -150,79 +85,13 @@ class UDP extends NativeUDP {
     super();
   }
 
-  addMembership(multicastAddress: string, interfaceAddress?: string): number {
-    if (
-      !isValidMulticastAddress(
-        multicastAddress,
-        this.#family,
-        interfaceAddress,
-      )
-    ) {
-      return codeMap.get("EINVAL")!;
-    }
-
-    if (this.#rid === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    try {
-      if (this.#family === "IPv6") {
-        op_node_udp_join_multi_v6(
-          this.#rid,
-          multicastAddress,
-          interfaceAddress ?? null,
-        );
-      } else {
-        op_node_udp_join_multi_v4(
-          this.#rid,
-          multicastAddress,
-          interfaceAddress ?? null,
-        );
-      }
-      return 0;
-    } catch {
-      return codeMap.get("EINVAL")!;
-    }
-  }
-
-  addSourceSpecificMembership(
-    sourceAddress: string,
-    groupAddress: string,
-    interfaceAddress?: string,
-  ): number {
-    if (
-      !isValidIPv4Address(sourceAddress) ||
-      !isValidIPv4Address(groupAddress)
-    ) {
-      return codeMap.get("EINVAL")!;
-    }
-
-    if (this.#rid === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    try {
-      op_node_udp_join_source_specific(
-        this.#rid,
-        sourceAddress,
-        groupAddress,
-        interfaceAddress ?? "0.0.0.0",
-      );
-    } catch {
-      return codeMap.get("EINVAL")!;
-    }
-    return 0;
-  }
-
   /**
    * Bind to an IPv4 address.
    * @param ip The hostname to bind to.
    * @param port The port to bind to
    * @return An error status code.
    */
-  bind(ip: string, port: number, flags: number): number {
-    return this.#doBind(ip, port, flags, AF_INET);
-  }
+  declare bind: (ip: string, port: number, flags: number) => number;
 
   /**
    * Bind to an IPv6 address.
@@ -230,189 +99,62 @@ class UDP extends NativeUDP {
    * @param port The port to bind to
    * @return An error status code.
    */
-  bind6(ip: string, port: number, flags: number): number {
-    return this.#doBind(ip, port, flags, AF_INET6);
-  }
+  declare bind6: (ip: string, port: number, flags: number) => number;
 
-  bufferSize(
+  declare bufferSize: (
     size: number,
     buffer: boolean,
     ctx: Record<string, string | number>,
-  ): number | undefined {
-    if (!this.#address) {
-      const err = isWindows ? "ENOTSOCK" : "EBADF";
-      ctx.errno = codeMap.get(err)!;
-      ctx.code = err;
-      ctx.message = errorMap.get(ctx.errno)![1];
-      ctx.syscall = buffer ? "uv_recv_buffer_size" : "uv_send_buffer_size";
+  ) => number | undefined;
 
-      return;
-    }
-
-    if (size !== 0) {
-      size = isLinux ? size * 2 : size;
-
-      if (buffer) {
-        return (this.#recvBufferSize = size);
-      }
-
-      return (this.#sendBufferSize = size);
-    }
-
-    return buffer ? this.#recvBufferSize : this.#sendBufferSize;
-  }
-
-  connect(ip: string, port: number): number {
-    return this.#doConnect(ip, port, AF_INET);
-  }
-
-  connect6(ip: string, port: number): number {
-    return this.#doConnect(ip, port, AF_INET6);
-  }
-
-  disconnect(): number {
-    this.#remoteAddress = undefined;
-    this.#remotePort = undefined;
-    this.#remoteFamily = undefined;
-
-    return 0;
-  }
-
-  dropMembership(
+  declare connect: (ip: string, port: number) => number;
+  declare connect6: (ip: string, port: number) => number;
+  declare disconnect: () => number;
+  declare addMembership: (
     multicastAddress: string,
     interfaceAddress?: string,
-  ): number {
-    if (
-      !isValidMulticastAddress(
-        multicastAddress,
-        this.#family,
-        interfaceAddress,
-      )
-    ) {
-      return codeMap.get("EINVAL")!;
-    }
-
-    if (this.#rid === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    try {
-      if (this.#family === "IPv6") {
-        op_node_udp_leave_multi_v6(
-          this.#rid,
-          multicastAddress,
-          interfaceAddress ?? null,
-        );
-      } else {
-        op_node_udp_leave_multi_v4(
-          this.#rid,
-          multicastAddress,
-          interfaceAddress ?? null,
-        );
-      }
-      return 0;
-    } catch {
-      return codeMap.get("EINVAL")!;
-    }
-  }
-
-  dropSourceSpecificMembership(
+  ) => number;
+  declare dropMembership: (
+    multicastAddress: string,
+    interfaceAddress?: string,
+  ) => number;
+  declare addSourceSpecificMembership: (
     sourceAddress: string,
     groupAddress: string,
     interfaceAddress?: string,
-  ): number {
-    if (
-      !isValidIPv4Address(sourceAddress) ||
-      !isValidIPv4Address(groupAddress)
-    ) {
-      return codeMap.get("EINVAL")!;
-    }
-
-    if (this.#rid === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    try {
-      op_node_udp_leave_source_specific(
-        this.#rid,
-        sourceAddress,
-        groupAddress,
-        interfaceAddress ?? "0.0.0.0",
-      );
-    } catch {
-      return codeMap.get("EINVAL")!;
-    }
-    return 0;
-  }
+  ) => number;
+  declare dropSourceSpecificMembership: (
+    sourceAddress: string,
+    groupAddress: string,
+    interfaceAddress?: string,
+  ) => number;
 
   /**
    * Populates the provided object with remote address entries.
    * @param peername An object to add the remote address entries to.
    * @return An error status code.
    */
-  getpeername(peername: Record<string, string | number>): number {
-    if (this.#remoteAddress === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    peername.address = this.#remoteAddress;
-    peername.port = this.#remotePort!;
-    peername.family = this.#remoteFamily!;
-
-    return 0;
-  }
+  declare getpeername: (peername: Record<string, string | number>) => number;
 
   /**
    * Populates the provided object with local address entries.
    * @param sockname An object to add the local address entries to.
    * @return An error status code.
    */
-  getsockname(sockname: Record<string, string | number>): number {
-    if (this.#address === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    sockname.address = this.#address;
-    sockname.port = this.#port!;
-    sockname.family = this.#family!;
-
-    return 0;
-  }
+  declare getsockname: (sockname: Record<string, string | number>) => number;
 
   /**
    * Opens an existing file descriptor as this UDP socket.
    * @param fd The file descriptor to open.
    * @return An error status code.
    */
-  open(fd: number): number {
-    try {
-      const result = op_node_udp_open(fd);
-      const rid = result[0];
-      const hostname = result[1];
-      const boundPort = result[2];
-      this.#rid = rid;
-      this.#address = hostname;
-      this.#port = boundPort;
-      // Determine family from the address string returned by the op.
-      this.#family = StringPrototypeIncludes(hostname, ":")
-        ? ("IPv6" as const)
-        : ("IPv4" as const);
-      return 0;
-    } catch (e) {
-      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
-    }
-  }
+  declare open: (fd: number) => number;
 
   /**
    * Return the raw fd so it can be sent over IPC via SCM_RIGHTS.
    * Returns -1 on platforms that don't support fd-passing.
    */
-  fdForIpc(): number {
-    if (this.#rid === undefined) {
-      return -1;
-    }
-    return op_node_udp_fd_for_ipc(this.#rid);
-  }
+  declare fdForIpc: () => number;
 
   /**
    * Start receiving on the connection.
@@ -459,127 +201,20 @@ class UDP extends NativeUDP {
     return this.#doSend(req, bufs, count, args, AF_INET6);
   }
 
-  setBroadcast(bool: 0 | 1): number {
-    if (this.#rid === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    try {
-      op_node_udp_set_broadcast(this.#rid, bool === 1);
-      return 0;
-    } catch {
-      return codeMap.get("EINVAL")!;
-    }
-  }
-
-  setMulticastInterface(interfaceAddress: string): number {
-    if (this.#rid === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    try {
-      op_node_udp_set_multicast_interface(
-        this.#rid,
-        this.#family === "IPv6",
-        interfaceAddress,
-      );
-      return 0;
-    } catch {
-      return codeMap.get("EINVAL")!;
-    }
-  }
-
-  setMulticastLoopback(bool: 0 | 1): number {
-    if (this.#rid === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    try {
-      op_node_udp_set_multicast_loopback(
-        this.#rid,
-        this.#family === "IPv4",
-        bool === 1,
-      );
-      return 0;
-    } catch {
-      return codeMap.get("EINVAL")!;
-    }
-  }
-
-  setMulticastTTL(ttl: number): number {
-    if (ttl < 1 || ttl > 255) {
-      return codeMap.get("EINVAL")!;
-    }
-
-    if (this.#rid === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    try {
-      if (this.#family === "IPv4") {
-        op_node_udp_set_multicast_ttl(this.#rid, ttl);
-      }
-      return 0;
-    } catch {
-      return codeMap.get("EINVAL")!;
-    }
-  }
-
-  setTTL(ttl: number): number {
-    if (ttl < 1 || ttl > 255) {
-      return codeMap.get("EINVAL")!;
-    }
-
-    if (this.#rid === undefined) {
-      return codeMap.get("EBADF")!;
-    }
-
-    try {
-      op_node_udp_set_ttl(this.#rid, ttl);
-      return 0;
-    } catch {
-      return codeMap.get("EINVAL")!;
-    }
-  }
+  declare setBroadcast: (bool: 0 | 1) => number;
+  declare setMulticastInterface: (interfaceAddress: string) => number;
+  declare setMulticastLoopback: (bool: 0 | 1) => number;
+  declare setMulticastTTL: (ttl: number) => number;
+  declare setTTL: (ttl: number) => number;
+  declare _rid: () => number;
+  declare _setRemote: (ip: string, port: number, family: number) => number;
+  declare _remoteAddress: () => string | undefined;
+  declare _remotePort: () => number;
+  declare _recvBufferSize: () => number;
+  declare _closeResource: () => void;
 
   override unref() {
     this.#unrefed = true;
-  }
-
-  #doBind(ip: string, port: number, flags: number, family: number): number {
-    try {
-      const result = op_node_udp_bind(
-        ip,
-        port,
-        (flags & os.UV_UDP_REUSEADDR) !== 0,
-        (flags & os.UV_UDP_IPV6ONLY) !== 0,
-      );
-      const rid = result[0];
-      const hostname = result[1];
-      const boundPort = result[2];
-      this.#rid = rid;
-      this.#address = hostname;
-      this.#port = boundPort;
-      this.#family = family === AF_INET6
-        ? ("IPv6" as const)
-        : ("IPv4" as const);
-      return 0;
-    } catch (e) {
-      if (ObjectPrototypeIsPrototypeOf(Deno.errors.NotCapable.prototype, e)) {
-        throw e;
-      }
-      return codeMap.get(e.code ?? "UNKNOWN") ?? codeMap.get("UNKNOWN")!;
-    }
-  }
-
-  #doConnect(ip: string, port: number, family: number): number {
-    this.#remoteAddress = ip;
-    this.#remotePort = port;
-    this.#remoteFamily = family === AF_INET6
-      ? ("IPv6" as const)
-      : ("IPv4" as const);
-
-    return 0;
   }
 
   #doSend(
@@ -592,8 +227,7 @@ class UDP extends NativeUDP {
     let hasCallback: boolean;
 
     if (args.length === 3) {
-      this.#remotePort = args[0] as number;
-      this.#remoteAddress = args[1] as string;
+      this._setRemote(args[1] as string, args[0] as number, _family);
       hasCallback = args[2] as boolean;
     } else {
       hasCallback = args[0] as boolean;
@@ -619,10 +253,10 @@ class UDP extends NativeUDP {
 
       try {
         sent = await op_node_udp_send(
-          this.#rid!,
+          this._rid(),
           payload,
-          this.#remoteAddress!,
-          this.#remotePort!,
+          this._remoteAddress()!,
+          this._remotePort(),
         );
       } catch (e) {
         if (
@@ -658,14 +292,14 @@ class UDP extends NativeUDP {
       return;
     }
 
-    const p = new Uint8Array(this.#recvBufferSize);
+    const p = new Uint8Array(this._recvBufferSize());
 
     let nread: number;
     let remoteHostname: string | null = null;
     let remotePort: number | null = null;
 
     try {
-      const promise = op_node_udp_recv(this.#rid!, p);
+      const promise = op_node_udp_recv(this._rid(), p);
       if (this.#unrefed) {
         core.unrefOpPromise(promise);
       }
@@ -712,18 +346,7 @@ class UDP extends NativeUDP {
   override _onClose(): number {
     this.#receiving = false;
 
-    this.#address = undefined;
-    this.#port = undefined;
-    this.#family = undefined;
-
-    if (this.#rid !== undefined) {
-      try {
-        core.close(this.#rid);
-      } catch {
-        // already closed
-      }
-      this.#rid = undefined;
-    }
+    this._closeResource();
 
     return 0;
   }

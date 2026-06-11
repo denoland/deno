@@ -1,6 +1,7 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
@@ -19,6 +20,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::op2;
+use deno_core::uv_compat;
+use deno_core::v8;
 use deno_permissions::PermissionsContainer;
 use socket2::Domain;
 use socket2::Protocol;
@@ -61,6 +64,50 @@ impl SendWrap {
 #[repr(C)]
 pub struct UDP {
   base: HandleWrap,
+  rid: Cell<Option<ResourceId>>,
+  address: RefCell<Option<String>>,
+  family: Cell<Option<UdpFamily>>,
+  port: Cell<Option<u16>>,
+  remote_address: RefCell<Option<String>>,
+  remote_family: Cell<Option<UdpFamily>>,
+  remote_port: Cell<Option<u16>>,
+  recv_buffer_size: Cell<usize>,
+  send_buffer_size: Cell<usize>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum UdpFamily {
+  Ipv4,
+  Ipv6,
+}
+
+impl UdpFamily {
+  fn from_addr(addr: &str) -> Self {
+    if addr.contains(':') {
+      Self::Ipv6
+    } else {
+      Self::Ipv4
+    }
+  }
+
+  fn from_family(family: i32) -> Self {
+    if family == 10 { Self::Ipv6 } else { Self::Ipv4 }
+  }
+
+  fn as_str(self) -> &'static str {
+    match self {
+      Self::Ipv4 => "IPv4",
+      Self::Ipv6 => "IPv6",
+    }
+  }
+
+  fn is_ipv6(self) -> bool {
+    self == Self::Ipv6
+  }
+
+  fn is_ipv4(self) -> bool {
+    self == Self::Ipv4
+  }
 }
 
 unsafe impl GarbageCollected for UDP {
@@ -71,16 +118,650 @@ unsafe impl GarbageCollected for UDP {
   fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
 }
 
-#[op2(base, inherit = HandleWrap)]
 impl UDP {
-  #[constructor]
-  #[cppgc]
-  fn constructor(state: &mut OpState) -> UDP {
+  fn new(state: &mut OpState) -> UDP {
     UDP {
       base: HandleWrap::create(
         AsyncWrap::create(state, ProviderType::UdpWrap as i32),
         None,
       ),
+      rid: Cell::new(None),
+      address: RefCell::new(None),
+      family: Cell::new(None),
+      port: Cell::new(None),
+      remote_address: RefCell::new(None),
+      remote_family: Cell::new(None),
+      remote_port: Cell::new(None),
+      recv_buffer_size: Cell::new(64 * 1024),
+      send_buffer_size: Cell::new(64 * 1024),
+    }
+  }
+}
+
+const UV_UNKNOWN: i32 = -4094;
+
+fn io_error_to_uv(err: &std::io::Error) -> i32 {
+  err
+    .raw_os_error()
+    .map(|code| -code)
+    .unwrap_or(uv_compat::UV_EINVAL)
+}
+
+fn udp_error_to_uv(err: &NodeUdpError) -> i32 {
+  match err {
+    NodeUdpError::Io(err) => io_error_to_uv(err),
+    NodeUdpError::Resource(_) => uv_compat::UV_EBADF,
+    NodeUdpError::AddrParse(_)
+    | NodeUdpError::NoResolvedAddress
+    | NodeUdpError::InvalidHostname(_) => uv_compat::UV_EINVAL,
+    NodeUdpError::Canceled(_) => uv_compat::UV_ECANCELED,
+    NodeUdpError::Permission(_) => UV_UNKNOWN,
+  }
+}
+
+fn set_i32<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  name: &str,
+  value: i32,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let value = v8::Integer::new(scope, value);
+  obj.set(scope, key.into(), value.into());
+}
+
+fn set_str<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  obj: v8::Local<'s, v8::Object>,
+  name: &str,
+  value: &str,
+) {
+  let key = v8::String::new(scope, name).unwrap();
+  let value = v8::String::new(scope, value).unwrap();
+  obj.set(scope, key.into(), value.into());
+}
+
+impl UDP {
+  fn set_bound_state(
+    &self,
+    rid: ResourceId,
+    address: String,
+    port: u16,
+    family: UdpFamily,
+  ) {
+    self.rid.set(Some(rid));
+    *self.address.borrow_mut() = Some(address);
+    self.port.set(Some(port));
+    self.family.set(Some(family));
+  }
+
+  fn bind_inner(
+    &self,
+    state: &mut OpState,
+    ip: &str,
+    port: i32,
+    flags: i32,
+    family: UdpFamily,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    let Ok(port) = u16::try_from(port) else {
+      return Ok(uv_compat::UV_EINVAL);
+    };
+    match node_udp_bind(state, ip, port, (flags & 4) != 0, (flags & 2) != 0) {
+      Ok((rid, address, bound_port)) => {
+        self.set_bound_state(rid, address, bound_port, family);
+        Ok(0)
+      }
+      Err(NodeUdpError::Permission(err)) => Err(err),
+      Err(err) => Ok(udp_error_to_uv(&err)),
+    }
+  }
+
+  fn set_remote(&self, ip: &str, port: i32, family: UdpFamily) -> i32 {
+    let Ok(port) = u16::try_from(port) else {
+      return uv_compat::UV_EINVAL;
+    };
+    *self.remote_address.borrow_mut() = Some(ip.to_string());
+    self.remote_port.set(Some(port));
+    self.remote_family.set(Some(family));
+    0
+  }
+}
+
+#[op2(base, inherit = HandleWrap)]
+impl UDP {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> UDP {
+    UDP::new(state)
+  }
+
+  #[nofast]
+  fn bind(
+    &self,
+    state: &mut OpState,
+    #[string] ip: &str,
+    #[smi] port: i32,
+    #[smi] flags: i32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    self.bind_inner(state, ip, port, flags, UdpFamily::Ipv4)
+  }
+
+  #[nofast]
+  fn bind6(
+    &self,
+    state: &mut OpState,
+    #[string] ip: &str,
+    #[smi] port: i32,
+    #[smi] flags: i32,
+  ) -> Result<i32, deno_permissions::PermissionCheckError> {
+    self.bind_inner(state, ip, port, flags, UdpFamily::Ipv6)
+  }
+
+  #[fast]
+  fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
+    match node_udp_open(state, fd) {
+      Ok((rid, address, port)) => {
+        let family = UdpFamily::from_addr(&address);
+        self.set_bound_state(rid, address, port, family);
+        0
+      }
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[fast]
+  #[rename("fdForIpc")]
+  fn fd_for_ipc(&self, state: &mut OpState) -> i32 {
+    let Some(rid) = self.rid.get() else {
+      return -1;
+    };
+    let Ok(resource) = state.resource_table.get::<NodeUdpSocketResource>(rid)
+    else {
+      return -1;
+    };
+    #[cfg(unix)]
+    {
+      use std::os::unix::io::AsRawFd;
+      let fd = resource.socket.as_raw_fd();
+      if fd < 0 {
+        return -1;
+      }
+      // SAFETY: fd is a valid open file descriptor. F_DUPFD_CLOEXEC
+      // atomically dups and sets CLOEXEC, avoiding a race window.
+      unsafe { libc::fcntl(fd, libc::F_DUPFD_CLOEXEC, 0) }
+    }
+    #[cfg(not(unix))]
+    {
+      let _ = resource;
+      -1
+    }
+  }
+
+  #[fast]
+  fn connect(&self, #[string] ip: &str, #[smi] port: i32) -> i32 {
+    self.set_remote(ip, port, UdpFamily::Ipv4)
+  }
+
+  #[fast]
+  fn connect6(&self, #[string] ip: &str, #[smi] port: i32) -> i32 {
+    self.set_remote(ip, port, UdpFamily::Ipv6)
+  }
+
+  #[fast]
+  fn disconnect(&self) -> i32 {
+    *self.remote_address.borrow_mut() = None;
+    self.remote_port.set(None);
+    self.remote_family.set(None);
+    0
+  }
+
+  #[fast]
+  #[rename("_setRemote")]
+  fn set_remote_from_js(
+    &self,
+    #[string] ip: &str,
+    #[smi] port: i32,
+    #[smi] family: i32,
+  ) -> i32 {
+    self.set_remote(ip, port, UdpFamily::from_family(family))
+  }
+
+  #[nofast]
+  fn getsockname<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    sockname: v8::Local<'s, v8::Object>,
+  ) -> i32 {
+    let address = self.address.borrow();
+    let Some(address) = address.as_deref() else {
+      return uv_compat::UV_EBADF;
+    };
+    let Some(port) = self.port.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let Some(family) = self.family.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    set_str(scope, sockname, "address", address);
+    set_i32(scope, sockname, "port", port.into());
+    set_str(scope, sockname, "family", family.as_str());
+    0
+  }
+
+  #[nofast]
+  fn getpeername<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    peername: v8::Local<'s, v8::Object>,
+  ) -> i32 {
+    let address = self.remote_address.borrow();
+    let Some(address) = address.as_deref() else {
+      return uv_compat::UV_EBADF;
+    };
+    let Some(port) = self.remote_port.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let Some(family) = self.remote_family.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    set_str(scope, peername, "address", address);
+    set_i32(scope, peername, "port", port.into());
+    set_str(scope, peername, "family", family.as_str());
+    0
+  }
+
+  #[rename("bufferSize")]
+  fn buffer_size<'s>(
+    &self,
+    scope: &mut v8::PinScope<'s, '_>,
+    #[smi] size: i32,
+    buffer: bool,
+    ctx: v8::Local<'s, v8::Object>,
+  ) -> v8::Local<'s, v8::Value> {
+    if self.address.borrow().is_none() {
+      #[cfg(windows)]
+      let (code, errno, message) = (
+        "ENOTSOCK",
+        uv_compat::UV_ENOTSOCK,
+        "socket operation on non-socket",
+      );
+      #[cfg(not(windows))]
+      let (code, errno, message) =
+        ("EBADF", uv_compat::UV_EBADF, "bad file descriptor");
+      set_i32(scope, ctx, "errno", errno);
+      set_str(scope, ctx, "code", code);
+      set_str(scope, ctx, "message", message);
+      set_str(
+        scope,
+        ctx,
+        "syscall",
+        if buffer {
+          "uv_recv_buffer_size"
+        } else {
+          "uv_send_buffer_size"
+        },
+      );
+      return v8::undefined(scope).into();
+    }
+
+    if size != 0 {
+      let size = if cfg!(target_os = "linux") {
+        size * 2
+      } else {
+        size
+      };
+      if buffer {
+        self.recv_buffer_size.set(size as usize);
+      } else {
+        self.send_buffer_size.set(size as usize);
+      }
+      return v8::Integer::new(scope, size).into();
+    }
+
+    let size = if buffer {
+      self.recv_buffer_size.get()
+    } else {
+      self.send_buffer_size.get()
+    };
+    v8::Integer::new(scope, size as i32).into()
+  }
+
+  #[fast]
+  #[rename("setBroadcast")]
+  fn set_broadcast(&self, state: &mut OpState, #[smi] on: i32) -> i32 {
+    let Some(rid) = self.rid.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let result = state
+      .resource_table
+      .get::<NodeUdpSocketResource>(rid)
+      .map_err(NodeUdpError::from)
+      .and_then(|resource| {
+        resource.socket.set_broadcast(on == 1)?;
+        Ok(())
+      });
+    match result {
+      Ok(()) => 0,
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[rename("addMembership")]
+  fn add_membership(
+    &self,
+    state: &mut OpState,
+    #[string] multicast_address: &str,
+    #[string] interface_address: Option<String>,
+  ) -> i32 {
+    let Some(rid) = self.rid.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let result = if self.family.get().is_some_and(UdpFamily::is_ipv6) {
+      state
+        .resource_table
+        .get::<NodeUdpSocketResource>(rid)
+        .map_err(NodeUdpError::from)
+        .and_then(|resource| {
+          let addr = Ipv6Addr::from_str(multicast_address)?;
+          let iface = resolve_ipv6_interface(interface_address.as_deref())?;
+          resource.socket.join_multicast_v6(&addr, iface)?;
+          Ok(())
+        })
+    } else {
+      state
+        .resource_table
+        .get::<NodeUdpSocketResource>(rid)
+        .map_err(NodeUdpError::from)
+        .and_then(|resource| {
+          let addr = Ipv4Addr::from_str(multicast_address)?;
+          let iface = interface_address
+            .as_deref()
+            .map(Ipv4Addr::from_str)
+            .transpose()?
+            .unwrap_or(Ipv4Addr::UNSPECIFIED);
+          resource.socket.join_multicast_v4(addr, iface)?;
+          Ok(())
+        })
+    };
+    match result {
+      Ok(()) => 0,
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[rename("dropMembership")]
+  fn drop_membership(
+    &self,
+    state: &mut OpState,
+    #[string] multicast_address: &str,
+    #[string] interface_address: Option<String>,
+  ) -> i32 {
+    let Some(rid) = self.rid.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let result = if self.family.get().is_some_and(UdpFamily::is_ipv6) {
+      state
+        .resource_table
+        .get::<NodeUdpSocketResource>(rid)
+        .map_err(NodeUdpError::from)
+        .and_then(|resource| {
+          let addr = Ipv6Addr::from_str(multicast_address)?;
+          let iface = resolve_ipv6_interface(interface_address.as_deref())?;
+          resource.socket.leave_multicast_v6(&addr, iface)?;
+          Ok(())
+        })
+    } else {
+      state
+        .resource_table
+        .get::<NodeUdpSocketResource>(rid)
+        .map_err(NodeUdpError::from)
+        .and_then(|resource| {
+          let addr = Ipv4Addr::from_str(multicast_address)?;
+          let iface = interface_address
+            .as_deref()
+            .map(Ipv4Addr::from_str)
+            .transpose()?
+            .unwrap_or(Ipv4Addr::UNSPECIFIED);
+          resource.socket.leave_multicast_v4(addr, iface)?;
+          Ok(())
+        })
+    };
+    match result {
+      Ok(()) => 0,
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[rename("addSourceSpecificMembership")]
+  fn add_source_specific_membership(
+    &self,
+    state: &mut OpState,
+    #[string] source_address: &str,
+    #[string] group_address: &str,
+    #[string] interface_address: Option<String>,
+  ) -> i32 {
+    let Some(rid) = self.rid.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let result = state
+      .resource_table
+      .get::<NodeUdpSocketResource>(rid)
+      .map_err(NodeUdpError::from)
+      .and_then(|resource| {
+        source_specific_multicast(
+          &resource.socket,
+          Ipv4Addr::from_str(source_address)?,
+          Ipv4Addr::from_str(group_address)?,
+          Ipv4Addr::from_str(
+            interface_address.as_deref().unwrap_or("0.0.0.0"),
+          )?,
+          {
+            #[cfg(unix)]
+            {
+              libc::IP_ADD_SOURCE_MEMBERSHIP
+            }
+            #[cfg(windows)]
+            {
+              windows_sys::Win32::Networking::WinSock::IP_ADD_SOURCE_MEMBERSHIP
+            }
+          },
+        )
+      });
+    match result {
+      Ok(()) => 0,
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[rename("dropSourceSpecificMembership")]
+  fn drop_source_specific_membership(
+    &self,
+    state: &mut OpState,
+    #[string] source_address: &str,
+    #[string] group_address: &str,
+    #[string] interface_address: Option<String>,
+  ) -> i32 {
+    let Some(rid) = self.rid.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let result = state
+      .resource_table
+      .get::<NodeUdpSocketResource>(rid)
+      .map_err(NodeUdpError::from)
+      .and_then(|resource| {
+        source_specific_multicast(
+          &resource.socket,
+          Ipv4Addr::from_str(source_address)?,
+          Ipv4Addr::from_str(group_address)?,
+          Ipv4Addr::from_str(
+            interface_address.as_deref().unwrap_or("0.0.0.0"),
+          )?,
+          {
+            #[cfg(unix)]
+            {
+              libc::IP_DROP_SOURCE_MEMBERSHIP
+            }
+            #[cfg(windows)]
+            {
+              windows_sys::Win32::Networking::WinSock::IP_DROP_SOURCE_MEMBERSHIP
+            }
+          },
+        )
+      });
+    match result {
+      Ok(()) => 0,
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[nofast]
+  #[rename("setMulticastInterface")]
+  fn set_multicast_interface(
+    &self,
+    state: &mut OpState,
+    #[string] interface_address: &str,
+  ) -> i32 {
+    let Some(rid) = self.rid.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let is_ipv6 = self.family.get().is_some_and(UdpFamily::is_ipv6);
+    let result = state
+      .resource_table
+      .get::<NodeUdpSocketResource>(rid)
+      .map_err(NodeUdpError::from)
+      .and_then(|resource| {
+        let sock_ref = socket2::SockRef::from(&resource.socket);
+        if is_ipv6 {
+          let index = ipv6_interface_index(interface_address)?;
+          sock_ref.set_multicast_if_v6(index)?;
+        } else {
+          let addr: Ipv4Addr = interface_address.parse().map_err(|_| {
+            NodeUdpError::Io(std::io::Error::new(
+              std::io::ErrorKind::InvalidInput,
+              "invalid IPv4 address",
+            ))
+          })?;
+          sock_ref.set_multicast_if_v4(&addr)?;
+        }
+        Ok(())
+      });
+    match result {
+      Ok(()) => 0,
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[fast]
+  #[rename("setMulticastLoopback")]
+  fn set_multicast_loopback(&self, state: &mut OpState, #[smi] on: i32) -> i32 {
+    let Some(rid) = self.rid.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let is_ipv4 = self.family.get().is_some_and(UdpFamily::is_ipv4);
+    let result = state
+      .resource_table
+      .get::<NodeUdpSocketResource>(rid)
+      .map_err(NodeUdpError::from)
+      .and_then(|resource| {
+        if is_ipv4 {
+          resource.socket.set_multicast_loop_v4(on == 1)?;
+        } else {
+          resource.socket.set_multicast_loop_v6(on == 1)?;
+        }
+        Ok(())
+      });
+    match result {
+      Ok(()) => 0,
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[fast]
+  #[rename("setMulticastTTL")]
+  fn set_multicast_ttl(&self, state: &mut OpState, #[smi] ttl: i32) -> i32 {
+    if !(1..=255).contains(&ttl) {
+      return uv_compat::UV_EINVAL;
+    }
+    let Some(rid) = self.rid.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    if !self.family.get().is_some_and(UdpFamily::is_ipv4) {
+      return 0;
+    }
+    let result = state
+      .resource_table
+      .get::<NodeUdpSocketResource>(rid)
+      .map_err(NodeUdpError::from)
+      .and_then(|resource| {
+        resource.socket.set_multicast_ttl_v4(ttl as u32)?;
+        Ok(())
+      });
+    match result {
+      Ok(()) => 0,
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[fast]
+  #[rename("setTTL")]
+  fn set_ttl(&self, state: &mut OpState, #[smi] ttl: i32) -> i32 {
+    if !(1..=255).contains(&ttl) {
+      return uv_compat::UV_EINVAL;
+    }
+    let Some(rid) = self.rid.get() else {
+      return uv_compat::UV_EBADF;
+    };
+    let result = state
+      .resource_table
+      .get::<NodeUdpSocketResource>(rid)
+      .map_err(NodeUdpError::from)
+      .and_then(|resource| {
+        let sock_ref = socket2::SockRef::from(&resource.socket);
+        sock_ref.set_ttl(ttl as u32)?;
+        Ok(())
+      });
+    match result {
+      Ok(()) => 0,
+      Err(err) => udp_error_to_uv(&err),
+    }
+  }
+
+  #[fast]
+  #[rename("_rid")]
+  fn rid(&self) -> i32 {
+    self.rid.get().map(|rid| rid as i32).unwrap_or(-1)
+  }
+
+  #[fast]
+  #[rename("_recvBufferSize")]
+  fn recv_buffer_size(&self) -> i32 {
+    self.recv_buffer_size.get() as i32
+  }
+
+  #[fast]
+  #[rename("_remotePort")]
+  fn remote_port(&self) -> i32 {
+    self.remote_port.get().map(i32::from).unwrap_or(-1)
+  }
+
+  #[string]
+  #[rename("_remoteAddress")]
+  fn remote_address(&self) -> Option<String> {
+    self.remote_address.borrow().clone()
+  }
+
+  #[fast]
+  #[rename("_closeResource")]
+  fn close_resource(&self, state: &mut OpState) {
+    self.address.borrow_mut().take();
+    self.family.set(None);
+    self.port.set(None);
+    self.remote_address.borrow_mut().take();
+    self.remote_family.set(None);
+    self.remote_port.set(None);
+    if let Some(rid) = self.rid.take() {
+      #[allow(deprecated)]
+      let _ = state.resource_table.close(rid);
     }
   }
 }
@@ -125,12 +806,10 @@ impl Resource for NodeUdpSocketResource {
   }
 }
 
-#[op2]
-#[serde]
-pub fn op_node_udp_bind(
+fn node_udp_bind(
   state: &mut OpState,
-  #[string] hostname: &str,
-  #[smi] port: u16,
+  hostname: &str,
+  port: u16,
   reuse_address: bool,
   ipv6_only: bool,
 ) -> Result<(ResourceId, String, u16), NodeUdpError> {
@@ -179,6 +858,18 @@ pub fn op_node_udp_bind(
   let rid = state.resource_table.add(resource);
 
   Ok((rid, local_addr.ip().to_string(), local_addr.port()))
+}
+
+#[op2]
+#[serde]
+pub fn op_node_udp_bind(
+  state: &mut OpState,
+  #[string] hostname: &str,
+  #[smi] port: u16,
+  reuse_address: bool,
+  ipv6_only: bool,
+) -> Result<(ResourceId, String, u16), NodeUdpError> {
+  node_udp_bind(state, hostname, port, reuse_address, ipv6_only)
 }
 
 #[op2]
@@ -729,11 +1420,9 @@ pub fn op_node_udp_fd_for_ipc(
 
 /// Adopt an existing file descriptor as a UDP socket resource.  Used on the
 /// receiving side of IPC handle passing.
-#[op2]
-#[serde]
-pub fn op_node_udp_open(
+fn node_udp_open(
   state: &mut OpState,
-  #[smi] fd: i32,
+  fd: i32,
 ) -> Result<(ResourceId, String, u16), NodeUdpError> {
   #[cfg(unix)]
   {
@@ -758,4 +1447,15 @@ pub fn op_node_udp_open(
       "UDP socket IPC handle passing is not supported on this platform",
     )))
   }
+}
+
+/// Adopt an existing file descriptor as a UDP socket resource.  Used on the
+/// receiving side of IPC handle passing.
+#[op2]
+#[serde]
+pub fn op_node_udp_open(
+  state: &mut OpState,
+  #[smi] fd: i32,
+) -> Result<(ResourceId, String, u16), NodeUdpError> {
+  node_udp_open(state, fd)
 }
