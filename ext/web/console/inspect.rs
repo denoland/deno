@@ -237,7 +237,7 @@ pub struct Ctx<'s> {
   pub stylize_js_fn: Option<v8::Local<'s, v8::Function>>,
   /// Per-call memo of resolved theme escape codes, keyed by flavour.
   pub theme_memo: HashMap<&'static str, Option<(String, String)>>,
-  /// `stacker::remaining_stack()` captured at the outermost `format_value`
+  /// Native stack-frame address captured at the outermost `format_value`
   /// call, used to bound native-stack recursion (see `stack_low`).
   pub stack_base: Option<usize>,
 }
@@ -421,28 +421,22 @@ pub fn range_err<'s>(scope: &mut v8::PinScope<'s, '_>, message: &str) -> JsErr {
 /// rendered.
 const STACK_BUDGET: usize = 640 * 1024;
 
-/// Absolute floor on remaining native stack, for unusually small stacks.
-const STACK_RED_ZONE: usize = 64 * 1024;
+/// Approximate address of the current native stack frame. Stacks grow down, so
+/// for two frames the deeper one has the smaller address; the difference is the
+/// stack consumed between them. Used only for relative measurement, so (unlike
+/// `stacker::remaining_stack`, which needs the OS stack limit and can panic
+/// when it can't be determined, e.g. under EMFILE) this never fails.
+#[inline(never)]
+fn stack_ptr() -> usize {
+  let probe = 0u8;
+  std::hint::black_box(&probe) as *const u8 as usize
+}
 
-/// Fallback recursion cap used only when the remaining native stack can't be
-/// measured (`stacker::remaining_stack()` returns `None`).
-const RECURSION_LIMIT_FALLBACK: f64 = 256.0;
-
-/// True when continuing to recurse risks tripping V8's stack guard / the
-/// native guard page. `ctx.stack_base` is the remaining stack captured at the
-/// outermost `format_value`, so `base - current` is the bytes consumed since.
-fn stack_low(ctx: &Ctx<'_>, recurse_times: f64) -> bool {
-  match stacker::remaining_stack() {
-    Some(current) => {
-      if current < STACK_RED_ZONE {
-        return true;
-      }
-      match ctx.stack_base {
-        Some(base) => base.saturating_sub(current) > STACK_BUDGET,
-        None => false,
-      }
-    }
-    None => recurse_times > RECURSION_LIMIT_FALLBACK,
+/// True when the recursion has consumed more than `STACK_BUDGET` since entry.
+fn stack_low(ctx: &Ctx<'_>) -> bool {
+  match ctx.stack_base {
+    Some(base) => base.saturating_sub(stack_ptr()) > STACK_BUDGET,
+    None => false,
   }
 }
 
@@ -576,9 +570,9 @@ pub fn format_value<'s, 'i>(
   // Bound native-stack recursion (see STACK_BUDGET); throw a catchable
   // RangeError instead of aborting when `depth` is unlimited.
   if ctx.stack_base.is_none() {
-    ctx.stack_base = stacker::remaining_stack();
+    ctx.stack_base = Some(stack_ptr());
   }
-  if stack_low(ctx, recurse_times) {
+  if stack_low(ctx) {
     return Err(range_err(scope, "Maximum call stack size exceeded"));
   }
   // Primitive types cannot have properties.

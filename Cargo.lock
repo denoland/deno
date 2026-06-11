@@ -3430,7 +3430,6 @@ dependencies = [
  "flate2",
  "futures",
  "serde",
- "stacker",
  "thiserror 2.0.12",
  "tokio",
  "unicode-normalization",

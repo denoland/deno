@@ -64,6 +64,7 @@ const {
   RegExpPrototype,
   RegExpPrototypeToString,
   SafeArrayIterator,
+  SafeRegExp,
   Set,
   SetPrototype,
   String,
@@ -284,7 +285,7 @@ const intrinsics = {
     // real RegExp from the internal slots first (matches the old console).
     const re = ObjectPrototypeIsPrototypeOf(RegExpPrototype, this)
       ? this
-      : new RegExp(this);
+      : new SafeRegExp(this);
     return RegExpPrototypeToString(re);
   },
   numberValueOf: function numberValueOf() {
