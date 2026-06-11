@@ -692,7 +692,7 @@ impl TestCommandBuilder {
     let child = self.build_command().spawn()?;
     let mut child = DenoChild {
       _deno_dir: self.deno_dir.clone(),
-      child,
+      child: Some(child),
     };
 
     if let Some(input) = &self.stdin_text {
@@ -1011,19 +1011,38 @@ impl TestCommandBuilder {
 pub struct DenoChild {
   // keep alive for the duration of the use of this struct
   _deno_dir: TempDir,
-  child: Child,
+  // `Option` so `Drop` can take ownership to reap the process while the
+  // consuming `wait_*` methods can still move the child out.
+  child: Option<Child>,
 }
 
 impl Deref for DenoChild {
   type Target = Child;
   fn deref(&self) -> &Child {
-    &self.child
+    self.child.as_ref().expect("DenoChild already consumed")
   }
 }
 
 impl DerefMut for DenoChild {
   fn deref_mut(&mut self) -> &mut Child {
-    &mut self.child
+    self.child.as_mut().expect("DenoChild already consumed")
+  }
+}
+
+impl Drop for DenoChild {
+  fn drop(&mut self) {
+    // A test may finish (or panic) while a spawned `deno` is still running and
+    // holding the inherited stdout/stderr pipes open. If we only let the inner
+    // `Child` drop, the OS process keeps running, the harness's pipe readers
+    // never see EOF, and the test binary hangs at shutdown until the CI job's
+    // hard timeout. Kill the whole process tree (so forked workers die too) and
+    // reap it so the pipes close and the harness can exit.
+    if let Some(mut child) = self.child.take() {
+      if matches!(child.try_wait(), Ok(None)) {
+        kill_process(child.id());
+      }
+      let _ = child.wait();
+    }
   }
 }
 
@@ -1054,9 +1073,13 @@ impl DenoChild {
   }
 
   pub fn wait_with_output(
-    self,
+    mut self,
   ) -> Result<std::process::Output, std::io::Error> {
-    self.child.wait_with_output()
+    self
+      .child
+      .take()
+      .expect("DenoChild already consumed")
+      .wait_with_output()
   }
 
   pub fn wait_to_test_result(self, test_name: &str) -> TestResult {
