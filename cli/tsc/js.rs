@@ -82,6 +82,12 @@ impl TscConstants {
         .collect(),
     }
   }
+
+  pub fn new_for_lsp() -> Self {
+    let mut constants = Self::new();
+    constants.node_only_globals.push("fetch");
+    constants
+  }
 }
 
 #[op2]
