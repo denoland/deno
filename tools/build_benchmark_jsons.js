@@ -39,7 +39,7 @@ const uiRangeData = allData.slice(allDataLen - 250);
 const recentData = allData.slice(allDataLen - 20);
 
 writeJson(allDataFile, allData);
-writeJson(allDataJsonlFile, allData);
-writeJson(uiRangeDataJsonlFile, uiRangeData);
+writeJsonl(allDataJsonlFile, allData);
+writeJsonl(uiRangeDataJsonlFile, uiRangeData);
 writeJson(recentDataFile, recentData);
-writeJson(recentDataJsonlFile, recentData);
+writeJsonl(recentDataJsonlFile, recentData);
