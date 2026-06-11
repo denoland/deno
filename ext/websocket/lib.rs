@@ -9,6 +9,7 @@ use std::rc::Rc;
 use bytes::Bytes;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
+use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
@@ -565,6 +566,7 @@ pub struct ServerWebSocket {
   string: Cell<Option<String>>,
   ws_read: AsyncRefCell<FragmentCollectorRead<ReadHalf<WebSocketStream>>>,
   ws_write: AsyncRefCell<WebSocketWrite<WriteHalf<WebSocketStream>>>,
+  cancel: CancelHandle,
 }
 
 impl ServerWebSocket {
@@ -579,6 +581,7 @@ impl ServerWebSocket {
       string: Cell::new(None),
       ws_read: AsyncRefCell::new(FragmentCollectorRead::new(ws_read)),
       ws_write: AsyncRefCell::new(ws_write),
+      cancel: CancelHandle::new(),
     }
   }
 
@@ -617,6 +620,13 @@ impl ServerWebSocket {
 impl Resource for ServerWebSocket {
   fn name(&self) -> Cow<'_, str> {
     "serverWebSocket".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    // Interrupt any pending reads so the underlying stream can be dropped.
+    // This makes `core.tryClose(rid)` on an open websocket act as a forceful
+    // close instead of leaking the connection.
+    self.cancel.cancel();
   }
 }
 
@@ -867,12 +877,20 @@ pub async fn op_ws_next_event(
 
   let mut ws = RcRef::map(&resource, |r| &r.ws_read).borrow_mut().await;
   let writer = RcRef::map(&resource, |r| &r.ws_write);
+  let cancel = RcRef::map(&resource, |r| &r.cancel);
   let mut sender = move |frame| {
     let writer = writer.clone();
     async move { writer.borrow_mut().await.write_frame(frame).await }
   };
   loop {
-    let res = ws.read_frame(&mut sender).await;
+    let res = match ws.read_frame(&mut sender).or_cancel(cancel.clone()).await {
+      Ok(res) => res,
+      Err(_) => {
+        // The resource was closed while the read was pending (e.g. a
+        // forceful server shutdown). Report closed status to JavaScript.
+        return MessageKind::ClosedDefault as u16;
+      }
+    };
     let val = match res {
       Ok(val) => val,
       Err(err) => {

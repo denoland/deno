@@ -1,0 +1,8 @@
+{
+  "tests": {
+    "force_close_on_abort": {
+      "args": "run -A main.ts",
+      "output": "main.out"
+    }
+  }
+}

@@ -58,6 +58,8 @@ const {
   SafeArrayIterator,
   SafePromisePrototypeFinally,
   SafePromiseAll,
+  SafeSet,
+  SafeSetIterator,
   PromisePrototypeThen,
   StringPrototypeIncludes,
   StringPrototypeSlice,
@@ -270,8 +272,19 @@ class InnerRequest {
 
       this.#upgraded = true;
 
-      return op_http_upgrade_websocket_next(external);
+      const context = this.#context;
+      return PromisePrototypeThen(
+        op_http_upgrade_websocket_next(external),
+        (wsRid) => {
+          context.trackUpgradedWebSocket(wsRid);
+          return wsRid;
+        },
+      );
     }
+  }
+
+  _untrackUpgradedWebSocket(rid) {
+    this.#context.untrackUpgradedWebSocket(rid);
   }
 
   url() {
@@ -455,11 +468,14 @@ class CallbackContext {
   fallbackHost;
   serverRid;
   closed;
+  aborted;
   /** @type {Promise<void> | undefined} */
   closing;
   listener;
   asyncContextSnapshot;
   legacyAbort;
+  /** @type {SafeSet<number>} */
+  upgradedWebSocketRids;
 
   constructor(signal, args, listener) {
     this.asyncContextSnapshot = currentSnapshot();
@@ -467,7 +483,15 @@ class CallbackContext {
     signal?.addEventListener(
       "abort",
       () => {
+        this.aborted = true;
         op_http_cancel(this.serverRid, false);
+        // Connections that were upgraded to websockets are no longer
+        // tracked by the server once their stream is taken over, so a
+        // non-graceful shutdown must close them explicitly (#25792).
+        for (const rid of new SafeSetIterator(this.upgradedWebSocketRids)) {
+          core.tryClose(rid);
+        }
+        this.upgradedWebSocketRids.clear();
       },
       { once: true },
     );
@@ -477,7 +501,23 @@ class CallbackContext {
     this.fallbackHost = args[2];
     this.legacyAbort = args[3] == false;
     this.closed = false;
+    this.aborted = false;
     this.listener = listener;
+    this.upgradedWebSocketRids = new SafeSet();
+  }
+
+  trackUpgradedWebSocket(rid) {
+    // If the server was already aborted while the upgrade was in flight,
+    // close the websocket immediately.
+    if (this.aborted) {
+      core.tryClose(rid);
+      return;
+    }
+    this.upgradedWebSocketRids.add(rid);
+  }
+
+  untrackUpgradedWebSocket(rid) {
+    this.upgradedWebSocketRids.delete(rid);
   }
 
   close() {
