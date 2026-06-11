@@ -541,6 +541,9 @@ async function startJupyterKernel() {
   let currentParentHeader = {};
   let currentAllowStdin = false;
   let shuttingDown = false;
+  // Monotonic sequence number for Debug Adapter Protocol responses sent over
+  // the control channel (debug_reply). See handleDebugRequest.
+  let dapSeq = 1;
 
   async function publishStatus(status, parentHeader) {
     const frames = await encodeMsg(
@@ -606,7 +609,11 @@ async function startJupyterKernel() {
       },
       banner: "Welcome to Deno kernel",
       help_links: [{ text: "Visit Deno manual", url: "https://docs.deno.com" }],
-      debugger: false,
+      // Advertise debugger support so frontends (e.g. VSCode) engage the
+      // Jupyter debug protocol. We implement just enough of it to populate the
+      // notebook Variables view via `inspectVariables`. See handleDebugRequest
+      // and denoland/deno#26068.
+      debugger: true,
     };
   }
 
@@ -1058,7 +1065,137 @@ async function startJupyterKernel() {
       );
       await socket.send(peerId, replyFrames);
     } else if (msgType === "debug_request") {
-      // Not supported
+      const dapRequest = msg.content || {};
+      const body = await handleDebugRequest(dapRequest);
+      const replyFrames = await encodeMsg(
+        session,
+        key,
+        [],
+        "debug_reply",
+        {
+          type: "response",
+          seq: dapSeq++,
+          request_seq: dapRequest.seq,
+          success: true,
+          command: dapRequest.command,
+          body,
+        },
+        parentHeader,
+      );
+      await socket.send(peerId, [peerId, ...replyFrames]);
+    }
+  }
+
+  // --- Jupyter debug protocol (Variables view) -------------------------------
+  //
+  // VSCode and other frontends populate the notebook Variables table by driving
+  // the kernel over the Debug Adapter Protocol, wrapped in Jupyter
+  // debug_request/debug_reply messages on the control channel. We implement the
+  // minimal subset needed to enumerate top-level variables; full stepping
+  // debugging is not supported. See denoland/deno#26068.
+
+  // Turn a CDP RemoteObject into a DAP-friendly { value, type } pair.
+  function formatRemoteObject(remoteObject) {
+    if (!remoteObject) return { value: "undefined", type: "undefined" };
+    const type = remoteObject.type || "undefined";
+    let value;
+    if (type === "string") {
+      value = JSON.stringify(
+        remoteObject.value ?? remoteObject.description ?? "",
+      );
+    } else if (remoteObject.description != null) {
+      // Objects, arrays, functions, etc. carry a human-readable description.
+      value = remoteObject.description;
+    } else if (remoteObject.unserializableValue != null) {
+      // NaN, Infinity, -0, BigInt literals.
+      value = remoteObject.unserializableValue;
+    } else {
+      value = String(remoteObject.value);
+    }
+    return { value, type };
+  }
+
+  // Evaluate a top-level binding name without side effects on the REPL output,
+  // returning its CDP RemoteObject (or null if evaluation failed).
+  async function evaluateName(name) {
+    try {
+      // op_jupyter_repl_evaluate returns a CDP EvaluateResponse:
+      // { result: RemoteObject, exceptionDetails?: ExceptionDetails }.
+      const resp = await op_jupyter_repl_evaluate(`(${name})`);
+      if (resp?.exceptionDetails) return null;
+      return resp?.result ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Collect the kernel's top-level variables as DAP Variable entries. Uses the
+  // global lexical scope (top-level let/const/class declarations), which is
+  // where notebook variables live. var-declared and bare-assigned globals are
+  // not yet included.
+  async function collectVariables() {
+    let names = [];
+    try {
+      const resp = await op_jupyter_repl_global_lexical_scope_names();
+      names = resp?.names || [];
+    } catch {
+      names = [];
+    }
+    const variables = [];
+    for (const name of names) {
+      const { value, type } = formatRemoteObject(await evaluateName(name));
+      variables.push({
+        name,
+        value,
+        type,
+        variablesReference: 0,
+        evaluateName: name,
+      });
+    }
+    return variables;
+  }
+
+  async function handleDebugRequest(dapRequest) {
+    const command = dapRequest?.command;
+    switch (command) {
+      case "initialize":
+        // DAP InitializeResponse body is a Capabilities object. We support no
+        // optional capabilities; an empty object means everything defaults off.
+        return {};
+      case "debugInfo":
+        // Jupyter-specific request describing debugger state. Reporting
+        // isStarted lets the frontend proceed straight to inspectVariables.
+        return {
+          isStarted: true,
+          hashMethod: "Murmur2",
+          hashSeed: 0,
+          tmpFilePrefix: "",
+          tmpFileSuffix: "",
+          breakpoints: [],
+          stoppedThreads: [],
+          richRendering: true,
+          exceptionPaths: [],
+        };
+      case "inspectVariables":
+        // Powers the Variables table.
+        return { variables: await collectVariables() };
+      case "richInspectVariables": {
+        // Used by "show variable in data viewer"/hover. Return a plain-text
+        // mimebundle of the variable's value.
+        const name = dapRequest?.arguments?.variableName;
+        const { value } = formatRemoteObject(
+          name ? await evaluateName(name) : null,
+        );
+        return { data: { "text/plain": value }, metadata: {} };
+      }
+      case "attach":
+      case "configurationDone":
+      case "disconnect":
+        return {};
+      default:
+        // Unknown/unsupported DAP command: ack with an empty body so the
+        // frontend's debug session stays alive instead of erroring out.
+        return {};
     }
   }
 

@@ -709,6 +709,85 @@ async fn jupyter_rejects_invalid_hmac_signature() -> Result<()> {
 }
 
 #[test]
+async fn jupyter_kernel_info_advertises_debugger() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client
+    .send(Control, "kernel_info_request", json!({}))
+    .await?;
+  let msg = client.recv(Control).await?;
+  assert_eq!(msg.header.msg_type, "kernel_info_reply");
+  // The Variables view is only engaged by frontends when the kernel advertises
+  // debugger support. See denoland/deno#26068.
+  assert_json_subset(msg.content, json!({ "debugger": true }));
+
+  Ok(())
+}
+
+#[test]
+async fn jupyter_debug_inspect_variables() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+
+  // Define top-level variables in the kernel.
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": true,
+        "stop_on_error": false,
+        "code": "let x = 42; let y = \"hi\"; const arr = [1, 2, 3];"
+      }),
+    )
+    .await?;
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(reply.content, json!({ "status": "ok" }));
+
+  // Ask the kernel for its variables over the Jupyter debug protocol.
+  client
+    .send(
+      Control,
+      "debug_request",
+      json!({
+        "type": "request",
+        "seq": 1,
+        "command": "inspectVariables",
+        "arguments": {}
+      }),
+    )
+    .await?;
+  let msg = client.recv(Control).await?;
+  assert_eq!(msg.header.msg_type, "debug_reply");
+  assert_json_subset(
+    msg.content.clone(),
+    json!({ "success": true, "command": "inspectVariables" }),
+  );
+
+  let variables = msg
+    .content
+    .get("body")
+    .and_then(|b| b.get("variables"))
+    .and_then(|v| v.as_array())
+    .expect("debug_reply body.variables array");
+  let find = |name: &str| {
+    variables
+      .iter()
+      .find(|v| v.get("name").and_then(|n| n.as_str()) == Some(name))
+      .unwrap_or_else(|| panic!("variable {name} not found in {variables:#?}"))
+      .clone()
+  };
+
+  assert_json_subset(find("x"), json!({ "value": "42", "type": "number" }));
+  assert_json_subset(find("y"), json!({ "value": "\"hi\"", "type": "string" }));
+  assert_json_subset(find("arr"), json!({ "type": "object" }));
+
+  Ok(())
+}
+
+#[test]
 async fn jupyter_store_history_false() -> Result<()> {
   let (_ctx, client, _process) = setup().await;
   client
