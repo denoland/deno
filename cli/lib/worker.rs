@@ -498,6 +498,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         trace_ops: shared.options.trace_ops.clone(),
         close_on_idle: args.close_on_idle,
         maybe_worker_metadata: args.maybe_worker_metadata,
+        maybe_main_module_blob: args.maybe_main_module_blob,
         maybe_coverage_dir: shared.maybe_coverage_dir.clone(),
         maybe_cpu_prof_config: shared.maybe_cpu_prof_config.clone(),
         enable_raw_imports: shared.options.enable_raw_imports,
