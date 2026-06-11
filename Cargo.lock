@@ -1121,7 +1121,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
- "unicode-width 0.1.13",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -1876,6 +1876,7 @@ dependencies = [
  "indexmap 2.12.0",
  "jsonc-parser",
  "keyring",
+ "lax-css",
  "lazy-regex",
  "libc",
  "libsui",
@@ -6126,6 +6127,16 @@ checksum = "ed9625ffda8729b85e45cf04090035ac368927b8cebc34898e7c120f52e4838b"
 dependencies = [
  "bitflags 1.3.2",
  "libc",
+]
+
+[[package]]
+name = "lax-css"
+version = "0.1.1"
+source = "git+https://github.com/bartlomieju/dprint-plugin-css?rev=ebf41efff726cbc8be725336d78e366fcb0b26ee#ebf41efff726cbc8be725336d78e366fcb0b26ee"
+dependencies = [
+ "anyhow",
+ "dprint-core",
+ "serde",
 ]
 
 [[package]]

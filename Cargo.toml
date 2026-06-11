@@ -355,6 +355,7 @@ dprint-plugin-typescript = "=0.96.1"
 env_logger = { version = "=0.11.6", default-features = false, features = ["regex"] }
 imara-diff = "=0.2.0"
 libsui = "0.12.6"
+lax-css = "=0.1.1"
 malva = "=0.15.2"
 markup_fmt = "=0.27.3"
 object = { version = "0.36.3", default-features = false, features = ["read_core", "pe"] }
@@ -606,3 +607,7 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.twox-hash]
 opt-level = 3
+
+# TODO(bartlomieju): remove once lax-css 0.1.1 is published to crates.io
+[patch.crates-io]
+lax-css = { git = "https://github.com/bartlomieju/dprint-plugin-css", rev = "ebf41efff726cbc8be725336d78e366fcb0b26ee" }

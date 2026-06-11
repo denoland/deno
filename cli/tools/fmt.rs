@@ -402,18 +402,41 @@ pub fn format_css(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
-  let formatted_str = malva::format_text(
-    file_text,
-    malva::detect_syntax(file_path).unwrap_or(malva::Syntax::Css),
-    &get_resolved_malva_config(fmt_options),
-  )
-  .map_err(AnyError::from)?;
+  // the indented Sass syntax is not supported by lax-css and is still
+  // formatted with malva
+  if file_path.extension().and_then(|e| e.to_str()) == Some("sass") {
+    let formatted_str = malva::format_text(
+      file_text,
+      malva::Syntax::Sass,
+      &get_resolved_malva_config(fmt_options),
+    )
+    .map_err(AnyError::from)?;
 
-  Ok(if formatted_str == file_text {
-    None
-  } else {
-    Some(formatted_str)
-  })
+    return Ok(if formatted_str == file_text {
+      None
+    } else {
+      Some(formatted_str)
+    });
+  }
+
+  lax_css::format_text(
+    file_path,
+    file_text,
+    &get_resolved_lax_css_config(fmt_options),
+  )
+}
+
+fn get_resolved_lax_css_config(
+  options: &FmtOptionsConfig,
+) -> lax_css::configuration::Configuration {
+  lax_css::configuration::Configuration {
+    line_width: options.line_width.unwrap_or(80),
+    use_tabs: options.use_tabs.unwrap_or_default(),
+    indent_width: options.indent_width.unwrap_or(2),
+    new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
+    ignore_node_comment_text: "deno-fmt-ignore".to_string(),
+    ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
+  }
 }
 
 fn format_yaml(
