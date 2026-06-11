@@ -1,0 +1,12 @@
+// Regression test: per the WebCrypto spec change in w3c/webcrypto#380,
+// `crypto.subtle.deriveBits(algorithm, key, 0)` must return an empty
+// ArrayBuffer rather than throwing `OperationError: Invalid length`.
+// Required for Node compat (e.g. test-webcrypto-derivebits-hkdf.js).
+{
+  "tests": {
+    "zero_length": {
+      "args": "run -A main.mjs",
+      "output": "main.out"
+    }
+  }
+}
