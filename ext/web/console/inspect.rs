@@ -415,9 +415,11 @@ pub fn range_err<'s>(scope: &mut v8::PinScope<'s, '_>, message: &str) -> JsErr {
 /// IsOnCentralStack()`) once a native API is hit too deep. The old JS recursed
 /// on the JS stack and threw a catchable `RangeError`. A fixed recursion count
 /// can't work across build profiles (debug frames are far larger than
-/// release), so bound the bytes consumed since entry — comfortably under V8's
-/// budget (~0.8MB observed) with headroom left to construct the error.
-const STACK_BUDGET: usize = 512 * 1024;
+/// release), so bound the bytes consumed since entry — under V8's budget
+/// (~0.8MB observed before it aborts) with headroom left to construct the
+/// error, while staying close enough not to truncate sooner than the old code
+/// rendered.
+const STACK_BUDGET: usize = 640 * 1024;
 
 /// Absolute floor on remaining native stack, for unusually small stacks.
 const STACK_RED_ZONE: usize = 64 * 1024;
