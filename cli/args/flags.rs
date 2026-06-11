@@ -5470,8 +5470,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
   <g>-I, --allow-import[=<<IP_OR_HOSTNAME>...]</> Allow importing from remote hosts. Optionally specify allowed IP addresses and host names, with ports as necessary.
                                             Default value: <p(245)>deno.land:443,jsr.io:443,esm.sh:443,raw.esm.sh:443,cdn.jsdelivr.net:443,raw.githubusercontent.com:443,gist.githubusercontent.com:443</>
                                              <p(245)>--allow-import  |  --allow-import="example.com,github.com"</>
-  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.
-                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"</>
+  <g>-N, --allow-net[=<<IP_OR_HOSTNAME>...]</>    Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary. URL patterns (with a scheme and/or path) are also accepted to restrict URL-based access such as fetch.
+                                             <p(245)>--allow-net  |  --allow-net="localhost:8080,deno.land"  |  --allow-net="https://example.com/api/*"</>
   <g>-E, --allow-env[=<<VARIABLE_NAME>...]</>     Allow access to environment variables. Optionally specify accessible environment variables.
                                              <p(245)>--allow-env  |  --allow-env="PORT,HOME,PATH"</>
   <g>-S, --allow-sys[=<<API_NAME>...]</>          Allow access to OS information. Optionally allow specific APIs by function name.
@@ -8785,7 +8785,7 @@ fn unsafely_ignore_certificate_errors_parse(
   if let Some(ic_wl) =
     matches.remove_many::<String>("unsafely-ignore-certificate-errors")
   {
-    let ic_allowlist = flags_net::parse(ic_wl.collect())?;
+    let ic_allowlist = flags_net::parse_host_only(ic_wl.collect())?;
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
   Ok(())
@@ -16087,15 +16087,26 @@ mod tests {
 
   #[test]
   fn net_flag_with_url() {
+    // URLs (with a scheme and/or path) are accepted as URL pattern entries.
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--allow-net=https://example.com",
+      "--allow-net=https://example.com/api/*",
       "script.ts"
     ]);
     assert_eq!(
-      r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          allow_net: Some(svec!["https://example.com/api/*"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
     );
   }
 
@@ -16165,29 +16176,51 @@ Usage: deno lint [OPTIONS] [files]...\n"
 
   #[test]
   fn allow_import_with_url() {
+    // URLs (with a scheme and/or path) are accepted as URL pattern entries.
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--allow-import=https://example.com",
+      "--allow-import=https://example.com/x/*",
       "script.ts"
     ]);
     assert_eq!(
-      r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          allow_import: Some(svec!["https://example.com/x/*"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
     );
   }
 
   #[test]
   fn deny_import_with_url() {
+    // URLs (with a scheme and/or path) are accepted as URL pattern entries.
     let r = flags_from_vec(svec![
       "deno",
       "run",
-      "--deny-import=https://example.com",
+      "--deny-import=https://example.com/x/*",
       "script.ts",
     ]);
     assert_eq!(
-      r.unwrap_err().to_string(),
-      "error: invalid value 'https://example.com': URLs are not supported, only domains and ips"
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags::new_default(
+          "script.ts".to_string(),
+        )),
+        permissions: PermissionFlags {
+          deny_import: Some(svec!["https://example.com/x/*"]),
+          ..Default::default()
+        },
+        code_cache_enabled: true,
+        ..Flags::default()
+      }
     );
   }
 

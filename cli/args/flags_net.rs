@@ -61,6 +61,36 @@ pub fn parse(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
   Ok(out)
 }
 
+/// Like [`parse`], but rejects URL pattern entries (those carrying a scheme
+/// and/or path). Used for flags that only accept plain hosts, such as
+/// `--unsafely-ignore-certificate-errors`.
+pub fn parse_host_only(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
+  let mut out: Vec<String> = vec![];
+  for host_and_port in paths.into_iter() {
+    if let Ok(port) = host_and_port.parse::<BarePort>() {
+      // we got bare port, let's add default hosts
+      for host in ["0.0.0.0", "127.0.0.1", "localhost"].iter() {
+        out.push(format!("{}:{}", host, port.0));
+      }
+    } else {
+      let desc =
+        NetDescriptor::parse_for_list(&host_and_port).map_err(|e| {
+          clap::Error::raw(clap::error::ErrorKind::InvalidValue, e.to_string())
+        })?;
+      if desc.is_url_pattern() {
+        return Err(clap::Error::raw(
+          clap::error::ErrorKind::InvalidValue,
+          format!(
+            "invalid value '{host_and_port}': URLs are not supported, only domains and ips"
+          ),
+        ));
+      }
+      out.push(host_and_port)
+    }
+  }
+  Ok(out)
+}
+
 #[cfg(test)]
 mod bare_port_tests {
   use super::BarePort;
@@ -177,6 +207,32 @@ mod tests {
     let expected = svec!["0.0.0.0:8080", "127.0.0.1:8080", "localhost:8080"];
     let actual = parse(entries).unwrap();
     assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn parse_url_patterns() {
+    // URL patterns (scheme and/or path) are accepted by `parse`.
+    let entries = svec![
+      "https://example.com/api/*",
+      "example.com/static/*",
+      "https://*",
+      "deno.land"
+    ];
+    let actual = parse(entries.clone()).unwrap();
+    assert_eq!(actual, entries);
+  }
+
+  #[test]
+  fn parse_host_only_rejects_url_patterns() {
+    use super::parse_host_only;
+    // Plain hosts (and bare-port expansion) are accepted.
+    assert_eq!(
+      parse_host_only(svec!["example.com", "127.0.0.1:8080"]).unwrap(),
+      svec!["example.com", "127.0.0.1:8080"]
+    );
+    // URL patterns are rejected.
+    assert!(parse_host_only(svec!["https://example.com/"]).is_err());
+    assert!(parse_host_only(svec!["example.com/path"]).is_err());
   }
 
   #[test]

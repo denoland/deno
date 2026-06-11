@@ -1,0 +1,5 @@
+api path: allowed
+other path: denied
+wrong scheme: denied
+wrong port: denied
+raw connect: denied
