@@ -441,6 +441,54 @@ impl FmtOptionsConfig {
       && self.vue_component_case.is_none()
       && self.angular_next_control_flow_same_line.is_none()
   }
+
+  pub fn merge_overrides(
+    self,
+    overrides: FmtOptionsConfig,
+  ) -> FmtOptionsConfig {
+    FmtOptionsConfig {
+      use_tabs: overrides.use_tabs.or(self.use_tabs),
+      line_width: overrides.line_width.or(self.line_width),
+      indent_width: overrides.indent_width.or(self.indent_width),
+      single_quote: overrides.single_quote.or(self.single_quote),
+      prose_wrap: overrides.prose_wrap.or(self.prose_wrap),
+      semi_colons: overrides.semi_colons.or(self.semi_colons),
+      quote_props: overrides.quote_props.or(self.quote_props),
+      new_line_kind: overrides.new_line_kind.or(self.new_line_kind),
+      use_braces: overrides.use_braces.or(self.use_braces),
+      brace_position: overrides.brace_position.or(self.brace_position),
+      single_body_position: overrides
+        .single_body_position
+        .or(self.single_body_position),
+      next_control_flow_position: overrides
+        .next_control_flow_position
+        .or(self.next_control_flow_position),
+      trailing_commas: overrides.trailing_commas.or(self.trailing_commas),
+      operator_position: overrides.operator_position.or(self.operator_position),
+      jsx_bracket_position: overrides
+        .jsx_bracket_position
+        .or(self.jsx_bracket_position),
+      jsx_force_new_lines_surrounding_content: overrides
+        .jsx_force_new_lines_surrounding_content
+        .or(self.jsx_force_new_lines_surrounding_content),
+      jsx_multi_line_parens: overrides
+        .jsx_multi_line_parens
+        .or(self.jsx_multi_line_parens),
+      type_literal_separator_kind: overrides
+        .type_literal_separator_kind
+        .or(self.type_literal_separator_kind),
+      space_around: overrides.space_around.or(self.space_around),
+      space_surrounding_properties: overrides
+        .space_surrounding_properties
+        .or(self.space_surrounding_properties),
+      vue_component_case: overrides
+        .vue_component_case
+        .or(self.vue_component_case),
+      angular_next_control_flow_same_line: overrides
+        .angular_next_control_flow_same_line
+        .or(self.angular_next_control_flow_same_line),
+    }
+  }
 }
 
 /// Choose between flat and nested fmt options.
@@ -521,6 +569,7 @@ struct SerializedFmtConfig {
   pub deprecated_options: FmtOptionsConfig,
   pub include: Option<Vec<String>>,
   pub exclude: Vec<String>,
+  pub overrides: Vec<SerializedFmtOverrideConfig>,
   #[serde(rename = "files")]
   pub deprecated_files: serde_json::Value,
 }
@@ -567,13 +616,52 @@ impl SerializedFmtConfig {
     Ok(FmtConfig {
       options: choose_fmt_options(options, self.deprecated_options),
       files: files.into_resolved(config_file_specifier)?,
+      overrides: self
+        .overrides
+        .into_iter()
+        .map(|override_config| {
+          override_config.into_resolved(config_file_specifier)
+        })
+        .collect::<Result<Vec<_>, _>>()?,
+    })
+  }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields, rename_all = "camelCase")]
+struct SerializedFmtOverrideConfig {
+  pub files: Vec<String>,
+  #[serde(flatten)]
+  pub options: FmtOptionsConfig,
+}
+
+impl SerializedFmtOverrideConfig {
+  pub fn into_resolved(
+    self,
+    config_file_specifier: &Url,
+  ) -> Result<FmtOverrideConfig, IntoResolvedError> {
+    let config_dir = url_to_file_path(&url_parent(config_file_specifier))?;
+    Ok(FmtOverrideConfig {
+      files: PathOrPatternSet::from_include_relative_path_or_patterns(
+        &config_dir,
+        &self.files,
+      )
+      .map_err(IntoResolvedErrorKind::InvalidInclude)?,
+      options: self.options,
     })
   }
 }
 
 #[derive(Clone, Debug, Hash, PartialEq)]
+pub struct FmtOverrideConfig {
+  pub files: PathOrPatternSet,
+  pub options: FmtOptionsConfig,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq)]
 pub struct FmtConfig {
   pub options: FmtOptionsConfig,
+  pub overrides: Vec<FmtOverrideConfig>,
   pub files: FilePatterns,
 }
 
@@ -581,6 +669,7 @@ impl FmtConfig {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       options: Default::default(),
+      overrides: Default::default(),
       files: FilePatterns::new_with_base(base),
     }
   }
@@ -1978,6 +2067,7 @@ impl ConfigFile {
       }
       None => Ok(FmtConfig {
         options: Default::default(),
+        overrides: Default::default(),
         files: self.to_exclude_files_config()?,
       }),
     }
@@ -2605,6 +2695,7 @@ mod tests {
             PathBuf::from("/deno/src/testdata/")
           )]),
         },
+        overrides: Default::default(),
         options: FmtOptionsConfig {
           use_tabs: Some(true),
           line_width: Some(80),

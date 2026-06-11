@@ -19,6 +19,7 @@ pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::CompilerOptions;
 pub use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::FmtConfig;
+use deno_config::deno_json::FmtOverrideConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -122,6 +123,7 @@ pub struct UnstableFmtOptions {
 #[derive(Clone, Debug)]
 pub struct FmtOptions {
   pub options: FmtOptionsConfig,
+  pub overrides: Vec<FmtOverrideConfig>,
   pub unstable: UnstableFmtOptions,
   pub files: FilePatterns,
 }
@@ -136,6 +138,7 @@ impl FmtOptions {
   pub fn new_with_base(base: PathBuf) -> Self {
     Self {
       options: FmtOptionsConfig::default(),
+      overrides: Vec::new(),
       unstable: Default::default(),
       files: FilePatterns::new_with_base(base),
     }
@@ -146,14 +149,40 @@ impl FmtOptions {
     unstable: UnstableFmtOptions,
     fmt_flags: &FmtFlags,
   ) -> Self {
+    let options = fmt_config.options;
     Self {
-      options: resolve_fmt_options(fmt_flags, fmt_config.options),
+      options: resolve_fmt_options(fmt_flags, options.clone()),
+      overrides: fmt_config
+        .overrides
+        .into_iter()
+        .map(|override_config| FmtOverrideConfig {
+          files: override_config.files,
+          options: resolve_fmt_options(
+            fmt_flags,
+            options.clone().merge_overrides(override_config.options),
+          ),
+        })
+        .collect(),
       unstable: UnstableFmtOptions {
         component: unstable.component || fmt_flags.unstable_component,
         sql: unstable.sql || fmt_flags.unstable_sql,
       },
       files: fmt_config.files,
     }
+  }
+
+  pub fn options_for_path(&self, path: &Path) -> &FmtOptionsConfig {
+    self
+      .overrides
+      .iter()
+      .rev()
+      .find_map(|override_config| {
+        override_config
+          .files
+          .matches_path(path)
+          .then_some(&override_config.options)
+      })
+      .unwrap_or(&self.options)
   }
 }
 
