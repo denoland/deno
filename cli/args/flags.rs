@@ -643,6 +643,7 @@ pub struct TestFlags {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  pub dom: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -4943,6 +4944,20 @@ or <c>**/__tests__/**</>:
           .help("Hide stack traces for errors in failure test results.")
           .action(ArgAction::SetTrue)
       )
+      .arg(
+        Arg::new("dom")
+          .long("dom")
+          .num_args(0..=1)
+          .require_equals(true)
+          .value_parser(["happy-dom", "jsdom"])
+          .default_missing_value("happy-dom")
+          .value_name("LIBRARY")
+          .help(cstr!("Set up a DOM environment (<bold>document</>, <bold>window</>, etc.) before running tests <p(245)>[experimental]</>
+  <p(245)>The DOM library defaults to happy-dom, loaded from npm with a version built into Deno.
+Declare happy-dom or jsdom in your import map or package.json to use a different version.
+Depending on the DOM library, tests may need --allow-env and --allow-read.</>"))
+          .help_heading(TEST_HEADING),
+      )
       .arg(env_file_arg())
       .arg(executable_ext_arg())
     )
@@ -8342,6 +8357,7 @@ fn test_parse(
   }
 
   let hide_stacktraces = matches.get_flag("hide-stacktraces");
+  let dom = matches.remove_one::<String>("dom");
 
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
@@ -8362,6 +8378,7 @@ fn test_parse(
     reporter,
     junit_path,
     hide_stacktraces,
+    dom,
   });
   Ok(())
 }
@@ -12783,6 +12800,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          dom: None,
         }),
         no_npm: true,
         no_remote: true,
@@ -12892,6 +12910,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          dom: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -12938,6 +12957,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          dom: None,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -13078,6 +13098,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          dom: None,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -13117,6 +13138,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          dom: None,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -13155,6 +13177,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          dom: None,
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -13200,6 +13223,7 @@ mod tests {
           reporter: Default::default(),
           junit_path: None,
           hide_stacktraces: false,
+          dom: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         permissions: PermissionFlags {
@@ -13414,6 +13438,46 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn test_dom() {
+    let r = flags_from_vec(svec!["deno", "test", "--dom"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          dom: Some("happy-dom".to_string()),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "test", "--dom=jsdom"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          dom: Some("jsdom".to_string()),
+          ..TestFlags::default()
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "test", "--dom=chrome"]);
+    assert!(r.is_err());
   }
 
   #[test]

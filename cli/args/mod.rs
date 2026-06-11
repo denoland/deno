@@ -26,6 +26,7 @@ use deno_config::deno_json::PermissionConfigValue;
 use deno_config::deno_json::PermissionsObjectWithBase;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
+use deno_config::deno_json::TestDomLibrary;
 pub use deno_config::glob::FilePatterns;
 pub use deno_config::workspace::TsTypeLib;
 use deno_config::workspace::Workspace;
@@ -209,6 +210,7 @@ pub struct WorkspaceTestOptions {
   pub reporter: TestReporterConfig,
   pub junit_path: Option<String>,
   pub hide_stacktraces: bool,
+  pub dom: Option<TestDomLibrary>,
 }
 
 impl WorkspaceTestOptions {
@@ -247,6 +249,14 @@ impl WorkspaceTestOptions {
       reporter: test_flags.reporter,
       junit_path: test_flags.junit_path.clone(),
       hide_stacktraces: test_flags.hide_stacktraces,
+      dom: test_flags
+        .dom
+        .as_deref()
+        .map(|dom| match dom {
+          "jsdom" => TestDomLibrary::Jsdom,
+          _ => TestDomLibrary::HappyDom,
+        })
+        .or_else(|| test_config.and_then(|c| c.dom)),
     }
   }
 }
