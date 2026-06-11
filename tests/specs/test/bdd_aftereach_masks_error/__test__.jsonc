@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "aftereach_masks_error": {
+      "args": "test main.ts",
+      "output": "main.out",
+      "exitCode": 1
+    }
+  }
+}
