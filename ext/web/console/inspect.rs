@@ -1224,6 +1224,9 @@ pub fn get_keys<'s, 'i>(
 ) -> Vec<v8::Local<'s, v8::Value>> {
   let mut keys: Vec<v8::Local<'s, v8::Value>> = Vec::new();
 
+  let is_module_ns =
+    v8::Local::<v8::Value>::from(value).is_module_namespace_object();
+
   // Symbols first (collected separately, appended after names).
   let symbols: Vec<v8::Local<'s, v8::Value>> = {
     v8::tc_scope!(tc, scope);
@@ -1252,9 +1255,6 @@ pub fn get_keys<'s, 'i>(
   if show_hidden {
     // ObjectGetOwnPropertyNames: all own string keys (incl. non-enumerable).
     v8::tc_scope!(tc, scope);
-    let is_module_ns = v8::Local::<v8::Value>::try_from(value)
-      .map(|v| v.is_module_namespace_object())
-      .unwrap_or(false);
     if let Some(arr) = value.get_property_names(
       tc,
       v8::GetPropertyNamesArgs {
@@ -1277,14 +1277,23 @@ pub fn get_keys<'s, 'i>(
     keys.extend(symbols.iter().copied());
   } else {
     // ObjectKeys: own enumerable string keys.
+    //
+    // For a module namespace object from an unevaluated module, enumerating
+    // (which inspects each binding's descriptor) throws a ReferenceError on
+    // uninitialized bindings. Node handles this by falling back to
+    // ObjectGetOwnPropertyNames; mirror that by skipping the enumerable
+    // filter for module namespaces (their string exports are all enumerable).
     {
       v8::tc_scope!(tc, scope);
+      let mut property_filter = v8::PropertyFilter::SKIP_SYMBOLS;
+      if !is_module_ns {
+        property_filter = property_filter | v8::PropertyFilter::ONLY_ENUMERABLE;
+      }
       if let Some(arr) = value.get_property_names(
         tc,
         v8::GetPropertyNamesArgs {
           mode: v8::KeyCollectionMode::OwnOnly,
-          property_filter: v8::PropertyFilter::ONLY_ENUMERABLE
-            | v8::PropertyFilter::SKIP_SYMBOLS,
+          property_filter,
           index_filter: v8::IndexFilter::IncludeIndices,
           key_conversion: v8::KeyConversionMode::ConvertToString,
         },
@@ -2000,8 +2009,7 @@ fn format_raw<'s, 'i>(
     }
   }
   if no_iterator {
-    let use_show_hidden = ctx.show_hidden || value.is_module_namespace_object();
-    keys = get_keys(scope, intr, value_obj, use_show_hidden);
+    keys = get_keys(scope, intr, value_obj, ctx.show_hidden);
     formatter.braces = ("{".to_string(), "}".to_string());
     let constructor_str = constructor.as_deref();
     if constructor_str == Some("Object") {
