@@ -395,6 +395,11 @@ fn highlight_line(line: &str) -> String {
   // than act as a division operator. This mirrors the "before expression"
   // heuristic the parser uses to disambiguate the two. It starts `true` because
   // a `/` at the very beginning of the input always starts a regex.
+  //
+  // Like a standalone SWC lexer, this is knowingly imperfect after `)` and
+  // `++`/`--`: `if (x) /re/.test(y)` renders as division and `x++ /2/` looks
+  // like a regex. Both are harmless for highlighting and not worth tracking
+  // full expression context to fix.
   let mut regex_allowed = true;
   // Byte offset (in `line`) up to which the input has already been consumed by
   // a detected regex literal; tokens starting before it should be skipped.
@@ -436,6 +441,9 @@ fn highlight_line(line: &str) -> String {
             Token::Str { .. } | Token::Template { .. } | Token::BackQuote => {
               colors::green(&line[start..end]).to_string()
             }
+            // Dead arm today: `deno_ast::lex` runs without parser context so it
+            // never emits `Token::Regex` (regexes arrive as a `Div`/`DivAssign`
+            // handled above). Kept in case the lexer ever gains that context.
             Token::Regex(_, _) => colors::red(&line[start..end]).to_string(),
             Token::Num { .. } | Token::BigInt { .. } => {
               colors::yellow(&line[start..end]).to_string()
@@ -709,27 +717,44 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
   #[test]
   fn highlight_regex_literal_is_one_unit() {
     use super::highlight_line;
+
+    // The SGR sequence `colors::red` wraps its content in. Asserting against
+    // these fixed bytes — rather than re-deriving them via `colors::red`, which
+    // reads the same global color flag `highlight_line` does — keeps the
+    // negative assertions reliable even if another test toggles that global:
+    // with color off, `colors::red("/ b /")` would return the bare string,
+    // which *is* contained in the division output and would flake.
+    fn red(s: &str) -> String {
+      format!("\u{1b}[31m{s}\u{1b}[0m")
+    }
+
+    // `highlight_line` only emits color codes when the global color flag is on.
+    // Save and restore it so we neither assume its prior value nor leak our
+    // change to tests that run afterwards.
+    let prev = deno_terminal::colors::use_color();
     deno_terminal::colors::set_use_color(true);
 
     // A regex containing quotes used to leak a green string literal mid-regex;
     // now the whole literal is colored red as a single unit.
     let re =
       r##"/https?:\/\/deno.land\/(?:std\@?[^\'\"]*|x\/[^\'\"]*?\@?[^\'\"]*)/"##;
-    let out = highlight_line(re);
-    assert!(out.contains(&deno_terminal::colors::red(re).to_string()));
+    assert!(highlight_line(re).contains(&red(re)));
 
     // A bare regex at the start of a line is highlighted.
-    let out = highlight_line("/foo/g");
-    assert!(out.contains(&deno_terminal::colors::red("/foo/g").to_string()));
+    assert!(highlight_line("/foo/g").contains(&red("/foo/g")));
 
     // A regex in expression position (after `=`) is highlighted.
-    let out = highlight_line("const re = /foo/;");
-    assert!(out.contains(&deno_terminal::colors::red("/foo/").to_string()));
+    assert!(highlight_line("const re = /foo/;").contains(&red("/foo/")));
+
+    // A regex in keyword position (after `return`) is highlighted.
+    assert!(highlight_line("return /foo/").contains(&red("/foo/")));
 
     // Division is NOT treated as a regex.
-    let out = highlight_line("a / b / c");
-    assert!(!out.contains(&deno_terminal::colors::red("/ b /").to_string()));
+    assert!(!highlight_line("a / b / c").contains(&red("/ b /")));
 
-    deno_terminal::colors::set_use_color(false);
+    // A `/=` following a value stays a division-assignment, not a regex.
+    assert!(!highlight_line("x /= 2").contains(&red("/= 2")));
+
+    deno_terminal::colors::set_use_color(prev);
   }
 }
