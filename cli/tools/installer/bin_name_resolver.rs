@@ -242,11 +242,17 @@ impl<'a> BinNameResolver<'a> {
         });
       }
 
-      for dep in version_info.dependencies_as_entries(&package_req.name)? {
-        if dep.kind == NpmDependencyEntryKind::Dep {
+      for mut dep in version_info.dependencies_as_entries(&package_req.name)? {
+        if matches!(
+          dep.kind,
+          NpmDependencyEntryKind::Dep | NpmDependencyEntryKind::Peer
+        ) {
           pending.push_back(PackageReq {
             name: dep.name,
-            version_req: dep.version_req,
+            version_req: dep
+              .peer_dep_version_req
+              .take()
+              .unwrap_or(dep.version_req),
           });
         }
       }
