@@ -111,8 +111,10 @@ test(async function testDomPoint() {
   );
   assertEquals(get.name, "get x");
   assertEquals(get.length, 0);
+  assertEquals("prototype" in get, false);
   assertEquals(set.name, "set x");
   assertEquals(set.length, 1);
+  assertEquals("prototype" in set, false);
 
   assert(p1 instanceof DOMPoint);
   assert(p1 instanceof DOMPointReadOnly);
