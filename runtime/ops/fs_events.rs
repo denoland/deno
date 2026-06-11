@@ -8,6 +8,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 
@@ -34,11 +35,22 @@ use notify::event::AccessMode;
 use notify::event::Event as NotifyEvent;
 use notify::event::ModifyKind;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 
 deno_core::extension!(
   deno_fs_events,
   ops = [op_fs_events_open, op_fs_events_poll],
 );
+
+/// Capacity of the queue between the notify backend thread and the JS-side
+/// consumer. The watcher callback must not block, so when this queue is full
+/// further events are dropped; the drop is recorded and surfaced to the
+/// consumer as a `flag: "rescan"` event (see [`op_fs_events_poll`]) instead
+/// of being silently lost (see denoland/deno#11373). The capacity is sized so
+/// that ordinary bursts (e.g. unpacking an archive into a watched directory)
+/// fit without dropping; tokio's bounded channel allocates lazily, so an
+/// idle watcher does not pay for it.
+const FS_EVENT_QUEUE_CAPACITY: usize = 1024;
 
 struct FsEventsResource {
   receiver: AsyncRefCell<mpsc::Receiver<Result<FsEvent, NotifyError>>>,
@@ -50,6 +62,10 @@ struct FsEventsResource {
   /// The (path, recursive_mode) pairs this resource registered. Tracked so the
   /// shared watcher unwatches them when the last interested resource closes.
   watched: Vec<(PathBuf, RecursiveMode)>,
+  /// Set by the watcher callback when the event queue overflowed and events
+  /// were dropped; drained by `op_fs_events_poll`, which surfaces the loss as
+  /// a `flag: "rescan"` event.
+  overflowed: Arc<AtomicBool>,
 }
 
 impl Resource for FsEventsResource {
@@ -156,6 +172,20 @@ struct WatchSender {
   /// Entries are `None` if canonicalization failed for that path.
   canonical_paths: Vec<Option<PathBuf>>,
   sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
+  /// See [`FsEventsResource::overflowed`].
+  overflowed: Arc<AtomicBool>,
+}
+
+impl WatchSender {
+  /// Deliver an event without blocking the notify backend thread. If the
+  /// queue is full the event is dropped and the overflow is recorded so the
+  /// consumer learns about the loss via a `"rescan"` event. A closed channel
+  /// just means the watcher resource is gone; that is not a loss.
+  fn send_or_record_overflow(&self, event: FsEvent) {
+    if let Err(TrySendError::Full(_)) = self.sender.try_send(Ok(event)) {
+      self.overflowed.store(true, Ordering::Relaxed);
+    }
+  }
 }
 
 struct WatcherInner {
@@ -288,6 +318,7 @@ fn make_watch_sender(
   id: u64,
   paths: Vec<PathBuf>,
   sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
+  overflowed: Arc<AtomicBool>,
 ) -> WatchSender {
   let canonical_paths = paths.iter().map(|p| canonicalize_path(p)).collect();
   WatchSender {
@@ -295,6 +326,7 @@ fn make_watch_sender(
     paths,
     canonical_paths,
     sender,
+    overflowed,
   }
 }
 
@@ -315,9 +347,6 @@ fn ensure_watcher(
         Err(e) => Err(FsEventsError::Notify(JsNotifyError(e))),
       };
       for ws in sender_clone.lock().iter() {
-        // Ignore result, if send failed it means that watcher was already closed,
-        // but not all messages have been flushed.
-
         // Only send the event if the path matches one of the paths
         // that the user is watching.
         if let Ok(event) = &res2 {
@@ -328,7 +357,7 @@ fn ensure_watcher(
               &ws.canonical_paths,
             )
           }) {
-            let _ = ws.sender.try_send(Ok(event.clone()));
+            ws.send_or_record_overflow(event.clone());
           } else if event.paths.iter().any(|event_path| {
             removed_event_matches_watched_paths(
               event_path,
@@ -341,7 +370,7 @@ fn ensure_watcher(
               paths: event.paths.clone(),
               flag: None,
             };
-            let _ = ws.sender.try_send(Ok(remove_event));
+            ws.send_or_record_overflow(remove_event);
           }
         }
       }
@@ -408,7 +437,9 @@ fn op_fs_events_open(
     }
   }
 
-  let (sender, receiver) = mpsc::channel::<Result<FsEvent, NotifyError>>(16);
+  let (sender, receiver) =
+    mpsc::channel::<Result<FsEvent, NotifyError>>(FS_EVENT_QUEUE_CAPACITY);
+  let overflowed = Arc::new(AtomicBool::new(false));
 
   let inner = ensure_watcher(state)?;
 
@@ -418,6 +449,7 @@ fn op_fs_events_open(
     id,
     resolved_paths.clone(),
     sender,
+    overflowed.clone(),
   ));
 
   let recursive_mode = if recursive {
@@ -462,6 +494,7 @@ fn op_fs_events_open(
     inner,
     id,
     watched,
+    overflowed,
   };
   let rid = state.resource_table.add(resource);
   Ok(rid)
@@ -498,6 +531,21 @@ async fn op_fs_events_poll(
   #[smi] rid: ResourceId,
 ) -> Result<Option<FsEvent>, FsEventsError> {
   let resource = state.borrow().resource_table.get::<FsEventsResource>(rid)?;
+
+  // If the event queue overflowed since the last poll, events were dropped:
+  // tell the consumer via a `"rescan"`-flagged event rather than losing them
+  // silently (denoland/deno#11373). The flag can only be set while the queue
+  // is full, so polls after this one will find the queue non-empty and this
+  // check can never starve the queue or be starved by it.
+  if resource.overflowed.swap(false, Ordering::Relaxed) {
+    let paths = resource.watched.iter().map(|(p, _)| p.clone()).collect();
+    return Ok(Some(FsEvent {
+      kind: "any",
+      paths,
+      flag: Some("rescan"),
+    }));
+  }
+
   let mut receiver = RcRef::map(&resource, |r| &r.receiver).borrow_mut().await;
   let cancel = RcRef::map(resource, |r| &r.cancel);
   let maybe_result = receiver.recv().or_cancel(cancel).await?;
