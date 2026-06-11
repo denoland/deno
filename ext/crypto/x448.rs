@@ -224,4 +224,22 @@ mod tests {
     let point = x448(&scalar, MontgomeryPoint::GENERATOR);
     assert_eq!(point.0.as_slice(), expected.as_slice());
   }
+
+  #[test]
+  fn x448_rfc7748_ecdh() {
+    // RFC 7748 section 5.2 X448 test vector.
+    let scalar = from_hex(
+      "3d262fddf9ec8e88495266fea19a34d28882acef045104d0d1aae121700a779c984c24f8cdd78fbff44943eba368f54b29259a4f1c600ad3",
+    );
+    let u = from_hex(
+      "06fce640fa3487bfda5f6cf2d5263f8aad88334cbd07437f020f08f9814dc031ddbdc38c19c6da2583fa5429db94ada18aa7a7fb4ef8a086",
+    );
+    let expected = from_hex(
+      "ce3e4ff95a60dc6697da1db1d85e6afbdf79b50a2412d7546d5f239fe14fbaadeb445fc66a01b0779d98223961111e21766282f73dd96b6f",
+    );
+    let scalar: [u8; 56] = scalar.try_into().unwrap();
+    let u: [u8; 56] = u.try_into().unwrap();
+    let point = x448(&scalar, MontgomeryPoint(u));
+    assert_eq!(point.0.as_slice(), expected.as_slice());
+  }
 }
