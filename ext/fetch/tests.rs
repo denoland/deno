@@ -162,6 +162,7 @@ async fn run_test_client_with_resolver(
       pool_max_idle_per_host: None,
       pool_idle_timeout: None,
       dns_resolver: resolver,
+      permissions: None,
       http1: true,
       http2: true,
       local_address: None,
@@ -493,6 +494,7 @@ fn create_http_test_client() -> crate::Client {
       http2: true,
       local_address: None,
       client_builder_hook: None,
+      permissions: None,
     },
   )
   .unwrap()
