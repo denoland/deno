@@ -1,0 +1,17 @@
+{
+  "tempDir": true,
+  "tests": {
+    // Path-scoped --allow-write/--allow-read is rejected for symlinks because a
+    // symlink's target is only resolved when the link is traversed. The error
+    // should explain that scoping is the problem. Regression test for #34988.
+    "scoped_write_rejected": {
+      "args": "run --quiet --no-prompt --allow-read=. --allow-write=. main.ts",
+      "output": "scoped.out"
+    },
+    // Unscoped permissions work.
+    "unscoped_ok": {
+      "args": "run --quiet -A main.ts",
+      "output": "ok\n"
+    }
+  }
+}

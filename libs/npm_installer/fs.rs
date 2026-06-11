@@ -67,6 +67,7 @@ pub trait CopyDirRecursiveSys:
   + sys_traits::FsCreateDir
   + sys_traits::FsHardLink
   + sys_traits::FsReadDir
+  + sys_traits::FsRemoveFile
 {
 }
 
@@ -90,8 +91,18 @@ pub fn copy_dir_recursive<TSys: CopyDirRecursiveSys>(
 
     if file_type.is_dir() {
       copy_dir_recursive(sys.as_ref(), &new_from, &new_to)?;
-    } else if file_type.is_file() {
-      sys.fs_copy(&new_from, &new_to)?;
+    } else if file_type.is_file()
+      && let Err(err) = sys.fs_copy(&new_from, &new_to)
+    {
+      if deno_npm_cache::is_etxtbsy(&err) {
+        // The destination file is a hardlink to a currently-executing
+        // binary (ETXTBSY). Remove it first to break the hardlink,
+        // then retry the copy which will create a new inode.
+        let _ = sys.fs_remove_file(&new_to);
+        sys.fs_copy(&new_from, &new_to)?;
+      } else {
+        return Err(err);
+      }
     }
   }
 

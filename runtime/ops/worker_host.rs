@@ -86,6 +86,7 @@ struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 
 pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
+  worker_type: WorkerThreadType,
   cancel_handle: Rc<CancelHandle>,
   cpu_thread_handle: Arc<AtomicU64>,
 
@@ -94,10 +95,16 @@ pub struct WorkerThread {
   // control and message channels. See `close_channel`.
   ctrl_closed: bool,
   message_closed: bool,
+  termination_requested: bool,
 }
 
 impl WorkerThread {
-  fn terminate(self) {
+  fn request_termination(&mut self) {
+    self.termination_requested = true;
+    self.worker_handle.clone().terminate();
+  }
+
+  fn finish_termination(self) {
     // Cancel recv ops when terminating the worker, so they don't show up as
     // pending ops.
     self.cancel_handle.cancel();
@@ -366,10 +373,12 @@ fn op_create_worker(
 
   let worker_thread = WorkerThread {
     worker_handle: worker_handle.into(),
+    worker_type: args.worker_type,
     cancel_handle: CancelHandle::new_rc(),
     cpu_thread_handle,
     ctrl_closed: false,
     message_closed: false,
+    termination_requested: false,
   };
 
   // At this point all interactions with worker happen using thread
@@ -383,11 +392,15 @@ fn op_create_worker(
 
 #[op2]
 fn op_host_terminate_worker(state: &mut OpState, #[scoped] id: WorkerId) {
-  match state.borrow_mut::<WorkersTable>().remove(&id) {
-    Some(worker_thread) => {
-      worker_thread.terminate();
+  match state.borrow_mut::<WorkersTable>().entry(id) {
+    std::collections::hash_map::Entry::Occupied(mut entry) => {
+      if matches!(entry.get().worker_type, WorkerThreadType::Node) {
+        entry.remove().finish_termination();
+      } else {
+        entry.get_mut().request_termination();
+      }
     }
-    _ => {
+    std::collections::hash_map::Entry::Vacant(_) => {
       debug!("tried to terminate non-existent worker {}", id);
     }
   }
@@ -398,8 +411,8 @@ enum WorkerChannel {
   Messages,
 }
 
-/// Close a worker's channel. If this results in both of a worker's channels
-/// being closed, the worker will be removed from the workers table.
+/// Close a worker's channel. If this results in a worker no longer needing
+/// host-side receive ops, the worker will be removed from the workers table.
 fn close_channel(
   state: Rc<RefCell<OpState>>,
   id: WorkerId,
@@ -413,22 +426,22 @@ fn close_channel(
   // `Worker.terminate()` might have been called already, meaning that we won't
   // find the worker in the table - in that case ignore.
   if let Entry::Occupied(mut entry) = workers.entry(id) {
-    let terminate = {
+    let remove = {
       let worker_thread = entry.get_mut();
       match channel {
         WorkerChannel::Ctrl => {
           worker_thread.ctrl_closed = true;
-          worker_thread.message_closed
+          worker_thread.termination_requested || worker_thread.message_closed
         }
         WorkerChannel::Messages => {
           worker_thread.message_closed = true;
-          worker_thread.ctrl_closed
+          !worker_thread.termination_requested && worker_thread.ctrl_closed
         }
       }
     };
 
-    if terminate {
-      entry.remove().terminate();
+    if remove {
+      entry.remove().finish_termination();
     }
   }
 }
