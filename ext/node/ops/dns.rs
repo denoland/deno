@@ -198,6 +198,36 @@ pub fn op_node_dns_reverse_name(#[string] name: &str) -> ReverseNameResult {
   }
 }
 
+fn is_ipv4_address(address: &str) -> bool {
+  matches!(address.parse::<IpAddr>(), Ok(IpAddr::V4(_)))
+}
+
+fn is_ipv6_address(address: &str) -> bool {
+  matches!(address.parse::<IpAddr>(), Ok(IpAddr::V6(_)))
+}
+
+#[op2]
+#[serde]
+pub fn op_node_dns_sort_lookup_addresses(
+  #[serde] mut addresses: Vec<String>,
+  #[smi] family: i32,
+  #[smi] order: i32,
+) -> Vec<String> {
+  match order {
+    1 => addresses.sort_by_key(|address| !is_ipv4_address(address)),
+    2 => addresses.sort_by_key(|address| !is_ipv6_address(address)),
+    _ => {}
+  }
+
+  match family {
+    4 => addresses.retain(|address| is_ipv4_address(address)),
+    6 => addresses.retain(|address| is_ipv6_address(address)),
+    _ => {}
+  }
+
+  addresses
+}
+
 impl DnsError {
   fn code(&self) -> i32 {
     match self {

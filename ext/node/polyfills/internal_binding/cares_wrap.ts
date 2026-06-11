@@ -27,10 +27,8 @@
 (function () {
 const { core, primordials } = __bootstrap;
 const {
-  ArrayPrototypeFilter,
   ArrayPrototypeMap,
   ArrayPrototypePush,
-  ArrayPrototypeSort,
   Error,
   MathMin,
   MathPow,
@@ -52,6 +50,7 @@ const {
   op_net_get_ips_from_perm_token,
   op_net_get_system_dns_servers,
   op_node_dns_reverse_name,
+  op_node_dns_sort_lookup_addresses,
   op_node_getaddrinfo,
   op_node_getnameinfo,
   GetAddrInfoReqWrap,
@@ -59,9 +58,6 @@ const {
   QueryReqWrap,
   ChannelWrap: NativeChannelWrap,
 } = core.ops;
-const { isIPv4, isIPv6 } = core.loadExtScript(
-  "ext:deno_node/internal/net.ts",
-);
 const { codeMap } = core.loadExtScript(
   "ext:deno_node/internal_binding/uv.ts",
 );
@@ -154,33 +150,7 @@ function getaddrinfo(
       }
     }
 
-    // REF: https://github.com/nodejs/node/blob/0e157b6cd8694424ea9d8a1c1854fd1d08cbb064/src/cares_wrap.cc#L1739
-    if (order === DNS_ORDER_IPV4_FIRST) {
-      ArrayPrototypeSort(addresses, (a: string, b: string): number => {
-        if (isIPv4(a)) {
-          return -1;
-        } else if (isIPv4(b)) {
-          return 1;
-        }
-
-        return 0;
-      });
-    } else if (order === DNS_ORDER_IPV6_FIRST) {
-      ArrayPrototypeSort(addresses, (a: string, b: string): number => {
-        if (isIPv6(a)) {
-          return -1;
-        } else if (isIPv6(b)) {
-          return 1;
-        }
-        return 0;
-      });
-    }
-
-    if (family === 4) {
-      addresses = ArrayPrototypeFilter(addresses, (addr) => isIPv4(addr));
-    } else if (family === 6) {
-      addresses = ArrayPrototypeFilter(addresses, (addr) => isIPv6(addr));
-    }
+    addresses = op_node_dns_sort_lookup_addresses(addresses, family, order);
 
     req.oncomplete(error, addresses, netPermToken);
   })();
