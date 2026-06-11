@@ -21,6 +21,8 @@ const {
 } = Deno.core.ops;
 
 test(async function testPipe() {
+  assertEquals("prototype" in op_pipe_create, false);
+
   const [p1, p2] = op_pipe_create();
   assertEquals(3, await Deno.core.write(p1, new Uint8Array([1, 2, 3])));
   const buf = new Uint8Array(10);
