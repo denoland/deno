@@ -12,6 +12,7 @@ mod jsr;
 mod lsp;
 mod module_loader;
 mod node;
+mod node_compat_shim;
 mod npm;
 mod ops;
 mod registry;
@@ -713,6 +714,10 @@ pub fn main() {
     .unwrap();
 
   let args: Vec<_> = env::args_os().collect();
+  // If we were invoked through a `node` shim (a symlink/hardlink named `node`
+  // pointing at this binary), translate the Node.js CLI args to Deno args.
+  // Done here, before any threads are spawned, because it may set env vars.
+  let args = node_compat_shim::maybe_rewrite_node_arg0(args);
   let future = async move {
     let roots = LibWorkerFactoryRoots::default();
 
@@ -840,6 +845,27 @@ async fn resolve_flags_and_init(
     // SAFETY: We're doing this before any threads are created.
     unsafe {
       std::env::set_var("DENO_CONNECTED", "1");
+    }
+  }
+
+  // Best-effort: make a `node` available on PATH (pointing back at this binary)
+  // when no real Node.js is installed, so child processes that spawn `node`
+  // natively (e.g. Next.js Turbopack) can find one. Must run before threads
+  // spawn since it mutates PATH.
+  match deno_cache_dir::resolve_deno_dir(
+    &sys,
+    deno_cache_dir::ResolveDenoDirOptions {
+      maybe_initial_cwd: initial_cwd.as_deref(),
+      maybe_custom_root: None,
+    },
+  ) {
+    Ok(deno_dir_root) => {
+      if let Err(err) = node_compat_shim::ensure_node_on_path(&deno_dir_root) {
+        log::debug!("node compat shim setup failed (best-effort): {err}");
+      }
+    }
+    Err(err) => {
+      log::debug!("could not resolve DENO_DIR for node compat shim: {err}");
     }
   }
 
