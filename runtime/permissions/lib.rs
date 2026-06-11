@@ -2062,6 +2062,11 @@ impl NetDescriptor {
           hostname.to_string(),
         ));
       }
+      // Lexically normalize `.`/`..` components (without resolving symlinks)
+      // so the rule matches the path produced by the call side, which goes
+      // through the same `normalize_path` in `PathQueryDescriptor`. Otherwise
+      // `unix:/var/run/../run/foo.sock` would silently never match.
+      let path = normalize_path(Cow::Owned(path)).into_owned();
       return Ok(NetDescriptor(Host::UnixSocket(path), None));
     }
 
@@ -4550,11 +4555,11 @@ impl PermissionsContainer {
   ///
   /// `path` must already be resolved to an absolute path (typically by the
   /// caller's earlier `check_open` pass). Matched lexically against
-  /// `--allow-net=unix:<absolute-path>` rules: no symlink resolution and no
-  /// `..` normalization, by design (mirrors `check_open`'s symlink-location
-  /// semantics). A rule must therefore already be canonical to match; e.g.
-  /// `unix:/var/run/../run/foo.sock` will not match a connect to
-  /// `/var/run/foo.sock`.
+  /// `--allow-net=unix:<absolute-path>` rules. Both sides are lexically
+  /// normalized (`.`/`..` components removed; rules at parse time, the query
+  /// path by `check_open`), but symlinks are deliberately not resolved,
+  /// mirroring `check_open`'s symlink-location semantics: a rule scopes the
+  /// socket *location*, not the inode it points at.
   ///
   /// Abstract socket paths (Linux, leading NUL) are not absolute, so they
   /// cannot be expressed as a scoped `unix:` rule and are only reachable via
@@ -7879,6 +7884,27 @@ mod tests {
           Some(8080),
         )),
       ),
+      // Unix socket rules are lexically normalized at parse time (`.`/`..`
+      // removed, symlinks not resolved) to match the call-side path, which
+      // goes through the same normalization in `check_open`.
+      #[cfg(unix)]
+      (
+        "unix:/var/run/docker.sock",
+        Some(NetDescriptor(
+          Host::UnixSocket(PathBuf::from("/var/run/docker.sock")),
+          None,
+        )),
+      ),
+      #[cfg(unix)]
+      (
+        "unix:/var/run/../run/./docker.sock",
+        Some(NetDescriptor(
+          Host::UnixSocket(PathBuf::from("/var/run/docker.sock")),
+          None,
+        )),
+      ),
+      ("unix:", None),
+      ("unix:relative.sock", None),
     ];
 
     for (input, expected) in cases {

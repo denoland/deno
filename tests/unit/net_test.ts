@@ -1642,3 +1642,40 @@ Deno.test(
     assertStringIncludes(decoder.decode(stderr), "invalid unix socket");
   },
 );
+
+// A `unix:` rule is lexically normalized at parse time, so a rule spelled
+// with `..`/`.` components still matches a connect to the normalized path.
+Deno.test(
+  {
+    ignore: Deno.build.os === "windows",
+    permissions: { read: true, write: true, run: true },
+  },
+  async function netUnixScopedAllowNetNormalizesRulePath() {
+    const socketPath = tmpUnixSocketPath();
+    const parts = socketPath.split("/");
+    const base = parts.pop()!;
+    const dir = parts.pop()!;
+    const denormalizedPath = [...parts, dir, "..", dir, ".", base].join("/");
+    const scriptPath = Deno.makeTempFileSync({ suffix: ".js" });
+    Deno.writeTextFileSync(
+      scriptPath,
+      `
+      const listener = Deno.listen({
+        path: ${JSON.stringify(socketPath)},
+        transport: "unix",
+      });
+      listener.close();
+      console.log("OK");
+      `,
+    );
+    const [status, output] = await execCode3(Deno.execPath(), [
+      "run",
+      "--allow-read",
+      "--allow-write",
+      `--allow-net=unix:${denormalizedPath}`,
+      scriptPath,
+    ]).finished();
+    assertEquals(status, 0);
+    assertStringIncludes(output, "OK");
+  },
+);
