@@ -55,7 +55,7 @@ impl RuntimeActivityTraces {
     debug_assert_ne!(
       activity_type,
       RuntimeActivityType::Interval,
-      "Use Timer for for timers and intervals"
+      "Use Timer for timers and intervals"
     );
     self.traces.borrow_mut()[activity_type as usize].insert(id, trace.into());
   }
@@ -347,7 +347,7 @@ impl RuntimeActivityStats {
     debug_assert_ne!(
       activity_type,
       RuntimeActivityType::Interval,
-      "Use Timer for for timers and intervals"
+      "Use Timer for timers and intervals"
     );
     self.activity_traces[activity_type as u8 as usize]
       .get(&id)
