@@ -2807,7 +2807,10 @@ console.log("Listening...")
   );
 
   wait_contains("Replaced changed module", &mut stderr_lines).await;
-  util::deno_cmd()
+  // Bind the fetch child to a local: DenoChild now reaps its process tree on
+  // drop, so a bare `spawn()` here would be killed before the request lands.
+  // Keeping it alive until the end of the test lets the fetch reach the server.
+  let _fetch = util::deno_cmd()
     .current_dir(t.path())
     .arg("eval")
     .arg("await fetch('http://localhost:11111');")
