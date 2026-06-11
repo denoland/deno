@@ -405,6 +405,10 @@ pub fn format_css(
   // the indented Sass syntax is not supported by lax-css and is still
   // formatted with malva
   if file_path.extension().and_then(|e| e.to_str()) == Some("sass") {
+    warn!(
+      "{} formatting .sass files is deprecated and will be removed in a future release. Consider migrating to the SCSS syntax.",
+      colors::yellow("Warning"),
+    );
     let formatted_str = malva::format_text(
       file_text,
       malva::Syntax::Sass,
@@ -487,25 +491,27 @@ pub fn format_html(
       file_name.push(hints.ext);
       let path = file_path.with_file_name(file_name);
       match hints.ext {
-        "css" | "scss" | "sass" | "less" => {
+        "css" | "scss" | "less" => {
+          if hints.attr {
+            // style attribute contents are kept as written
+            Ok(Cow::from(text))
+          } else {
+            let mut lax_css_config = get_resolved_lax_css_config(fmt_options);
+            lax_css_config.line_width = hints.print_width as u32;
+            lax_css::format_text(&path, text, &lax_css_config)
+              .map(|formatted| match formatted {
+                Some(formatted) => Cow::from(formatted),
+                None => Cow::from(text),
+              })
+              .map_err(AnyError::from)
+          }
+        }
+        "sass" => {
           let mut malva_config = get_resolved_malva_config(fmt_options);
           malva_config.layout.print_width = hints.print_width;
-          if hints.attr {
-            malva_config.language.quotes =
-              if let Some(true) = fmt_options.single_quote {
-                malva::config::Quotes::AlwaysDouble
-              } else {
-                malva::config::Quotes::AlwaysSingle
-              };
-            malva_config.language.single_line_top_level_declarations = true;
-          }
-          malva::format_text(
-            text,
-            malva::detect_syntax(path).unwrap_or(malva::Syntax::Css),
-            &malva_config,
-          )
-          .map(Cow::from)
-          .map_err(AnyError::from)
+          malva::format_text(text, malva::Syntax::Sass, &malva_config)
+            .map(Cow::from)
+            .map_err(AnyError::from)
         }
         "json" | "jsonc" => {
           let mut json_config = get_resolved_json_config(fmt_options);
@@ -639,108 +645,38 @@ fn create_external_formatter_for_typescript(
 
 /// Formats embedded CSS code blocks in JavaScript and TypeScript.
 ///
-/// This function supports properties only CSS expressions, like:
+/// Template literal expressions arrive as `@dpr1nt_<n>` placeholder tokens,
+/// which lax-css passes through untouched in property, value, selector, and
+/// statement positions, so the text can be formatted directly. Properties
+/// only CSS expressions, like:
 /// ```css
 /// margin: 10px;
 /// padding: 10px;
 /// ```
-///
-/// To support this scenario, this function first wraps the text with `a { ... }`,
-/// and then strips it off after formatting with malva.
+/// parse as top level declarations without any wrapping.
 fn format_embedded_css(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
 ) -> deno_core::anyhow::Result<Option<String>> {
-  use malva::config;
-  let options = config::FormatOptions {
-    layout: config::LayoutOptions {
-      indent_width: config.indent_width as usize,
-      use_tabs: config.use_tabs,
-      print_width: config.line_width as usize,
-      line_break: match config.new_line_kind {
-        dprint_core::configuration::NewLineKind::LineFeed => {
-          config::LineBreak::Lf
-        }
-        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed => {
-          config::LineBreak::Crlf
-        }
-        _ => config::LineBreak::Lf,
-      },
-    },
-    language: config::LanguageOptions {
-      hex_case: config::HexCase::Lower,
-      hex_color_length: None,
-      quotes: config::Quotes::AlwaysDouble,
-      operator_linebreak: config::OperatorLineBreak::After,
-      block_selector_linebreak: config::BlockSelectorLineBreak::Consistent,
-      omit_number_leading_zero: false,
-      trailing_comma: false,
-      format_comments: false,
-      align_comments: true,
-      linebreak_in_pseudo_parens: false,
-      declaration_order: None,
-      single_line_block_threshold: None,
-      keyframe_selector_notation: None,
-      attr_value_quotes: config::AttrValueQuotes::Always,
-      attr_selector_quotes: None,
-      prefer_single_line: false,
-      selectors_prefer_single_line: None,
-      function_args_prefer_single_line: None,
-      sass_content_at_rule_prefer_single_line: None,
-      sass_include_at_rule_prefer_single_line: None,
-      sass_map_prefer_single_line: None,
-      sass_module_config_prefer_single_line: None,
-      sass_params_prefer_single_line: None,
-      less_import_options_prefer_single_line: None,
-      less_mixin_args_prefer_single_line: None,
-      less_mixin_params_prefer_single_line: None,
-      single_line_top_level_declarations: false,
-      selector_override_comment_directive: "malva-selector-override".into(),
-      ignore_comment_directive: "malva-ignore".into(),
-      ignore_file_comment_directive: "malva-ignore-file".into(),
-      declaration_order_group_by:
-        config::DeclarationOrderGroupBy::NonDeclaration,
-    },
+  let lax_css_config = lax_css::configuration::Configuration {
+    line_width: config.line_width,
+    use_tabs: config.use_tabs,
+    indent_width: config.indent_width,
+    new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
+    ignore_node_comment_text: "deno-fmt-ignore".to_string(),
+    ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
   };
-  // Wraps the text in a css block of `a { ... ;}`
-  // to make it valid css
-  // Note: We choose LESS for the syntax because it allows us to use
-  // @variable for both property values and mixins, which is convenient
-  // for handling placeholders used as both properties and mixins.
-  let text = malva::format_text(
-    &format!("a{{\n{}\n;}}", text),
-    malva::Syntax::Less,
-    &options,
-  )?;
-  let mut buf = vec![];
-  for (i, l) in text.lines().enumerate() {
-    // skip the first line (a {)
-    if i == 0 {
-      continue;
-    }
-    // skip the last line (})
-    if l.starts_with("}") {
-      continue;
-    }
-    let mut chars = l.chars();
-
-    // indent width option is disregarded when use tabs is true since
-    // only one tab will be inserted when indented once
-    // https://malva.netlify.app/config/indent-width.html
-    let indent_width = if config.use_tabs {
-      1
-    } else {
-      config.indent_width as usize
-    };
-
-    // drop the indentation
-    for _ in 0..indent_width {
-      chars.next();
-    }
-
-    buf.push(chars.as_str());
-  }
-  Ok(Some(buf.join("\n").to_string()))
+  let Some(formatted) =
+    lax_css::format_text(Path::new("embedded.css"), text, &lax_css_config)?
+  else {
+    return Ok(None);
+  };
+  let formatted = formatted.trim_end_matches('\n');
+  Ok(if formatted == text {
+    None
+  } else {
+    Some(formatted.to_string())
+  })
 }
 
 /// Formats the embedded HTML code blocks in JavaScript and TypeScript.
