@@ -1855,11 +1855,11 @@ pub fn op_node_mkdtemp_sync(
 
     match fs.mkdir_sync(&checked_path, false, Some(0o700)) {
       Ok(()) => {
-        return Ok(MaybeEncodedBytes::new(
+        return MaybeEncodedBytes::new(
           &state.borrow(),
           candidate.into_bytes(),
           enc,
-        ));
+        );
       }
       Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
         continue;
@@ -1922,11 +1922,11 @@ pub fn op_node_mkdtemp(
         .await
       {
         Ok(()) => {
-          return Ok(MaybeEncodedBytes {
-            bytes: candidate.into_bytes(),
+          return MaybeEncodedBytes::with_proto(
+            candidate.into_bytes(),
             enc,
             proto,
-          });
+          );
         }
         Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
           continue;
@@ -2998,22 +2998,76 @@ pub struct MaybeEncodedBytes {
   proto: Option<v8::Global<v8::Object>>,
 }
 
+// node's ERR_STRING_TOO_LONG (name "Error"): what `buf.toString(enc)` throws
+// past `buffer.constants.MAX_STRING_LENGTH` (v8's kMaxLength).
+fn err_string_too_long() -> NodeArgError {
+  NodeArgError {
+    class: deno_error::builtin_classes::GENERIC_ERROR,
+    code: "ERR_STRING_TOO_LONG",
+    message: format!(
+      "Cannot create a string longer than 0x{:x} characters",
+      v8::String::MAX_LENGTH
+    ),
+  }
+}
+
+// Projects the v8 string length (UTF-16 code units) `decode_bytes_to_string`
+// would produce, so an oversized decode fails in the op with node's
+// ERR_STRING_TOO_LONG (`code` intact, rejecting like node's readFile of a
+// > 512MiB file with an encoding) instead of panicking in the infallible
+// ToV8. hex/base64/latin1/ucs2 lengths are arithmetic; utf8's byte count is
+// an upper bound, decoded exactly only when it exceeds the limit.
+fn check_decoded_string_length(
+  bytes: &[u8],
+  enc: BufEnc,
+) -> Result<(), FsError> {
+  const MAX: usize = v8::String::MAX_LENGTH;
+  let units = match enc {
+    BufEnc::Utf8 => {
+      if bytes.len() <= MAX {
+        return Ok(());
+      }
+      let decoded = String::from_utf8_lossy(bytes);
+      decoded.chars().map(char::len_utf16).sum()
+    }
+    BufEnc::Latin1 | BufEnc::Ascii => bytes.len(),
+    BufEnc::Ucs2 => bytes.len() / 2,
+    BufEnc::Hex => bytes.len() * 2,
+    BufEnc::Base64 => bytes.len().div_ceil(3) * 4,
+    BufEnc::Base64Url => (bytes.len() * 4).div_ceil(3),
+  };
+  if units > MAX {
+    return Err(err_string_too_long().into());
+  }
+  Ok(())
+}
+
 impl MaybeEncodedBytes {
   fn new(
     state: &OpState,
     bytes: Vec<u8>,
     enc: Option<BufEnc>,
-  ) -> MaybeEncodedBytes {
-    MaybeEncodedBytes {
+  ) -> Result<MaybeEncodedBytes, FsError> {
+    let proto = buffer_proto(state);
+    MaybeEncodedBytes::with_proto(bytes, enc, proto)
+  }
+
+  // For async futures, which capture the prototype in the op prologue
+  // (`ToV8` runs at resolve time, without OpState access).
+  fn with_proto(
+    bytes: Vec<u8>,
+    enc: Option<BufEnc>,
+    proto: Option<v8::Global<v8::Object>>,
+  ) -> Result<MaybeEncodedBytes, FsError> {
+    if let Some(enc) = enc {
+      check_decoded_string_length(&bytes, enc)?;
+    }
+    Ok(MaybeEncodedBytes {
       bytes,
       enc,
       // The prototype is only needed for the Buffer case.
-      proto: if enc.is_none() {
-        buffer_proto(state)
-      } else {
-        None
-      },
-    }
+      proto: if enc.is_none() { proto } else { None },
+    })
   }
 }
 
@@ -5442,11 +5496,11 @@ pub fn op_node_fs_realpath_sync(
   let resolved = fs
     .realpath_sync(&checked)
     .map_err(|e| node_fs_err(e, syscall, &path))?;
-  Ok(MaybeEncodedBytes::new(
+  MaybeEncodedBytes::new(
     state,
     resolved.to_string_lossy().into_owned().into_bytes(),
     enc,
-  ))
+  )
 }
 
 #[op2(async(eager_throw), stack_trace)]
@@ -5484,11 +5538,11 @@ pub fn op_node_fs_realpath(
       .realpath_async(checked)
       .await
       .map_err(|e| node_fs_err(e, &syscall, &path))?;
-    Ok(MaybeEncodedBytes {
-      bytes: resolved.to_string_lossy().into_owned().into_bytes(),
+    MaybeEncodedBytes::with_proto(
+      resolved.to_string_lossy().into_owned().into_bytes(),
       enc,
       proto,
-    })
+    )
   })
 }
 
@@ -5511,11 +5565,11 @@ pub fn op_node_fs_read_link_sync(
   let target = fs
     .read_link_sync(&checked)
     .map_err(|e| node_fs_err(e, "readlink", &path))?;
-  Ok(MaybeEncodedBytes::new(
+  MaybeEncodedBytes::new(
     state,
     target.to_string_lossy().into_owned().into_bytes(),
     enc,
-  ))
+  )
 }
 
 #[op2(async(eager_throw), stack_trace)]
@@ -5552,11 +5606,11 @@ pub fn op_node_fs_read_link(
       .read_link_async(checked)
       .await
       .map_err(|e| node_fs_err(e, "readlink", &path))?;
-    Ok(MaybeEncodedBytes {
-      bytes: target.to_string_lossy().into_owned().into_bytes(),
+    MaybeEncodedBytes::with_proto(
+      target.to_string_lossy().into_owned().into_bytes(),
       enc,
       proto,
-    })
+    )
   })
 }
 
@@ -6445,7 +6499,7 @@ pub fn op_node_fs_encode_watch_filename(
       }
     }
   };
-  Ok(MaybeEncodedBytes::new(state, filename.into_bytes(), enc))
+  MaybeEncodedBytes::new(state, filename.into_bytes(), enc)
 }
 
 #[op2(fast)]
@@ -6804,7 +6858,7 @@ pub fn op_node_fs_read_file_path_sync(
     let buf = file
       .read_all_sync()
       .map_err(|e| fd_syscall_err(e, "read"))?;
-    return Ok(MaybeEncodedBytes::new(state, buf.to_vec(), enc));
+    return MaybeEncodedBytes::new(state, buf.to_vec(), enc);
   }
   let path = validate_path_to_string(scope, path, "path")?;
   let flags = read_file_flags(scope, options)?;
@@ -6822,7 +6876,7 @@ pub fn op_node_fs_read_file_path_sync(
   let buf = file
     .read_all_sync()
     .map_err(|e| node_fs_err(e, "open", &path))?;
-  Ok(MaybeEncodedBytes::new(state, buf.to_vec(), enc))
+  MaybeEncodedBytes::new(state, buf.to_vec(), enc)
 }
 
 // `fs.readFile(path, options)`: async counterpart of the above. `cancel_rid`
@@ -6871,11 +6925,7 @@ pub fn op_node_fs_read_file_path(
         .read_all_async()
         .await
         .map_err(|e| node_fs_err(e, "open", &path))?;
-      Ok(MaybeEncodedBytes {
-        bytes: buf.to_vec(),
-        enc,
-        proto,
-      })
+      MaybeEncodedBytes::with_proto(buf.to_vec(), enc, proto)
     },
     cancel,
   ))
@@ -6917,11 +6967,7 @@ pub fn op_node_fs_read_file(
       .read_all_async()
       .await
       .map_err(|e| fd_syscall_err(e, "read"))?;
-    Ok(MaybeEncodedBytes {
-      bytes: buf.to_vec(),
-      enc,
-      proto,
-    })
+    MaybeEncodedBytes::with_proto(buf.to_vec(), enc, proto)
   })
 }
 
@@ -6948,7 +6994,7 @@ pub fn op_node_fs_encode_bytes(
   options: v8::Local<v8::Value>,
 ) -> Result<MaybeEncodedBytes, FsError> {
   let enc = parse_encoding_options(scope, options, None)?;
-  Ok(MaybeEncodedBytes::new(state, data.to_vec(), enc))
+  MaybeEncodedBytes::new(state, data.to_vec(), enc)
 }
 
 // `fs.readvSync(fd, buffers, position)`: read into each `ArrayBufferView` in

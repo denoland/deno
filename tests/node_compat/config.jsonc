@@ -5328,6 +5328,7 @@
       "reason": "times out"
     },
     "pummel/test-fs-read-file-sync-utf8-memory.js": {},
+    "pummel/test-fs-readfile-tostring-fail.js": {},
     "pummel/test-fs-watch-file-slow.js": {},
     "pummel/test-fs-watch-non-recursive.js": {},
     "pummel/test-heapsnapshot-near-heap-limit-bounded.js": {},
