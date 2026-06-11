@@ -7,6 +7,9 @@ use std::rc::Rc;
 #[cfg(target_family = "windows")]
 use std::sync::OnceLock;
 
+use deno_core::CppgcBase;
+use deno_core::CppgcInherits;
+use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
@@ -15,6 +18,87 @@ use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use socket2::SockAddr;
+
+use crate::ops::handle_wrap::AsyncWrap;
+use crate::ops::handle_wrap::ProviderType;
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct GetAddrInfoReqWrap {
+  base: AsyncWrap,
+}
+
+unsafe impl GarbageCollected for GetAddrInfoReqWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GetAddrInfoReqWrap"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl GetAddrInfoReqWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> GetAddrInfoReqWrap {
+    GetAddrInfoReqWrap {
+      base: AsyncWrap::create(state, ProviderType::GetAddrInfoReqWrap as i32),
+    }
+  }
+}
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct GetNameInfoReqWrap {
+  base: AsyncWrap,
+}
+
+unsafe impl GarbageCollected for GetNameInfoReqWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"GetNameInfoReqWrap"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl GetNameInfoReqWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> GetNameInfoReqWrap {
+    GetNameInfoReqWrap {
+      base: AsyncWrap::create(state, ProviderType::GetNameInfoReqWrap as i32),
+    }
+  }
+}
+
+#[derive(CppgcBase, CppgcInherits)]
+#[cppgc_inherits_from(AsyncWrap)]
+#[repr(C)]
+pub struct QueryReqWrap {
+  base: AsyncWrap,
+}
+
+unsafe impl GarbageCollected for QueryReqWrap {
+  fn get_name(&self) -> &'static std::ffi::CStr {
+    c"QueryReqWrap"
+  }
+
+  fn trace(&self, _visitor: &mut deno_core::v8::cppgc::Visitor) {}
+}
+
+#[op2(base, inherit = AsyncWrap)]
+impl QueryReqWrap {
+  #[constructor]
+  #[cppgc]
+  fn constructor(state: &mut OpState) -> QueryReqWrap {
+    QueryReqWrap {
+      base: AsyncWrap::create(state, ProviderType::QueryWrap as i32),
+    }
+  }
+}
 
 #[derive(Debug, thiserror::Error, JsError)]
 pub enum DnsError {
