@@ -3427,5 +3427,6 @@ export const _resolveFilename = Module._resolveFilename;
 export const _resolveLookupPaths = Module._resolveLookupPaths;
 export const _stat = Module._stat;
 export const globalPaths = Module.globalPaths;
+export const runMain = Module.runMain;
 
 export default Module;

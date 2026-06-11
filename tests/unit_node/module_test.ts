@@ -14,6 +14,9 @@ import {
   // for `import.meta.filename` and `import.meta.dirname` that Deno
   // provides.
   register,
+  // @ts-ignore Our internal @types/node is at v18.16.19 which predates
+  // this change.
+  runMain,
   SourceMap,
   stripTypeScriptTypes,
   syncBuiltinESMExports,
@@ -105,6 +108,12 @@ Deno.test("[node/module isBuiltin] recognizes node builtins", () => {
 // https://github.com/denoland/deno/issues/22731
 Deno.test("[node/module builtinModules] has 'module' in builtins", () => {
   assert(builtinModules.includes("module"));
+});
+
+// https://github.com/denoland/deno/issues/34812
+Deno.test("[node/module runMain] is exposed as a named export", () => {
+  assertEquals(typeof runMain, "function");
+  assertEquals(runMain, Module.runMain);
 });
 
 // https://github.com/denoland/deno/issues/18666

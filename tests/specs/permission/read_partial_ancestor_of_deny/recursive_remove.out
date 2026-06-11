@@ -1,0 +1,4 @@
+recursive remove parent: NotCapable
+parent/denied exists: true
+parent/denied/keep.txt: keep
+recursive remove allowed subtree: ok
