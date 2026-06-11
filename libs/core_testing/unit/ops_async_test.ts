@@ -60,3 +60,30 @@ test(async function promiseId() {
   assert(typeof id === "number");
   assert(id > 0);
 });
+
+// Promise ids are i32s that wrap back to 0 past 2^31 - 1. Test that an op
+// that is still pending when the wraparound happens (and whose ring slot has
+// been reclaimed in the meantime, moving it to the overflow map) resolves
+// correctly. https://github.com/denoland/deno/issues/22759
+test(async function testPromiseIdWraparound() {
+  const distanceToWrap = 5000;
+  Deno.core.__setNextPromiseId(2 ** 31 - distanceToWrap);
+
+  barrierCreate("wraparound_barrier", 2);
+  const pending = barrierAwait("wraparound_barrier");
+
+  // Churn through enough ops that `pending` is evicted from the promise ring
+  // (RING_SIZE == 4096 ids later) and the id counter wraps past 2^31 - 1.
+  for (let i = 0; i < distanceToWrap + 1000; i++) {
+    await asyncYield();
+  }
+
+  // The counter must have wrapped back to a small non-negative id.
+  const id = await asyncPromiseId();
+  assert(id >= 0);
+  assert(id < distanceToWrap);
+
+  // Releasing the barrier resolves `pending`, which by now lives in the
+  // overflow map on the far side of the wraparound.
+  await Promise.all([pending, barrierAwait("wraparound_barrier")]);
+});
