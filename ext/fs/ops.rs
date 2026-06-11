@@ -487,13 +487,13 @@ pub fn op_fs_remove_sync(
 ) -> Result<(), FsOpsError> {
   let path = Cow::Borrowed(Path::new(path));
   let path = if recursive {
+    // Recursive remove descends into the whole tree, so it must use the strict
+    // write check: a deny scope *inside* the requested path has to block the
+    // operation. `check_open` uses partial-deny semantics and would let a
+    // recursive delete bypass a denied descendant.
     state
       .borrow_mut::<deno_permissions::PermissionsContainer>()
-      .check_open(
-        path,
-        OpenAccessKind::WriteNoFollow,
-        Some("Deno.removeSync()"),
-      )?
+      .check_write(path, "Deno.removeSync()")?
   } else {
     state
       .borrow_mut::<deno_permissions::PermissionsContainer>()
@@ -517,13 +517,13 @@ pub async fn op_fs_remove_async(
     let mut state = state.borrow_mut();
     let path = Cow::Owned(PathBuf::from(path));
     let path = if recursive {
+      // Recursive remove descends into the whole tree, so it must use the
+      // strict write check: a deny scope *inside* the requested path has to
+      // block the operation. `check_open` uses partial-deny semantics and would
+      // let a recursive delete bypass a denied descendant.
       state
         .borrow_mut::<deno_permissions::PermissionsContainer>()
-        .check_open(
-          path,
-          OpenAccessKind::WriteNoFollow,
-          Some("Deno.remove()"),
-        )?
+        .check_write(path, "Deno.remove()")?
     } else {
       state
         .borrow_mut::<deno_permissions::PermissionsContainer>()
