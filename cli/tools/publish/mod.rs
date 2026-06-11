@@ -852,6 +852,10 @@ async fn perform_publish(
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
   let mut futures: FuturesUnordered<LocalBoxFuture<Result<String, AnyError>>> =
     Default::default();
+  // Collect the errors of any packages that failed to publish so that we can
+  // keep publishing the remaining (independent) packages instead of aborting on
+  // the first failure, then report all of them at the end.
+  let mut errors: Vec<AnyError> = Vec::new();
   loop {
     let next_batch = publish_order_graph.next();
 
@@ -902,11 +906,37 @@ async fn perform_publish(
       break;
     };
 
-    let package_name = result?;
-    publish_order_graph.finish_package(&package_name);
+    match result {
+      Ok(package_name) => publish_order_graph.finish_package(&package_name),
+      // Record the failure (preserving its context chain) and keep going so
+      // that the other in-flight and queued packages are still published. We
+      // intentionally don't call `finish_package` here: packages that depend on
+      // the one that failed must not be published against a missing version.
+      Err(err) => errors.push(err),
+    }
   }
 
-  Ok(())
+  if errors.is_empty() {
+    Ok(())
+  } else {
+    Err(combine_publish_errors(errors))
+  }
+}
+
+/// Combines the errors collected while publishing multiple packages into a
+/// single error, preserving each error's context chain.
+fn combine_publish_errors(mut errors: Vec<AnyError>) -> AnyError {
+  if errors.len() == 1 {
+    return errors.remove(0);
+  }
+
+  let mut message = format!("Failed to publish {} packages:", errors.len());
+  for err in &errors {
+    // `{:#}` renders the full anyhow context chain (e.g.
+    // "Failed to publish @scope/name: <cause>").
+    message.push_str(&format!("\n\n* {:#}", err));
+  }
+  deno_core::anyhow::anyhow!(message)
 }
 
 async fn publish_package(
