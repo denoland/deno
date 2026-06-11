@@ -164,7 +164,27 @@ where
 
 fn check_alive_then_kill(mut child: DenoChild) {
   assert!(child.try_wait().unwrap().is_none());
-  child.kill().unwrap();
+  // Kill the whole process tree, not just the watched process. A bare
+  // `child.kill()` only signals the direct child; any subprocess it spawned
+  // (e.g. a forked worker) outlives it and keeps the inherited stdout/stderr
+  // pipe open, so the test harness never sees EOF on those readers and hangs
+  // at shutdown until the CI job's hard timeout. Reaping after killing the
+  // tree closes the pipes and lets the harness exit.
+  let pid = child.id();
+  #[cfg(unix)]
+  {
+    let _ = std::process::Command::new("pkill")
+      .args(["-9", "-P", &pid.to_string()])
+      .output();
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = std::process::Command::new("taskkill")
+      .args(["/F", "/T", "/PID", &pid.to_string()])
+      .output();
+  }
+  let _ = child.kill();
+  let _ = child.wait();
 }
 
 fn child_lines(
