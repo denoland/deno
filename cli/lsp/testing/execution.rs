@@ -443,6 +443,8 @@ impl TestRun {
             test::TestEvent::Completed => {
               reporter.report_completed();
             }
+            // LSP-driven test runs never use `--update-snapshots`.
+            test::TestEvent::SnapshotSummary(_) => {}
             test::TestEvent::ForceEndReport => {}
             test::TestEvent::Sigint => {}
             test::TestEvent::Exit(_) => {}
