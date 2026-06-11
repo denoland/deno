@@ -72,6 +72,32 @@ Deno.test({
   },
 });
 
+// https://github.com/denoland/deno/issues/35113
+Deno.test({
+  name: "serialize emits wire format version 15 for Node.js interop",
+  fn() {
+    const values = [
+      { a: 1 },
+      "string",
+      123n,
+      new Uint8Array([1, 2, 3]),
+      new Map([["a", new ArrayBuffer(16)]]),
+    ];
+    for (const value of values) {
+      const s = v8.serialize(value);
+      assertEquals(s[0], 0xFF);
+      assertEquals(s[1], 0x0F);
+      assertEquals(v8.deserialize(s), value);
+    }
+
+    // A serializer without a header is left untouched.
+    const ser = new v8.Serializer();
+    ser.writeUint32(42);
+    const raw = ser.releaseBuffer();
+    assertEquals(raw[0], 42);
+  },
+});
+
 Deno.test({
   name: "Deserializer keeps delegate alive across GC",
   fn() {

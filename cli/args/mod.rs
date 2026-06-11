@@ -653,30 +653,9 @@ impl CliOptions {
 
   pub fn node_ipc_init(
     &self,
+    sys: &CliSys,
   ) -> Result<Option<(i64, ChildIpcSerialization)>, AnyError> {
-    let maybe_node_channel_fd = std::env::var("NODE_CHANNEL_FD").ok();
-    let maybe_node_channel_serialization = if let Ok(serialization) =
-      std::env::var("NODE_CHANNEL_SERIALIZATION_MODE")
-    {
-      Some(serialization.parse::<ChildIpcSerialization>()?)
-    } else {
-      None
-    };
-    if let Some(node_channel_fd) = maybe_node_channel_fd {
-      // Remove so that child processes don't inherit this environment variables.
-      // SAFETY: single-threaded at this point in startup
-      unsafe {
-        std::env::remove_var("NODE_CHANNEL_FD");
-        std::env::remove_var("NODE_CHANNEL_SERIALIZATION_MODE");
-      }
-      let node_channel_fd = node_channel_fd.parse::<i64>()?;
-      Ok(Some((
-        node_channel_fd,
-        maybe_node_channel_serialization.unwrap_or(ChildIpcSerialization::Json),
-      )))
-    } else {
-      Ok(None)
-    }
+    deno_lib::args::node_ipc_init(sys)
   }
 
   pub fn serve_port(&self) -> Option<u16> {

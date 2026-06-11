@@ -1725,3 +1725,80 @@ Deno.test("inspector_console_group_emits_label_log", async () => {
     await tester.waitForExit();
   }
 });
+
+// Regression test for https://github.com/denoland/deno/issues/18513
+// Piping a file stream to a WritableStream internally releases the writer,
+// rejecting its ready/closed promises. Those rejections are handled, so a
+// debugger with "pause on uncaught exceptions" enabled must not break on them.
+Deno.test("inspector_no_pause_on_handled_stream_rejection", async () => {
+  const script = `${testdataPath}/pipe_file_to_writable.js`;
+  const tester = await InspectorTester.create(
+    ["run", "-A", "--inspect-brk=0", script],
+    { notificationFilter: ignoreScriptParsed },
+  );
+
+  try {
+    await tester.assertStderrForInspectBrk();
+
+    tester.sendMany([
+      { id: 1, method: "Runtime.enable" },
+      { id: 2, method: "Debugger.enable" },
+      {
+        id: 3,
+        method: "Debugger.setPauseOnExceptions",
+        params: { state: "uncaught" },
+      },
+    ]);
+
+    await tester.expectResponse(1);
+    await tester.expectResponse(2);
+    await tester.expectResponse(3);
+    await tester.expectNotification("Runtime.executionContextCreated");
+
+    tester.send({ id: 4, method: "Runtime.runIfWaitingForDebugger" });
+    await tester.expectResponse(4);
+
+    // First pause is the --inspect-brk break on the first line.
+    const firstPause = await tester.expectNotification("Debugger.paused");
+    assert(
+      // deno-lint-ignore no-explicit-any
+      (firstPause.params as any)?.reason !== "exception" &&
+        // deno-lint-ignore no-explicit-any
+        (firstPause.params as any)?.reason !== "promiseRejection",
+      "first pause should be the inspect-brk break, not an exception",
+    );
+
+    tester.send({ id: 5, method: "Debugger.resume" });
+    await tester.expectResponse(5);
+
+    // Releasing the writer and reader during pipeTo rejects their internal
+    // ready/closed promises, but those rejections are handled. With
+    // "pause on uncaught exceptions" enabled the debugger must not break on
+    // them. If it regresses, a Debugger.paused (reason "promiseRejection")
+    // arrives here instead of the script running to completion.
+    let unexpectedPause: CDPMessage | undefined;
+    try {
+      unexpectedPause = await tester.expectNotification("Debugger.paused", {
+        timeout: 5_000,
+      });
+    } catch {
+      // No second pause within the window — this is the expected outcome.
+    }
+    if (unexpectedPause) {
+      // deno-lint-ignore no-explicit-any
+      const params = unexpectedPause.params as any;
+      throw new Error(
+        `debugger paused unexpectedly on a handled rejection: reason=${params?.reason} ${
+          params?.data?.description ?? ""
+        }`,
+      );
+    }
+
+    const scriptOutput = await tester.nextStdoutLine();
+    assertEquals(scriptOutput, "done");
+  } finally {
+    await tester.close();
+    tester.kill();
+    await tester.waitForExit();
+  }
+});
