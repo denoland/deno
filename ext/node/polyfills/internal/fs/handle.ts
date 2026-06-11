@@ -8,11 +8,9 @@ const lazyFs = core.createLazyLoader("node:fs");
 const lazyReadline = core.createLazyLoader("node:readline");
 const lazyBuffer = core.createLazyLoader("node:buffer");
 import { op_node_fs_close } from "ext:core/ops";
-import type {
-  BinaryOptionsArgument,
-  FileOptionsArgument,
-  TextOptionsArgument,
-} from "ext:deno_node/_fs/_fs_common.ts";
+type BinaryOptionsArgument = any;
+type FileOptionsArgument = any;
+type TextOptionsArgument = any;
 // writev loaded lazily from node:fs via lazyFs
 
 export interface WriteVResult {

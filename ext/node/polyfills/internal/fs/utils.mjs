@@ -14,6 +14,8 @@ const {
 } = core.ops;
 const {
   ArrayIsArray,
+  ArrayPrototypeSlice,
+  ArrayPrototypeUnshift,
   BigInt,
   DataViewPrototype,
   DataViewPrototypeGetBuffer,
@@ -33,6 +35,7 @@ const {
   ObjectIs,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  PromisePrototypeThen,
   ReflectApply,
   ReflectOwnKeys,
   SafeArrayIterator,
@@ -72,6 +75,7 @@ const { toPathIfFileURL } = core.loadExtScript(
   "ext:deno_node/internal/url.ts",
 );
 const {
+  isUint32,
   validateAbortSignal,
   validateBoolean,
   validateFunction,
@@ -80,6 +84,9 @@ const {
   validateObject,
   validateUint32,
 } = core.loadExtScript("ext:deno_node/internal/validators.mjs");
+const { createFSReqCallback, unregisterActiveRequest } = core.loadExtScript(
+  "ext:deno_node/internal/process/active_resources.ts",
+);
 const lazyPath = core.createLazyLoader("node:path");
 const kType = Symbol("type");
 const kStats = Symbol("stats");
@@ -88,9 +95,6 @@ const assert = core.loadExtScript(
 );
 // Callback-style lstat over the op (same shape as node:fs `lstat`): the op
 // validates the path + extracts options itself and resolves the cppgc Stats.
-const { callbackifyOpt } = core.loadExtScript(
-  "ext:deno_node/_fs/_fs_common.ts",
-);
 const lstat = callbackifyOpt(op_node_fs_lstat);
 const lstatSync = op_node_fs_lstat_sync;
 const { isWindows } = core.loadExtScript("ext:deno_node/_util/os.ts");
@@ -881,6 +885,255 @@ export const constants = {
   kReadFileUnknownBufferLength,
   kWriteFileMaxChunkSize,
 };
+
+// -- callback-form helpers (previously _fs/_fs_common.ts) --
+
+export function isFileOptions(fileOptions) {
+  if (!fileOptions) return false;
+
+  return (
+    fileOptions.encoding != undefined ||
+    fileOptions.flag != undefined ||
+    fileOptions.signal != undefined ||
+    fileOptions.mode != undefined
+  );
+}
+
+export function getValidatedEncoding(optOrCallback) {
+  const encoding = getEncoding(optOrCallback);
+  if (encoding) {
+    assertEncoding(encoding);
+  }
+  return encoding;
+}
+
+export function getEncoding(optOrCallback) {
+  if (!optOrCallback || typeof optOrCallback === "function") {
+    return null;
+  }
+
+  const encoding = typeof optOrCallback === "string"
+    ? optOrCallback
+    : optOrCallback.encoding;
+  if (!encoding) return null;
+  return encoding;
+}
+
+export function getSignal(optOrCallback) {
+  if (!optOrCallback || typeof optOrCallback === "function") {
+    return null;
+  }
+
+  const signal = typeof optOrCallback === "object" && optOrCallback.signal
+    ? optOrCallback.signal
+    : null;
+
+  return signal;
+}
+
+export const isFd = isUint32;
+
+export function maybeCallback(cb) {
+  validateFunction(cb, "cb");
+
+  return cb;
+}
+
+// Ensure that callbacks run in the global context. Only use this function
+// for callbacks that are passed to the binding layer, callbacks that are
+// invoked from JS already run in the proper scope.
+export function makeCallback(cb) {
+  validateFunction(cb, "cb");
+  // Callbacks run with `this` = undefined, matching Node.js ESM strict-mode
+  // behavior (the original code was an ESM arrow function capturing `this`
+  // from makeCallback's call site, which is undefined in strict mode).
+  return (...args) => ReflectApply(cb, undefined, args);
+}
+
+// Wraps a promise-returning op as a node-style callback function: the op runs
+// with the leading args (its eager validation throws synchronously, before the
+// callback check, like node), then the resolved value is passed as the second
+// callback argument. `nargs` is the op's fixed leading-argument count (the
+// callback sits at that index, so omitting it still validates the args first).
+// Shared so each `const f = callbackify(op, n)` shares one SFI instead of
+// baking a wrapper per function.
+// Each wrapper registers an FSReqCallback for the in-flight request --
+// node's `process._getActiveRequests()` reports one per pending async fs
+// call -- and unregisters it when the request settles (before the user
+// callback runs, like node's req teardown).
+
+export function callbackify(op, nargs, defaultCb) {
+  return function (...args) {
+    const request = createFSReqCallback();
+    let promise;
+    try {
+      promise = ReflectApply(
+        op,
+        undefined,
+        ArrayPrototypeSlice(args, 0, nargs),
+      );
+    } catch (e) {
+      unregisterActiveRequest(request);
+      throw e;
+    }
+    let callback;
+    try {
+      // JS default-parameter semantics: only `undefined` falls back to the
+      // default callback (e.g. close's defaultCloseCallback); `null` does not.
+      const cb = args[nargs] === undefined ? defaultCb : args[nargs];
+      callback = makeCallback(cb);
+    } catch (e) {
+      unregisterActiveRequest(request);
+      PromisePrototypeThen(promise, undefined, () => {});
+      throw e;
+    }
+    // These wrappers are all void in node (callback receives only `err`).
+    return PromisePrototypeThen(
+      promise,
+      () => {
+        unregisterActiveRequest(request);
+        callback(null);
+      },
+      (err) => {
+        unregisterActiveRequest(request);
+        callback(err);
+      },
+    );
+  };
+}
+
+// Like `callbackify`, but for `f(...leading, ...optional?, cb)` shapes that
+// resolve a value: `nLeading` required args followed by any number of optional
+// middle args (the op supplies defaults for omitted ones), then the callback
+// (the first trailing function). Op-first, so the op's synchronous validation
+// runs before the callback is validated -- matching node's "validate the inputs
+// before the callback" order. A null/undefined resolution invokes the callback
+// with exactly `(null)` -- node's void-op oncomplete arity (test-fs-access
+// deepStrictEquals the callback arguments) -- otherwise `(null, result)`.
+//
+// `cbAtEnd` selects node's positional-callback variant (e.g. `symlink`, whose
+// `makeCallback(arguments.length === 3 ? type_ : callback_)` treats whatever
+// follows the leading args as the callback by POSITION, so
+// `symlink(t, p, "dir")` throws "Received type string ('dir')"). In that mode
+// the callback is also validated BEFORE the op runs, like node, so a bad
+// callback never starts the I/O.
+export function callbackifyOpt(op, nLeading = 1, cbAtEnd = false) {
+  return function (...args) {
+    let cbIdx = args.length;
+    if (cbAtEnd) {
+      if (args.length > nLeading) {
+        cbIdx = args.length - 1;
+      }
+      const callback = makeCallback(
+        cbIdx === args.length ? undefined : args[cbIdx],
+      );
+      const request = createFSReqCallback();
+      let promise;
+      try {
+        promise = ReflectApply(
+          op,
+          undefined,
+          ArrayPrototypeSlice(args, 0, cbIdx),
+        );
+      } catch (e) {
+        unregisterActiveRequest(request);
+        throw e;
+      }
+      return PromisePrototypeThen(
+        promise,
+        (result) => {
+          unregisterActiveRequest(request);
+          return result == null ? callback(null) : callback(null, result);
+        },
+        (err) => {
+          unregisterActiveRequest(request);
+          callback(err);
+        },
+      );
+    }
+    for (let i = nLeading; i < args.length; i++) {
+      if (typeof args[i] === "function") {
+        cbIdx = i;
+        break;
+      }
+    }
+    const request = createFSReqCallback();
+    let promise;
+    try {
+      promise = ReflectApply(
+        op,
+        undefined,
+        ArrayPrototypeSlice(args, 0, cbIdx),
+      );
+    } catch (e) {
+      unregisterActiveRequest(request);
+      throw e;
+    }
+    let callback;
+    try {
+      callback = makeCallback(cbIdx === args.length ? undefined : args[cbIdx]);
+    } catch (e) {
+      unregisterActiveRequest(request);
+      PromisePrototypeThen(promise, undefined, () => {});
+      throw e;
+    }
+    return PromisePrototypeThen(
+      promise,
+      (result) => {
+        unregisterActiveRequest(request);
+        return result == null ? callback(null) : callback(null, result);
+      },
+      (err) => {
+        unregisterActiveRequest(request);
+        callback(err);
+      },
+    );
+  };
+}
+
+// Shared by `fs.write`/`fs.writev`: the op resolves the overload + validates
+// synchronously (so bad args throw at the call site like node) and writes
+// asynchronously, returning the bytes written. The whole argument list -- the
+// callback included -- is forwarded to the op, because `op_node_fs_write_v`
+// uses the trailing callback slots to disambiguate the string overload
+// (`write(fd, str, position, cb)` vs `write(fd, str, position, encoding, cb)`).
+// On completion the callback is invoked exactly like node's `wrapper`:
+// `(err, written || 0, buffer)` on both paths, with the original buffer/buffers
+// re-attached so it can't be GC'ed too soon.
+export function callbackifyWrite(op) {
+  return function (fd, buffer, ...rest) {
+    let cb;
+    for (let i = 0; i < rest.length; i++) {
+      if (typeof rest[i] === "function") {
+        cb = rest[i];
+        break;
+      }
+    }
+    cb = maybeCallback(cb);
+    // Forward `op(fd, buffer, ...rest)` -- the callback included, since the op
+    // uses the trailing slots to disambiguate the string overload.
+    ArrayPrototypeUnshift(rest, fd, buffer);
+    const request = createFSReqCallback();
+    let promise;
+    try {
+      promise = ReflectApply(op, undefined, rest);
+    } catch (e) {
+      unregisterActiveRequest(request);
+      throw e;
+    }
+    return PromisePrototypeThen(
+      promise,
+      (written) => {
+        unregisterActiveRequest(request);
+        cb(null, written || 0, buffer);
+      },
+      (err) => {
+        unregisterActiveRequest(request);
+        cb(err, 0, buffer);
+      },
+    );
+  };
+}
 
 export default {
   constants,

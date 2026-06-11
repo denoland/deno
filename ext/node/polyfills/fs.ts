@@ -11,16 +11,6 @@ type FileOptions = any;
 type FileOptionsArgument = any;
 type TextOptionsArgument = any;
 type WriteFileOptions = any;
-const {
-  callbackify,
-  callbackifyOpt,
-  callbackifyWrite,
-  getSignal,
-  getValidatedEncoding,
-  isFd,
-  isFileOptions,
-  makeCallback,
-} = core.loadExtScript("ext:deno_node/_fs/_fs_common.ts");
 type Encodings = any;
 const {
   AbortError,
@@ -84,13 +74,21 @@ const lazyUtf8Stream = core.createLazyLoader(
 const {
   arrayBufferViewToUint8Array,
   BigIntStats,
+  callbackify,
+  callbackifyOpt,
+  callbackifyWrite,
   constants: fsUtilConstants,
   copyObject,
   Dirent,
   getOptions,
   getValidatedFd,
+  getSignal,
+  getValidatedEncoding,
   getValidatedPath,
   getValidatedPathToString,
+  isFd,
+  isFileOptions,
+  makeCallback,
   Stats,
   toUnixTimestamp,
   validateCpOptions,

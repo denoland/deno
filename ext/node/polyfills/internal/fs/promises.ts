@@ -3,7 +3,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { core } from "ext:core/mod.js";
-import type { WriteFileOptions } from "ext:deno_node/_fs/_fs_common.ts";
+type WriteFileOptions = any;
 import type { Encodings } from "ext:deno_node/_utils.ts";
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 const { fsConstants: constants } = core.loadExtScript(
