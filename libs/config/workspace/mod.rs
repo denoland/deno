@@ -2665,7 +2665,13 @@ impl WorkspaceDirectory {
     let Some(mut config) = self.to_deploy_config_inner()? else {
       return Ok(None);
     };
-    self.exclude_includes_with_member_for_base_for_root(&mut config.files);
+    // NOTE: unlike fmt/lint/test/bench/publish, deploy intentionally does NOT
+    // run `exclude_includes_with_member_for_base_for_root`. Deploy resolves a
+    // single application's file set from the workspace root, so a root
+    // `deploy.include` that points at a workspace member (e.g.
+    // `./packages/backend/**`) is an explicit instruction to ship those files,
+    // not a member contributing its own files. Stripping those includes left
+    // `deno deploy` from a workspace root with an empty file set.
     combine_files_config_with_cli_args(&mut config.files, cli_args);
     Ok(Some(config))
   }
@@ -7292,6 +7298,103 @@ pub mod test {
         PathKind::File,
       ),
       "packages/backend/main.ts should be included in deploy files"
+    );
+  }
+
+  #[test]
+  fn test_deploy_config_root_include_targeting_member_glob() {
+    // Regression test: a workspace-root `deploy.include` glob that points at a
+    // workspace member must keep the matching member files. Previously the
+    // member-include strip dropped these explicit includes, leaving
+    // `deno deploy` from the root with no files to upload.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./packages/backend"],
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp",
+          "include": ["./packages/backend/**"]
+        }
+      }),
+    );
+    sys
+      .fs_insert_json(root_dir().join("packages/backend/deno.json"), json!({}));
+    sys.fs_insert(
+      root_dir().join("packages/backend/main.ts"),
+      "Deno.serve(() => new Response('hi'));",
+    );
+    sys.fs_insert(root_dir().join("packages/backend/extra.txt"), "hello\n");
+
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap()
+      .unwrap();
+
+    assert!(
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
+      "root deploy.include targeting a member should keep member files"
+    );
+    assert!(
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/extra.txt"),
+        PathKind::File,
+      ),
+      "the include glob should cover all files under the member"
+    );
+  }
+
+  #[test]
+  fn test_deploy_config_root_include_targeting_member_file() {
+    // Same as above but with an explicit file include: only the listed file is
+    // covered, not its siblings.
+    let sys = InMemorySys::default();
+    sys.fs_insert_json(
+      root_dir().join("deno.json"),
+      json!({
+        "workspace": ["./packages/backend"],
+        "deploy": {
+          "org": "myorg",
+          "app": "myapp",
+          "include": ["./packages/backend/main.ts"]
+        }
+      }),
+    );
+    sys
+      .fs_insert_json(root_dir().join("packages/backend/deno.json"), json!({}));
+    sys.fs_insert(
+      root_dir().join("packages/backend/main.ts"),
+      "Deno.serve(() => new Response('hi'));",
+    );
+    sys.fs_insert(
+      root_dir().join("packages/backend/extra.txt"),
+      "should not be included\n",
+    );
+
+    let workspace_dir = workspace_at_start_dir(&sys, &root_dir());
+    let deploy_config = workspace_dir
+      .to_deploy_config(FilePatterns::new_with_base(workspace_dir.dir_path()))
+      .unwrap()
+      .unwrap();
+
+    assert!(
+      deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/main.ts"),
+        PathKind::File,
+      ),
+      "an explicitly included member file should be covered"
+    );
+    assert!(
+      !deploy_config.files.matches_path(
+        &root_dir().join("packages/backend/extra.txt"),
+        PathKind::File,
+      ),
+      "a sibling not listed in the include should not be covered"
     );
   }
 
