@@ -268,6 +268,9 @@ fn validate(input: &str) -> ValidationResult {
   let mut div_token_count_on_current_line = 0;
   let mut last_line_index = 0;
   let mut queued_validation_error = None;
+  // Whether the last (non-comment) token was a `.`, which means a member
+  // access is still missing its property and more input should be read.
+  let mut ends_with_dot = false;
   let tokens = deno_ast::lex(input, deno_ast::MediaType::TypeScript)
     .into_iter()
     .filter_map(|item| match item.inner {
@@ -285,6 +288,7 @@ fn validate(input: &str) -> ValidationResult {
         return error;
       }
     }
+    ends_with_dot = matches!(token, Token::Dot);
     match token {
       Token::BinOp(BinOpToken::Div) | Token::AssignOp(AssignOp::DivAssign) => {
         // it's too complicated to write code to detect regular expression literals
@@ -335,7 +339,10 @@ fn validate(input: &str) -> ValidationResult {
 
   if let Some(error) = queued_validation_error {
     error
-  } else if !stack.is_empty() || in_template {
+  } else if !stack.is_empty() || in_template || ends_with_dot {
+    // A trailing `.` means the user broke a method chain across lines (e.g.
+    // `foo.\n  bar()`), so keep reading input instead of evaluating the
+    // incomplete member access. See https://github.com/denoland/deno/issues/16335
     ValidationResult::Incomplete
   } else {
     ValidationResult::Valid(None)
@@ -600,5 +607,30 @@ let left = test( arr.slice( 0 , arr.length/2 ) )"#;
   fn validate_regex_looking_code() {
     let code = r#"/testing/;"#;
     assert!(matches!(validate(code), ValidationResult::Valid(_)));
+  }
+
+  #[test]
+  fn validate_trailing_dot_is_incomplete() {
+    // A method chain broken right after the `.` should keep reading input
+    // instead of being evaluated as an incomplete member access.
+    assert!(matches!(
+      validate("[1, 2, 3]."),
+      ValidationResult::Incomplete
+    ));
+    assert!(matches!(
+      validate("(await Promise.all([])).\n"),
+      ValidationResult::Incomplete
+    ));
+    // Once the property name is supplied the input is complete again.
+    assert!(matches!(
+      validate("[1, 2, 3].\nmap(x => x)"),
+      ValidationResult::Valid(_)
+    ));
+  }
+
+  #[test]
+  fn validate_dot_inside_number_is_valid() {
+    // `5.` is a valid number literal, not a trailing member access.
+    assert!(matches!(validate("5."), ValidationResult::Valid(_)));
   }
 }
