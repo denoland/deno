@@ -14370,9 +14370,9 @@ fn lsp_format_component() {
       {
         "range": {
           "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
+          "end": { "line": 2, "character": 0 },
         },
-        "newText": "<script module>\n",
+        "newText": "<script module>\n// foo\n",
       },
     ]),
   );
@@ -14430,18 +14430,7 @@ fn lsp_format_component() {
       },
     }),
   );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
-        },
-        "newText": "{{ layout \"foo.vto\" }}\n",
-      },
-    ]),
-  );
+  assert_eq!(res, json!(null));
   let res = client.write_request(
     "textDocument/formatting",
     json!({
@@ -14452,18 +14441,7 @@ fn lsp_format_component() {
       },
     }),
   );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "range": {
-          "start": { "line": 0, "character": 0 },
-          "end": { "line": 1, "character": 0 },
-        },
-        "newText": "{% block header %}\n",
-      },
-    ]),
-  );
+  assert_eq!(res, json!(null));
   client.shutdown();
 }
 
