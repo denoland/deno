@@ -9,33 +9,33 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_core::FastString;
 use deno_core::ModuleCodeBytes;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
-use deno_core::anyhow::Context;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_lib::standalone::binary::DenoRtDeserializable;
-use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::RemoteModuleEntry;
 use deno_lib::standalone::binary::SpecifierDataStore;
 use deno_lib::standalone::binary::SpecifierId;
+use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_media_type::MediaType;
-use deno_npm::NpmPackageId;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_semver::StackString;
+use deno_npm::NpmPackageId;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use indexmap::IndexMap;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsRead;
@@ -449,15 +449,11 @@ fn read_section_from_elf_file() -> Result<&'static [u8], AnyError> {
     bail!("standalone binary is big-endian ELF; unsupported");
   }
 
-  // e_phoff  at offset 32 (8 bytes, LE)
-  // e_phentsize at offset 54 (2 bytes, LE)
-  // e_phnum  at offset 56 (2 bytes, LE)
-  let e_phoff =
-    u64::from_le_bytes(ehdr[32..40].try_into().unwrap()) as usize;
+  // e_phoff at offset 32 (8 bytes, LE), e_phentsize at 54 (2 bytes), e_phnum at 56 (2 bytes).
+  let e_phoff = u64::from_le_bytes(ehdr[32..40].try_into().unwrap()) as usize;
   let e_phentsize =
     u16::from_le_bytes(ehdr[54..56].try_into().unwrap()) as usize;
-  let e_phnum =
-    u16::from_le_bytes(ehdr[56..58].try_into().unwrap()) as usize;
+  let e_phnum = u16::from_le_bytes(ehdr[56..58].try_into().unwrap()) as usize;
 
   if e_phentsize < 56 || e_phnum == 0 {
     bail!("ELF has no usable program headers");
@@ -471,9 +467,7 @@ fn read_section_from_elf_file() -> Result<&'static [u8], AnyError> {
     .seek(SeekFrom::Start(e_phoff as u64))
     .context("seeking to PHDR table")?;
   let mut phdrs = vec![0u8; phdrs_len];
-  file
-    .read_exact(&mut phdrs)
-    .context("reading PHDR table")?;
+  file.read_exact(&mut phdrs).context("reading PHDR table")?;
 
   const PT_NOTE: u32 = 4;
 
@@ -507,9 +501,7 @@ fn read_section_from_elf_file() -> Result<&'static [u8], AnyError> {
       // Leak the allocation so we can return &'static [u8]. This is safe
       // because standalone binaries read the section data exactly once and
       // use it for the entire process lifetime.
-      return Ok(Box::leak(
-        section_bytes.to_vec().into_boxed_slice(),
-      ));
+      return Ok(Box::leak(section_bytes.to_vec().into_boxed_slice()));
     }
   }
 
@@ -539,11 +531,9 @@ fn find_in_elf_note_data<'a>(
     let namesz =
       u32::from_le_bytes(segment[pos..pos + 4].try_into().ok()?) as usize;
     let descsz =
-      u32::from_le_bytes(segment[pos + 4..pos + 8].try_into().ok()?)
-        as usize;
-    let note_type = u32::from_le_bytes(
-      segment[pos + 8..pos + 12].try_into().ok()?,
-    );
+      u32::from_le_bytes(segment[pos + 4..pos + 8].try_into().ok()?) as usize;
+    let note_type =
+      u32::from_le_bytes(segment[pos + 8..pos + 12].try_into().ok()?);
     pos += 12;
 
     if pos + namesz > segment.len() {
@@ -572,8 +562,7 @@ fn find_in_elf_note_data<'a>(
     if desc.len() < 2 {
       continue;
     }
-    let inner_len =
-      u16::from_le_bytes(desc[0..2].try_into().ok()?) as usize;
+    let inner_len = u16::from_le_bytes(desc[0..2].try_into().ok()?) as usize;
     if desc.len() < 2 + inner_len {
       continue;
     }

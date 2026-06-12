@@ -1,15 +1,15 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
 use test_util as util;
-use test_util::TempDir;
 use test_util::assert_contains;
 use test_util::env_vars_for_npm_tests;
 use test_util::eprintln;
 use test_util::http_server;
 use test_util::test;
+use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
-use util::DenoChild;
 use util::assert_not_contains;
+use util::DenoChild;
 
 /// Logs to stderr every time next_line() is called
 struct LoggingLines<R>
@@ -192,8 +192,10 @@ fn check_alive_then_kill(mut child: DenoChild) {
 /// indefinitely; on the desktop branch the compiled binary can hang (e.g. if
 /// the ELF section reader or runtime shutdown stalls), which would otherwise
 /// keep the CI job running for the full 30-minute hard timeout.
-async fn run_compiled(exe: &std::path::Path) -> std::process::Output {
-  let exe = exe.to_path_buf();
+async fn run_compiled(
+  exe: impl AsRef<std::path::Path>,
+) -> std::process::Output {
+  let exe = exe.as_ref().to_path_buf();
   tokio::time::timeout(
     std::time::Duration::from_secs(10),
     tokio::task::spawn_blocking(move || {
