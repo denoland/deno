@@ -1938,6 +1938,7 @@ dependencies = [
  "wasmparser",
  "windows-sys 0.59.0",
  "winres",
+ "yaml_parser",
  "zip",
  "zstd",
 ]

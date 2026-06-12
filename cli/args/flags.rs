@@ -374,6 +374,14 @@ pub struct InitFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MigrateFlags {
+  /// The configuration format to migrate from (currently only `pnpm`).
+  pub target: String,
+  /// Whether to delete the source file after a successful migration.
+  pub remove_source: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
@@ -750,6 +758,7 @@ pub enum DenoSubcommand {
   Install(InstallFlags),
   JSONReference(JSONReferenceFlags),
   Jupyter(JupyterFlags),
+  Migrate(MigrateFlags),
   Uninstall(UninstallFlags),
   Lsp,
   Lint(LintFlags),
@@ -2143,6 +2152,7 @@ pub fn flags_from_vec_with_initial_cwd(
         "json_reference" => json_reference_parse(&mut flags, &mut m, app),
         "jupyter" => jupyter_parse(&mut flags, &mut m),
         "lint" => lint_parse(&mut flags, &mut m)?,
+        "migrate" => migrate_parse(&mut flags, &mut m)?,
         "lsp" => lsp_parse(&mut flags, &mut m),
         "outdated" => outdated_parse(&mut flags, &mut m, false)?,
         "repl" => repl_parse(&mut flags, &mut m)?,
@@ -2416,6 +2426,7 @@ pub fn clap_root() -> Command {
         .subcommand(ci_subcommand())
         .subcommand(json_reference_subcommand())
         .subcommand(jupyter_subcommand())
+        .subcommand(migrate_subcommand())
         .subcommand(approve_scripts_subcommand())
         .subcommand(uninstall_subcommand())
         .subcommand(outdated_subcommand())
@@ -3721,6 +3732,30 @@ fn init_subcommand() -> Command {
         )
     },
   )
+}
+
+fn migrate_subcommand() -> Command {
+  command(
+    "migrate",
+    "Migrate third-party configuration to deno.json\n\nCurrently supports converting a pnpm-workspace.yaml into the equivalent \"workspace\", \"catalog\", and \"catalogs\" fields in deno.json:\n  deno migrate pnpm",
+    UnstableArgsConfig::None,
+  )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("target")
+          .value_name("TARGET")
+          .required(true)
+          .value_parser(["pnpm"])
+          .help("The configuration to migrate from"),
+      )
+      .arg(
+        Arg::new("remove")
+          .long("remove")
+          .help("Remove the source file after a successful migration")
+          .action(ArgAction::SetTrue),
+      )
+  })
 }
 
 fn create_subcommand() -> Command {
@@ -7525,6 +7560,19 @@ fn init_parse(
     yes,
   });
 
+  Ok(())
+}
+
+fn migrate_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+) -> Result<(), clap::Error> {
+  let target = matches.remove_one::<String>("target").unwrap();
+  let remove_source = matches.get_flag("remove");
+  flags.subcommand = DenoSubcommand::Migrate(MigrateFlags {
+    target,
+    remove_source,
+  });
   Ok(())
 }
 
