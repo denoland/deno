@@ -7,7 +7,7 @@
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
-      "Pattern: [{\"pathname\":\":a\udb40\udd00b\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []"
     ]
   },
@@ -19,7 +19,7 @@
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
-      "Pattern: [{\"pathname\":\":a\udb40\udd00b\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []"
     ]
   },
@@ -31,7 +31,7 @@
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
-      "Pattern: [{\"pathname\":\":a\udb40\udd00b\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []"
     ]
   },
@@ -43,7 +43,7 @@
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/3\"}]",
-      "Pattern: [{\"pathname\":\":a\udb40\udd00b\"}] Inputs: []",
+      "Pattern: [{\"pathname\":\":a󠄀b\"}] Inputs: []",
       "Pattern: [{\"pathname\":\"\\ud83d \\udeb2\"}] Inputs: []"
     ]
   },
