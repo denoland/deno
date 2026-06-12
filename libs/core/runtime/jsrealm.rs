@@ -88,6 +88,13 @@ pub struct ContextState {
     RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) js_wasm_streaming_cb: RefCell<Option<v8::Global<v8::Function>>>,
   pub(crate) wasm_instance_fn: RefCell<Option<v8::Global<v8::Function>>>,
+  // WeakMap<ModuleNamespace, WebAssembly.Instance.exports> shared by the
+  // synthetic modules rendered for `.wasm` files, so that a Wasm module
+  // importing a global from another Wasm module links against the original
+  // `WebAssembly.Global` object instead of the unwrapped snapshot value
+  // exposed to JS. Stands in for the [[Instance]] slot of the Wasm module
+  // record from the ESM integration proposal (same trick as Node.js).
+  pub(crate) wasm_instances_map: RefCell<Option<v8::Global<v8::Object>>>,
   pub(crate) unrefed_ops: UnrefedOps,
   pub(crate) activity_traces: RuntimeActivityTraces,
   pub(crate) pending_ops: Rc<OpDriverImpl>,
@@ -176,6 +183,7 @@ impl ContextState {
       run_immediate_callbacks_cb: Default::default(),
       js_wasm_streaming_cb: Default::default(),
       wasm_instance_fn: Default::default(),
+      wasm_instances_map: Default::default(),
       activity_traces: Default::default(),
       op_ctxs,
       op_method_decls,
