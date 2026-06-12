@@ -877,6 +877,77 @@ async fn jupyter_stdin_prompt_reply() -> Result<()> {
   Ok(())
 }
 
+// Regression for the kernel-rewrite (#34083) that this PR also patches:
+// `cli/js/jupyter_kernel.js` reads `evalResult?.value?.result` to publish
+// an `execute_result` iopub message for cells whose final expression
+// produces a value, but the Rust side was sending the
+// `cdp::EvaluateResponse` flat (no `value` wrapper), so every successful
+// expression cell silently went without an `execute_result` broadcast.
+// The new `JupyterEvaluateOutcome { value, .. }` shape makes that path
+// load-bearing; this test pins it down so future refactors don't drop
+// `execute_result` again.
+#[test]
+async fn jupyter_execute_result_broadcast_for_expression() -> Result<()> {
+  let (_ctx, client, _process) = setup().await;
+  client
+    .send(
+      Shell,
+      "execute_request",
+      json!({
+        "silent": false,
+        "store_history": true,
+        "user_expressions": {},
+        "allow_stdin": true,
+        "stop_on_error": false,
+        "code": "1+1",
+      }),
+    )
+    .await?;
+
+  let reply = client.recv(Shell).await?;
+  assert_eq!(reply.header.msg_type, "execute_reply");
+  assert_json_subset(reply.content, json!({ "status": "ok" }));
+
+  // Drain iopub looking for the execute_result for our `1+1` cell. We
+  // skip `status`/`stream`/etc. and stop at the `idle` busy marker so
+  // we don't hang waiting for messages that never come.
+  let mut execute_result = None;
+  for _ in 0..8 {
+    let Ok(msg) = client.recv(IoPub).await else {
+      break;
+    };
+    if msg.header.msg_type == "execute_result" {
+      execute_result = Some(msg);
+      break;
+    }
+    if msg.header.msg_type == "status"
+      && msg.content.get("execution_state").and_then(|v| v.as_str())
+        == Some("idle")
+    {
+      break;
+    }
+  }
+
+  let msg =
+    execute_result.expect("expected an execute_result iopub message for `1+1`");
+  let data = msg
+    .content
+    .get("data")
+    .and_then(|v| v.as_object())
+    .cloned()
+    .unwrap_or_default();
+  let text_plain = data
+    .get("text/plain")
+    .and_then(|v| v.as_str())
+    .unwrap_or("");
+  assert!(
+    text_plain.contains('2'),
+    "execute_result text/plain should contain `2`: {data:?}",
+  );
+
+  Ok(())
+}
+
 // Regression for denoland/deno#20643: errors thrown from a Jupyter cell
 // must arrive in the `traceback` with line/column numbers that match the
 // user's TypeScript, not the transpiled JavaScript. The bug originally

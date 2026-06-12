@@ -17,7 +17,6 @@ const {
   op_jupyter_repl_evaluate,
   op_jupyter_repl_get_properties,
   op_jupyter_repl_global_lexical_scope_names,
-  op_jupyter_repl_call_function_on_args,
   op_jupyter_repl_call_function_on,
   op_jupyter_repl_interrupt,
   op_jupyter_repl_cancel_interrupt,

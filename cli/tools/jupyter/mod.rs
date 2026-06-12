@@ -309,7 +309,7 @@ impl JupyterReplSession {
           .v8_isolate()
           .cancel_terminate_execution();
 
-        self.repl_session.track_source_map_for_next = true;
+        self.repl_session.track_source_maps = true;
 
         let result = self
           .repl_session
@@ -318,7 +318,7 @@ impl JupyterReplSession {
         // Drop the request flag so a follow-up call without it (eg. an
         // implicit retry path) doesn't accidentally enable source-map
         // tracking on a non-Jupyter call.
-        self.repl_session.track_source_map_for_next = false;
+        self.repl_session.track_source_maps = false;
 
         let outcome = match result {
           Ok(r) => {

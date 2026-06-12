@@ -189,12 +189,17 @@ pub struct ReplSession {
   test_event_receiver: Option<TestEventReceiver>,
   jsx: deno_ast::JsxRuntime,
   decorators: deno_ast::DecoratorsTranspileOption,
-  /// When set, the next `evaluate_ts_expression` call produces a source map
+  /// While set, each `evaluate_ts_expression` call produces a source map
   /// for the transpiled code and stores it in `source_maps` under the key
   /// V8 uses for evaluated scripts (`<anonymous>`). Jupyter cells set this
-  /// before each evaluate so the stack trace line/column numbers can be
-  /// mapped back to the user's TypeScript via `apply_source_map_to_stack`.
-  pub track_source_map_for_next: bool,
+  /// before evaluating and clear it afterwards so the stack trace
+  /// line/column numbers can be mapped back to the user's TypeScript via
+  /// `apply_source_map_to_stack`. The flag is intentionally *not* self-
+  /// clearing — `evaluate_line_with_object_wrapping` may re-call
+  /// `evaluate_ts_expression` with a `( … )` retry wrapper, and that
+  /// retry needs source-map tracking too so the map matches whichever
+  /// source actually ran.
+  pub track_source_maps: bool,
   source_maps: HashMap<String, Arc<deno_core::sourcemap::SourceMap>>,
   /// Cached cell source per `source_maps` key. Populated alongside
   /// `source_maps` so `apply_source_map_to_stack` can echo the user's
@@ -396,7 +401,7 @@ impl ReplSession {
       test_event_receiver: Some(test_event_receiver),
       jsx: transpile_options.jsx.clone().unwrap_or_default(),
       decorators: transpile_options.decorators.clone(),
-      track_source_map_for_next: false,
+      track_source_maps: false,
       source_maps: HashMap::new(),
       cell_sources: HashMap::new(),
     };
@@ -844,7 +849,7 @@ impl ReplSession {
 
     self.analyze_and_handle_jsx(&parsed_source);
 
-    let want_source_map = self.track_source_map_for_next;
+    let want_source_map = self.track_source_maps;
     let original_source: Option<Arc<str>> = if want_source_map {
       Some(Arc::from(parsed_source.text().as_ref()))
     } else {
@@ -912,6 +917,16 @@ impl ReplSession {
     // correct, but it's far better than reporting the transpiled JS
     // line numbers, and lining them up correctly would require V8 to
     // surface per-script identifiers in `err.stack`.
+    // NB: this 21-char prefix is concatenated onto whatever `transpiled_src`
+    // starts with, so V8's reported column on line 1 of the evaluated script
+    // is offset by 21 relative to the source map (which only covers
+    // `transpiled_src`). Today this is harmless because SWC's ESM output
+    // always begins with `"use strict";\n`, so the prefix collides with that
+    // prelude line and the user's code lives on line 2 onwards — line-1
+    // frames only ever land inside prelude code, which has no source-map
+    // entry. If a future emit option drops the SWC prelude, the column
+    // lookup for line-1 frames will need to subtract this 21-char offset
+    // before consulting the source map.
     let script = format!("'use strict'; void 0;{transpiled_src}");
 
     let value = self.evaluate_expression(&script).await?;
@@ -927,7 +942,7 @@ impl ReplSession {
   /// the frame (Python/IPython-style) — Jupyter cells don't show line
   /// numbers by default, so just printing a remapped line/column number
   /// would leave users counting lines in their cell.
-  pub fn apply_source_map_to_stack(&mut self, stack: &str) -> String {
+  pub fn apply_source_map_to_stack(&self, stack: &str) -> String {
     if self.source_maps.is_empty() {
       return stack.to_string();
     }
