@@ -898,6 +898,11 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 // output fs space before and after building
                 "df -h",
                 `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
+                // On Linux, strip the first-pass binaries before building the
+                // denort_desktop cdylib. Unstripped release binaries are several
+                // GB; stripping frees ~80% of that space so the cdylib link can
+                // complete on standard GitHub-hosted runners (~14 GB disk).
+                'if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi',
                 // Build the desktop runtime shared library (libdenort cdylib) for
                 // laufey-based desktop apps. Separate invocation because the
                 // panic-trace feature only applies to the deno/denort binaries.

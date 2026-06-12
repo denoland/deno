@@ -762,6 +762,7 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
       - name: Generate symcache
@@ -1785,6 +1786,7 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
       - name: Generate symcache
@@ -2738,6 +2740,7 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
       - name: Generate symcache
@@ -3573,6 +3576,7 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
       - name: Generate symcache
@@ -4150,6 +4154,7 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
       - name: Check release snapshot flags
@@ -6115,6 +6120,7 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
       - name: Check release snapshot flags
