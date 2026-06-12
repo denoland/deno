@@ -31,7 +31,6 @@ use deno_core::v8;
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::GlobalHandle;
 use crate::ops::handle_wrap::HandleWrap;
-use crate::ops::handle_wrap::OwnedPtr;
 use crate::ops::handle_wrap::ProviderType;
 use crate::ops::stream_wrap_state::ReadCallbackKey;
 use crate::ops::stream_wrap_state::ReadCallbackRegistry;
@@ -139,7 +138,6 @@ enum StreamBaseStateFields {
 #[repr(C)]
 pub struct WriteWrap {
   base: AsyncWrap,
-  req: OwnedPtr<uv_write_t>,
 }
 
 // SAFETY: WriteWrap is a cppgc-managed object; it holds no GC-traced references beyond its base.
@@ -155,12 +153,7 @@ impl WriteWrap {
   pub fn new(op_state: &mut OpState) -> Self {
     Self {
       base: AsyncWrap::create(op_state, ProviderType::WriteWrap as i32),
-      req: OwnedPtr::from_box(Box::new(uv_compat::new_write())),
     }
-  }
-
-  pub fn req_ptr(&mut self) -> *mut uv_write_t {
-    self.req.as_mut_ptr()
   }
 }
 
@@ -182,7 +175,6 @@ impl WriteWrap {
 #[repr(C)]
 pub struct ShutdownWrap {
   base: AsyncWrap,
-  req: OwnedPtr<uv_shutdown_t>,
 }
 
 // SAFETY: ShutdownWrap is a cppgc-managed object; it holds no GC-traced references beyond its base.
@@ -198,12 +190,7 @@ impl ShutdownWrap {
   pub fn new(op_state: &mut OpState) -> Self {
     Self {
       base: AsyncWrap::create(op_state, ProviderType::ShutdownWrap as i32),
-      req: OwnedPtr::from_box(Box::new(uv_compat::new_shutdown())),
     }
-  }
-
-  pub fn req_ptr(&mut self) -> *mut uv_shutdown_t {
-    self.req.as_mut_ptr()
   }
 }
 

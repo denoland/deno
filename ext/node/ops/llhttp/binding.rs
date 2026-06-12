@@ -424,6 +424,30 @@ fn make_body_callback<'s>(
   function_with_data(scope, http_parser_on_body_callback, data)
 }
 
+fn cached_body_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  parser: v8::Local<'s, v8::Object>,
+  callback: v8::Local<'s, v8::Value>,
+  buffer: v8::Local<'s, v8::Value>,
+) -> v8::Local<'s, v8::Function> {
+  let cached_original = get_value(scope, parser, "__bodyCallbackOriginal");
+  if cached_original
+    .map(|cached| cached.strict_equals(callback))
+    .unwrap_or(false)
+  {
+    if let Some(cached_callback) = get_value(scope, parser, "__bodyCallback")
+      .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+    {
+      return cached_callback;
+    }
+  }
+
+  let wrapped = make_body_callback(scope, parser, callback, buffer);
+  set_value(scope, parser, "__bodyCallbackOriginal", callback);
+  set_value(scope, parser, "__bodyCallback", wrapped.into());
+  wrapped
+}
+
 fn make_parse_error<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   native: v8::Local<'s, v8::Object>,
@@ -547,17 +571,11 @@ fn http_parser_do_execute<'s>(
   args: v8::FunctionCallbackArguments<'s>,
   mut rv: v8::ReturnValue<'s>,
 ) {
-  let Some(parser) = callback_data_value(scope, &args, "parser")
-    .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
-  else {
-    return;
-  };
+  let parser = args.this();
   let Some(native) = get_native(scope, parser) else {
     return;
   };
-  let Some(data) = callback_data_value(scope, &args, "data") else {
-    return;
-  };
+  let data = args.get(0);
   if let Some(result) =
     call_method(scope, native, "execute", &[parser.into(), data])
   {
@@ -601,27 +619,29 @@ fn http_parser_execute<'s>(
     .unwrap_or_else(|| v8::undefined(scope).into());
   if !original_on_body.is_undefined() && !original_on_body.is_null() {
     let wrapped =
-      make_body_callback(scope, parser, original_on_body, buffer_ctor);
+      cached_body_callback(scope, parser, original_on_body, buffer_ctor);
     parser.set_index(scope, K_ON_BODY, wrapped.into());
   }
 
-  let exec_data =
-    data_object(scope, &[("parser", parser.into()), ("data", data)]);
-  let do_execute = function_with_data(scope, http_parser_do_execute, exec_data);
+  let do_execute = get_value(scope, parser, "__doExecute")
+    .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
+    .unwrap_or_else(|| {
+      let do_execute = function_no_data(scope, http_parser_do_execute);
+      set_value(scope, parser, "__doExecute", do_execute.into());
+      do_execute
+    });
   let result = get_value(scope, parser, "_asyncResource")
     .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
     .and_then(|resource| {
-      let undefined = v8::undefined(scope);
       call_method(
         scope,
         resource,
         "runInAsyncScope",
-        &[do_execute.into(), undefined.into()],
+        &[do_execute.into(), parser.into(), data],
       )
     })
     .or_else(|| {
-      let undefined = v8::undefined(scope);
-      do_execute.call(scope, undefined.into(), &[])
+      do_execute.call(scope, parser.into(), &[data])
     });
 
   parser.set_index(scope, K_ON_BODY, original_on_body);
