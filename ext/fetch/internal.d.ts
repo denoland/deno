@@ -107,3 +107,16 @@ declare module "ext:deno_fetch/26_fetch.js" {
     body?: fetchBody.InnerBody,
   ): InnerResponse;
 }
+
+declare module "ext:deno_fetch/27_cookies.js" {
+  const Cookie: {
+    parse(setCookie: string): Deno.Cookie;
+    serialize(cookie: Deno.Cookie): string;
+  };
+  class CookieJar {
+  }
+  const CookieJarPrototype: typeof CookieJar.prototype;
+  class CookieMap {
+  }
+  const CookieMapPrototype: typeof CookieMap.prototype;
+}

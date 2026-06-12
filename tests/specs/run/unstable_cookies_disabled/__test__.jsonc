@@ -1,0 +1,4 @@
+{
+  "args": "run --quiet --reload --allow-read unstable_cookies.js",
+  "output": "unstable_cookies.disabled.out"
+}

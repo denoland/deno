@@ -11,6 +11,7 @@ const {
   ObjectAssign,
   ObjectDefineProperty,
   ObjectHasOwn,
+  ObjectPrototypeIsPrototypeOf,
   StringPrototypeStartsWith,
   SymbolDispose,
   TypeError,
@@ -90,36 +91,75 @@ function createHttpClient(options) {
       proxy.transport = "http";
     }
   }
+  let cookieJar;
+  let ownsCookieJar = false;
+  if (options.cookieJar !== undefined && options.cookieJar !== false) {
+    const { CookieJar, CookieJarPrototype } = core.loadExtScript(
+      "ext:deno_fetch/27_cookies.js",
+    );
+    if (options.cookieJar === true) {
+      cookieJar = new CookieJar();
+      ownsCookieJar = true;
+    } else if (
+      ObjectPrototypeIsPrototypeOf(CookieJarPrototype, options.cookieJar)
+    ) {
+      cookieJar = options.cookieJar;
+    } else {
+      throw new TypeError(
+        "Invalid value for 'cookieJar' option: expected 'true' or a Deno.CookieJar instance",
+      );
+    }
+    options.cookieJarRid = cookieJar[internalRidSymbol];
+    delete options.cookieJar;
+  }
   const keyPair = loadTlsKeyPair("Deno.createHttpClient", options);
   return new HttpClient(
     op_fetch_custom_client(
       options,
       keyPair,
     ),
+    cookieJar,
+    ownsCookieJar,
   );
 }
 
 class HttpClient {
   #rid;
+  #cookieJar;
+  #ownsCookieJar;
 
   /**
    * @param {number} rid
    */
-  constructor(rid) {
+  constructor(rid, cookieJar = undefined, ownsCookieJar = false) {
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
       value: rid,
     });
     this.#rid = rid;
+    this.#cookieJar = cookieJar;
+    this.#ownsCookieJar = ownsCookieJar;
+  }
+
+  /** @returns {Deno.CookieJar | undefined} */
+  get cookieJar() {
+    return this.#cookieJar;
   }
 
   close() {
     core.close(this.#rid);
+    // A jar created via `cookieJar: true` is owned by this client.
+    if (this.#ownsCookieJar) {
+      this.#cookieJar.close();
+    }
   }
 
   [SymbolDispose]() {
     core.tryClose(this.#rid);
+    if (this.#ownsCookieJar) {
+      this.#cookieJar[SymbolDispose]();
+    }
   }
 }
 const HttpClientPrototype = HttpClient.prototype;

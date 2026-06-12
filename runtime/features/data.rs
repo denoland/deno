@@ -39,6 +39,13 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: None,
   },
   UnstableFeatureDescription {
+    name: "cookies",
+    help_text: "Enable unstable cookie APIs (`Deno.CookieJar`, `Deno.Cookie`, `Deno.CookieMap` and the `cookieJar` option of `Deno.createHttpClient()`)",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    env_var: None,
+  },
+  UnstableFeatureDescription {
     name: "cron",
     help_text: "Enable unstable `Deno.cron` API",
     show_in_help: true,

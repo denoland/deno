@@ -64,6 +64,14 @@ import { bundle } from "ext:deno_bundle_runtime/bundle.ts";
 
 const { ObjectDefineProperty, Float64Array } = primordials;
 
+let cookiesScript;
+function loadCookies() {
+  // 27_cookies.js is a `lazy_loaded_js` classic script, so it is loaded via
+  // `loadExtScript` rather than `createLazyLoader` (which is for lazy ESM).
+  return (cookiesScript ??= core.loadExtScript(
+    "ext:deno_fetch/27_cookies.js",
+  ));
+}
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader(
   "ext:deno_web/webtransport.js",
@@ -292,6 +300,13 @@ denoNsUnstableById[unstableIds.bundle] = {
 };
 
 // denoNsUnstableById[unstableIds.broadcastChannel] = { __proto__: null }
+
+denoNsUnstableById[unstableIds.cookies] = { __proto__: null };
+core.defineGlobalProperties(denoNsUnstableById[unstableIds.cookies], {
+  Cookie: core.propWritableLazyLoaded((c) => c.Cookie, loadCookies),
+  CookieJar: core.propWritableLazyLoaded((c) => c.CookieJar, loadCookies),
+  CookieMap: core.propWritableLazyLoaded((c) => c.CookieMap, loadCookies),
+});
 
 denoNsUnstableById[unstableIds.cron] = {
   cron: cron.cron,

@@ -181,6 +181,222 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * A cookie, in the shape produced by parsing a `Set-Cookie` header.
+   *
+   * Requires the `--unstable-cookies` flag.
+   *
+   * @category Fetch
+   * @experimental
+   */
+  export interface Cookie {
+    /** The name of the cookie. */
+    name: string;
+    /** The value of the cookie. */
+    value: string;
+    /** The domain the cookie applies to. When absent, the cookie is
+     * host-only. */
+    domain?: string;
+    /** The path the cookie applies to. */
+    path?: string;
+    /** The expiry of the cookie as milliseconds since the Unix epoch. A
+     * `Date` may be passed when the cookie is used as an input. Cookies
+     * without `expires` and `maxAge` are session cookies. */
+    expires?: number | Date;
+    /** The `Max-Age` attribute of the cookie in seconds. Takes precedence
+     * over `expires`. */
+    maxAge?: number;
+    /** Whether the cookie is only sent over secure connections. */
+    secure?: boolean;
+    /** Whether the cookie is hidden from JavaScript in browsers. Stored and
+     * serialized, but not enforced, by Deno. */
+    httpOnly?: boolean;
+    /** The `SameSite` attribute of the cookie. Stored and serialized, but
+     * not enforced, by Deno. */
+    sameSite?: "Strict" | "Lax" | "None";
+    /** The `Partitioned` attribute of the cookie. */
+    partitioned?: boolean;
+    /** Whether the cookie only applies to the exact host it was set from.
+     * Output only; ignored when storing a cookie. */
+    hostOnly?: boolean;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Utilities for parsing and serializing individual cookies in
+   * `Set-Cookie` format.
+   *
+   * Requires the `--unstable-cookies` flag.
+   *
+   * @category Fetch
+   * @experimental
+   */
+  export namespace Cookie {
+    /** Parses a `Set-Cookie` header value into a {@linkcode Deno.Cookie}.
+     * Throws a `TypeError` when the header is not a valid cookie. */
+    export function parse(setCookie: string): Cookie;
+    /** Serializes a {@linkcode Deno.Cookie} into a `Set-Cookie` header
+     * value, validating the name, value and attributes. */
+    export function serialize(cookie: Cookie): string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A cookie store implementing the RFC 6265bis storage model: cookies set
+   * via {@linkcode CookieJar.setCookie} or stored from HTTP responses are
+   * matched against request URLs by domain, path, expiry and secureness.
+   *
+   * Attach a jar to an HTTP client to have cookies persisted and sent
+   * automatically across `fetch` calls (including redirects):
+   *
+   * ```ts
+   * const jar = new Deno.CookieJar();
+   * const client = Deno.createHttpClient({ cookieJar: jar });
+   * await fetch("https://example.com/login", { client, method: "POST" });
+   * // Cookies set by the response above are sent with this request:
+   * await fetch("https://example.com/profile", { client });
+   * ```
+   *
+   * Requires the `--unstable-cookies` flag.
+   *
+   * @category Fetch
+   * @experimental
+   */
+  export class CookieJar implements Disposable {
+    /** Creates a cookie jar, optionally seeded with cookies (for example
+     * from a previous jar's `toJSON()`). Each seed cookie must carry an
+     * explicit domain. */
+    constructor(cookies?: Cookie[]);
+    /** Returns the cookies that would be sent in a request to `url`, or
+     * all cookies in the jar when no URL is given. */
+    getCookies(url?: string | URL): Cookie[];
+    /** Returns the `Cookie` header value for a request to `url`, or `null`
+     * when no cookies match. */
+    getCookieString(url: string | URL): string | null;
+    /** Stores a cookie. `cookie` is a {@linkcode Deno.Cookie} or a string
+     * in `Set-Cookie` format. When `url` is provided the cookie is stored
+     * as if it was received in a response from that URL, applying the same
+     * matching rules as a real response; otherwise the cookie must carry
+     * an explicit domain. */
+    setCookie(cookie: Cookie | string, url?: string | URL): void;
+    /** Deletes cookies with the given name, optionally narrowed by domain
+     * and path. Returns the number of cookies removed. */
+    deleteCookie(
+      name: string,
+      options?: { domain?: string; path?: string },
+    ): number;
+    /** Removes all cookies from the jar. */
+    clear(): void;
+    /** Returns all cookies in the jar, suitable for persisting and seeding
+     * a new jar. */
+    toJSON(): Cookie[];
+    /** Closes the jar. HTTP clients the jar was attached to keep using its
+     * cookies; closing only invalidates this handle. */
+    close(): void;
+    [Symbol.dispose](): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A `Map`-like view over the cookies of a `Cookie` request header, for
+   * handling cookies in servers. Works with both `Deno.serve()` and
+   * `node:http`:
+   *
+   * ```ts
+   * Deno.serve((request) => {
+   *   const cookies = new Deno.CookieMap(request.headers);
+   *   const theme = cookies.get("theme") ?? "light";
+   *   cookies.set("theme", theme, { path: "/" });
+   *   const headers = new Headers();
+   *   for (const setCookie of cookies.toSetCookieStrings()) {
+   *     headers.append("set-cookie", setCookie);
+   *   }
+   *   return new Response(`theme: ${theme}`, { headers });
+   * });
+   * ```
+   *
+   * Requires the `--unstable-cookies` flag.
+   *
+   * @category Fetch
+   * @experimental
+   */
+  export class CookieMap {
+    /** Creates a cookie map from a `Cookie` header value or a `Headers`
+     * object (the `cookie` header is read). */
+    constructor(init?: string | Headers | null);
+    /** The number of cookies in the map. */
+    readonly size: number;
+    /** Returns the value of a cookie, or `undefined`. */
+    get(name: string): string | undefined;
+    has(name: string): boolean;
+    /** Sets a cookie value and records a `Set-Cookie` header for it, which
+     * can be retrieved via {@linkcode CookieMap.toSetCookieStrings}.
+     * Attributes for the header may be passed via `options`. */
+    set(
+      name: string,
+      value: string,
+      options?: Omit<Cookie, "name" | "value">,
+    ): this;
+    /** Deletes a cookie and records an expiring `Set-Cookie` header for
+     * it. Pass `domain`/`path` if the cookie was set with them. Returns
+     * whether the cookie was in the map. */
+    delete(name: string, options?: { domain?: string; path?: string }): boolean;
+    entries(): [string, string][];
+    keys(): string[];
+    values(): string[];
+    forEach(
+      callback: (value: string, name: string, map: CookieMap) => void,
+      thisArg?: unknown,
+    ): void;
+    [Symbol.iterator](): IterableIterator<[string, string]>;
+    /** Serializes the current cookies into a `Cookie` request header
+     * value. */
+    toString(): string;
+    /** Returns the cookies as a plain name/value record. */
+    toJSON(): Record<string, string>;
+    /** Returns one `Set-Cookie` header value for every mutation (set or
+     * delete) made through this map, to be applied to a response. */
+    toSetCookieStrings(): string[];
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Unstable extensions to {@linkcode Deno.CreateHttpClientOptions}.
+   *
+   * @category Fetch
+   * @experimental
+   */
+  export interface CreateHttpClientOptions {
+    /** A cookie jar to use for requests made with this client. Cookies set
+     * by responses are stored in the jar and sent with subsequent matching
+     * requests, including across redirects. Pass `true` to create a fresh
+     * jar, accessible via {@linkcode HttpClient.cookieJar}. A request with
+     * an explicit `Cookie` header bypasses the jar for that request.
+     *
+     * Requires the `--unstable-cookies` flag.
+     *
+     * @experimental
+     */
+    cookieJar?: CookieJar | true;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Unstable extensions to {@linkcode Deno.HttpClient}.
+   *
+   * @category Fetch
+   * @experimental
+   */
+  export interface HttpClient {
+    /** The cookie jar attached to this client via the `cookieJar` option
+     * of {@linkcode Deno.createHttpClient}, if any.
+     *
+     * @experimental
+     */
+    readonly cookieJar: CookieJar | undefined;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    *  Creates a presentable WebGPU surface from given window and
    *  display handles.
    *

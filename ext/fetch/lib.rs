@@ -1,5 +1,6 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 
+pub mod cookies;
 pub mod dns;
 mod fs_fetch_handler;
 mod proxy;
@@ -25,6 +26,7 @@ use std::task::Poll;
 use async_compression::tokio::bufread::BrotliDecoder;
 use async_compression::tokio::bufread::GzipDecoder;
 use bytes::Bytes;
+use cookies::CookieError;
 // Re-export data_url
 pub use data_url;
 use data_url::DataUrl;
@@ -53,6 +55,7 @@ use deno_core::url;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_error::JsErrorBox;
+use deno_features::FeatureChecker;
 pub use deno_fs::FsError;
 use deno_path_util::PathToUrlError;
 use deno_permissions::OpenAccessKind;
@@ -75,11 +78,13 @@ use http::header::ACCEPT_ENCODING;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
 use http::header::CONTENT_LENGTH;
+use http::header::COOKIE;
 use http::header::HOST;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::PROXY_AUTHORIZATION;
 use http::header::RANGE;
+use http::header::SET_COOKIE;
 use http::header::TRANSFER_ENCODING;
 use http::header::USER_AGENT;
 use http_body_util::BodyDataStream;
@@ -160,6 +165,16 @@ deno_core::extension!(deno_fetch,
     op_utf8_to_byte_string,
     op_fetch_custom_client,
     op_fetch_promise_is_settled,
+    op_cookie_jar_new,
+    op_cookie_jar_cookie_header,
+    op_cookie_jar_get_cookies,
+    op_cookie_jar_entries,
+    op_cookie_jar_set_cookie,
+    op_cookie_jar_delete_cookie,
+    op_cookie_jar_clear,
+    op_cookie_parse,
+    op_cookie_serialize,
+    op_cookie_parse_cookie_header,
   ],
   lazy_loaded_js = [
     "20_headers.js",
@@ -169,6 +184,7 @@ deno_core::extension!(deno_fetch,
     "23_request.js",
     "23_response.js",
     "26_fetch.js",
+    "27_cookies.js",
     "27_eventsource.js"
   ],
   options = {
@@ -437,11 +453,11 @@ pub fn op_fetch(
   data: Option<Uint8Array>,
   #[smi] resource: Option<ResourceId>,
 ) -> Result<FetchReturn, FetchError> {
-  let (client, allow_host) = if let Some(rid) = client_rid {
+  let (client, allow_host, cookie_store) = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
-    (r.client.clone(), r.allow_host)
+    (r.client.clone(), r.allow_host, r.cookie_store.clone())
   } else {
-    (get_or_create_client_from_state(state)?, false)
+    (get_or_create_client_from_state(state)?, false, None)
   };
 
   let method = Method::from_bytes(&method)?;
@@ -460,9 +476,11 @@ pub fn op_fetch(
       let file_fetch_handler = file_fetch_handler.clone();
       let (future, maybe_cancel_handle) =
         file_fetch_handler.fetch_file(state, &url);
-      let request_rid = state
-        .resource_table
-        .add(FetchRequestResource { future, url });
+      let request_rid = state.resource_table.add(FetchRequestResource {
+        future,
+        url,
+        cookie_store: None,
+      });
       let maybe_cancel_handle_rid = maybe_cancel_handle
         .map(|ch| state.resource_table.add(FetchCancelHandle(ch)));
 
@@ -531,6 +549,18 @@ pub fn op_fetch(
         }
       }
 
+      // If the client has a cookie jar attached, send the matching cookies
+      // unless the request carries an explicit `Cookie` header.
+      if let Some(cookie_store) = &cookie_store
+        && !request.headers().contains_key(COOKIE)
+        && let Some(cookie_header) = cookie_store
+          .borrow_mut()
+          .cookie_header(&url, cookies::now_ms())
+        && let Ok(value) = HeaderValue::from_str(&cookie_header)
+      {
+        request.headers_mut().insert(COOKIE, value);
+      }
+
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
         request_builder_hook(&mut request)
@@ -551,6 +581,7 @@ pub fn op_fetch(
       let request_rid = state.resource_table.add(FetchRequestResource {
         future: Box::pin(fut),
         url,
+        cookie_store,
       });
 
       let cancel_handle_rid =
@@ -577,6 +608,7 @@ pub fn op_fetch(
       let request_rid = state.resource_table.add(FetchRequestResource {
         future: Box::pin(fut),
         url,
+        cookie_store: None,
       });
 
       (request_rid, None)
@@ -649,6 +681,22 @@ pub async fn op_fetch_send(
   };
 
   let status = res.status();
+
+  // Store `Set-Cookie` headers into the client's cookie jar, if any.
+  if let Some(cookie_store) = &request.cookie_store {
+    let mut store = cookie_store.borrow_mut();
+    let now_ms = cookies::now_ms();
+    for value in res.headers().get_all(SET_COOKIE) {
+      if let Ok(value) = std::str::from_utf8(value.as_bytes())
+        && let Some(parsed) = cookies::parse_set_cookie(value)
+      {
+        // Cookies the storage model rejects are silently ignored, like in
+        // a browser.
+        let _ = store.store_response_cookie(parsed, &request.url, now_ms);
+      }
+    }
+  }
+
   let url = request.url.into();
   let mut res_headers = Vec::new();
   for (key, val) in res.headers().iter() {
@@ -679,6 +727,7 @@ type CancelableResponseResult =
 pub struct FetchRequestResource {
   pub future: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
   pub url: Url,
+  pub cookie_store: Option<Rc<RefCell<cookies::CookieStore>>>,
 }
 
 impl Resource for FetchRequestResource {
@@ -811,6 +860,7 @@ impl Resource for FetchResponseResource {
 pub struct HttpClientResource {
   pub client: Client,
   pub allow_host: bool,
+  pub cookie_store: Option<Rc<RefCell<cookies::CookieStore>>>,
 }
 
 impl Resource for HttpClientResource {
@@ -820,9 +870,267 @@ impl Resource for HttpClientResource {
 }
 
 impl HttpClientResource {
-  fn new(client: Client, allow_host: bool) -> Self {
-    Self { client, allow_host }
+  fn new(
+    client: Client,
+    allow_host: bool,
+    cookie_store: Option<Rc<RefCell<cookies::CookieStore>>>,
+  ) -> Self {
+    Self {
+      client,
+      allow_host,
+      cookie_store,
+    }
   }
+}
+
+pub const UNSTABLE_COOKIES_FEATURE_NAME: &str = "cookies";
+
+#[derive(Default)]
+pub struct CookieJarResource {
+  pub store: Rc<RefCell<cookies::CookieStore>>,
+}
+
+impl Resource for CookieJarResource {
+  fn name(&self) -> Cow<'_, str> {
+    "cookieJar".into()
+  }
+}
+
+/// The JS-facing representation of a cookie, used by `Deno.Cookie`,
+/// `Deno.CookieJar` and `Deno.CookieMap`.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsCookie {
+  pub name: String,
+  pub value: String,
+  #[serde(default)]
+  pub domain: Option<String>,
+  #[serde(default)]
+  pub path: Option<String>,
+  /// Milliseconds since the epoch.
+  #[serde(default)]
+  pub expires: Option<f64>,
+  /// Seconds.
+  #[serde(default)]
+  pub max_age: Option<f64>,
+  #[serde(default)]
+  pub secure: bool,
+  #[serde(default)]
+  pub http_only: bool,
+  #[serde(default)]
+  pub same_site: Option<String>,
+  #[serde(default)]
+  pub partitioned: bool,
+  /// Output only; ignored when storing a cookie.
+  #[serde(default)]
+  pub host_only: bool,
+}
+
+impl JsCookie {
+  fn into_parsed(self) -> Result<cookies::ParsedCookie, CookieError> {
+    let same_site = match &self.same_site {
+      Some(s) => Some(
+        cookies::SameSite::parse(s)
+          .ok_or(CookieError::InvalidAttribute("sameSite"))?,
+      ),
+      None => None,
+    };
+    Ok(cookies::ParsedCookie {
+      name: self.name,
+      value: self.value,
+      domain: self
+        .domain
+        .map(|d| d.strip_prefix('.').unwrap_or(&d).to_ascii_lowercase()),
+      path: self.path,
+      expires_ms: self.expires.map(|e| e as i64),
+      max_age: self.max_age.map(|m| m as i64),
+      secure: self.secure,
+      http_only: self.http_only,
+      same_site,
+      partitioned: self.partitioned,
+    })
+  }
+
+  fn from_parsed(cookie: cookies::ParsedCookie) -> JsCookie {
+    JsCookie {
+      name: cookie.name,
+      value: cookie.value,
+      domain: cookie.domain,
+      path: cookie.path,
+      expires: cookie.expires_ms.map(|e| e as f64),
+      max_age: cookie.max_age.map(|m| m as f64),
+      secure: cookie.secure,
+      http_only: cookie.http_only,
+      same_site: cookie.same_site.map(|s| s.as_str().to_string()),
+      partitioned: cookie.partitioned,
+      host_only: false,
+    }
+  }
+
+  fn from_stored(cookie: cookies::StoredCookie) -> JsCookie {
+    JsCookie {
+      name: cookie.name,
+      value: cookie.value,
+      domain: Some(cookie.domain),
+      path: Some(cookie.path),
+      expires: cookie.expiry_ms.map(|e| e as f64),
+      max_age: None,
+      secure: cookie.secure,
+      http_only: cookie.http_only,
+      same_site: cookie.same_site.map(|s| s.as_str().to_string()),
+      partitioned: cookie.partitioned,
+      host_only: cookie.host_only,
+    }
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_cookie_jar_new(state: &mut OpState) -> ResourceId {
+  state
+    .borrow::<Arc<FeatureChecker>>()
+    .check_or_exit(UNSTABLE_COOKIES_FEATURE_NAME, "Deno.CookieJar");
+  state.resource_table.add(CookieJarResource::default())
+}
+
+#[op2]
+#[string]
+pub fn op_cookie_jar_cookie_header(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] url: String,
+) -> Result<String, CookieError> {
+  let jar = state.resource_table.get::<CookieJarResource>(rid)?;
+  let url = Url::parse(&url)?;
+  Ok(
+    jar
+      .store
+      .borrow_mut()
+      .cookie_header(&url, cookies::now_ms())
+      .unwrap_or_default(),
+  )
+}
+
+#[op2]
+#[serde]
+pub fn op_cookie_jar_get_cookies(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] url: String,
+) -> Result<Vec<JsCookie>, CookieError> {
+  let jar = state.resource_table.get::<CookieJarResource>(rid)?;
+  let url = Url::parse(&url)?;
+  Ok(
+    jar
+      .store
+      .borrow_mut()
+      .get_cookies(&url, cookies::now_ms())
+      .into_iter()
+      .map(JsCookie::from_stored)
+      .collect(),
+  )
+}
+
+#[op2]
+#[serde]
+pub fn op_cookie_jar_entries(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<Vec<JsCookie>, CookieError> {
+  let jar = state.resource_table.get::<CookieJarResource>(rid)?;
+  Ok(
+    jar
+      .store
+      .borrow_mut()
+      .entries(cookies::now_ms())
+      .into_iter()
+      .map(JsCookie::from_stored)
+      .collect(),
+  )
+}
+
+#[op2]
+pub fn op_cookie_jar_set_cookie(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[serde] cookie: JsCookie,
+  #[string] url: String,
+) -> Result<(), CookieError> {
+  let jar = state.resource_table.get::<CookieJarResource>(rid)?;
+  let parsed = cookie.into_parsed()?;
+  if !cookies::valid_cookie_name(&parsed.name) {
+    return Err(CookieError::InvalidName);
+  }
+  if !cookies::valid_cookie_value(&parsed.value) {
+    return Err(CookieError::InvalidValue);
+  }
+  let mut store = jar.store.borrow_mut();
+  if url.is_empty() {
+    store.store_explicit_cookie(parsed, cookies::now_ms())
+  } else {
+    let url = Url::parse(&url)?;
+    store.store_response_cookie(parsed, &url, cookies::now_ms())
+  }
+}
+
+#[op2(fast)]
+#[smi]
+pub fn op_cookie_jar_delete_cookie(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] name: String,
+  #[string] domain: String,
+  #[string] path: String,
+) -> Result<u32, CookieError> {
+  let jar = state.resource_table.get::<CookieJarResource>(rid)?;
+  let domain = if domain.is_empty() {
+    None
+  } else {
+    Some(domain.as_str())
+  };
+  let path = if path.is_empty() {
+    None
+  } else {
+    Some(path.as_str())
+  };
+  Ok(jar.store.borrow_mut().delete(&name, domain, path) as u32)
+}
+
+#[op2(fast)]
+pub fn op_cookie_jar_clear(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> Result<(), CookieError> {
+  let jar = state.resource_table.get::<CookieJarResource>(rid)?;
+  jar.store.borrow_mut().clear();
+  Ok(())
+}
+
+#[op2]
+#[serde]
+pub fn op_cookie_parse(
+  #[string] header: String,
+) -> Result<JsCookie, CookieError> {
+  let parsed =
+    cookies::parse_set_cookie(&header).ok_or(CookieError::InvalidSetCookie)?;
+  Ok(JsCookie::from_parsed(parsed))
+}
+
+#[op2]
+#[string]
+pub fn op_cookie_serialize(
+  #[serde] cookie: JsCookie,
+) -> Result<String, CookieError> {
+  let parsed = cookie.into_parsed()?;
+  cookies::serialize_set_cookie(&parsed)
+}
+
+#[op2]
+#[serde]
+pub fn op_cookie_parse_cookie_header(
+  #[string] header: String,
+) -> Vec<(String, String)> {
+  cookies::parse_cookie_header(&header)
 }
 
 #[derive(Debug, FromV8)]
@@ -840,6 +1148,7 @@ pub struct CreateHttpClientArgs {
   #[from_v8(default)]
   allow_host: bool,
   local_address: Option<String>,
+  cookie_jar_rid: Option<u32>,
 }
 
 #[op2(stack_trace)]
@@ -883,6 +1192,17 @@ pub fn op_fetch_custom_client(
     }
   }
 
+  let cookie_store = match args.cookie_jar_rid {
+    Some(rid) => Some(
+      state
+        .resource_table
+        .get::<CookieJarResource>(rid)?
+        .store
+        .clone(),
+    ),
+    None => None,
+  };
+
   let permissions = state.borrow::<PermissionsContainer>().clone();
   let options = state.borrow::<Options>();
   let ca_certs = args
@@ -922,9 +1242,11 @@ pub fn op_fetch_custom_client(
     },
   )?;
 
-  let rid = state
-    .resource_table
-    .add(HttpClientResource::new(client, args.allow_host));
+  let rid = state.resource_table.add(HttpClientResource::new(
+    client,
+    args.allow_host,
+    cookie_store,
+  ));
   Ok(rid)
 }
 
