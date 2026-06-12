@@ -498,12 +498,12 @@ pub fn format_html(
           } else {
             let mut lax_css_config = get_resolved_lax_css_config(fmt_options);
             lax_css_config.line_width = hints.print_width as u32;
-            lax_css::format_text(&path, text, &lax_css_config)
-              .map(|formatted| match formatted {
+            lax_css::format_text(&path, text, &lax_css_config).map(
+              |formatted| match formatted {
                 Some(formatted) => Cow::from(formatted),
                 None => Cow::from(text),
-              })
-              .map_err(AnyError::from)
+              },
+            )
           }
         }
         "sass" => {
