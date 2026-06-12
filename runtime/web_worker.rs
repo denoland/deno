@@ -586,7 +586,7 @@ impl WebWorker {
       ops::tty::deno_tty::init(),
       ops::http::deno_http_runtime::init(),
       deno_bundle_runtime::deno_bundle_runtime::init(services.bundle_provider),
-      ops::desktop::deno_desktop::init(),
+      ops::desktop::deno_desktop::lazy_init(),
       ops::bootstrap::deno_bootstrap::init(
         options.startup_snapshot.and_then(|_| Default::default()),
         false,
