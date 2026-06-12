@@ -454,7 +454,7 @@ impl<'s> ToV8<'s> for String {
   }
 }
 
-impl<'s> ToV8<'s> for &'static str {
+impl<'s> ToV8<'s> for &str {
   type Error = Infallible;
   #[inline]
   fn to_v8<'i>(
@@ -936,6 +936,24 @@ where
     let buf = self
       .into_iter()
       .map(|v| v.to_v8(scope))
+      .collect::<Result<Vec<_>, _>>()?;
+    Ok(v8::Array::new_with_elements(scope, &buf).into())
+  }
+}
+
+impl<'s, T> ToV8<'s> for &[T]
+where
+  T: Copy + ToV8<'s>,
+{
+  type Error = T::Error;
+
+  fn to_v8(
+    self,
+    scope: &mut v8::PinScope<'s, '_>,
+  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
+    let buf = self
+      .iter()
+      .map(|v| (*v).to_v8(scope))
       .collect::<Result<Vec<_>, _>>()?;
     Ok(v8::Array::new_with_elements(scope, &buf).into())
   }

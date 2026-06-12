@@ -12,6 +12,7 @@ use syn::Data;
 use syn::DeriveInput;
 use syn::Error;
 use syn::Fields;
+use syn::Generics;
 use syn::parse2;
 use syn::spanned::Spanned;
 
@@ -19,6 +20,7 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
   let input = parse2::<DeriveInput>(item)?;
   let span = input.span();
   let ident = input.ident;
+  let generics = input.generics;
 
   let out = match input.data {
     Data::Struct(data) => {
@@ -26,16 +28,19 @@ pub fn to_v8(item: TokenStream) -> Result<TokenStream, Error> {
       let body = r#struct::get_body(span, data)?;
 
       create_impl(
-        ident,
+        &ident,
+        &generics,
         quote! {
           let Self #fields = self;
           #body
         },
       )
     }
-    Data::Enum(data) => {
-      create_impl(ident, r#enum::get_body(span, input.attrs, data)?)
-    }
+    Data::Enum(data) => create_impl(
+      &ident,
+      &generics,
+      r#enum::get_body(span, input.attrs, data)?,
+    ),
     Data::Union(_) => return Err(Error::new(span, "Unions are not supported")),
   };
 
@@ -98,15 +103,55 @@ fn convert_or_serde<T: quote::ToTokens>(
   }
 }
 
-fn create_impl(ident: impl ToTokens, body: TokenStream) -> TokenStream {
+fn create_impl(
+  ident: impl ToTokens,
+  generics: &Generics,
+  body: TokenStream,
+) -> TokenStream {
+  // Collect lifetime names already in use on the struct, to avoid E0403.
+  let used: std::collections::HashSet<String> = generics
+    .lifetimes()
+    .map(|lt| lt.lifetime.ident.to_string())
+    .collect();
+
+  // Pick a scope lifetime ('a preferred, fall back to __scope) that doesn't shadow a struct lt.
+  let scope_lt_name = ["a", "__scope", "__v8scope"]
+    .iter()
+    .copied()
+    .find(|n| !used.contains(*n))
+    .expect("no free lifetime name for ToV8 scope");
+  let scope_lt = syn::Lifetime::new(
+    &format!("'{}", scope_lt_name),
+    proc_macro2::Span::call_site(),
+  );
+
+  // Pick an inner lifetime ('i preferred) that doesn't shadow a struct lt or == scope_lt.
+  let inner_lt_name = ["i", "__inner", "__v8inner"]
+    .iter()
+    .copied()
+    .find(|n| !used.contains(*n) && *n != scope_lt_name)
+    .expect("no free lifetime name for PinScope inner lifetime");
+  let inner_lt = syn::Lifetime::new(
+    &format!("'{}", inner_lt_name),
+    proc_macro2::Span::call_site(),
+  );
+
+  // Build impl generics: scope_lt + any generics on the struct.
+  let lp = syn::LifetimeParam::new(scope_lt.clone());
+  let mut all_params = generics.clone();
+  all_params.params.insert(0, syn::GenericParam::Lifetime(lp));
+
+  let (impl_generics, _, where_clause) = all_params.split_for_impl();
+  let (_, ty_generics, _) = generics.split_for_impl();
+
   quote! {
-    impl<'a> ::deno_core::convert::ToV8<'a> for #ident {
+    impl #impl_generics ::deno_core::convert::ToV8<#scope_lt> for #ident #ty_generics #where_clause {
       type Error = ::deno_error::JsErrorBox;
 
-      fn to_v8<'i>(
+      fn to_v8<#inner_lt>(
         self,
-        __scope: &mut ::deno_core::v8::PinScope<'a, 'i>,
-      ) -> Result<::deno_core::v8::Local<'a, ::deno_core::v8::Value>, Self::Error>
+        __scope: &mut ::deno_core::v8::PinScope<#scope_lt, #inner_lt>,
+      ) -> Result<::deno_core::v8::Local<#scope_lt, ::deno_core::v8::Value>, Self::Error>
       {
         #body
       }
