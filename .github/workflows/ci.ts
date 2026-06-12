@@ -704,9 +704,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               "strip ./denort",
               `zip -r denort-${buildItem.arch}-unknown-linux-gnu.zip denort`,
               `shasum -a 256 denort-${buildItem.arch}-unknown-linux-gnu.zip > denort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
-              "strip ./libdenort.so",
-              `zip -r libdenort-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so`,
-              `shasum -a 256 libdenort-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum`,
+              // libdenort.so is only built on main/tags and ci-full PRs; skip
+              // gracefully when it's absent (e.g. regular PR builds).
+              `if [ -f libdenort.so ]; then strip ./libdenort.so; zip -r libdenort-${buildItem.arch}-unknown-linux-gnu.zip libdenort.so; shasum -a 256 libdenort-${buildItem.arch}-unknown-linux-gnu.zip > libdenort-${buildItem.arch}-unknown-linux-gnu.zip.sha256sum; fi`,
               "./deno types > lib.deno.d.ts",
             ],
           },
@@ -898,14 +898,23 @@ const buildJobs = buildItems.map((rawBuildItem) => {
                 // output fs space before and after building
                 "df -h",
                 `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
-                // On Linux, strip the first-pass binaries before building the
-                // denort_desktop cdylib. Unstripped release binaries are several
-                // GB; stripping frees ~80% of that space so the cdylib link can
-                // complete on standard GitHub-hosted runners (~14 GB disk).
+                "df -h",
+              ],
+            },
+            {
+              // Build the desktop runtime shared library (libdenort cdylib) for
+              // laufey-based desktop apps. Only on main/tags and ci-full PRs
+              // because the release build on Linux uses ThinLTO which consumes
+              // more RAM than standard GitHub-hosted runners can provide when
+              // combined with the earlier deno/denort/test_server builds.
+              name: "Build denort_desktop",
+              if: hasCiFullLabel.or(isMainOrTag).and(isDenoland),
+              run: [
+                // Strip the earlier binaries to free several GB of disk before
+                // linking the cdylib (unstripped Linux release binaries are ~8 GB).
                 'if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi',
-                // Build the desktop runtime shared library (libdenort cdylib) for
-                // laufey-based desktop apps. Separate invocation because the
-                // panic-trace feature only applies to the deno/denort binaries.
+                // Separate invocation because the panic-trace feature only
+                // applies to the deno/denort binaries.
                 "cargo build --release --locked -p denort_desktop",
                 "df -h",
               ],

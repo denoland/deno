@@ -762,6 +762,10 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          df -h
+      - name: Build denort_desktop
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (contains(github.event.pull_request.labels.*.name, ''ci-full'') || github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        run: |-
           if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
@@ -1786,6 +1790,10 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          df -h
+      - name: Build denort_desktop
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (contains(github.event.pull_request.labels.*.name, ''ci-full'') || github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        run: |-
           if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
@@ -2740,6 +2748,10 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          df -h
+      - name: Build denort_desktop
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (contains(github.event.pull_request.labels.*.name, ''ci-full'') || github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        run: |-
           if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
@@ -3576,6 +3588,10 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          df -h
+      - name: Build denort_desktop
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && (contains(github.event.pull_request.labels.*.name, ''ci-full'') || github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/''))'
+        run: |-
           if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
@@ -4154,6 +4170,10 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          df -h
+      - name: Build denort_desktop
+        if: '(contains(github.event.pull_request.labels.*.name, ''ci-full'') || github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && github.repository == ''denoland/deno'''
+        run: |-
           if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
@@ -4182,9 +4202,7 @@ jobs:
           strip ./denort
           zip -r denort-x86_64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-x86_64-unknown-linux-gnu.zip > denort-x86_64-unknown-linux-gnu.zip.sha256sum
-          strip ./libdenort.so
-          zip -r libdenort-x86_64-unknown-linux-gnu.zip libdenort.so
-          shasum -a 256 libdenort-x86_64-unknown-linux-gnu.zip > libdenort-x86_64-unknown-linux-gnu.zip.sha256sum
+          if [ -f libdenort.so ]; then strip ./libdenort.so; zip -r libdenort-x86_64-unknown-linux-gnu.zip libdenort.so; shasum -a 256 libdenort-x86_64-unknown-linux-gnu.zip > libdenort-x86_64-unknown-linux-gnu.zip.sha256sum; fi
           ./deno types > lib.deno.d.ts
       - name: Build bsdiff helper
         if: 'github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
@@ -6120,6 +6138,10 @@ jobs:
         run: |-
           df -h
           cargo build --release --locked -p deno -p denort -p test_server --bin deno --bin denort --bin test_server --features=deno/panic-trace
+          df -h
+      - name: Build denort_desktop
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && (contains(github.event.pull_request.labels.*.name, ''ci-full'') || github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && github.repository == ''denoland/deno'''
+        run: |-
           if [ "$(uname -s)" = "Linux" ]; then strip target/release/deno target/release/denort target/release/test_server 2>/dev/null || true; df -h; fi
           cargo build --release --locked -p denort_desktop
           df -h
@@ -6150,9 +6172,7 @@ jobs:
           strip ./denort
           zip -r denort-aarch64-unknown-linux-gnu.zip denort
           shasum -a 256 denort-aarch64-unknown-linux-gnu.zip > denort-aarch64-unknown-linux-gnu.zip.sha256sum
-          strip ./libdenort.so
-          zip -r libdenort-aarch64-unknown-linux-gnu.zip libdenort.so
-          shasum -a 256 libdenort-aarch64-unknown-linux-gnu.zip > libdenort-aarch64-unknown-linux-gnu.zip.sha256sum
+          if [ -f libdenort.so ]; then strip ./libdenort.so; zip -r libdenort-aarch64-unknown-linux-gnu.zip libdenort.so; shasum -a 256 libdenort-aarch64-unknown-linux-gnu.zip > libdenort-aarch64-unknown-linux-gnu.zip.sha256sum; fi
           ./deno types > lib.deno.d.ts
       - name: Build bsdiff helper
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'')'
