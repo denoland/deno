@@ -309,6 +309,14 @@ pub fn op_tls_cert_resolver_resolve_error(
   lookup.resolve(sni, Err(error))
 }
 
+#[op2(fast)]
+pub fn op_tls_cert_resolver_invalidate(
+  #[cppgc] lookup: &TlsKeyLookup,
+  #[string] sni: String,
+) {
+  lookup.invalidate(&sni)
+}
+
 #[op2(stack_trace)]
 pub fn op_tls_start(
   state: Rc<RefCell<OpState>>,

@@ -116,12 +116,14 @@ enum TlsKeyState {
   Resolved(Result<TlsKey, ErrorType>),
 }
 
+type TlsKeyCache = Rc<RefCell<HashMap<String, TlsKeyState>>>;
+
 struct TlsKeyResolverInner {
   resolution_tx: mpsc::UnboundedSender<(
     String,
     broadcast::Sender<Result<TlsKey, ErrorType>>,
   )>,
-  cache: RefCell<HashMap<String, TlsKeyState>>,
+  cache: TlsKeyCache,
 }
 
 #[derive(Clone)]
@@ -184,16 +186,18 @@ impl Debug for TlsKeyResolver {
 
 pub fn new_resolver() -> (TlsKeyResolver, TlsKeyLookup) {
   let (resolution_tx, resolution_rx) = mpsc::unbounded_channel();
+  let cache = TlsKeyCache::default();
   (
     TlsKeyResolver {
       inner: Rc::new(TlsKeyResolverInner {
         resolution_tx,
-        cache: Default::default(),
+        cache: cache.clone(),
       }),
     },
     TlsKeyLookup {
       resolution_rx: RefCell::new(resolution_rx),
       pending: Default::default(),
+      cache,
     },
   )
 }
@@ -249,6 +253,7 @@ pub struct TlsKeyLookup {
   >,
   pending:
     RefCell<HashMap<String, broadcast::Sender<Result<TlsKey, ErrorType>>>>,
+  cache: TlsKeyCache,
 }
 
 // SAFETY: we're sure `TlsKeyLookup` can be GCed
@@ -281,6 +286,13 @@ impl TlsKeyLookup {
       .remove(&sni)
       .unwrap()
       .send(res.map_err(|e| Arc::new(e.into_boxed_str())));
+  }
+
+  /// Remove a cached resolution for the given SNI hostname, causing the
+  /// next TLS handshake for that hostname to trigger a fresh lookup. Used
+  /// to swap certificates without restarting the listener (eg. ACME renewal).
+  pub fn invalidate(&self, sni: &str) {
+    self.cache.borrow_mut().remove(sni);
   }
 }
 

@@ -1288,7 +1288,8 @@ function serve(arg1, arg2) {
 }
 
 function serveInner(options, handler) {
-  const wantsHttps = hasTlsKeyPairOptions(options);
+  const wantsAcme = options.acme !== undefined && options.acme !== null;
+  const wantsHttps = hasTlsKeyPairOptions(options) || wantsAcme;
   const wantsUnix = ObjectHasOwn(options, "path");
   const wantsVsock = ObjectHasOwn(options, "cid");
   const wantsTunnel = options.tunnel === true;
@@ -1374,7 +1375,27 @@ function serveInner(options, handler) {
   }
 
   let listener;
-  if (wantsHttps) {
+  let acmeManager;
+  if (wantsAcme) {
+    if (options.cert || options.key) {
+      throw new TypeError(
+        "The 'acme' option cannot be combined with 'cert' / 'key'",
+      );
+    }
+    const { createAcmeCertManager } = core.loadExtScript(
+      "ext:deno_http/03_acme.ts",
+    );
+    acmeManager = createAcmeCertManager(options.acme, serveInner);
+    const resolveKeyPair = (sni) => acmeManager.resolveKeyPair(sni);
+    listenOpts[internals.resolverSymbol] = resolveKeyPair;
+    listenOpts.alpnProtocols = ["h2", "http/1.1"];
+    listener = listenTls(listenOpts);
+    listenOpts.port = listener.addr.port;
+    acmeManager.setInvalidator(
+      internals.tlsKeyResolverInvalidators.get(resolveKeyPair),
+    );
+    acmeManager.start();
+  } else if (wantsHttps) {
     if (!options.cert || !options.key) {
       throw new TypeError(
         "Both 'cert' and 'key' must be provided to enable HTTPS",
@@ -1408,7 +1429,17 @@ function serveInner(options, handler) {
     }
   };
 
-  return serveHttpOnListener(listener, signal, handler, onError, onListen);
+  const server = serveHttpOnListener(
+    listener,
+    signal,
+    handler,
+    onError,
+    onListen,
+  );
+  if (acmeManager !== undefined) {
+    PromisePrototypeThen(server.finished, () => acmeManager.stop());
+  }
+  return server;
 }
 
 /**

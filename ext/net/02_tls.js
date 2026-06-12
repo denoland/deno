@@ -8,6 +8,7 @@ const {
   op_net_connect_tls,
   op_net_listen_tls,
   op_tls_cert_resolver_create,
+  op_tls_cert_resolver_invalidate,
   op_tls_cert_resolver_poll,
   op_tls_cert_resolver_resolve,
   op_tls_cert_resolver_resolve_error,
@@ -19,6 +20,7 @@ const {
 } = core.ops;
 const {
   ObjectDefineProperty,
+  SafeWeakMap,
   TypeError,
   Symbol,
   SymbolFor,
@@ -229,8 +231,17 @@ function startTlsInternal(
 const resolverSymbol = SymbolFor("unstableSniResolver");
 const serverNameSymbol = SymbolFor("unstableServerName");
 
+// Maps a resolver callback to a function that drops the cached resolution
+// for a given SNI hostname, so the next handshake re-invokes the callback.
+// Used by ACME certificate renewal in `Deno.serve`.
+const tlsKeyResolverInvalidators = new SafeWeakMap();
+
 function createTlsKeyResolver(callback) {
   const { 0: resolver, 1: lookup } = op_tls_cert_resolver_create();
+  tlsKeyResolverInvalidators.set(
+    callback,
+    (sni) => op_tls_cert_resolver_invalidate(lookup, sni),
+  );
   (async () => {
     while (true) {
       const sni = await op_tls_cert_resolver_poll(lookup);
@@ -256,6 +267,7 @@ function createTlsKeyResolver(callback) {
 internals.resolverSymbol = resolverSymbol;
 internals.serverNameSymbol = serverNameSymbol;
 internals.createTlsKeyResolver = createTlsKeyResolver;
+internals.tlsKeyResolverInvalidators = tlsKeyResolverInvalidators;
 internals.getPeerCertificate = _getPeerCertificate;
 
 return {

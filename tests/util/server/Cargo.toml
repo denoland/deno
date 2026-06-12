@@ -42,6 +42,7 @@ parking_lot.workspace = true
 percent-encoding.workspace = true
 pretty_assertions.workspace = true
 prost.workspace = true
+rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
 reqwest.workspace = true
 rustls.workspace = true
 rustls-pemfile.workspace = true
