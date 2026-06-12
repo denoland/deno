@@ -478,6 +478,9 @@ class TapContext {
   // Per-context "warning printed" flag for the `--test-only` diagnostic.
   // Mutated by `runTapEntry` when a child uses `only: true`.
   onlyWarningEmitted = false;
+  // When set via `runOnly(true)`, only direct subtests registered with the
+  // `only: true` option are executed; all other subtests are filtered out.
+  #runOnly = false;
 
   constructor(name, depth, parentChildren) {
     this.#name = name;
@@ -520,8 +523,18 @@ class TapContext {
   // Subtest registration: `t.test(name, opts?, fn?)` queues a subtest that runs
   // sequentially in the order it was registered. Concurrent calls (Promise.all)
   // are serialized through the parent's subtest tail.
+  runOnly(value) {
+    this.#runOnly = !!value;
+    return null;
+  }
+
   test(name, options, fn) {
     const prepared = prepareOptions(name, options, fn, {});
+    // In run-only mode, subtests not flagged with `only: true` are filtered
+    // out entirely: they are neither registered nor reported, matching Node.
+    if (this.#runOnly && !prepared.options.only) {
+      return PromiseResolve();
+    }
     this.#subtestCount++;
     const n = this.#subtestCount;
     const childDepth = this.#depth + 1;
@@ -920,6 +933,9 @@ class NodeTestContext {
   #planAssert;
   #beforeEachHooks = [];
   #afterEachHooks = [];
+  // When set via `runOnly(true)`, only direct subtests registered with the
+  // `only: true` option are executed; all other subtests are skipped.
+  #runOnly = false;
 
   constructor(t, parent, name) {
     this.#denoContext = t;
@@ -983,8 +999,8 @@ class NodeTestContext {
     return mock;
   }
 
-  runOnly() {
-    notImplemented("test.TestContext.runOnly");
+  runOnly(value) {
+    this.#runOnly = !!value;
     return null;
   }
 
@@ -1054,7 +1070,8 @@ class NodeTestContext {
             }
           }
         },
-        ignore: !!prepared.options.todo || !!prepared.options.skip,
+        ignore: !!prepared.options.todo || !!prepared.options.skip ||
+          (this.#runOnly && !prepared.options.only),
         sanitizeExit: false,
         sanitizeOps: false,
         sanitizeResources: false,

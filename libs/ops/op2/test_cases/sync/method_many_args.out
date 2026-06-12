@@ -22,6 +22,7 @@ impl Big {
                 false,
                 8usize as u8,
                 false,
+                false,
                 Self::v8_fn_ptr as _,
                 Self::slow_function_impl,
                 ::deno_core::AccessorType::None,

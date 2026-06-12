@@ -268,12 +268,108 @@ pub fn throw_js_error_class(
   scope: &mut v8::PinScope,
   error: &dyn JsErrorClass,
 ) {
-  let exception = js_class_and_message_to_exception(
-    scope,
-    &error.get_class(),
-    &error.get_message(),
-  );
+  let exception = build_js_error_class_exception(scope, error);
   scope.throw_exception(exception);
+}
+
+/// Builds a JS exception for `error` using only native V8 APIs, without
+/// re-entering JavaScript.
+///
+/// This mirrors what the JS `Deno.core.buildCustomError` callback does
+/// (restoring the registered error class so `instanceof` holds, and attaching
+/// the additional properties), but never invokes user-reachable JS. That makes
+/// it safe to call from inside a V8 fast call, where re-entering JS is
+/// forbidden: the callback could run an attacker-controlled prototype setter
+/// that detaches an `ArrayBuffer` argument out from under the JIT, a
+/// use-after-free (GHSA-p4r3-6jgx-4cj5).
+///
+/// Reading data properties off the cached `errorConstructors` map and calling
+/// `SetPrototype` / `CreateDataProperty` / `DefineOwnProperty` never execute
+/// user JS, so the fast-call contract is upheld.
+fn build_js_error_class_exception<'s, 'i>(
+  scope: &mut v8::PinScope<'s, 'i>,
+  error: &dyn JsErrorClass,
+) -> v8::Local<'s, v8::Value> {
+  let class = error.get_class();
+  let message = v8::String::new(scope, &error.get_message()).unwrap();
+  let exception = v8::Exception::error(scope, message);
+
+  // `v8::Exception::error` always produces an object, but be defensive.
+  let Ok(exception_obj) = TryInto::<v8::Local<v8::Object>>::try_into(exception)
+  else {
+    return exception;
+  };
+
+  // Restore the exact registered error class (e.g. `RangeError`,
+  // `Deno.errors.NotFound`) by re-parenting the prototype, so that
+  // `err instanceof Deno.errors.NotFound` holds. We never call the class
+  // constructor (that would run JS); we only borrow its `.prototype`.
+  let constructors = JsRealm::exception_state_from_scope(scope)
+    .js_error_constructors
+    .borrow()
+    .clone();
+  if let Some(constructors) = constructors {
+    let constructors = v8::Local::new(scope, constructors);
+    let class_key = v8::String::new(scope, &class).unwrap();
+    if let Some(ctor) = constructors.get(scope, class_key.into())
+      && let Ok(ctor) = TryInto::<v8::Local<v8::Object>>::try_into(ctor)
+    {
+      let prototype_key = v8::String::new(scope, "prototype").unwrap();
+      if let Some(prototype) = ctor.get(scope, prototype_key.into())
+        && prototype.is_object()
+      {
+        exception_obj.set_prototype(scope, prototype);
+      }
+    }
+  }
+
+  // Set `name` explicitly. The registered classes assign `this.name` in their
+  // constructor (an own property), which the prototype swap above does not
+  // reproduce since we never run the constructor. The registration key matches
+  // that assigned name, so using the class here mirrors `new ErrorClass(...)`.
+  let name_key = v8::String::new(scope, "name").unwrap();
+  let class_value = v8::String::new(scope, &class).unwrap();
+  exception_obj.create_data_property(
+    scope,
+    name_key.into(),
+    class_value.into(),
+  );
+
+  // Copy the additional properties (e.g. `code`) and record their keys under
+  // the same symbol `buildCustomError` uses, so the error round-trips back to
+  // Rust via `JsError::from_v8_exception`.
+  let mut added_keys = vec![];
+  for (key, value) in error.get_additional_properties() {
+    let key = v8::String::new(scope, &key).unwrap();
+    // Match `buildCustomError`: don't clobber a property the class defines.
+    if exception_obj.has(scope, key.into()) == Some(true) {
+      continue;
+    }
+    let value = match value {
+      PropertyValue::String(value) => {
+        v8::String::new(scope, &value).unwrap().into()
+      }
+      PropertyValue::Number(value) => v8::Number::new(scope, value).into(),
+    };
+    exception_obj.create_data_property(scope, key.into(), value);
+    added_keys.push(v8::Local::<v8::Value>::from(key));
+  }
+  if !added_keys.is_empty() {
+    let keys_array = v8::Array::new_with_elements(scope, &added_keys);
+    let symbol_name =
+      v8::String::new(scope, "errorAdditionalPropertyKeys").unwrap();
+    let symbol = v8::Symbol::for_key(scope, symbol_name);
+    exception_obj.define_own_property(
+      scope,
+      symbol.into(),
+      keys_array.into(),
+      v8::PropertyAttribute::READ_ONLY
+        | v8::PropertyAttribute::DONT_ENUM
+        | v8::PropertyAttribute::DONT_DELETE,
+    );
+  }
+
+  exception
 }
 
 fn js_class_and_message_to_exception<'s, 'i>(

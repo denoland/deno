@@ -61,9 +61,7 @@ function findClosedPortInRange(
 }
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
     await assertRejects(
@@ -1931,9 +1929,7 @@ Deno.test(
 );
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {

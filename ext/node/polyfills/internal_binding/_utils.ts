@@ -8,14 +8,12 @@ const {
 } = core.loadExtScript("ext:deno_web/00_infra.js");
 const {
   DataView,
-  DataViewPrototypeGetUint16,
   DataViewPrototypeSetUint16,
   Error,
   Int8Array,
   MathMin,
   NumberPOSITIVE_INFINITY,
   SafeRegExp,
-  StringFromCharCode,
   StringPrototypeCharCodeAt,
   StringPrototypeIndexOf,
   StringPrototypeReplace,
@@ -24,8 +22,6 @@ const {
   StringPrototypeTrim,
   StringPrototypeTrimStart,
   TypedArrayPrototypeGetBuffer,
-  TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeSubarray,
   Uint8Array,
 } = primordials;
@@ -160,39 +156,12 @@ function utf16leToBytes(str: string, units?: number) {
     : TypedArrayPrototypeSubarray(byteArray, 0, i * 2);
 }
 
-function bytesToAscii(bytes: Uint8Array) {
-  let res = "";
-  const length = TypedArrayPrototypeGetByteLength(bytes);
-  for (let i = 0; i < length; ++i) {
-    res = `${res}${StringFromCharCode(bytes[i] & 127)}`;
-  }
-  return res;
-}
-
-function bytesToUtf16le(bytes: Uint8Array) {
-  let res = "";
-  const length = TypedArrayPrototypeGetByteLength(bytes);
-  const view = new DataView(
-    TypedArrayPrototypeGetBuffer(bytes),
-    TypedArrayPrototypeGetByteOffset(bytes),
-    length,
-  );
-  for (let i = 0; i < length - 1; i += 2) {
-    res = `${res}${
-      StringFromCharCode(DataViewPrototypeGetUint16(view, i, true))
-    }`;
-  }
-  return res;
-}
-
 return {
   asciiToBytes,
   base64ToBytes,
   base64UrlToBytes,
   hexToBytes,
   utf16leToBytes,
-  bytesToAscii,
-  bytesToUtf16le,
   unhexTable,
 };
 })();

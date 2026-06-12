@@ -22,6 +22,11 @@
       "cwd": "preload_main",
       "args": "run -A --import=./hook.mjs main.mjs",
       "output": "preload_main/main.out"
+    },
+    "redirect": {
+      "cwd": "redirect",
+      "args": "run -A main.mjs",
+      "output": "redirect/main.out"
     }
   }
 }

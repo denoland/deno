@@ -8237,6 +8237,14 @@ fn lsp_code_actions_refactor() {
           }]
         }]
       },
+      "command": {
+        "title": "",
+        "command": "editor.action.rename",
+        "arguments": [[
+          "file:///a/file.ts",
+          { "line": 0, "character": 10 }
+        ]]
+      },
       "isPreferred": true,
       "data": {
         "uri": "file:///a/file.ts",

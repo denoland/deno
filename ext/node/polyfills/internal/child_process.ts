@@ -27,9 +27,11 @@ const {
   RegExpPrototypeTest,
   SafeArrayIterator,
   SafeMap,
+  SafeMapIterator,
   SafePromiseAll,
   SafeRegExp,
   SafeSet,
+  SafeWeakMap,
   String,
   StringPrototypeEndsWith,
   StringPrototypeIndexOf,
@@ -2095,6 +2097,154 @@ const IPC_HANDLE_NET_SERVER = "net.Server";
 // (SharedHandle). Mirrors Node's `handleConversion["net.Native"]`.
 const IPC_HANDLE_NET_NATIVE = "net.Native";
 const IPC_HANDLE_DGRAM_SOCKET = "dgram.Socket";
+const NODE_SOCKET_GET_COUNT = "NODE_SOCKET_GET_COUNT";
+const NODE_SOCKET_COUNT = "NODE_SOCKET_COUNT";
+const NODE_SOCKET_NOTIFY_CLOSE = "NODE_SOCKET_NOTIFY_CLOSE";
+const NODE_SOCKET_CLOSE_ACK = "NODE_SOCKET_CLOSE_ACK";
+
+let nextSocketListKey = 0;
+const socketListsByChild = new SafeWeakMap();
+
+class SocketListSend extends EventEmitter {
+  constructor(child, server) {
+    super();
+    this.child = child;
+    this.key = `socket-list:${++nextSocketListKey}`;
+    this.callbacks = new SafeMap();
+    this.closeCallbacks = new SafeMap();
+    this.seq = 0;
+    this.closed = false;
+    this.onInternalMessage = (message) => {
+      if (!message || message.key !== this.key) {
+        return;
+      }
+      if (message.cmd === NODE_SOCKET_COUNT) {
+        const cb = this.callbacks.get(message.id);
+        if (cb) {
+          this.callbacks.delete(message.id);
+          cb(null, message.count);
+        }
+      } else if (message.cmd === NODE_SOCKET_CLOSE_ACK) {
+        const cb = this.closeCallbacks.get(message.id);
+        if (cb) {
+          this.closeCallbacks.delete(message.id);
+          cb();
+        }
+      }
+    };
+    child.on("internalMessage", this.onInternalMessage);
+    // Flush on both `exit` and `disconnect`: the IPC channel can close while
+    // the child process keeps running, which leaves in-flight requests with no
+    // peer to answer. Either event means no further replies will arrive, so we
+    // resolve pending getConnections()/close() callers rather than hang.
+    this.onClose = () => this._flush();
+    child.once("exit", this.onClose);
+    child.once("disconnect", this.onClose);
+    server._setupWorker(this);
+  }
+
+  _flush() {
+    if (this.closed) {
+      return;
+    }
+    this.closed = true;
+    this.child.removeListener("internalMessage", this.onInternalMessage);
+    this.child.removeListener("exit", this.onClose);
+    this.child.removeListener("disconnect", this.onClose);
+    for (const { 1: cb } of new SafeMapIterator(this.callbacks)) {
+      cb(null, 0);
+    }
+    this.callbacks.clear();
+    for (const { 1: cb } of new SafeMapIterator(this.closeCallbacks)) {
+      cb();
+    }
+    this.closeCallbacks.clear();
+    this.emit("exit", this);
+  }
+
+  getConnections(cb) {
+    if (this.closed || !this.child.connected) {
+      nextTick(cb, null, 0);
+      return;
+    }
+    const id = ++this.seq;
+    this.callbacks.set(id, cb);
+    this.child.send(
+      { cmd: NODE_SOCKET_GET_COUNT, key: this.key, id },
+      (err) => {
+        if (err && this.callbacks.delete(id)) {
+          cb(err);
+        }
+      },
+    );
+  }
+
+  close(cb) {
+    if (this.closed || !this.child.connected) {
+      nextTick(cb);
+      return;
+    }
+    const id = ++this.seq;
+    this.closeCallbacks.set(id, cb);
+    this.child.send(
+      { cmd: NODE_SOCKET_NOTIFY_CLOSE, key: this.key, id },
+      (err) => {
+        if (err && this.closeCallbacks.delete(id)) {
+          cb();
+        }
+      },
+    );
+  }
+}
+
+class SocketListReceive {
+  constructor() {
+    this.sockets = new SafeSet();
+    this.closeCallbacks = [];
+  }
+
+  add(socket) {
+    this.sockets.add(socket);
+    socket.once("close", () => {
+      this.sockets.delete(socket);
+      this._maybeClose();
+    });
+  }
+
+  getConnections() {
+    return this.sockets.size;
+  }
+
+  close(cb) {
+    ArrayPrototypePush(this.closeCallbacks, cb);
+    this._maybeClose();
+  }
+
+  _maybeClose() {
+    if (this.sockets.size !== 0) {
+      return;
+    }
+    const callbacks = this.closeCallbacks;
+    this.closeCallbacks = [];
+    for (const cb of new SafeArrayIterator(callbacks)) {
+      nextTick(cb);
+    }
+  }
+}
+
+function getSocketListSend(child, server) {
+  let socketLists = socketListsByChild.get(child);
+  if (!socketLists) {
+    socketLists = new SafeWeakMap();
+    socketListsByChild.set(child, socketLists);
+  }
+  let socketList = socketLists.get(server);
+  if (!socketList) {
+    socketList = new SocketListSend(child, server);
+    socketLists.set(server, socketList);
+  }
+  return socketList;
+}
 
 function rawFdFromTcpHandle(tcpHandle) {
   if (typeof tcpHandle.fdForIpc !== "function") {
@@ -2107,7 +2257,7 @@ function rawFdFromTcpHandle(tcpHandle) {
   return rawFd;
 }
 
-function getIpcHandleInfo(handle, options) {
+function getIpcHandleInfo(handle, options, target) {
   const { Socket } = lazyNet();
   const { Server: NetServer } = lazyNet();
   const { Socket: DgramSocket } = lazyDgram();
@@ -2125,16 +2275,25 @@ function getIpcHandleInfo(handle, options) {
     if (!isTcp && !isPipe) {
       notImplemented("ChildProcess.send with non-TCP net.Socket handle");
     }
+    const closeAfterSend = options.keepOpen !== true;
+    const message = {
+      cmd: "NODE_HANDLE",
+      type: IPC_HANDLE_NET_SOCKET,
+      // Distinguishes the wrap type the receiver should reconstruct.
+      nativeKind: isTcp ? "tcp" : "pipe",
+      msg: undefined,
+    };
+    if (
+      closeAfterSend &&
+      handle.server &&
+      typeof handle.server._setupWorker === "function"
+    ) {
+      message.socketListKey = getSocketListSend(target, handle.server).key;
+    }
     return {
       rawFd: rawFdFromTcpHandle(inner),
-      message: {
-        cmd: "NODE_HANDLE",
-        type: IPC_HANDLE_NET_SOCKET,
-        // Distinguishes the wrap type the receiver should reconstruct.
-        nativeKind: isTcp ? "tcp" : "pipe",
-        msg: undefined,
-      },
-      closeAfterSend: options.keepOpen !== true,
+      message,
+      closeAfterSend,
       close() {
         handle.parser = null;
         handle._httpMessage = null;
@@ -2358,6 +2517,7 @@ function setupChannel(
   // sends (handle or plain message) are queued on it to preserve ordering.
   let pendingHandleInfo = null;
   let handleQueue = null;
+  const receivedSocketLists = new SafeMap();
 
   function sendHandleAck() {
     const queueOk = [true];
@@ -2383,6 +2543,61 @@ function setupChannel(
         enqueueOrDispatch(item.message, item.handleInfo, item.callback);
       }
     }
+  }
+
+  function sendInternalMessage(message) {
+    const queueOk = [true];
+    control.refCounted();
+    PromisePrototypeThen(
+      writeFn(ipc, message, NO_RAW_FD, queueOk),
+      () => control.unrefCounted(),
+      () => control.unrefCounted(),
+    );
+  }
+
+  function getReceivedSocketList(key) {
+    let socketList = receivedSocketLists.get(key);
+    if (!socketList) {
+      socketList = new SocketListReceive();
+      receivedSocketLists.set(key, socketList);
+    }
+    return socketList;
+  }
+
+  function handleSocketListMessage(message) {
+    if (message.cmd === NODE_SOCKET_GET_COUNT) {
+      const socketList = receivedSocketLists.get(message.key);
+      sendInternalMessage({
+        cmd: NODE_SOCKET_COUNT,
+        key: message.key,
+        id: message.id,
+        count: socketList ? socketList.getConnections() : 0,
+      });
+      return true;
+    }
+    if (message.cmd === NODE_SOCKET_NOTIFY_CLOSE) {
+      const socketList = receivedSocketLists.get(message.key);
+      const sendAck = () =>
+        sendInternalMessage({
+          cmd: NODE_SOCKET_CLOSE_ACK,
+          key: message.key,
+          id: message.id,
+        });
+      if (socketList) {
+        // The parent only sends NOTIFY_CLOSE when its server is closing, so no
+        // further sockets will be registered under this key. Drop the entry
+        // once it drains, otherwise a long-lived child accumulates one
+        // SocketListReceive per server it has ever received sockets from.
+        socketList.close(() => {
+          receivedSocketLists.delete(message.key);
+          sendAck();
+        });
+      } else {
+        sendAck();
+      }
+      return true;
+    }
+    return false;
   }
 
   // Release any handles we're still holding open when the channel goes away.
@@ -2528,10 +2743,18 @@ function setupChannel(
             // Acknowledge receipt so the sender can close its local copy.
             sendHandleAck();
             const handle = createIpcHandle(msg, rawFd);
+            if (
+              msg.socketListKey &&
+              ObjectPrototypeIsPrototypeOf(Socket.prototype, handle)
+            ) {
+              getReceivedSocketList(msg.socketListKey).add(handle);
+            }
             nextTick(handleMessage, msg.msg, handle);
             continue;
           } else if (cmd === "HANDLE_ACK") {
             onHandleAck();
+            continue;
+          } else if (handleSocketListMessage(msg)) {
             continue;
           } else {
             // TODO(nathanwhit): if we want to support deno-node IPC interop,
@@ -2548,12 +2771,16 @@ function setupChannel(
         nextTick(handleMessage, msg, undefined);
       }
     } catch (err) {
+      // All of these mean the IPC channel went away while we were reading it.
+      // ConnectionReset in particular shows up on Linux when the peer exits
+      // with data still buffered: instead of a clean EOF the kernel delivers a
+      // RST, surfacing here as ECONNRESET. Node treats an IPC channel teardown
+      // as a disconnect, never as a process `error`, so we follow suit and tear
+      // down cleanly instead of emitting an uncaught error.
       if (
-        ObjectPrototypeIsPrototypeOf(
-          Deno.errors.Interrupted.prototype,
-          err,
-        ) ||
-        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err)
+        ObjectPrototypeIsPrototypeOf(Deno.errors.Interrupted.prototype, err) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.BadResource.prototype, err) ||
+        ObjectPrototypeIsPrototypeOf(Deno.errors.ConnectionReset.prototype, err)
       ) {
         // Channel torn down from under us; release any handles awaiting an
         // ACK that will now never arrive so they don't keep us alive.
@@ -2674,7 +2901,7 @@ function setupChannel(
     // socket's destruction.
     let handleInfo = null;
     if (handle !== undefined) {
-      handleInfo = getIpcHandleInfo(handle, options);
+      handleInfo = getIpcHandleInfo(handle, options, target);
       // `getIpcHandleInfo` returns null when the handle has no underlying
       // native handle (e.g. a server that never started listening). Match
       // Node, which strips the handle and sends the plain message instead.
