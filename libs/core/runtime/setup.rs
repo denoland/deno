@@ -144,7 +144,15 @@ fn v8_init(
 ) {
   #[cfg(feature = "include_icu_data")]
   {
-    v8::icu::set_common_data_77(deno_core_icudata::ICU_DATA).unwrap();
+    // English + root ICU data (Chromium's "flutter" bundle, ~0.8 MiB),
+    // embedded aligned to 16 bytes as required by udata_setCommonData.
+    // rusty_v8 is built with external ICU data (`icu_use_data_file=true`), so
+    // it does not link any ICU data itself; this is the data V8 uses.
+    #[repr(align(16))]
+    struct Aligned<const N: usize>([u8; N]);
+    static ICU_DATA: Aligned<{ include_bytes!("icudtl.dat").len() }> =
+      Aligned(*include_bytes!("icudtl.dat"));
+    v8::icu::set_common_data_77(&ICU_DATA.0).unwrap();
   }
 
   let base_flags = concat!(
