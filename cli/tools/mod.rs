@@ -25,6 +25,7 @@ pub mod serve;
 pub mod task;
 pub mod test;
 pub mod transpile;
+pub mod types;
 pub mod unfurl_utils;
 pub mod upgrade;
 pub mod x;

@@ -647,7 +647,7 @@ impl CliFactory {
             | DenoSubcommand::Test { .. }
             | DenoSubcommand::Transpile { .. }
             | DenoSubcommand::Outdated { .. }
-            | DenoSubcommand::Types
+            | DenoSubcommand::Types { .. }
             | DenoSubcommand::Upgrade { .. }
             | DenoSubcommand::Vendor
             | DenoSubcommand::Why { .. }
