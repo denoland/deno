@@ -456,42 +456,42 @@
     "digest.https.any.worker.html": true,
     "cshake.tentative.https.any.html": {
       "expectedFailures": [
-        "cSHAKE128 with 0 bit output and medium source data and transferred buffer during call",
         "cSHAKE128 with 0 bit output and short source data and transferred buffer during call",
-        "cSHAKE128 with 256 bit output and medium source data and transferred buffer during call",
+        "cSHAKE128 with 0 bit output and medium source data and transferred buffer during call",
         "cSHAKE128 with 256 bit output and short source data and transferred buffer during call",
-        "cSHAKE128 with 384 bit output and medium source data and transferred buffer during call",
+        "cSHAKE128 with 256 bit output and medium source data and transferred buffer during call",
         "cSHAKE128 with 384 bit output and short source data and transferred buffer during call",
-        "cSHAKE128 with 512 bit output and medium source data and transferred buffer during call",
+        "cSHAKE128 with 384 bit output and medium source data and transferred buffer during call",
         "cSHAKE128 with 512 bit output and short source data and transferred buffer during call",
-        "cSHAKE256 with 0 bit output and medium source data and transferred buffer during call",
+        "cSHAKE128 with 512 bit output and medium source data and transferred buffer during call",
         "cSHAKE256 with 0 bit output and short source data and transferred buffer during call",
-        "cSHAKE256 with 256 bit output and medium source data and transferred buffer during call",
+        "cSHAKE256 with 0 bit output and medium source data and transferred buffer during call",
         "cSHAKE256 with 256 bit output and short source data and transferred buffer during call",
-        "cSHAKE256 with 384 bit output and medium source data and transferred buffer during call",
+        "cSHAKE256 with 256 bit output and medium source data and transferred buffer during call",
         "cSHAKE256 with 384 bit output and short source data and transferred buffer during call",
-        "cSHAKE256 with 512 bit output and medium source data and transferred buffer during call",
-        "cSHAKE256 with 512 bit output and short source data and transferred buffer during call"
+        "cSHAKE256 with 384 bit output and medium source data and transferred buffer during call",
+        "cSHAKE256 with 512 bit output and short source data and transferred buffer during call",
+        "cSHAKE256 with 512 bit output and medium source data and transferred buffer during call"
       ]
     },
     "cshake.tentative.https.any.worker.html": {
       "expectedFailures": [
-        "cSHAKE128 with 0 bit output and medium source data and transferred buffer during call",
         "cSHAKE128 with 0 bit output and short source data and transferred buffer during call",
-        "cSHAKE128 with 256 bit output and medium source data and transferred buffer during call",
+        "cSHAKE128 with 0 bit output and medium source data and transferred buffer during call",
         "cSHAKE128 with 256 bit output and short source data and transferred buffer during call",
-        "cSHAKE128 with 384 bit output and medium source data and transferred buffer during call",
+        "cSHAKE128 with 256 bit output and medium source data and transferred buffer during call",
         "cSHAKE128 with 384 bit output and short source data and transferred buffer during call",
-        "cSHAKE128 with 512 bit output and medium source data and transferred buffer during call",
+        "cSHAKE128 with 384 bit output and medium source data and transferred buffer during call",
         "cSHAKE128 with 512 bit output and short source data and transferred buffer during call",
-        "cSHAKE256 with 0 bit output and medium source data and transferred buffer during call",
+        "cSHAKE128 with 512 bit output and medium source data and transferred buffer during call",
         "cSHAKE256 with 0 bit output and short source data and transferred buffer during call",
-        "cSHAKE256 with 256 bit output and medium source data and transferred buffer during call",
+        "cSHAKE256 with 0 bit output and medium source data and transferred buffer during call",
         "cSHAKE256 with 256 bit output and short source data and transferred buffer during call",
-        "cSHAKE256 with 384 bit output and medium source data and transferred buffer during call",
+        "cSHAKE256 with 256 bit output and medium source data and transferred buffer during call",
         "cSHAKE256 with 384 bit output and short source data and transferred buffer during call",
-        "cSHAKE256 with 512 bit output and medium source data and transferred buffer during call",
-        "cSHAKE256 with 512 bit output and short source data and transferred buffer during call"
+        "cSHAKE256 with 384 bit output and medium source data and transferred buffer during call",
+        "cSHAKE256 with 512 bit output and short source data and transferred buffer during call",
+        "cSHAKE256 with 512 bit output and medium source data and transferred buffer during call"
       ]
     },
     "kangarootwelve.tentative.https.any.html": false,
@@ -4451,20 +4451,20 @@
     "mldsa.tentative.https.any.html": {
       "expectedFailures": [
         "ML-DSA-44 basic test verification with transferred signature during call",
-        "ML-DSA-44 basic test with transferred plaintext during call",
         "ML-DSA-65 basic test verification with transferred signature during call",
-        "ML-DSA-65 basic test with transferred plaintext during call",
         "ML-DSA-87 basic test verification with transferred signature during call",
+        "ML-DSA-44 basic test with transferred plaintext during call",
+        "ML-DSA-65 basic test with transferred plaintext during call",
         "ML-DSA-87 basic test with transferred plaintext during call"
       ]
     },
     "mldsa.tentative.https.any.worker.html": {
       "expectedFailures": [
         "ML-DSA-44 basic test verification with transferred signature during call",
-        "ML-DSA-44 basic test with transferred plaintext during call",
         "ML-DSA-65 basic test verification with transferred signature during call",
-        "ML-DSA-65 basic test with transferred plaintext during call",
         "ML-DSA-87 basic test verification with transferred signature during call",
+        "ML-DSA-44 basic test with transferred plaintext during call",
+        "ML-DSA-65 basic test with transferred plaintext during call",
         "ML-DSA-87 basic test with transferred plaintext during call"
       ]
     }
