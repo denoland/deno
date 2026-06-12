@@ -3355,13 +3355,14 @@ async fn test_core_reload_es_module_js_api() {
 
 /// `import.meta.hot.accept()` self-accepting boundary: an HMR update re-runs the
 /// module, its `dispose` handler hands state to the reloaded instance via
-/// `hot.data`, and the accept callback receives the fresh module namespace.
+/// `hot.data`, and the accept callback receives the fresh module namespace
+/// in the ESM-HMR `{ module }` payload shape.
 #[tokio::test]
 async fn test_import_meta_hot_self_accept_and_dispose() {
   let mid_v1 = "globalThis.midEval = (globalThis.midEval ?? 0) + 1;\n\
      globalThis.restored = import.meta.hot.data.saved ?? 'none';\n\
      import.meta.hot.dispose((data) => { data.saved = 'from-v1'; });\n\
-     import.meta.hot.accept((m) => { globalThis.accepted = m.tag; });\n\
+     import.meta.hot.accept(({ module }) => { globalThis.accepted = module.tag; });\n\
      export const tag = 'A';\n";
   let sources: Rc<RefCell<HashMap<String, String>>> =
     Rc::new(RefCell::new(HashMap::new()));

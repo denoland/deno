@@ -263,7 +263,7 @@ impl CliMainWorker {
     }
 
     for path in filtered {
-      let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
+      let Some(specifier) = self.changed_path_to_specifier(&path) else {
         let _ = comm.force_restart();
         return Ok(());
       };
@@ -274,7 +274,20 @@ impl CliMainWorker {
           return Ok(());
         }
       };
-      let emitted = emitter.emit_for_hmr(&specifier, source)?;
+      // A file that doesn't parse (eg. saved mid-edit) can't be hot-replaced;
+      // fall back to a restart so the new process surfaces the diagnostic.
+      let emitted = match emitter.emit_for_hmr(&specifier, source) {
+        Ok(emitted) => emitted,
+        Err(e) => {
+          comm.print(format!(
+            "Failed to hot-replace {}: {}, restarting...",
+            specifier.as_str(),
+            e
+          ));
+          let _ = comm.force_restart();
+          return Ok(());
+        }
+      };
       overrides.lock().insert(specifier.clone(), emitted);
       let handled = self.run_apply_hmr_update(&specifier).await;
       overrides.lock().remove(&specifier);
@@ -303,6 +316,44 @@ impl CliMainWorker {
       }
     }
     Ok(())
+  }
+
+  /// Map a watcher-reported path to the specifier the module was registered
+  /// under. The watcher may report an OS-canonicalized path (eg. macOS
+  /// `/tmp` -> `/private/tmp`) while the module map holds the original
+  /// specifier (or vice versa), in which case the direct file-URL conversion
+  /// misses; fall back to comparing canonicalized paths against every loaded
+  /// `file:` module.
+  fn changed_path_to_specifier(
+    &mut self,
+    path: &std::path::Path,
+  ) -> Option<ModuleSpecifier> {
+    let direct = ModuleSpecifier::from_file_path(path).ok()?;
+    let loaded = self.worker.js_runtime().loaded_module_specifiers();
+    if loaded.iter().any(|s| s == direct.as_str()) {
+      return Some(direct);
+    }
+    let Ok(canonical_changed) = crate::util::fs::canonicalize_path(path)
+    else {
+      return Some(direct);
+    };
+    for loaded_specifier in loaded {
+      let Ok(url) = ModuleSpecifier::parse(&loaded_specifier) else {
+        continue;
+      };
+      if url.scheme() != "file" {
+        continue;
+      }
+      let Ok(loaded_path) = url.to_file_path() else {
+        continue;
+      };
+      if crate::util::fs::canonicalize_path(&loaded_path)
+        .is_ok_and(|canonical| canonical == canonical_changed)
+      {
+        return Some(url);
+      }
+    }
+    Some(direct)
   }
 
   /// Drive `Deno.core.applyHmrUpdate(specifier)` in JS and return whether the

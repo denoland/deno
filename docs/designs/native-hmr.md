@@ -156,12 +156,22 @@ falls back to the watcher's full restart (`force_restart`). When the program's
 event loop finishes, control returns to the outer watcher, which restarts on
 further changes as usual.
 
-Known limitation: under symlinked paths (e.g. macOS `/tmp` -> `/private/tmp`)
-the watcher's canonical path can differ from the module's specifier, so the
-boundary lookup misses and the update degrades to a full restart. Normal project
-directories hot-reload correctly; canonicalization is a follow-up.
+Under symlinked paths (e.g. macOS `/tmp` -> `/private/tmp`) the watcher's
+canonical path can differ from the module's specifier. The runner maps each
+changed path back to the specifier the module was registered under: if the
+direct file-URL conversion isn't in the module map, it compares the
+canonicalized changed path against the canonicalized path of every loaded
+`file:` module (`JsRuntime::loaded_module_specifiers`) and uses the matching
+registered specifier, so the boundary lookup and the loader source-override hit
+regardless of which side the OS canonicalized.
 
 ## Open decisions
+
+- Self-accept callback payload: both `accept(cb)` and `accept(deps, cb)` receive
+  the ESM-HMR `{ module }` shape. Vite instead passes the bare namespace to
+  self-accept callbacks, so code written for Vite needs a destructure change;
+  revisit if Vite compatibility turns out to matter more than internal
+  consistency.
 
 - Module identity after reload: tombstone old `ModuleId` (chosen for Phase 1 --
   keeps `usize` indices stable, minimal blast radius) vs a generational
@@ -180,9 +190,10 @@ directories hot-reload correctly; canonicalization is a follow-up.
    (`Deno.core.enableHmr` / `applyHmrUpdate`). (Done.)
 3. Native runner replacing the CDP runner for `deno run --watch-hmr`: enable HMR
    before the main module loads, map `FileWatcher` changes to `applyHmrUpdate`
-   with a loader source-override, keep the `force_restart` fallback. (Done.)
-   Remaining: symlink-path canonicalization; user-facing `Deno.reloadModule`
-   (unstable); `deno serve` mode; spec tests.
+   with a loader source-override, keep the `force_restart` fallback. (Done,
+   including symlink-path canonicalization and integration tests for the
+   hot-replace flow.) Remaining: user-facing `Deno.reloadModule` (unstable);
+   `deno serve` mode.
 4. Browser WebSocket ESM-HMR protocol for frontend serving.
 
 ## Testing
@@ -191,8 +202,11 @@ directories hot-reload correctly; canonicalization is a follow-up.
   preserves a dependency singleton (Rust and JS APIs); `import.meta.hot`
   self-accept with `dispose` -> `data` hand-off; dependency-accept boundary;
   no-boundary change reports full-reload-required.
-- Verified end-to-end by hand: `deno run --watch-hmr` on a self-accepting module
-  re-runs it with fresh source, preserves state via `hot.data`, fires the accept
-  callback, and does not restart the process.
-- Remaining: spec tests (`tests/specs/run/hmr_*`) for the `--watch-hmr` flow
-  (blocked on the symlink canonicalization fix so they pass in temp dirs).
+- Integration tests (`tests/integration/watcher_tests.rs`, `run_hmr_*`): server
+  handler hot-swap through a dependency-accept boundary; JSX dependency
+  hot-swap; self-accept with `hot.data` hand-off across a reload (also covers
+  the symlinked temp-dir path mapping); transpile-failure fallback to restart;
+  uncaught-error and unhandled-rejection restart flows. The pre-existing
+  `run_hmr_server` / `run_hmr_jsx` / `run_hmr_compile_error` tests encoded CDP
+  function-patching semantics (hot replacement with no boundary) and were
+  rewritten for boundary semantics.

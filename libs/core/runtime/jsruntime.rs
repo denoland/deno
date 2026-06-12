@@ -3120,6 +3120,15 @@ impl JsRuntime {
       .await
   }
 
+  /// Specifiers of all currently loaded modules in the main realm.
+  ///
+  /// Used by the HMR runner to map file-watcher paths (which the OS may
+  /// canonicalize, eg. macOS `/tmp` -> `/private/tmp`) back to the
+  /// specifiers modules were actually registered under.
+  pub fn loaded_module_specifiers(&self) -> Vec<String> {
+    self.inner.main_realm.loaded_module_specifiers()
+  }
+
   /// Load and evaluate an ES module provided the specifier and source code.
   ///
   /// The module should not have Top-Level Await (that is, it should be

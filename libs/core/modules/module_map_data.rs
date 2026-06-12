@@ -117,6 +117,19 @@ impl<T> ModuleNameTypeMap<T> {
     removed
   }
 
+  /// Visit every entry without consuming the map. Used by the module reload
+  /// engine (HMR) to enumerate registered module names.
+  pub fn for_each(
+    &self,
+    mut f: impl FnMut(&RequestedModuleType, &ModuleName, &T),
+  ) {
+    for (ty, index) in self.map_index.iter() {
+      for (name, value) in self.submaps.get(*index).unwrap().iter() {
+        f(ty, name, value);
+      }
+    }
+  }
+
   /// Rather than providing an iterator, we provide a drain method. This is mainly because Rust
   /// doesn't have generators.
   pub fn drain(
@@ -441,6 +454,20 @@ impl ModuleMapData {
       }
     }
     importers
+  }
+
+  /// Names of all currently registered (non-evicted) modules of the default
+  /// requested type. Backs the HMR changed-path to loaded-specifier mapping,
+  /// where a file watcher may report an OS-canonicalized path that differs
+  /// from the specifier the module was registered under.
+  pub(crate) fn loaded_module_names(&self) -> Vec<String> {
+    let mut names = Vec::new();
+    self.by_name.for_each(|ty, name, _| {
+      if matches!(ty, RequestedModuleType::None) {
+        names.push(name.as_str().to_owned());
+      }
+    });
+    names
   }
 
   /// Evict the given modules from the `by_name` lookup so the next load

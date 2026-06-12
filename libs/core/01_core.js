@@ -1124,8 +1124,13 @@
 
     try {
       ArrayPrototypeForEach(boundaries, (b) => {
+        // Both accept forms receive the ESM-HMR `{ module }` payload shape.
+        // Note this differs from Vite, whose self-accept callback receives
+        // the bare namespace.
         if (b.self) {
-          if (b.hot.selfCallback !== null) b.hot.selfCallback(newModule);
+          if (b.hot.selfCallback !== null) {
+            b.hot.selfCallback({ module: newModule });
+          }
         } else {
           const cb = b.hot.acceptDeps.get(b.dep);
           if (cb !== null) cb({ module: newModule });

@@ -2210,22 +2210,26 @@ async fn run_watch_directory_with_excluded_subdirectory() {
 #[test(flaky)]
 async fn run_hmr_server() {
   let t = TempDir::new();
+  let handler_file = t.path().join("handler.js");
+  handler_file.write(
+    r#"
+export function handler(_req) {
+  console.error("got request");
+  return new Response("Hello world!");
+}
+"#,
+  );
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch.write(
     r#"
-globalThis.state = { i: 0 };
+import { handler } from "./handler.js";
 
-function bar() {
-  globalThis.state.i = 0;
-  console.log("got request", globalThis.state.i);
-}
+let currentHandler = handler;
+import.meta.hot.accept(["./handler.js"], ({ module }) => {
+  currentHandler = module.handler;
+});
 
-function handler(_req) {
-  bar();
-  return new Response("Hello world!");
-}
-
-Deno.serve({ port: 11111 }, handler);
+Deno.serve({ port: 11111 }, (req) => currentHandler(req));
 console.log("Listening...")
     "#,
   );
@@ -2249,23 +2253,15 @@ console.log("Listening...")
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("Listening...", &mut stdout_lines).await;
 
-  file_to_watch.write(
+  // Edit the handler module: the accepting boundary in the entry module
+  // swaps it in without restarting the server.
+  handler_file.write(
     r#"
-globalThis.state = { i: 0 };
-
-function bar() {
-  globalThis.state.i = 0;
-  console.error("got request1", globalThis.state.i);
-}
-
-function handler(_req) {
-  bar();
+export function handler(_req) {
+  console.error("got request1");
   return new Response("Hello world!");
 }
-
-Deno.serve({ port: 11111 }, handler);
-console.log("Listening...")
-    "#,
+"#,
   );
 
   wait_contains("Replaced changed module", &mut stderr_lines).await;
@@ -2288,9 +2284,14 @@ async fn run_hmr_jsx() {
     r#"
 import { foo } from "./foo.jsx";
 
+let fooFn = foo;
+import.meta.hot.accept(["./foo.jsx"], ({ module }) => {
+  fooFn = module.foo;
+});
+
 let i = 0;
 setInterval(() => {
-  console.log(i++, foo());
+  console.log(i++, fooFn());
 }, 100);
 "#,
   );
@@ -2469,6 +2470,8 @@ async fn run_hmr_compile_error() {
   let file_to_watch = t.path().join("file_to_watch.js");
   file_to_watch.write(
     r#"
+import.meta.hot.accept();
+
 function foo() {
   return `<h1>asd1</h1>`;
 }
@@ -2498,9 +2501,13 @@ setInterval(() => {
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
   wait_contains("2 <h1>asd1</h1>", &mut stdout_lines).await;
 
-  // Misspelled `function` on purpose
+  // Misspelled `function` on purpose: the new source doesn't parse, so it
+  // can't be hot-replaced even though the module self-accepts; the runner
+  // falls back to a full restart and the new process surfaces the error.
   file_to_watch.write(
     r#"
+import.meta.hot.accept();
+
 function foo() {
   fnction bar();
 }
@@ -2512,7 +2519,62 @@ setInterval(() => {
 "#,
   );
 
-  wait_contains("compile error: Uncaught SyntaxError", &mut stderr_lines).await;
+  wait_contains("Failed to hot-replace", &mut stderr_lines).await;
+  wait_contains("Process failed", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
+/// A self-accepting module is re-evaluated in place: `dispose` hands state to
+/// the new instance via `hot.data` and the accept callback receives the fresh
+/// namespace, all without a process restart. Also exercises the watcher-path
+/// to module-specifier mapping under OS-canonicalized paths, since `TempDir`
+/// lives under a symlink on macOS (`/var` -> `/private/var`).
+#[test(flaky)]
+async fn run_hmr_self_accept_preserves_state() {
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  file_to_watch.write(
+    r#"
+const gen = import.meta.hot.data.gen ?? 0;
+console.log(`evaluated v1 gen ${gen}`);
+import.meta.hot.accept(({ module }) => {
+  console.log("accepted version", module.version);
+});
+import.meta.hot.dispose((data) => {
+  data.gen = gen + 1;
+});
+export const version = "v1";
+setInterval(() => {}, 1000);
+"#,
+  );
+
+  let mut child = util::deno_cmd()
+    .current_dir(t.path())
+    .arg("run")
+    .arg("--watch-hmr")
+    .arg("-L")
+    .arg("debug")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("Finished config loading.", &mut stderr_lines).await;
+
+  wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
+  wait_contains("evaluated v1 gen 0", &mut stdout_lines).await;
+
+  let v2 = file_to_watch.read_to_string().replace("v1", "v2");
+  file_to_watch.write(v2);
+
+  wait_contains("Replaced changed module", &mut stderr_lines).await;
+  // `hot.data` survived the reload (gen incremented, no restart) and the
+  // accept callback got the fresh module namespace.
+  wait_contains("evaluated v2 gen 1", &mut stdout_lines).await;
+  wait_contains("accepted version v2", &mut stdout_lines).await;
+
   check_alive_then_kill(child);
 }
 

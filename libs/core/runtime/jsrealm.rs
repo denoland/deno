@@ -714,6 +714,11 @@ impl JsRealm {
       .await
   }
 
+  /// Specifiers of all currently registered modules in this realm.
+  pub(crate) fn loaded_module_specifiers(&self) -> Vec<String> {
+    self.0.module_map().loaded_module_specifiers()
+  }
+
   /// Load and evaluate an ES module provided the specifier and source code.
   ///
   /// The module should not have Top-Level Await (that is, it should be

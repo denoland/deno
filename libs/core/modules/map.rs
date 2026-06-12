@@ -456,6 +456,13 @@ impl ModuleMap {
     ids
   }
 
+  /// Specifiers of all currently registered modules (default requested
+  /// type). Used by the HMR runner to map watcher paths back to registered
+  /// module specifiers.
+  pub(crate) fn loaded_module_specifiers(&self) -> Vec<String> {
+    self.data.borrow().loaded_module_names()
+  }
+
   /// Resolved specifiers of the modules that directly import `specifier`.
   /// Backs `op_hmr_module_importers`. Returns an empty vec if `specifier` is
   /// not a registered module.
