@@ -715,16 +715,22 @@ fn fill_callback(
   let buffer =
     v8::Local::<v8::ArrayBufferView>::try_from(buffer_value).unwrap();
   let len = buffer.byte_length();
-  let mut start = args.get(2).integer_value(scope).unwrap_or(0);
-  let mut end = args.get(3).integer_value(scope).unwrap_or(len as i64);
-  if start < 0 {
-    start = (len as i64 + start).max(0);
-  }
-  if end < 0 {
-    end = (len as i64 + end).max(0);
-  }
-  let start = (start as usize).min(len);
-  let end = (end as usize).min(len);
+  let start = match parse_array_index(scope, args.get(2), 0) {
+    Ok(start) => start.min(len),
+    Err(err) => {
+      let exception = deno_core::error::to_v8_error(scope, &err);
+      scope.throw_exception(exception);
+      return;
+    }
+  };
+  let end = match parse_array_index(scope, args.get(3), len) {
+    Ok(end) => end.min(len),
+    Err(err) => {
+      let exception = deno_core::error::to_v8_error(scope, &err);
+      scope.throw_exception(exception);
+      return;
+    }
+  };
   if end <= start {
     rv.set(buffer_value);
     return;
