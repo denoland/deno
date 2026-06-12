@@ -1,8 +1,0 @@
-{
-  "tests": {
-    "export_equals_overrides_exports_import": {
-      "args": "check main.ts",
-      "output": "main.out"
-    }
-  }
-}
