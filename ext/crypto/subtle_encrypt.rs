@@ -621,6 +621,14 @@ pub fn run(
       additional_data,
       tag_length,
     } => {
+      // Match the AES-GCM/OCB "Plaintext too large" cap for parity with
+      // the legacy JS impl. RFC 8439 §2.8 caps ChaCha20-Poly1305 at
+      // `(2^32 - 1) * 64` bytes (< 2^39); the AES cap is the tighter
+      // value the spec uses for AES-GCM, and ArrayBuffer maxes well
+      // below either limit, so this is defense in depth.
+      if data.len() > ((1u64 << 39) - 256) as usize {
+        return Err(op_error("Plaintext too large".to_string()));
+      }
       let Some(iv) = iv else {
         return Err(CryptoError::Other(JsErrorBox::type_error(
           "iv is required",

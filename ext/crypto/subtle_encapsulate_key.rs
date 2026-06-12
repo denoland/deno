@@ -157,12 +157,12 @@ pub fn run_decapsulate_key<'s>(
     &usages,
   )?;
   // Mirror the JS forwarder's "private/secret + empty usages →
-  // SyntaxError" rule.
-  let key_type = key_type_of(scope, shared_key);
-  if matches!(
-    key_type,
-    Some(CryptoKeyType::Private) | Some(CryptoKeyType::Secret)
-  ) && usages.is_empty()
+  // SyntaxError" rule. Fail closed: `key_type_of` errors if the
+  // freshly-imported shared key isn't a cppgc CryptoKey instead of
+  // silently skipping the check.
+  let key_type = key_type_of(scope, shared_key)?;
+  if matches!(key_type, CryptoKeyType::Private | CryptoKeyType::Secret)
+    && usages.is_empty()
   {
     return Err(syntax_error("Invalid key usage".into()));
   }
@@ -172,11 +172,16 @@ pub fn run_decapsulate_key<'s>(
 fn key_type_of<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   key: v8::Local<'s, v8::Object>,
-) -> Option<CryptoKeyType> {
+) -> Result<CryptoKeyType, CryptoError> {
   let ptr = deno_core::cppgc::try_unwrap_cppgc_object::<
     crate::crypto_key::CryptoKey,
-  >(scope, key.into())?;
-  Some(ptr.key_type())
+  >(scope, key.into())
+  .ok_or_else(|| {
+    CryptoError::Other(JsErrorBox::type_error(
+      "internal: decapsulated key is not a CryptoKey",
+    ))
+  })?;
+  Ok(ptr.key_type())
 }
 
 fn invalid_access(msg: String) -> CryptoError {

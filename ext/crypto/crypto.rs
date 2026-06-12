@@ -79,8 +79,10 @@ impl Crypto {
 
   /// `Crypto.getRandomValues(typedArray)` — fills `typedArray` with
   /// cryptographically strong random bytes and returns it unchanged.
-  /// Rejects non-integer typed-array kinds with `TypeMismatchError` and
-  /// inputs longer than 65536 bytes with `QuotaExceededError`, per spec.
+  /// Rejects non-`ArrayBufferView` arguments with `TypeError` (per WebIDL
+  /// `ArrayBufferView` conversion), non-integer typed-array kinds with
+  /// `TypeMismatchError`, and inputs longer than 65536 bytes with
+  /// `QuotaExceededError` (both per the WebCrypto spec).
   #[required(1)]
   fn get_random_values<'s>(
     &self,
@@ -89,7 +91,7 @@ impl Crypto {
     typed_array: v8::Local<'s, v8::Value>,
   ) -> Result<v8::Local<'s, v8::Value>, CryptoError> {
     let view = v8::Local::<v8::ArrayBufferView>::try_from(typed_array)
-      .map_err(|_| CryptoError::TypedArrayNotInteger)?;
+      .map_err(|_| CryptoError::ArgumentNotArrayBufferView)?;
     if !(view.is_int8_array()
       || view.is_uint8_array()
       || view.is_uint8_clamped_array()
