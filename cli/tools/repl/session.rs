@@ -196,6 +196,11 @@ pub struct ReplSession {
   /// mapped back to the user's TypeScript via `apply_source_map_to_stack`.
   pub track_source_map_for_next: bool,
   source_maps: HashMap<String, Arc<deno_core::sourcemap::SourceMap>>,
+  /// Cached cell source per `source_maps` key. Populated alongside
+  /// `source_maps` so `apply_source_map_to_stack` can echo the user's
+  /// original source line for each remapped frame — Python/IPython-style,
+  /// since Jupyter cells don't show line numbers by default.
+  cell_sources: HashMap<String, Arc<str>>,
 }
 
 // TODO: duplicated in `cli/tools/run/hmr.rs`
@@ -393,6 +398,7 @@ impl ReplSession {
       decorators: transpile_options.decorators.clone(),
       track_source_map_for_next: false,
       source_maps: HashMap::new(),
+      cell_sources: HashMap::new(),
     };
 
     // inject prelude
@@ -839,6 +845,11 @@ impl ReplSession {
     self.analyze_and_handle_jsx(&parsed_source);
 
     let want_source_map = self.track_source_map_for_next;
+    let original_source: Option<Arc<str>> = if want_source_map {
+      Some(Arc::from(parsed_source.text().as_ref()))
+    } else {
+      None
+    };
     let emitted = parsed_source
       .transpile(
         &deno_ast::TranspileOptions {
@@ -880,6 +891,11 @@ impl ReplSession {
       self
         .source_maps
         .insert("<anonymous>".to_string(), Arc::new(parsed_map));
+      if let Some(original) = original_source {
+        self
+          .cell_sources
+          .insert("<anonymous>".to_string(), original);
+      }
     }
 
     // V8's `Runtime.evaluate` (with replMode) reports stack frames as
@@ -906,7 +922,11 @@ impl ReplSession {
   /// Walks a JavaScript stack trace string and rewrites the position of any
   /// frame whose URL we have a registered source map for. Lines that don't
   /// match the `at FILE:LINE:COL` / `at NAME (FILE:LINE:COL)` shapes are
-  /// passed through unchanged.
+  /// passed through unchanged. When a cached cell source is available for
+  /// the frame's file, the user's original source line is echoed beneath
+  /// the frame (Python/IPython-style) — Jupyter cells don't show line
+  /// numbers by default, so just printing a remapped line/column number
+  /// would leave users counting lines in their cell.
   pub fn apply_source_map_to_stack(&mut self, stack: &str) -> String {
     if self.source_maps.is_empty() {
       return stack.to_string();
@@ -922,7 +942,12 @@ impl ReplSession {
       Regex::new(r"^(?P<prefix>\s*at (?:.+? \()?)(?P<file>.+?):(?P<line>\d+):(?P<col>\d+)(?P<suffix>\)?)\s*$").unwrap()
     });
 
+    // Cap echoed source lines so a pathological 50KB minified line can't
+    // explode the traceback we hand back to Jupyter.
+    const MAX_SNIPPET_LEN: usize = 200;
+
     let mut out = String::with_capacity(stack.len());
+    let mut last_snippet_line: Option<(String, u32)> = None;
     for (idx, line) in stack.lines().enumerate() {
       if idx > 0 {
         out.push('\n');
@@ -963,13 +988,52 @@ impl ReplSession {
       // Don't risk silently swapping the URL out: keeping the V8-reported
       // file name avoids visually surprising callers who only have a single
       // cell anyway. Only rewrite the line and column.
-      out.push_str(caps.name("prefix").unwrap().as_str());
+      let prefix = caps.name("prefix").unwrap().as_str();
+      out.push_str(prefix);
       out.push_str(file);
       out.push(':');
       out.push_str(&new_line.to_string());
       out.push(':');
       out.push_str(&new_col.to_string());
       out.push_str(caps.name("suffix").unwrap().as_str());
+
+      // Skip the snippet if we already echoed the same line for the
+      // previous frame (recursive calls land on the same source line and
+      // would just produce N copies of the same text).
+      if last_snippet_line.as_ref() == Some(&(file.to_string(), new_line)) {
+        continue;
+      }
+
+      if let Some(source) = self.cell_sources.get(file).cloned()
+        && let Some(snippet) =
+          source.lines().nth((new_line as usize).saturating_sub(1))
+      {
+        let trimmed = snippet.trim_end();
+        if !trimmed.is_empty() {
+          // Indent the snippet beneath the `at ` prefix so it visually
+          // nests under the frame.
+          let indent = prefix
+            .chars()
+            .take_while(|c| c.is_whitespace())
+            .collect::<String>();
+          out.push('\n');
+          out.push_str(&indent);
+          out.push_str("    ");
+          if trimmed.len() > MAX_SNIPPET_LEN {
+            // Step backwards to the nearest UTF-8 char boundary so we
+            // don't split a multi-byte codepoint.
+            let mut cut = MAX_SNIPPET_LEN;
+            while cut > 0 && !trimmed.is_char_boundary(cut) {
+              cut -= 1;
+            }
+            out.push_str(&trimmed[..cut]);
+            out.push_str("...");
+          } else {
+            out.push_str(trimmed);
+          }
+        }
+        last_snippet_line = Some((file.to_string(), new_line));
+      }
     }
     out
   }

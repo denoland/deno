@@ -949,6 +949,13 @@ async fn jupyter_execute_error_source_map_remaps_line() -> Result<()> {
     !joined.contains(":5:"),
     "traceback should not surface the transpiled line 5: {joined:?}",
   );
+  // The issue also asked for the user's source line to appear beneath
+  // the frame (Python/IPython-style), since Jupyter cells don't show
+  // line numbers by default.
+  assert!(
+    joined.contains("throw new Error(\"fail\")"),
+    "traceback should echo the user's source line: {joined:?}",
+  );
 
   Ok(())
 }
