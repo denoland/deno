@@ -593,6 +593,7 @@ impl MainWorker {
         deno_bundle_runtime::deno_bundle_runtime::args(
           services.bundle_provider.clone(),
         ),
+        ops::desktop::deno_desktop::args(),
       ])
       .unwrap();
 
