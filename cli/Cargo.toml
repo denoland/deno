@@ -127,13 +127,13 @@ import_map.workspace = true
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native", "vendored"] }
+lax-css.workspace = true
 lazy-regex.workspace = true
 libc.workspace = true
 libz-sys.workspace = true
 locked-tripwire = "0.1.1"
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
-lax-css.workspace = true
 malva.workspace = true
 markup_fmt.workspace = true
 memchr.workspace = true
