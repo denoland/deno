@@ -50,10 +50,7 @@ impl SqliteBackedCache {
     {
       "disk" | "" => Mode::Disk,
       "memory" => Mode::InMemory,
-      _ => {
-        log::warn!("Unknown DENO_CACHE_DB_MODE value, defaulting to disk");
-        Mode::Disk
-      }
+      _ => Mode::Disk,
     };
 
     let connection = if matches!(mode, Mode::InMemory) {
@@ -355,10 +352,7 @@ impl SqliteBackedCache {
           }
           Err(err) => return Err(err.into()),
         };
-        Ok(Some((
-          cache_meta,
-          Some(CacheResponseResource::sqlite(file)),
-        )))
+        Ok(Some((cache_meta, Some(CacheResponseResource::new(file)))))
       }
       Some((cache_meta, None)) => Ok(Some((cache_meta, None))),
       None => Ok(None),

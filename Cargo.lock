@@ -2020,25 +2020,12 @@ dependencies = [
 name = "deno_cache"
 version = "0.184.0"
 dependencies = [
- "async-stream",
- "base64 0.22.1",
- "bytes",
- "chrono",
  "deno_core",
  "deno_error",
- "futures",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-util",
- "log",
  "rusqlite",
  "sha2",
- "slab",
  "thiserror 2.0.12",
  "tokio",
- "tokio-util",
 ]
 
 [[package]]

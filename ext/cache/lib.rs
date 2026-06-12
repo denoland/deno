@@ -3,11 +3,9 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use bytes::Bytes;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::FromV8;
@@ -18,18 +16,11 @@ use deno_core::ToV8;
 use deno_core::convert::ByteString;
 use deno_core::op2;
 use deno_error::JsErrorBox;
-use futures::Stream;
-use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 
-mod lsc_shard;
-mod lscache;
 mod sqlite;
 
-pub use lsc_shard::CacheShard;
-pub use lscache::LscBackend;
 pub use sqlite::SqliteBackedCache;
-use tokio_util::io::StreamReader;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CacheError {
@@ -45,12 +36,6 @@ pub enum CacheError {
   #[class(type)]
   #[error("Cache not found")]
   NotFound,
-  #[class(type)]
-  #[error("Cache deletion is not supported")]
-  DeletionNotSupported,
-  #[class(type)]
-  #[error("Content-Encoding is not allowed in response headers")]
-  ContentEncodingNotAllowed,
   #[class(generic)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
@@ -66,18 +51,6 @@ pub enum CacheError {
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
-  #[class(type)]
-  #[error(transparent)]
-  InvalidHeaderName(#[from] hyper::header::InvalidHeaderName),
-  #[class(type)]
-  #[error(transparent)]
-  InvalidHeaderValue(#[from] hyper::header::InvalidHeaderValue),
-  #[class(type)]
-  #[error(transparent)]
-  Hyper(#[from] hyper::Error),
-  #[class(generic)]
-  #[error(transparent)]
-  ClientError(#[from] hyper_util::client::legacy::Error),
   #[class(generic)]
   #[error("Failed to create cache storage directory {}", .dir.display())]
   CacheStorageDirectory {
@@ -85,16 +58,12 @@ pub enum CacheError {
     #[source]
     source: std::io::Error,
   },
-  #[class(generic)]
-  #[error("cache {method} request failed: {status}")]
-  RequestFailed {
-    method: &'static str,
-    status: hyper::StatusCode,
-  },
 }
 
 #[derive(Clone)]
-pub struct CreateCache(pub Arc<dyn Fn() -> Result<CacheImpl, CacheError>>);
+pub struct CreateCache(
+  pub Arc<dyn Fn() -> Result<SqliteBackedCache, CacheError>>,
+);
 
 deno_core::extension!(deno_cache,
   deps = [ deno_webidl, deno_web, deno_fetch ],
@@ -153,125 +122,24 @@ pub struct CacheDeleteRequest {
   pub request_url: String,
 }
 
-#[derive(Clone)]
-pub enum CacheImpl {
-  Sqlite(SqliteBackedCache),
-  Lsc(LscBackend),
-}
-
-impl CacheImpl {
-  pub async fn storage_open(
-    &self,
-    cache_name: String,
-  ) -> Result<i64, CacheError> {
-    match self {
-      Self::Sqlite(cache) => cache.storage_open(cache_name).await,
-      Self::Lsc(cache) => cache.storage_open(cache_name).await,
-    }
-  }
-
-  pub async fn storage_has(
-    &self,
-    cache_name: String,
-  ) -> Result<bool, CacheError> {
-    match self {
-      Self::Sqlite(cache) => cache.storage_has(cache_name).await,
-      Self::Lsc(cache) => cache.storage_has(cache_name).await,
-    }
-  }
-
-  pub async fn storage_delete(
-    &self,
-    cache_name: String,
-  ) -> Result<bool, CacheError> {
-    match self {
-      Self::Sqlite(cache) => cache.storage_delete(cache_name).await,
-      Self::Lsc(cache) => cache.storage_delete(cache_name).await,
-    }
-  }
-
-  pub async fn storage_keys(&self) -> Result<Vec<String>, CacheError> {
-    match self {
-      Self::Sqlite(cache) => cache.storage_keys().await,
-      Self::Lsc(cache) => cache.storage_keys().await,
-    }
-  }
-
-  pub async fn put(
-    &self,
-    request_response: CachePutRequest,
-    resource: Option<Rc<dyn Resource>>,
-  ) -> Result<(), CacheError> {
-    match self {
-      Self::Sqlite(cache) => cache.put(request_response, resource).await,
-      Self::Lsc(cache) => cache.put(request_response, resource).await,
-    }
-  }
-
-  pub async fn r#match(
-    &self,
-    request: CacheMatchRequest,
-  ) -> Result<
-    Option<(CacheMatchResponseMeta, Option<CacheResponseResource>)>,
-    CacheError,
-  > {
-    match self {
-      Self::Sqlite(cache) => cache.r#match(request).await,
-      Self::Lsc(cache) => cache.r#match(request).await,
-    }
-  }
-
-  pub async fn delete(
-    &self,
-    request: CacheDeleteRequest,
-  ) -> Result<bool, CacheError> {
-    match self {
-      Self::Sqlite(cache) => cache.delete(request).await,
-      Self::Lsc(cache) => cache.delete(request).await,
-    }
-  }
-}
-
-pub enum CacheResponseResource {
-  Sqlite(AsyncRefCell<tokio::fs::File>),
-  Lsc(AsyncRefCell<Pin<Box<dyn AsyncRead>>>),
+pub struct CacheResponseResource {
+  file: AsyncRefCell<tokio::fs::File>,
 }
 
 impl CacheResponseResource {
-  fn sqlite(file: tokio::fs::File) -> Self {
-    Self::Sqlite(AsyncRefCell::new(file))
-  }
-
-  fn lsc(
-    body: impl Stream<Item = Result<Bytes, std::io::Error>> + 'static,
-  ) -> Self {
-    Self::Lsc(AsyncRefCell::new(Box::pin(StreamReader::new(body))))
+  pub fn new(file: tokio::fs::File) -> Self {
+    Self {
+      file: AsyncRefCell::new(file),
+    }
   }
 
   async fn read(
     self: Rc<Self>,
     data: &mut [u8],
   ) -> Result<usize, std::io::Error> {
-    let nread = match &*self {
-      CacheResponseResource::Sqlite(_) => {
-        let resource = deno_core::RcRef::map(&self, |r| match r {
-          Self::Sqlite(r) => r,
-          _ => unreachable!(),
-        });
-        let mut file = resource.borrow_mut().await;
-        file.read(data).await?
-      }
-      CacheResponseResource::Lsc(_) => {
-        let resource = deno_core::RcRef::map(&self, |r| match r {
-          Self::Lsc(r) => r,
-          _ => unreachable!(),
-        });
-        let mut file = resource.borrow_mut().await;
-        file.read(data).await?
-      }
-    };
-
-    Ok(nread)
+    let resource = deno_core::RcRef::map(&self, |r| &r.file);
+    let mut file = resource.borrow_mut().await;
+    file.read(data).await
   }
 }
 
@@ -366,14 +234,14 @@ pub async fn op_cache_delete(
 
 pub fn get_cache(
   state: &Rc<RefCell<OpState>>,
-) -> Result<CacheImpl, CacheError> {
+) -> Result<SqliteBackedCache, CacheError> {
   let mut state = state.borrow_mut();
-  if let Some(cache) = state.try_borrow::<CacheImpl>() {
+  if let Some(cache) = state.try_borrow::<SqliteBackedCache>() {
     Ok(cache.clone())
   } else if let Some(create_cache) = state.try_borrow::<CreateCache>() {
     let cache = create_cache.0()?;
     state.put(cache);
-    Ok(state.borrow::<CacheImpl>().clone())
+    Ok(state.borrow::<SqliteBackedCache>().clone())
   } else {
     Err(CacheError::ContextUnsupported)
   }
