@@ -99,7 +99,7 @@ pub fn op_inspector_open(
 
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_net(&(host_ip.to_string(), Some(port)), "inspector.open")?;
+    .check_net_listen(&(host_ip.to_string(), Some(port)), "inspector.open")?;
 
   let server =
     create_inspector_server(addr, "deno", InspectPublishUid::default())?;

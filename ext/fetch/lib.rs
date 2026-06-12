@@ -470,7 +470,7 @@ pub fn op_fetch(
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<PermissionsContainer>();
-      permissions.check_net_url(&url, "fetch()")?;
+      permissions.check_net_connect_url(&url, "fetch()")?;
 
       let maybe_authority = extract_authority(&mut url);
       let uri = url
@@ -855,11 +855,13 @@ pub fn op_fetch_custom_client(
     match proxy {
       Proxy::Http { url, .. } => {
         let url = Url::parse(url)?;
-        permissions.check_net_url(&url, "Deno.createHttpClient()")?;
+        permissions.check_net_connect_url(&url, "Deno.createHttpClient()")?;
       }
       Proxy::Tcp { hostname, port } => {
-        permissions
-          .check_net(&(hostname, Some(*port)), "Deno.createHttpClient()")?;
+        permissions.check_net_connect(
+          &(hostname, Some(*port)),
+          "Deno.createHttpClient()",
+        )?;
       }
       Proxy::Unix {
         path: original_path,
@@ -878,7 +880,11 @@ pub fn op_fetch_custom_client(
       }
       Proxy::Vsock { cid, port } => {
         let permissions = state.borrow_mut::<PermissionsContainer>();
-        permissions.check_net_vsock(*cid, *port, "Deno.createHttpClient()")?;
+        permissions.check_net_connect_vsock(
+          *cid,
+          *port,
+          "Deno.createHttpClient()",
+        )?;
       }
     }
   }

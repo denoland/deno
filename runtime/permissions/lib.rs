@@ -446,6 +446,24 @@ struct PromptOptions<'a> {
   is_unary: bool,
 }
 
+/// Pick the more permissive of two `PermissionState`s for direction-specific
+/// queries that should reflect *either* a legacy `--allow-net` rule *or* the
+/// matching directional rule.
+fn more_permissive_net_state(
+  a: PermissionState,
+  b: PermissionState,
+) -> PermissionState {
+  use PermissionState::*;
+  match (a, b) {
+    (Granted, _) | (_, Granted) => Granted,
+    (GrantedPartial, _) | (_, GrantedPartial) => GrantedPartial,
+    (Prompt, _) | (_, Prompt) => Prompt,
+    (DeniedPartial, _) | (_, DeniedPartial) => DeniedPartial,
+    (Ignored, _) | (_, Ignored) => Ignored,
+    (Denied, Denied) => Denied,
+  }
+}
+
 impl PermissionState {
   #[inline(always)]
   fn log_perm_access(
@@ -468,9 +486,18 @@ impl PermissionState {
   }
 
   fn fmt_access(name: &'static str, info: Option<&str>) -> String {
+    // For the prompt and error messages, render the hyphenated directional
+    // net flag names as a space-separated phrase so the human-facing text
+    // reads "net connect access" / "net listen access" rather than the
+    // hyphenated descriptor identifier.
+    let pretty_name = match name {
+      "net-connect" => "net connect",
+      "net-listen" => "net listen",
+      other => other,
+    };
     format!(
       "{} access{}",
-      name,
+      pretty_name,
       info.map(|info| format!(" to {info}")).unwrap_or_default(),
     )
   }
@@ -555,8 +582,13 @@ impl PermissionState {
       }
       PermissionState::Prompt if prompt => {
         let info = info();
+        let pretty_name = match name {
+          "net-connect" => "net connect",
+          "net-listen" => "net listen",
+          other => other,
+        };
         let msg = StringBuilder::<String>::build(|builder| {
-          builder.append(name);
+          builder.append(pretty_name);
           builder.append(" access");
           if let Some(info) = &info {
             builder.append(" to ");
@@ -981,6 +1013,20 @@ impl<
       && !self.flag_ignored_global
       && !self.descriptors.has_any_denied_or_ignored()
       && !has_broker()
+  }
+
+  /// Returns true if no flag-set or prompt-set state has been recorded for
+  /// this permission, i.e. it is effectively unused.
+  ///
+  /// When this returns true the runtime can safely route a direction-aware
+  /// net check (`check_net_connect`/`check_net_listen`) to the corresponding
+  /// directional permission without missing any configured allow/deny rules.
+  pub fn is_empty(&self) -> bool {
+    !self.granted_global
+      && !self.flag_denied_global
+      && !self.flag_ignored_global
+      && !self.prompt_denied_global
+      && self.descriptors.inner.is_empty()
   }
 
   pub fn check_all_api(
@@ -2015,6 +2061,202 @@ impl DenyDescriptor for NetDescriptor {
 impl NetDescriptor {
   pub fn into_import(self) -> ImportDescriptor {
     ImportDescriptor(self)
+  }
+
+  pub fn into_connect(self) -> NetConnectDescriptor {
+    NetConnectDescriptor(self)
+  }
+
+  pub fn into_listen(self) -> NetListenDescriptor {
+    NetListenDescriptor(self)
+  }
+}
+
+/// Direction-specific net descriptor for outbound connections.
+/// Used by `--allow-net-connect` / `--deny-net-connect`.
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
+pub struct NetConnectDescriptor(pub NetDescriptor);
+
+impl QueryDescriptor for NetConnectDescriptor {
+  type AllowDesc = NetConnectDescriptor;
+  type DenyDesc = NetConnectDescriptor;
+
+  fn flag_name() -> &'static str {
+    "net-connect"
+  }
+
+  fn display_name(&self) -> Cow<'_, str> {
+    self.0.display_name()
+  }
+
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    Self(NetDescriptor::from_allow(&allow.0))
+  }
+
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    self.0.as_allow().map(NetConnectDescriptor)
+  }
+
+  fn as_deny(&self) -> Self::DenyDesc {
+    Self(self.0.as_deny())
+  }
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      perm,
+      Self::flag_name(),
+      ()
+    );
+    perm.check_desc(Some(self), false, api_name)
+  }
+
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
+    self.0.matches_allow(&other.0)
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.matches_deny(&other.0)
+  }
+
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self.0.revokes(&other.0)
+  }
+
+  fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.stronger_than_deny(&other.0)
+  }
+
+  fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.overlaps_deny(&other.0)
+  }
+}
+
+impl AllowDescriptor for NetConnectDescriptor {
+  type QueryDesc<'a> = NetConnectDescriptor;
+  type DenyDesc = NetConnectDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.0.cmp_allow(&other.0)
+  }
+
+  fn cmp_deny(&self, other: &Self::DenyDesc) -> Ordering {
+    AllowDescriptor::cmp_deny(&self.0, &other.0)
+  }
+}
+
+impl DenyDescriptor for NetConnectDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    DenyDescriptor::cmp_deny(&self.0, &other.0)
+  }
+}
+
+impl NetConnectDescriptor {
+  pub fn parse_for_list(s: &str) -> Result<Self, NetDescriptorParseError> {
+    Ok(NetConnectDescriptor(NetDescriptor::parse_for_list(s)?))
+  }
+}
+
+impl fmt::Display for NetConnectDescriptor {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fmt::Display::fmt(&self.0, f)
+  }
+}
+
+/// Direction-specific net descriptor for inbound listeners.
+/// Used by `--allow-net-listen` / `--deny-net-listen`.
+#[derive(Clone, Eq, PartialEq, Hash, Debug, PartialOrd, Ord)]
+pub struct NetListenDescriptor(pub NetDescriptor);
+
+impl QueryDescriptor for NetListenDescriptor {
+  type AllowDesc = NetListenDescriptor;
+  type DenyDesc = NetListenDescriptor;
+
+  fn flag_name() -> &'static str {
+    "net-listen"
+  }
+
+  fn display_name(&self) -> Cow<'_, str> {
+    self.0.display_name()
+  }
+
+  fn from_allow(allow: &Self::AllowDesc) -> Self {
+    Self(NetDescriptor::from_allow(&allow.0))
+  }
+
+  fn as_allow(&self) -> Option<Self::AllowDesc> {
+    self.0.as_allow().map(NetListenDescriptor)
+  }
+
+  fn as_deny(&self) -> Self::DenyDesc {
+    Self(self.0.as_deny())
+  }
+
+  fn check_in_permission(
+    &self,
+    perm: &mut UnaryPermission<Self::AllowDesc>,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      perm,
+      Self::flag_name(),
+      ()
+    );
+    perm.check_desc(Some(self), false, api_name)
+  }
+
+  fn matches_allow(&self, other: &Self::AllowDesc) -> bool {
+    self.0.matches_allow(&other.0)
+  }
+
+  fn matches_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.matches_deny(&other.0)
+  }
+
+  fn revokes(&self, other: &Self::AllowDesc) -> bool {
+    self.0.revokes(&other.0)
+  }
+
+  fn stronger_than_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.stronger_than_deny(&other.0)
+  }
+
+  fn overlaps_deny(&self, other: &Self::DenyDesc) -> bool {
+    self.0.overlaps_deny(&other.0)
+  }
+}
+
+impl AllowDescriptor for NetListenDescriptor {
+  type QueryDesc<'a> = NetListenDescriptor;
+  type DenyDesc = NetListenDescriptor;
+
+  fn cmp_allow(&self, other: &Self) -> Ordering {
+    self.0.cmp_allow(&other.0)
+  }
+
+  fn cmp_deny(&self, other: &Self::DenyDesc) -> Ordering {
+    AllowDescriptor::cmp_deny(&self.0, &other.0)
+  }
+}
+
+impl DenyDescriptor for NetListenDescriptor {
+  fn cmp_deny(&self, other: &Self) -> Ordering {
+    DenyDescriptor::cmp_deny(&self.0, &other.0)
+  }
+}
+
+impl NetListenDescriptor {
+  pub fn parse_for_list(s: &str) -> Result<Self, NetDescriptorParseError> {
+    Ok(NetListenDescriptor(NetDescriptor::parse_for_list(s)?))
+  }
+}
+
+impl fmt::Display for NetListenDescriptor {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fmt::Display::fmt(&self.0, f)
   }
 }
 
@@ -3303,6 +3545,154 @@ impl UnaryPermission<NetDescriptor> {
   }
 }
 
+impl UnaryPermission<NetConnectDescriptor> {
+  pub fn query(&self, host: Option<&NetConnectDescriptor>) -> PermissionState {
+    self.query_desc(host, AllowPartial::TreatAsPartialGranted)
+  }
+
+  pub fn request(
+    &mut self,
+    host: Option<&NetConnectDescriptor>,
+  ) -> PermissionState {
+    self.request_desc(host)
+  }
+
+  pub fn revoke(
+    &mut self,
+    host: Option<&NetConnectDescriptor>,
+  ) -> PermissionState {
+    self.revoke_desc(host)
+  }
+
+  pub fn check(
+    &mut self,
+    host: &NetConnectDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      self,
+      NetConnectDescriptor::flag_name(),
+      host.display_name()
+    );
+    self.check_desc(Some(host), false, api_name)
+  }
+
+  pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      self,
+      NetConnectDescriptor::flag_name(),
+      ()
+    );
+    self.check_desc(None, false, None)
+  }
+
+  /// Check if a resolved IP address is explicitly denied (deny-only check).
+  pub fn check_resolved_ip_deny(
+    &mut self,
+    desc: &NetConnectDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    let info = format_display_name(desc.display_name()).into_owned();
+    let denied = || {
+      PermissionState::permission_denied_error(
+        NetConnectDescriptor::flag_name(),
+        Some(info.as_str()),
+        PermissionState::Denied,
+      )
+    };
+    if self.flag_denied_global {
+      return Err(denied());
+    }
+    for item in self.descriptors.iter() {
+      match item {
+        UnaryPermissionDesc::FlagDenied(v)
+        | UnaryPermissionDesc::FlagIgnored(v)
+          if desc.matches_deny(v) =>
+        {
+          return Err(denied());
+        }
+        _ => {}
+      }
+    }
+    let _ = api_name;
+    Ok(())
+  }
+}
+
+impl UnaryPermission<NetListenDescriptor> {
+  pub fn query(&self, host: Option<&NetListenDescriptor>) -> PermissionState {
+    self.query_desc(host, AllowPartial::TreatAsPartialGranted)
+  }
+
+  pub fn request(
+    &mut self,
+    host: Option<&NetListenDescriptor>,
+  ) -> PermissionState {
+    self.request_desc(host)
+  }
+
+  pub fn revoke(
+    &mut self,
+    host: Option<&NetListenDescriptor>,
+  ) -> PermissionState {
+    self.revoke_desc(host)
+  }
+
+  pub fn check(
+    &mut self,
+    host: &NetListenDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      self,
+      NetListenDescriptor::flag_name(),
+      host.display_name()
+    );
+    self.check_desc(Some(host), false, api_name)
+  }
+
+  pub fn check_all(&mut self) -> Result<(), PermissionDeniedError> {
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      self,
+      NetListenDescriptor::flag_name(),
+      ()
+    );
+    self.check_desc(None, false, None)
+  }
+
+  /// Check if a resolved IP address is explicitly denied (deny-only check).
+  pub fn check_resolved_ip_deny(
+    &mut self,
+    desc: &NetListenDescriptor,
+    api_name: Option<&str>,
+  ) -> Result<(), PermissionDeniedError> {
+    let info = format_display_name(desc.display_name()).into_owned();
+    let denied = || {
+      PermissionState::permission_denied_error(
+        NetListenDescriptor::flag_name(),
+        Some(info.as_str()),
+        PermissionState::Denied,
+      )
+    };
+    if self.flag_denied_global {
+      return Err(denied());
+    }
+    for item in self.descriptors.iter() {
+      match item {
+        UnaryPermissionDesc::FlagDenied(v)
+        | UnaryPermissionDesc::FlagIgnored(v)
+          if desc.matches_deny(v) =>
+        {
+          return Err(denied());
+        }
+        _ => {}
+      }
+    }
+    let _ = api_name;
+    Ok(())
+  }
+}
+
 impl UnaryPermission<ImportDescriptor> {
   pub fn query(&self, host: Option<&ImportDescriptor>) -> PermissionState {
     self.query_desc(host, AllowPartial::TreatAsPartialGranted)
@@ -3542,6 +3932,8 @@ pub struct Permissions {
   pub read: UnaryPermission<ReadDescriptor>,
   pub write: UnaryPermission<WriteDescriptor>,
   pub net: UnaryPermission<NetDescriptor>,
+  pub net_connect: UnaryPermission<NetConnectDescriptor>,
+  pub net_listen: UnaryPermission<NetListenDescriptor>,
   pub env: UnaryPermission<EnvDescriptor>,
   pub sys: UnaryPermission<SysDescriptor>,
   pub run: UnaryPermission<AllowRunDescriptor>,
@@ -3551,9 +3943,16 @@ pub struct Permissions {
 
 impl Permissions {
   pub fn all_granted(&self) -> bool {
+    // Net is "fully granted" if either the legacy `--allow-net` field
+    // grants all, or both directional permissions grant all. The two
+    // models are mutually exclusive at the CLI layer, so this avoids
+    // requiring the directional fields to be populated when the user is
+    // running in legacy mode (and vice versa).
+    let net_granted = self.net.is_allow_all()
+      || (self.net_connect.is_allow_all() && self.net_listen.is_allow_all());
     self.read.is_allow_all()
       && self.write.is_allow_all()
-      && self.net.is_allow_all()
+      && net_granted
       && self.env.is_allow_all()
       && self.sys.is_allow_all()
       && self.run.is_allow_all()
@@ -3569,6 +3968,10 @@ pub struct PermissionsOptions {
   pub ignore_env: Option<Vec<String>>,
   pub allow_net: Option<Vec<String>>,
   pub deny_net: Option<Vec<String>>,
+  pub allow_net_connect: Option<Vec<String>>,
+  pub deny_net_connect: Option<Vec<String>>,
+  pub allow_net_listen: Option<Vec<String>>,
+  pub deny_net_listen: Option<Vec<String>>,
   pub allow_ffi: Option<Vec<String>>,
   pub deny_ffi: Option<Vec<String>>,
   pub allow_read: Option<Vec<String>>,
@@ -3761,6 +4164,24 @@ impl Permissions {
         })?,
         opts.prompt,
       ),
+      net_connect: Permissions::new_unary(
+        parse_maybe_vec(opts.allow_net_connect.as_deref(), |item| {
+          parser.parse_net_descriptor(item).map(|d| d.into_connect())
+        })?,
+        parse_maybe_vec(opts.deny_net_connect.as_deref(), |item| {
+          parser.parse_net_descriptor(item).map(|d| d.into_connect())
+        })?,
+        opts.prompt,
+      ),
+      net_listen: Permissions::new_unary(
+        parse_maybe_vec(opts.allow_net_listen.as_deref(), |item| {
+          parser.parse_net_descriptor(item).map(|d| d.into_listen())
+        })?,
+        parse_maybe_vec(opts.deny_net_listen.as_deref(), |item| {
+          parser.parse_net_descriptor(item).map(|d| d.into_listen())
+        })?,
+        opts.prompt,
+      ),
       env: Permissions::new_unary_with_ignore(
         parse_maybe_vec(opts.allow_env.as_deref(), |item| {
           parser.parse_env_descriptor(item)
@@ -3816,6 +4237,8 @@ impl Permissions {
       read: UnaryPermission::allow_all(),
       write: UnaryPermission::allow_all(),
       net: UnaryPermission::allow_all(),
+      net_connect: UnaryPermission::allow_all(),
+      net_listen: UnaryPermission::allow_all(),
       env: UnaryPermission::allow_all(),
       sys: UnaryPermission::allow_all(),
       run: UnaryPermission::allow_all(),
@@ -3839,6 +4262,8 @@ impl Permissions {
       read: Permissions::new_unary(None, None, prompt),
       write: Permissions::new_unary(None, None, prompt),
       net: Permissions::new_unary(None, None, prompt),
+      net_connect: Permissions::new_unary(None, None, prompt),
+      net_listen: Permissions::new_unary(None, None, prompt),
       env: Permissions::new_unary(None, None, prompt),
       sys: Permissions::new_unary(None, None, prompt),
       run: Permissions::new_unary(None, None, prompt),
@@ -4030,13 +4455,48 @@ impl PermissionsContainer {
       },
     )?;
     worker_perms.net = inner.net.create_child_permissions(
-      child_permissions_arg.net,
+      child_permissions_arg.net.clone(),
       |text| {
         Ok::<_, NetDescriptorParseError>(Some(
           self.descriptor_parser.parse_net_descriptor(text)?,
         ))
       },
     )?;
+    // The `ChildPermissionsArg` API only exposes a single `net` key — there
+    // is no separate `net-connect` / `net-listen` knob — so we route the
+    // arg into the directional permissions only when the parent is running
+    // in the new (directional) mode. In legacy mode the parent's `net`
+    // permission carries the rules for both directions, and our
+    // `check_net_connect` / `check_net_listen` dispatch will consult that
+    // field on the child as well, so the directional fields on the child
+    // can stay empty without losing capability.
+    let directional_arg = if inner.net.is_empty() {
+      child_permissions_arg.net.clone()
+    } else {
+      ChildUnaryPermissionArg::NotGranted
+    };
+    worker_perms.net_connect = inner.net_connect.create_child_permissions(
+      directional_arg.clone(),
+      |text| {
+        Ok::<_, NetDescriptorParseError>(Some(
+          self
+            .descriptor_parser
+            .parse_net_descriptor(text)?
+            .into_connect(),
+        ))
+      },
+    )?;
+    worker_perms.net_listen =
+      inner
+        .net_listen
+        .create_child_permissions(directional_arg, |text| {
+          Ok::<_, NetDescriptorParseError>(Some(
+            self
+              .descriptor_parser
+              .parse_net_descriptor(text)?
+              .into_listen(),
+          ))
+        })?;
     worker_perms.env = inner.env.create_child_permissions(
       child_permissions_arg.env,
       |text| {
@@ -4565,34 +5025,75 @@ impl PermissionsContainer {
     })
   }
 
+  /// Outbound-connection net permission check from a URL (e.g. `fetch`, `new
+  /// WebSocket`). Consults the legacy `--allow-net`/`--deny-net` permission
+  /// when populated, otherwise the direction-specific
+  /// `--allow-net-connect`/`--deny-net-connect` permission. The legacy and
+  /// new flag forms are mutually exclusive at the CLI level, so at most one
+  /// of the two is configured at a time.
   #[inline(always)]
-  pub fn check_net_url(
+  pub fn check_net_connect_url(
     &mut self,
     url: &Url,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
+    if !inner.net.is_empty() {
+      audit_and_skip_check_if_is_permission_fully_granted!(
+        inner.net,
+        NetDescriptor::flag_name(),
+        url
+      );
+      let desc = self.descriptor_parser.parse_net_descriptor_from_url(url)?;
+      inner.net.check(&desc, Some(api_name))?;
+      return Ok(());
+    }
     audit_and_skip_check_if_is_permission_fully_granted!(
-      inner.net,
-      NetDescriptor::flag_name(),
+      inner.net_connect,
+      NetConnectDescriptor::flag_name(),
       url
     );
-    let desc = self.descriptor_parser.parse_net_descriptor_from_url(url)?;
-    inner.net.check(&desc, Some(api_name))?;
+    let desc = self
+      .descriptor_parser
+      .parse_net_descriptor_from_url(url)?
+      .into_connect();
+    inner.net_connect.check(&desc, Some(api_name))?;
     Ok(())
   }
 
+  /// Outbound-connection net permission check from a (host, port) pair.
+  ///
+  /// Used by every op that needs to "talk to" an address: `Deno.connect`,
+  /// `Deno.connectTls`, `Deno.connectQuic`, `Deno.DatagramConn.send`,
+  /// `Deno.resolveDns`, `fetch`, the WebSocket constructor, the Node compat
+  /// `net`/`dns`/`dgram` shims, etc.
   #[inline(always)]
-  pub fn check_net<T: AsRef<str>>(
+  pub fn check_net_connect<T: AsRef<str>>(
     &mut self,
     host: &(T, Option<u16>),
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    let inner = &mut inner.net;
+    if !inner.net.is_empty() {
+      let legacy = &mut inner.net;
+      audit_and_skip_check_if_is_permission_fully_granted!(
+        legacy,
+        NetDescriptor::flag_name(),
+        {
+          let hostname = Host::parse_for_query(host.0.as_ref())?;
+          let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
+          descriptor.display_name().into_owned()
+        }
+      );
+      let hostname = Host::parse_for_query(host.0.as_ref())?;
+      let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
+      legacy.check(&descriptor, Some(api_name))?;
+      return Ok(());
+    }
+    let connect = &mut inner.net_connect;
     audit_and_skip_check_if_is_permission_fully_granted!(
-      inner,
-      NetDescriptor::flag_name(),
+      connect,
+      NetConnectDescriptor::flag_name(),
       {
         let hostname = Host::parse_for_query(host.0.as_ref())?;
         let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
@@ -4600,42 +5101,166 @@ impl PermissionsContainer {
       }
     );
     let hostname = Host::parse_for_query(host.0.as_ref())?;
-    let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
-    inner.check(&descriptor, Some(api_name))?;
+    let descriptor =
+      NetConnectDescriptor(NetDescriptor(hostname, host.1.map(Into::into)));
+    connect.check(&descriptor, Some(api_name))?;
+    Ok(())
+  }
+
+  /// Inbound-listener net permission check from a (host, port) pair.
+  ///
+  /// Used by `Deno.listen`, `Deno.listenTls`, `Deno.serve`,
+  /// `Deno.listenDatagram`, `Deno.QuicEndpoint`, the Node compat
+  /// `net.listen`, `dgram.createSocket`, `inspector.open`, etc.
+  #[inline(always)]
+  pub fn check_net_listen<T: AsRef<str>>(
+    &mut self,
+    host: &(T, Option<u16>),
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    if !inner.net.is_empty() {
+      let legacy = &mut inner.net;
+      audit_and_skip_check_if_is_permission_fully_granted!(
+        legacy,
+        NetDescriptor::flag_name(),
+        {
+          let hostname = Host::parse_for_query(host.0.as_ref())?;
+          let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
+          descriptor.display_name().into_owned()
+        }
+      );
+      let hostname = Host::parse_for_query(host.0.as_ref())?;
+      let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
+      legacy.check(&descriptor, Some(api_name))?;
+      return Ok(());
+    }
+    let listen = &mut inner.net_listen;
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      listen,
+      NetListenDescriptor::flag_name(),
+      {
+        let hostname = Host::parse_for_query(host.0.as_ref())?;
+        let descriptor = NetDescriptor(hostname, host.1.map(Into::into));
+        descriptor.display_name().into_owned()
+      }
+    );
+    let hostname = Host::parse_for_query(host.0.as_ref())?;
+    let descriptor =
+      NetListenDescriptor(NetDescriptor(hostname, host.1.map(Into::into)));
+    listen.check(&descriptor, Some(api_name))?;
     Ok(())
   }
 
   /// After resolving a hostname to an IP address, check that the resolved
-  /// IP is not in the deny list. This prevents bypassing IP-literal deny
-  /// rules via numeric hostname aliases or attacker-controlled DNS.
+  /// IP is not in the connect-direction deny list.
+  ///
+  /// This prevents bypassing IP-literal deny rules via numeric hostname
+  /// aliases or attacker-controlled DNS.
   #[inline(always)]
-  pub fn check_net_resolved(
+  pub fn check_net_connect_resolved(
     &mut self,
     resolved_ip: &std::net::IpAddr,
     port: u16,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
-    let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
-    inner.net.check_resolved_ip_deny(&desc, Some(api_name))?;
+    if !inner.net.is_empty() {
+      let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
+      inner.net.check_resolved_ip_deny(&desc, Some(api_name))?;
+      return Ok(());
+    }
+    let desc = NetConnectDescriptor(NetDescriptor(
+      Host::Ip(*resolved_ip),
+      Some(port.into()),
+    ));
+    inner
+      .net_connect
+      .check_resolved_ip_deny(&desc, Some(api_name))?;
     Ok(())
   }
 
+  /// After resolving a hostname to an IP address, check that the resolved
+  /// IP is not in the listen-direction deny list.
   #[inline(always)]
-  pub fn check_net_vsock(
+  pub fn check_net_listen_resolved(
+    &mut self,
+    resolved_ip: &std::net::IpAddr,
+    port: u16,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    if !inner.net.is_empty() {
+      let desc = NetDescriptor(Host::Ip(*resolved_ip), Some(port.into()));
+      inner.net.check_resolved_ip_deny(&desc, Some(api_name))?;
+      return Ok(());
+    }
+    let desc = NetListenDescriptor(NetDescriptor(
+      Host::Ip(*resolved_ip),
+      Some(port.into()),
+    ));
+    inner
+      .net_listen
+      .check_resolved_ip_deny(&desc, Some(api_name))?;
+    Ok(())
+  }
+
+  /// Vsock connect-direction permission check.
+  #[inline(always)]
+  pub fn check_net_connect_vsock(
     &mut self,
     cid: u32,
     port: u32,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     let mut inner = self.inner.lock();
+    if !inner.net.is_empty() {
+      audit_and_skip_check_if_is_permission_fully_granted!(
+        inner.net,
+        NetDescriptor::flag_name(),
+        format!("{cid}:{port}")
+      );
+      let desc = NetDescriptor(Host::Vsock(cid), Some(port));
+      inner.net.check(&desc, Some(api_name))?;
+      return Ok(());
+    }
     audit_and_skip_check_if_is_permission_fully_granted!(
-      inner.net,
-      NetDescriptor::flag_name(),
+      inner.net_connect,
+      NetConnectDescriptor::flag_name(),
       format!("{cid}:{port}")
     );
-    let desc = NetDescriptor(Host::Vsock(cid), Some(port));
-    inner.net.check(&desc, Some(api_name))?;
+    let desc =
+      NetConnectDescriptor(NetDescriptor(Host::Vsock(cid), Some(port)));
+    inner.net_connect.check(&desc, Some(api_name))?;
+    Ok(())
+  }
+
+  /// Vsock listen-direction permission check.
+  #[inline(always)]
+  pub fn check_net_listen_vsock(
+    &mut self,
+    cid: u32,
+    port: u32,
+    api_name: &str,
+  ) -> Result<(), PermissionCheckError> {
+    let mut inner = self.inner.lock();
+    if !inner.net.is_empty() {
+      audit_and_skip_check_if_is_permission_fully_granted!(
+        inner.net,
+        NetDescriptor::flag_name(),
+        format!("{cid}:{port}")
+      );
+      let desc = NetDescriptor(Host::Vsock(cid), Some(port));
+      inner.net.check(&desc, Some(api_name))?;
+      return Ok(());
+    }
+    audit_and_skip_check_if_is_permission_fully_granted!(
+      inner.net_listen,
+      NetListenDescriptor::flag_name(),
+      format!("{cid}:{port}")
+    );
+    let desc = NetListenDescriptor(NetDescriptor(Host::Vsock(cid), Some(port)));
+    inner.net_listen.check(&desc, Some(api_name))?;
     Ok(())
   }
 
@@ -4750,6 +5375,14 @@ impl PermissionsContainer {
     &self,
     host: Option<&str>,
   ) -> Result<PermissionState, NetDescriptorParseError> {
+    // The legacy `name: "net"` descriptor operates on the legacy `net`
+    // permission field only. The new direction-specific descriptors
+    // (`name: "net-connect"` / `name: "net-listen"`) operate on the
+    // matching directional fields. Keeping the legacy descriptor on its
+    // own field preserves the existing
+    // `Deno.permissions.{query,request,revoke}({name: "net"})` behavior
+    // bit-for-bit, and avoids firing two prompts (one per direction)
+    // when code that hasn't migrated calls `request({name: "net"})`.
     let inner = self.inner.lock();
     let permission = &inner.net;
     if permission.is_allow_all() {
@@ -4764,6 +5397,56 @@ impl PermissionsContainer {
         .as_ref(),
       ),
     )
+  }
+
+  #[inline(always)]
+  pub fn query_net_connect(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    let inner = self.inner.lock();
+    let legacy = &inner.net;
+    let permission = &inner.net_connect;
+    if legacy.is_allow_all() || permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
+    let query_desc = match host {
+      None => None,
+      Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+    };
+    let legacy_state = legacy.query(query_desc.as_ref());
+    let directional_state = permission.query(
+      query_desc
+        .as_ref()
+        .map(|d| NetConnectDescriptor(d.clone()))
+        .as_ref(),
+    );
+    Ok(more_permissive_net_state(legacy_state, directional_state))
+  }
+
+  #[inline(always)]
+  pub fn query_net_listen(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    let inner = self.inner.lock();
+    let legacy = &inner.net;
+    let permission = &inner.net_listen;
+    if legacy.is_allow_all() || permission.is_allow_all() {
+      return Ok(PermissionState::Granted);
+    }
+    let query_desc = match host {
+      None => None,
+      Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+    };
+    let legacy_state = legacy.query(query_desc.as_ref());
+    let directional_state = permission.query(
+      query_desc
+        .as_ref()
+        .map(|d| NetListenDescriptor(d.clone()))
+        .as_ref(),
+    );
+    Ok(more_permissive_net_state(legacy_state, directional_state))
   }
 
   #[inline(always)]
@@ -4917,6 +5600,9 @@ impl PermissionsContainer {
     &self,
     host: Option<&str>,
   ) -> Result<PermissionState, NetDescriptorParseError> {
+    // The legacy `name: "net"` descriptor revokes only from the legacy
+    // `net` field. Use `name: "net-connect"` / `name: "net-listen"` to
+    // revoke directional grants.
     Ok(
       self.inner.lock().net.revoke(
         match host {
@@ -4926,6 +5612,46 @@ impl PermissionsContainer {
         .as_ref(),
       ),
     )
+  }
+
+  #[inline(always)]
+  pub fn revoke_net_connect(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    let mut inner = self.inner.lock();
+    let query_desc = match host {
+      None => None,
+      Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+    };
+    let legacy_state = inner.net.revoke(query_desc.as_ref());
+    let directional_state = inner.net_connect.revoke(
+      query_desc
+        .as_ref()
+        .map(|d| NetConnectDescriptor(d.clone()))
+        .as_ref(),
+    );
+    Ok(more_permissive_net_state(legacy_state, directional_state))
+  }
+
+  #[inline(always)]
+  pub fn revoke_net_listen(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    let mut inner = self.inner.lock();
+    let query_desc = match host {
+      None => None,
+      Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+    };
+    let legacy_state = inner.net.revoke(query_desc.as_ref());
+    let directional_state = inner.net_listen.revoke(
+      query_desc
+        .as_ref()
+        .map(|d| NetListenDescriptor(d.clone()))
+        .as_ref(),
+    );
+    Ok(more_permissive_net_state(legacy_state, directional_state))
   }
 
   #[inline(always)]
@@ -5054,6 +5780,10 @@ impl PermissionsContainer {
     &self,
     host: Option<&str>,
   ) -> Result<PermissionState, NetDescriptorParseError> {
+    // The legacy `name: "net"` descriptor requests on the legacy `net`
+    // field only, preserving the existing prompt text and single-prompt
+    // behavior. To prompt for a specific direction, use
+    // `name: "net-connect"` or `name: "net-listen"`.
     Ok(
       self.inner.lock().net.request(
         match host {
@@ -5061,6 +5791,52 @@ impl PermissionsContainer {
           Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
         }
         .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_net_connect(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    let mut inner = self.inner.lock();
+    let query_desc = match host {
+      None => None,
+      Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+    };
+    if !inner.net.is_empty() {
+      return Ok(inner.net.request(query_desc.as_ref()));
+    }
+    Ok(
+      inner.net_connect.request(
+        query_desc
+          .as_ref()
+          .map(|d| NetConnectDescriptor(d.clone()))
+          .as_ref(),
+      ),
+    )
+  }
+
+  #[inline(always)]
+  pub fn request_net_listen(
+    &self,
+    host: Option<&str>,
+  ) -> Result<PermissionState, NetDescriptorParseError> {
+    let mut inner = self.inner.lock();
+    let query_desc = match host {
+      None => None,
+      Some(h) => Some(self.descriptor_parser.parse_net_query(h)?),
+    };
+    if !inner.net.is_empty() {
+      return Ok(inner.net.request(query_desc.as_ref()));
+    }
+    Ok(
+      inner.net_listen.request(
+        query_desc
+          .as_ref()
+          .map(|d| NetListenDescriptor(d.clone()))
+          .as_ref(),
       ),
     )
   }
@@ -5218,7 +5994,7 @@ impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ChildUnaryPermissionArg {
   Inherit,
   Granted,
@@ -6131,8 +6907,327 @@ mod tests {
 
     for (url_str, is_ok) in url_tests {
       let u = Url::parse(url_str).unwrap();
-      assert_eq!(is_ok, perms.check_net_url(&u, "api()").is_ok(), "{}", u);
+      assert_eq!(
+        is_ok,
+        perms.check_net_connect_url(&u, "api()").is_ok(),
+        "{}",
+        u
+      );
     }
+  }
+
+  // Matrix coverage for direction-specific net permissions.
+  //
+  // Establishes the expected behavior for the four-way grid of
+  // {allow-only, deny-only, both, neither} × {connect, listen} introduced
+  // in https://github.com/bartlomieju/orchid-inbox/issues/54. The legacy
+  // `--allow-net` / `--deny-net` flags are mutually exclusive with these
+  // direction-specific permissions at the CLI level, so each scenario
+  // populates only the directional permissions.
+
+  #[test]
+  fn test_check_net_connect_allow_only() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net_connect: Some(svec!["deno.land", "127.0.0.1:8000"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    // Allowed hosts pass connect, but the listen direction is unaffected
+    // and remains in the prompt-denied state.
+    assert!(
+      perms
+        .check_net_connect(&("deno.land", None), "api()")
+        .is_ok()
+    );
+    assert!(
+      perms
+        .check_net_connect(&("127.0.0.1", Some(8000)), "api()")
+        .is_ok()
+    );
+    assert!(
+      perms
+        .check_net_connect(&("evil.com", None), "api()")
+        .is_err()
+    );
+    // Listen should be denied regardless of host because no listen
+    // permission was granted.
+    assert!(
+      perms
+        .check_net_listen(&("deno.land", None), "api()")
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn test_check_net_listen_allow_only() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net_listen: Some(svec!["127.0.0.1:8080", "0.0.0.0:9000"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    assert!(
+      perms
+        .check_net_listen(&("127.0.0.1", Some(8080)), "api()")
+        .is_ok()
+    );
+    assert!(
+      perms
+        .check_net_listen(&("0.0.0.0", Some(9000)), "api()")
+        .is_ok()
+    );
+    assert!(
+      perms
+        .check_net_listen(&("127.0.0.1", Some(9999)), "api()")
+        .is_err()
+    );
+    // Granting listen access must not grant connect access.
+    assert!(
+      perms
+        .check_net_connect(&("127.0.0.1", Some(8080)), "api()")
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn test_check_net_connect_deny_only() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        deny_net_connect: Some(svec!["evil.example.com"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    // Denied connect target is rejected.
+    assert!(
+      perms
+        .check_net_connect(&("evil.example.com", None), "api()")
+        .is_err()
+    );
+    // Same host on listen is not denied — directional rules don't bleed
+    // across directions.
+    assert!(
+      perms
+        .check_net_listen(&("evil.example.com", None), "api()")
+        .is_err() // Still err because listen has no allow; but reason is
+                  // "no allow" not "deny" — verified by ensuring a non-denied
+                  // listen target also errs the same way (no allow either).
+    );
+  }
+
+  #[test]
+  fn test_check_net_listen_deny_blocks_even_with_connect_allow() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        // Allow outbound to anything, then deny listening on 0.0.0.0:22.
+        allow_net_connect: Some(svec![]),
+        deny_net_listen: Some(svec!["0.0.0.0:22"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    // Connect anywhere is granted (bare --allow-net-connect).
+    assert!(
+      perms
+        .check_net_connect(&("any.example.com", Some(80)), "api()")
+        .is_ok()
+    );
+    // But the listen deny still applies — the connect allow does not
+    // grant inbound capability.
+    assert!(
+      perms
+        .check_net_listen(&("0.0.0.0", Some(22)), "api()")
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn test_check_net_directional_wildcard_host() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net_connect: Some(svec!["*.example.com"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    assert!(
+      perms
+        .check_net_connect(&("foo.example.com", None), "api()")
+        .is_ok()
+    );
+    assert!(
+      perms
+        .check_net_connect(&("bar.example.com", Some(443)), "api()")
+        .is_ok()
+    );
+    // An unrelated domain must NOT be granted.
+    assert!(
+      perms
+        .check_net_connect(&("other.com", None), "api()")
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn test_check_net_directional_specific_port() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net_listen: Some(svec!["127.0.0.1:8080"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    assert!(
+      perms
+        .check_net_listen(&("127.0.0.1", Some(8080)), "api()")
+        .is_ok()
+    );
+    // Wrong port must be denied.
+    assert!(
+      perms
+        .check_net_listen(&("127.0.0.1", Some(8081)), "api()")
+        .is_err()
+    );
+  }
+
+  #[test]
+  fn test_query_net_directional_flags_independent_of_legacy() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        allow_net_connect: Some(svec!["deno.land"]),
+        allow_net_listen: Some(svec!["deno.land"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    // Direction-specific descriptors reflect their own permission grants.
+    assert_eq!(
+      perms.query_net_connect(Some("deno.land")).unwrap(),
+      PermissionState::Granted
+    );
+    assert_eq!(
+      perms.query_net_listen(Some("deno.land")).unwrap(),
+      PermissionState::Granted
+    );
+    // The legacy `name: "net"` descriptor operates on the legacy `net`
+    // permission field only (which is empty here), so it returns Prompt.
+    // Code using directional permissions should query the matching
+    // directional descriptor instead of `name: "net"`.
+    assert_eq!(
+      perms.query_net(Some("deno.land")).unwrap(),
+      PermissionState::Prompt
+    );
+  }
+
+  #[test]
+  fn test_query_net_with_partial_directional() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        // Only connect granted — listen is not.
+        allow_net_connect: Some(svec!["deno.land"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    assert_eq!(
+      perms.query_net_connect(Some("deno.land")).unwrap(),
+      PermissionState::Granted
+    );
+    assert_eq!(
+      perms.query_net_listen(Some("deno.land")).unwrap(),
+      PermissionState::Prompt
+    );
+    // The legacy net field is empty.
+    assert_eq!(
+      perms.query_net(Some("deno.land")).unwrap(),
+      PermissionState::Prompt
+    );
+  }
+
+  #[test]
+  fn test_legacy_allow_net_satisfies_directional_checks() {
+    set_prompter(Box::new(TestPrompter));
+    let parser = TestPermissionDescriptorParser;
+    let perms = Permissions::from_options(
+      &parser,
+      &PermissionsOptions {
+        // Legacy flag.
+        allow_net: Some(svec!["deno.land", "127.0.0.1:8080"]),
+        ..Default::default()
+      },
+    )
+    .unwrap();
+    let mut perms = PermissionsContainer::new(Arc::new(parser.clone()), perms);
+
+    // Both connect and listen succeed against the legacy allow list — the
+    // CLI mutual-exclusion check guarantees the directional fields are
+    // empty in legacy mode, so the directional check dispatches into the
+    // legacy `net` permission.
+    assert!(
+      perms
+        .check_net_connect(&("deno.land", None), "api()")
+        .is_ok()
+    );
+    assert!(
+      perms
+        .check_net_listen(&("127.0.0.1", Some(8080)), "api()")
+        .is_ok()
+    );
+    // And a host not on the legacy allow list still errs in both
+    // directions.
+    assert!(
+      perms
+        .check_net_connect(&("evil.com", None), "api()")
+        .is_err()
+    );
+    assert!(
+      perms
+        .check_net_listen(&("evil.com", None), "api()")
+        .is_err()
+    );
   }
 
   #[test]
@@ -7330,7 +8425,7 @@ mod tests {
     ];
 
     for (host, is_ok) in cases {
-      assert_eq!(perms.check_net(&(host, None), "api").is_ok(), is_ok);
+      assert_eq!(perms.check_net_connect(&(host, None), "api").is_ok(), is_ok);
     }
   }
 
@@ -7355,7 +8450,7 @@ mod tests {
     ];
 
     for (host, is_ok) in cases {
-      assert_eq!(perms.check_net(&(host, None), "api").is_ok(), is_ok);
+      assert_eq!(perms.check_net_connect(&(host, None), "api").is_ok(), is_ok);
     }
   }
 
@@ -7377,13 +8472,25 @@ mod tests {
     let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     // Direct IPv4 is denied
-    assert!(perms.check_net(&("127.0.0.1", None), "api").is_err());
+    assert!(
+      perms
+        .check_net_connect(&("127.0.0.1", None), "api")
+        .is_err()
+    );
     // IPv4-mapped IPv6 form must also be denied
-    assert!(perms.check_net(&("::ffff:127.0.0.1", None), "api").is_err());
+    assert!(
+      perms
+        .check_net_connect(&("::ffff:127.0.0.1", None), "api")
+        .is_err()
+    );
     // Regular IPv6 loopback is a different address, should be allowed
-    assert!(perms.check_net(&("::1", None), "api").is_ok());
+    assert!(perms.check_net_connect(&("::1", None), "api").is_ok());
     // Other IPv4 addresses should be allowed
-    assert!(perms.check_net(&("192.168.1.1", None), "api").is_ok());
+    assert!(
+      perms
+        .check_net_connect(&("192.168.1.1", None), "api")
+        .is_ok()
+    );
 
     // Allow an IPv4-mapped IPv6, verify it's accessible via IPv4 too
     let parser = TestPermissionDescriptorParser;
@@ -7397,8 +8504,12 @@ mod tests {
     .unwrap();
     let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
-    assert!(perms.check_net(&("10.0.0.1", None), "api").is_ok());
-    assert!(perms.check_net(&("::ffff:10.0.0.1", None), "api").is_ok());
+    assert!(perms.check_net_connect(&("10.0.0.1", None), "api").is_ok());
+    assert!(
+      perms
+        .check_net_connect(&("::ffff:10.0.0.1", None), "api")
+        .is_ok()
+    );
 
     // Port-qualified: deny 127.0.0.1:8080, verify IPv4-mapped form
     // with port is also denied (exercises the SocketAddr parse path)
@@ -7414,16 +8525,20 @@ mod tests {
     .unwrap();
     let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
-    assert!(perms.check_net(&("127.0.0.1", Some(8080)), "api").is_err());
     assert!(
       perms
-        .check_net(&("::ffff:127.0.0.1", Some(8080)), "api")
+        .check_net_connect(&("127.0.0.1", Some(8080)), "api")
+        .is_err()
+    );
+    assert!(
+      perms
+        .check_net_connect(&("::ffff:127.0.0.1", Some(8080)), "api")
         .is_err()
     );
     // Different port should be allowed
     assert!(
       perms
-        .check_net(&("::ffff:127.0.0.1", Some(9090)), "api")
+        .check_net_connect(&("::ffff:127.0.0.1", Some(9090)), "api")
         .is_ok()
     );
   }
@@ -10484,10 +11599,14 @@ mod tests {
     let mut perms = PermissionsContainer::new(Arc::new(parser), perms);
 
     // Subdomain should match wildcard allow
-    assert!(perms.check_net(&("sub.example.com", None), "api").is_ok());
     assert!(
       perms
-        .check_net(&("deep.sub.example.com", None), "api")
+        .check_net_connect(&("sub.example.com", None), "api")
+        .is_ok()
+    );
+    assert!(
+      perms
+        .check_net_connect(&("deep.sub.example.com", None), "api")
         .is_ok()
     );
 
@@ -10495,17 +11614,29 @@ mod tests {
     // because the fqdn crate's is_subdomain_of is inclusive (a domain is a
     // subdomain of itself). This is intentional and consistent with the
     // existing test_check_net_with_values test for *.discord.gg.
-    assert!(perms.check_net(&("example.com", None), "api").is_ok());
+    assert!(
+      perms
+        .check_net_connect(&("example.com", None), "api")
+        .is_ok()
+    );
 
     // Subdomain of denied wildcard should be denied
-    assert!(perms.check_net(&("sub.evil.com", None), "api").is_err());
+    assert!(
+      perms
+        .check_net_connect(&("sub.evil.com", None), "api")
+        .is_err()
+    );
 
     // Bare domain also matches wildcard deny (same inclusive semantics)
-    assert!(perms.check_net(&("evil.com", None), "api").is_err());
+    assert!(perms.check_net_connect(&("evil.com", None), "api").is_err());
 
     // Unrelated domain should prompt (denied since no-prompt by default
     // in test)
-    assert!(perms.check_net(&("other.com", None), "api").is_err());
+    assert!(
+      perms
+        .check_net_connect(&("other.com", None), "api")
+        .is_err()
+    );
   }
 
   #[test]

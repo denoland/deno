@@ -74,14 +74,18 @@ pub fn op_node_udp_bind(
 ) -> Result<(ResourceId, String, u16), NodeUdpError> {
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_net(&(hostname, Some(port)), "dgram.createSocket()")?;
+    .check_net_listen(&(hostname, Some(port)), "dgram.createSocket()")?;
 
   let addr = deno_net::resolve_addr::resolve_addr_sync(hostname, port)?
     .next()
     .ok_or(NodeUdpError::NoResolvedAddress)?;
   state
     .borrow_mut::<PermissionsContainer>()
-    .check_net_resolved(&addr.ip(), addr.port(), "dgram.createSocket()")?;
+    .check_net_listen_resolved(
+      &addr.ip(),
+      addr.port(),
+      "dgram.createSocket()",
+    )?;
 
   let domain = if addr.is_ipv4() {
     Domain::IPV4
@@ -573,7 +577,7 @@ pub async fn op_node_udp_send(
     state
       .borrow_mut()
       .borrow_mut::<PermissionsContainer>()
-      .check_net(&(&hostname, Some(port)), "socket.send()")?;
+      .check_net_connect(&(&hostname, Some(port)), "socket.send()")?;
   }
 
   let resource = state
@@ -589,7 +593,7 @@ pub async fn op_node_udp_send(
     state
       .borrow_mut()
       .borrow_mut::<PermissionsContainer>()
-      .check_net_resolved(&addr.ip(), addr.port(), "socket.send()")?;
+      .check_net_connect_resolved(&addr.ip(), addr.port(), "socket.send()")?;
   }
 
   let cancel = RcRef::map(&resource, |r| &r.cancel);

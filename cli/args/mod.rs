@@ -1829,6 +1829,33 @@ fn flags_to_permissions_options(
       config.and_then(|c| c.permissions.net.deny.as_ref()),
       &identity,
     ),
+    allow_net_connect: handle_allow(
+      // --allow-all alone shouldn't synthesize a directional list — it
+      // already populates the legacy `allow_net` field above, which the
+      // permission system honours for both directions.
+      false,
+      None,
+      flags.allow_net_connect.as_ref(),
+      None,
+      &identity,
+    ),
+    deny_net_connect: handle_deny_or_ignore(
+      flags.deny_net_connect.as_ref(),
+      None,
+      &identity,
+    ),
+    allow_net_listen: handle_allow(
+      false,
+      None,
+      flags.allow_net_listen.as_ref(),
+      None,
+      &identity,
+    ),
+    deny_net_listen: handle_deny_or_ignore(
+      flags.deny_net_listen.as_ref(),
+      None,
+      &identity,
+    ),
     allow_ffi: handle_allow(
       flags.allow_all,
       config.and_then(|c| c.permissions.all),
@@ -2108,6 +2135,10 @@ mod test {
           ignore_env: Some(vec!["env-ignore".to_string()]),
           allow_net: Some(vec!["net-allow".to_string()]),
           deny_net: Some(vec!["net-deny".to_string()]),
+          allow_net_connect: None,
+          deny_net_connect: None,
+          allow_net_listen: None,
+          deny_net_listen: None,
           allow_ffi: Some(vec![
             base_dir
               .join("ffi-allow")
@@ -2215,6 +2246,10 @@ mod test {
           ignore_env: None,
           allow_net: Some(vec![]),
           deny_net: None,
+          allow_net_connect: None,
+          deny_net_connect: None,
+          allow_net_listen: None,
+          deny_net_listen: None,
           allow_ffi: Some(vec![]),
           deny_ffi: None,
           allow_read: Some(vec!["./folder".to_string()]),

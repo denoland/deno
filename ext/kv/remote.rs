@@ -71,7 +71,7 @@ impl denokv_remote::RemotePermissions for PermissionChecker {
     let mut state = self.state.borrow_mut();
     let permissions = state.borrow_mut::<PermissionsContainer>();
     permissions
-      .check_net_url(url, "Deno.openKv")
+      .check_net_connect_url(url, "Deno.openKv")
       .map_err(JsErrorBox::from_err)
   }
 }
@@ -156,7 +156,7 @@ impl DatabaseHandler for RemoteDbHandler {
         .check_env(ENV_VAR_NAME)
         .map_err(JsErrorBox::from_err)?;
       permissions
-        .check_net_url(&parsed_url, "Deno.openKv")
+        .check_net_connect_url(&parsed_url, "Deno.openKv")
         .map_err(JsErrorBox::from_err)?;
     }
 
