@@ -8,6 +8,7 @@ const {
   op_net_connect_tls,
   op_net_listen_tls,
   op_tls_cert_resolver_create,
+  op_tls_cert_resolver_invalidate,
   op_tls_cert_resolver_poll,
   op_tls_cert_resolver_resolve,
   op_tls_cert_resolver_resolve_error,
@@ -19,6 +20,8 @@ const {
 } = core.ops;
 const {
   ObjectDefineProperty,
+  ObjectFreeze,
+  SafeWeakMap,
   TypeError,
   Symbol,
   SymbolFor,
@@ -229,24 +232,44 @@ function startTlsInternal(
 const resolverSymbol = SymbolFor("unstableSniResolver");
 const serverNameSymbol = SymbolFor("unstableServerName");
 
+// Maps a resolver callback to a function that drops cached resolutions for
+// a given SNI hostname, so the next handshake re-invokes the callback. Used
+// to swap certificates without restarting the listener (eg. ACME renewal).
+const tlsKeyResolverInvalidators = new SafeWeakMap();
+
 function createTlsKeyResolver(callback) {
   const { 0: resolver, 1: lookup } = op_tls_cert_resolver_create();
+  tlsKeyResolverInvalidators.set(
+    callback,
+    (sni) => op_tls_cert_resolver_invalidate(lookup, sni),
+  );
   (async () => {
     while (true) {
-      const sni = await op_tls_cert_resolver_poll(lookup);
-      if (typeof sni !== "string") {
+      const polled = await op_tls_cert_resolver_poll(lookup);
+      if (polled === null || polled === undefined) {
         break;
       }
+      const { 0: id, 1: sni, 2: alpnProtocols } = polled;
       try {
-        const key = await callback(sni);
+        // The callback may pick a certificate based on the SNI hostname
+        // and/or the client's ALPN offer (eg. respond to an `acme-tls/1`
+        // TLS-ALPN-01 challenge handshake with a one-shot challenge cert
+        // by returning `alpnProtocols: ["acme-tls/1"], noCache: true`).
+        const key = await callback(sni, ObjectFreeze({ alpnProtocols }));
         if (!hasTlsKeyPairOptions(key)) {
-          op_tls_cert_resolver_resolve_error(lookup, sni, "Invalid key");
+          op_tls_cert_resolver_resolve_error(lookup, id, "Invalid key");
         } else {
           const resolved = loadTlsKeyPair("Deno.listenTls", key);
-          op_tls_cert_resolver_resolve(lookup, sni, resolved);
+          op_tls_cert_resolver_resolve(
+            lookup,
+            id,
+            resolved,
+            key.alpnProtocols ?? null,
+            key.noCache !== true,
+          );
         }
       } catch (e) {
-        op_tls_cert_resolver_resolve_error(lookup, sni, e.message);
+        op_tls_cert_resolver_resolve_error(lookup, id, e.message);
       }
     }
   })();
@@ -256,6 +279,7 @@ function createTlsKeyResolver(callback) {
 internals.resolverSymbol = resolverSymbol;
 internals.serverNameSymbol = serverNameSymbol;
 internals.createTlsKeyResolver = createTlsKeyResolver;
+internals.tlsKeyResolverInvalidators = tlsKeyResolverInvalidators;
 internals.getPeerCertificate = _getPeerCertificate;
 
 return {
