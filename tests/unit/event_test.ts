@@ -1,5 +1,26 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
-import { assertEquals, assertStringIncludes } from "./test_util.ts";
+import {
+  assert,
+  assertEquals,
+  assertGreaterOrEqual,
+  assertStringIncludes,
+} from "./test_util.ts";
+
+Deno.test(function eventTimeStamp() {
+  // `timeStamp` is a DOMHighResTimeStamp (relative to the time origin) set at
+  // creation time, so it must be non-zero and monotonically non-decreasing.
+  const before = performance.now();
+  const event = new Event("test");
+  const after = performance.now();
+
+  assertEquals(typeof event.timeStamp, "number");
+  assert(event.timeStamp > 0);
+  assertGreaterOrEqual(event.timeStamp, before);
+  assertGreaterOrEqual(after, event.timeStamp);
+
+  const later = new Event("test");
+  assertGreaterOrEqual(later.timeStamp, event.timeStamp);
+});
 
 Deno.test(function eventInitializedWithType() {
   const type = "click";
