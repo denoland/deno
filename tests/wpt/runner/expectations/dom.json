@@ -1086,16 +1086,16 @@
     "Document-createEvent.https.html": false,
     "Document-createProcessingInstruction.html": {
       "expectedFailures": [
-        "Should get a ProcessingInstruction for target \"A\u00b7A\" and data \"x\".",
+        "Should get a ProcessingInstruction for target \"A·A\" and data \"x\".",
         "Should get a ProcessingInstruction for target \"a0\" and data \"x\".",
         "Should get a ProcessingInstruction for target \"xml:fail\" and data \"x\".",
         "Should throw an INVALID_CHARACTER_ERR for target \"0\" and data \"x\".",
         "Should throw an INVALID_CHARACTER_ERR for target \"A\" and data \"?>\".",
-        "Should throw an INVALID_CHARACTER_ERR for target \"A\u00d7\" and data \"x\".",
+        "Should throw an INVALID_CHARACTER_ERR for target \"A×\" and data \"x\".",
         "Should throw an INVALID_CHARACTER_ERR for target \"\\\\A\" and data \"x\".",
         "Should throw an INVALID_CHARACTER_ERR for target \"\\f\" and data \"x\".",
-        "Should throw an INVALID_CHARACTER_ERR for target \"\u00b7A\" and data \"x\".",
-        "Should throw an INVALID_CHARACTER_ERR for target \"\u00d7A\" and data \"x\".",
+        "Should throw an INVALID_CHARACTER_ERR for target \"·A\" and data \"x\".",
+        "Should throw an INVALID_CHARACTER_ERR for target \"×A\" and data \"x\".",
         "Should throw an INVALID_CHARACTER_ERR for target 0 and data \"x\"."
       ]
     },
@@ -1233,7 +1233,7 @@
         "First set attribute is returned by getAttribute",
         "First set attribute is returned with mapped attribute set first",
         "First set attribute is returned with mapped attribute set later",
-        "If attr\u2019s element is neither null nor element, throw an InUseAttributeError.",
+        "If attr’s element is neither null nor element, throw an InUseAttributeError.",
         "Non-HTML element with upper-case attribute",
         "Only lowercase attributes are returned on HTML elements (mixed case attribute)",
         "Only lowercase attributes are returned on HTML elements (upper case attribute)",
