@@ -4001,6 +4001,11 @@ jobs:
           mkdir -p target/release
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
+      - name: Free disk space (linux)
+        run: |-
+          sudo rm -rf /usr/local/lib/android /usr/local/share/powershell /usr/share/dotnet 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
       - name: Restore cache cargo home
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -4803,6 +4808,11 @@ jobs:
           submodules: false
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      - name: Free disk space (linux)
+        run: |-
+          sudo rm -rf /usr/local/lib/android /usr/local/share/powershell /usr/share/dotnet 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
       - name: Restore cache cargo home
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5472,6 +5482,11 @@ jobs:
           submodules: false
       - name: Clone submodule ./tests/util/std
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      - name: Free disk space (linux)
+        run: |-
+          sudo rm -rf /usr/local/lib/android /usr/local/share/powershell /usr/share/dotnet 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
       - name: Restore cache cargo home
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!startsWith(github.ref, ''refs/tags/'')'
@@ -5963,6 +5978,12 @@ jobs:
       - name: Clone submodule ./tests/util/std
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
         run: git submodule update --init --recursive --depth=1 -- ./tests/util/std
+      - name: Free disk space (linux)
+        if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'')'
+        run: |-
+          sudo rm -rf /usr/local/lib/android /usr/local/share/powershell /usr/share/dotnet 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          df -h
       - name: Restore cache cargo home
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         if: '!(!contains(github.event.pull_request.labels.*.name, ''ci-full'') && github.event_name == ''pull_request'') && !startsWith(github.ref, ''refs/tags/'')'

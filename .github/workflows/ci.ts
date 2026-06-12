@@ -876,11 +876,24 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
+        const freeDiskStep = step({
+          name: "Free disk space (linux)",
+          if: isLinux,
+          run: [
+            // Removes large pre-installed tool suites not needed for Deno builds.
+            // Frees ~10-20 GB before cache restore, preventing OOM/disk exhaustion
+            // during ThinLTO V8 linking on ubuntu-24.04 runners.
+            "sudo rm -rf /usr/local/lib/android /usr/local/share/powershell /usr/share/dotnet 2>/dev/null || true",
+            "sudo docker image prune -af 2>/dev/null || true",
+            "df -h",
+          ],
+        });
         const cargoBuildReleaseStep = step
           .if(
             isRelease.and(isDenoland.or(buildItem.use_sysroot)),
           )
           .dependsOn(
+            freeDiskStep,
             installLldStep,
             restoreCacheStep,
             installRustStep,
@@ -951,6 +964,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           );
         const cargoBuildStep = step
           .dependsOn(
+            freeDiskStep,
             installLldStep,
             restoreCacheStep,
             installRustStep,
