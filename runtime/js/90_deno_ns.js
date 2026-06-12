@@ -56,6 +56,11 @@ function lazyKv() {
   return _kvImpl ?? (_kvImpl = core.loadExtScript("ext:deno_kv/01_db.ts"));
 }
 const cron = core.loadExtScript("ext:deno_cron/01_cron.ts");
+// Deno.S3Client is a niche API and pulls in fetch and 06_streams. Defer.
+let _s3Impl;
+function lazyS3() {
+  return _s3Impl ?? (_s3Impl = core.loadExtScript("ext:deno_s3/01_s3.ts"));
+}
 const surface = core.loadExtScript("ext:deno_canvas/02_surface.js");
 const telemetry = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 import { unstableIds } from "ext:deno_features/flags.js";
@@ -312,6 +317,18 @@ denoNsUnstableById[unstableIds.kv] = {
   },
   get KvListIterator() {
     return lazyKv().KvListIterator;
+  },
+};
+
+denoNsUnstableById[unstableIds.s3] = {
+  get S3Client() {
+    return lazyS3().S3Client;
+  },
+  get S3File() {
+    return lazyS3().S3File;
+  },
+  get s3() {
+    return lazyS3().getDefaultClient();
   },
 };
 

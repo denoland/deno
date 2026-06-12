@@ -144,6 +144,13 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: Some("DENO_UNSTABLE_RAW_IMPORTS"),
   },
   UnstableFeatureDescription {
+    name: "s3",
+    help_text: "Enable unstable `Deno.S3Client` and `Deno.s3` APIs",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    env_var: None,
+  },
+  UnstableFeatureDescription {
     name: "sloppy-imports",
     help_text: "Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing",
     show_in_help: true,

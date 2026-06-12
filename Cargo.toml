@@ -26,6 +26,7 @@ members = [
   "ext/node_crypto",
   "ext/node_sqlite",
   "ext/rt_helper",
+  "ext/s3",
   "ext/signals",
   "ext/telemetry",
   "ext/url",
@@ -130,6 +131,7 @@ deno_node_crypto = { version = "0.21.0", path = "./ext/node_crypto" }
 deno_node_sqlite = { version = "0.21.0", path = "./ext/node_sqlite" }
 deno_os = { version = "0.68.0", path = "./ext/os" }
 deno_process = { version = "0.66.0", path = "./ext/process" }
+deno_s3 = { version = "0.1.0", path = "./ext/s3" }
 deno_signals = { version = "0.42.0", path = "./ext/signals" }
 deno_telemetry = { version = "0.73.0", path = "./ext/telemetry" }
 deno_tls = { version = "0.238.0", path = "./ext/tls" }

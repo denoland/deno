@@ -3187,6 +3187,7 @@ dependencies = [
  "deno_permissions",
  "deno_process",
  "deno_resolver",
+ "deno_s3",
  "deno_signals",
  "deno_telemetry",
  "deno_terminal",
@@ -3218,6 +3219,13 @@ dependencies = [
  "unicode-normalization",
  "uuid",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "deno_s3"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
 ]
 
 [[package]]

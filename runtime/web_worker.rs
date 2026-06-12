@@ -559,6 +559,7 @@ impl WebWorker {
         deno_kv::KvConfig::builder().build(),
       ),
       deno_cron::deno_cron::init(Box::new(CronHandlerImpl::create_from_env())),
+      deno_s3::deno_s3::init(),
       deno_napi::deno_napi::init(services.deno_rt_native_addon_loader.clone()),
       deno_http::deno_http::init(deno_http::Options {
         no_legacy_abort: options.bootstrap.no_legacy_abort,
