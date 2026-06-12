@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::Stdio as StdStdio;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -27,8 +28,11 @@ use deno_lib::standalone::virtual_fs::VirtualFile;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_fs::FsFileType;
+use deno_runtime::deno_fs::FsReadDir;
+use deno_runtime::deno_fs::FsReadDirRc;
 use deno_runtime::deno_fs::OpenOptions;
 use deno_runtime::deno_fs::RealFs;
+use deno_runtime::deno_fs::sync::new_rc;
 use deno_runtime::deno_io;
 use deno_runtime::deno_io::fs::File as DenoFile;
 use deno_runtime::deno_io::fs::FsError;
@@ -452,9 +456,11 @@ impl FileSystem for DenoRtSys {
   async fn read_dir_async(
     &self,
     path: CheckedPathBuf,
-  ) -> FsResult<Vec<FsDirEntry>> {
+  ) -> FsResult<FsReadDirRc> {
     if self.is_vfs_path(&path) {
-      Ok(self.vfs.read_dir(&path)?)
+      Ok(new_rc(VfsReadDir(Mutex::new(
+        self.vfs.read_dir(&path)?.into_iter(),
+      ))))
     } else {
       RealFs.read_dir_async(path).await
     }
@@ -595,6 +601,16 @@ impl FileSystem for DenoRtSys {
     RealFs
       .lutime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
       .await
+  }
+}
+
+#[derive(Debug)]
+struct VfsReadDir(Mutex<std::vec::IntoIter<FsDirEntry>>);
+
+#[async_trait::async_trait(?Send)]
+impl FsReadDir for VfsReadDir {
+  async fn next(&self) -> FsResult<Option<FsDirEntry>> {
+    Ok(self.0.try_lock().map_err(|_| FsError::FileBusy)?.next())
   }
 }
 

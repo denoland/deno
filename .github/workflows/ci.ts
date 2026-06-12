@@ -18,7 +18,7 @@ import {
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 116;
+const cacheVersion = 117;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuARMRunner = "ubuntu-24.04-arm";
@@ -872,6 +872,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ],
           }),
         );
+        const packagesToBuild = ["deno", "denort", "test_server"]
+          .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
         const cargoBuildReleaseStep = step
@@ -895,12 +897,22 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               run: [
                 // output fs space before and after building
                 "df -h",
-                `cargo build --release --locked ${binsToBuild} --features=panic-trace`,
+                `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
                 // Build the desktop runtime shared library (libdenort cdylib) for
                 // laufey-based desktop apps. Separate invocation because the
                 // panic-trace feature only applies to the deno/denort binaries.
                 "cargo build --release --locked -p denort_desktop",
                 "df -h",
+              ],
+            },
+            {
+              name: "Check release snapshot flags",
+              if: isLinux,
+              run: [
+                "if strings target/release/deno | grep -F -- '--no-lazy --no-lazy-eval --no-lazy-streaming'; then",
+                '  echo "release deno binary contains eager snapshot flags"',
+                "  exit 1",
+                "fi",
               ],
             },
             {
@@ -934,7 +946,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             {
               name: "Build debug",
               if: isDebug,
-              run: `cargo build --locked ${binsToBuild} --features=panic-trace`,
+              run:
+                `cargo build --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
               env: { CARGO_PROFILE_DEV_DEBUG: 0 },
             },
             cargoBuildReleaseStep,
