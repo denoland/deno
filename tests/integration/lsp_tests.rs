@@ -1921,6 +1921,44 @@ fn lsp_hover() {
 }
 
 #[test(timeout = 300)]
+fn lsp_inferred_type() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  let file = temp_dir.source_file(
+    "file.ts",
+    r#"const inferred = {
+  alpha: { value: "alpha", nested: { count: 1, enabled: true } },
+  beta: { value: "beta", nested: { count: 2, enabled: false } },
+  gamma: { value: "gamma", nested: { count: 3, enabled: true } },
+  delta: { value: "delta", nested: { count: 4, enabled: false } },
+  epsilon: { value: "epsilon", nested: { count: 5, enabled: true } },
+  zeta: { value: "zeta", nested: { count: 6, enabled: false } },
+  eta: { value: "eta", nested: { count: 7, enabled: true } },
+  theta: { value: "theta", nested: { count: 8, enabled: false } },
+};
+"#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_file(&file);
+  let res = client.write_request(
+    "deno/inferredType",
+    json!({
+      "textDocument": file.identifier(),
+      "position": file.range_of("inferred").start,
+    }),
+  );
+  let text = res["text"].as_str().unwrap();
+  assert!(text.starts_with("const inferred: {"));
+  assert!(text.contains("alpha: {"));
+  assert!(text.contains("theta: {"));
+  assert!(text.len() > 500, "{text}");
+  assert_eq!(res["range"], json!(file.range_of("inferred")));
+
+  client.shutdown();
+}
+
+#[test(timeout = 300)]
 fn lsp_hover_asset() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

@@ -491,6 +491,32 @@ impl LanguageServer {
     Ok(Some(self.inner.read().await.get_performance()))
   }
 
+  pub async fn inferred_type(
+    &self,
+    params: Option<Value>,
+    token: CancellationToken,
+  ) -> LspResult<Option<Value>> {
+    self.init_flag.wait_raised().await;
+    match params.map(serde_json::from_value) {
+      Some(Ok(params)) => Ok(Some(
+        serde_json::to_value(
+          self
+            .inner
+            .read()
+            .await
+            .inferred_type(params, &token)
+            .await?,
+        )
+        .map_err(|err| {
+          error!("Failed to serialize inferred_type response: {:#}", err);
+          LspError::internal_error()
+        })?,
+      )),
+      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+      None => Err(LspError::invalid_params("Missing parameters")),
+    }
+  }
+
   pub async fn task_definitions(
     &self,
     _token: CancellationToken,
@@ -4668,6 +4694,43 @@ impl Inner {
     };
     self.performance.measure(mark);
     Ok(contents)
+  }
+
+  async fn inferred_type(
+    &self,
+    params: lsp_custom::InferredTypeParams,
+    token: &CancellationToken,
+  ) -> LspResult<Option<lsp_custom::InferredTypeResponse>> {
+    let mark = self
+      .performance
+      .mark_with_args("lsp.inferred_type", &params);
+    let Some(document) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let Some(module) = self.get_primary_module(&document)? else {
+      return Ok(None);
+    };
+    let snapshot = self.snapshot();
+    let response = self
+      .ts_server
+      .provide_inferred_type(&module, params.position, snapshot, token)
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!("Unable to get inferred type from TypeScript: {:#}", err);
+          LspError::internal_error()
+        }
+      })?;
+    self.performance.measure(mark);
+    Ok(response)
   }
 }
 
