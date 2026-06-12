@@ -10,6 +10,9 @@ pub enum FdOwnership {
   /// FdTable owns the File; dropping the entry closes the fd.
   /// Used by fs.openSync, stdio fds 0/1/2, etc.
   TableOwned(Rc<dyn File>),
+  /// An inherited extra stdio fd that can be used by node:fs, but may
+  /// still be claimed later by libuv APIs such as net.Socket({ fd }).
+  InheritedExtraStdio(Rc<dyn File>),
   /// A uv handle (e.g. uv_pipe_t) owns the fd; FdTable just tracks
   /// that it exists for duplicate detection. The entry is removed
   /// when uv_close fires, but no file is dropped.
@@ -40,6 +43,21 @@ impl FdTable {
     true
   }
 
+  /// Register an inherited extra stdio fd. Returns false if already registered.
+  pub fn register_inherited_extra_stdio(
+    &mut self,
+    fd: i32,
+    file: Rc<dyn File>,
+  ) -> bool {
+    if self.entries.contains_key(&fd) {
+      return false;
+    }
+    self
+      .entries
+      .insert(fd, FdOwnership::InheritedExtraStdio(file));
+    true
+  }
+
   /// Register a UvOwned fd (tracked but not owned). Returns false if
   /// already registered.
   pub fn register_uv_owned(&mut self, fd: i32) -> bool {
@@ -54,6 +72,7 @@ impl FdTable {
   pub fn get(&self, fd: i32) -> Option<&Rc<dyn File>> {
     match self.entries.get(&fd) {
       Some(FdOwnership::TableOwned(file)) => Some(file),
+      Some(FdOwnership::InheritedExtraStdio(file)) => Some(file),
       _ => None,
     }
   }
@@ -63,6 +82,7 @@ impl FdTable {
   pub fn remove(&mut self, fd: i32) -> Option<Rc<dyn File>> {
     match self.entries.remove(&fd) {
       Some(FdOwnership::TableOwned(file)) => Some(file),
+      Some(FdOwnership::InheritedExtraStdio(file)) => Some(file),
       Some(FdOwnership::UvOwned) => None,
       None => None,
     }
@@ -71,6 +91,14 @@ impl FdTable {
   /// Check if an fd is registered (either ownership type).
   pub fn contains(&self, fd: i32) -> bool {
     self.entries.contains_key(&fd)
+  }
+
+  /// Check if an fd is an inherited extra stdio descriptor.
+  pub fn is_inherited_extra_stdio(&self, fd: i32) -> bool {
+    matches!(
+      self.entries.get(&fd),
+      Some(FdOwnership::InheritedExtraStdio(_))
+    )
   }
 }
 

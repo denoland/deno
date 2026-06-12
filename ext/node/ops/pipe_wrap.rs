@@ -313,11 +313,15 @@ impl PipeWrap {
   #[fast]
   fn open(&self, state: &mut OpState, #[smi] fd: i32) -> i32 {
     // Check FdTable for duplicate fds. Stdio fds (0-2) are pre-registered
-    // as TableOwned; for those, open is allowed (no-op check). Non-stdio
-    // fds already in FdTable are rejected (EEXIST).
+    // as TableOwned; for those, open is allowed (no-op check). Inherited
+    // extra stdio fds are also allowed, because child process code may open
+    // them through net.Socket({ fd }). Other non-stdio fds already in FdTable
+    // are rejected (EEXIST).
     {
-      let fd_table = state.borrow::<deno_io::FdTable>();
-      if fd_table.contains(fd) && !(0..=2).contains(&fd) {
+      let fd_table = state.borrow_mut::<deno_io::FdTable>();
+      if fd_table.is_inherited_extra_stdio(fd) {
+        fd_table.remove(fd);
+      } else if fd_table.contains(fd) && !(0..=2).contains(&fd) {
         return -libc::EEXIST;
       }
     }
