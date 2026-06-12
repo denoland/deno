@@ -2784,10 +2784,17 @@ fn resolve_write(
     };
     let position = clamp_position(scope, pos_v);
     validate_offset_length_write(offset, length, byte_length)?;
-    let mut all = vec![0u8; byte_length as usize];
-    view.copy_contents(&mut all);
     let (start, end) = (offset as usize, (offset + length) as usize);
-    Ok((fd, all[start..end].to_vec(), position))
+    // copy_contents copies from the view's start, so copy the [0, end)
+    // prefix and shift the [start, end) range down -- one allocation and
+    // (for the common offset-0 case) one copy of exactly the write span.
+    let mut bytes = vec![0u8; end];
+    view.copy_contents(&mut bytes);
+    if start != 0 {
+      bytes.copy_within(start.., 0);
+    }
+    bytes.truncate(end - start);
+    Ok((fd, bytes, position))
   } else {
     let Ok(s) = v8::Local::<v8::String>::try_from(buffer) else {
       return Err(
@@ -6773,18 +6780,6 @@ fn check_read_file_size_sync(
   Ok(())
 }
 
-async fn check_read_file_size_async(
-  file: &Rc<dyn deno_io::fs::File>,
-) -> Result<(), FsError> {
-  if let Ok(stat) = file.clone().stat_async().await
-    && stat.is_file
-    && stat.size > K_IO_MAX_LENGTH
-  {
-    return Err(err_file_too_large(stat.size).into());
-  }
-  Ok(())
-}
-
 // Cancellation plumbing for the AbortSignal-capable ops (readFile/writeFile):
 // JS passes the rid of a `CancelHandle` resource that the signal's abort
 // handler closes, interrupting the in-flight I/O. The op-side cancellation
@@ -6916,11 +6911,14 @@ pub fn op_node_fs_read_file_path(
       // Yield once so I/O errors reject (callback) instead of completing
       // on the eager poll, which async(eager_throw) rethrows synchronously.
       tokio::task::yield_now().await;
+      // Open + fstat run synchronously on the runtime thread (as the
+      // pre-port op_fs_read_file_async did), leaving the read as the
+      // single blocking-pool round-trip; the extra hops dominated
+      // small-file readFile cost.
       let file = fs
-        .open_async(checked, open_options)
-        .await
+        .open_sync(&checked.as_checked_path(), open_options)
         .map_err(|e| node_fs_err(e, "open", &path))?;
-      check_read_file_size_async(&file).await?;
+      check_read_file_size_sync(&file)?;
       let buf = file
         .read_all_async()
         .await
@@ -6962,7 +6960,9 @@ pub fn op_node_fs_read_file(
     // eager poll (which eager_throw rethrows synchronously).
     tokio::task::yield_now().await;
     let file = file?;
-    check_read_file_size_async(&file).await?;
+    // Sync fstat on the runtime thread: a pooled stat round-trip costs
+    // more than the syscall.
+    check_read_file_size_sync(&file)?;
     let buf = file
       .read_all_async()
       .await
