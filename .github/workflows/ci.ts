@@ -874,6 +874,7 @@ const buildJobs = buildItems.map((rawBuildItem) => {
           )
           .dependsOn(
             installLldStep,
+            installDenoStep,
             restoreCacheStep,
             installRustStep,
             sysRootStep,
@@ -886,6 +887,9 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             },
             {
               name: "Build release",
+              env: {
+                DENO_SNAPSHOT_MINIFY_SOURCES: "1",
+              },
               run: [
                 // output fs space before and after building
                 "df -h",
@@ -1474,6 +1478,9 @@ const benchJob = job(
         // we could optimize this to not need this.
         {
           name: "Build deno",
+          env: {
+            DENO_SNAPSHOT_MINIFY_SOURCES: "1",
+          },
           run: "cargo build --release -p deno",
         },
         {

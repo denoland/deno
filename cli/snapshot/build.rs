@@ -9,6 +9,7 @@ fn main() {
   #[allow(clippy::print_stdout, reason = "build script output")]
   {
     println!("cargo:rerun-if-env-changed=DENO_SNAPSHOT_IMPORT_GRAPH");
+    println!("cargo:rerun-if-env-changed=DENO_SNAPSHOT_MINIFY_SOURCES");
   }
   #[cfg(not(feature = "disable"))]
   {
@@ -51,6 +52,8 @@ fn create_cli_snapshot(
   let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
   let residual_sources_dir = out_dir.join("residual_sources");
   std::fs::create_dir_all(&residual_sources_dir).unwrap();
+  let minify_sources =
+    std::env::var_os("DENO_SNAPSHOT_MINIFY_SOURCES").is_some();
 
   let mut residual_js: Vec<(&str, std::path::PathBuf)> = Vec::new();
   let mut residual_esm: Vec<(&str, std::path::PathBuf)> = Vec::new();
@@ -73,6 +76,7 @@ fn create_cli_snapshot(
       &residual_sources_dir,
       &file.specifier,
       &file.path,
+      minify_sources,
     );
     match file.kind {
       LazyExtensionFileKind::Js => {
@@ -109,9 +113,11 @@ fn transpile_residual_source(
   out_dir: &std::path::Path,
   specifier: &str,
   src_path: &std::path::Path,
+  minify: bool,
 ) -> std::path::PathBuf {
   use deno_runtime::deno_core::ModuleCodeString;
   use deno_runtime::deno_core::ModuleName;
+  use deno_runtime::transpile::maybe_transpile_and_minify_source;
   use deno_runtime::transpile::maybe_transpile_source;
 
   let source = std::fs::read_to_string(src_path).unwrap_or_else(|e| {
@@ -120,10 +126,13 @@ fn transpile_residual_source(
       src_path.display()
     )
   });
-  let (transpiled, _source_map) = maybe_transpile_source(
-    ModuleName::from(specifier.to_string()),
-    ModuleCodeString::from(source),
-  )
+  let name = ModuleName::from(specifier.to_string());
+  let source = ModuleCodeString::from(source);
+  let (transpiled, _source_map) = if minify {
+    maybe_transpile_and_minify_source(name, source)
+  } else {
+    maybe_transpile_source(name, source)
+  }
   .unwrap_or_else(|e| {
     panic!("failed to transpile residual lazy source {specifier}: {e}")
   });
