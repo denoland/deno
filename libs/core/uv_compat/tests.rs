@@ -3308,3 +3308,58 @@ async fn uv_pipe_connect_busy_then_succeeds() {
   })
   .await;
 }
+
+// ========== Waker thread safety ==========
+
+/// Regression test for https://github.com/denoland/deno/issues/35171.
+/// On Windows, TTY readiness is delivered from thread pool wait
+/// threads and line mode reader threads, so per-handle wakers can be
+/// invoked off the loop thread while `run_io` is draining the ready
+/// queues. The old `RefCell` based queue panicked with "RefCell
+/// already borrowed" (and was UB) under that race; the queues are now
+/// `Mutex` + atomics. This test hammers a waker from multiple threads
+/// while the main thread drains, mirroring the `run_io` drain loop.
+#[test]
+fn handle_waker_cross_thread_wake_race() {
+  use std::sync::atomic::AtomicBool;
+  use std::sync::atomic::Ordering;
+
+  let shared = super::waker::LoopShared::new();
+  // Fake nonzero handle pointer; it is never dereferenced because the
+  // handle is never polled, only queued and drained.
+  let handle_waker = super::waker::TtyHandleWaker::new(0x8, shared.clone());
+
+  let stop = std::sync::Arc::new(AtomicBool::new(false));
+  let wake_threads: Vec<_> = (0..4)
+    .map(|_| {
+      let waker = std::task::Waker::from(handle_waker.clone());
+      let stop = stop.clone();
+      std::thread::spawn(move || {
+        while !stop.load(Ordering::Relaxed) {
+          waker.wake_by_ref();
+        }
+      })
+    })
+    .collect();
+
+  let mut drained = 0usize;
+  for _ in 0..100_000 {
+    let mut ready = std::mem::take(&mut *shared.ready_tty.lock().unwrap());
+    while let Some(w) = ready.pop_front() {
+      w.reset_queued();
+      drained += 1;
+    }
+  }
+
+  stop.store(true, Ordering::Relaxed);
+  for t in wake_threads {
+    t.join().unwrap();
+  }
+  assert!(drained > 0, "drain loop should have observed wakes");
+
+  // After detach, further wakes must be no-ops.
+  handle_waker.detach();
+  let _ = std::mem::take(&mut *shared.ready_tty.lock().unwrap());
+  std::task::Waker::from(handle_waker.clone()).wake_by_ref();
+  assert!(shared.ready_tty.lock().unwrap().is_empty());
+}
