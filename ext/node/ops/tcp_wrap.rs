@@ -49,6 +49,7 @@ pub struct TCPConnectWrap {
   base: AsyncWrap,
 }
 
+// SAFETY: TCPConnectWrap is a CppGC object whose fields are traced by AsyncWrap.
 unsafe impl GarbageCollected for TCPConnectWrap {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"TCPConnectWrap"
@@ -202,6 +203,7 @@ fn new_tcp_client<'s>(
   let global = v8::Global::new(scope, obj);
   let tcp =
     deno_core::cppgc::try_unwrap_cppgc_object::<TCPWrap>(scope, obj.into())?;
+  // SAFETY: `obj` was just created from this TCPWrap and remains live in the scope.
   let tcp = unsafe { tcp.as_ref() };
   tcp.base.set_js_handle(global, scope);
   Some(obj)

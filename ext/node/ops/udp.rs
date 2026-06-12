@@ -42,6 +42,7 @@ pub struct SendWrap {
   base: AsyncWrap,
 }
 
+// SAFETY: SendWrap is a CppGC object whose fields are traced by AsyncWrap.
 unsafe impl GarbageCollected for SendWrap {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"SendWrap"
@@ -112,6 +113,7 @@ impl UdpFamily {
   }
 }
 
+// SAFETY: UDP owns no V8 handles directly; all JS-visible state is held by HandleWrap.
 unsafe impl GarbageCollected for UDP {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"UDP"
@@ -766,7 +768,10 @@ impl UDP {
     self.remote_family.set(None);
     self.remote_port.set(None);
     if let Some(rid) = self.rid.take() {
-      #[allow(deprecated)]
+      #[allow(
+        deprecated,
+        reason = "ResourceTable::close is used for sync close"
+      )]
       let _ = state.resource_table.close(rid);
     }
   }

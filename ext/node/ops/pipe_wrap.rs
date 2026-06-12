@@ -49,6 +49,7 @@ pub struct PipeConnectWrap {
   base: AsyncWrap,
 }
 
+// SAFETY: PipeConnectWrap is a CppGC object whose fields are traced by AsyncWrap.
 unsafe impl GarbageCollected for PipeConnectWrap {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"PipeConnectWrap"
@@ -205,6 +206,7 @@ fn new_pipe_client<'s>(
   let global = v8::Global::new(scope, obj);
   let pipe =
     deno_core::cppgc::try_unwrap_cppgc_object::<PipeWrap>(scope, obj.into())?;
+  // SAFETY: `obj` was just created from this PipeWrap and remains live in the scope.
   let pipe = unsafe { pipe.as_ref() };
   pipe.base.set_js_handle(global, scope);
   Some(obj)

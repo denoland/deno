@@ -328,12 +328,29 @@ fn callback_data_value<'s>(
   get_value(scope, data, name)
 }
 
+thread_local! {
+  static HTTP_PARSER_CONSTRUCTOR: v8::FunctionCallback = http_parser_constructor.map_fn_to();
+  static HTTP_PARSER_INITIALIZE: v8::FunctionCallback = http_parser_initialize.map_fn_to();
+  static HTTP_PARSER_EXECUTE: v8::FunctionCallback = http_parser_execute.map_fn_to();
+  static HTTP_PARSER_DO_EXECUTE: v8::FunctionCallback = http_parser_do_execute.map_fn_to();
+  static HTTP_PARSER_ON_BODY_CALLBACK: v8::FunctionCallback = http_parser_on_body_callback.map_fn_to();
+  static HTTP_PARSER_FINISH: v8::FunctionCallback = http_parser_finish.map_fn_to();
+  static HTTP_PARSER_PAUSE: v8::FunctionCallback = http_parser_pause.map_fn_to();
+  static HTTP_PARSER_RESUME: v8::FunctionCallback = http_parser_resume.map_fn_to();
+  static HTTP_PARSER_CLOSE: v8::FunctionCallback = http_parser_close.map_fn_to();
+  static HTTP_PARSER_FREE: v8::FunctionCallback = http_parser_free.map_fn_to();
+  static HTTP_PARSER_REMOVE: v8::FunctionCallback = http_parser_remove.map_fn_to();
+  static HTTP_PARSER_GET_CURRENT_BUFFER: v8::FunctionCallback = http_parser_get_current_buffer.map_fn_to();
+  static HTTP_PARSER_CONSUME: v8::FunctionCallback = http_parser_consume.map_fn_to();
+  static HTTP_PARSER_UNCONSUME: v8::FunctionCallback = http_parser_unconsume.map_fn_to();
+}
+
 fn function_with_data<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  callback: impl MapFnTo<v8::FunctionCallback>,
+  callback: v8::FunctionCallback,
   data: v8::Local<'s, v8::Object>,
 ) -> v8::Local<'s, v8::Function> {
-  v8::Function::builder(callback)
+  v8::Function::builder_raw(callback)
     .data(data.into())
     .build(scope)
     .unwrap()
@@ -341,9 +358,9 @@ fn function_with_data<'s>(
 
 fn function_no_data<'s>(
   scope: &mut v8::PinScope<'s, '_>,
-  callback: impl MapFnTo<v8::FunctionCallback>,
+  callback: v8::FunctionCallback,
 ) -> v8::Local<'s, v8::Function> {
-  v8::Function::builder(callback).build(scope).unwrap()
+  v8::Function::builder_raw(callback).build(scope).unwrap()
 }
 
 fn parser_constructor_object<'s>(
@@ -421,7 +438,8 @@ fn make_body_callback<'s>(
       ("Buffer", buffer),
     ],
   );
-  function_with_data(scope, http_parser_on_body_callback, data)
+  HTTP_PARSER_ON_BODY_CALLBACK
+    .with(|callback| function_with_data(scope, *callback, data))
 }
 
 fn cached_body_callback<'s>(
@@ -434,12 +452,10 @@ fn cached_body_callback<'s>(
   if cached_original
     .map(|cached| cached.strict_equals(callback))
     .unwrap_or(false)
-  {
-    if let Some(cached_callback) = get_value(scope, parser, "__bodyCallback")
+    && let Some(cached_callback) = get_value(scope, parser, "__bodyCallback")
       .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
-    {
-      return cached_callback;
-    }
+  {
+    return cached_callback;
   }
 
   let wrapped = make_body_callback(scope, parser, callback, buffer);
@@ -603,14 +619,13 @@ fn http_parser_execute<'s>(
   {
     let offset = args.get(1).uint32_value(scope).unwrap_or(0) as usize;
     let length = args.get(2).uint32_value(scope).unwrap_or(0) as usize;
-    if offset != 0
+    if (offset != 0
       || v8::Local::<v8::ArrayBufferView>::try_from(data)
         .map(|view| view.byte_length() != length)
-        .unwrap_or(false)
+        .unwrap_or(false))
+      && let Some(view) = create_uint8_array_view(scope, data, offset, length)
     {
-      if let Some(view) = create_uint8_array_view(scope, data, offset, length) {
-        data = view.into();
-      }
+      data = view.into();
     }
   }
 
@@ -626,7 +641,8 @@ fn http_parser_execute<'s>(
   let do_execute = get_value(scope, parser, "__doExecute")
     .and_then(|value| v8::Local::<v8::Function>::try_from(value).ok())
     .unwrap_or_else(|| {
-      let do_execute = function_no_data(scope, http_parser_do_execute);
+      let do_execute = HTTP_PARSER_DO_EXECUTE
+        .with(|callback| function_no_data(scope, *callback));
       set_value(scope, parser, "__doExecute", do_execute.into());
       do_execute
     });
@@ -640,9 +656,7 @@ fn http_parser_execute<'s>(
         &[do_execute.into(), parser.into(), data],
       )
     })
-    .or_else(|| {
-      do_execute.call(scope, parser.into(), &[data])
-    });
+    .or_else(|| do_execute.call(scope, parser.into(), &[data]));
 
   parser.set_index(scope, K_ON_BODY, original_on_body);
 
@@ -824,7 +838,7 @@ fn set_prototype_function<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   prototype: v8::Local<'s, v8::Object>,
   name: &str,
-  callback: impl MapFnTo<v8::FunctionCallback>,
+  callback: v8::FunctionCallback,
 ) {
   let function = function_no_data(scope, callback);
   set_value(scope, prototype, name, function.into());
@@ -833,48 +847,48 @@ fn set_prototype_function<'s>(
 pub(crate) fn internal_binding_external_references() -> [ExternalReference; 14]
 {
   [
-    ExternalReference {
-      function: http_parser_constructor.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_initialize.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_execute.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_do_execute.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_on_body_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_finish.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_pause.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_resume.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_close.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_free.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_remove.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_get_current_buffer.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_consume.map_fn_to(),
-    },
-    ExternalReference {
-      function: http_parser_unconsume.map_fn_to(),
-    },
+    HTTP_PARSER_CONSTRUCTOR.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_INITIALIZE.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_EXECUTE.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_DO_EXECUTE.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_ON_BODY_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_FINISH.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_PAUSE.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_RESUME.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_CLOSE.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_FREE.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_REMOVE.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_GET_CURRENT_BUFFER.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_CONSUME.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP_PARSER_UNCONSUME.with(|callback| ExternalReference {
+      function: *callback,
+    }),
   ]
 }
 
@@ -885,7 +899,8 @@ pub fn op_node_internal_binding_http_parser<'s>(
   buffer: v8::Local<'s, v8::Value>,
   async_resource: v8::Local<'s, v8::Value>,
 ) -> v8::Local<'s, v8::Object> {
-  let constructor = function_no_data(scope, http_parser_constructor);
+  let constructor =
+    HTTP_PARSER_CONSTRUCTOR.with(|callback| function_no_data(scope, *callback));
   let name = string(scope, "HTTPParser");
   constructor.set_name(name);
 
@@ -899,23 +914,68 @@ pub fn op_node_internal_binding_http_parser<'s>(
     scope,
     prototype,
     "initialize",
-    http_parser_initialize,
+    HTTP_PARSER_INITIALIZE.with(|callback| *callback),
   );
-  set_prototype_function(scope, prototype, "execute", http_parser_execute);
-  set_prototype_function(scope, prototype, "finish", http_parser_finish);
-  set_prototype_function(scope, prototype, "pause", http_parser_pause);
-  set_prototype_function(scope, prototype, "resume", http_parser_resume);
-  set_prototype_function(scope, prototype, "close", http_parser_close);
-  set_prototype_function(scope, prototype, "free", http_parser_free);
-  set_prototype_function(scope, prototype, "remove", http_parser_remove);
+  set_prototype_function(
+    scope,
+    prototype,
+    "execute",
+    HTTP_PARSER_EXECUTE.with(|callback| *callback),
+  );
+  set_prototype_function(
+    scope,
+    prototype,
+    "finish",
+    HTTP_PARSER_FINISH.with(|callback| *callback),
+  );
+  set_prototype_function(
+    scope,
+    prototype,
+    "pause",
+    HTTP_PARSER_PAUSE.with(|callback| *callback),
+  );
+  set_prototype_function(
+    scope,
+    prototype,
+    "resume",
+    HTTP_PARSER_RESUME.with(|callback| *callback),
+  );
+  set_prototype_function(
+    scope,
+    prototype,
+    "close",
+    HTTP_PARSER_CLOSE.with(|callback| *callback),
+  );
+  set_prototype_function(
+    scope,
+    prototype,
+    "free",
+    HTTP_PARSER_FREE.with(|callback| *callback),
+  );
+  set_prototype_function(
+    scope,
+    prototype,
+    "remove",
+    HTTP_PARSER_REMOVE.with(|callback| *callback),
+  );
   set_prototype_function(
     scope,
     prototype,
     "getCurrentBuffer",
-    http_parser_get_current_buffer,
+    HTTP_PARSER_GET_CURRENT_BUFFER.with(|callback| *callback),
   );
-  set_prototype_function(scope, prototype, "consume", http_parser_consume);
-  set_prototype_function(scope, prototype, "unconsume", http_parser_unconsume);
+  set_prototype_function(
+    scope,
+    prototype,
+    "consume",
+    HTTP_PARSER_CONSUME.with(|callback| *callback),
+  );
+  set_prototype_function(
+    scope,
+    prototype,
+    "unconsume",
+    HTTP_PARSER_UNCONSUME.with(|callback| *callback),
+  );
 
   let constructor_obj: v8::Local<v8::Object> = constructor.into();
   set_value(

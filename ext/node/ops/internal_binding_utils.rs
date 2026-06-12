@@ -86,6 +86,7 @@ fn simdutf_base64_decode(input: &[u8]) -> Option<Vec<u8>> {
 
   let max_len = simdutf::maximal_binary_length_from_base64(input);
   let mut output = vec![0; max_len];
+  // SAFETY: `output` is allocated to simdutf's reported maximum decoded length.
   let result = unsafe {
     simdutf::base64_to_binary(
       input,
@@ -241,22 +242,39 @@ fn utf16le_to_bytes_callback(
 
 pub(crate) fn external_references() -> [ExternalReference; 5] {
   [
-    ExternalReference {
-      function: ascii_to_bytes_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: base64_to_bytes_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: base64_url_to_bytes_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: hex_to_bytes_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: utf16le_to_bytes_callback.map_fn_to(),
-    },
+    ASCII_TO_BYTES_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    BASE64_TO_BYTES_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    BASE64_URL_TO_BYTES_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HEX_TO_BYTES_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    UTF16LE_TO_BYTES_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
   ]
+}
+
+thread_local! {
+  static ASCII_TO_BYTES_CALLBACK: v8::FunctionCallback = ascii_to_bytes_callback.map_fn_to();
+  static BASE64_TO_BYTES_CALLBACK: v8::FunctionCallback = base64_to_bytes_callback.map_fn_to();
+  static BASE64_URL_TO_BYTES_CALLBACK: v8::FunctionCallback = base64_url_to_bytes_callback.map_fn_to();
+  static HEX_TO_BYTES_CALLBACK: v8::FunctionCallback = hex_to_bytes_callback.map_fn_to();
+  static UTF16LE_TO_BYTES_CALLBACK: v8::FunctionCallback = utf16le_to_bytes_callback.map_fn_to();
+}
+
+fn function_from_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: v8::FunctionCallback,
+) -> v8::Local<'s, v8::Function> {
+  v8::FunctionTemplate::new_raw(scope, callback)
+    .get_function(scope)
+    .unwrap()
 }
 
 #[op2]
@@ -265,33 +283,24 @@ pub fn op_node_internal_binding_utils<'s>(
 ) -> v8::Local<'s, v8::Object> {
   let obj = v8::Object::new(scope);
 
-  let ascii_to_bytes =
-    v8::FunctionTemplate::new(scope, ascii_to_bytes_callback)
-      .get_function(scope)
-      .unwrap();
+  let ascii_to_bytes = ASCII_TO_BYTES_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "asciiToBytes", ascii_to_bytes);
 
-  let base64_to_bytes =
-    v8::FunctionTemplate::new(scope, base64_to_bytes_callback)
-      .get_function(scope)
-      .unwrap();
+  let base64_to_bytes = BASE64_TO_BYTES_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "base64ToBytes", base64_to_bytes);
 
-  let base64_url_to_bytes =
-    v8::FunctionTemplate::new(scope, base64_url_to_bytes_callback)
-      .get_function(scope)
-      .unwrap();
+  let base64_url_to_bytes = BASE64_URL_TO_BYTES_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "base64UrlToBytes", base64_url_to_bytes);
 
-  let hex_to_bytes = v8::FunctionTemplate::new(scope, hex_to_bytes_callback)
-    .get_function(scope)
-    .unwrap();
+  let hex_to_bytes = HEX_TO_BYTES_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "hexToBytes", hex_to_bytes);
 
-  let utf16le_to_bytes =
-    v8::FunctionTemplate::new(scope, utf16le_to_bytes_callback)
-      .get_function(scope)
-      .unwrap();
+  let utf16le_to_bytes = UTF16LE_TO_BYTES_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "utf16leToBytes", utf16le_to_bytes);
 
   let table = UNHEX_TABLE

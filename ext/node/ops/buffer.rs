@@ -609,7 +609,7 @@ fn index_of_buffer_from_bytes(
   }
   if !forward {
     if byte_offset < 0 {
-      byte_offset = target_len + byte_offset;
+      byte_offset += target_len;
     }
     if needle.is_empty() {
       return if byte_offset <= target_len {
@@ -759,19 +759,35 @@ fn fill_callback(
 
 pub(crate) fn external_references() -> [ExternalReference; 4] {
   [
-    ExternalReference {
-      function: index_of_buffer_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: index_of_number_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: index_of_needle_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: fill_callback.map_fn_to(),
-    },
+    INDEX_OF_BUFFER_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    INDEX_OF_NUMBER_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    INDEX_OF_NEEDLE_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    FILL_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
   ]
+}
+
+thread_local! {
+  static INDEX_OF_BUFFER_CALLBACK: v8::FunctionCallback = index_of_buffer_callback.map_fn_to();
+  static INDEX_OF_NUMBER_CALLBACK: v8::FunctionCallback = index_of_number_callback.map_fn_to();
+  static INDEX_OF_NEEDLE_CALLBACK: v8::FunctionCallback = index_of_needle_callback.map_fn_to();
+  static FILL_CALLBACK: v8::FunctionCallback = fill_callback.map_fn_to();
+}
+
+fn function_from_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: v8::FunctionCallback,
+) -> v8::Local<'s, v8::Function> {
+  v8::FunctionTemplate::new_raw(scope, callback)
+    .get_function(scope)
+    .unwrap()
 }
 
 #[op2]
@@ -779,24 +795,17 @@ pub fn op_node_internal_binding_buffer<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Object> {
   let obj = v8::Object::new(scope);
-  let index_of_buffer =
-    v8::FunctionTemplate::new(scope, index_of_buffer_callback)
-      .get_function(scope)
-      .unwrap();
+  let index_of_buffer = INDEX_OF_BUFFER_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "indexOfBuffer", index_of_buffer);
-  let index_of_number =
-    v8::FunctionTemplate::new(scope, index_of_number_callback)
-      .get_function(scope)
-      .unwrap();
+  let index_of_number = INDEX_OF_NUMBER_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "indexOfNumber", index_of_number);
-  let fill = v8::FunctionTemplate::new(scope, fill_callback)
-    .get_function(scope)
-    .unwrap();
+  let fill =
+    FILL_CALLBACK.with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "fill", fill);
-  let index_of_needle =
-    v8::FunctionTemplate::new(scope, index_of_needle_callback)
-      .get_function(scope)
-      .unwrap();
+  let index_of_needle = INDEX_OF_NEEDLE_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "indexOfNeedle", index_of_needle);
 
   let default_obj = v8::Object::new(scope);

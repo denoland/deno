@@ -152,22 +152,46 @@ fn socket_address_flowlabel<'s>(
 
 pub(crate) fn internal_binding_external_references() -> [ExternalReference; 5] {
   [
-    ExternalReference {
-      function: socket_address_constructor.map_fn_to(),
-    },
-    ExternalReference {
-      function: socket_address_address.map_fn_to(),
-    },
-    ExternalReference {
-      function: socket_address_port.map_fn_to(),
-    },
-    ExternalReference {
-      function: socket_address_family.map_fn_to(),
-    },
-    ExternalReference {
-      function: socket_address_flowlabel.map_fn_to(),
-    },
+    SOCKET_ADDRESS_CONSTRUCTOR.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    SOCKET_ADDRESS_ADDRESS.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    SOCKET_ADDRESS_PORT.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    SOCKET_ADDRESS_FAMILY.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    SOCKET_ADDRESS_FLOWLABEL.with(|callback| ExternalReference {
+      function: *callback,
+    }),
   ]
+}
+
+thread_local! {
+  static SOCKET_ADDRESS_CONSTRUCTOR: v8::FunctionCallback = socket_address_constructor.map_fn_to();
+  static SOCKET_ADDRESS_ADDRESS: v8::FunctionCallback = socket_address_address.map_fn_to();
+  static SOCKET_ADDRESS_PORT: v8::FunctionCallback = socket_address_port.map_fn_to();
+  static SOCKET_ADDRESS_FAMILY: v8::FunctionCallback = socket_address_family.map_fn_to();
+  static SOCKET_ADDRESS_FLOWLABEL: v8::FunctionCallback = socket_address_flowlabel.map_fn_to();
+}
+
+fn function_template_from_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: v8::FunctionCallback,
+) -> v8::Local<'s, v8::FunctionTemplate> {
+  v8::FunctionTemplate::new_raw(scope, callback)
+}
+
+fn function_from_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: v8::FunctionCallback,
+) -> v8::Local<'s, v8::Function> {
+  function_template_from_callback(scope, callback)
+    .get_function(scope)
+    .unwrap()
 }
 
 #[op2]
@@ -178,8 +202,8 @@ pub fn op_node_internal_binding_block_list<'s>(
   set_i32(scope, obj, "AF_INET", 2);
   set_i32(scope, obj, "AF_INET6", 10);
 
-  let constructor_template =
-    v8::FunctionTemplate::new(scope, socket_address_constructor);
+  let constructor_template = SOCKET_ADDRESS_CONSTRUCTOR
+    .with(|callback| function_template_from_callback(scope, *callback));
   let constructor = constructor_template.get_function(scope).unwrap();
   let constructor_name = v8::String::new(scope, "SocketAddress").unwrap();
   constructor.set_name(constructor_name);
@@ -187,21 +211,17 @@ pub fn op_node_internal_binding_block_list<'s>(
   let prototype = constructor.get(scope, prototype_key.into()).unwrap();
   let prototype = v8::Local::<v8::Object>::try_from(prototype).unwrap();
 
-  let address = v8::FunctionTemplate::new(scope, socket_address_address)
-    .get_function(scope)
-    .unwrap();
+  let address = SOCKET_ADDRESS_ADDRESS
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, prototype, "address", address);
-  let port = v8::FunctionTemplate::new(scope, socket_address_port)
-    .get_function(scope)
-    .unwrap();
+  let port = SOCKET_ADDRESS_PORT
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, prototype, "port", port);
-  let family = v8::FunctionTemplate::new(scope, socket_address_family)
-    .get_function(scope)
-    .unwrap();
+  let family = SOCKET_ADDRESS_FAMILY
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, prototype, "family", family);
-  let flowlabel = v8::FunctionTemplate::new(scope, socket_address_flowlabel)
-    .get_function(scope)
-    .unwrap();
+  let flowlabel = SOCKET_ADDRESS_FLOWLABEL
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, prototype, "flowlabel", flowlabel);
 
   set_value(scope, obj, "SocketAddress", constructor.into());

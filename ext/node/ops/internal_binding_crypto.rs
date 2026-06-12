@@ -9,6 +9,7 @@ use deno_core::v8::MapFnTo;
 enum CryptoBindingError {
   #[error("{0}")]
   #[class(type)]
+  #[property("code" = "ERR_INVALID_ARG_TYPE")]
   InvalidArgType(String),
   #[error("Input buffers must have the same byte length")]
   #[class(range)]
@@ -168,16 +169,7 @@ fn timing_safe_equal_impl(
 }
 
 fn throw_crypto_error(scope: &mut v8::PinScope, error: CryptoBindingError) {
-  let message = v8::String::new(scope, &error.to_string()).unwrap();
-  let exception = match error {
-    CryptoBindingError::InvalidArgType(_) => {
-      v8::Exception::type_error(scope, message)
-    }
-    CryptoBindingError::TimingSafeEqualLength => {
-      v8::Exception::range_error(scope, message)
-    }
-    CryptoBindingError::FipsUnsupported => v8::Exception::error(scope, message),
-  };
+  let exception = deno_core::error::to_v8_error(scope, &error);
   scope.throw_exception(exception);
 }
 
@@ -210,17 +202,32 @@ fn set_fips_callback(
   throw_crypto_error(scope, CryptoBindingError::FipsUnsupported);
 }
 
+thread_local! {
+  static TIMING_SAFE_EQUAL_CALLBACK: v8::FunctionCallback = timing_safe_equal_callback.map_fn_to();
+  static GET_FIPS_CALLBACK: v8::FunctionCallback = get_fips_callback.map_fn_to();
+  static SET_FIPS_CALLBACK: v8::FunctionCallback = set_fips_callback.map_fn_to();
+}
+
+fn function_from_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: v8::FunctionCallback,
+) -> v8::Local<'s, v8::Function> {
+  v8::FunctionTemplate::new_raw(scope, callback)
+    .get_function(scope)
+    .unwrap()
+}
+
 pub(crate) fn external_references() -> [ExternalReference; 3] {
   [
-    ExternalReference {
-      function: timing_safe_equal_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: get_fips_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: set_fips_callback.map_fn_to(),
-    },
+    TIMING_SAFE_EQUAL_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    GET_FIPS_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    SET_FIPS_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
   ]
 }
 
@@ -248,18 +255,14 @@ pub fn op_node_internal_binding_crypto<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Object> {
   let obj = v8::Object::new(scope);
-  let timing_safe_equal =
-    v8::FunctionTemplate::new(scope, timing_safe_equal_callback)
-      .get_function(scope)
-      .unwrap();
+  let timing_safe_equal = TIMING_SAFE_EQUAL_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "timingSafeEqual", timing_safe_equal);
-  let get_fips = v8::FunctionTemplate::new(scope, get_fips_callback)
-    .get_function(scope)
-    .unwrap();
+  let get_fips =
+    GET_FIPS_CALLBACK.with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "getFipsCrypto", get_fips);
-  let set_fips = v8::FunctionTemplate::new(scope, set_fips_callback)
-    .get_function(scope)
-    .unwrap();
+  let set_fips =
+    SET_FIPS_CALLBACK.with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "setFipsCrypto", set_fips);
   obj
 }
@@ -269,16 +272,12 @@ pub fn op_node_internal_binding_timing_safe_equal<'s>(
   scope: &mut v8::PinScope<'s, '_>,
 ) -> v8::Local<'s, v8::Object> {
   let obj = v8::Object::new(scope);
-  let timing_safe_equal =
-    v8::FunctionTemplate::new(scope, timing_safe_equal_callback)
-      .get_function(scope)
-      .unwrap();
+  let timing_safe_equal = TIMING_SAFE_EQUAL_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "timingSafeEqual", timing_safe_equal);
   let default_obj = v8::Object::new(scope);
-  let timing_safe_equal =
-    v8::FunctionTemplate::new(scope, timing_safe_equal_callback)
-      .get_function(scope)
-      .unwrap();
+  let timing_safe_equal = TIMING_SAFE_EQUAL_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, default_obj, "timingSafeEqual", timing_safe_equal);
   set_value(scope, obj, "default", default_obj.into());
   obj

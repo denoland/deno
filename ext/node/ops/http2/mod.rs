@@ -8,7 +8,6 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_core::v8::MapFnTo;
-
 pub use session::Http2Session;
 pub use session::op_http2_callbacks;
 pub use session::op_http2_error_string;
@@ -97,31 +96,48 @@ fn http2_session_request_callback(
 fn create_constructor<'s>(
   scope: &mut v8::PinScope<'s, '_>,
   name: &str,
-  constructor: impl MapFnTo<v8::FunctionCallback>,
+  constructor: v8::FunctionCallback,
 ) -> v8::Local<'s, v8::Function> {
-  let template = v8::FunctionTemplate::new(scope, constructor);
+  let template = v8::FunctionTemplate::new_raw(scope, constructor);
   let class_name = v8::String::new(scope, name).unwrap();
   template.set_class_name(class_name);
   template.get_function(scope).unwrap()
 }
 
+fn function_from_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: v8::FunctionCallback,
+) -> v8::Local<'s, v8::Function> {
+  v8::FunctionTemplate::new_raw(scope, callback)
+    .get_function(scope)
+    .unwrap()
+}
+
+thread_local! {
+  static HTTP2_STREAM_CONSTRUCTOR_CALLBACK: v8::FunctionCallback = http2_stream_constructor_callback.map_fn_to();
+  static HTTP2_SESSION_CONSTRUCTOR_CALLBACK: v8::FunctionCallback = http2_session_constructor_callback.map_fn_to();
+  static HTTP2_STREAM_RESPOND_CALLBACK: v8::FunctionCallback = http2_stream_respond_callback.map_fn_to();
+  static HTTP2_STREAM_PUSH_PROMISE_CALLBACK: v8::FunctionCallback = http2_stream_push_promise_callback.map_fn_to();
+  static HTTP2_SESSION_REQUEST_CALLBACK: v8::FunctionCallback = http2_session_request_callback.map_fn_to();
+}
+
 pub(crate) fn internal_binding_external_references() -> [ExternalReference; 5] {
   [
-    ExternalReference {
-      function: http2_stream_constructor_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: http2_session_constructor_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: http2_stream_respond_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: http2_stream_push_promise_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: http2_session_request_callback.map_fn_to(),
-    },
+    HTTP2_STREAM_CONSTRUCTOR_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP2_SESSION_CONSTRUCTOR_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP2_STREAM_RESPOND_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP2_STREAM_PUSH_PROMISE_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    HTTP2_SESSION_REQUEST_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
   ]
 }
 
@@ -131,36 +147,31 @@ pub fn op_node_internal_binding_http2<'s>(
   constants: v8::Local<'s, v8::Value>,
   nghttp2_error_string: v8::Local<'s, v8::Value>,
 ) -> v8::Local<'s, v8::Object> {
-  let http2_stream =
-    create_constructor(scope, "Http2Stream", http2_stream_constructor_callback);
+  let http2_stream = HTTP2_STREAM_CONSTRUCTOR_CALLBACK
+    .with(|callback| create_constructor(scope, "Http2Stream", *callback));
   let prototype_key = v8::String::new(scope, "prototype").unwrap();
   let prototype = http2_stream
     .get(scope, prototype_key.into())
     .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
     .unwrap();
-  let respond = v8::FunctionTemplate::new(scope, http2_stream_respond_callback)
-    .get_function(scope)
-    .unwrap();
+  let respond = HTTP2_STREAM_RESPOND_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, prototype, "respond", respond);
-  let push_promise =
-    v8::FunctionTemplate::new(scope, http2_stream_push_promise_callback)
-      .get_function(scope)
-      .unwrap();
+  let push_promise = HTTP2_STREAM_PUSH_PROMISE_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, prototype, "pushPromise", push_promise);
 
   let http2_session = create_constructor(
     scope,
     "Http2Session",
-    http2_session_constructor_callback,
+    HTTP2_SESSION_CONSTRUCTOR_CALLBACK.with(|callback| *callback),
   );
   let prototype = http2_session
     .get(scope, prototype_key.into())
     .and_then(|value| v8::Local::<v8::Object>::try_from(value).ok())
     .unwrap();
-  let request =
-    v8::FunctionTemplate::new(scope, http2_session_request_callback)
-      .get_function(scope)
-      .unwrap();
+  let request = HTTP2_SESSION_REQUEST_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, prototype, "request", request);
 
   let default = v8::Object::new(scope);

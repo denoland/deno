@@ -29,6 +29,7 @@ const {
   UDP: NativeUDP,
 } = core.ops;
 const {
+  PromisePrototypeThen,
   Uint8Array,
 } = primordials;
 
@@ -232,7 +233,7 @@ class UDP extends NativeUDP {
       this._remotePort(),
     );
     if (hasCallback) {
-      promise.then(({ err, sent }) => {
+      PromisePrototypeThen(promise, ({ err, sent }) => {
         try {
           req.oncomplete(err, sent);
         } catch {

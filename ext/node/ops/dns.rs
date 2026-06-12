@@ -2,6 +2,8 @@
 
 use std::cell::RefCell;
 use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
 #[cfg(target_family = "windows")]
@@ -20,8 +22,6 @@ use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
 use socket2::SockAddr;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
 
 use crate::ops::handle_wrap::AsyncWrap;
 use crate::ops::handle_wrap::ProviderType;
@@ -33,6 +33,7 @@ pub struct GetAddrInfoReqWrap {
   base: AsyncWrap,
 }
 
+// SAFETY: GetAddrInfoReqWrap is a CppGC object whose fields are traced by AsyncWrap.
 unsafe impl GarbageCollected for GetAddrInfoReqWrap {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GetAddrInfoReqWrap"
@@ -59,6 +60,7 @@ pub struct GetNameInfoReqWrap {
   base: AsyncWrap,
 }
 
+// SAFETY: GetNameInfoReqWrap is a CppGC object whose fields are traced by AsyncWrap.
 unsafe impl GarbageCollected for GetNameInfoReqWrap {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"GetNameInfoReqWrap"
@@ -85,6 +87,7 @@ pub struct QueryReqWrap {
   base: AsyncWrap,
 }
 
+// SAFETY: QueryReqWrap is a CppGC object whose fields are traced by AsyncWrap.
 unsafe impl GarbageCollected for QueryReqWrap {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"QueryReqWrap"
@@ -111,6 +114,7 @@ pub struct ChannelWrap {
   base: AsyncWrap,
 }
 
+// SAFETY: ChannelWrap is a CppGC object whose fields are traced by AsyncWrap.
 unsafe impl GarbageCollected for ChannelWrap {
   fn get_name(&self) -> &'static std::ffi::CStr {
     c"ChannelWrap"

@@ -412,22 +412,39 @@ fn parse_env_callback(
 
 pub(crate) fn external_references() -> [ExternalReference; 5] {
   [
-    ExternalReference {
-      function: guess_handle_type_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: is_array_index_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: get_own_non_index_properties_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: array_buffer_view_has_buffer_callback.map_fn_to(),
-    },
-    ExternalReference {
-      function: parse_env_callback.map_fn_to(),
-    },
+    GUESS_HANDLE_TYPE_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    IS_ARRAY_INDEX_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    GET_OWN_NON_INDEX_PROPERTIES_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    ARRAY_BUFFER_VIEW_HAS_BUFFER_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+    PARSE_ENV_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
   ]
+}
+
+thread_local! {
+  static GUESS_HANDLE_TYPE_CALLBACK: v8::FunctionCallback = guess_handle_type_callback.map_fn_to();
+  static IS_ARRAY_INDEX_CALLBACK: v8::FunctionCallback = is_array_index_callback.map_fn_to();
+  static GET_OWN_NON_INDEX_PROPERTIES_CALLBACK: v8::FunctionCallback = get_own_non_index_properties_callback.map_fn_to();
+  static ARRAY_BUFFER_VIEW_HAS_BUFFER_CALLBACK: v8::FunctionCallback = array_buffer_view_has_buffer_callback.map_fn_to();
+  static PARSE_ENV_CALLBACK: v8::FunctionCallback = parse_env_callback.map_fn_to();
+}
+
+fn function_from_callback<'s>(
+  scope: &mut v8::PinScope<'s, '_>,
+  callback: v8::FunctionCallback,
+) -> v8::Local<'s, v8::Function> {
+  v8::FunctionTemplate::new_raw(scope, callback)
+    .get_function(scope)
+    .unwrap()
 }
 
 #[op2]
@@ -436,39 +453,30 @@ pub fn op_node_internal_binding_util<'s>(
 ) -> v8::Local<'s, v8::Object> {
   let obj = v8::Object::new(scope);
 
-  let guess_handle_type =
-    v8::FunctionTemplate::new(scope, guess_handle_type_callback)
-      .get_function(scope)
-      .unwrap();
+  let guess_handle_type = GUESS_HANDLE_TYPE_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "guessHandleType", guess_handle_type);
-  let is_array_index =
-    v8::FunctionTemplate::new(scope, is_array_index_callback)
-      .get_function(scope)
-      .unwrap();
+  let is_array_index = IS_ARRAY_INDEX_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "isArrayIndex", is_array_index);
-  let get_own_non_index_properties =
-    v8::FunctionTemplate::new(scope, get_own_non_index_properties_callback)
-      .get_function(scope)
-      .unwrap();
+  let get_own_non_index_properties = GET_OWN_NON_INDEX_PROPERTIES_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(
     scope,
     obj,
     "getOwnNonIndexProperties",
     get_own_non_index_properties,
   );
-  let array_buffer_view_has_buffer =
-    v8::FunctionTemplate::new(scope, array_buffer_view_has_buffer_callback)
-      .get_function(scope)
-      .unwrap();
+  let array_buffer_view_has_buffer = ARRAY_BUFFER_VIEW_HAS_BUFFER_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(
     scope,
     obj,
     "arrayBufferViewHasBuffer",
     array_buffer_view_has_buffer,
   );
-  let parse_env = v8::FunctionTemplate::new(scope, parse_env_callback)
-    .get_function(scope)
-    .unwrap();
+  let parse_env = PARSE_ENV_CALLBACK
+    .with(|callback| function_from_callback(scope, *callback));
   set_function(scope, obj, "parseEnv", parse_env);
 
   for (name, value) in [

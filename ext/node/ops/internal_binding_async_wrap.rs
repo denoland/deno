@@ -133,9 +133,15 @@ fn register_destroy_hook_callback(
 }
 
 pub(crate) fn external_references() -> [ExternalReference; 1] {
-  [ExternalReference {
-    function: register_destroy_hook_callback.map_fn_to(),
-  }]
+  [
+    REGISTER_DESTROY_HOOK_CALLBACK.with(|callback| ExternalReference {
+      function: *callback,
+    }),
+  ]
+}
+
+thread_local! {
+  static REGISTER_DESTROY_HOOK_CALLBACK: v8::FunctionCallback = register_destroy_hook_callback.map_fn_to();
 }
 
 #[op2]
@@ -156,10 +162,11 @@ pub fn op_node_internal_binding_async_wrap<'s>(
 
   set_value(scope, obj, "AsyncWrap", async_wrap);
 
-  let register_destroy_hook =
-    v8::FunctionTemplate::new(scope, register_destroy_hook_callback)
+  let register_destroy_hook = REGISTER_DESTROY_HOOK_CALLBACK.with(|callback| {
+    v8::FunctionTemplate::new_raw(scope, *callback)
       .get_function(scope)
-      .unwrap();
+      .unwrap()
+  });
   set_value(
     scope,
     obj,
