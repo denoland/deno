@@ -938,6 +938,25 @@ fn init_v8(flags: &Flags) {
   };
 
   deno_core::JsRuntime::init_platform(v8_platform);
+
+  // On Windows, ICU detects the host time zone from the OS and ignores the
+  // `TZ` environment variable, so a `TZ` set before launch would be ignored.
+  // Apply it to ICU explicitly before any isolate uses `Date`. On unix ICU
+  // already honors `TZ`, so this is only needed on Windows.
+  #[cfg(windows)]
+  maybe_set_time_zone_from_env();
+}
+
+/// Installs the `TZ` environment variable as ICU's default time zone, if set.
+/// Windows-only; unix ICU reads `TZ` itself.
+#[cfg(windows)]
+fn maybe_set_time_zone_from_env() {
+  if let Some(tz) = std::env::var_os("TZ")
+    .and_then(|tz| tz.into_string().ok())
+    .filter(|tz| !tz.is_empty())
+  {
+    deno_core::v8::icu::set_default_time_zone(&tz);
+  }
 }
 
 fn init_logging(

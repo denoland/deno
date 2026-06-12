@@ -169,20 +169,39 @@ fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
     fn _tzset();
   }
 
-  if key == "TZ" {
-    // SAFETY: tzset/_tzset (libc) is called to update the timezone information
-    unsafe {
-      #[cfg(unix)]
-      tzset();
-
-      #[cfg(windows)]
-      _tzset();
-    }
-
-    isolate.date_time_configuration_change_notification(
-      v8::TimeZoneDetection::Redetect,
-    );
+  if key != "TZ" {
+    return;
   }
+
+  // SAFETY: tzset/_tzset (libc) is called to update the timezone information
+  unsafe {
+    #[cfg(unix)]
+    tzset();
+
+    #[cfg(windows)]
+    _tzset();
+  }
+
+  // On Windows, ICU's host time zone detection reads the OS settings and
+  // ignores the `TZ` environment variable, so `Redetect` can't honor `TZ`
+  // there. Apply the zone to ICU explicitly (matching Node) and then notify
+  // with `Skip` so cached values refresh without re-detecting (and
+  // overwriting) what we just set. On unix ICU already reads `TZ`, so keep
+  // the existing `Redetect` path, which also handles non-IANA `TZ` formats.
+  #[cfg(windows)]
+  if let Some(tz) = env::var_os("TZ")
+    .and_then(|tz| tz.into_string().ok())
+    .filter(|tz| !tz.is_empty())
+  {
+    v8::icu::set_default_time_zone(&tz);
+    isolate
+      .date_time_configuration_change_notification(v8::TimeZoneDetection::Skip);
+    return;
+  }
+
+  isolate.date_time_configuration_change_notification(
+    v8::TimeZoneDetection::Redetect,
+  );
 }
 
 #[op2(fast, stack_trace)]
@@ -329,6 +348,7 @@ fn op_get_env(
 #[op2(fast, stack_trace)]
 fn op_delete_env(
   state: &mut OpState,
+  scope: &mut v8::PinScope<'_, '_>,
   #[string] key: &str,
 ) -> Result<(), OsError> {
   if check_env_with_maybe_exit(state, key)?.is_break() {
@@ -345,6 +365,8 @@ fn op_delete_env(
   unsafe {
     env::remove_var(key)
   };
+  // Deleting TZ should fall back to the host time zone.
+  dt_change_notif(scope, key);
   Ok(())
 }
 
