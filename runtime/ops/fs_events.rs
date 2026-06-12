@@ -155,6 +155,10 @@ struct WatchSender {
   /// to avoid repeated syscalls in the event callback hot path.
   /// Entries are `None` if canonicalization failed for that path.
   canonical_paths: Vec<Option<PathBuf>>,
+  /// Paths whose events should be filtered out (the `ignore` option).
+  ignore: Vec<PathBuf>,
+  /// Pre-canonicalized versions of `ignore`, mirroring `canonical_paths`.
+  canonical_ignore: Vec<Option<PathBuf>>,
   sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
 }
 
@@ -287,13 +291,17 @@ pub enum FsEventsError {
 fn make_watch_sender(
   id: u64,
   paths: Vec<PathBuf>,
+  ignore: Vec<PathBuf>,
   sender: mpsc::Sender<Result<FsEvent, NotifyError>>,
 ) -> WatchSender {
   let canonical_paths = paths.iter().map(|p| canonicalize_path(p)).collect();
+  let canonical_ignore = ignore.iter().map(|p| canonicalize_path(p)).collect();
   WatchSender {
     id,
     paths,
     canonical_paths,
+    ignore,
+    canonical_ignore,
     sender,
   }
 }
@@ -321,6 +329,23 @@ fn ensure_watcher(
         // Only send the event if the path matches one of the paths
         // that the user is watching.
         if let Ok(event) = &res2 {
+          // Skip events whose path falls under one of the ignored paths.
+          // Removed files are checked too so deletions inside an ignored
+          // directory don't leak through (canonicalize/is_same_file fail
+          // for paths that no longer exist).
+          if event.paths.iter().any(|event_path| {
+            event_matches_watched_paths(
+              event_path,
+              &ws.ignore,
+              &ws.canonical_ignore,
+            ) || removed_event_matches_watched_paths(
+              event_path,
+              &ws.ignore,
+              &ws.canonical_ignore,
+            )
+          }) {
+            continue;
+          }
           if event.paths.iter().any(|event_path| {
             event_matches_watched_paths(
               event_path,
@@ -391,11 +416,23 @@ fn normalize_watch_path(path: PathBuf) -> PathBuf {
 fn op_fs_events_open(
   state: &mut OpState,
   recursive: bool,
+  #[scoped] ignore: Vec<String>,
   #[scoped] paths: Vec<String>,
 ) -> Result<ResourceId, FsEventsError> {
   let mut resolved_paths = Vec::with_capacity(paths.len());
+  let mut ignore_paths = Vec::with_capacity(ignore.len());
   {
     let permissions_container = state.borrow_mut::<PermissionsContainer>();
+    for path in ignore {
+      let checked = permissions_container
+        .check_open(
+          Cow::Owned(PathBuf::from(path)),
+          deno_permissions::OpenAccessKind::ReadNoFollow,
+          Some("Deno.watchFs()"),
+        )?
+        .into_owned_path();
+      ignore_paths.push(normalize_watch_path(checked));
+    }
     for path in paths {
       let checked = permissions_container
         .check_open(
@@ -417,6 +454,7 @@ fn op_fs_events_open(
   inner.senders.lock().push(make_watch_sender(
     id,
     resolved_paths.clone(),
+    ignore_paths,
     sender,
   ));
 
