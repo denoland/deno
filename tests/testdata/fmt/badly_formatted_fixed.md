@@ -58,12 +58,8 @@ function foo(): number {
 ```
 
 ```sql
-SELECT
-  *,
-  biz,
-  buz
-FROM
-  baz;
+SELECT *, biz, buz
+FROM baz;
 ```
 
 ```sql
