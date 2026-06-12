@@ -864,6 +864,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             ],
           }),
         );
+        const packagesToBuild = ["deno", "denort", "test_server"]
+          .map((name) => `-p ${name}`).join(" ");
         const binsToBuild = ["deno", "denort", "test_server"]
           .map((name) => `--bin ${name}`).join(" ");
         const cargoBuildReleaseStep = step
@@ -887,8 +889,18 @@ const buildJobs = buildItems.map((rawBuildItem) => {
               run: [
                 // output fs space before and after building
                 "df -h",
-                `cargo build --release --locked ${binsToBuild} --features=panic-trace`,
+                `cargo build --release --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
                 "df -h",
+              ],
+            },
+            {
+              name: "Check release snapshot flags",
+              if: isLinux,
+              run: [
+                "if strings target/release/deno | grep -F -- '--no-lazy --no-lazy-eval --no-lazy-streaming'; then",
+                '  echo "release deno binary contains eager snapshot flags"',
+                "  exit 1",
+                "fi",
               ],
             },
             {
@@ -922,7 +934,8 @@ const buildJobs = buildItems.map((rawBuildItem) => {
             {
               name: "Build debug",
               if: isDebug,
-              run: `cargo build --locked ${binsToBuild} --features=panic-trace`,
+              run:
+                `cargo build --locked ${packagesToBuild} ${binsToBuild} --features=deno/panic-trace`,
               env: { CARGO_PROFILE_DEV_DEBUG: 0 },
             },
             cargoBuildReleaseStep,
