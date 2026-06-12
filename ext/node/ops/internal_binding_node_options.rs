@@ -260,8 +260,11 @@ pub fn op_node_options_get_options<'s, TSys: ExtNodeSys + 'static>(
 
   let options = create_default_options(scope);
   let node_options = {
-    let sys = state.borrow::<TSys>();
-    sys.env_var("NODE_OPTIONS").ok()
+    if let Some(sys) = state.try_borrow::<TSys>() {
+      sys.env_var("NODE_OPTIONS").ok()
+    } else {
+      std::env::var("NODE_OPTIONS").ok()
+    }
   };
   if let Some(node_options) = node_options {
     for arg in split_node_options(&node_options) {

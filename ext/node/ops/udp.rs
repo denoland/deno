@@ -461,6 +461,11 @@ impl UDP {
     #[string] multicast_address: &str,
     #[string] interface_address: Option<String>,
   ) -> i32 {
+    let ipv4_addr = Ipv4Addr::from_str(multicast_address).ok();
+    let ipv6_addr = Ipv6Addr::from_str(multicast_address).ok();
+    if ipv4_addr.is_none() && ipv6_addr.is_none() {
+      return uv_compat::UV_EINVAL;
+    }
     let Some(rid) = self.rid.get() else {
       return uv_compat::UV_EBADF;
     };
@@ -470,7 +475,7 @@ impl UDP {
         .get::<NodeUdpSocketResource>(rid)
         .map_err(NodeUdpError::from)
         .and_then(|resource| {
-          let addr = Ipv6Addr::from_str(multicast_address)?;
+          let addr = ipv6_addr.ok_or_else(invalid_input)?;
           let iface = resolve_ipv6_interface(interface_address.as_deref())?;
           resource.socket.join_multicast_v6(&addr, iface)?;
           Ok(())
@@ -481,7 +486,7 @@ impl UDP {
         .get::<NodeUdpSocketResource>(rid)
         .map_err(NodeUdpError::from)
         .and_then(|resource| {
-          let addr = Ipv4Addr::from_str(multicast_address)?;
+          let addr = ipv4_addr.ok_or_else(invalid_input)?;
           let iface = interface_address
             .as_deref()
             .map(Ipv4Addr::from_str)
@@ -504,6 +509,11 @@ impl UDP {
     #[string] multicast_address: &str,
     #[string] interface_address: Option<String>,
   ) -> i32 {
+    let ipv4_addr = Ipv4Addr::from_str(multicast_address).ok();
+    let ipv6_addr = Ipv6Addr::from_str(multicast_address).ok();
+    if ipv4_addr.is_none() && ipv6_addr.is_none() {
+      return uv_compat::UV_EINVAL;
+    }
     let Some(rid) = self.rid.get() else {
       return uv_compat::UV_EBADF;
     };
@@ -513,7 +523,7 @@ impl UDP {
         .get::<NodeUdpSocketResource>(rid)
         .map_err(NodeUdpError::from)
         .and_then(|resource| {
-          let addr = Ipv6Addr::from_str(multicast_address)?;
+          let addr = ipv6_addr.ok_or_else(invalid_input)?;
           let iface = resolve_ipv6_interface(interface_address.as_deref())?;
           resource.socket.leave_multicast_v6(&addr, iface)?;
           Ok(())
@@ -524,7 +534,7 @@ impl UDP {
         .get::<NodeUdpSocketResource>(rid)
         .map_err(NodeUdpError::from)
         .and_then(|resource| {
-          let addr = Ipv4Addr::from_str(multicast_address)?;
+          let addr = ipv4_addr.ok_or_else(invalid_input)?;
           let iface = interface_address
             .as_deref()
             .map(Ipv4Addr::from_str)
@@ -548,6 +558,17 @@ impl UDP {
     #[string] group_address: &str,
     #[string] interface_address: Option<String>,
   ) -> i32 {
+    let Ok(source_addr) = Ipv4Addr::from_str(source_address) else {
+      return uv_compat::UV_EINVAL;
+    };
+    let Ok(group_addr) = Ipv4Addr::from_str(group_address) else {
+      return uv_compat::UV_EINVAL;
+    };
+    let Ok(interface_addr) =
+      Ipv4Addr::from_str(interface_address.as_deref().unwrap_or("0.0.0.0"))
+    else {
+      return uv_compat::UV_EINVAL;
+    };
     let Some(rid) = self.rid.get() else {
       return uv_compat::UV_EBADF;
     };
@@ -558,11 +579,9 @@ impl UDP {
       .and_then(|resource| {
         source_specific_multicast(
           &resource.socket,
-          Ipv4Addr::from_str(source_address)?,
-          Ipv4Addr::from_str(group_address)?,
-          Ipv4Addr::from_str(
-            interface_address.as_deref().unwrap_or("0.0.0.0"),
-          )?,
+          source_addr,
+          group_addr,
+          interface_addr,
           {
             #[cfg(unix)]
             {
@@ -589,6 +608,17 @@ impl UDP {
     #[string] group_address: &str,
     #[string] interface_address: Option<String>,
   ) -> i32 {
+    let Ok(source_addr) = Ipv4Addr::from_str(source_address) else {
+      return uv_compat::UV_EINVAL;
+    };
+    let Ok(group_addr) = Ipv4Addr::from_str(group_address) else {
+      return uv_compat::UV_EINVAL;
+    };
+    let Ok(interface_addr) =
+      Ipv4Addr::from_str(interface_address.as_deref().unwrap_or("0.0.0.0"))
+    else {
+      return uv_compat::UV_EINVAL;
+    };
     let Some(rid) = self.rid.get() else {
       return uv_compat::UV_EBADF;
     };
@@ -599,11 +629,9 @@ impl UDP {
       .and_then(|resource| {
         source_specific_multicast(
           &resource.socket,
-          Ipv4Addr::from_str(source_address)?,
-          Ipv4Addr::from_str(group_address)?,
-          Ipv4Addr::from_str(
-            interface_address.as_deref().unwrap_or("0.0.0.0"),
-          )?,
+          source_addr,
+          group_addr,
+          interface_addr,
           {
             #[cfg(unix)]
             {
@@ -803,6 +831,13 @@ pub enum NodeUdpError {
   #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+}
+
+fn invalid_input() -> NodeUdpError {
+  NodeUdpError::Io(std::io::Error::new(
+    std::io::ErrorKind::InvalidInput,
+    "invalid address",
+  ))
 }
 
 pub struct NodeUdpSocketResource {

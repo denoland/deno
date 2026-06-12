@@ -802,7 +802,7 @@ function strerror(code: number) {
     : ares_strerror(code);
 }
 
-return {
+const binding = {
   DNS_ORDER_VERBATIM,
   DNS_ORDER_IPV4_FIRST,
   DNS_ORDER_IPV6_FIRST,
@@ -825,4 +825,5 @@ return {
     strerror,
   },
 };
+return binding;
 })();

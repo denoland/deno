@@ -589,6 +589,9 @@ fn http_parser_do_execute<'s>(
 ) {
   let parser = args.this();
   let Some(native) = get_native(scope, parser) else {
+    let message = string(scope, "Illegal invocation");
+    let exception = v8::Exception::type_error(scope, message);
+    scope.throw_exception(exception);
     return;
   };
   let data = args.get(0);
@@ -606,6 +609,9 @@ fn http_parser_execute<'s>(
 ) {
   let parser = args.this();
   let Some(native) = get_native(scope, parser) else {
+    let message = string(scope, "Illegal invocation");
+    let exception = v8::Exception::type_error(scope, message);
+    scope.throw_exception(exception);
     return;
   };
   let Some(buffer_ctor) = parser_constructor_value(scope, parser, "_Buffer")
@@ -1800,7 +1806,7 @@ impl HTTPParser {
     inner.max_header_size = if max_header_size > 0 {
       max_header_size as u32
     } else {
-      0
+      16_384
     };
     inner.init(parser_type, lenient_flags);
   }
