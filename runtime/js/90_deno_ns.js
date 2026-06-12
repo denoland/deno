@@ -56,6 +56,11 @@ function lazyKv() {
   return _kvImpl ?? (_kvImpl = core.loadExtScript("ext:deno_kv/01_db.ts"));
 }
 const cron = core.loadExtScript("ext:deno_cron/01_cron.ts");
+// Deno.McpServer is a niche API and pulls in 06_streams via deno_fetch. Defer.
+let _mcpImpl;
+function lazyMcp() {
+  return _mcpImpl ?? (_mcpImpl = core.loadExtScript("ext:deno_mcp/01_mcp.ts"));
+}
 const surface = core.loadExtScript("ext:deno_canvas/02_surface.js");
 const telemetry = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 import { unstableIds } from "ext:deno_features/flags.js";
@@ -312,6 +317,12 @@ denoNsUnstableById[unstableIds.kv] = {
   },
   get KvListIterator() {
     return lazyKv().KvListIterator;
+  },
+};
+
+denoNsUnstableById[unstableIds.mcp] = {
+  get McpServer() {
+    return lazyMcp().McpServer;
   },
 };
 

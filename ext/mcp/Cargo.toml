@@ -1,0 +1,17 @@
+# Copyright 2018-2026 the Deno authors. MIT license.
+
+[package]
+name = "deno_mcp"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Implementation of the Deno MCP server API"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true

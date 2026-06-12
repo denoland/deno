@@ -19,6 +19,7 @@ members = [
   "ext/image",
   "ext/io",
   "ext/kv",
+  "ext/mcp",
   "ext/napi",
   "ext/napi/sym",
   "ext/net",
@@ -123,6 +124,7 @@ deno_http = { version = "0.249.0", path = "./ext/http" }
 deno_image = { version = "0.27.0", path = "./ext/image" }
 deno_io = { version = "0.161.0", path = "./ext/io" }
 deno_kv = { version = "0.159.0", path = "./ext/kv" }
+deno_mcp = { version = "0.1.0", path = "./ext/mcp" }
 deno_napi = { version = "0.182.0", path = "./ext/napi" }
 deno_net = { version = "0.243.0", path = "./ext/net" }
 deno_node = { version = "0.189.0", path = "./ext/node" }
