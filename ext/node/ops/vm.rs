@@ -51,6 +51,12 @@ pub fn op_vm_dynamic_import_callback_register(
 pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
 
+// Private symbol used to anchor the `ContextifyContext` wrapper on the
+// v8::Context's global object so that the context keeps the wrapper alive for
+// its entire lifetime. See `keep_wrapper_alive` for why this is necessary.
+const CONTEXTIFY_WRAPPER_SYMBOL_NAME: v8::OneByteConst =
+  v8::String::create_external_onebyte_const(b"node:contextify:wrapper");
+
 /// An unbounded script that can be run in a context.
 pub struct ContextifyScript {
   script: v8::TracedReference<v8::UnboundScript>,
@@ -415,10 +421,40 @@ extern "C" fn allow_wasm_code_gen(
   }
   // SAFETY: The tag match guarantees this slot was populated by
   // `attach`/`attach_vanilla`, so it points at a valid ContextifyContext.
-  // The ContextifyContext outlives the v8::Context because it owns a
-  // TracedReference to it.
+  // The ContextifyContext is anchored on this context's global object (see
+  // `keep_wrapper_alive`), so it stays alive for at least as long as the
+  // v8::Context we just read it from.
   let ctx = unsafe { &*(context_ptr as *const ContextifyContext) };
   ctx.allow_code_gen_wasm
+}
+
+// Keep the `ContextifyContext` wrapper alive for as long as the v8::Context
+// itself is alive.
+//
+// The context stores a raw pointer to the wrapper in its embedder data
+// (`CONTEXTIFY_CTX_SLOT`), but a raw pointer is not a GC root. For a
+// contextified sandbox the only strong reference to the wrapper is a private
+// symbol on the sandbox object. If user code drops the sandbox while keeping
+// the context alive (for example via a function extracted from the context),
+// the wrapper would be garbage collected and that raw pointer would dangle,
+// causing a use-after-free the next time an interceptor (or the wasm code-gen
+// callback) dereferences it.
+//
+// Anchoring the wrapper in a private symbol on the context's global object
+// makes the context a strong root for the wrapper: while the context is alive
+// its global is alive, which keeps the wrapper alive, which in turn traces the
+// sandbox `TracedReference`, keeping the sandbox alive too. When the context
+// finally becomes unreachable the whole cycle is collected together.
+fn keep_wrapper_alive(
+  scope: &mut v8::PinScope<'_, '_>,
+  context: v8::Local<v8::Context>,
+  wrapper: v8::Local<v8::Object>,
+) {
+  let global = context.global(scope);
+  let symbol_str =
+    v8::String::new_from_onebyte_const(scope, &CONTEXTIFY_WRAPPER_SYMBOL_NAME);
+  let symbol = v8::Private::for_api(scope, symbol_str);
+  global.set_private(scope, symbol, wrapper.into());
 }
 
 impl ContextifyContext {
@@ -486,11 +522,12 @@ impl ContextifyContext {
     let ptr =
       deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper.into());
 
-    // SAFETY: We are storing a pointer to the ContextifyContext
-    // in the embedder data of the v8::Context. The contextified wrapper
-    // lives longer than the execution context, so this should be safe.
-    // The tag slot is set to a static sentinel so `allow_wasm_code_gen` —
-    // which runs for every context — can distinguish contextified contexts
+    // SAFETY: We are storing a pointer to the ContextifyContext in the
+    // embedder data of the v8::Context. `keep_wrapper_alive` (called below)
+    // anchors the wrapper on the context's global object, so the wrapper
+    // outlives the context and this pointer never dangles.
+    // The tag slot is set to a static sentinel so `allow_wasm_code_gen`,
+    // which runs for every context, can distinguish contextified contexts
     // from non-contextified ones.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
@@ -502,6 +539,8 @@ impl ContextifyContext {
         &raw const CONTEXTIFY_TAG as *mut _,
       );
     }
+
+    keep_wrapper_alive(scope, context, wrapper);
 
     // Drop the v8::Context annex (created by `set_aligned_pointer_in_embedder_data`).
     // The annex holds a `Weak<Context>` with a guaranteed finalizer. If left in
@@ -597,9 +636,10 @@ impl ContextifyContext {
     let ptr =
       deno_core::cppgc::try_unwrap_cppgc_object::<Self>(scope, wrapper.into());
 
-    // SAFETY: We are storing a pointer to the ContextifyContext
-    // in the embedder data of the v8::Context. The contextified wrapper
-    // lives longer than the execution context, so this should be safe.
+    // SAFETY: We are storing a pointer to the ContextifyContext in the
+    // embedder data of the v8::Context. `keep_wrapper_alive` (called below)
+    // anchors the wrapper on the context's global object, so the wrapper
+    // outlives the context and this pointer never dangles.
     // See `attach` for the tag slot.
     unsafe {
       context.set_aligned_pointer_in_embedder_data(
@@ -611,6 +651,8 @@ impl ContextifyContext {
         &raw const CONTEXTIFY_TAG as *mut _,
       );
     }
+
+    keep_wrapper_alive(scope, context, wrapper);
 
     // See `attach` for why we clear the annex here.
     context.clear_all_slots();
@@ -691,8 +733,10 @@ impl ContextifyContext {
     if context_ptr.is_null() {
       return None;
     }
-    // SAFETY: We are storing a pointer to the ContextifyContext
-    // in the embedder data of the v8::Context during creation.
+    // SAFETY: We store a pointer to the ContextifyContext in the embedder data
+    // of the v8::Context during creation, and anchor the wrapper on the
+    // context's global object (see `keep_wrapper_alive`) so it remains valid
+    // for as long as the context is alive.
     Some(unsafe { &*(context_ptr as *const ContextifyContext) })
   }
 }

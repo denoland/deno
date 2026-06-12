@@ -630,6 +630,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
     self.resolve_inner(raw_specifier, referrer, kind)
   }
 
+  fn pump_event_loop_during_load(&self) -> bool {
+    // Load hooks respond through the async bridge, so the event loop must be
+    // pumped during the recursive load or the load deadlocks.
+    self.hook_registry.load_active.get()
+  }
+
   fn get_host_defined_options<'s>(
     &self,
     scope: &mut deno_core::v8::PinScope<'s, '_>,
@@ -791,7 +797,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             }
           };
           match hook_result {
-            Ok((Some(source), _format)) => {
+            Ok((Some(source), _format, _effective_url)) => {
               // Hook provided transformed source
               Ok(deno_core::ModuleSource::new(
                 deno_core::ModuleType::JavaScript,
@@ -800,12 +806,20 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 None,
               ))
             }
-            Ok((None, _)) => {
+            Ok((None, _, effective_url)) => {
               // Fallthrough: hooks didn't intercept; route through the same
               // default loader that an un-hooked load would use, so npm
-              // packages and embedded modules resolve correctly.
+              // packages and embedded modules resolve correctly. If the
+              // user's load hook chain delegated via `nextLoad(newUrl)`,
+              // fetch source from that URL while keeping the module's
+              // identity at the original specifier (matches Node).
+              let fetch_specifier = effective_url
+                .as_deref()
+                .and_then(|u| deno_core::ModuleSpecifier::parse(u).ok())
+                .filter(|u| u != &specifier);
+              let load_url = fetch_specifier.as_ref().unwrap_or(&specifier);
               let response = this.load_default(
-                &specifier,
+                load_url,
                 maybe_referrer.as_ref(),
                 ModuleLoadOptions {
                   is_dynamic_import,
@@ -813,9 +827,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
                   requested_module_type,
                 },
               );
-              match response {
-                deno_core::ModuleLoadResponse::Sync(r) => r,
-                deno_core::ModuleLoadResponse::Async(fut) => fut.await,
+              let source = match response {
+                deno_core::ModuleLoadResponse::Sync(r) => r?,
+                deno_core::ModuleLoadResponse::Async(fut) => fut.await?,
+              };
+              if fetch_specifier.is_some() {
+                Ok(deno_core::ModuleSource::new(
+                  source.module_type,
+                  source.code,
+                  &specifier,
+                  source.code_cache,
+                ))
+              } else {
+                Ok(source)
               }
             }
             Err(err) => Err(JsErrorBox::generic(err)),
@@ -1079,7 +1103,35 @@ pub async fn run(
   // use a dummy npm registry url
   let npm_registry_url = Url::parse("https://localhost/").unwrap();
   let root_dir_url = Arc::new(Url::from_directory_path(&root_path).unwrap());
-  let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
+  let entrypoint = root_dir_url.join(&metadata.entrypoint_key).unwrap();
+  // When this process was spawned by node:child_process.fork() from a compiled
+  // binary, the parent asks us to run a specific embedded module instead of the
+  // baked-in entrypoint (see ext/node/polyfills/child_process.ts). Otherwise a
+  // fork() would just re-run the parent's entrypoint (issue #26304).
+  let child_entrypoint = std::env::var(INTERNAL_CHILD_ENTRYPOINT_ENV_VAR)
+    .ok()
+    .filter(|module_path| !module_path.is_empty());
+  if child_entrypoint.is_some() {
+    // Always strip the internal var so it does not leak into any grandchild
+    // processes that inherit this environment, even if we end up ignoring it.
+    // SAFETY: single-threaded during startup, before the runtime is created.
+    unsafe { std::env::remove_var(INTERNAL_CHILD_ENTRYPOINT_ENV_VAR) };
+  }
+  let main_module = match child_entrypoint {
+    // Only honor the override for a genuine fork() child, which always wires up
+    // an IPC channel (NODE_CHANNEL_FD). This is defense in depth against an
+    // accidental collision with a stray DENO_INTERNAL_CHILD_ENTRYPOINT, not a
+    // security boundary: an attacker who can set one env var can set both, and
+    // resolve_child_entrypoint's cwd-relative fallback will then run an on-disk
+    // module with the binary's baked-in permissions. That on-disk fallback is
+    // intentional (it matches fork() semantics outside a compiled binary), so a
+    // hostile environment is out of scope here. NODE_CHANNEL_FD is still present
+    // because node_ipc_init() consumes it later.
+    Some(module_path) if std::env::var("NODE_CHANNEL_FD").is_ok() => {
+      resolve_child_entrypoint(&module_path, &entrypoint, &vfs, &sys)
+    }
+    _ => entrypoint,
+  };
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
   let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
     sys.clone(),
@@ -1388,7 +1440,7 @@ pub async fn run(
     seed: metadata.seed,
     unsafely_ignore_certificate_errors: metadata
       .unsafely_ignore_certificate_errors,
-    node_ipc_init: None,
+    node_ipc_init: deno_lib::args::node_ipc_init(&sys)?,
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
@@ -1459,6 +1511,74 @@ pub async fn run(
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
+}
+
+// Internal env var carrying the module a fork()ed child of a compiled binary
+// should run. Kept in sync with ext/node/polyfills/child_process.ts.
+const INTERNAL_CHILD_ENTRYPOINT_ENV_VAR: &str =
+  "DENO_INTERNAL_CHILD_ENTRYPOINT";
+
+/// Resolves the module path passed to `node:child_process.fork()` to the module
+/// that a compiled-binary child should run as its main module.
+///
+/// A relative path is first resolved against the parent entrypoint's directory
+/// so it points at a sibling module embedded in the compile VFS; if no such
+/// module is embedded there, it falls back to a path relative to the real cwd
+/// so an on-disk module can still be loaded (matching how fork() resolves a
+/// relative path outside a compiled binary). Absolute paths are used as-is: the
+/// module loader consults the VFS first and falls back to disk. Falls back to
+/// the entrypoint if resolution fails entirely.
+fn resolve_child_entrypoint(
+  module_path: &str,
+  entrypoint: &Url,
+  vfs: &FileBackedVfs,
+  sys: &DenoRtSys,
+) -> Url {
+  // Falling back to the entrypoint silently would re-run the parent's
+  // entrypoint, i.e. the very symptom of #26304. Warn so the failure is
+  // diagnosable instead of looking like a successful fork.
+  //
+  // Re-running the entrypoint risks a re-fork loop if the entrypoint
+  // unconditionally fork()s the same bad path. In practice this almost never
+  // fires: the common "missing module" case takes the cwd branch below, where
+  // resolve_path() builds a URL without an existence check, so the bad path
+  // surfaces as a module load error rather than reaching here. fallback() only
+  // triggers on an unparseable path or an unreadable cwd, which a re-fork would
+  // hit identically (and thus surface) rather than spinning silently.
+  let fallback = || {
+    log::warn!(
+      "Could not resolve module {:?} passed to child_process.fork(); running the compiled entrypoint instead.",
+      module_path
+    );
+    entrypoint.clone()
+  };
+  let path = std::path::Path::new(module_path);
+  if path.is_absolute() {
+    return deno_path_util::url_from_file_path(path)
+      .unwrap_or_else(|_| fallback());
+  }
+  // Prefer the sibling module embedded next to the entrypoint in the VFS.
+  if let Ok(candidate) = entrypoint.join(module_path)
+    && let Ok(candidate_path) = deno_path_util::url_to_file_path(&candidate)
+    && vfs.stat(&candidate_path).is_ok()
+  {
+    return candidate;
+  }
+  // Otherwise resolve against the real cwd to load an on-disk module. fork()
+  // resolves a relative module path against the process's current working
+  // directory, so reading the real cwd is the intended behavior here even
+  // though the lint discourages ambient cwd access elsewhere.
+  #[allow(
+    clippy::disallowed_methods,
+    reason = "fork() resolves relative module paths against the process cwd"
+  )]
+  let cwd = sys.env_current_dir();
+  match cwd {
+    Ok(cwd) => {
+      deno_core::resolve_path(module_path, &cwd).unwrap_or_else(|_| fallback())
+    }
+    Err(_) => fallback(),
+  }
 }
 
 fn create_default_npmrc() -> Arc<ResolvedNpmRc> {

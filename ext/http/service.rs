@@ -663,7 +663,7 @@ impl Drop for HttpRecord {
   }
 }
 
-fn trust_proxy_headers() -> bool {
+pub(crate) fn trust_proxy_headers() -> bool {
   static TRUST_PROXY_HEADERS: OnceLock<bool> = OnceLock::new();
 
   static VAR_NAME: &str = "DENO_TRUST_PROXY_HEADERS";

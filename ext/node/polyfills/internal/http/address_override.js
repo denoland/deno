@@ -98,6 +98,7 @@ class OverrideSocket extends Duplex {
   #timeoutMsecs = 0;
   #timeoutTimer = null;
   // Node's HTTP server uses these directly.
+  isDenoServeAddressOverride = true;
   _paused = false;
   server = null;
   parser = null;
