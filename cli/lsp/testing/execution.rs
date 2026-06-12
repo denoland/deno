@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -169,7 +170,7 @@ pub struct TestRun {
   workspace_settings: config::WorkspaceSettings,
   /// `--env-file` paths inherited from the `test` task in deno.json. Resolved
   /// once at run construction so `get_args` doesn't depend on the config tree.
-  test_task_env_files: Vec<String>,
+  test_task_env_files: Vec<PathBuf>,
 }
 
 impl TestRun {
@@ -564,6 +565,13 @@ impl TestRun {
     });
     if !has_env_file_arg {
       for env_file in &self.test_task_env_files {
+        let Some(env_file) = env_file.to_str() else {
+          lsp_log!(
+            "Skipping non-UTF8 env file path from deno.json `test` task: {}",
+            env_file.display()
+          );
+          continue;
+        };
         args.push(Cow::Owned(format!("--env-file={env_file}")));
       }
     }
@@ -579,10 +587,10 @@ impl TestRun {
 fn collect_test_task_env_files(
   queue: &HashSet<ModuleSpecifier>,
   config_tree: &config::ConfigTree,
-) -> Vec<String> {
+) -> Vec<PathBuf> {
   let mut env_files = Vec::new();
   let mut seen_scopes: HashSet<Arc<deno_core::url::Url>> = HashSet::new();
-  let mut seen_env_files: HashSet<String> = HashSet::new();
+  let mut seen_env_files: HashSet<PathBuf> = HashSet::new();
   for specifier in queue {
     let Some(data) = config_tree.data_for_specifier(specifier) else {
       continue;
@@ -609,8 +617,8 @@ fn collect_test_task_env_files(
       .and_then(|p| p.parent().map(std::path::Path::to_path_buf));
     for env_file in extract_env_files_from_command(command) {
       let resolved = match &config_dir {
-        Some(dir) => dir.join(&env_file).to_string_lossy().into_owned(),
-        None => env_file,
+        Some(dir) => dir.join(&env_file),
+        None => PathBuf::from(env_file),
       };
       if seen_env_files.insert(resolved.clone()) {
         env_files.push(resolved);
@@ -622,24 +630,39 @@ fn collect_test_task_env_files(
 
 /// Scans a task command string for `--env-file`/`--env` flags and returns the
 /// associated file paths. A bare `--env-file` flag (no value) defaults to
-/// `.env` to match the CLI behavior. Shell operators in the surrounding
-/// command are intentionally ignored — picking up an env-file flag from
-/// anywhere in a compound task is the user's intent in practice.
+/// `.env` to match the CLI behavior. In compound task commands, only `deno
+/// test ...` command segments are scanned so env files belonging to unrelated
+/// commands are not inherited by the LSP test runner.
 fn extract_env_files_from_command(command: &str) -> Vec<String> {
   let Some(tokens) = shlex::split(command) else {
     return Vec::new();
   };
   let mut env_files = Vec::new();
-  for token in &tokens {
-    if let Some(rest) = token.strip_prefix("--env-file=") {
-      env_files.push(rest.to_string());
-    } else if let Some(rest) = token.strip_prefix("--env=") {
-      env_files.push(rest.to_string());
-    } else if token == "--env-file" || token == "--env" {
-      env_files.push(".env".to_string());
+  let mut index = 0;
+  while index + 1 < tokens.len() {
+    if tokens[index] == "deno" && tokens[index + 1] == "test" {
+      index += 2;
+      while index < tokens.len() && !is_shell_command_separator(&tokens[index])
+      {
+        let token = &tokens[index];
+        if let Some(rest) = token.strip_prefix("--env-file=") {
+          env_files.push(rest.to_string());
+        } else if let Some(rest) = token.strip_prefix("--env=") {
+          env_files.push(rest.to_string());
+        } else if token == "--env-file" || token == "--env" {
+          env_files.push(".env".to_string());
+        }
+        index += 1;
+      }
+    } else {
+      index += 1;
     }
   }
   env_files
+}
+
+fn is_shell_command_separator(token: &str) -> bool {
+  matches!(token, "&&" | "||" | ";" | "|")
 }
 
 #[derive(Debug, PartialEq)]
@@ -1166,6 +1189,19 @@ mod tests {
         "deno fmt && deno test --env-file=.env.test"
       ),
       vec![".env.test".to_string()],
+    );
+    // Env files belonging to other commands in a compound task are ignored.
+    assert_eq!(
+      extract_env_files_from_command(
+        "deno run --env-file=.env.prod setup.ts && deno test --env-file=.env.test"
+      ),
+      vec![".env.test".to_string()],
+    );
+    assert!(
+      extract_env_files_from_command(
+        "deno run --env-file=.env.prod setup.ts && deno test"
+      )
+      .is_empty()
     );
     // Quoted path containing whitespace is preserved by the shlex split.
     assert_eq!(
