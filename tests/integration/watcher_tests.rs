@@ -692,7 +692,12 @@ console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
   wait_contains("Compile finished", &mut stderr_lines).await;
 
   let output = run_compiled(&exe).await;
-  assert!(output.status.success());
+  assert!(
+    output.status.success(),
+    "binary (run 1) failed: status={}\nstderr={}",
+    output.status,
+    String::from_utf8_lossy(&output.stderr)
+  );
   assert_contains!(String::from_utf8_lossy(&output.stdout), "before");
   assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
 
@@ -701,7 +706,12 @@ console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
   wait_contains("Compile finished", &mut stderr_lines).await;
 
   let output = run_compiled(&exe).await;
-  assert!(output.status.success());
+  assert!(
+    output.status.success(),
+    "binary (run 2) failed: status={}\nstderr={}",
+    output.status,
+    String::from_utf8_lossy(&output.stderr)
+  );
   assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
   assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
 
@@ -710,7 +720,12 @@ console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
   wait_contains("Compile finished", &mut stderr_lines).await;
 
   let output = run_compiled(&exe).await;
-  assert!(output.status.success());
+  assert!(
+    output.status.success(),
+    "binary (run 3) failed: status={}\nstderr={}",
+    output.status,
+    String::from_utf8_lossy(&output.stderr)
+  );
   assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
   assert_contains!(String::from_utf8_lossy(&output.stdout), "included after");
 

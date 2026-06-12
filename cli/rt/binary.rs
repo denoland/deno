@@ -477,11 +477,9 @@ fn read_section_from_elf_file() -> Result<&'static [u8], AnyError> {
     if p_type != PT_NOTE {
       continue;
     }
-    // In Elf64_Phdr: p_offset at 8, p_filesz at 32, p_align at 48.
+    // In Elf64_Phdr: p_offset at 8, p_filesz at 32.
     let p_offset = u64::from_le_bytes(ph[8..16].try_into().unwrap());
     let p_filesz = u64::from_le_bytes(ph[32..40].try_into().unwrap()) as usize;
-    let p_align =
-      (u64::from_le_bytes(ph[48..56].try_into().unwrap()) as usize).max(4);
 
     if p_filesz == 0 {
       continue;
@@ -495,8 +493,12 @@ fn read_section_from_elf_file() -> Result<&'static [u8], AnyError> {
       .read_exact(&mut note_data)
       .context("reading PT_NOTE data")?;
 
+    // Note entries within a PT_NOTE segment use 4-byte alignment on Linux
+    // (ELF SysV ABI / Linux convention) regardless of the segment's p_align
+    // field (which describes the segment's load alignment, not internal note
+    // alignment).
     if let Some(section_bytes) =
-      find_in_elf_note_data(&note_data, p_align, b"d3n0l4nd")
+      find_in_elf_note_data(&note_data, 4, b"d3n0l4nd")
     {
       // Leak the allocation so we can return &'static [u8]. This is safe
       // because standalone binaries read the section data exactly once and
