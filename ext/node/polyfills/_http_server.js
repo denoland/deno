@@ -1587,14 +1587,17 @@ Server.prototype.closeIdleConnections = function closeIdleConnections() {
 };
 
 export {
+  applyAddressOverride,
   connectionListener as _connectionListener,
   httpServerPreClose,
   kConnectionsCheckingInterval,
   kIncomingMessage,
   kServerResponse,
+  notifyAddressOverrideServing,
   Server,
   ServerResponse,
   setupConnectionsTracking,
+  startOverrideListener,
   STATUS_CODES,
   storeHTTPOptions,
 };
