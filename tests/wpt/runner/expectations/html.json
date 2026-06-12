@@ -89,10 +89,10 @@
               "base-url-worker.sub.html": false,
               "base-url.sub.html": {
                 "expectedFailures": [
-                  "Relative URL-like from same origin classic <script>",
-                  "Relative URL-like from cross origin classic <script> without crossorigin attribute",
                   "Relative URL-like from cross origin classic <script> with crossorigin attribute",
-                  "Relative URL-like from cross origin module <script>"
+                  "Relative URL-like from cross origin classic <script> without crossorigin attribute",
+                  "Relative URL-like from cross origin module <script>",
+                  "Relative URL-like from same origin classic <script>"
                 ]
               }
             },
@@ -109,8 +109,8 @@
             "dynamic-imports-fetch-error.sub.html": {
               "expectedFailures": [
                 "import() must reject when there is a cross-origin module (without CORS)",
-                "import() must reject with a different error object for each import when there is a cross-origin module (without CORS)",
                 "import() must reject when there is a cross-origin module dependency (without CORS)",
+                "import() must reject with a different error object for each import when there is a cross-origin module (without CORS)",
                 "import() must reject with a different error object for each import when there is a cross-origin module dependency (without CORS)"
               ]
             },
@@ -209,6 +209,13 @@
             "expectedFailures": [
               "Script 0",
               "Script 1",
+              "Script 10",
+              "Script 11",
+              "Script 12",
+              "Script 13",
+              "Script 14",
+              "Script 15",
+              "Script 16",
               "Script 2",
               "Script 3",
               "Script 4",
@@ -216,14 +223,7 @@
               "Script 6",
               "Script 7",
               "Script 8",
-              "Script 9",
-              "Script 10",
-              "Script 11",
-              "Script 12",
-              "Script 13",
-              "Script 14",
-              "Script 15",
-              "Script 16"
+              "Script 9"
             ]
           },
           "single-evaluation-1.html": false,
@@ -431,8 +431,8 @@
         },
         "historical.html": {
           "expectedFailures": [
-            "script.onbeforescriptexecute should not be supported",
-            "script.onafterscriptexecute should not be supported"
+            "script.onafterscriptexecute should not be supported",
+            "script.onbeforescriptexecute should not be supported"
           ]
         },
         "load-error-events-1.html": false,
@@ -505,9 +505,9 @@
         "nomodule-set-on-external-module-script.html": false,
         "nomodule-set-on-inline-classic-scripts.html": {
           "expectedFailures": [
-            "An inline classic script with nomodule content attribute must not run",
             "An inline classic script element dynamically inserted after noModule was set to false must run.",
-            "An inline classic script element dynamically inserted after noModule was set to true must not run."
+            "An inline classic script element dynamically inserted after noModule was set to true must not run.",
+            "An inline classic script with nomodule content attribute must not run"
           ]
         },
         "nomodule-set-on-inline-module-script.html": false,
@@ -529,6 +529,13 @@
           "expectedFailures": [
             "Script 0",
             "Script 1",
+            "Script 10",
+            "Script 11",
+            "Script 12",
+            "Script 13",
+            "Script 14",
+            "Script 15",
+            "Script 16",
             "Script 2",
             "Script 3",
             "Script 4",
@@ -536,14 +543,7 @@
             "Script 6",
             "Script 7",
             "Script 8",
-            "Script 9",
-            "Script 10",
-            "Script 11",
-            "Script 12",
-            "Script 13",
-            "Script 14",
-            "Script 15",
-            "Script 16"
+            "Script 9"
           ]
         },
         "script-not-executed-after-shutdown.html": false,
@@ -877,12 +877,12 @@
         "messageevent-constructor.https.html": {
           "expectedFailures": [
             "Default event values",
+            "Passing ServiceWorker for source member",
             "Passing null for ports member",
-            "ports attribute should be a FrozenArray",
-            "initMessageEvent operation",
             "Passing null for ports parameter to initMessageEvent",
+            "initMessageEvent operation",
             "initMessageEvent operation default parameter values",
-            "Passing ServiceWorker for source member"
+            "ports attribute should be a FrozenArray"
           ]
         },
         "onerroreventhandler.html": false,
@@ -967,8 +967,8 @@
           "Growable SharedArrayBuffer",
           "ImageBitmap",
           "OffscreenCanvas",
-          "Transferring a non-transferable platform object fails",
-          "Transferring OOB TypedArray throws"
+          "Transferring OOB TypedArray throws",
+          "Transferring a non-transferable platform object fails"
         ]
       },
       "structured-clone.any.worker.html": {
@@ -976,8 +976,8 @@
           "Growable SharedArrayBuffer",
           "ImageBitmap",
           "OffscreenCanvas",
-          "Transferring a non-transferable platform object fails",
-          "Transferring OOB TypedArray throws"
+          "Transferring OOB TypedArray throws",
+          "Transferring a non-transferable platform object fails"
         ]
       },
       "structured-clone-cross-realm-method.html": false
@@ -999,13 +999,13 @@
             "appCodeName",
             "appName",
             "appVersion",
+            "oscpu",
             "product",
             "productSub",
+            "taintEnabled",
             "userAgent value",
             "vendor",
-            "vendorSub",
-            "taintEnabled",
-            "oscpu"
+            "vendorSub"
           ]
         },
         "navigator.any.worker.html": {
@@ -1052,8 +1052,8 @@
         "broadcastchannel-success.https.html": false,
         "identity-not-preserved.https.html": {
           "expectedFailures": [
-            "postMessaging to this window does not give back the same SharedArrayBuffer (but does use the same backing block)",
-            "postMessaging to an iframe and back does not give back the same SharedArrayBuffer"
+            "postMessaging to an iframe and back does not give back the same SharedArrayBuffer",
+            "postMessaging to this window does not give back the same SharedArrayBuffer (but does use the same backing block)"
           ]
         },
         "nested-worker-success.https.html": {
@@ -1073,24 +1073,24 @@
         "window-messagechannel-success.https.html": true,
         "window-simple-success.https.html": {
           "expectedFailures": [
-            "postMessaging to a same-origin iframe allows them to see each others' modifications",
             "postMessaging to a same-origin deeply-nested iframe allows them to see each others' modifications",
+            "postMessaging to a same-origin iframe allows them to see each others' modifications",
             "postMessaging to a same-origin opened window allows them to see each others' modifications"
           ]
         }
       },
       "structured-cloning-error-stack-optional.sub.window.html": {
         "expectedFailures": [
-          "page-created Error (cross-site iframe)",
-          "page-created Error (same-origin iframe)",
-          "page-created DOMException (cross-site iframe)",
-          "page-created DOMException (same-origin iframe)",
           "JS-engine-created TypeError (cross-site iframe)",
           "JS-engine-created TypeError (same-origin iframe)",
-          "web API-created TypeError (cross-site iframe)",
-          "web API-created TypeError (same-origin iframe)",
+          "page-created DOMException (cross-site iframe)",
+          "page-created DOMException (same-origin iframe)",
+          "page-created Error (cross-site iframe)",
+          "page-created Error (same-origin iframe)",
           "web API-created DOMException (cross-site iframe)",
-          "web API-created DOMException (same-origin iframe)"
+          "web API-created DOMException (same-origin iframe)",
+          "web API-created TypeError (cross-site iframe)",
+          "web API-created TypeError (same-origin iframe)"
         ]
       },
       "transfer-errors.window.html": false,
@@ -1103,13 +1103,13 @@
       },
       "structuredclone_0.html": {
         "expectedFailures": [
-          "Value 'undefined' is cloned",
-          "ImageData object can be cloned",
-          "ImageData expandos are not cloned",
           "Document objects cannot be cloned",
-          "URIError objects from other realms are treated as URIError",
+          "ImageData expandos are not cloned",
+          "ImageData object can be cloned",
           "QuotaExceededError objects can be cloned",
-          "QuotaExceededError objects with empty quota/requested can be cloned"
+          "QuotaExceededError objects with empty quota/requested can be cloned",
+          "URIError objects from other realms are treated as URIError",
+          "Value 'undefined' is cloned"
         ]
       }
     },
@@ -1195,8 +1195,8 @@
           "utf-8.html?include=workers": {
             "expectedFailures": [
               "SharedWorker constructor",
-              "importScripts() in a shared worker",
-              "Worker() in a shared worker"
+              "Worker() in a shared worker",
+              "importScripts() in a shared worker"
             ]
           },
           "utf-8.html?include=xhr": false,
@@ -1217,9 +1217,9 @@
           "windows-1251.html?include=workers": {
             "expectedFailures": [
               "SharedWorker constructor",
-              "importScripts() in a shared worker",
+              "Worker constructor",
               "Worker() in a shared worker",
-              "Worker constructor"
+              "importScripts() in a shared worker"
             ]
           },
           "windows-1251.html?include=xhr": false,
@@ -1240,9 +1240,9 @@
           "windows-1252.html?include=workers": {
             "expectedFailures": [
               "SharedWorker constructor",
-              "importScripts() in a shared worker",
+              "Worker constructor",
               "Worker() in a shared worker",
-              "Worker constructor"
+              "importScripts() in a shared worker"
             ]
           },
           "windows-1252.html?include=xhr": false,

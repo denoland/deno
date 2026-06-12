@@ -54,8 +54,8 @@
     "url-with-xhr.any.worker.html": false,
     "cross-global-revoke.sub.html": {
       "expectedFailures": [
-        "It is possible to revoke same-origin blob URLs from different frames.",
-        "It is not possible to revoke cross-origin blob URLs."
+        "It is not possible to revoke cross-origin blob URLs.",
+        "It is possible to revoke same-origin blob URLs from different frames."
       ]
     },
     "multi-global-origin-serialization.sub.html": false,
@@ -91,69 +91,69 @@
   },
   "idlharness.any.html": {
     "expectedFailures": [
-      "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
+      "FileList interface: attribute length",
+      "FileList interface: existence and properties of interface object",
       "FileList interface: existence and properties of interface prototype object",
       "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
       "FileList interface: existence and properties of interface prototype object's @@unscopables property",
-      "FileList interface: operation item(unsigned long)",
-      "FileList interface: attribute length"
+      "FileList interface: operation item(unsigned long)"
     ]
   },
   "idlharness.any.worker.html": {
     "expectedFailures": [
-      "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
+      "FileList interface: attribute length",
+      "FileList interface: existence and properties of interface object",
       "FileList interface: existence and properties of interface prototype object",
       "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
       "FileList interface: existence and properties of interface prototype object's @@unscopables property",
       "FileList interface: operation item(unsigned long)",
-      "FileList interface: attribute length",
-      "FileReaderSync interface: existence and properties of interface object",
       "FileReaderSync interface object length",
       "FileReaderSync interface object name",
+      "FileReaderSync interface: existence and properties of interface object",
       "FileReaderSync interface: existence and properties of interface prototype object",
       "FileReaderSync interface: existence and properties of interface prototype object's \"constructor\" property",
       "FileReaderSync interface: existence and properties of interface prototype object's @@unscopables property",
       "FileReaderSync interface: operation readAsArrayBuffer(Blob)",
       "FileReaderSync interface: operation readAsBinaryString(Blob)",
-      "FileReaderSync interface: operation readAsText(Blob, optional DOMString)",
-      "FileReaderSync interface: operation readAsDataURL(Blob)"
+      "FileReaderSync interface: operation readAsDataURL(Blob)",
+      "FileReaderSync interface: operation readAsText(Blob, optional DOMString)"
     ]
   },
   "FileReaderSync.worker.html": false,
   "idlharness.worker.html": {
     "expectedFailures": [
-      "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
+      "FileList interface: attribute length",
+      "FileList interface: existence and properties of interface object",
       "FileList interface: existence and properties of interface prototype object",
       "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
       "FileList interface: existence and properties of interface prototype object's @@unscopables property",
       "FileList interface: operation item(unsigned long)",
-      "FileList interface: attribute length",
-      "FileReaderSync interface: existence and properties of interface object",
       "FileReaderSync interface object length",
       "FileReaderSync interface object name",
+      "FileReaderSync interface: calling readAsArrayBuffer(Blob) on new FileReaderSync() with too few arguments must throw TypeError",
+      "FileReaderSync interface: calling readAsBinaryString(Blob) on new FileReaderSync() with too few arguments must throw TypeError",
+      "FileReaderSync interface: calling readAsDataURL(Blob) on new FileReaderSync() with too few arguments must throw TypeError",
+      "FileReaderSync interface: calling readAsText(Blob, optional DOMString) on new FileReaderSync() with too few arguments must throw TypeError",
+      "FileReaderSync interface: existence and properties of interface object",
       "FileReaderSync interface: existence and properties of interface prototype object",
       "FileReaderSync interface: existence and properties of interface prototype object's \"constructor\" property",
       "FileReaderSync interface: existence and properties of interface prototype object's @@unscopables property",
+      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsArrayBuffer(Blob)\" with the proper type",
+      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsBinaryString(Blob)\" with the proper type",
+      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsDataURL(Blob)\" with the proper type",
+      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsText(Blob, optional DOMString)\" with the proper type",
       "FileReaderSync interface: operation readAsArrayBuffer(Blob)",
       "FileReaderSync interface: operation readAsBinaryString(Blob)",
-      "FileReaderSync interface: operation readAsText(Blob, optional DOMString)",
       "FileReaderSync interface: operation readAsDataURL(Blob)",
+      "FileReaderSync interface: operation readAsText(Blob, optional DOMString)",
       "FileReaderSync must be primary interface of new FileReaderSync()",
-      "Stringification of new FileReaderSync()",
-      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsArrayBuffer(Blob)\" with the proper type",
-      "FileReaderSync interface: calling readAsArrayBuffer(Blob) on new FileReaderSync() with too few arguments must throw TypeError",
-      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsBinaryString(Blob)\" with the proper type",
-      "FileReaderSync interface: calling readAsBinaryString(Blob) on new FileReaderSync() with too few arguments must throw TypeError",
-      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsText(Blob, optional DOMString)\" with the proper type",
-      "FileReaderSync interface: calling readAsText(Blob, optional DOMString) on new FileReaderSync() with too few arguments must throw TypeError",
-      "FileReaderSync interface: new FileReaderSync() must inherit property \"readAsDataURL(Blob)\" with the proper type",
-      "FileReaderSync interface: calling readAsDataURL(Blob) on new FileReaderSync() with too few arguments must throw TypeError"
+      "Stringification of new FileReaderSync()"
     ]
   },
   "Blob-methods-from-detached-frame.html": false,
@@ -171,19 +171,19 @@
   },
   "idlharness.html": {
     "expectedFailures": [
-      "FileList interface: existence and properties of interface object",
       "FileList interface object length",
       "FileList interface object name",
+      "FileList interface: attribute length",
+      "FileList interface: calling item(unsigned long) on document.querySelector(\"#fileChooser\").files with too few arguments must throw TypeError",
+      "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"item(unsigned long)\" with the proper type",
+      "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"length\" with the proper type",
+      "FileList interface: existence and properties of interface object",
       "FileList interface: existence and properties of interface prototype object",
       "FileList interface: existence and properties of interface prototype object's \"constructor\" property",
       "FileList interface: existence and properties of interface prototype object's @@unscopables property",
       "FileList interface: operation item(unsigned long)",
-      "FileList interface: attribute length",
       "FileList must be primary interface of document.querySelector(\"#fileChooser\").files",
-      "Stringification of document.querySelector(\"#fileChooser\").files",
-      "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"item(unsigned long)\" with the proper type",
-      "FileList interface: calling item(unsigned long) on document.querySelector(\"#fileChooser\").files with too few arguments must throw TypeError",
-      "FileList interface: document.querySelector(\"#fileChooser\").files must inherit property \"length\" with the proper type"
+      "Stringification of document.querySelector(\"#fileChooser\").files"
     ]
   },
   "BlobURL": {

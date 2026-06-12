@@ -378,46 +378,46 @@
   "eventhandlers.any.worker.html?wss": true,
   "idlharness.any.html": {
     "expectedFailures": [
-      "WebSocket interface: existence and properties of interface object",
+      "CloseEvent interface: attribute code",
+      "CloseEvent interface: attribute reason",
+      "CloseEvent interface: attribute wasClean",
+      "Stringification of new CloseEvent(\"close\")",
       "WebSocket interface object length",
+      "WebSocket interface: attribute onclose",
+      "WebSocket interface: attribute onerror",
+      "WebSocket interface: attribute onmessage",
+      "WebSocket interface: attribute onopen",
+      "WebSocket interface: constant CLOSED on interface object",
+      "WebSocket interface: constant CLOSED on interface prototype object",
+      "WebSocket interface: constant CLOSING on interface object",
+      "WebSocket interface: constant CLOSING on interface prototype object",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",
       "WebSocket interface: constant OPEN on interface prototype object",
-      "WebSocket interface: constant CLOSING on interface object",
-      "WebSocket interface: constant CLOSING on interface prototype object",
-      "WebSocket interface: constant CLOSED on interface object",
-      "WebSocket interface: constant CLOSED on interface prototype object",
-      "WebSocket interface: attribute onopen",
-      "WebSocket interface: attribute onerror",
-      "WebSocket interface: attribute onclose",
-      "WebSocket interface: attribute onmessage",
-      "CloseEvent interface: attribute wasClean",
-      "CloseEvent interface: attribute code",
-      "CloseEvent interface: attribute reason",
-      "Stringification of new CloseEvent(\"close\")"
+      "WebSocket interface: existence and properties of interface object"
     ]
   },
   "idlharness.any.worker.html": {
     "expectedFailures": [
-      "WebSocket interface: existence and properties of interface object",
+      "CloseEvent interface: attribute code",
+      "CloseEvent interface: attribute reason",
+      "CloseEvent interface: attribute wasClean",
+      "Stringification of new CloseEvent(\"close\")",
       "WebSocket interface object length",
+      "WebSocket interface: attribute onclose",
+      "WebSocket interface: attribute onerror",
+      "WebSocket interface: attribute onmessage",
+      "WebSocket interface: attribute onopen",
+      "WebSocket interface: constant CLOSED on interface object",
+      "WebSocket interface: constant CLOSED on interface prototype object",
+      "WebSocket interface: constant CLOSING on interface object",
+      "WebSocket interface: constant CLOSING on interface prototype object",
       "WebSocket interface: constant CONNECTING on interface object",
       "WebSocket interface: constant CONNECTING on interface prototype object",
       "WebSocket interface: constant OPEN on interface object",
       "WebSocket interface: constant OPEN on interface prototype object",
-      "WebSocket interface: constant CLOSING on interface object",
-      "WebSocket interface: constant CLOSING on interface prototype object",
-      "WebSocket interface: constant CLOSED on interface object",
-      "WebSocket interface: constant CLOSED on interface prototype object",
-      "WebSocket interface: attribute onopen",
-      "WebSocket interface: attribute onerror",
-      "WebSocket interface: attribute onclose",
-      "WebSocket interface: attribute onmessage",
-      "CloseEvent interface: attribute wasClean",
-      "CloseEvent interface: attribute code",
-      "CloseEvent interface: attribute reason",
-      "Stringification of new CloseEvent(\"close\")"
+      "WebSocket interface: existence and properties of interface object"
     ]
   },
   "mixed-content.https.any.html": false,
@@ -620,18 +620,18 @@
         "003.html?wss": false,
         "004.html?default": {
           "expectedFailures": [
-            "WebSocket.prototype.CONNECTING",
-            "WebSocket.prototype.OPEN",
+            "WebSocket.prototype.CLOSED",
             "WebSocket.prototype.CLOSING",
-            "WebSocket.prototype.CLOSED"
+            "WebSocket.prototype.CONNECTING",
+            "WebSocket.prototype.OPEN"
           ]
         },
         "004.html?wss": {
           "expectedFailures": [
-            "WebSocket.prototype.CONNECTING",
-            "WebSocket.prototype.OPEN",
+            "WebSocket.prototype.CLOSED",
             "WebSocket.prototype.CLOSING",
-            "WebSocket.prototype.CLOSED"
+            "WebSocket.prototype.CONNECTING",
+            "WebSocket.prototype.OPEN"
           ]
         },
         "005.html?default": false,

@@ -607,7 +607,7 @@ function newExpectation(
     if (failed.length == 0 && testSucceeded) {
       finalExpectation = true;
     } else if (failed.length > 0 && passed.length > 0 && testSucceeded) {
-      finalExpectation = { expectedFailures: failed };
+      finalExpectation = { expectedFailures: failed.sort() };
     } else {
       finalExpectation = false;
     }
@@ -616,7 +616,10 @@ function newExpectation(
     if (flakyTests.has(path)) {
       if (typeof finalExpectation === "object") {
         finalExpectation.flaky = true;
-      } else if (finalExpectation === true) {
+      } else {
+        // boolean (true or false) — normalize to { flaky: true } so the
+        // generated expectation is stable regardless of whether a flaky test
+        // file passes or fails on a given run.
         finalExpectation = { flaky: true };
       }
     }

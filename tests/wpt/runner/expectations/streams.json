@@ -1,36 +1,36 @@
 {
   "idlharness.any.html": {
     "expectedFailures": [
-      "ReadableStream interface: existence and properties of interface object",
-      "ReadableStreamDefaultReader interface: existence and properties of interface object",
-      "ReadableStreamBYOBReader interface: existence and properties of interface object",
-      "ReadableStreamDefaultController interface: existence and properties of interface object",
+      "ByteLengthQueuingStrategy interface: existence and properties of interface object",
+      "CountQueuingStrategy interface: existence and properties of interface object",
       "ReadableByteStreamController interface: existence and properties of interface object",
+      "ReadableStream interface: existence and properties of interface object",
+      "ReadableStreamBYOBReader interface: existence and properties of interface object",
       "ReadableStreamBYOBRequest interface: existence and properties of interface object",
-      "WritableStream interface: existence and properties of interface object",
-      "WritableStreamDefaultWriter interface: existence and properties of interface object",
-      "WritableStreamDefaultController interface: existence and properties of interface object",
+      "ReadableStreamDefaultController interface: existence and properties of interface object",
+      "ReadableStreamDefaultReader interface: existence and properties of interface object",
       "TransformStream interface: existence and properties of interface object",
       "TransformStreamDefaultController interface: existence and properties of interface object",
-      "ByteLengthQueuingStrategy interface: existence and properties of interface object",
-      "CountQueuingStrategy interface: existence and properties of interface object"
+      "WritableStream interface: existence and properties of interface object",
+      "WritableStreamDefaultController interface: existence and properties of interface object",
+      "WritableStreamDefaultWriter interface: existence and properties of interface object"
     ]
   },
   "idlharness.any.worker.html": {
     "expectedFailures": [
-      "ReadableStream interface: existence and properties of interface object",
-      "ReadableStreamDefaultReader interface: existence and properties of interface object",
-      "ReadableStreamBYOBReader interface: existence and properties of interface object",
-      "ReadableStreamDefaultController interface: existence and properties of interface object",
+      "ByteLengthQueuingStrategy interface: existence and properties of interface object",
+      "CountQueuingStrategy interface: existence and properties of interface object",
       "ReadableByteStreamController interface: existence and properties of interface object",
+      "ReadableStream interface: existence and properties of interface object",
+      "ReadableStreamBYOBReader interface: existence and properties of interface object",
       "ReadableStreamBYOBRequest interface: existence and properties of interface object",
-      "WritableStream interface: existence and properties of interface object",
-      "WritableStreamDefaultWriter interface: existence and properties of interface object",
-      "WritableStreamDefaultController interface: existence and properties of interface object",
+      "ReadableStreamDefaultController interface: existence and properties of interface object",
+      "ReadableStreamDefaultReader interface: existence and properties of interface object",
       "TransformStream interface: existence and properties of interface object",
       "TransformStreamDefaultController interface: existence and properties of interface object",
-      "ByteLengthQueuingStrategy interface: existence and properties of interface object",
-      "CountQueuingStrategy interface: existence and properties of interface object"
+      "WritableStream interface: existence and properties of interface object",
+      "WritableStreamDefaultController interface: existence and properties of interface object",
+      "WritableStreamDefaultWriter interface: existence and properties of interface object"
     ]
   },
   "piping": {
@@ -117,14 +117,14 @@
     "cross-realm-crash.window.html": false,
     "from.any.html": {
       "expectedFailures": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
+        "ReadableStream.from accepts a string",
+        "ReadableStream.from ignores a null @@asyncIterator"
       ]
     },
     "from.any.worker.html": {
       "expectedFailures": [
-        "ReadableStream.from ignores a null @@asyncIterator",
-        "ReadableStream.from accepts a string"
+        "ReadableStream.from accepts a string",
+        "ReadableStream.from ignores a null @@asyncIterator"
       ]
     },
     "crashtests": {
@@ -209,8 +209,8 @@
     "transfer-with-messageport.window.html": true,
     "readable-stream.html": {
       "expectedFailures": [
-        "cancel should be propagated to the original",
-        "cancel should abort a pending read()"
+        "cancel should abort a pending read()",
+        "cancel should be propagated to the original"
       ]
     },
     "reason.html": true,
