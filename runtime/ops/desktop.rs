@@ -606,14 +606,17 @@ impl BrowserWindow {
     self.window_id
   }
 
+  #[nofast]
   fn bind(&self, #[string] name: &str) {
     self.api.bind(self.window_id, name);
   }
 
+  #[nofast]
   fn unbind(&self, #[string] name: &str) {
     self.api.unbind(self.window_id, name);
   }
 
+  #[nofast]
   fn set_title(&self, #[string] title: &str) {
     self.api.set_title(self.window_id, title);
   }
@@ -622,6 +625,7 @@ impl BrowserWindow {
     self.api.get_window_size(self.window_id)
   }
 
+  #[nofast]
   fn set_size(&self, #[smi] width: i32, #[smi] height: i32) {
     self.api.set_window_size(self.window_id, width, height);
   }
@@ -630,30 +634,37 @@ impl BrowserWindow {
     self.api.get_window_position(self.window_id)
   }
 
+  #[nofast]
   fn set_position(&self, #[smi] x: i32, #[smi] y: i32) {
     self.api.set_window_position(self.window_id, x, y);
   }
 
+  #[nofast]
   fn is_resizable(&self) -> bool {
     self.api.is_resizable(self.window_id)
   }
 
+  #[nofast]
   fn set_resizable(&self, resizable: bool) {
     self.api.set_resizable(self.window_id, resizable);
   }
 
+  #[nofast]
   fn is_always_on_top(&self) -> bool {
     self.api.is_always_on_top(self.window_id)
   }
 
+  #[nofast]
   fn set_always_on_top(&self, always_on_top: bool) {
     self.api.set_always_on_top(self.window_id, always_on_top);
   }
 
+  #[nofast]
   fn is_closed(&self) -> bool {
     self.api.is_closed(self.window_id)
   }
 
+  #[nofast]
   fn close(&self) {
     if self.surface_taken.get() {
       // A WebGPU surface is referencing this window's native handles.
@@ -668,22 +679,27 @@ impl BrowserWindow {
     self.api.close_window(self.window_id);
   }
 
+  #[nofast]
   fn is_visible(&self) -> bool {
     self.api.is_visible(self.window_id)
   }
 
+  #[nofast]
   fn show(&self) {
     self.api.show(self.window_id);
   }
 
+  #[nofast]
   fn hide(&self) {
     self.api.hide(self.window_id);
   }
 
+  #[nofast]
   fn focus(&self) {
     self.api.focus(self.window_id);
   }
 
+  #[nofast]
   fn navigate(&self, #[string] url: &str) {
     self.api.navigate(self.window_id, url);
   }
@@ -705,6 +721,7 @@ impl BrowserWindow {
     Ok(())
   }
 
+  #[nofast]
   fn reload(&self) {
     self
       .api
@@ -1349,10 +1366,12 @@ impl Dock {
     v8::Global::new(scope, dock)
   }
 
+  #[nofast]
   fn set_badge(&self, #[string] text: &str) {
     self.api.set_dock_badge(text);
   }
 
+  #[nofast]
   fn bounce(&self, critical: bool) {
     self.api.bounce_dock(critical);
   }
@@ -1361,6 +1380,7 @@ impl Dock {
     self.api.set_dock_menu(menu);
   }
 
+  #[nofast]
   fn set_visible(&self, visible: bool) {
     self.api.set_dock_visible(visible);
   }
@@ -1419,6 +1439,7 @@ impl Tray {
     self.tray_id
   }
 
+  #[nofast]
   fn set_icon(&self, #[buffer] png_bytes: &[u8]) {
     self.api.set_tray_icon(self.tray_id, png_bytes);
   }
@@ -1448,6 +1469,7 @@ impl Tray {
       })
   }
 
+  #[nofast]
   fn destroy(&self) {
     self.api.destroy_tray(self.tray_id);
   }
@@ -1642,6 +1664,7 @@ impl Notification {
     self.data.clone()
   }
 
+  #[nofast]
   fn close(&self) {
     if self.notification_id != 0 {
       self.api.close_notification(self.notification_id);
