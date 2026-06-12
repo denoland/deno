@@ -159,6 +159,174 @@ Deno.test(async function serverFetchStatic() {
         }
       }),
     )?;
+  } else if init_flags.cli {
+    create_file(
+      &dir,
+      "main.ts",
+      r##"// A small CLI scaffold with subcommands.
+// Run `deno run main.ts --help` to see available commands.
+
+import { parseArgs, type ParseArgsConfig } from "node:util";
+import {
+  bold,
+  cyan,
+  dim,
+  green,
+  red,
+  yellow,
+} from "jsr:@std/fmt@^1/colors";
+
+type OptionConfig = NonNullable<ParseArgsConfig["options"]>[string] & {
+  description: string;
+};
+
+interface Command {
+  description: string;
+  usage: string;
+  options?: Record<string, OptionConfig>;
+  run: (
+    positionals: string[],
+    values: Record<string, unknown>,
+  ) => void | Promise<void>;
+}
+
+const COMMANDS: Record<string, Command> = {
+  hello: {
+    description: "Print a friendly greeting",
+    usage: "hello <name> [--shout]",
+    options: {
+      shout: {
+        type: "boolean",
+        short: "s",
+        description: "Print the greeting in uppercase",
+      },
+    },
+    run(positionals, values) {
+      const name = positionals[0] ?? "world";
+      let message = `Hello, ${name}!`;
+      if (values.shout) message = message.toUpperCase();
+      console.log(green(message));
+    },
+  },
+  add: {
+    description: "Add a sequence of numbers",
+    usage: "add <a> <b> [...]",
+    run(positionals) {
+      if (positionals.length < 2) {
+        console.error(red("Error: provide at least two numbers"));
+        Deno.exit(1);
+      }
+      const numbers = positionals.map(Number);
+      if (numbers.some(Number.isNaN)) {
+        console.error(red("Error: all arguments must be numbers"));
+        Deno.exit(1);
+      }
+      const total = numbers.reduce((a, b) => a + b, 0);
+      console.log(cyan(`${numbers.join(" + ")} = ${total}`));
+    },
+  },
+  time: {
+    description: "Print the current time",
+    usage: "time [--iso]",
+    options: {
+      iso: {
+        type: "boolean",
+        description: "Format as an ISO 8601 timestamp",
+      },
+    },
+    run(_positionals, values) {
+      const now = new Date();
+      console.log(yellow(values.iso ? now.toISOString() : now.toString()));
+    },
+  },
+};
+
+const BIN = "mycli";
+
+function printHelp(): void {
+  console.log();
+  console.log(`  ${bold(cyan(BIN))} ${dim("-")} A small CLI scaffold`);
+  console.log();
+  console.log(`  ${bold("USAGE")}`);
+  console.log(`    ${dim("$")} ${BIN} ${green("<command>")} [options]`);
+  console.log();
+  console.log(`  ${bold("COMMANDS")}`);
+  for (const [name, cmd] of Object.entries(COMMANDS)) {
+    console.log(`    ${green(name.padEnd(10))} ${cmd.description}`);
+  }
+  console.log();
+  console.log(
+    `  Run ${cyan(`${BIN} <command> --help`)} for command-specific help.`,
+  );
+  console.log();
+}
+
+function printCommandHelp(name: string, cmd: Command): void {
+  console.log();
+  console.log(`  ${bold(cyan(name))} ${dim("-")} ${cmd.description}`);
+  console.log();
+  console.log(`  ${bold("USAGE")}`);
+  console.log(`    ${dim("$")} ${BIN} ${green(cmd.usage)}`);
+  if (cmd.options && Object.keys(cmd.options).length > 0) {
+    console.log();
+    console.log(`  ${bold("OPTIONS")}`);
+    for (const [optName, opt] of Object.entries(cmd.options)) {
+      const flag = opt.short
+        ? `-${opt.short}, --${optName}`
+        : `    --${optName}`;
+      console.log(`    ${yellow(flag.padEnd(20))} ${opt.description}`);
+    }
+  }
+  console.log();
+}
+
+function main(args: string[]): void {
+  const [name, ...rest] = args;
+
+  if (!name || name === "--help" || name === "-h" || name === "help") {
+    printHelp();
+    return;
+  }
+
+  const cmd = COMMANDS[name];
+  if (!cmd) {
+    console.error(red(`Unknown command: ${name}`));
+    printHelp();
+    Deno.exit(1);
+  }
+
+  if (rest.includes("--help") || rest.includes("-h")) {
+    printCommandHelp(name, cmd);
+    return;
+  }
+
+  const { values, positionals } = parseArgs({
+    args: rest,
+    options: cmd.options ?? {},
+    allowPositionals: true,
+  });
+
+  cmd.run(positionals, values);
+}
+
+if (import.meta.main) {
+  main(Deno.args);
+}
+"##,
+    )?;
+
+    create_json_file(
+      &dir,
+      "deno.json",
+      &json!({
+        "tasks": {
+          "dev": "deno run --watch main.ts hello"
+        },
+        "imports": {
+          "@std/fmt": "jsr:@std/fmt@1"
+        }
+      }),
+    )?;
   } else if init_flags.lib {
     // Extract the directory name to use as the project name
     let project_name = dir
@@ -292,6 +460,18 @@ Deno.test("returns json on /api", async () => {
     info!("");
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test -R");
+  } else if init_flags.cli {
+    info!("  {}", colors::gray("# Show available subcommands"));
+    info!("  deno run main.ts --help");
+    info!("");
+    info!("  {}", colors::gray("# Try a subcommand"));
+    info!("  deno run main.ts hello world");
+    info!("");
+    info!(
+      "  {}",
+      colors::gray("# Run with file watching during development")
+    );
+    info!("  deno task dev");
   } else if init_flags.lib {
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test");

@@ -1,0 +1,6 @@
+[WILDCARD]Project initialized[WILDCARD]
+[WILDCARD]Run these commands to get started[WILDCARD]
+[WILDCARD]cd project[WILDCARD]
+[WILDCARD]deno run main.ts --help[WILDCARD]
+[WILDCARD]deno run main.ts hello world[WILDCARD]
+[WILDCARD]deno task dev[WILDCARD]

@@ -370,6 +370,7 @@ pub struct InitFlags {
   pub lib: bool,
   pub serve: bool,
   pub empty: bool,
+  pub cli: bool,
   pub yes: bool,
 }
 
@@ -3682,14 +3683,14 @@ fn init_subcommand() -> Command {
           Arg::new("npm")
             .long("npm")
             .help("Generate a npm create-* project")
-            .conflicts_with_all(["lib", "serve", "empty", "jsr"])
+            .conflicts_with_all(["lib", "serve", "empty", "cli", "jsr"])
             .action(ArgAction::SetTrue),
         )
         .arg(
           Arg::new("jsr")
             .long("jsr")
             .help("Generate a project from a JSR package")
-            .conflicts_with_all(["lib", "serve", "empty", "npm"])
+            .conflicts_with_all(["lib", "serve", "empty", "cli", "npm"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -3709,7 +3710,14 @@ fn init_subcommand() -> Command {
           Arg::new("empty")
             .long("empty")
             .help("Generate a minimal project with just main.ts and deno.json")
-            .conflicts_with_all(["lib", "serve", "npm", "jsr"])
+            .conflicts_with_all(["lib", "serve", "cli", "npm", "jsr"])
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("cli")
+            .long("cli")
+            .help("Generate an example CLI project with subcommands")
+            .conflicts_with_all(["lib", "serve", "empty", "npm", "jsr"])
             .action(ArgAction::SetTrue),
         )
         .arg(
@@ -7467,6 +7475,7 @@ fn init_parse(
   let mut lib = matches.get_flag("lib");
   let mut serve = matches.get_flag("serve");
   let mut empty = matches.get_flag("empty");
+  let mut cli = matches.get_flag("cli");
   let mut yes = matches.get_flag("yes");
   let mut dir = None;
   let mut package = None;
@@ -7500,6 +7509,7 @@ fn init_parse(
         lib = inner_matches.get_flag("lib");
         serve = inner_matches.get_flag("serve");
         empty = inner_matches.get_flag("empty");
+        cli = inner_matches.get_flag("cli");
         yes = inner_matches.get_flag("yes");
       }
     }
@@ -7522,6 +7532,7 @@ fn init_parse(
     lib,
     serve,
     empty,
+    cli,
     yes,
   });
 
@@ -7549,6 +7560,7 @@ fn create_parse(
     lib: false,
     serve: false,
     empty: false,
+    cli: false,
     yes: matches.get_flag("yes"),
   });
 
@@ -14749,6 +14761,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -14766,6 +14779,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -14783,6 +14797,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         log_level: Some(Level::Error),
@@ -14801,6 +14816,7 @@ mod tests {
           lib: true,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -14818,11 +14834,54 @@ mod tests {
           lib: false,
           serve: true,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "init", "--cli"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
+          package_args: vec![],
+          dir: None,
+          lib: false,
+          serve: false,
+          empty: false,
+          cli: true,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "foo", "--cli"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Init(InitFlags {
+          package: None,
+          package_args: vec![],
+          dir: Some(String::from("foo")),
+          lib: false,
+          serve: false,
+          empty: false,
+          cli: true,
+          yes: false,
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "init", "--cli", "--lib"]);
+    assert!(r.is_err());
+
+    let r = flags_from_vec(svec!["deno", "init", "--cli", "--empty"]);
+    assert!(r.is_err());
 
     let r = flags_from_vec(svec!["deno", "init", "foo", "--lib"]);
     assert_eq!(
@@ -14835,6 +14894,7 @@ mod tests {
           lib: true,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -14858,6 +14918,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -14875,6 +14936,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -14892,6 +14954,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -14909,6 +14972,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: true,
         }),
         ..Flags::default()
@@ -14927,6 +14991,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -14945,6 +15010,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -14969,6 +15035,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: true,
         }),
         ..Flags::default()
@@ -14993,6 +15060,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -15034,6 +15102,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -15051,6 +15120,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -15072,6 +15142,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: true,
         }),
         ..Flags::default()
@@ -15090,6 +15161,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -15107,6 +15179,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -15124,6 +15197,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: true,
         }),
         ..Flags::default()
@@ -15147,6 +15221,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -15169,6 +15244,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: false,
         }),
         ..Flags::default()
@@ -15188,6 +15264,7 @@ mod tests {
           lib: false,
           serve: false,
           empty: false,
+          cli: false,
           yes: true,
         }),
         ..Flags::default()
