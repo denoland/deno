@@ -390,6 +390,14 @@ fn find_section() -> Result<&'static [u8], AnyError> {
     return read_from_file_fallback();
   }
 
+  // On Linux, bypass dl_iterate_phdr (which can hang in some release-build
+  // environments) and read the PT_NOTE section directly from the ELF file.
+  // This also makes the read path independent of load-time virtual address
+  // layout, avoiding potential dlpi_addr arithmetic issues.
+  #[cfg(all(unix, not(target_vendor = "apple")))]
+  return read_section_from_elf_file();
+
+  #[cfg(not(all(unix, not(target_vendor = "apple"))))]
   match libsui::find_section("d3n0l4nd")
     .context("Failed reading standalone binary section.")
   {
@@ -404,6 +412,185 @@ fn find_section() -> Result<&'static [u8], AnyError> {
       Err(err)
     }
   }
+}
+
+/// On Linux, read the `d3n0l4nd` section directly from the ELF file
+/// (`/proc/self/exe`) instead of via `dl_iterate_phdr`. This avoids a class
+/// of release-build hangs where the in-memory PT_NOTE walk stalls.
+#[cfg(all(unix, not(target_vendor = "apple")))]
+fn read_section_from_elf_file() -> Result<&'static [u8], AnyError> {
+  use std::io::Read;
+  use std::io::Seek;
+  use std::io::SeekFrom;
+
+  // /proc/self/exe is the canonical path to the running executable on Linux
+  // and works even when argv[0] has been modified or is a relative path.
+  let mut file = match std::fs::File::open("/proc/self/exe") {
+    Ok(f) => f,
+    Err(_) => {
+      let exe = std::env::current_exe()?;
+      std::fs::File::open(exe)?
+    }
+  };
+
+  // Read the 64-byte ELF64 file header.
+  let mut ehdr = [0u8; 64];
+  file.read_exact(&mut ehdr).context("reading ELF header")?;
+  if &ehdr[0..4] != b"\x7fELF" {
+    bail!("standalone binary is not an ELF file");
+  }
+  // EI_CLASS == ELFCLASS64 (2)
+  if ehdr[4] != 2 {
+    bail!("standalone binary is not ELF64");
+  }
+  // EI_DATA == ELFDATA2LSB (1) – little-endian; we only handle LE here since
+  // all supported Linux targets (x86_64, aarch64, riscv64) are little-endian.
+  if ehdr[5] != 1 {
+    bail!("standalone binary is big-endian ELF; unsupported");
+  }
+
+  // e_phoff  at offset 32 (8 bytes, LE)
+  // e_phentsize at offset 54 (2 bytes, LE)
+  // e_phnum  at offset 56 (2 bytes, LE)
+  let e_phoff =
+    u64::from_le_bytes(ehdr[32..40].try_into().unwrap()) as usize;
+  let e_phentsize =
+    u16::from_le_bytes(ehdr[54..56].try_into().unwrap()) as usize;
+  let e_phnum =
+    u16::from_le_bytes(ehdr[56..58].try_into().unwrap()) as usize;
+
+  if e_phentsize < 56 || e_phnum == 0 {
+    bail!("ELF has no usable program headers");
+  }
+
+  // Read all program headers.
+  let phdrs_len = e_phentsize
+    .checked_mul(e_phnum)
+    .context("PHDR table too large")?;
+  file
+    .seek(SeekFrom::Start(e_phoff as u64))
+    .context("seeking to PHDR table")?;
+  let mut phdrs = vec![0u8; phdrs_len];
+  file
+    .read_exact(&mut phdrs)
+    .context("reading PHDR table")?;
+
+  const PT_NOTE: u32 = 4;
+
+  for i in 0..e_phnum {
+    let ph = &phdrs[i * e_phentsize..];
+    let p_type = u32::from_le_bytes(ph[0..4].try_into().unwrap());
+    if p_type != PT_NOTE {
+      continue;
+    }
+    // In Elf64_Phdr: p_offset at 8, p_filesz at 32, p_align at 48.
+    let p_offset = u64::from_le_bytes(ph[8..16].try_into().unwrap());
+    let p_filesz = u64::from_le_bytes(ph[32..40].try_into().unwrap()) as usize;
+    let p_align =
+      (u64::from_le_bytes(ph[48..56].try_into().unwrap()) as usize).max(4);
+
+    if p_filesz == 0 {
+      continue;
+    }
+
+    file
+      .seek(SeekFrom::Start(p_offset))
+      .context("seeking to PT_NOTE data")?;
+    let mut note_data = vec![0u8; p_filesz];
+    file
+      .read_exact(&mut note_data)
+      .context("reading PT_NOTE data")?;
+
+    if let Some(section_bytes) =
+      find_in_elf_note_data(&note_data, p_align, b"d3n0l4nd")
+    {
+      // Leak the allocation so we can return &'static [u8]. This is safe
+      // because standalone binaries read the section data exactly once and
+      // use it for the entire process lifetime.
+      return Ok(Box::leak(
+        section_bytes.to_vec().into_boxed_slice(),
+      ));
+    }
+  }
+
+  bail!("Could not find standalone binary section in ELF file.")
+}
+
+/// Walk through ELF notes in `segment`, looking for a libsui-embedded
+/// section named `section_name`.  Returns a slice into `segment` that
+/// contains the section payload, or `None` if not found.
+///
+/// Note format (4-byte LE fields):
+///   namesz | descsz | type | name[namesz] pad4 | desc[descsz] pad4
+///
+/// libsui note: name = "SUI\0", type = 0x5355_4901,
+///   desc = u16-LE section_name_len | section_name | payload
+#[cfg(all(unix, not(target_vendor = "apple")))]
+fn find_in_elf_note_data<'a>(
+  segment: &'a [u8],
+  align: usize,
+  section_name: &[u8],
+) -> Option<&'a [u8]> {
+  const SUI_NOTE_TYPE: u32 = 0x5355_4901;
+
+  let align = align.max(4);
+  let mut pos = 0usize;
+  while pos + 12 <= segment.len() {
+    let namesz =
+      u32::from_le_bytes(segment[pos..pos + 4].try_into().ok()?) as usize;
+    let descsz =
+      u32::from_le_bytes(segment[pos + 4..pos + 8].try_into().ok()?)
+        as usize;
+    let note_type = u32::from_le_bytes(
+      segment[pos + 8..pos + 12].try_into().ok()?,
+    );
+    pos += 12;
+
+    if pos + namesz > segment.len() {
+      break;
+    }
+    let raw_name = &segment[pos..pos + namesz];
+    // Strip trailing null bytes to get the bare name.
+    let name_end = raw_name
+      .iter()
+      .rposition(|&b| b != 0)
+      .map(|i| i + 1)
+      .unwrap_or(0);
+    let note_name = &raw_name[..name_end];
+    pos = elf_align_up(pos + namesz, align);
+
+    if pos + descsz > segment.len() {
+      break;
+    }
+    let desc = &segment[pos..pos + descsz];
+    pos = elf_align_up(pos + descsz, align);
+
+    if note_name != b"SUI" || note_type != SUI_NOTE_TYPE {
+      continue;
+    }
+    // desc layout: u16-LE name_len | name_bytes | payload
+    if desc.len() < 2 {
+      continue;
+    }
+    let inner_len =
+      u16::from_le_bytes(desc[0..2].try_into().ok()?) as usize;
+    if desc.len() < 2 + inner_len {
+      continue;
+    }
+    if &desc[2..2 + inner_len] == section_name {
+      return Some(&desc[2 + inner_len..]);
+    }
+  }
+  None
+}
+
+#[cfg(all(unix, not(target_vendor = "apple")))]
+#[inline]
+fn elf_align_up(pos: usize, align: usize) -> usize {
+  if align <= 1 {
+    return pos;
+  }
+  (pos + align - 1) & !(align - 1)
 }
 
 /// This is a temporary hacky fallback until we can find

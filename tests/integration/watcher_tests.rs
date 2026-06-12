@@ -187,6 +187,26 @@ fn check_alive_then_kill(mut child: DenoChild) {
   let _ = child.wait();
 }
 
+/// Run a compiled standalone binary and return its output, failing fast if it
+/// does not exit within 10 s. The bare `Command::output()` call blocks
+/// indefinitely; on the desktop branch the compiled binary can hang (e.g. if
+/// the ELF section reader or runtime shutdown stalls), which would otherwise
+/// keep the CI job running for the full 30-minute hard timeout.
+async fn run_compiled(exe: &std::path::Path) -> std::process::Output {
+  let exe = exe.to_path_buf();
+  tokio::time::timeout(
+    std::time::Duration::from_secs(10),
+    tokio::task::spawn_blocking(move || {
+      std::process::Command::new(&exe)
+        .output()
+        .expect("failed to run compiled binary")
+    }),
+  )
+  .await
+  .expect("compiled binary did not exit within 10 seconds")
+  .expect("spawn_blocking panicked")
+}
+
 fn child_lines(
   child: &mut std::process::Child,
 ) -> (
@@ -669,7 +689,7 @@ console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
   wait_for_watcher("message.ts", &mut stderr_lines).await;
   wait_contains("Compile finished", &mut stderr_lines).await;
 
-  let output = std::process::Command::new(&exe).output().unwrap();
+  let output = run_compiled(&exe).await;
   assert!(output.status.success());
   assert_contains!(String::from_utf8_lossy(&output.stdout), "before");
   assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
@@ -678,7 +698,7 @@ console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
   wait_contains("File change detected", &mut stderr_lines).await;
   wait_contains("Compile finished", &mut stderr_lines).await;
 
-  let output = std::process::Command::new(&exe).output().unwrap();
+  let output = run_compiled(&exe).await;
   assert!(output.status.success());
   assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
   assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
@@ -687,7 +707,7 @@ console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
   wait_contains("File change detected", &mut stderr_lines).await;
   wait_contains("Compile finished", &mut stderr_lines).await;
 
-  let output = std::process::Command::new(&exe).output().unwrap();
+  let output = run_compiled(&exe).await;
   assert!(output.status.success());
   assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
   assert_contains!(String::from_utf8_lossy(&output.stdout), "included after");
