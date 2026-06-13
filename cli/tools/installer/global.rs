@@ -63,7 +63,8 @@ pub async fn install_global(
   let deps_http_cache = factory.global_http_cache()?;
   let create_deps_file_fetcher = |download_log_level: log::Level| {
     Arc::new(create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(deno_runtime::deno_web::BlobStore::default())
+        as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       deno_cache_dir::GlobalOrLocalHttpCache::Global(deps_http_cache.clone()),
       http_client.clone(),
       factory.memory_files().clone(),
@@ -171,6 +172,7 @@ pub async fn install_global(
     setup_config_dir(
       &name_and_url,
       &flags,
+      cli_options.initial_cwd(),
       &installation_dir,
       Some(&jsr_lockfile_fetcher),
       install_flags_global.force,
@@ -413,6 +415,7 @@ async fn install_global_compiled(
 async fn setup_config_dir(
   bin_name_and_url: &BinaryNameAndUrl,
   flags: &Flags,
+  cwd: &Path,
   installation_dir: &Path,
   jsr_lockfile_fetcher: Option<&JsrLockfileFetcher<'_>>,
   force: bool,
@@ -542,6 +545,13 @@ async fn setup_config_dir(
 
   // create cloned flags to run cache_top_level_deps
   let mut new_flags = flags.clone();
+  // Pre-resolve cwd-relative paths against the user's original cwd before
+  // switching `initial_cwd` to the generated install dir, otherwise they'd
+  // be re-resolved against `dir` and point at non-existent files.
+  if let Some(import_map_path) = &flags.import_map_path {
+    new_flags.import_map_path =
+      Some(resolve_url_or_path(import_map_path, cwd)?.to_string());
+  }
   new_flags.initial_cwd = Some(dir.clone());
   new_flags.node_modules_dir = flags.node_modules_dir;
   new_flags.internal.root_node_modules_dir_override =
@@ -1406,6 +1416,7 @@ mod tests {
     super::setup_config_dir(
       &binary_name_and_url,
       flags,
+      &cwd,
       &installation_dir,
       None,
       install_flags_global.force,

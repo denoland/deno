@@ -48,10 +48,8 @@ htmlString = html`
 `;
 
 query = sql`
-  SELECT
-    ${table}.${field}
-  FROM
-    ${table};
+  SELECT ${table}.${field}
+  FROM ${table};
 `;
 
 icon = svg`

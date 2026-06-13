@@ -1,0 +1,23 @@
+{
+  "tempDir": true,
+  "tests": {
+    "check_all_fails": {
+      "args": "bundle --check=all bad.ts",
+      "exitCode": 1,
+      "output": "check_fails.out"
+    },
+    "check_local_fails": {
+      "args": "bundle --check bad.ts",
+      "exitCode": 1,
+      "output": "check_fails.out"
+    },
+    "check_passes": {
+      "args": "bundle --check=all -o out.js good.ts",
+      "output": "check_passes.out"
+    },
+    "no_check_skips_type_errors": {
+      "args": "bundle -o out.js bad.ts",
+      "output": "no_check.out"
+    }
+  }
+}

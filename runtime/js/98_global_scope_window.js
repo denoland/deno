@@ -22,6 +22,10 @@ const globalInterfaces = core.loadExtScript(
 );
 const webStorage = core.loadExtScript("ext:deno_webstorage/01_webstorage.js");
 const prompt = core.loadExtScript("ext:runtime/41_prompt.js");
+import {
+  NavigatorUAData,
+  navigatorUAData,
+} from "ext:runtime/97_navigator_user_agent_data.js";
 const { loadWebGPU } = core.loadExtScript("ext:deno_webgpu/00_init.js");
 
 /**
@@ -78,6 +82,7 @@ class Navigator {
           "language",
           "languages",
           "platform",
+          "userAgentData",
         ],
       }),
       inspectOptions,
@@ -161,6 +166,15 @@ ObjectDefineProperties(Navigator.prototype, {
       return platform();
     },
   },
+  userAgentData: {
+    __proto__: null,
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, NavigatorPrototype);
+      return navigatorUAData;
+    },
+  },
 });
 const NavigatorPrototype = Navigator.prototype;
 
@@ -171,6 +185,7 @@ const mainRuntimeGlobalProperties = {
   self: core.propGetterOnly(() => globalThis),
   Navigator: core.propNonEnumerable(Navigator),
   navigator: core.propGetterOnly(() => navigator),
+  NavigatorUAData: core.propNonEnumerable(NavigatorUAData),
   alert: core.propWritable(prompt.alert),
   confirm: core.propWritable(prompt.confirm),
   prompt: core.propWritable(prompt.prompt),

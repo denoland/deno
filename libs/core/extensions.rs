@@ -235,6 +235,7 @@ pub struct OpDecl {
   pub accessor_type: AccessorType,
   pub arg_count: u8,
   pub no_side_effects: bool,
+  pub constructable: bool,
   /// The slow dispatch call. If metrics are disabled, the `v8::Function` is created with this callback.
   pub(crate) slow_fn: OpFnRef,
   /// The slow dispatch implementation, returning a status code. Used by the shared
@@ -261,6 +262,7 @@ impl OpDecl {
     symbol_for: bool,
     arg_count: u8,
     no_side_effects: bool,
+    constructable: bool,
     slow_fn: OpFnRef,
     slow_fn_impl: SlowFnImplRef,
     accessor_type: AccessorType,
@@ -277,6 +279,7 @@ impl OpDecl {
       symbol_for,
       arg_count,
       no_side_effects,
+      constructable,
       slow_fn,
       slow_fn_impl,
       slow_fn_with_metrics: crate::ops_metrics::slow_metrics_dispatch,
