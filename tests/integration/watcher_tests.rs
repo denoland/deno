@@ -188,25 +188,28 @@ fn check_alive_then_kill(mut child: DenoChild) {
 }
 
 /// Run a compiled standalone binary and return its output, failing fast if it
-/// does not exit within 10 s. The bare `Command::output()` call blocks
-/// indefinitely; on the desktop branch the compiled binary can hang (e.g. if
-/// the ELF section reader or runtime shutdown stalls), which would otherwise
-/// keep the CI job running for the full 30-minute hard timeout.
+/// does not exit within 10 s. Uses tokio::process::Command with kill_on_drop
+/// so that when the timeout cancels the future the child is SIGKILLed
+/// immediately — preventing the old spawn_blocking thread from outliving the
+/// test and causing the test binary to hang at shutdown until the 30-minute
+/// CI hard timeout.
 async fn run_compiled(
   exe: impl AsRef<std::path::Path>,
 ) -> std::process::Output {
   let exe = exe.as_ref().to_path_buf();
+  let child = tokio::process::Command::new(&exe)
+    .kill_on_drop(true)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn compiled binary");
   tokio::time::timeout(
     std::time::Duration::from_secs(10),
-    tokio::task::spawn_blocking(move || {
-      std::process::Command::new(&exe)
-        .output()
-        .expect("failed to run compiled binary")
-    }),
+    child.wait_with_output(),
   )
   .await
   .expect("compiled binary did not exit within 10 seconds")
-  .expect("spawn_blocking panicked")
+  .expect("failed to wait for compiled binary")
 }
 
 fn child_lines(
