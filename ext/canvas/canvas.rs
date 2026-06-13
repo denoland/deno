@@ -71,8 +71,8 @@ impl OffscreenCanvas {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
         Context::Bitmap(_) => {}
-        Context::Canvas2D(ctx) => {
-          ctx.resize(value as u32, self.data.borrow().height())
+        Context::Canvas2D(context) => {
+          context.resize(value as u32, self.data.borrow().height())
         }
         Context::WebGPU(context) => context.resize(scope),
       }
@@ -99,8 +99,8 @@ impl OffscreenCanvas {
       let active_context = v8::Local::new(scope, active_context);
       match get_context(id, scope, active_context) {
         Context::Bitmap(_) => {}
-        Context::Canvas2D(ctx) => {
-          ctx.resize(self.data.borrow().width(), value as u32)
+        Context::Canvas2D(context) => {
+          context.resize(self.data.borrow().width(), value as u32)
         }
         Context::WebGPU(context) => context.resize(scope),
       }
@@ -190,7 +190,9 @@ impl OffscreenCanvas {
     let context = get_context(&active_context.0, scope, active_context_local);
     match &context {
       Context::Bitmap(_) => {}
-      Context::Canvas2D(ctx) => ctx.flush_to_image(&mut self.data.borrow_mut()),
+      Context::Canvas2D(context) => {
+        context.flush_to_image(&mut self.data.borrow_mut())
+      }
       Context::WebGPU(context) => context.bitmap_read_hook(scope)?,
     }
 
@@ -254,7 +256,9 @@ impl OffscreenCanvas {
     let active_context_local = v8::Local::new(scope, &active_context.1);
     match get_context(&active_context.0, scope, active_context_local) {
       Context::Bitmap(_) => {}
-      Context::Canvas2D(ctx) => ctx.flush_to_image(&mut self.data.borrow_mut()),
+      Context::Canvas2D(context) => {
+        context.flush_to_image(&mut self.data.borrow_mut())
+      }
       Context::WebGPU(context) => context.bitmap_read_hook(scope)?,
     }
 

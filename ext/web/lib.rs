@@ -3,15 +3,19 @@
 mod blob;
 
 mod broadcast_channel;
+pub mod canvas2d;
+mod canvas2d_renderer;
 mod compression;
 mod console;
+pub mod css;
 mod css_stylesheet;
-mod css_value;
 mod f64;
+mod font;
 mod geometry;
 mod image_data;
 mod message_port;
 mod stream_resource;
+mod text_metrics;
 mod timers;
 mod url;
 mod urlpattern;
@@ -19,6 +23,8 @@ mod urlpattern;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
@@ -145,6 +151,11 @@ deno_core::extension!(deno_web,
     broadcast_channel::op_broadcast_free,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
+    font::op_fontdb_load,
+    font::op_fontdb_add,
+    font::op_fontdb_remove,
+    font::op_parse_css_font_query,
+    canvas2d::op_canvas2d_init,
   ],
   objects = [
     css_stylesheet::CSSRule,
@@ -158,6 +169,8 @@ deno_core::extension!(deno_web,
     geometry::DOMMatrix,
     image_data::ImageData,
     console::Console,
+    canvas2d::OffscreenCanvasRenderingContext2D,
+    text_metrics::TextMetrics,
   ],
   lazy_loaded_esm = [
     "locks.js",
@@ -188,6 +201,7 @@ deno_core::extension!(deno_web,
     "16_image_data.js",
     "17_geometry.js",
     "18_css_stylesheet.js",
+    "18_canvas2d.js",
   ],
   options = {
     blob_store: Arc<dyn BlobStoreTrait>,
@@ -204,6 +218,11 @@ deno_core::extension!(deno_web,
     state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
     state.put(broadcast_channel::BroadcastSabStash::default());
+    let renderer = canvas2d_renderer::init_canvas_renderer();
+    state.put(Arc::new(OnceLock::from(renderer)));
+    state.put(Arc::new(Mutex::new(cosmic_text::FontSystem::new())));
+    state.put(Arc::new(Mutex::new(cosmic_text::SwashCache::new())));
+    state.put(Arc::new(Mutex::new(font::FontRegistry::default())));
   }
 );
 
