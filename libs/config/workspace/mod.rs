@@ -2585,6 +2585,7 @@ impl WorkspaceDirectory {
         permissions: None,
         sanitize_ops: None,
         sanitize_resources: None,
+        dom: None,
       },
     };
     let root_config = match &self.deno_json.root {
@@ -2603,6 +2604,7 @@ impl WorkspaceDirectory {
       sanitize_resources: member_config
         .sanitize_resources
         .or(root_config.sanitize_resources),
+      dom: member_config.dom.or(root_config.dom),
     })
   }
 
@@ -4278,6 +4280,7 @@ pub mod test {
         permissions: None,
         sanitize_ops: None,
         sanitize_resources: None,
+        dom: None,
       }
     );
 
@@ -4303,6 +4306,7 @@ pub mod test {
         permissions: None,
         sanitize_ops: None,
         sanitize_resources: None,
+        dom: None,
       }
     );
   }
@@ -4427,6 +4431,7 @@ pub mod test {
           permissions: None,
           sanitize_ops: None,
           sanitize_resources: None,
+          dom: None,
         }
       );
       assert_eq!(

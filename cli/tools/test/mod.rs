@@ -25,6 +25,7 @@ use std::time::Instant;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::File;
+use deno_config::deno_json::TestDomLibrary;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::WalkEntry;
 use deno_core::ModuleSpecifier;
@@ -45,6 +46,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_error::JsErrorBox;
+use deno_npm_installer::PackageCaching;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::coverage::CoverageCollector;
@@ -89,6 +91,7 @@ use crate::worker::CliMainWorkerFactory;
 use crate::worker::CreateCustomWorkerError;
 
 mod channel;
+mod dom;
 pub mod fmt;
 pub mod reporters;
 mod sanitizers;
@@ -1907,6 +1910,35 @@ async fn fetch_specifiers_with_test_mode(
   Ok(specifiers_with_mode)
 }
 
+/// When the DOM test environment is enabled, prepends the generated DOM
+/// setup module to the preload modules of every test worker and makes sure
+/// the DOM library npm package is installed.
+async fn maybe_setup_dom_environment(
+  factory: &CliFactory,
+  cli_options: &CliOptions,
+  dom: Option<TestDomLibrary>,
+  preload_modules: &mut Vec<ModuleSpecifier>,
+) -> Result<(), AnyError> {
+  let Some(lib) = dom else {
+    return Ok(());
+  };
+  log::warn!(
+    "{} The DOM test environment is experimental and may change.",
+    colors::yellow("Warning")
+  );
+  let setup_module =
+    dom::resolve_dom_setup_module(cli_options.workspace(), lib)?;
+  if let Some(req) = &setup_module.default_package_req
+    && let Some(npm_installer) = factory.npm_installer_if_managed().await?
+  {
+    npm_installer
+      .add_package_reqs(std::slice::from_ref(req), PackageCaching::All)
+      .await?;
+  }
+  preload_modules.insert(0, setup_module.module_url);
+  Ok(())
+}
+
 pub async fn run_tests(
   flags: Arc<Flags>,
   test_flags: TestFlags,
@@ -1959,8 +1991,15 @@ pub async fn run_tests(
 
   let worker_factory =
     Arc::new(factory.create_cli_main_worker_factory().await?);
-  let preload_modules = cli_options.preload_modules()?;
+  let mut preload_modules = cli_options.preload_modules()?;
   let require_modules = cli_options.require_modules()?;
+  maybe_setup_dom_environment(
+    &factory,
+    cli_options,
+    workspace_test_options.dom,
+    &mut preload_modules,
+  )
+  .await?;
 
   // Run tests
   test_specifiers(
@@ -2210,8 +2249,15 @@ pub async fn run_tests_with_watch(
 
         let worker_factory =
           Arc::new(factory.create_cli_main_worker_factory().await?);
-        let preload_modules = cli_options.preload_modules()?;
+        let mut preload_modules = cli_options.preload_modules()?;
         let require_modules = cli_options.require_modules()?;
+        maybe_setup_dom_environment(
+          &factory,
+          &cli_options,
+          workspace_test_options.dom,
+          &mut preload_modules,
+        )
+        .await?;
 
         test_specifiers(
           worker_factory,
