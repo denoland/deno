@@ -1,4 +1,12 @@
 {
-  "args": "run --quiet main.ts",
-  "output": "main.out"
+  "tests": {
+    "js": {
+      "args": "run --quiet main.ts",
+      "output": "main.out"
+    },
+    "ts": {
+      "args": "run --quiet ts.ts",
+      "output": "ts.out"
+    }
+  }
 }
