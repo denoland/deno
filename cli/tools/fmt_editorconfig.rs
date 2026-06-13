@@ -295,21 +295,22 @@ fn parse(contents: &str) -> ParsedFile {
         };
       }
       "indent_size" => {
-        // "tab" means use tab_width; otherwise parse as integer.
-        if value.eq_ignore_ascii_case("tab") {
-          // leave indent_size None; consumer falls back to tab_width
-        } else if let Ok(n) = value.parse::<u8>() {
+        // "tab" means use tab_width; otherwise parse as integer,
+        // clamping out-of-range values rather than dropping them.
+        if !value.eq_ignore_ascii_case("tab")
+          && let Some(n) = parse_saturating_u8(value)
+        {
           props.indent_size = Some(n);
         }
       }
       "tab_width" => {
-        if let Ok(n) = value.parse::<u8>() {
+        if let Some(n) = parse_saturating_u8(value) {
           props.tab_width = Some(n);
         }
       }
       "max_line_length" => {
         if !value.eq_ignore_ascii_case("off")
-          && let Ok(n) = value.parse::<u32>()
+          && let Some(n) = parse_saturating_u32(value)
         {
           props.max_line_length = Some(n);
         }
@@ -330,6 +331,20 @@ fn parse(contents: &str) -> ParsedFile {
   }
 
   ParsedFile { root, sections }
+}
+
+/// Parse a non-negative integer editorconfig value, saturating to the
+/// target type's maximum on overflow instead of discarding the value.
+/// Returns `None` for negative or non-numeric input so the property is
+/// simply ignored.
+fn parse_saturating_u8(value: &str) -> Option<u8> {
+  let n = value.trim().parse::<u64>().ok()?;
+  Some(n.min(u8::MAX as u64) as u8)
+}
+
+fn parse_saturating_u32(value: &str) -> Option<u32> {
+  let n = value.trim().parse::<u64>().ok()?;
+  Some(n.min(u32::MAX as u64) as u32)
 }
 
 fn strip_comment(s: &str) -> &str {
@@ -374,6 +389,19 @@ fn path_to_forward_slash(p: &Path) -> String {
 /// with `^` and `$`. If `match_any_dir`, the pattern is allowed to
 /// be preceded by any number of leading directory components.
 fn glob_to_regex(pattern: &str, match_any_dir: bool) -> String {
+  glob_to_regex_depth(pattern, match_any_dir, 0)
+}
+
+/// Maximum brace-nesting depth expanded before a pattern degrades to a
+/// literal match. Guards against a stack overflow on a pathological
+/// pattern such as `{a,{a,{a,...}}}` nested thousands deep.
+const MAX_GLOB_DEPTH: u32 = 32;
+
+fn glob_to_regex_depth(
+  pattern: &str,
+  match_any_dir: bool,
+  depth: u32,
+) -> String {
   let mut out = String::from("^");
   if match_any_dir {
     out.push_str("(?:.*/)?");
@@ -404,14 +432,14 @@ fn glob_to_regex(pattern: &str, match_any_dir: bool) -> String {
       '?' => out.push_str("[^/]"),
       '{' => {
         // Find matching '}'.
-        let mut depth = 1;
+        let mut brace_depth = 1;
         let mut j = i + 1;
-        while j < bytes.len() && depth > 0 {
+        while j < bytes.len() && brace_depth > 0 {
           match bytes[j] {
-            '{' => depth += 1,
+            '{' => brace_depth += 1,
             '}' => {
-              depth -= 1;
-              if depth == 0 {
+              brace_depth -= 1;
+              if brace_depth == 0 {
                 break;
               }
             }
@@ -419,35 +447,49 @@ fn glob_to_regex(pattern: &str, match_any_dir: bool) -> String {
           }
           j += 1;
         }
-        if depth == 0 {
+        if brace_depth == 0 {
           let group: String = bytes[i + 1..j].iter().collect();
-          // Numeric range {n..m}
+          // Numeric range {n..m}. Bounds are parsed as integers, so
+          // leading zeros are ignored and numbers are emitted in their
+          // natural decimal form, matching the editorconfig reference.
           if let Some((lhs, rhs)) = group.split_once("..")
-            && let (Ok(lo), Ok(rhs)) = (lhs.parse::<i64>(), rhs.parse::<i64>())
+            && let (Ok(lo), Ok(hi)) =
+              (lhs.trim().parse::<i64>(), rhs.trim().parse::<i64>())
           {
-            let (a, b) = if lo <= rhs { (lo, rhs) } else { (rhs, lo) };
-            out.push('(');
-            for n in a..=b {
-              if n != a {
-                out.push('|');
+            let (a, b) = if lo <= hi { (lo, hi) } else { (hi, lo) };
+            // Bound the enumeration so a pathological range such as
+            // `{1..1000000000}` cannot exhaust memory while building the
+            // regex. Real editorconfig ranges are tiny; a larger span
+            // degrades to a literal match (the section simply will not
+            // apply) rather than hanging or crashing.
+            const MAX_RANGE_SPAN: i64 = 4096;
+            let span_ok =
+              b.checked_sub(a).is_some_and(|span| span < MAX_RANGE_SPAN);
+            if span_ok {
+              out.push('(');
+              for n in a..=b {
+                if n != a {
+                  out.push('|');
+                }
+                for ch in n.to_string().chars() {
+                  regex_push_escaped(&mut out, ch);
+                }
               }
-              for ch in n.to_string().chars() {
-                regex_push_escaped(&mut out, ch);
-              }
+              out.push(')');
+              i = j + 1;
+              continue;
             }
-            out.push(')');
-            i = j + 1;
-            continue;
+            // Span too large: fall through to literal handling below.
           }
           // Comma alternatives
           let alts = split_top_level_commas(&group);
-          if alts.len() > 1 {
+          if alts.len() > 1 && depth < MAX_GLOB_DEPTH {
             out.push_str("(?:");
             for (k, alt) in alts.iter().enumerate() {
               if k > 0 {
                 out.push('|');
               }
-              out.push_str(&glob_inner_to_regex(alt));
+              out.push_str(&glob_inner_to_regex(alt, depth + 1));
             }
             out.push(')');
             i = j + 1;
@@ -507,10 +549,10 @@ fn glob_to_regex(pattern: &str, match_any_dir: bool) -> String {
   out
 }
 
-fn glob_inner_to_regex(s: &str) -> String {
+fn glob_inner_to_regex(s: &str, depth: u32) -> String {
   // Recursive use for alternatives - reuse the same logic without
   // adding `^`/`$` anchors or the leading any-dir prefix.
-  let inner = glob_to_regex(s, false);
+  let inner = glob_to_regex_depth(s, false, depth);
   // Strip the surrounding ^...$.
   inner
     .strip_prefix('^')
@@ -547,7 +589,7 @@ fn split_top_level_commas(s: &str) -> Vec<String> {
 
 fn regex_push_escaped(out: &mut String, ch: char) {
   match ch {
-    '.' | '+' | '(' | ')' | '|' | '^' | '$' | '\\' => {
+    '.' | '+' | '(' | ')' | '|' | '^' | '$' | '\\' | '[' | ']' | '{' | '}' => {
       out.push('\\');
       out.push(ch);
     }
@@ -709,6 +751,74 @@ max_line_length = off
     assert!(match_regex(&r, "file2.txt"));
     assert!(match_regex(&r, "file3.txt"));
     assert!(!match_regex(&r, "file4.txt"));
+  }
+
+  #[test]
+  fn glob_reversed_numeric_range() {
+    let r = glob_to_regex("file{3..1}.txt", true);
+    assert!(match_regex(&r, "file1.txt"));
+    assert!(match_regex(&r, "file2.txt"));
+    assert!(match_regex(&r, "file3.txt"));
+  }
+
+  #[test]
+  fn glob_leading_zero_range_matches_reference() {
+    // Bounds are parsed as integers, so leading zeros are ignored,
+    // matching the editorconfig reference implementation.
+    let r = glob_to_regex("file{01..03}.txt", true);
+    assert!(match_regex(&r, "file1.txt"));
+    assert!(match_regex(&r, "file3.txt"));
+  }
+
+  #[test]
+  fn glob_huge_numeric_range_degrades() {
+    // A pathological range must not be expanded into a giant regex; it
+    // degrades to a literal that simply does not match normal files.
+    let r = glob_to_regex("file{1..1000000000}.txt", true);
+    assert!(r.len() < 100, "regex unexpectedly large: {} chars", r.len());
+    assert!(!match_regex(&r, "file5.txt"));
+  }
+
+  #[test]
+  fn glob_deeply_nested_braces_do_not_overflow() {
+    // Nest braces well past MAX_GLOB_DEPTH; this must return without
+    // overflowing the stack and still produce a valid regex.
+    let mut p = String::from("x");
+    for _ in 0..5000 {
+      p = format!("{{a,{p}}}");
+    }
+    let r = glob_to_regex(&p, false);
+    assert!(r.starts_with('^') && r.ends_with('$'));
+    // Must compile rather than blow up.
+    assert!(Regex::new(&r).is_ok());
+  }
+
+  #[test]
+  fn glob_unbalanced_brace_compiles() {
+    // An unbalanced brace must still translate to a valid regex.
+    let r = glob_to_regex("foo{bar.ts", true);
+    assert!(match_regex(&r, "foo{bar.ts"));
+  }
+
+  #[test]
+  fn parse_saturating_clamps() {
+    assert_eq!(parse_saturating_u8("8"), Some(8));
+    assert_eq!(parse_saturating_u8("256"), Some(255));
+    assert_eq!(parse_saturating_u8("-1"), None);
+    assert_eq!(parse_saturating_u8("nope"), None);
+    assert_eq!(parse_saturating_u32("99999999999"), Some(u32::MAX));
+  }
+
+  #[test]
+  fn indent_size_overflow_clamped() {
+    let f = parse_str("[*]\nindent_size = 1000\n");
+    assert_eq!(f.sections[0].properties.indent_size, Some(255));
+  }
+
+  #[test]
+  fn max_line_length_overflow_clamped() {
+    let f = parse_str("[*]\nmax_line_length = 99999999999\n");
+    assert_eq!(f.sections[0].properties.max_line_length, Some(u32::MAX));
   }
 
   #[test]
