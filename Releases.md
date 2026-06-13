@@ -2872,7 +2872,7 @@ Read more: http://deno.com/blog/v2.4
 - fix(unstable): rename "patch" property to "links" (#29677)
 - fix(zlib): don't return a smi from crc32 (#29546)
 - fix: remove WorkerGlobalScope from global middleware (#29543)
-- fix: revert back to prefering highest previously resolved version for a req
+- fix: revert back to preferring highest previously resolved version for a req
   (#29642)
 - fix: support virtio vsock only on systems on which it is available (remainder)
   (#29709)
