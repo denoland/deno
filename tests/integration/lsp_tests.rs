@@ -20319,6 +20319,77 @@ fn lsp_byonm_js_import_resolves_to_dts() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/35170.
+#[test(timeout = 300)]
+fn lsp_open_file_in_managed_node_modules_dir() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "auto",
+      "imports": {
+        "add": "npm:@denotest/add@1",
+      },
+    })
+    .to_string(),
+  );
+  context.run_deno("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  // The temp dir is symlinked on macos, and `node_modules` is canonicalized.
+  let canon_temp_dir =
+    Url::from_directory_path(temp_dir.path().canonicalize()).unwrap();
+  let dts_url = canon_temp_dir
+    .join("node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts")
+    .unwrap();
+  // Open a file from the node_modules dir directly, like go-to-definition in
+  // the editor would, without anything importing it. The text contains an
+  // intentional type error to check that diagnostics are generated for it.
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": url_to_uri(&dts_url).unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "export function add(a: number, b: number): number;\nexport const foo: strang;\n",
+    }
+  }));
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([{
+      "range": {
+        "start": { "line": 1, "character": 18 },
+        "end": { "line": 1, "character": 24 },
+      },
+      "severity": 1,
+      "code": 2552,
+      "source": "deno-ts",
+      "message": "Cannot find name 'strang'. Did you mean 'string'?",
+    }]),
+  );
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": { "uri": url_to_uri(&dts_url).unwrap() },
+      "position": { "line": 0, "character": 17 },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "```tsx\nfunction add(a: number, b: number): number\n```\n",
+      },
+      "range": {
+        "start": { "line": 0, "character": 16 },
+        "end": { "line": 0, "character": 19 },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
 #[test(timeout = 300)]
 fn decorators_tc39() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
