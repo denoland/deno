@@ -463,7 +463,9 @@ pub fn format_html(
       unstable_options,
     )
   };
-  lax_markup::format_text_with_external(file_path, file_text, &config, &external)
+  lax_markup::format_text_with_external(
+    file_path, file_text, &config, &external,
+  )
 }
 
 /// Formats the contents of style and script elements in markup. The language
@@ -492,15 +494,28 @@ fn format_markup_embedded(
         .map(Some)
         .map_err(AnyError::from)
     }
-    "json" | "jsonc" | "application/json" | "application/ld+json"
-    | "importmap" | "speculationrules" => {
+    "json"
+    | "jsonc"
+    | "application/json"
+    | "application/ld+json"
+    | "importmap"
+    | "speculationrules" => {
       let mut json_config = get_resolved_json_config(fmt_options);
       json_config.line_width = print_width;
       let path = file_path.with_extension("json");
       dprint_plugin_json::format_text(&path, text, &json_config)
     }
-    "js" | "jsx" | "ts" | "tsx" | "mjs" | "mts" | "javascript" | "typescript"
-    | "module" | "text/javascript" | "application/javascript" => {
+    "js"
+    | "jsx"
+    | "ts"
+    | "tsx"
+    | "mjs"
+    | "mts"
+    | "javascript"
+    | "typescript"
+    | "module"
+    | "text/javascript"
+    | "application/javascript" => {
       let ext = match lang.as_str() {
         "ts" | "typescript" | "mts" => "ts",
         "tsx" => "tsx",

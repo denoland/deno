@@ -6125,18 +6125,18 @@ dependencies = [
 
 [[package]]
 name = "lax-core"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32549f1f3d04f59f0f010fd092cc7043055e3b40d98df6d1a7690b9940f4d58b"
+checksum = "59154ddba1bc6fa3d3e9ef0190dbecbac0cbbdc87b8d28e4437f8ff9c70b8d24"
 dependencies = [
  "dprint-core",
 ]
 
 [[package]]
 name = "lax-markup"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13172482eece120144a0500a7acb7455a81f7328ee61eb2a3b1cab84b1030311"
+checksum = "d22e5d2c32310dd25ff2b7936408d5cd76b45632af674e3d39bb909463c5ad21"
 dependencies = [
  "anyhow",
  "dprint-core",
