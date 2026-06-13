@@ -334,11 +334,24 @@ async function recvMultipart(conn) {
 // --- Per-channel servers -------------------------------------------------------
 
 /**
+ * Build the Deno.listen options for one Jupyter channel. A `transport: "ipc"`
+ * connection file points `ip` at a socket path prefix (e.g. `/tmp/.../deno-ipc`)
+ * and the kernel listens on `${ip}-${port}` per the Jupyter wire-protocol
+ * convention. Otherwise we listen on the supplied TCP host/port.
+ */
+function listenOptsForChannel(transport, ip, port) {
+  if (transport === "ipc") {
+    return { transport: "unix", path: `${ip}-${port}` };
+  }
+  return { hostname: ip, port };
+}
+
+/**
  * REP socket server (heartbeat).
  * For each connected peer, echo back every received message.
  */
-async function runHeartbeat(port, ip) {
-  const listener = Deno.listen({ hostname: ip, port });
+async function runHeartbeat(port, ip, transport) {
+  const listener = Deno.listen(listenOptsForChannel(transport, ip, port));
   while (true) {
     const conn = await listener.accept();
     (async () => {
@@ -389,9 +402,10 @@ function makeQueue() {
  * every connected peer via `sendAll`).
  */
 class RouterSocket {
-  constructor(port, ip) {
+  constructor(port, ip, transport) {
     this.port = port;
     this.ip = ip;
+    this.transport = transport;
     this.incoming = makeQueue();
     this.peers = new Map(); // peerId (string) -> conn
     this._listen();
@@ -399,7 +413,9 @@ class RouterSocket {
 
   _listen() {
     (async () => {
-      const listener = Deno.listen({ hostname: this.ip, port: this.port });
+      const listener = Deno.listen(
+        listenOptsForChannel(this.transport, this.ip, this.port),
+      );
       while (true) {
         const conn = await listener.accept();
         this._handlePeer(conn);
@@ -468,16 +484,19 @@ class RouterSocket {
  * Sends the same frames to all connected subscribers.
  */
 class PubSocket {
-  constructor(port, ip) {
+  constructor(port, ip, transport) {
     this.port = port;
     this.ip = ip;
+    this.transport = transport;
     this.conns = new Set();
     this._listen();
   }
 
   _listen() {
     (async () => {
-      const listener = Deno.listen({ hostname: this.ip, port: this.port });
+      const listener = Deno.listen(
+        listenOptsForChannel(this.transport, this.ip, this.port),
+      );
       while (true) {
         const conn = await listener.accept();
         (async () => {
@@ -525,17 +544,25 @@ class PubSocket {
 
 async function startJupyterKernel() {
   const info = JSON.parse(op_jupyter_get_connection_info());
-  const { ip, key, hb_port, shell_port, control_port, stdin_port, iopub_port } =
-    info;
+  const {
+    ip,
+    key,
+    transport = "tcp",
+    hb_port,
+    shell_port,
+    control_port,
+    stdin_port,
+    iopub_port,
+  } = info;
   const session = crypto.randomUUID();
 
   // Start heartbeat (purely async, fire-and-forget)
-  runHeartbeat(hb_port, ip);
+  runHeartbeat(hb_port, ip, transport);
 
-  const shell = new RouterSocket(shell_port, ip);
-  const control = new RouterSocket(control_port, ip);
-  const iopub = new PubSocket(iopub_port, ip);
-  const stdin = new RouterSocket(stdin_port, ip);
+  const shell = new RouterSocket(shell_port, ip, transport);
+  const control = new RouterSocket(control_port, ip, transport);
+  const iopub = new PubSocket(iopub_port, ip, transport);
+  const stdin = new RouterSocket(stdin_port, ip, transport);
 
   let executionCount = 0;
   let currentParentHeader = {};
