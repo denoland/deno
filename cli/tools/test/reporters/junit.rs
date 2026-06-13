@@ -19,6 +19,10 @@ pub struct JunitTestReporter {
   // hierarchy.
   test_name_tree: TestNameTree,
   failure_format_options: TestFailureFormatOptions,
+  // The ID of the test or step that is currently executing. Captured
+  // stdout/stderr output is attributed to this test case so that it can be
+  // emitted as `<system-out>`/`<system-err>` in the report.
+  current_test: Option<usize>,
 }
 
 impl JunitTestReporter {
@@ -33,6 +37,7 @@ impl JunitTestReporter {
       cases: IndexMap::new(),
       test_name_tree: TestNameTree::new(),
       failure_format_options,
+      current_test: None,
     }
   }
 
@@ -119,15 +124,20 @@ impl TestReporter for JunitTestReporter {
   fn report_plan(&mut self, _plan: &TestPlan) {}
 
   fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
-  fn report_wait(&mut self, _description: &TestDescription) {}
+  fn report_wait(&mut self, description: &TestDescription) {
+    self.current_test = Some(description.id);
+  }
 
-  fn report_output(&mut self, _output: &[u8]) {
-    /*
-     TODO(skycoop): Right now I can't include stdout/stderr in the report because
-     we have a global pair of output streams that don't differentiate between the
-     output of different tests. This is a nice to have feature, so we can come
-     back to it later
-    */
+  fn report_output(&mut self, stream: TestStdioStream, output: &[u8]) {
+    let Some(id) = self.current_test else {
+      // Output produced outside of any running test (e.g. top-level code) can't
+      // be attributed to a test case, so it is dropped from the report.
+      return;
+    };
+    let Some(case) = self.cases.get_mut(&id) else {
+      return;
+    };
+    case.push_output(stream, output, &self.failure_format_options);
   }
 
   fn report_result(
@@ -136,6 +146,9 @@ impl TestReporter for JunitTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
+    if self.current_test == Some(description.id) {
+      self.current_test = None;
+    }
     if let Some(case) = self.cases.get_mut(&description.id) {
       case.status = Self::convert_status(result, &self.failure_format_options);
       case.set_time(Duration::from_millis(elapsed));
@@ -166,7 +179,11 @@ impl TestReporter for JunitTestReporter {
     self.cases.insert(description.id, case);
   }
 
-  fn report_step_wait(&mut self, _description: &TestStepDescription) {}
+  fn report_step_wait(&mut self, description: &TestStepDescription) {
+    if self.current_test == Some(description.parent_id) {
+      self.current_test = Some(description.id);
+    }
+  }
 
   fn report_step_result(
     &mut self,
@@ -176,6 +193,9 @@ impl TestReporter for JunitTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
+    if self.current_test == Some(description.id) {
+      self.current_test = Some(description.parent_id);
+    }
     if let Some(case) = self.cases.get_mut(&description.id) {
       case.status =
         Self::convert_step_status(result, &self.failure_format_options);
@@ -374,6 +394,8 @@ struct JunitTestCase {
   time: Option<Duration>,
   status: JunitTestCaseStatus,
   extra: IndexMap<String, String>,
+  system_out: String,
+  system_err: String,
 }
 
 impl JunitTestCase {
@@ -384,11 +406,35 @@ impl JunitTestCase {
       time: None,
       status,
       extra: IndexMap::new(),
+      system_out: String::new(),
+      system_err: String::new(),
     }
   }
 
   fn set_time(&mut self, time: Duration) {
     self.time = Some(time);
+  }
+
+  /// Appends captured stdout/stderr output to this test case. ANSI escape
+  /// sequences are stripped when the report is configured to do so, keeping the
+  /// XML free of control characters.
+  fn push_output(
+    &mut self,
+    stream: TestStdioStream,
+    output: &[u8],
+    failure_format_options: &TestFailureFormatOptions,
+  ) {
+    let text = String::from_utf8_lossy(output);
+    let text = if failure_format_options.strip_ascii_color {
+      strip_ansi_codes(&text)
+    } else {
+      text
+    };
+    let buffer = match stream {
+      TestStdioStream::Stdout => &mut self.system_out,
+      TestStdioStream::Stderr => &mut self.system_err,
+    };
+    buffer.push_str(&text);
   }
 
   fn serialize(&self, mut writer: impl Write) -> std::io::Result<()> {
@@ -405,6 +451,16 @@ impl JunitTestCase {
     }
     writeln!(writer, ">")?;
     self.status.serialize(&mut writer)?;
+    if !self.system_out.is_empty() {
+      write!(writer, "            <system-out>")?;
+      write_escaped(&mut writer, &self.system_out)?;
+      writeln!(writer, "</system-out>")?;
+    }
+    if !self.system_err.is_empty() {
+      write!(writer, "            <system-err>")?;
+      write_escaped(&mut writer, &self.system_err)?;
+      writeln!(writer, "</system-err>")?;
+    }
     writeln!(writer, "        </testcase>")
   }
 }

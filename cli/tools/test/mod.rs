@@ -531,12 +531,19 @@ pub struct TestPlan {
   pub used_only: bool,
 }
 
+/// Identifies which standard stream produced a chunk of captured test output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestStdioStream {
+  Stdout,
+  Stderr,
+}
+
 #[derive(Debug)]
 pub enum TestEvent {
   Register(Arc<TestDescriptions>),
   Plan(TestPlan),
   Wait(usize),
-  Output(Vec<u8>),
+  Output(TestStdioStream, Vec<u8>),
   Slow(usize, u64),
   Result(usize, TestResult, u64),
   UncaughtError(String, Box<JsError>),
@@ -1603,8 +1610,8 @@ pub async fn report_tests(
           reporter.report_wait(tests.get(&id).unwrap());
         }
       }
-      TestEvent::Output(output) => {
-        reporter.report_output(&output);
+      TestEvent::Output(stream, output) => {
+        reporter.report_output(stream, &output);
       }
       TestEvent::Slow(id, elapsed) => {
         reporter.report_slow(tests.get(&id).unwrap(), elapsed);

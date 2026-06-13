@@ -20,20 +20,36 @@ Check [WILDCARD]fail.ts
         <testcase name="test 7" classname="./pass.ts" time="[WILDCARD]" line="8" col="6">
         </testcase>
         <testcase name="test 8" classname="./pass.ts" time="[WILDCARD]" line="9" col="6">
+            <system-out>console.log
+</system-out>
         </testcase>
         <testcase name="test 9" classname="./pass.ts" time="[WILDCARD]" line="12" col="6">
+            <system-err>console.error
+</system-err>
         </testcase>
         <testcase name="test\b" classname="./pass.ts" time="[WILDCARD]" line="16" col="6">
+            <system-err>console.error
+</system-err>
         </testcase>
         <testcase name="test\f" classname="./pass.ts" time="[WILDCARD]" line="19" col="6">
+            <system-err>console.error
+</system-err>
         </testcase>
         <testcase name="test\t" classname="./pass.ts" time="[WILDCARD]" line="23" col="6">
+            <system-err>console.error
+</system-err>
         </testcase>
         <testcase name="test\n" classname="./pass.ts" time="[WILDCARD]" line="27" col="6">
+            <system-err>console.error
+</system-err>
         </testcase>
         <testcase name="test\r" classname="./pass.ts" time="[WILDCARD]" line="31" col="6">
+            <system-err>console.error
+</system-err>
         </testcase>
         <testcase name="test\v" classname="./pass.ts" time="[WILDCARD]" line="35" col="6">
+            <system-err>console.error
+</system-err>
         </testcase>
     </testsuite>
     <testsuite name="./fail.ts" tests="10" disabled="0" errors="0" failures="10">

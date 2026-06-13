@@ -382,8 +382,8 @@ impl TestRun {
             test::TestEvent::Wait(id) => {
               reporter.report_wait(tests.read().get(&id).unwrap());
             }
-            test::TestEvent::Output(output) => {
-              reporter.report_output(&output);
+            test::TestEvent::Output(stream, output) => {
+              reporter.report_output(stream, &output);
             }
             test::TestEvent::Slow(id, elapsed) => {
               reporter.report_slow(tests.read().get(&id).unwrap(), elapsed);
@@ -673,7 +673,7 @@ impl LspTestReporter {
 
   fn report_slow(&mut self, _desc: &test::TestDescription, _elapsed: u64) {}
 
-  fn report_output(&mut self, output: &[u8]) {
+  fn report_output(&mut self, _stream: test::TestStdioStream, output: &[u8]) {
     let test = self
       .current_test
       .as_ref()

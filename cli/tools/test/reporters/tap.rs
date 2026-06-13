@@ -148,7 +148,7 @@ impl TestReporter for TapTestReporter {
   }
 
   fn report_slow(&mut self, _description: &TestDescription, _elapsed: u64) {}
-  fn report_output(&mut self, _output: &[u8]) {}
+  fn report_output(&mut self, _stream: TestStdioStream, _output: &[u8]) {}
 
   fn report_result(
     &mut self,
