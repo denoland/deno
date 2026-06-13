@@ -215,13 +215,17 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
 /// failing on the target's filesystem. Done here so the user gets a clear
 /// compile-time error instead of a surprising (or unusable) store location.
 fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
-  // Windows reserved device names, matched case-insensitively against the
-  // portion before the first `.` (so `nul`, `NUL`, and `nul.txt` all match).
   const RESERVED_NAMES: [&str; 22] = [
     "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6",
     "com7", "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6",
     "lpt7", "lpt8", "lpt9",
   ];
+
+  // Windows reserved device names match case-insensitively against the portion
+  // before the first `.` (so `nul`, `NUL`, and `nul.txt` all match).
+  let stem = app_name.split('.').next().unwrap_or(app_name);
+  let is_reserved_name =
+    RESERVED_NAMES.iter().any(|n| stem.eq_ignore_ascii_case(n));
 
   let reason = if app_name.is_empty() {
     Some("must not be empty")
@@ -240,10 +244,7 @@ fn validate_app_name(app_name: &str) -> Result<(), AnyError> {
     // Windows silently strips trailing dots and spaces, which would change the
     // identity out from under the user.
     Some("must not end with a `.` or a space")
-  } else if {
-    let stem = app_name.split('.').next().unwrap_or(app_name);
-    RESERVED_NAMES.iter().any(|n| stem.eq_ignore_ascii_case(n))
-  } {
+  } else if is_reserved_name {
     Some("must not be a reserved device name (e.g. `CON`, `NUL`, `COM1`)")
   } else {
     None
