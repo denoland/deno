@@ -39,6 +39,13 @@ pub static FEATURE_DESCRIPTIONS: &[UnstableFeatureDescription] = &[
     env_var: None,
   },
   UnstableFeatureDescription {
+    name: "canvas2d",
+    help_text: "Enable unstable Canvas 2D APIs",
+    show_in_help: true,
+    kind: UnstableFeatureKind::Runtime,
+    env_var: None,
+  },
+  UnstableFeatureDescription {
     name: "cron",
     help_text: "Enable unstable `Deno.cron` API",
     show_in_help: true,

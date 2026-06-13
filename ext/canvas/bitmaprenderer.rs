@@ -447,6 +447,7 @@ const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
 pub const CONTEXT_ID: &str = "bitmaprenderer";
 
 pub fn create<'s>(
+  _state: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>,
   instance: Option<deno_webgpu::Instance>,
   canvas: v8::Global<v8::Object>,
   data: ContextData,
