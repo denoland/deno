@@ -17,8 +17,6 @@ use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::NewLineKind;
 use regex::Regex;
 
-use crate::util::fs::canonicalize_path;
-
 /// Properties resolved from `.editorconfig` files for a particular file.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EditorConfigProperties {
@@ -146,15 +144,21 @@ impl EditorConfigCache {
     Self::default()
   }
 
-  /// Resolve `.editorconfig` properties for `file_path`. Returns
-  /// `Default::default()` if no `.editorconfig` files apply.
+  /// Resolve `.editorconfig` properties for `file_path`, which must be
+  /// an absolute path. Returns `Default::default()` if no
+  /// `.editorconfig` files apply.
+  ///
+  /// The common case (no `.editorconfig` anywhere up the tree) is kept
+  /// cheap: the directory walk is memoized per directory, so resolving
+  /// every file in a batch costs one cached chain lookup per file and
+  /// performs no per-file filesystem work. Symlinks are not resolved;
+  /// the literal path is walked, matching the editorconfig reference
+  /// implementation (and avoiding a `realpath` syscall per file).
   pub fn resolve(&self, file_path: &Path) -> EditorConfigProperties {
-    let abs_path = match canonicalize_path(file_path) {
-      Ok(p) => p,
-      Err(_) => file_path.to_path_buf(),
+    let Some(start) = file_path.parent() else {
+      return EditorConfigProperties::default();
     };
-    let start = abs_path.parent().unwrap_or(&abs_path).to_path_buf();
-    let chain = self.resolve_chain(&start);
+    let chain = self.resolve_chain(start);
     if chain.is_empty() {
       return EditorConfigProperties::default();
     }
@@ -162,7 +166,7 @@ impl EditorConfigCache {
     let mut out = EditorConfigProperties::default();
     for entry in chain.iter() {
       // Compute the file path relative to this .editorconfig's dir.
-      let Ok(rel) = abs_path.strip_prefix(&entry.dir) else {
+      let Ok(rel) = file_path.strip_prefix(&entry.dir) else {
         continue;
       };
       let rel = path_to_forward_slash(rel);
