@@ -2401,7 +2401,7 @@ fn print_finished_message(
     deno_terminal::colors::green("Bundled"),
     metafile.inputs.len(),
     if metafile.inputs.len() == 1 { "" } else { "s" },
-    crate::display::human_elapsed(duration.as_millis()),
+    crate::display::human_elapsed(duration),
   ));
 
   let longest = output_infos
