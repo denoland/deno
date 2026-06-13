@@ -37,6 +37,9 @@ const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
 
 function upgradeWebSocket(request, options = { __proto__: null }) {
   const inner = toInnerRequest(request);
+  if (inner._wantsUpgrade) {
+    inner._throwIfUpgraded();
+  }
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
     websocketCvf(upgrade);

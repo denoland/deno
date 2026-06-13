@@ -20,6 +20,7 @@ use crate::CronHandler;
 use crate::CronNextResult;
 use crate::CronSpec;
 use crate::Traceparent;
+use crate::cron::Schedule;
 
 pub struct SocketCronHandler {
   socket_addr: String,
@@ -490,7 +491,7 @@ impl CronHandler for SocketCronHandler {
 
     spec
       .cron_schedule
-      .parse::<saffron::Cron>()
+      .parse::<Schedule>()
       .map_err(|_| CronError::InvalidCron)?;
 
     let (invocation_tx, invocation_rx) = mpsc::channel::<Traceparent>(1);

@@ -76,18 +76,21 @@ pub enum RustRawKeyData {
 /// serialized back to JavaScript and passed to every operation.
 ///
 /// The `Raw` variant is key material that is stored verbatim (e.g.
-/// Ed25519/X25519/X448/ML-KEM raw key bytes) and carries no `secret`/`private`/
-/// `public` tag. `MlDsaPrivate` holds ML-DSA's composite `{ seed, private_key }`
-/// material.
+/// Ed25519/X25519/X448/ML-KEM public key bytes) and carries no `secret`/
+/// `private`/`public` tag. `SeededPrivate` holds the composite
+/// `{ seed, private_key }` material used by the FIPS 203/204 algorithms
+/// (ML-KEM decapsulation keys and ML-DSA signing keys), where `private_key`
+/// is the expanded key bytes and `seed` is the short seed used to derive them.
 #[derive(Debug, Clone)]
 pub enum RawKeyData {
   Secret(Box<[u8]>),
   Private(Box<[u8]>),
   Public(Box<[u8]>),
   Raw(Box<[u8]>),
-  /// `seed` is `None` for keys imported from raw private bytes (which carry no
-  /// seed); exporting the `raw-seed` format then correctly rejects.
-  MlDsaPrivate {
+  /// `seed` is `None` for keys imported from expanded raw private bytes (which
+  /// carry no seed); exporting the `raw-seed`/`jwk`/`pkcs8` formats then
+  /// correctly rejects.
+  SeededPrivate {
     seed: Option<Box<[u8]>>,
     private_key: Box<[u8]>,
   },
@@ -100,11 +103,12 @@ pub enum KeyKind {
   Private,
   Public,
   Raw,
-  MlDsa,
+  Seeded,
 }
 
 /// Wire representation used by the key store insert op. JavaScript passes a
-/// `{ kind, data }` object (or `{ kind: "mldsa", seed, privateKey }` for ML-DSA).
+/// `{ kind, data }` object (or `{ kind: "seeded", seed, privateKey }` for the
+/// composite ML-KEM/ML-DSA private key material).
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InsertKeyData {
@@ -135,7 +139,7 @@ impl From<InsertKeyData> for RawKeyData {
       KeyKind::Private => RawKeyData::Private(into_boxed(data.data)),
       KeyKind::Public => RawKeyData::Public(into_boxed(data.data)),
       KeyKind::Raw => RawKeyData::Raw(into_boxed(data.data)),
-      KeyKind::MlDsa => RawKeyData::MlDsaPrivate {
+      KeyKind::Seeded => RawKeyData::SeededPrivate {
         seed: data.seed.map(|b| b.as_ref().into()),
         private_key: into_boxed(data.private_key),
       },
@@ -156,8 +160,8 @@ impl RawKeyData {
       RawKeyData::Private(b) => tagged("private", b),
       RawKeyData::Public(b) => tagged("public", b),
       RawKeyData::Raw(b) => tagged("raw", b),
-      RawKeyData::MlDsaPrivate { seed, private_key } => StoredKeyData {
-        kind: "mldsa",
+      RawKeyData::SeededPrivate { seed, private_key } => StoredKeyData {
+        kind: "seeded",
         data: None,
         seed: seed.as_ref().map(|s| s.as_ref().to_vec().into()),
         private_key: Some(private_key.as_ref().to_vec().into()),
@@ -167,30 +171,31 @@ impl RawKeyData {
 
   /// The raw key bytes, regardless of the secret/private/public/raw tag.
   ///
-  /// Not valid for `MlDsaPrivate`; use [`Self::mldsa_private_key`] /
-  /// [`Self::mldsa_seed`] for those.
+  /// Not valid for `SeededPrivate`; use [`Self::expanded_private_key`] /
+  /// [`Self::seed`] for those.
   pub fn bytes(&self) -> &[u8] {
     match self {
       RawKeyData::Secret(b)
       | RawKeyData::Private(b)
       | RawKeyData::Public(b)
       | RawKeyData::Raw(b) => b,
-      RawKeyData::MlDsaPrivate { .. } => unreachable!(),
+      RawKeyData::SeededPrivate { .. } => unreachable!(),
     }
   }
 
-  /// The ML-DSA expanded private key bytes.
-  pub fn mldsa_private_key(&self) -> &[u8] {
+  /// The expanded private key bytes of a `SeededPrivate` (ML-KEM/ML-DSA).
+  pub fn expanded_private_key(&self) -> &[u8] {
     match self {
-      RawKeyData::MlDsaPrivate { private_key, .. } => private_key,
+      RawKeyData::SeededPrivate { private_key, .. } => private_key,
       _ => unreachable!(),
     }
   }
 
-  /// The ML-DSA seed, or `None` for keys imported from raw private bytes.
-  pub fn mldsa_seed(&self) -> Option<&[u8]> {
+  /// The seed of a `SeededPrivate`, or `None` for keys imported from expanded
+  /// raw private bytes.
+  pub fn seed(&self) -> Option<&[u8]> {
     match self {
-      RawKeyData::MlDsaPrivate { seed, .. } => seed.as_deref(),
+      RawKeyData::SeededPrivate { seed, .. } => seed.as_deref(),
       _ => None,
     }
   }
@@ -318,8 +323,21 @@ pub enum SharedError {
   #[class(type)]
   #[error("invalid crypto key handle")]
   InvalidKeyHandle,
+  #[class(type)]
+  #[error("Illegal constructor")]
+  #[property("code" = "ERR_ILLEGAL_CONSTRUCTOR")]
+  IllegalConstructor,
+  #[class(type)]
+  #[error("invalid CryptoKey type")]
+  InvalidKeyType,
 }
 
+#[allow(
+  dead_code,
+  reason = "V8RawKeyData accessors fronted the legacy op_crypto_sign/verify path; \
+            kept for completeness while the per-op key-handling helpers are \
+            still being merged into the cppgc impl"
+)]
 impl V8RawKeyData {
   pub fn as_rsa_public_key(&self) -> Result<Cow<'_, [u8]>, SharedError> {
     match self {

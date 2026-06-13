@@ -28,6 +28,7 @@ use v8::PromiseState;
 use wasm_dep_analyzer::WasmDeps;
 
 use super::CustomModuleEvaluationKind;
+use super::ImportAttributesContext;
 use super::IntoModuleCodeString;
 use super::IntoModuleName;
 use super::LazyEsmModuleLoader;
@@ -1055,7 +1056,16 @@ impl ModuleMap {
         if let Some(validate_import_attributes_cb) =
           &state.validate_import_attributes_cb
         {
-          (validate_import_attributes_cb)(tc_scope, &attributes);
+          let location = module
+            .source_offset_to_location(module_request.get_source_offset());
+          let context = ImportAttributesContext {
+            referrer: name.as_str().to_string(),
+            specifier: import_specifier.to_string(),
+            // V8 reports 0-based line/column; report them 1-based.
+            line_number: Some(location.get_line_number() as u32 + 1),
+            column_number: Some(location.get_column_number() as u32 + 1),
+          };
+          (validate_import_attributes_cb)(tc_scope, &attributes, &context);
         }
       }
 
@@ -3139,28 +3149,6 @@ impl ModuleMap {
     // script's `(function () { ... })()` is the function body's single
     // expression, so we wrap it with `return ( ... );` to surface the
     // IIFE's result as the function's return value.
-    let source_str =
-      ModuleSource::get_string_source(ModuleSourceCode::String(source));
-    // The script body's last statement is an IIFE expression like
-    // `(function () { ... })();`. Strip the trailing `;`/whitespace so the
-    // whole source becomes the operand of a single `return ( ... )`. This
-    // way the function we compile below returns the IIFE's exports object
-    // — the same value the original `Script::run` produced as the script's
-    // completion value.
-    let source_text: &str = AsRef::<str>::as_ref(&source_str);
-    // Some polyfills ship a leading `"use strict";` directive (transpiled
-    // from Node sources). A bare `"use strict";` is a statement, not an
-    // expression, so it can't sit inside `return ( ... )`. Skip past the
-    // leading prologue (comments + any directive prologue) and start the
-    // expression at the IIFE's opening `(function`.
-    let expr_start = strip_script_prologue(source_text).unwrap_or(source_text);
-    let trimmed: &str =
-      expr_start.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
-    // Emit `"use strict";` at the head of the compile_function body so
-    // the IIFE still runs in strict mode (function bodies default to
-    // sloppy, unlike modules — and these polyfills were strict before
-    // being lazified, so we preserve that).
-    let wrapped_source = format!("\"use strict\"; return ({trimmed});");
     let name = v8::String::new(scope, specifier).unwrap();
     let origin = v8::ScriptOrigin::new(
       scope,
@@ -3178,7 +3166,24 @@ impl ModuleMap {
 
     v8::tc_scope!(let tc_scope, scope);
 
-    let v8_source = v8::String::new(tc_scope, &wrapped_source).unwrap();
+    // The compile_function body is `"use strict"; return (<IIFE>);`. For
+    // residual lazy scripts this wrapping is performed at build time
+    // (`cli/snapshot/build.rs`), so `source` is a `&'static` external string we
+    // can hand to V8 without an owned heap copy (avoiding a per-script source
+    // string in the V8 heap). Sources that arrive unwrapped (e.g. consumed
+    // during snapshot creation, before that path is build-time wrapped) are
+    // wrapped here at runtime via `wrap_lazy_ext_script`.
+    let v8_source = if AsRef::<str>::as_ref(&source)
+      .starts_with("\"use strict\"; return (")
+    {
+      // Build-time wrapped residual: hand V8 the `&'static` external string
+      // directly so the source stays off the V8 heap (file-backed/clean).
+      source.v8_string(tc_scope).unwrap()
+    } else {
+      // Unwrapped (e.g. consumed during snapshot creation): wrap at runtime.
+      let wrapped_source = wrap_lazy_ext_script(AsRef::<str>::as_ref(&source));
+      v8::String::new(tc_scope, &wrapped_source).unwrap()
+    };
     let bootstrap_param = v8::String::new(tc_scope, "__bootstrap").unwrap();
     let mut compile_source =
       v8::script_compiler::Source::new(v8_source, Some(&origin));
@@ -3291,6 +3296,26 @@ fn strip_script_prologue(source: &str) -> Option<&str> {
     }
     return None;
   }
+}
+
+/// Wrap a lazy ext-script (`loadExtScript`) source into the `compile_function`
+/// body we evaluate at load time: `"use strict"; return (<IIFE>);`.
+///
+/// The IIFE's completion value is the script's exports object (what the
+/// original `Script::run` produced). We strip the leading prologue (comments +
+/// any `"use strict";` directive — a bare directive is a statement and can't
+/// sit inside `return ( ... )`) and the trailing `;`/whitespace so the IIFE is
+/// the single operand of `return ( ... )`, and re-emit `"use strict";` at the
+/// head so the body still runs in strict mode.
+///
+/// Performed at build time for residual lazy scripts so the stored source is a
+/// `&'static` string that compiles without an owned heap copy; also used as the
+/// runtime fallback for sources that arrive unwrapped.
+pub fn wrap_lazy_ext_script(source: &str) -> String {
+  let expr_start = strip_script_prologue(source).unwrap_or(source);
+  let trimmed =
+    expr_start.trim_end_matches(|c: char| c.is_whitespace() || c == ';');
+  format!("\"use strict\"; return ({trimmed});")
 }
 
 // Clippy thinks the return value doesn't need to be an Option, it's unaware

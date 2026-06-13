@@ -359,6 +359,20 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * Unstable options which can be set when opening a `unixpacket` datagram
+   * listener via {@linkcode Deno.listenDatagram}.
+   *
+   * @category Network
+   * @experimental
+   */
+  export interface UnixListenDatagramOptions {
+    /** A path to the Unix Socket. When omitted the socket is left unbound, so
+     * it can be used to send messages but cannot receive them. */
+    path?: string;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Listen announces on the local transport address.
    *
    * ```ts
@@ -368,14 +382,16 @@ declare namespace Deno {
    * });
    * ```
    *
-   * Requires `allow-read` and `allow-write` permission.
+   * Requires `allow-read`, `allow-write` and `allow-net` permission. The
+   * `allow-net` grant may be scoped to the socket path with
+   * `--allow-net=unix:<absolute-path>`.
    *
-   * @tags allow-read, allow-write
+   * @tags allow-read, allow-write, allow-net
    * @category Network
    * @experimental
    */
   export function listenDatagram(
-    options: UnixListenOptions & { transport: "unixpacket" },
+    options: UnixListenDatagramOptions & { transport: "unixpacket" },
   ): DatagramConn;
 
   /** **UNSTABLE**: New API, yet to be vetted.

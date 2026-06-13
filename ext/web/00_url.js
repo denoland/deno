@@ -28,6 +28,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   ReflectOwnKeys,
   SafeArrayIterator,
+  StringPrototypeCharCodeAt,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
   Symbol,
@@ -472,6 +473,218 @@ const NO_PORT = 65536;
 const skipInit = Symbol();
 const componentsBuf = new Uint32Array(8);
 
+function isAsciiLowerAlpha(code) {
+  return code >= 0x61 && code <= 0x7a;
+}
+
+function isAsciiUpperAlpha(code) {
+  return code >= 0x41 && code <= 0x5a;
+}
+
+function isAsciiDigit(code) {
+  return code >= 0x30 && code <= 0x39;
+}
+
+function isSimpleSpecialHostCanonical(host, start, end) {
+  if (start === end) return false;
+  if (
+    StringPrototypeCharCodeAt(host, start) === 0x2e ||
+    StringPrototypeCharCodeAt(host, end - 1) === 0x2e
+  ) {
+    return false;
+  }
+
+  let allNumeric = true;
+  for (let i = start; i < end; i++) {
+    const code = StringPrototypeCharCodeAt(host, i);
+    if (!isAsciiDigit(code) && code !== 0x2e) {
+      allNumeric = false;
+      break;
+    }
+  }
+  if (allNumeric) {
+    let dots = 0;
+    let part = 0;
+    let partLen = 0;
+    for (let i = start; i < end; i++) {
+      const code = StringPrototypeCharCodeAt(host, i);
+      if (code === 0x2e) {
+        if (
+          partLen === 0 || part > 255 ||
+          (partLen > 1 &&
+            StringPrototypeCharCodeAt(host, i - partLen) === 0x30)
+        ) {
+          return false;
+        }
+        dots++;
+        part = 0;
+        partLen = 0;
+        continue;
+      }
+      part = part * 10 + code - 0x30;
+      partLen++;
+      if (partLen > 3) return false;
+    }
+    return dots === 3 && partLen !== 0 && part <= 255 &&
+      (partLen === 1 ||
+        StringPrototypeCharCodeAt(host, end - partLen) !== 0x30);
+  }
+
+  if (isAsciiDigit(StringPrototypeCharCodeAt(host, start))) {
+    return false;
+  }
+
+  let labelStart = start;
+  let labelLen = 0;
+  let finalLabelAllDigits = true;
+  for (let i = start; i < end; i++) {
+    const code = StringPrototypeCharCodeAt(host, i);
+    if (
+      !isAsciiLowerAlpha(code) && !isAsciiDigit(code) &&
+      code !== 0x2e && code !== 0x2d
+    ) {
+      return false;
+    }
+    if (code === 0x2e) {
+      if (labelLen === 0) return false;
+      labelStart = i + 1;
+      labelLen = 0;
+      finalLabelAllDigits = true;
+      continue;
+    }
+    if (!isAsciiDigit(code)) {
+      finalLabelAllDigits = false;
+    }
+    labelLen++;
+    if (
+      i === labelStart + 3 &&
+      StringPrototypeCharCodeAt(host, labelStart) === 0x78 &&
+      StringPrototypeCharCodeAt(host, labelStart + 1) === 0x6e &&
+      StringPrototypeCharCodeAt(host, labelStart + 2) === 0x2d &&
+      code === 0x2d
+    ) {
+      return false;
+    }
+  }
+  return labelLen !== 0 && !finalLabelAllDigits &&
+    !(labelLen >= 2 &&
+      StringPrototypeCharCodeAt(host, labelStart) === 0x30 &&
+      StringPrototypeCharCodeAt(host, labelStart + 1) === 0x78);
+}
+
+function isSimpleSpecialPathCode(code) {
+  return isAsciiLowerAlpha(code) ||
+    isAsciiUpperAlpha(code) ||
+    isAsciiDigit(code) ||
+    code === 0x2f ||
+    code === 0x2e ||
+    code === 0x5f ||
+    code === 0x7e ||
+    code === 0x2d ||
+    code === 0x21 ||
+    code === 0x24 ||
+    code === 0x26 ||
+    code === 0x27 ||
+    code === 0x28 ||
+    code === 0x29 ||
+    code === 0x2a ||
+    code === 0x2b ||
+    code === 0x2c ||
+    code === 0x3b ||
+    code === 0x3d ||
+    code === 0x3a ||
+    code === 0x40;
+}
+
+// Keep in sync with parse_simple_special_url() in ext/web/url.rs.
+function parseSimpleSpecialUrl(href) {
+  let schemeEnd;
+  let defaultPort;
+  if (StringPrototypeStartsWith(href, "http://")) {
+    schemeEnd = 4;
+    defaultPort = 80;
+  } else if (StringPrototypeStartsWith(href, "https://")) {
+    schemeEnd = 5;
+    defaultPort = 443;
+  } else {
+    return false;
+  }
+
+  const hostStart = schemeEnd + 3;
+  const len = href.length;
+  let pathStart = hostStart;
+  while (pathStart < len) {
+    const code = StringPrototypeCharCodeAt(href, pathStart);
+    if (code === 0x2f) break;
+    if (
+      isAsciiLowerAlpha(code) || isAsciiDigit(code) ||
+      code === 0x2e || code === 0x2d || code === 0x3a
+    ) {
+      pathStart++;
+      continue;
+    }
+    return false;
+  }
+  if (pathStart === hostStart || pathStart === len) return false;
+
+  let hostEnd = pathStart;
+  let port = NO_PORT;
+  for (let i = hostStart; i < pathStart; i++) {
+    if (StringPrototypeCharCodeAt(href, i) !== 0x3a) continue;
+    if (i === hostStart || i + 1 === pathStart) return false;
+    hostEnd = i;
+    port = 0;
+    if (
+      i + 2 < pathStart && StringPrototypeCharCodeAt(href, i + 1) === 0x30
+    ) {
+      return false;
+    }
+    for (let j = i + 1; j < pathStart; j++) {
+      const code = StringPrototypeCharCodeAt(href, j);
+      if (!isAsciiDigit(code)) return false;
+      port = port * 10 + code - 0x30;
+      if (port > 65535) return false;
+    }
+    if (port === defaultPort) return false;
+    break;
+  }
+  if (!isSimpleSpecialHostCanonical(href, hostStart, hostEnd)) {
+    return false;
+  }
+
+  let queryStart = 0;
+  for (let i = pathStart; i < len; i++) {
+    const code = StringPrototypeCharCodeAt(href, i);
+    if (
+      code === 0x2e && i > pathStart &&
+      StringPrototypeCharCodeAt(href, i - 1) === 0x2f &&
+      (i + 1 === len ||
+        StringPrototypeCharCodeAt(href, i + 1) === 0x2f ||
+        StringPrototypeCharCodeAt(href, i + 1) === 0x3f ||
+        StringPrototypeCharCodeAt(href, i + 1) === 0x2e)
+    ) {
+      return false;
+    }
+    if (queryStart !== 0 && code === 0x27) return false;
+    if (isSimpleSpecialPathCode(code)) continue;
+    if (code === 0x3f && queryStart === 0) {
+      queryStart = i;
+      continue;
+    }
+    return false;
+  }
+
+  componentsBuf[0] = schemeEnd;
+  componentsBuf[1] = hostStart;
+  componentsBuf[2] = hostStart;
+  componentsBuf[3] = hostEnd;
+  componentsBuf[4] = port;
+  componentsBuf[5] = pathStart;
+  componentsBuf[6] = queryStart;
+  componentsBuf[7] = 0;
+  return true;
+}
+
 class URL {
   /** @type {URLSearchParams|null} */
   #queryObject = null;
@@ -518,9 +731,13 @@ class URL {
     if (base !== undefined) {
       base = webidl.converters.DOMString(base, prefix, "Argument 2");
     }
-    const status = opUrlParse(url, base);
     this[webidl.brand] = webidl.brand;
-    this.#serialization = getSerialization(status, url, base);
+    if (base === undefined && parseSimpleSpecialUrl(url)) {
+      this.#serialization = url;
+    } else {
+      const status = opUrlParse(url, base);
+      this.#serialization = getSerialization(status, url, base);
+    }
     this.#updateComponents();
   }
 

@@ -209,10 +209,11 @@ fn check_for_banned_triple_slash_directives(
     r#"^/\s+<reference\s+(no-default-lib\s*=\s*"true"|lib\s*=\s*("[^"]+"|'[^']+'))\s*/>\s*$"#
   );
 
-  let Some(comments) = parsed_source.get_leading_comments() else {
-    return;
-  };
-  for comment in comments {
+  // Scan all comments, not just the ones leading the first statement. The
+  // registry rejects these directives wherever they appear in the file, so a
+  // directive placed after other code (e.g. after an import) must also be
+  // reported during a dry run instead of only failing at publish time.
+  for comment in parsed_source.comments().get_vec() {
     if comment.kind != CommentKind::Line {
       continue;
     }

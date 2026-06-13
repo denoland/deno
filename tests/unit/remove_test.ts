@@ -240,7 +240,7 @@ Deno.test({ permissions: { write: false } }, async function removeAllPerm() {
 Deno.test(
   {
     ignore: Deno.build.os === "windows",
-    permissions: { write: true, read: true },
+    permissions: { write: true, read: true, net: true },
   },
   async function removeUnixSocketSuccess() {
     for (const method of REMOVE_METHODS) {

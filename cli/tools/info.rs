@@ -25,7 +25,6 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm_installer::graph::NpmCachingStrategy;
 use deno_npmrc::ResolvedNpmRc;
-use deno_path_util::resolve_url_or_path;
 use deno_resolver::DenoResolveErrorKind;
 use deno_resolver::display::DisplayTreeNode;
 use deno_semver::npm::NpmPackageReqReference;
@@ -38,6 +37,7 @@ use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliManagedNpmResolver;
+use crate::util::path::resolve_url_or_path_normalized;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -101,10 +101,13 @@ pub async fn info(
                 .into(),
             );
           }
-          deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
+          deno_package_json::PackageJsonDepValue::Workspace {
+            name,
+            version_req,
+          } => {
             let pkg_folder = resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
-                alias,
+                name.as_deref().unwrap_or(alias),
                 version_req,
               )?;
             Some(
@@ -156,7 +159,9 @@ pub async fn info(
 
     let specifier = match maybe_import_specifier {
       Some(specifier) => specifier,
-      None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
+      None => {
+        resolve_url_or_path_normalized(&specifier, cli_options.initial_cwd())?
+      }
     };
 
     let mut loader =

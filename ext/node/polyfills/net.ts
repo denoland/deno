@@ -2847,8 +2847,15 @@ Server.prototype.listen = function (...args: unknown[]) {
   options = (options as any)._handle || (options as any).handle || options;
   const flags = _getFlags(options.ipv6Only, options.reusePort);
 
-  // (handle[, backlog][, cb]) where handle is an object with a handle
-  if (ObjectPrototypeIsPrototypeOf(TCP.prototype, options)) {
+  // (handle[, backlog][, cb]) where handle is an object with a handle.
+  // A Pipe wrap exposes an `fd` getter, so it must be matched here before
+  // the `options.fd` branch below -- otherwise the already-opened fd would
+  // be re-opened and rejected (EEXIST). This is the path taken when a
+  // unix-socket server is transferred over IPC (ChildProcess.send).
+  if (
+    ObjectPrototypeIsPrototypeOf(TCP.prototype, options) ||
+    ObjectPrototypeIsPrototypeOf(Pipe.prototype, options)
+  ) {
     this._handle = options;
     this[asyncIdSymbol] = this._handle.getAsyncId();
 

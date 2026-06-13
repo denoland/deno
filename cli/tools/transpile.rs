@@ -14,6 +14,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
+use deno_resolver::emit::patch_public_decorator_access_has;
 use deno_terminal::colors;
 use sys_traits::PathsInErrorsExt;
 
@@ -173,7 +174,8 @@ pub async fn transpile(
       &emit_options,
     )?;
 
-    let emitted = transpile_result.into_source();
+    let mut emitted = transpile_result.into_source();
+    patch_public_decorator_access_has(&mut emitted.text);
     // Skip the newline restoration pass when source maps are requested,
     // since inserting newlines would shift line numbers in the generated
     // output without a corresponding adjustment to the mappings.

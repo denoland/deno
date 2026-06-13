@@ -36,13 +36,15 @@
         };
         rustyV8Target = rustyV8Targets.${system};
         rustyV8 = pkgs.fetchurl {
-          url = "https://github.com/denoland/rusty_v8/releases/download/v${rustyV8Version}/librusty_v8_release_${rustyV8Target}.a.gz";
-          sha256 = {
-            "x86_64-linux" = "sha256-PYCBh8+RY1nvPOKXMCns5mDRo2j0SB3Edw/ut7npjxo=";
-            "aarch64-linux" = "sha256-EGlTttOowHhoFBy8FQeokCnbPLi4tfkIhSek28TfcGQ=";
-            "x86_64-darwin" = "sha256-61d4tQ/PcNPUvDuQsMNTNUO43zLZSVEHOjdGFG0u4W8=";
-            "aarch64-darwin" = "sha256-BMKybPdxP9+7QD/yfbnPnFxD8N7kHPUkMcEEf4P4iSE=";
-          }.${system};
+          url = "https://github.com/denoland/rusty_v8/releases/download/v${rustyV8Version}/librusty_v8_simdutf_release_${rustyV8Target}.a.gz";
+          sha256 =
+            {
+              "x86_64-linux" = "sha256-Uzfff0kIk7MAVpOZmFn7Pb24QPYsyTXJi/WcnL7kiVc=";
+              "aarch64-linux" = "sha256-eWUL59b9TQH111GE1ZaUS9SS7XD5ruBheojHT7klTiY=";
+              "x86_64-darwin" = "sha256-1yHm1WslC1CbXIjSxNI1mEJqqq7SRAVByO8BkS1Tk5s=";
+              "aarch64-darwin" = "sha256-W8fpKRWz6LgAB8Tu1501Ky8L2FOn4rGocDVHV3UN7Jk=";
+            }
+            .${system};
         };
 
         commonNativeBuildInputs = with pkgs; [

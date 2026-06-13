@@ -375,13 +375,25 @@ impl<TSys: ModuleLoaderSys> PreparedModuleLoader<TSys> {
           media_type,
         }))
       }
-      Some(CodeOrDeferredEmit::Cjs { .. }) => {
+      Some(CodeOrDeferredEmit::Cjs {
+        specifier,
+        media_type,
+        source,
+      }) => {
+        let transpile_result = self.emitter.maybe_emit_source_sync(
+          specifier,
+          media_type,
+          ModuleKind::Cjs,
+          source,
+        )?;
+
         self.parsed_source_cache.free(specifier);
 
-        // todo(dsherret): to make this work, we should probably just
-        // rely on the CJS export cache. At the moment this is hard because
-        // cjs export analysis is only async
-        Ok(None)
+        Ok(Some(LoadedModule {
+          source: LoadedModuleSource::ArcStr(transpile_result),
+          specifier: Cow::Borrowed(specifier),
+          media_type,
+        }))
       }
       Some(CodeOrDeferredEmit::ExternalAsset { .. }) | None => Ok(None),
     }
