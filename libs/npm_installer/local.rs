@@ -923,10 +923,28 @@ impl<
         // (Comparing paths here is unreliable: `root_node_modules_path` is
         // canonicalized while `target_dir` is not, so on Windows they can
         // differ by 8.3 short names or casing for the same directory.)
-        if workspace_pkg.is_root || workspace_pkg.deps.is_empty() {
+        if workspace_pkg.is_root {
           continue;
         }
         let member_node_modules = workspace_pkg.target_dir.join("node_modules");
+        // Remove links to dependencies the member no longer declares (or to
+        // sibling members that were removed) so they stop being resolvable,
+        // mirroring how the root `node_modules` prunes stale links above. This
+        // also covers a member that dropped all of its dependencies, which is
+        // why it runs before the `deps.is_empty()` short-circuit.
+        let keep_aliases: HashSet<&str> = workspace_pkg
+          .deps
+          .iter()
+          .map(|dep| dep.alias().as_str())
+          .collect();
+        remove_stale_member_symlinks(
+          sys.as_ref(),
+          &member_node_modules,
+          &keep_aliases,
+        );
+        if workspace_pkg.deps.is_empty() {
+          continue;
+        }
         let member_key = workspace_pkg.target_dir.to_string_lossy();
         let mut dep_cache = setup_cache.with_dep(&member_key);
         let mut created_dir = false;
@@ -1619,6 +1637,74 @@ fn remove_existing_entry(
     Ok(()) => Ok(()),
     Err(err) if is_not_found(&err) => Ok(()),
     Err(err) => Err(err),
+  }
+}
+
+/// Removes managed dependency links from a workspace member's `node_modules`
+/// whose alias is no longer one of the member's current direct dependencies
+/// (`keep_aliases`). Without this a dependency dropped from the member's
+/// `package.json`, or a sibling workspace member that was removed, would leave a
+/// stale link behind and stay resolvable from the member, recreating exactly the
+/// shadow-dependency problem the per-member layout is meant to prevent. This is
+/// the per-member counterpart to the root `node_modules` pruning done by
+/// [`remove_unused_node_modules_symlinks`].
+///
+/// Only symlinks and junctions are touched; real files or directories a user
+/// placed in the member's `node_modules` are left untouched.
+pub(crate) fn remove_stale_member_symlinks<TSys: LocalNpmInstallSys>(
+  sys: &TSys,
+  member_node_modules: &Path,
+  keep_aliases: &HashSet<&str>,
+) {
+  let paths_sys = sys.with_paths_in_errors();
+  let entries = match paths_sys.fs_read_dir(member_node_modules) {
+    Ok(entries) => entries,
+    // The directory may not exist yet (first install) or be unreadable; either
+    // way there is nothing to prune.
+    Err(_) => return,
+  };
+  for entry in entries.flatten() {
+    let file_name = entry.file_name();
+    let Some(name) = file_name.to_str() else {
+      continue;
+    };
+    // Leave `.bin`, `.deno`, and any other dot-entries alone: they are not the
+    // per-dependency alias links this loop manages.
+    if name.starts_with('.') {
+      continue;
+    }
+    let entry_path = member_node_modules.join(&file_name);
+    if name.starts_with('@') {
+      // Scoped packages are linked one level deeper as `@scope/<pkg>`, so the
+      // alias to match against is the full `@scope/<pkg>` path.
+      if let Ok(children) = paths_sys.fs_read_dir(&entry_path) {
+        for child in children.flatten() {
+          let child_file_name = child.file_name();
+          let Some(child_name) = child_file_name.to_str() else {
+            continue;
+          };
+          let child_path = entry_path.join(&child_file_name);
+          let alias = format!("{name}/{child_name}");
+          if paths_sys.fs_read_link(&child_path).is_ok()
+            && !keep_aliases.contains(alias.as_str())
+          {
+            let _ignore = remove_existing_entry(sys, &child_path);
+          }
+        }
+      }
+      // Drop the scope directory if pruning emptied it.
+      if paths_sys
+        .fs_read_dir(&entry_path)
+        .map(|mut entries| entries.next().is_none())
+        .unwrap_or(false)
+      {
+        let _ignore = paths_sys.fs_remove_dir(&entry_path);
+      }
+    } else if paths_sys.fs_read_link(&entry_path).is_ok()
+      && !keep_aliases.contains(name)
+    {
+      let _ignore = remove_existing_entry(sys, &entry_path);
+    }
   }
 }
 

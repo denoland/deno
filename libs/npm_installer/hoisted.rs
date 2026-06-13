@@ -612,10 +612,28 @@ impl<
         // (Comparing paths here is unreliable: `root_node_modules_path` is
         // canonicalized while `target_dir` is not, so on Windows they can
         // differ by 8.3 short names or casing for the same directory.)
-        if workspace_pkg.is_root || workspace_pkg.deps.is_empty() {
+        if workspace_pkg.is_root {
           continue;
         }
         let member_node_modules = workspace_pkg.target_dir.join("node_modules");
+        // Remove links to dependencies the member no longer declares (or to
+        // sibling members that were removed) so they stop being resolvable,
+        // mirroring how the root `node_modules` prunes stale links. This also
+        // covers a member that dropped all of its dependencies, which is why it
+        // runs before the `deps.is_empty()` short-circuit.
+        let keep_aliases: HashSet<&str> = workspace_pkg
+          .deps
+          .iter()
+          .map(|dep| dep.alias().as_str())
+          .collect();
+        crate::local::remove_stale_member_symlinks(
+          sys.as_ref(),
+          &member_node_modules,
+          &keep_aliases,
+        );
+        if workspace_pkg.deps.is_empty() {
+          continue;
+        }
         let mut created_dir = false;
         for dep in &workspace_pkg.deps {
           let (alias, target_path) = match dep {

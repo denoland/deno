@@ -44,6 +44,16 @@ pub enum InstallWorkspacePkgDep {
   Workspace { alias: StackString, nv: PackageNv },
 }
 
+impl InstallWorkspacePkgDep {
+  /// The name the dependency is linked under in the member's `node_modules`.
+  pub fn alias(&self) -> &StackString {
+    match self {
+      InstallWorkspacePkgDep::Remote { alias, .. } => alias,
+      InstallWorkspacePkgDep::Workspace { alias, .. } => alias,
+    }
+  }
+}
+
 #[derive(Debug)]
 pub struct InstallWorkspacePkg {
   pub nv: PackageNv,
