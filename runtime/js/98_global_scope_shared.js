@@ -511,6 +511,10 @@ const loadCssStyleSheet = () =>
       "ext:deno_web/18_css_stylesheet.js",
     ));
 unstableForWindowOrWorkerGlobalScope[unstableIds.rawImports] = {
+  CSSRule: core.propNonEnumerableLazyLoaded(
+    (css) => css.CSSRule,
+    loadCssStyleSheet,
+  ),
   CSSStyleSheet: core.propNonEnumerableLazyLoaded(
     (css) => css.CSSStyleSheet,
     loadCssStyleSheet,

@@ -117,6 +117,34 @@ fn split_top_level_rules(text: &str) -> Vec<String> {
   chunks
 }
 
+/// Returns true if a top-level rule is an `@import` at-rule. At-rule keywords
+/// are ASCII case-insensitive, and `@import` is always followed by whitespace,
+/// a string quote, or `url(` (i.e. never another identifier character).
+fn is_import_rule(rule: &str) -> bool {
+  let Some(rest) = rule.strip_prefix('@') else {
+    return false;
+  };
+  let Some((keyword, after)) = rest.split_at_checked(6) else {
+    return false;
+  };
+  keyword.eq_ignore_ascii_case("import")
+    && after
+      .chars()
+      .next()
+      .is_none_or(|c| c.is_ascii_whitespace() || c == '"' || c == '\'')
+}
+
+/// Re-serializes `text` with its top-level `@import` rules removed. Constructed
+/// style sheets disallow `@import`, so `replace()`/`replaceSync()` drop them
+/// (matching the CSSOM spec) rather than fetch them.
+fn strip_import_rules(text: &str) -> String {
+  split_top_level_rules(text)
+    .into_iter()
+    .filter(|rule| !is_import_rule(rule))
+    .collect::<Vec<_>>()
+    .join("\n")
+}
+
 pub struct CSSStyleSheet {
   text: RefCell<String>,
 }
@@ -169,7 +197,7 @@ impl CSSStyleSheet {
 
   #[required(1)]
   fn replace_sync(&self, #[webidl] text: String) {
-    *self.text.borrow_mut() = text;
+    *self.text.borrow_mut() = strip_import_rules(&text);
   }
 
   #[required(1)]
@@ -190,7 +218,7 @@ impl CSSStyleSheet {
       &Default::default(),
     ) {
       Ok(text) => {
-        *self.text.borrow_mut() = text;
+        *self.text.borrow_mut() = strip_import_rules(&text);
         let this: v8::Local<v8::Value> = args.this().into();
         resolver.resolve(scope, this);
       }
@@ -220,6 +248,21 @@ pub fn create_css_style_sheet<'a>(
 #[cfg(test)]
 mod tests {
   use super::split_top_level_rules;
+  use super::strip_import_rules;
+
+  #[test]
+  fn strips_import_rules() {
+    // Drops top-level `@import` (case-insensitively), keeps everything else,
+    // including `@import` nested inside another rule's block.
+    assert_eq!(
+      strip_import_rules(
+        "@import \"a.css\"; @IMPORT 'b.css';\nbody { color: red; }\n@media (x) { @import \"c\"; }",
+      ),
+      "body { color: red; }\n@media (x) { @import \"c\"; }"
+    );
+    // `@import-like` names are not `@import` rules and stay.
+    assert_eq!(strip_import_rules("@imports { a: b }"), "@imports { a: b }");
+  }
 
   #[test]
   fn splits_rules() {
