@@ -14168,7 +14168,7 @@ fn lsp_format_css() {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 },
         },
-        "newText": "foo {\n}\n",
+        "newText": "foo {}\n",
       },
     ]),
   );

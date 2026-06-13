@@ -6,6 +6,5 @@
 <div class:active style="width : {a + b}PX; height:1PX;">{a + b}</div>
 
 <style>
-  .active {
-  }
+  .active {}
 </style>

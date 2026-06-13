@@ -42,7 +42,7 @@ function foo(): number {
 ```
 
 ```css
-#app>.btn {
+#app > .btn {
   color: #000;
 }
 ```
