@@ -14,7 +14,8 @@
       opacity:isVisible?1:0.5,
       transform: `translate(${a*2}px, ${b-10}px)`,
       borderRadius:Math.min(width, height)/4+'px'
-    }">
+    }"
+  >
     <!-- Nested expressions -->
     <span :style="{ fontSize:12+(width/10)+'px' }">
       Content: {{items.length}} items
@@ -28,7 +29,8 @@
       <li
         v-for="item in items.filter(item => item > 1)"
         :key="item"
-        :style="{ padding:item*2+'px' }">
+        :style="{ padding:item*2+'px' }"
+      >
         {{item}}
       </li>
     </ul>
@@ -47,7 +49,8 @@
     type="text"
     :placeholder="user.name||'Enter name'"
     :value="a+b"
-    :style="{ width:Math.max(100, width)+'px' }" />
+    :style="{ width:Math.max(100, width)+'px' }"
+  />
 
   <!-- Mixed single brace and double brace -->
   <div :class="{ active:active }">
@@ -57,7 +60,8 @@
   <!-- Template literals in attributes -->
   <div
     :title="`Size: ${width}x${height}`"
-    :data-info="`User: ${user.name}, Items: ${items.length}`">
+    :data-info="`User: ${user.name}, Items: ${items.length}`"
+  >
     Template data
   </div>
 </template>
