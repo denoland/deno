@@ -201,6 +201,23 @@ function emitAfter(asyncId: number): void {
   }
 }
 
+// Fire `after` callbacks for an async id WITHOUT popping the executionAsyncId
+// stack. Use this only when no matching `before` ever pushed onto the stack --
+// e.g. an async resource (a Timeout, or a promise reaction) whose hooks were
+// enabled from inside its own callback, so its `before` ran before any hook
+// was installed. Node still delivers the trailing `after` in that case; going
+// through emitAfter() here would pop a frame that was never pushed and corrupt
+// the stack.
+function emitAfterNoPush(asyncId: number): void {
+  const hooks = active_hooks.array;
+  for (let i = 0; i < hooks.length; i++) {
+    const hook = hooks[i];
+    if (hook[after_symbol]) {
+      hook[after_symbol](asyncId);
+    }
+  }
+}
+
 function emitDestroy(asyncId: number): void {
   // Call hooks if they exist
   const hooks = active_hooks.array;
@@ -482,6 +499,19 @@ function promiseAfterHook(promise: any): void {
   const info = promiseInfo.get(promise);
   if (info !== undefined) {
     emitAfter(info.asyncId);
+    return;
+  }
+  // `info` is undefined: we never observed this promise's `before`. The only
+  // way that happens for a non-suppressed promise is that the V8 promise hooks
+  // were installed *after* its `before` fired -- i.e. user code called
+  // `createHook().enable()` from inside the very promise reaction that is now
+  // finishing (see test-async-hooks-enable-during-promise.js). Node still
+  // delivers the trailing `after` for that reaction, so fire it here. We must
+  // NOT go through emitAfter(), because that pops the executionAsyncId stack
+  // and no matching `before` ever pushed for this promise; popping would
+  // corrupt the stack. Fire the user callbacks directly instead.
+  if (async_hook_fields[kAfter] > 0) {
+    emitAfterNoPush(trackPromise(promise, null).asyncId);
   }
 }
 
@@ -680,6 +710,7 @@ return {
   exitAsyncResourceIfActive,
   emitBefore,
   emitAfter,
+  emitAfterNoPush,
   emitDestroy,
   emitPromiseResolve,
   getDefaultTriggerAsyncId,
