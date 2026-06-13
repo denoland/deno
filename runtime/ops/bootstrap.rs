@@ -68,14 +68,11 @@ impl Default for SnapshotOptions {
 #[op2]
 #[serde]
 pub fn op_snapshot_options(state: &mut OpState) -> SnapshotOptions {
-  #[cfg(feature = "hmr")]
-  {
-    state.try_take::<SnapshotOptions>().unwrap_or_default()
-  }
-  #[cfg(not(feature = "hmr"))]
-  {
-    state.take::<SnapshotOptions>()
-  }
+  // `SnapshotOptions` is only placed into the op state when the runtime is
+  // bootstrapped with a startup snapshot. Embedders that bootstrap without one
+  // (`startup_snapshot: None`) never insert it, so fall back to the default
+  // instead of panicking when the value is absent.
+  state.try_take::<SnapshotOptions>().unwrap_or_default()
 }
 
 #[op2]

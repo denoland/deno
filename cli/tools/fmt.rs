@@ -21,6 +21,7 @@ use std::sync::atomic::Ordering;
 
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
+use deno_config::deno_json::NewLineKind;
 use deno_config::deno_json::VueComponentCase as DenoVueComponentCase;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
@@ -96,8 +97,11 @@ pub async fn format(
             resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
 
           for paths_with_options in &mut paths_with_options_batches {
-            let _ = watcher_communicator
-              .watch_paths(paths_with_options.paths.clone());
+            let _ = watcher_communicator.watch_paths(
+              file_watcher::watch_paths_for_file_patterns(
+                &paths_with_options.options.files,
+              ),
+            );
             let files = std::mem::take(&mut paths_with_options.paths);
             paths_with_options.paths = if let Some(paths) = &changed_paths {
               if fmt_flags.check {
@@ -758,64 +762,55 @@ fn format_embedded_sql(
   text: &str,
   config: &dprint_plugin_typescript::configuration::Configuration,
 ) -> deno_core::anyhow::Result<Option<String>> {
-  Ok(Some(format_sql_text(
-    text,
+  let sql_config = get_resolved_lax_sql_config(
+    config.line_width,
     config.use_tabs,
     config.indent_width,
-  )))
+  );
+  let Some(formatted) =
+    lax_sql::format_text(Path::new("embedded.sql"), text, &sql_config)?
+  else {
+    return Ok(None);
+  };
+  let formatted = formatted.trim_end_matches('\n');
+  Ok(if formatted == text {
+    None
+  } else {
+    Some(formatted.to_string())
+  })
 }
 
-fn format_sql_text(text: &str, use_tabs: bool, indent_width: u8) -> String {
-  let mut text = sqlformat::format(
-    text,
-    &sqlformat::QueryParams::None,
-    &sqlformat::FormatOptions {
-      ignore_case_convert: None,
-      indent: if use_tabs {
-        sqlformat::Indent::Tabs
-      } else {
-        sqlformat::Indent::Spaces(indent_width)
-      },
-      // leave one blank line between queries.
-      lines_between_queries: 2,
-      uppercase: Some(true),
-    },
-  );
-  // Add single new line to the end of text.
-  text.push('\n');
-  text
+fn get_resolved_lax_sql_config(
+  line_width: u32,
+  use_tabs: bool,
+  indent_width: u8,
+) -> lax_sql::configuration::Configuration {
+  lax_sql::configuration::Configuration {
+    line_width,
+    use_tabs,
+    indent_width,
+    new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
+    // matches the previous sqlformat behavior of uppercasing keywords
+    keyword_case: lax_sql::configuration::KeywordCase::Upper,
+    clause_style: lax_sql::configuration::ClauseStyle::Fill,
+    ignore_node_comment_text: "deno-fmt-ignore".to_string(),
+    ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
+  }
 }
 
 pub fn format_sql(
   file_text: &str,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<Option<String>, AnyError> {
-  let ignore_file = file_text
-    .lines()
-    .take_while(|line| line.starts_with("--"))
-    .any(|line| {
-      line
-        .strip_prefix("--")
-        .unwrap()
-        .trim()
-        .starts_with("deno-fmt-ignore-file")
-    });
-
-  if ignore_file {
-    return Ok(None);
-  }
-
-  let formatted_str = format_sql_text(
+  lax_sql::format_text(
+    Path::new("file.sql"),
     file_text,
-    fmt_options.use_tabs.unwrap_or_default(),
-    fmt_options.indent_width.unwrap_or(2),
-  );
-
-  Ok(if formatted_str == file_text {
-    None
-  } else {
-    Some(formatted_str)
-  })
+    &get_resolved_lax_sql_config(
+      fmt_options.line_width.unwrap_or(80),
+      fmt_options.use_tabs.unwrap_or_default(),
+      fmt_options.indent_width.unwrap_or(2),
+    ),
+  )
 }
 
 /// Formats a single TS, TSX, JS, JSX, JSONC, JSON, MD, IPYNB or SQL file.
@@ -1486,16 +1481,46 @@ fn get_resolved_markdown_config(
     });
   }
 
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(match new_line_kind {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    });
+  }
+
   builder.build()
 }
 
 fn get_resolved_json_config(
   options: &FmtOptionsConfig,
 ) -> dprint_plugin_json::configuration::Configuration {
+  use deno_config::deno_json::JsonTrailingCommaKind;
+  use dprint_plugin_json::configuration::TrailingCommaKind;
+
   let mut builder =
     dprint_plugin_json::configuration::ConfigurationBuilder::new();
 
   builder.deno();
+  if let Some(json_trailing_commas) = options.json_trailing_commas {
+    builder.trailing_commas(match json_trailing_commas {
+      JsonTrailingCommaKind::Always => TrailingCommaKind::Always,
+      JsonTrailingCommaKind::Jsonc => TrailingCommaKind::Jsonc,
+      JsonTrailingCommaKind::Maintain => TrailingCommaKind::Maintain,
+      JsonTrailingCommaKind::Never => TrailingCommaKind::Never,
+    });
+  }
 
   if let Some(use_tabs) = options.use_tabs {
     builder.use_tabs(use_tabs);
@@ -1507,6 +1532,25 @@ fn get_resolved_json_config(
 
   if let Some(indent_width) = options.indent_width {
     builder.indent_width(indent_width);
+  }
+
+  if let Some(new_line_kind) = options.new_line_kind {
+    builder.new_line_kind(match new_line_kind {
+      NewLineKind::Auto => dprint_core::configuration::NewLineKind::Auto,
+      NewLineKind::CarriageReturnLineFeed => {
+        dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+      }
+      NewLineKind::LineFeed => {
+        dprint_core::configuration::NewLineKind::LineFeed
+      }
+      NewLineKind::System => {
+        if cfg!(windows) {
+          dprint_core::configuration::NewLineKind::CarriageReturnLineFeed
+        } else {
+          dprint_core::configuration::NewLineKind::LineFeed
+        }
+      }
+    });
   }
 
   builder.build()
@@ -1837,6 +1881,7 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
 
 #[cfg(test)]
 mod test {
+  use deno_config::deno_json::JsonTrailingCommaKind;
   use test_util::assert_starts_with;
 
   use super::*;
@@ -2018,5 +2063,103 @@ mod test {
     .unwrap()
     .unwrap();
     assert_eq!(file_text, "let a = 1;\n",);
+  }
+
+  #[test]
+  fn test_jsonc_does_not_add_trailing_commas_by_default() {
+    let file_text = format_file(
+      Path::new("test.jsonc"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap();
+    assert_eq!(file_text, None);
+  }
+
+  #[test]
+  fn test_json_does_not_add_trailing_commas() {
+    let file_text = format_file(
+      Path::new("test.json"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig::default(),
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap();
+    assert_eq!(file_text, None);
+  }
+
+  #[test]
+  fn test_jsonc_trailing_commas_can_be_disabled() {
+    let file_text = format_file(
+      Path::new("test.jsonc"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig {
+        json_trailing_commas: Some(JsonTrailingCommaKind::Never),
+        ..Default::default()
+      },
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap();
+    assert_eq!(file_text, None);
+  }
+
+  #[test]
+  fn test_json_trailing_commas_can_be_enabled() {
+    let file_text = format_file(
+      Path::new("test.json"),
+      &FileContents {
+        had_bom: false,
+        text: r#"{
+  "a": 1,
+  "b": 2
+}
+"#
+        .into(),
+      },
+      &FmtOptionsConfig {
+        json_trailing_commas: Some(JsonTrailingCommaKind::Always),
+        ..Default::default()
+      },
+      &UnstableFmtOptions::default(),
+      None,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+      file_text,
+      r#"{
+  "a": 1,
+  "b": 2,
+}
+"#
+    );
   }
 }

@@ -204,29 +204,12 @@ brew install llvm lld
      (Notice: it will download the files, you should install
      `X64 Debuggers And Tools-x64_en-us.msi` file manually.)
 
-#### Protobuf Compiler
-
-Building Deno requires the
-[Protocol Buffers compiler](https://grpc.io/docs/protoc-installation/).
-
-##### Linux(Debian)/WSL
-
-```sh
-apt install -y protobuf-compiler
-protoc --version  # Ensure compiler version is 3+
-```
-
-##### Mac
-
-```sh
-brew install protobuf
-protoc --version  # Ensure compiler version is 3+
-```
-
-##### Windows
-
-Windows users can download the latest binary release from
-[GitHub](https://github.com/protocolbuffers/protobuf/releases/latest).
+3. Make sure [CMake](https://cmake.org/download/) is installed and on your
+   `PATH`. Some native dependencies (such as `aws-lc-sys`, pulled in via rustls)
+   compile C code with CMake. The CMake that ships with Visual Studio is only
+   available from within a "Developer Command Prompt" and is invisible to
+   `cargo` or rust-analyzer run elsewhere, so a standalone CMake on `PATH` is
+   recommended.
 
 ### Python 3
 

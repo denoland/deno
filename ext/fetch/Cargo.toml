@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.273.0"
+version = "0.275.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,6 +14,7 @@ description = "Fetch API implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
+async-compression = { workspace = true, features = ["tokio", "brotli", "gzip"] }
 base64.workspace = true
 bytes.workspace = true
 data-url.workspace = true
@@ -40,8 +41,8 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 tokio-socks.workspace = true
+tokio-util = { workspace = true, features = ["io"] }
 tower.workspace = true
-tower-http.workspace = true
 tower-service.workspace = true
 
 [target.'cfg(any(target_os = "android", target_os = "linux", target_os = "macos"))'.dependencies]

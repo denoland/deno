@@ -400,3 +400,23 @@ Deno.test({
     assertEquals(runInContext(`"doesNotExist" in window`, window), false);
   },
 });
+
+// Regression test: a function extracted from a contextified sandbox keeps the
+// vm context alive after every JS reference to the sandbox is dropped. The
+// native ContextifyContext wrapper must stay alive with the context, otherwise
+// invoking the function triggers a use-after-free in the global proxy
+// interceptor. Runs in a subprocess so a regression surfaces as a crash.
+Deno.test("vm contextified sandbox survives detached function after gc", async () => {
+  const command = new Deno.Command(Deno.execPath(), {
+    args: [
+      "run",
+      "--quiet",
+      "--v8-flags=--expose-gc",
+      "tests/unit_node/testdata/vm_contextify_detached_gc.ts",
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const { code, stderr } = await command.output();
+  assertEquals(code, 0, new TextDecoder().decode(stderr));
+});
