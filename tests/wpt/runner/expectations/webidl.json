@@ -66,15 +66,15 @@
       "OwnPropertyKeys.html": false,
       "Set.html": {
         "expectedFailures": [
-          "must not set the property value when assigning to a numeric property on an object which implements an indexed property getter but not a setter when not in strict mode",
-          "must throw when assigning to a numeric property on an object which implements a indexed property getter but not a setter in strict mode",
-          "must allow assigning to a named property on an object which implements a named property getter but not a setter when not in strict mode",
           "must allow assigning to a named property on an object which implements a named property getter but not a setter in strict mode",
-          "must allow setting built-in property on a [LegacyOverrideBuiltIns] object even if a named property shadows it",
-          "must allow assigning to a symbol property on an object which implements an indexed property getter but not a setter when not in strict mode",
+          "must allow assigning to a named property on an object which implements a named property getter but not a setter when not in strict mode",
           "must allow assigning to a symbol property on an object which implements an indexed property getter but not a setter in strict mode",
+          "must allow assigning to a symbol property on an object which implements an indexed property getter but not a setter when not in strict mode",
+          "must allow assigning to a symbol property on an object which implements indexed and named property getters but no setters in strict mode",
           "must allow assigning to a symbol property on an object which implements indexed and named property getters but no setters when not in strict mode",
-          "must allow assigning to a symbol property on an object which implements indexed and named property getters but no setters in strict mode"
+          "must allow setting built-in property on a [LegacyOverrideBuiltIns] object even if a named property shadows it",
+          "must not set the property value when assigning to a numeric property on an object which implements an indexed property getter but not a setter when not in strict mode",
+          "must throw when assigning to a numeric property on an object which implements a indexed property getter but not a setter in strict mode"
         ]
       }
     },

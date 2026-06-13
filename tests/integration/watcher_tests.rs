@@ -164,7 +164,52 @@ where
 
 fn check_alive_then_kill(mut child: DenoChild) {
   assert!(child.try_wait().unwrap().is_none());
-  child.kill().unwrap();
+  // Kill the whole process tree, not just the watched process. A bare
+  // `child.kill()` only signals the direct child; any subprocess it spawned
+  // (e.g. a forked worker) outlives it and keeps the inherited stdout/stderr
+  // pipe open, so the test harness never sees EOF on those readers and hangs
+  // at shutdown until the CI job's hard timeout. Reaping after killing the
+  // tree closes the pipes and lets the harness exit.
+  let pid = child.id();
+  #[cfg(unix)]
+  {
+    let _ = std::process::Command::new("pkill")
+      .args(["-9", "-P", &pid.to_string()])
+      .output();
+  }
+  #[cfg(not(unix))]
+  {
+    let _ = std::process::Command::new("taskkill")
+      .args(["/F", "/T", "/PID", &pid.to_string()])
+      .output();
+  }
+  let _ = child.kill();
+  let _ = child.wait();
+}
+
+/// Run a compiled standalone binary and return its output, failing fast if it
+/// does not exit within 10 s. Uses tokio::process::Command with kill_on_drop
+/// so that when the timeout cancels the future the child is SIGKILLed
+/// immediately — preventing the old spawn_blocking thread from outliving the
+/// test and causing the test binary to hang at shutdown until the 30-minute
+/// CI hard timeout.
+async fn run_compiled(
+  exe: impl AsRef<std::path::Path>,
+) -> std::process::Output {
+  let exe = exe.as_ref().to_path_buf();
+  let child = tokio::process::Command::new(&exe)
+    .kill_on_drop(true)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .expect("failed to spawn compiled binary");
+  tokio::time::timeout(
+    std::time::Duration::from_secs(10),
+    child.wait_with_output(),
+  )
+  .await
+  .expect("compiled binary did not exit within 10 seconds")
+  .expect("failed to wait for compiled binary")
 }
 
 fn child_lines(
@@ -649,8 +694,13 @@ console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
   wait_for_watcher("message.ts", &mut stderr_lines).await;
   wait_contains("Compile finished", &mut stderr_lines).await;
 
-  let output = std::process::Command::new(&exe).output().unwrap();
-  assert!(output.status.success());
+  let output = run_compiled(&exe).await;
+  assert!(
+    output.status.success(),
+    "binary (run 1) failed: status={}\nstderr={}",
+    output.status,
+    String::from_utf8_lossy(&output.stderr)
+  );
   assert_contains!(String::from_utf8_lossy(&output.stdout), "before");
   assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
 
@@ -658,8 +708,13 @@ console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
   wait_contains("File change detected", &mut stderr_lines).await;
   wait_contains("Compile finished", &mut stderr_lines).await;
 
-  let output = std::process::Command::new(&exe).output().unwrap();
-  assert!(output.status.success());
+  let output = run_compiled(&exe).await;
+  assert!(
+    output.status.success(),
+    "binary (run 2) failed: status={}\nstderr={}",
+    output.status,
+    String::from_utf8_lossy(&output.stderr)
+  );
   assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
   assert_contains!(String::from_utf8_lossy(&output.stdout), "included before");
 
@@ -667,8 +722,13 @@ console.log(Deno.readTextFileSync(new URL("./data.txt", import.meta.url)));
   wait_contains("File change detected", &mut stderr_lines).await;
   wait_contains("Compile finished", &mut stderr_lines).await;
 
-  let output = std::process::Command::new(&exe).output().unwrap();
-  assert!(output.status.success());
+  let output = run_compiled(&exe).await;
+  assert!(
+    output.status.success(),
+    "binary (run 3) failed: status={}\nstderr={}",
+    output.status,
+    String::from_utf8_lossy(&output.stderr)
+  );
   assert_contains!(String::from_utf8_lossy(&output.stdout), "after");
   assert_contains!(String::from_utf8_lossy(&output.stdout), "included after");
 
@@ -2958,7 +3018,10 @@ console.log("Listening...")
   );
 
   wait_contains("Replaced changed module", &mut stderr_lines).await;
-  util::deno_cmd()
+  // Bind the fetch child to a local: DenoChild now reaps its process tree on
+  // drop, so a bare `spawn()` here would be killed before the request lands.
+  // Keeping it alive until the end of the test lets the fetch reach the server.
+  let _fetch = util::deno_cmd()
     .current_dir(t.path())
     .arg("eval")
     .arg("await fetch('http://localhost:11111');")

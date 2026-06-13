@@ -535,11 +535,8 @@ pub(crate) fn initialize_deno_core_ops_bindings<'s, 'i>(
   let op_ctxs = &op_ctxs[index..];
   for op_ctx in op_ctxs {
     let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
-    let mut op_fn = if will_snapshot && !op_ctx.decl.constructable {
-      op_ctx_plain_function(scope, op_ctx, constructor_behavior)
-    } else {
-      op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot)
-    };
+    let mut op_fn =
+      op_ctx_function(scope, op_ctx, constructor_behavior, will_snapshot);
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     // For async ops we need to set them up, by calling `Deno.core.setUpAsyncStub` -
@@ -577,6 +574,15 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
   op_method_decls: &[OpMethodDecl],
   methods_ctx_offset: usize,
 ) {
+  // Calling build_fast() after deserializing a snapshot that contains cppgc
+  // objects crashes (SIGABRT) on release linux-x86_64 with fat LTO due to a
+  // C++ static-initialization guard failure inside V8. When any extension
+  // registers cppgc class method ops (op_method_decls non-empty), skip the
+  // entire fast-call upgrade to avoid triggering the recursive GCInfo init.
+  if !op_method_decls.is_empty() {
+    return;
+  }
+
   let global = context.global(scope);
   let deno_obj = get(scope, global, DENO, "Deno");
   let deno_core_obj = get(scope, deno_obj, CORE, "Deno.core");
@@ -657,8 +663,8 @@ pub(crate) fn upgrade_snapshotted_ops_with_fast_calls<'s, 'i>(
       continue;
     }
 
-    let constructor_behavior = op_ctx_constructor_behavior(op_ctx);
-    let mut op_fn = op_ctx_function(scope, op_ctx, constructor_behavior, false);
+    let mut op_fn =
+      op_ctx_function(scope, op_ctx, v8::ConstructorBehavior::Allow, false);
     let key = op_ctx.decl.name_fast.v8_string(scope).unwrap();
 
     if op_ctx.decl.is_async {
@@ -849,35 +855,6 @@ fn op_ctx_function<'s, 'i>(
   let template =
     op_ctx_template(scope, op_ctx, constructor_behaviour, will_snapshot);
   let v8fn = template.get_function(scope).unwrap();
-  v8fn.set_name(v8name);
-  v8fn
-}
-
-fn op_ctx_plain_function<'s, 'i>(
-  scope: &mut v8::PinScope<'s, 'i>,
-  op_ctx: &OpCtx,
-  constructor_behaviour: v8::ConstructorBehavior,
-) -> v8::Local<'s, v8::Function> {
-  let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
-  let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
-  let slow_fn = if op_ctx.metrics_enabled() {
-    op_ctx.decl.slow_fn_with_metrics
-  } else {
-    op_ctx.decl.slow_fn
-  };
-
-  let v8fn = v8::Function::builder_raw(slow_fn)
-    .data(external.into())
-    .constructor_behavior(constructor_behaviour)
-    .side_effect_type(if op_ctx.decl.no_side_effects {
-      v8::SideEffectType::HasNoSideEffect
-    } else {
-      v8::SideEffectType::HasSideEffect
-    })
-    .length(op_ctx.decl.arg_count as i32)
-    .build(scope)
-    .unwrap();
-  let v8name = op_ctx.decl.name_fast.v8_string(scope).unwrap();
   v8fn.set_name(v8name);
   v8fn
 }

@@ -7,6 +7,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use deno_core::FastString;
 use deno_core::ModuleCodeBytes;
@@ -59,7 +60,17 @@ pub struct StandaloneData {
 pub fn extract_standalone(
   cli_args: Cow<[OsString]>,
 ) -> Result<StandaloneData, AnyError> {
-  let data = find_section()?;
+  extract_standalone_with_finder(cli_args, find_section)
+}
+
+/// Like `extract_standalone`, but allows providing a custom section finder.
+/// This is used by the desktop cdylib to search its own image rather than
+/// the main executable.
+pub fn extract_standalone_with_finder(
+  cli_args: Cow<[OsString]>,
+  section_finder: fn() -> Result<&'static [u8], AnyError>,
+) -> Result<StandaloneData, AnyError> {
+  let data = section_finder()?;
 
   // read metadata first to determine the root path
   let (mut metadata, remaining) = read_section_metadata(data)?;
@@ -379,6 +390,14 @@ fn find_section() -> Result<&'static [u8], AnyError> {
     return read_from_file_fallback();
   }
 
+  // On Linux, bypass dl_iterate_phdr (which can hang in some release-build
+  // environments) and read the PT_NOTE section directly from the ELF file.
+  // This also makes the read path independent of load-time virtual address
+  // layout, avoiding potential dlpi_addr arithmetic issues.
+  #[cfg(all(unix, not(target_vendor = "apple")))]
+  return read_section_from_elf_file();
+
+  #[cfg(not(all(unix, not(target_vendor = "apple"))))]
   match libsui::find_section("d3n0l4nd")
     .context("Failed reading standalone binary section.")
   {
@@ -393,6 +412,176 @@ fn find_section() -> Result<&'static [u8], AnyError> {
       Err(err)
     }
   }
+}
+
+/// On Linux, read the `d3n0l4nd` section directly from the ELF file
+/// (`/proc/self/exe`) instead of via `dl_iterate_phdr`. This avoids a class
+/// of release-build hangs where the in-memory PT_NOTE walk stalls.
+#[cfg(all(unix, not(target_vendor = "apple")))]
+fn read_section_from_elf_file() -> Result<&'static [u8], AnyError> {
+  use std::io::Read;
+  use std::io::Seek;
+  use std::io::SeekFrom;
+
+  // /proc/self/exe is the canonical path to the running executable on Linux
+  // and works even when argv[0] has been modified or is a relative path.
+  let mut file = match std::fs::File::open("/proc/self/exe") {
+    Ok(f) => f,
+    Err(_) => {
+      let exe = std::env::current_exe()?;
+      std::fs::File::open(exe)?
+    }
+  };
+
+  // Read the 64-byte ELF64 file header.
+  let mut ehdr = [0u8; 64];
+  file.read_exact(&mut ehdr).context("reading ELF header")?;
+  if &ehdr[0..4] != b"\x7fELF" {
+    bail!("standalone binary is not an ELF file");
+  }
+  // EI_CLASS == ELFCLASS64 (2)
+  if ehdr[4] != 2 {
+    bail!("standalone binary is not ELF64");
+  }
+  // EI_DATA == ELFDATA2LSB (1) – little-endian; we only handle LE here since
+  // all supported Linux targets (x86_64, aarch64, riscv64) are little-endian.
+  if ehdr[5] != 1 {
+    bail!("standalone binary is big-endian ELF; unsupported");
+  }
+
+  // e_phoff at offset 32 (8 bytes, LE), e_phentsize at 54 (2 bytes), e_phnum at 56 (2 bytes).
+  let e_phoff = u64::from_le_bytes(ehdr[32..40].try_into().unwrap()) as usize;
+  let e_phentsize =
+    u16::from_le_bytes(ehdr[54..56].try_into().unwrap()) as usize;
+  let e_phnum = u16::from_le_bytes(ehdr[56..58].try_into().unwrap()) as usize;
+
+  if e_phentsize < 56 || e_phnum == 0 {
+    bail!("ELF has no usable program headers");
+  }
+
+  // Read all program headers.
+  let phdrs_len = e_phentsize
+    .checked_mul(e_phnum)
+    .context("PHDR table too large")?;
+  file
+    .seek(SeekFrom::Start(e_phoff as u64))
+    .context("seeking to PHDR table")?;
+  let mut phdrs = vec![0u8; phdrs_len];
+  file.read_exact(&mut phdrs).context("reading PHDR table")?;
+
+  const PT_NOTE: u32 = 4;
+
+  for i in 0..e_phnum {
+    let ph = &phdrs[i * e_phentsize..];
+    let p_type = u32::from_le_bytes(ph[0..4].try_into().unwrap());
+    if p_type != PT_NOTE {
+      continue;
+    }
+    // In Elf64_Phdr: p_offset at 8, p_filesz at 32.
+    let p_offset = u64::from_le_bytes(ph[8..16].try_into().unwrap());
+    let p_filesz = u64::from_le_bytes(ph[32..40].try_into().unwrap()) as usize;
+
+    if p_filesz == 0 {
+      continue;
+    }
+
+    file
+      .seek(SeekFrom::Start(p_offset))
+      .context("seeking to PT_NOTE data")?;
+    let mut note_data = vec![0u8; p_filesz];
+    file
+      .read_exact(&mut note_data)
+      .context("reading PT_NOTE data")?;
+
+    // Note entries within a PT_NOTE segment use 4-byte alignment on Linux
+    // (ELF SysV ABI / Linux convention) regardless of the segment's p_align
+    // field (which describes the segment's load alignment, not internal note
+    // alignment).
+    if let Some(section_bytes) =
+      find_in_elf_note_data(&note_data, 4, b"d3n0l4nd")
+    {
+      // Leak the allocation so we can return &'static [u8]. This is safe
+      // because standalone binaries read the section data exactly once and
+      // use it for the entire process lifetime.
+      return Ok(Box::leak(section_bytes.to_vec().into_boxed_slice()));
+    }
+  }
+
+  bail!("Could not find standalone binary section in ELF file.")
+}
+
+/// Walk through ELF notes in `segment`, looking for a libsui-embedded
+/// section named `section_name`.  Returns a slice into `segment` that
+/// contains the section payload, or `None` if not found.
+///
+/// Note format (4-byte LE fields):
+///   namesz | descsz | type | name[namesz] pad4 | desc[descsz] pad4
+///
+/// libsui note: name = "SUI\0", type = 0x5355_4901,
+///   desc = u16-LE section_name_len | section_name | payload
+#[cfg(all(unix, not(target_vendor = "apple")))]
+fn find_in_elf_note_data<'a>(
+  segment: &'a [u8],
+  align: usize,
+  section_name: &[u8],
+) -> Option<&'a [u8]> {
+  const SUI_NOTE_TYPE: u32 = 0x5355_4901;
+
+  let align = align.max(4);
+  let mut pos = 0usize;
+  while pos + 12 <= segment.len() {
+    let namesz =
+      u32::from_le_bytes(segment[pos..pos + 4].try_into().ok()?) as usize;
+    let descsz =
+      u32::from_le_bytes(segment[pos + 4..pos + 8].try_into().ok()?) as usize;
+    let note_type =
+      u32::from_le_bytes(segment[pos + 8..pos + 12].try_into().ok()?);
+    pos += 12;
+
+    if pos + namesz > segment.len() {
+      break;
+    }
+    let raw_name = &segment[pos..pos + namesz];
+    // Strip trailing null bytes to get the bare name.
+    let name_end = raw_name
+      .iter()
+      .rposition(|&b| b != 0)
+      .map(|i| i + 1)
+      .unwrap_or(0);
+    let note_name = &raw_name[..name_end];
+    pos = elf_align_up(pos + namesz, align);
+
+    if pos + descsz > segment.len() {
+      break;
+    }
+    let desc = &segment[pos..pos + descsz];
+    pos = elf_align_up(pos + descsz, align);
+
+    if note_name != b"SUI" || note_type != SUI_NOTE_TYPE {
+      continue;
+    }
+    // desc layout: u16-LE name_len | name_bytes | payload
+    if desc.len() < 2 {
+      continue;
+    }
+    let inner_len = u16::from_le_bytes(desc[0..2].try_into().ok()?) as usize;
+    if desc.len() < 2 + inner_len {
+      continue;
+    }
+    if &desc[2..2 + inner_len] == section_name {
+      return Some(&desc[2 + inner_len..]);
+    }
+  }
+  None
+}
+
+#[cfg(all(unix, not(target_vendor = "apple")))]
+#[inline]
+fn elf_align_up(pos: usize, align: usize) -> usize {
+  if align <= 1 {
+    return pos;
+  }
+  (pos + align - 1) & !(align - 1)
 }
 
 /// This is a temporary hacky fallback until we can find
@@ -690,6 +879,12 @@ impl StandaloneModules {
 /// TypeScript that it builds or discovers while running. `deno_ast` is already
 /// linked into the binary via `ext/node`, so transpiling here adds no extra
 /// binary size.
+///
+/// JSX configuration (`jsx`, `jsxImportSource`, `jsxFactory`, etc.) is
+/// discovered by walking up from the source file to find the user's
+/// `deno.json` / `deno.jsonc` once and caching the result. Without this,
+/// every `.tsx` from a Preact-based project would be emitted as
+/// `React.createElement(...)` and fail at runtime with `React is not defined`.
 pub(crate) fn transpile_runtime_module(
   specifier: &Url,
   media_type: MediaType,
@@ -714,12 +909,10 @@ pub(crate) fn transpile_runtime_module(
     maybe_syntax: None,
   })
   .map_err(JsErrorBox::from_err)?;
+  let opts = runtime_transpile_options(specifier);
   let transpiled = parsed
     .transpile(
-      &deno_ast::TranspileOptions {
-        imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
-        ..Default::default()
-      },
+      opts,
       &deno_ast::TranspileModuleOptions { module_kind: None },
       &deno_ast::EmitOptions {
         source_map: deno_ast::SourceMapOption::Inline,
@@ -728,6 +921,132 @@ pub(crate) fn transpile_runtime_module(
     )
     .map_err(JsErrorBox::from_err)?;
   Ok(transpiled.into_source().text)
+}
+
+/// Resolved JSX/decorator options for runtime transpiles, discovered lazily
+/// from the user's project `deno.json[c]` and cached for the lifetime of the
+/// process.
+static RUNTIME_TRANSPILE_OPTIONS: OnceLock<deno_ast::TranspileOptions> =
+  OnceLock::new();
+
+/// Walk up from `specifier`'s parent directory looking for `deno.json` or
+/// `deno.jsonc`, parse `compilerOptions.jsx` + related, and return a matching
+/// `TranspileOptions`. Falls back to defaults (with `ImportsNotUsedAsValues::Remove`)
+/// if no config is found or parsing fails — those are non-fatal here.
+fn runtime_transpile_options(
+  specifier: &Url,
+) -> &'static deno_ast::TranspileOptions {
+  RUNTIME_TRANSPILE_OPTIONS.get_or_init(|| {
+    let fallback = deno_ast::TranspileOptions {
+      imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+      ..Default::default()
+    };
+    let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
+      return fallback;
+    };
+    let Some(mut dir) = path.parent().map(|p| p.to_path_buf()) else {
+      return fallback;
+    };
+    let cfg_path = 'outer: loop {
+      for name in ["deno.json", "deno.jsonc"] {
+        let candidate = dir.join(name);
+        if candidate.exists() {
+          break 'outer Some(candidate);
+        }
+      }
+      if !dir.pop() {
+        break 'outer None;
+      }
+    };
+    let Some(cfg_path) = cfg_path else {
+      return fallback;
+    };
+    let Ok(text) = std::fs::read_to_string(&cfg_path) else {
+      return fallback;
+    };
+    let Some(json) =
+      jsonc_parser::parse_to_serde_value(&text, &Default::default())
+        .ok()
+        .flatten()
+    else {
+      return fallback;
+    };
+    let json: &serde_json::Value = &json;
+    transpile_options_from_compiler_options(
+      json.get("compilerOptions"),
+      &fallback,
+    )
+  })
+}
+
+/// Lower the relevant subset of `compilerOptions` (the same one
+/// `cli/tools/pack/mod.rs::create_transpile_options` handles) into
+/// `TranspileOptions`. Anything missing falls back to `fallback`.
+fn transpile_options_from_compiler_options(
+  compiler_options: Option<&serde_json::Value>,
+  fallback: &deno_ast::TranspileOptions,
+) -> deno_ast::TranspileOptions {
+  let get_str = |key: &str| -> Option<String> {
+    compiler_options?.get(key)?.as_str().map(|s| s.to_string())
+  };
+  let get_bool = |key: &str| -> bool {
+    compiler_options
+      .and_then(|opts| opts.get(key))
+      .and_then(|v| v.as_bool())
+      .unwrap_or(false)
+  };
+  let jsx = get_str("jsx");
+  let jsx_import_source = get_str("jsxImportSource");
+  let jsx_factory = get_str("jsxFactory");
+  let jsx_fragment_factory = get_str("jsxFragmentFactory");
+  let jsx_runtime = match jsx.as_deref() {
+    Some("react") => {
+      Some(deno_ast::JsxRuntime::Classic(deno_ast::JsxClassicOptions {
+        factory: jsx_factory
+          .unwrap_or_else(|| "React.createElement".to_string()),
+        fragment_factory: jsx_fragment_factory
+          .unwrap_or_else(|| "React.Fragment".to_string()),
+      }))
+    }
+    Some("react-jsx") => Some(deno_ast::JsxRuntime::Automatic(
+      deno_ast::JsxAutomaticOptions {
+        development: false,
+        import_source: jsx_import_source,
+      },
+    )),
+    Some("react-jsxdev") => Some(deno_ast::JsxRuntime::Automatic(
+      deno_ast::JsxAutomaticOptions {
+        development: true,
+        import_source: jsx_import_source,
+      },
+    )),
+    Some("precompile") => Some(deno_ast::JsxRuntime::Precompile(
+      deno_ast::JsxPrecompileOptions {
+        automatic: deno_ast::JsxAutomaticOptions {
+          development: false,
+          import_source: jsx_import_source,
+        },
+        skip_elements: None,
+        dynamic_props: None,
+      },
+    )),
+    _ => fallback.jsx.clone(),
+  };
+  let experimental_decorators = get_bool("experimentalDecorators");
+  let emit_decorator_metadata = get_bool("emitDecoratorMetadata");
+  deno_ast::TranspileOptions {
+    jsx: jsx_runtime,
+    decorators: if experimental_decorators {
+      deno_ast::DecoratorsTranspileOption::LegacyTypeScript {
+        emit_metadata: emit_decorator_metadata,
+      }
+    } else {
+      deno_ast::DecoratorsTranspileOption::Ecma
+    },
+    imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+    var_decl_imports: false,
+    verbatim_module_syntax: false,
+  }
 }
 
 pub struct DenoCompileModuleData<'a> {

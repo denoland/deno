@@ -36,6 +36,10 @@ class StdoutReader {
 const command = new Deno.Command(Deno.execPath(), {
   args: ["task", "listener"],
   stdout: "piped",
+  // Pipe stderr (not inherit) so the grandchild process (deno run listener.ts)
+  // cannot hold the test-harness stderr pipe open and cause a hang when the
+  // child (deno task listener) is killed but the grandchild survives.
+  stderr: "null",
 });
 
 const child = command.spawn();

@@ -29,8 +29,8 @@
       "Blob-url.html": true,
       "Worker-constructor.html": {
         "expectedFailures": [
-          "Test worker creation with no arguments",
-          "Test invalid script URL."
+          "Test invalid script URL.",
+          "Test worker creation with no arguments"
         ]
       },
       "ctor-1.html": true,
@@ -68,9 +68,9 @@
   },
   "dedicated-worker-in-data-url-context.window.html": {
     "expectedFailures": [
-      "Create a dedicated worker in a data url frame",
+      "Create a data url dedicated worker in a data url frame",
       "Create a dedicated worker in a data url dedicated worker",
-      "Create a data url dedicated worker in a data url frame"
+      "Create a dedicated worker in a data url frame"
     ]
   },
   "examples": {
@@ -236,45 +236,45 @@
     },
     "dedicated-worker-import-failure.html": {
       "expectedFailures": [
-        "Worker construction for an invalid URL should throw an exception.",
-        "importScripts() on module worker should throw an exception.",
-        "Worker construction for non-existent script should dispatch an ErrorEvent.",
+        "Dynamic import for non-existent script should throw an exception.",
         "Static import for non-existent script should dispatch an ErrorEvent.",
-        "Dynamic import for non-existent script should throw an exception."
+        "Worker construction for an invalid URL should throw an exception.",
+        "Worker construction for non-existent script should dispatch an ErrorEvent.",
+        "importScripts() on module worker should throw an exception."
       ]
     },
     "dedicated-worker-import-meta.html": false,
     "dedicated-worker-import-referrer.html": false,
     "dedicated-worker-options-credentials.html": {
       "expectedFailures": [
-        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials",
-        "new Worker() with type=module and credentials=omit should not send the credentials",
-        "new Worker() with type=module and credentials=same-origin should send the credentials",
-        "new Worker() with type=module and credentials=include should send the credentials",
-        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin static imports",
-        "new Worker() with type=module and credentials=omit should not send the credentials for same-origin static imports",
-        "new Worker() with type=module and credentials=same-origin should send the credentials for same-origin static imports",
-        "new Worker() with type=module and credentials=include should send the credentials for same-origin static imports",
-        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin static imports",
-        "new Worker() with type-module credentials=omit should not send the credentials for cross-origin static imports",
-        "new Worker() with type=module and credentials=same-origin should not send the credentials for cross-origin static imports",
-        "new Worker() with type=module and credentials=include should send the credentials for cross-origin static imports",
-        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin dynamic imports",
-        "new Worker() with type=module and credentials=omit should not send the credentials for same-origin dynamic imports",
-        "new Worker() with type=module and credentials=same-origin should send the credentials for same-origin dynamic imports",
-        "new Worker() with type=module and credentials=include should send the credentials for same-origin dynamic imports",
-        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin dynamic imports",
         "new Worker() with type-module credentials=omit should not send the credentials for cross-origin dynamic imports",
-        "new Worker() with type=module and credentials=same-origin should not send the credentials for cross-origin dynamic imports",
-        "new Worker() with type=module and credentials=include should send the credentials for cross-origin dynamic imports",
-        "new Worker() with type=classic should always send the credentials regardless of the credentials option (default).",
-        "new Worker() with type=classic should always send the credentials regardless of the credentials option (omit).",
-        "new Worker() with type=classic should always send the credentials regardless of the credentials option (same-origin).",
-        "new Worker() with type=classic should always send the credentials regardless of the credentials option (include).",
+        "new Worker() with type-module credentials=omit should not send the credentials for cross-origin static imports",
         "new Worker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (default).",
+        "new Worker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (include).",
         "new Worker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (omit).",
         "new Worker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (same-origin).",
-        "new Worker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (include)."
+        "new Worker() with type=classic should always send the credentials regardless of the credentials option (default).",
+        "new Worker() with type=classic should always send the credentials regardless of the credentials option (include).",
+        "new Worker() with type=classic should always send the credentials regardless of the credentials option (omit).",
+        "new Worker() with type=classic should always send the credentials regardless of the credentials option (same-origin).",
+        "new Worker() with type=module and credentials=include should send the credentials",
+        "new Worker() with type=module and credentials=include should send the credentials for cross-origin dynamic imports",
+        "new Worker() with type=module and credentials=include should send the credentials for cross-origin static imports",
+        "new Worker() with type=module and credentials=include should send the credentials for same-origin dynamic imports",
+        "new Worker() with type=module and credentials=include should send the credentials for same-origin static imports",
+        "new Worker() with type=module and credentials=omit should not send the credentials",
+        "new Worker() with type=module and credentials=omit should not send the credentials for same-origin dynamic imports",
+        "new Worker() with type=module and credentials=omit should not send the credentials for same-origin static imports",
+        "new Worker() with type=module and credentials=same-origin should not send the credentials for cross-origin dynamic imports",
+        "new Worker() with type=module and credentials=same-origin should not send the credentials for cross-origin static imports",
+        "new Worker() with type=module and credentials=same-origin should send the credentials",
+        "new Worker() with type=module and credentials=same-origin should send the credentials for same-origin dynamic imports",
+        "new Worker() with type=module and credentials=same-origin should send the credentials for same-origin static imports",
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin dynamic imports",
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin static imports",
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials",
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin dynamic imports",
+        "new Worker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin static imports"
       ]
     },
     "dedicated-worker-options-type.html": {
@@ -290,38 +290,38 @@
     "shared-worker-import-referrer.html": false,
     "shared-worker-options-credentials.html": {
       "expectedFailures": [
-        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials",
-        "new SharedWorker() with type=module and credentials=omit should not send the credentials",
-        "new SharedWorker() with type=module and credentials=same-origin should send the credentials",
-        "new SharedWorker() with type=module and credentials=include should send the credentials",
-        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin static imports",
-        "new SharedWorker() with type=module and credentials=omit should not send the credentials for same-origin static imports",
-        "new SharedWorker() with type=module and credentials=same-origin should send the credentials for same-origin static imports",
-        "new SharedWorker() with type=module and credentials=include should send the credentials for same-origin static imports",
-        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin static imports",
-        "new SharedWorker() with type=module and credentials=omit should not send the credentials for cross-origin static imports",
-        "new SharedWorker() with type=module and credentials=same-origin should not send the credentials for cross-origin static imports",
-        "new SharedWorker() with type=module and credentials=include should send the credentials for cross-origin static imports",
-        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin dynamic imports",
-        "new SharedWorker() with type=module and credentials=omit should not send the credentials for same-origin dynamic imports",
-        "new SharedWorker() with type=module and credentials=same-origin should send the credentials for same-origin dynamic imports",
-        "new SharedWorker() with type=module and credentials=include should send the credentials for same-origin dynamic imports",
-        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin dynamic imports",
-        "new SharedWorker() with type=module and credentials=omit should not send the credentials for cross-origin dynamic imports",
-        "new SharedWorker() with type=module and credentials=same-origin should not send the credentials for cross-origin dynamic imports",
-        "new SharedWorker() with type=module and credentials=include should send the credentials for cross-origin dynamic imports",
-        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (default).",
-        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (omit).",
-        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (same-origin).",
-        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (include).",
         "new SharedWorker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (default).",
+        "new SharedWorker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (include).",
         "new SharedWorker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (omit).",
         "new SharedWorker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (same-origin).",
-        "new SharedWorker() with type=classic should always send the credentials for same-origin dynamic imports regardless of the credentials option (include).",
+        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (default).",
+        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (include).",
+        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (omit).",
+        "new SharedWorker() with type=classic should always send the credentials regardless of the credentials option (same-origin).",
         "new SharedWorker() with type=classic should never send the credentials for cross-origin dynamic imports regardless of the credentials option (default).",
+        "new SharedWorker() with type=classic should never send the credentials for cross-origin dynamic imports regardless of the credentials option (include).",
         "new SharedWorker() with type=classic should never send the credentials for cross-origin dynamic imports regardless of the credentials option (omit).",
         "new SharedWorker() with type=classic should never send the credentials for cross-origin dynamic imports regardless of the credentials option (same-origin).",
-        "new SharedWorker() with type=classic should never send the credentials for cross-origin dynamic imports regardless of the credentials option (include)."
+        "new SharedWorker() with type=module and credentials=include should send the credentials",
+        "new SharedWorker() with type=module and credentials=include should send the credentials for cross-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=include should send the credentials for cross-origin static imports",
+        "new SharedWorker() with type=module and credentials=include should send the credentials for same-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=include should send the credentials for same-origin static imports",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials for cross-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials for cross-origin static imports",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials for same-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=omit should not send the credentials for same-origin static imports",
+        "new SharedWorker() with type=module and credentials=same-origin should not send the credentials for cross-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=same-origin should not send the credentials for cross-origin static imports",
+        "new SharedWorker() with type=module and credentials=same-origin should send the credentials",
+        "new SharedWorker() with type=module and credentials=same-origin should send the credentials for same-origin dynamic imports",
+        "new SharedWorker() with type=module and credentials=same-origin should send the credentials for same-origin static imports",
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin dynamic imports",
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and not send the credentials for cross-origin static imports",
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials",
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin dynamic imports",
+        "new SharedWorker() with type=module and default credentials option should behave as credentials=same-origin and send the credentials for same-origin static imports"
       ]
     },
     "shared-worker-options-type.html": false,
@@ -344,24 +344,24 @@
         "expectedFailures": [
           "The CanvasGradient interface object should be exposed.",
           "The CanvasPattern interface object should be exposed.",
-          "The TextMetrics interface object should be exposed.",
-          "The Path2D interface object should be exposed.",
-          "The XMLHttpRequestEventTarget interface object should be exposed.",
-          "The XMLHttpRequestUpload interface object should be exposed.",
-          "The XMLHttpRequest interface object should be exposed.",
           "The FileList interface object should be exposed.",
           "The FileReaderSync interface object should be exposed.",
-          "The IDBRequest interface object should be exposed.",
-          "The IDBOpenDBRequest interface object should be exposed.",
-          "The IDBVersionChangeEvent interface object should be exposed.",
-          "The IDBFactory interface object should be exposed.",
-          "The IDBDatabase interface object should be exposed.",
-          "The IDBObjectStore interface object should be exposed.",
-          "The IDBIndex interface object should be exposed.",
-          "The IDBKeyRange interface object should be exposed.",
           "The IDBCursor interface object should be exposed.",
           "The IDBCursorWithValue interface object should be exposed.",
-          "The IDBTransaction interface object should be exposed."
+          "The IDBDatabase interface object should be exposed.",
+          "The IDBFactory interface object should be exposed.",
+          "The IDBIndex interface object should be exposed.",
+          "The IDBKeyRange interface object should be exposed.",
+          "The IDBObjectStore interface object should be exposed.",
+          "The IDBOpenDBRequest interface object should be exposed.",
+          "The IDBRequest interface object should be exposed.",
+          "The IDBTransaction interface object should be exposed.",
+          "The IDBVersionChangeEvent interface object should be exposed.",
+          "The Path2D interface object should be exposed.",
+          "The TextMetrics interface object should be exposed.",
+          "The XMLHttpRequest interface object should be exposed.",
+          "The XMLHttpRequestEventTarget interface object should be exposed.",
+          "The XMLHttpRequestUpload interface object should be exposed."
         ]
       },
       "002.worker.html": true
@@ -425,8 +425,8 @@
   },
   "importscripts_mime_local.any.worker.html": {
     "expectedFailures": [
-      "importScripts() requires scripty MIME types for data: URLs: text/ecmascript is allowed.",
-      "importScripts() requires scripty MIME types for blob: URLs: text/ecmascript is allowed."
+      "importScripts() requires scripty MIME types for blob: URLs: text/ecmascript is allowed.",
+      "importScripts() requires scripty MIME types for data: URLs: text/ecmascript is allowed."
     ]
   },
   "SharedWorker-constructor.html": false,
@@ -451,9 +451,9 @@
   "Worker-structure-message.html": true,
   "Worker-terminate-forever-during-evaluation.html": {
     "expectedFailures": [
-      "Worker is terminated during top-level script evaluation (module)",
       "Worker is terminated during dynamic import() (module)",
-      "Worker is terminated during top-level await"
+      "Worker is terminated during top-level await",
+      "Worker is terminated during top-level script evaluation (module)"
     ]
   },
   "Worker-terminate-forever.html": true,

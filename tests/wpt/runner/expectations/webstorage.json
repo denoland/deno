@@ -20,18 +20,18 @@
   "storage_set_value_enumerate.window.html": true,
   "storage_setitem.window.html": {
     "expectedFailures": [
+      "localStorage[] = \"a\udf4d\"",
       "localStorage[] = \"\ud800\"",
+      "localStorage[] = \"\ud83ca\"",
       "localStorage[] = \"\udbff\"",
       "localStorage[] = \"\udc00\"",
       "localStorage[] = \"\udfff\"",
-      "localStorage[] = \"\ud83ca\"",
-      "localStorage[] = \"a\udf4d\"",
+      "sessionStorage[] = \"a\udf4d\"",
       "sessionStorage[] = \"\ud800\"",
+      "sessionStorage[] = \"\ud83ca\"",
       "sessionStorage[] = \"\udbff\"",
       "sessionStorage[] = \"\udc00\"",
-      "sessionStorage[] = \"\udfff\"",
-      "sessionStorage[] = \"\ud83ca\"",
-      "sessionStorage[] = \"a\udf4d\""
+      "sessionStorage[] = \"\udfff\""
     ]
   },
   "storage_string_conversion.window.html": true,
