@@ -24,6 +24,27 @@
           "output": "hello from node -e object\n"
         }
       ]
+    },
+    "node_eval_postinstall_via_install_without_node_binary": {
+      "steps": [
+        {
+          "envs": {
+            "PATH": ""
+          },
+          "args": "install --allow-scripts",
+          "output": "cache.out"
+        },
+        {
+          // Mirrors the user-reported `deno i --allow-scripts` path: the npm
+          // postinstall `node -e` script wrote this file without a real `node`
+          // binary on PATH.
+          "args": [
+            "eval",
+            "console.log(Deno.readTextFileSync('./node_eval_ran.txt'))"
+          ],
+          "output": "hello from node -e object\n"
+        }
+      ]
     }
   }
 }
