@@ -8,6 +8,7 @@ mod console;
 mod css_value;
 mod f64;
 mod geometry;
+mod image_data;
 mod message_port;
 mod stream_resource;
 mod timers;
@@ -36,6 +37,7 @@ pub use stream_resource::StreamResourceError;
 pub use crate::blob::Blob;
 pub use crate::blob::BlobPart;
 pub use crate::blob::BlobStore;
+pub use crate::blob::BlobStoreTrait;
 pub use crate::blob::InMemoryBlobPart;
 use crate::blob::op_blob_clone_part;
 use crate::blob::op_blob_create_object_url;
@@ -74,9 +76,11 @@ deno_core::extension!(deno_web,
     op_encoding_normalize_label,
     op_encoding_decode_single,
     op_encoding_decode_utf8,
+    op_encoding_decode_utf8_ascii_only,
     op_encoding_new_decoder,
     op_encoding_decode,
     op_encoding_encode_into,
+    op_encoding_encode_into_fallback,
     op_blob_create_part,
     op_blob_slice_part,
     op_blob_read_part,
@@ -118,6 +122,9 @@ deno_core::extension!(deno_web,
     console::op_preview_entries,
     broadcast_channel::op_broadcast_subscribe,
     broadcast_channel::op_broadcast_unsubscribe,
+    broadcast_channel::op_broadcast_serialize,
+    broadcast_channel::op_broadcast_deserialize,
+    broadcast_channel::op_broadcast_free,
     broadcast_channel::op_broadcast_send,
     broadcast_channel::op_broadcast_recv,
   ],
@@ -129,9 +136,9 @@ deno_core::extension!(deno_web,
     geometry::DOMQuad,
     geometry::DOMMatrixReadOnly,
     geometry::DOMMatrix,
+    image_data::ImageData,
   ],
   lazy_loaded_esm = [
-    "geometry.js",
     "webtransport.js",
   ],
   lazy_loaded_js = [
@@ -157,9 +164,10 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
     "16_image_data.js",
+    "17_geometry.js",
   ],
   options = {
-    blob_store: Arc<BlobStore>,
+    blob_store: Arc<dyn BlobStoreTrait>,
     maybe_location: Option<Url>,
     enable_css_parser_features: bool,
     bc: InMemoryBroadcastChannel,
@@ -172,6 +180,7 @@ deno_core::extension!(deno_web,
     state.put(StartTime::default());
     state.put(geometry::State::new(options.enable_css_parser_features));
     state.put(options.bc);
+    state.put(broadcast_channel::BroadcastSabStash::default());
   }
 );
 
@@ -514,6 +523,25 @@ fn op_encoding_normalize_label(
   Ok(encoding.name().to_lowercase())
 }
 
+// Streaming-mode fast path for UTF-8 decoding: returns a V8 string when the
+// input is pure ASCII, and `null` otherwise. Pure ASCII can never split a
+// codepoint at a chunk boundary, so a streaming `TextDecoder` whose internal
+// state is idle can decode an ASCII chunk without touching its incremental
+// decoder at all. Used by `TextDecoder.decode(chunk, { stream: true })` in
+// `08_text_encoding.js` to skip the `Vec<u16>` allocation and UTF-16
+// conversion of the encoding_rs path while keeping the decoder idle for the
+// next ASCII chunk.
+#[op2]
+fn op_encoding_decode_utf8_ascii_only<'a>(
+  scope: &mut v8::PinScope<'a, '_>,
+  #[anybuffer] zero_copy: &[u8],
+) -> Option<v8::Local<'a, v8::String>> {
+  if !v8::simdutf::validate_ascii(zero_copy) {
+    return None;
+  }
+  v8::String::new_from_one_byte(scope, zero_copy, v8::NewStringType::Normal)
+}
+
 #[op2]
 fn op_encoding_decode_utf8<'a>(
   scope: &mut v8::PinScope<'a, '_>,
@@ -682,8 +710,46 @@ unsafe impl deno_core::GarbageCollected for TextDecoderResource {
   }
 }
 
+const ENCODE_INTO_PACKED_SENTINEL: f64 = -1.0;
+const ENCODE_INTO_MAX_PACKED_READ: usize = (1 << 21) - 1;
+const ENCODE_INTO_PACKED_MULTIPLIER: f64 = (1u64 << 32) as f64;
+
+#[inline]
+fn pack_encode_into_result(read: usize, written: usize) -> f64 {
+  debug_assert!(read <= ENCODE_INTO_MAX_PACKED_READ);
+  debug_assert!(written <= u32::MAX as usize);
+  (read as f64) * ENCODE_INTO_PACKED_MULTIPLIER + written as f64
+}
+
 #[op2(fast(op_encoding_encode_into_fast))]
 fn op_encoding_encode_into(
+  scope: &mut v8::PinScope<'_, '_>,
+  input: v8::Local<v8::Value>,
+  #[buffer] buffer: &mut [u8],
+) -> Result<f64, WebError> {
+  let s = v8::Local::<v8::String>::try_from(input)?;
+
+  if s.length() > ENCODE_INTO_MAX_PACKED_READ
+    && buffer.len() > ENCODE_INTO_MAX_PACKED_READ
+  {
+    return Ok(ENCODE_INTO_PACKED_SENTINEL);
+  }
+
+  let mut nchars = 0;
+  let len = s.write_utf8_v2(
+    scope,
+    buffer,
+    v8::WriteFlags::kReplaceInvalidUtf8,
+    Some(&mut nchars),
+  );
+
+  debug_assert!(nchars <= ENCODE_INTO_MAX_PACKED_READ);
+  debug_assert!(len <= u32::MAX as usize);
+  Ok(pack_encode_into_result(nchars, len))
+}
+
+#[op2(fast)]
+fn op_encoding_encode_into_fallback(
   scope: &mut v8::PinScope<'_, '_>,
   input: v8::Local<v8::Value>,
   #[buffer] buffer: &mut [u8],
@@ -707,8 +773,7 @@ fn op_encoding_encode_into(
 fn op_encoding_encode_into_fast(
   #[string] input: Cow<'_, str>,
   #[buffer] buffer: &mut [u8],
-  #[buffer] out_buf: &mut [u32],
-) {
+) -> f64 {
   // Since `input` is already UTF-8, we can simply find the last UTF-8 code
   // point boundary from input that fits in `buffer`, and copy the bytes up to
   // that point.
@@ -730,16 +795,21 @@ fn op_encoding_encode_into_fast(
     boundary
   };
 
-  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
-
   // The `read` output parameter is measured in UTF-16 code units.
-  out_buf[0] = match input {
+  let read = match input {
     // Borrowed Cow strings are zero-copy views into the V8 heap.
     // Thus, they are guarantee to be SeqOneByteString.
-    Cow::Borrowed(v) => v[..boundary].len() as u32,
-    Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
+    Cow::Borrowed(v) => v[..boundary].len(),
+    Cow::Owned(ref v) => v[..boundary].encode_utf16().count(),
   };
-  out_buf[1] = boundary as u32;
+
+  if read > ENCODE_INTO_MAX_PACKED_READ || boundary > u32::MAX as usize {
+    return ENCODE_INTO_PACKED_SENTINEL;
+  }
+
+  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
+
+  pack_encode_into_result(read, boundary)
 }
 
 pub struct Location(pub Url);

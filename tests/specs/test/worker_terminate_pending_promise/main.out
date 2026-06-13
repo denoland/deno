@@ -1,0 +1,15 @@
+running 1 test from ./main.ts
+pending promise waits for worker termination ... FAILED ([WILDCARD])
+
+ ERRORS 
+
+pending promise waits for worker termination => ./main.ts:1:6
+error: Promise resolution is still pending but the event loop has already resolved.
+
+ FAILURES 
+
+pending promise waits for worker termination => ./main.ts:1:6
+
+FAILED | 0 passed | 1 failed ([WILDCARD])
+
+error: Test failed

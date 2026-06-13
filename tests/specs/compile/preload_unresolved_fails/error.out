@@ -1,0 +1,2 @@
+error: Module not found "[WILDCARD]does-not-exist.ts".
+    at [WILDCARD]preload.ts:[WILDCARD]

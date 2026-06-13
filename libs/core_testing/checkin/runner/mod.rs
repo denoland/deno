@@ -16,7 +16,6 @@ use deno_core::Extension;
 use deno_core::JsRuntime;
 use deno_core::RuntimeOptions;
 
-use self::ops_loader::LoaderHookRegistry;
 use self::ops_worker::WorkerCloseWatcher;
 use self::ops_worker::WorkerHostSide;
 use self::ops_worker::worker_create;
@@ -28,7 +27,6 @@ mod ops_async;
 mod ops_buffer;
 mod ops_error;
 mod ops_io;
-mod ops_loader;
 mod ops_worker;
 pub mod snapshot;
 #[cfg(test)]
@@ -117,10 +115,8 @@ pub fn create_runtime_from_snapshot_with_options(
 
   let mut extensions = vec![extensions::checkin_runtime::init::<()>()];
   extensions.extend(additional_extensions);
-  let hook_registry = LoaderHookRegistry::default();
-  let module_loader = Rc::new(ts_module_loader::TypescriptModuleLoader::new(
-    hook_registry.clone(),
-  ));
+  let module_loader =
+    Rc::new(ts_module_loader::TypescriptModuleLoader::default());
   let runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     startup_snapshot: Some(snapshot),
@@ -137,8 +133,6 @@ pub fn create_runtime_from_snapshot_with_options(
   runtime.op_state().borrow_mut().put(stats);
   runtime.op_state().borrow_mut().put(worker);
   runtime.op_state().borrow_mut().put(Snapshot(snapshot));
-  // Replace the default LoaderHookRegistry with the shared one from the loader
-  runtime.op_state().borrow_mut().put(hook_registry);
 
   (runtime, worker_host_side)
 }

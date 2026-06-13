@@ -2,7 +2,7 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core } = globalThis.__bootstrap;
+const { core } = __bootstrap;
 const lazyInspector = core.createLazyLoader("node:inspector");
 const { promisify } = core.loadExtScript("ext:deno_node/internal/util.mjs");
 
@@ -18,6 +18,7 @@ Session.prototype.post = promisify(inspector.Session.prototype.post);
 return {
   close: inspector.close,
   console: inspector.console,
+  DOMStorage: inspector.DOMStorage,
   Network: inspector.Network,
   open: inspector.open,
   Session,

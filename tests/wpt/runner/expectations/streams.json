@@ -1,6 +1,38 @@
 {
-  "idlharness.any.html": true,
-  "idlharness.any.worker.html": true,
+  "idlharness.any.html": {
+    "expectedFailures": [
+      "ReadableStream interface: existence and properties of interface object",
+      "ReadableStreamDefaultReader interface: existence and properties of interface object",
+      "ReadableStreamBYOBReader interface: existence and properties of interface object",
+      "ReadableStreamDefaultController interface: existence and properties of interface object",
+      "ReadableByteStreamController interface: existence and properties of interface object",
+      "ReadableStreamBYOBRequest interface: existence and properties of interface object",
+      "WritableStream interface: existence and properties of interface object",
+      "WritableStreamDefaultWriter interface: existence and properties of interface object",
+      "WritableStreamDefaultController interface: existence and properties of interface object",
+      "TransformStream interface: existence and properties of interface object",
+      "TransformStreamDefaultController interface: existence and properties of interface object",
+      "ByteLengthQueuingStrategy interface: existence and properties of interface object",
+      "CountQueuingStrategy interface: existence and properties of interface object"
+    ]
+  },
+  "idlharness.any.worker.html": {
+    "expectedFailures": [
+      "ReadableStream interface: existence and properties of interface object",
+      "ReadableStreamDefaultReader interface: existence and properties of interface object",
+      "ReadableStreamBYOBReader interface: existence and properties of interface object",
+      "ReadableStreamDefaultController interface: existence and properties of interface object",
+      "ReadableByteStreamController interface: existence and properties of interface object",
+      "ReadableStreamBYOBRequest interface: existence and properties of interface object",
+      "WritableStream interface: existence and properties of interface object",
+      "WritableStreamDefaultWriter interface: existence and properties of interface object",
+      "WritableStreamDefaultController interface: existence and properties of interface object",
+      "TransformStream interface: existence and properties of interface object",
+      "TransformStreamDefaultController interface: existence and properties of interface object",
+      "ByteLengthQueuingStrategy interface: existence and properties of interface object",
+      "CountQueuingStrategy interface: existence and properties of interface object"
+    ]
+  },
   "piping": {
     "abort.any.html": true,
     "abort.any.worker.html": true,
@@ -83,10 +115,6 @@
     "templated.any.worker.html": true,
     "async-iterator.any.worker.html": true,
     "cross-realm-crash.window.html": false,
-    "owning-type-message-port.any.html": false,
-    "owning-type-message-port.any.worker.html": false,
-    "owning-type.any.html": false,
-    "owning-type.any.worker.html": false,
     "from.any.html": {
       "expectedFailures": [
         "ReadableStream.from ignores a null @@asyncIterator",
@@ -104,8 +132,6 @@
       "garbage-collection.any.worker.html": true
     },
     "global.html": false,
-    "owning-type-video-frame.any.html": false,
-    "owning-type-video-frame.any.worker.html": false,
     "read-task-handling.window.html": true
   },
   "transform-streams": {

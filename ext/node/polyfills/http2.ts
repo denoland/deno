@@ -3,13 +3,14 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 
 const { internalRidSymbol } = core;
 const {
   ArrayFrom,
   ArrayIsArray,
   ArrayPrototypeForEach,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
@@ -37,6 +38,7 @@ const {
   SafeRegExp,
   SafeSet,
   StringPrototypeCharCodeAt,
+  StringPrototypeIndexOf,
   StringPrototypeSlice,
   StringPrototypeToLowerCase,
   Symbol,
@@ -229,11 +231,26 @@ const {
   Http2ServerResponse,
   onServerStream,
 } = core.loadExtScript("ext:deno_node/internal/http2/compat.js");
+const { updateSpanFromError } = core.loadExtScript(
+  "ext:deno_telemetry/util.ts",
+);
+const {
+  otelState,
+  builtinTracer,
+  ContextManager,
+  SPAN_KEY,
+} = core.loadExtScript("ext:deno_telemetry/telemetry.ts");
 const onClientStreamCreatedChannel = dc.channel("http2.client.stream.created");
 const onClientStreamStartChannel = dc.channel("http2.client.stream.start");
 const onClientStreamErrorChannel = dc.channel("http2.client.stream.error");
 const onClientStreamFinishChannel = dc.channel("http2.client.stream.finish");
 const onClientStreamCloseChannel = dc.channel("http2.client.stream.close");
+const onClientStreamBodyChunkSentChannel = dc.channel(
+  "http2.client.stream.bodyChunkSent",
+);
+const onClientStreamBodySentChannel = dc.channel(
+  "http2.client.stream.bodySent",
+);
 const onServerStreamCreatedChannel = dc.channel("http2.server.stream.created");
 const onServerStreamStartChannel = dc.channel("http2.server.stream.start");
 const onServerStreamErrorChannel = dc.channel("http2.server.stream.error");
@@ -507,6 +524,20 @@ const kState = Symbol("state");
 const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
 const kSessions = Symbol("sessions");
+const kOtelSpan = Symbol("kOtelSpan");
+
+// Server-side helper: record HTTP response status on the OTel span attached
+// to a stream by onSessionHeaders. Per OTel HTTP semconv, server spans are
+// only marked ERROR for 5xx (client errors stay OK).
+function setOtelServerStatus(stream, statusCode) {
+  const span = stream[kOtelSpan];
+  if (span === undefined || statusCode === undefined) return;
+  span.setAttribute("http.response.status_code", String(statusCode));
+  if (statusCode >= 500) {
+    span.setAttribute("error.type", String(statusCode));
+    span.setStatus({ code: 2 });
+  }
+}
 
 // Symbols for tracking perf_hooks `http2` performance entry stats. The
 // `pingRTT`, `streamCount`, etc. fields surfaced via `entry.detail` are
@@ -1499,6 +1530,47 @@ function onSessionHeaders(
     if (type === NGHTTP2_SESSION_SERVER) {
       // eslint-disable-next-line no-use-before-define
       stream = new ServerHttp2Stream(session, handle, id, {}, obj);
+      if (otelState.TRACING_ENABLED) {
+        let ctx = ContextManager.active();
+        for (const propagator of otelState.PROPAGATORS) {
+          ctx = propagator.extract(ctx, obj, {
+            get(carrier, key) {
+              return carrier[key];
+            },
+            keys(carrier) {
+              return ObjectKeys(carrier);
+            },
+          });
+        }
+        const reqMethod = obj[HTTP2_HEADER_METHOD] ?? "GET";
+        const span = builtinTracer().startSpan(
+          reqMethod,
+          { kind: 1 }, // SpanKind.SERVER
+          ctx,
+        );
+        span.setAttribute("http.request.method", reqMethod);
+        const reqScheme = obj[HTTP2_HEADER_SCHEME];
+        if (reqScheme) span.setAttribute("url.scheme", reqScheme);
+        const reqAuthority = obj[HTTP2_HEADER_AUTHORITY];
+        if (reqAuthority) span.setAttribute("server.address", reqAuthority);
+        const reqPath = obj[HTTP2_HEADER_PATH];
+        if (reqPath !== undefined) {
+          const qIdx = StringPrototypeIndexOf(reqPath, "?");
+          if (qIdx < 0) {
+            span.setAttribute("url.path", reqPath);
+          } else {
+            span.setAttribute(
+              "url.path",
+              StringPrototypeSlice(reqPath, 0, qIdx),
+            );
+            span.setAttribute(
+              "url.query",
+              StringPrototypeSlice(reqPath, qIdx + 1),
+            );
+          }
+        }
+        stream[kOtelSpan] = span;
+      }
       if (onServerStreamCreatedChannel.hasSubscribers) {
         onServerStreamCreatedChannel.publish({
           stream,
@@ -1601,6 +1673,16 @@ function onSessionHeaders(
         headers: obj,
         flags: flags,
       });
+    }
+    if (event === "response" && status !== undefined) {
+      const span = stream[kOtelSpan];
+      if (span) {
+        span.setAttribute("http.response.status_code", String(status));
+        if (status >= 400) {
+          span.setAttribute("error.type", String(status));
+          span.setStatus({ code: 2 });
+        }
+      }
     }
   }
   if (endOfStream) {
@@ -2237,10 +2319,42 @@ class Http2Stream extends Duplex {
   }
 
   _write(data, encoding, cb) {
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodyChunkSentChannel.hasSubscribers
+    ) {
+      onClientStreamBodyChunkSentChannel.publish({
+        stream: this,
+        writev: false,
+        data,
+        encoding,
+      });
+    }
     this[kWriteGeneric](false, data, encoding, cb);
   }
 
   _writev(data, cb) {
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodyChunkSentChannel.hasSubscribers
+    ) {
+      // `data` is the chunks array assembled by Writable.clearBuffer. When
+      // every queued write was a Buffer, the writable internals flag
+      // `chunks.allBuffers = true` and the bodyChunkSent channel reports
+      // the array of raw Buffers (matching Node's
+      // test-diagnostics-channel-http2-client-stream-body-multiple-buffers
+      // shape). For mixed encodings the {chunk, encoding} entries flow
+      // through verbatim.
+      const chunkData = data.allBuffers
+        ? ArrayPrototypeMap(data, (c) => c.chunk)
+        : data;
+      onClientStreamBodyChunkSentChannel.publish({
+        stream: this,
+        writev: true,
+        data: chunkData,
+        encoding: "",
+      });
+    }
     this[kWriteGeneric](true, data, "", cb);
   }
 
@@ -2292,6 +2406,19 @@ class Http2Stream extends Duplex {
       return;
     }
     debugStreamObj(this, "shutting down writable on _final");
+    if (
+      this[kSession]?.[kType] === NGHTTP2_SESSION_CLIENT &&
+      onClientStreamBodySentChannel.hasSubscribers
+    ) {
+      // bodySent fires once per ClientHttp2Stream when the writable side has
+      // received its final chunk (or end() with no chunks). _final is the
+      // Writable.prototype hook that runs after the last _write/_writev, so
+      // this is the right spot to report the body as fully queued. Empty-body
+      // requests still publish: tests/parallel/test-diagnostics-channel-
+      // http2-client-stream-body-no-chunks asserts bodySent fires without any
+      // preceding bodyChunkSent.
+      onClientStreamBodySentChannel.publish({ stream: this });
+    }
     ReflectApply(shutdownWritable, this, [cb]);
   }
 
@@ -2447,6 +2574,20 @@ class Http2Stream extends Duplex {
     }
 
     emitStreamPerfEntry(this);
+
+    const otelSpan = this[kOtelSpan];
+    if (otelSpan !== undefined) {
+      if (err != null) {
+        updateSpanFromError(otelSpan, err);
+      } else if (code !== NGHTTP2_NO_ERROR) {
+        updateSpanFromError(
+          otelSpan,
+          new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code),
+        );
+      }
+      otelSpan.end();
+      this[kOtelSpan] = undefined;
+    }
 
     this[kSession] = undefined;
     this[kHandle] = undefined;
@@ -3023,6 +3164,8 @@ class ServerHttp2Stream extends Http2Stream {
       statusCode,
     } = prepareResponseHeaders(this, headersParam, options);
 
+    setOtelServerStatus(this, statusCode);
+
     state.flags |= STREAM_FLAGS_HEADERS_SENT;
 
     // Close the writable side if the endStream option is set or status
@@ -3114,6 +3257,8 @@ class ServerHttp2Stream extends Http2Stream {
       statusCode,
     } = prepareResponseHeadersObject(headersParam, options);
 
+    setOtelServerStatus(this, statusCode);
+
     // Payload/DATA frames are not permitted in these cases
     if (
       statusCode === HTTP_STATUS_NO_CONTENT ||
@@ -3198,6 +3343,8 @@ class ServerHttp2Stream extends Http2Stream {
       headers,
       statusCode,
     } = prepareResponseHeadersObject(headersParam, options);
+
+    setOtelServerStatus(this, statusCode);
 
     // Payload/DATA frames are not permitted in these cases
     if (
@@ -4465,117 +4612,223 @@ class ClientHttp2Session extends Http2Session {
 
     this[kUpdateTimer]();
 
-    let headersList;
-    let headersObject;
-    let rawHeaders;
-    let scheme;
-    let authority;
-    let method;
+    let span;
+    if (otelState.TRACING_ENABLED) {
+      // Determine the method name for the span; mirrors the default applied
+      // by prepareRequestHeaders{Object,Array} below.
+      let spanMethod;
+      if (ArrayIsArray(headersParam)) {
+        for (let i = 0; i < headersParam.length; i += 2) {
+          if (
+            StringPrototypeToLowerCase(headersParam[i]) === HTTP2_HEADER_METHOD
+          ) {
+            spanMethod = headersParam[i + 1];
+            break;
+          }
+        }
+      } else if (!!headersParam && typeof headersParam === "object") {
+        spanMethod = headersParam[HTTP2_HEADER_METHOD];
+      }
+      span = builtinTracer().startSpan(spanMethod ?? "GET", { kind: 2 });
 
-    if (ArrayIsArray(headersParam)) {
-      ({
-        rawHeaders,
-        headersList,
-        scheme,
-        authority,
-        method,
-      } = prepareRequestHeadersArray(headersParam, this));
-    } else if (!!headersParam && typeof headersParam === "object") {
-      ({
-        headersObject,
-        headersList,
-        scheme,
-        authority,
-        method,
-      } = prepareRequestHeadersObject(headersParam, this));
-    } else if (headersParam === undefined) {
-      ({
-        headersObject,
-        headersList,
-        scheme,
-        authority,
-        method,
-      } = prepareRequestHeadersObject({}, this));
-    } else {
-      throw new ERR_INVALID_ARG_TYPE(
-        "headers",
-        ["Object", "Array"],
-        headersParam,
-      );
-    }
-
-    assertIsObject(options, "options");
-    options = { ...options };
-
-    setAndValidatePriorityOptions(options);
-
-    if (options.endStream === undefined) {
-      // For some methods, we know that a payload is meaningless, so end the
-      // stream by default if the user has not specifically indicated a
-      // preference.
-      options.endStream = isPayloadMeaningless(method);
-    } else {
-      validateBoolean(options.endStream, "options.endStream");
-    }
-
-    // eslint-disable-next-line no-use-before-define
-    const stream = new ClientHttp2Stream(this, undefined, undefined, {});
-    stream[kSentHeaders] = headersObject; // N.b. Only set for object headers, not raw headers
-    stream[kRawHeaders] = rawHeaders; // N.b. Only set for raw headers, not object headers
-    stream[kOrigin] = `${scheme}://${authority}`;
-    stream[kRequestAsyncResource] = new AsyncResource("PendingRequest");
-
-    // Close the writable side of the stream if options.endStream is set.
-    if (options.endStream) {
-      stream.end();
-    }
-
-    if (options.waitForTrailers) {
-      stream[kState].flags |= STREAM_FLAGS_HAS_TRAILERS;
-    }
-
-    const { signal } = options;
-    if (signal) {
-      validateAbortSignal(signal, "options.signal");
-      const aborter = () => {
-        stream.destroy(new AbortError(undefined, { cause: signal.reason }));
-      };
-      if (signal.aborted) {
-        aborter();
-      } else {
-        const disposable = addAbortListener(signal, aborter);
-        stream.once("close", disposable[SymbolDispose]);
+      // Inject propagation headers directly into the user-supplied headers
+      // before prepareRequestHeaders* reads them. Object form: assign keys.
+      // Array form: push [name, value] pairs.
+      const spanContext = ContextManager.active().setValue(SPAN_KEY, span);
+      if (headersParam === undefined) {
+        headersParam = { __proto__: null };
+      }
+      if (ArrayIsArray(headersParam)) {
+        for (const propagator of otelState.PROPAGATORS) {
+          propagator.inject(spanContext, headersParam, {
+            set(carrier, key, value) {
+              // Match the object path's overwrite semantics: replace an
+              // existing entry rather than appending a duplicate (a caller
+              // could have already set `traceparent`/`tracestate`).
+              for (let i = 0; i < carrier.length; i += 2) {
+                if (StringPrototypeToLowerCase(carrier[i]) === key) {
+                  carrier[i + 1] = value;
+                  return;
+                }
+              }
+              ArrayPrototypePush(carrier, key, value);
+            },
+          });
+        }
+      } else if (!!headersParam && typeof headersParam === "object") {
+        for (const propagator of otelState.PROPAGATORS) {
+          propagator.inject(spanContext, headersParam, {
+            set(carrier, key, value) {
+              carrier[key] = value;
+            },
+          });
+        }
       }
     }
 
-    const onConnect = FunctionPrototypeBind(
-      requestOnConnect,
-      stream,
-      headersList,
-      options,
-    );
-    if (this.connecting) {
-      if (this[kPendingRequestCalls] !== null) {
-        ArrayPrototypePush(this[kPendingRequestCalls], onConnect);
+    // From here on, several steps (header validation/preparation, option
+    // validation, stream construction) can throw synchronously. The span was
+    // started above but is only handed off to Http2Stream._destroy once it is
+    // attached to the stream. Wrap the body so a throw before/after that
+    // hand-off ends the span instead of leaking it.
+    let stream;
+    try {
+      let headersList;
+      let headersObject;
+      let rawHeaders;
+      let scheme;
+      let authority;
+      let method;
+
+      if (ArrayIsArray(headersParam)) {
+        ({
+          rawHeaders,
+          headersList,
+          scheme,
+          authority,
+          method,
+        } = prepareRequestHeadersArray(headersParam, this));
+      } else if (!!headersParam && typeof headersParam === "object") {
+        ({
+          headersObject,
+          headersList,
+          scheme,
+          authority,
+          method,
+        } = prepareRequestHeadersObject(headersParam, this));
+      } else if (headersParam === undefined) {
+        ({
+          headersObject,
+          headersList,
+          scheme,
+          authority,
+          method,
+        } = prepareRequestHeadersObject({}, this));
       } else {
-        this[kPendingRequestCalls] = [onConnect];
-        this.once("connect", () => {
-          ArrayPrototypeForEach(this[kPendingRequestCalls], (f) => f());
-          this[kPendingRequestCalls] = null;
+        throw new ERR_INVALID_ARG_TYPE(
+          "headers",
+          ["Object", "Array"],
+          headersParam,
+        );
+      }
+
+      assertIsObject(options, "options");
+      options = { ...options };
+
+      setAndValidatePriorityOptions(options);
+
+      if (options.endStream === undefined) {
+        // For some methods, we know that a payload is meaningless, so end the
+        // stream by default if the user has not specifically indicated a
+        // preference.
+        options.endStream = isPayloadMeaningless(method);
+      } else {
+        validateBoolean(options.endStream, "options.endStream");
+      }
+
+      // eslint-disable-next-line no-use-before-define
+      stream = new ClientHttp2Stream(this, undefined, undefined, {});
+      stream[kSentHeaders] = headersObject; // N.b. Only set for object headers, not raw headers
+      stream[kRawHeaders] = rawHeaders; // N.b. Only set for raw headers, not object headers
+      stream[kOrigin] = `${scheme}://${authority}`;
+      stream[kRequestAsyncResource] = new AsyncResource("PendingRequest");
+
+      if (span) {
+        stream[kOtelSpan] = span;
+        span.setAttribute("http.request.method", method);
+        if (scheme) span.setAttribute("url.scheme", scheme);
+        if (authority) span.setAttribute("server.address", authority);
+        let path;
+        if (headersObject) {
+          path = headersObject[HTTP2_HEADER_PATH];
+        } else if (rawHeaders) {
+          for (let i = 0; i < rawHeaders.length; i += 2) {
+            if (
+              StringPrototypeToLowerCase(rawHeaders[i]) === HTTP2_HEADER_PATH
+            ) {
+              path = rawHeaders[i + 1];
+              break;
+            }
+          }
+        }
+        if (path !== undefined) {
+          const qIdx = StringPrototypeIndexOf(path, "?");
+          if (qIdx < 0) {
+            span.setAttribute("url.path", path);
+          } else {
+            span.setAttribute("url.path", StringPrototypeSlice(path, 0, qIdx));
+            span.setAttribute(
+              "url.query",
+              StringPrototypeSlice(path, qIdx + 1),
+            );
+          }
+        }
+      }
+
+      // Close the writable side of the stream if options.endStream is set.
+      if (options.endStream) {
+        stream.end();
+      }
+
+      if (options.waitForTrailers) {
+        stream[kState].flags |= STREAM_FLAGS_HAS_TRAILERS;
+      }
+
+      const { signal } = options;
+      if (signal) {
+        validateAbortSignal(signal, "options.signal");
+        const aborter = () => {
+          stream.destroy(new AbortError(undefined, { cause: signal.reason }));
+        };
+        if (signal.aborted) {
+          aborter();
+        } else {
+          const disposable = addAbortListener(signal, aborter);
+          stream.once("close", disposable[SymbolDispose]);
+        }
+      }
+
+      const onConnect = FunctionPrototypeBind(
+        requestOnConnect,
+        stream,
+        headersList,
+        options,
+      );
+      if (this.connecting) {
+        if (this[kPendingRequestCalls] !== null) {
+          ArrayPrototypePush(this[kPendingRequestCalls], onConnect);
+        } else {
+          this[kPendingRequestCalls] = [onConnect];
+          this.once("connect", () => {
+            ArrayPrototypeForEach(this[kPendingRequestCalls], (f) => f());
+            this[kPendingRequestCalls] = null;
+          });
+        }
+      } else {
+        onConnect();
+      }
+
+      if (onClientStreamCreatedChannel.hasSubscribers) {
+        onClientStreamCreatedChannel.publish({
+          stream,
+          headers: stream.sentHeaders,
         });
       }
-    } else {
-      onConnect();
-    }
 
-    if (onClientStreamCreatedChannel.hasSubscribers) {
-      onClientStreamCreatedChannel.publish({
-        stream,
-        headers: stream.sentHeaders,
-      });
+      return stream;
+    } catch (err) {
+      // End the span unless Http2Stream._destroy already did (it clears
+      // kOtelSpan after ending). Covers throws both before the stream exists
+      // and after it was attached but never destroyed.
+      if (
+        span !== undefined &&
+        (stream === undefined || stream[kOtelSpan] === span)
+      ) {
+        updateSpanFromError(span, err);
+        span.end();
+      }
+      throw err;
     }
-
-    return stream;
   }
 }
 

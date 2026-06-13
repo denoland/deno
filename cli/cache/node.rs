@@ -165,6 +165,7 @@ mod test {
     let cjs_analysis = DenoCjsAnalysis::Cjs(ModuleExportsAndReExports {
       exports: vec!["export1".to_string()],
       reexports: vec!["re-export1".to_string()],
+      member_reexports: vec![],
     });
     cache
       .set_cjs_analysis("file.js", CacheDBHash::new(2), &cjs_analysis)

@@ -52,7 +52,6 @@ sha2.workspace = true
 tar.workspace = true
 tempfile.workspace = true
 tokio.workspace = true
-url.workspace = true
 zip.workspace = true
 
 [target.'cfg(unix)'.dependencies]

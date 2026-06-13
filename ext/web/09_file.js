@@ -11,7 +11,7 @@
 /// <reference lib="esnext" />
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 const {
   isAnyArrayBuffer,
   isArrayBuffer,
@@ -44,6 +44,7 @@ const {
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
+  SafeArrayIterator,
   SafeFinalizationRegistry,
   SafeRegExp,
   StringPrototypeCharAt,
@@ -60,7 +61,17 @@ const {
 } = primordials;
 
 const webidl = core.loadExtScript("ext:deno_webidl/00_webidl.js");
-const { ReadableStream } = core.loadExtScript("ext:deno_web/06_streams.js");
+// Defer loading the 208 KB `06_streams.js` polyfill: ReadableStream is
+// only constructed inside `Blob.stream()` (see usage below), so we don't
+// need to pay the parse cost at module body time.
+let _readableStream;
+function ReadableStream(...args) {
+  return new (_readableStream ??
+    (_readableStream =
+      core.loadExtScript("ext:deno_web/06_streams.js").ReadableStream))(
+    ...new SafeArrayIterator(args),
+  );
+}
 const { URL } = core.loadExtScript("ext:deno_web/00_url.js");
 const { createFilteredInspectProxy } = core.loadExtScript(
   "ext:deno_web/01_console.js",
@@ -218,11 +229,26 @@ function getParts(blob, bag = []) {
 const _type = Symbol("Type");
 const _size = Symbol("Size");
 const _parts = Symbol("Parts");
+const _fileBacked = Symbol("FileBacked");
+
+/** @param {(BlobReference | Blob)[]} parts */
+function hasFileBackedPart(parts) {
+  for (let i = 0; i < parts.length; ++i) {
+    const part = parts[i];
+    if (
+      ObjectPrototypeIsPrototypeOf(BlobPrototype, part) && part[_fileBacked]
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 class Blob {
   [_type] = "";
   [_size] = 0;
   [_parts];
+  [_fileBacked] = false;
 
   /**
    * @param {BlobPart[]} blobParts
@@ -251,6 +277,7 @@ class Blob {
     this[_parts] = parts;
     this[_size] = size;
     this[_type] = normalizeType(options.type);
+    this[_fileBacked] = hasFileBackedPart(parts);
   }
 
   /** @returns {number} */
@@ -360,6 +387,7 @@ class Blob {
     const blob = new Blob([], { type: relativeContentType });
     blob[_parts] = blobParts;
     blob[_size] = span;
+    blob[_fileBacked] = this[_fileBacked];
     return blob;
   }
 
@@ -684,6 +712,9 @@ function getPartRefs(blob, bag = []) {
  * @returns {{ uuid: string, size: number }[]}
  */
 function cloneBlobParts(blob) {
+  if (blob[_fileBacked]) {
+    throw new TypeError("Invalid state: File-backed Blobs are not cloneable");
+  }
   const refs = getPartRefs(blob);
   const cloned = [];
   for (let i = 0; i < refs.length; ++i) {
@@ -719,6 +750,18 @@ core.registerCloneableResource("Blob", (data) => {
   blob[_parts] = parts;
   return blob;
 });
+
+/**
+ * Mark a Blob as backed by file storage. File-backed Blobs are intentionally
+ * rejected by the structured clone serializer, matching Node's behavior.
+ * @param {Blob} blob
+ * @returns {Blob}
+ */
+function markFileBackedBlob(blob) {
+  webidl.assertBranded(blob, BlobPrototype);
+  blob[_fileBacked] = true;
+  return blob;
+}
 
 ObjectDefineProperty(File.prototype, core.hostObjectBrand, {
   __proto__: null,
@@ -783,7 +826,7 @@ function blobFromObjectUrl(url) {
   }
 
   const blob = new Blob();
-  blob[_type] = blobData.media_type;
+  blob[_type] = blobData.mediaType;
   blob[_size] = totalSize;
   blob[_parts] = parts;
   return blob;
@@ -796,6 +839,15 @@ function blobFromObjectUrl(url) {
 function createObjectURL(blob) {
   const prefix = "Failed to execute 'createObjectURL' on 'URL'";
   webidl.requiredArguments(arguments.length, 1, prefix);
+  if (!isBlob(blob)) {
+    // Node.js throws ERR_INVALID_ARG_TYPE for non-Blob arguments; preserve
+    // that `code` while still throwing a TypeError as the web platform does.
+    const err = new TypeError(
+      `${prefix}: The "blob" argument must be an instance of Blob`,
+    );
+    err.code = "ERR_INVALID_ARG_TYPE";
+    throw err;
+  }
   blob = webidl.converters["Blob"](blob, prefix, "Argument 1");
 
   return op_blob_create_object_url(blob.type, getParts(blob));
@@ -834,5 +886,6 @@ return {
   FilePrototype,
   getParts,
   isBlob,
+  markFileBackedBlob,
 };
 })();

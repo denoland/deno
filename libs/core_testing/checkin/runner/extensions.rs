@@ -7,7 +7,6 @@ use crate::checkin::runner::ops_async;
 use crate::checkin::runner::ops_buffer;
 use crate::checkin::runner::ops_error;
 use crate::checkin::runner::ops_io;
-use crate::checkin::runner::ops_loader;
 use crate::checkin::runner::ops_worker;
 
 pub trait SomeType {}
@@ -26,6 +25,7 @@ deno_core::extension!(
     ops::op_stats_delete,
     ops::op_nop_generic<P>,
     ops_io::op_pipe_create,
+    ops_io::op_constructable_test,
     ops_io::op_file_open,
     ops_io::op_path_to_url,
     ops_async::op_task_submit,
@@ -45,12 +45,6 @@ deno_core::extension!(
     ops_error::op_error_custom_with_code_sync,
     ops_buffer::op_v8slice_store,
     ops_buffer::op_v8slice_clone,
-    ops_loader::op_loader_register,
-    ops_loader::op_loader_poll_resolve,
-    ops_loader::op_loader_respond_resolve,
-    ops_loader::op_loader_poll_load,
-    ops_loader::op_loader_respond_load,
-    ops_loader::op_loader_default_resolve,
     ops_worker::op_worker_spawn,
     ops_worker::op_worker_send,
     ops_worker::op_worker_recv,
@@ -77,11 +71,9 @@ deno_core::extension!(
     "checkin:worker" = "worker.ts",
     "checkin:throw" = "throw.ts",
     "checkin:callsite" = "callsite.ts",
-    "checkin:loader" = "loader.ts",
   ],
   state = |state| {
     state.put(TestData::default());
     state.put(Output::default());
-    state.put(ops_loader::LoaderHookRegistry::default());
   }
 );

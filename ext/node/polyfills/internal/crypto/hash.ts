@@ -1,11 +1,10 @@
 // Copyright 2018-2026 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials no-explicit-any
+// deno-lint-ignore-file no-explicit-any
 
 (function () {
-const { core, primordials } = globalThis.__bootstrap;
+const { core, primordials } = __bootstrap;
 
 const {
   Hasher,
@@ -56,7 +55,18 @@ const {
   isArrayBufferView,
 } = core.loadExtScript("ext:deno_node/internal/util/types.ts");
 
-const { ReflectApply, ObjectSetPrototypeOf } = primordials;
+const {
+  FunctionPrototypeCall,
+  ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
+  ReflectApply,
+  SafeArrayIterator,
+  StringFromCharCode,
+  StringPrototypeToLowerCase,
+  Symbol,
+  Uint8Array,
+  Uint8ArrayPrototype,
+} = primordials;
 
 function unwrapErr(ok: boolean) {
   if (!ok) throw new ERR_CRYPTO_HASH_FINALIZED();
@@ -71,10 +81,10 @@ function Hash(
   algorithm: string | Hasher,
   options?: { outputLength?: number },
 ): Hash {
-  if (!(this instanceof Hash)) {
+  if (!ObjectPrototypeIsPrototypeOf(Hash.prototype, this)) {
     return new Hash(algorithm, options);
   }
-  const isCopy = algorithm instanceof Hasher;
+  const isCopy = ObjectPrototypeIsPrototypeOf(Hasher.prototype, algorithm);
   if (!isCopy) {
     validateString(algorithm, "algorithm");
   }
@@ -85,7 +95,7 @@ function Hash(
     validateUint32(xofLen, "options.outputLength");
   }
 
-  const algoLower = isCopy ? undefined : algorithm.toLowerCase();
+  const algoLower = isCopy ? undefined : StringPrototypeToLowerCase(algorithm);
 
   if (
     !isCopy && xofLen === undefined &&
@@ -108,7 +118,9 @@ function Hash(
       : op_node_create_hash(algoLower, xofLen);
   } catch (err) {
     // TODO(lucacasonato): don't do this
-    if (err.message === "Output length mismatch for non-extendable algorithm") {
+    if (
+      err.message === "Output length mismatch for non-extendable algorithm"
+    ) {
       throw new NodeError(
         "ERR_OSSL_EVP_NOT_XOF_OR_INVALID_LENGTH",
         "Invalid XOF digest length",
@@ -159,6 +171,7 @@ Hash.prototype._transform = function _transform(
 
 Hash.prototype._flush = function _flush(callback: () => void) {
   const digest = op_node_hash_digest(this[kHandle]);
+  // deno-lint-ignore prefer-primordials -- `this` is a Node stream (Transform)
   this.push(digest === null ? Buffer.alloc(0) : Buffer.from(digest));
   callback();
 };
@@ -185,11 +198,16 @@ Hash.prototype.update = function update(
     unwrapErr(op_node_hash_update_str(this[kHandle], data));
   } else {
     const buf = toBuf(data as string | Buffer, encoding);
-    const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(
-      (buf as ArrayBufferView).buffer,
-      (buf as ArrayBufferView).byteOffset,
-      (buf as ArrayBufferView).byteLength,
-    );
+    const u8 = ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, buf)
+      ? buf as Uint8Array
+      : new Uint8Array(
+        // deno-lint-ignore prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
+        (buf as ArrayBufferView).buffer,
+        // deno-lint-ignore prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
+        (buf as ArrayBufferView).byteOffset,
+        // deno-lint-ignore prefer-primordials -- ArrayBufferView accessor, receiver may be a DataView
+        (buf as ArrayBufferView).byteLength,
+      );
     unwrapErr(op_node_hash_update(this[kHandle], u8));
   }
 
@@ -216,7 +234,7 @@ Hash.prototype.digest = function digest(outputEncoding: any) {
 
   switch (outputEncoding) {
     case "binary":
-      return String.fromCharCode(...digest);
+      return StringFromCharCode(...new SafeArrayIterator(digest));
     case "base64":
       return encodeToBase64(digest);
     case "base64url":
@@ -225,6 +243,7 @@ Hash.prototype.digest = function digest(outputEncoding: any) {
     case "buffer":
       return Buffer.from(digest);
     default:
+      // deno-lint-ignore prefer-primordials -- Buffer.prototype.toString(encoding), not String.prototype.toString
       return Buffer.from(digest).toString(outputEncoding);
   }
 };
@@ -262,12 +281,13 @@ class HmacImpl {
     const T = getTransform();
     // deno-lint-ignore no-this-alias
     const self = this;
-    T.call(this, {
+    FunctionPrototypeCall(T, this, {
       transform(chunk: string, encoding: string, callback: () => void) {
         self.update(Buffer.from(chunk), encoding as any);
         callback();
       },
       flush(callback: () => void) {
+        // deno-lint-ignore prefer-primordials -- `this` is a Node stream (Transform)
         this.push(self.digest());
         callback();
       },
@@ -285,7 +305,7 @@ class HmacImpl {
       keyData = op_node_export_secret_key(key);
     }
 
-    const alg = hmac.toLowerCase();
+    const alg = StringPrototypeToLowerCase(hmac);
     this.#algorithm = alg;
     const blockSize = getHashBlockSize(alg);
     const keySize = keyData.length;
@@ -296,6 +316,7 @@ class HmacImpl {
       const hash = new Hash(alg, options);
       bufKey = hash.update(keyData).digest() as Buffer;
     } else {
+      // deno-lint-ignore prefer-primordials -- Buffer.concat, not Array.prototype.concat
       bufKey = Buffer.concat([keyData, this.#ZEROES], blockSize);
     }
 
@@ -340,8 +361,8 @@ function ensureHmacProtoSetup() {
   if (_hmacProtoSetup) return;
   _hmacProtoSetup = true;
   const T = getTransform();
-  Object.setPrototypeOf(HmacImpl.prototype, T.prototype);
-  Object.setPrototypeOf(HmacImpl, T);
+  ObjectSetPrototypeOf(HmacImpl.prototype, T.prototype);
+  ObjectSetPrototypeOf(HmacImpl, T);
 }
 
 Hmac.prototype = HmacImpl.prototype;
