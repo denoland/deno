@@ -947,6 +947,25 @@ fn resolve_per_file_options(
   cfg
 }
 
+/// Returns the value hashed by the incremental cache for a file. When
+/// `.editorconfig` contributes options that differ from the batch-level
+/// `base` config, those options are folded into the hashed value so that
+/// editing `.editorconfig` invalidates the cached "already formatted"
+/// result even when the file body itself is unchanged. When nothing was
+/// contributed the file text is hashed as-is, preserving existing cache
+/// entries and avoiding an allocation.
+fn incremental_cache_text<'a>(
+  per_file_options: &FmtOptionsConfig,
+  base: &FmtOptionsConfig,
+  text: &'a str,
+) -> Cow<'a, str> {
+  if per_file_options == base {
+    Cow::Borrowed(text)
+  } else {
+    Cow::Owned(format!("{per_file_options:?}\n{text}"))
+  }
+}
+
 struct CheckFormatter {
   not_formatted_files_count: Arc<AtomicUsize>,
   checked_files_count: Arc<AtomicUsize>,
@@ -996,18 +1015,20 @@ impl Formatter for CheckFormatter {
         checked_files_count.fetch_add(1, Ordering::Relaxed);
         let file = read_file_contents(&file_path)?;
 
-        // skip checking the file if we know it's formatted
-        if !file.had_bom
-          && incremental_cache.is_file_same(&file_path, &file.text)
-        {
-          return Ok(());
-        }
-
         let per_file_options = resolve_per_file_options(
           &fmt_options,
           &editorconfig_cache,
           &file_path,
         );
+        let cache_text =
+          incremental_cache_text(&per_file_options, &fmt_options, &file.text);
+
+        // skip checking the file if we know it's formatted
+        if !file.had_bom
+          && incremental_cache.is_file_same(&file_path, &cache_text)
+        {
+          return Ok(());
+        }
 
         match format_file(
           &file_path,
@@ -1037,7 +1058,7 @@ impl Formatter for CheckFormatter {
             // formatting here. Additionally, ensure this is done during check
             // so that CIs that cache the DENO_DIR will get the benefit of
             // incremental formatting
-            incremental_cache.update_file(&file_path, &file.text);
+            incremental_cache.update_file(&file_path, &cache_text);
           }
           Err(e) => {
             not_formatted_files_count.fetch_add(1, Ordering::Relaxed);
@@ -1116,18 +1137,20 @@ impl Formatter for RealFormatter {
         checked_files_count.fetch_add(1, Ordering::Relaxed);
         let file = read_file_contents(&file_path)?;
 
-        // skip formatting the file if we know it's formatted
-        if !file.had_bom
-          && incremental_cache.is_file_same(&file_path, &file.text)
-        {
-          return Ok(());
-        }
-
         let per_file_options = resolve_per_file_options(
           &fmt_options,
           &editorconfig_cache,
           &file_path,
         );
+        let cache_text =
+          incremental_cache_text(&per_file_options, &fmt_options, &file.text);
+
+        // skip formatting the file if we know it's formatted
+        if !file.had_bom
+          && incremental_cache.is_file_same(&file_path, &cache_text)
+        {
+          return Ok(());
+        }
 
         match format_ensure_stable(&file_path, &file, |file_path, file| {
           format_file(
@@ -1139,14 +1162,21 @@ impl Formatter for RealFormatter {
           )
         }) {
           Ok(Some(formatted_text)) => {
-            incremental_cache.update_file(&file_path, &formatted_text);
+            incremental_cache.update_file(
+              &file_path,
+              &incremental_cache_text(
+                &per_file_options,
+                &fmt_options,
+                &formatted_text,
+              ),
+            );
             write_file_contents(&file_path, &formatted_text)?;
             formatted_files_count.fetch_add(1, Ordering::Relaxed);
             let _g = output_lock.lock();
             info!("{}", file_path.to_string_lossy());
           }
           Ok(None) => {
-            incremental_cache.update_file(&file_path, &file.text);
+            incremental_cache.update_file(&file_path, &cache_text);
           }
           Err(e) => {
             failed_files_count.fetch_add(1, Ordering::Relaxed);

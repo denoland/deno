@@ -221,6 +221,9 @@ impl EditorConfigCache {
     let parsed = std::fs::read_to_string(path)
       .ok()
       .map(|s| Arc::new(parse(&s)));
+    if parsed.is_some() {
+      log::debug!("Found .editorconfig at {} and using it", path.display());
+    }
     let mut files = self.files.lock().unwrap();
     files.insert(path.to_path_buf(), parsed.clone());
     parsed

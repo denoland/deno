@@ -30,6 +30,19 @@
       // deno.json explicitly sets indentWidth=2; editorconfig must NOT override.
       "args": "fmt --check --config with_deno_json/deno.json with_deno_json/file.ts",
       "output": "Checked 1 file\n"
+    },
+    "nested_overrides_parent": {
+      // nested/.editorconfig (root=true) sets indent_size=4; the nearer
+      // nested/sub/.editorconfig (not root) sets indent_size=8 and must win.
+      // This exercises the walk-up across a non-root file and the
+      // nearer-overrides-farther merge order.
+      "args": "fmt --check nested/sub/file.ts",
+      "output": "Checked 1 file\n"
+    },
+    "logs_at_debug": {
+      // With -L debug, fmt notes that it found and is using the .editorconfig.
+      "args": "fmt --check -L debug indent_size_4.ts",
+      "output": "[WILDCARD]Found .editorconfig at [WILDLINE].editorconfig and using it[WILDCARD]Checked 1 file[WILDCARD]"
     }
   }
 }
