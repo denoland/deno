@@ -651,6 +651,7 @@ pub fn copy_texture_to_vec(
 pub const CONTEXT_ID: &str = "webgpu";
 
 pub fn create<'s>(
+  _state: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>,
   _instance: Option<Instance>,
   canvas: v8::Global<v8::Object>,
   data: ContextData,
