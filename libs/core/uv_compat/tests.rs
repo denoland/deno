@@ -3342,13 +3342,18 @@ fn handle_waker_cross_thread_wake_race() {
     })
     .collect();
 
+  // Drain until we've observed enough wakes rather than looping a fixed
+  // number of times: an empty-queue drain is just an uncontended lock +
+  // `mem::take`, so a fixed count can race to completion before the wake
+  // threads are even scheduled, leaving `drained == 0` on a loaded CI box.
   let mut drained = 0usize;
-  for _ in 0..100_000 {
+  while drained < 10_000 {
     let mut ready = std::mem::take(&mut *shared.ready_tty.lock().unwrap());
     while let Some(w) = ready.pop_front() {
       w.reset_queued();
       drained += 1;
     }
+    std::hint::spin_loop();
   }
 
   stop.store(true, Ordering::Relaxed);
