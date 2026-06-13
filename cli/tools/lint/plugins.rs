@@ -369,6 +369,7 @@ impl PluginHost {
     exclude: Option<Vec<String>>,
   ) -> Result<Vec<PluginInfo>, AnyError> {
     let mut load_futures = Vec::with_capacity(plugin_specifiers.len());
+    let mut specifier_strings = Vec::with_capacity(plugin_specifiers.len());
     for specifier in plugin_specifiers {
       let mod_id = self
         .worker
@@ -378,6 +379,7 @@ impl PluginHost {
       let mod_future =
         self.worker.js_runtime.mod_evaluate(mod_id).boxed_local();
       load_futures.push((mod_future, mod_id));
+      specifier_strings.push(specifier.to_string());
     }
 
     self
@@ -412,6 +414,15 @@ impl PluginHost {
         v8::Array::new_with_elements(scope, elems.as_slice()).into()
       });
 
+    let specifiers_v8: v8::Local<v8::Value> = {
+      let elems = specifier_strings
+        .iter()
+        .map(|item| v8::String::new(scope, item).unwrap().into())
+        .collect::<Vec<_>>();
+
+      v8::Array::new_with_elements(scope, elems.as_slice()).into()
+    };
+
     let undefined = v8::undefined(scope);
 
     let local_handles = {
@@ -424,7 +435,7 @@ impl PluginHost {
       }
       arr
     };
-    let args = &[local_handles.into(), exclude_v8];
+    let args = &[local_handles.into(), exclude_v8, specifiers_v8];
 
     log::debug!("Installing lint plugins...");
 

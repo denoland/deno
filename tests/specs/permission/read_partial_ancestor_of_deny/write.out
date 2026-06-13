@@ -1,0 +1,2 @@
+write hello.txt: ok
+write denied/x.txt: NotCapable

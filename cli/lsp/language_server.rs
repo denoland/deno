@@ -87,6 +87,7 @@ use super::parent_process_checker;
 use super::performance::Performance;
 use super::refactor;
 use super::registries::ModuleRegistry;
+use super::resolver::ImportMapHover;
 use super::resolver::LspResolver;
 use super::test_code_actions::collect_test_code_actions;
 use super::testing;
@@ -108,6 +109,7 @@ use crate::lsp::compiler_options::LspCompilerOptionsResolver;
 use crate::lsp::completions::CompletionItemData;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::diagnostics::DenoDiagnostic;
+use crate::lsp::diagnostics::generate_import_map_diagnostics;
 use crate::lsp::diagnostics::generate_module_diagnostics;
 use crate::lsp::lint::LspLinterResolver;
 use crate::lsp::lint::get_deno_lint_code_actions;
@@ -168,6 +170,21 @@ pub fn to_lsp_range(referrer: &deno_graph::Range) -> lsp_types::Range {
       character: referrer.range.end.character as u32,
     },
   }
+}
+
+/// Render the hover markdown describing how a specifier was resolved through an
+/// import map.
+fn import_map_hover_text(hover: &ImportMapHover) -> String {
+  let source = hover
+    .base_url
+    .path_segments()
+    .and_then(|mut s| s.next_back())
+    .filter(|s| !s.is_empty())
+    .unwrap_or_else(|| hover.base_url.as_str());
+  format!(
+    "**Import Map**: `{}` → `{}` _({})_\n",
+    hover.key, hover.value, source,
+  )
 }
 
 #[derive(Debug)]
@@ -294,6 +311,7 @@ pub struct Inner {
   /// Configuration information.
   pub config: Config,
   diagnostics_cache: OnceCellMap<Arc<Uri>, Arc<Vec<Diagnostic>>>,
+  no_slow_types_cache: diagnostics::NoSlowTypesDiagnosticsCache,
   diagnostics_server: Option<diagnostics::DiagnosticsServer>,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -595,6 +613,7 @@ impl Inner {
       compiler_options_resolver: Default::default(),
       config,
       diagnostics_cache: Default::default(),
+      no_slow_types_cache: Default::default(),
       diagnostics_server: None,
       document_modules: Default::default(),
       http_client_provider,
@@ -1162,9 +1181,10 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn refresh_config_tree(&mut self) {
+  async fn refresh_config_tree(&mut self, reason: &str) {
     let file_fetcher = create_cli_file_fetcher(
-      Default::default(),
+      Arc::new(deno_runtime::deno_web::BlobStore::default())
+        as Arc<dyn deno_runtime::deno_web::BlobStoreTrait>,
       GlobalOrLocalHttpCache::Global(self.cache.global().clone()),
       self.http_client_provider.clone(),
       MemoryFilesRc::default(),
@@ -1186,6 +1206,7 @@ impl Inner {
         &file_fetcher,
         &self.http_client_provider,
         self.cache.deno_dir(),
+        reason,
       )
       .await;
     self
@@ -1593,7 +1614,7 @@ impl Inner {
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
-    self.refresh_config_tree().await;
+    self.refresh_config_tree("did_change_configuration").await;
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
@@ -1687,7 +1708,7 @@ impl Inner {
       }));
       self.workspace_files_hash = 0;
       self.refresh_workspace_files();
-      self.refresh_config_tree().await;
+      self.refresh_config_tree("did_change_watched_files").await;
       self.update_cache();
       self.refresh_resolver().await;
       self.refresh_compiler_options_resolver();
@@ -1931,7 +1952,7 @@ impl Inner {
     let Some(module) = self.get_primary_module(&document)? else {
       return Ok(None);
     };
-    let hover = if let Some((_, dep, range)) = module
+    let hover = if let Some((specifier_text, dep, range)) = module
       .dependency_at_position(&params.text_document_position_params.position)
     {
       let dep_module = dep.get_code().and_then(|s| {
@@ -1991,6 +2012,19 @@ impl Inner {
             .resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
         ),
         (true, true, _) => return Ok(None),
+      };
+      let value = if let Some(import_map_hover) = dep
+        .get_code()
+        .or_else(|| dep.maybe_type.maybe_specifier())
+        .and_then(|code| {
+          self
+            .resolver
+            .get_scoped_resolver(module.scope.as_deref())
+            .import_map_hover(specifier_text, code, &module.specifier)
+        }) {
+        format!("{value}\n{}", import_map_hover_text(&import_map_hover))
+      } else {
+        value
       };
       let value = if let Some(docs) = self.module_registry.get_hover(dep).await
       {
@@ -2078,6 +2112,54 @@ impl Inner {
     token: &CancellationToken,
   ) -> LspResult<Option<CodeActionResponse>> {
     let mark = self.performance.mark_with_args("lsp.code_action", &params);
+    let Some(document) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Ignore,
+    )?
+    else {
+      return Ok(None);
+    };
+    let url = uri_to_url(document.uri());
+    if matches!(
+      self.config.tree.watched_file_type(&url),
+      Some((_, ConfigWatchedFileType::ImportMap))
+    ) {
+      let code_action_disabled_capable =
+        self.config.code_action_disabled_capable();
+      let actions = params
+        .context
+        .diagnostics
+        .iter()
+        .filter(|diagnostic| {
+          diagnostic.source.as_deref() == Some("deno")
+            && diagnostics::DenoDiagnostic::is_fixable(diagnostic)
+        })
+        .filter_map(|diagnostic| {
+          DenoDiagnostic::get_code_action(document.uri(), &url, diagnostic)
+            .inspect_err(|err| {
+              lsp_warn!(
+                "Error getting deno code action: {:#}\nDiagnostic: {:#?}",
+                err,
+                diagnostic
+              );
+            })
+            .ok()
+        })
+        .map(CodeActionOrCommand::CodeAction)
+        .filter(|a| {
+          code_action_disabled_capable
+            || matches!(a, CodeActionOrCommand::CodeAction(ca) if ca.disabled.is_none())
+        })
+        .collect::<Vec<_>>();
+      self.performance.measure(mark);
+      return Ok(if actions.is_empty() {
+        None
+      } else {
+        Some(actions)
+      });
+    }
     let Some(document) = self.get_document(
       &params.text_document.uri,
       Enabled::Filter,
@@ -2411,6 +2493,8 @@ impl Inner {
               }
             })?
           }
+          code_action.command =
+            refactor_edit_info.to_rename_command(&module, &snapshot);
           code_action.edit = refactor_edit_info
             .to_workspace_edit(&module, &snapshot, token)
             .map_err(|err| {
@@ -2923,6 +3007,33 @@ impl Inner {
       &params.text_document.uri,
       Enabled::Filter,
       Exists::Enforce,
+      Diagnosable::Ignore,
+    )?
+    else {
+      return Ok(empty_result());
+    };
+    let url = uri_to_url(document.uri());
+    if matches!(
+      self.config.tree.watched_file_type(&url),
+      Some((_, ConfigWatchedFileType::ImportMap))
+    ) && let Some(open_doc) = document.open()
+    {
+      let diagnostics =
+        generate_import_map_diagnostics(open_doc, &self.snapshot());
+      return Ok(DocumentDiagnosticReportResult::Report(
+        DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
+          related_documents: None,
+          full_document_diagnostic_report: FullDocumentDiagnosticReport {
+            result_id: Some(self.project_version.to_string()),
+            items: diagnostics,
+          },
+        }),
+      ));
+    }
+    let Some(document) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
       Diagnosable::Filter,
     )?
     else {
@@ -2977,6 +3088,7 @@ impl Inner {
           &self.snapshot(),
           &self.ts_server,
           &self.ambient_modules_regex_cache,
+          &self.no_slow_types_cache,
           token,
         )
         .await
@@ -3474,6 +3586,7 @@ impl Inner {
   ) {
     self.ambient_modules_regex_cache.clear();
     self.diagnostics_cache.clear();
+    self.no_slow_types_cache.clear();
     self.project_version += 1; // increment before getting the snapshot
     self.ts_server.project_changed(
       &documents,
@@ -4047,7 +4160,7 @@ impl Inner {
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
-    self.refresh_config_tree().await;
+    self.refresh_config_tree("initialized").await;
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
@@ -4169,6 +4282,34 @@ impl Inner {
       );
     }
 
+    let open_modules = self
+      .document_modules
+      .documents
+      .open_docs()
+      .filter(|d| d.is_diagnosable())
+      .flat_map(|d| {
+        self
+          .document_modules
+          .module(&Document::Open(d.clone()), scope.as_deref())
+      })
+      .collect::<Vec<_>>();
+    for module in &open_modules {
+      roots.extend(
+        module
+          .dependencies
+          .values()
+          .filter_map(|d| d.get_type())
+          .cloned(),
+      );
+      roots.extend(
+        module
+          .types_dependency
+          .iter()
+          .flat_map(|d| d.dependency.maybe_specifier())
+          .cloned(),
+      );
+    }
+
     let workspace_settings = self.config.workspace_settings();
     let initial_cwd = config_data
       .and_then(|d| d.scope.to_file_path().ok())
@@ -4209,17 +4350,6 @@ impl Inner {
       cli_factory.set_workspace_dir(d.member_dir.clone());
     };
 
-    let open_modules = self
-      .document_modules
-      .documents
-      .open_docs()
-      .filter(|d| d.is_diagnosable())
-      .flat_map(|d| {
-        self
-          .document_modules
-          .module(&Document::Open(d.clone()), scope.as_deref())
-      })
-      .collect();
     Ok(PrepareCacheResult {
       cli_factory,
       open_modules,
@@ -4229,7 +4359,7 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn post_cache(&mut self) {
-    self.refresh_config_tree().await;
+    self.refresh_config_tree("post_cache").await;
     self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
@@ -4282,7 +4412,10 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();
-    self.refresh_config_tree().await;
+    self
+      .refresh_config_tree("did_change_workspace_folders")
+      .await;
+    self.update_cache();
     self.refresh_resolver().await;
     self.refresh_compiler_options_resolver();
     self.refresh_linter_resolver();

@@ -61,9 +61,7 @@ function findClosedPortInRange(
 }
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
     await assertRejects(
@@ -72,6 +70,31 @@ Deno.test(
       },
       TypeError,
       "client error (Connect)",
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchBadPortBlocked() {
+    // Ports on the Fetch Standard "bad ports" list must be rejected with a
+    // network error before any TCP connection is attempted.
+    // https://fetch.spec.whatwg.org/#bad-port
+    await assertRejects(
+      async () => {
+        await fetch("http://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
+    );
+    // The block applies to HTTP(S) schemes, so https bad ports are rejected
+    // before any TLS handshake too.
+    await assertRejects(
+      async () => {
+        await fetch("https://localhost:6000");
+      },
+      TypeError,
+      "Requests to port 6000 are blocked",
     );
   },
 );
@@ -1906,9 +1929,7 @@ Deno.test(
 );
 
 Deno.test(
-  // TODO(bartlomieju): reenable this test
-  // https://github.com/denoland/deno/issues/18350
-  { ignore: Deno.build.os === "windows", permissions: { net: true } },
+  { permissions: { net: true } },
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {
@@ -2046,6 +2067,17 @@ Deno.test(
     assertEquals(req2.headers.get("x-foo"), "bar");
   },
 );
+
+Deno.test(function requestConstructorDoesNotNormalizePatchMethod() {
+  assertEquals(
+    new Request("https://example.com", { method: "patch" }).method,
+    "patch",
+  );
+  assertEquals(
+    new Request("https://example.com", { method: "PATCH" }).method,
+    "PATCH",
+  );
+});
 
 Deno.test(
   // TODO(bartlomieju): reenable this test
@@ -2319,6 +2351,90 @@ Deno.test(
         ac.abort();
         await server.finished;
       }
+    }
+  },
+);
+
+// Regression test for https://github.com/denoland/deno/issues/20548
+// `content-encoding` and `content-length` response headers must stay visible
+// when the body is transparently decompressed; only the body is decoded.
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchPreservesContentEncodingHeader() {
+    const compressed = await new Response(
+      new Blob(["hello world"]).stream().pipeThrough(
+        new CompressionStream("gzip"),
+      ),
+    ).bytes();
+    const ac = new AbortController();
+    const server = Deno.serve(
+      { port: listenPort, signal: ac.signal, onListen() {} },
+      () =>
+        new Response(compressed, {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": String(compressed.length),
+          },
+        }),
+    );
+    try {
+      const resp = await fetch(`http://localhost:${listenPort}/`);
+      assertEquals(resp.headers.get("content-encoding"), "gzip");
+      assertEquals(
+        resp.headers.get("content-length"),
+        String(compressed.length),
+      );
+      assertEquals(await resp.text(), "hello world");
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+// The flip side of the regression test above: when a fetch response with a
+// transparently decompressed body is re-serialized by an HTTP server
+// (`return fetch(...)` proxying), the retained `content-encoding` and
+// `content-length` headers describe the original wire body, not the decoded
+// one, and must not be forwarded with it.
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchProxyingDecompressedResponseStripsWireHeaders() {
+    const compressed = await new Response(
+      new Blob(["hello world"]).stream().pipeThrough(
+        new CompressionStream("gzip"),
+      ),
+    ).bytes();
+    const ac = new AbortController();
+    const upstream = Deno.serve(
+      { port: listenPort, signal: ac.signal, onListen() {} },
+      () =>
+        new Response(compressed, {
+          headers: {
+            "content-encoding": "gzip",
+            "content-length": String(compressed.length),
+          },
+        }),
+    );
+    const { promise: proxyPort, resolve } = Promise.withResolvers<number>();
+    const proxy = Deno.serve(
+      {
+        port: 0,
+        signal: ac.signal,
+        onListen({ port }) {
+          resolve(port);
+        },
+      },
+      () => fetch(`http://localhost:${listenPort}/`),
+    );
+    try {
+      const resp = await fetch(`http://localhost:${await proxyPort}/`);
+      assertEquals(resp.headers.get("content-encoding"), null);
+      assertEquals(await resp.text(), "hello world");
+    } finally {
+      ac.abort();
+      await upstream.finished;
+      await proxy.finished;
     }
   },
 );

@@ -76,6 +76,11 @@ const {
 
 const MAX_BUFFER = 1024 * 1024;
 
+// Internal env var used to tell a compiled-binary child process (spawned by
+// fork()) which embedded module to run as its main module instead of the
+// baked-in entrypoint. Kept in sync with cli/rt/run.rs.
+const INTERNAL_CHILD_ENTRYPOINT_ENV_VAR = "DENO_INTERNAL_CHILD_ENTRYPOINT";
+
 // `Buffer.prototype.slice` is Buffer-specific (not the Array/String primordial),
 // so the lint match on `.slice` and the spread are false positives here.
 function bufferSlice(buf: string | Buffer, ...args: number[]) {
@@ -183,6 +188,16 @@ function fork(
     // Translating would inject "run -A --unstable-..." which the compiled
     // binary doesn't understand and would pass through as app args.
     args = nodeArgs;
+    // A compiled binary always boots its baked-in entrypoint and ignores the
+    // module path passed in argv, so without this a fork() would just re-run
+    // the parent's entrypoint instead of `modulePath` (see issue #26304).
+    // Tell the child which embedded module to run via an internal env var; the
+    // standalone runtime resolves it against the entrypoint's directory inside
+    // the compile VFS and runs it as the main module (see cli/rt/run.rs).
+    options.env = {
+      ...(options.env ?? process.env),
+      [INTERNAL_CHILD_ENTRYPOINT_ENV_VAR]: modulePath,
+    };
   } else {
     // Use the Rust parser to translate Node.js CLI args to Deno args
     // The parser handles Deno-style args (e.g., from vitest) by passing them through unchanged

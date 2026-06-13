@@ -935,6 +935,16 @@ pub struct DocumentModule {
   pub types_dependency: Option<Arc<TypesDependency>>,
   pub navigation_tree: tokio::sync::OnceCell<Arc<NavigationTree>>,
   pub semantic_tokens_full: tokio::sync::OnceCell<lsp::SemanticTokens>,
+  /// Cached lint diagnostics. These only depend on this module's own contents
+  /// (not on other files), so they can be computed once per module instance
+  /// and reused until the document changes. A new `DocumentModule` is created
+  /// whenever the document content or the lint configuration changes, which
+  /// naturally invalidates this cache.
+  pub lint_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
+  /// Cached `deno doc --lint` diagnostics. Like lint diagnostics, these are
+  /// derived solely from this module's own contents (a single-module graph),
+  /// so they're cached per module instance.
+  pub doc_diagnostics: once_cell::sync::OnceCell<Arc<Vec<lsp::Diagnostic>>>,
   text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
   test_module_fut: Option<TestModuleFut>,
 }
@@ -1010,6 +1020,8 @@ impl DocumentModule {
       types_dependency,
       navigation_tree: Default::default(),
       semantic_tokens_full: Default::default(),
+      lint_diagnostics: Default::default(),
+      doc_diagnostics: Default::default(),
       text_info_cell: Default::default(),
       test_module_fut,
     }
@@ -1397,14 +1409,34 @@ impl DocumentModules {
       || self.resolver.in_node_modules(&specifier)
       || self.cache.in_global_cache_directory(&specifier)
     {
-      let key = compiler_options_key?;
-      let value = self
-        .compiler_options_resolver
-        .for_key(key)
-        .expect("Key should be in sync with resolver.");
-      (key, value)
+      // Dependency files get their compiler options key from their referrer,
+      // passed in here when reached through resolution. If we don't have one
+      // (e.g. the document was opened directly in the editor), use the key
+      // previously assigned to it if any, or infer one from its path. See
+      // https://github.com/denoland/deno/issues/35170.
+      let key = compiler_options_key.cloned().or_else(|| {
+        let (assigned_scope, assigned_key) =
+          self.assigned_scopes.read().get(document.uri())?.clone();
+        (assigned_scope.as_deref() == scope).then_some(assigned_key)
+      });
+      match key {
+        Some(key) => {
+          let value = self
+            .compiler_options_resolver
+            .for_key(&key)
+            .expect("Key should be in sync with resolver.");
+          (key, value)
+        }
+        None if scheme == "file" => {
+          let (key, value) = self
+            .compiler_options_resolver
+            .entry_for_specifier(&specifier);
+          (key.clone(), value)
+        }
+        None => return None,
+      }
     } else {
-      self.compiler_options_resolver.entry_for_specifier(
+      let (key, value) = self.compiler_options_resolver.entry_for_specifier(
         if scheme != "file"
           && let Some(scope) = scope
         {
@@ -1412,12 +1444,13 @@ impl DocumentModules {
         } else {
           &specifier
         },
-      )
+      );
+      (key.clone(), value)
     };
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
-      compiler_options_key.clone(),
+      compiler_options_key,
       compiler_options_data,
       scope.cloned().map(Arc::new),
       &self.resolver,
