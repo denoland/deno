@@ -792,6 +792,7 @@ fn get_resolved_lax_sql_config(
     new_line_kind: dprint_core::configuration::NewLineKind::LineFeed,
     // matches the previous sqlformat behavior of uppercasing keywords
     keyword_case: lax_sql::configuration::KeywordCase::Upper,
+    clause_style: lax_sql::configuration::ClauseStyle::Fill,
     ignore_node_comment_text: "deno-fmt-ignore".to_string(),
     ignore_file_comment_text: "deno-fmt-ignore-file".to_string(),
   }
